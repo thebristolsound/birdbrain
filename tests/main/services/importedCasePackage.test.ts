@@ -18,6 +18,7 @@ import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { listCaptures } from '@main/services/db/captureRepo'
 import { listExhibits } from '@main/services/db/exhibitRepo'
+import { listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
 import { createNote } from '@main/services/db/noteRepo'
 import { commitStagedFiles, uploadToStaging } from '@main/services/staging'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
@@ -57,6 +58,7 @@ import { HAS_JQ } from '../../helpers/jq'
 import { createLocalTsa, type LocalTsa } from '../../helpers/localTsa'
 import { extractRunbookBlocks, runRunbookBlocks } from '../../helpers/runbookBlocks'
 import { runVerifyScript } from '../../helpers/verifyScript'
+import { downgradeToVersion10 } from '../../helpers/archiveDerivedFiles'
 
 // #1657: a Case that arrived through an import carries entries another
 // installation signed, before its `import` entry. Its Evidence Package must
@@ -671,8 +673,9 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
       .toBuffer()
     const remapped = await remappedCase({ screenshot })
     // The startup backfill, as the next launch runs it on the imported Case
-    // (#1814). The source Case is left as it was: one whose thumbnails were
-    // already anchored is #1813's question.
+    // (#1814). The source Case was never backfilled, so its archive carries no
+    // thumbnail and the import's own backfill signs one. A source that was
+    // backfilled is the case further down, whose archive carries it (#1813).
     const backfill = await backfillCase(remapped.caseId, { toolVersion: '0.1.0' })
     expect(backfill.thumbnailsAnchored).toBe(1)
     const dir = await exportPackage(remapped.caseId, 'remapped', { notes: true })
@@ -827,26 +830,159 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
     }
   )
 
-  // The usual shape, a source that was backfilled before its archive was
-  // exported, still fails both verifiers: the archive carries no thumbnails,
-  // so the source's anchored one is missing (#1813). The row's own thumbnail
-  // binds; only the source's is reported.
+  // A real image, so the backfill can render and anchor a thumbnail from it.
+  const pngOf = (background: { r: number; g: number; b: number }): Promise<Buffer> =>
+    sharp({ create: { width: 32, height: 24, channels: 3, background } })
+      .png()
+      .toBuffer()
+
+  // A source Case backfilled before its archive was exported: its chain
+  // anchors a thumbnail, and its archive carries the file (#1813).
+  async function backfilledArchive(name: string): Promise<{
+    archive: string
+    original: { caseId: string; captureId: string; exhibitId: string }
+  }> {
+    const original = await nativeCase(name, await pngOf({ r: 200, g: 120, b: 10 }))
+    const backfill = await backfillCase(original.caseId, { toolVersion: '0.1.0' })
+    expect(backfill.thumbnailsAnchored).toBe(1)
+    const archive = join(tempDir, `${name}.birdbrain`)
+    await exportCaseArchive(original.caseId, archive)
+    return { archive, original }
+  }
+
+  const caseChain = (caseId: string): ChainLine[] => chainLines(join(getStorageRoot(), caseId))
+
   it.skipIf(!RUNS)(
-    'fails only on the source thumbnail when the source was backfilled',
+    'passes both shipped verifiers on a renamed import whose source was backfilled',
     async () => {
-      const screenshot = await sharp({
-        create: { width: 32, height: 24, channels: 3, background: { r: 200, g: 120, b: 10 } }
-      })
-        .png()
-        .toBuffer()
-      const original = await nativeCase('Backfilled', screenshot)
-      await backfillCase(original.caseId, { toolVersion: '0.1.0' })
-      const archive = join(tempDir, 'backfilled.birdbrain')
-      await exportCaseArchive(original.caseId, archive)
+      const { archive, original } = await backfilledArchive('Backfilled')
+      const [sourceRow] = listDerivedFilesForCase(original.caseId)
       const { newCaseId } = await importCaseArchive(archive)
+      const [row] = listCaptures(newCaseId)
+      expect(row.id).not.toBe(original.captureId)
+
+      // The next launch's backfill finds the restored row and signs nothing.
+      const before = readFileSync(manifestPath(join(getStorageRoot(), newCaseId)))
+      const backfill = await backfillCase(newCaseId, { toolVersion: '0.1.0' })
+      expect(backfill.thumbnailsAnchored).toBe(0)
+      expect(readFileSync(manifestPath(join(getStorageRoot(), newCaseId)))).toEqual(before)
+      const derivations = caseChain(newCaseId).filter((line) => line.type === 'derivation')
+      expect(derivations).toHaveLength(1)
+      const [restored] = listDerivedFilesForCase(newCaseId)
+      expect(restored).toMatchObject({
+        exhibitId: row.id,
+        path: join(newCaseId, `${original.captureId}_thumb.jpg`),
+        contentHash: sourceRow.contentHash,
+        manifestSeq: derivations[0].index
+      })
+
+      const dir = await exportPackage(newCaseId, 'backfilled')
+      expectInAppPass(dir)
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expect(run.output).toContain('verify.sh: PASS')
+      expect(run.output).toContain('1 derived file(s) bound to the signed chain')
+
+      // The file keeps the name its signed entry gives it, under the id the
+      // capture entry signed.
+      const files = packageFiles(dir)
+      const thumbnailPath = `${CAPTURE_PACKAGE_DIRECTORY}/${original.captureId}_thumb.jpg`
+      expect(sha256(files.get(thumbnailPath)!)).toBe(derivations[0].outputHash)
+      const evidence = JSON.parse(files.get(PACKAGE_ROOT_FILES.evidenceIndex)!.toString())
+      const listed = evidence.exhibits.find(
+        (entry: { id: string }) => entry.id === original.captureId
+      )
+      expect(listed.derivedFiles).toEqual([
+        expect.objectContaining({ derivation: THUMBNAIL_DERIVATION, path: thumbnailPath })
+      ])
+      for (const [path, bytes] of files) {
+        expect(bytes.toString('latin1').includes(row.id), path).toBe(false)
+      }
+    }
+  )
+
+  // A known limit (#1017): the renamed import archived again and imported on a
+  // third installation. The id map is one hop, so that archive has no row the
+  // source's derivation entry names and carries no thumbnail. The package fails
+  // on the source's thumbnail and on the one the third installation backfills,
+  // and binds no derived file.
+  it.skipIf(!RUNS)(
+    'fails on both thumbnails for a renamed import archived again (#1017)',
+    async () => {
+      const { archive, original } = await backfilledArchive('Twice')
+      const { newCaseId: renamedCaseId } = await importCaseArchive(archive)
+      const [renamed] = listCaptures(renamedCaseId)
+      expect(renamed.id).not.toBe(original.captureId)
+
+      const newCaseId = await importAgain(renamedCaseId, 'third')
+      const [row] = listCaptures(newCaseId)
+      expect(row.id).toBe(renamed.id)
+      expect(listDerivedFilesForCase(newCaseId)).toEqual([])
       const backfill = await backfillCase(newCaseId, { toolVersion: '0.1.0' })
       expect(backfill.thumbnailsAnchored).toBe(1)
-      const dir = await exportPackage(newCaseId, 'backfilled')
+      const dir = await exportPackage(newCaseId, 'twice')
+
+      const source = `${CAPTURE_PACKAGE_DIRECTORY}/${original.captureId}_thumb.jpg`
+      const failures = verifyEvidencePackage(dir)
+        .checks.filter((check) => check.status === 'fail')
+        .map((check) => check.reason)
+      // The backfill's own thumbnail is signed under the row id, which the
+      // package does not name the Exhibit by, so it binds as no derived file.
+      expect(failures).toEqual([
+        expect.stringContaining(`${source} is missing from the package`),
+        expect.stringContaining(
+          `lists derived file \`thumbnail\` of exhibit ${original.captureId}, which the verified manifest does not anchor at that path`
+        ),
+        expect.stringContaining(`omits derived file \`thumbnail\` of exhibit ${original.captureId}`)
+      ])
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(run.output).toContain(
+        `FAIL [step 5] Exhibit 1, derivation thumbnail: ${source} is missing`
+      )
+      expect(run.output).toContain('0 derived file(s) bound to the signed chain')
+      expect(run.output).toContain('verify.sh: FAIL - 1 check(s) failed, in step(s): 5')
+    }
+  )
+
+  it.skipIf(!RUNS)(
+    'passes both shipped verifiers on a Case imported from another installation that backfilled it',
+    async () => {
+      await useInstallation('source')
+      const { archive, original } = await backfilledArchive('Elsewhere')
+
+      await useInstallation('local')
+      const { newCaseId } = await importCaseArchive(archive)
+      const [restored] = listDerivedFilesForCase(newCaseId)
+      expect(restored).toMatchObject({
+        exhibitId: original.captureId,
+        path: join(newCaseId, `${original.captureId}_thumb.jpg`)
+      })
+
+      const dir = await exportPackage(newCaseId, 'elsewhere')
+      expectInAppPass(dir)
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expect(run.output).toContain('verify.sh: PASS')
+      expect(run.output).toContain('1 derived file(s) bound to the signed chain')
+    }
+  )
+
+  // An archive from before Derived Files travelled still imports, and its
+  // package still fails on the source's thumbnail, which it never carried.
+  // The row's own thumbnail binds; only the source's is reported.
+  it.skipIf(!RUNS)(
+    'still fails only on the source thumbnail for a version-10 archive of a backfilled source',
+    async () => {
+      const { archive, original } = await backfilledArchive('Version 10')
+      downgradeToVersion10(archive)
+      const { newCaseId, report } = await importCaseArchive(archive)
+      expect(report.schemaVersion).toBe(10)
+      expect(report.verification.overallValid).toBe(true)
+      expect(listDerivedFilesForCase(newCaseId)).toEqual([])
+      const backfill = await backfillCase(newCaseId, { toolVersion: '0.1.0' })
+      expect(backfill.thumbnailsAnchored).toBe(1)
+      const dir = await exportPackage(newCaseId, 'version-10')
 
       const source = `${CAPTURE_PACKAGE_DIRECTORY}/${original.captureId}_thumb.jpg`
       const failures = verifyEvidencePackage(dir)
@@ -863,6 +999,33 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
       )
       expect(run.output).toContain('1 derived file(s) bound to the signed chain')
       expect(run.output).toContain('verify.sh: FAIL - 1 check(s) failed, in step(s): 5')
+    }
+  )
+
+  it.skipIf(!RUNS)(
+    "leaves a native Case's packaged Exhibit and Derived File bytes unchanged by archiving it",
+    async () => {
+      const native = await nativeCase('Archived native', await pngOf({ r: 10, g: 200, b: 120 }))
+      await backfillCase(native.caseId, { toolVersion: '0.1.0' })
+      const before = packageFiles(await exportPackage(native.caseId, 'before-archive'))
+      await exportCaseArchive(native.caseId, join(tempDir, 'native.birdbrain'))
+      const after = packageFiles(await exportPackage(native.caseId, 'after-archive'))
+
+      const exhibitBytes = (files: Map<string, Buffer>): Map<string, Buffer> =>
+        new Map([...files].filter(([path]) => /^(pages|documents)\//.test(path)))
+      expect([...exhibitBytes(before).keys()].sort()).toEqual(
+        [
+          capturePagePath(native.captureId),
+          `${CAPTURE_PACKAGE_DIRECTORY}/${native.captureId}_thumb.jpg`,
+          exhibitEntryPath(join(tempDir, 'before-archive'), native.exhibitId)
+        ].sort()
+      )
+      expect(exhibitBytes(after)).toEqual(exhibitBytes(before))
+      const derivedFiles = (files: Map<string, Buffer>): unknown =>
+        JSON.parse(files.get(PACKAGE_ROOT_FILES.evidenceIndex)!.toString()).exhibits.map(
+          (entry: { id: string; derivedFiles: unknown }) => [entry.id, entry.derivedFiles]
+        )
+      expect(derivedFiles(after)).toEqual(derivedFiles(before))
     }
   )
 

@@ -12,6 +12,7 @@ import { MentionCaseMismatchError } from '@main/services/db/noteReferenceRepo'
 import { createNote, getNote } from '@main/services/db/noteRepo'
 import { saveAnnotations, upsertPin } from '@main/services/annotations'
 import { addTagToCapture, addTagToNote, createTag } from '@main/services/db/tagRepo'
+import { insertDerivedFile } from '@main/services/db/derivedFileRepo'
 import {
   getDbStats,
   getTableRows,
@@ -742,6 +743,40 @@ describe('dbAdmin', () => {
       const result = findOrphans()
       expect(result.dbOrphans).toHaveLength(0)
       expect(result.fileOrphans).toHaveLength(0)
+    })
+
+    // A renamed import restores the source's thumbnail under the name its
+    // signed entry gives it, which no Capture id here matches (#1813).
+    it('keeps a flat file a derived_files row records, whatever id its name carries', () => {
+      const tempDir = mkdtempSync(join(tmpdir(), 'bb-db-admin-derived-'))
+      try {
+        initStorage(tempDir)
+        const caseId = createCase({ name: 'Imported', description: '' }).id
+        ensureCaseDir(caseId)
+        const parent = insertCapture({
+          caseId,
+          url: 'https://example.com/renamed',
+          title: 'Renamed',
+          hash: 'h',
+          timestamp: '2026-01-01T00:00:00.000Z'
+        }).id
+        const recorded = join(caseId, 'source-capture-id_thumb.jpg')
+        const stray = join(caseId, 'unknown-capture-id_thumb.jpg')
+        for (const rel of [recorded, stray]) writeFileSync(join(tempDir, rel), 'jpeg')
+        insertDerivedFile({
+          exhibitId: parent,
+          derivation: 'thumbnail',
+          toolVersion: '0.1.0',
+          contentHash: 'c'.repeat(64),
+          path: recorded,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          manifestSeq: 0
+        })
+
+        expect(findOrphans().fileOrphans).toEqual([stray])
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true })
+      }
     })
   })
 

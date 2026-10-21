@@ -7,6 +7,7 @@ import {
   writeFileSync,
   mkdirSync,
   createWriteStream,
+  readdirSync,
   renameSync
 } from 'fs'
 import { join } from 'path'
@@ -256,6 +257,49 @@ describe('captureStore', () => {
       }
       expect(existsSync(join(dir, 'cap-2.mhtml'))).toBe(true)
       expect(store.listStagedDeletes('case-1')).toEqual(['cap-1'])
+    })
+
+    it('stages a further file named directly in the Case directory, and restores it', () => {
+      writeFileSync(join(dir, 'src-1_thumb.jpg'), 'restored under the source id')
+
+      store.stageArtifacts('case-1', 'cap-1', ['src-1_thumb.jpg'])
+
+      expect(existsSync(join(dir, 'src-1_thumb.jpg'))).toBe(false)
+      store.restoreStaged('case-1', 'cap-1')
+      expect(readFileSync(join(dir, 'src-1_thumb.jpg'), 'utf-8')).toBe(
+        'restored under the source id'
+      )
+    })
+
+    // A restore moves each staged file back into the Case directory by its
+    // name, so anything else would land somewhere it never was.
+    it('stages no further name that is not a bare file in the Case directory', () => {
+      const other = join(tempDir, 'case-2')
+      mkdirSync(other, { recursive: true })
+      mkdirSync(join(dir, 'sub'), { recursive: true })
+      for (const path of [
+        join(other, 'cap-9.mhtml'),
+        join(dir, 'sub', 'cap-9.mhtml'),
+        join(tempDir, 'abs.jpg')
+      ]) {
+        writeFileSync(path, 'not this capture')
+      }
+
+      store.stageArtifacts('case-1', 'cap-1', [
+        '',
+        '.',
+        '..',
+        'sub',
+        '../case-2/cap-9.mhtml',
+        'sub/cap-9.mhtml',
+        join(tempDir, 'abs.jpg')
+      ])
+
+      expect(readFileSync(join(other, 'cap-9.mhtml'), 'utf-8')).toBe('not this capture')
+      expect(readFileSync(join(dir, 'sub', 'cap-9.mhtml'), 'utf-8')).toBe('not this capture')
+      expect(readFileSync(join(tempDir, 'abs.jpg'), 'utf-8')).toBe('not this capture')
+      expect(existsSync(join(dir, 'sub'))).toBe(true)
+      expect(readdirSync(staged).sort()).toEqual([...NAMES].sort())
     })
 
     it('restores staged files to their original paths and removes the staging directory', () => {

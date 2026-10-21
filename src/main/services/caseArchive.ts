@@ -1,4 +1,12 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, rmSync } from 'fs'
+import {
+  existsSync,
+  lstatSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  renameSync,
+  rmSync
+} from 'fs'
 import { unlink } from 'fs/promises'
 import { createHash, randomUUID } from 'crypto'
 import { dirname, join } from 'path'
@@ -22,6 +30,7 @@ import * as subjectRepo from '@main/services/db/investigationSubjectRepo'
 import * as decisionRepo from '@main/services/db/investigationDecisionRepo'
 import * as markRepo from '@main/services/db/exhibitMarkRepo'
 import * as runRepo from '@main/services/db/investigationRunRepo'
+import { insertDerivedFile } from '@main/services/db/derivedFileRepo'
 import {
   collectAnnotationsForCase,
   collectAnnotationPinsForCase,
@@ -33,11 +42,13 @@ import {
   CAPTURE_ARTIFACT_TYPES,
   defaultCaptureStore,
   EXHIBIT_KIND_SUBDIRECTORIES,
+  parseArtifactFilename,
   STAGING_SUBDIRECTORY
 } from '@main/services/captureStore'
 import { getSettings } from '@main/services/settings'
 import { getInstallationId } from '@main/services/installationId'
 import { getPublicKeyPem } from '@main/services/signingKey'
+import { safeCasePath } from '@main/services/sharing/blobAcceptance'
 import {
   appendManifestEntry,
   createArtifactAccumulator,
@@ -63,15 +74,27 @@ import {
   verifySharedCaseReplica
 } from '@shared/verify'
 import type { SharedCaseMember, SharedCaseVerifyResult } from '@shared/verify'
-import { lineageChainPath, parseChainPath } from '../../packages/evidence-package-layout/index'
+import {
+  inCasePath,
+  lineageChainPath,
+  parseChainPath
+} from '../../packages/evidence-package-layout/index'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import { IMPORT_ID_MAP_FILENAME, MANIFEST_FILENAME } from '@shared/constants'
+import { ManifestEntrySchema, type ManifestEntry } from '@shared/schemas'
 import type {
   ArchiveInspectReport,
   ArchiveVerificationResult,
   CaseArchiveCounts
 } from '@shared/types'
 
+// 11 since Derived Files travel (#1813): the zip carries a Derived File under
+// `files/derived/<in-Case path>` when a verified chain signs it for a parent
+// row the archive holds, at a path the import may write, and its bytes still
+// match. The import restores it with its `derived_files` row only when its
+// bytes hash to the signed `outputHash`. A Birdbrain from before them passes
+// the archive's checks, then rejects the nested entry name as malformed and
+// abandons the import, so the gate refuses instead.
 // 10 since the investigation records (#1909, schema v40): data.json carries
 // the Subjects, Joints and their spans, the decisions on them, the marks on
 // Exhibits and the run records. A Birdbrain from before them imports the Case
@@ -128,7 +151,7 @@ import type {
 // anchor_json, which a pre-v27 import would silently drop. Bump this whenever a
 // Case Archive gains data an older release would silently discard or reject
 // opaquely.
-export const CASE_ARCHIVE_SCHEMA_VERSION = 10
+export const CASE_ARCHIVE_SCHEMA_VERSION = 11
 
 export interface CaseArchiveData {
   case: Record<string, unknown>
@@ -250,6 +273,10 @@ export function collectCaseData(caseId: string): CaseArchiveData {
 // stored extension, which is what lets the import re-root the path.
 const EXHIBIT_FILES_PREFIX = 'files/exhibits/'
 const STAGING_FILES_PREFIX = 'files/staging/'
+// A Derived File is named by the in-Case path its signed `derivation` entry
+// gives it. The name is only a lookup key into `anchoredDerivedFiles`, built
+// from a verified entry, and is never parsed back into a filesystem path.
+const DERIVED_FILES_PREFIX = 'files/derived/'
 
 function fileExt(path: string): string {
   const base = path.split('/').pop() ?? path
@@ -286,10 +313,12 @@ export async function exportCaseArchive(
   const { entries, artifacts, add } = createArtifactAccumulator()
 
   add('data.json', JSON.stringify(data, null, 2))
-  add(MANIFEST_FILENAME, readManifestSnapshot(caseDir).jsonl)
+  const manifest = readManifestSnapshot(caseDir).jsonl
+  add(MANIFEST_FILENAME, manifest)
   // Every other member's chain and every lineage chain, byte-for-byte under
   // the name it has in the Case directory (#1511).
-  for (const chain of readChainFileSnapshots(caseDir)) add(chain.path, chain.jsonl)
+  const chainFiles = readChainFileSnapshots(caseDir)
+  for (const chain of chainFiles) add(chain.path, chain.jsonl)
 
   const captures = data.captures as Array<{ id: string }>
   const totalFileChecks = captures.length * CAPTURE_ARTIFACT_TYPES.length || 1
@@ -324,6 +353,26 @@ export async function exportCaseArchive(
     const name = `${STAGING_FILES_PREFIX}${file.id}${fileExt(file.path)}`
     add(name, readFileSync(abs))
     staged.push(name)
+  }
+
+  // Derived Files, chosen from the same chain bytes this archive ships (#1813).
+  // A file whose bytes no longer match a signed hash is left behind, as a file
+  // missing at source is: carrying it would only make the archive fail.
+  const shipped = new Map([
+    [MANIFEST_FILENAME, manifest],
+    ...chainFiles.map((chain): [string, Buffer] => [chain.path, chain.jsonl])
+  ])
+  const derived = anchoredDerivedFiles(
+    verifyArchiveChains(shipped, getPublicKeyPem()),
+    manifest.toString('utf-8'),
+    data
+  )
+  for (const [name, file] of derived) {
+    const abs = join(caseDir, ...file.inCase.split('/'))
+    if (!existsSync(abs) || !lstatSync(abs).isFile()) continue
+    const bytes = readFileSync(abs)
+    const hash = sha256(bytes)
+    if (file.entries.some((entry) => entry.outputHash === hash)) add(name, bytes)
   }
 
   const packageHash = computePackageHash(artifacts)
@@ -400,12 +449,9 @@ interface ArchiveChains {
 // The archive's chains, verified against the archive's OWN bundled key: the
 // exporter's chain alone, and for a Shared Case the replica walk anchored at
 // that key, since the exporter can be any member (#1511).
-function verifyArchiveChains(
-  entries: Map<string, Buffer>,
-  header: CaseArchiveHeader
-): ArchiveChains {
+function verifyArchiveChains(entries: Map<string, Buffer>, publicKeyPem: string): ArchiveChains {
   const manifest = (entries.get(MANIFEST_FILENAME) ?? Buffer.alloc(0)).toString('utf-8')
-  const local = { jsonl: manifest, publicKeyPem: header.signingPublicKeyPem }
+  const local = { jsonl: manifest, publicKeyPem }
   const chain = verifyManifestChainText(manifest, { publicKeyPem: local.publicKeyPem })
   const chains = [...entries].flatMap(([path, jsonl]) => {
     const parsed = parseChainPath(path)
@@ -414,6 +460,114 @@ function verifyArchiveChains(
   if (!isSharedCase(readEntries(manifest), chains)) return { chain, chains }
   const shared = verifySharedCaseReplica({ local, ...sharedCaseChains(chains) })
   return { chain, chains, shared }
+}
+
+type DerivationEntry = Extract<ManifestEntry, { type: 'derivation' }>
+
+// One Derived File the archive's verified chains anchor: where it sits in the
+// Case, the Exhibit it was computed from, and every entry that names it (a
+// re-derivation appends another).
+interface AnchoredDerivedFile {
+  inCase: string
+  parentExhibitId: string
+  entries: DerivationEntry[]
+}
+
+// The in-Case paths an import writes for its own files, lower-cased. A signed
+// derivation path is attacker-chosen in a self-signed archive, and one landing
+// on any of these would replace a Capture's bytes, an Exhibit's, the chain or
+// the id map that rename binding trusts.
+function ownedInCasePaths(data: CaseArchiveData): Set<string> {
+  const owned = new Set([IMPORT_ID_MAP_FILENAME, MANIFEST_FILENAME].map((n) => n.toLowerCase()))
+  for (const capture of data.captures as Array<{ id: string }>) {
+    for (const type of CAPTURE_ARTIFACT_TYPES) owned.add(`${capture.id}.${type}`.toLowerCase())
+  }
+  const rows = [
+    ...((data.exhibits ?? []) as Array<{ kind: string; path: string | null }>).filter(
+      (row) => row.kind !== 'capture'
+    ),
+    ...((data.stagingFiles ?? []) as Array<{ path: string | null }>)
+  ]
+  for (const { path } of rows) if (path) owned.add(inCasePath(path).toLowerCase())
+  return owned
+}
+
+// The in-Case path a signed `outputPath` names, or null when the import must
+// not write there: outside the Case, at a name the replica owns, at a file
+// the import itself stages, at a name with a colon (NTFS opens `a.jpg::$DATA`
+// as `a.jpg`), or anywhere the archive's own reader would refuse the entry
+// name. The first segment is dropped, since the new Case replaces it.
+function acceptedInCasePath(outputPath: string, owned: ReadonlySet<string>): string | null {
+  const normalized = outputPath.replace(/\\/g, '/')
+  const segments = normalized.split('/')
+  if (segments.length < 2 || segments[0] === '' || segments[0] === '.') return null
+  if (normalized.includes('..') || normalized.includes(':')) return null
+  // Only the refusal is read, so inspect needs no storage root to judge a path.
+  if (safeCasePath('', segments[0], normalized) === null) return null
+  const inCase = segments.slice(1).join('/')
+  return owned.has(inCase.toLowerCase()) ? null : inCase
+}
+
+// Whether a file directly in the Case is named as another Capture's artifact
+// (`<id>_thumb.jpg`). That name is the other Capture's: its backfill would
+// write over the file, and a delete or the orphan report would read it as
+// belonging to that Capture. Any artifact-shaped name under any spelling counts
+// unless it is the parent's own, exactly: two Captures' ids may differ only in
+// case.
+function namesAnotherCapture(inCase: string, parentExhibitId: string): boolean {
+  if (inCase.includes('/') || !parseArtifactFilename(inCase.toLowerCase())) return false
+  return parseArtifactFilename(inCase)?.captureId !== parentExhibitId
+}
+
+// Which Derived Files an archive carries, by zip entry name. One function for
+// export, inspect and import, so an exporter carries exactly what an importer
+// will restore and an honest archive never reads as holding an unclaimed file.
+//
+// Only verified chains vouch (all or nothing, as the app's binding is), and a
+// file is anchored when a `derivation` entry on them names a parent the archive
+// carries a row for, at a path the import may write and not named as another
+// Capture's artifact. A path two parents claim, or one spelt two ways, is
+// refused whole: either reading could be the forgery.
+function anchoredDerivedFiles(
+  { chain, shared }: ArchiveChains,
+  manifestText: string,
+  data: CaseArchiveData
+): Map<string, AnchoredDerivedFile> {
+  const anchored = new Map<string, AnchoredDerivedFile>()
+  if (!chain.valid || (shared && !shared.valid)) return anchored
+  const lines = [...readEntries(manifestText), ...[...(shared?.entries.values() ?? [])].flat()]
+  const seen = new Set<string>()
+  const parents = new Set(((data.exhibits ?? []) as Array<{ id: string }>).map((row) => row.id))
+  const owned = ownedInCasePaths(data)
+  const groups = new Map<
+    string,
+    { spellings: Set<string>; parents: Set<string>; entries: DerivationEntry[] }
+  >()
+  for (const line of lines) {
+    // A Shared Case walk accepts the exporter's own chain too, so its entries
+    // arrive twice.
+    const parsed = ManifestEntrySchema.safeParse(line)
+    if (!parsed.success || seen.has(parsed.data.entryHash)) continue
+    seen.add(parsed.data.entryHash)
+    const entry = parsed.data
+    if (entry.type !== 'derivation' || !parents.has(entry.parentExhibitId)) continue
+    const inCase = acceptedInCasePath(entry.outputPath, owned)
+    if (inCase === null) continue
+    const key = inCase.toLowerCase()
+    const group = groups.get(key) ?? { spellings: new Set(), parents: new Set(), entries: [] }
+    group.spellings.add(inCase)
+    group.parents.add(entry.parentExhibitId)
+    group.entries.push(entry)
+    groups.set(key, group)
+  }
+  for (const { spellings, parents: named, entries } of groups.values()) {
+    if (spellings.size !== 1 || named.size !== 1) continue
+    const [inCase] = spellings
+    const [parentExhibitId] = named
+    if (namesAnotherCapture(inCase, parentExhibitId)) continue
+    anchored.set(`${DERIVED_FILES_PREFIX}${inCase}`, { inCase, parentExhibitId, entries })
+  }
+  return anchored
 }
 
 // Reads a .birdbrain archive and fully re-verifies it — artifact hashes,
@@ -461,7 +615,8 @@ export function inspectCaseArchive(archivePath: string): ArchiveInspectReport {
 
   // Chain check: verified against the archive's OWN bundled public key — the
   // source instance's key, not this instance's local signing key.
-  const { chain: chainResult, shared } = verifyArchiveChains(entries, header)
+  const archiveChains = verifyArchiveChains(entries, header.signingPublicKeyPem)
+  const { chain: chainResult, shared } = archiveChains
   // A Shared Case's other chains are part of the chain check: a member chain
   // that fails is the same tamper reading as the exporter's own failing. A
   // walk that could only say "too old" is reported as that, below.
@@ -529,6 +684,22 @@ export function inspectCaseArchive(archivePath: string): ArchiveInspectReport {
     if (!declaredPaths.has(check.path)) continue
     const buf = entries.get(check.path)
     if (!buf || sha256(buf) !== check.hash) artifactFailureCount++
+  }
+  // A Derived File's bytes are checked against the signed `outputHash`, never
+  // against a row: the header's sha256 is unsigned, so bytes swapped with the
+  // header repaired pass every check above. A file no verified entry claims is
+  // counted too. Not gated on `schemaVersion`, which is unsigned as well. With
+  // the chain broken nothing can claim a file and the chain finding already
+  // fails the archive.
+  if (chainValid) {
+    const manifestText = (entries.get(MANIFEST_FILENAME) ?? Buffer.alloc(0)).toString('utf-8')
+    const anchored = anchoredDerivedFiles(archiveChains, manifestText, data)
+    for (const [name, buf] of entries) {
+      if (!name.startsWith(DERIVED_FILES_PREFIX)) continue
+      const hash = sha256(buf)
+      const claimed = anchored.get(name)?.entries.some((entry) => entry.outputHash === hash)
+      if (!claimed) artifactFailureCount++
+    }
   }
   // A pooled path the header does not flag `staged`, or a flag on a path that
   // is not pooled, is a header that lies about anchoring (X12).
@@ -706,7 +877,14 @@ export async function importCaseArchive(
   const header = JSON.parse(entries.get('package.json')!.toString('utf-8')) as CaseArchiveHeader
   const data = JSON.parse(entries.get('data.json')!.toString('utf-8')) as CaseArchiveData
 
-  const plan = planImportChains(entries, header, verifyArchiveChains(entries, header))
+  // Restoration is decided from this read, the one the bytes come from.
+  const archiveChains = verifyArchiveChains(entries, header.signingPublicKeyPem)
+  const plan = planImportChains(entries, header, archiveChains)
+  const anchored = anchoredDerivedFiles(
+    archiveChains,
+    (entries.get(MANIFEST_FILENAME) ?? Buffer.alloc(0)).toString('utf-8'),
+    data
+  )
 
   const newCaseId = randomUUID()
   const idMap: Record<string, string> = {}
@@ -749,6 +927,8 @@ export async function importCaseArchive(
   const storageRoot = getStorageRoot()
   const stagingDir = join(storageRoot, '.import-staging-' + randomUUID())
   mkdirSync(stagingDir, { recursive: true })
+  // The Derived Files staged below, whose rows the transaction writes.
+  const restored: Array<{ inCase: string; match: DerivationEntry }> = []
   // Where a non-Capture Exhibit's bytes land is the kind's subdirectory (X4),
   // read off the row the archive carries for it.
   const exhibitKinds = new Map(
@@ -757,6 +937,8 @@ export async function importCaseArchive(
   try {
     for (const [name, buf] of entries) {
       if (!name.startsWith('files/')) continue
+      // Staged last, below, from the verified entry rather than the name.
+      if (name.startsWith(DERIVED_FILES_PREFIX)) continue
       const isExhibit = name.startsWith(EXHIBIT_FILES_PREFIX)
       const isPooled = name.startsWith(STAGING_FILES_PREFIX)
       const base = isExhibit
@@ -793,6 +975,28 @@ export async function importCaseArchive(
       writeFileSync(target, jsonl)
     }
     writeFileSync(join(stagingDir, IMPORT_ID_MAP_FILENAME), JSON.stringify(idMapPayload, null, 2))
+
+    // Derived Files, written after everything else the import stages so one
+    // can never replace a Capture's bytes, an Exhibit's, a chain or the id map.
+    // Bytes that match no signed hash reach this point only on an override
+    // import, which inspect has already recorded, and are not written.
+    for (const [name, file] of anchored) {
+      const bytes = entries.get(name)
+      if (!bytes) continue
+      const hash = sha256(bytes)
+      // The latest entry for these bytes, which the backfill's re-record names.
+      const match = [...file.entries].reverse().find((entry) => entry.outputHash === hash)
+      if (!match) continue
+      const target = join(stagingDir, ...file.inCase.split('/'))
+      if (existsSync(target)) {
+        throw new Error(
+          'Not a valid Birdbrain archive: a derived file path collides with an imported file'
+        )
+      }
+      mkdirSync(dirname(target), { recursive: true })
+      writeFileSync(target, bytes)
+      restored.push({ inCase: file.inCase, match })
+    }
 
     // Step 5: append the signed import entry to the STAGED manifest — it
     // continues the source chain (getManifestHead reads the staged file):
@@ -842,6 +1046,21 @@ export async function importCaseArchive(
     const exporterId = plan.fork?.exporterId ?? header.source.installationId
     withTransaction(() => {
       insertImportedRows(rows, newCaseId, mapId, exporterId)
+      // After the Exhibits, which derived_files has a foreign key onto. Every
+      // column comes from the verified entry, and the path keeps the signed
+      // file name even when the parent was renamed: binding and both package
+      // verifiers look for the file under that name.
+      for (const { inCase, match } of restored) {
+        insertDerivedFile({
+          exhibitId: mapId(match.parentExhibitId),
+          derivation: match.derivation,
+          toolVersion: match.derivationToolVersion,
+          contentHash: match.outputHash,
+          path: join(newCaseId, ...inCase.split('/')),
+          createdAt: match.timestamp,
+          manifestSeq: match.index
+        })
+      }
     })
   } catch (err) {
     rmSync(caseDir, { recursive: true, force: true })

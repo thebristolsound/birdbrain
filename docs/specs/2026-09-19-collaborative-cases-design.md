@@ -249,7 +249,10 @@ holds nor records still rolls back the session's rows, and the next session retr
 Capture has no chain entry, and a Capture this copy imported has its entry before the chain's
 `import`, where members do not read. Neither reaches another member, so deleting one removes this
 copy's own rows on it instead of tombstoning them: no peer could place a tombstone on it. This copy
-still records the deletion, which never leaves it, so the id stays dead here. A row that names such
+still records the deletion, which never leaves it, so the id stays dead here, in every Case of this
+copy. An imported Capture usually keeps its id from the copy that exported the archive, so if this
+copy later receives that Capture through a Shared Case, it refuses the Capture and every row that
+names it until this Case is deleted. A row that names such
 a Capture still travels, among them a note that keeps its link, and a member that never held the
 Capture rolls back that session's rows, as above. A Case Archive
 carries neither the deleted Capture nor a note's link to it: the export writes that link empty, as

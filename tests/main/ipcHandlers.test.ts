@@ -168,6 +168,7 @@ import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import * as searchFieldRepo from '@main/services/db/searchFieldRepo'
+import * as tagRepo from '@main/services/db/tagRepo'
 import * as unreviewedRepo from '@main/services/db/unreviewedRepo'
 import { createCase } from '@main/services/db/caseRepo'
 import { insertCapture } from '@main/services/db/captureRepo'
@@ -1332,6 +1333,17 @@ describe('ipcHandlers — tags', () => {
     ).filter((t) => t.name === 'dup')
     expect(dups).toHaveLength(1)
     expect(dups[0].color).toBe('#fff')
+  })
+
+  it('still rejects a tags:create failure that is not a taken name', async () => {
+    const boom = new Error('disk gone')
+    const spy = vi.spyOn(tagRepo, 'createTag').mockImplementationOnce(() => {
+      throw boom
+    })
+    await expect(invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'fresh', color: '#fff' })).rejects.toBe(
+      boom
+    )
+    spy.mockRestore()
   })
 
   // The batch picker's create path (#665). Driven at the boundary because the

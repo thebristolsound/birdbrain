@@ -8,6 +8,8 @@
 # `checks: write` lets it create a check run for any commit. So a check run
 # counts here only when it is a job of a workflow run GitHub started for this PR
 # against main at this head, which a check run created through the API is not.
+# Only the newest such run of each workflow counts: an older run at the same head
+# (superseded, often cancelled) left red jobs beside the newer run's green ones.
 # A status counts only from the maintainer or the pipeline (trusted_statuses);
 # agent/pre-pass is the verdict, not CI, and is left out. So is the merge-gate
 # job (ADR-0041): its rule fails every agent PR until that verdict is success, so
@@ -44,7 +46,9 @@ me="${LOGIN:-}"
 read_checks() {
   sha="$(gh api "repos/$R/pulls/$n" --jq .head.sha)"
   runs="$(gh api --paginate "repos/$R/actions/runs?head_sha=$sha&event=pull_request&per_page=100" \
-    --jq ".workflow_runs[] | select(any(.pull_requests[]?; .number == $n and .base.ref == \"main\")) | .id")"
+    --jq ".workflow_runs[] | select(any(.pull_requests[]?; .number == $n and .base.ref == \"main\"))
+      | {id, workflow_id, run_number}" \
+    | jq -s -r 'group_by(.workflow_id) | map(max_by(.run_number).id) | .[]')"
   jobs='[]'
   for id in $runs; do
     jobs="$(gh api --paginate "repos/$R/actions/runs/$id/jobs?per_page=100" --jq '.jobs[].id' \

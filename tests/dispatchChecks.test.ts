@@ -20,13 +20,17 @@ type CheckRun = {
 }
 type Status = { context: string; state: string; by: string | null; at: string }
 
-// CI's workflow run for PR #7 against main (run 100, jobs 1 to 3), and a run on the same head
-// for another PR, #8, against a branch a collaborator controls (run 200, job 9).
+// CI's workflow run for PR #7 against main (run 100, jobs 1 to 3), an older CI run at the same
+// head that run 100 superseded (run 90, job 4), a second workflow's run for PR #7 (run 300,
+// job 6), and a run on the same head for another PR, #8, against a branch a collaborator
+// controls (run 200, job 9).
 const JOBS: CheckRun[] = [
   { id: 1, name: 'lint' },
   { id: 2, name: 'test' },
   { id: 3, name: 'build' }
 ]
+
+const PR_7 = { number: 7, base: { ref: 'main' } }
 
 const routes = ({
   checkRuns = JOBS,
@@ -38,11 +42,20 @@ const routes = ({
   [`${API}/pulls/7`]: { head: { sha: SHA } },
   [`${API}/actions/runs?head_sha=${SHA}&event=pull_request&per_page=100`]: {
     workflow_runs: [
-      { id: 100, pull_requests: [{ number: 7, base: { ref: 'main' } }] },
-      { id: 200, pull_requests: [{ number: 8, base: { ref: 'collaborator-base' } }] }
+      { id: 100, workflow_id: 11, run_number: 5, pull_requests: [PR_7] },
+      { id: 90, workflow_id: 11, run_number: 4, pull_requests: [PR_7] },
+      { id: 300, workflow_id: 12, run_number: 1, pull_requests: [PR_7] },
+      {
+        id: 200,
+        workflow_id: 11,
+        run_number: 6,
+        pull_requests: [{ number: 8, base: { ref: 'collaborator-base' } }]
+      }
     ]
   },
   [`${API}/actions/runs/100/jobs?per_page=100`]: { jobs: [{ id: 1 }, { id: 2 }, { id: 3 }] },
+  [`${API}/actions/runs/90/jobs?per_page=100`]: { jobs: [{ id: 4 }] },
+  [`${API}/actions/runs/300/jobs?per_page=100`]: { jobs: [{ id: 6 }] },
   [`${API}/actions/runs/200/jobs?per_page=100`]: { jobs: [{ id: 9 }] },
   [`${API}/commits/${SHA}/check-runs?per_page=100`]: {
     check_runs: checkRuns.map(
@@ -148,6 +161,25 @@ describe.skipIf(!HAS_JQ)('checks.sh counts only the jobs of this PR and trusted 
     expect(out.ignored).toEqual([
       `check run test (${app}, ${id}): not a job of the latest workflow runs for this PR`
     ])
+  })
+
+  it('does not count a job of an older run of the same workflow at the same head', () => {
+    const { status, stderr, out } = checks(
+      routes({ checkRuns: [...JOBS, { id: 4, name: 'test', conclusion: 'cancelled' }] })
+    )
+    expect(status, stderr).toBe(0)
+    expect(out.failing).toEqual([])
+    expect(out.passed).toEqual(['build', 'lint', 'test'])
+    expect(out.ignored).toEqual([
+      'check run test (github-actions, 4): not a job of the latest workflow runs for this PR'
+    ])
+  })
+
+  it('counts a failing job of the latest run of another workflow', () => {
+    const { out } = checks(
+      routes({ checkRuns: [...JOBS, { id: 6, name: 'analyze', conclusion: 'failure' }] })
+    )
+    expect(out.failing).toEqual(['analyze'])
   })
 
   // merge-gate fails every agent PR until agent/pre-pass is success (ADR-0041), and the wait

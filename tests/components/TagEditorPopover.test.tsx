@@ -8,6 +8,9 @@ import { TagEditorPopover } from '@renderer/components/captures/TagEditorPopover
 import { DEFAULT_TAG_COLOR, TAG_COLOR_PRESETS } from '@renderer/components/tags/tagColors'
 import { fakeBridge } from '../renderer/fakeBridge'
 
+const notifyInfo = vi.hoisted(() => vi.fn())
+vi.mock('@renderer/lib/notify', () => ({ notify: { info: notifyInfo } }))
+
 // jsdom normalises an inline hex to rgb(), so the assertions compare in that
 // form rather than against the literal the palette module holds.
 function rgb(hex: string): string {
@@ -56,7 +59,10 @@ beforeEach(() => {
   })
 })
 
-afterEach(() => cleanup())
+afterEach(() => {
+  cleanup()
+  notifyInfo.mockReset()
+})
 
 // The per-capture popover reads its palette from the module the batch picker
 // also reads (#665). These cover that wiring — the component had no render
@@ -98,5 +104,38 @@ describe('TagEditorPopover palette', () => {
     await waitFor(() =>
       expect(addToCapture).toHaveBeenCalledWith({ captureId: 'cap-1', tagId: 'tag-new' })
     )
+  })
+})
+
+// The typed 'Create tag' input stays create-only (#811): a name the listed
+// tags already hold is refused before the write, as on the Signals page.
+describe('TagEditorPopover taken names', () => {
+  it('refuses a name a listed tag holds, whatever its case, without writing', async () => {
+    renderPopover()
+    await screen.findByText('malware')
+    fireEvent.change(screen.getByPlaceholderText('Create tag'), { target: { value: 'Malware' } })
+    fireEvent.click(screen.getByText('Add'))
+
+    await waitFor(() =>
+      expect(notifyInfo).toHaveBeenCalledWith('A tag named ‘Malware’ already exists')
+    )
+    expect(create).not.toHaveBeenCalled()
+  })
+
+  it('keeps the typed name when main refuses it as taken', async () => {
+    create.mockImplementation(async () => {
+      throw Object.assign(new Error('A tag named ‘ransomware’ already exists'), {
+        code: 'TAG_NAME_TAKEN'
+      })
+    })
+    renderPopover()
+    await screen.findByText('malware')
+    const input = screen.getByPlaceholderText('Create tag') as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'ransomware' } })
+    fireEvent.click(screen.getByText('Add'))
+
+    await waitFor(() => expect(create).toHaveBeenCalled())
+    expect(addToCapture).not.toHaveBeenCalled()
+    expect(input.value).toBe('ransomware')
   })
 })

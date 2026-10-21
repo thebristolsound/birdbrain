@@ -28,6 +28,7 @@ import {
 } from '@main/services/captureServer'
 import { registerIpcHandlers } from '@main/ipcHandlers'
 import { resolveWindowSize, MIN_WINDOW_SIZE } from '@main/windowSize'
+import { CAPTURE_SERVER_PORT_OVERRIDE, resolveCaptureServerPort } from '@main/captureServerPort'
 import { revealWhenReady } from '@main/windowReveal'
 import {
   allowWebviewPermission,
@@ -59,6 +60,11 @@ import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createExtractionProcess } from '@main/services/extraction/processClient'
 import { SharingService } from '@main/services/sharing/sharingService'
 import { startIrohTransport } from '@main/services/sharing/irohTransport'
+import {
+  E2E_SHARING_BRIDGE_SWITCH,
+  sharingBridgeDirectory,
+  startLoopbackTransport
+} from '@main/services/sharing/loopbackTransport'
 import {
   E2E_SHARING_OFF_SWITCH,
   createSyncService,
@@ -692,14 +698,28 @@ if (!gotSingleInstanceLock) {
         }
       })
 
+      // The two-instance e2e spec (#1882) bridges two unpackaged launches on
+      // this machine over 127.0.0.1 instead of Iroh; a packaged build never
+      // reads the switch.
+      const bridgeDirectory = sharingBridgeDirectory(
+        process.env[E2E_SHARING_BRIDGE_SWITCH],
+        !app.isPackaged
+      )
       syncService = createSyncService({
         sharing: sharingService,
-        transportFactory: () =>
-          startIrohTransport({
-            userDataDir: userDataPath,
-            cipher: safeStorage,
-            relayUrl: getSettings().sharingRelayUrl
-          }),
+        transportFactory:
+          bridgeDirectory === null
+            ? () =>
+                startIrohTransport({
+                  userDataDir: userDataPath,
+                  cipher: safeStorage,
+                  relayUrl: getSettings().sharingRelayUrl
+                })
+            : () =>
+                startLoopbackTransport({
+                  directory: bridgeDirectory,
+                  nodeId: getInstallationId()
+                }),
         switchedOff: sharingSwitchedOff(process.env[E2E_SHARING_OFF_SWITCH], !app.isPackaged)
       })
 
@@ -718,7 +738,10 @@ if (!gotSingleInstanceLock) {
       // rejects (#513) and is fatal below: the capture server is the only route
       // the extension has into a case, so a window opened without it would
       // present as ready to capture while silently receiving nothing.
-      await startCaptureServer({ selectorLifecycle, captureLifecycle, sessionService })
+      await startCaptureServer(
+        { selectorLifecycle, captureLifecycle, sessionService },
+        resolveCaptureServerPort(process.env[CAPTURE_SERVER_PORT_OVERRIDE], !app.isPackaged)
+      )
       startExtensionConnectionCheck()
 
       // The Wayback replay pane follows the Egress (ADR-0032). Its partition refuses

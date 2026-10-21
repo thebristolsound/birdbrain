@@ -1721,7 +1721,12 @@ describe('caseArchive Derived Files (#1813)', () => {
     ["a Capture's bytes", (id: string) => `${id}/${captureId}.mhtml`, `${captureId}.mhtml`],
     ['a single segment', () => `${captureId}_thumb.jpg`, `${captureId}_thumb.jpg`],
     ['the storage root', () => `/${captureId}_thumb.jpg`, `${captureId}_thumb.jpg`],
-    ['the working directory', () => `./${captureId}_thumb.jpg`, `${captureId}_thumb.jpg`]
+    ['the working directory', () => `./${captureId}_thumb.jpg`, `${captureId}_thumb.jpg`],
+    [
+      'an NTFS stream of another name',
+      (id: string) => `${id}/${legacyId}_thumb.jpg::$DATA`,
+      `${legacyId}_thumb.jpg::$DATA`
+    ]
   ])('never writes a derived file a signed path aims at %s', async (_, outputPath, planted) => {
     sign({ outputPath: outputPath(caseId), writeFile: false, recordRow: false })
     await exportCaseArchive(caseId, archivePath)

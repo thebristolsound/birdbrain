@@ -493,13 +493,14 @@ function ownedInCasePaths(data: CaseArchiveData): Set<string> {
 
 // The in-Case path a signed `outputPath` names, or null when the import must
 // not write there: outside the Case, at a name the replica owns, at a file
-// the import itself stages, or anywhere the archive's own reader would refuse
-// the entry name. The first segment is dropped, since the new Case replaces it.
+// the import itself stages, at a name with a colon (NTFS opens `a.jpg::$DATA`
+// as `a.jpg`), or anywhere the archive's own reader would refuse the entry
+// name. The first segment is dropped, since the new Case replaces it.
 function acceptedInCasePath(outputPath: string, owned: ReadonlySet<string>): string | null {
   const normalized = outputPath.replace(/\\/g, '/')
   const segments = normalized.split('/')
   if (segments.length < 2 || segments[0] === '' || segments[0] === '.') return null
-  if (normalized.includes('..')) return null
+  if (normalized.includes('..') || normalized.includes(':')) return null
   // Only the refusal is read, so inspect needs no storage root to judge a path.
   if (safeCasePath('', segments[0], normalized) === null) return null
   const inCase = segments.slice(1).join('/')

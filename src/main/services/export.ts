@@ -11,7 +11,6 @@ import {
 import { listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
 import { verifyCaseDerivedFiles, verifyExhibit } from '@main/services/exhibits'
 import * as noteRepo from '@main/services/db/noteRepo'
-import { deletedCaptureCase } from '@main/services/db/workingRowRepo'
 import * as waybackRefRepo from '@main/services/db/waybackRefRepo'
 import { getStorageRoot } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
@@ -715,7 +714,7 @@ export async function generateReport(
       notes: notes?.map((note) => noteNamedByChain(note, chainIdOf)) ?? null,
       deletedCaptureIds: new Set(
         (notes ?? []).flatMap(({ captureId }) =>
-          captureId && deletedCaptureCase(captureId) !== undefined ? [captureId] : []
+          captureId && captureRepo.getCapture(captureId) === undefined ? [captureId] : []
         )
       )
     }
@@ -810,8 +809,9 @@ export async function generateReport(
 // renderer's shape and deliberately not widened here): the Case fields the
 // Certification and the Working Copy marker state, and the notes packaged as
 // content. `notes` null means excluded; [] means included-but-none.
-// `deletedCaptureIds` are the Captures those notes link that were deleted from
-// a Shared Case and kept their link (#1877).
+// `deletedCaptureIds` are the Captures those notes link that this database no
+// longer holds: a note of a Shared Case keeps its link to a deleted Capture
+// (#1877). A link to a live Capture of another Case is not among them.
 interface PackageMeta {
   caseNumber?: string
   isDemo: boolean

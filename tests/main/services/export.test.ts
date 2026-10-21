@@ -20,6 +20,7 @@ import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase, updateCase } from '@main/services/db/caseRepo'
 import {
   deleteCapture,
+  getCapture,
   insertCapture,
   listCaptures,
   setCaptureTrustedTime
@@ -2693,6 +2694,56 @@ describe('export', () => {
 
       const notesMd = readStoredZipEntries(outputPath).get('notes.md')!.toString('utf-8')
       expect(notesMd).toContain(`- Attached to capture: ${elsewhere.id}\n`)
+    })
+
+    // Review finding on #1877: the label follows whether any Case still holds the Capture, so a
+    // kept link reads as deleted whichever deletion left it: a legacy html Capture of the Shared
+    // Case, or a Capture of a never-shared Case, whose deletion records nothing.
+    it.each([
+      [
+        'a legacy html Capture of the Shared Case',
+        async (): Promise<string> =>
+          insertCapture({
+            caseId,
+            url: 'https://legacy.example/gone',
+            title: 'Legacy',
+            hash: 'x'.repeat(64),
+            timestamp: '2026-04-05T12:00:00.000Z'
+          }).id
+      ],
+      [
+        'a Capture of a never-shared Case',
+        async (): Promise<string> => {
+          const otherCaseId = createCase({ name: 'Other' }).id
+          const { capture } = await ingest(otherCaseId, '<html><body>Elsewhere</body></html>')
+          return capture.id
+        }
+      ]
+    ] as const)('marks a kept link to %s as deleted in notes.md', async (_, seed) => {
+      const goneId = await seed()
+      const { id: noteId } = createNote({
+        caseId: getCapture(goneId)!.caseId,
+        captureId: goneId,
+        title: 'Kept',
+        body: ''
+      })
+      getDb().prepare('UPDATE notes SET case_id = ? WHERE id = ?').run(caseId, noteId)
+      getDb()
+        .prepare("UPDATE cases SET shared_at = '2026-10-01T00:00:00.000Z' WHERE id = ?")
+        .run(caseId)
+      expect(await captureLifecycle.delete(goneId)).toBe(true)
+
+      const outputPath = join(tempDir, 'unrecorded-link.zip')
+      await generateReport(
+        caseId,
+        { format: 'zip', include: EVIDENCE_INCLUDE, exportClass: 'evidence', outputPath },
+        captureLifecycle
+      )
+
+      const notesMd = readStoredZipEntries(outputPath).get('notes.md')!.toString('utf-8')
+      expect(notesMd).toContain(
+        `- Attached to capture: ${goneId} (deleted capture, not in this export)\n`
+      )
     })
 
     // AC 5: the Court exhibit excludes Notes — proven at the byte level, as

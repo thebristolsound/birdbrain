@@ -1,15 +1,17 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { createRef, type ReactNode } from 'react'
 
 import { TagEditorPopover } from '@renderer/components/captures/TagEditorPopover'
 import { DEFAULT_TAG_COLOR, TAG_COLOR_PRESETS } from '@renderer/components/tags/tagColors'
+import { queryClient as appQueryClient } from '@renderer/lib/queryClient'
 import { fakeBridge } from '../renderer/fakeBridge'
 
 const notifyInfo = vi.hoisted(() => vi.fn())
-vi.mock('@renderer/lib/notify', () => ({ notify: { info: notifyInfo } }))
+const notifyError = vi.hoisted(() => vi.fn())
+vi.mock('@renderer/lib/notify', () => ({ notify: { info: notifyInfo, error: notifyError } }))
 
 // jsdom normalises an inline hex to rgb(), so the assertions compare in that
 // form rather than against the literal the palette module holds.
@@ -21,10 +23,10 @@ function rgb(hex: string): string {
 let create: ReturnType<typeof vi.fn>
 let addToCapture: ReturnType<typeof vi.fn>
 
+// The app's own client, so a failed create reaches the mutation cache's toast.
 function renderPopover() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    return <QueryClientProvider client={appQueryClient}>{children}</QueryClientProvider>
   }
   return render(
     <TagEditorPopover
@@ -61,7 +63,9 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  appQueryClient.clear()
   notifyInfo.mockReset()
+  notifyError.mockReset()
 })
 
 // The per-capture popover reads its palette from the module the batch picker
@@ -107,22 +111,22 @@ describe('TagEditorPopover palette', () => {
   })
 })
 
-// The typed 'Create tag' input stays create-only (#811): a name the listed
-// tags already hold is refused before the write, as on the Signals page.
+// The typed 'Create tag' input stays create-only (#811). Main decides whether
+// a name is taken, by the rule createTag holds, and the operator reads its
+// refusal.
 describe('TagEditorPopover taken names', () => {
-  it('refuses a name a listed tag holds, whatever its case, without writing', async () => {
+  it('creates a name that differs from a listed tag only in case', async () => {
     renderPopover()
     await screen.findByText('malware')
     fireEvent.change(screen.getByPlaceholderText('Create tag'), { target: { value: 'Malware' } })
     fireEvent.click(screen.getByText('Add'))
 
     await waitFor(() =>
-      expect(notifyInfo).toHaveBeenCalledWith('A tag named ‘Malware’ already exists')
+      expect(create).toHaveBeenCalledWith({ name: 'Malware', color: DEFAULT_TAG_COLOR })
     )
-    expect(create).not.toHaveBeenCalled()
   })
 
-  it('keeps the typed name when main refuses it as taken', async () => {
+  it("shows main's refusal of a taken name and keeps the typed name", async () => {
     create.mockImplementation(async () => {
       throw Object.assign(new Error('A tag named ‘ransomware’ already exists'), {
         code: 'TAG_NAME_TAKEN'
@@ -134,7 +138,10 @@ describe('TagEditorPopover taken names', () => {
     fireEvent.change(input, { target: { value: 'ransomware' } })
     fireEvent.click(screen.getByText('Add'))
 
-    await waitFor(() => expect(create).toHaveBeenCalled())
+    await waitFor(() =>
+      expect(notifyInfo).toHaveBeenCalledWith('A tag named ‘ransomware’ already exists')
+    )
+    expect(notifyError).not.toHaveBeenCalled()
     expect(addToCapture).not.toHaveBeenCalled()
     expect(input.value).toBe('ransomware')
   })

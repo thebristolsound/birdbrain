@@ -2,8 +2,6 @@ import { useState, useRef, useEffect } from 'react'
 import { TagBadge } from '@renderer/components/tags/TagBadge'
 import { useCaptureTagEditor } from '@renderer/components/captures/useCaptureTagEditor'
 import { TAG_COLOR_PRESETS, DEFAULT_TAG_COLOR } from '@renderer/components/tags/tagColors'
-import { findTagByName } from '@renderer/components/signals/signalsModel'
-import { notify } from '@renderer/lib/notify'
 
 interface Props {
   captureId: string
@@ -44,17 +42,12 @@ export function TagEditorPopover({ captureId, open, onClose, anchorRef }: Props)
   async function handleCreate() {
     const trimmed = name.trim()
     if (!trimmed) return
-    // Checked here rather than left to main's TAG_NAME_TAKEN, as on the Signals
-    // page (#811), so a taken name is an info toast and not a failed write.
-    if (findTagByName(allTags, trimmed)) {
-      notify.info(`A tag named ‘${trimmed}’ already exists`)
-      return
-    }
     try {
       await createTag(trimmed, color)
       setName('')
     } catch {
-      // The mutation cache toasts it; the name is kept so the operator can retry.
+      // Main refused a taken name (#811) or the write failed. The mutation cache
+      // toasts either; the name stays so the operator can change it.
     }
   }
 

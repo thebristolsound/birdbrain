@@ -3,7 +3,12 @@ import { useQuery } from '@tanstack/react-query'
 import { StickyNote } from 'lucide-react'
 import type { Note } from '@shared/types'
 import { captureThumbnailQueryOptions } from '@renderer/lib/api/captures'
-import { noteAge, noteSource, noteSnippet } from '@renderer/components/notes/notesWorkspaceModel'
+import {
+  noteAge,
+  noteCaptureLink,
+  noteSource,
+  noteSnippet
+} from '@renderer/components/notes/notesWorkspaceModel'
 import type { MentionResolver } from '@renderer/components/notes/mention/useMentionSources'
 
 export function NoteListRow({
@@ -64,7 +69,7 @@ export function NoteListRow({
         {view === 'detailed' ? (
           <>
             <div className="flex gap-1 text-[10px] text-text-muted">
-              <span className="truncate">{noteSource(note)}</span>
+              <span className="truncate">{noteSource(note, noteCaptureLink(note, resolve))}</span>
               <span className="shrink-0 text-text-faint">· {noteAge(note.createdAt)}</span>
             </div>
             <p className="mt-1 h-8 overflow-hidden line-clamp-2 text-[11px] leading-4 text-text-muted">

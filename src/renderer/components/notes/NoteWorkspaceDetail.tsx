@@ -11,6 +11,7 @@ import { useNoteAutosave } from '@renderer/components/notes/useNoteAutosave'
 import {
   editorMentions,
   noteAge,
+  noteCaptureLink,
   noteMentions
 } from '@renderer/components/notes/notesWorkspaceModel'
 import { useMentionResolver } from '@renderer/components/notes/mention/useMentionSources'
@@ -109,7 +110,16 @@ export function NoteWorkspaceDetail({
         />
         <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-text-faint">
           <span>{noteAge(note.createdAt)}</span>
-          {note.captureId ? (
+          {noteCaptureLink(note, resolve) === 'deleted' ? (
+            <span
+              data-testid="note-deleted-capture"
+              title="The linked capture was deleted"
+              className="inline-flex max-w-[280px] items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-[10px] text-text-faint"
+            >
+              <Camera className="h-3 w-3 shrink-0" />
+              <span className="truncate">Deleted capture</span>
+            </span>
+          ) : note.captureId ? (
             <button
               title="Open linked capture"
               onClick={() => void openTarget('capture', note.captureId!)}

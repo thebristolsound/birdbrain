@@ -317,11 +317,22 @@ export function assertLiveReference(table: SyncedTable, fields: RowFields, what:
   }
 }
 
+// A note of a Case nobody shared that links a Capture of another Case (Settings > Database can
+// move one) loses the link when that Capture goes, as SET NULL cleared it before v41. A note of
+// a Shared Case keeps its link as signed, whichever Case the Capture was in.
+const UNSHARED_NOTE = 'case_id IN (SELECT id FROM cases WHERE shared_at IS NULL)'
+
+export function clearUnsharedNoteLinks(id: string): void {
+  getDb()
+    .prepare(`UPDATE notes SET capture_id = NULL WHERE capture_id = ? AND ${UNSHARED_NOTE}`)
+    .run(id)
+}
+
 // What the dropped keys did when a Capture or Exhibit of a Case nobody shared goes, written
-// out: every author's annotation layer, pins and tag applications on it are removed and
-// every note's link is cleared. Rows from another author reach such a Case only through an
-// archive import. The note update fires the notes triggers as SET NULL did, and re-signs
-// nothing.
+// out: every author's annotation layer, pins and tag applications on it are removed and the
+// link of every note of a Case nobody shared is cleared. Rows from another author reach such
+// a Case only through an archive import. The note update fires the notes triggers as SET NULL
+// did, and re-signs nothing.
 export function removeExhibitDependents(id: string): void {
   getDb().prepare('DELETE FROM exhibit_tags WHERE exhibit_id = ?').run(id)
 }
@@ -330,18 +341,7 @@ export function removeCaptureDependents(id: string): void {
   const db = getDb()
   db.prepare('DELETE FROM annotations WHERE capture_id = ?').run(id)
   db.prepare('DELETE FROM annotation_pins WHERE capture_id = ?').run(id)
-  db.prepare('UPDATE notes SET capture_id = NULL WHERE capture_id = ?').run(id)
-}
-
-// A note of a Case nobody shared that links a Capture of another Case (Settings > Database can
-// move one) loses the link when that Capture goes, as SET NULL cleared it before v41. A note of
-// a Shared Case keeps its link as signed.
-const UNSHARED_NOTE = 'case_id IN (SELECT id FROM cases WHERE shared_at IS NULL)'
-
-export function clearUnsharedNoteLinks(id: string): void {
-  getDb()
-    .prepare(`UPDATE notes SET capture_id = NULL WHERE capture_id = ? AND ${UNSHARED_NOTE}`)
-    .run(id)
+  clearUnsharedNoteLinks(id)
 }
 
 // Before whole Cases are deleted: the annotation layers, pins and tag applications on their

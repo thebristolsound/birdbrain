@@ -2248,6 +2248,30 @@ describe('database', () => {
       expect(getNote(ownNote.id)?.captureId).toBe(sharedCapture)
     })
 
+    // Acceptance audit on #1877: deleting a Capture of a Case nobody shared cleared every note's
+    // link, so a Shared Case's note linking it from that Case changed without being re-signed.
+    it("deleting a Capture of a Case nobody shared, or its row in Settings > Database, leaves a Shared Case note's link to it", () => {
+      const unshared = createCase({ name: 'Unshared' })
+      const shared = createCase({ name: 'Shared' })
+      const viaDelete = captureWithRows(unshared.id, 1).captureId
+      const viaRow = captureWithRows(unshared.id, 2).captureId
+      const moved = [viaDelete, viaRow].map((captureId) => {
+        const note = createNote({ caseId: unshared.id, captureId, title: 'Moved', body: '' })
+        getDb().prepare('UPDATE notes SET case_id = ? WHERE id = ?').run(shared.id, note.id)
+        return note.id
+      })
+      getDb()
+        .prepare("UPDATE cases SET shared_at = '2026-10-01T00:00:00.000Z' WHERE id = ?")
+        .run(shared.id)
+
+      expect(deleteCapture(viaDelete)).toBe(true)
+      expect(deleteRow('captures', { id: viaRow })).toBe(true)
+
+      expect(moved.map((id) => getNote(id)?.captureId)).toEqual([viaDelete, viaRow])
+      expect(countOn('notes', 'capture_id', viaDelete)).toBe(1)
+      expect(countOn('notes', 'capture_id', viaRow)).toBe(1)
+    })
+
     it('deleting a Case, purging archived Cases, or deleting a Case row in Settings > Database leaves no annotation, pin or tag application behind', () => {
       const removed = ['deleteCase', 'purgeArchived', 'deleteRow'].map((path, n) => {
         const c = createCase({ name: path })

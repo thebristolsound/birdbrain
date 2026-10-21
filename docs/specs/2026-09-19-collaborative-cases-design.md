@@ -250,7 +250,8 @@ neither the deleted Capture nor a note's link to it: the export writes that link
 archive before schema version 41 did, so a release that reads Case Archive version 10 still imports
 the archive. The import clears any link to a Capture the archive does not carry, so an imported
 note never cites a Capture of another Case or one that no copy holds or records. In a Case nobody
-shared, deleting a Capture removes the rows on it and clears note links, as before.
+shared, deleting a Capture removes the rows on it and clears the links of that Case's notes, as
+before; a note of a Shared Case that links to it from another Case keeps its link.
 
 The investigation records join the working layer under an amendment the maintainer approved on
 2026-10-10. It is E23 in the

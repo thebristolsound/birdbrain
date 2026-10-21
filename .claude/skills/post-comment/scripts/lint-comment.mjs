@@ -17,7 +17,11 @@ const FRICTION_KINDS = ['friction', 're-derived', 'confusing']
 const FRICTION_HEADER = '| # | from | kind | anchor | cost | fix |'
 const BOT_TRIGGER = /^@(coderabbitai|codex) (review|full review|security review)$/
 // The leading note an agent adds when posting as the maintainer (global agent instructions).
-const DISCLOSURE = [/^> \[!NOTE\]$/, /^> [A-Z][\w.-]*( [A-Z][\w.-]*)? responding on behalf of Matt\.$/]
+// The second form is the current one; the first predates it and still passes.
+const DISCLOSURE = [
+  /^> \[!NOTE\]$/,
+  /^> ([A-Z][\w.-]*( [A-Z][\w.-]*)? responding|Written by [\w.-]+( via [A-Z][\w.-]*( [A-Z][\w.-]*)*)?) on behalf of Matt\.$/
+]
 const FORBIDDEN = [
   [/co-authored-by/i, 'a Co-authored-by trailer'],
   [/Generated (with|by) \[Claude Code\]/, 'the platform attribution footer'],

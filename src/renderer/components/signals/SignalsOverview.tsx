@@ -225,10 +225,11 @@ export function SignalsOverview() {
     refreshSelectors()
   }
 
-  // Checked here as well as in main (#1549): this refuses a listed name in any
-  // case, where main's TAG_NAME_TAKEN covers only an exact match among this
-  // installation's tags. A name a stale list missed reaches main, and the
-  // mutation cache shows its refusal as the same info toast (#811).
+  // Checked here rather than left to main (#1549), whatever the letter case.
+  // A name a stale list missed reaches main: on create it refuses an exact
+  // taken name with TAG_NAME_TAKEN (#811), and on rename it has no check, so
+  // the UNIQUE index refuses the write. Either refusal reaches the window only
+  // as the generic failure toast with a bug-report action (#1949).
   function refuseTakenTagName(name: string, exceptId?: string): boolean {
     if (!findTagByName(tags, name, exceptId)) return false
     notify.info(`A tag named ‘${name}’ already exists`)

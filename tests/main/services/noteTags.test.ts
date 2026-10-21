@@ -160,7 +160,7 @@ describe('applyTagToNote', () => {
     expect(getTagsForCapture(captureId)).toEqual([])
   })
 
-  it('reuses an existing tag rather than failing the UNIQUE index', () => {
+  it('reuses an existing tag rather than failing as a taken name', () => {
     const existing = createTag({ name: 'evidence', color: '#f00' })
     const note = createNote({ caseId, title: 'N', body: 'text' })
 

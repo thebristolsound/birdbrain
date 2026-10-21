@@ -50,7 +50,7 @@ export function NewTagPopover({ caseId, tags, onCreated, onClose, anchorRef }: N
   async function handleCreate() {
     const slug = slugifyTagName(name)
     if (!slug || create.isPending) return
-    // Checked here rather than left to the UNIQUE constraint, as on the Signals
+    // Checked here rather than left to main's TAG_NAME_TAKEN, as on the Signals
     // page (#1549), so a taken name is an info toast and not a failed write.
     if (findTagByName(tags, slug)) {
       notify.info(`A tag named ‘${slug}’ already exists`)

@@ -1335,9 +1335,9 @@ describe('ipcHandlers — tags', () => {
   })
 
   // The batch picker's create path (#665). Driven at the boundary because the
-  // point of the channel is that `tags:create` throws here: the UNIQUE name
-  // constraint is what #811 records, and a picker whose input doubles as its
-  // filter will be handed an existing name routinely.
+  // point of the channel is that `tags:create` refuses here with TAG_NAME_TAKEN
+  // (#811), and a picker whose input doubles as its filter will be handed an
+  // existing name routinely.
   it('resolves a tag by name, creating one only when there is no match', async () => {
     const made = expectOk<{ id: string; name: string; color?: string }>(
       await invoke(IPC_CHANNELS.TAGS_FIND_OR_CREATE, { name: 'reused', color: '#10b981' })

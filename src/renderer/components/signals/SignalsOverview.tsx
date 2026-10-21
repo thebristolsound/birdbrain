@@ -225,7 +225,7 @@ export function SignalsOverview() {
     refreshSelectors()
   }
 
-  // Checked here rather than left to the UNIQUE constraint, which reaches the
+  // Checked here rather than left to main's TAG_NAME_TAKEN, which reaches the
   // operator as the generic could-not-create toast with a bug-report action
   // (#1549, the operator half of #811). A name a stale list missed still falls
   // through to that toast.

@@ -230,11 +230,13 @@ earliest-created author's, by `created_at`, with ties broken by `installationId`
 another member's signed row. When a Capture of a Shared Case is deleted, by its author or by a copy
 applying the author's `deletion`, the copy tombstones its own annotation layer, pins and tag
 applications on that Capture. It leaves every other member's row, and every note's link to the
-Capture, as signed. The copy records the deleted Capture's id and Case in a local table that never
-syncs. Through that record the kept rows still name their Case: the copy hides them with the
-Capture, still serves them onward under their authors' signatures, and changes them only when each
-author's later write arrives. A copy that never held the Capture records the deletion from the
-author's chain before it asks for rows. The id stays dead: no other chain's `capture` or `exhibit`
+Capture, as signed. That includes this copy's own notes: before schema version 41 the delete
+cleared their link, and since then they keep it, shown as a deleted Capture. The copy records the
+deleted Capture's id and Case in a local table that never syncs. Through that record the kept rows
+still name their Case: the copy hides them with the Capture, still serves them onward under their
+authors' signatures, and changes them only when each author's later write arrives. A copy that
+never held the Capture records the deletion from the author's chain before it asks for rows.
+The id stays dead: no other chain's `capture` or `exhibit`
 entry removes the record or lands a row under the id, so the kept rows never show on another page.
 Entry acceptance has no rule across chains, so a copy cannot tell an author's entries from a
 member's copy of the author's id. A member who signs a `capture` and a `deletion` of another

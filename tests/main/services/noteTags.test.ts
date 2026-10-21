@@ -14,6 +14,7 @@ import {
   findOrCreateTagByName
 } from '@main/services/db/tagRepo'
 import { applyTagToNote, captureForNote, NoteNotFoundError } from '@main/services/noteTags'
+import { selectionToTagName } from '@shared/selectionKind'
 import type { Note } from '@shared/types'
 
 let caseId: string
@@ -164,6 +165,16 @@ describe('applyTagToNote', () => {
     const note = createNote({ caseId, title: 'N', body: 'text' })
 
     const result = applyTagToNote({ noteId: note.id, name: 'evidence' })
+    expect(result.tag.id).toBe(existing.id)
+    expect(result.tag.color).toBe('#f00')
+    expect(listTags()).toHaveLength(1)
+  })
+
+  it('reuses the tag a selection’s derived name already names (#811)', () => {
+    const existing = createTag({ name: 'Meridian-Trust', color: '#f00' })
+    const note = createNote({ caseId, title: 'N', body: 'text' })
+
+    const result = applyTagToNote({ noteId: note.id, name: selectionToTagName('Meridian Trust') })
     expect(result.tag.id).toBe(existing.id)
     expect(result.tag.color).toBe('#f00')
     expect(listTags()).toHaveLength(1)

@@ -320,13 +320,13 @@ describe('older rows at first share (#1910)', () => {
     const t3 = createTag({ name: 'On a note' })
     addTagToNote({ noteId: w.noteId, tagId: t3.id })
     const t4 = createTag({ name: 'Never applied' })
-    const tagKeys = [
-      { table: 'tags' as const, key: { id: t2.id } },
-      { table: 'exhibit_tags' as const, key: { exhibit_id: w.captureId, tag_id: t2.id } },
-      { table: 'exhibit_tags' as const, key: { exhibit_id: other.captureId, tag_id: t2.id } },
-      { table: 'tags' as const, key: { id: t3.id } },
-      { table: 'note_tags' as const, key: { note_id: w.noteId, tag_id: t3.id } },
-      { table: 'tags' as const, key: { id: t4.id } }
+    const tagKeys: Array<{ table: SyncedTable; key: RowKey }> = [
+      { table: 'tags', key: { id: t2.id } },
+      { table: 'exhibit_tags', key: { exhibit_id: w.captureId, tag_id: t2.id } },
+      { table: 'exhibit_tags', key: { exhibit_id: other.captureId, tag_id: t2.id } },
+      { table: 'tags', key: { id: t3.id } },
+      { table: 'note_tags', key: { note_id: w.noteId, tag_id: t3.id } },
+      { table: 'tags', key: { id: t4.id } }
     ]
     unsign(tagKeys)
     // Written after signing on write: already signed.

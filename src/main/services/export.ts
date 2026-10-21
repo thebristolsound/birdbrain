@@ -11,6 +11,7 @@ import {
 import { listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
 import { verifyCaseDerivedFiles, verifyExhibit } from '@main/services/exhibits'
 import * as noteRepo from '@main/services/db/noteRepo'
+import { deletedCaptureCase } from '@main/services/db/workingRowRepo'
 import * as waybackRefRepo from '@main/services/db/waybackRefRepo'
 import { getStorageRoot } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
@@ -711,7 +712,12 @@ export async function generateReport(
       caseNumber: caseData.caseNumber,
       isDemo: caseData.isDemo,
       purposeOrAuthority: options.purposeOrAuthority,
-      notes: notes?.map((note) => noteNamedByChain(note, chainIdOf)) ?? null
+      notes: notes?.map((note) => noteNamedByChain(note, chainIdOf)) ?? null,
+      deletedCaptureIds: new Set(
+        (notes ?? []).flatMap(({ captureId }) =>
+          captureId && deletedCaptureCase(captureId) !== undefined ? [captureId] : []
+        )
+      )
     }
     let zip: EvidenceZipResult
     if (workingCopy) {
@@ -804,11 +810,14 @@ export async function generateReport(
 // renderer's shape and deliberately not widened here): the Case fields the
 // Certification and the Working Copy marker state, and the notes packaged as
 // content. `notes` null means excluded; [] means included-but-none.
+// `deletedCaptureIds` are the Captures those notes link that were deleted from
+// a Shared Case and kept their link (#1877).
 interface PackageMeta {
   caseNumber?: string
   isDemo: boolean
   purposeOrAuthority?: string
   notes: Note[] | null
+  deletedCaptureIds: ReadonlySet<string>
 }
 
 /** The Exhibits one export covers, and what a selection leaves behind. */
@@ -1473,7 +1482,7 @@ function buildEvidenceZip(
         data.exportTimestamp,
         meta.notes,
         data.selectionScope,
-        new Set(data.chainIdByCaptureId.values())
+        meta.deletedCaptureIds
       )
     )
   }
@@ -1784,7 +1793,7 @@ function buildWorkingCopyZip(
         data.exportTimestamp,
         meta.notes,
         data.selectionScope,
-        new Set(data.chainIdByCaptureId.values())
+        meta.deletedCaptureIds
       )
     )
   }
@@ -1868,7 +1877,7 @@ export function buildNotesMarkdown(
   exportedAt: string,
   notes: Note[],
   scope?: NotesSelectionScope | null,
-  packagedCaptureIds?: ReadonlySet<string>
+  deletedCaptureIds?: ReadonlySet<string>
 ): string {
   const oneLine = (s: string): string => s.replace(/\s+/g, ' ').trim()
   const head = [
@@ -1901,7 +1910,7 @@ export function buildNotesMarkdown(
       ...(note.captureId
         ? [
             `- Attached to capture: ${note.captureId}` +
-              (packagedCaptureIds && !packagedCaptureIds.has(note.captureId)
+              (deletedCaptureIds?.has(note.captureId)
                 ? ' (deleted capture, not in this export)'
                 : '')
           ]

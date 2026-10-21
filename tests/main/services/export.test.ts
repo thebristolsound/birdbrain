@@ -2668,6 +2668,33 @@ describe('export', () => {
       }
     )
 
+    // Review finding on #1877: a note Settings > Database moved from another Case keeps its link
+    // to a live Capture of that Case, which the package does not carry and nobody deleted.
+    it('writes no deleted-capture label for a link to a live Capture of another Case', async () => {
+      const otherCaseId = createCase({ name: 'Other' }).id
+      const { capture: elsewhere } = await ingest(
+        otherCaseId,
+        '<html><body>Elsewhere</body></html>'
+      )
+      const { id: noteId } = createNote({
+        caseId: otherCaseId,
+        captureId: elsewhere.id,
+        title: 'Moved',
+        body: ''
+      })
+      getDb().prepare('UPDATE notes SET case_id = ? WHERE id = ?').run(caseId, noteId)
+
+      const outputPath = join(tempDir, 'cross-case-link.zip')
+      await generateReport(
+        caseId,
+        { format: 'zip', include: EVIDENCE_INCLUDE, exportClass: 'evidence', outputPath },
+        captureLifecycle
+      )
+
+      const notesMd = readStoredZipEntries(outputPath).get('notes.md')!.toString('utf-8')
+      expect(notesMd).toContain(`- Attached to capture: ${elsewhere.id}\n`)
+    })
+
     // AC 5: the Court exhibit excludes Notes — proven at the byte level, as
     // the exact zip entry-list difference between the two evidence presets.
     it('Court exhibit differs from the Full bundle by exactly notes.md', async () => {
@@ -3062,7 +3089,7 @@ describe('export', () => {
     })
 
     // Review finding on #1877: a note of a Shared Case keeps its link to a deleted Capture.
-    it('marks a link to a Capture the package does not carry as a deleted capture', () => {
+    it('marks a link to a Capture it is told was deleted as a deleted capture', () => {
       const note = (id: string, captureId: string) => ({
         id,
         caseId: 'c1',
@@ -3077,7 +3104,7 @@ describe('export', () => {
         '2026-08-24T00:00:00.000Z',
         [note('kept', 'cap-1'), note('gone', 'cap-2')],
         null,
-        new Set(['cap-1'])
+        new Set(['cap-2'])
       )
 
       expect(md).toContain('- Attached to capture: cap-1\n')

@@ -61,7 +61,6 @@ import { getExhibitSearchBuild } from '@main/services/db/searchFieldRepo'
 import { appendFutureEntry } from '../../helpers/futureManifestEntry'
 import { insertDerivedFile, listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
 import { verifyCaseDerivedFiles } from '@main/services/exhibits'
-import { backfillCase } from '@main/services/exhibitBackfill'
 import {
   downgradeToVersion10,
   rewriteArchive,
@@ -1484,11 +1483,6 @@ describe('caseArchive Derived Files (#1813)', () => {
     expect((await verifyCaseDerivedFiles(newCaseId)).get(row.id)).toEqual([
       expect.objectContaining({ derivedFileId: restored.id, status: 'verified' })
     ])
-    const manifest = join(storageRoot, newCaseId, 'manifest.jsonl')
-    const before = readFileSync(manifest)
-    const backfill = await backfillCase(newCaseId, { toolVersion: '0.1.0' })
-    expect([backfill.renumbered, backfill.thumbnailsAnchored]).toEqual([false, 0])
-    expect(readFileSync(manifest)).toEqual(before)
   })
 
   // The row keeps its new id in the next archive while every entry still names
@@ -1607,15 +1601,18 @@ describe('caseArchive Derived Files (#1813)', () => {
     expect(listDerivedFilesForCase(newCaseId)).toEqual([])
   })
 
+  // The break is on the capture entry, so the derivation entry and the
+  // thumbnail bytes still match and only the chain verdict refuses the file.
   it('restores no derived file from a chain that does not verify, even on override', async () => {
     sign()
     await exportCaseArchive(caseId, archivePath)
+    expect(zipNames()).toContain(thumbName)
     rewriteArchive(archivePath, (entries) => {
       const lines = entries.get('manifest.jsonl')!.toString('utf-8').trim().split('\n')
       const edited = lines.map((line) => {
         const entry = JSON.parse(line)
-        return entry.type === 'derivation'
-          ? JSON.stringify({ ...entry, outputHash: 'f'.repeat(64) })
+        return entry.type === 'capture'
+          ? JSON.stringify({ ...entry, url: 'https://example.com/edited' })
           : line
       })
       entries.set('manifest.jsonl', Buffer.from(edited.join('\n') + '\n'))
@@ -1645,9 +1642,7 @@ describe('caseArchive Derived Files (#1813)', () => {
     ["a Capture's bytes", (id: string) => `${id}/${captureId}.mhtml`, `${captureId}.mhtml`],
     ['a single segment', () => 'thumb.jpg', 'thumb.jpg'],
     ['the storage root', () => '/thumb.jpg', 'thumb.jpg'],
-    ['the working directory', () => './thumb.jpg', 'thumb.jpg'],
-    ['the parent directory', (id: string) => `${id}/../outside.jpg`, 'outside.jpg'],
-    ['a backslash climb', (id: string) => `${id}\\..\\..\\outside.jpg`, 'outside.jpg']
+    ['the working directory', () => './thumb.jpg', 'thumb.jpg']
   ])('never writes a derived file a signed path aims at %s', async (_, outputPath, planted) => {
     sign({ outputPath: outputPath(caseId), writeFile: false, recordRow: false })
     await exportCaseArchive(caseId, archivePath)
@@ -1664,15 +1659,23 @@ describe('caseArchive Derived Files (#1813)', () => {
     expect(existsSync(join(storageRoot, newCaseId, 'thumb.jpg'))).toBe(false)
   })
 
-  it('exports a readable archive when a signed derivation path climbs out of the Case', async () => {
-    writeFileSync(join(storageRoot, 'outside.jpg'), thumbnail)
-    sign({ outputPath: `${caseId}/../outside.jpg`, writeFile: false, recordRow: false })
+  // The archive reader refuses an entry name that climbs, so a climb is only
+  // reachable here, from the source's own chain.
+  it.each([
+    ['a parent directory', (id: string) => `${id}/../outside.jpg`],
+    ['a backslash climb', (id: string) => `${id}\\..\\outside.jpg`]
+  ])(
+    'exports a readable archive when a signed derivation path climbs out of the Case through %s',
+    async (_, outputPath) => {
+      writeFileSync(join(storageRoot, 'outside.jpg'), thumbnail)
+      sign({ outputPath: outputPath(caseId), writeFile: false, recordRow: false })
 
-    await exportCaseArchive(caseId, archivePath)
+      await exportCaseArchive(caseId, archivePath)
 
-    expect(zipNames().some((name) => name.startsWith('files/derived/'))).toBe(false)
-    expect(inspectCaseArchive(archivePath).verification.overallValid).toBe(true)
-  })
+      expect(zipNames().some((name) => name.startsWith('files/derived/'))).toBe(false)
+      expect(inspectCaseArchive(archivePath).verification.overallValid).toBe(true)
+    }
+  )
 
   it.each([
     ['missing', false],

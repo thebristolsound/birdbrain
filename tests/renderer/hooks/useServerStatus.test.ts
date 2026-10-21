@@ -34,6 +34,7 @@ type Handlers = {
   newCapture?: (c: Capture) => void
   extensionAttach?: (e: ExtensionAttachEvent) => void
   selectorRematched?: (p: { caseId: string }) => void
+  sharingChanged?: (p: { caseId: string }) => void
   deepLink?: (t: DeepLinkTarget) => void
 }
 
@@ -50,6 +51,7 @@ function installBirdbrain(handlers: Handlers, unsubs: Record<string, ReturnType<
     onNewCapture: register('newCapture', 'newCapture'),
     onExtensionAttach: register('extensionAttach', 'extensionAttach'),
     onSelectorRematched: register('selectorRematched', 'selectorRematched'),
+    onSharingChanged: register('sharingChanged', 'sharingChanged'),
     onDeepLinkNavigate: register('deepLink', 'deepLink')
   })
 }
@@ -218,6 +220,23 @@ describe('useServerStatus', () => {
     })
   })
 
+  // A join or a sync round moved a Shared Case in the main process with no
+  // mutation here (#1882): the Case list and the Case's own caches are refetched.
+  it("refetches the Case list and the Case's caches when a Shared Case changes", () => {
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    renderHook(() => useServerStatus())
+    act(() => handlers.sharingChanged?.({ caseId: 'case-7' }))
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.cases })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.captures('case-7') })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.captureCounts })
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: queryKeys.exhibitInventory('case-7')
+    })
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: queryKeys.manifestSnapshot('case-7')
+    })
+  })
+
   it('routes deep links to settings or dashboard', () => {
     renderHook(() => useServerStatus())
     act(() => handlers.deepLink?.('settings'))
@@ -232,6 +251,6 @@ describe('useServerStatus', () => {
     for (const fn of Object.values(unsubs)) {
       expect(fn).toHaveBeenCalledTimes(1)
     }
-    expect(Object.keys(unsubs)).toHaveLength(7)
+    expect(Object.keys(unsubs)).toHaveLength(8)
   })
 })

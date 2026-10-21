@@ -73,6 +73,20 @@ export function useServerStatus() {
       queryClient.invalidateQueries({ queryKey: queryKeys.selectorCaptureMatrix(caseId) })
     })
 
+    // A Shared Case moved in the main process (#1810, #1881): a join made a
+    // Case this window has never listed, or a sync round brought a teammate's
+    // Captures and chain entries. No mutation ran here, so nothing else refetches
+    // the Case list or the Case's Captures, and a joined Case would not open
+    // until the list went stale. Refetched rather than seeded, as the attach
+    // routes are: what the operator reads comes from the database.
+    const unsubSharingChanged = window.birdbrain.onSharingChanged(({ caseId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.cases })
+      queryClient.invalidateQueries({ queryKey: queryKeys.captures(caseId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.captureCounts })
+      queryClient.invalidateQueries({ queryKey: queryKeys.exhibitInventory(caseId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.manifestSnapshot(caseId) })
+    })
+
     // Deep links (birdbrain://) from the extension popup route the window here.
     const unsubDeepLink = window.birdbrain.onDeepLinkNavigate((target) => {
       if (typeof target === 'object') {
@@ -95,6 +109,7 @@ export function useServerStatus() {
       unsubNewCapture()
       unsubExtensionAttach()
       unsubSelectorRematched()
+      unsubSharingChanged()
       unsubDeepLink()
     }
   }, [])

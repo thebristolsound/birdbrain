@@ -551,7 +551,7 @@ function anchoredDerivedFiles(
     const entry = parsed.data
     if (entry.type !== 'derivation' || !parents.has(entry.parentExhibitId)) continue
     const inCase = acceptedInCasePath(entry.outputPath, owned)
-    if (inCase === null || namesAnotherCapture(inCase, entry.parentExhibitId)) continue
+    if (inCase === null) continue
     const key = inCase.toLowerCase()
     const group = groups.get(key) ?? { spellings: new Set(), parents: new Set(), entries: [] }
     group.spellings.add(inCase)
@@ -563,6 +563,7 @@ function anchoredDerivedFiles(
     if (spellings.size !== 1 || named.size !== 1) continue
     const [inCase] = spellings
     const [parentExhibitId] = named
+    if (namesAnotherCapture(inCase, parentExhibitId)) continue
     anchored.set(`${DERIVED_FILES_PREFIX}${inCase}`, { inCase, parentExhibitId, entries })
   }
   return anchored

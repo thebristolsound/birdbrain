@@ -1793,6 +1793,11 @@ describe('caseArchive Derived Files (#1813)', () => {
   it.each([
     ['two parents', [captureId, legacyId], ['sub/shared_thumb.jpg', 'sub/shared_thumb.jpg']],
     [
+      "two parents, at one parent's thumbnail name",
+      [captureId, legacyId],
+      [`${captureId}_thumb.jpg`, `${captureId}_thumb.jpg`]
+    ],
+    [
       'two spellings differing only in case',
       [captureId, captureId],
       ['sub/Thumb.jpg', 'sub/thumb.jpg']

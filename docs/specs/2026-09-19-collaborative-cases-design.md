@@ -226,6 +226,20 @@ only with a valid signature from a roster member and a version above the stored 
 Tag display merges by `name`; the merged chip lists each author on hover. Tag color is the
 earliest-created author's, by `created_at`, with ties broken by `installationId`.
 
+**Rows on a deleted Capture** (ruling of 21 October 2026, #1877). A copy never changes or removes
+another member's signed row. When a Capture of a Shared Case is deleted, by its author or by a copy
+applying the author's `deletion`, the copy tombstones its own annotation layer, pins and tag
+applications on that Capture. It leaves every other member's row, and every note's link to the
+Capture, as signed. The copy records the deleted Capture's id and Case in a local table that never
+syncs. Through that record the kept rows still name their Case: the copy hides them with the
+Capture, still serves them onward under their authors' signatures, and changes them only when each
+author's later write arrives. A copy that never held the Capture records the deletion from the
+author's chain before it asks for rows. Since schema version 41 no foreign key checks the Capture or
+Exhibit that a note, annotation layer, pin or tag application names. The receiver checks it as each
+row is applied instead, so a received row on a Capture the copy neither holds nor records still
+rolls back the session's rows, and the next session retries. In a Case nobody shared, deleting a Capture removes
+the rows on it and clears note links, as before.
+
 The investigation records join the working layer under an amendment the maintainer approved on
 2026-10-10. It is E23 in the
 [Case investigation engine plan](../plans/2026-10-10-case-investigation-engine.md), whose E1

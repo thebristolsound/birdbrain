@@ -53,7 +53,8 @@ import {
   seedSharedCase,
   TIME,
   type IngestedCapture,
-  type Peer
+  type Peer,
+  type RecordedSource
 } from '../../../helpers/syncPeers'
 import { buildSyntheticToken } from '../../../helpers/timestampFixtures'
 
@@ -946,5 +947,60 @@ describe('received evidence (#1811)', () => {
     ])
     expect(getCapture(capture.captureId)).toBeUndefined()
     expect(getExhibit(capture.captureId)).toBeUndefined()
+  })
+
+  // Review finding on #1877: entry acceptance has no rule across chains, so a member can sign a
+  // `capture` and a `deletion` of another author's id. Recorded as that author's deletion, the
+  // id would be dead on every copy that had not landed it, and the author's Capture refused.
+  describe("a member's chain that creates and deletes another author's Capture id", () => {
+    let real: IngestedCapture
+    let fromC: RecordedSource
+
+    beforeEach(async () => {
+      await activate(B)
+      real = await addCapture(CASE_ID, B, 1)
+      const fromB = recordSource(CASE_ID, B)
+      await activate(C)
+      expect((await pull(CASE_ID, fromB)).errors).toEqual([])
+      const copied = {
+        captureId: real.captureId,
+        caseId: CASE_ID,
+        timestamp: TIME,
+        contentHash: real.contentHash,
+        ...by(C)
+      }
+      appendManifestEntry(caseDirOf(CASE_ID), {
+        type: 'capture',
+        ...copied,
+        url: 'https://example.com/copied',
+        sizeBytes: 1,
+        exhibitNumber: 1
+      })
+      appendManifestEntry(caseDirOf(CASE_ID), { type: 'deletion', ...copied })
+      fromC = recordSource(CASE_ID, C)
+    })
+
+    const records = () => getDb().prepare('SELECT * FROM deleted_captures').all()
+
+    it("records no deletion while the author's chain claims the id, and lands the Capture", async () => {
+      await activate(A)
+      expect((await pull(CASE_ID, fromC)).errors).toEqual([])
+      expect(records()).toEqual([])
+      expect(getExhibit(real.captureId)?.authorInstallationId).toBe(B.installationId)
+    })
+
+    it("drops the record a session without the author's chain made, once that chain arrives", async () => {
+      const withheld = recordSource(CASE_ID, C)
+      withheld.chains.delete(B.installationId)
+      await activate(A)
+      expect((await pull(CASE_ID, withheld)).errors).toEqual([])
+      expect(records()).toEqual([
+        { id: real.captureId, case_id: CASE_ID, chain_author: C.installationId }
+      ])
+
+      expect((await pull(CASE_ID, fromC)).errors).toEqual([])
+      expect(records()).toEqual([])
+      expect(getExhibit(real.captureId)?.authorInstallationId).toBe(B.installationId)
+    })
   })
 })

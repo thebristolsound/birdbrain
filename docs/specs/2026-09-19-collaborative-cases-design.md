@@ -234,7 +234,9 @@ Capture, as signed. The copy records the deleted Capture's id and Case in a loca
 syncs. Through that record the kept rows still name their Case: the copy hides them with the
 Capture, still serves them onward under their authors' signatures, and changes them only when each
 author's later write arrives. A copy that never held the Capture records the deletion from the
-author's chain before it asks for rows. Since schema version 41 no foreign key checks the Capture or
+author's chain before it asks for rows. It reads a chain as the author's only while no other chain
+creates that id without deleting it, and drops such a record once one does, so a member cannot
+sign another author's id as deleted. Since schema version 41 no foreign key checks the Capture or
 Exhibit that a note, annotation layer, pin or tag application names. The receiver checks it as each
 row is applied instead, so a received row on a Capture the copy neither holds nor records still
 rolls back the session's rows, and the next session retries. In a Case nobody shared, deleting a Capture removes

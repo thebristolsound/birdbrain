@@ -1760,11 +1760,15 @@ export function runMigrations(db: Database.Database): void {
 
         // One row per deleted Capture of a Shared Case: local, unsigned, never synced. It is
         // how a kept row still names the Case its author signed, and how a received row on a
-        // deleted Capture is told from one on a Capture that has not arrived yet.
+        // deleted Capture is told from one on a Capture that has not arrived yet. chain_author
+        // is the member whose chain the deletion was read from, NULL when this copy deleted
+        // the Capture or read the deletion from its own chain: a record read from another
+        // member's chain goes again when another chain claims the id (receivedEvidence.ts).
         db.exec(`
           CREATE TABLE IF NOT EXISTS deleted_captures (
             id TEXT PRIMARY KEY,
             case_id TEXT NOT NULL,
+            chain_author TEXT,
             FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
           );
           CREATE INDEX IF NOT EXISTS idx_deleted_captures_case_id ON deleted_captures(case_id);

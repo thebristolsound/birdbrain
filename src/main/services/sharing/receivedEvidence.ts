@@ -18,7 +18,11 @@ import {
   listDerivedFilesForExhibit,
   type InsertDerivedFileParams
 } from '@main/services/db/derivedFileRepo'
-import { deletedCaptureCase, recordChainDeletion } from '@main/services/db/workingRowRepo'
+import {
+  deletedCaptureCase,
+  dropChainDeletion,
+  recordChainDeletion
+} from '@main/services/db/workingRowRepo'
 import { readChainFileSnapshots, readManifestSnapshot } from '@main/services/manifest'
 import { readMhtmlTitle } from '@main/services/mhtmlDecoder'
 import type { CaptureArtifactType, CaptureStore } from '@main/services/captureStore'
@@ -115,22 +119,41 @@ export async function applyReceivedEvidence(
     }
   }
 
-  // Deleted Captures this replica never wrote, or deleted before migration 41 (#1877): a
+  // Deleted Captures this replica never held, or deleted before migration 41 (#1877): a
   // `deletion` whose Capture the same chain's current segment creates, read from every member
   // chain and from this installation's own, recorded so the rows other members keep on it are
   // accepted rather than held back as rows on a Capture that has not arrived. The removals
   // above recorded the ones they made; a Capture this replica holds is not recorded here.
+  // Entry acceptance has no rule across chains, so a member could copy another author's id
+  // into a `capture` and a `deletion` of its own: a member chain's deletion is recorded only
+  // while no other chain claims the id, a `capture` or `exhibit` entry it does not delete, and
+  // such a record goes again once one does, so a chain held back from an earlier session
+  // cannot keep the author's Capture off this copy for good.
   const ownChain = currentSegment(
     storedEntries(readManifestSnapshot(join(storageRoot, caseId)).jsonl)
   )
+  const claims = [{ author: self, entries: ownChain }, ...chains].map(({ author, entries }) => {
+    const ids = (type: 'capture' | 'deletion'): Set<string> =>
+      new Set(
+        entries.flatMap((e) => {
+          if (e.type === 'exhibit') return type === 'capture' ? [e.exhibitId] : []
+          return e.type === type ? [e.captureId] : []
+        })
+      )
+    return { author, created: ids('capture'), deleted: ids('deletion') }
+  })
+  const standing = (id: string): boolean =>
+    claims.some((c) => c.created.has(id) && !c.deleted.has(id))
   withTransaction(() => {
-    for (const entries of [ownChain, ...chains.map((chain) => chain.entries)]) {
-      const created = new Set(entries.flatMap((e) => (e.type === 'capture' ? [e.captureId] : [])))
-      for (const entry of entries) {
-        if (entry.type !== 'deletion' || !isExhibitId(entry.captureId)) continue
-        if (!created.has(entry.captureId)) continue
-        if (getExhibit(entry.captureId) || captureRepo.getCapture(entry.captureId)) continue
-        recordChainDeletion(entry.captureId, caseId)
+    for (const { author, created, deleted } of claims) {
+      for (const id of deleted) {
+        if (!isExhibitId(id) || !created.has(id)) continue
+        if (getExhibit(id) || captureRepo.getCapture(id)) continue
+        if (author === self) recordChainDeletion(id, caseId, null)
+        else if (!standing(id)) recordChainDeletion(id, caseId, author)
+      }
+      for (const id of created) {
+        if (!deleted.has(id)) dropChainDeletion(id, caseId)
       }
     }
   })

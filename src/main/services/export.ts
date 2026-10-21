@@ -909,8 +909,8 @@ export interface ChainName {
  * here and keeps its own name.
  */
 export function resolveChainNames(
-  captures: ReadonlyArray<Pick<Capture, 'id' | 'manifestIndex' | 'hash'>>,
-  exhibits: ReadonlyArray<Pick<Exhibit, 'id' | 'manifestSeq' | 'contentHash'>>,
+  captures: Capture[],
+  exhibits: Exhibit[],
   entries: Record<string, unknown>[]
 ): Map<string, ChainName> {
   const idIn = (entry: Record<string, unknown>, type: 'capture' | 'exhibit'): unknown =>

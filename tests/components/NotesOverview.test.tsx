@@ -260,6 +260,9 @@ describe('Notes workspace', () => {
     expect(chip.textContent).toBe('Deleted capture')
     expect(screen.queryByTitle('Open linked capture')).toBeNull()
     expect(useAppStore.getState().selectedCaptureId).not.toBe('gone')
+    const row = screen.getByTestId('note-row-a')
+    expect(within(row).getByText('Deleted capture')).toBeTruthy()
+    expect(within(row).queryByText('example.com')).toBeNull()
   })
 
   it('keeps note-row menus, keyboard selection and context links connected to the real targets', async () => {

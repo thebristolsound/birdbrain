@@ -322,7 +322,10 @@ describe('rows on a deleted Capture (#1877)', () => {
     }
   })
 
-  it('a copy that deleted its Capture before migration 41 records it from its own chain', async () => {
+  // Only the record is rebuilt. The deletion here is a v41 one with its record removed, so the
+  // rows on the Capture are as signed; a real v40 deletion also cascaded them away and nulled
+  // the notes' links, and nothing repairs those rows.
+  it('a copy whose deletion left no record, as one before migration 41 did, records it from its chain', async () => {
     await activate(A)
     const { captureId } = await addCapture(CASE_ID, A, 1)
     const fromAlice = recordSource(CASE_ID, A)
@@ -334,7 +337,7 @@ describe('rows on a deleted Capture (#1877)', () => {
     expect((await pull(CASE_ID, fromAlice)).errors).toEqual([])
     expect((await pull(CASE_ID, fromCarol)).errors).toEqual([])
 
-    // A deletion made before v41 left no record behind.
+    // A deletion made before v41 left no record behind; the rows on it stay here.
     await activate(A)
     expect(await lifecycle().delete(captureId)).toBe(true)
     getDb().prepare('DELETE FROM deleted_captures').run()

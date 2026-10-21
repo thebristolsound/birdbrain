@@ -1164,6 +1164,18 @@ describe('working-layer rows (#1512)', () => {
       expect(readRow('annotation_pins', { id: 'remote-pin' }, REMOTE_ID)?.deletedAt).not.toBeNull()
     })
 
+    it("does not count another member's application kept on a deleted Capture as a merged link", () => {
+      share()
+      const gone = chainedCapture()
+      const live = chainedCapture()
+      rowsOnCapture(gone)
+      const source = createTag({ name: 'mine' })
+      addTagToCapture({ captureId: live, tagId: source.id })
+      deleteCapture(gone)
+
+      expect(mergeTags({ sourceId: source.id, targetId: 'remote-tag' })?.captureLinks).toBe(1)
+    })
+
     // Review finding on #1877: a legacy html Capture has no chain entry, so no peer holds it,
     // and a tombstone or record of it could never be placed by any other copy.
     it("removes this installation's rows on a Capture with no chain entry and records nothing", () => {

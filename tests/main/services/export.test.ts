@@ -2630,6 +2630,44 @@ describe('export', () => {
       )
     })
 
+    // Acceptance audit on #1877: a note of a Shared Case keeps its link to a deleted Capture,
+    // which no package carries, and the packaged notes.md says so.
+    it.each([['evidence'], ['working-copy']] as const)(
+      'marks a note linked to a deleted Capture as such in notes.md (%s package)',
+      async (exportClass) => {
+        const { capture: kept } = await ingest(caseId, '<html><body>Kept</body></html>')
+        const { capture: gone } = await ingest(caseId, '<html><body>Gone</body></html>')
+        createNote({ caseId, captureId: kept.id, title: 'On kept', body: '' })
+        createNote({ caseId, captureId: gone.id, title: 'On gone', body: '' })
+        getDb()
+          .prepare("UPDATE cases SET shared_at = '2026-10-01T00:00:00.000Z' WHERE id = ?")
+          .run(caseId)
+        expect(await captureLifecycle.delete(gone.id)).toBe(true)
+
+        const outputPath = join(tempDir, `kept-link-${exportClass}.zip`)
+        await generateReport(
+          caseId,
+          {
+            format: 'zip',
+            include:
+              exportClass === 'evidence'
+                ? EVIDENCE_INCLUDE
+                : { ...EVIDENCE_INCLUDE, auditTrail: false },
+            exportClass,
+            ...(exportClass === 'working-copy' ? { purposeOrAuthority: 'Internal review' } : {}),
+            outputPath
+          },
+          captureLifecycle
+        )
+
+        const notesMd = readStoredZipEntries(outputPath).get('notes.md')!.toString('utf-8')
+        expect(notesMd).toContain(`- Attached to capture: ${kept.id}\n`)
+        expect(notesMd).toContain(
+          `- Attached to capture: ${gone.id} (deleted capture, not in this export)\n`
+        )
+      }
+    )
+
     // AC 5: the Court exhibit excludes Notes — proven at the byte level, as
     // the exact zip entry-list difference between the two evidence presets.
     it('Court exhibit differs from the Full bundle by exactly notes.md', async () => {

@@ -1843,6 +1843,29 @@ describe('caseArchive Derived Files (#1813)', () => {
     }
   )
 
+  it('neither carries nor restores a derived file at the thumbnail of a Capture whose id differs only in case', async () => {
+    const upperId = captureId.toUpperCase()
+    insertCapture({
+      id: upperId,
+      caseId,
+      url: 'https://upper.example.com',
+      title: 'Upper',
+      hash: 'y'.repeat(64),
+      timestamp: '2026-04-04T12:00:00.000Z'
+    })
+    const name = `${captureId}_thumb.jpg`
+    sign({ parentExhibitId: upperId, outputPath: `${caseId}/${name}`, recordRow: false })
+    await exportCaseArchive(caseId, archivePath)
+    expect(zipNames()).not.toContain(`files/derived/${name}`)
+    expect(inspectCaseArchive(archivePath).verification.overallValid).toBe(true)
+    plant(`files/derived/${name}`, thumbnail)
+
+    expect(inspectCaseArchive(archivePath).verification.artifactFailureCount).toBe(1)
+    const { newCaseId } = await importCaseArchive(archivePath, { overrideTamper: true })
+    expectNothingRestored(newCaseId)
+    expect(existsSync(join(storageRoot, newCaseId, name))).toBe(false)
+  })
+
   it('leaves behind a source derived file whose bytes no longer match, and the archive still verifies', async () => {
     const { outputPath } = sign()
     writeFileSync(join(storageRoot, outputPath), 'redrawn by another build')

@@ -509,11 +509,12 @@ function acceptedInCasePath(outputPath: string, owned: ReadonlySet<string>): str
 // Whether a file directly in the Case is named as another Capture's artifact
 // (`<id>_thumb.jpg`). That name is the other Capture's: its backfill would
 // write over the file, and a delete or the orphan report would read it as
-// belonging to that Capture. Lower-cased, as the owned paths are.
+// belonging to that Capture. Any artifact-shaped name under any spelling counts
+// unless it is the parent's own, exactly: two Captures' ids may differ only in
+// case.
 function namesAnotherCapture(inCase: string, parentExhibitId: string): boolean {
-  if (inCase.includes('/')) return false
-  const named = parseArtifactFilename(inCase.toLowerCase())?.captureId
-  return named !== undefined && named !== parentExhibitId.toLowerCase()
+  if (inCase.includes('/') || !parseArtifactFilename(inCase.toLowerCase())) return false
+  return parseArtifactFilename(inCase)?.captureId !== parentExhibitId
 }
 
 // Which Derived Files an archive carries, by zip entry name. One function for

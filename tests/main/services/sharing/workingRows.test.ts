@@ -1177,8 +1177,9 @@ describe('working-layer rows (#1512)', () => {
     })
 
     // Review finding on #1877: a legacy html Capture has no chain entry, so no peer holds it,
-    // and a tombstone or record of it could never be placed by any other copy.
-    it("removes this installation's rows on a Capture with no chain entry and records nothing", () => {
+    // and a tombstone of it could never be placed by any other copy. The local record keeps the
+    // id dead for the note that keeps its link.
+    it("removes this installation's rows on a Capture with no chain entry and records it locally", () => {
       share()
       const legacy = capture()
       saveAnnotations({ captureId: legacy, shapes: [], imageWidth: 9, imageHeight: 9 })
@@ -1194,7 +1195,9 @@ describe('working-layer rows (#1512)', () => {
         expect(raw(table, 'capture_id = ?', legacy)).toBeUndefined()
       }
       expect(raw('exhibit_tags', 'exhibit_id = ?', legacy)).toBeUndefined()
-      expect(getDb().prepare('SELECT * FROM deleted_captures').all()).toEqual([])
+      expect(getDb().prepare('SELECT * FROM deleted_captures').all()).toEqual([
+        { id: legacy, case_id: caseId, chain_author: null }
+      ])
       expect(rowsOfAuthorSince(caseId, null, 0).filter((row) => row.table !== 'notes')).toEqual([])
       expect(getNote(note.id)?.captureId).toBe(legacy)
     })

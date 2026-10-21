@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { closeDatabase, getDb } from '@main/services/db/core'
+import { closeDatabase, getDb, hasRowWithId } from '@main/services/db/core'
 import { listCaptures } from '@main/services/db/captureRepo'
 import { createCase } from '@main/services/db/caseRepo'
 import { listCaseMembers, upsertCaseMember } from '@main/services/db/caseMemberRepo'
@@ -329,8 +329,10 @@ describe('rows on a deleted Capture (#1877)', () => {
 
   // An imported Capture's `capture` entry sits before the chain's `import`, where no member
   // reads, so no peer holds it: deleting it removes this copy's rows on it, as for a legacy
-  // html Capture, rather than tombstoning rows no peer could place.
-  it('deleting an imported Capture of a Shared Case passes on nothing for it, and a member still syncs', async () => {
+  // html Capture, rather than tombstoning rows no peer could place. The local record keeps its
+  // id from the next import. A note linking it would still travel, and a member that never
+  // held it refuses that note; this fixture has none.
+  it('deleting an imported Capture of a Shared Case sends no row naming it, and keeps its id dead', async () => {
     await activate(A)
     const sourceId = createCase({ name: 'Before sharing' }).id
     mkdirSync(caseDirOf(sourceId), { recursive: true })
@@ -364,7 +366,8 @@ describe('rows on a deleted Capture (#1877)', () => {
     expect(
       getDb().prepare('SELECT * FROM annotation_pins WHERE capture_id = ?').all(captureId)
     ).toEqual([])
-    expect(deletedCaptures()).toEqual([])
+    expect(deletedCaptures()).toEqual([{ id: captureId, case_id: newCaseId }])
+    expect(hasRowWithId('captures', captureId)).toBe(true)
     const fromAlice = recordSource(newCaseId, A)
     const named = [...fromAlice.rows.values()]
       .flat()

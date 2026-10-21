@@ -248,7 +248,10 @@ receiver checks it as each row is applied instead, so a received row on a Captur
 holds nor records still rolls back the session's rows, and the next session retries. A legacy html
 Capture has no chain entry, and a Capture this copy imported has its entry before the chain's
 `import`, where members do not read. Neither reaches another member, so deleting one removes this
-copy's own rows on it and records nothing: no peer could place a tombstone on it. A Case Archive
+copy's own rows on it instead of tombstoning them: no peer could place a tombstone on it. This copy
+still records the deletion, which never leaves it, so the id stays dead here. A row that names such
+a Capture still travels, among them a note that keeps its link, and a member that never held the
+Capture rolls back that session's rows, as above. A Case Archive
 carries neither the deleted Capture nor a note's link to it: the export writes that link empty, as
 every archive before schema version 41 did, so a release that reads Case Archive version 10 still
 imports the archive. The import clears any link to a Capture the archive does not carry, so no

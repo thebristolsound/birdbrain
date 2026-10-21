@@ -157,8 +157,9 @@ export function deleteLocalRow(table: SyncedTable, key: RowKey): boolean {
 // In a Case nobody shared the rows go as the foreign keys took them.
 // A Capture no other member reads (`chained` false: a legacy html Capture, or
 // one whose entry sits before this chain's `import`) never reaches another
-// member, so no peer could place a tombstone or a record of it: this
-// installation's rows on it are removed and nothing is recorded.
+// member, so no peer could place a tombstone of it: this installation's rows
+// on it are removed instead. The deletion is still recorded: the record stays
+// on this copy and keeps the id dead for the notes that keep their link.
 export function settleRowsOnDeletedCapture(
   captureId: string,
   caseId: string,
@@ -173,13 +174,13 @@ export function settleRowsOnDeletedCapture(
     clearUnsharedNoteLinks(captureId)
     if (!chained) {
       removeOwnRowsOnCapture(captureId)
-      return
-    }
-    const own = ownLiveRowsOnCapture(captureId)
-    if (own.length > 0) {
-      const version = allocateLocalVersion()
-      const deletedAt = new Date().toISOString()
-      for (const { table, key } of own) signLocalRow(table, key, { deletedAt, version })
+    } else {
+      const own = ownLiveRowsOnCapture(captureId)
+      if (own.length > 0) {
+        const version = allocateLocalVersion()
+        const deletedAt = new Date().toISOString()
+        for (const { table, key } of own) signLocalRow(table, key, { deletedAt, version })
+      }
     }
     recordDeletedCapture(captureId, caseId)
   })

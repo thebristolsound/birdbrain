@@ -123,6 +123,31 @@ describe('CaptureTextPanel', () => {
     )
   })
 
+  // #811: the derived name goes to find-or-create, never to the create-only
+  // channel, and the capture gets the tag main hands back, here an existing one
+  // whose name differs in case.
+  it('applies the existing tag main resolves the derived name to', async () => {
+    const create = vi.fn()
+    findOrCreate.mockResolvedValueOnce({ id: 'tag-existing', name: 'Meridian-Trust-Com' })
+    fakeBridge({
+      selectors: { create: createSelector },
+      tags: { create, findOrCreate, addToCapture }
+    })
+    renderPanel()
+    selectInPanel('meridian-trust.com')
+    fireEvent.click(screen.getByTestId('note-selection-tag'))
+    fireEvent.click(screen.getByTestId('note-selection-confirm-submit'))
+
+    await waitFor(() =>
+      expect(addToCapture).toHaveBeenCalledWith({ captureId: 'cap1', tagId: 'tag-existing' })
+    )
+    expect(findOrCreate).toHaveBeenCalledWith({ name: 'meridian-trust-com' })
+    expect(create).not.toHaveBeenCalled()
+    await waitFor(() =>
+      expect(notifySuccess).toHaveBeenCalledWith('Tag applied — Meridian-Trust-Com')
+    )
+  })
+
   it('reports a failed tag write and leaves the popover up', async () => {
     addToCapture.mockRejectedValueOnce(new Error('gone'))
     renderPanel()

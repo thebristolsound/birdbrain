@@ -1366,9 +1366,10 @@ describe('caseArchive import', () => {
   })
 })
 
-// #1813: a Case Archive carries each Derived File its verified chains anchor,
-// and the import restores it only when its bytes hash to the signed
-// `outputHash`. Every derivation here is signed by hand over arbitrary bytes.
+// #1813: a Case Archive carries a Derived File a verified chain signs for a
+// parent row it holds, and the import restores it only when its bytes hash to
+// the signed `outputHash`. Every derivation here is signed by hand over
+// arbitrary bytes.
 describe('caseArchive Derived Files (#1813)', () => {
   let tempDir: string
   let storageRoot: string

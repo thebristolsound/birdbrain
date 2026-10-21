@@ -88,12 +88,13 @@ import type {
   CaseArchiveCounts
 } from '@shared/types'
 
-// 11 since Derived Files travel (#1813): the zip carries each Derived File the
-// archive's verified chains anchor under `files/derived/<in-Case path>`, and the
-// import restores it with its `derived_files` row only when its bytes hash to
-// the signed `outputHash`. A Birdbrain from before them passes the archive's
-// checks, then rejects the nested entry name as malformed and abandons the
-// import, so the gate refuses instead.
+// 11 since Derived Files travel (#1813): the zip carries a Derived File under
+// `files/derived/<in-Case path>` when a verified chain signs it for a parent
+// row the archive holds, at a path the import may write, and its bytes still
+// match. The import restores it with its `derived_files` row only when its
+// bytes hash to the signed `outputHash`. A Birdbrain from before them passes
+// the archive's checks, then rejects the nested entry name as malformed and
+// abandons the import, so the gate refuses instead.
 // 10 since the investigation records (#1909, schema v40): data.json carries
 // the Subjects, Joints and their spans, the decisions on them, the marks on
 // Exhibits and the run records. A Birdbrain from before them imports the Case

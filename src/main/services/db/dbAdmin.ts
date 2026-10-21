@@ -677,8 +677,12 @@ export function findOrphans(): OrphanReport {
         }
         const parsed = parseArtifactFilename(entry.name)
         if (!parsed) continue
-        if (!captureIds.has(parsed.captureId)) {
-          fileOrphans.push(join(caseDir, entry.name))
+        // A Derived File an archive import restored keeps the name its signed
+        // entry gives it, so a renamed import's thumbnail carries the source's
+        // Capture id, which may exist nowhere here (#1813). Its row claims it.
+        const rel = join(caseDir, entry.name)
+        if (!captureIds.has(parsed.captureId) && !knownPaths.has(rel)) {
+          fileOrphans.push(rel)
         }
       }
     }

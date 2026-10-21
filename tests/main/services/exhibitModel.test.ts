@@ -944,6 +944,25 @@ describe('exhibit model', () => {
       }
     )
 
+    it('keeps a restored source-named thumbnail out of the orphan report after the source Case is deleted', async () => {
+      const capture = await ingestInto(caseId, {
+        url: 'https://example.com/orphan-check',
+        title: 'Orphan check',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot: await screenshotPng({ r: 160, g: 40, b: 120 })
+      })
+      await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+      const { newCaseId } = await renamedImport('orphan-check')
+      const restored = join(newCaseId, `${capture.id}_thumb.jpg`)
+      getDb().prepare('DELETE FROM cases WHERE id = ?').run(caseId)
+      rmSync(caseDir, { recursive: true, force: true })
+
+      const report = findOrphans()
+      expect(report.fileOrphans).not.toContain(restored)
+      cleanOrphans(report)
+      expect(existsSync(join(storageRoot, restored))).toBe(true)
+    })
+
     it('records the row against an entry an earlier build signed under the renamed id', async () => {
       const screenshot = await screenshotPng({ r: 140, g: 70, b: 70 })
       const capture = await ingestInto(caseId, {

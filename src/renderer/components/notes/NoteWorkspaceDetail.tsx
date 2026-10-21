@@ -11,9 +11,9 @@ import { useNoteAutosave } from '@renderer/components/notes/useNoteAutosave'
 import {
   editorMentions,
   noteAge,
-  noteCaptureLink,
   noteMentions
 } from '@renderer/components/notes/notesWorkspaceModel'
+import { useNoteCaptureLink } from '@renderer/components/notes/useNoteCaptureLink'
 import { useMentionResolver } from '@renderer/components/notes/mention/useMentionSources'
 import { mentionRoute, mentionSelection } from '@renderer/components/notes/mention/mentionModel'
 
@@ -49,6 +49,7 @@ export function NoteWorkspaceDetail({
   })
   const navigate = useNavigate()
   const resolve = useMentionResolver(note.caseId)
+  const captureLink = useNoteCaptureLink(note, resolve)
   const [railOpen, setRailOpen] = useState(true)
   const [confirmDelete, setConfirmDelete] = useState(false)
   useEffect(() => {
@@ -110,7 +111,7 @@ export function NoteWorkspaceDetail({
         />
         <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-text-faint">
           <span>{noteAge(note.createdAt)}</span>
-          {noteCaptureLink(note, resolve) === 'deleted' ? (
+          {captureLink === 'deleted' ? (
             <span
               data-testid="note-deleted-capture"
               title="The linked capture was deleted"

@@ -28,6 +28,7 @@ const makeNote = (id: string, title: string, extra: Partial<Note> = {}): Note =>
 })
 let notes: Note[]
 let captures: Capture[]
+let heldElsewhere: Capture[]
 let update: ReturnType<typeof vi.fn>
 let create: ReturnType<typeof vi.fn>
 let list: ReturnType<typeof vi.fn>
@@ -51,6 +52,7 @@ beforeEach(() => {
     .mockReturnValue({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })
   notes = []
   captures = []
+  heldElsewhere = []
   useAppStore.getState().setSelectedNoteId(null)
   list = vi.fn(async () => [...notes])
   search = vi.fn(async (_caseId, query: string) =>
@@ -77,7 +79,11 @@ beforeEach(() => {
         return true
       })
     },
-    captures: { list: vi.fn(async () => [...captures]), getThumbnail: vi.fn(async () => 'thumb') },
+    captures: {
+      list: vi.fn(async () => [...captures]),
+      get: vi.fn(async (id: string) => heldElsewhere.find((c) => c.id === id)),
+      getThumbnail: vi.fn(async () => 'thumb')
+    },
     selectors: { list: vi.fn(async () => []), matchCounts: vi.fn(async () => ({})) },
     tags: { list: vi.fn(async () => []), usageCountsForCase: vi.fn(async () => ({})) }
   })
@@ -263,6 +269,28 @@ describe('Notes workspace', () => {
     const row = screen.getByTestId('note-row-a')
     expect(within(row).getByText('Deleted capture')).toBeTruthy()
     expect(within(row).queryByText('example.com')).toBeNull()
+  })
+
+  // Settings > Database can leave a note linking a live Capture of another Case.
+  // No Case lost that Capture, so the screens do not call it deleted.
+  it('keeps the link button for a live capture of another case', async () => {
+    notes = [
+      makeNote('a', 'Moved', { captureId: 'elsewhere', sourceUrl: 'https://example.com/page' })
+    ]
+    heldElsewhere = [
+      {
+        id: 'elsewhere',
+        caseId: 'case-2',
+        url: 'https://example.com/page',
+        title: 'Page'
+      } as Capture
+    ]
+    renderNotes()
+    await screen.findByTitle('Open linked capture')
+    expect(screen.queryByTestId('note-deleted-capture')).toBeNull()
+    const row = screen.getByTestId('note-row-a')
+    expect(within(row).getByText('example.com')).toBeTruthy()
+    expect(within(row).queryByText('Deleted capture')).toBeNull()
   })
 
   it('keeps note-row menus, keyboard selection and context links connected to the real targets', async () => {

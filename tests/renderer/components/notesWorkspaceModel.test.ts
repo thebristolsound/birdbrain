@@ -87,8 +87,9 @@ describe('note list projection', () => {
     expect(noteAge(notes[1].createdAt, now)).toBe('3d ago')
   })
 
-  // A note keeps its link to a Capture deleted from a Shared Case (#1877); the
-  // link is read against the Case's Capture list, as a Mention chip is.
+  // A note keeps its link to a Capture deleted from a Shared Case (#1877). The
+  // link is read against the Case's Capture list, as a Mention chip is, and a
+  // Capture the list lacks is deleted only when no Case holds it.
   it('noteCaptureLink reads none, loading, live and deleted', () => {
     const asked: Array<[string, string]> = []
     const resolver = (status: 'loading' | 'resolved' | 'missing') => (type: string, id: string) => {
@@ -99,8 +100,12 @@ describe('note list projection', () => {
     expect(asked).toEqual([])
     expect(noteCaptureLink({ captureId: 'cap' }, resolver('loading'))).toBe('loading')
     expect(noteCaptureLink({ captureId: 'cap' }, resolver('resolved'))).toBe('live')
-    expect(noteCaptureLink({ captureId: 'cap' }, resolver('missing'))).toBe('deleted')
+    expect(noteCaptureLink({ captureId: 'cap' }, resolver('missing'), 'loading')).toBe('loading')
+    expect(noteCaptureLink({ captureId: 'cap' }, resolver('missing'), 'held')).toBe('live')
+    expect(noteCaptureLink({ captureId: 'cap' }, resolver('missing'), 'gone')).toBe('deleted')
     expect(asked).toEqual([
+      ['capture', 'cap'],
+      ['capture', 'cap'],
       ['capture', 'cap'],
       ['capture', 'cap'],
       ['capture', 'cap']

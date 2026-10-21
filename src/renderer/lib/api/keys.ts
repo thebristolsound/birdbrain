@@ -15,6 +15,7 @@ export const queryKeys = {
   captureMhtmlUrl: (captureId: string) => ['captures', 'mhtmlUrl', captureId] as const,
   captureHtmlUrl: (captureId: string) => ['captures', 'htmlUrl', captureId] as const,
   captureLinks: (captureId: string) => ['captures', 'links', captureId] as const,
+  captureHeld: (captureId: string) => ['captures', 'held', captureId] as const,
   captureMatchingSelectors: (captureId: string) =>
     ['captures', 'matchingSelectors', captureId] as const,
   captureCounts: ['captureCounts'] as const,

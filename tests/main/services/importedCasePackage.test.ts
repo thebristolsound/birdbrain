@@ -903,10 +903,11 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
 
   // A known limit (#1017): the renamed import archived again and imported on a
   // third installation. The id map is one hop, so that archive has no row the
-  // source's derivation entry names and carries no thumbnail, and the package
-  // fails on the source's thumbnail as a version-10 archive's does.
+  // source's derivation entry names and carries no thumbnail. The package fails
+  // on the source's thumbnail and on the one the third installation backfills,
+  // and binds no derived file.
   it.skipIf(!RUNS)(
-    'still fails only on the source thumbnail for a renamed import archived again (#1017)',
+    'fails on both thumbnails for a renamed import archived again (#1017)',
     async () => {
       const { archive, original } = await backfilledArchive('Twice')
       const { newCaseId: renamedCaseId } = await importCaseArchive(archive)

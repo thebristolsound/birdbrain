@@ -226,10 +226,12 @@ export function SignalsOverview() {
   }
 
   // Checked here rather than left to main (#1549), whatever the letter case.
-  // A name a stale list missed reaches main: on create it refuses an exact
-  // taken name with TAG_NAME_TAKEN (#811), and on rename it has no check, so
-  // the UNIQUE index refuses the write. Either refusal reaches the window only
-  // as the generic failure toast with a bug-report action (#1949).
+  // A name a stale list missed reaches main, which matches exactly among this
+  // installation's own tags: on create it refuses a taken name with
+  // TAG_NAME_TAKEN (#811), and on rename it has no check, so the UNIQUE index
+  // refuses an exact match and a case variant is written. Either refusal
+  // reaches the window only as the generic failure toast with a bug-report
+  // action (#1949).
   function refuseTakenTagName(name: string, exceptId?: string): boolean {
     if (!findTagByName(tags, name, exceptId)) return false
     notify.info(`A tag named ‘${name}’ already exists`)

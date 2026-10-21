@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
+import {
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  readdirSync
+} from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { createHash } from 'crypto'
@@ -49,6 +57,14 @@ import { verifyCapture } from '@main/services/captureLifecycle'
 import { ensureCaseFields } from '@main/services/search/fieldIndex'
 import { getExhibitSearchBuild } from '@main/services/db/searchFieldRepo'
 import { appendFutureEntry } from '../../helpers/futureManifestEntry'
+import { insertDerivedFile, listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
+import { verifyCaseDerivedFiles } from '@main/services/exhibits'
+import { backfillCase } from '@main/services/exhibitBackfill'
+import {
+  downgradeToVersion10,
+  rewriteArchive,
+  signDerivedFile
+} from '../../helpers/archiveDerivedFiles'
 
 const artifactPath = (caseId: string, captureId: string, type: 'mhtml' | 'html' | 'png' | 'txt') =>
   defaultCaptureStore.artifactPaths(caseId, captureId, type).abs
@@ -235,8 +251,10 @@ describe('caseArchive export', () => {
   // the import outright on two members' annotation layers on one Capture.
   // 10 since the investigation records (#1909): a pre-10 build would import
   // the Case without its decisions, marks and run records.
-  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 10 since the investigation records', () => {
-    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(10)
+  // 11 since Derived Files travel (#1813): a pre-11 build passes the checks
+  // and then rejects the nested files/derived/ entry, abandoning the import.
+  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 11 since Derived Files travel', () => {
+    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(11)
   })
 
   it('exports a .birdbrain archive with header, data, manifest, and files', async () => {
@@ -1337,5 +1355,404 @@ describe('caseArchive import', () => {
         [null, 0, null]
       ])
     })
+  })
+})
+
+// #1813: a Case Archive carries each Derived File its verified chains anchor,
+// and the import restores it only when its bytes hash to the signed
+// `outputHash`. Every derivation here is signed by hand over arbitrary bytes.
+describe('caseArchive Derived Files (#1813)', () => {
+  let tempDir: string
+  let storageRoot: string
+  let caseId: string
+  let caseDir: string
+  let archivePath: string
+  let contentHash: string
+  const captureId = 'capture-mhtml-1'
+  const legacyId = 'capture-legacy-1'
+  const documentId = 'document-1'
+  const thumbnail = Buffer.from('thumbnail bytes the chain anchors')
+  const thumbName = `files/derived/${captureId}_thumb.jpg`
+  const mhtmlBuf = Buffer.from('<html>derived source</html>')
+
+  beforeEach(async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'bb-case-archive-derived-'))
+    storageRoot = join(tempDir, 'captures')
+    initStorage(storageRoot)
+    await initDatabase(':memory:')
+    resetInstallationId()
+    initInstallationId(tempDir)
+    resetSigningKey()
+    initSigningKey(tempDir, { confirmUnprotectedKey: () => true })
+    initSettings(tempDir)
+    updateSettings({ operatorName: 'Test Operator', operatorRole: '', operatorOrganization: '' })
+
+    caseId = createCase({ name: 'Derived Case', description: '' }).id
+    ensureCaseDir(caseId)
+    caseDir = join(getStorageRoot(), caseId)
+    initManifest(caseDir)
+    writeFileSync(artifactPath(caseId, captureId, 'mhtml'), mhtmlBuf)
+    contentHash = createHash('sha256').update(mhtmlBuf).digest('hex')
+    const { index, entryHash } = appendManifestEntry(caseDir, {
+      type: 'capture',
+      captureId,
+      caseId,
+      url: 'https://example.com/derived',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      contentHash,
+      sizeBytes: mhtmlBuf.length,
+      exhibitNumber: 1,
+      operatorId: 'op-1',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+    insertCapture({
+      id: captureId,
+      caseId,
+      url: 'https://example.com/derived',
+      title: 'Derived',
+      hash: contentHash,
+      timestamp: '2026-04-05T12:00:00.000Z',
+      format: 'mhtml',
+      mhtmlPath: `${caseId}/${captureId}.mhtml`,
+      sizeBytes: mhtmlBuf.length,
+      manifestIndex: index,
+      entryHash,
+      exhibitNumber: 1
+    })
+    createNote({ caseId, captureId, title: 'Seen', body: 'On the page.' })
+    archivePath = join(tempDir, 'derived.birdbrain')
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  const sign = (params: Partial<Parameters<typeof signDerivedFile>[0]> = {}) =>
+    signDerivedFile({
+      caseId,
+      parentExhibitId: captureId,
+      parentContentHash: contentHash,
+      bytes: thumbnail,
+      ...params
+    })
+
+  const zipNames = (path = archivePath): string[] => [...readStoredZip(readFileSync(path)).keys()]
+
+  // An archive with `name` holding `bytes`, its header repaired.
+  const plant = (name: string, bytes: Buffer): void =>
+    rewriteArchive(archivePath, (entries) => {
+      entries.set(name, bytes)
+    })
+
+  const importEntry = (newCaseId: string): Record<string, unknown> =>
+    readEntries(readFileSync(join(storageRoot, newCaseId, 'manifest.jsonl'), 'utf-8')).find(
+      (e) => e.type === 'import'
+    )!
+
+  // What an override import of a hostile archive must leave behind: no
+  // Derived File, and none of the import's own files replaced.
+  function expectNothingRestored(newCaseId: string): void {
+    const newCaseDir = join(storageRoot, newCaseId)
+    expect(listDerivedFilesForCase(newCaseId)).toEqual([])
+    const [row] = listCaptures(newCaseId).filter((capture) => capture.hash === contentHash)
+    expect(readFileSync(join(newCaseDir, `${row.id}.mhtml`))).toEqual(mhtmlBuf)
+    expect(verifyManifestChain(newCaseDir).valid).toBe(true)
+    const idMap = JSON.parse(readFileSync(join(newCaseDir, 'import-id-map.json'), 'utf-8'))
+    expect(
+      createHash('sha256')
+        .update(Buffer.from(canonicalStringify(idMap), 'utf-8'))
+        .digest('hex')
+    ).toBe(importEntry(newCaseId).idMapSha256)
+  }
+
+  it("restores a renamed Capture's thumbnail under the name its signed entry gives it", async () => {
+    sign()
+    await exportCaseArchive(caseId, archivePath)
+
+    const { newCaseId } = await importCaseArchive(archivePath)
+
+    const [row] = listCaptures(newCaseId)
+    expect(row.id).not.toBe(captureId)
+    const [restored] = listDerivedFilesForCase(newCaseId)
+    expect(restored.exhibitId).toBe(row.id)
+    expect(restored.path).toBe(join(newCaseId, `${captureId}_thumb.jpg`))
+    expect(readFileSync(join(storageRoot, restored.path))).toEqual(thumbnail)
+    expect((await verifyCaseDerivedFiles(newCaseId)).get(row.id)).toEqual([
+      expect.objectContaining({ derivedFileId: restored.id, status: 'verified' })
+    ])
+    const manifest = join(storageRoot, newCaseId, 'manifest.jsonl')
+    const before = readFileSync(manifest)
+    const backfill = await backfillCase(newCaseId, { toolVersion: '0.1.0' })
+    expect([backfill.renumbered, backfill.thumbnailsAnchored]).toEqual([false, 0])
+    expect(readFileSync(manifest)).toEqual(before)
+  })
+
+  it('still imports a version-10 archive, which carries no Derived Files', async () => {
+    sign()
+    await exportCaseArchive(caseId, archivePath)
+    downgradeToVersion10(archivePath)
+    expect(zipNames().some((name) => name.startsWith('files/derived/'))).toBe(false)
+    closeDatabase()
+    await initDatabase(':memory:')
+
+    const { newCaseId, report } = await importCaseArchive(archivePath)
+
+    expect(report.schemaVersion).toBe(10)
+    expect(report.verification.overallValid).toBe(true)
+    expect(listDerivedFilesForCase(newCaseId)).toEqual([])
+    expect(existsSync(join(storageRoot, newCaseId, `${captureId}_thumb.jpg`))).toBe(false)
+    expect(listCaptures(newCaseId).map((c) => c.id)).toEqual([captureId])
+    expect(listNotes(newCaseId).map((n) => n.title)).toEqual(['Seen'])
+  })
+
+  it('fails a derived file whose bytes do not match its signed outputHash even with the header repaired, and restores nothing on override', async () => {
+    sign()
+    await exportCaseArchive(caseId, archivePath)
+    plant(thumbName, Buffer.from('swapped thumbnail bytes'))
+
+    const { verification } = inspectCaseArchive(archivePath)
+    expect([verification.chainValid, verification.artifactFailureCount]).toEqual([true, 1])
+    await expect(importCaseArchive(archivePath)).rejects.toThrow(/failed verification/i)
+
+    const { newCaseId } = await importCaseArchive(archivePath, { overrideTamper: true })
+    expectNothingRestored(newCaseId)
+    expect(existsSync(join(storageRoot, newCaseId, `${captureId}_thumb.jpg`))).toBe(false)
+    expect(importEntry(newCaseId).verificationResult).toMatchObject({
+      overallValid: false,
+      artifactFailureCount: 1
+    })
+  })
+
+  it('fails a files/derived/ entry no verified derivation names', async () => {
+    await exportCaseArchive(caseId, archivePath)
+    plant('files/derived/stray.jpg', thumbnail)
+
+    const { verification } = inspectCaseArchive(archivePath)
+    expect([verification.chainValid, verification.artifactFailureCount]).toEqual([true, 1])
+
+    const { newCaseId } = await importCaseArchive(archivePath, { overrideTamper: true })
+    expectNothingRestored(newCaseId)
+    expect(existsSync(join(storageRoot, newCaseId, 'stray.jpg'))).toBe(false)
+  })
+
+  it('does not carry a derived file no entry anchors', async () => {
+    const path = `${caseId}/${captureId}_thumb.jpg`
+    writeFileSync(join(storageRoot, path), thumbnail)
+    insertDerivedFile({
+      exhibitId: captureId,
+      derivation: 'thumbnail',
+      toolVersion: '0.1.0',
+      contentHash: createHash('sha256').update(thumbnail).digest('hex'),
+      path,
+      createdAt: '2026-10-01T09:00:00.000Z',
+      manifestSeq: null
+    })
+    await exportCaseArchive(caseId, archivePath)
+    expect(zipNames()).not.toContain(thumbName)
+
+    const { newCaseId } = await importCaseArchive(archivePath)
+    expect(listDerivedFilesForCase(newCaseId)).toEqual([])
+  })
+
+  it('restores no derived file from a chain that does not verify, even on override', async () => {
+    sign()
+    await exportCaseArchive(caseId, archivePath)
+    rewriteArchive(archivePath, (entries) => {
+      const lines = entries.get('manifest.jsonl')!.toString('utf-8').trim().split('\n')
+      const edited = lines.map((line) => {
+        const entry = JSON.parse(line)
+        return entry.type === 'derivation'
+          ? JSON.stringify({ ...entry, outputHash: 'f'.repeat(64) })
+          : line
+      })
+      entries.set('manifest.jsonl', Buffer.from(edited.join('\n') + '\n'))
+    })
+    expect(inspectCaseArchive(archivePath).verification.chainValid).toBe(false)
+
+    const { newCaseId } = await importCaseArchive(archivePath, { overrideTamper: true })
+    expect(listDerivedFilesForCase(newCaseId)).toEqual([])
+    expect(existsSync(join(storageRoot, newCaseId, `${captureId}_thumb.jpg`))).toBe(false)
+  })
+
+  it.each([
+    ['the id map', (id: string) => `${id}/import-id-map.json`, 'import-id-map.json'],
+    ['the manifest', (id: string) => `${id}/manifest.jsonl`, 'manifest.jsonl'],
+    [
+      "a member's chain",
+      (id: string) => `${id}/manifest.installation-peer-0001.jsonl`,
+      'manifest.installation-peer-0001.jsonl'
+    ],
+    [
+      'a lineage chain',
+      (id: string) => `${id}/lineage/source/manifest.installation-peer-0001.jsonl`,
+      'lineage/source/manifest.installation-peer-0001.jsonl'
+    ],
+    ['the Staging Pool', (id: string) => `${id}/staging/x.png`, 'staging/x.png'],
+    ['the roster', (id: string) => `${id}/members.json`, 'members.json'],
+    ["a Capture's bytes", (id: string) => `${id}/${captureId}.mhtml`, `${captureId}.mhtml`],
+    ['a single segment', () => 'thumb.jpg', 'thumb.jpg'],
+    ['the storage root', () => '/thumb.jpg', 'thumb.jpg'],
+    ['the working directory', () => './thumb.jpg', 'thumb.jpg'],
+    ['the parent directory', (id: string) => `${id}/../outside.jpg`, 'outside.jpg'],
+    ['a backslash climb', (id: string) => `${id}\\..\\..\\outside.jpg`, 'outside.jpg']
+  ])('never writes a derived file a signed path aims at %s', async (_, outputPath, planted) => {
+    sign({ outputPath: outputPath(caseId), writeFile: false, recordRow: false })
+    await exportCaseArchive(caseId, archivePath)
+    expect(zipNames().some((name) => name.startsWith('files/derived/'))).toBe(false)
+    plant(`files/derived/${planted}`, thumbnail)
+
+    const { verification } = inspectCaseArchive(archivePath)
+    expect([verification.chainValid, verification.artifactFailureCount]).toEqual([true, 1])
+
+    const { newCaseId } = await importCaseArchive(archivePath, { overrideTamper: true })
+    expectNothingRestored(newCaseId)
+    expect(existsSync(join(storageRoot, 'outside.jpg'))).toBe(false)
+    expect(existsSync(join(tempDir, 'outside.jpg'))).toBe(false)
+    expect(existsSync(join(storageRoot, newCaseId, 'thumb.jpg'))).toBe(false)
+  })
+
+  it('exports a readable archive when a signed derivation path climbs out of the Case', async () => {
+    writeFileSync(join(storageRoot, 'outside.jpg'), thumbnail)
+    sign({ outputPath: `${caseId}/../outside.jpg`, writeFile: false, recordRow: false })
+
+    await exportCaseArchive(caseId, archivePath)
+
+    expect(zipNames().some((name) => name.startsWith('files/derived/'))).toBe(false)
+    expect(inspectCaseArchive(archivePath).verification.overallValid).toBe(true)
+  })
+
+  it.each([
+    ['missing', false],
+    ['a directory', true]
+  ])('carries nothing for an anchored path that is %s at the source', async (_, directory) => {
+    const { outputPath } = sign({ writeFile: false, recordRow: false })
+    if (directory) mkdirSync(join(storageRoot, outputPath))
+
+    await exportCaseArchive(caseId, archivePath)
+
+    expect(zipNames()).not.toContain(thumbName)
+    const { newCaseId, report } = await importCaseArchive(archivePath)
+    expect(report.verification.overallValid).toBe(true)
+    expect(listDerivedFilesForCase(newCaseId)).toEqual([])
+  })
+
+  it('restores no derived file for a parent the archive does not carry', async () => {
+    const outputPath = `${caseId}/not-in-archive_thumb.jpg`
+    sign({ parentExhibitId: 'not-in-archive', outputPath, recordRow: false })
+    await exportCaseArchive(caseId, archivePath)
+    expect(zipNames().some((name) => name.startsWith('files/derived/'))).toBe(false)
+    expect(inspectCaseArchive(archivePath).verification.overallValid).toBe(true)
+    plant('files/derived/not-in-archive_thumb.jpg', thumbnail)
+
+    expect(inspectCaseArchive(archivePath).verification.artifactFailureCount).toBe(1)
+    const { newCaseId } = await importCaseArchive(archivePath, { overrideTamper: true })
+    expectNothingRestored(newCaseId)
+    expect(existsSync(join(storageRoot, newCaseId, 'not-in-archive_thumb.jpg'))).toBe(false)
+  })
+
+  it.each([
+    ['two parents', [captureId, legacyId], ['shared_thumb.jpg', 'shared_thumb.jpg']],
+    ['two spellings differing only in case', [captureId, captureId], ['Thumb.jpg', 'thumb.jpg']]
+  ])('refuses a derived path claimed by %s', async (_, parents, names) => {
+    insertCapture({
+      id: legacyId,
+      caseId,
+      url: 'https://legacy.example.com',
+      title: 'Legacy',
+      hash: 'y'.repeat(64),
+      timestamp: '2026-04-04T12:00:00.000Z'
+    })
+    for (const [i, parent] of parents.entries()) {
+      sign({ parentExhibitId: parent, outputPath: `${caseId}/${names[i]}`, recordRow: false })
+    }
+    await exportCaseArchive(caseId, archivePath)
+    expect(zipNames().some((name) => name.startsWith('files/derived/'))).toBe(false)
+    plant(`files/derived/${names[1]}`, thumbnail)
+
+    expect(inspectCaseArchive(archivePath).verification.artifactFailureCount).toBe(1)
+    const { newCaseId } = await importCaseArchive(archivePath, { overrideTamper: true })
+    expectNothingRestored(newCaseId)
+  })
+
+  it('leaves behind a source derived file whose bytes no longer match, and the archive still verifies', async () => {
+    const { outputPath } = sign()
+    writeFileSync(join(storageRoot, outputPath), 'redrawn by another build')
+
+    await exportCaseArchive(caseId, archivePath)
+
+    expect(zipNames()).not.toContain(thumbName)
+    expect(inspectCaseArchive(archivePath).verification.overallValid).toBe(true)
+    const { newCaseId } = await importCaseArchive(archivePath)
+    expect(listDerivedFilesForCase(newCaseId)).toEqual([])
+  })
+
+  it('rejects a truncated archive that carries derived files before writing anything', async () => {
+    sign()
+    await exportCaseArchive(caseId, archivePath)
+    expect(zipNames()).toContain(thumbName)
+    const bytes = readFileSync(archivePath)
+    writeFileSync(archivePath, bytes.subarray(0, bytes.length - 40))
+    const dirsBefore = readdirSync(storageRoot).sort()
+    const casesBefore = getDb().prepare('SELECT id FROM cases').all()
+
+    expect(() => inspectCaseArchive(archivePath)).toThrow(/not a valid Birdbrain archive/i)
+    await expect(importCaseArchive(archivePath)).rejects.toThrow(/not a valid Birdbrain archive/i)
+
+    expect(readdirSync(storageRoot).sort()).toEqual(dirsBefore)
+    expect(getDb().prepare('SELECT id FROM cases').all()).toEqual(casesBefore)
+  })
+
+  it('aborts and cleans up when a derived path collides with a file the import staged', async () => {
+    const pdf = Buffer.from('%PDF-1.7 statement')
+    mkdirSync(join(caseDir, 'documents'), { recursive: true })
+    writeFileSync(join(caseDir, 'documents', `${documentId}.pdf`), pdf)
+    getDb()
+      .prepare(
+        `INSERT INTO exhibits (id, case_id, kind, origin, exhibit_number, name, content_hash,
+           path, size_bytes, committed_at) VALUES (?, ?, 'document', 'manual-upload', 2, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        documentId,
+        caseId,
+        'statement.pdf',
+        createHash('sha256').update(pdf).digest('hex'),
+        `${caseId}/documents/${documentId}.pdf`,
+        pdf.length,
+        '2026-04-05T12:00:00.000Z'
+      )
+    // Signed over the document's own path, so the exporter refuses to carry it.
+    sign({
+      outputPath: `${caseId}/documents/${documentId}.pdf`,
+      bytes: pdf,
+      writeFile: false,
+      recordRow: false
+    })
+    await exportCaseArchive(caseId, archivePath)
+    expect(zipNames().some((name) => name.startsWith('files/derived/'))).toBe(false)
+    // A data.json path that disagrees with where the zip name stages the file
+    // takes the document's own path out of the import's owned set.
+    rewriteArchive(archivePath, (entries) => {
+      const data = JSON.parse(entries.get('data.json')!.toString('utf-8'))
+      data.exhibits = data.exhibits.map((row: Record<string, unknown>) =>
+        row.id === documentId ? { ...row, path: `${caseId}/documents/elsewhere.pdf` } : row
+      )
+      entries.set('data.json', Buffer.from(JSON.stringify(data, null, 2)))
+      entries.set(`files/derived/documents/${documentId}.pdf`, pdf)
+    })
+    expect(inspectCaseArchive(archivePath).verification.overallValid).toBe(true)
+    // Another installation, so the document keeps its id and its staged name.
+    closeDatabase()
+    await initDatabase(':memory:')
+    const dirsBefore = readdirSync(storageRoot).sort()
+    const casesBefore = getDb().prepare('SELECT id FROM cases').all()
+
+    await expect(importCaseArchive(archivePath)).rejects.toThrow(
+      /derived file path collides with an imported file/
+    )
+
+    expect(readdirSync(storageRoot).sort()).toEqual(dirsBefore)
+    expect(getDb().prepare('SELECT id FROM cases').all()).toEqual(casesBefore)
   })
 })

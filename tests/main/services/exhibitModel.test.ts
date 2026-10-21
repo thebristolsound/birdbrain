@@ -76,6 +76,7 @@ import type { ManifestSnapshotEntry } from '@shared/manifestSnapshot'
 import { ManifestEntrySchema } from '@shared/schemas'
 import type { ManifestEntry } from '@shared/schemas'
 import { windBackToV38 } from '../../helpers/windBackToV38'
+import { downgradeToVersion10 } from '../../helpers/archiveDerivedFiles'
 
 // Known-answer tests for the Exhibit model's tables, migrations and read paths
 // (#1147, ADR-0023 / ADR-0024). Four answers are frozen here:
@@ -802,10 +803,12 @@ describe('exhibit model', () => {
 
     // #1814. Exported and imported on this installation while the original is
     // still here, so the import renames the Capture's row. Unless a test says
-    // otherwise the source Case is not backfilled first.
-    async function renamedImport(archiveName: string, sourceCaseId = caseId) {
+    // otherwise the source Case is not backfilled first. `downgrade` rewrites
+    // the archive as a Birdbrain before #1813 wrote it, carrying no Derived File.
+    async function renamedImport(archiveName: string, sourceCaseId = caseId, downgrade = false) {
       const archivePath = join(tempDir, `${archiveName}.birdbrain`)
       await exportCaseArchive(sourceCaseId, archivePath)
+      if (downgrade) downgradeToVersion10(archivePath)
       const { newCaseId } = await importCaseArchive(archivePath)
       const [row] = listExhibits(newCaseId).filter((exhibit) => exhibit.kind === 'capture')
       return { newCaseId, newCaseDir: join(storageRoot, newCaseId), row }
@@ -856,41 +859,90 @@ describe('exhibit model', () => {
 
     // The usual shape: the source existed across a launch, so the import
     // inherits its thumbnail entry under the chain id, naming the source's
-    // file. That entry must not stand in for the row's own thumbnail, whether
-    // or not the list view has already drawn one at the row's path.
+    // file. An archive from before #1813 carries no file for it, and that entry
+    // must not stand in for the row's own thumbnail, whether or not the list
+    // view has already drawn one at the row's path.
     it.each([
       ['no thumbnail on disk', false],
       ['a thumbnail the list view drew', true]
-    ])('signs a renamed import whose source was backfilled, with %s', async (_shape, drawn) => {
-      const capture = await ingestInto(caseId, {
-        url: 'https://example.com/source-backfilled',
-        title: 'Source backfilled',
-        timestamp: '2026-04-05T12:00:00.000Z',
-        screenshot: await screenshotPng({ r: 40, g: 120, b: 160 })
-      })
-      await backfillCase(caseId, { toolVersion: TOOL_VERSION })
-      const { newCaseId, newCaseDir, row } = await renamedImport('source-backfilled')
-      const [inherited] = manifestLines(newCaseDir).filter((line) => line.type === 'derivation')
-      expect(inherited.parentExhibitId).toBe(capture.id)
-      if (drawn) expect(await getThumbnail(newCaseId, row.id)).not.toBeNull()
+    ])(
+      'signs a renamed import of a version-10 archive whose source was backfilled, with %s',
+      async (_shape, drawn) => {
+        const capture = await ingestInto(caseId, {
+          url: 'https://example.com/source-backfilled',
+          title: 'Source backfilled',
+          timestamp: '2026-04-05T12:00:00.000Z',
+          screenshot: await screenshotPng({ r: 40, g: 120, b: 160 })
+        })
+        await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+        const { newCaseId, newCaseDir, row } = await renamedImport(
+          'source-backfilled',
+          caseId,
+          true
+        )
+        const [inherited] = manifestLines(newCaseDir).filter((line) => line.type === 'derivation')
+        expect(inherited.parentExhibitId).toBe(capture.id)
+        if (drawn) expect(await getThumbnail(newCaseId, row.id)).not.toBeNull()
 
-      const result = await backfillCase(newCaseId, { toolVersion: TOOL_VERSION })
+        const result = await backfillCase(newCaseId, { toolVersion: TOOL_VERSION })
 
-      expect(result.thumbnailsAnchored).toBe(1)
-      const [derived] = listDerivedFilesForCase(newCaseId)
-      expect(derived.path).toBe(defaultCaptureStore.thumbnailPaths(newCaseId, row.id).rel)
-      const derivations = manifestLines(newCaseDir).filter((line) => line.type === 'derivation')
-      expect(derivations).toHaveLength(2)
-      expect(derivations[1]).toMatchObject({
-        parentExhibitId: capture.id,
-        outputHash: derived.contentHash,
-        outputPath: derived.path
-      })
-      expect(derived.manifestSeq).toBe(derivations[1].index)
-      expect((await verifyCaseDerivedFiles(newCaseId)).get(row.id)).toEqual([
-        expect.objectContaining({ derivedFileId: derived.id, status: 'verified' })
-      ])
-    })
+        expect(result.thumbnailsAnchored).toBe(1)
+        const [derived] = listDerivedFilesForCase(newCaseId)
+        expect(derived.path).toBe(defaultCaptureStore.thumbnailPaths(newCaseId, row.id).rel)
+        const derivations = manifestLines(newCaseDir).filter((line) => line.type === 'derivation')
+        expect(derivations).toHaveLength(2)
+        expect(derivations[1]).toMatchObject({
+          parentExhibitId: capture.id,
+          outputHash: derived.contentHash,
+          outputPath: derived.path
+        })
+        expect(derived.manifestSeq).toBe(derivations[1].index)
+        expect((await verifyCaseDerivedFiles(newCaseId)).get(row.id)).toEqual([
+          expect.objectContaining({ derivedFileId: derived.id, status: 'verified' })
+        ])
+      }
+    )
+
+    // The same source archived by this build (#1813): the archive carries the
+    // source's thumbnail, the import restores it with its row under the name
+    // its entry signed, and the backfill has nothing left to sign. A thumbnail
+    // the list view draws at the row's own path is a preview with no row.
+    it.each([
+      ['no thumbnail on disk', false],
+      ['a thumbnail the list view drew', true]
+    ])(
+      "restores a renamed import's backfilled source thumbnail, with %s",
+      async (_shape, drawn) => {
+        const capture = await ingestInto(caseId, {
+          url: 'https://example.com/source-backfilled',
+          title: 'Source backfilled',
+          timestamp: '2026-04-05T12:00:00.000Z',
+          screenshot: await screenshotPng({ r: 40, g: 120, b: 160 })
+        })
+        await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+        const { newCaseId, newCaseDir, row } = await renamedImport('source-carried')
+        const [inherited] = manifestLines(newCaseDir).filter((line) => line.type === 'derivation')
+        const [restored] = listDerivedFilesForCase(newCaseId)
+        expect(restored).toMatchObject({
+          exhibitId: row.id,
+          path: join(newCaseId, `${capture.id}_thumb.jpg`),
+          manifestSeq: inherited.index
+        })
+        if (drawn) expect(await getThumbnail(newCaseId, row.id)).not.toBeNull()
+        const before = manifestLines(newCaseDir)
+
+        const result = await backfillCase(newCaseId, { toolVersion: TOOL_VERSION })
+
+        expect(result.thumbnailsAnchored).toBe(0)
+        expect(manifestLines(newCaseDir)).toEqual(before)
+        expect(before.filter((line) => line.type === 'derivation')).toHaveLength(1)
+        expect(listDerivedFilesForCase(newCaseId)).toEqual([restored])
+        expect((await verifyCaseDerivedFiles(newCaseId)).get(row.id)).toEqual([
+          expect.objectContaining({ derivedFileId: restored.id, status: 'verified' })
+        ])
+        expect(existsSync(defaultCaptureStore.thumbnailPaths(newCaseId, row.id).abs)).toBe(drawn)
+      }
+    )
 
     it('records the row against an entry an earlier build signed under the renamed id', async () => {
       const screenshot = await screenshotPng({ r: 140, g: 70, b: 70 })

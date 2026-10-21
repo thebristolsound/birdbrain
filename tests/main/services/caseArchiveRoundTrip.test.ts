@@ -1,4 +1,8 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach } from 'vitest'
+import { createHash } from 'crypto'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import { initDatabase, closeDatabase, getDb, withTransaction } from '@main/services/db/core'
 import type { ImportCtx } from '@main/services/db/core'
 import {
@@ -58,6 +62,16 @@ import {
   importAnnotationRows,
   importAnnotationPinRows
 } from '@main/services/annotations'
+import { listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
+import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
+import { verifyCaseDerivedFiles } from '@main/services/exhibits'
+import { appendManifestEntry, initManifest } from '@main/services/manifest'
+import { ensureCaseDir, getStorageRoot, initStorage } from '@main/services/storage'
+import { initSettings, updateSettings } from '@main/services/settings'
+import { initInstallationId, resetInstallationId } from '@main/services/installationId'
+import { initSigningKey, resetSigningKey } from '@main/services/signingKey'
+import { readStoredZip } from '@main/services/zipRead'
+import { signDerivedFile } from '../../helpers/archiveDerivedFiles'
 
 type Row = Record<string, unknown>
 
@@ -429,5 +443,100 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
     expect(row.supersedes_capture_id).toBeNull()
     expect(row.consent_suppression).toBeNull()
     expect(row.format).toBe('html')
+  })
+})
+
+// #1813: the archive itself, not the repo bulk ops. A Derived File the source
+// chain anchors travels with its bytes, and the import restores its row from
+// the signed entry, so an imported Case's package can enclose it.
+describe('case archive round-trip of Derived Files', () => {
+  let tempDir = ''
+
+  beforeEach(async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'bb-archive-derived-'))
+    initStorage(join(tempDir, 'captures'))
+    await initDatabase(':memory:')
+    resetInstallationId()
+    initInstallationId(tempDir)
+    resetSigningKey()
+    initSigningKey(tempDir, { confirmUnprotectedKey: () => true })
+    initSettings(tempDir)
+    updateSettings({ operatorName: 'Test Operator' })
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  it('carries a thumbnail and restores its derived_files row', async () => {
+    const source = createCase({ name: 'Derived source', description: '' }).id
+    ensureCaseDir(source)
+    const caseDir = join(getStorageRoot(), source)
+    initManifest(caseDir)
+    const page = Buffer.from('<html>derived source</html>')
+    const contentHash = createHash('sha256').update(page).digest('hex')
+    const captureId = 'capture-derived-1'
+    writeFileSync(join(caseDir, `${captureId}.mhtml`), page)
+    const { index, entryHash } = appendManifestEntry(caseDir, {
+      type: 'capture',
+      captureId,
+      caseId: source,
+      url: 'https://derived.example',
+      timestamp: '2026-10-01T08:00:00.000Z',
+      contentHash,
+      sizeBytes: page.length,
+      operatorId: 'op-1',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+    insertCapture({
+      id: captureId,
+      caseId: source,
+      url: 'https://derived.example',
+      title: 'Derived',
+      hash: contentHash,
+      timestamp: '2026-10-01T08:00:00.000Z',
+      format: 'mhtml',
+      mhtmlPath: `${source}/${captureId}.mhtml`,
+      sizeBytes: page.length,
+      manifestIndex: index,
+      entryHash
+    })
+    const thumbnail = Buffer.from('thumbnail bytes the chain anchors')
+    signDerivedFile({
+      caseId: source,
+      parentExhibitId: captureId,
+      parentContentHash: contentHash,
+      bytes: thumbnail
+    })
+    const [sourceRow] = listDerivedFilesForCase(source)
+
+    const archive = join(tempDir, 'derived.birdbrain')
+    await exportCaseArchive(source, archive)
+    const zip = readStoredZip(readFileSync(archive))
+    const name = `files/derived/${captureId}_thumb.jpg`
+    expect(zip.get(name)).toEqual(thumbnail)
+    const header = JSON.parse(zip.get('package.json')!.toString('utf-8'))
+    expect(header.artifacts.map((a: { path: string }) => a.path)).toContain(name)
+
+    closeDatabase()
+    await initDatabase(':memory:')
+    const { newCaseId, report } = await importCaseArchive(archive)
+    expect(report.verification.overallValid).toBe(true)
+
+    const [restored] = listDerivedFilesForCase(newCaseId)
+    // A fresh id, the parent through the id map (no collision here), the path
+    // re-rooted under the new Case; every other column as the source had it.
+    expect(restored.id).not.toBe(sourceRow.id)
+    expect({ ...restored, id: sourceRow.id }).toEqual({
+      ...sourceRow,
+      exhibitId: captureId,
+      path: join(newCaseId, `${captureId}_thumb.jpg`)
+    })
+    expect(readFileSync(join(getStorageRoot(), restored.path))).toEqual(thumbnail)
+    expect((await verifyCaseDerivedFiles(newCaseId)).get(captureId)).toEqual([
+      expect.objectContaining({ derivedFileId: restored.id, status: 'verified' })
+    ])
   })
 })

@@ -557,6 +557,72 @@ describe('Shared Case export, import and fork (#1511)', () => {
     expect(zip.get(row.derivedFiles[0].path)).toEqual(thumbnail)
   })
 
+  // #1813: a fork keeps another member's chain as lineage, and the Derived
+  // File that chain anchors travels with it, restored under its signed name.
+  it("restores another member's Derived File in a fork, anchored on its lineage chain", async () => {
+    const thumbnail = Buffer.from('peer thumbnail bytes')
+    const outputHash = createHash('sha256').update(thumbnail).digest('hex')
+    let peerIndex = -1
+    const { peerDoc } = ownerReplica(undefined, (peer, doc) => {
+      const [row] = listExhibits(caseId).filter((e) => e.id === doc)
+      const path = `${caseId}/derived/${doc}.png`
+      mkdirSync(dirname(join(getStorageRoot(), path)), { recursive: true })
+      writeFileSync(join(getStorageRoot(), path), thumbnail)
+      peer.append({
+        type: 'derivation',
+        caseId,
+        parentExhibitId: doc,
+        parentContentHash: row.contentHash,
+        derivation: 'thumbnail',
+        derivationToolVersion: '0.9.0',
+        outputHash,
+        outputPath: path,
+        timestamp: TIME,
+        ...PEER,
+        schemaVersion: 3
+      })
+      peerIndex = peer.lines.length - 1
+      getDb()
+        .prepare(
+          `INSERT INTO derived_files (id, exhibit_id, derivation, tool_version, content_hash,
+             path, created_at, manifest_seq) VALUES (?, ?, 'thumbnail', '0.9.0', ?, ?, ?, ?)`
+        )
+        .run(`${doc}-thumb`, doc, outputHash, path, TIME, peerIndex)
+    })
+    const out = join(tempDir, 'fork.birdbrain')
+    await exportCaseArchive(caseId, out)
+    expect(readStoredZip(readFileSync(out)).get(`files/derived/derived/${peerDoc}.png`)).toEqual(
+      thumbnail
+    )
+
+    const { newCaseId } = await importCaseArchive(out)
+
+    const forked = listExhibits(newCaseId).find((e) => e.authorInstallationId === PEER_ID)!
+    expect(forked.id).not.toBe(peerDoc)
+    const restored = getDb()
+      .prepare('SELECT * FROM derived_files WHERE exhibit_id = ?')
+      .all(forked.id) as Array<Record<string, unknown>>
+    expect(restored).toEqual([
+      expect.objectContaining({
+        content_hash: outputHash,
+        path: join(newCaseId, 'derived', `${peerDoc}.png`),
+        manifest_seq: peerIndex
+      })
+    ])
+    const derived = (await verifyCaseDerivedFiles(newCaseId)).get(forked.id)
+    expect(derived?.map((d) => d.status)).toEqual(['verified'])
+
+    const { dir, zip } = await exportPackage(newCaseId)
+    const evidence = JSON.parse(zip.get('evidence.json')!.toString('utf-8'))
+    const row = evidence.exhibits.find((r: { id: string }) => r.id === peerDoc)
+    expect(row.derivedFiles.map((d: { path: string }) => d.path)).toEqual([
+      `documents/${peerDoc}.png`
+    ])
+    expect(zip.get(`documents/${peerDoc}.png`)).toEqual(thumbnail)
+    expect(failures(dir)).toEqual([])
+    expect(verifyEvidencePackage(dir).pass).toBe(true)
+  })
+
   it('fails the package when the member chain it merged is edited', async () => {
     ownerReplica()
     const { dir } = await exportPackage()

@@ -144,7 +144,9 @@ export interface CaptureStore {
   // moves the staged files back and rethrows, or throws StagedRestoreError when
   // that restore fails too. `restoreStaged` moves staged files back to their
   // original paths. `purgeStaged` removes the staging directory for good.
-  stageArtifacts: (caseId: string, captureId: string) => void
+  // `alsoNames` are further files directly in the Case directory that the
+  // capture owns under another name, staged with the rest.
+  stageArtifacts: (caseId: string, captureId: string, alsoNames?: readonly string[]) => void
   restoreStaged: (caseId: string, captureId: string) => void
   purgeStaged: (caseId: string, captureId: string) => void
   // Capture ids with a staging directory left in the Case, for recovery.
@@ -430,11 +432,20 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
     rmdirSync(dir)
   }
 
-  function stageArtifacts(caseId: string, captureId: string): void {
+  function stageArtifacts(
+    caseId: string,
+    captureId: string,
+    alsoNames: readonly string[] = []
+  ): void {
     const dir = stagedDir(caseId, captureId)
     const moved: Array<{ from: string; to: string }> = []
+    // Only a bare name: a restore moves each staged file back into the Case
+    // directory by its name.
+    const also = alsoNames
+      .filter((name) => name !== '' && name === basename(name) && !name.includes('..'))
+      .map((name) => join(caseDir(caseId), name))
     try {
-      for (const from of ownedPaths(caseId, captureId)) {
+      for (const from of new Set([...ownedPaths(caseId, captureId), ...also])) {
         if (!existsSync(from)) continue
         mkdirSync(dir, { recursive: true })
         // Same directory tree, same filesystem: each rename is atomic, and

@@ -1,10 +1,15 @@
 import { createReadStream, existsSync, readFileSync } from 'fs'
 import { createHash, randomUUID } from 'crypto'
-import { join } from 'path'
-import { defaultCaptureStore, StagedRestoreError } from '@main/services/captureStore'
+import { basename, dirname, join } from 'path'
+import {
+  defaultCaptureStore,
+  parseArtifactFilename,
+  StagedRestoreError
+} from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
 import * as captureRepo from '@main/services/db/captureRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
+import { listDerivedFilesForExhibit } from '@main/services/db/derivedFileRepo'
 import { nextExhibitNumber } from '@main/services/exhibitNumbering'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import { recordSlowOp } from '@main/services/diagnostics'
@@ -998,7 +1003,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           () => {
             // Files aside first, DB row second: a staging fault leaves row,
             // files and (after the seam's rollback) manifest as they were.
-            store.stageArtifacts(capture.caseId, captureId)
+            store.stageArtifacts(capture.caseId, captureId, derivedFileNames(capture))
             stage = 'db'
             deleteRowOrRestore(capture)
           }
@@ -1028,7 +1033,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
   function removeUnmanifested(capture: Capture): DeleteOneResult {
     const captureId = capture.id
     try {
-      store.stageArtifacts(capture.caseId, captureId)
+      store.stageArtifacts(capture.caseId, captureId, derivedFileNames(capture))
     } catch (err) {
       if (err instanceof StagedRestoreError) throw err
       return {
@@ -1067,6 +1072,23 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
       const { chain, entries, imports } = own
       return chain.valid ? signedCaptureId(capture, entries, imports, caseDir) : capture.id
     }
+  }
+
+  // A Derived File an archive import restored keeps the name its signed entry
+  // gives it, which for a renamed Capture is not the row's own id (#1813), so
+  // the store's own naming misses it. Read before the row delete cascades its
+  // rows away. A file named for another Capture of this Case is left alone.
+  function derivedFileNames(capture: Capture): string[] {
+    return listDerivedFilesForExhibit(capture.id).flatMap(({ path }) => {
+      if (dirname(path) !== capture.caseId) return []
+      const name = basename(path)
+      const named = parseArtifactFilename(name)?.captureId
+      if (named === undefined) return []
+      if (named !== capture.id && captureRepo.getCapture(named)?.caseId === capture.caseId) {
+        return []
+      }
+      return [name]
+    })
   }
 
   function isReceived(captureId: string): boolean {

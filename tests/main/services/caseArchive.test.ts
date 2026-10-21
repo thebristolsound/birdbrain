@@ -53,7 +53,9 @@ import {
 } from '@main/services/caseArchive'
 import { UNDATED_TAG_CREATED_AT } from '@main/services/db/migrations'
 import { canonicalStringify } from '@shared/verify'
-import { verifyCapture } from '@main/services/captureLifecycle'
+import { createCaptureLifecycle, verifyCapture } from '@main/services/captureLifecycle'
+import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
+import { findOrphans } from '@main/services/db/dbAdmin'
 import { ensureCaseFields } from '@main/services/search/fieldIndex'
 import { getExhibitSearchBuild } from '@main/services/db/searchFieldRepo'
 import { appendFutureEntry } from '../../helpers/futureManifestEntry'
@@ -1487,6 +1489,26 @@ describe('caseArchive Derived Files (#1813)', () => {
     const backfill = await backfillCase(newCaseId, { toolVersion: '0.1.0' })
     expect([backfill.renumbered, backfill.thumbnailsAnchored]).toEqual([false, 0])
     expect(readFileSync(manifest)).toEqual(before)
+  })
+
+  it("deletes a renamed Capture's restored thumbnail with it, and the source's stays", async () => {
+    const { outputPath } = sign()
+    await exportCaseArchive(caseId, archivePath)
+    const { newCaseId } = await importCaseArchive(archivePath)
+    const [row] = listCaptures(newCaseId)
+    const restored = join(storageRoot, newCaseId, `${captureId}_thumb.jpg`)
+    expect(existsSync(restored)).toBe(true)
+    const lifecycle = createCaptureLifecycle({
+      selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+    })
+
+    expect(await lifecycle.delete(row.id)).toBe(true)
+
+    expect(existsSync(restored)).toBe(false)
+    expect(listDerivedFilesForCase(newCaseId)).toEqual([])
+    expect(readFileSync(join(storageRoot, outputPath))).toEqual(thumbnail)
+    expect(listDerivedFilesForCase(caseId)).toHaveLength(1)
+    expect(findOrphans().fileOrphans).toEqual([])
   })
 
   it('still imports a version-10 archive, which carries no Derived Files', async () => {

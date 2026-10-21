@@ -294,9 +294,10 @@ function rowToNote(row: Record<string, unknown>): Note {
 // --- Archive bulk ops ---
 
 // A note's link to a Capture the archive does not carry, one deleted from a Shared Case (#1877)
-// or one of another Case, is written empty, as the key left every archive before schema v41:
-// a release reading archive version 10 inserts the column under that key and would refuse
-// the whole import. The note's row in this database keeps its link as signed.
+// or one of another Case, is written empty. Before schema v41 the key cleared a link to a
+// deleted Capture, so no archive carried one, and a release reading archive version 10 inserts
+// the column under that key and would refuse the whole import. The note's row in this database
+// keeps its link as signed.
 export function collectNotesForCase(caseId: string): Record<string, unknown>[] {
   const db = getDb()
   const carried = db.prepare('SELECT 1 FROM captures WHERE id = ? AND case_id = ?')
@@ -320,7 +321,8 @@ export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx):
   // A link to a Capture the archive does not carry is not covered by the collision remap, so
   // it would cite whatever this installation holds under that id, now or after a later
   // import. The export writes none (collectNotesForCase); one in an archive from elsewhere is
-  // cleared, so no note of this Case names a Capture no copy holds or records (#1877).
+  // cleared, so no note's link names a Capture no copy holds or records (#1877). The anchor
+  // and Mentions are only remapped, as before v41, and can still name one.
   const inCase = getDb().prepare('SELECT 1 FROM captures WHERE id = ? AND case_id = ?')
   const carried = (archived: string): string | null => {
     const id = ctx.mapId(archived)

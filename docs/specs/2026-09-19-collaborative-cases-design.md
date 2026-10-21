@@ -251,10 +251,12 @@ Capture has no chain entry, and a Capture this copy imported has its entry befor
 copy's own rows on it and records nothing: no peer could place a tombstone on it. A Case Archive
 carries neither the deleted Capture nor a note's link to it: the export writes that link empty, as
 every archive before schema version 41 did, so a release that reads Case Archive version 10 still
-imports the archive. The import clears any link to a Capture the archive does not carry, so an
-imported note never cites a Capture of another Case or one that no copy holds or records. In a Case
-nobody shared, deleting a Capture removes the rows on it and clears the links of that Case's notes,
-as before; a note of a Shared Case that links to it from another Case keeps its link.
+imports the archive. The import clears any link to a Capture the archive does not carry, so no
+imported note's link names a Capture of another Case or one that no copy holds or records. The
+note's anchor and Mentions are only remapped, as before schema version 41, and can still name a
+Capture that no copy holds or records. In a Case nobody shared, deleting a Capture removes the rows
+on it and clears the links of that Case's notes, as before; a note of a Shared Case that links to it
+from another Case keeps its link.
 
 The investigation records join the working layer under an amendment the maintainer approved on
 2026-10-10. It is E23 in the

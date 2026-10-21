@@ -264,6 +264,32 @@ Capture that no copy holds or records. In a Case nobody shared, deleting a Captu
 on it and clears the links of that Case's notes, as before; a note of a Shared Case that links to it
 from another Case keeps its link.
 
+**Rows written before signing** (ruling of 21 October 2026, #1910). A row this copy wrote before it
+signed rows on write has no signature, so no session offers it. A row imported from a Case Archive
+older than schema version 9 is the same: it has no author, which reads as this copy's, and no
+signature, so it is signed as this copy's although another installation may have written it. When
+the Owner first shares a Case, the transaction that sets `shared_at` and writes the Owner's roster
+row from its `member-add` also signs each such row of the Case under the Owner's key, the way a new
+write is signed, each at its own new version above the high-water mark. A member's first sync then
+receives them. The Case's rows are its notes, the annotation layers and pins on its Captures, the
+tag applications on its Exhibits and notes, and the tags those applications name. A tag belongs to
+the Case when any member's application in the Case names it, live or tombstoned, the same rule the
+`rows` step offers tags by; a tag that only other Cases apply stays unsigned. Rows of other authors,
+rows already signed (including one whose signature no longer verifies) and the rows of a Case nobody
+shared stay as they are, and a later invite signs nothing. A failure rolls the signatures, the
+roster row and the `member-add` back together. The invite that repairs a share whose row write never
+landed signs the rows too. A row that needs a Capture or Exhibit no member can hold stays local and
+unsigned: an annotation layer, pin or tag application on a legacy html Capture or on one whose entry
+sits before the chain's `import`, a note that links such a Capture, and a tag application on that
+note. Signed, any of them would roll back every member's session rows, as above; whether they stay
+local is a question still open with the maintainer. The share refuses a live own row on a Capture
+recorded as deleted, a state the app's writers cannot reach before a first share, and signs a
+tombstone there, as for a new write. When this copy later applies an unsigned tag of its own in a
+Shared Case, it signs the tag with the application, so no member's copy holds an application whose
+tag cannot arrive. Signing a note changes its row, so the Case revision counter advances and the
+change log gains one row per note signed, which may mark investigation runs stale; leaving the
+signature columns out of that trigger needs a schema migration.
+
 The investigation records join the working layer under an amendment the maintainer approved on
 2026-10-10. It is E23 in the
 [Case investigation engine plan](../plans/2026-10-10-case-investigation-engine.md), whose E1

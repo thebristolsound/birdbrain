@@ -172,6 +172,7 @@ export class LoopbackTransport implements Transport {
     const { directory, nodeId } = options
     mkdirSync(directory, { recursive: true })
     const server = createServer()
+    const transport = new LoopbackTransport(nodeId, directory, server)
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
       server.listen(0, LOOPBACK_HOST, () => {
@@ -179,7 +180,6 @@ export class LoopbackTransport implements Transport {
         resolve()
       })
     })
-    const transport = new LoopbackTransport(nodeId, directory, server)
     const file = rendezvousFile(directory, nodeId)
     const partial = `${file}.partial`
     writeFileSync(partial, JSON.stringify({ host: LOOPBACK_HOST, port: transport.address.port }))

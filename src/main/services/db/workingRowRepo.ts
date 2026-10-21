@@ -343,6 +343,17 @@ export function removeCaseDependents(caseIds: string[]): void {
   ).run({ ids })
 }
 
+// This installation's rows on a Capture, live and tombstoned: its annotation layer, its pins
+// and its tag applications. Removed in place of tombstones on a Capture no other member can
+// hold (settleRowsOnDeletedCapture); every other author's rows and every note are left.
+export function removeOwnRowsOnCapture(id: string): void {
+  const db = getDb()
+  const own = 'author_installation_id IS NULL'
+  db.prepare(`DELETE FROM annotations WHERE capture_id = ? AND ${own}`).run(id)
+  db.prepare(`DELETE FROM annotation_pins WHERE capture_id = ? AND ${own}`).run(id)
+  db.prepare(`DELETE FROM exhibit_tags WHERE exhibit_id = ? AND ${own}`).run(id)
+}
+
 // This installation's live rows on a Capture: its annotation layer, its pins and its tag
 // applications. Notes are not among them: a note keeps its link to a deleted Capture.
 export function ownLiveRowsOnCapture(id: string): Array<{ table: SyncedTable; key: RowKey }> {

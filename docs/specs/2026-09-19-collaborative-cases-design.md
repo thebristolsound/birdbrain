@@ -239,7 +239,9 @@ creates that id without deleting it, and drops such a record once one does, so a
 sign another author's id as deleted. Since schema version 41 no foreign key checks the Capture or
 Exhibit that a note, annotation layer, pin or tag application names. The receiver checks it as each
 row is applied instead, so a received row on a Capture the copy neither holds nor records still
-rolls back the session's rows, and the next session retries. In a Case nobody shared, deleting a Capture removes
+rolls back the session's rows, and the next session retries. A legacy html Capture has no chain
+entry and never reaches another member, so deleting one removes this copy's own rows on it and
+records nothing: no peer could place a tombstone on it. In a Case nobody shared, deleting a Capture removes
 the rows on it and clears note links, as before.
 
 The investigation records join the working layer under an amendment the maintainer approved on

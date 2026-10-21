@@ -1034,6 +1034,17 @@ describe('working-layer rows (#1512)', () => {
   // Rows on a deleted Capture (#1877): another member's stay as signed, under
   // the Case they name, and this installation's own are tombstoned.
   describe('a deleted Capture of a Shared Case', () => {
+    // A Capture its chain anchors, as every Capture another member can hold is.
+    const chainedCapture = (): string =>
+      insertCapture({
+        caseId,
+        url: 'https://example.com',
+        title: 'Page',
+        hash: 'h'.repeat(64),
+        timestamp: '2026-10-01T00:00:00.000Z',
+        format: 'mhtml',
+        manifestIndex: 1
+      }).id
     const layer = (cap: string): RowFields => ({
       capture_id: cap,
       schema_version: 1,
@@ -1088,7 +1099,7 @@ describe('working-layer rows (#1512)', () => {
 
     it("deleteCapture in a Shared Case tombstones this installation's rows on it at one version and leaves another member's as signed", () => {
       share()
-      const cap = capture()
+      const cap = chainedCapture()
       const before = rowsOnCapture(cap)
       saveAnnotations({ captureId: cap, shapes: [], imageWidth: 9, imageHeight: 9 })
       const mine = upsertPin({ captureId: cap, body: 'my pin' })
@@ -1122,7 +1133,7 @@ describe('working-layer rows (#1512)', () => {
 
     it("offers and counts another member's rows on a deleted Capture under the Case it signed", () => {
       share()
-      const cap = capture()
+      const cap = chainedCapture()
       rowsOnCapture(cap)
       const cursor = maxAuthorVersionInCase(caseId, REMOTE_ID)
 
@@ -1153,6 +1164,29 @@ describe('working-layer rows (#1512)', () => {
       expect(readRow('annotation_pins', { id: 'remote-pin' }, REMOTE_ID)?.deletedAt).not.toBeNull()
     })
 
+    // Review finding on #1877: a legacy html Capture has no chain entry, so no peer holds it,
+    // and a tombstone or record of it could never be placed by any other copy.
+    it("removes this installation's rows on a Capture with no chain entry and records nothing", () => {
+      share()
+      const legacy = capture()
+      saveAnnotations({ captureId: legacy, shapes: [], imageWidth: 9, imageHeight: 9 })
+      upsertPin({ captureId: legacy, body: 'my pin' })
+      const tag = createTag({ name: 'mine' })
+      addTagToCapture({ captureId: legacy, tagId: tag.id })
+      getDb().prepare('UPDATE exhibit_tags SET row_signature = NULL').run()
+      const note = createNote({ caseId, captureId: legacy, title: 'Mine', body: '' })
+
+      expect(deleteCapture(legacy)).toBe(true)
+
+      for (const table of ['annotations', 'annotation_pins'] as const) {
+        expect(raw(table, 'capture_id = ?', legacy)).toBeUndefined()
+      }
+      expect(raw('exhibit_tags', 'exhibit_id = ?', legacy)).toBeUndefined()
+      expect(getDb().prepare('SELECT * FROM deleted_captures').all()).toEqual([])
+      expect(rowsOfAuthorSince(caseId, null, 0).filter((row) => row.table !== 'notes')).toEqual([])
+      expect(getNote(note.id)?.captureId).toBe(legacy)
+    })
+
     it('refuses a row naming a Capture recorded deleted in another Case', () => {
       share()
       const other = createCase({ name: 'Other' }).id
@@ -1164,7 +1198,9 @@ describe('working-layer rows (#1512)', () => {
         url: 'https://example.com/other',
         title: 'Other',
         hash: 'o'.repeat(64),
-        timestamp: '2026-10-01T00:00:00.000Z'
+        timestamp: '2026-10-01T00:00:00.000Z',
+        format: 'mhtml',
+        manifestIndex: 1
       }).id
       deleteCapture(elsewhere)
 

@@ -21,6 +21,7 @@ import {
   referenceOf,
   removeCaptureDependents,
   removeExhibitDependents,
+  removeOwnRowsOnCapture,
   signedColumns,
   writeRowSync,
   type RemoteRow,
@@ -152,11 +153,22 @@ export function deleteLocalRow(table: SyncedTable, key: RowKey): boolean {
 // on it are tombstoned at one version, so they travel as one group, and the
 // deletion is recorded; every other author's row, and every note, stays as
 // signed. In a Case nobody shared the rows go as the foreign keys took them.
-export function settleRowsOnDeletedCapture(captureId: string, caseId: string): void {
+// A Capture with no chain entry (`chained` false: a legacy html Capture) never
+// reaches another member, so no peer could place a tombstone or a record of
+// it: this installation's rows on it are removed and nothing is recorded.
+export function settleRowsOnDeletedCapture(
+  captureId: string,
+  caseId: string,
+  chained: boolean
+): void {
   withTransaction(() => {
     if (!isSharedCaseId(caseId)) {
       removeExhibitDependents(captureId)
       removeCaptureDependents(captureId)
+      return
+    }
+    if (!chained) {
+      removeOwnRowsOnCapture(captureId)
       return
     }
     const own = ownLiveRowsOnCapture(captureId)

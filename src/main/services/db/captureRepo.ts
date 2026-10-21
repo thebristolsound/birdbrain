@@ -277,7 +277,7 @@ export function deleteCapture(id: string): boolean {
     // its Case (#1877): in a Shared Case this installation's own are
     // tombstoned and every other author's stay as signed; in a Case nobody
     // shared they go, as the foreign keys took them before v41.
-    settleRowsOnDeletedCapture(id, capture.caseId)
+    settleRowsOnDeletedCapture(id, capture.caseId, capture.manifestIndex !== undefined)
     // `exhibits` hangs off `cases`, not off `captures`, so nothing cascades to
     // it when the capture row goes. Left behind, the row would put a phantom
     // Exhibit in the inventory.

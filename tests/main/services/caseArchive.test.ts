@@ -1485,6 +1485,24 @@ describe('caseArchive Derived Files (#1813)', () => {
     ])
   })
 
+  // The thumbnail backfill re-records a row lost to a kill against the latest
+  // entry for its file, so that is the one the source row names.
+  it('restores a row against the latest of two entries that sign the same bytes', async () => {
+    sign({ recordRow: false })
+    const { index } = sign()
+    await exportCaseArchive(caseId, archivePath)
+
+    const { newCaseId } = await importCaseArchive(archivePath)
+
+    const [row] = listCaptures(newCaseId)
+    const [restored] = listDerivedFilesForCase(newCaseId)
+    expect(restored.manifestSeq).toBe(index)
+    expect(restored.manifestSeq).toBe(listDerivedFilesForCase(caseId)[0].manifestSeq)
+    expect((await verifyCaseDerivedFiles(newCaseId)).get(row.id)).toEqual([
+      expect.objectContaining({ derivedFileId: restored.id, status: 'verified' })
+    ])
+  })
+
   // The row keeps its new id in the next archive while every entry still names
   // the source's, so the parent is found by the entry at the row's index.
   it("restores a renamed Capture's thumbnail again from an archive of that Case, on a fresh database", async () => {

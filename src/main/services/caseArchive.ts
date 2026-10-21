@@ -1028,7 +1028,8 @@ export async function importCaseArchive(
       const bytes = entries.get(name)
       if (!bytes) continue
       const hash = sha256(bytes)
-      const match = file.entries.find((entry) => entry.outputHash === hash)
+      // The latest entry for these bytes, which the backfill's re-record names.
+      const match = [...file.entries].reverse().find((entry) => entry.outputHash === hash)
       if (!match) continue
       const target = join(stagingDir, ...file.inCase.split('/'))
       if (existsSync(target)) {

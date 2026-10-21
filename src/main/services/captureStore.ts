@@ -439,11 +439,12 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
   ): void {
     const dir = stagedDir(caseId, captureId)
     const moved: Array<{ from: string; to: string }> = []
-    // Only a bare name: a restore moves each staged file back into the Case
-    // directory by its name.
+    // Only a file named bare: a restore moves each staged file back into the
+    // Case directory by its name, and `.` or a subdirectory is not a file.
     const also = alsoNames
       .filter((name) => name !== '' && name === basename(name) && !name.includes('..'))
       .map((name) => join(caseDir(caseId), name))
+      .filter((path) => existsSync(path) && statSync(path).isFile())
     try {
       for (const from of new Set([...ownedPaths(caseId, captureId), ...also])) {
         if (!existsSync(from)) continue

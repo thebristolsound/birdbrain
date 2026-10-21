@@ -46,8 +46,9 @@ export function TagEditorPopover({ captureId, open, onClose, anchorRef }: Props)
       await createTag(trimmed, color)
       setName('')
     } catch {
-      // Main refused a taken name (#811) or the write failed. The mutation cache
-      // toasts either; the name stays so the operator can change it.
+      // Main refused a taken name (#811) or the write failed. Either way the
+      // global mutation handler shows its generic failure toast, and the typed
+      // name stays so the operator can change it.
     }
   }
 

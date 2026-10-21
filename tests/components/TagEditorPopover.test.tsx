@@ -112,8 +112,7 @@ describe('TagEditorPopover palette', () => {
 })
 
 // The typed 'Create tag' input stays create-only (#811). Main decides whether
-// a name is taken, by the rule createTag holds, and the operator reads its
-// refusal.
+// a name is taken, by the rule createTag holds.
 describe('TagEditorPopover taken names', () => {
   it('creates a name that differs from a listed tag only in case', async () => {
     renderPopover()
@@ -126,23 +125,32 @@ describe('TagEditorPopover taken names', () => {
     )
   })
 
-  it("shows main's refusal of a taken name and keeps the typed name", async () => {
-    create.mockImplementation(async () => {
-      throw Object.assign(new Error('A tag named ‘ransomware’ already exists'), {
-        code: 'TAG_NAME_TAKEN'
-      })
-    })
-    renderPopover()
-    await screen.findByText('malware')
-    const input = screen.getByPlaceholderText('Create tag') as HTMLInputElement
-    fireEvent.change(input, { target: { value: 'ransomware' } })
-    fireEvent.click(screen.getByText('Add'))
+  // contextBridge copies a rejected Error with its message only, so main's
+  // TAG_NAME_TAKEN code never reaches the window (#1949).
+  it('keeps the typed name when main refuses a taken name, with the generic toast', async () => {
+    const unhandled = vi.fn()
+    process.on('unhandledRejection', unhandled)
+    try {
+      create.mockRejectedValue(new Error('A tag named ‘ransomware’ already exists'))
+      renderPopover()
+      await screen.findByText('malware')
+      const input = screen.getByPlaceholderText('Create tag') as HTMLInputElement
+      fireEvent.change(input, { target: { value: 'ransomware' } })
+      fireEvent.click(screen.getByText('Add'))
 
-    await waitFor(() =>
-      expect(notifyInfo).toHaveBeenCalledWith('A tag named ‘ransomware’ already exists')
-    )
-    expect(notifyError).not.toHaveBeenCalled()
-    expect(addToCapture).not.toHaveBeenCalled()
-    expect(input.value).toBe('ransomware')
+      await waitFor(() =>
+        expect(notifyError).toHaveBeenCalledWith(
+          "Couldn't create tag.",
+          expect.objectContaining({ code: 'mutation.failed' })
+        )
+      )
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(unhandled).not.toHaveBeenCalled()
+      expect(notifyInfo).not.toHaveBeenCalled()
+      expect(addToCapture).not.toHaveBeenCalled()
+      expect(input.value).toBe('ransomware')
+    } finally {
+      process.off('unhandledRejection', unhandled)
+    }
   })
 })

@@ -15,14 +15,6 @@ export function failureMessage(mutation: { options?: { meta?: unknown } }): stri
   return action ? `Couldn't ${action}.` : 'Something went wrong. Please try again.'
 }
 
-// Main refusing a request the operator can correct (#811). Its message says
-// what to change, so it is shown as is, with no bug-report action.
-export function correctableMessage(error: unknown): string | null {
-  if (!(error instanceof Error)) return null
-  const { code } = error as { code?: unknown }
-  return code === 'TAG_NAME_TAKEN' ? error.message : null
-}
-
 // networkMode 'always': every query and mutation is an IPC call to this
 // machine's main process, so the default 'online' mode would pause local reads
 // and saves whenever Chromium reports the network down (#1665).
@@ -40,11 +32,6 @@ export const queryClient = new QueryClient({
   },
   mutationCache: new MutationCache({
     onError: (error, _vars, _ctx, mutation) => {
-      const correctable = correctableMessage(error)
-      if (correctable) {
-        notify.info(correctable)
-        return
-      }
       notify.error(failureMessage(mutation), { code: 'mutation.failed', cause: error })
     }
   }),

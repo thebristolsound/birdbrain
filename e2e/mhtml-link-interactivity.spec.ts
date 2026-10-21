@@ -533,7 +533,10 @@ test.describe('stored-page viewer links', () => {
     })
     // The point is on the row just right-clicked, right of its link: inside the pane,
     // where the guest is on screen, and on no link.
-    await page.mouse.click(guestBox.x + ROW.x + 400, guestBox.y + rowY('public', 'main'))
+    await page.mouse.click(
+      guestBox.x + ROW.x + 400,
+      guestBox.y + rowY('public', 'main') - guestScroll
+    )
     await expect(menu).toHaveCount(0)
     const presses = await page.evaluate(() => {
       const wv = document.querySelector('[data-testid="mhtml-viewer"]') as Electron.WebviewTag

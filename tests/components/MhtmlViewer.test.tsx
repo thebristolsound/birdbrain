@@ -71,7 +71,7 @@ describe('MhtmlViewer', () => {
     expect(guest.getAttribute('allowpopups')).toBeNull()
   })
 
-  // Re-parenting the element under a scroll container is the kind of edit that can
+  // Re-parenting or re-keying the element is the kind of edit that can
   // quietly drop these listeners, so both are asserted against the element as mounted.
   // They are kept as a second layer only: this test is no evidence that a navigation
   // is blocked, because the main process's frame guard is what blocks it (#1708).

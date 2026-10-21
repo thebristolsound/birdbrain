@@ -306,6 +306,19 @@ export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx):
        author_installation_id, version, deleted_at, row_signature)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
+  // A link to a Capture the archive does not carry (one deleted from the Shared Case it was
+  // exported from keeps its link, #1877) is not covered by the collision remap, so it would
+  // cite whatever this installation holds under that id, now or after a later import. It gets
+  // an id nothing holds, one per archived id, and still reads as a deleted Capture.
+  const inCase = getDb().prepare('SELECT 1 FROM captures WHERE id = ? AND case_id = ?')
+  const relinked = new Map<string, string>()
+  const linkOf = (archived: string): string => {
+    const id = ctx.mapId(archived)
+    if (inCase.get(id, ctx.newCaseId) !== undefined) return id
+    const fresh = relinked.get(archived) ?? uuid()
+    relinked.set(archived, fresh)
+    return fresh
+  }
   for (const n of rows) {
     // Mention target ids are remapped BEFORE the document is parsed and
     // stored, the same way the anchor and the capture_id column are below:
@@ -356,14 +369,16 @@ export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx):
     // Ids embedded in the anchor go through the same remap as the capture_id
     // column below — an anchor left pointing at a pre-import id would cite
     // whatever already holds that id in this installation.
+    // An anchor naming the note's own Capture moves with the column.
+    const captureId = (n.capture_id as string | null | undefined) || null
     const anchor = resolveAnchor((n.anchor_json as string) ?? null, ctx.newCaseId, {
-      mapId: ctx.mapId
+      mapId: (id) => (id === captureId ? linkOf(id) : ctx.mapId(id))
     })
     const newId = ctx.mapId(n.id as string)
     insert.run(
       newId,
       ctx.newCaseId,
-      n.capture_id ? ctx.mapId(n.capture_id as string) : null,
+      captureId ? linkOf(captureId) : null,
       n.title ?? '',
       body,
       bodyDoc,

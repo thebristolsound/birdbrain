@@ -15,6 +15,7 @@ import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase, deleteCase } from '@main/services/db/caseRepo'
 import {
   deleteCapture,
+  getCapture,
   insertCapture,
   toggleFavorite,
   listCaptures,
@@ -916,9 +917,39 @@ describe('caseArchive import', () => {
 
     const { newCaseId } = await importCaseArchive(afterPath)
     const note = listNotes(newCaseId).find((n) => n.title === 'Note 1')!
-    expect(note.captureId).toBe(mhtmlCaptureId)
+    expect(note.captureId).toEqual(expect.any(String))
+    expect(note.captureId).not.toBe(mhtmlCaptureId)
+    expect(getCapture(note.captureId!)).toBeUndefined()
     expect(listCaptures(newCaseId).map((c) => c.id)).toEqual([legacyCaptureId])
   })
+
+  // Review finding on #1877: the collision remap covers only the ids an archive carries, so a
+  // kept link to a deleted Capture would cite whatever this installation holds under that id.
+  it.each([
+    ['an earlier archive is imported first', true],
+    ['an earlier archive is imported after it', false]
+  ])(
+    "an imported note's link to a deleted Capture names none of another Case's Captures when %s",
+    async (_, earlierFirst) => {
+      deleteInSharedCase()
+      // A Mention of the id is held to the Case on its own (assertMentionsInCase): with the
+      // earlier Case holding it, that note alone refuses the whole import.
+      getDb().prepare('DELETE FROM notes WHERE id = ?').run(mentionNoteId)
+      const afterPath = join(tempDir, 'after-deletion.birdbrain')
+      await exportCaseArchive(caseId, afterPath)
+      closeDatabase()
+      await initDatabase(':memory:')
+
+      const earlier = earlierFirst ? await importCaseArchive(archivePath) : undefined
+      const { newCaseId } = await importCaseArchive(afterPath)
+      const later = earlierFirst ? earlier! : await importCaseArchive(archivePath)
+
+      expect(getCapture(mhtmlCaptureId)?.caseId).toBe(later.newCaseId)
+      const note = listNotes(newCaseId).find((n) => n.title === 'Note 1')!
+      expect(note.captureId).not.toBe(mhtmlCaptureId)
+      expect(getCapture(note.captureId!)).toBeUndefined()
+    }
+  )
 
   it('refuses an archive whose annotations, pins or tag applications name a Capture it does not carry', async () => {
     const rows: Record<string, (data: Record<string, unknown>) => Record<string, unknown>> = {

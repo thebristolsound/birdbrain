@@ -241,7 +241,9 @@ Exhibit that a note, annotation layer, pin or tag application names. The receive
 row is applied instead, so a received row on a Capture the copy neither holds nor records still
 rolls back the session's rows, and the next session retries. A legacy html Capture has no chain
 entry and never reaches another member, so deleting one removes this copy's own rows on it and
-records nothing: no peer could place a tombstone on it. In a Case nobody shared, deleting a Capture removes
+records nothing: no peer could place a tombstone on it. A Case Archive carries a note's kept link
+but not the deleted Capture, so the import gives that link an id nothing holds, and the link
+never cites a Capture of another Case. In a Case nobody shared, deleting a Capture removes
 the rows on it and clears note links, as before.
 
 The investigation records join the working layer under an amendment the maintainer approved on

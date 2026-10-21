@@ -12,6 +12,7 @@ import { listSharedCaseIds } from '@main/services/db/caseRepo'
 import { deleteExhibit } from '@main/services/db/exhibitRepo'
 import {
   assertLiveReference,
+  danglingReferences,
   removeCaptureDependents,
   removeCaseDependents,
   removeExhibitDependents
@@ -537,6 +538,13 @@ export function checkIntegrity(): { ok: boolean; issues: string[] } {
     issues.push(
       `Foreign key violation in ${violation.table}, row ${violation.rowid ?? 'unknown'}, ` +
         `referencing ${violation.parent} (constraint ${violation.fkid}).`
+    )
+  }
+  // No key checks these columns since v41 (#1877), so foreign_key_check cannot see them.
+  for (const dangling of danglingReferences()) {
+    issues.push(
+      `Missing reference in ${dangling.table}, row ${dangling.rowid}, ` +
+        `referencing ${dangling.parent}.`
     )
   }
   return { ok: integrity.length > 0 && issues.length === 0, issues }

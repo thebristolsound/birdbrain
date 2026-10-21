@@ -76,6 +76,33 @@ describe('dbAdmin', () => {
         ]
       })
     })
+
+    // Review finding on #1877: the keys these columns lost were what foreign_key_check read.
+    it('reports an annotation layer, pin or tag application on a Capture neither held nor recorded', () => {
+      const db = getDb()
+      const tag = createTag({ name: 'Orphaned' })
+      db.prepare(
+        `INSERT INTO annotations (capture_id, schema_version, shapes_json, image_width,
+           image_height, updated_at) VALUES ('gone', 1, '[]', 1, 1, '2026-01-01T00:00:00.000Z')`
+      ).run()
+      db.prepare(
+        `INSERT INTO annotation_pins (id, capture_id, number, body, created_at, updated_at)
+         VALUES ('pin', 'gone', 1, '', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`
+      ).run()
+      db.prepare("INSERT INTO exhibit_tags (exhibit_id, tag_id) VALUES ('gone', ?)").run(tag.id)
+      const kept = createCase({ name: 'Shared' })
+      db.prepare('INSERT INTO deleted_captures (id, case_id) VALUES (?, ?)').run('kept', kept.id)
+      db.prepare("INSERT INTO exhibit_tags (exhibit_id, tag_id) VALUES ('kept', ?)").run(tag.id)
+
+      expect(checkIntegrity()).toEqual({
+        ok: false,
+        issues: [
+          'Missing reference in annotations, row 1, referencing captures.',
+          'Missing reference in annotation_pins, row 1, referencing captures.',
+          'Missing reference in exhibit_tags, row 1, referencing exhibits.'
+        ]
+      })
+    })
   })
 
   describe('getDbStats', () => {

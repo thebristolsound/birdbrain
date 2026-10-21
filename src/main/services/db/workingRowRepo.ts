@@ -288,6 +288,26 @@ export function referenceOf(table: SyncedTable, fields: RowFields): Reference | 
   return { noun, id, state: deletedCaptureCase(id) === undefined ? 'missing' : 'recorded' }
 }
 
+// Every annotation layer, pin and tag application whose Capture or Exhibit this database
+// neither holds nor records as deleted: what foreign_key_check reported for those columns
+// before v41 (#1877). Notes are left out: a note's link may name a Capture this database never
+// held, as an imported note's link to a deleted Capture does.
+export function danglingReferences(): Array<{ table: SyncedTable; rowid: number; parent: string }> {
+  const db = getDb()
+  return (['annotations', 'annotation_pins', 'exhibit_tags'] as const).flatMap((table) => {
+    const { column, parent } = SPECS[table].references!
+    const rows = db
+      .prepare(
+        `SELECT t.rowid AS rowid FROM ${table} t
+          WHERE NOT EXISTS (SELECT 1 FROM ${parent} p WHERE p.id = t.${column})
+            AND NOT EXISTS (SELECT 1 FROM deleted_captures d WHERE d.id = t.${column})
+          ORDER BY t.rowid`
+      )
+      .all() as Array<{ rowid: number }>
+    return rows.map(({ rowid }) => ({ table, rowid, parent }))
+  })
+}
+
 // The error a dropped key raised, with the code the IPC layer maps to "Referenced record
 // does not exist" (ipcWrap.ts), so a writer refused here reads as it did before v41.
 export function referenceError(detail: string): Error {

@@ -9,10 +9,12 @@ import { listCaseMembers, upsertCaseMember } from '@main/services/db/caseMemberR
 import { createNote, listNotes } from '@main/services/db/noteRepo'
 import {
   addTagToCapture,
+  addTagToCaptures,
   addTagToNote,
   createTag,
   getTagsForCapture,
-  getTagsForNote
+  getTagsForNote,
+  mergeTags
 } from '@main/services/db/tagRepo'
 import { getAnnotations, saveAnnotations, upsertPin } from '@main/services/annotations'
 import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
@@ -545,5 +547,59 @@ describe('older rows at first share (#1910)', () => {
     expect(listNotes(newCaseId).map((note) => note.title)).toEqual(['Alice 2 note'])
     expect(getTagsForCapture(fresh.captureId).map((tag) => tag.name)).toEqual(['Alice 2 tag'])
     expect(getAnnotations(fresh.captureId).pins.map((pin) => pin.body)).toEqual(['Alice 2 pin'])
+  })
+
+  // A tag from before row signing that no application in the Case named at its first share
+  // stays unsigned; applied in the Shared Case later, it would leave a member's copy with an
+  // application whose tag never arrives, and the deferred tag key would refuse every row of
+  // that session. Each apply path signs it with the application.
+  it('applying an unsigned tag of this installation in a Shared Case signs the tag, and a member receives the application', async () => {
+    await activate(A)
+    const { captureId } = await addCapture(caseId, A, 1)
+    const note = createNote({ caseId, title: 'Tagged later', body: 'body' })
+    const otherId = createCase({ name: 'Never shared' }).id
+    mkdirSync(caseDirOf(otherId), { recursive: true })
+    const { captureId: otherCapture } = await addCapture(otherId, A, 2)
+    const [onCapture, onNote, inBatch, mergedInto, elsewhere] = [
+      'On a capture',
+      'On a note',
+      'In a batch',
+      'Merged into',
+      'Elsewhere'
+    ].map((name) => createTag({ name }))
+    unsign(
+      [onCapture, onNote, inBatch, mergedInto, elsewhere].map(({ id }) => ({
+        table: 'tags' as const,
+        key: { id }
+      }))
+    )
+    await shareCase(caseId, { nodeId: `node-${A.name}` })
+    expectUnsigned([{ table: 'tags', key: { id: onCapture.id } }])
+    const source = createTag({ name: 'Merged away' })
+    addTagToNote({ noteId: note.id, tagId: source.id })
+
+    addTagToCapture({ captureId, tagId: onCapture.id })
+    addTagToNote({ noteId: note.id, tagId: onNote.id })
+    addTagToCaptures([captureId], inBatch.id)
+    mergeTags({ sourceId: source.id, targetId: mergedInto.id })
+    addTagToCapture({ captureId: otherCapture, tagId: elsewhere.id })
+
+    for (const tag of [onCapture, onNote, inBatch, mergedInto]) {
+      expectSignedBy(A, 'tags', { id: tag.id }, null)
+    }
+    expectUnsigned([{ table: 'tags', key: { id: elsewhere.id } }])
+
+    await addMember(caseId, memberOfB(B))
+    const roster = listCaseMembers(caseId)
+    const fromAlice = recordSource(caseId, A)
+    await activate(B)
+    seedSharedCase(caseId, A, [])
+    for (const member of roster) upsertCaseMember(member)
+    expect((await pull(caseId, fromAlice)).errors).toEqual([])
+    expect(getTagsForCapture(captureId).map((tag) => tag.name)).toEqual([
+      'In a batch',
+      'On a capture'
+    ])
+    expect(getTagsForNote(note.id).map((tag) => tag.name)).toEqual(['Merged into', 'On a note'])
   })
 })

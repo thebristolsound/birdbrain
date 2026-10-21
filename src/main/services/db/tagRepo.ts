@@ -41,8 +41,20 @@ export function getTag(id: string): Tag | undefined {
     .get(id) as Tag | undefined
 }
 
+// Thrown when createTag is asked for a name one of this installation's live
+// tags already holds (#811). createTag is create-only; a caller that means
+// "this tag, new or not" uses findOrCreateTagByName. The IPC handler
+// translates it to TAG_NAME_TAKEN.
+export class TagNameTakenError extends Error {
+  constructor(name: string) {
+    super(`A tag named ‘${name}’ already exists`)
+    this.name = 'TagNameTakenError'
+  }
+}
+
 export function createTag(params: CreateTagParams): Tag {
   return withTransaction(() => {
+    if (findTagIdByNameExact(params.name)) throw new TagNameTakenError(params.name)
     // A tag this installation deleted in a Shared Case keeps its name on its
     // tombstone, and the per-author name index would refuse a second row with
     // it. Naming it again restores that tag, with the colour now asked for.
@@ -259,10 +271,9 @@ export function removeTagFromCapture(params: CaptureTagParams): void {
 
 /**
  * Create-or-reuse by name (#391, ruling R15). `tags.name` is unique per author
- * and `createTag` is a bare INSERT of a local tag, so a caller that names an
- * existing local tag gets a constraint failure rather than the tag it asked
- * for (#811). Both lookups read this installation's tags only, the ones
- * `createTag` would collide with.
+ * and `createTag` is create-only, so a caller that names an existing local tag
+ * gets a TagNameTakenError rather than the tag it asked for (#811). Both
+ * lookups read this installation's tags only, the ones `createTag` refuses.
  *
  * The exact-name lookup runs before the case-insensitive one for the reason
  * PR #835's review gave for the extension path: `Evidence` and `evidence` can

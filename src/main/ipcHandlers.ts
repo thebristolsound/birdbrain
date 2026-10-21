@@ -536,7 +536,16 @@ export function registerIpcHandlers(deps: {
 
   // Tags
   handle(IPC_CHANNELS.TAGS_LIST, () => tagRepo.listTags())
-  handle(IPC_CHANNELS.TAGS_CREATE, (_, params: CreateTagParams) => tagRepo.createTag(params))
+  handle(IPC_CHANNELS.TAGS_CREATE, (_, params: CreateTagParams) => {
+    try {
+      return tagRepo.createTag(params)
+    } catch (err) {
+      if (err instanceof tagRepo.TagNameTakenError) {
+        throw new IpcFailure(err.message, 'TAG_NAME_TAKEN')
+      }
+      throw err
+    }
+  })
   handle(IPC_CHANNELS.TAGS_UPDATE, (_, params: UpdateTagParams) => tagRepo.updateTag(params))
   handle(IPC_CHANNELS.TAGS_DELETE, (_, id: string) => tagRepo.deleteTag(id))
   handle(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, (_, params: CaptureTagParams) => {

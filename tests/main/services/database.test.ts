@@ -36,7 +36,8 @@ import {
   addTagToCaptures,
   addTagToNote,
   getTagsForNote,
-  mergeTags
+  mergeTags,
+  TagNameTakenError
 } from '@main/services/db/tagRepo'
 import {
   getSelectorCoverage,
@@ -333,6 +334,19 @@ describe('database', () => {
       createTag({ name: 'reviewed' })
       const tags = listTags()
       expect(tags).toHaveLength(2)
+    })
+
+    it('refuses a name this installation already holds with TagNameTakenError (#811)', () => {
+      const original = createTag({ name: 'important', color: '#ff0000' })
+      expect(() => createTag({ name: 'important', color: '#00ff00' })).toThrow(TagNameTakenError)
+      expect(listTags()).toEqual([{ id: original.id, name: 'important', color: '#ff0000' }])
+    })
+
+    it('still creates a case-differing name, since tag names compare exactly (#811)', () => {
+      const lower = createTag({ name: 'important' })
+      const upper = createTag({ name: 'Important' })
+      expect(upper.id).not.toBe(lower.id)
+      expect(listTags()).toHaveLength(2)
     })
 
     it('updates a tag', () => {

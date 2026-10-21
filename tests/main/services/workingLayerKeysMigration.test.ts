@@ -179,7 +179,10 @@ describe('migration v39 (per-author working-layer keys)', () => {
   })
 
   it('makes a tag name unique per author, with the same case rule', () => {
-    expect(() => createTag({ name: 'Evidence' })).toThrow(/UNIQUE/)
+    // A raw INSERT, since createTag refuses a taken name before the index (#811).
+    expect(() =>
+      getDb().prepare("INSERT INTO tags (id, name) VALUES ('local-again', 'Evidence')").run()
+    ).toThrow(/UNIQUE/)
     insertRemoteTag('remote-evidence', 'Evidence')
     expect(() => insertRemoteTag('remote-again', 'Evidence')).toThrow(/UNIQUE/)
     insertRemoteTag('remote-lower', 'evidence')

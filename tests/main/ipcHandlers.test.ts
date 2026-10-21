@@ -432,11 +432,17 @@ describe('ipcHandlers — cases', () => {
   })
 
   it('translates a unique-constraint violation into a structured failure', async () => {
-    // Re-creating a case is fine, but duplicate tag names are constrained.
-    expectOk(await invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'dup', color: '#fff' }))
-    const res = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.TAGS_CREATE, {
-      name: 'dup',
-      color: '#000'
+    // The Database Admin writer is a bare INSERT, so a duplicate tag name
+    // reaches the UNIQUE index; tags:create refuses one first (#811).
+    expectOk(
+      await invoke(IPC_CHANNELS.DB_CREATE_ROW, {
+        table: 'tags',
+        data: { id: 'dup-1', name: 'dup', color: '#fff' }
+      })
+    )
+    const res = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.DB_CREATE_ROW, {
+      table: 'tags',
+      data: { id: 'dup-2', name: 'dup', color: '#000' }
     })
     expect(res.ok).toBe(false)
     expect(res.code).toBe('SQLITE_CONSTRAINT_UNIQUE')
@@ -1312,6 +1318,20 @@ describe('ipcHandlers — tags', () => {
 
     expectOk(await invoke(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, { captureId, tagId: tag.id }))
     expectOk(await invoke(IPC_CHANNELS.TAGS_DELETE, tag.id))
+  })
+
+  it('refuses a taken name on tags:create with TAG_NAME_TAKEN (#811)', async () => {
+    expectOk(await invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'dup', color: '#fff' }))
+    expect(await invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'dup', color: '#000' })).toEqual({
+      ok: false,
+      error: 'A tag named ‘dup’ already exists',
+      code: 'TAG_NAME_TAKEN'
+    })
+    const dups = expectOk<{ name: string; color?: string }[]>(
+      await invoke(IPC_CHANNELS.TAGS_LIST)
+    ).filter((t) => t.name === 'dup')
+    expect(dups).toHaveLength(1)
+    expect(dups[0].color).toBe('#fff')
   })
 
   // The batch picker's create path (#665). Driven at the boundary because the

@@ -155,9 +155,10 @@ export function deleteLocalRow(table: SyncedTable, key: RowKey): boolean {
 // deletion is recorded; every other author's row, and every note of a Shared
 // Case, stays as signed, and a note of a Case nobody shared loses its link.
 // In a Case nobody shared the rows go as the foreign keys took them.
-// A Capture with no chain entry (`chained` false: a legacy html Capture) never
-// reaches another member, so no peer could place a tombstone or a record of
-// it: this installation's rows on it are removed and nothing is recorded.
+// A Capture no other member reads (`chained` false: a legacy html Capture, or
+// one whose entry sits before this chain's `import`) never reaches another
+// member, so no peer could place a tombstone or a record of it: this
+// installation's rows on it are removed and nothing is recorded.
 export function settleRowsOnDeletedCapture(
   captureId: string,
   caseId: string,

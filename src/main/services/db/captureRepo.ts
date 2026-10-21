@@ -267,7 +267,11 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
   return getCapture(id)!
 }
 
-export function deleteCapture(id: string): boolean {
+// `chained` is whether other members can hold the Capture (#1877): its
+// `capture` entry is in the current segment of a chain they read. Only the
+// caller can read the chain; the default, a Capture with a chain entry, is
+// wrong for one this copy imported, whose entry sits before the `import`.
+export function deleteCapture(id: string, chained?: boolean): boolean {
   const d = getDb()
   const capture = getCapture(id)
   if (!capture) return false
@@ -277,7 +281,7 @@ export function deleteCapture(id: string): boolean {
     // its Case (#1877): in a Shared Case this installation's own are
     // tombstoned and every other author's stay as signed; in a Case nobody
     // shared they go, as the foreign keys took them before v41.
-    settleRowsOnDeletedCapture(id, capture.caseId, capture.manifestIndex !== undefined)
+    settleRowsOnDeletedCapture(id, capture.caseId, chained ?? capture.manifestIndex !== undefined)
     // `exhibits` hangs off `cases`, not off `captures`, so nothing cascades to
     // it when the capture row goes. Left behind, the row would put a phantom
     // Exhibit in the inventory.

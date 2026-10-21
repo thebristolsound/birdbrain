@@ -1,9 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync } from 'fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { closeDatabase, getDb } from '@main/services/db/core'
 import { listCaptures } from '@main/services/db/captureRepo'
+import { createCase } from '@main/services/db/caseRepo'
+import { listCaseMembers, upsertCaseMember } from '@main/services/db/caseMemberRepo'
+import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
+import { addMember, shareCase } from '@main/services/sharing/membership'
 import { createNote, deleteNote, getNote, listNotes, updateNote } from '@main/services/db/noteRepo'
 import {
   addTagToCapture,
@@ -30,6 +34,7 @@ import {
   activate,
   addCapture,
   appendOwnChainLine,
+  caseDirOf,
   createPeer,
   memberAddBody,
   pull,
@@ -320,6 +325,56 @@ describe('rows on a deleted Capture (#1877)', () => {
       served('notes', { id: second.id }, B, copy)
       expectHidden(bob)
     }
+  })
+
+  // An imported Capture's `capture` entry sits before the chain's `import`, where no member
+  // reads, so no peer holds it: deleting it removes this copy's rows on it, as for a legacy
+  // html Capture, rather than tombstoning rows no peer could place.
+  it('deleting an imported Capture of a Shared Case passes on nothing for it, and a member still syncs', async () => {
+    await activate(A)
+    const sourceId = createCase({ name: 'Before sharing' }).id
+    mkdirSync(caseDirOf(sourceId), { recursive: true })
+    await addCapture(sourceId, A, 1)
+    const archive = join(root, 'before-sharing.birdbrain')
+    await exportCaseArchive(sourceId, archive)
+    const { newCaseId } = await importCaseArchive(archive)
+    const [{ id: captureId }] = listCaptures(newCaseId)
+    saveAnnotations({ captureId, shapes: [], imageWidth: 800, imageHeight: 600 })
+    upsertPin({ captureId, body: 'Alice pin' })
+    const tag = createTag({ name: 'Alice tag' })
+    addTagToCapture({ captureId, tagId: tag.id })
+    await shareCase(newCaseId, { nodeId: `node-${A.name}` })
+    await addMember(newCaseId, {
+      installationId: B.installationId,
+      publicKeyPem: B.publicKeyPem,
+      operatorName: B.operatorName,
+      nodeId: `node-${B.name}`,
+      memberCode: B.memberCode
+    })
+    const roster = listCaseMembers(newCaseId)
+
+    expect(await lifecycle().delete(captureId)).toBe(true)
+
+    for (const { table, key } of [
+      { table: 'annotations', key: { capture_id: captureId } },
+      { table: 'exhibit_tags', key: { exhibit_id: captureId, tag_id: tag.id } }
+    ] as const) {
+      expect(readRow(table, key, null), table).toBeUndefined()
+    }
+    expect(
+      getDb().prepare('SELECT * FROM annotation_pins WHERE capture_id = ?').all(captureId)
+    ).toEqual([])
+    expect(deletedCaptures()).toEqual([])
+    const fromAlice = recordSource(newCaseId, A)
+    const named = [...fromAlice.rows.values()]
+      .flat()
+      .filter((row) => Object.values(row.fields).includes(captureId))
+    expect(named).toEqual([])
+
+    await activate(B)
+    seedSharedCase(newCaseId, A, [])
+    for (const member of roster) upsertCaseMember(member)
+    expect((await pull(newCaseId, fromAlice)).errors).toEqual([])
   })
 
   // Only the record is rebuilt. The deletion here is a v41 one with its record removed, so the

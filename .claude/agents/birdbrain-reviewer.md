@@ -169,8 +169,9 @@ You return **two products**, and confusing them is the most common failure of th
    decision does not belong in it.
 2. **The full report** — everything else: the reviewed commit id, the findings table with
    `file:line` and severity, failure scenarios, traces, what you could not check and why, the
-   non-blocking findings beyond the top 5. It goes in the same comment, collapsed under
-   `<details><summary>Full report</summary>`, written however is most effective; when it
+   non-blocking findings beyond the top 5. It goes in the same comment, collapsed under a
+   `<details>` line followed by a `<summary>Full report</summary>` line (the comment check
+   rejects both tags on one line), written however is most effective; when it
    exceeds GitHub's comment limit the block holds the table and a `Full report: <link>` line.
    It is the audit trail, not the interface, and it is never posted in the open.
 

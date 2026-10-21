@@ -22,8 +22,10 @@ const DISCLOSURE = [
   /^> \[!NOTE\]$/,
   /^> ([A-Z][\w.-]*( [A-Z][\w.-]*)? responding|Written by [\w.-]+( via [A-Z][\w.-]*( [A-Z][\w.-]*)*)?) on behalf of Matt\.$/
 ]
+// The trailer rule matches a trailer line, not the phrase: a review verdict reports the trailer
+// check by name.
 const FORBIDDEN = [
-  [/co-authored-by/i, 'a Co-authored-by trailer'],
+  [/^\s*co-authored-by:/im, 'a Co-authored-by trailer'],
   [/Generated (with|by) \[Claude Code\]/, 'the platform attribution footer'],
   [/Summary by CodeRabbit|coderabbitai/i, 'CodeRabbit text']
 ]

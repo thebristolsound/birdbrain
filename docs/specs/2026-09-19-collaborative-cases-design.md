@@ -234,16 +234,20 @@ Capture, as signed. The copy records the deleted Capture's id and Case in a loca
 syncs. Through that record the kept rows still name their Case: the copy hides them with the
 Capture, still serves them onward under their authors' signatures, and changes them only when each
 author's later write arrives. A copy that never held the Capture records the deletion from the
-author's chain before it asks for rows. It reads a chain as the author's only while no other chain
-creates that id without deleting it, and drops such a record once one does, so a member cannot
-sign another author's id as deleted. Since schema version 41 no foreign key checks the Capture or
-Exhibit that a note, annotation layer, pin or tag application names. The receiver checks it as each
-row is applied instead, so a received row on a Capture the copy neither holds nor records still
-rolls back the session's rows, and the next session retries. A legacy html Capture has no chain
-entry and never reaches another member, so deleting one removes this copy's own rows on it and
-records nothing: no peer could place a tombstone on it. A Case Archive carries a note's kept link
-but not the deleted Capture, so the import gives that link an id nothing holds, and the link
-never cites a Capture of another Case. In a Case nobody shared, deleting a Capture removes
+author's chain before it asks for rows. The id stays dead: no other chain's `capture` or `exhibit`
+entry removes the record or lands a row under the id, so the kept rows never show on another page.
+Entry acceptance has no rule across chains, so a copy cannot tell an author's entries from a
+member's copy of the author's id. A member who signs a `capture` and a `deletion` of another
+author's live id therefore keeps that Capture off every copy that has not landed it yet, in this
+Case or in another Shared Case that copy belongs to. That window is the one in which a member can
+already claim the id first, with the Capture's own files. Since schema version 41 no foreign key
+checks the Capture or Exhibit that a note, annotation layer, pin or tag application names. The
+receiver checks it as each row is applied instead, so a received row on a Capture the copy neither
+holds nor records still rolls back the session's rows, and the next session retries. A legacy html
+Capture has no chain entry and never reaches another member, so deleting one removes this copy's own
+rows on it and records nothing: no peer could place a tombstone on it. A Case Archive carries a
+note's kept link but not the deleted Capture, so the import gives that link an id nothing holds, and
+the link never cites a Capture of another Case. In a Case nobody shared, deleting a Capture removes
 the rows on it and clears note links, as before.
 
 The investigation records join the working layer under an amendment the maintainer approved on

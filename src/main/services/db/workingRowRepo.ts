@@ -246,21 +246,12 @@ export function recordDeletedCapture(id: string, caseId: string): void {
 
 // Records a deletion read from a chain (receivedEvidence.ts), for a Capture this database
 // never held or deleted before migration 41: `chainAuthor` is the member whose chain it was
-// read from, null for this installation's own. A record already there is kept.
+// read from, null for this installation's own. A record already there is kept, and no record
+// is ever removed except with its Case.
 export function recordChainDeletion(id: string, caseId: string, chainAuthor: string | null): void {
   getDb()
     .prepare('INSERT OR IGNORE INTO deleted_captures (id, case_id, chain_author) VALUES (?, ?, ?)')
     .run(id, caseId, chainAuthor)
-}
-
-// Removes a record read from another member's chain once another chain claims its id. A record
-// of a Capture this copy held, or of a deletion in its own chain, is kept.
-export function dropChainDeletion(id: string, caseId: string): void {
-  getDb()
-    .prepare(
-      'DELETE FROM deleted_captures WHERE id = ? AND case_id = ? AND chain_author IS NOT NULL'
-    )
-    .run(id, caseId)
 }
 
 export type ReferenceState = 'live' | 'recorded' | 'missing'

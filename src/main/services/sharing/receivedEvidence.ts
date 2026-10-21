@@ -18,11 +18,7 @@ import {
   listDerivedFilesForExhibit,
   type InsertDerivedFileParams
 } from '@main/services/db/derivedFileRepo'
-import {
-  deletedCaptureCase,
-  dropChainDeletion,
-  recordChainDeletion
-} from '@main/services/db/workingRowRepo'
+import { deletedCaptureCase, recordChainDeletion } from '@main/services/db/workingRowRepo'
 import { readChainFileSnapshots, readManifestSnapshot } from '@main/services/manifest'
 import { readMhtmlTitle } from '@main/services/mhtmlDecoder'
 import type { CaptureArtifactType, CaptureStore } from '@main/services/captureStore'
@@ -124,36 +120,29 @@ export async function applyReceivedEvidence(
   // chain and from this installation's own, recorded so the rows other members keep on it are
   // accepted rather than held back as rows on a Capture that has not arrived. The removals
   // above recorded the ones they made; a Capture this replica holds is not recorded here.
-  // Entry acceptance has no rule across chains, so a member could copy another author's id
-  // into a `capture` and a `deletion` of its own: a member chain's deletion is recorded only
-  // while no other chain claims the id, a `capture` or `exhibit` entry it does not delete, and
-  // such a record goes again once one does, so a chain held back from an earlier session
-  // cannot keep the author's Capture off this copy for good.
+  // A record is never dropped, whatever another chain claims. Entry acceptance has no rule
+  // across chains, so this copy cannot tell an author's `capture` and `deletion` from a
+  // member's copy of that author's id, nor a member's `capture` of a deleted id from the
+  // author's own. Letting a claim undo a record would attach the rows other members keep on
+  // the deleted Capture to the claimant's page. The cost of keeping it: a member's copied pair
+  // keeps a live Capture off a copy that has not landed it yet.
   const ownChain = currentSegment(
     storedEntries(readManifestSnapshot(join(storageRoot, caseId)).jsonl)
   )
-  const claims = [{ author: self, entries: ownChain }, ...chains].map(({ author, entries }) => {
-    const ids = (type: 'capture' | 'deletion'): Set<string> =>
-      new Set(
+  withTransaction(() => {
+    for (const { author, entries } of [{ author: self, entries: ownChain }, ...chains]) {
+      const created = new Set(
         entries.flatMap((e) => {
-          if (e.type === 'exhibit') return type === 'capture' ? [e.exhibitId] : []
-          return e.type === type ? [e.captureId] : []
+          if (e.type === 'exhibit') return [e.exhibitId]
+          return e.type === 'capture' ? [e.captureId] : []
         })
       )
-    return { author, created: ids('capture'), deleted: ids('deletion') }
-  })
-  const standing = (id: string): boolean =>
-    claims.some((c) => c.created.has(id) && !c.deleted.has(id))
-  withTransaction(() => {
-    for (const { author, created, deleted } of claims) {
-      for (const id of deleted) {
+      for (const entry of entries) {
+        if (entry.type !== 'deletion') continue
+        const id = entry.captureId
         if (!isExhibitId(id) || !created.has(id)) continue
         if (getExhibit(id) || captureRepo.getCapture(id)) continue
-        if (author === self) recordChainDeletion(id, caseId, null)
-        else if (!standing(id)) recordChainDeletion(id, caseId, author)
-      }
-      for (const id of created) {
-        if (!deleted.has(id)) dropChainDeletion(id, caseId)
+        recordChainDeletion(id, caseId, author === self ? null : author)
       }
     }
   })

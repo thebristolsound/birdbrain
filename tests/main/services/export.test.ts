@@ -2698,7 +2698,8 @@ describe('export', () => {
 
     // Review finding on #1877: the label follows whether any Case still holds the Capture, so a
     // kept link reads as deleted whichever deletion left it: a legacy html Capture of the Shared
-    // Case, or a Capture of a never-shared Case, whose deletion records nothing.
+    // Case, whose deletion this copy records, or a Capture of a never-shared Case, whose deletion
+    // records nothing. Only the second has no record to fall back on.
     it.each([
       [
         'a legacy html Capture of the Shared Case',

@@ -903,8 +903,8 @@ describe('caseArchive import', () => {
     ])
   })
 
-  // Acceptance audit on #1877: a release reading archive version 10 inserts a note's link under
-  // the key v41 dropped, so a link to a Capture the archive does not carry would refuse its
+  // Acceptance audit on #1877: a release at schema v40 inserts a note's link under the key v41
+  // dropped, so a link to a Capture the archive does not carry would refuse its
   // whole import. The archive writes the link empty and the database keeps it as signed.
   it('an archive of a Shared Case after a Capture deletion carries the notes linked to it, with the link empty, and none of the rows on it, and imports', async () => {
     deleteInSharedCase()

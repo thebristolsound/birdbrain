@@ -295,8 +295,8 @@ function rowToNote(row: Record<string, unknown>): Note {
 
 // A note's link to a Capture the archive does not carry, one deleted from a Shared Case (#1877)
 // or one of another Case, is written empty. Before schema v41 the key cleared a link to a
-// deleted Capture, so no archive carried one, and a release reading archive version 10 inserts
-// the column under that key and would refuse the whole import. The note's row in this database
+// deleted Capture, so no archive carried one, and a release at schema v40 inserts the column
+// under that key and would refuse the whole import. The note's row in this database
 // keeps its link as signed.
 export function collectNotesForCase(caseId: string): Record<string, unknown>[] {
   const db = getDb()

@@ -253,8 +253,8 @@ still records the deletion, which never leaves it, so the id stays dead here. A 
 a Capture still travels, among them a note that keeps its link, and a member that never held the
 Capture rolls back that session's rows, as above. A Case Archive
 carries neither the deleted Capture nor a note's link to it: the export writes that link empty, as
-every archive before schema version 41 did, so a release that reads Case Archive version 10 still
-imports the archive. The import clears any link to a Capture the archive does not carry, so no
+every archive before schema version 41 did, so a release at schema version 40 still imports the
+archive. The import clears any link to a Capture the archive does not carry, so no
 imported note's link names a Capture of another Case or one that no copy holds or records. The
 note's anchor and Mentions are only remapped, as before schema version 41, and can still name a
 Capture that no copy holds or records. In a Case nobody shared, deleting a Capture removes the rows

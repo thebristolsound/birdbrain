@@ -331,7 +331,7 @@ describe('rows on a deleted Capture (#1877)', () => {
   // reads, so no peer holds it: deleting it removes this copy's rows on it, as for a legacy
   // html Capture, rather than tombstoning rows no peer could place. The local record keeps its
   // id from the next import. A note linking it would still travel, and a member that never
-  // held it refuses that note; this fixture has none.
+  // held it rolls back that session's rows; this fixture has none.
   it('deleting an imported Capture of a Shared Case sends no row naming it, and keeps its id dead', async () => {
     await activate(A)
     const sourceId = createCase({ name: 'Before sharing' }).id

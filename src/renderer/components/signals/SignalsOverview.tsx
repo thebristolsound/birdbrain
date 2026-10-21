@@ -225,10 +225,10 @@ export function SignalsOverview() {
     refreshSelectors()
   }
 
-  // Checked here rather than left to main's TAG_NAME_TAKEN, which reaches the
-  // operator as the generic could-not-create toast with a bug-report action
-  // (#1549, the operator half of #811). A name a stale list missed still falls
-  // through to that toast.
+  // Checked here as well as in main (#1549): this refuses a listed name in any
+  // case, where main's TAG_NAME_TAKEN covers only an exact match among this
+  // installation's tags. A name a stale list missed reaches main, and the
+  // mutation cache shows its refusal as the same info toast (#811).
   function refuseTakenTagName(name: string, exceptId?: string): boolean {
     if (!findTagByName(tags, name, exceptId)) return false
     notify.info(`A tag named ‘${name}’ already exists`)

@@ -1491,6 +1491,35 @@ describe('caseArchive Derived Files (#1813)', () => {
     expect(readFileSync(manifest)).toEqual(before)
   })
 
+  // The row keeps its new id in the next archive while every entry still names
+  // the source's, so the parent is found by the entry at the row's index.
+  it("restores a renamed Capture's thumbnail again from an archive of that Case, on a fresh database", async () => {
+    sign()
+    await exportCaseArchive(caseId, archivePath)
+    const { newCaseId: renamedCaseId } = await importCaseArchive(archivePath)
+    const [renamed] = listCaptures(renamedCaseId)
+    const again = join(tempDir, 'again.birdbrain')
+    await exportCaseArchive(renamedCaseId, again)
+    expect(zipNames(again)).toContain(thumbName)
+    closeDatabase()
+    await initDatabase(':memory:')
+
+    const { newCaseId, report } = await importCaseArchive(again)
+
+    expect(report.verification.overallValid).toBe(true)
+    const [row] = listCaptures(newCaseId)
+    expect(row.id).toBe(renamed.id)
+    const [restored] = listDerivedFilesForCase(newCaseId)
+    expect(restored).toMatchObject({
+      exhibitId: row.id,
+      path: join(newCaseId, `${captureId}_thumb.jpg`)
+    })
+    expect(readFileSync(join(storageRoot, restored.path))).toEqual(thumbnail)
+    expect((await verifyCaseDerivedFiles(newCaseId)).get(row.id)).toEqual([
+      expect.objectContaining({ derivedFileId: restored.id, status: 'verified' })
+    ])
+  })
+
   it("deletes a renamed Capture's restored thumbnail with it, and the source's stays", async () => {
     const { outputPath } = sign()
     await exportCaseArchive(caseId, archivePath)

@@ -1001,8 +1001,10 @@ describe('exhibit model', () => {
       expect(listDerivedFilesForCase(newCaseId)[0].manifestSeq).toBe(index)
     })
 
-    it('signs under the row id on a Case imported twice, where the id map is one hop', async () => {
-      await ingestInto(caseId, {
+    // The second import's id map records the id the first rename left on the
+    // capture entry (#1813), so the entry still names the Capture as signed.
+    it('signs under the id its capture entry carries on a Case imported twice', async () => {
+      const capture = await ingestInto(caseId, {
         url: 'https://example.com/twice',
         title: 'Twice',
         timestamp: '2026-04-05T12:00:00.000Z',
@@ -1015,7 +1017,8 @@ describe('exhibit model', () => {
 
       expect(result.thumbnailsAnchored).toBe(1)
       const [entry] = manifestLines(twice.newCaseDir).filter((line) => line.type === 'derivation')
-      expect(entry.parentExhibitId).toBe(twice.row.id)
+      expect(twice.row.id).not.toBe(capture.id)
+      expect(entry.parentExhibitId).toBe(capture.id)
     })
 
     it('does nothing for a case with no captures', async () => {

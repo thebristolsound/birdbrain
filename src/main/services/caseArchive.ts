@@ -79,6 +79,7 @@ import {
   parseChainPath
 } from '../../packages/evidence-package-layout/index'
 import { resolveToolVersion } from '@main/services/toolVersion'
+import { resolveChainNames } from '@main/services/export'
 import { IMPORT_ID_MAP_FILENAME, MANIFEST_FILENAME } from '@shared/constants'
 import { ManifestEntrySchema, type ManifestEntry } from '@shared/schemas'
 import type {
@@ -463,12 +464,60 @@ function verifyArchiveChains(entries: Map<string, Buffer>, publicKeyPem: string)
 type DerivationEntry = Extract<ManifestEntry, { type: 'derivation' }>
 
 // One Derived File the archive's verified chains anchor: where it sits in the
-// Case, the Exhibit it was computed from, and every entry that names it (a
-// re-derivation appends another).
+// Case, the archive's row for the Exhibit it was computed from, and every entry
+// that names it (a re-derivation appends another).
 interface AnchoredDerivedFile {
   inCase: string
-  parentExhibitId: string
+  parentRowId: string
   entries: DerivationEntry[]
+}
+
+// Every entry of the archive's chains, or null unless they all verify: only
+// verified chains vouch (all or nothing, as the app's binding is).
+function verifiedLines(
+  { chain, shared }: ArchiveChains,
+  manifestText: string
+): Record<string, unknown>[] | null {
+  if (!chain.valid || (shared && !shared.valid)) return null
+  return [...readEntries(manifestText), ...[...(shared?.entries.values() ?? [])].flat()]
+}
+
+// The archive's Exhibit row for each id a signed entry may name it by: its own
+// id, and for a row an earlier import renamed, the id its entries still carry.
+// That id is read as a package names the row (`resolveChainNames`: the entry
+// at the row's index, over its bytes), since an archive carries no id map.
+function rowIdsBySignedId(
+  data: CaseArchiveData,
+  lines: Record<string, unknown>[]
+): Map<string, string> {
+  const captures = (
+    data.captures as Array<{ id: string; hash: string; manifest_index?: number | null }>
+  ).map(({ id, hash, manifest_index }) => ({
+    id,
+    hash,
+    manifestIndex: manifest_index ?? undefined
+  }))
+  const rows = (data.exhibits ?? []) as Array<{
+    id: string
+    kind: string
+    content_hash: string
+    manifest_seq?: number | null
+  }>
+  const exhibits = rows
+    .filter((row) => row.kind !== 'capture')
+    .map(({ id, content_hash, manifest_seq }) => ({
+      id,
+      contentHash: content_hash,
+      manifestSeq: manifest_seq ?? null
+    }))
+  const names = resolveChainNames(captures, exhibits, lines)
+  const byId = new Map(rows.map(({ id }): [string, string] => [id, id]))
+  // A resolved name is never another row's id, so no row is displaced.
+  for (const { id } of rows) {
+    const signed = names.get(id)?.id
+    if (signed !== undefined) byId.set(signed, id)
+  }
+  return byId
 }
 
 // The in-Case paths an import writes for its own files, lower-cased. A signed
@@ -509,20 +558,20 @@ function acceptedInCasePath(outputPath: string, owned: ReadonlySet<string>): str
 // export, inspect and import, so an exporter carries exactly what an importer
 // will restore and an honest archive never reads as holding an unclaimed file.
 //
-// Only verified chains vouch (all or nothing, as the app's binding is), and a
-// file is anchored when a `derivation` entry on them names a parent the archive
-// carries a row for, at a path the import may write. A path two parents claim,
-// or one spelt two ways, is refused whole: either reading could be the forgery.
+// A file is anchored when a `derivation` entry on verified chains names a
+// parent the archive carries a row for (`rowIdsBySignedId`), at a path the
+// import may write. A path two parents claim, or one spelt two ways, is refused
+// whole: either reading could be the forgery.
 function anchoredDerivedFiles(
-  { chain, shared }: ArchiveChains,
+  chains: ArchiveChains,
   manifestText: string,
   data: CaseArchiveData
 ): Map<string, AnchoredDerivedFile> {
   const anchored = new Map<string, AnchoredDerivedFile>()
-  if (!chain.valid || (shared && !shared.valid)) return anchored
-  const lines = [...readEntries(manifestText), ...[...(shared?.entries.values() ?? [])].flat()]
+  const lines = verifiedLines(chains, manifestText)
+  if (lines === null) return anchored
   const seen = new Set<string>()
-  const parents = new Set(((data.exhibits ?? []) as Array<{ id: string }>).map((row) => row.id))
+  const parentRows = rowIdsBySignedId(data, lines)
   const owned = ownedInCasePaths(data)
   const groups = new Map<
     string,
@@ -535,21 +584,23 @@ function anchoredDerivedFiles(
     if (!parsed.success || seen.has(parsed.data.entryHash)) continue
     seen.add(parsed.data.entryHash)
     const entry = parsed.data
-    if (entry.type !== 'derivation' || !parents.has(entry.parentExhibitId)) continue
+    if (entry.type !== 'derivation') continue
+    const parentRowId = parentRows.get(entry.parentExhibitId)
+    if (parentRowId === undefined) continue
     const inCase = acceptedInCasePath(entry.outputPath, owned)
     if (inCase === null) continue
     const key = inCase.toLowerCase()
     const group = groups.get(key) ?? { spellings: new Set(), parents: new Set(), entries: [] }
     group.spellings.add(inCase)
-    group.parents.add(entry.parentExhibitId)
+    group.parents.add(parentRowId)
     group.entries.push(entry)
     groups.set(key, group)
   }
   for (const { spellings, parents: named, entries } of groups.values()) {
     if (spellings.size !== 1 || named.size !== 1) continue
     const [inCase] = spellings
-    const [parentExhibitId] = named
-    anchored.set(`${DERIVED_FILES_PREFIX}${inCase}`, { inCase, parentExhibitId, entries })
+    const [parentRowId] = named
+    anchored.set(`${DERIVED_FILES_PREFIX}${inCase}`, { inCase, parentRowId, entries })
   }
   return anchored
 }
@@ -864,11 +915,9 @@ export async function importCaseArchive(
   // Restoration is decided from this read, the one the bytes come from.
   const archiveChains = verifyArchiveChains(entries, header.signingPublicKeyPem)
   const plan = planImportChains(entries, header, archiveChains)
-  const anchored = anchoredDerivedFiles(
-    archiveChains,
-    (entries.get(MANIFEST_FILENAME) ?? Buffer.alloc(0)).toString('utf-8'),
-    data
-  )
+  const manifestText = (entries.get(MANIFEST_FILENAME) ?? Buffer.alloc(0)).toString('utf-8')
+  const anchored = anchoredDerivedFiles(archiveChains, manifestText, data)
+  const lines = verifiedLines(archiveChains, manifestText)
 
   const newCaseId = randomUUID()
   const idMap: Record<string, string> = {}
@@ -902,8 +951,19 @@ export async function importCaseArchive(
   }
   const mapId = (id: string): string => idMap[id] ?? id
 
+  // A row an earlier import renamed keeps that id while its entries still name
+  // the one they were signed under. The map records that name beside this
+  // import's own renames, so the custody record binds those entries to the row
+  // (`entryDescribesRow`) as a package already names it (#1813).
+  const signedRenames = [...(lines === null ? [] : rowIdsBySignedId(data, lines))].filter(
+    ([signedId, rowId]) => signedId !== rowId && !Object.hasOwn(idMap, signedId)
+  )
+  const remapped = {
+    ...idMap,
+    ...Object.fromEntries(signedRenames.map(([signedId, rowId]) => [signedId, mapId(rowId)]))
+  }
   const { sourceCaseId } = plan
-  const idMapPayload = { sourceCaseId, caseId: newCaseId, remapped: idMap }
+  const idMapPayload = { sourceCaseId, caseId: newCaseId, remapped }
   const idMapSha256 = sha256(Buffer.from(canonicalStringify(idMapPayload), 'utf-8'))
 
   // Step 4: stage files + manifest + id-map into a side directory.
@@ -912,7 +972,7 @@ export async function importCaseArchive(
   const stagingDir = join(storageRoot, '.import-staging-' + randomUUID())
   mkdirSync(stagingDir, { recursive: true })
   // The Derived Files staged below, whose rows the transaction writes.
-  const restored: Array<{ inCase: string; match: DerivationEntry }> = []
+  const restored: Array<{ inCase: string; parentRowId: string; match: DerivationEntry }> = []
   // Where a non-Capture Exhibit's bytes land is the kind's subdirectory (X4),
   // read off the row the archive carries for it.
   const exhibitKinds = new Map(
@@ -978,7 +1038,7 @@ export async function importCaseArchive(
       }
       mkdirSync(dirname(target), { recursive: true })
       writeFileSync(target, bytes)
-      restored.push({ inCase: file.inCase, match })
+      restored.push({ inCase: file.inCase, parentRowId: file.parentRowId, match })
     }
 
     // Step 5: append the signed import entry to the STAGED manifest — it
@@ -1029,13 +1089,14 @@ export async function importCaseArchive(
     const exporterId = plan.fork?.exporterId ?? header.source.installationId
     withTransaction(() => {
       insertImportedRows(rows, newCaseId, mapId, exporterId)
-      // After the Exhibits, which derived_files has a foreign key onto. Every
+      // After the Exhibits, which derived_files has a foreign key onto. The
+      // parent is the row the entry names (`rowIdsBySignedId`), every other
       // column comes from the verified entry, and the path keeps the signed
       // file name even when the parent was renamed: binding and both package
       // verifiers look for the file under that name.
-      for (const { inCase, match } of restored) {
+      for (const { inCase, parentRowId, match } of restored) {
         insertDerivedFile({
-          exhibitId: mapId(match.parentExhibitId),
+          exhibitId: mapId(parentRowId),
           derivation: match.derivation,
           toolVersion: match.derivationToolVersion,
           contentHash: match.outputHash,

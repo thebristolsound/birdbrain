@@ -769,9 +769,10 @@ export function signedCaptureId(
 // anchors — an unanchored file in the case directory must not be able to point
 // a row at another capture's entry. Undefined (so the binding fails closed)
 // when this case did not arrive by import, when the file is absent or
-// unparseable, or when it does not hash to what the chain recorded. Note it
-// records ONE hop: the map for an earlier import is not carried in the archive,
-// so a row remapped before this case's own import stays unresolvable.
+// unparseable, or when it does not hash to what the chain recorded. The map
+// for an earlier import is not carried in the archive, so a row remapped before
+// this case's own import resolves only when the import could read the old id
+// off the entry at the row's index (#1813); any other such row stays unresolved.
 function readAnchoredIdMap(
   caseDir: string,
   caseId: string,

@@ -901,6 +901,38 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
     }
   )
 
+  // The renamed import archived again and imported on a third installation:
+  // the row keeps its new id there while every entry names the source's.
+  it.skipIf(!RUNS)(
+    'passes both shipped verifiers on a renamed import archived again and imported elsewhere',
+    async () => {
+      const { archive, original } = await backfilledArchive('Twice')
+      const { newCaseId: renamedCaseId } = await importCaseArchive(archive)
+      const [renamed] = listCaptures(renamedCaseId)
+      expect(renamed.id).not.toBe(original.captureId)
+
+      const newCaseId = await importAgain(renamedCaseId, 'third')
+      const [row] = listCaptures(newCaseId)
+      expect(row.id).toBe(renamed.id)
+      const [restored] = listDerivedFilesForCase(newCaseId)
+      expect(restored).toMatchObject({
+        exhibitId: row.id,
+        path: join(newCaseId, `${original.captureId}_thumb.jpg`)
+      })
+      const before = readFileSync(manifestPath(join(getStorageRoot(), newCaseId)))
+      const backfill = await backfillCase(newCaseId, { toolVersion: '0.1.0' })
+      expect(backfill.thumbnailsAnchored).toBe(0)
+      expect(readFileSync(manifestPath(join(getStorageRoot(), newCaseId)))).toEqual(before)
+
+      const dir = await exportPackage(newCaseId, 'twice')
+      expectInAppPass(dir)
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expect(run.output).toContain('verify.sh: PASS')
+      expect(run.output).toContain('1 derived file(s) bound to the signed chain')
+    }
+  )
+
   it.skipIf(!RUNS)(
     'passes both shipped verifiers on a Case imported from another installation that backfilled it',
     async () => {

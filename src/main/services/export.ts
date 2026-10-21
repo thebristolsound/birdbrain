@@ -397,10 +397,12 @@ export function getExportPreflight(caseId: string, captureIds?: string[]): Expor
  * outside the selection withholds the note on the same ground.
  *
  * An anchor or Mention naming a Capture the Case no longer holds is ignored
- * rather than treated as outside the selection. `notes.capture_id` is
- * `ON DELETE SET NULL` while `anchor_json` and `body_doc` are plain TEXT that
- * keep the deleted id, so a stale one is a dangling pointer, not a statement
- * about the selection.
+ * rather than treated as outside the selection. `anchor_json` and `body_doc`
+ * are plain TEXT that keep the deleted id, so a stale one is a dangling
+ * pointer, not a statement about the selection. `notes.capture_id` is
+ * cleared when its Capture goes, except in a Shared Case, where it keeps the
+ * deleted id as signed (#1877) and holds the note back as outside the
+ * selection, as a NULL one does.
  *
  * The predicate is a strict subset of both live candidate answers to
  * maintainer question 1 — read `capture_id`, or read either pointer — so every
@@ -1466,7 +1468,13 @@ function buildEvidenceZip(
   if (meta.notes !== null) {
     add(
       PACKAGE_ROOT_FILES.notes,
-      buildNotesMarkdown(data.caseName, data.exportTimestamp, meta.notes, data.selectionScope)
+      buildNotesMarkdown(
+        data.caseName,
+        data.exportTimestamp,
+        meta.notes,
+        data.selectionScope,
+        new Set(data.chainIdByCaptureId.values())
+      )
     )
   }
 
@@ -1771,7 +1779,13 @@ function buildWorkingCopyZip(
   if (meta.notes !== null) {
     add(
       PACKAGE_ROOT_FILES.notes,
-      buildNotesMarkdown(data.caseName, data.exportTimestamp, meta.notes, data.selectionScope)
+      buildNotesMarkdown(
+        data.caseName,
+        data.exportTimestamp,
+        meta.notes,
+        data.selectionScope,
+        new Set(data.chainIdByCaptureId.values())
+      )
     )
   }
 
@@ -1853,7 +1867,8 @@ export function buildNotesMarkdown(
   caseName: string,
   exportedAt: string,
   notes: Note[],
-  scope?: NotesSelectionScope | null
+  scope?: NotesSelectionScope | null,
+  packagedCaptureIds?: ReadonlySet<string>
 ): string {
   const oneLine = (s: string): string => s.replace(/\s+/g, ' ').trim()
   const head = [
@@ -1881,7 +1896,16 @@ export function buildNotesMarkdown(
     const facts = [
       `- Created: ${note.createdAt}`,
       `- Updated: ${note.updatedAt}`,
-      ...(note.captureId ? [`- Attached to capture: ${note.captureId}`] : []),
+      // A note in a Shared Case keeps its link to a deleted Capture (#1877),
+      // which the package does not carry; the line says so, as the screens do.
+      ...(note.captureId
+        ? [
+            `- Attached to capture: ${note.captureId}` +
+              (packagedCaptureIds && !packagedCaptureIds.has(note.captureId)
+                ? ' (deleted capture, not in this export)'
+                : '')
+          ]
+        : []),
       // The anchor is a second, independent pointer at a Capture, and the
       // selection scope reads it to withhold (#985), so a recipient has to be
       // able to see it: on a scoped package it is either a second selected

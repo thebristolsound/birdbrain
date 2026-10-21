@@ -3022,6 +3022,29 @@ describe('export', () => {
       expect(md).toContain('- Attached to capture: cap-1\n')
       expect(md).not.toContain('- Anchored to capture:')
     })
+
+    // Review finding on #1877: a note of a Shared Case keeps its link to a deleted Capture.
+    it('marks a link to a Capture the package does not carry as a deleted capture', () => {
+      const note = (id: string, captureId: string) => ({
+        id,
+        caseId: 'c1',
+        title: id,
+        body: '',
+        captureId,
+        createdAt: '2026-08-01T10:00:00.000Z',
+        updatedAt: '2026-08-02T11:00:00.000Z'
+      })
+      const md = buildNotesMarkdown(
+        'Case X',
+        '2026-08-24T00:00:00.000Z',
+        [note('kept', 'cap-1'), note('gone', 'cap-2')],
+        null,
+        new Set(['cap-1'])
+      )
+
+      expect(md).toContain('- Attached to capture: cap-1\n')
+      expect(md).toContain('- Attached to capture: cap-2 (deleted capture, not in this export)\n')
+    })
   })
 
   // #985: a selection-scoped export ships the notes attached to the selected

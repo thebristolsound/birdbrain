@@ -1234,6 +1234,45 @@ describe('dbAdmin', () => {
       expect(getDb().prepare('SELECT version FROM exhibit_tags').all()).toEqual([{ version: 0 }])
     })
 
+    it("deleteRow and cleanOrphans on a deleted Capture's id leave the rows a Shared Case keeps on it", () => {
+      const db = getDb()
+      const caseId = createCase({ name: 'Shared', description: '' }).id
+      db.prepare("UPDATE cases SET shared_at = '2026-10-01T00:00:00.000Z' WHERE id = ?").run(caseId)
+      db.prepare('INSERT INTO deleted_captures (id, case_id) VALUES (?, ?)').run('gone', caseId)
+      db.prepare(
+        `INSERT INTO annotations (capture_id, schema_version, shapes_json, image_width,
+           image_height, updated_at, author_installation_id)
+         VALUES ('gone', 1, '[]', 1, 1, '2026-01-01T00:00:00.000Z', 'r')`
+      ).run()
+      db.prepare(
+        `INSERT INTO annotation_pins (id, capture_id, number, body, created_at, updated_at,
+           author_installation_id)
+         VALUES ('pin', 'gone', 1, '', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 'r')`
+      ).run()
+      db.prepare(
+        "INSERT INTO tags (id, name, author_installation_id) VALUES ('rt', 'theirs', 'r')"
+      ).run()
+      db.prepare(
+        "INSERT INTO exhibit_tags (exhibit_id, tag_id, author_installation_id) VALUES ('gone', 'rt', 'r')"
+      ).run()
+
+      const expectKept = (): void => {
+        expect(count('annotations', 'capture_id', 'gone')).toBe(1)
+        expect(count('annotation_pins', 'capture_id', 'gone')).toBe(1)
+        expect(count('exhibit_tags', 'exhibit_id', 'gone')).toBe(1)
+      }
+
+      expect(deleteRow('captures', { id: 'gone' })).toBe(false)
+      expectKept()
+      expect(
+        cleanOrphans({
+          dbOrphans: [{ table: 'captures', id: 'gone', caseId, missingPaths: [] }],
+          fileOrphans: []
+        }).dbRecordsRemoved
+      ).toBe(0)
+      expectKept()
+    })
+
     it('createRow and updateRow refuse a notes.capture_id or exhibit_tags.exhibit_id that names no row', () => {
       const caseId = createCase({ name: 'Local', description: '' }).id
       const { captureId, noteId } = captureWithRows(caseId, 1)

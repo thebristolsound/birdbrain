@@ -13,6 +13,7 @@ import { deleteExhibit } from '@main/services/db/exhibitRepo'
 import {
   assertLiveReference,
   danglingReferences,
+  deletedCaptureCase,
   removeCaptureDependents,
   removeCaseDependents,
   removeExhibitDependents
@@ -508,7 +509,10 @@ export function deleteRow(table: string, pk: Record<string, string>): boolean {
   const { where: whereClauses, values } = keyPredicate(pk)
   const stored = db.prepare(`SELECT * FROM "${table}" WHERE ${whereClauses}`).get(...values) as
     Record<string, unknown> | undefined
-  if (stored) assertNotSharedCaseRow(table, stored)
+  // No row, nothing to delete. The dependents below are left alone too: the id
+  // can name a Capture deleted from a Shared Case, whose kept rows stay (#1877).
+  if (!stored) return false
+  assertNotSharedCaseRow(table, stored)
 
   const run = db.transaction(() => {
     // What the keys cascaded before v41 (#1877). A Shared Case's rows were
@@ -764,6 +768,8 @@ export function cleanOrphans(report: OrphanReport): {
     const stored = db.prepare('SELECT case_id FROM captures WHERE id = ?').get(orphan.id) as
       { case_id: string } | undefined
     if (stored && inSharedCase.get({ case_id: stored.case_id }) !== undefined) continue
+    // A Capture deleted from a Shared Case: the rows other members keep on it stay (#1877).
+    if (deletedCaptureCase(orphan.id) !== undefined) continue
     const run = db.transaction(() => {
       // The Exhibit row goes with the Capture row: `exhibits` hangs off
       // `cases`, so nothing cascades to it, and a row left behind would list a

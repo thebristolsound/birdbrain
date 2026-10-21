@@ -322,15 +322,32 @@ export function removeCaptureDependents(id: string): void {
   db.prepare('UPDATE notes SET capture_id = NULL WHERE capture_id = ?').run(id)
 }
 
+// A note of a Case nobody shared that links a Capture of another Case (Settings > Database can
+// move one) loses the link when that Capture goes, as SET NULL cleared it before v41. A note of
+// a Shared Case keeps its link as signed.
+const UNSHARED_NOTE = 'case_id IN (SELECT id FROM cases WHERE shared_at IS NULL)'
+
+export function clearUnsharedNoteLinks(id: string): void {
+  getDb()
+    .prepare(`UPDATE notes SET capture_id = NULL WHERE capture_id = ? AND ${UNSHARED_NOTE}`)
+    .run(id)
+}
+
 // Before whole Cases are deleted: the annotation layers, pins and tag applications on their
-// Captures, Exhibits and deleted Captures, every author's. Nothing cascades to them from
-// `cases` since v41; notes and the records still go by their own case_id keys.
+// Captures, Exhibits and deleted Captures, every author's, and the links to their Captures
+// from notes of other Cases nobody shared. Nothing cascades to them from `cases` since v41;
+// the Cases' own notes and records still go by their own case_id keys.
 export function removeCaseDependents(caseIds: string[]): void {
   if (caseIds.length === 0) return
   const db = getDb()
   const ids = JSON.stringify(caseIds)
   const inCases = 'case_id IN (SELECT value FROM json_each(@ids))'
   const deleted = `SELECT id FROM deleted_captures WHERE ${inCases}`
+  db.prepare(
+    `UPDATE notes SET capture_id = NULL
+      WHERE capture_id IN (SELECT id FROM captures WHERE ${inCases})
+        AND NOT ${inCases} AND ${UNSHARED_NOTE}`
+  ).run({ ids })
   for (const table of ['annotations', 'annotation_pins']) {
     db.prepare(
       `DELETE FROM ${table}

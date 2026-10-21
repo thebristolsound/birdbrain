@@ -2212,6 +2212,42 @@ describe('database', () => {
       expect(countOn('exhibit_tags', 'exhibit_id', other.captureId)).toBe(2)
     })
 
+    // Review finding on #1877: SET NULL cleared a link from any Case, and Settings > Database
+    // can move a note to another Case while it keeps its link.
+    it('deleting a Case, or a Capture of a Shared Case, clears the link from a note of another Case nobody shared', () => {
+      const linked = (from: string, captureId: string): string => {
+        const note = createNote({ caseId: from, captureId, title: 'Moved', body: '' })
+        getDb()
+          .prepare('UPDATE notes SET case_id = ? WHERE id = ?')
+          .run(createCase({ name: 'Elsewhere' }).id, note.id)
+        return note.id
+      }
+      const gone = createCase({ name: 'Gone' })
+      const fromGone = linked(gone.id, captureWithRows(gone.id, 1).captureId)
+      const shared = createCase({ name: 'Shared' })
+      const sharedCapture = insertCapture({
+        caseId: shared.id,
+        url: 'https://example.com/shared',
+        title: 'Shared',
+        hash: 's'.repeat(64),
+        timestamp: '2026-01-01T00:00:00.000Z',
+        format: 'mhtml',
+        manifestIndex: 1
+      }).id
+      const fromShared = linked(shared.id, sharedCapture)
+      const ownNote = createNote({ caseId: shared.id, captureId: sharedCapture, title: 'Own' })
+      getDb()
+        .prepare("UPDATE cases SET shared_at = '2026-10-01T00:00:00.000Z' WHERE id = ?")
+        .run(shared.id)
+
+      deleteCase(gone.id)
+      expect(deleteCapture(sharedCapture)).toBe(true)
+
+      expect(getNote(fromGone)?.captureId).toBeUndefined()
+      expect(getNote(fromShared)?.captureId).toBeUndefined()
+      expect(getNote(ownNote.id)?.captureId).toBe(sharedCapture)
+    })
+
     it('deleting a Case, purging archived Cases, or deleting a Case row in Settings > Database leaves no annotation, pin or tag application behind', () => {
       const removed = ['deleteCase', 'purgeArchived', 'deleteRow'].map((path, n) => {
         const c = createCase({ name: path })

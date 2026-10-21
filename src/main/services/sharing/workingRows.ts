@@ -8,6 +8,7 @@ import {
   CURSOR_FREE_TABLES,
   applyRows,
   caseOfRow,
+  clearUnsharedNoteLinks,
   hardDeleteLocalRow,
   isInSharedCase,
   isSharedCaseId,
@@ -151,8 +152,9 @@ export function deleteLocalRow(table: SyncedTable, key: RowKey): boolean {
 // Case, on the author's copy and on a copy applying the author's deletion
 // alike, this installation's own annotation layer, pins and tag applications
 // on it are tombstoned at one version, so they travel as one group, and the
-// deletion is recorded; every other author's row, and every note, stays as
-// signed. In a Case nobody shared the rows go as the foreign keys took them.
+// deletion is recorded; every other author's row, and every note of a Shared
+// Case, stays as signed, and a note of a Case nobody shared loses its link.
+// In a Case nobody shared the rows go as the foreign keys took them.
 // A Capture with no chain entry (`chained` false: a legacy html Capture) never
 // reaches another member, so no peer could place a tombstone or a record of
 // it: this installation's rows on it are removed and nothing is recorded.
@@ -167,6 +169,7 @@ export function settleRowsOnDeletedCapture(
       removeCaptureDependents(captureId)
       return
     }
+    clearUnsharedNoteLinks(captureId)
     if (!chained) {
       removeOwnRowsOnCapture(captureId)
       return

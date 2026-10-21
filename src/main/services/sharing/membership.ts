@@ -25,6 +25,7 @@ import {
   writeRosterFiles
 } from '@main/services/sharing/rosterCache'
 import { storedEntries } from '@main/services/sharing/entryAcceptance'
+import { signOwnUnsignedRows } from '@main/services/sharing/workingRows'
 import { isChainInstallationId } from '../../../packages/evidence-package-layout/index'
 
 // The roster writers (#1810): the entries only the Owner writes, through the
@@ -70,6 +71,25 @@ function ownerMemberAdd(entries: ManifestEntry[]): MemberAddEntry | undefined {
   return currentSegment(entries).find(
     (e): e is MemberAddEntry => e.type === 'member-add' && e.role === 'owner'
   )
+}
+
+// The Captures and Exhibits a member's copy can hold: those the chain's current segment
+// creates, the entries a member reads (receivedEvidence.ts). One whose entry sits before the
+// last `import`, or a legacy html Capture with none, never reaches a member.
+function heldByMembers(entries: ManifestEntry[]): (id: string) => boolean {
+  const ids = new Set(
+    currentSegment(entries).flatMap((e) => {
+      if (e.type === 'capture') return [e.captureId]
+      return e.type === 'exhibit' ? [e.exhibitId] : []
+    })
+  )
+  return (id) => ids.has(id)
+}
+
+// The Owner's rows of the Case written before rows were signed (#1910), signed in the
+// transaction that marks the Case shared.
+function signOlderRows(caseId: string, caseDir: string): void {
+  signOwnUnsignedRows(caseId, heldByMembers(ownEntries(caseDir)))
 }
 
 function samePem(a: string, b: string): boolean {
@@ -145,6 +165,8 @@ export interface ShareCaseOptions {
 // `member-add` and sets `shared_at` and `owner_installation_id`. A Case
 // whose chain already holds the Owner's `member-add` gets nothing appended;
 // a row left unset by a crash between the append and the row write is set.
+// Whichever call sets `shared_at` also signs the Owner's unsigned rows of the
+// Case in the same transaction (#1910); a later invite signs nothing.
 export async function shareCase(caseId: string, options: ShareCaseOptions): Promise<CaseMember> {
   const row = caseOrThrow(caseId)
   const self = getInstallationId()
@@ -159,7 +181,7 @@ export async function shareCase(caseId: string, options: ShareCaseOptions): Prom
   if (existing !== undefined) {
     if (existing.memberInstallationId !== self) throw new SharingError('not-owner')
     withTransaction(() => {
-      markCaseShared(caseId, self)
+      if (markCaseShared(caseId, self)) signOlderRows(caseId, caseDir)
       applyRosterEntries(caseId, ownEntries(caseDir))
     })
     writeRosterFiles({ caseId, caseDir, ownerEntries: ownEntries(caseDir), self })
@@ -182,7 +204,10 @@ export async function shareCase(caseId: string, options: ShareCaseOptions): Prom
       role: 'owner',
       ...stamp(self, operatorName)
     },
-    () => markCaseShared(caseId, self)
+    () => {
+      markCaseShared(caseId, self)
+      signOlderRows(caseId, caseDir)
+    }
   )
   return listCaseMembers(caseId).find((m) => m.installationId === self)!
 }

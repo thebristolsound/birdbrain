@@ -52,13 +52,15 @@ export function createCase(params: CreateCaseParams): Case {
 // Marks a Case shared, once (#1810). The Owner's own `member-add` is the
 // record; these two columns are the cache the Shared Case rules read
 // (`listSharedCaseIds`, the Database Admin refusal, row signing). A Case
-// already marked keeps its first `shared_at`.
-export function markCaseShared(caseId: string, ownerInstallationId: string): void {
-  getDb()
-    .prepare(
-      'UPDATE cases SET shared_at = ?, owner_installation_id = ? WHERE id = ? AND shared_at IS NULL'
-    )
-    .run(new Date().toISOString(), ownerInstallationId, caseId)
+// already marked keeps its first `shared_at`. True when this call marked it.
+export function markCaseShared(caseId: string, ownerInstallationId: string): boolean {
+  return (
+    getDb()
+      .prepare(
+        'UPDATE cases SET shared_at = ?, owner_installation_id = ? WHERE id = ? AND shared_at IS NULL'
+      )
+      .run(new Date().toISOString(), ownerInstallationId, caseId).changes > 0
+  )
 }
 
 // The Case a joiner creates from the Owner's `welcome` (#1810): under the

@@ -16,6 +16,7 @@ import {
   maxLocalVersion,
   noteReferencedCases,
   ownLiveRowsOnCapture,
+  ownUnsignedRowsInCase,
   readRow,
   recordDeletedCapture,
   referenceError,
@@ -78,9 +79,14 @@ export function rowDigest(envelope: RowEnvelope): string {
 // peer already holds. The mark is raised before the row is written: a mark
 // above the rows loses nothing, a mark below them would.
 export function allocateLocalVersion(): number {
-  const version = Math.max(maxLocalVersion(), localVersionHighWater()) + 1
-  recordLocalVersion(version)
-  return version
+  return allocateLocalVersions(1)
+}
+
+// `count` consecutive versions, the first returned, with the mark raised once to the last.
+export function allocateLocalVersions(count: number): number {
+  const first = Math.max(maxLocalVersion(), localVersionHighWater()) + 1
+  recordLocalVersion(first + count - 1)
+  return first
 }
 
 export interface SignOptions {
@@ -183,6 +189,25 @@ export function settleRowsOnDeletedCapture(
       }
     }
     recordDeletedCapture(captureId, caseId)
+  })
+}
+
+// The Owner's rows a Case held before rows were signed (#1910, ruling of 21 October 2026),
+// signed when the Case is first shared, inside the transaction that marks it shared, so the
+// first sync offers them. Each row takes its own version, so the backlog pages like any other
+// writes, and each is checked as a new write is (signLocalRow), which refuses a live row on a
+// Capture recorded as deleted (#1877). A row that needs a Capture or Exhibit no member can
+// hold (`membersHold` false) stays local and unsigned: a member's copy would refuse it and,
+// with it, every row of that session. Returns the number of rows signed.
+export function signOwnUnsignedRows(caseId: string, membersHold: (id: string) => boolean): number {
+  return withTransaction(() => {
+    const rows = ownUnsignedRowsInCase(caseId).filter(
+      ({ needs }) => needs === null || membersHold(needs)
+    )
+    if (rows.length === 0) return 0
+    const first = allocateLocalVersions(rows.length)
+    rows.forEach(({ table, key }, i) => signLocalRow(table, key, { version: first + i }))
+    return rows.length
   })
 }
 

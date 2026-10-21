@@ -1,4 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { copyFileSync, mkdtempSync, rmSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import Database from 'better-sqlite3'
 import { initDatabase, closeDatabase, getDb, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
 import {
   listCases,
@@ -67,6 +71,62 @@ import {
   deleteExtractedDataForCapture
 } from '@main/services/db/extractedDataRepo'
 import { SELECTOR_ORIGINS, type SelectorOrigin } from '@shared/types'
+import { saveAnnotations, upsertPin } from '@main/services/annotations'
+import { deleteRow, purgeArchived } from '@main/services/db/dbAdmin'
+import { windBackToV40 } from '../../helpers/windBackToV40'
+
+const REMOTE = 'installation-remote-0001'
+
+// Another author's annotation layer, pin, tag application and linked note on a
+// Capture, as an archive import leaves them in a Case nobody shared, written
+// raw because no app path writes another author's row outside a sync.
+function seedRemoteRowsOn(captureId: string, caseId: string, tagId: string): void {
+  const db = getDb()
+  db.prepare(
+    `INSERT INTO annotations (capture_id, schema_version, shapes_json, image_width, image_height,
+       updated_at, author_installation_id, version)
+     VALUES (?, 1, '[]', 1, 1, '2026-01-01T00:00:00.000Z', ?, 3)`
+  ).run(captureId, REMOTE)
+  db.prepare(
+    `INSERT INTO annotation_pins (id, capture_id, number, body, created_at, updated_at,
+       author_installation_id, version)
+     VALUES (?, ?, 1, 'theirs', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', ?, 4)`
+  ).run(`remote-pin-${captureId}`, captureId, REMOTE)
+  db.prepare(
+    `INSERT INTO exhibit_tags (exhibit_id, tag_id, author_installation_id, version)
+     VALUES (?, ?, ?, 5)`
+  ).run(captureId, tagId, REMOTE)
+  db.prepare(
+    `INSERT INTO notes (id, case_id, capture_id, title, body, created_at, updated_at,
+       author_installation_id, version)
+     VALUES (?, ?, ?, 'Theirs', '', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', ?, 6)`
+  ).run(`remote-note-${captureId}`, caseId, captureId, REMOTE)
+}
+
+// This installation's and another author's rows on a new Capture of a Case.
+function captureWithRows(caseId: string, n: number): { captureId: string; tagId: string } {
+  const captureId = insertCapture({
+    caseId,
+    url: `https://example.com/${n}`,
+    title: `Page ${n}`,
+    hash: String(n).repeat(64),
+    timestamp: '2026-01-01T00:00:00.000Z'
+  }).id
+  const tagId = createTag({ name: `Tag ${n}` }).id
+  saveAnnotations({ captureId, shapes: [], imageWidth: 2, imageHeight: 2 })
+  upsertPin({ captureId, body: 'mine' })
+  addTagToCapture({ captureId, tagId })
+  createNote({ caseId, captureId, title: 'Mine', body: '' })
+  seedRemoteRowsOn(captureId, caseId, tagId)
+  return { captureId, tagId }
+}
+
+const countOn = (table: string, column: string, id: string): number =>
+  (
+    getDb().prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${column} = ?`).get(id) as {
+      n: number
+    }
+  ).n
 
 describe('database', () => {
   beforeEach(async () => {
@@ -2115,5 +2175,141 @@ describe('database', () => {
       const entry = pending.find((c) => c.id === pendingId)
       expect(entry).toMatchObject({ caseId, hash: 'h-pending' })
     })
+  })
+
+  // A Case nobody shared deletes a Capture's rows exactly as the keys did
+  // before v41 (#1877), now in application code.
+  describe('rows on a deleted Capture, in a Case never shared (#1877)', () => {
+    it('createNote refuses a captureId this database does not hold', () => {
+      const c = createCase({ name: 'Case' })
+      expect(() => createNote({ caseId: c.id, captureId: 'no-such-capture', title: 'N' })).toThrow(
+        /FOREIGN KEY constraint failed/
+      )
+      expect(listNotes(c.id)).toEqual([])
+    })
+
+    it("deleting a Capture removes every author's annotation layer, pins and tag applications on it and clears every note's link", () => {
+      const c = createCase({ name: 'Case' })
+      const { captureId } = captureWithRows(c.id, 1)
+      const other = captureWithRows(c.id, 2)
+
+      expect(deleteCapture(captureId)).toBe(true)
+
+      expect(countOn('annotations', 'capture_id', captureId)).toBe(0)
+      expect(countOn('annotation_pins', 'capture_id', captureId)).toBe(0)
+      expect(countOn('exhibit_tags', 'exhibit_id', captureId)).toBe(0)
+      expect(countOn('notes', 'capture_id', captureId)).toBe(0)
+      expect(
+        (
+          getDb()
+            .prepare('SELECT title FROM notes WHERE capture_id IS NULL ORDER BY title')
+            .all() as Array<{ title: string }>
+        ).map((n) => n.title)
+      ).toEqual(['Mine', 'Theirs'])
+      expect(getDb().prepare('SELECT * FROM deleted_captures').all()).toEqual([])
+      // The other Capture keeps its rows.
+      expect(countOn('annotations', 'capture_id', other.captureId)).toBe(2)
+      expect(countOn('exhibit_tags', 'exhibit_id', other.captureId)).toBe(2)
+    })
+
+    it('deleting a Case, purging archived Cases, or deleting a Case row in Settings > Database leaves no annotation, pin or tag application behind', () => {
+      const removed = ['deleteCase', 'purgeArchived', 'deleteRow'].map((path, n) => {
+        const c = createCase({ name: path })
+        return { path, caseId: c.id, ...captureWithRows(c.id, n + 1) }
+      })
+      const kept = captureWithRows(createCase({ name: 'Kept' }).id, 9)
+      // A Shared Case holding another member's rows kept on a deleted Capture,
+      // written last: a local write signs, which reads a Shared Case's state.
+      const shared = createCase({ name: 'Shared' })
+      const tag = createTag({ name: 'Shared tag' }).id
+      getDb()
+        .prepare("UPDATE cases SET shared_at = '2026-10-01T00:00:00.000Z' WHERE id = ?")
+        .run(shared.id)
+      getDb()
+        .prepare('INSERT INTO deleted_captures (id, case_id) VALUES (?, ?)')
+        .run('deleted-capture', shared.id)
+      seedRemoteRowsOn('deleted-capture', shared.id, tag)
+
+      deleteCase(removed[0].caseId)
+      updateCase({ id: removed[1].caseId, archived: true })
+      expect(purgeArchived().casesDeleted).toBe(1)
+      expect(deleteRow('cases', { id: removed[2].caseId })).toBe(true)
+      deleteCase(shared.id)
+
+      for (const id of [...removed.map((r) => r.captureId), 'deleted-capture']) {
+        expect(countOn('annotations', 'capture_id', id), id).toBe(0)
+        expect(countOn('annotation_pins', 'capture_id', id), id).toBe(0)
+        expect(countOn('exhibit_tags', 'exhibit_id', id), id).toBe(0)
+      }
+      expect(getDb().prepare('SELECT * FROM deleted_captures').all()).toEqual([])
+      expect(countOn('annotations', 'capture_id', kept.captureId)).toBe(2)
+      expect(countOn('annotation_pins', 'capture_id', kept.captureId)).toBe(2)
+      expect(countOn('exhibit_tags', 'exhibit_id', kept.captureId)).toBe(2)
+    })
+  })
+})
+
+// The Case revision log a Capture delete writes in a Case nobody shared is the
+// one the foreign keys wrote before v41 (#1877): the same kinds and targets,
+// and the same counter increase.
+describe('a Capture delete in a Case never shared, against the v40 keys (#1877)', () => {
+  let tempDir: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'bb-capture-delete-log-'))
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  it('writes the change log the foreign-key delete wrote', async () => {
+    const appPath = join(tempDir, 'app.db')
+    const keysPath = join(tempDir, 'keys.db')
+    await initDatabase(appPath)
+    const c = createCase({ name: 'Case' })
+    const { captureId } = captureWithRows(c.id, 1)
+    captureWithRows(c.id, 2)
+    closeDatabase()
+    copyFileSync(appPath, keysPath)
+
+    type Logged = { kind: string; target_id: string }
+    const since = (conn: Database.Database, counter: number): Logged[] =>
+      conn
+        .prepare(
+          `SELECT kind, target_id FROM case_change_log WHERE case_id = ? AND counter > ?
+            ORDER BY kind, target_id`
+        )
+        .all(c.id, counter) as Logged[]
+    const counterOf = (conn: Database.Database): number =>
+      (
+        conn.prepare('SELECT counter FROM case_revisions WHERE case_id = ?').get(c.id) as {
+          counter: number
+        }
+      ).counter
+
+    const keys = new Database(keysPath)
+    keys.pragma('foreign_keys = OFF')
+    windBackToV40(keys)
+    keys.pragma('foreign_keys = ON')
+    const keysBefore = counterOf(keys)
+    keys.transaction(() => {
+      keys.prepare('DELETE FROM exhibits WHERE id = ?').run(captureId)
+      keys.prepare('DELETE FROM captures WHERE id = ?').run(captureId)
+    })()
+    const byKeys = { log: since(keys, keysBefore), counter: counterOf(keys) - keysBefore }
+    expect(
+      keys.prepare('SELECT COUNT(*) AS n FROM annotations WHERE capture_id = ?').get(captureId)
+    ).toEqual({ n: 0 })
+    keys.close()
+
+    await initDatabase(appPath)
+    const appBefore = counterOf(getDb())
+    deleteCapture(captureId)
+    const byApp = { log: since(getDb(), appBefore), counter: counterOf(getDb()) - appBefore }
+
+    expect(byApp).toEqual(byKeys)
+    expect(byApp.log.map((row) => row.kind).sort()).toEqual(['exhibit', 'note', 'note'])
   })
 })

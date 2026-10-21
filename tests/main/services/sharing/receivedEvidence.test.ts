@@ -923,4 +923,28 @@ describe('received evidence (#1811)', () => {
       expect(verified.get(capture.captureId)?.map((r) => r.status)).toEqual(['verified'])
     })
   })
+
+  // A deleted Capture's id stays dead (#1877): the rows other members keep on it
+  // name it, so no capture entry may attach them to another page.
+  it('refuses a capture entry whose id names a deleted Capture', async () => {
+    await activate(A)
+    const capture = await addCapture(CASE_ID, A, 1)
+    const source = recordSource(CASE_ID, A)
+    await activate(B)
+    getDb()
+      .prepare('INSERT INTO deleted_captures (id, case_id) VALUES (?, ?)')
+      .run(capture.captureId, CASE_ID)
+
+    const result = await pull(CASE_ID, source)
+    expect(result.capturesApplied).toBe(0)
+    expect(result.errors).toEqual([
+      expect.objectContaining({
+        kind: 'rejected-entry',
+        installationId: A.installationId,
+        detail: `capture ${capture.captureId}: id ${capture.captureId} names a deleted Capture`
+      })
+    ])
+    expect(getCapture(capture.captureId)).toBeUndefined()
+    expect(getExhibit(capture.captureId)).toBeUndefined()
+  })
 })

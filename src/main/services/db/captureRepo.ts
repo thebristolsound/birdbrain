@@ -22,6 +22,7 @@ import {
   exhibitCitationResolver,
   type ExhibitCitationResolver
 } from '@main/services/db/caseMemberRepo'
+import { settleRowsOnDeletedCapture } from '@main/services/sharing/workingRows'
 
 // The list and single reads join the Capture's Exhibit row so the screens can
 // cite it (#1510). A Capture's Exhibit id IS its capture id, so the join is by
@@ -272,9 +273,14 @@ export function deleteCapture(id: string): boolean {
   if (!capture) return false
 
   const run = d.transaction(() => {
+    // The working-layer rows on the Capture first, while its rows still name
+    // its Case (#1877): in a Shared Case this installation's own are
+    // tombstoned and every other author's stay as signed; in a Case nobody
+    // shared they go, as the foreign keys took them before v41.
+    settleRowsOnDeletedCapture(id, capture.caseId)
     // `exhibits` hangs off `cases`, not off `captures`, so nothing cascades to
-    // it when the capture row goes. Left behind, the row would keep the
-    // capture's tags alive and put a phantom Exhibit in the inventory.
+    // it when the capture row goes. Left behind, the row would put a phantom
+    // Exhibit in the inventory.
     deleteExhibit(id)
     return d.prepare('DELETE FROM captures WHERE id = ?').run(id)
   })

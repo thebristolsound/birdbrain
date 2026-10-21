@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { insertCapture, deleteCapture } from '@main/services/db/captureRepo'
 import {
@@ -9,6 +9,7 @@ import {
   upsertPin,
   deletePin
 } from '@main/services/annotations'
+import { addTagToCapture, createTag } from '@main/services/db/tagRepo'
 import type { AnnotationShape } from '@shared/types'
 
 describe('annotations service', () => {
@@ -124,5 +125,36 @@ describe('annotations service', () => {
     upsertPin({ captureId: cap.id, body: 'x' })
     deleteCapture(cap.id)
     expect(getAnnotations(cap.id).pins).toEqual([])
+  })
+
+  // No key checks these columns since v41 (#1877); the writers do, with the
+  // error the key raised, so the IPC layer still answers "Referenced record
+  // does not exist".
+  it('refuses a live annotation, pin or tag application on a Capture this database does not hold, as the foreign key did', () => {
+    const cap = makeCapture()
+    deleteCapture(cap.id)
+    // As a Shared Case's deletion records it (rowsOnDeletedCapture.test.ts).
+    getDb()
+      .prepare('INSERT INTO deleted_captures (id, case_id) VALUES (?, ?)')
+      .run(cap.id, cap.caseId)
+    const tag = createTag({ name: 'Evidence' })
+    for (const captureId of ['no-such-capture', cap.id]) {
+      const writes = [
+        () => saveAnnotations({ captureId, shapes: [], imageWidth: 1, imageHeight: 1 }),
+        () => upsertPin({ captureId, body: 'x' }),
+        () => addTagToCapture({ captureId, tagId: tag.id })
+      ]
+      for (const write of writes) {
+        expect(write).toThrow(/FOREIGN KEY constraint failed/)
+        try {
+          write()
+        } catch (err) {
+          expect((err as { code?: string }).code).toBe('SQLITE_CONSTRAINT_FOREIGNKEY')
+        }
+      }
+    }
+    for (const table of ['annotations', 'annotation_pins', 'exhibit_tags']) {
+      expect(getDb().prepare(`SELECT * FROM ${table}`).all(), table).toEqual([])
+    }
   })
 })

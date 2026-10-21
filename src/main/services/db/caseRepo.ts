@@ -3,6 +3,7 @@ import type { Case, CaseAutoCapturePolicy } from '@shared/types'
 import { isAutoCaptureExclusionMode } from '@shared/types'
 import type { CreateCaseParams, UpdateCaseParams } from '@shared/ipc'
 import { getDb, type ImportCtx } from '@main/services/db/core'
+import { removeCaseDependents } from '@main/services/db/workingRowRepo'
 
 // Every case id, archived ones included, in a stable order. The Exhibit-model
 // backfill needs the archived Cases too: an archived Case is still evidence and
@@ -131,6 +132,7 @@ export function hasDemoCase(): boolean {
 export function deleteCase(id: string): boolean {
   const d = getDb()
   const run = d.transaction(() => {
+    removeCaseDependents([id])
     return d.prepare('DELETE FROM cases WHERE id = ?').run(id)
   })
   const result = run()

@@ -10,10 +10,17 @@ import {
   caseOfRow,
   hardDeleteLocalRow,
   isInSharedCase,
+  isSharedCaseId,
   isSyncedTable,
   maxLocalVersion,
   noteReferencedCases,
+  ownLiveRowsOnCapture,
   readRow,
+  recordDeletedCapture,
+  referenceError,
+  referenceOf,
+  removeCaptureDependents,
+  removeExhibitDependents,
   signedColumns,
   writeRowSync,
   type RemoteRow,
@@ -82,7 +89,12 @@ export interface SignOptions {
 }
 
 // Signs this installation's row under `key` as it is stored now, with a fresh
-// version. Runs inside the caller's transaction when there is one.
+// version. Runs inside the caller's transaction when there is one. An
+// annotation layer, pin or tag application must name a Capture or Exhibit
+// this database holds, or, for a tombstone, one recorded as deleted: the
+// check the foreign keys made before v41 (#1877), so no row is ever signed
+// with no Case. A note is not held to it, so its author can still edit a note
+// that keeps its link to a deleted Capture; createNote checks a new link.
 export function signLocalRow(
   table: SyncedTable,
   key: RowKey,
@@ -93,6 +105,16 @@ export function signLocalRow(
     if (!row) throw new Error(`${table} row to sign is missing`)
     const version = options.version ?? allocateLocalVersion()
     const deletedAt = options.deletedAt === undefined ? row.deletedAt : options.deletedAt
+    const reference = table === 'notes' ? null : referenceOf(table, row.fields)
+    if (
+      reference !== null &&
+      reference.state !== 'live' &&
+      (deletedAt === null || reference.state === 'missing')
+    ) {
+      throw referenceError(
+        `${table} row names ${reference.noun} ${reference.id}, which this copy does not hold`
+      )
+    }
     const digest = rowDigest({
       table,
       author: getInstallationId(),
@@ -119,6 +141,31 @@ export function deleteLocalRow(table: SyncedTable, key: RowKey): boolean {
       return true
     }
     return hardDeleteLocalRow(table, key)
+  })
+}
+
+// The working-layer rows on a Capture about to be deleted (#1877, ruling of
+// 21 October 2026), inside the transaction that deletes it and before its
+// Capture and Exhibit rows go, while they still name its Case. In a Shared
+// Case, on the author's copy and on a copy applying the author's deletion
+// alike, this installation's own annotation layer, pins and tag applications
+// on it are tombstoned at one version, so they travel as one group, and the
+// deletion is recorded; every other author's row, and every note, stays as
+// signed. In a Case nobody shared the rows go as the foreign keys took them.
+export function settleRowsOnDeletedCapture(captureId: string, caseId: string): void {
+  withTransaction(() => {
+    if (!isSharedCaseId(caseId)) {
+      removeExhibitDependents(captureId)
+      removeCaptureDependents(captureId)
+      return
+    }
+    const own = ownLiveRowsOnCapture(captureId)
+    if (own.length > 0) {
+      const version = allocateLocalVersion()
+      const deletedAt = new Date().toISOString()
+      for (const { table, key } of own) signLocalRow(table, key, { deletedAt, version })
+    }
+    recordDeletedCapture(captureId, caseId)
   })
 }
 
@@ -252,8 +299,9 @@ export function verifyWireRow(row: WireRow, publicKeyPem: string): boolean {
 // Why a verified row is not this Case's, or null. Its signed envelope must
 // name the Case being synced (a tag names none), and the Case this replica
 // reads for it, from its own column or from the Exhibit, Note or Capture it
-// references, must be that Case whenever the referenced row is held here; a
-// row referencing one not held fails its foreign key at commit (applyRows).
+// references, must be that Case whenever the referenced row is held here or
+// recorded as deleted (caseOfRow); a row referencing one neither held nor
+// recorded fails applyRows' reference check, which rolls the session back.
 // A note's Capture column and anchor are held to the same rule a local write
 // is (noteReferencedCases): an anchor naming a row not held here is kept, as
 // locally, and one naming a row of another Case is refused.

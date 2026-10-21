@@ -11,7 +11,7 @@ import {
   type NoteMention
 } from '@shared/noteDoc'
 import { assertMentionsInCase, rewriteReferencesForNote } from '@main/services/db/noteReferenceRepo'
-import { isLiveLocalRow } from '@main/services/db/workingRowRepo'
+import { assertLiveReference, isLiveLocalRow } from '@main/services/db/workingRowRepo'
 import { deleteLocalRow, signLocalRow } from '@main/services/sharing/workingRows'
 import {
   parseNoteAnchor,
@@ -162,6 +162,10 @@ export function createNote(params: CreateNoteParams): Note {
   // from body_doc and must never commit without it (#389).
   return withTransaction(() => {
     assertMentionsInCase(mentions, params.caseId)
+    // No key checks notes.capture_id since v41 (#1877): a new link must name a
+    // Capture this database holds. updateNote never changes it, so a note
+    // keeping its link to a deleted Capture can still be edited.
+    assertLiveReference('notes', { capture_id: params.captureId ?? null }, 'A new note')
     getDb()
       .prepare(
         `INSERT INTO notes (id, case_id, capture_id, title, body, body_doc, anchor_kind, anchor_json, source_url, screenshot_path, created_at, updated_at)

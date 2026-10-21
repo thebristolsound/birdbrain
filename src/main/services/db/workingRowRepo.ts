@@ -58,7 +58,21 @@ interface TableSpec {
   // the `case_id` of the row a column references, or nowhere (a tag belongs
   // to Cases through its applications).
   caseOf: { column: string } | { via: 'exhibits' | 'notes' | 'captures'; column: string } | null
+  // The Capture or Exhibit a column names, which no foreign key checks since v41 (#1877):
+  // the writers check it (referenceOf), and a deleted Capture of a Shared Case is resolved
+  // through `deleted_captures`.
+  references: { column: string; parent: 'captures' | 'exhibits' } | null
 }
+
+// A Capture or Exhibit that was deleted from a Shared Case, by id, read in place of the row
+// that is gone: the Case another member's kept row on it still belongs to.
+const DELETED = (id: string): string => `SELECT case_id FROM deleted_captures WHERE id = ${id}`
+
+// A row on a Capture of the Case: a live one, or one deleted from it (#1877).
+const ON_CAPTURE_IN_CASE = `EXISTS (SELECT 1 FROM captures c
+                                      WHERE c.id = t.capture_id AND c.case_id = @case_id)
+                             OR EXISTS (SELECT 1 FROM deleted_captures d
+                                         WHERE d.id = t.capture_id AND d.case_id = @case_id)`
 
 const SPECS: Record<SyncedTable, TableSpec> = {
   notes: {
@@ -79,7 +93,8 @@ const SPECS: Record<SyncedTable, TableSpec> = {
     ],
     caseIds: 'SELECT case_id FROM notes WHERE id = @id',
     inCase: 't.case_id = @case_id',
-    caseOf: { column: 'case_id' }
+    caseOf: { column: 'case_id' },
+    references: { column: 'capture_id', parent: 'captures' }
   },
   tags: {
     key: ['id'],
@@ -87,27 +102,41 @@ const SPECS: Record<SyncedTable, TableSpec> = {
     caseIds: `SELECT e.case_id FROM exhibit_tags et JOIN exhibits e ON e.id = et.exhibit_id
                WHERE et.tag_id = @id
               UNION
+              SELECT d.case_id FROM exhibit_tags et JOIN deleted_captures d ON d.id = et.exhibit_id
+               WHERE et.tag_id = @id
+              UNION
               SELECT n.case_id FROM note_tags nt JOIN notes n ON n.id = nt.note_id
                WHERE nt.tag_id = @id`,
+    // An application kept on a deleted Capture still reaches its Case, so the tag it names
+    // travels with it and the receiver's tag_id key is met.
     inCase: `EXISTS (SELECT 1 FROM exhibit_tags et JOIN exhibits e ON e.id = et.exhibit_id
                       WHERE et.tag_id = t.id AND e.case_id = @case_id)
+             OR EXISTS (SELECT 1 FROM exhibit_tags et
+                          JOIN deleted_captures d ON d.id = et.exhibit_id
+                         WHERE et.tag_id = t.id AND d.case_id = @case_id)
              OR EXISTS (SELECT 1 FROM note_tags nt JOIN notes n ON n.id = nt.note_id
                          WHERE nt.tag_id = t.id AND n.case_id = @case_id)`,
-    caseOf: null
+    caseOf: null,
+    references: null
   },
   exhibit_tags: {
     key: ['exhibit_id', 'tag_id'],
     columns: ['exhibit_id', 'tag_id'],
-    caseIds: 'SELECT case_id FROM exhibits WHERE id = @exhibit_id',
-    inCase: 'EXISTS (SELECT 1 FROM exhibits e WHERE e.id = t.exhibit_id AND e.case_id = @case_id)',
-    caseOf: { via: 'exhibits', column: 'exhibit_id' }
+    caseIds: `SELECT case_id FROM exhibits WHERE id = @exhibit_id
+              UNION ${DELETED('@exhibit_id')}`,
+    inCase: `EXISTS (SELECT 1 FROM exhibits e WHERE e.id = t.exhibit_id AND e.case_id = @case_id)
+             OR EXISTS (SELECT 1 FROM deleted_captures d
+                         WHERE d.id = t.exhibit_id AND d.case_id = @case_id)`,
+    caseOf: { via: 'exhibits', column: 'exhibit_id' },
+    references: { column: 'exhibit_id', parent: 'exhibits' }
   },
   note_tags: {
     key: ['note_id', 'tag_id'],
     columns: ['note_id', 'tag_id'],
     caseIds: 'SELECT case_id FROM notes WHERE id = @note_id',
     inCase: 'EXISTS (SELECT 1 FROM notes n WHERE n.id = t.note_id AND n.case_id = @case_id)',
-    caseOf: { via: 'notes', column: 'note_id' }
+    caseOf: { via: 'notes', column: 'note_id' },
+    references: null
   },
   annotations: {
     key: ['capture_id'],
@@ -120,17 +149,23 @@ const SPECS: Record<SyncedTable, TableSpec> = {
       'updated_at',
       'updated_by'
     ],
-    caseIds: 'SELECT case_id FROM captures WHERE id = @capture_id',
-    inCase: 'EXISTS (SELECT 1 FROM captures c WHERE c.id = t.capture_id AND c.case_id = @case_id)',
-    caseOf: { via: 'captures', column: 'capture_id' }
+    caseIds: `SELECT case_id FROM captures WHERE id = @capture_id
+              UNION ${DELETED('@capture_id')}`,
+    inCase: ON_CAPTURE_IN_CASE,
+    caseOf: { via: 'captures', column: 'capture_id' },
+    references: { column: 'capture_id', parent: 'captures' }
   },
   annotation_pins: {
     key: ['id'],
     columns: ['id', 'capture_id', 'number', 'body', 'created_at', 'updated_at'],
     caseIds: `SELECT c.case_id FROM annotation_pins p JOIN captures c ON c.id = p.capture_id
+               WHERE p.id = @id
+              UNION
+              SELECT d.case_id FROM annotation_pins p JOIN deleted_captures d ON d.id = p.capture_id
                WHERE p.id = @id`,
-    inCase: 'EXISTS (SELECT 1 FROM captures c WHERE c.id = t.capture_id AND c.case_id = @case_id)',
-    caseOf: { via: 'captures', column: 'capture_id' }
+    inCase: ON_CAPTURE_IN_CASE,
+    caseOf: { via: 'captures', column: 'capture_id' },
+    references: { column: 'capture_id', parent: 'captures' }
   }
 }
 
@@ -139,7 +174,8 @@ export function signedColumns(table: SyncedTable): readonly string[] {
 }
 
 // The Cases of the rows a note's content columns reference and this database
-// holds: its Capture column, and the Capture and selector its anchor names.
+// holds: its Capture column, and the Capture and selector its anchor names. A
+// Capture deleted from a Shared Case is held through its record (#1877).
 // The receiving side of `assertAnchorInCase` (noteRepo.ts), which refuses a
 // local note whose anchor names a row of another Case. Throws when the
 // anchor does not parse, as a local write does.
@@ -156,23 +192,175 @@ export function noteReferencedCases(fields: RowFields): string[] {
   }
   return refs.flatMap(({ table, id }) => {
     if (id === null) return []
-    const row = getDb().prepare(`SELECT case_id FROM ${table} WHERE id = ?`).get(id) as
-      { case_id: string } | undefined
+    const row = (
+      table === 'captures'
+        ? getDb().prepare(`${CASE_OF_CAPTURE} LIMIT 1`).get(id, id)
+        : getDb().prepare(`SELECT case_id FROM ${table} WHERE id = ?`).get(id)
+    ) as { case_id: string } | undefined
     return row ? [row.case_id] : []
   })
 }
 
+const CASE_OF_CAPTURE = `SELECT case_id FROM captures WHERE id = ?
+                          UNION ALL ${DELETED('?')}`
+
 // The Case a row with these content columns belongs to, as this database
 // reads it: null for a table whose rows belong to no one Case, undefined
-// when the row the columns reference is not held here.
+// when the row the columns reference is not held here. A Capture or Exhibit
+// deleted from a Shared Case is read from its record, so a row kept on it
+// still names the Case its author signed (#1877). An id is never both held
+// and recorded: deleteCapture records it as the row goes, and the evidence
+// step and the archive import refuse or remap a recorded id.
 export function caseOfRow(table: SyncedTable, fields: RowFields): string | null | undefined {
   const { caseOf } = SPECS[table]
   if (caseOf === null) return null
   if (!('via' in caseOf)) return String(fields[caseOf.column])
-  const row = getDb()
-    .prepare(`SELECT case_id FROM ${caseOf.via} WHERE id = ?`)
-    .get(fields[caseOf.column]) as { case_id: string } | undefined
+  const id = fields[caseOf.column]
+  const row = (
+    caseOf.via === 'notes'
+      ? getDb().prepare('SELECT case_id FROM notes WHERE id = ?').get(id)
+      : getDb()
+          .prepare(
+            `SELECT case_id FROM ${caseOf.via} WHERE id = ? UNION ALL ${DELETED('?')} LIMIT 1`
+          )
+          .get(id, id)
+  ) as { case_id: string } | undefined
   return row?.case_id
+}
+
+// --- References to a Capture or Exhibit, checked in code since v41 (#1877) ---
+
+// The Case a Capture or Exhibit deleted from a Shared Case belonged to, or undefined when
+// this database holds no record of its deletion.
+export function deletedCaptureCase(id: string): string | undefined {
+  const row = getDb().prepare(DELETED('?')).get(id) as { case_id: string } | undefined
+  return row?.case_id
+}
+
+// Records that a Capture of a Shared Case was deleted, in the transaction that deletes it.
+// The id is still held then, so a record already there means the invariant above is broken,
+// and the insert's primary key refuses it.
+export function recordDeletedCapture(id: string, caseId: string): void {
+  getDb().prepare('INSERT INTO deleted_captures (id, case_id) VALUES (?, ?)').run(id, caseId)
+}
+
+// Records a deletion read from a chain (receivedEvidence.ts), for a Capture this database
+// never wrote or deleted before migration 41. A record already there is kept.
+export function recordChainDeletion(id: string, caseId: string): void {
+  getDb()
+    .prepare('INSERT OR IGNORE INTO deleted_captures (id, case_id) VALUES (?, ?)')
+    .run(id, caseId)
+}
+
+export type ReferenceState = 'live' | 'recorded' | 'missing'
+
+export interface Reference {
+  // 'Capture' or 'Exhibit', for the messages that name it.
+  noun: string
+  id: string
+  state: ReferenceState
+}
+
+// The Capture or Exhibit a row with these content columns names, and whether this database
+// holds it, records it as deleted, or neither; null when the table names none or the column
+// is NULL.
+export function referenceOf(table: SyncedTable, fields: RowFields): Reference | null {
+  const { references } = SPECS[table]
+  if (references === null) return null
+  const value = fields[references.column]
+  if (value === null || value === undefined) return null
+  const id = String(value)
+  const noun = references.parent === 'captures' ? 'Capture' : 'Exhibit'
+  if (getDb().prepare(`SELECT 1 FROM ${references.parent} WHERE id = ?`).get(id) !== undefined) {
+    return { noun, id, state: 'live' }
+  }
+  return { noun, id, state: deletedCaptureCase(id) === undefined ? 'missing' : 'recorded' }
+}
+
+// The error a dropped key raised, with the code the IPC layer maps to "Referenced record
+// does not exist" (ipcWrap.ts), so a writer refused here reads as it did before v41.
+export function referenceError(detail: string): Error {
+  return Object.assign(new Error(`FOREIGN KEY constraint failed: ${detail}`), {
+    code: 'SQLITE_CONSTRAINT_FOREIGNKEY'
+  })
+}
+
+// Throws unless the Capture or Exhibit the row names, if any, is held here.
+export function assertLiveReference(table: SyncedTable, fields: RowFields, what: string): void {
+  const reference = referenceOf(table, fields)
+  if (reference !== null && reference.state !== 'live') {
+    throw referenceError(
+      `${what} names ${reference.noun} ${reference.id}, which this copy does not hold`
+    )
+  }
+}
+
+// What the dropped keys did when a Capture or Exhibit of a Case nobody shared goes, written
+// out: every author's annotation layer, pins and tag applications on it are removed and
+// every note's link is cleared. Rows from another author reach such a Case only through an
+// archive import. The note update fires the notes triggers as SET NULL did, and re-signs
+// nothing.
+export function removeExhibitDependents(id: string): void {
+  getDb().prepare('DELETE FROM exhibit_tags WHERE exhibit_id = ?').run(id)
+}
+
+export function removeCaptureDependents(id: string): void {
+  const db = getDb()
+  db.prepare('DELETE FROM annotations WHERE capture_id = ?').run(id)
+  db.prepare('DELETE FROM annotation_pins WHERE capture_id = ?').run(id)
+  db.prepare('UPDATE notes SET capture_id = NULL WHERE capture_id = ?').run(id)
+}
+
+// Before whole Cases are deleted: the annotation layers, pins and tag applications on their
+// Captures, Exhibits and deleted Captures, every author's. Nothing cascades to them from
+// `cases` since v41; notes and the records still go by their own case_id keys.
+export function removeCaseDependents(caseIds: string[]): void {
+  if (caseIds.length === 0) return
+  const db = getDb()
+  const ids = JSON.stringify(caseIds)
+  const inCases = 'case_id IN (SELECT value FROM json_each(@ids))'
+  const deleted = `SELECT id FROM deleted_captures WHERE ${inCases}`
+  for (const table of ['annotations', 'annotation_pins']) {
+    db.prepare(
+      `DELETE FROM ${table}
+        WHERE capture_id IN (SELECT id FROM captures WHERE ${inCases} UNION ${deleted})`
+    ).run({ ids })
+  }
+  db.prepare(
+    `DELETE FROM exhibit_tags
+      WHERE exhibit_id IN (SELECT id FROM exhibits WHERE ${inCases} UNION ${deleted})`
+  ).run({ ids })
+}
+
+// This installation's live rows on a Capture: its annotation layer, its pins and its tag
+// applications. Notes are not among them: a note keeps its link to a deleted Capture.
+export function ownLiveRowsOnCapture(id: string): Array<{ table: SyncedTable; key: RowKey }> {
+  const db = getDb()
+  const live = 'author_installation_id IS NULL AND deleted_at IS NULL'
+  const layers = db
+    .prepare(`SELECT capture_id FROM annotations WHERE capture_id = ? AND ${live}`)
+    .all(id) as Array<{ capture_id: string }>
+  const pins = db
+    .prepare(`SELECT id FROM annotation_pins WHERE capture_id = ? AND ${live} ORDER BY rowid`)
+    .all(id) as Array<{ id: string }>
+  const tags = db
+    .prepare(`SELECT tag_id FROM exhibit_tags WHERE exhibit_id = ? AND ${live} ORDER BY rowid`)
+    .all(id) as Array<{ tag_id: string }>
+  return [
+    ...layers.map(() => ({ table: 'annotations' as const, key: { capture_id: id } })),
+    ...pins.map((pin) => ({ table: 'annotation_pins' as const, key: { id: pin.id } })),
+    ...tags.map((tag) => ({
+      table: 'exhibit_tags' as const,
+      key: { exhibit_id: id, tag_id: tag.tag_id }
+    }))
+  ]
+}
+
+export function isSharedCaseId(caseId: string): boolean {
+  return (
+    getDb().prepare('SELECT 1 FROM cases WHERE id = ? AND shared_at IS NOT NULL').get(caseId) !==
+    undefined
+  )
 }
 
 // `author` NULL matches this installation's rows. The predicate the per-author
@@ -410,8 +598,13 @@ function conflictTarget(table: SyncedTable): string {
 // Applies every row a session received, every author's and every page's, in
 // one transaction with foreign keys deferred to its commit (the design's
 // "Working-layer rows" rule, ruling of 2026-10-15): a row may arrive before
-// the row it references, from a later page or another author, and the keys
-// are checked once, at commit. The rows are sorted by version across every
+// the tag or note it references, from a later page or another author, and
+// those keys are checked once, at commit. A row's Capture or Exhibit has no
+// key since v41 (#1877) and is checked here as each row lands: it must be
+// held, or recorded as deleted from a Shared Case, and otherwise the batch
+// throws as the deferred key did. Captures and Exhibits arrive only in the
+// evidence step, which commits before any row is asked for, so checking at
+// once is checking at commit. The rows are sorted by version across every
 // author, those at one version keeping the order they arrived in, and each
 // lands only above the version already stored for it. A row keyed by id that
 // another author already holds is refused, so a peer cannot overwrite this
@@ -441,6 +634,13 @@ export function applyRows(rows: RemoteRow[]): ApplyOutcome {
             `${table} row ${key.id} of ${author} collides with a row of ${holder.author_installation_id ?? 'this installation'}`
           )
         }
+      }
+      const reference = referenceOf(table, row.fields)
+      if (reference?.state === 'missing') {
+        throw referenceError(
+          `${table} row of ${author} at version ${row.version} names ${reference.noun} ` +
+            `${reference.id}, which this copy neither holds nor records as deleted`
+        )
       }
       const columns = [...SPECS[table].columns]
       const names = [...columns, 'author_installation_id', 'version', 'deleted_at', 'row_signature']

@@ -30,7 +30,7 @@ import {
   getTagsForNote
 } from '@main/services/db/tagRepo'
 import { createSelector, listSelectors } from '@main/services/db/selectorRepo'
-import { createNote, listNotes } from '@main/services/db/noteRepo'
+import { createNote, getNote, listNotes } from '@main/services/db/noteRepo'
 import { referencesForNote } from '@main/services/db/noteReferenceRepo'
 import { getDb } from '@main/services/db/core'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
@@ -903,13 +903,21 @@ describe('caseArchive import', () => {
     ])
   })
 
-  it('an archive of a Shared Case after a Capture deletion carries the notes linked to it and none of the rows on it, and imports', async () => {
+  // Acceptance audit on #1877: a release reading archive version 10 inserts a note's link under
+  // the key v41 dropped, so a link to a Capture the archive does not carry would refuse its
+  // whole import. The archive writes the link empty and the database keeps it as signed.
+  it('an archive of a Shared Case after a Capture deletion carries the notes linked to it, with the link empty, and none of the rows on it, and imports', async () => {
     deleteInSharedCase()
     const data = collectCaseData(caseId)
     expect(data.annotations).toEqual([])
     expect(data.annotationPins).toEqual([])
     expect(data.captureTags).toEqual([])
-    expect(data.notes.find((n) => n.id === plainNoteId)?.capture_id).toBe(mhtmlCaptureId)
+    expect(data.notes.find((n) => n.id === plainNoteId)?.capture_id).toBeNull()
+    const carried = new Set(data.captures.map((c) => c.id))
+    expect(
+      data.notes.filter((n) => n.capture_id !== null && !carried.has(n.capture_id as string))
+    ).toEqual([])
+    expect(getNote(plainNoteId)?.captureId).toBe(mhtmlCaptureId)
     const afterPath = join(tempDir, 'after-deletion.birdbrain')
     await exportCaseArchive(caseId, afterPath)
     closeDatabase()
@@ -917,10 +925,22 @@ describe('caseArchive import', () => {
 
     const { newCaseId } = await importCaseArchive(afterPath)
     const note = listNotes(newCaseId).find((n) => n.title === 'Note 1')!
-    expect(note.captureId).toEqual(expect.any(String))
-    expect(note.captureId).not.toBe(mhtmlCaptureId)
-    expect(getCapture(note.captureId!)).toBeUndefined()
+    expect(note.captureId).toBeUndefined()
     expect(listCaptures(newCaseId).map((c) => c.id)).toEqual([legacyCaptureId])
+  })
+
+  it("clears an archived note's link to a Capture the archive does not carry", async () => {
+    const path = join(tempDir, 'dangling-note-link.birdbrain')
+    copyFileSync(archivePath, path)
+    rewriteDataJson(path, (data) => ({
+      ...data,
+      notes: (data.notes as Array<Record<string, unknown>>).map((n) =>
+        n.id === plainNoteId ? { ...n, capture_id: 'not-carried' } : n
+      )
+    }))
+
+    const { newCaseId } = await importCaseArchive(path)
+    expect(listNotes(newCaseId).find((n) => n.title === 'Note 1')?.captureId).toBeUndefined()
   })
 
   // Review finding on #1877: the collision remap covers only the ids an archive carries, so a
@@ -946,8 +966,7 @@ describe('caseArchive import', () => {
 
       expect(getCapture(mhtmlCaptureId)?.caseId).toBe(later.newCaseId)
       const note = listNotes(newCaseId).find((n) => n.title === 'Note 1')!
-      expect(note.captureId).not.toBe(mhtmlCaptureId)
-      expect(getCapture(note.captureId!)).toBeUndefined()
+      expect(note.captureId).toBeUndefined()
     }
   )
 

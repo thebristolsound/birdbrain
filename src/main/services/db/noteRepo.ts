@@ -293,11 +293,22 @@ function rowToNote(row: Record<string, unknown>): Note {
 
 // --- Archive bulk ops ---
 
+// A note's link to a Capture the archive does not carry, one deleted from a Shared Case (#1877)
+// or one of another Case, is written empty, as the key left every archive before schema v41:
+// a release reading archive version 10 inserts the column under that key and would refuse
+// the whole import. The note's row in this database keeps its link as signed.
 export function collectNotesForCase(caseId: string): Record<string, unknown>[] {
-  return getDb().prepare('SELECT * FROM notes WHERE case_id = ?').all(caseId) as Record<
+  const db = getDb()
+  const carried = db.prepare('SELECT 1 FROM captures WHERE id = ? AND case_id = ?')
+  const rows = db.prepare('SELECT * FROM notes WHERE case_id = ?').all(caseId) as Record<
     string,
     unknown
   >[]
+  return rows.map((n) =>
+    typeof n.capture_id === 'string' && carried.get(n.capture_id, caseId) === undefined
+      ? { ...n, capture_id: null }
+      : n
+  )
 }
 
 export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
@@ -306,18 +317,14 @@ export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx):
        author_installation_id, version, deleted_at, row_signature)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
-  // A link to a Capture the archive does not carry (one deleted from the Shared Case it was
-  // exported from keeps its link, #1877) is not covered by the collision remap, so it would
-  // cite whatever this installation holds under that id, now or after a later import. It gets
-  // an id nothing holds, one per archived id, and still reads as a deleted Capture.
+  // A link to a Capture the archive does not carry is not covered by the collision remap, so
+  // it would cite whatever this installation holds under that id, now or after a later
+  // import. The export writes none (collectNotesForCase); one in an archive from elsewhere is
+  // cleared, so no note of this Case names a Capture no copy holds or records (#1877).
   const inCase = getDb().prepare('SELECT 1 FROM captures WHERE id = ? AND case_id = ?')
-  const relinked = new Map<string, string>()
-  const linkOf = (archived: string): string => {
+  const carried = (archived: string): string | null => {
     const id = ctx.mapId(archived)
-    if (inCase.get(id, ctx.newCaseId) !== undefined) return id
-    const fresh = relinked.get(archived) ?? uuid()
-    relinked.set(archived, fresh)
-    return fresh
+    return inCase.get(id, ctx.newCaseId) !== undefined ? id : null
   }
   for (const n of rows) {
     // Mention target ids are remapped BEFORE the document is parsed and
@@ -369,16 +376,14 @@ export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx):
     // Ids embedded in the anchor go through the same remap as the capture_id
     // column below — an anchor left pointing at a pre-import id would cite
     // whatever already holds that id in this installation.
-    // An anchor naming the note's own Capture moves with the column.
-    const captureId = (n.capture_id as string | null | undefined) || null
     const anchor = resolveAnchor((n.anchor_json as string) ?? null, ctx.newCaseId, {
-      mapId: (id) => (id === captureId ? linkOf(id) : ctx.mapId(id))
+      mapId: ctx.mapId
     })
     const newId = ctx.mapId(n.id as string)
     insert.run(
       newId,
       ctx.newCaseId,
-      captureId ? linkOf(captureId) : null,
+      n.capture_id ? carried(n.capture_id as string) : null,
       n.title ?? '',
       body,
       bodyDoc,

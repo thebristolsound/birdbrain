@@ -371,8 +371,12 @@ at-rest encryption, which a hosted relay holding ciphertext would require.
 - Migration: schema 33 to 34 fixtures with existing Exhibits keep bare citations.
 - Iroh: one smoke test behind an environment flag that dials loopback, skipped in CI on
   platforms without a binding.
-- E2E: two app instances with separate user-data directories joined over `MemoryTransport`
-  through a test-only IPC hook; a real-network E2E is manual.
+- E2E: two app instances with separate user-data directories, the second with its Capture
+  Server on another port, joined over a test-only loopback bridge (`loopbackTransport.ts`,
+  #1882): one TCP socket per stream on 127.0.0.1, each node's port recorded under its node id
+  in a directory both launches are given, so the invite still names a node and no address.
+  Both hooks read an environment variable only in a run from source. A real-network E2E is
+  manual.
 
 ## Open questions
 

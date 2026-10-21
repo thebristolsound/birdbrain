@@ -72,6 +72,11 @@ Capture and Exhibit rows.
 On 2026-10-19 #1881 added `syncService.ts` at advisory tier: it decides when sessions run and when
 the transport starts and stops, and reads no message and stores nothing, so what a session it
 starts may store is still decided in the blocking modules and the roster checks in `session.ts`.
+On 2026-10-20 #1882 added two test-only hooks for the two-instance e2e spec, both read only in an
+unpackaged build: `src/main/captureServerPort.ts`, the Capture Server port override, joins the
+exclusions beside `src/main/windowSize.ts`, since the server behind the port hashes and stores a
+Capture the same way on any port; and `src/main/services/sharing/loopbackTransport.ts`, the same
+transport interface over sockets on 127.0.0.1, joins the `transport.ts` entry.
 `src/packages/transaction-record/**` was added to Acquisition at blocking tier on 2026-10-17 with
 #1903, the capture engine's step 7 (D12 of the first-slice plan): it decides which of the
 browser's exchanges a Transaction Record holds as complete and how the inventory counts the rest.
@@ -396,7 +401,8 @@ It is *notable* exclusions, not an exhaustive complement of the include list.
 | `src/main/services/deepLink.ts` | Navigation plumbing |
 | `src/main/services/extensionPath.ts` | Extension setup plumbing |
 | `src/main/windowSize.ts` | Main-window geometry, and the `BIRDBRAIN_WINDOW_SIZE` override read only in an unpackaged build. It holds none of the invariants `src/main/index.ts` is listed for: no capture, content hash, manifest entry, canonical JSON field or signature depends on the size of the window the evidence is later viewed in. Split out of the included `src/main/index.ts` by #478, and left off both lists until #515 |
-| `src/main/services/sharing/transport.ts` | The transport interface and its in-process form, `MemoryTransport` (#1512). A transport carries bytes between installations: it reads no message and decides nothing about what the session accepts, which the four blocking modules above do. The same reasoning as `src/main/services/exclusionPolicy.ts`'s inclusion in reverse (#227) and as `src/main/windowSize.ts` (#515): the evidentiary decision lives elsewhere. `irohTransport.ts` (#1809), the same interface over Iroh, joins this entry |
+| `src/main/captureServerPort.ts` | The Capture Server port, and the `BIRDBRAIN_CAPTURE_SERVER_PORT` override read only in an unpackaged build, for the two-instance e2e spec (#1882). The same reasoning as `src/main/windowSize.ts`: the server behind the port hashes and stores a Capture the same way on any port, and a packaged build always listens where the extension looks |
+| `src/main/services/sharing/transport.ts` | The transport interface and its in-process form, `MemoryTransport` (#1512). A transport carries bytes between installations: it reads no message and decides nothing about what the session accepts, which the four blocking modules above do. The same reasoning as `src/main/services/exclusionPolicy.ts`'s inclusion in reverse (#227) and as `src/main/windowSize.ts` (#515): the evidentiary decision lives elsewhere. `irohTransport.ts` (#1809), the same interface over Iroh, joins this entry, and so does `loopbackTransport.ts` (#1882), the test-only form over sockets on 127.0.0.1 that the two-instance e2e spec selects through `BIRDBRAIN_E2E_SHARING_BRIDGE`, read only in an unpackaged build |
 | `src/renderer/lib/api/**` | High-churn typed passthrough; evidence parameters originate in included dialogs and are enforced in main (but see judgment call 2) |
 | `src/renderer/lib/queries.ts` | Same rationale — the re-export barrel left behind by the split, deleted by the last PR of #229 |
 | `src/renderer/components/captures/AddUrlsBox.tsx` | Removed by the challenge pass as inconsistent with the standard applied to `src/renderer/lib/queries.ts` and `src/renderer/components/settings/CapturePreferences.tsx` — UI-side plumbing whose values are enforced in main |

@@ -1552,6 +1552,64 @@ describe('caseArchive Derived Files (#1813)', () => {
     expect(findOrphans().fileOrphans).toEqual([])
   })
 
+  // A derived_files row names a file the delete then moves, so a row's path
+  // must not be able to reach a file this Capture does not own.
+  describe("a delete leaves files its rows name but it doesn't own", () => {
+    const lifecycle = () =>
+      createCaptureLifecycle({
+        selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+      })
+    const strayBytes = Buffer.from('not this capture')
+    const recordRow = (path: string): void => {
+      insertDerivedFile({
+        exhibitId: captureId,
+        derivation: 'thumbnail',
+        toolVersion: '0.1.0-derive',
+        contentHash: 'f'.repeat(64),
+        path,
+        createdAt: '2026-10-01T09:00:00.000Z'
+      })
+    }
+
+    it.each([
+      ['in a subdirectory of the Case', (id: string) => `${id}/nested/stray-1_thumb.jpg`],
+      ['in another Case', () => 'other-case/stray-1_thumb.jpg']
+    ])('a path %s, whose name matches a flat file here', async (_, path) => {
+      const stray = join(caseDir, 'stray-1_thumb.jpg')
+      writeFileSync(stray, strayBytes)
+      recordRow(path(caseId))
+
+      expect(await lifecycle().delete(captureId)).toBe(true)
+
+      expect(readFileSync(stray)).toEqual(strayBytes)
+    })
+
+    it('a name that is another Capture of this Case', async () => {
+      const otherId = 'capture-other-1'
+      writeFileSync(artifactPath(caseId, otherId, 'mhtml'), mhtmlBuf)
+      insertCapture({
+        id: otherId,
+        caseId,
+        url: 'https://example.com/other',
+        title: 'Other',
+        hash: contentHash,
+        timestamp: '2026-04-05T12:05:00.000Z',
+        format: 'mhtml',
+        mhtmlPath: `${caseId}/${otherId}.mhtml`,
+        sizeBytes: mhtmlBuf.length,
+        exhibitNumber: 2
+      })
+      const otherThumb = join(caseDir, `${otherId}_thumb.jpg`)
+      writeFileSync(otherThumb, strayBytes)
+      recordRow(`${caseId}/${otherId}_thumb.jpg`)
+
+      expect(await lifecycle().delete(captureId)).toBe(true)
+
+      expect(readFileSync(otherThumb)).toEqual(strayBytes)
+      expect(readFileSync(join(caseDir, `${otherId}.mhtml`))).toEqual(mhtmlBuf)
+    })
+  })
+
   it('still imports a version-10 archive, which carries no Derived Files', async () => {
     sign()
     await exportCaseArchive(caseId, archivePath)

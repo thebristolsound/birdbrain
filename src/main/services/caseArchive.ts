@@ -42,6 +42,7 @@ import {
   CAPTURE_ARTIFACT_TYPES,
   defaultCaptureStore,
   EXHIBIT_KIND_SUBDIRECTORIES,
+  parseArtifactFilename,
   STAGING_SUBDIRECTORY
 } from '@main/services/captureStore'
 import { getSettings } from '@main/services/settings'
@@ -505,14 +506,25 @@ function acceptedInCasePath(outputPath: string, owned: ReadonlySet<string>): str
   return owned.has(inCase.toLowerCase()) ? null : inCase
 }
 
+// Whether a file directly in the Case is named as another Capture's artifact
+// (`<id>_thumb.jpg`). That name is the other Capture's: its backfill would
+// write over the file, and a delete or the orphan report would read it as
+// belonging to that Capture. Lower-cased, as the owned paths are.
+function namesAnotherCapture(inCase: string, parentExhibitId: string): boolean {
+  if (inCase.includes('/')) return false
+  const named = parseArtifactFilename(inCase.toLowerCase())?.captureId
+  return named !== undefined && named !== parentExhibitId.toLowerCase()
+}
+
 // Which Derived Files an archive carries, by zip entry name. One function for
 // export, inspect and import, so an exporter carries exactly what an importer
 // will restore and an honest archive never reads as holding an unclaimed file.
 //
 // Only verified chains vouch (all or nothing, as the app's binding is), and a
 // file is anchored when a `derivation` entry on them names a parent the archive
-// carries a row for, at a path the import may write. A path two parents claim,
-// or one spelt two ways, is refused whole: either reading could be the forgery.
+// carries a row for, at a path the import may write and not named as another
+// Capture's artifact. A path two parents claim, or one spelt two ways, is
+// refused whole: either reading could be the forgery.
 function anchoredDerivedFiles(
   { chain, shared }: ArchiveChains,
   manifestText: string,
@@ -537,7 +549,7 @@ function anchoredDerivedFiles(
     const entry = parsed.data
     if (entry.type !== 'derivation' || !parents.has(entry.parentExhibitId)) continue
     const inCase = acceptedInCasePath(entry.outputPath, owned)
-    if (inCase === null) continue
+    if (inCase === null || namesAnotherCapture(inCase, entry.parentExhibitId)) continue
     const key = inCase.toLowerCase()
     const group = groups.get(key) ?? { spellings: new Set(), parents: new Set(), entries: [] }
     group.spellings.add(inCase)

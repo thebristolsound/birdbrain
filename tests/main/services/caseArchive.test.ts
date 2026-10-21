@@ -1719,9 +1719,9 @@ describe('caseArchive Derived Files (#1813)', () => {
     ['the Staging Pool', (id: string) => `${id}/staging/x.png`, 'staging/x.png'],
     ['the roster', (id: string) => `${id}/members.json`, 'members.json'],
     ["a Capture's bytes", (id: string) => `${id}/${captureId}.mhtml`, `${captureId}.mhtml`],
-    ['a single segment', () => 'thumb.jpg', 'thumb.jpg'],
-    ['the storage root', () => '/thumb.jpg', 'thumb.jpg'],
-    ['the working directory', () => './thumb.jpg', 'thumb.jpg']
+    ['a single segment', () => `${captureId}_thumb.jpg`, `${captureId}_thumb.jpg`],
+    ['the storage root', () => `/${captureId}_thumb.jpg`, `${captureId}_thumb.jpg`],
+    ['the working directory', () => `./${captureId}_thumb.jpg`, `${captureId}_thumb.jpg`]
   ])('never writes a derived file a signed path aims at %s', async (_, outputPath, planted) => {
     sign({ outputPath: outputPath(caseId), writeFile: false, recordRow: false })
     await exportCaseArchive(caseId, archivePath)
@@ -1735,7 +1735,7 @@ describe('caseArchive Derived Files (#1813)', () => {
     expectNothingRestored(newCaseId)
     expect(existsSync(join(storageRoot, 'outside.jpg'))).toBe(false)
     expect(existsSync(join(tempDir, 'outside.jpg'))).toBe(false)
-    expect(existsSync(join(storageRoot, newCaseId, 'thumb.jpg'))).toBe(false)
+    expect(existsSync(join(storageRoot, newCaseId, `${captureId}_thumb.jpg`))).toBe(false)
   })
 
   // The archive reader refuses an entry name that climbs, so a climb is only
@@ -1786,8 +1786,12 @@ describe('caseArchive Derived Files (#1813)', () => {
   })
 
   it.each([
-    ['two parents', [captureId, legacyId], ['shared_thumb.jpg', 'shared_thumb.jpg']],
-    ['two spellings differing only in case', [captureId, captureId], ['Thumb.jpg', 'thumb.jpg']]
+    ['two parents', [captureId, legacyId], ['sub/shared_thumb.jpg', 'sub/shared_thumb.jpg']],
+    [
+      'two spellings differing only in case',
+      [captureId, captureId],
+      ['sub/Thumb.jpg', 'sub/thumb.jpg']
+    ]
   ])('refuses a derived path claimed by %s', async (_, parents, names) => {
     insertCapture({
       id: legacyId,
@@ -1808,6 +1812,36 @@ describe('caseArchive Derived Files (#1813)', () => {
     const { newCaseId } = await importCaseArchive(archivePath, { overrideTamper: true })
     expectNothingRestored(newCaseId)
   })
+
+  // That name is the other Capture's: its backfill would write over the file,
+  // under any spelling on a filesystem that folds case.
+  it.each([
+    ['its own spelling', (id: string) => `${id}_thumb.jpg`],
+    ['another case', (id: string) => `${id.toUpperCase()}_THUMB.JPG`]
+  ])(
+    "neither carries nor restores a derived file named as another Capture's thumbnail, in %s",
+    async (_, spell) => {
+      insertCapture({
+        id: legacyId,
+        caseId,
+        url: 'https://legacy.example.com',
+        title: 'Legacy',
+        hash: 'y'.repeat(64),
+        timestamp: '2026-04-04T12:00:00.000Z'
+      })
+      const name = spell(legacyId)
+      sign({ outputPath: `${caseId}/${name}`, recordRow: false })
+      await exportCaseArchive(caseId, archivePath)
+      expect(zipNames()).not.toContain(`files/derived/${name}`)
+      expect(inspectCaseArchive(archivePath).verification.overallValid).toBe(true)
+      plant(`files/derived/${name}`, thumbnail)
+
+      expect(inspectCaseArchive(archivePath).verification.artifactFailureCount).toBe(1)
+      const { newCaseId } = await importCaseArchive(archivePath, { overrideTamper: true })
+      expectNothingRestored(newCaseId)
+      expect(existsSync(join(storageRoot, newCaseId, name))).toBe(false)
+    }
+  )
 
   it('leaves behind a source derived file whose bytes no longer match, and the archive still verifies', async () => {
     const { outputPath } = sign()

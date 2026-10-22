@@ -1,12 +1,17 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { createRef, type ReactNode } from 'react'
 
 import { TagEditorPopover } from '@renderer/components/captures/TagEditorPopover'
 import { DEFAULT_TAG_COLOR, TAG_COLOR_PRESETS } from '@renderer/components/tags/tagColors'
+import { queryClient as appQueryClient } from '@renderer/lib/queryClient'
 import { fakeBridge } from '../renderer/fakeBridge'
+
+const notifyInfo = vi.hoisted(() => vi.fn())
+const notifyError = vi.hoisted(() => vi.fn())
+vi.mock('@renderer/lib/notify', () => ({ notify: { info: notifyInfo, error: notifyError } }))
 
 // jsdom normalises an inline hex to rgb(), so the assertions compare in that
 // form rather than against the literal the palette module holds.
@@ -18,10 +23,10 @@ function rgb(hex: string): string {
 let create: ReturnType<typeof vi.fn>
 let addToCapture: ReturnType<typeof vi.fn>
 
+// The app's own client, so a failed create reaches the mutation cache's toast.
 function renderPopover() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    return <QueryClientProvider client={appQueryClient}>{children}</QueryClientProvider>
   }
   return render(
     <TagEditorPopover
@@ -56,7 +61,12 @@ beforeEach(() => {
   })
 })
 
-afterEach(() => cleanup())
+afterEach(() => {
+  cleanup()
+  appQueryClient.clear()
+  notifyInfo.mockReset()
+  notifyError.mockReset()
+})
 
 // The per-capture popover reads its palette from the module the batch picker
 // also reads (#665). These cover that wiring — the component had no render
@@ -98,5 +108,49 @@ describe('TagEditorPopover palette', () => {
     await waitFor(() =>
       expect(addToCapture).toHaveBeenCalledWith({ captureId: 'cap-1', tagId: 'tag-new' })
     )
+  })
+})
+
+// The typed 'Create tag' input stays create-only (#811). Main decides whether
+// a name is taken, by the rule createTag holds.
+describe('TagEditorPopover taken names', () => {
+  it('creates a name that differs from a listed tag only in case', async () => {
+    renderPopover()
+    await screen.findByText('malware')
+    fireEvent.change(screen.getByPlaceholderText('Create tag'), { target: { value: 'Malware' } })
+    fireEvent.click(screen.getByText('Add'))
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith({ name: 'Malware', color: DEFAULT_TAG_COLOR })
+    )
+  })
+
+  // contextBridge copies a rejected Error with its message only, so main's
+  // TAG_NAME_TAKEN code never reaches the window (#1949).
+  it('keeps the typed name when main refuses a taken name, with the generic toast', async () => {
+    const unhandled = vi.fn()
+    process.on('unhandledRejection', unhandled)
+    try {
+      create.mockRejectedValue(new Error('A tag named ‘ransomware’ already exists'))
+      renderPopover()
+      await screen.findByText('malware')
+      const input = screen.getByPlaceholderText('Create tag') as HTMLInputElement
+      fireEvent.change(input, { target: { value: 'ransomware' } })
+      fireEvent.click(screen.getByText('Add'))
+
+      await waitFor(() =>
+        expect(notifyError).toHaveBeenCalledWith(
+          "Couldn't create tag.",
+          expect.objectContaining({ code: 'mutation.failed' })
+        )
+      )
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(unhandled).not.toHaveBeenCalled()
+      expect(notifyInfo).not.toHaveBeenCalled()
+      expect(addToCapture).not.toHaveBeenCalled()
+      expect(input.value).toBe('ransomware')
+    } finally {
+      process.off('unhandledRejection', unhandled)
+    }
   })
 })

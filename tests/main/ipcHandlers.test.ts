@@ -168,6 +168,7 @@ import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import * as searchFieldRepo from '@main/services/db/searchFieldRepo'
+import * as tagRepo from '@main/services/db/tagRepo'
 import * as unreviewedRepo from '@main/services/db/unreviewedRepo'
 import { createCase } from '@main/services/db/caseRepo'
 import { insertCapture } from '@main/services/db/captureRepo'
@@ -432,11 +433,17 @@ describe('ipcHandlers — cases', () => {
   })
 
   it('translates a unique-constraint violation into a structured failure', async () => {
-    // Re-creating a case is fine, but duplicate tag names are constrained.
-    expectOk(await invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'dup', color: '#fff' }))
-    const res = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.TAGS_CREATE, {
-      name: 'dup',
-      color: '#000'
+    // The Database Admin writer is a bare INSERT, so a duplicate tag name
+    // reaches the UNIQUE index; tags:create refuses one first (#811).
+    expectOk(
+      await invoke(IPC_CHANNELS.DB_CREATE_ROW, {
+        table: 'tags',
+        data: { id: 'dup-1', name: 'dup', color: '#fff' }
+      })
+    )
+    const res = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.DB_CREATE_ROW, {
+      table: 'tags',
+      data: { id: 'dup-2', name: 'dup', color: '#000' }
     })
     expect(res.ok).toBe(false)
     expect(res.code).toBe('SQLITE_CONSTRAINT_UNIQUE')
@@ -1314,10 +1321,35 @@ describe('ipcHandlers — tags', () => {
     expectOk(await invoke(IPC_CHANNELS.TAGS_DELETE, tag.id))
   })
 
+  it('refuses a taken name on tags:create with TAG_NAME_TAKEN (#811)', async () => {
+    expectOk(await invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'dup', color: '#fff' }))
+    expect(await invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'dup', color: '#000' })).toEqual({
+      ok: false,
+      error: 'A tag named ‘dup’ already exists',
+      code: 'TAG_NAME_TAKEN'
+    })
+    const dups = expectOk<{ name: string; color?: string }[]>(
+      await invoke(IPC_CHANNELS.TAGS_LIST)
+    ).filter((t) => t.name === 'dup')
+    expect(dups).toHaveLength(1)
+    expect(dups[0].color).toBe('#fff')
+  })
+
+  it('still rejects a tags:create failure that is not a taken name', async () => {
+    const boom = new Error('disk gone')
+    const spy = vi.spyOn(tagRepo, 'createTag').mockImplementationOnce(() => {
+      throw boom
+    })
+    await expect(invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'fresh', color: '#fff' })).rejects.toBe(
+      boom
+    )
+    spy.mockRestore()
+  })
+
   // The batch picker's create path (#665). Driven at the boundary because the
-  // point of the channel is that `tags:create` throws here: the UNIQUE name
-  // constraint is what #811 records, and a picker whose input doubles as its
-  // filter will be handed an existing name routinely.
+  // point of the channel is that `tags:create` refuses here with TAG_NAME_TAKEN
+  // (#811), and a picker whose input doubles as its filter will be handed an
+  // existing name routinely.
   it('resolves a tag by name, creating one only when there is no match', async () => {
     const made = expectOk<{ id: string; name: string; color?: string }>(
       await invoke(IPC_CHANNELS.TAGS_FIND_OR_CREATE, { name: 'reused', color: '#10b981' })

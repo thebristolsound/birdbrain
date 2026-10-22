@@ -225,10 +225,13 @@ export function SignalsOverview() {
     refreshSelectors()
   }
 
-  // Checked here rather than left to the UNIQUE constraint, which reaches the
-  // operator as the generic could-not-create toast with a bug-report action
-  // (#1549, the operator half of #811). A name a stale list missed still falls
-  // through to that toast.
+  // Checked here rather than left to main (#1549), whatever the letter case.
+  // A name a stale list missed reaches main, which matches exactly among this
+  // installation's own tags: on create it refuses a taken name with
+  // TAG_NAME_TAKEN (#811), and on rename it has no check, so the UNIQUE index
+  // refuses an exact match and a case variant is written. Either refusal
+  // reaches the window only as the generic failure toast with a bug-report
+  // action (#1949).
   function refuseTakenTagName(name: string, exceptId?: string): boolean {
     if (!findTagByName(tags, name, exceptId)) return false
     notify.info(`A tag named ‘${name}’ already exists`)

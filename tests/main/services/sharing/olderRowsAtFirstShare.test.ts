@@ -626,6 +626,58 @@ describe('older rows at first share (#1910)', () => {
     expect(listTags()).toEqual([])
   })
 
+  // A note that links no Capture needs nothing a member's copy must hold, and with no `import`
+  // in the chain nothing in the Case came from an archive: the note is provably the Owner's.
+  it('a loose older note in a Case with no import is signed at first share and reaches the joiner', async () => {
+    await activate(A)
+    const loose = createNote({ caseId, title: 'Loose older note', body: 'no link' })
+    const key = { id: loose.id }
+    unsign([{ table: 'notes', key }])
+
+    await shareCase(caseId, { nodeId: `node-${A.name}` })
+    await addMember(caseId, memberOfB(B))
+    const roster = listCaseMembers(caseId)
+
+    expect(parsedChain(ownChainText(caseId)).some((e) => e.type === 'import')).toBe(false)
+    expectSignedBy(A, 'notes', key, caseId)
+    const fromAlice = recordSource(caseId, A)
+    const offered = fromAlice.rows.get(A.installationId) ?? []
+    expect(offered.map(({ table, fields }) => [table, fields.id])).toEqual([['notes', loose.id]])
+
+    await activate(B)
+    seedSharedCase(caseId, A, [])
+    for (const member of roster) upsertCaseMember(member)
+    const result = await pull(caseId, fromAlice)
+    expect(result.errors).toEqual([])
+    expect(listNotes(caseId).map(({ title }) => title)).toEqual(['Loose older note'])
+  })
+
+  // A tag written since signing is signed, but its older application on a Capture no member
+  // can hold would still fail every member's session, so the application stays local.
+  it('an older tag application on a legacy html Capture stays local even when its tag is signed', async () => {
+    await activate(A)
+    const legacyId = insertCapture({
+      caseId,
+      url: 'https://example.com/legacy',
+      title: 'Legacy page',
+      hash: 'l'.repeat(64),
+      timestamp: TIME,
+      format: 'html'
+    }).id
+    const tag = createTag({ name: 'Signed since' })
+    addTagToCapture({ captureId: legacyId, tagId: tag.id })
+    const application = { exhibit_id: legacyId, tag_id: tag.id }
+    unsign([{ table: 'exhibit_tags', key: application }])
+
+    await shareCase(caseId, { nodeId: `node-${A.name}` })
+    await addMember(caseId, memberOfB(B))
+
+    expectSignedBy(A, 'tags', { id: tag.id }, null)
+    expectUnsigned([{ table: 'exhibit_tags', key: application }])
+    const offered = recordSource(caseId, A).rows.get(A.installationId) ?? []
+    expect(offered.some(({ table }) => table === 'exhibit_tags')).toBe(false)
+  })
+
   // A Capture whose entry sits before the chain's `import` never reaches a member (#1877), so
   // a row on it would make every member's session refuse its rows: it stays local and
   // unsigned, and the rest of the Case's older rows other than its older tags travel.

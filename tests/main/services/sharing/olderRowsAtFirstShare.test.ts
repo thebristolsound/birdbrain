@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join, resolve } from 'path'
 import { tmpdir } from 'os'
 import { DEMO_CASE_ARCHIVE_FILENAME, DEMO_CASE_OPERATOR_NAME } from '@shared/constants'
@@ -22,6 +22,8 @@ import {
 } from '@main/services/db/tagRepo'
 import { getAnnotations, saveAnnotations, upsertPin } from '@main/services/annotations'
 import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
+import { readStoredZip } from '@main/services/zipRead'
+import { createStoredZip } from '@main/services/zip'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import {
@@ -533,7 +535,11 @@ describe('older rows at first share (#1910)', () => {
     expectUnsigned([{ table: 'annotations', key: { capture_id: 'not-in-any-chain' } }])
   })
 
-  it("a Case imported from this installation's own archive signs its unsigned imported rows and keeps imported signatures", async () => {
+  // Nothing an import records proves who wrote the rows it brought: the header that names the
+  // exporter is unsigned, and the chain does not cover the rows. So a Case imported from this
+  // installation's own archive is read as any imported Case is, and its loose older note stays
+  // local.
+  it("a Case imported from this installation's own archive keeps its loose older note unsigned and imported signatures as they were", async () => {
     await activate(A)
     const sourceId = createCase({ name: 'Source' }).id
     mkdirSync(caseDirOf(sourceId), { recursive: true })
@@ -549,8 +555,38 @@ describe('older rows at first share (#1910)', () => {
 
     await shareCase(newCaseId, { nodeId: `node-${A.name}` })
 
-    expectSignedBy(A, 'notes', { id: byTitle.get('Older')! }, newCaseId)
+    expectUnsigned([{ table: 'notes', key: { id: byTitle.get('Older')! } }])
     expect(syncColumns('notes', { id: byTitle.get('Signed')! })).toEqual(signedSync)
+  })
+
+  // An archive's header is not signed, so another installation can name this one as the
+  // exporter and the chain still verifies under its own key. Its loose older note stays local.
+  it("an archive whose unsigned header names the Owner's installation keeps the exporter's loose older note unsigned", async () => {
+    await createPeer(root, 'xavier', 'Xavier Exporter', 'XE')
+    const sourceId = createCase({ name: 'Exported by Xavier' }).id
+    mkdirSync(caseDirOf(sourceId), { recursive: true })
+    const loose = createNote({ caseId: sourceId, title: 'Xavier loose note', body: 'no link' })
+    unsign([{ table: 'notes', key: { id: loose.id } }])
+    const archive = join(root, 'xavier.birdbrain')
+    await exportCaseArchive(sourceId, archive)
+    const entries = readStoredZip(readFileSync(archive))
+    const header = JSON.parse(entries.get('package.json')!.toString('utf-8'))
+    header.source.installationId = A.installationId
+    entries.set('package.json', Buffer.from(JSON.stringify(header, null, 2)))
+    writeFileSync(archive, createStoredZip([...entries].map(([name, data]) => ({ name, data }))))
+
+    await activate(A)
+    const { newCaseId, report } = await importCaseArchive(archive)
+    expect(report.verification.overallValid).toBe(true)
+    const imports = parsedChain(ownChainText(newCaseId)).filter((e) => e.type === 'import')
+    expect(imports.map((e) => e.type === 'import' && e.sourceInstallationId)).toEqual([
+      A.installationId
+    ])
+    const looseId = listNotes(newCaseId).find((note) => note.title === 'Xavier loose note')!.id
+
+    await shareCase(newCaseId, { nodeId: `node-${A.name}` })
+
+    expectUnsigned([{ table: 'notes', key: { id: looseId } }])
   })
 
   // A legacy html Capture has no chain entry, so no member's copy can hold it (#1877): the

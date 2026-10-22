@@ -76,14 +76,15 @@ function ownerMemberAdd(entries: ManifestEntry[]): MemberAddEntry | undefined {
 
 // The Owner's rows of the Case written before rows were signed (#1910), signed in the
 // transaction that marks the Case shared where they are provably the Owner's (no older tag
-// ever is). An `import` naming another source installation, at any depth of the chain, brought
-// rows that read as this installation's.
-function signOlderRows(caseId: string, caseDir: string, self: string): void {
+// ever is). An `import` at any depth of the chain brought rows that read as this
+// installation's, whichever installation it names: the archive header that names the exporter
+// is unsigned, and the chain does not cover the rows.
+function signOlderRows(caseId: string, caseDir: string): void {
   const entries = ownEntries(caseDir)
   const held = idsReachingMembers(entries)
   signOwnUnsignedRows(caseId, {
     membersHold: (id) => held.has(id),
-    importedFromOther: entries.some((e) => e.type === 'import' && e.sourceInstallationId !== self)
+    imported: entries.some((e) => e.type === 'import')
   })
 }
 
@@ -177,7 +178,7 @@ export async function shareCase(caseId: string, options: ShareCaseOptions): Prom
   if (existing !== undefined) {
     if (existing.memberInstallationId !== self) throw new SharingError('not-owner')
     withTransaction(() => {
-      if (markCaseShared(caseId, self)) signOlderRows(caseId, caseDir, self)
+      if (markCaseShared(caseId, self)) signOlderRows(caseId, caseDir)
       applyRosterEntries(caseId, ownEntries(caseDir))
     })
     writeRosterFiles({ caseId, caseDir, ownerEntries: ownEntries(caseDir), self })
@@ -201,7 +202,7 @@ export async function shareCase(caseId: string, options: ShareCaseOptions): Prom
       ...stamp(self, operatorName)
     },
     () => {
-      if (markCaseShared(caseId, self)) signOlderRows(caseId, caseDir, self)
+      if (markCaseShared(caseId, self)) signOlderRows(caseId, caseDir)
     }
   )
   return listCaseMembers(caseId).find((m) => m.installationId === self)!

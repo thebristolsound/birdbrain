@@ -285,19 +285,21 @@ known, and a tag an archive brought keeps its id on every copy that imported it:
 beside a member's own row of that id and roll back every session. A tag application is signed at the
 first share only when its tag and its note or Exhibit both reach members, so an older application of
 an older tag stays local. Older notes, annotation layers and pins are signed only when provably the
-Owner's. In a Case whose chain holds no `import` naming another source installation, at any depth,
-the share signs those that need a Capture or Exhibit a member's copy can hold, and notes that link
-no Capture. In a Case whose chain holds such an `import`, a row with no author cannot be told from
-the exporter's, so the share signs only the rows that need a Capture or Exhibit this copy created
-after the import, and notes with no such link stay unsigned. In either Case, a row that needs a
-Capture or Exhibit no member can hold stays local: an annotation layer, pin or tag application on a
-legacy html Capture or on one whose entry sits before the chain's `import`, a note that links such a
-Capture, and a tag application on that note. A tag application whose note or tag does not arrive
-with it stays local: one whose note or tag stays unsigned under these rules, or this copy's signed
-row whose signature no longer verifies, because an archive import keeps a signature made over the
-source Case and deleting a Capture from a Case nobody shared clears a note's link without re-signing
-it. A member's copy refuses each of these rows, and an application that lands without its note or
-tag fails the deferred key, so signed, any of them would roll back every member's session rows, as
+Owner's. In a Case whose chain holds no `import`, the share signs those that need a Capture or
+Exhibit a member's copy can hold, and notes that link no Capture. In a Case whose chain holds an
+`import` at any depth, a row with no author cannot be told from the exporter's, so the share signs
+only the rows that need a Capture or Exhibit this copy created after the import, and notes with no
+such link stay unsigned. That holds for an archive this installation exported too: the archive
+header that names the exporter is unsigned, and the chain does not cover the rows, so nothing the
+import records proves the rows are the Owner's. In either Case, a row that needs a Capture or
+Exhibit no member can hold stays local: an annotation layer, pin or tag application on a legacy html
+Capture or on one whose entry sits before the chain's `import`, a note that links such a Capture,
+and a tag application on that note. A tag application whose note or tag does not arrive with it
+stays local: one whose note or tag stays unsigned under these rules, or this copy's signed row whose
+signature no longer verifies, because an archive import keeps a signature made over the source Case
+and deleting a Capture from a Case nobody shared clears a note's link without re-signing it. A
+member's copy refuses each of these rows, and an application that lands without its note or tag
+fails the deferred key, so signed, any of them would roll back every member's session rows, as
 above.
 
 The rows left local stay local only until the Owner writes on one: an edit, a tombstone, or a new

@@ -2281,6 +2281,28 @@ describe("an import's id map holds only its own renames", () => {
     await expectBoundAsMain(newCaseId, renamed)
   })
 
+  // A version-11 archive carries no map, so the first import's renames are
+  // lost, but a Capture only the newest import renamed still binds through
+  // that import's own map, as on main.
+  it('binds a Capture only the newest import renamed, from a version-11 archive', async () => {
+    const caseId = freshCase('Origin')
+    await ingest(caseId)
+    const first = join(tempDir, 'first.birdbrain')
+    await exportCaseArchive(caseId, first)
+    const { newCaseId: renamedCaseId } = await importCaseArchive(first)
+    const later = await ingest(renamedCaseId, 'later')
+    const archive = join(tempDir, 'second.birdbrain')
+    await exportCaseArchive(renamedCaseId, archive)
+    downgradeToVersion11(archive)
+
+    const { newCaseId } = await importCaseArchive(archive)
+
+    const row = listCaptures(newCaseId).find((c) => c.url === 'https://example.com/later')!
+    expect(row.id).not.toBe(later)
+    expect(remappedIn(newCaseId)).toMatchObject({ [later]: row.id })
+    expect(await lifecycle().duplicate(row.id)).toMatchObject({ status: 'duplicated' })
+  })
+
   // The header is unsigned, so neither its version nor its Case id may change
   // which maps count or what they compose to.
   it('composes the same rename whatever the unsigned header says', async () => {
@@ -2510,7 +2532,7 @@ describe("an import's id map holds only its own renames", () => {
       1
     ],
     [
-      'is not canonical',
+      'is pretty JSON, whose canonical form its entry does not hash',
       (caseDir) => [
         signImport(
           caseDir,

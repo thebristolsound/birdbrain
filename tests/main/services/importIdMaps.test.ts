@@ -57,9 +57,11 @@ describe('parseIdMap', () => {
     expect(parseIdMap(text, entryFor(canonical({ a: 'y' })), { canonical: true })).toBeUndefined()
   })
 
-  it('refuses a carried map that is not canonical, even when the entry hashes those bytes', () => {
+  it('refuses a carried map that is not canonical, even when the entry hashes its canonical form', () => {
     const text = JSON.stringify({ sourceCaseId: 'case-1', caseId: 'case-2', remapped: {} }, null, 2)
-    expect(parseIdMap(text, entryFor(text), { canonical: true })).toBeUndefined()
+    const entry = { ...entryFor(text), idMapSha256: sha256(canonical({})) }
+    expect(parseIdMap(text, entry, { canonical: false })).toEqual(new Map())
+    expect(parseIdMap(text, entry, { canonical: true })).toBeUndefined()
   })
 
   it("reads the importer's own pretty map by the canonical hash of what it parses to", () => {

@@ -10,7 +10,14 @@ import type {
 } from '@shared/ipc'
 import { getDb, syncColumnValues, withTransaction, type ImportCtx } from '@main/services/db/core'
 import { UNDATED_TAG_CREATED_AT } from '@main/services/db/migrations'
-import { assertLiveReference, isLiveLocalRow } from '@main/services/db/workingRowRepo'
+import {
+  assertLiveReference,
+  hardDeleteLocalRow,
+  isInSharedCase,
+  isLiveLocalRow,
+  readRow,
+  type RowKey
+} from '@main/services/db/workingRowRepo'
 import {
   allocateLocalVersion,
   deleteLocalRow,
@@ -23,11 +30,21 @@ import {
 // part of what the renderer receives.
 //
 // Every reader skips tombstoned rows, and every write of this installation's
-// own rows signs them (workingRows.ts, #1512): a tag or a tag application
-// deleted in a Shared Case keeps its row so the deletion syncs, and is as
-// gone to the app as one removed outright. Another member's tag is listed
-// and applied like any other; only its author edits or deletes it.
+// own rows signs them (workingRows.ts, #1512), other than an older tag
+// (isOlderTag): a tag or a tag application deleted in a Shared Case keeps
+// its row so the deletion syncs, and is as gone to the app as one removed
+// outright. Another member's tag is listed and applied like any other; only
+// its author edits or deletes it.
 const TAG_COLUMNS = 'id, name, color'
+
+// A tag this installation holds unsigned, written before rows were signed or brought by an
+// archive (#1910, ruling of 22 October 2026). Nothing records who wrote it, and an archive
+// brings it under one id to every copy that imports it, the demo Case's "nightjar" among them,
+// so no write signs it: signed, it would land beside a member's own row of that id and roll
+// back every session of that member.
+function isOlderTag(id: string): boolean {
+  return readRow('tags', { id }, null)?.signature === null
+}
 
 export function listTags(): Tag[] {
   return getDb()
@@ -67,7 +84,15 @@ export function createTag(params: CreateTagParams): Tag {
       getDb()
         .prepare('UPDATE tags SET color = ? WHERE id = ?')
         .run(params.color ?? null, tombstone.id)
-      signLocalRow('tags', { id: tombstone.id }, { deletedAt: null })
+      if (isOlderTag(tombstone.id)) {
+        getDb()
+          .prepare(
+            'UPDATE tags SET deleted_at = NULL WHERE id = ? AND author_installation_id IS NULL'
+          )
+          .run(tombstone.id)
+      } else {
+        signLocalRow('tags', { id: tombstone.id }, { deletedAt: null })
+      }
       return { id: tombstone.id, name: params.name, color: params.color }
     }
     const id = uuid()
@@ -87,7 +112,7 @@ export function updateTag(params: UpdateTagParams): Tag | undefined {
     getDb()
       .prepare('UPDATE tags SET name = ?, color = ? WHERE id = ?')
       .run(params.name ?? existing.name, params.color ?? existing.color ?? null, params.id)
-    signLocalRow('tags', { id: params.id })
+    if (!isOlderTag(params.id)) signLocalRow('tags', { id: params.id })
     return getTag(params.id)
   })
 }
@@ -106,19 +131,44 @@ function liveLocalApplications(table: 'exhibit_tags' | 'note_tags', tagId: strin
   ).map((row) => row.id)
 }
 
+// Deletes this installation's application of a tag. An unsigned application of an older tag
+// never travelled and its tag never will, so a signed tombstone of it would reach a member
+// with no tag for its key: it is removed outright.
+function deleteOwnApplication(
+  table: 'exhibit_tags' | 'note_tags',
+  key: RowKey,
+  olderTag: boolean
+): void {
+  if (olderTag && readRow(table, key, null)?.signature === null) hardDeleteLocalRow(table, key)
+  else deleteLocalRow(table, key)
+}
+
+// Deletes this installation's tag once its own applications are gone. An older tag is never
+// signed: where a Shared Case still applies it, it keeps an unsigned tombstone, so the
+// applications there keep the tag their key names.
+function deleteOwnTag(id: string): boolean {
+  if (!isOlderTag(id)) return deleteLocalRow('tags', { id })
+  if (!isInSharedCase('tags', { id })) return hardDeleteLocalRow('tags', { id })
+  getDb()
+    .prepare('UPDATE tags SET deleted_at = ? WHERE id = ? AND author_installation_id IS NULL')
+    .run(new Date().toISOString(), id)
+  return true
+}
+
 // Removes this installation's tag, and its own applications of it first:
 // what the foreign keys cascade on a removed row, written out so each
 // application is tombstoned where its Case is shared.
 export function deleteTag(id: string): boolean {
   return withTransaction(() => {
     if (!isLiveLocalRow('tags', { id })) return false
+    const olderTag = isOlderTag(id)
     for (const exhibitId of liveLocalApplications('exhibit_tags', id)) {
-      deleteLocalRow('exhibit_tags', { exhibit_id: exhibitId, tag_id: id })
+      deleteOwnApplication('exhibit_tags', { exhibit_id: exhibitId, tag_id: id }, olderTag)
     }
     for (const noteId of liveLocalApplications('note_tags', id)) {
-      deleteLocalRow('note_tags', { note_id: noteId, tag_id: id })
+      deleteOwnApplication('note_tags', { note_id: noteId, tag_id: id }, olderTag)
     }
-    return deleteLocalRow('tags', { id })
+    return deleteOwnTag(id)
   })
 }
 
@@ -237,6 +287,7 @@ export function mergeTags(params: MergeTagsParams): MergeTagsResult | undefined 
     const source = getTag(sourceId)
     const target = getTag(targetId)
     if (!source || !target) return undefined
+    const olderSource = isOlderTag(sourceId)
     const version = allocateLocalVersion()
     for (const exhibitId of liveLocalApplications('exhibit_tags', sourceId)) {
       ensureLocalRow(
@@ -245,7 +296,7 @@ export function mergeTags(params: MergeTagsParams): MergeTagsResult | undefined 
         () => insertCaptureTag(exhibitId, targetId),
         version
       )
-      deleteLocalRow('exhibit_tags', { exhibit_id: exhibitId, tag_id: sourceId })
+      deleteOwnApplication('exhibit_tags', { exhibit_id: exhibitId, tag_id: sourceId }, olderSource)
     }
     for (const noteId of liveLocalApplications('note_tags', sourceId)) {
       ensureLocalRow(
@@ -254,9 +305,9 @@ export function mergeTags(params: MergeTagsParams): MergeTagsResult | undefined 
         () => insertNoteTag(noteId, targetId),
         version
       )
-      deleteLocalRow('note_tags', { note_id: noteId, tag_id: sourceId })
+      deleteOwnApplication('note_tags', { note_id: noteId, tag_id: sourceId }, olderSource)
     }
-    deleteLocalRow('tags', { id: sourceId })
+    deleteOwnTag(sourceId)
     // Applications on a deleted Capture (#1877) are not links anyone can see.
     const count = (sql: string): number => (getDb().prepare(sql).get(targetId) as { n: number }).n
     return {

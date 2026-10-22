@@ -314,9 +314,11 @@ as for any new write on a Capture no member can hold. Later writes on an older t
 behaviour from before #1910. A new application of an older tag in a Shared Case is signed at write
 and offered while its tag is not, so a member's copy that holds no tag of that id refuses the rows
 of each session at the deferred key until the tag reaches it; a copy that seeded the demo Case holds
-"nightjar" under its id and takes such an application. Renaming, recolouring, deleting or merging
-away the tag signs it, as any write of this copy's own row is signed, and the member's next session
-receives the tag and succeeds. The same write on a tag a member holds under its id, "nightjar"
+"nightjar" under its id and takes such an application. Renaming, recolouring or deleting the tag
+signs it, as any write of this copy's own row is signed, and the member's next session receives the
+tag and succeeds. Merging it into another tag moves its applications onto that tag; when that tag is
+also older and unsigned, the member's sessions keep failing until it is renamed, recoloured or
+deleted. The same write on a tag a member holds under its id, "nightjar"
 among them, lands beside that member's own row and rolls back that member's sessions. The share
 refuses a live own row on a Capture recorded as deleted, a state the app's writers cannot reach
 before a first share, and signs a tombstone there, as for a new write. Signing a note changes its

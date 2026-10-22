@@ -22,6 +22,7 @@ import {
   exhibitCitationResolver,
   type ExhibitCitationResolver
 } from '@main/services/db/caseMemberRepo'
+import { settleRowsOnDeletedCapture } from '@main/services/sharing/workingRows'
 
 // The list and single reads join the Capture's Exhibit row so the screens can
 // cite it (#1510). A Capture's Exhibit id IS its capture id, so the join is by
@@ -241,8 +242,8 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
     // a second record of the capture: it is the identity and numbering row
     // every kind shares, and Exhibit Numbers are assigned at ingest for
     // Captures (X18). Writing it here rather than at each call site is what
-    // keeps `exhibit_tags` — whose foreign key points at `exhibits` — usable
-    // for a capture the moment it lands.
+    // keeps `exhibit_tags`, whose rows must name a held Exhibit, usable for a
+    // capture the moment it lands.
     insertExhibitForCapture({
       id,
       caseId: params.caseId,
@@ -266,15 +267,24 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
   return getCapture(id)!
 }
 
-export function deleteCapture(id: string): boolean {
+// `chained` is whether other members can hold the Capture (#1877): its
+// `capture` entry is in the current segment of a chain they read. Only the
+// caller can read the chain; the default, a Capture with a chain entry, is
+// wrong for one this copy imported, whose entry sits before the `import`.
+export function deleteCapture(id: string, chained?: boolean): boolean {
   const d = getDb()
   const capture = getCapture(id)
   if (!capture) return false
 
   const run = d.transaction(() => {
+    // The working-layer rows on the Capture first, while its rows still name
+    // its Case (#1877): in a Shared Case this installation's own are
+    // tombstoned and every other author's stay as signed; in a Case nobody
+    // shared they go, as the foreign keys took them before v41.
+    settleRowsOnDeletedCapture(id, capture.caseId, chained ?? capture.manifestIndex !== undefined)
     // `exhibits` hangs off `cases`, not off `captures`, so nothing cascades to
-    // it when the capture row goes. Left behind, the row would keep the
-    // capture's tags alive and put a phantom Exhibit in the inventory.
+    // it when the capture row goes. Left behind, the row would put a phantom
+    // Exhibit in the inventory.
     deleteExhibit(id)
     return d.prepare('DELETE FROM captures WHERE id = ?').run(id)
   })

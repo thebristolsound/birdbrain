@@ -42,8 +42,14 @@ export function TagEditorPopover({ captureId, open, onClose, anchorRef }: Props)
   async function handleCreate() {
     const trimmed = name.trim()
     if (!trimmed) return
-    await createTag(trimmed, color)
-    setName('')
+    try {
+      await createTag(trimmed, color)
+      setName('')
+    } catch {
+      // Main refused a taken name (#811) or the write failed. Either way the
+      // global mutation handler shows its generic failure toast, and the typed
+      // name stays so the operator can change it.
+    }
   }
 
   return (

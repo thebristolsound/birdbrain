@@ -9,7 +9,8 @@ import { createCase, updateCase, listCases } from '@main/services/db/caseRepo'
 import { insertCapture, getCapture, getCaptureTextContent } from '@main/services/db/captureRepo'
 import { AnchorCaseMismatchError } from '@main/services/db/noteRepo'
 import { MentionCaseMismatchError } from '@main/services/db/noteReferenceRepo'
-import { createNote } from '@main/services/db/noteRepo'
+import { createNote, getNote } from '@main/services/db/noteRepo'
+import { saveAnnotations, upsertPin } from '@main/services/annotations'
 import { addTagToCapture, addTagToNote, createTag } from '@main/services/db/tagRepo'
 import { insertDerivedFile } from '@main/services/db/derivedFileRepo'
 import {
@@ -73,6 +74,33 @@ describe('dbAdmin', () => {
         ok: false,
         issues: [
           'Foreign key violation in integrity_child, row 1, referencing cases (constraint 0).'
+        ]
+      })
+    })
+
+    // Review finding on #1877: the keys these columns lost were what foreign_key_check read.
+    it('reports an annotation layer, pin or tag application on a Capture neither held nor recorded', () => {
+      const db = getDb()
+      const tag = createTag({ name: 'Orphaned' })
+      db.prepare(
+        `INSERT INTO annotations (capture_id, schema_version, shapes_json, image_width,
+           image_height, updated_at) VALUES ('gone', 1, '[]', 1, 1, '2026-01-01T00:00:00.000Z')`
+      ).run()
+      db.prepare(
+        `INSERT INTO annotation_pins (id, capture_id, number, body, created_at, updated_at)
+         VALUES ('pin', 'gone', 1, '', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`
+      ).run()
+      db.prepare("INSERT INTO exhibit_tags (exhibit_id, tag_id) VALUES ('gone', ?)").run(tag.id)
+      const kept = createCase({ name: 'Shared' })
+      db.prepare('INSERT INTO deleted_captures (id, case_id) VALUES (?, ?)').run('kept', kept.id)
+      db.prepare("INSERT INTO exhibit_tags (exhibit_id, tag_id) VALUES ('kept', ?)").run(tag.id)
+
+      expect(checkIntegrity()).toEqual({
+        ok: false,
+        issues: [
+          'Missing reference in annotations, row 1, referencing captures.',
+          'Missing reference in annotation_pins, row 1, referencing captures.',
+          'Missing reference in exhibit_tags, row 1, referencing exhibits.'
         ]
       })
     })
@@ -1164,6 +1192,149 @@ describe('dbAdmin', () => {
       expect(existsSync(join(tempDir, remoteCapture))).toBe(true)
       expect(existsSync(join(tempDir, remoteDocument))).toBe(true)
       expect(existsSync(join(tempDir, strayLocal))).toBe(false)
+    })
+  })
+
+  // Rows on a deleted Capture (#1877): the keys from these tables to captures
+  // and exhibits are application code since v41, so the hatch removes what the
+  // keys cascaded in a Case nobody shared, refuses another member's kept row in
+  // a Shared Case, and refuses a reference to a row that does not exist.
+  describe('rows on a deleted Capture (#1877)', () => {
+    const count = (table: string, column: string, id: string): number =>
+      (
+        getDb().prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${column} = ?`).get(id) as {
+          n: number
+        }
+      ).n
+
+    function captureWithRows(caseId: string, n: number): { captureId: string; noteId: string } {
+      const captureId = insertCapture({
+        caseId,
+        url: `https://example.com/${n}`,
+        title: `Page ${n}`,
+        hash: 'h',
+        timestamp: '2026-01-01T00:00:00.000Z'
+      }).id
+      saveAnnotations({ captureId, shapes: [], imageWidth: 1, imageHeight: 1 })
+      upsertPin({ captureId, body: 'pin' })
+      addTagToCapture({ captureId, tagId: createTag({ name: `Tag ${n}` }).id })
+      return { captureId, noteId: createNote({ caseId, captureId, title: 'Linked' }).id }
+    }
+
+    it('cleanOrphans and deleteRow on a Capture of a Case never shared remove its annotations and pins as the foreign keys did', () => {
+      const caseId = createCase({ name: 'Local', description: '' }).id
+      const orphan = captureWithRows(caseId, 1)
+      const row = captureWithRows(caseId, 2)
+
+      expect(
+        cleanOrphans({
+          dbOrphans: [{ table: 'captures', id: orphan.captureId, caseId, missingPaths: [] }],
+          fileOrphans: []
+        }).dbRecordsRemoved
+      ).toBe(1)
+      expect(deleteRow('captures', { id: row.captureId })).toBe(true)
+
+      for (const { captureId, noteId } of [orphan, row]) {
+        expect(count('annotations', 'capture_id', captureId)).toBe(0)
+        expect(count('annotation_pins', 'capture_id', captureId)).toBe(0)
+        expect(getNote(noteId)?.captureId).toBeUndefined()
+      }
+      expect(count('exhibit_tags', 'exhibit_id', orphan.captureId)).toBe(0)
+      // deleteRow leaves the Exhibit row, and with it the tag application, as before.
+      expect(count('exhibit_tags', 'exhibit_id', row.captureId)).toBe(1)
+      expect(getDb().prepare('SELECT * FROM deleted_captures').all()).toEqual([])
+    })
+
+    it("refuses to edit or delete another member's tag application on a deleted Capture of a Shared Case", () => {
+      const caseId = createCase({ name: 'Shared', description: '' }).id
+      getDb()
+        .prepare("UPDATE cases SET shared_at = '2026-10-01T00:00:00.000Z' WHERE id = ?")
+        .run(caseId)
+      getDb()
+        .prepare('INSERT INTO deleted_captures (id, case_id) VALUES (?, ?)')
+        .run('deleted-capture', caseId)
+      getDb()
+        .prepare("INSERT INTO tags (id, name, author_installation_id) VALUES ('rt', 'theirs', 'r')")
+        .run()
+      getDb()
+        .prepare(
+          "INSERT INTO exhibit_tags (exhibit_id, tag_id, author_installation_id) VALUES ('deleted-capture', 'rt', 'r')"
+        )
+        .run()
+      const pk = { exhibit_id: 'deleted-capture', tag_id: 'rt', author_installation_id: 'r' }
+
+      expect(() => updateRow('exhibit_tags', pk, { version: 9 })).toThrow(SharedCaseRowError)
+      expect(() => deleteRow('exhibit_tags', pk)).toThrow(SharedCaseRowError)
+      expect(() => updateRow('tags', { id: 'rt' }, { name: 'mine' })).toThrow(SharedCaseRowError)
+      expect(getDb().prepare('SELECT version FROM exhibit_tags').all()).toEqual([{ version: 0 }])
+    })
+
+    it("deleteRow and cleanOrphans on a deleted Capture's id leave the rows a Shared Case keeps on it", () => {
+      const db = getDb()
+      const caseId = createCase({ name: 'Shared', description: '' }).id
+      db.prepare("UPDATE cases SET shared_at = '2026-10-01T00:00:00.000Z' WHERE id = ?").run(caseId)
+      db.prepare('INSERT INTO deleted_captures (id, case_id) VALUES (?, ?)').run('gone', caseId)
+      db.prepare(
+        `INSERT INTO annotations (capture_id, schema_version, shapes_json, image_width,
+           image_height, updated_at, author_installation_id)
+         VALUES ('gone', 1, '[]', 1, 1, '2026-01-01T00:00:00.000Z', 'r')`
+      ).run()
+      db.prepare(
+        `INSERT INTO annotation_pins (id, capture_id, number, body, created_at, updated_at,
+           author_installation_id)
+         VALUES ('pin', 'gone', 1, '', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 'r')`
+      ).run()
+      db.prepare(
+        "INSERT INTO tags (id, name, author_installation_id) VALUES ('rt', 'theirs', 'r')"
+      ).run()
+      db.prepare(
+        "INSERT INTO exhibit_tags (exhibit_id, tag_id, author_installation_id) VALUES ('gone', 'rt', 'r')"
+      ).run()
+
+      const expectKept = (): void => {
+        expect(count('annotations', 'capture_id', 'gone')).toBe(1)
+        expect(count('annotation_pins', 'capture_id', 'gone')).toBe(1)
+        expect(count('exhibit_tags', 'exhibit_id', 'gone')).toBe(1)
+      }
+
+      expect(deleteRow('captures', { id: 'gone' })).toBe(false)
+      expectKept()
+      expect(
+        cleanOrphans({
+          dbOrphans: [{ table: 'captures', id: 'gone', caseId, missingPaths: [] }],
+          fileOrphans: []
+        }).dbRecordsRemoved
+      ).toBe(0)
+      expectKept()
+    })
+
+    it('createRow and updateRow refuse a notes.capture_id or exhibit_tags.exhibit_id that names no row', () => {
+      const caseId = createCase({ name: 'Local', description: '' }).id
+      const { captureId, noteId } = captureWithRows(caseId, 1)
+      const tagId = createTag({ name: 'Spare' }).id
+      const note = {
+        id: 'admin-note',
+        case_id: caseId,
+        title: 'T',
+        body: 'B',
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:00.000Z'
+      }
+
+      expect(() => createRow('notes', { ...note, capture_id: 'no-such-capture' })).toThrow(
+        /FOREIGN KEY constraint failed/
+      )
+      expect(() =>
+        createRow('exhibit_tags', { exhibit_id: 'no-such-exhibit', tag_id: tagId })
+      ).toThrow(/FOREIGN KEY constraint failed/)
+      expect(() => updateRow('notes', { id: noteId }, { capture_id: 'no-such-capture' })).toThrow(
+        /FOREIGN KEY constraint failed/
+      )
+      expect(createRow('notes', { ...note, capture_id: captureId })).toMatchObject({
+        capture_id: captureId
+      })
+      expect(updateRow('notes', { id: noteId }, { capture_id: null })).toBe(true)
+      expect(getNote(noteId)?.captureId).toBeUndefined()
     })
   })
 })

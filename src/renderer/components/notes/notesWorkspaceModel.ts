@@ -71,7 +71,35 @@ export function filterNotes(
     )
 }
 
-export function noteSource(note: Note): string {
+/**
+ * What a note's link to its Capture points at: nothing, a Capture some Case
+ * holds, one no Case holds, or not known yet. A note keeps its link to a
+ * Capture deleted from a Shared Case as its author signed it (#1877), so the
+ * screens show that link as a deleted Capture. Read through the Mention
+ * resolver, over the same cached Capture list a Mention chip reads; a Capture
+ * that list lacks is deleted only once `held` says no Case holds it, the rule
+ * notes.md follows.
+ */
+export type NoteCaptureLink = 'none' | 'loading' | 'live' | 'deleted'
+
+export type NoteCaptureHeld = 'loading' | 'held' | 'gone'
+
+export function noteCaptureLink(
+  note: Pick<Note, 'captureId'>,
+  resolve: (type: MentionTargetType, id: string) => { status: 'loading' | 'resolved' | 'missing' },
+  held: NoteCaptureHeld = 'loading'
+): NoteCaptureLink {
+  if (!note.captureId) return 'none'
+  const { status } = resolve('capture', note.captureId)
+  if (status !== 'missing') return status === 'resolved' ? 'live' : 'loading'
+  return held === 'held' ? 'live' : held === 'gone' ? 'deleted' : 'loading'
+}
+
+export function noteSource(
+  note: Note,
+  link: NoteCaptureLink = note.captureId ? 'live' : 'none'
+): string {
+  if (link === 'deleted') return 'Deleted capture'
   if (!note.captureId || !note.sourceUrl) return 'No linked capture'
   try {
     return new URL(note.sourceUrl).host

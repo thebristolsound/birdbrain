@@ -20,6 +20,7 @@ import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase, updateCase } from '@main/services/db/caseRepo'
 import {
   deleteCapture,
+  getCapture,
   insertCapture,
   listCaptures,
   setCaptureTrustedTime
@@ -2630,6 +2631,122 @@ describe('export', () => {
       )
     })
 
+    // Acceptance audit on #1877: a note of a Shared Case keeps its link to a deleted Capture,
+    // which no package carries, and the packaged notes.md says so.
+    it.each([['evidence'], ['working-copy']] as const)(
+      'marks a note linked to a deleted Capture as such in notes.md (%s package)',
+      async (exportClass) => {
+        const { capture: kept } = await ingest(caseId, '<html><body>Kept</body></html>')
+        const { capture: gone } = await ingest(caseId, '<html><body>Gone</body></html>')
+        createNote({ caseId, captureId: kept.id, title: 'On kept', body: '' })
+        createNote({ caseId, captureId: gone.id, title: 'On gone', body: '' })
+        getDb()
+          .prepare("UPDATE cases SET shared_at = '2026-10-01T00:00:00.000Z' WHERE id = ?")
+          .run(caseId)
+        expect(await captureLifecycle.delete(gone.id)).toBe(true)
+
+        const outputPath = join(tempDir, `kept-link-${exportClass}.zip`)
+        await generateReport(
+          caseId,
+          {
+            format: 'zip',
+            include:
+              exportClass === 'evidence'
+                ? EVIDENCE_INCLUDE
+                : { ...EVIDENCE_INCLUDE, auditTrail: false },
+            exportClass,
+            ...(exportClass === 'working-copy' ? { purposeOrAuthority: 'Internal review' } : {}),
+            outputPath
+          },
+          captureLifecycle
+        )
+
+        const notesMd = readStoredZipEntries(outputPath).get('notes.md')!.toString('utf-8')
+        expect(notesMd).toContain(`- Attached to capture: ${kept.id}\n`)
+        expect(notesMd).toContain(
+          `- Attached to capture: ${gone.id} (deleted capture, not in this export)\n`
+        )
+      }
+    )
+
+    // Review finding on #1877: a note Settings > Database moved from another Case keeps its link
+    // to a live Capture of that Case, which the package does not carry and nobody deleted.
+    it('writes no deleted-capture label for a link to a live Capture of another Case', async () => {
+      const otherCaseId = createCase({ name: 'Other' }).id
+      const { capture: elsewhere } = await ingest(
+        otherCaseId,
+        '<html><body>Elsewhere</body></html>'
+      )
+      const { id: noteId } = createNote({
+        caseId: otherCaseId,
+        captureId: elsewhere.id,
+        title: 'Moved',
+        body: ''
+      })
+      getDb().prepare('UPDATE notes SET case_id = ? WHERE id = ?').run(caseId, noteId)
+
+      const outputPath = join(tempDir, 'cross-case-link.zip')
+      await generateReport(
+        caseId,
+        { format: 'zip', include: EVIDENCE_INCLUDE, exportClass: 'evidence', outputPath },
+        captureLifecycle
+      )
+
+      const notesMd = readStoredZipEntries(outputPath).get('notes.md')!.toString('utf-8')
+      expect(notesMd).toContain(`- Attached to capture: ${elsewhere.id}\n`)
+    })
+
+    // Review finding on #1877: the label follows whether any Case still holds the Capture, so a
+    // kept link reads as deleted whichever deletion left it: a legacy html Capture of the Shared
+    // Case, whose deletion this copy records, or a Capture of a never-shared Case, whose deletion
+    // records nothing. Only the second has no record to fall back on.
+    it.each([
+      [
+        'a legacy html Capture of the Shared Case',
+        async (): Promise<string> =>
+          insertCapture({
+            caseId,
+            url: 'https://legacy.example/gone',
+            title: 'Legacy',
+            hash: 'x'.repeat(64),
+            timestamp: '2026-04-05T12:00:00.000Z'
+          }).id
+      ],
+      [
+        'a Capture of a never-shared Case',
+        async (): Promise<string> => {
+          const otherCaseId = createCase({ name: 'Other' }).id
+          const { capture } = await ingest(otherCaseId, '<html><body>Elsewhere</body></html>')
+          return capture.id
+        }
+      ]
+    ] as const)('marks a kept link to %s as deleted in notes.md', async (_, seed) => {
+      const goneId = await seed()
+      const { id: noteId } = createNote({
+        caseId: getCapture(goneId)!.caseId,
+        captureId: goneId,
+        title: 'Kept',
+        body: ''
+      })
+      getDb().prepare('UPDATE notes SET case_id = ? WHERE id = ?').run(caseId, noteId)
+      getDb()
+        .prepare("UPDATE cases SET shared_at = '2026-10-01T00:00:00.000Z' WHERE id = ?")
+        .run(caseId)
+      expect(await captureLifecycle.delete(goneId)).toBe(true)
+
+      const outputPath = join(tempDir, 'unrecorded-link.zip')
+      await generateReport(
+        caseId,
+        { format: 'zip', include: EVIDENCE_INCLUDE, exportClass: 'evidence', outputPath },
+        captureLifecycle
+      )
+
+      const notesMd = readStoredZipEntries(outputPath).get('notes.md')!.toString('utf-8')
+      expect(notesMd).toContain(
+        `- Attached to capture: ${goneId} (deleted capture, not in this export)\n`
+      )
+    })
+
     // AC 5: the Court exhibit excludes Notes — proven at the byte level, as
     // the exact zip entry-list difference between the two evidence presets.
     it('Court exhibit differs from the Full bundle by exactly notes.md', async () => {
@@ -3021,6 +3138,29 @@ describe('export', () => {
 
       expect(md).toContain('- Attached to capture: cap-1\n')
       expect(md).not.toContain('- Anchored to capture:')
+    })
+
+    // Review finding on #1877: a note of a Shared Case keeps its link to a deleted Capture.
+    it('marks a link to a Capture it is told was deleted as a deleted capture', () => {
+      const note = (id: string, captureId: string) => ({
+        id,
+        caseId: 'c1',
+        title: id,
+        body: '',
+        captureId,
+        createdAt: '2026-08-01T10:00:00.000Z',
+        updatedAt: '2026-08-02T11:00:00.000Z'
+      })
+      const md = buildNotesMarkdown(
+        'Case X',
+        '2026-08-24T00:00:00.000Z',
+        [note('kept', 'cap-1'), note('gone', 'cap-2')],
+        null,
+        new Set(['cap-2'])
+      )
+
+      expect(md).toContain('- Attached to capture: cap-1\n')
+      expect(md).toContain('- Attached to capture: cap-2 (deleted capture, not in this export)\n')
     })
   })
 

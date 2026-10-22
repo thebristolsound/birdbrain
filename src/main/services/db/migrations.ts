@@ -1734,4 +1734,132 @@ export function runMigrations(db: Database.Database): void {
       db.pragma('user_version = 40')
     })()
   }
+
+  if (version < 41) {
+    // Four tables are rebuilt and `notes` is the parent of two others, so the keys are
+    // switched off around the transaction for the reason v36 gives.
+    db.pragma('foreign_keys = OFF')
+    try {
+      db.transaction(() => {
+        // Rows on a deleted Capture (#1877, ruling of 21 October 2026): a copy never changes
+        // or removes another member's signed row. The keys that cascaded a Capture's or an
+        // Exhibit's deletion into annotations, annotation_pins and exhibit_tags, and set
+        // notes.capture_id to NULL, move to application code (workingRowRepo), which keeps
+        // another member's rows as signed in a Shared Case and removes them as before in a
+        // Case nobody shared. Every row, rowid, version, tombstone and signature is kept.
+        //
+        // The check runs first as well as last: once the keys are gone, foreign_key_check
+        // cannot see a dangling reference in those columns.
+        const check = (when: string): void => {
+          const violations = db.pragma('foreign_key_check') as unknown[]
+          if (violations.length > 0) {
+            throw new Error(`Migration 41 ${when} ${violations.length} foreign key violation(s)`)
+          }
+        }
+        check('found')
+
+        // One row per deleted Capture of a Shared Case: local, unsigned, never synced. It is
+        // how a kept row still names the Case its author signed, and how a received row on a
+        // deleted Capture is told from one on a Capture that has not arrived yet. chain_author
+        // is the member whose chain the deletion was read from, NULL when this copy deleted
+        // the Capture or read the deletion from its own chain. No other chain's claim on the
+        // id removes a record (receivedEvidence.ts); it goes only with its Case.
+        db.exec(`
+          CREATE TABLE IF NOT EXISTS deleted_captures (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            chain_author TEXT,
+            FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+          );
+          CREATE INDEX IF NOT EXISTS idx_deleted_captures_case_id ON deleted_captures(case_id);
+        `)
+
+        // SQLite's rebuild procedure: the copy keeps each rowid, which notes_fts is keyed on,
+        // and the table's indexes and triggers come back from their stored SQL, the v40
+        // revision triggers included. A table is rebuilt only while its key to `parent` is
+        // still there, so the block runs again over its own tables and over a wound-back copy.
+        const SYNC = [
+          'author_installation_id TEXT',
+          'version INTEGER NOT NULL DEFAULT 0',
+          'deleted_at TEXT',
+          'row_signature TEXT'
+        ]
+        const rebuild = (
+          table: string,
+          parent: string,
+          columns: string[],
+          keys: string[] = []
+        ): void => {
+          const held = db.pragma(`foreign_key_list(${table})`) as Array<{ table: string }>
+          if (!held.some((key) => key.table === parent)) return
+          const saved = db
+            .prepare(
+              `SELECT sql FROM sqlite_master
+                WHERE tbl_name = ? AND type IN ('index', 'trigger') AND sql IS NOT NULL`
+            )
+            .all(table) as Array<{ sql: string }>
+          const names = columns.map((column) => column.split(' ')[0]).join(', ')
+          db.exec(`
+            CREATE TABLE ${table}_v41 (
+              ${[...columns, ...keys].join(',\n              ')}
+            );
+            INSERT INTO ${table}_v41 (rowid, ${names}) SELECT rowid, ${names} FROM ${table};
+            DROP TABLE ${table};
+            ALTER TABLE ${table}_v41 RENAME TO ${table};
+          `)
+          for (const { sql } of saved) db.exec(sql)
+        }
+        rebuild(
+          'notes',
+          'captures',
+          [
+            'id TEXT PRIMARY KEY',
+            'case_id TEXT NOT NULL',
+            'capture_id TEXT',
+            "title TEXT NOT NULL DEFAULT ''",
+            "body TEXT NOT NULL DEFAULT ''",
+            'source_url TEXT',
+            'screenshot_path TEXT',
+            'created_at TEXT NOT NULL',
+            'updated_at TEXT NOT NULL',
+            'body_doc TEXT',
+            'anchor_kind TEXT',
+            'anchor_json TEXT',
+            ...SYNC
+          ],
+          ['FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE']
+        )
+        rebuild('annotations', 'captures', [
+          'capture_id TEXT NOT NULL',
+          'schema_version INTEGER NOT NULL',
+          'shapes_json TEXT NOT NULL',
+          'image_width INTEGER NOT NULL',
+          'image_height INTEGER NOT NULL',
+          'updated_at TEXT NOT NULL',
+          'updated_by TEXT',
+          ...SYNC
+        ])
+        rebuild('annotation_pins', 'captures', [
+          'id TEXT PRIMARY KEY',
+          'capture_id TEXT NOT NULL',
+          'number INTEGER NOT NULL',
+          'body TEXT NOT NULL',
+          'created_at TEXT NOT NULL',
+          'updated_at TEXT NOT NULL',
+          ...SYNC
+        ])
+        rebuild(
+          'exhibit_tags',
+          'exhibits',
+          ['exhibit_id TEXT NOT NULL', 'tag_id TEXT NOT NULL', ...SYNC],
+          ['FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE']
+        )
+
+        check('left')
+        db.pragma('user_version = 41')
+      })()
+    } finally {
+      db.pragma('foreign_keys = ON')
+    }
+  }
 }

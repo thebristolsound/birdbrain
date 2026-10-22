@@ -945,9 +945,10 @@ export interface IpcInvokeContract {
     args: [payload: CaptureBatchPayload]
     result: Record<string, number>
   }
-  // Create-or-reuse by name (#665). `tags:create` is a bare INSERT against a
-  // UNIQUE name, so a picker that lets the operator type a name has to resolve
-  // the collision in main rather than race a client-side lookup (#811).
+  // Create-or-reuse by name (#665). `tags:create` is create-only and fails
+  // with TAG_NAME_TAKEN on a taken name, so a picker that lets the operator
+  // type a name has to resolve the collision in main rather than race a
+  // client-side lookup (#811).
   'tags:findOrCreate': { args: [params: CreateTagParams]; result: Tag }
   'tags:applyToNote': { args: [params: ApplyTagToNoteParams]; result: ApplyTagToNoteResult }
   'tags:removeFromNote': { args: [params: NoteTagParams]; result: void }

@@ -3,7 +3,7 @@ import { runMigrations } from '@main/services/db/migrations'
 import { createPreMigrationSnapshot } from '@main/services/db/dbSnapshots'
 
 let db: Database.Database | null = null
-export const LATEST_SCHEMA_VERSION = 40
+export const LATEST_SCHEMA_VERSION = 41
 
 /**
  * Snapshot the database if — and only if — migrations are about to change it.
@@ -180,10 +180,16 @@ export const ID_PROBE_TABLES = [
   'investigation_runs'
 ] as const
 
-// Id-existence probe for the archive import's collision remap.
+// Id-existence probe for the archive import's collision remap. The id of a
+// Capture deleted from a Shared Case counts as held (#1877): another member's
+// rows kept on it still name it, so an imported Capture must not take it.
 export function hasRowWithId(table: string, id: string): boolean {
   if (!(ID_PROBE_TABLES as readonly string[]).includes(table)) {
     throw new Error(`hasRowWithId: table "${table}" is not permitted`)
   }
-  return getDb().prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id) !== undefined
+  if (getDb().prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id) !== undefined) return true
+  return (
+    (table === 'captures' || table === 'exhibits') &&
+    getDb().prepare('SELECT 1 FROM deleted_captures WHERE id = ?').get(id) !== undefined
+  )
 }

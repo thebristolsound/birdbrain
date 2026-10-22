@@ -55,6 +55,9 @@ import {
 } from '@main/services/logger'
 import * as searchFieldRepo from '@main/services/db/searchFieldRepo'
 import { getExhibitSearchBuild } from '@main/services/db/searchFieldRepo'
+import { saveAnnotations, upsertPin } from '@main/services/annotations'
+import { addTagToCapture, createTag } from '@main/services/db/tagRepo'
+import { createNote, getNote } from '@main/services/db/noteRepo'
 
 // Keep ingest tests hermetic: the corroboration-only TLS re-fetch (#123) would
 // otherwise open a real socket to https://example.com on every ingest. Default
@@ -1142,6 +1145,31 @@ describe('createCaptureLifecycle.delete', () => {
     resetInstallationId()
     rmSync(tempDir, { recursive: true, force: true })
     vi.restoreAllMocks()
+  })
+
+  // A Case nobody shared, as before v41 (#1877): the rows on the Capture go
+  // with it, in application code now rather than by the foreign keys.
+  it("deletes an MHTML capture's annotation layer, pins and tag applications with it and clears its notes' link", async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+    saveAnnotations({ captureId: capture.id, shapes: [], imageWidth: 4, imageHeight: 3 })
+    upsertPin({ captureId: capture.id, body: 'pin' })
+    addTagToCapture({ captureId: capture.id, tagId: createTag({ name: 'Evidence' }).id })
+    const note = createNote({ caseId, captureId: capture.id, title: 'Linked', body: '' })
+
+    expect(await lifecycle.delete(capture.id)).toBe(true)
+
+    for (const [table, column] of [
+      ['annotations', 'capture_id'],
+      ['annotation_pins', 'capture_id'],
+      ['exhibit_tags', 'exhibit_id']
+    ]) {
+      expect(getDb().prepare(`SELECT * FROM ${table} WHERE ${column} = ?`).all(capture.id)).toEqual(
+        []
+      )
+    }
+    expect(getNote(note.id)?.captureId).toBeUndefined()
+    expect(getDb().prepare('SELECT * FROM deleted_captures').all()).toEqual([])
   })
 
   it('returns false when the capture does not exist (no manifest activity)', async () => {

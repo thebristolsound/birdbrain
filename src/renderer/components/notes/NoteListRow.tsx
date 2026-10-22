@@ -4,6 +4,7 @@ import { StickyNote } from 'lucide-react'
 import type { Note } from '@shared/types'
 import { captureThumbnailQueryOptions } from '@renderer/lib/api/captures'
 import { noteAge, noteSource, noteSnippet } from '@renderer/components/notes/notesWorkspaceModel'
+import { useNoteCaptureLink } from '@renderer/components/notes/useNoteCaptureLink'
 import type { MentionResolver } from '@renderer/components/notes/mention/useMentionSources'
 
 export function NoteListRow({
@@ -25,6 +26,7 @@ export function NoteListRow({
   })
   // A save refetches the whole list; only the edited note's snippet needs reparsing.
   const snippet = useMemo(() => noteSnippet(note, resolve), [note, resolve])
+  const captureLink = useNoteCaptureLink(note, resolve)
   return (
     <div
       role="button"
@@ -64,7 +66,7 @@ export function NoteListRow({
         {view === 'detailed' ? (
           <>
             <div className="flex gap-1 text-[10px] text-text-muted">
-              <span className="truncate">{noteSource(note)}</span>
+              <span className="truncate">{noteSource(note, captureLink)}</span>
               <span className="shrink-0 text-text-faint">· {noteAge(note.createdAt)}</span>
             </div>
             <p className="mt-1 h-8 overflow-hidden line-clamp-2 text-[11px] leading-4 text-text-muted">

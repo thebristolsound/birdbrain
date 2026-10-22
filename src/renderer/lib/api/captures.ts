@@ -47,6 +47,17 @@ export const captureLinksQueryOptions = (captureId: string) =>
     gcTime: 0
   })
 
+// Whether any Case holds a Capture, for a note link its own Case does not list
+// (#1877). staleTime 0: deleting the Capture from another Case invalidates only
+// that Case's list.
+export const captureHeldQueryOptions = (captureId: string) =>
+  queryOptions({
+    queryKey: queryKeys.captureHeld(captureId),
+    queryFn: async () => (await window.birdbrain.captures.get(captureId)) != null,
+    enabled: !!captureId,
+    staleTime: 0
+  })
+
 export const captureHtmlUrlQueryOptions = (captureId: string) =>
   queryOptions({
     queryKey: queryKeys.captureHtmlUrl(captureId),

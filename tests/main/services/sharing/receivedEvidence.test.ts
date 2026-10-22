@@ -53,7 +53,8 @@ import {
   seedSharedCase,
   TIME,
   type IngestedCapture,
-  type Peer
+  type Peer,
+  type RecordedSource
 } from '../../../helpers/syncPeers'
 import { buildSyntheticToken } from '../../../helpers/timestampFixtures'
 
@@ -921,6 +922,161 @@ describe('received evidence (#1811)', () => {
       expect(row.path).toBe(thumbPath.rel.replace(/\\/g, '/'))
       const verified = await verifyCaseDerivedFiles(CASE_ID)
       expect(verified.get(capture.captureId)?.map((r) => r.status)).toEqual(['verified'])
+    })
+  })
+
+  // A deleted Capture's id stays dead (#1877): the rows other members keep on it
+  // name it, so no capture entry may attach them to another page.
+  it('refuses a capture entry whose id names a deleted Capture', async () => {
+    await activate(A)
+    const capture = await addCapture(CASE_ID, A, 1)
+    const source = recordSource(CASE_ID, A)
+    await activate(B)
+    getDb()
+      .prepare('INSERT INTO deleted_captures (id, case_id) VALUES (?, ?)')
+      .run(capture.captureId, CASE_ID)
+
+    const result = await pull(CASE_ID, source)
+    expect(result.capturesApplied).toBe(0)
+    expect(result.errors).toEqual([
+      expect.objectContaining({
+        kind: 'rejected-entry',
+        installationId: A.installationId,
+        detail: `capture ${capture.captureId}: id ${capture.captureId} names a deleted Capture`
+      })
+    ])
+    expect(getCapture(capture.captureId)).toBeUndefined()
+    expect(getExhibit(capture.captureId)).toBeUndefined()
+  })
+
+  // Review findings on #1877: entry acceptance has no rule across chains, so this copy cannot
+  // tell an author's entries from a member's copy of the author's id. A record of a deleted
+  // Capture is therefore never undone by another chain's claim: the rows other members keep on
+  // it would otherwise show on the claimant's page.
+  const records = () => getDb().prepare('SELECT * FROM deleted_captures').all()
+  const refusedAsDeleted = (peer: Peer, id: string) =>
+    expect.objectContaining({
+      kind: 'rejected-entry',
+      installationId: peer.installationId,
+      detail: `capture ${id}: id ${id} names a deleted Capture`
+    })
+
+  describe("another member's capture entry for the id of a Capture its author deleted", () => {
+    let deleted: IngestedCapture
+    let fromB: RecordedSource
+    let fromC: RecordedSource
+
+    beforeEach(async () => {
+      await activate(B)
+      deleted = await addCapture(CASE_ID, B, 1)
+      expect(await lifecycle().delete(deleted.captureId)).toBe(true)
+      fromB = recordSource(CASE_ID, B)
+      await activate(C)
+      expect((await pull(CASE_ID, fromB)).errors).toEqual([])
+      // Carol's own page under Bob's deleted id, with the bytes her entry anchors.
+      const page = mhtmlOf('Another page', '<p>Not the deleted Capture</p>')
+      appendManifestEntry(caseDirOf(CASE_ID), {
+        type: 'capture',
+        captureId: deleted.captureId,
+        caseId: CASE_ID,
+        url: 'https://example.com/claimed',
+        timestamp: TIME,
+        contentHash: sha(page),
+        sizeBytes: page.length,
+        exhibitNumber: 1,
+        ...by(C)
+      })
+      fromC = recordSource(CASE_ID, C)
+      fromC.files.set(artifact(deleted.captureId, 'mhtml').rel, page)
+    })
+
+    it('records the deletion and refuses the claim when both arrive in one session', async () => {
+      await activate(A)
+      const result = await pull(CASE_ID, fromC)
+      expect(result.errors).toEqual([refusedAsDeleted(C, deleted.captureId)])
+      expect(records()).toEqual([
+        { id: deleted.captureId, case_id: CASE_ID, chain_author: B.installationId }
+      ])
+      expect(getCapture(deleted.captureId)).toBeUndefined()
+      expect(getExhibit(deleted.captureId)).toBeUndefined()
+    })
+
+    it('keeps the record an earlier session made when the claim arrives later', async () => {
+      await activate(A)
+      expect((await pull(CASE_ID, fromB)).errors).toEqual([])
+      expect(records()).toEqual([
+        { id: deleted.captureId, case_id: CASE_ID, chain_author: B.installationId }
+      ])
+
+      const result = await pull(CASE_ID, fromC)
+      expect(result.errors).toEqual([refusedAsDeleted(C, deleted.captureId)])
+      expect(records()).toEqual([
+        { id: deleted.captureId, case_id: CASE_ID, chain_author: B.installationId }
+      ])
+      expect(getCapture(deleted.captureId)).toBeUndefined()
+      expect(getExhibit(deleted.captureId)).toBeUndefined()
+    })
+  })
+
+  // The cost of that rule: a member's `capture` and `deletion` of another author's live id read
+  // as the author's own deletion, so the Capture stays off a copy that has not landed it.
+  describe("a member's chain that creates and deletes another author's live Capture id", () => {
+    let real: IngestedCapture
+    let fromB: RecordedSource
+    let fromC: RecordedSource
+
+    beforeEach(async () => {
+      await activate(B)
+      real = await addCapture(CASE_ID, B, 1)
+      fromB = recordSource(CASE_ID, B)
+      await activate(C)
+      expect((await pull(CASE_ID, fromB)).errors).toEqual([])
+      const copied = {
+        captureId: real.captureId,
+        caseId: CASE_ID,
+        timestamp: TIME,
+        contentHash: real.contentHash,
+        ...by(C)
+      }
+      appendManifestEntry(caseDirOf(CASE_ID), {
+        type: 'capture',
+        ...copied,
+        url: 'https://example.com/copied',
+        sizeBytes: 1,
+        exhibitNumber: 1
+      })
+      appendManifestEntry(caseDirOf(CASE_ID), { type: 'deletion', ...copied })
+      fromC = recordSource(CASE_ID, C)
+    })
+
+    it("records the deletion and refuses the author's Capture in one session", async () => {
+      await activate(A)
+      expect((await pull(CASE_ID, fromC)).errors).toEqual([refusedAsDeleted(B, real.captureId)])
+      expect(records()).toEqual([
+        { id: real.captureId, case_id: CASE_ID, chain_author: C.installationId }
+      ])
+      expect(getExhibit(real.captureId)).toBeUndefined()
+    })
+
+    it("keeps the record when the author's chain arrives in a later session", async () => {
+      const withheld = recordSource(CASE_ID, C)
+      withheld.chains.delete(B.installationId)
+      await activate(A)
+      expect((await pull(CASE_ID, withheld)).errors).toEqual([])
+
+      expect((await pull(CASE_ID, fromC)).errors).toEqual([refusedAsDeleted(B, real.captureId)])
+      expect(records()).toEqual([
+        { id: real.captureId, case_id: CASE_ID, chain_author: C.installationId }
+      ])
+      expect(getExhibit(real.captureId)).toBeUndefined()
+    })
+
+    it('leaves the Capture on a copy that landed it before the pair arrived', async () => {
+      await activate(A)
+      expect((await pull(CASE_ID, fromB)).errors).toEqual([])
+      expect((await pull(CASE_ID, fromC)).errors).toEqual([])
+      expect(getExhibit(real.captureId)?.authorInstallationId).toBe(B.installationId)
+      expect(records()).toEqual([])
     })
   })
 })

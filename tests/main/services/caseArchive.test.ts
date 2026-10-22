@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
+  copyFileSync,
   mkdtempSync,
   mkdirSync,
   rmSync,
@@ -13,8 +14,10 @@ import { tmpdir } from 'os'
 import { createHash } from 'crypto'
 import { Readable } from 'stream'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
-import { createCase } from '@main/services/db/caseRepo'
+import { createCase, deleteCase } from '@main/services/db/caseRepo'
 import {
+  deleteCapture,
+  getCapture,
   insertCapture,
   toggleFavorite,
   listCaptures,
@@ -29,7 +32,7 @@ import {
   getTagsForNote
 } from '@main/services/db/tagRepo'
 import { createSelector, listSelectors } from '@main/services/db/selectorRepo'
-import { createNote, listNotes } from '@main/services/db/noteRepo'
+import { createNote, getNote, listNotes } from '@main/services/db/noteRepo'
 import { referencesForNote } from '@main/services/db/noteReferenceRepo'
 import { getDb } from '@main/services/db/core'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
@@ -874,13 +877,185 @@ describe('caseArchive import', () => {
   it('keeps original ids when free (source rows absent)', async () => {
     // Simulate importing into a clean instance: drop the source case so ids are
     // free. The cascade (captures → capture_texts → trigger) cleans the index.
-    getDb().prepare('DELETE FROM cases WHERE id = ?').run(caseId)
+    // Through deleteCase rather than a raw DELETE: since v41 (#1877) nothing
+    // cascades from cases to annotations, pins or tag applications, and
+    // deleteCase removes them as every app path does.
+    deleteCase(caseId)
 
     const { newCaseId } = await importCaseArchive(archivePath)
     const imported = listCaptures(newCaseId)
     expect(imported.map((c) => c.id).sort()).toEqual([...originalCaptureIds].sort())
     // tag still attached to the mhtml capture
     expect(getTagsForCapture(mhtmlCaptureId)).toHaveLength(1)
+  })
+
+  // Rows on a deleted Capture (#1877). Marks the source Case shared, gives the
+  // MHTML Capture another member's annotation layer, and deletes the Capture
+  // there, which keeps that layer as signed and records the deletion.
+  function deleteInSharedCase(): Record<string, unknown> {
+    getDb()
+      .prepare("UPDATE cases SET shared_at = '2026-10-01T00:00:00.000Z' WHERE id = ?")
+      .run(caseId)
+    getDb()
+      .prepare(
+        `INSERT INTO annotations (capture_id, schema_version, shapes_json, image_width,
+           image_height, updated_at, author_installation_id, version, row_signature)
+         VALUES (?, 1, '[]', 640, 480, '2026-10-01T09:00:00.000Z', 'installation-remote', 3,
+                 'sig-remote')`
+      )
+      .run(mhtmlCaptureId)
+    expect(deleteCapture(mhtmlCaptureId)).toBe(true)
+    return getDb()
+      .prepare("SELECT * FROM annotations WHERE author_installation_id = 'installation-remote'")
+      .get() as Record<string, unknown>
+  }
+
+  it('remaps an archived Capture whose id names a Capture this database deleted', async () => {
+    const kept = deleteInSharedCase()
+
+    const { newCaseId } = await importCaseArchive(archivePath)
+    const imported = listCaptures(newCaseId).find((c) => c.url === taggedCaptureUrl)!
+    expect(imported.id).not.toBe(mhtmlCaptureId)
+    expect(
+      getDb()
+        .prepare("SELECT * FROM annotations WHERE author_installation_id = 'installation-remote'")
+        .all()
+    ).toEqual([kept])
+    expect(getDb().prepare('SELECT id FROM deleted_captures').all()).toEqual([
+      { id: mhtmlCaptureId }
+    ])
+  })
+
+  // Acceptance audit on #1877: a release at schema v40 inserts a note's link under the key v41
+  // dropped, so a link to a Capture the archive does not carry would refuse its
+  // whole import. The archive writes the link empty and the database keeps it as signed.
+  it('an archive of a Shared Case after a Capture deletion carries the notes linked to it, with the link empty, and none of the rows on it, and imports', async () => {
+    deleteInSharedCase()
+    const data = collectCaseData(caseId)
+    expect(data.annotations).toEqual([])
+    expect(data.annotationPins).toEqual([])
+    expect(data.captureTags).toEqual([])
+    expect(data.notes.find((n) => n.id === plainNoteId)?.capture_id).toBeNull()
+    const carried = new Set(data.captures.map((c) => c.id))
+    expect(
+      data.notes.filter((n) => n.capture_id !== null && !carried.has(n.capture_id as string))
+    ).toEqual([])
+    expect(getNote(plainNoteId)?.captureId).toBe(mhtmlCaptureId)
+    const afterPath = join(tempDir, 'after-deletion.birdbrain')
+    await exportCaseArchive(caseId, afterPath)
+    closeDatabase()
+    await initDatabase(':memory:')
+
+    const { newCaseId } = await importCaseArchive(afterPath)
+    const note = listNotes(newCaseId).find((n) => n.title === 'Note 1')!
+    expect(note.captureId).toBeUndefined()
+    expect(listCaptures(newCaseId).map((c) => c.id)).toEqual([legacyCaptureId])
+  })
+
+  it("clears an archived note's link to a Capture the archive does not carry", async () => {
+    const path = join(tempDir, 'dangling-note-link.birdbrain')
+    copyFileSync(archivePath, path)
+    rewriteDataJson(path, (data) => ({
+      ...data,
+      notes: (data.notes as Array<Record<string, unknown>>).map((n) =>
+        n.id === plainNoteId ? { ...n, capture_id: 'not-carried' } : n
+      )
+    }))
+
+    const { newCaseId } = await importCaseArchive(path)
+    expect(listNotes(newCaseId).find((n) => n.title === 'Note 1')?.captureId).toBeUndefined()
+  })
+
+  it("clears an archived note's link to a Capture another Case of this database holds", async () => {
+    const elsewhere = insertCapture({
+      caseId: createCase({ name: 'Elsewhere' }).id,
+      url: 'https://example.com/elsewhere',
+      title: 'Elsewhere',
+      hash: 'h',
+      timestamp: '2026-01-01T00:00:00.000Z'
+    }).id
+    const path = join(tempDir, 'cross-case-note-link.birdbrain')
+    copyFileSync(archivePath, path)
+    rewriteDataJson(path, (data) => ({
+      ...data,
+      notes: (data.notes as Array<Record<string, unknown>>).map((n) =>
+        n.id === plainNoteId ? { ...n, capture_id: elsewhere } : n
+      )
+    }))
+
+    const { newCaseId } = await importCaseArchive(path)
+    expect(listNotes(newCaseId).find((n) => n.title === 'Note 1')?.captureId).toBeUndefined()
+  })
+
+  // Review finding on #1877: the collision remap covers only the ids an archive carries, so a
+  // kept link to a deleted Capture would cite whatever this installation holds under that id.
+  it.each([
+    ['an earlier archive is imported first', true],
+    ['an earlier archive is imported after it', false]
+  ])(
+    "an imported note's link to a deleted Capture names none of another Case's Captures when %s",
+    async (_, earlierFirst) => {
+      deleteInSharedCase()
+      // A Mention of the id is held to the Case on its own (assertMentionsInCase): with the
+      // earlier Case holding it, that note alone refuses the whole import.
+      getDb().prepare('DELETE FROM notes WHERE id = ?').run(mentionNoteId)
+      const afterPath = join(tempDir, 'after-deletion.birdbrain')
+      await exportCaseArchive(caseId, afterPath)
+      closeDatabase()
+      await initDatabase(':memory:')
+
+      const earlier = earlierFirst ? await importCaseArchive(archivePath) : undefined
+      const { newCaseId } = await importCaseArchive(afterPath)
+      const later = earlierFirst ? earlier! : await importCaseArchive(archivePath)
+
+      expect(getCapture(mhtmlCaptureId)?.caseId).toBe(later.newCaseId)
+      const note = listNotes(newCaseId).find((n) => n.title === 'Note 1')!
+      expect(note.captureId).toBeUndefined()
+    }
+  )
+
+  it('refuses an archive whose annotations, pins or tag applications name a Capture it does not carry', async () => {
+    const rows: Record<string, (data: Record<string, unknown>) => Record<string, unknown>> = {
+      annotations: (data) => ({
+        ...data,
+        annotations: [
+          {
+            capture_id: 'not-carried',
+            schema_version: 1,
+            shapes_json: '[]',
+            image_width: 1,
+            image_height: 1,
+            updated_at: '2026-01-01T00:00:00.000Z',
+            updated_by: null
+          }
+        ]
+      }),
+      annotationPins: (data) => ({
+        ...data,
+        annotationPins: [
+          {
+            id: 'pin-not-carried',
+            capture_id: 'not-carried',
+            number: 1,
+            body: 'x',
+            created_at: '2026-01-01T00:00:00.000Z',
+            updated_at: '2026-01-01T00:00:00.000Z'
+          }
+        ]
+      }),
+      captureTags: (data) => ({
+        ...data,
+        captureTags: [
+          { capture_id: 'not-carried', tag_id: (data.tags as Array<{ id: string }>)[0].id }
+        ]
+      })
+    }
+    for (const [table, mutate] of Object.entries(rows)) {
+      const path = join(tempDir, `dangling-${table}.birdbrain`)
+      copyFileSync(archivePath, path)
+      rewriteDataJson(path, mutate)
+      await expect(importCaseArchive(path), table).rejects.toThrow(/FOREIGN KEY/)
+    }
   })
 
   it('re-import remaps colliding capture ids consistently and records the map', async () => {
@@ -1672,6 +1847,132 @@ describe('caseArchive Derived Files (#1813)', () => {
     expect(readFileSync(join(storageRoot, outputPath))).toEqual(thumbnail)
     expect(listDerivedFilesForCase(caseId)).toHaveLength(1)
     expect(findOrphans().fileOrphans).toEqual([])
+  })
+
+  // Both rules on one delete: the restored file goes with the renamed Capture
+  // (#1813), and another member's row on it stays as signed (#1877).
+  it("deletes a renamed Capture's restored thumbnail in a Shared Case, and keeps another member's row", async () => {
+    sign()
+    await exportCaseArchive(caseId, archivePath)
+    const { newCaseId } = await importCaseArchive(archivePath)
+    const [row] = listCaptures(newCaseId)
+    const restored = join(storageRoot, newCaseId, `${captureId}_thumb.jpg`)
+    expect(existsSync(restored)).toBe(true)
+    getDb()
+      .prepare("UPDATE cases SET shared_at = '2026-10-01T00:00:00.000Z' WHERE id = ?")
+      .run(newCaseId)
+    getDb()
+      .prepare(
+        `INSERT INTO annotations (capture_id, schema_version, shapes_json, image_width,
+           image_height, updated_at, author_installation_id, version, row_signature)
+         VALUES (?, 1, '[]', 640, 480, '2026-10-01T09:00:00.000Z', 'installation-remote', 3,
+                 'sig-remote')`
+      )
+      .run(row.id)
+    const lifecycle = createCaptureLifecycle({
+      selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+    })
+
+    expect(await lifecycle.delete(row.id)).toBe(true)
+
+    expect(existsSync(restored)).toBe(false)
+    expect(listDerivedFilesForCase(newCaseId)).toEqual([])
+    expect(listDerivedFilesForCase(caseId)).toHaveLength(1)
+    expect(
+      getDb()
+        .prepare(
+          'SELECT capture_id, row_signature FROM annotations WHERE author_installation_id = ?'
+        )
+        .all('installation-remote')
+    ).toEqual([{ capture_id: row.id, row_signature: 'sig-remote' }])
+    expect(getDb().prepare('SELECT id, case_id FROM deleted_captures').all()).toEqual([
+      { id: row.id, case_id: newCaseId }
+    ])
+  })
+
+  // The same delete when only the first of two imports renamed the Capture: the
+  // `deletion` entry names it through the carried map (#1017), and the rows on
+  // it settle as on any Capture before the last import (#1877).
+  it('deletes a Capture renamed at the first of two imports in a Shared Case (#1017, #1877)', async () => {
+    sign()
+    await exportCaseArchive(caseId, archivePath)
+    const { newCaseId: renamedCaseId } = await importCaseArchive(archivePath)
+    const [renamed] = listCaptures(renamedCaseId)
+    expect(renamed.id).not.toBe(captureId)
+    const again = join(tempDir, 'again.birdbrain')
+    await exportCaseArchive(renamedCaseId, again)
+    closeDatabase()
+    await initDatabase(':memory:')
+    const { newCaseId } = await importCaseArchive(again)
+    const [row] = listCaptures(newCaseId)
+    expect(row.id).toBe(renamed.id)
+    const restored = join(storageRoot, newCaseId, `${captureId}_thumb.jpg`)
+    expect(existsSync(restored)).toBe(true)
+    getDb()
+      .prepare("UPDATE cases SET shared_at = '2026-10-01T00:00:00.000Z' WHERE id = ?")
+      .run(newCaseId)
+    getDb()
+      .prepare(
+        `INSERT INTO annotations (capture_id, schema_version, shapes_json, image_width,
+           image_height, updated_at, author_installation_id, version, row_signature)
+         VALUES (?, 1, '[]', 640, 480, '2026-10-01T09:00:00.000Z', 'installation-remote', 3,
+                 'sig-remote')`
+      )
+      .run(row.id)
+    const lifecycle = createCaptureLifecycle({
+      selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+    })
+
+    expect(await lifecycle.delete(row.id)).toBe(true)
+
+    expect(existsSync(restored)).toBe(false)
+    const deletions = readEntries(
+      readFileSync(join(storageRoot, newCaseId, 'manifest.jsonl'), 'utf-8')
+    ).filter((entry) => entry.type === 'deletion')
+    expect(deletions.map((entry) => entry.captureId)).toEqual([captureId])
+    expect(
+      getDb()
+        .prepare(
+          'SELECT capture_id, row_signature FROM annotations WHERE author_installation_id = ?'
+        )
+        .all('installation-remote')
+    ).toEqual([{ capture_id: row.id, row_signature: 'sig-remote' }])
+    expect(getDb().prepare('SELECT id, case_id FROM deleted_captures').all()).toEqual([
+      { id: row.id, case_id: newCaseId }
+    ])
+  })
+
+  // The id a Shared Case recorded as deleted counts as held (#1877), so the
+  // import renames the row again, and the carried map composes with that
+  // rename (#1017).
+  it('composes a carried map with a rename onto an id a Shared Case deleted', async () => {
+    sign()
+    await exportCaseArchive(caseId, archivePath)
+    const { newCaseId: renamedCaseId } = await importCaseArchive(archivePath)
+    const [renamed] = listCaptures(renamedCaseId)
+    const again = join(tempDir, 'again.birdbrain')
+    await exportCaseArchive(renamedCaseId, again)
+    getDb()
+      .prepare("UPDATE cases SET shared_at = '2026-10-01T00:00:00.000Z' WHERE id = ?")
+      .run(renamedCaseId)
+    const lifecycle = createCaptureLifecycle({
+      selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+    })
+    expect(await lifecycle.delete(renamed.id)).toBe(true)
+
+    const { newCaseId, report } = await importCaseArchive(again)
+
+    expect(report.verification.overallValid).toBe(true)
+    const [row] = listCaptures(newCaseId)
+    expect([captureId, renamed.id]).not.toContain(row.id)
+    const [restored] = listDerivedFilesForCase(newCaseId)
+    expect(restored).toMatchObject({
+      exhibitId: row.id,
+      path: join(newCaseId, `${captureId}_thumb.jpg`)
+    })
+    expect((await verifyCaseDerivedFiles(newCaseId)).get(row.id)).toEqual([
+      expect.objectContaining({ derivedFileId: restored.id, status: 'verified' })
+    ])
   })
 
   // A derived_files row names a file the delete then moves, so a row's path

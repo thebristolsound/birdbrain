@@ -10,7 +10,7 @@ import type {
 } from '@shared/ipc'
 import { getDb, syncColumnValues, withTransaction, type ImportCtx } from '@main/services/db/core'
 import { UNDATED_TAG_CREATED_AT } from '@main/services/db/migrations'
-import { isLiveLocalRow } from '@main/services/db/workingRowRepo'
+import { assertLiveReference, isLiveLocalRow } from '@main/services/db/workingRowRepo'
 import {
   allocateLocalVersion,
   deleteLocalRow,
@@ -41,8 +41,20 @@ export function getTag(id: string): Tag | undefined {
     .get(id) as Tag | undefined
 }
 
+// Thrown when createTag is asked for a name one of this installation's live
+// tags already holds (#811). createTag is create-only; a caller that means
+// "this tag, new or not" uses findOrCreateTagByName. The IPC handler
+// translates it to TAG_NAME_TAKEN.
+export class TagNameTakenError extends Error {
+  constructor(name: string) {
+    super(`A tag named ‘${name}’ already exists`)
+    this.name = 'TagNameTakenError'
+  }
+}
+
 export function createTag(params: CreateTagParams): Tag {
   return withTransaction(() => {
+    if (findTagIdByNameExact(params.name)) throw new TagNameTakenError(params.name)
     // A tag this installation deleted in a Shared Case keeps its name on its
     // tombstone, and the per-author name index would refuse a second row with
     // it. Naming it again restores that tag, with the colour now asked for.
@@ -180,10 +192,12 @@ export function getTagCountsForCaptures(captureIds: string[]): Record<string, nu
   const placeholders = unique.map(() => '?').join(',')
   const rows = getDb()
     .prepare(
-      `SELECT tag_id, COUNT(DISTINCT exhibit_id) as count
-       FROM exhibit_tags
-       WHERE exhibit_id IN (${placeholders}) AND deleted_at IS NULL
-       GROUP BY tag_id`
+      // Joined to `exhibits`, so an application kept on a deleted Capture (#1877) is not counted.
+      `SELECT ct.tag_id, COUNT(DISTINCT ct.exhibit_id) as count
+       FROM exhibit_tags ct
+       JOIN exhibits e ON e.id = ct.exhibit_id
+       WHERE ct.exhibit_id IN (${placeholders}) AND ct.deleted_at IS NULL
+       GROUP BY ct.tag_id`
     )
     .all(...unique) as Array<{ tag_id: string; count: number }>
 
@@ -243,13 +257,18 @@ export function mergeTags(params: MergeTagsParams): MergeTagsResult | undefined 
       deleteLocalRow('note_tags', { note_id: noteId, tag_id: sourceId })
     }
     deleteLocalRow('tags', { id: sourceId })
-    const count = (table: string): number =>
-      (
-        getDb()
-          .prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE tag_id = ? AND deleted_at IS NULL`)
-          .get(targetId) as { n: number }
-      ).n
-    return { target, captureLinks: count('exhibit_tags'), noteLinks: count('note_tags') }
+    // Applications on a deleted Capture (#1877) are not links anyone can see.
+    const count = (sql: string): number => (getDb().prepare(sql).get(targetId) as { n: number }).n
+    return {
+      target,
+      captureLinks: count(
+        `SELECT COUNT(*) AS n FROM exhibit_tags ct JOIN exhibits e ON e.id = ct.exhibit_id
+          WHERE ct.tag_id = ? AND ct.deleted_at IS NULL`
+      ),
+      noteLinks: count(
+        'SELECT COUNT(*) AS n FROM note_tags WHERE tag_id = ? AND deleted_at IS NULL'
+      )
+    }
   })
 }
 
@@ -259,10 +278,9 @@ export function removeTagFromCapture(params: CaptureTagParams): void {
 
 /**
  * Create-or-reuse by name (#391, ruling R15). `tags.name` is unique per author
- * and `createTag` is a bare INSERT of a local tag, so a caller that names an
- * existing local tag gets a constraint failure rather than the tag it asked
- * for (#811). Both lookups read this installation's tags only, the ones
- * `createTag` would collide with.
+ * and `createTag` is create-only, so a caller that names an existing local tag
+ * gets a TagNameTakenError rather than the tag it asked for (#811). Both
+ * lookups read this installation's tags only, the ones `createTag` refuses.
  *
  * The exact-name lookup runs before the case-insensitive one for the reason
  * PR #835's review gave for the extension path: `Evidence` and `evidence` can
@@ -309,11 +327,14 @@ export function getTagsForNote(noteId: string): Tag[] {
     .all(noteId) as Tag[]
 }
 
+// Joined to `exhibits`: another member's application kept on a deleted
+// Capture (#1877) is hidden with it.
 export function getTagsForCapture(captureId: string): Tag[] {
   return getDb()
     .prepare(
       `SELECT DISTINCT t.id, t.name, t.color FROM tags t
        JOIN exhibit_tags ct ON t.id = ct.tag_id
+       JOIN exhibits e ON e.id = ct.exhibit_id
        WHERE ct.exhibit_id = ? AND ct.deleted_at IS NULL AND t.deleted_at IS NULL
        ORDER BY t.name`
     )
@@ -461,11 +482,12 @@ export function collectCaptureTagsForCase(caseId: string): Record<string, unknow
  * Deletes any of `tagIds` that no Exhibit and no Note still carries.
  *
  * For the demonstration case's cleanup path (#405). Tags are global: deleting
- * a case cascades its `exhibit_tags` and `note_tags` links but leaves the tag
- * rows themselves in every picker. The remaining links are counted rather than
- * the ids taken on trust, because the archive import merges tags by name — the
- * demo's tag may BE one the operator already had, or one they have since put
- * on their own evidence. Returns how many rows were removed.
+ * a case removes its `exhibit_tags` links (removeCaseDependents) and cascades
+ * its `note_tags` ones, but leaves the tag rows themselves in every picker.
+ * The remaining links are counted rather than the ids taken on trust, because
+ * the archive import merges tags by name — the demo's tag may BE one the
+ * operator already had, or one they have since put on their own evidence.
+ * Returns how many rows were removed.
  */
 export function deleteUnusedTags(tagIds: string[]): number {
   if (tagIds.length === 0) return 0
@@ -540,8 +562,9 @@ export function importTagRows(rows: Record<string, unknown>[]): void {
 
 // Reads `capture_id` because that is the key every .birdbrain payload carries
 // (see collectCaptureTagsForCase); writes `exhibit_id`, which is the same id.
-// Must run AFTER importCaptureRows: exhibit_tags has a foreign key onto
-// `exhibits`, and the imported Capture's Exhibit row is written there.
+// Must run AFTER importCaptureRows: each application must name an Exhibit
+// this database holds, checked here since v41 dropped the key (#1877), and
+// the imported Capture's Exhibit row is written there.
 export function importCaptureTagRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
   const insert = getDb().prepare(
     `INSERT OR IGNORE INTO exhibit_tags (
@@ -549,11 +572,9 @@ export function importCaptureTagRows(rows: Record<string, unknown>[], ctx: Impor
      ) VALUES (?, ?, ?, ?, ?, ?)`
   )
   for (const ct of rows) {
-    insert.run(
-      ctx.mapId(ct.capture_id as string),
-      ctx.mapTag(ct.tag_id as string),
-      ...syncColumnValues(ct)
-    )
+    const exhibitId = ctx.mapId(ct.capture_id as string)
+    assertLiveReference('exhibit_tags', { exhibit_id: exhibitId }, 'An archived tag application')
+    insert.run(exhibitId, ctx.mapTag(ct.tag_id as string), ...syncColumnValues(ct))
   }
 }
 

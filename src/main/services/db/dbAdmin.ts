@@ -10,6 +10,14 @@ import {
 } from '@main/services/captureStore'
 import { listSharedCaseIds } from '@main/services/db/caseRepo'
 import { deleteExhibit } from '@main/services/db/exhibitRepo'
+import {
+  assertLiveReference,
+  danglingReferences,
+  deletedCaptureCase,
+  removeCaptureDependents,
+  removeCaseDependents,
+  removeExhibitDependents
+} from '@main/services/db/workingRowRepo'
 import { buildCsv } from '@main/services/csvEscape'
 import { parseNoteAnchor } from '@shared/noteAnchor'
 import { assertAnchorInCase } from '@main/services/db/noteRepo'
@@ -79,7 +87,9 @@ export class SharedCaseRowError extends Error {
 // every Case that reaches it through either relation, the rule
 // `collectTagsForCase` exports by, except that the Exhibit relation is read
 // through `exhibits` rather than `captures`, so a tag on a non-Capture Exhibit
-// counts too.
+// counts too. A tag application kept on a Capture deleted from a Shared Case
+// reaches that Case through the deletion's record (#1877), so another
+// member's kept row cannot be edited or deleted here either.
 const SHARED_CASE_BY_ID = 'SELECT 1 FROM cases WHERE id = @case_id AND shared_at IS NOT NULL'
 const SHARED_CAPTURE = `SELECT 1 FROM captures p JOIN cases c ON c.id = p.case_id
                          WHERE p.id = @capture_id AND c.shared_at IS NOT NULL`
@@ -94,10 +104,18 @@ const IN_SHARED_CASE: Record<AllowedTable, string> = {
                      SELECT 1 FROM selectors s JOIN cases c ON c.id = s.case_id
                       WHERE s.id = @selector_id AND c.shared_at IS NOT NULL`,
   exhibit_tags: `SELECT 1 FROM exhibits e JOIN cases c ON c.id = e.case_id
-                  WHERE e.id = @exhibit_id AND c.shared_at IS NOT NULL`,
+                  WHERE e.id = @exhibit_id AND c.shared_at IS NOT NULL
+                 UNION ALL
+                 SELECT 1 FROM deleted_captures d JOIN cases c ON c.id = d.case_id
+                  WHERE d.id = @exhibit_id AND c.shared_at IS NOT NULL`,
   tags: `SELECT 1 FROM exhibit_tags et
            JOIN exhibits e ON e.id = et.exhibit_id
            JOIN cases c ON c.id = e.case_id
+          WHERE et.tag_id = @id AND c.shared_at IS NOT NULL
+         UNION ALL
+         SELECT 1 FROM exhibit_tags et
+           JOIN deleted_captures d ON d.id = et.exhibit_id
+           JOIN cases c ON c.id = d.case_id
           WHERE et.tag_id = @id AND c.shared_at IS NOT NULL
          UNION ALL
          SELECT 1 FROM note_tags nt
@@ -120,6 +138,26 @@ function assertNotSharedCaseRow(table: AllowedTable, ...rows: Array<Record<strin
   })
   for (const row of rows) {
     if (query.get(params(row)) !== undefined) throw new SharedCaseRowError(table)
+  }
+}
+
+// notes.capture_id and exhibit_tags.exhibit_id have no foreign key since v41
+// (#1877), so a write here that names a Capture or Exhibit must name one this
+// database holds, as the key required.
+function assertReferenceHeld(table: AllowedTable, row: Record<string, unknown>): void {
+  if (table === 'notes' && 'capture_id' in row) {
+    assertLiveReference(
+      'notes',
+      { capture_id: (row.capture_id as string | null) ?? null },
+      'notes row'
+    )
+  }
+  if (table === 'exhibit_tags' && 'exhibit_id' in row) {
+    assertLiveReference(
+      'exhibit_tags',
+      { exhibit_id: (row.exhibit_id as string | null) ?? null },
+      'exhibit_tags row'
+    )
   }
 }
 
@@ -341,6 +379,7 @@ export function createRow(table: string, data: Record<string, unknown>): Record<
   assertValidColumns(table, data)
   const { row, mentions } = validatedRow(table, data)
   assertNotSharedCaseRow(table, row)
+  assertReferenceHeld(table, row)
 
   const db = getDb()
   const keys = Object.keys(row)
@@ -441,6 +480,7 @@ export function updateRow(
   const { row, mentions } = validatedRow(table, data, fallbackCaseId)
   const dataKeys = Object.keys(row)
   if (dataKeys.length === 0) return false
+  assertReferenceHeld(table, row)
 
   const setClauses = dataKeys.map((k) => `"${k}" = ?`).join(', ')
   const values = [...Object.values(row), ...pkValues]
@@ -469,9 +509,16 @@ export function deleteRow(table: string, pk: Record<string, string>): boolean {
   const { where: whereClauses, values } = keyPredicate(pk)
   const stored = db.prepare(`SELECT * FROM "${table}" WHERE ${whereClauses}`).get(...values) as
     Record<string, unknown> | undefined
-  if (stored) assertNotSharedCaseRow(table, stored)
+  // No row, nothing to delete. The dependents below are left alone too: the id
+  // can name a Capture deleted from a Shared Case, whose kept rows stay (#1877).
+  if (!stored) return false
+  assertNotSharedCaseRow(table, stored)
 
   const run = db.transaction(() => {
+    // What the keys cascaded before v41 (#1877). A Shared Case's rows were
+    // refused above, so these are rows of a Case nobody shared.
+    if (table === 'captures' && typeof pk.id === 'string') removeCaptureDependents(pk.id)
+    if (table === 'cases' && typeof pk.id === 'string') removeCaseDependents([pk.id])
     return db.prepare(`DELETE FROM "${table}" WHERE ${whereClauses}`).run(...values)
   })
 
@@ -495,6 +542,13 @@ export function checkIntegrity(): { ok: boolean; issues: string[] } {
     issues.push(
       `Foreign key violation in ${violation.table}, row ${violation.rowid ?? 'unknown'}, ` +
         `referencing ${violation.parent} (constraint ${violation.fkid}).`
+    )
+  }
+  // No key checks these columns since v41 (#1877), so foreign_key_check cannot see them.
+  for (const dangling of danglingReferences()) {
+    issues.push(
+      `Missing reference in ${dangling.table}, row ${dangling.rowid}, ` +
+        `referencing ${dangling.parent}.`
     )
   }
   return { ok: integrity.length > 0 && issues.length === 0, issues }
@@ -573,7 +627,13 @@ export function purgeArchived(): { casesDeleted: number; capturesDeleted: number
     .get() as { count: number }
   const capturesDeleted = captureCountRow.count
 
-  const result = db.prepare('DELETE FROM cases WHERE archived = 1').run()
+  const result = db.transaction(() => {
+    const archived = db.prepare('SELECT id FROM cases WHERE archived = 1').all() as Array<{
+      id: string
+    }>
+    removeCaseDependents(archived.map(({ id }) => id))
+    return db.prepare('DELETE FROM cases WHERE archived = 1').run()
+  })()
 
   return { casesDeleted: result.changes, capturesDeleted }
 }
@@ -712,13 +772,19 @@ export function cleanOrphans(report: OrphanReport): {
     const stored = db.prepare('SELECT case_id FROM captures WHERE id = ?').get(orphan.id) as
       { case_id: string } | undefined
     if (stored && inSharedCase.get({ case_id: stored.case_id }) !== undefined) continue
+    // A Capture deleted from a Shared Case: the rows other members keep on it stay (#1877).
+    if (deletedCaptureCase(orphan.id) !== undefined) continue
     const run = db.transaction(() => {
       // The Exhibit row goes with the Capture row: `exhibits` hangs off
-      // `cases`, so nothing cascades to it, and a row left behind would keep a
-      // deleted Capture's tags alive and list it in the inventory. Called
-      // unconditionally because `allowedOrphanTables` is `{'captures'}` and an
-      // Exhibit id IS its Capture id — a second allowed table would have to
-      // make this per-table rather than inherit it.
+      // `cases`, so nothing cascades to it, and a row left behind would list a
+      // deleted Capture in the inventory. Called unconditionally because
+      // `allowedOrphanTables` is `{'captures'}` and an Exhibit id IS its
+      // Capture id — a second allowed table would have to make this per-table
+      // rather than inherit it. The tag applications, annotations, pins and
+      // note links go first, as the keys took them before v41 (#1877); a
+      // Shared Case's Captures never reach here.
+      removeExhibitDependents(orphan.id)
+      removeCaptureDependents(orphan.id)
       deleteExhibit(orphan.id)
       return db.prepare(`DELETE FROM "${orphan.table}" WHERE id = ?`).run(orphan.id)
     })

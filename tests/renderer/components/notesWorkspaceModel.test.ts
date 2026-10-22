@@ -5,6 +5,7 @@ import {
   editorMentions,
   filterNotes,
   noteAge,
+  noteCaptureLink,
   noteMentions,
   noteSource,
   noteSnippet,
@@ -84,6 +85,39 @@ describe('note list projection', () => {
     expect(noteAge('2026-09-23T11:30:00Z', now)).toBe('30m ago')
     expect(noteAge(notes[0].createdAt, now)).toBe('2h ago')
     expect(noteAge(notes[1].createdAt, now)).toBe('3d ago')
+  })
+
+  // A note keeps its link to a Capture deleted from a Shared Case (#1877). The
+  // link is read against the Case's Capture list, as a Mention chip is, and a
+  // Capture the list lacks is deleted only when no Case holds it.
+  it('noteCaptureLink reads none, loading, live and deleted', () => {
+    const asked: Array<[string, string]> = []
+    const resolver = (status: 'loading' | 'resolved' | 'missing') => (type: string, id: string) => {
+      asked.push([type, id])
+      return { status }
+    }
+    expect(noteCaptureLink({ captureId: undefined }, resolver('resolved'))).toBe('none')
+    expect(asked).toEqual([])
+    expect(noteCaptureLink({ captureId: 'cap' }, resolver('loading'))).toBe('loading')
+    expect(noteCaptureLink({ captureId: 'cap' }, resolver('resolved'))).toBe('live')
+    expect(noteCaptureLink({ captureId: 'cap' }, resolver('missing'), 'loading')).toBe('loading')
+    expect(noteCaptureLink({ captureId: 'cap' }, resolver('missing'), 'held')).toBe('live')
+    expect(noteCaptureLink({ captureId: 'cap' }, resolver('missing'), 'gone')).toBe('deleted')
+    expect(asked).toEqual([
+      ['capture', 'cap'],
+      ['capture', 'cap'],
+      ['capture', 'cap'],
+      ['capture', 'cap'],
+      ['capture', 'cap']
+    ])
+  })
+
+  it('noteSource says Deleted capture', () => {
+    const linked = { ...notes[0], captureId: 'cap', sourceUrl: 'https://example.com/path' }
+    expect(noteSource(linked, 'deleted')).toBe('Deleted capture')
+    expect(noteSource(linked, 'loading')).toBe('example.com')
+    expect(noteSource(linked, 'live')).toBe('example.com')
+    expect(noteSource(notes[0], 'none')).toBe('No linked capture')
   })
 })
 

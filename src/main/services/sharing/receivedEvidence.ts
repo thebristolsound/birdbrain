@@ -18,7 +18,8 @@ import {
   listDerivedFilesForExhibit,
   type InsertDerivedFileParams
 } from '@main/services/db/derivedFileRepo'
-import { readChainFileSnapshots } from '@main/services/manifest'
+import { deletedCaptureCase, recordChainDeletion } from '@main/services/db/workingRowRepo'
+import { readChainFileSnapshots, readManifestSnapshot } from '@main/services/manifest'
 import { readMhtmlTitle } from '@main/services/mhtmlDecoder'
 import type { CaptureArtifactType, CaptureStore } from '@main/services/captureStore'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
@@ -114,6 +115,38 @@ export async function applyReceivedEvidence(
     }
   }
 
+  // Deleted Captures this replica never held, or deleted before migration 41 (#1877): a
+  // `deletion` whose Capture the same chain's current segment creates, read from every member
+  // chain and from this installation's own, recorded so the rows other members keep on it are
+  // accepted rather than held back as rows on a Capture that has not arrived. The removals
+  // above recorded the ones they made; a Capture this replica holds is not recorded here.
+  // A record is never dropped, whatever another chain claims. Entry acceptance has no rule
+  // across chains, so this copy cannot tell an author's `capture` and `deletion` from a
+  // member's copy of that author's id, nor a member's `capture` of a deleted id from the
+  // author's own. Letting a claim undo a record would attach the rows other members keep on
+  // the deleted Capture to the claimant's page. The cost of keeping it: a member's copied pair
+  // keeps a live Capture off a copy that has not landed it yet.
+  const ownChain = currentSegment(
+    storedEntries(readManifestSnapshot(join(storageRoot, caseId)).jsonl)
+  )
+  withTransaction(() => {
+    for (const { author, entries } of [{ author: self, entries: ownChain }, ...chains]) {
+      const created = new Set(
+        entries.flatMap((e) => {
+          if (e.type === 'exhibit') return [e.exhibitId]
+          return e.type === 'capture' ? [e.captureId] : []
+        })
+      )
+      for (const entry of entries) {
+        if (entry.type !== 'deletion') continue
+        const id = entry.captureId
+        if (!isExhibitId(id) || !created.has(id)) continue
+        if (getExhibit(id) || captureRepo.getCapture(id)) continue
+        recordChainDeletion(id, caseId, author === self ? null : author)
+      }
+    }
+  })
+
   // Exhibit Numbers are per author: the unique index is (Case, author, number).
   const numberKey = (author: string, n: number): string => `${author}\u0000${n}`
   const numbers = new Map<string, string>()
@@ -122,20 +155,24 @@ export async function applyReceivedEvidence(
     numbers.set(numberKey(exhibit.authorInstallationId, exhibit.exhibitNumber), exhibit.id)
   }
   const claimed = new Set<string>()
-  // 'own' is a row this author's entry already wrote; 'held' is any other row with the id.
-  const idState = (id: string, author: string): 'free' | 'own' | 'held' => {
+  // 'own' is a row this author's entry already wrote; 'held' is any other row with the id;
+  // 'deleted' names a Capture deleted from a Shared Case, whose id stays dead so the rows other
+  // members keep on it can never attach to another page (#1877).
+  const idState = (id: string, author: string): 'free' | 'own' | 'held' | 'deleted' => {
     if (claimed.has(id)) return 'held'
     const exhibit = getExhibit(id)
     if (exhibit) {
       return exhibit.caseId === caseId && exhibit.authorInstallationId === author ? 'own' : 'held'
     }
-    return captureRepo.getCapture(id) ? 'held' : 'free'
+    if (captureRepo.getCapture(id)) return 'held'
+    return deletedCaptureCase(id) === undefined ? 'free' : 'deleted'
   }
   // Why an entry's id or number cannot be written, or null; 'skip' when its row exists.
   const claimProblem = (id: string, author: string, n: number): string | 'skip' | null => {
     const state = idState(id, author)
     if (state === 'own') return 'skip'
     if (state === 'held') return `id ${id} is already held by another row`
+    if (state === 'deleted') return `id ${id} names a deleted Capture`
     const holder = numbers.get(numberKey(author, n))
     if (holder !== undefined && holder !== id) {
       return `Exhibit Number ${n} is already held by ${holder}`

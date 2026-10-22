@@ -255,8 +255,10 @@ export function backfillExhibitsForCaptures(
   return rows.length
 }
 
-// Deletes the Exhibit row for an id, cascading its tags and Derived Files.
-// Returns whether a row was there. Called wherever a Capture row goes away:
+// Deletes the Exhibit row for an id, cascading its Derived Files. Its tag
+// applications have no key to it since v41 (#1877): the caller settles them
+// first (settleRowsOnDeletedCapture, removeExhibitDependents). Returns
+// whether a row was there. Called wherever a Capture row goes away:
 // `exhibits` hangs off `cases`, not `captures`, so nothing cascades for it.
 export function deleteExhibit(id: string): boolean {
   return getDb().prepare('DELETE FROM exhibits WHERE id = ?').run(id).changes > 0

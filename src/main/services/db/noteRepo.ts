@@ -11,7 +11,7 @@ import {
   type NoteMention
 } from '@shared/noteDoc'
 import { assertMentionsInCase, rewriteReferencesForNote } from '@main/services/db/noteReferenceRepo'
-import { isLiveLocalRow } from '@main/services/db/workingRowRepo'
+import { assertLiveReference, isLiveLocalRow } from '@main/services/db/workingRowRepo'
 import { deleteLocalRow, signLocalRow } from '@main/services/sharing/workingRows'
 import {
   parseNoteAnchor,
@@ -162,6 +162,10 @@ export function createNote(params: CreateNoteParams): Note {
   // from body_doc and must never commit without it (#389).
   return withTransaction(() => {
     assertMentionsInCase(mentions, params.caseId)
+    // No key checks notes.capture_id since v41 (#1877): a new link must name a
+    // Capture this database holds. updateNote never changes it, so a note
+    // keeping its link to a deleted Capture can still be edited.
+    assertLiveReference('notes', { capture_id: params.captureId ?? null }, 'A new note')
     getDb()
       .prepare(
         `INSERT INTO notes (id, case_id, capture_id, title, body, body_doc, anchor_kind, anchor_json, source_url, screenshot_path, created_at, updated_at)
@@ -289,11 +293,23 @@ function rowToNote(row: Record<string, unknown>): Note {
 
 // --- Archive bulk ops ---
 
+// A note's link to a Capture the archive does not carry, one deleted from a Shared Case (#1877)
+// or one of another Case, is written empty. Before schema v41 the key cleared a link to a
+// deleted Capture, so no archive carried one, and a release at schema v40 inserts the column
+// under that key and would refuse the whole import. The note's row in this database
+// keeps its link as signed.
 export function collectNotesForCase(caseId: string): Record<string, unknown>[] {
-  return getDb().prepare('SELECT * FROM notes WHERE case_id = ?').all(caseId) as Record<
+  const db = getDb()
+  const carried = db.prepare('SELECT 1 FROM captures WHERE id = ? AND case_id = ?')
+  const rows = db.prepare('SELECT * FROM notes WHERE case_id = ?').all(caseId) as Record<
     string,
     unknown
   >[]
+  return rows.map((n) =>
+    typeof n.capture_id === 'string' && carried.get(n.capture_id, caseId) === undefined
+      ? { ...n, capture_id: null }
+      : n
+  )
 }
 
 export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
@@ -302,6 +318,16 @@ export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx):
        author_installation_id, version, deleted_at, row_signature)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
+  // A link to a Capture the archive does not carry is not covered by the collision remap, so
+  // it would cite whatever this installation holds under that id, now or after a later
+  // import. The export writes none (collectNotesForCase); one in an archive from elsewhere is
+  // cleared, so no note's link names a Capture no copy holds or records (#1877). The anchor
+  // and Mentions are only remapped, as before v41, and can still name one.
+  const inCase = getDb().prepare('SELECT 1 FROM captures WHERE id = ? AND case_id = ?')
+  const carried = (archived: string): string | null => {
+    const id = ctx.mapId(archived)
+    return inCase.get(id, ctx.newCaseId) !== undefined ? id : null
+  }
   for (const n of rows) {
     // Mention target ids are remapped BEFORE the document is parsed and
     // stored, the same way the anchor and the capture_id column are below:
@@ -359,7 +385,7 @@ export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx):
     insert.run(
       newId,
       ctx.newCaseId,
-      n.capture_id ? ctx.mapId(n.capture_id as string) : null,
+      n.capture_id ? carried(n.capture_id as string) : null,
       n.title ?? '',
       body,
       bodyDoc,

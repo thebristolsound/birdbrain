@@ -226,6 +226,44 @@ only with a valid signature from a roster member and a version above the stored 
 Tag display merges by `name`; the merged chip lists each author on hover. Tag color is the
 earliest-created author's, by `created_at`, with ties broken by `installationId`.
 
+**Rows on a deleted Capture** (ruling of 21 October 2026, #1877). A copy never changes or removes
+another member's signed row. When a Capture of a Shared Case is deleted, by its author or by a copy
+applying the author's `deletion`, the copy tombstones its own annotation layer, pins and tag
+applications on that Capture. It leaves every other member's row, and every note's link to the
+Capture, as signed. That includes this copy's own notes: before schema version 41 the delete
+cleared their link, and since then they keep it, shown as a deleted Capture. The copy records the
+deleted Capture's id and Case in a local table that never syncs. Through that record the kept rows
+still name their Case: the copy hides them with the Capture, still serves them onward under their
+authors' signatures, and changes them only when each author's later write arrives. A copy that
+never held the Capture records the deletion from the author's chain before it asks for rows.
+The id stays dead: no other chain's `capture` or `exhibit`
+entry removes the record or lands a row under the id, so the kept rows never show on another page.
+Entry acceptance has no rule across chains, so a copy cannot tell an author's entries from a
+member's copy of the author's id. A member who signs a `capture` and a `deletion` of another
+author's live id therefore keeps that Capture off every copy that has not landed it yet, in this
+Case or in another Shared Case that copy belongs to. That window is the one in which a member can
+already claim the id first, with the Capture's own files. Since schema version 41 no foreign key
+checks the Capture or Exhibit that a note, annotation layer, pin or tag application names. The
+receiver checks it as each row is applied instead, so a received row on a Capture the copy neither
+holds nor records still rolls back the session's rows, and the next session retries. A legacy html
+Capture has no chain entry, and a Capture this copy imported has its entry before the chain's
+`import`, where members do not read. Neither reaches another member, so deleting one removes this
+copy's own rows on it instead of tombstoning them: no peer could place a tombstone on it. This copy
+still records the deletion, which never leaves it, so the id stays dead here, in every Case of this
+copy. An imported Capture usually keeps its id from the copy that exported the archive, so if this
+copy later receives that Capture through a Shared Case, it refuses the Capture and every row that
+names it until this Case is deleted. A row that names such
+a Capture still travels, among them a note that keeps its link, and a member that never held the
+Capture rolls back that session's rows, as above. A Case Archive
+carries neither the deleted Capture nor a note's link to it: the export writes that link empty, as
+every archive before schema version 41 did, so a release at schema version 40 still imports the
+archive. The import clears any link to a Capture the archive does not carry, so no
+imported note's link names a Capture of another Case or one that no copy holds or records. The
+note's anchor and Mentions are only remapped, as before schema version 41, and can still name a
+Capture that no copy holds or records. In a Case nobody shared, deleting a Capture removes the rows
+on it and clears the links of that Case's notes, as before; a note of a Shared Case that links to it
+from another Case keeps its link.
+
 The investigation records join the working layer under an amendment the maintainer approved on
 2026-10-10. It is E23 in the
 [Case investigation engine plan](../plans/2026-10-10-case-investigation-engine.md), whose E1

@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 // eslint-disable-next-line no-restricted-imports -- owns the annotations/annotation_pins aggregate's SQL; repo home resolved by 2026-07-11-capture-row-ownership plan
 import { getDb, syncColumnValues, withTransaction, type ImportCtx } from '@main/services/db/core'
+import { assertLiveReference } from '@main/services/db/workingRowRepo'
 import { deleteLocalRow, signLocalRow } from '@main/services/sharing/workingRows'
 import type {
   AnnotationsBundle,
@@ -61,23 +62,29 @@ function rowToPin(row: PinRow): AnnotationPin {
 // the choice does not depend on row order. The pins returned are the layer's
 // author's: a drawing's pins are numbered within it, and listing another
 // member's pins beside it would cite numbers the drawing does not carry.
-// Tombstoned layers and pins (#1512) are skipped like removed ones.
+// Tombstoned layers and pins (#1512) are skipped like removed ones, and so is
+// every row on a Capture this database no longer holds: another member's rows
+// on a deleted Capture are kept as signed (#1877) and hidden with it.
+const CAPTURE_HELD = 'EXISTS (SELECT 1 FROM captures WHERE id = @captureId)'
+
 export function getAnnotations(captureId: string): AnnotationsBundle {
   const annRow = getDb()
     .prepare(
-      `SELECT * FROM annotations WHERE capture_id = ? AND deleted_at IS NULL
+      `SELECT * FROM annotations
+        WHERE capture_id = @captureId AND deleted_at IS NULL AND ${CAPTURE_HELD}
        ORDER BY COALESCE(author_installation_id, '')
        LIMIT 1`
     )
-    .get(captureId) as AnnotationRow | undefined
+    .get({ captureId }) as AnnotationRow | undefined
   const author = annRow?.author_installation_id ?? ''
   const pinRows = getDb()
     .prepare(
       `SELECT * FROM annotation_pins
-        WHERE capture_id = ? AND COALESCE(author_installation_id, '') = ? AND deleted_at IS NULL
+        WHERE capture_id = @captureId AND COALESCE(author_installation_id, '') = @author
+          AND deleted_at IS NULL AND ${CAPTURE_HELD}
         ORDER BY number ASC`
     )
-    .all(captureId, author) as PinRow[]
+    .all({ captureId, author }) as PinRow[]
   return {
     annotations: annRow ? rowToAnnotations(annRow) : null,
     pins: pinRows.map(rowToPin)
@@ -210,8 +217,11 @@ export function importAnnotationRows(rows: Record<string, unknown>[], ctx: Impor
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   for (const a of rows) {
+    const captureId = ctx.mapId(a.capture_id as string)
+    // The archive's Capture must have been imported: no key checks it since v41 (#1877).
+    assertLiveReference('annotations', { capture_id: captureId }, 'An archived annotation layer')
     insert.run(
-      ctx.mapId(a.capture_id as string),
+      captureId,
       a.schema_version ?? null,
       a.shapes_json ?? null,
       a.image_width ?? null,
@@ -230,9 +240,11 @@ export function importAnnotationPinRows(rows: Record<string, unknown>[], ctx: Im
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   for (const p of rows) {
+    const captureId = ctx.mapId(p.capture_id as string)
+    assertLiveReference('annotation_pins', { capture_id: captureId }, 'An archived pin')
     insert.run(
       ctx.mapId(p.id as string),
-      ctx.mapId(p.capture_id as string),
+      captureId,
       p.number ?? null,
       p.body ?? null,
       p.created_at ?? null,

@@ -5,7 +5,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { closeDatabase, getDb, initDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
-import { insertCapture } from '@main/services/db/captureRepo'
+import { deleteCapture, insertCapture } from '@main/services/db/captureRepo'
 import { upsertCaseMember } from '@main/services/db/caseMemberRepo'
 import {
   createNote,
@@ -40,6 +40,7 @@ import {
 } from '@main/services/annotations'
 import { referencesForNote } from '@main/services/db/noteReferenceRepo'
 import {
+  isInSharedCase,
   maxAuthorVersionInCase,
   maxLocalVersion,
   ROWS_PAGE_LIMIT,
@@ -1028,5 +1029,228 @@ describe('working-layer rows (#1512)', () => {
       caseId
     )
     expect(maxAuthorVersionInCase(caseId, REMOTE_ID)).toBe(6)
+  })
+
+  // Rows on a deleted Capture (#1877): another member's stay as signed, under
+  // the Case they name, and this installation's own are tombstoned.
+  describe('a deleted Capture of a Shared Case', () => {
+    // A Capture its chain anchors, as every Capture another member can hold is.
+    const chainedCapture = (): string =>
+      insertCapture({
+        caseId,
+        url: 'https://example.com',
+        title: 'Page',
+        hash: 'h'.repeat(64),
+        timestamp: '2026-10-01T00:00:00.000Z',
+        format: 'mhtml',
+        manifestIndex: 1
+      }).id
+    const layer = (cap: string): RowFields => ({
+      capture_id: cap,
+      schema_version: 1,
+      shapes_json: '[]',
+      image_width: 5,
+      image_height: 5,
+      updated_at: '2026-10-01T00:00:00.000Z',
+      updated_by: null
+    })
+    const pin = (id: string, cap: string): RowFields => ({
+      id,
+      capture_id: cap,
+      number: 1,
+      body: 'their pin',
+      created_at: '2026-10-01T00:00:00.000Z',
+      updated_at: '2026-10-01T00:00:00.000Z'
+    })
+    const tagRow: RowFields = {
+      id: 'remote-tag',
+      name: 'theirs',
+      color: null,
+      created_at: '2026-10-01T00:00:00.000Z'
+    }
+
+    // The remote member's layer, pin, tag and application on a Capture, and
+    // this installation's own, with the remote rows as stored.
+    function rowsOnCapture(cap: string): Record<string, unknown[]> {
+      const outcome = applyRemoteRows(
+        [
+          remoteRow('annotations', layer(cap), 1),
+          remoteRow('annotation_pins', pin('remote-pin', cap), 2),
+          remoteRow('tags', tagRow, 3),
+          remoteRow('exhibit_tags', { exhibit_id: cap, tag_id: 'remote-tag' }, 4)
+        ],
+        roster(),
+        new Set([REMOTE_ID]),
+        caseId
+      )
+      expect(outcome.refused).toEqual([])
+      return remoteRaw()
+    }
+
+    const remoteRaw = (): Record<string, unknown[]> =>
+      Object.fromEntries(
+        (['annotations', 'annotation_pins', 'tags', 'exhibit_tags'] as const).map((table) => [
+          table,
+          getDb()
+            .prepare(`SELECT * FROM ${table} WHERE author_installation_id = ? ORDER BY rowid`)
+            .all(REMOTE_ID)
+        ])
+      )
+
+    it("deleteCapture in a Shared Case tombstones this installation's rows on it at one version and leaves another member's as signed", () => {
+      share()
+      const cap = chainedCapture()
+      const before = rowsOnCapture(cap)
+      saveAnnotations({ captureId: cap, shapes: [], imageWidth: 9, imageHeight: 9 })
+      const mine = upsertPin({ captureId: cap, body: 'my pin' })
+      const tag = createTag({ name: 'mine' })
+      addTagToCapture({ captureId: cap, tagId: tag.id })
+      const note = createNote({ caseId, captureId: cap, title: 'Mine', body: '' })
+
+      expect(deleteCapture(cap)).toBe(true)
+
+      expect(remoteRaw()).toEqual(before)
+      const own = [
+        readRow('annotations', { capture_id: cap }, null)!,
+        readRow('annotation_pins', { id: mine.id }, null)!,
+        readRow('exhibit_tags', { exhibit_id: cap, tag_id: tag.id }, null)!
+      ]
+      expect(own.map((row) => row.deletedAt === null)).toEqual([false, false, false])
+      expect(new Set(own.map((row) => row.version)).size).toBe(1)
+      for (const row of own) {
+        const [wire] = toWireRows([row], localId)
+        expect(wire.caseId).toBe(caseId)
+        expect(verifyWireRow(wire, getPublicKeyPem())).toBe(true)
+      }
+      expect(getNote(note.id)?.captureId).toBe(cap)
+      expect(getDb().prepare('SELECT id, case_id FROM deleted_captures').all()).toEqual([
+        { id: cap, case_id: caseId }
+      ])
+      // The tag still reaches the Case, through the kept application.
+      expect(getTagUsageCountsForCase(caseId)).toEqual({})
+      expect(getAnnotations(cap)).toEqual({ annotations: null, pins: [] })
+    })
+
+    it("offers and counts another member's rows on a deleted Capture under the Case it signed", () => {
+      share()
+      const cap = chainedCapture()
+      rowsOnCapture(cap)
+      const cursor = maxAuthorVersionInCase(caseId, REMOTE_ID)
+
+      deleteCapture(cap)
+
+      const offered = rowsOfAuthorSince(caseId, REMOTE_ID, 0)
+      expect(offered.map((row) => row.table).sort()).toEqual(
+        ['annotation_pins', 'annotations', 'exhibit_tags', 'tags'].sort()
+      )
+      for (const wire of toWireRows(offered, localId)) {
+        expect(wire.caseId).toBe(wire.table === 'tags' ? null : caseId)
+        expect(verifyWireRow(wire, REMOTE_KEY.publicKey)).toBe(true)
+      }
+      expect(maxAuthorVersionInCase(caseId, REMOTE_ID)).toBe(cursor)
+      expect(isInSharedCase('annotations', { capture_id: cap })).toBe(true)
+      expect(isInSharedCase('annotation_pins', { id: 'remote-pin' })).toBe(true)
+      expect(isInSharedCase('exhibit_tags', { exhibit_id: cap, tag_id: 'remote-tag' })).toBe(true)
+      expect(isInSharedCase('tags', { id: 'remote-tag' })).toBe(true)
+
+      // The remote member's later tombstone on it lands.
+      const later = applyRemoteRows(
+        [remoteRow('annotation_pins', pin('remote-pin', cap), 5, '2026-10-02T00:00:00.000Z')],
+        roster(),
+        new Set([REMOTE_ID]),
+        caseId
+      )
+      expect(later).toEqual({ applied: 1, skipped: 0, refused: [] })
+      expect(readRow('annotation_pins', { id: 'remote-pin' }, REMOTE_ID)?.deletedAt).not.toBeNull()
+    })
+
+    it("does not count another member's application kept on a deleted Capture as a merged link", () => {
+      share()
+      const gone = chainedCapture()
+      const live = chainedCapture()
+      rowsOnCapture(gone)
+      const source = createTag({ name: 'mine' })
+      addTagToCapture({ captureId: live, tagId: source.id })
+      deleteCapture(gone)
+
+      expect(mergeTags({ sourceId: source.id, targetId: 'remote-tag' })?.captureLinks).toBe(1)
+    })
+
+    // Review finding on #1877: a legacy html Capture has no chain entry, so no peer holds it,
+    // and a tombstone of it could never be placed by any other copy. The local record keeps the
+    // id dead for the note that keeps its link.
+    it("removes this installation's rows on a Capture with no chain entry and records it locally", () => {
+      share()
+      const legacy = capture()
+      saveAnnotations({ captureId: legacy, shapes: [], imageWidth: 9, imageHeight: 9 })
+      upsertPin({ captureId: legacy, body: 'my pin' })
+      const tag = createTag({ name: 'mine' })
+      addTagToCapture({ captureId: legacy, tagId: tag.id })
+      getDb().prepare('UPDATE exhibit_tags SET row_signature = NULL').run()
+      const note = createNote({ caseId, captureId: legacy, title: 'Mine', body: '' })
+
+      expect(deleteCapture(legacy)).toBe(true)
+
+      for (const table of ['annotations', 'annotation_pins'] as const) {
+        expect(raw(table, 'capture_id = ?', legacy)).toBeUndefined()
+      }
+      expect(raw('exhibit_tags', 'exhibit_id = ?', legacy)).toBeUndefined()
+      expect(getDb().prepare('SELECT * FROM deleted_captures').all()).toEqual([
+        { id: legacy, case_id: caseId, chain_author: null }
+      ])
+      expect(rowsOfAuthorSince(caseId, null, 0).filter((row) => row.table !== 'notes')).toEqual([])
+      expect(getNote(note.id)?.captureId).toBe(legacy)
+    })
+
+    it('refuses a row naming a Capture recorded deleted in another Case', () => {
+      share()
+      const other = createCase({ name: 'Other' }).id
+      getDb()
+        .prepare("UPDATE cases SET shared_at = '2026-10-01T00:00:00.000Z' WHERE id = ?")
+        .run(other)
+      const elsewhere = insertCapture({
+        caseId: other,
+        url: 'https://example.com/other',
+        title: 'Other',
+        hash: 'o'.repeat(64),
+        timestamp: '2026-10-01T00:00:00.000Z',
+        format: 'mhtml',
+        manifestIndex: 1
+      }).id
+      deleteCapture(elsewhere)
+
+      const outcome = applyRemoteRows(
+        [
+          remoteRow('annotations', layer(elsewhere), 1),
+          remoteRow('notes', noteFields('rn', 'Cross', { capture_id: elsewhere }), 2)
+        ],
+        roster(),
+        new Set([REMOTE_ID]),
+        caseId
+      )
+      expect(outcome.applied).toBe(0)
+      expect(outcome.refused.map((r) => r.detail)).toEqual([
+        `annotations row of ${REMOTE_ID} at version 1: references a row of Case ${other}`,
+        `notes row of ${REMOTE_ID} at version 2: references a row of Case ${other}`
+      ])
+    })
+
+    it('holds back a received annotation on a Capture this database neither holds nor records', () => {
+      share()
+      const outcome = applyRemoteRows(
+        [
+          remoteRow('notes', noteFields('rn', 'Fine'), 1),
+          remoteRow('annotations', layer('no-such-capture'), 2)
+        ],
+        roster(),
+        new Set([REMOTE_ID]),
+        caseId
+      )
+      expect(outcome.applied).toBe(0)
+      expect(outcome.refused[0]?.kind).toBe('peer')
+      expect(outcome.refused[0]?.detail).toContain('FOREIGN KEY')
+      expect(outcome.refused[0]?.detail).toContain('names Capture no-such-capture')
+      expect(getNote('rn')).toBeUndefined()
+    })
   })
 })

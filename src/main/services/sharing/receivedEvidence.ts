@@ -19,7 +19,11 @@ import {
   type InsertDerivedFileParams
 } from '@main/services/db/derivedFileRepo'
 import { deletedCaptureCase, recordChainDeletion } from '@main/services/db/workingRowRepo'
-import { readChainFileSnapshots, readManifestSnapshot } from '@main/services/manifest'
+import {
+  idsReachingMembers,
+  readChainFileSnapshots,
+  readManifestSnapshot
+} from '@main/services/manifest'
 import { readMhtmlTitle } from '@main/services/mhtmlDecoder'
 import type { CaptureArtifactType, CaptureStore } from '@main/services/captureStore'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
@@ -131,12 +135,7 @@ export async function applyReceivedEvidence(
   )
   withTransaction(() => {
     for (const { author, entries } of [{ author: self, entries: ownChain }, ...chains]) {
-      const created = new Set(
-        entries.flatMap((e) => {
-          if (e.type === 'exhibit') return [e.exhibitId]
-          return e.type === 'capture' ? [e.captureId] : []
-        })
-      )
+      const created = idsReachingMembers(entries)
       for (const entry of entries) {
         if (entry.type !== 'deletion') continue
         const id = entry.captureId

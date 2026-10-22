@@ -12,6 +12,7 @@ import { getSettings } from '@main/services/settings'
 import { ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import {
+  idsReachingMembers,
   readManifestSnapshot,
   readSharedCaseSnapshot,
   withManifestEntry,
@@ -73,26 +74,14 @@ function ownerMemberAdd(entries: ManifestEntry[]): MemberAddEntry | undefined {
   )
 }
 
-// The Captures and Exhibits a member's copy can hold: those the chain's current segment
-// creates, the entries a member reads (receivedEvidence.ts). One whose entry sits before the
-// last `import`, or a legacy html Capture with none, never reaches a member.
-function heldByMembers(entries: ManifestEntry[]): (id: string) => boolean {
-  const ids = new Set(
-    currentSegment(entries).flatMap((e) => {
-      if (e.type === 'capture') return [e.captureId]
-      return e.type === 'exhibit' ? [e.exhibitId] : []
-    })
-  )
-  return (id) => ids.has(id)
-}
-
 // The Owner's rows of the Case written before rows were signed (#1910), signed in the
 // transaction that marks the Case shared. An `import` naming another source installation, at
 // any depth of the chain, brought rows that read as this installation's.
 function signOlderRows(caseId: string, caseDir: string, self: string): void {
   const entries = ownEntries(caseDir)
+  const held = idsReachingMembers(entries)
   signOwnUnsignedRows(caseId, {
-    membersHold: heldByMembers(entries),
+    membersHold: (id) => held.has(id),
     importedFromOther: entries.some((e) => e.type === 'import' && e.sourceInstallationId !== self)
   })
 }

@@ -570,6 +570,26 @@ export function importEntriesOf(snapshot: ManifestSnapshot): ManifestImportEntry
   return imports
 }
 
+// Whether a member reads the entry at `index` of a chain (#1877): members read each other's
+// chains from the last `import` on, so an entry before it is a source Case's history that never
+// reached a member. `imports` are that chain's own `import` entries.
+export function entryReachesMembers(index: number, imports: Array<{ index: number }>): boolean {
+  return imports.every((entry) => index > entry.index)
+}
+
+// The Captures and Exhibits a chain creates that a member's copy can hold (entryReachesMembers).
+// A legacy html Capture has no entry, so it is never among them.
+export function idsReachingMembers(entries: ManifestEntry[]): Set<string> {
+  const imports = entries.filter((e) => e.type === 'import')
+  return new Set(
+    entries.flatMap((e) => {
+      if (!entryReachesMembers(e.index, imports)) return []
+      if (e.type === 'capture') return [e.captureId]
+      return e.type === 'exhibit' ? [e.exhibitId] : []
+    })
+  )
+}
+
 // A file packaged into an export (evidence .zip or .birdbrain archive), as
 // recorded in the package's artifact index.
 // The artifact index type and THE packageHash recipe both live in

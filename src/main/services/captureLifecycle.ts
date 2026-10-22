@@ -761,13 +761,12 @@ function describesRow(
 // The id a `deletion` entry names a Capture by (#1815): the `captureId` its
 // own `capture` entry carries when an import renamed the row, since both
 // package verifiers count an entry deleted only by that id. The rename is
-// accepted only through `entryDescribesRow`; any other row keeps its own id.
-// `entries` and `imports` must come from one verified read of the chain.
+// accepted only through a `rowDescriber`; any other row keeps its own id.
+// `entries` and the describer must come from one verified read of the chain.
 export function signedCaptureId(
   row: { id: string; caseId: string; manifestIndex?: number },
   entries: Record<string, unknown>[],
-  imports: ManifestImportEntry[],
-  caseDir: string
+  describes: ReturnType<typeof rowDescriber>
 ): string {
   const { id, manifestIndex } = row
   if (typeof manifestIndex !== 'number') return id
@@ -777,9 +776,7 @@ export function signedCaptureId(
   }
   const { caseId, captureId } = parsed.data
   if (captureId === id) return id
-  return entryDescribesRow({ caseId, rowId: captureId }, row, { entries, imports }, caseDir)
-    ? captureId
-    : id
+  return describes({ caseId, rowId: captureId }, row) ? captureId : id
 }
 
 // The id-collision remap archive import wrote into this case directory, read
@@ -1135,15 +1132,21 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
   // batch under the case slot. A batch appends only `deletion` entries, so the
   // existing entries and imports `signedCaptureId` reads stay fixed across it,
   // and one verified read, taken for the first MHTML row, serves every row.
+  // So does one read of the id maps, taken for the first renamed row: deleting
+  // rows can only relax that read, never tighten it, so the batch keeps the
+  // stricter answer.
   // A rename needs the anchored id map (`readAnchoredIdMap`), so without that
   // file every row keeps its own id and no chain is read.
   function deletionIdResolver(caseDir: string): DeletionIdResolver {
     if (!existsSync(join(caseDir, IMPORT_ID_MAP_FILENAME))) return ({ id }) => id
-    let own: AuthorChain | undefined
+    let read: { own: AuthorChain; describes: ReturnType<typeof rowDescriber> } | undefined
     return (capture) => {
-      own ??= readCaseChains(caseDir).own
-      const { chain, entries, imports } = own
-      return chain.valid ? signedCaptureId(capture, entries, imports, caseDir) : capture.id
+      if (!read) {
+        const { own } = readCaseChains(caseDir)
+        read = { own, describes: rowDescriber(caseDir, own) }
+      }
+      const { own, describes } = read
+      return own.chain.valid ? signedCaptureId(capture, own.entries, describes) : capture.id
     }
   }
 

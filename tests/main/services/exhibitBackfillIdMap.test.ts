@@ -217,4 +217,55 @@ describe('the backfill on a renamed import of many Captures', () => {
     expect(idMapReads()).toBe(1)
     expect(carriedMapReads()).toBe(1)
   })
+
+  // Every `deletion` entry of a batch names its Capture by the id the signed
+  // entry carries, which on a renamed row resolves through the maps.
+  it('reads the own map and each carried map once per batch delete of a Case imported twice', async () => {
+    const source = createCase({ name: 'Deleted' }).id
+    ensureCaseDir(source)
+    initManifest(join(tempDir, 'captures', source))
+    const lifecycle = createCaptureLifecycle({
+      selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle
+    })
+    for (let n = 0; n < 12; n++) {
+      const body = `deleted ${n}`
+      await lifecycle.ingest({
+        caseId: source,
+        url: `https://example.com/${n}`,
+        title: `Capture ${n}`,
+        timestamp: '2026-04-05T12:00:00.000Z',
+        stream: Readable.from([Buffer.from(body)]) as unknown as ReadableStream<Uint8Array>,
+        textContent: body,
+        headers: {},
+        browserVersion: 'Chrome/120',
+        userAgent: 'Mozilla/5.0',
+        httpStatus: 200,
+        operatorId: 'op-1',
+        operatorName: 'Test Operator',
+        toolVersion: TOOL_VERSION
+      })
+    }
+    const signedIds = listExhibits(source).map(({ id }) => id)
+    const once = join(tempDir, 'once.birdbrain')
+    await exportCaseArchive(source, once)
+    const { newCaseId: renamedCaseId } = await importCaseArchive(once)
+    const twice = join(tempDir, 'twice.birdbrain')
+    await exportCaseArchive(renamedCaseId, twice)
+    const { newCaseId } = await importCaseArchive(twice)
+    const rows = listExhibits(newCaseId).map(({ id }) => id)
+    expect(rows.some((id) => signedIds.includes(id))).toBe(false)
+
+    vi.mocked(readFileSync).mockClear()
+    const { deletedIds } = await lifecycle.deleteMany(newCaseId, rows)
+
+    expect(deletedIds).toHaveLength(12)
+    expect(idMapReads()).toBe(1)
+    expect(carriedMapReads()).toBe(1)
+    const deletions = readFileSync(join(tempDir, 'captures', newCaseId, 'manifest.jsonl'), 'utf-8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+      .filter(({ type }) => type === 'deletion')
+    expect(deletions.map(({ captureId }) => captureId).sort()).toEqual([...signedIds].sort())
+  })
 })

@@ -55,6 +55,12 @@ import {
   MAX_SCREENSHOT_SIZE
 } from '@shared/constants'
 import { canonicalStringify } from '@shared/verify'
+import {
+  carriedIdMapName,
+  composeIdMaps,
+  isIdMapDigest,
+  parseIdMap
+} from '@main/services/importIdMaps'
 import { recordedHttpStatus } from '@shared/httpStatus'
 import * as caseRepo from '@main/services/db/caseRepo'
 import { blockedSkipReason, matchCaseExclusion } from '@main/services/exclusionPolicy'
@@ -769,19 +775,24 @@ export function signedCaptureId(
 // anchors — an unanchored file in the case directory must not be able to point
 // a row at another capture's entry. Undefined (so the binding fails closed)
 // when this case did not arrive by import, when the file is absent or
-// unparseable, or when it does not hash to what the chain recorded. Note it
-// records ONE hop: the map for an earlier import is not carried in the archive,
-// so a row remapped before this case's own import stays unresolvable.
+// unparseable, or when it does not hash to what the chain recorded. A row
+// renamed at an earlier import in the chain resolves through that import's
+// map, which the archive carried and the import kept (#1017): every earlier
+// map must be present and pass `parseIdMap` and `composeIdMaps`, or none
+// counts and only this import's own renames resolve, as before.
 function readAnchoredIdMap(
   caseDir: string,
   caseId: string,
   imports: ManifestImportEntry[]
 ): Record<string, unknown> | undefined {
-  const custody = imports.find((imported) => imported.caseId === caseId)
-  if (!custody) return undefined
+  const at = imports.findIndex((imported) => imported.caseId === caseId)
+  if (at === -1) return undefined
+  const custody = imports[at]
+  let text: string
   let payload: unknown
   try {
-    payload = JSON.parse(readFileSync(join(caseDir, IMPORT_ID_MAP_FILENAME), 'utf-8'))
+    text = readFileSync(join(caseDir, IMPORT_ID_MAP_FILENAME), 'utf-8')
+    payload = JSON.parse(text)
   } catch {
     return undefined
   }
@@ -792,7 +803,24 @@ function readAnchoredIdMap(
   if (typeof payload !== 'object' || payload === null || !('remapped' in payload)) return undefined
   const { remapped } = payload
   if (typeof remapped !== 'object' || remapped === null) return undefined
-  return { ...remapped }
+  const own = { ...remapped }
+  if (at === 0) return own
+  const maps: Array<Map<string, string>> = []
+  for (const earlier of imports.slice(0, at)) {
+    if (!isIdMapDigest(earlier.idMapSha256)) return own
+    let carried: string
+    try {
+      carried = readFileSync(join(caseDir, carriedIdMapName(earlier.idMapSha256)), 'utf-8')
+    } catch {
+      return own
+    }
+    const map = parseIdMap(carried, earlier, { canonical: true })
+    if (!map) return own
+    maps.push(map)
+  }
+  const ownMap = parseIdMap(text, custody, { canonical: false })
+  if (!ownMap) return own
+  return composeIdMaps([...maps, ownMap])?.record ?? own
 }
 
 // The operator gate every ingest and duplicate passes. A signed entry naming

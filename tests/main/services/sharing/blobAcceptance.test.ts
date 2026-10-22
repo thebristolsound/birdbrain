@@ -86,6 +86,13 @@ describe('blob acceptance', () => {
       expect(safe(`${CASE_ID}/lineage/manifest.x.jsonl`)).toBeNull()
     })
 
+    // Only the archive import writes there, and binding trusts what it holds (#1017).
+    it('refuses everything under the carried id map directory', () => {
+      expect(safe(`${CASE_ID}/import-id-maps/${'a'.repeat(64)}.json`)).toBeNull()
+      expect(safe(`${CASE_ID}/import-id-maps/anything.pdf`)).toBeNull()
+      expect(safe(`${CASE_ID}/Import-Id-Maps/${'a'.repeat(64)}.json`)).toBeNull()
+    })
+
     // A case-insensitive filesystem would hand a reserved name or a chain
     // file to a peer under another spelling.
     it('refuses reserved names, chain files and unsynced directories whatever their case', () => {

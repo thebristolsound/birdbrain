@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, readFileSync, rmSync } from 'fs'
-import { basename, join } from 'path'
+import { basename, dirname, join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
 import { closeDatabase, initDatabase } from '@main/services/db/core'
@@ -40,6 +40,15 @@ function idMapReads(): number {
     .mocked(readFileSync)
     .mock.calls.filter(
       ([path]) => typeof path === 'string' && basename(path) === IMPORT_ID_MAP_FILENAME
+    ).length
+}
+
+// Reads of the id maps an import received with its archive (#1017).
+function carriedMapReads(): number {
+  return vi
+    .mocked(readFileSync)
+    .mock.calls.filter(
+      ([path]) => typeof path === 'string' && basename(dirname(path)) === 'import-id-maps'
     ).length
 }
 
@@ -113,5 +122,44 @@ describe('the backfill on a renamed import of many Captures', () => {
     vi.mocked(readFileSync).mockClear()
     await backfillCase(newCaseId, { toolVersion: TOOL_VERSION })
     expect(idMapReads()).toBe(0)
+  })
+
+  it('reads the own map and each carried map once per backfill of a Case imported twice', async () => {
+    const source = createCase({ name: 'Twice' }).id
+    ensureCaseDir(source)
+    initManifest(join(tempDir, 'captures', source))
+    const lifecycle = createCaptureLifecycle({
+      selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle
+    })
+    for (let n = 0; n < 30; n++) {
+      const body = `twice ${n}`
+      await lifecycle.ingest({
+        caseId: source,
+        url: `https://example.com/${n}`,
+        title: `Capture ${n}`,
+        timestamp: '2026-04-05T12:00:00.000Z',
+        stream: Readable.from([Buffer.from(body)]) as unknown as ReadableStream<Uint8Array>,
+        textContent: body,
+        headers: {},
+        browserVersion: 'Chrome/120',
+        userAgent: 'Mozilla/5.0',
+        httpStatus: 200,
+        operatorId: 'op-1',
+        operatorName: 'Test Operator',
+        toolVersion: TOOL_VERSION
+      })
+    }
+    // Both imports on this installation, so both rename every row.
+    const once = join(tempDir, 'once.birdbrain')
+    await exportCaseArchive(source, once)
+    const { newCaseId: renamedCaseId } = await importCaseArchive(once)
+    const twice = join(tempDir, 'twice.birdbrain')
+    await exportCaseArchive(renamedCaseId, twice)
+    const { newCaseId } = await importCaseArchive(twice)
+
+    vi.mocked(readFileSync).mockClear()
+    await backfillCase(newCaseId, { toolVersion: TOOL_VERSION })
+    expect(idMapReads()).toBe(1)
+    expect(carriedMapReads()).toBe(1)
   })
 })

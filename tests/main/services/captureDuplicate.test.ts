@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
@@ -22,6 +22,7 @@ import { logger } from '@main/services/logger'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { IMPORT_ID_MAP_FILENAME } from '@shared/constants'
 import { ManifestEntrySchema } from '@shared/schemas'
+import { canonicalStringify } from '@shared/verify'
 import type { Capture } from '@shared/types'
 import { appendFutureEntry } from '../../helpers/futureManifestEntry'
 
@@ -905,6 +906,90 @@ describe('createCaptureLifecycle.duplicate on an imported case (#827)', () => {
     }
     map.remapped['00000000-0000-4000-8000-000000000000'] = capture.id
     writeFileSync(mapPath, JSON.stringify(map, null, 2))
+    const before = manifestLinesFor(caseId).length
+
+    const result = await lifecycle.duplicate(capture.id)
+
+    expect(result).toEqual({
+      status: 'rejected',
+      reason: 'not_verified',
+      detail: 'entry-mismatch'
+    })
+    expect(manifestLinesFor(caseId)).toHaveLength(before)
+  })
+
+  // #1017: the renamed Case archived again. Its archive carries the first
+  // import's id map, and the second import keeps it beside its own.
+  async function importTwice({ freshDatabase }: { freshDatabase: boolean }): Promise<{
+    caseId: string
+    capture: Capture
+  }> {
+    const first = await importArchive()
+    expect(first.capture.id).not.toBe(source.id)
+    const again = join(tempDir, 'again.birdbrain')
+    await exportCaseArchive(first.caseId, again)
+    if (freshDatabase) {
+      closeDatabase()
+      await initDatabase(':memory:')
+    }
+    const { newCaseId } = await importCaseArchive(again)
+    return { caseId: newCaseId, capture: listCaptures(newCaseId)[0] }
+  }
+
+  const carriedMapPath = (caseId: string): string => {
+    const dir = join(importedCaseDir(caseId), 'import-id-maps')
+    const [name] = readdirSync(dir)
+    return join(dir, name)
+  }
+
+  async function expectDuplicated(caseId: string, capture: Capture): Promise<void> {
+    const result = await lifecycle.duplicate(capture.id)
+
+    expect(result.status).toBe('duplicated')
+    if (result.status !== 'duplicated') return
+    expect(result.capture.duplicateOfCaptureId).toBe(capture.id)
+    expect(verifyManifestChain(importedCaseDir(caseId)).valid).toBe(true)
+    await expect(lifecycle.verify(result.capture.id)).resolves.toMatchObject({
+      status: 'verified'
+    })
+  }
+
+  it('duplicates a capture renamed at the first of two imports (#1017)', async () => {
+    // Another installation's database, so the second import keeps every id.
+    const { caseId, capture } = await importTwice({ freshDatabase: true })
+
+    await expectDuplicated(caseId, capture)
+  })
+
+  it('duplicates a capture renamed at both imports (#1017)', async () => {
+    const { caseId, capture } = await importTwice({ freshDatabase: false })
+
+    await expectDuplicated(caseId, capture)
+  })
+
+  it('refuses a capture renamed at an earlier import when its carried map is gone', async () => {
+    const { caseId, capture } = await importTwice({ freshDatabase: true })
+    rmSync(carriedMapPath(caseId))
+    const before = manifestLinesFor(caseId).length
+
+    const result = await lifecycle.duplicate(capture.id)
+
+    expect(result).toEqual({
+      status: 'rejected',
+      reason: 'not_verified',
+      detail: 'entry-mismatch'
+    })
+    expect(manifestLinesFor(caseId)).toHaveLength(before)
+  })
+
+  it('refuses a capture renamed at an earlier import when its carried map no longer hashes to its import entry', async () => {
+    const { caseId, capture } = await importTwice({ freshDatabase: true })
+    const mapPath = carriedMapPath(caseId)
+    const map = JSON.parse(readFileSync(mapPath, 'utf-8')) as {
+      remapped: Record<string, string>
+    }
+    map.remapped['00000000-0000-4000-8000-000000000000'] = 'a-fresh-id'
+    writeFileSync(mapPath, canonicalStringify(map))
     const before = manifestLinesFor(caseId).length
 
     const result = await lifecycle.duplicate(capture.id)

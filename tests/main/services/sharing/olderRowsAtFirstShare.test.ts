@@ -521,7 +521,7 @@ describe('older rows at first share (#1910)', () => {
     expectUnsigned([{ table: 'annotations', key: { capture_id: 'not-in-any-chain' } }])
   })
 
-  it("a fork signs its unsigned imported rows under the forker's key and keeps imported signatures", async () => {
+  it("a Case imported from this installation's own archive signs its unsigned imported rows and keeps imported signatures", async () => {
     await activate(A)
     const sourceId = createCase({ name: 'Source' }).id
     mkdirSync(caseDirOf(sourceId), { recursive: true })

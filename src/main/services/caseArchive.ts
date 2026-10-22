@@ -104,8 +104,9 @@ import type {
 // on the exporter's chain that its Case holds, its own included, under
 // `import-id-maps/<idMapSha256>.json` as the canonical bytes that digest
 // covers, and an import keeps the maps it received beside its own. A map
-// counts only when a verified `import` entry signs its digest and the carried
-// set passes its structural checks, so a row renamed at any earlier import
+// counts only when a verified `import` entry on the chain the new Case
+// continues signs its digest and the carried set passes its structural checks,
+// which the binding applies again, so a row renamed at any earlier import
 // still binds to its entries and its Derived Files travel. A Birdbrain from
 // before them passes the archive's checks, drops the maps without an error and
 // reads a Derived File only a carried map anchors as unclaimed, failing an
@@ -1161,9 +1162,10 @@ export async function importCaseArchive(
     }
     writeFileSync(join(stagingDir, IMPORT_ID_MAP_FILENAME), JSON.stringify(idMapPayload, null, 2))
     // The earlier imports' maps, kept beside this one so a row any of them
-    // renamed still binds (#1017). Only an accepted set reaches here, so an
-    // override import of a failing archive keeps none. Each path is built from
-    // the signed digest its bytes hash to, never from the entry name.
+    // renamed still binds (#1017). Only a set that passed its own check
+    // reaches here: an override import keeps none when the maps failed, and
+    // keeps them when the archive failed for another reason. Each path is
+    // built from the signed digest its bytes hash to, never from the entry name.
     if (carried.accepted.size > 0) mkdirSync(join(stagingDir, IMPORT_ID_MAPS_DIRECTORY))
     for (const bytes of carried.accepted.values()) {
       writeFileSync(join(stagingDir, ...carriedIdMapName(sha256(bytes)).split('/')), bytes)

@@ -757,13 +757,16 @@ import restores the file and its record under the same checks. A row the import
 renamed keeps its entries' original id. The import keeps the rename map beside
 the Case, and an archive of an imported Case carries the map of every import in
 its chain that the Case holds. The next import accepts the carried maps only
-when each one's bytes hash to the digest a verified import entry signs and none
-renames a row onto an id a signed entry carries. It then applies every map in
-chain order, so a row renamed at any earlier import still binds to its entries
-and its Derived Files travel. When an earlier import's map is missing, as in a
-Case imported twice before Case Archive version 12, only the newest import's
-renames resolve. Verification can switch keys across these boundaries, allowing
-a chain to preserve prior installation history and continue under the receiving
+when each one's bytes hash to the digest a verified import entry on the chain it
+continues signs, none renames a row onto an id a signed `capture` or `exhibit`
+entry carries, and no row keeps an id the maps rename away. One failing map
+refuses them all. The app applies the same rules again whenever it reads the
+maps from the Case directory. It then applies every map in chain order, so a
+row renamed at any earlier import still binds to its entries and its Derived
+Files travel. When an earlier import's map is missing, as in a Case imported
+twice before Case Archive version 12, only the newest import's renames resolve.
+Verification can switch keys across these boundaries, allowing a chain to
+preserve prior installation history and continue under the receiving
 installation.
 
 The import boundary avoids pretending that all history was signed by the

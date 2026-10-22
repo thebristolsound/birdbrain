@@ -6,7 +6,7 @@ import { closeDatabase, getDb } from '@main/services/db/core'
 import { deleteCapture, listCaptures } from '@main/services/db/captureRepo'
 import { createCase, getCase } from '@main/services/db/caseRepo'
 import { listCaseMembers, upsertCaseMember } from '@main/services/db/caseMemberRepo'
-import { createNote, listNotes } from '@main/services/db/noteRepo'
+import { createNote, listNotes, updateNote } from '@main/services/db/noteRepo'
 import {
   addTagToCapture,
   addTagToCaptures,
@@ -31,7 +31,7 @@ import {
 import { addMember, revokeMember, shareCase } from '@main/services/sharing/membership'
 import { SharingService } from '@main/services/sharing/sharingService'
 import { MemoryHub } from '@main/services/sharing/transport'
-import { toWireRows, verifyWireRow } from '@main/services/sharing/workingRows'
+import { signLocalRow, toWireRows, verifyWireRow } from '@main/services/sharing/workingRows'
 import {
   SYNC_STATE_FILENAME,
   readSyncStateFile,
@@ -175,6 +175,15 @@ const memberOfB = (B: Peer) => ({
   nodeId: `node-${B.name}`,
   memberCode: B.memberCode
 })
+
+const lifecycle = () =>
+  createCaptureLifecycle({
+    selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+  })
+
+// A refusal's detail without the author and version it names.
+const refusedAs = (errors: Array<{ detail: string }>): string[] =>
+  errors.map(({ detail }) => detail.replace(/ of [^:]* at version \d+:/, ':')).sort()
 
 const highWater = (caseId: string): number =>
   readSyncStateFile(caseDirOf(caseId)).localVersionHighWater
@@ -547,6 +556,59 @@ describe('older rows at first share (#1910)', () => {
     expect(listNotes(newCaseId).map((note) => note.title)).toEqual(['Alice 2 note'])
     expect(getTagsForCapture(fresh.captureId).map((tag) => tag.name)).toEqual(['Alice 2 tag'])
     expect(getAnnotations(fresh.captureId).pins.map((pin) => pin.body)).toEqual(['Alice 2 pin'])
+  })
+
+  // A row of the Owner signed after the upgrade can carry a signature that no longer covers
+  // it: deleting a Capture from a Case nobody shared clears a note's link and re-signs nothing
+  // (#1877), and a row edited outside the app's writers keeps its old signature. A member
+  // refuses that row, so an older tag application naming it would land without it and fail
+  // the deferred key, refusing every row of the session: it stays local and unsigned.
+  it('an older tag application whose note or tag carries a stale signature stays unsigned, and the joiner receives the rest', async () => {
+    const w = await olderRows()
+    const { captureId: goneId } = await addCapture(caseId, A, 2)
+    const edited = createNote({ caseId, captureId: goneId, title: 'Edited', body: 'older' })
+    const onEdited = createTag({ name: 'On the edited note' })
+    addTagToNote({ noteId: edited.id, tagId: onEdited.id })
+    const recoloured = createTag({ name: 'Recoloured' })
+    addTagToCapture({ captureId: w.captureId, tagId: recoloured.id })
+    const children: Array<{ table: SyncedTable; key: RowKey }> = [
+      { table: 'note_tags', key: { note_id: edited.id, tag_id: onEdited.id } },
+      { table: 'exhibit_tags', key: { exhibit_id: w.captureId, tag_id: recoloured.id } }
+    ]
+    unsign([
+      { table: 'notes', key: { id: edited.id } },
+      { table: 'tags', key: { id: onEdited.id } },
+      { table: 'tags', key: { id: recoloured.id } },
+      ...children
+    ])
+    updateNote({ id: edited.id, body: 'edited after the upgrade' })
+    expect(await lifecycle().delete(goneId)).toBe(true)
+    expect(readRow('notes', { id: edited.id }, null)?.fields.capture_id).toBeNull()
+    signLocalRow('tags', { id: recoloured.id })
+    getDb().prepare("UPDATE tags SET color = '#123456' WHERE id = ?").run(recoloured.id)
+
+    await shareCase(caseId, { nodeId: `node-${A.name}` })
+    await addMember(caseId, memberOfB(B))
+    const roster = listCaseMembers(caseId)
+
+    expectUnsigned(children)
+    for (const { table, key } of keysOf(w)) {
+      expectSignedBy(A, table, key, table === 'tags' ? null : caseId)
+    }
+
+    const fromAlice = recordSource(caseId, A)
+    await activate(B)
+    seedSharedCase(caseId, A, [])
+    for (const member of roster) upsertCaseMember(member)
+    const result = await pull(caseId, fromAlice)
+    expect(refusedAs(result.errors)).toEqual([
+      'notes row: invalid signature',
+      'tags row: invalid signature'
+    ])
+    expect(listNotes(caseId).map((note) => note.title)).toEqual(['Alice 1 note'])
+    expect(getTagsForCapture(w.captureId).map((tag) => tag.name)).toEqual(['Alice 1 tag'])
+    expect(getTagsForNote(w.noteId).map((tag) => tag.name)).toEqual(['Alice 1 tag'])
+    expect(getAnnotations(w.captureId).pins.map((pin) => pin.body)).toEqual(['Alice 1 pin'])
   })
 
   // A tag from before row signing that no application in the Case named at its first share

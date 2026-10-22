@@ -3,7 +3,7 @@ import type { CaseMember, SyncErrorKind } from '@shared/types'
 import { canonicalStringify, verifyEntrySignature } from '@shared/verify'
 import { withTransaction } from '@main/services/db/core'
 import { getInstallationId } from '@main/services/installationId'
-import { signEntryHash } from '@main/services/signingKey'
+import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import {
   CURSOR_FREE_TABLES,
   applyRows,
@@ -192,17 +192,47 @@ export function settleRowsOnDeletedCapture(
   })
 }
 
+// The rows a tag application's foreign keys name, which a member's copy must hold too.
+const PARENT_ROWS: Partial<Record<SyncedTable, Array<{ parent: SyncedTable; column: string }>>> = {
+  exhibit_tags: [{ parent: 'tags', column: 'tag_id' }],
+  note_tags: [
+    { parent: 'notes', column: 'note_id' },
+    { parent: 'tags', column: 'tag_id' }
+  ]
+}
+
+// Whether this installation's stored row verifies as a member's copy checks it once offered.
+// An archive import keeps a signature made over the source Case, and #1877 clears a note's
+// link without re-signing it, so a signed row can fail.
+function verifiesAsOwn(row: StoredRow): boolean {
+  const [wire] = toWireRows([row], getInstallationId())
+  return wire !== undefined && verifyWireRow(wire, getPublicKeyPem())
+}
+
 // The Owner's rows a Case held before rows were signed (#1910, ruling of 21 October 2026),
 // signed when the Case is first shared, inside the transaction that marks it shared, so the
 // first sync offers them. Each row takes its own version, so the backlog pages like any other
 // writes, and each is checked as a new write is (signLocalRow), which refuses a live row on a
-// Capture recorded as deleted (#1877). A row that needs a Capture or Exhibit no member can
-// hold (`membersHold` false) stays local and unsigned: a member's copy would refuse it and,
-// with it, every row of that session. Returns the number of rows signed.
+// Capture recorded as deleted (#1877). A row stays local and unsigned when a member's copy
+// would refuse it and, with it, every row of that session: one that needs a Capture or
+// Exhibit no member can hold (`membersHold` false), and a tag application whose note or tag
+// does not arrive with it, because that row stays unsigned or is this installation's row
+// signed over content it no longer holds (verifiesAsOwn). Returns the number of rows signed.
 export function signOwnUnsignedRows(caseId: string, membersHold: (id: string) => boolean): number {
   return withTransaction(() => {
-    const rows = ownUnsignedRowsInCase(caseId).filter(
+    const candidates = ownUnsignedRowsInCase(caseId).filter(
       ({ needs }) => needs === null || membersHold(needs)
+    )
+    const name = (table: SyncedTable, key: RowKey): string => `${table} ${JSON.stringify(key)}`
+    const signing = new Set(candidates.map(({ table, key }) => name(table, key)))
+    const arrives = (table: SyncedTable, key: RowKey): boolean => {
+      if (signing.has(name(table, key))) return true
+      // No row of this installation: the parent is another author's, which that author sends.
+      const own = readRow(table, key, null)
+      return own === undefined || verifiesAsOwn(own)
+    }
+    const rows = candidates.filter(({ table, key }) =>
+      (PARENT_ROWS[table] ?? []).every(({ parent, column }) => arrives(parent, { id: key[column] }))
     )
     if (rows.length === 0) return 0
     const first = allocateLocalVersions(rows.length)

@@ -208,10 +208,9 @@ const CASE_OF_CAPTURE = `SELECT case_id FROM captures WHERE id = ?
 // reads it: null for a table whose rows belong to no one Case, undefined
 // when the row the columns reference is not held here. A Capture or Exhibit
 // deleted from a Shared Case is read from its record, so a row kept on it
-// still names the Case its author signed (#1877). The app never holds and
-// records one id at once: deleteCapture records it as the row goes, and the
-// evidence step and the archive import refuse or remap a recorded id. Settings
-// > Database can still create a Capture under a recorded id typed by hand.
+// still names the Case its author signed (#1877). An id is never both held
+// and recorded: deleteCapture records it as the row goes, and the evidence
+// step and the archive import refuse or remap a recorded id.
 export function caseOfRow(table: SyncedTable, fields: RowFields): string | null | undefined {
   const { caseOf } = SPECS[table]
   if (caseOf === null) return null

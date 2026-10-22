@@ -628,7 +628,8 @@ describe('older rows at first share (#1910)', () => {
 
   // A note that links no Capture needs nothing a member's copy must hold, and with no `import`
   // in the chain nothing in the Case came from an archive: the note is provably the Owner's.
-  it('a loose older note in a Case with no import is signed at first share and reaches the joiner', async () => {
+  // With no `archive-export` either, no other copy can hold it under its id.
+  it('a loose older note in a Case with no import or export is signed at first share and reaches the joiner', async () => {
     await activate(A)
     const loose = createNote({ caseId, title: 'Loose older note', body: 'no link' })
     const key = { id: loose.id }
@@ -638,7 +639,8 @@ describe('older rows at first share (#1910)', () => {
     await addMember(caseId, memberOfB(B))
     const roster = listCaseMembers(caseId)
 
-    expect(parsedChain(ownChainText(caseId)).some((e) => e.type === 'import')).toBe(false)
+    const types = parsedChain(ownChainText(caseId)).map(({ type }) => type)
+    expect(types.filter((type) => type === 'import' || type === 'archive-export')).toEqual([])
     expectSignedBy(A, 'notes', key, caseId)
     const fromAlice = recordSource(caseId, A)
     const offered = fromAlice.rows.get(A.installationId) ?? []
@@ -650,6 +652,53 @@ describe('older rows at first share (#1910)', () => {
     const result = await pull(caseId, fromAlice)
     expect(result.errors).toEqual([])
     expect(listNotes(caseId).map(({ title }) => title)).toEqual(['Loose older note'])
+  })
+
+  // Before sync, a teammate collaborated by importing the Owner's archive, which keeps every
+  // row id it does not already hold. Signed at the share, an older row would reach that teammate
+  // beside its own copy of the id, and the collision would roll back every session. The
+  // Owner's chain records each export, so a Case exported before its first share signs no
+  // older row.
+  it('a Case the Owner exported signs no older row at first share, and a teammate who imported it syncs', async () => {
+    await activate(A)
+    const loose = createNote({ caseId, title: 'Older loose note', body: 'before signing' })
+    unsign([{ table: 'notes', key: { id: loose.id } }])
+    const archive = join(root, 'alice.birdbrain')
+    await exportCaseArchive(caseId, archive)
+
+    await activate(B)
+    const { newCaseId } = await importCaseArchive(archive)
+    expect(listNotes(newCaseId).map(({ id }) => id)).toEqual([loose.id])
+
+    await activate(A)
+    await shareCase(caseId, { nodeId: `node-${A.name}` })
+    await addMember(caseId, memberOfB(B))
+    const roster = listCaseMembers(caseId)
+    expectUnsigned([{ table: 'notes', key: { id: loose.id } }])
+    const fresh = createNote({ caseId, title: 'Written after the share', body: 'signed at write' })
+    const fromAlice = recordSource(caseId, A)
+    const offered = fromAlice.rows.get(A.installationId) ?? []
+    expect(offered.map(({ table, fields }) => [table, fields.id])).toEqual([['notes', fresh.id]])
+
+    await activate(B)
+    seedSharedCase(caseId, A, [])
+    for (const member of roster) upsertCaseMember(member)
+    const first = await pull(caseId, fromAlice)
+    expect(first.errors).toEqual([])
+    expect(first.rowsApplied).toBe(1)
+    expect(listNotes(caseId).map(({ title }) => title)).toEqual(['Written after the share'])
+    expect((await pull(caseId, fromAlice)).errors).toEqual([])
+  })
+
+  it('a Case the Owner exported leaves its older rows on a Capture unsigned at first share', async () => {
+    const w = await olderRows()
+    await exportCaseArchive(caseId, join(root, 'alice.birdbrain'))
+
+    await shareCase(caseId, { nodeId: `node-${A.name}` })
+
+    expect(parsedChain(ownChainText(caseId)).some((e) => e.type === 'archive-export')).toBe(true)
+    expectUnsigned(keysOf(w))
+    expect(recordSource(caseId, A).rows.get(A.installationId) ?? []).toEqual([])
   })
 
   // A tag written since signing is signed, but its older application on a Capture no member

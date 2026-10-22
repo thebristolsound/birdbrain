@@ -75,12 +75,15 @@ function ownerMemberAdd(entries: ManifestEntry[]): MemberAddEntry | undefined {
 }
 
 // The Owner's rows of the Case written before rows were signed (#1910), signed in the
-// transaction that marks the Case shared where they are provably the Owner's (no older tag
-// ever is). An `import` at any depth of the chain brought rows that read as this
+// transaction that marks the Case shared where they are provably the Owner's (the first share
+// signs no older tag). An `import` at any depth of the chain brought rows that read as this
 // installation's, whichever installation it names: the archive header that names the exporter
-// is unsigned, and the chain does not cover the rows.
+// is unsigned, and the chain does not cover the rows. An `archive-export` signs nothing: another
+// copy may hold the rows under the same ids, and a signed copy would collide there and roll back
+// every session.
 function signOlderRows(caseId: string, caseDir: string): void {
   const entries = ownEntries(caseDir)
+  if (entries.some((e) => e.type === 'archive-export')) return
   const held = idsReachingMembers(entries)
   signOwnUnsignedRows(caseId, {
     membersHold: (id) => held.has(id),

@@ -7,6 +7,7 @@ import { deleteCapture, listCaptures } from '@main/services/db/captureRepo'
 import { createCase, getCase } from '@main/services/db/caseRepo'
 import { listCaseMembers, upsertCaseMember } from '@main/services/db/caseMemberRepo'
 import { createNote, listNotes, updateNote } from '@main/services/db/noteRepo'
+import { insertExhibit } from '@main/services/db/exhibitRepo'
 import {
   addTagToCapture,
   addTagToCaptures,
@@ -44,6 +45,7 @@ import { resetSigningKey } from '@main/services/signingKey'
 import {
   activate,
   addCapture,
+  addDocument,
   caseDirOf,
   createPeer,
   ownChainText,
@@ -51,6 +53,7 @@ import {
   pull,
   recordSource,
   seedSharedCase,
+  TIME,
   type Peer
 } from '../../../helpers/syncPeers'
 
@@ -522,7 +525,8 @@ describe('older rows at first share (#1910)', () => {
 
   // A Capture whose entry sits before the chain's `import` never reaches a member (#1877), so
   // a row on it would make every member's session refuse its rows: it stays local and
-  // unsigned, and the rest of the Case's older rows travel.
+  // unsigned, and the rest of the Case's older rows travel. The tag those rows name is the
+  // Case's all the same, so it is signed and a member holds it with no application.
   it('rows on an imported Capture stay local and unsigned, and the joiner receives the rest', async () => {
     await activate(A)
     const sourceId = createCase({ name: 'Before import' }).id
@@ -541,6 +545,7 @@ describe('older rows at first share (#1910)', () => {
     const roster = listCaseMembers(newCaseId)
 
     expectUnsigned(keysOf(local).filter(({ table }) => table !== 'tags'))
+    expectSignedBy(A, 'tags', { id: local.tagId }, null)
     for (const { table, key } of keysOf(fresh)) {
       expectSignedBy(A, table, key, table === 'tags' ? null : newCaseId)
     }
@@ -557,6 +562,7 @@ describe('older rows at first share (#1910)', () => {
     expect(listNotes(newCaseId).map((note) => note.title)).toEqual(['Alice 2 note'])
     expect(getTagsForCapture(fresh.captureId).map((tag) => tag.name)).toEqual(['Alice 2 tag'])
     expect(getAnnotations(fresh.captureId).pins.map((pin) => pin.body)).toEqual(['Alice 2 pin'])
+    expect(listTags().map((tag) => tag.name)).toEqual(['Alice 2 tag', 'Imported tag'])
   })
 
   // An archive another installation exported carries that installation's own rows with no
@@ -662,6 +668,44 @@ describe('older rows at first share (#1910)', () => {
     expect(getTagsForCapture(w.captureId).map((tag) => tag.name)).toEqual(['Alice 1 tag'])
     expect(getTagsForNote(w.noteId).map((tag) => tag.name)).toEqual(['Alice 1 tag'])
     expect(getAnnotations(w.captureId).pins.map((pin) => pin.body)).toEqual(['Alice 1 pin'])
+  })
+
+  it('an older tag application on a Document Exhibit reaches the joiner', async () => {
+    await activate(A)
+    const doc = addDocument(caseId, A, 1)
+    insertExhibit({
+      id: doc.exhibitId,
+      caseId,
+      kind: 'document',
+      origin: 'manual-upload',
+      name: `${doc.exhibitId}.pdf`,
+      contentHash: doc.contentHash,
+      path: doc.path,
+      committedAt: TIME,
+      manifestSeq: doc.index,
+      exhibitNumber: 1
+    })
+    const tag = createTag({ name: 'On a document' })
+    addTagToCapture({ captureId: doc.exhibitId, tagId: tag.id })
+    const keys: Array<{ table: SyncedTable; key: RowKey }> = [
+      { table: 'tags', key: { id: tag.id } },
+      { table: 'exhibit_tags', key: { exhibit_id: doc.exhibitId, tag_id: tag.id } }
+    ]
+    unsign(keys)
+
+    await shareCase(caseId, { nodeId: `node-${A.name}` })
+    await addMember(caseId, memberOfB(B))
+    const roster = listCaseMembers(caseId)
+    expectSignedBy(A, 'tags', { id: tag.id }, null)
+    expectSignedBy(A, 'exhibit_tags', keys[1].key, caseId)
+
+    const fromAlice = recordSource(caseId, A)
+    await activate(B)
+    seedSharedCase(caseId, A, [])
+    for (const member of roster) upsertCaseMember(member)
+    const result = await pull(caseId, fromAlice)
+    expect(result.errors).toEqual([])
+    expect(getTagsForCapture(doc.exhibitId).map(({ name }) => name)).toEqual(['On a document'])
   })
 
   // A tag from before row signing that no application in the Case named at its first share

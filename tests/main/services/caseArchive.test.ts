@@ -2618,6 +2618,76 @@ describe("an import's id map holds only its own renames", () => {
     expect(await lifecycle().duplicate('x1')).toMatchObject({ status: 'duplicated' })
   })
 
+  // The two tests above with the map left out of the archive, so nothing
+  // refuses it at import, and written into the new Case directory afterwards.
+  // The binding applies the archive's rules to whatever map it reads.
+  async function importThenPlant(archive: string, [name, text]: [string, string]): Promise<string> {
+    expect(idMapEntries(archive).size).toBe(0)
+    expect(inspectCaseArchive(archive).verification.overallValid).toBe(true)
+    await freshDatabase()
+    const { newCaseId } = await importCaseArchive(archive)
+    mkdirSync(carriedDir(newCaseId))
+    writeFileSync(join(storageRoot, newCaseId, name), text)
+    return newCaseId
+  }
+
+  it("binds nothing through a planted map that renames a Capture onto another Capture's signed id", async () => {
+    const { caseId, caseDir } = sameHashCase('Planted onto', ['x1', 'x2'])
+    const planted = signImport(caseDir, mapText({ x1: 'x2' }))
+    const archive = join(tempDir, 'planted-onto.birdbrain')
+    await exportCaseArchive(caseId, archive)
+    rewriteArchive(archive, (entries) => {
+      entries.delete('files/x1.mhtml')
+      editRows(entries, (rows, kind) => {
+        const x1 = rows.find((row) => row.id === 'x1')!
+        return rows
+          .filter((row) => row.id !== 'x1')
+          .map((row) =>
+            row.id === 'x2' ? { ...row, [indexField(kind)]: x1[indexField(kind)] } : row
+          )
+      })
+    })
+    await importThenPlant(archive, planted)
+
+    expect(await lifecycle().duplicate('x2')).toEqual({
+      status: 'rejected',
+      reason: 'not_verified',
+      detail: 'entry-mismatch'
+    })
+  })
+
+  it('binds nothing through a planted map whose renamed-away id the Case still holds', async () => {
+    const { caseId, caseDir } = sameHashCase('Planted kept', ['x1', 'x2'])
+    const planted = signImport(caseDir, mapText({ x1: 'r1' }))
+    const archive = join(tempDir, 'planted-kept.birdbrain')
+    await exportCaseArchive(caseId, archive)
+    rewriteArchive(archive, (entries) => {
+      entries.set('files/r1.mhtml', entries.get('files/x2.mhtml')!)
+      entries.delete('files/x2.mhtml')
+      editRows(entries, (rows, kind) => {
+        const x1 = rows.find((row) => row.id === 'x1')!
+        return rows.map((row) =>
+          row.id === 'x2'
+            ? {
+                ...row,
+                id: 'r1',
+                [indexField(kind)]: x1[indexField(kind)],
+                ...(kind === 'captures' ? { mhtml_path: `${caseId}/r1.mhtml` } : {})
+              }
+            : row
+        )
+      })
+    })
+    await importThenPlant(archive, planted)
+
+    expect(await lifecycle().duplicate('r1')).toEqual({
+      status: 'rejected',
+      reason: 'not_verified',
+      detail: 'entry-mismatch'
+    })
+    expect(await lifecycle().duplicate('x1')).toMatchObject({ status: 'duplicated' })
+  })
+
   // An honest first import renamed z to v. A forged later map renames x, coined
   // after it, onto v as well. Carried together they repeat v; with the honest
   // map dropped, the forged one alone must not bind x's entry to v.

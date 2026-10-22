@@ -85,7 +85,8 @@ import {
   carriedIdMapName,
   composeIdMaps,
   isIdMapDigest,
-  parseIdMap
+  parseIdMap,
+  renamesOntoSignedId
 } from '@main/services/importIdMaps'
 import {
   IMPORT_ID_MAP_FILENAME,
@@ -649,15 +650,6 @@ function acceptCarriedIdMaps(
   const verified = verifiedEntries(archiveChains, manifestText)
   if (!verified || candidates.size === 0) return none()
   const imports = importEntriesIn(manifestText)
-  const identities = new Set(
-    verified.flatMap((entry) =>
-      entry.type === 'capture'
-        ? [entry.captureId]
-        : entry.type === 'exhibit'
-          ? [entry.exhibitId]
-          : []
-    )
-  )
   const maps = new Map<string, Map<string, string>>()
   for (const [name, bytes] of candidates) {
     const digest = name.slice(ID_MAPS_PREFIX.length, -'.json'.length)
@@ -668,9 +660,9 @@ function acceptCarriedIdMaps(
     const parsed = owners.map((entry) => parseIdMap(text, entry, { canonical: true }))
     const [map] = parsed
     if (!map || parsed.some((each) => !each)) return none()
-    for (const value of map.values()) if (identities.has(value)) return none()
     maps.set(digest, map)
   }
+  if (renamesOntoSignedId([...maps.values()], verified)) return none()
   const positions = imports.map((entry) => maps.get(entry.idMapSha256))
   const present = positions.filter((map): map is Map<string, string> => map !== undefined)
   const composed = composeIdMaps(present)

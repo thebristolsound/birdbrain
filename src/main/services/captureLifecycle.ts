@@ -59,7 +59,8 @@ import {
   carriedIdMapName,
   composeIdMaps,
   isIdMapDigest,
-  parseIdMap
+  parseIdMap,
+  renamesOntoSignedId
 } from '@main/services/importIdMaps'
 import { recordedHttpStatus } from '@shared/httpStatus'
 import * as caseRepo from '@main/services/db/caseRepo'
@@ -706,11 +707,17 @@ export async function verifyCapture(
 export function entryDescribesRow(
   entry: { caseId: string; rowId: string },
   row: { id: string; caseId: string },
-  imports: ManifestImportEntry[],
+  custody: Custody,
   caseDir: string
 ): boolean {
-  return describesRow(entry, row, imports, () => readAnchoredIdMap(caseDir, row.caseId, imports))
+  return describesRow(entry, row, custody.imports, () =>
+    readAnchoredIdMap(caseDir, row.caseId, custody)
+  )
 }
+
+// One verified read of a Case's chain: its `import` entries, and every entry,
+// which say which ids are signed identities.
+type Custody = Pick<AuthorChain, 'entries' | 'imports'>
 
 // `entryDescribesRow` for a caller binding many rows of one case directory in
 // one pass: the anchored id map is read and hashed at most once per row case
@@ -718,13 +725,13 @@ export function entryDescribesRow(
 // the square of its renamed rows.
 export function rowDescriber(
   caseDir: string,
-  imports: ManifestImportEntry[]
+  custody: Custody
 ): (entry: { caseId: string; rowId: string }, row: { id: string; caseId: string }) => boolean {
   const maps = new Map<string, Record<string, unknown> | undefined>()
   return (entry, row) =>
-    describesRow(entry, row, imports, () => {
+    describesRow(entry, row, custody.imports, () => {
       if (!maps.has(row.caseId)) {
-        maps.set(row.caseId, readAnchoredIdMap(caseDir, row.caseId, imports))
+        maps.set(row.caseId, readAnchoredIdMap(caseDir, row.caseId, custody))
       }
       return maps.get(row.caseId)
     })
@@ -743,8 +750,9 @@ function describesRow(
   }
   if (!custodyCaseIds.has(entry.caseId)) return false
   if (entry.rowId === row.id) return true
-  // Only an id-collision remap can leave the entry naming a different row,
-  // and only the map this case's own import entry anchors may say so.
+  // Only an id-collision remap can leave the entry naming a different row, and
+  // only the maps the import entries of this case's verified chain anchor may
+  // say so: its own import's, composed over the earlier imports' (#1017).
   return idMap()?.[entry.rowId] === row.id
 }
 
@@ -767,7 +775,9 @@ export function signedCaptureId(
   }
   const { caseId, captureId } = parsed.data
   if (captureId === id) return id
-  return entryDescribesRow({ caseId, rowId: captureId }, row, imports, caseDir) ? captureId : id
+  return entryDescribesRow({ caseId, rowId: captureId }, row, { entries, imports }, caseDir)
+    ? captureId
+    : id
 }
 
 // The id-collision remap archive import wrote into this case directory, read
@@ -777,13 +787,17 @@ export function signedCaptureId(
 // when this case did not arrive by import, when the file is absent or
 // unparseable, or when it does not hash to what the chain recorded. A row
 // renamed at an earlier import in the chain resolves through that import's
-// map, which the archive carried and the import kept (#1017): every earlier
-// map must be present and pass `parseIdMap` and `composeIdMaps`, or none
-// counts and only this import's own renames resolve, as before.
+// map, which the archive carried and the import kept (#1017). Those maps are
+// anchored only by digests their exporter signed, so the archive's rules apply
+// here again, to whatever file is on disk: every earlier map must be present
+// and pass `parseIdMap` and `composeIdMaps`, none may rename onto an id a
+// `capture` or `exhibit` entry signs, and no row of this case may keep an id
+// they rename away. Otherwise none counts and only this import's own renames
+// resolve, as before.
 function readAnchoredIdMap(
   caseDir: string,
   caseId: string,
-  imports: ManifestImportEntry[]
+  { entries, imports }: Custody
 ): Record<string, unknown> | undefined {
   const at = imports.findIndex((imported) => imported.caseId === caseId)
   if (at === -1) return undefined
@@ -820,7 +834,20 @@ function readAnchoredIdMap(
   }
   const ownMap = parseIdMap(text, custody, { canonical: false })
   if (!ownMap) return own
-  return composeIdMaps([...maps, ownMap])?.record ?? own
+  const composed = composeIdMaps([...maps, ownMap])
+  if (!composed || renamesOntoSignedId(maps, entries)) return own
+  const renamedAway = Object.entries(composeIdMaps(maps)?.record ?? {})
+    .filter(([from, to]) => from !== to)
+    .flatMap(([from]) => [from, ownMap.get(from) ?? from])
+  return holdsRow(caseId, renamedAway) ? own : composed.record
+}
+
+// Whether a row of this case, Capture or other Exhibit, has any of these ids.
+function holdsRow(caseId: string, ids: string[]): boolean {
+  return (
+    captureRepo.getCapturesByIds(ids).some((row) => row.caseId === caseId) ||
+    ids.some((id) => getExhibit(id)?.caseId === caseId)
+  )
 }
 
 // The operator gate every ingest and duplicate passes. A signed entry naming
@@ -1474,7 +1501,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         if (!entryRead) {
           return { status: 'rejected', reason: 'not_verified', detail: 'entry-unreadable' }
         }
-        const { entry: sourceEntry, imports } = entryRead
+        const { entry: sourceEntry } = entryRead
         // The row's manifestIndex is as hand-editable as the fields above, and
         // duplicates share content hashes by design — so an edited index can
         // land on a DIFFERENT capture's same-hash entry, whose url/timestamp/
@@ -1484,7 +1511,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           !entryDescribesRow(
             { caseId: sourceEntry.caseId, rowId: sourceEntry.captureId },
             source,
-            imports,
+            entryRead,
             caseDir
           )
         ) {

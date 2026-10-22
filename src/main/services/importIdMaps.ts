@@ -66,6 +66,24 @@ export function parseIdMap(
   return map
 }
 
+// Whether any map renames a row onto an id a `capture` or `exhibit` entry
+// signs, which would bind that signed identity's entries to another row.
+export function renamesOntoSignedId(
+  maps: ReadonlyArray<ReadonlyMap<string, string>>,
+  entries: ReadonlyArray<Record<string, unknown>>
+): boolean {
+  const signed = new Set<unknown>(
+    entries.map((entry) =>
+      entry.type === 'capture'
+        ? entry.captureId
+        : entry.type === 'exhibit'
+          ? entry.exhibitId
+          : undefined
+    )
+  )
+  return maps.some((map) => [...map.values()].some((value) => signed.has(value)))
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

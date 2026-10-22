@@ -322,7 +322,6 @@ async function verifyDerivedFiles(
   const entries = sources.flatMap((source) =>
     source.chain.valid ? readDerivations(source.entries) : []
   )
-  const { imports } = chains.own
   const caseDir = store.caseDir(exhibit.caseId)
   // The entry names the parent through the Case's custody records rather than
   // by bare id equality, the same resolution `verifyExhibit` gives an Exhibit:
@@ -332,7 +331,7 @@ async function verifyDerivedFiles(
     entryDescribesRow(
       { caseId: entry.caseId, rowId: entry.parentExhibitId },
       exhibit,
-      imports,
+      chains.own,
       caseDir
     )
 
@@ -511,7 +510,7 @@ export async function verifyExhibit(
     !entryDescribesRow(
       { caseId: entry.caseId, rowId: entry.exhibitId },
       exhibit,
-      author.imports,
+      author,
       store.caseDir(caseId)
     )
   ) {

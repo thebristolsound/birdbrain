@@ -372,7 +372,7 @@ export async function backfillCase(
   // Read after the renumber append too, so a `derivation` entry an earlier run
   // appended before its row landed is visible here rather than duplicated.
   const prior = priorDerivations(caseDir)
-  const describes = rowDescriber(caseDir, own.imports)
+  const describes = rowDescriber(caseDir, own)
   for (const exhibit of exhibits) {
     if (exhibit.kind !== 'capture') continue
     // Another member's Capture: its `manifestSeq` indexes its author's chain, not this one, and

@@ -632,10 +632,11 @@ interface CarriedIdMaps {
 // the exporter's to choose, so a digest match proves only what that signer
 // recorded; the checks below keep a map from binding one signed identity to
 // another row. A map counts when its name is the digest a verified `import`
-// entry on the manifest records, its bytes are those canonical bytes, its
-// payload names that entry's Cases (`parseIdMap`), and none of its values is
-// an id a `capture` or `exhibit` entry signs. No value may appear at two
-// imports (`composeIdMaps`), and when every import has a map, no data.json
+// entry records on the chain the importing Case continues (for a fork, the
+// source Owner's, which the binding then reads), its bytes are those canonical
+// bytes, its payload names that entry's Cases (`parseIdMap`), and none of its
+// values is an id a `capture` or `exhibit` entry signs. No value may appear at
+// two imports (`composeIdMaps`), and when every import has a map, no data.json
 // row may keep an id the maps rename away. Any failure refuses the whole set,
 // as the binding refuses it: dropping one honest map must not let another
 // bind its value. An absent map is no failure, and leaves the identity.
@@ -649,7 +650,10 @@ function acceptCarriedIdMaps(
   const none = (): CarriedIdMaps => ({ accepted: new Map(), resolve: (id) => id })
   const verified = verifiedEntries(archiveChains, manifestText)
   if (!verified || candidates.size === 0) return none()
-  const imports = importEntriesIn(manifestText)
+  const manifest = Buffer.from(manifestText, 'utf-8')
+  const imports = importEntriesIn(
+    (forkedChain(manifest, archiveChains) ?? manifest).toString('utf-8')
+  )
   const maps = new Map<string, Map<string, string>>()
   for (const [name, bytes] of candidates) {
     const digest = name.slice(ID_MAPS_PREFIX.length, -'.json'.length)
@@ -909,6 +913,20 @@ interface ImportChains {
   fork?: { exporterId: string; members: SharedCaseMember[] }
 }
 
+// The chain a fork continues: the source Owner's, whichever member exported
+// it. Undefined for an archive that is no fork, which continues its exporter's
+// chain (`manifest`). The import and the carried id map check both read it,
+// so the maps are checked against the imports the binding composes them over.
+function forkedChain(manifest: Buffer, { chains, shared }: ArchiveChains): Buffer | undefined {
+  const owner = shared?.members.find((m) => m.role === 'owner')
+  const exporterId = shared?.localInstallationId
+  if (!owner || exporterId === undefined) return undefined
+  if (owner.installationId === exporterId) return manifest
+  return chains.find(
+    (c) => c.sourceCaseId === undefined && c.installationId === owner.installationId
+  )?.jsonl
+}
+
 // A Shared Case archive is forked (decision 18, #1511): the new chain continues
 // the source Owner's, its `import` names the Owner's key, and every other
 // chain of the source Case — the exporter's own included when it was not the
@@ -919,8 +937,9 @@ interface ImportChains {
 function planImportChains(
   entries: Map<string, Buffer>,
   header: CaseArchiveHeader,
-  { chains, shared }: ArchiveChains
+  archiveChains: ArchiveChains
 ): ImportChains {
+  const { chains, shared } = archiveChains
   const manifest = entries.get(MANIFEST_FILENAME) ?? Buffer.alloc(0)
   const carried = chains
     .filter((c) => c.sourceCaseId !== undefined)
@@ -939,10 +958,7 @@ function planImportChains(
     return { path, jsonl }
   }
   const exporterId = shared?.localInstallationId
-  const ownerChain =
-    owner?.installationId === exporterId
-      ? manifest
-      : current.find((c) => c.installationId === owner?.installationId)?.jsonl
+  const ownerChain = forkedChain(manifest, archiveChains)
   if (!owner || exporterId === undefined || ownerChain === undefined) {
     return {
       manifest,

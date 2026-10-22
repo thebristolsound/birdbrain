@@ -50,6 +50,7 @@ import {
   memberChainPath
 } from '../../../src/packages/evidence-package-layout/index'
 import type { ExportOptions } from '@shared/types'
+import { rewriteArchive as rewriteRepairedArchive } from '../../helpers/archiveDerivedFiles'
 import { HAS_JQ } from '../../helpers/jq'
 import { HAS_OPENSSL } from '../../helpers/openssl'
 import { createLocalTsa, type LocalTsa } from '../../helpers/localTsa'
@@ -333,33 +334,40 @@ describe('Shared Case export, import and fork (#1511)', () => {
   function continuedChain(
     sign: (entryHash: string) => string,
     by: ReturnType<typeof operator>,
-    author: { installationId: string; memberCode: string } | null
+    author: { installationId: string; memberCode: string } | null,
+    idMapSha256 = 'd'.repeat(64)
   ): { chain: Chain; earlierDoc: string } {
     let signed = 0
     const chain = new Chain((hash) => (signed++ === 0 ? signWith(EARLIER_KEY) : sign)(hash))
     const earlierDoc = document(chain, EARLIER, author, 2)
-    chain.append({
-      type: 'import',
-      caseId,
-      sourceCaseId: 'earlier-case',
-      sourceInstallationId: EARLIER.operatorId,
-      sourcePublicKeyPem: EARLIER_KEY.publicKey,
-      packageHash: 'c'.repeat(64),
-      idMapSha256: 'd'.repeat(64),
-      verificationResult: {
-        overallValid: true,
-        chainValid: true,
-        artifactCount: 0,
-        artifactFailureCount: 0,
-        captureCount: 0,
-        captureHashFailureCount: 0
-      },
-      timestamp: TIME,
-      ...by,
-      schemaVersion: 2
-    })
+    chain.append(earlierImport(by, idMapSha256))
     return { chain, earlierDoc }
   }
+
+  // The `import` that continued the earlier installation's chain.
+  const earlierImport = (
+    by: ReturnType<typeof operator>,
+    idMapSha256: string
+  ): Record<string, unknown> => ({
+    type: 'import',
+    caseId,
+    sourceCaseId: 'earlier-case',
+    sourceInstallationId: EARLIER.operatorId,
+    sourcePublicKeyPem: EARLIER_KEY.publicKey,
+    packageHash: 'c'.repeat(64),
+    idMapSha256,
+    verificationResult: {
+      overallValid: true,
+      chainValid: true,
+      artifactCount: 0,
+      artifactFailureCount: 0,
+      captureCount: 0,
+      captureHashFailureCount: 0
+    },
+    timestamp: TIME,
+    ...by,
+    schemaVersion: 2
+  })
 
   // `ownerReplica`, with the Owner's chain continuing an earlier import.
   function ownerReplicaAfterImport() {
@@ -936,6 +944,64 @@ describe('Shared Case export, import and fork (#1511)', () => {
     entries.set('package.json', Buffer.from(JSON.stringify(header)))
     writeFileSync(out, createStoredZip([...entries].map(([name, data]) => ({ name, data }))))
   }
+
+  // A forged fork (#1017). The exporting member holds the Owner's key too. The
+  // Owner's chain holds one import, whose carried map renames the earlier
+  // document onto an id no entry signs while data.json keeps the document's
+  // row. The exporter's chain repeats that import and adds one with no map, so
+  // read against that chain the set would look partial and skip the rows
+  // check, while the fork composes the map over the Owner's chain.
+  it("checks a fork's carried id maps against the Owner chain the fork continues (#1017)", async () => {
+    const earlierDocId = `${EARLIER.operatorId}-doc-2`
+    const map = canonicalStringify({
+      sourceCaseId: 'earlier-case',
+      caseId,
+      remapped: { [earlierDocId]: 'planted-row' }
+    })
+    const digest = createHash('sha256').update(map).digest('hex')
+    const { chain: owner } = continuedChain(
+      signWith(PEER_KEY),
+      PEER,
+      { installationId: PEER_ID, memberCode: 'CO' },
+      digest
+    )
+    owner.append(memberAdd(PEER_ID, PEER_KEY.publicKey, 'CO', 'Robin', 'owner', PEER))
+    owner.append(memberAdd(localId, getPublicKeyPem(), 'RP', 'Casey', 'member', PEER))
+    let signed = 0
+    const local = new Chain((hash) =>
+      (signed++ === 0 ? signWith(EARLIER_KEY) : signEntryHash)(hash)
+    )
+    local.append(earlierImport(PEER, digest))
+    local.append(earlierImport(LOCAL(), 'e'.repeat(64)))
+    document(local, LOCAL(), null, 1)
+    local.append({
+      type: 'merge',
+      caseId,
+      heads: [{ ...owner.head(PEER_ID), entriesReceived: owner.lines.length }],
+      timestamp: TIME,
+      ...LOCAL(),
+      schemaVersion: 4
+    })
+    writeFileSync(join(caseDir(), 'manifest.jsonl'), local.jsonl)
+    writeFileSync(join(caseDir(), memberChainPath(PEER_ID)), owner.jsonl)
+    roster(PEER_ID, PEER_KEY.publicKey, localId, getPublicKeyPem())
+    const out = join(tempDir, 'fork.birdbrain')
+    await exportCaseArchive(caseId, out)
+    const name = `import-id-maps/${digest}.json`
+    rewriteRepairedArchive(out, (entries) => {
+      entries.set(name, Buffer.from(map))
+    })
+
+    const { verification } = inspectCaseArchive(out)
+
+    expect(verification).toMatchObject({
+      chainValid: true,
+      overallValid: false,
+      artifactFailureCount: 1
+    })
+    const { newCaseId } = await importCaseArchive(out, { overrideTamper: true })
+    expect(existsSync(join(caseDir(newCaseId), name))).toBe(false)
+  })
 
   it("names the source Case its Owner's roster states, whatever the header says", async () => {
     memberReplica()

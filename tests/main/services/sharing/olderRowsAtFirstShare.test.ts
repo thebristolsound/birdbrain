@@ -420,6 +420,24 @@ describe('older rows at first share (#1910)', () => {
     expectUnsigned([{ table: 'notes', key: { id: 'raw-unsigned' } }])
   })
 
+  // No writer of the app leaves a Case marked shared without the Owner's `member-add`; the
+  // state is built by hand. The call that appends the entry does not set `shared_at`, so it
+  // signs nothing, as for any invite after the first.
+  it('an invite that appends the member-add to a Case already marked shared signs nothing', async () => {
+    const w = await olderRows()
+    getDb()
+      .prepare(
+        "UPDATE cases SET shared_at = '2026-10-20T00:00:00.000Z', owner_installation_id = ? WHERE id = ?"
+      )
+      .run(A.installationId, caseId)
+
+    await shareCase(caseId, { nodeId: `node-${A.name}` })
+
+    expect(parsedChain(ownChainText(caseId)).map((e) => e.type)).toEqual(['capture', 'member-add'])
+    expect(getCase(caseId)!.sharedAt).toBe('2026-10-20T00:00:00.000Z')
+    expectUnsigned(keysOf(w))
+  })
+
   it('the invite that repairs a share left unrecorded signs the rows above the Case’s recorded mark', async () => {
     const w = await olderRows()
     await shareCase(caseId, { nodeId: `node-${A.name}` })

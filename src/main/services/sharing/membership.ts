@@ -199,8 +199,7 @@ export async function shareCase(caseId: string, options: ShareCaseOptions): Prom
       ...stamp(self, operatorName)
     },
     () => {
-      markCaseShared(caseId, self)
-      signOlderRows(caseId, caseDir, self)
+      if (markCaseShared(caseId, self)) signOlderRows(caseId, caseDir, self)
     }
   )
   return listCaseMembers(caseId).find((m) => m.installationId === self)!

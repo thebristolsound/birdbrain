@@ -192,6 +192,16 @@ export function settleRowsOnDeletedCapture(
   })
 }
 
+export interface OlderRowsReach {
+  // Whether a member's copy can hold the Capture or Exhibit with this id.
+  membersHold: (id: string) => boolean
+  // The Case's chain imports an archive another installation exported. That installation's
+  // rows arrived with no author and read as this one's, so only a row that needs a Capture or
+  // Exhibit a member can hold, which this installation created after the import, is known to
+  // be its own; nothing is signed for another author.
+  importedFromOther: boolean
+}
+
 // The rows a tag application's foreign keys name, which a member's copy must hold too.
 const PARENT_ROWS: Partial<Record<SyncedTable, Array<{ parent: SyncedTable; column: string }>>> = {
   exhibit_tags: [{ parent: 'tags', column: 'tag_id' }],
@@ -218,10 +228,11 @@ function verifiesAsOwn(row: StoredRow): boolean {
 // Exhibit no member can hold (`membersHold` false), and a tag application whose note or tag
 // does not arrive with it, because that row stays unsigned or is this installation's row
 // signed over content it no longer holds (verifiesAsOwn). Returns the number of rows signed.
-export function signOwnUnsignedRows(caseId: string, membersHold: (id: string) => boolean): number {
+export function signOwnUnsignedRows(caseId: string, reach: OlderRowsReach): number {
   return withTransaction(() => {
-    const candidates = ownUnsignedRowsInCase(caseId).filter(
-      ({ needs }) => needs === null || membersHold(needs)
+    const { membersHold, importedFromOther } = reach
+    const candidates = ownUnsignedRowsInCase(caseId).filter(({ needs }) =>
+      needs === null ? !importedFromOther : membersHold(needs)
     )
     const name = (table: SyncedTable, key: RowKey): string => `${table} ${JSON.stringify(key)}`
     const signing = new Set(candidates.map(({ table, key }) => name(table, key)))

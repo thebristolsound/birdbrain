@@ -87,9 +87,14 @@ function heldByMembers(entries: ManifestEntry[]): (id: string) => boolean {
 }
 
 // The Owner's rows of the Case written before rows were signed (#1910), signed in the
-// transaction that marks the Case shared.
-function signOlderRows(caseId: string, caseDir: string): void {
-  signOwnUnsignedRows(caseId, heldByMembers(ownEntries(caseDir)))
+// transaction that marks the Case shared. An `import` naming another source installation, at
+// any depth of the chain, brought rows that read as this installation's.
+function signOlderRows(caseId: string, caseDir: string, self: string): void {
+  const entries = ownEntries(caseDir)
+  signOwnUnsignedRows(caseId, {
+    membersHold: heldByMembers(entries),
+    importedFromOther: entries.some((e) => e.type === 'import' && e.sourceInstallationId !== self)
+  })
 }
 
 function samePem(a: string, b: string): boolean {
@@ -181,7 +186,7 @@ export async function shareCase(caseId: string, options: ShareCaseOptions): Prom
   if (existing !== undefined) {
     if (existing.memberInstallationId !== self) throw new SharingError('not-owner')
     withTransaction(() => {
-      if (markCaseShared(caseId, self)) signOlderRows(caseId, caseDir)
+      if (markCaseShared(caseId, self)) signOlderRows(caseId, caseDir, self)
       applyRosterEntries(caseId, ownEntries(caseDir))
     })
     writeRosterFiles({ caseId, caseDir, ownerEntries: ownEntries(caseDir), self })
@@ -206,7 +211,7 @@ export async function shareCase(caseId: string, options: ShareCaseOptions): Prom
     },
     () => {
       markCaseShared(caseId, self)
-      signOlderRows(caseId, caseDir)
+      signOlderRows(caseId, caseDir, self)
     }
   )
   return listCaseMembers(caseId).find((m) => m.installationId === self)!

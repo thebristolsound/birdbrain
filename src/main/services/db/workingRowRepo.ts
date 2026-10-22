@@ -425,11 +425,13 @@ export interface UnsignedLocalRow {
   needs: string | null
 }
 
-// This installation's rows of a Case that carry no signature (#1910): written before rows were
-// signed, or imported from an archive older than Case Archive schema 9. By table in
-// SYNCED_TABLES order, then as written. A tag is the Case's when an application in the Case
-// names it, any author's, live or not: the rule the offer reads (`inCase`). Tombstones are
-// included; rows of other authors and signed rows are not.
+// The rows of a Case with no author and no signature (#1910): this installation's, written
+// before rows were signed, and the rows an archive import brought. An archive of any schema
+// carries its exporter's own rows with no author, so those read as this installation's too
+// (the first share reads the chain's `import` entries for that). By table in SYNCED_TABLES
+// order, then as written. A tag is the Case's when an application in the Case names it, any
+// author's, live or not: the rule the offer reads (`inCase`). Tombstones are included; rows of
+// other authors and signed rows are not.
 export function ownUnsignedRowsInCase(caseId: string): UnsignedLocalRow[] {
   return SYNCED_TABLES.flatMap((table) => {
     const { key, inCase } = SPECS[table]

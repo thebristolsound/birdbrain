@@ -14,6 +14,7 @@ import {
   createTag,
   getTagsForCapture,
   getTagsForNote,
+  listTags,
   mergeTags
 } from '@main/services/db/tagRepo'
 import { getAnnotations, saveAnnotations, upsertPin } from '@main/services/annotations'
@@ -556,6 +557,58 @@ describe('older rows at first share (#1910)', () => {
     expect(listNotes(newCaseId).map((note) => note.title)).toEqual(['Alice 2 note'])
     expect(getTagsForCapture(fresh.captureId).map((tag) => tag.name)).toEqual(['Alice 2 tag'])
     expect(getAnnotations(fresh.captureId).pins.map((pin) => pin.body)).toEqual(['Alice 2 pin'])
+  })
+
+  // An archive another installation exported carries that installation's own rows with no
+  // author, so here they read as this installation's. Only a row that needs a Capture or
+  // Exhibit this installation created after the import is known to be its own; the rest stay
+  // unsigned, and so does a tag application whose tag stays unsigned.
+  it("a Case imported from another installation's archive signs only the Owner's rows on Captures created since", async () => {
+    const X = await createPeer(root, 'xavier', 'Xavier Exporter', 'XE')
+    const sourceId = createCase({ name: 'Exported by Xavier' }).id
+    mkdirSync(caseDirOf(sourceId), { recursive: true })
+    const { captureId: xCapture } = await addCapture(sourceId, X, 1)
+    const xs = writeRows(sourceId, xCapture, 'Xavier')
+    const loose = createNote({ caseId: sourceId, title: 'Xavier loose note', body: 'no link' })
+    addTagToNote({ noteId: loose.id, tagId: xs.tagId })
+    unsign([
+      ...keysOf(xs),
+      { table: 'notes', key: { id: loose.id } },
+      { table: 'note_tags', key: { note_id: loose.id, tag_id: xs.tagId } }
+    ])
+    const archive = join(root, 'xavier.birdbrain')
+    await exportCaseArchive(sourceId, archive)
+
+    await activate(A)
+    const { newCaseId } = await importCaseArchive(archive)
+    const fresh = await olderRows(newCaseId, 2)
+    const looseId = listNotes(newCaseId).find((note) => note.title === 'Xavier loose note')!.id
+    const xTagId = listTags().find((tag) => tag.name === 'Xavier tag')!.id
+    await shareCase(newCaseId, { nodeId: `node-${A.name}` })
+    await addMember(newCaseId, memberOfB(B))
+    const roster = listCaseMembers(newCaseId)
+
+    expectUnsigned([
+      { table: 'notes', key: { id: looseId } },
+      { table: 'tags', key: { id: xTagId } },
+      { table: 'note_tags', key: { note_id: looseId, tag_id: xTagId } },
+      ...keysOf(fresh).filter(({ table }) => ['tags', 'exhibit_tags', 'note_tags'].includes(table))
+    ])
+    for (const { table, key } of keysOf(fresh)) {
+      if (!['tags', 'exhibit_tags', 'note_tags'].includes(table)) {
+        expectSignedBy(A, table, key, newCaseId)
+      }
+    }
+
+    const fromAlice = recordSource(newCaseId, A)
+    await activate(B)
+    seedSharedCase(newCaseId, A, [])
+    for (const member of roster) upsertCaseMember(member)
+    const result = await pull(newCaseId, fromAlice)
+    expect(result.errors).toEqual([])
+    expect(listNotes(newCaseId).map((note) => note.title)).toEqual(['Alice 2 note'])
+    expect(getAnnotations(fresh.captureId).pins.map((pin) => pin.body)).toEqual(['Alice 2 pin'])
+    expect(listTags()).toEqual([])
   })
 
   // A row of the Owner signed after the upgrade can carry a signature that no longer covers

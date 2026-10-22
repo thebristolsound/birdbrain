@@ -278,10 +278,9 @@ as they are, and a later invite signs nothing. A failure rolls the signatures, t
 the `member-add` back together. The invite that repairs a share whose row write never landed signs
 the rows too.
 
-An older tag is never signed, at the first share or on any later write: applying, renaming,
-recolouring, deleting or merging it. Tags are global, so the writer of an unsigned tag cannot be
-known, and a tag an archive brought keeps its id on every copy that imported it: the demo Case's tag
-"nightjar" has one id on every installation, and a copy signed under one Owner's key would land
+The first share never signs an older tag. Tags are global, so the writer of an unsigned tag cannot
+be known, and a tag an archive brought keeps its id on every copy that imported it: the demo Case's
+tag "nightjar" has one id on every installation, and a copy signed under one Owner's key would land
 beside a member's own row of that id and roll back every session. A tag application is signed at the
 first share only when its tag and its note or Exhibit both reach members, so an older application of
 an older tag stays local. Older notes, annotation layers and pins are signed only when provably the
@@ -302,21 +301,30 @@ member's copy refuses each of these rows, and an application that lands without 
 fails the deferred key, so signed, any of them would roll back every member's session rows, as
 above.
 
+A Case whose chain holds an `archive-export` at any depth signs no older row at the first share.
+Before sync, a teammate collaborated by importing the Owner's archive, and an import keeps each row
+id the importing copy does not already hold, so the teammate may hold any older row of the Case
+under its id. A signed copy of that row would reach the teammate beside its own and roll back every
+session, new rows included. A chain line that does not parse as an entry may be a damaged `import`
+or `archive-export`, so a chain with one signs no older row either.
+
 The rows left local stay local only until the Owner writes on one: an edit, a tombstone, or a new
 tag application on such a note signs the row with no such check, and the member's session rolls back
-as for any new write on a Capture no member can hold. Deleting or merging away an older tag removes
-its unsigned applications outright, because a signed tombstone of one would reach a member with no
-tag for its key, and leaves the tag an unsigned tombstone while a Shared Case still applies it. A
-new application of an older tag in a Shared Case is signed at write and offered while its tag is
-not, so a member's copy that holds no tag of that id refuses the rows of that session at the
-deferred key; a copy that seeded the demo Case holds "nightjar" under its id and takes such an
-application. The share refuses a live own row on a Capture recorded as deleted, a state the app's
-writers cannot reach before a first share, and signs a tombstone there, as for a new write. Signing
-a note changes its row, so the Case revision counter advances and the change log gains one row per
-note signed, which may mark investigation runs stale; leaving the signature columns out of that
-trigger needs a schema migration. The share signs the whole backlog in one transaction on the main
-process, one RSA signature per row, about a second per thousand rows as measured in review, and the
-app waits for it on the first invite.
+as for any new write on a Capture no member can hold. Later writes on an older tag keep the
+behaviour from before #1910. A new application of an older tag in a Shared Case is signed at write
+and offered while its tag is not, so a member's copy that holds no tag of that id refuses the rows
+of each session at the deferred key until the tag reaches it; a copy that seeded the demo Case holds
+"nightjar" under its id and takes such an application. Renaming, recolouring, deleting or merging
+away the tag signs it, as any write of this copy's own row is signed, and the member's next session
+receives the tag and succeeds. The same write on a tag a member holds under its id, "nightjar"
+among them, lands beside that member's own row and rolls back that member's sessions. The share
+refuses a live own row on a Capture recorded as deleted, a state the app's writers cannot reach
+before a first share, and signs a tombstone there, as for a new write. Signing a note changes its
+row, so the Case revision counter advances and the change log gains one row per note signed, which
+may mark investigation runs stale; leaving the signature columns out of that trigger needs a schema
+migration. The share signs the whole backlog in one transaction on the main process, one RSA
+signature per row, about a second per thousand rows as measured in review, and the app waits for
+it on the first invite.
 
 The investigation records join the working layer under an amendment the maintainer approved on
 2026-10-10. It is E23 in the

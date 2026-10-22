@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { closeDatabase, getDb } from '@main/services/db/core'
-import { deleteCapture, listCaptures } from '@main/services/db/captureRepo'
+import { deleteCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
 import { createCase, getCase } from '@main/services/db/caseRepo'
 import { listCaseMembers, upsertCaseMember } from '@main/services/db/caseMemberRepo'
 import { createNote, listNotes, updateNote } from '@main/services/db/noteRepo'
@@ -539,6 +539,47 @@ describe('older rows at first share (#1910)', () => {
 
     expectSignedBy(A, 'notes', { id: byTitle.get('Older')! }, newCaseId)
     expect(syncColumns('notes', { id: byTitle.get('Signed')! })).toEqual(signedSync)
+  })
+
+  // A legacy html Capture has no chain entry, so no member's copy can hold it (#1877): the
+  // rows on it stay local and unsigned, its tag is the Case's and is signed, and the rest of
+  // the Case's older rows reach the joiner.
+  it('rows on a legacy html Capture stay local and unsigned, and the joiner receives the rest', async () => {
+    const fresh = await olderRows()
+    const legacyId = insertCapture({
+      caseId,
+      url: 'https://example.com/legacy',
+      title: 'Legacy page',
+      hash: 'l'.repeat(64),
+      timestamp: TIME,
+      format: 'html'
+    }).id
+    const legacy = writeRows(caseId, legacyId, 'Legacy')
+    unsign(keysOf(legacy))
+
+    await shareCase(caseId, { nodeId: `node-${A.name}` })
+    await addMember(caseId, memberOfB(B))
+    const roster = listCaseMembers(caseId)
+
+    expectUnsigned(keysOf(legacy).filter(({ table }) => table !== 'tags'))
+    expectSignedBy(A, 'tags', { id: legacy.tagId }, null)
+    for (const { table, key } of keysOf(fresh)) {
+      expectSignedBy(A, table, key, table === 'tags' ? null : caseId)
+    }
+    const fromAlice = recordSource(caseId, A)
+    const offered = fromAlice.rows.get(A.installationId) ?? []
+    expect(offered.filter((row) => Object.values(row.fields).includes(legacyId))).toEqual([])
+    expect(offered.some((row) => row.fields.note_id === legacy.noteId)).toBe(false)
+
+    await activate(B)
+    seedSharedCase(caseId, A, [])
+    for (const member of roster) upsertCaseMember(member)
+    const result = await pull(caseId, fromAlice)
+    expect(result.errors).toEqual([])
+    expect(listNotes(caseId).map((note) => note.title)).toEqual(['Alice 1 note'])
+    expect(getTagsForCapture(fresh.captureId).map((tag) => tag.name)).toEqual(['Alice 1 tag'])
+    expect(getAnnotations(fresh.captureId).pins.map((pin) => pin.body)).toEqual(['Alice 1 pin'])
+    expect(listTags().map((tag) => tag.name)).toEqual(['Alice 1 tag', 'Legacy tag'])
   })
 
   // A Capture whose entry sits before the chain's `import` never reaches a member (#1877), so

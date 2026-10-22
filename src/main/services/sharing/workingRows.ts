@@ -16,7 +16,6 @@ import {
   maxLocalVersion,
   noteReferencedCases,
   ownLiveRowsOnCapture,
-  ownSignedRowsInCase,
   ownUnsignedRowsInCase,
   readRow,
   recordDeletedCapture,
@@ -199,9 +198,7 @@ export interface OlderRowsReach {
   // The Case's chain imports an archive another installation exported. That installation's
   // rows arrived with no author and read as this one's, so only a row that needs a Capture or
   // Exhibit a member can hold, which this installation created after the import, is known to
-  // be its own; nothing is signed for another author. A tag needs neither: it is signed when
-  // an application this installation signed in the Case names it, as applyTag signs a tag
-  // applied in a Shared Case, because a member's copy refuses that application without it.
+  // be its own; nothing is signed for another author.
   importedFromOther: boolean
 }
 
@@ -222,30 +219,24 @@ function verifiesAsOwn(row: StoredRow): boolean {
   return wire !== undefined && verifyWireRow(wire, getPublicKeyPem())
 }
 
-// The Owner's rows a Case held before rows were signed (#1910, ruling of 21 October 2026),
-// signed when the Case is first shared, inside the transaction that marks it shared, so the
-// first sync offers them. Each row takes its own version, so the backlog pages like any other
-// writes, and each is checked as a new write is (signLocalRow), which refuses a live row on a
-// Capture recorded as deleted (#1877). A row stays local and unsigned when a member's copy
-// would refuse it and, with it, every row of that session: one that needs a Capture or
-// Exhibit no member can hold (`membersHold` false), and a tag application whose note or tag
-// does not arrive with it, because that row stays unsigned or is this installation's row
-// signed over content it no longer holds (verifiesAsOwn). Returns the number of rows signed.
+// The Owner's rows a Case held before rows were signed (#1910, rulings of 21 and 22 October
+// 2026), signed when the Case is first shared, inside the transaction that marks it shared, so
+// the first sync offers them. Each row takes its own version, so the backlog pages like any
+// other writes, and each is checked as a new write is (signLocalRow), which refuses a live row
+// on a Capture recorded as deleted (#1877). Only rows provably the Owner's are signed. An
+// older tag never is: tags are global, and one an archive brought, the demo Case's among them,
+// carries the same id on every installation that imported it. A row stays local and unsigned
+// when a member's copy would refuse it and, with it, every row of that session: one that needs
+// a Capture or Exhibit no member can hold (`membersHold` false), and a tag application whose
+// note or tag does not arrive with it, because that row stays unsigned or is this
+// installation's row signed over content it no longer holds (verifiesAsOwn). Returns the
+// number of rows signed.
 export function signOwnUnsignedRows(caseId: string, reach: OlderRowsReach): number {
   return withTransaction(() => {
     const { membersHold, importedFromOther } = reach
-    const applied = new Set(
-      importedFromOther
-        ? (['exhibit_tags', 'note_tags'] as const).flatMap((table) =>
-            ownSignedRowsInCase(caseId, table)
-              .filter(verifiesAsOwn)
-              .map(({ fields }) => fields.tag_id)
-          )
-        : []
-    )
-    const candidates = ownUnsignedRowsInCase(caseId).filter(({ table, key, needs }) => {
-      if (needs !== null) return membersHold(needs)
-      return !importedFromOther || (table === 'tags' && applied.has(key.id))
+    const candidates = ownUnsignedRowsInCase(caseId).filter(({ table, needs }) => {
+      if (table === 'tags') return false
+      return needs === null ? !importedFromOther : membersHold(needs)
     })
     const name = (table: SyncedTable, key: RowKey): string => `${table} ${JSON.stringify(key)}`
     const signing = new Set(candidates.map(({ table, key }) => name(table, key)))

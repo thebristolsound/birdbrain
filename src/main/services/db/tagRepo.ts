@@ -10,13 +10,7 @@ import type {
 } from '@shared/ipc'
 import { getDb, syncColumnValues, withTransaction, type ImportCtx } from '@main/services/db/core'
 import { UNDATED_TAG_CREATED_AT } from '@main/services/db/migrations'
-import {
-  assertLiveReference,
-  isInSharedCase,
-  isLiveLocalRow,
-  readRow,
-  type RowKey
-} from '@main/services/db/workingRowRepo'
+import { assertLiveReference, isLiveLocalRow } from '@main/services/db/workingRowRepo'
 import {
   allocateLocalVersion,
   deleteLocalRow,
@@ -116,29 +110,6 @@ export function deleteTag(id: string): boolean {
   })
 }
 
-// Writes this installation's tag application as ensureLocalRow does. In a Shared Case its tag
-// must reach every member too, or a member's copy refuses the application, and every row of
-// that session, at the deferred tag key: this installation's tag from before rows were signed
-// has no signature and is never offered, so it is signed with the application (#1910).
-function applyTag(
-  table: 'exhibit_tags' | 'note_tags',
-  key: RowKey,
-  insert: () => void,
-  version?: number
-): void {
-  withTransaction(() => {
-    const outcome = ensureLocalRow(table, key, insert, version)
-    const tag = { id: key.tag_id }
-    if (
-      outcome !== 'unchanged' &&
-      readRow('tags', tag, null)?.signature === null &&
-      isInSharedCase(table, key)
-    ) {
-      signLocalRow('tags', tag, { version })
-    }
-  })
-}
-
 function insertCaptureTag(captureId: string, tagId: string): void {
   getDb()
     .prepare('INSERT INTO exhibit_tags (exhibit_id, tag_id) VALUES (?, ?)')
@@ -147,7 +118,7 @@ function insertCaptureTag(captureId: string, tagId: string): void {
 
 export function addTagToCapture(params: CaptureTagParams): void {
   const { captureId, tagId } = params
-  applyTag('exhibit_tags', { exhibit_id: captureId, tag_id: tagId }, () =>
+  ensureLocalRow('exhibit_tags', { exhibit_id: captureId, tag_id: tagId }, () =>
     insertCaptureTag(captureId, tagId)
   )
 }
@@ -161,7 +132,7 @@ export function addTagToCaptures(captureIds: string[], tagId: string): number {
   return withTransaction(() => {
     const version = allocateLocalVersion()
     for (const id of captureIds) {
-      applyTag(
+      ensureLocalRow(
         'exhibit_tags',
         { exhibit_id: id, tag_id: tagId },
         () => insertCaptureTag(id, tagId),
@@ -256,7 +227,7 @@ export function mergeTags(params: MergeTagsParams): MergeTagsResult | undefined 
     if (!source || !target) return undefined
     const version = allocateLocalVersion()
     for (const exhibitId of liveLocalApplications('exhibit_tags', sourceId)) {
-      applyTag(
+      ensureLocalRow(
         'exhibit_tags',
         { exhibit_id: exhibitId, tag_id: targetId },
         () => insertCaptureTag(exhibitId, targetId),
@@ -265,7 +236,7 @@ export function mergeTags(params: MergeTagsParams): MergeTagsResult | undefined 
       deleteLocalRow('exhibit_tags', { exhibit_id: exhibitId, tag_id: sourceId })
     }
     for (const noteId of liveLocalApplications('note_tags', sourceId)) {
-      applyTag(
+      ensureLocalRow(
         'note_tags',
         { note_id: noteId, tag_id: targetId },
         () => insertNoteTag(noteId, targetId),
@@ -325,7 +296,9 @@ function insertNoteTag(noteId: string, tagId: string): void {
 // not an error the operator has to read.
 export function addTagToNote(params: NoteTagParams): void {
   const { noteId, tagId } = params
-  applyTag('note_tags', { note_id: noteId, tag_id: tagId }, () => insertNoteTag(noteId, tagId))
+  ensureLocalRow('note_tags', { note_id: noteId, tag_id: tagId }, () =>
+    insertNoteTag(noteId, tagId)
+  )
 }
 
 export function removeTagFromNote(params: NoteTagParams): void {

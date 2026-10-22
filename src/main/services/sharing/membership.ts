@@ -75,8 +75,9 @@ function ownerMemberAdd(entries: ManifestEntry[]): MemberAddEntry | undefined {
 }
 
 // The Owner's rows of the Case written before rows were signed (#1910), signed in the
-// transaction that marks the Case shared. An `import` naming another source installation, at
-// any depth of the chain, brought rows that read as this installation's.
+// transaction that marks the Case shared where they are provably the Owner's (no older tag
+// ever is). An `import` naming another source installation, at any depth of the chain, brought
+// rows that read as this installation's.
 function signOlderRows(caseId: string, caseDir: string, self: string): void {
   const entries = ownEntries(caseDir)
   const held = idsReachingMembers(entries)
@@ -159,8 +160,9 @@ export interface ShareCaseOptions {
 // `member-add` and sets `shared_at` and `owner_installation_id`. A Case
 // whose chain already holds the Owner's `member-add` gets nothing appended;
 // a row left unset by a crash between the append and the row write is set.
-// Whichever call sets `shared_at` also signs the Owner's unsigned rows of the
-// Case in the same transaction (#1910); a later invite signs nothing.
+// Whichever call sets `shared_at` also signs the Owner's older rows of the Case
+// that signOwnUnsignedRows selects, in the same transaction (#1910); a later
+// invite signs nothing.
 export async function shareCase(caseId: string, options: ShareCaseOptions): Promise<CaseMember> {
   const row = caseOrThrow(caseId)
   const self = getInstallationId()

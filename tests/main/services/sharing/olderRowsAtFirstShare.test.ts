@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'fs'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { tmpdir } from 'os'
+import { DEMO_CASE_ARCHIVE_FILENAME, DEMO_CASE_OPERATOR_NAME } from '@shared/constants'
 import { closeDatabase, getDb } from '@main/services/db/core'
 import { deleteCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
 import { createCase, getCase } from '@main/services/db/caseRepo'
@@ -14,7 +15,6 @@ import {
   addTagToNote,
   createTag,
   getTagsForCapture,
-  getTagsForNote,
   listTags,
   mergeTags
 } from '@main/services/db/tagRepo'
@@ -57,11 +57,12 @@ import {
   type Peer
 } from '../../../helpers/syncPeers'
 
-// The Owner's rows written before rows were signed (#1910, ruling of 21 October 2026): the
-// first share signs this installation's unsigned notes, tags, tag applications, annotation
-// layers and pins of the Case, in the transaction that writes the Owner's roster row from its
-// `member-add`, each at a fresh version, so a member's first sync receives them. Rows on a
-// Capture or Exhibit no member can hold stay local and unsigned. Content is invented.
+// The Owner's rows written before rows were signed (#1910, rulings of 21 and 22 October 2026):
+// the first share signs this installation's unsigned notes, tag applications, annotation layers
+// and pins of the Case that are provably its own, in the transaction that writes the Owner's
+// roster row from its `member-add`, each at a fresh version, so a member's first sync receives
+// them. An older tag is never signed, so an older application of it stays local too, and so
+// do rows on a Capture or Exhibit no member can hold. Content is invented.
 
 interface Written {
   captureId: string
@@ -98,6 +99,12 @@ function keysOf(w: Written): Array<{ table: SyncedTable; key: RowKey }> {
     { table: 'annotation_pins', key: { id: w.pinId } }
   ]
 }
+
+// A tag and its applications: an older tag is never signed, so its older applications stay
+// local with it.
+const TAG_TABLES: SyncedTable[] = ['tags', 'exhibit_tags', 'note_tags']
+const tagRows = (w: Written) => keysOf(w).filter(({ table }) => TAG_TABLES.includes(table))
+const otherRows = (w: Written) => keysOf(w).filter(({ table }) => !TAG_TABLES.includes(table))
 
 const where = (key: RowKey): string =>
   Object.keys(key)
@@ -189,6 +196,10 @@ const lifecycle = () =>
 const refusedAs = (errors: Array<{ detail: string }>): string[] =>
   errors.map(({ detail }) => detail.replace(/ of [^:]* at version \d+:/, ':')).sort()
 
+const DEMO_ARCHIVE = resolve(__dirname, '../../../../resources', DEMO_CASE_ARCHIVE_FILENAME)
+// The demo Case's tag "nightjar", under the one id every installation seeds it with.
+const NIGHTJAR = '6790fc42-c957-473e-87ed-5d3ced33d282'
+
 const highWater = (caseId: string): number =>
   readSyncStateFile(caseDirOf(caseId)).localVersionHighWater
 
@@ -224,15 +235,18 @@ describe('older rows at first share (#1910)', () => {
     return written
   }
 
-  it("a member's first sync receives the Owner's notes, tags, tag applications, annotations and pins written before signing", async () => {
+  it("a member's first sync receives the Owner's notes, annotations and pins written before signing, and no older tag or application of it", async () => {
     const w = await olderRows()
     await shareCase(caseId, { nodeId: `node-${A.name}` })
     await addMember(caseId, memberOfB(B))
     const roster = listCaseMembers(caseId)
+    expectUnsigned(tagRows(w))
     const fromAlice = recordSource(caseId, A)
-    expect((fromAlice.rows.get(A.installationId) ?? []).map((row) => row.table).sort()).toEqual(
-      [...SYNCED_TABLES].sort()
-    )
+    expect((fromAlice.rows.get(A.installationId) ?? []).map((row) => row.table).sort()).toEqual([
+      'annotation_pins',
+      'annotations',
+      'notes'
+    ])
 
     await activate(B)
     seedSharedCase(caseId, A, [])
@@ -240,16 +254,15 @@ describe('older rows at first share (#1910)', () => {
     const result = await pull(caseId, fromAlice)
     expect(result.errors).toEqual([])
     expect(result.capturesApplied).toBe(1)
-    expect(result.rowsApplied).toBe(6)
+    expect(result.rowsApplied).toBe(3)
     expect(listNotes(caseId).map((note) => [note.id, note.title])).toEqual([
       [w.noteId, 'Alice 1 note']
     ])
-    expect(getTagsForCapture(w.captureId).map((tag) => tag.name)).toEqual(['Alice 1 tag'])
-    expect(getTagsForNote(w.noteId).map((tag) => tag.name)).toEqual(['Alice 1 tag'])
+    expect(listTags()).toEqual([])
     const { annotations, pins } = getAnnotations(w.captureId)
     expect(annotations).not.toBeNull()
     expect(pins.map((pin) => pin.body)).toEqual(['Alice 1 pin'])
-    for (const { table, key } of keysOf(w)) {
+    for (const { table, key } of otherRows(w)) {
       const held = readRow(table, key, A.installationId)
       expect(held, `${table} landed under Alice`).toBeDefined()
       const [wire] = toWireRows([held!], B.installationId)
@@ -272,14 +285,14 @@ describe('older rows at first share (#1910)', () => {
 
     expect(parsedChain(ownChainText(caseId)).map((e) => e.type)).toEqual(['capture', 'member-add'])
     expect(getCase(caseId)!.sharedAt).toEqual(expect.any(String))
-    const versions = keysOf(w).map(({ table, key }) => {
-      expectSignedBy(A, table, key, table === 'tags' ? null : caseId)
+    const versions = otherRows(w).map(({ table, key }) => {
+      expectSignedBy(A, table, key, caseId)
       return syncColumns(table, key).version
     })
-    expect(versions).toEqual([0, 1, 2, 3, 4, 5].map((i) => first + i))
-    expect(highWater(caseId)).toBe(first + 5)
-    expect(highWater(otherId)).toBe(first + 5)
-    expect(ownUnsignedRowsInCase(caseId)).toEqual([])
+    expect(versions).toEqual([0, 1, 2].map((i) => first + i))
+    expect(highWater(caseId)).toBe(first + 2)
+    expect(highWater(otherId)).toBe(first + 2)
+    expect(ownUnsignedRowsInCase(caseId).map(({ table }) => table)).toEqual(TAG_TABLES)
   })
 
   it.each([
@@ -315,24 +328,26 @@ describe('older rows at first share (#1910)', () => {
       expectUnsigned(keysOf(w))
 
       await shareCase(caseId, { nodeId: `node-${A.name}` })
-      for (const { table, key } of keysOf(w)) {
-        expectSignedBy(A, table, key, table === 'tags' ? null : caseId)
-      }
+      for (const { table, key } of otherRows(w)) expectSignedBy(A, table, key, caseId)
+      expectUnsigned(tagRows(w))
     }
   )
 
-  it("leaves received rows, other Cases' rows and signed rows as they were, and signs only the tags the Case's applications name", async () => {
+  it("leaves received rows, other Cases' rows, signed rows and every older tag as they were", async () => {
     const w = await olderRows()
     const otherId = createCase({ name: 'Never shared' }).id
     mkdirSync(caseDirOf(otherId), { recursive: true })
     const other = await olderRows(otherId, 2)
-    // T2 is applied in both Cases, T3 in this one only through a note, T4 nowhere.
+    // T2 is applied in both Cases, T3 in this one only through a note, T4 nowhere. T5 was
+    // written after signing; its older application here is signed with the note it names.
     const t2 = createTag({ name: 'Both Cases' })
     addTagToCapture({ captureId: w.captureId, tagId: t2.id })
     addTagToCapture({ captureId: other.captureId, tagId: t2.id })
     const t3 = createTag({ name: 'On a note' })
     addTagToNote({ noteId: w.noteId, tagId: t3.id })
     const t4 = createTag({ name: 'Never applied' })
+    const t5 = createTag({ name: 'Signed since' })
+    addTagToNote({ noteId: w.noteId, tagId: t5.id })
     const tagKeys: Array<{ table: SyncedTable; key: RowKey }> = [
       { table: 'tags', key: { id: t2.id } },
       { table: 'exhibit_tags', key: { exhibit_id: w.captureId, tag_id: t2.id } },
@@ -341,7 +356,8 @@ describe('older rows at first share (#1910)', () => {
       { table: 'note_tags', key: { note_id: w.noteId, tag_id: t3.id } },
       { table: 'tags', key: { id: t4.id } }
     ]
-    unsign(tagKeys)
+    const t5Application = { note_id: w.noteId, tag_id: t5.id }
+    unsign([...tagKeys, { table: 'note_tags', key: t5Application }])
     // Written after signing on write: already signed.
     const signedNote = createNote({ caseId, title: 'Signed at write', body: 'signed' })
     // A received note and tag application, and an own note carrying a foreign signature.
@@ -359,9 +375,10 @@ describe('older rows at first share (#1910)', () => {
       ['notes', { id: 'received-note' }, 'peer-x'],
       ['exhibit_tags', { exhibit_id: w.captureId, tag_id: w.tagId }, 'peer-x'],
       ['notes', { id: 'foreign-signed' }, null],
-      ...keysOf(other).map(({ table, key }): [SyncedTable, RowKey, null] => [table, key, null]),
-      ['exhibit_tags', { exhibit_id: other.captureId, tag_id: t2.id }, null],
-      ['tags', { id: t4.id }, null]
+      ...[...keysOf(other), ...tagRows(w), ...tagKeys].map(
+        ({ table, key }): [SyncedTable, RowKey, null] => [table, key, null]
+      ),
+      ['tags', { id: t5.id }, null]
     ]
     const before = untouched.map(([table, key, author]) => raw(table, key, author))
     expect(before.every((row) => row !== undefined)).toBe(true)
@@ -369,19 +386,11 @@ describe('older rows at first share (#1910)', () => {
     await shareCase(caseId, { nodeId: `node-${A.name}` })
 
     expect(untouched.map(([table, key, author]) => raw(table, key, author))).toEqual(before)
-    for (const { table, key } of keysOf(w)) {
-      expectSignedBy(A, table, key, table === 'tags' ? null : caseId)
-    }
-    expectSignedBy(A, 'tags', { id: t2.id }, null)
-    expectSignedBy(A, 'exhibit_tags', { exhibit_id: w.captureId, tag_id: t2.id }, caseId)
-    expectSignedBy(A, 'tags', { id: t3.id }, null)
-    expectSignedBy(A, 'note_tags', { note_id: w.noteId, tag_id: t3.id }, caseId)
-    // Other's own tag is applied only there.
-    expectUnsigned([
-      { table: 'tags', key: { id: other.tagId } },
-      { table: 'tags', key: { id: t4.id } }
-    ])
-    expect(ownUnsignedRowsInCase(caseId)).toEqual([])
+    for (const { table, key } of otherRows(w)) expectSignedBy(A, table, key, caseId)
+    expectSignedBy(A, 'note_tags', t5Application, caseId)
+    expect(
+      ownUnsignedRowsInCase(caseId).filter(({ table }) => !TAG_TABLES.includes(table))
+    ).toEqual([])
   })
 
   it('a later invite signs nothing, even a row the first share never saw', async () => {
@@ -458,10 +467,11 @@ describe('older rows at first share (#1910)', () => {
 
     expect(ownChainText(caseId)).toBe(chain)
     expect(getCase(caseId)!.sharedAt).toEqual(expect.any(String))
-    for (const { table, key } of keysOf(w)) {
-      expectSignedBy(A, table, key, table === 'tags' ? null : caseId)
+    for (const { table, key } of otherRows(w)) {
+      expectSignedBy(A, table, key, caseId)
       expect(syncColumns(table, key).version).toBeGreaterThan(500)
     }
+    expectUnsigned(tagRows(w))
   })
 
   it('a Case nobody shares keeps its older rows unsigned while another Case is shared', async () => {
@@ -542,8 +552,8 @@ describe('older rows at first share (#1910)', () => {
   })
 
   // A legacy html Capture has no chain entry, so no member's copy can hold it (#1877): the
-  // rows on it stay local and unsigned, its tag is the Case's and is signed, and the rest of
-  // the Case's older rows reach the joiner.
+  // rows on it stay local and unsigned, and the rest of the Case's older rows, other than its
+  // older tags and their applications, reach the joiner.
   it('rows on a legacy html Capture stay local and unsigned, and the joiner receives the rest', async () => {
     const fresh = await olderRows()
     const legacyId = insertCapture({
@@ -561,11 +571,8 @@ describe('older rows at first share (#1910)', () => {
     await addMember(caseId, memberOfB(B))
     const roster = listCaseMembers(caseId)
 
-    expectUnsigned(keysOf(legacy).filter(({ table }) => table !== 'tags'))
-    expectSignedBy(A, 'tags', { id: legacy.tagId }, null)
-    for (const { table, key } of keysOf(fresh)) {
-      expectSignedBy(A, table, key, table === 'tags' ? null : caseId)
-    }
+    expectUnsigned([...keysOf(legacy), ...tagRows(fresh)])
+    for (const { table, key } of otherRows(fresh)) expectSignedBy(A, table, key, caseId)
     const fromAlice = recordSource(caseId, A)
     const offered = fromAlice.rows.get(A.installationId) ?? []
     expect(offered.filter((row) => Object.values(row.fields).includes(legacyId))).toEqual([])
@@ -577,15 +584,13 @@ describe('older rows at first share (#1910)', () => {
     const result = await pull(caseId, fromAlice)
     expect(result.errors).toEqual([])
     expect(listNotes(caseId).map((note) => note.title)).toEqual(['Alice 1 note'])
-    expect(getTagsForCapture(fresh.captureId).map((tag) => tag.name)).toEqual(['Alice 1 tag'])
     expect(getAnnotations(fresh.captureId).pins.map((pin) => pin.body)).toEqual(['Alice 1 pin'])
-    expect(listTags().map((tag) => tag.name)).toEqual(['Alice 1 tag', 'Legacy tag'])
+    expect(listTags()).toEqual([])
   })
 
   // A Capture whose entry sits before the chain's `import` never reaches a member (#1877), so
   // a row on it would make every member's session refuse its rows: it stays local and
-  // unsigned, and the rest of the Case's older rows travel. The tag those rows name is the
-  // Case's all the same, so it is signed and a member holds it with no application.
+  // unsigned, and the rest of the Case's older rows other than its older tags travel.
   it('rows on an imported Capture stay local and unsigned, and the joiner receives the rest', async () => {
     await activate(A)
     const sourceId = createCase({ name: 'Before import' }).id
@@ -603,11 +608,8 @@ describe('older rows at first share (#1910)', () => {
     await addMember(newCaseId, memberOfB(B))
     const roster = listCaseMembers(newCaseId)
 
-    expectUnsigned(keysOf(local).filter(({ table }) => table !== 'tags'))
-    expectSignedBy(A, 'tags', { id: local.tagId }, null)
-    for (const { table, key } of keysOf(fresh)) {
-      expectSignedBy(A, table, key, table === 'tags' ? null : newCaseId)
-    }
+    expectUnsigned([...keysOf(local), ...tagRows(fresh)])
+    for (const { table, key } of otherRows(fresh)) expectSignedBy(A, table, key, newCaseId)
     const fromAlice = recordSource(newCaseId, A)
     const offered = fromAlice.rows.get(A.installationId) ?? []
     expect(offered.filter((row) => Object.values(row.fields).includes(importedId))).toEqual([])
@@ -619,9 +621,8 @@ describe('older rows at first share (#1910)', () => {
     const result = await pull(newCaseId, fromAlice)
     expect(result.errors).toEqual([])
     expect(listNotes(newCaseId).map((note) => note.title)).toEqual(['Alice 2 note'])
-    expect(getTagsForCapture(fresh.captureId).map((tag) => tag.name)).toEqual(['Alice 2 tag'])
     expect(getAnnotations(fresh.captureId).pins.map((pin) => pin.body)).toEqual(['Alice 2 pin'])
-    expect(listTags().map((tag) => tag.name)).toEqual(['Alice 2 tag', 'Imported tag'])
+    expect(listTags()).toEqual([])
   })
 
   // An archive another installation exported carries that installation's own rows with no
@@ -678,8 +679,8 @@ describe('older rows at first share (#1910)', () => {
 
   // A tag from before row signing, the Owner's own or one an archive brought, applied in an
   // imported Case nobody shared yet: the application is signed at write and the tag is not.
-  // The first share signs the tag, so a member's copy never holds the application without it.
-  it('in an imported Case, an older tag named by a signed application of the Owner reaches the joiner', async () => {
+  // Whoever wrote the tag cannot be known, so the first share leaves it unsigned.
+  it('in an imported Case, an older tag stays unsigned even when a signed application of the Owner names it', async () => {
     const X = await createPeer(root, 'xavier', 'Xavier Exporter', 'XE')
     const sourceId = createCase({ name: 'Exported by Xavier' }).id
     mkdirSync(caseDirOf(sourceId), { recursive: true })
@@ -709,18 +710,12 @@ describe('older rows at first share (#1910)', () => {
 
     await shareCase(newCaseId, { nodeId: `node-${A.name}` })
     await addMember(newCaseId, memberOfB(B))
-    const roster = listCaseMembers(newCaseId)
-    expectSignedBy(A, 'tags', { id: important.id }, null)
-    expectSignedBy(A, 'tags', { id: xTagId }, null)
-
-    const fromAlice = recordSource(newCaseId, A)
-    await activate(B)
-    seedSharedCase(newCaseId, A, [])
-    for (const member of roster) upsertCaseMember(member)
-    const result = await pull(newCaseId, fromAlice)
-    expect(result.errors).toEqual([])
-    expect(getTagsForCapture(captureId).map((tag) => tag.name)).toEqual(['Important'])
-    expect(getTagsForNote(note.id).map((tag) => tag.name)).toEqual(['Xavier tag'])
+    expectUnsigned([
+      { table: 'tags', key: { id: important.id } },
+      { table: 'tags', key: { id: xTagId } }
+    ])
+    const offered = recordSource(newCaseId, A).rows.get(A.installationId) ?? []
+    expect(offered.some(({ table }) => table === 'tags')).toBe(false)
   })
 
   // A row of the Owner signed after the upgrade can carry a signature that no longer covers
@@ -742,7 +737,6 @@ describe('older rows at first share (#1910)', () => {
     ]
     unsign([
       { table: 'notes', key: { id: edited.id } },
-      { table: 'tags', key: { id: onEdited.id } },
       { table: 'tags', key: { id: recoloured.id } },
       ...children
     ])
@@ -756,10 +750,8 @@ describe('older rows at first share (#1910)', () => {
     await addMember(caseId, memberOfB(B))
     const roster = listCaseMembers(caseId)
 
-    expectUnsigned(children)
-    for (const { table, key } of keysOf(w)) {
-      expectSignedBy(A, table, key, table === 'tags' ? null : caseId)
-    }
+    expectUnsigned([...children, ...tagRows(w)])
+    for (const { table, key } of otherRows(w)) expectSignedBy(A, table, key, caseId)
 
     const fromAlice = recordSource(caseId, A)
     await activate(B)
@@ -771,12 +763,14 @@ describe('older rows at first share (#1910)', () => {
       'tags row: invalid signature'
     ])
     expect(listNotes(caseId).map((note) => note.title)).toEqual(['Alice 1 note'])
-    expect(getTagsForCapture(w.captureId).map((tag) => tag.name)).toEqual(['Alice 1 tag'])
-    expect(getTagsForNote(w.noteId).map((tag) => tag.name)).toEqual(['Alice 1 tag'])
+    expect(listTags().map((tag) => tag.name)).toEqual(['On the edited note'])
+    expect(getTagsForCapture(w.captureId)).toEqual([])
     expect(getAnnotations(w.captureId).pins.map((pin) => pin.body)).toEqual(['Alice 1 pin'])
   })
 
-  it('an older tag application on a Document Exhibit reaches the joiner', async () => {
+  // An application older than signing whose tag was written since, and so signed, is the
+  // Owner's and reaches the joiner; one naming an older tag stays local with that tag.
+  it('an older tag application on a Document Exhibit reaches the joiner when its tag is signed', async () => {
     await activate(A)
     const doc = addDocument(caseId, A, 1)
     insertExhibit({
@@ -792,18 +786,22 @@ describe('older rows at first share (#1910)', () => {
       exhibitNumber: 1
     })
     const tag = createTag({ name: 'On a document' })
+    const olderTag = createTag({ name: 'Older on a document' })
     addTagToCapture({ captureId: doc.exhibitId, tagId: tag.id })
-    const keys: Array<{ table: SyncedTable; key: RowKey }> = [
-      { table: 'tags', key: { id: tag.id } },
-      { table: 'exhibit_tags', key: { exhibit_id: doc.exhibitId, tag_id: tag.id } }
+    addTagToCapture({ captureId: doc.exhibitId, tagId: olderTag.id })
+    const application = { exhibit_id: doc.exhibitId, tag_id: tag.id }
+    const olderKeys: Array<{ table: SyncedTable; key: RowKey }> = [
+      { table: 'tags', key: { id: olderTag.id } },
+      { table: 'exhibit_tags', key: { exhibit_id: doc.exhibitId, tag_id: olderTag.id } }
     ]
-    unsign(keys)
+    unsign([{ table: 'exhibit_tags', key: application }, ...olderKeys])
 
     await shareCase(caseId, { nodeId: `node-${A.name}` })
     await addMember(caseId, memberOfB(B))
     const roster = listCaseMembers(caseId)
     expectSignedBy(A, 'tags', { id: tag.id }, null)
-    expectSignedBy(A, 'exhibit_tags', keys[1].key, caseId)
+    expectSignedBy(A, 'exhibit_tags', application, caseId)
+    expectUnsigned(olderKeys)
 
     const fromAlice = recordSource(caseId, A)
     await activate(B)
@@ -814,32 +812,25 @@ describe('older rows at first share (#1910)', () => {
     expect(getTagsForCapture(doc.exhibitId).map(({ name }) => name)).toEqual(['On a document'])
   })
 
-  // A tag from before row signing that no application in the Case named at its first share
-  // stays unsigned; applied in the Shared Case later, it would leave a member's copy with an
-  // application whose tag never arrives, and the deferred tag key would refuse every row of
-  // that session. Each apply path signs it with the application.
-  it('applying an unsigned tag of this installation in a Shared Case signs the tag, and a member receives the application', async () => {
+  // A tag from before row signing stays unsigned when this installation applies it later in a
+  // Shared Case, by any apply path, as before #1910: its writer cannot be known. Each
+  // application is signed at write, as any new write is.
+  it('applying an unsigned tag of this installation in a Shared Case leaves the tag unsigned', async () => {
     await activate(A)
     const { captureId } = await addCapture(caseId, A, 1)
     const note = createNote({ caseId, title: 'Tagged later', body: 'body' })
-    const otherId = createCase({ name: 'Never shared' }).id
-    mkdirSync(caseDirOf(otherId), { recursive: true })
-    const { captureId: otherCapture } = await addCapture(otherId, A, 2)
-    const [onCapture, onNote, inBatch, mergedInto, elsewhere] = [
+    const [onCapture, onNote, inBatch, mergedInto] = [
       'On a capture',
       'On a note',
       'In a batch',
-      'Merged into',
-      'Elsewhere'
+      'Merged into'
     ].map((name) => createTag({ name }))
-    unsign(
-      [onCapture, onNote, inBatch, mergedInto, elsewhere].map(({ id }) => ({
-        table: 'tags' as const,
-        key: { id }
-      }))
-    )
+    const olderTags = [onCapture, onNote, inBatch, mergedInto].map(({ id }) => ({
+      table: 'tags' as const,
+      key: { id }
+    }))
+    unsign(olderTags)
     await shareCase(caseId, { nodeId: `node-${A.name}` })
-    expectUnsigned([{ table: 'tags', key: { id: onCapture.id } }])
     const source = createTag({ name: 'Merged away' })
     addTagToNote({ noteId: note.id, tagId: source.id })
 
@@ -847,24 +838,65 @@ describe('older rows at first share (#1910)', () => {
     addTagToNote({ noteId: note.id, tagId: onNote.id })
     addTagToCaptures([captureId], inBatch.id)
     mergeTags({ sourceId: source.id, targetId: mergedInto.id })
-    addTagToCapture({ captureId: otherCapture, tagId: elsewhere.id })
 
-    for (const tag of [onCapture, onNote, inBatch, mergedInto]) {
-      expectSignedBy(A, 'tags', { id: tag.id }, null)
+    expectUnsigned(olderTags)
+    expectSignedBy(A, 'exhibit_tags', { exhibit_id: captureId, tag_id: onCapture.id }, caseId)
+    expectSignedBy(A, 'exhibit_tags', { exhibit_id: captureId, tag_id: inBatch.id }, caseId)
+    expectSignedBy(A, 'note_tags', { note_id: note.id, tag_id: onNote.id }, caseId)
+    expectSignedBy(A, 'note_tags', { note_id: note.id, tag_id: mergedInto.id }, caseId)
+  })
+
+  // Every installation seeds the demo Case from one archive, so its tags carry the same ids on
+  // every copy, with no author and no signature. Signed under the Owner's key, such a tag
+  // would land on a member who seeded the demo Case too beside that member's own row of the
+  // same id, and every session would roll back (ruling of 22 October 2026).
+  it("an older tag both peers seeded from the demo Case stays unsigned, and the member's sessions succeed", async () => {
+    const seedDemo = async (peer: Peer): Promise<unknown> => {
+      await activate(peer)
+      await importCaseArchive(DEMO_ARCHIVE, { operatorName: DEMO_CASE_OPERATOR_NAME })
+      expect(listTags().find((tag) => tag.name === 'nightjar')?.id).toBe(NIGHTJAR)
+      expect(readRow('tags', { id: NIGHTJAR }, null)?.signature).toBeNull()
+      return raw('tags', { id: NIGHTJAR })
     }
-    expectUnsigned([{ table: 'tags', key: { id: elsewhere.id } }])
+    const bobsNightjar = await seedDemo(B)
+    await seedDemo(A)
+    const { captureId } = await addCapture(caseId, A, 1)
+    const note = createNote({ caseId, captureId, title: 'Nightjar at dusk', body: 'older' })
+    addTagToNote({ noteId: note.id, tagId: NIGHTJAR })
+    const older: Array<{ table: SyncedTable; key: RowKey }> = [
+      { table: 'notes', key: { id: note.id } },
+      { table: 'note_tags', key: { note_id: note.id, tag_id: NIGHTJAR } }
+    ]
+    unsign(older)
 
+    await shareCase(caseId, { nodeId: `node-${A.name}` })
     await addMember(caseId, memberOfB(B))
     const roster = listCaseMembers(caseId)
-    const fromAlice = recordSource(caseId, A)
+    expectSignedBy(A, 'notes', { id: note.id }, caseId)
+    expectUnsigned([older[1]])
+    expect(readRow('tags', { id: NIGHTJAR }, null)?.signature).toBeNull()
+    const first = recordSource(caseId, A)
+    expect((first.rows.get(A.installationId) ?? []).map(({ table }) => table)).toEqual(['notes'])
+
     await activate(B)
     seedSharedCase(caseId, A, [])
     for (const member of roster) upsertCaseMember(member)
-    expect((await pull(caseId, fromAlice)).errors).toEqual([])
-    expect(getTagsForCapture(captureId).map((tag) => tag.name)).toEqual([
-      'In a batch',
-      'On a capture'
-    ])
-    expect(getTagsForNote(note.id).map((tag) => tag.name)).toEqual(['Merged into', 'On a note'])
+    expect((await pull(caseId, first)).errors).toEqual([])
+    expect(listNotes(caseId).map(({ title }) => title)).toEqual(['Nightjar at dusk'])
+
+    // Applied after the share, the application is signed at write and the tag still is not.
+    await activate(A)
+    addTagToCapture({ captureId, tagId: NIGHTJAR })
+    expect(readRow('tags', { id: NIGHTJAR }, null)?.signature).toBeNull()
+    const second = recordSource(caseId, A)
+    expect((second.rows.get(A.installationId) ?? []).some(({ table }) => table === 'tags')).toBe(
+      false
+    )
+
+    await activate(B)
+    expect((await pull(caseId, second)).errors).toEqual([])
+    expect(getTagsForCapture(captureId).map(({ name }) => name)).toEqual(['nightjar'])
+    expect(raw('tags', { id: NIGHTJAR })).toEqual(bobsNightjar)
+    expect(raw('tags', { id: NIGHTJAR }, A.installationId)).toBeUndefined()
   })
 })

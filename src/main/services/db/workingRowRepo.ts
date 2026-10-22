@@ -429,8 +429,8 @@ export interface UnsignedLocalRow {
 // carries its exporter's own rows with no author, so those read as this installation's too
 // (the first share reads the chain's `import` entries for that). By table in SYNCED_TABLES
 // order, then as written. A tag is the Case's when an application in the Case names it, any
-// author's, live or not: the rule the offer reads (`inCase`). Tombstones are included; rows of
-// other authors and signed rows are not.
+// author's, live or not: the rule the offer reads (`inCase`); the first share never signs one.
+// Tombstones are included; rows of other authors and signed rows are not.
 export function ownUnsignedRowsInCase(caseId: string): UnsignedLocalRow[] {
   return SYNCED_TABLES.flatMap((table) => {
     const { key, inCase } = SPECS[table]
@@ -448,20 +448,6 @@ export function ownUnsignedRowsInCase(caseId: string): UnsignedLocalRow[] {
       needs: row.needs
     }))
   })
-}
-
-// This installation's signed rows of one table in a Case, tombstones included: what the offer
-// reads for it (rowsOfAuthorByTable), unpaged.
-export function ownSignedRowsInCase(caseId: string, table: SyncedTable): StoredRow[] {
-  return (
-    getDb()
-      .prepare(
-        `SELECT t.* FROM ${table} t
-          WHERE t.author_installation_id IS NULL AND t.row_signature IS NOT NULL
-            AND (${SPECS[table].inCase})`
-      )
-      .all({ case_id: caseId }) as Record<string, unknown>[]
-  ).map((r) => toStoredRow(table, r))
 }
 
 export function isSharedCaseId(caseId: string): boolean {

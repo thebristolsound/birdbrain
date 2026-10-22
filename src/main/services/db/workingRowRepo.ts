@@ -451,6 +451,20 @@ export function ownUnsignedRowsInCase(caseId: string): UnsignedLocalRow[] {
   })
 }
 
+// This installation's signed rows of one table in a Case, tombstones included: what the offer
+// reads for it (rowsOfAuthorByTable), unpaged.
+export function ownSignedRowsInCase(caseId: string, table: SyncedTable): StoredRow[] {
+  return (
+    getDb()
+      .prepare(
+        `SELECT t.* FROM ${table} t
+          WHERE t.author_installation_id IS NULL AND t.row_signature IS NOT NULL
+            AND (${SPECS[table].inCase})`
+      )
+      .all({ case_id: caseId }) as Record<string, unknown>[]
+  ).map((r) => toStoredRow(table, r))
+}
+
 export function isSharedCaseId(caseId: string): boolean {
   return (
     getDb().prepare('SELECT 1 FROM cases WHERE id = ? AND shared_at IS NOT NULL').get(caseId) !==

@@ -617,6 +617,53 @@ describe('older rows at first share (#1910)', () => {
     expect(listTags()).toEqual([])
   })
 
+  // A tag from before row signing, the Owner's own or one an archive brought, applied in an
+  // imported Case nobody shared yet: the application is signed at write and the tag is not.
+  // The first share signs the tag, so a member's copy never holds the application without it.
+  it('in an imported Case, an older tag named by a signed application of the Owner reaches the joiner', async () => {
+    const X = await createPeer(root, 'xavier', 'Xavier Exporter', 'XE')
+    const sourceId = createCase({ name: 'Exported by Xavier' }).id
+    mkdirSync(caseDirOf(sourceId), { recursive: true })
+    const { captureId: xCapture } = await addCapture(sourceId, X, 1)
+    const xavierTag = createTag({ name: 'Xavier tag' })
+    addTagToCapture({ captureId: xCapture, tagId: xavierTag.id })
+    unsign([
+      { table: 'tags', key: { id: xavierTag.id } },
+      { table: 'exhibit_tags', key: { exhibit_id: xCapture, tag_id: xavierTag.id } }
+    ])
+    const archive = join(root, 'xavier.birdbrain')
+    await exportCaseArchive(sourceId, archive)
+
+    await activate(A)
+    const important = createTag({ name: 'Important' })
+    unsign([{ table: 'tags', key: { id: important.id } }])
+    const { newCaseId } = await importCaseArchive(archive)
+    const xTagId = listTags().find((tag) => tag.name === 'Xavier tag')!.id
+    const { captureId } = await addCapture(newCaseId, A, 2)
+    const note = createNote({ caseId: newCaseId, captureId, title: 'Fresh note', body: 'body' })
+    addTagToCapture({ captureId, tagId: important.id })
+    addTagToNote({ noteId: note.id, tagId: xTagId })
+    expectUnsigned([
+      { table: 'tags', key: { id: important.id } },
+      { table: 'tags', key: { id: xTagId } }
+    ])
+
+    await shareCase(newCaseId, { nodeId: `node-${A.name}` })
+    await addMember(newCaseId, memberOfB(B))
+    const roster = listCaseMembers(newCaseId)
+    expectSignedBy(A, 'tags', { id: important.id }, null)
+    expectSignedBy(A, 'tags', { id: xTagId }, null)
+
+    const fromAlice = recordSource(newCaseId, A)
+    await activate(B)
+    seedSharedCase(newCaseId, A, [])
+    for (const member of roster) upsertCaseMember(member)
+    const result = await pull(newCaseId, fromAlice)
+    expect(result.errors).toEqual([])
+    expect(getTagsForCapture(captureId).map((tag) => tag.name)).toEqual(['Important'])
+    expect(getTagsForNote(note.id).map((tag) => tag.name)).toEqual(['Xavier tag'])
+  })
+
   // A row of the Owner signed after the upgrade can carry a signature that no longer covers
   // it: deleting a Capture from a Case nobody shared clears a note's link and re-signs nothing
   // (#1877), and a row edited outside the app's writers keeps its old signature. A member

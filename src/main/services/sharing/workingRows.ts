@@ -16,6 +16,7 @@ import {
   maxLocalVersion,
   noteReferencedCases,
   ownLiveRowsOnCapture,
+  ownSignedRowsInCase,
   ownUnsignedRowsInCase,
   readRow,
   recordDeletedCapture,
@@ -198,7 +199,9 @@ export interface OlderRowsReach {
   // The Case's chain imports an archive another installation exported. That installation's
   // rows arrived with no author and read as this one's, so only a row that needs a Capture or
   // Exhibit a member can hold, which this installation created after the import, is known to
-  // be its own; nothing is signed for another author.
+  // be its own; nothing is signed for another author. A tag needs neither: it is signed when
+  // an application this installation signed in the Case names it, as applyTag signs a tag
+  // applied in a Shared Case, because a member's copy refuses that application without it.
   importedFromOther: boolean
 }
 
@@ -231,9 +234,19 @@ function verifiesAsOwn(row: StoredRow): boolean {
 export function signOwnUnsignedRows(caseId: string, reach: OlderRowsReach): number {
   return withTransaction(() => {
     const { membersHold, importedFromOther } = reach
-    const candidates = ownUnsignedRowsInCase(caseId).filter(({ needs }) =>
-      needs === null ? !importedFromOther : membersHold(needs)
+    const applied = new Set(
+      importedFromOther
+        ? (['exhibit_tags', 'note_tags'] as const).flatMap((table) =>
+            ownSignedRowsInCase(caseId, table)
+              .filter(verifiesAsOwn)
+              .map(({ fields }) => fields.tag_id)
+          )
+        : []
     )
+    const candidates = ownUnsignedRowsInCase(caseId).filter(({ table, key, needs }) => {
+      if (needs !== null) return membersHold(needs)
+      return !importedFromOther || (table === 'tags' && applied.has(key.id))
+    })
     const name = (table: SyncedTable, key: RowKey): string => `${table} ${JSON.stringify(key)}`
     const signing = new Set(candidates.map(({ table, key }) => name(table, key)))
     const arrives = (table: SyncedTable, key: RowKey): boolean => {

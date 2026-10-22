@@ -65,7 +65,7 @@ import {
 // the first share signs this installation's unsigned notes, tag applications, annotation layers
 // and pins of the Case that are provably its own, in the transaction that writes the Owner's
 // roster row from its `member-add`, each at a fresh version, so a member's first sync receives
-// them. An older tag is never signed, so an older application of it stays local too, and so
+// them. The share signs no older tag, so an older application of it stays local too, and so
 // do rows on a Capture or Exhibit no member can hold. Content is invented.
 
 interface Written {
@@ -104,8 +104,8 @@ function keysOf(w: Written): Array<{ table: SyncedTable; key: RowKey }> {
   ]
 }
 
-// A tag and its applications: an older tag is never signed, so its older applications stay
-// local with it.
+// A tag and its applications: the first share signs no older tag, so its older applications
+// stay local with it.
 const TAG_TABLES: SyncedTable[] = ['tags', 'exhibit_tags', 'note_tags']
 const tagRows = (w: Written) => keysOf(w).filter(({ table }) => TAG_TABLES.includes(table))
 const otherRows = (w: Written) => keysOf(w).filter(({ table }) => !TAG_TABLES.includes(table))
@@ -992,72 +992,47 @@ describe('older rows at first share (#1910)', () => {
     expect(raw('tags', { id: NIGHTJAR }, A.installationId)).toBeUndefined()
   })
 
-  // No later write signs an older tag either (ruling of 22 October 2026): a rename, a recolour,
-  // a deletion or a merge leaves it unsigned, so it never lands beside a member's own row of its
-  // id. Its unsigned applications are removed outright; where a Shared Case still applies it,
-  // it keeps an unsigned tombstone, and naming it again restores it unsigned.
-  it("editing, deleting or merging an older tag leaves it unsigned, and the member's sessions succeed", async () => {
-    const bobsNightjar = await seedDemo(B)
-    await seedDemo(A)
-    const { captureId } = await addCapture(caseId, A, 1)
-    const note = createNote({ caseId, captureId, title: 'Nightjar at dusk', body: 'older' })
-    addTagToNote({ noteId: note.id, tagId: NIGHTJAR })
-    const older = createTag({ name: 'Older' })
-    addTagToCapture({ captureId, tagId: older.id })
-    const olderApplications: Array<{ table: SyncedTable; key: RowKey }> = [
-      { table: 'note_tags', key: { note_id: note.id, tag_id: NIGHTJAR } },
-      { table: 'exhibit_tags', key: { exhibit_id: captureId, tag_id: older.id } }
-    ]
-    unsign([
-      { table: 'notes', key: { id: note.id } },
-      { table: 'tags', key: { id: older.id } },
-      ...olderApplications
-    ])
-    await shareCase(caseId, { nodeId: `node-${A.name}` })
-    await addMember(caseId, memberOfB(B))
-    const roster = listCaseMembers(caseId)
-    addTagToCapture({ captureId, tagId: NIGHTJAR })
+  // Later writes on an older tag keep the behaviour from before #1910: a new application of it
+  // is signed at write while the tag is not, so a member with no tag of that id refuses the
+  // session at the deferred key, and renaming or deleting the tag signs it, after which the
+  // member's next session succeeds.
+  it.each(['rename', 'delete'] as const)(
+    'after an older tag is applied in a Shared Case, a %s of the tag lets the member sync again',
+    async (write) => {
+      await activate(A)
+      const { captureId } = await addCapture(caseId, A, 1)
+      const tag = createTag({ name: 'Suspicious' })
+      unsign([{ table: 'tags', key: { id: tag.id } }])
+      await shareCase(caseId, { nodeId: `node-${A.name}` })
+      await addMember(caseId, memberOfB(B))
+      const roster = listCaseMembers(caseId)
+      addTagToCapture({ captureId, tagId: tag.id })
+      createNote({ caseId, title: 'After the share', body: 'signed at write' })
+      expectUnsigned([{ table: 'tags', key: { id: tag.id } }])
+      const first = recordSource(caseId, A)
 
-    updateTag({ id: NIGHTJAR, color: '#000000' })
-    updateTag({ id: older.id, name: 'Older renamed' })
+      await activate(B)
+      seedSharedCase(caseId, A, [])
+      for (const member of roster) upsertCaseMember(member)
+      const stuck = await pull(caseId, first)
+      expect(stuck.errors.map(({ detail }) => detail)).toEqual([
+        'rows received this session could not be applied: FOREIGN KEY constraint failed'
+      ])
+      expect(stuck.rowsApplied).toBe(0)
 
-    const olderTags = [NIGHTJAR, older.id].map((id) => ({ table: 'tags' as const, key: { id } }))
-    expectUnsigned(olderTags)
-    const first = recordSource(caseId, A)
-    expect((first.rows.get(A.installationId) ?? []).some(({ table }) => table === 'tags')).toBe(
-      false
-    )
-    await activate(B)
-    seedSharedCase(caseId, A, [])
-    for (const member of roster) upsertCaseMember(member)
-    expect((await pull(caseId, first)).errors).toEqual([])
+      await activate(A)
+      if (write === 'rename') updateTag({ id: tag.id, name: 'Suspicious renamed' })
+      else expect(deleteTag(tag.id)).toBe(true)
+      expectSignedBy(A, 'tags', { id: tag.id }, null)
+      const second = recordSource(caseId, A)
 
-    await activate(A)
-    const target = createTag({ name: 'Merged into' })
-    expect(deleteTag(NIGHTJAR)).toBe(true)
-    mergeTags({ sourceId: older.id, targetId: target.id })
-
-    // "nightjar" keeps a tombstone for its signed application; nothing applies "Older" now.
-    expectUnsigned([olderTags[0]])
-    expect(readRow('tags', { id: NIGHTJAR }, null)?.deletedAt).not.toBeNull()
-    expect(readRow('tags', { id: older.id }, null)).toBeUndefined()
-    for (const { table, key } of olderApplications)
-      expect(readRow(table, key, null)).toBeUndefined()
-    const second = recordSource(caseId, A)
-    const offeredTags = (second.rows.get(A.installationId) ?? []).filter(
-      ({ table }) => table === 'tags'
-    )
-    expect(offeredTags.map(({ fields }) => fields.id)).toEqual([target.id])
-    await activate(B)
-    expect((await pull(caseId, second)).errors).toEqual([])
-    expect(getTagsForCapture(captureId).map(({ name }) => name)).toEqual(['Merged into'])
-    expect(raw('tags', { id: NIGHTJAR })).toEqual(bobsNightjar)
-
-    await activate(A)
-    expect(createTag({ name: 'nightjar' }).id).toBe(NIGHTJAR)
-    expect(readRow('tags', { id: NIGHTJAR }, null)).toMatchObject({
-      deletedAt: null,
-      signature: null
-    })
-  })
+      await activate(B)
+      const recovered = await pull(caseId, second)
+      expect(recovered.errors).toEqual([])
+      expect(listNotes(caseId).map(({ title }) => title)).toEqual(['After the share'])
+      expect(getTagsForCapture(captureId).map(({ name }) => name)).toEqual(
+        write === 'rename' ? ['Suspicious renamed'] : []
+      )
+    }
+  )
 })

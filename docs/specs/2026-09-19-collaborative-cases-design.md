@@ -264,54 +264,54 @@ Capture that no copy holds or records. In a Case nobody shared, deleting a Captu
 on it and clears the links of that Case's notes, as before; a note of a Shared Case that links to it
 from another Case keeps its link.
 
-**Rows written before signing** (ruling of 21 October 2026, #1910). A row this copy wrote before it
-signed rows on write has no signature, so no session offers it. A Case Archive of any schema carries
-its exporter's own rows with no author, and with no signature when the exporter wrote them before
-signing, so on import they read as this copy's unsigned rows. When the Owner first shares a Case,
-the transaction that sets `shared_at` and writes the Owner's roster row from its `member-add` also
-signs each such row of the Case under the Owner's key, other than those the next paragraph keeps
-local, the way a new write is signed, each at its own new version above the high-water mark. A
-member's first sync then receives them. The Case's rows are its notes, the annotation layers and
-pins on its Captures, the tag applications on its Exhibits and notes, and the tags those
-applications name. A tag belongs to the Case when any member's application in the Case names it,
-live or tombstoned, the same rule the `rows` step offers tags by; a tag that only other Cases apply
-stays unsigned, and a tag whose applications all stay local is signed all the same, so a member
-holds the tag with no application. Rows of other authors, rows already signed (including one whose
-signature no longer verifies) and the rows of a Case nobody shared stay as they are, and a later
-invite signs nothing. A failure rolls the signatures, the roster row and the `member-add` back
-together. The invite that repairs a share whose row write never landed signs the rows too.
+**Rows written before signing** (rulings of 21 and 22 October 2026, #1910). A row this copy wrote
+before it signed rows on write has no signature, so no session offers it, and nothing records who
+wrote it. A Case Archive of any schema carries its exporter's own rows with no author, and with no
+signature when the exporter wrote them before signing, so on import they read as this copy's
+unsigned rows; the demo Case every installation seeds arrives this way. When the Owner first shares
+a Case, the transaction that sets `shared_at` and writes the Owner's roster row from its
+`member-add` also signs under the Owner's key each such row of the Case that is provably the
+Owner's, by the rules below, the way a new write is signed, each at its own new version above the
+high-water mark. A member's first sync then receives them. Rows of other authors, rows already
+signed (including one whose signature no longer verifies) and the rows of a Case nobody shared stay
+as they are, and a later invite signs nothing. A failure rolls the signatures, the roster row and
+the `member-add` back together. The invite that repairs a share whose row write never landed signs
+the rows too.
 
-Some unsigned rows stay local and unsigned, which narrows the ruling's rule that the Owner's
-unsigned notes, tags and tag applications are signed. The rows an archive brought are signed only
-when every `import` in the chain, at any depth, names this copy as its source installation. In a
-Case whose chain holds an `import` naming another source installation, a row with no author cannot
-be told from the exporter's, so the share signs only the rows that need a Capture or Exhibit this
-copy created after the import. Notes with no such link, tags, and the applications on those notes or
-naming those tags stay unsigned, this copy's own older rows among them, even an application on a
-Capture created since the import. One exception: a tag that an application this copy signed in the
-Case names is signed under the Owner's key even when the archive's exporter created it, because the
-application is offered already and lands only with its tag. A row that needs a Capture or Exhibit no
+An older tag is never signed, at the first share or when this copy applies it later in a Shared
+Case. Tags are global, so the writer of an unsigned tag cannot be known, and a tag an archive
+brought keeps its id on every copy that imported it: the demo Case's tag "nightjar" has one id on
+every installation, and a copy signed under one Owner's key would land beside a member's own row of
+that id and roll back every session. A tag application is signed at the first share only when its
+tag and its note or Exhibit both reach members, so an older application of an older tag stays
+local. Older notes, annotation layers and pins are signed only when provably the Owner's. In a Case
+whose chain holds no `import` naming another source installation, at any depth, the share signs
+those that need a Capture or Exhibit a member's copy can hold, and notes that link no Capture. In a
+Case whose chain holds such an `import`, a row with no author cannot be told from the exporter's, so
+the share signs only the rows that need a Capture or Exhibit this copy created after the import, and
+notes with no such link stay unsigned. In either Case, a row that needs a Capture or Exhibit no
 member can hold stays local: an annotation layer, pin or tag application on a legacy html Capture or
 on one whose entry sits before the chain's `import`, a note that links such a Capture, and a tag
 application on that note. A tag application whose note or tag does not arrive with it stays local:
-one that stays unsigned under these rules, or this copy's signed row whose signature no longer
-verifies, because an archive import keeps a signature made over the source Case and deleting a
-Capture from a Case nobody shared clears a note's link without re-signing it. A member's copy
+one whose note or tag stays unsigned under these rules, or this copy's signed row whose signature no
+longer verifies, because an archive import keeps a signature made over the source Case and deleting
+a Capture from a Case nobody shared clears a note's link without re-signing it. A member's copy
 refuses each of these rows, and an application that lands without its note or tag fails the deferred
-key, so signed, any of them would roll back every member's session rows, as above. They stay local
-only until the Owner writes on one: an edit, a tombstone, or a new tag application on such a note
-signs the row with no such check, and the member's session rolls back as for any new write on a
-Capture no member can hold. Whether they stay local is a question still open with the maintainer.
+key, so signed, any of them would roll back every member's session rows, as above.
 
-The share refuses a live own row on a Capture recorded as deleted, a state the app's writers cannot
-reach before a first share, and signs a tombstone there, as for a new write. When this copy later
-applies an unsigned tag of its own in a Shared Case, it signs the tag with the application, so no
-member's copy holds an application of this copy whose tag cannot arrive. Signing a note changes its
-row, so the Case revision counter advances and the change log gains one row per note signed, which
-may mark investigation runs stale; leaving the signature columns out of that trigger needs a schema
-migration. The share signs the whole backlog in one transaction on the main process, one RSA
-signature per row, about a second per thousand rows as measured in review, and the app waits for it
-on the first invite.
+The rows left local stay local only until the Owner writes on one: an edit, a tombstone, or a new
+tag application on such a note signs the row with no such check, and the member's session rolls back
+as for any new write on a Capture no member can hold. Editing an older tag signs it, and so does
+deleting one a Shared Case applies, as before #1910. A new application of an older tag in a Shared
+Case is signed at write and offered while its tag is not, so a member's copy that holds no tag of
+that id refuses the rows of that session at the deferred key; a copy that seeded the demo Case holds
+"nightjar" under its id and takes such an application. The share refuses a live own row on a Capture
+recorded as deleted, a state the app's writers cannot reach before a first share, and signs a
+tombstone there, as for a new write. Signing a note changes its row, so the Case revision counter
+advances and the change log gains one row per note signed, which may mark investigation runs stale;
+leaving the signature columns out of that trigger needs a schema migration. The share signs the
+whole backlog in one transaction on the main process, one RSA signature per row, about a second per
+thousand rows as measured in review, and the app waits for it on the first invite.
 
 The investigation records join the working layer under an amendment the maintainer approved on
 2026-10-10. It is E23 in the

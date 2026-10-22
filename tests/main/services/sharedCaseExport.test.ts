@@ -22,7 +22,11 @@ import {
   upsertCaseMember
 } from '@main/services/db/caseMemberRepo'
 import { getStorageRoot, initStorage } from '@main/services/storage'
-import { readManifestSnapshot, readSharedCaseSnapshot } from '@main/services/manifest'
+import {
+  readCaseChains,
+  readManifestSnapshot,
+  readSharedCaseSnapshot
+} from '@main/services/manifest'
 import { generateReport } from '@main/services/export'
 import { verifyCaseDerivedFiles, verifyExhibit } from '@main/services/exhibits'
 import {
@@ -30,7 +34,7 @@ import {
   importCaseArchive,
   inspectCaseArchive
 } from '@main/services/caseArchive'
-import { createCaptureLifecycle } from '@main/services/captureLifecycle'
+import { createCaptureLifecycle, entryDescribesRow } from '@main/services/captureLifecycle'
 import { backfillCase } from '@main/services/exhibitBackfill'
 import { nextExhibitNumber } from '@main/services/exhibitNumbering'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
@@ -1001,6 +1005,62 @@ describe('Shared Case export, import and fork (#1511)', () => {
     })
     const { newCaseId } = await importCaseArchive(out, { overrideTamper: true })
     expect(existsSync(join(caseDir(newCaseId), name))).toBe(false)
+  })
+
+  // The binding's side of the test above (#1017). The Owner's carried map
+  // renames the earlier document onto the exporting member's document, whose
+  // id only that member's chain signs, a lineage chain once forked. Refused
+  // at import, the map is then written into the new Case by hand.
+  it("binds nothing through a fork's planted map that renames onto a lineage chain's signed id", async () => {
+    const earlierDocId = `${EARLIER.operatorId}-doc-2`
+    const localDocId = `${localId}-doc-1`
+    const map = canonicalStringify({
+      sourceCaseId: 'earlier-case',
+      caseId,
+      remapped: { [earlierDocId]: localDocId }
+    })
+    const digest = createHash('sha256').update(map).digest('hex')
+    const { chain: owner } = continuedChain(
+      signWith(PEER_KEY),
+      PEER,
+      { installationId: PEER_ID, memberCode: 'CO' },
+      digest
+    )
+    owner.append(memberAdd(PEER_ID, PEER_KEY.publicKey, 'CO', 'Robin', 'owner', PEER))
+    owner.append(memberAdd(localId, getPublicKeyPem(), 'RP', 'Casey', 'member', PEER))
+    const local = new Chain(signEntryHash)
+    document(local, LOCAL(), null, 1)
+    local.append({
+      type: 'merge',
+      caseId,
+      heads: [{ ...owner.head(PEER_ID), entriesReceived: owner.lines.length }],
+      timestamp: TIME,
+      ...LOCAL(),
+      schemaVersion: 4
+    })
+    writeFileSync(join(caseDir(), 'manifest.jsonl'), local.jsonl)
+    writeFileSync(join(caseDir(), memberChainPath(PEER_ID)), owner.jsonl)
+    roster(PEER_ID, PEER_KEY.publicKey, localId, getPublicKeyPem())
+    getDb().prepare('DELETE FROM exhibits WHERE id = ?').run(earlierDocId)
+    const out = join(tempDir, 'fork.birdbrain')
+    await exportCaseArchive(caseId, out)
+    const name = `import-id-maps/${digest}.json`
+    rewriteRepairedArchive(out, (entries) => {
+      entries.set(name, Buffer.from(map))
+    })
+    expect(inspectCaseArchive(out).verification.overallValid).toBe(false)
+    const { newCaseId } = await importCaseArchive(out, { overrideTamper: true })
+    expect(existsSync(join(caseDir(newCaseId), name))).toBe(false)
+    mkdirSync(dirname(join(caseDir(newCaseId), name)))
+    writeFileSync(join(caseDir(newCaseId), name), map)
+
+    const row = listExhibits(newCaseId).find(({ name }) => name === 'statement-1.pdf')!
+    const own = readCaseChains(caseDir(newCaseId)).own
+    expect(own.imports.map(({ idMapSha256 }) => idMapSha256)[0]).toBe(digest)
+    expect(own.entries.some((entry) => entry.exhibitId === localDocId)).toBe(false)
+
+    const earlier = { caseId, rowId: earlierDocId }
+    expect(entryDescribesRow(earlier, row, own, caseDir(newCaseId))).toBe(false)
   })
 
   it("names the source Case its Owner's roster states, whatever the header says", async () => {

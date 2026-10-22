@@ -25,6 +25,8 @@ import {
   getManifestHead,
   readCaptureEntryAt,
   readCaseChains,
+  readManifestSnapshot,
+  readSharedCaseSnapshot,
   withCaptureEntry,
   withDeletionEntry,
   ManifestRollback
@@ -791,9 +793,9 @@ export function signedCaptureId(
 // anchored only by digests their exporter signed, so the archive's rules apply
 // here again, to whatever file is on disk: every earlier map must be present
 // and pass `parseIdMap` and `composeIdMaps`, none may rename onto an id a
-// `capture` or `exhibit` entry signs, and no row of this case may keep an id
-// they rename away. Otherwise none counts and only this import's own renames
-// resolve, as before.
+// `capture` or `exhibit` entry on any of the Case's chains signs, and no row of
+// this case may keep an id they rename away. Otherwise none counts and only
+// this import's own renames resolve, as before.
 function readAnchoredIdMap(
   caseDir: string,
   caseId: string,
@@ -835,11 +837,19 @@ function readAnchoredIdMap(
   const ownMap = parseIdMap(text, custody, { canonical: false })
   if (!ownMap) return own
   const composed = composeIdMaps([...maps, ownMap])
-  if (!composed || renamesOntoSignedId(maps, entries)) return own
+  if (!composed || renamesOntoSignedId(maps, [...entries, ...sharedEntries(caseDir)])) return own
   const renamedAway = Object.entries(composeIdMaps(maps)?.record ?? {})
     .filter(([from, to]) => from !== to)
     .flatMap(([from]) => [from, ownMap.get(from) ?? from])
   return holdsRow(caseId, renamedAway) ? own : composed.record
+}
+
+// The entries of every member and lineage chain the Shared Case walk accepts,
+// which sign ids the custody chain may not: a fork's custody chain is the
+// Owner's. The archive's check reads them too.
+function sharedEntries(caseDir: string): Record<string, unknown>[] {
+  const { verification } = readSharedCaseSnapshot(caseDir, readManifestSnapshot(caseDir))
+  return [...(verification?.entries.values() ?? [])].flat()
 }
 
 // Whether a row of this case, Capture or other Exhibit, has any of these ids.

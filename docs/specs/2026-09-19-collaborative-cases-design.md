@@ -284,16 +284,18 @@ landed signs the rows too.
 Some unsigned rows stay local and unsigned. In a Case whose chain holds an `import` naming another
 source installation, at any depth, a row with no author cannot be told from the exporter's, so the
 share signs only the rows that need a Capture or Exhibit this copy created after the import: notes
-with no such link, tags, and the applications on those notes or naming those tags stay unsigned.
-Nothing is signed for another author, and this copy's own such rows from before signing stay local
-too. A row that needs a Capture or Exhibit no member can hold stays local: an annotation layer, pin
-or tag application on a legacy html Capture or on one whose entry sits before the chain's `import`,
-a note that links such a Capture, and a tag application on that note. A tag application whose note
-or tag does not arrive with it stays local: one that stays unsigned under these rules, or this
-copy's signed row whose signature no longer verifies, because an archive import keeps a signature
-made over the source Case and deleting a Capture from a Case nobody shared clears a note's link
-without re-signing it. A member's copy refuses each of these rows, and an application that lands
-without its note or tag fails the deferred key, so signed, any of them would roll back every
+with no such link, tags, and the applications on those notes or naming those tags stay unsigned. A
+tag that an application this copy signed in the Case names is signed all the same, whether it is
+this copy's or the archive's: the application is offered already, and it lands only with its tag.
+Nothing else is signed for another author, and this copy's own such rows from before signing stay
+local too. A row that needs a Capture or Exhibit no member can hold stays local: an annotation
+layer, pin or tag application on a legacy html Capture or on one whose entry sits before the chain's
+`import`, a note that links such a Capture, and a tag application on that note. A tag application
+whose note or tag does not arrive with it stays local: one that stays unsigned under these rules, or
+this copy's signed row whose signature no longer verifies, because an archive import keeps a
+signature made over the source Case and deleting a Capture from a Case nobody shared clears a note's
+link without re-signing it. A member's copy refuses each of these rows, and an application that
+lands without its note or tag fails the deferred key, so signed, any of them would roll back every
 member's session rows, as above. They stay local only until the Owner writes on one: an edit, a
 tombstone, or a new tag application on such a note signs the row with no such check, and the
 member's session rolls back as for any new write on a Capture no member can hold. Whether they stay
@@ -302,9 +304,9 @@ local is a question still open with the maintainer.
 The share refuses a live own row on a Capture recorded as deleted, a state the app's writers cannot
 reach before a first share, and signs a tombstone there, as for a new write. When this copy later
 applies an unsigned tag of its own in a Shared Case, it signs the tag with the application, so no
-member's copy holds an application whose tag cannot arrive. Signing a note changes its row, so the
-Case revision counter advances and the change log gains one row per note signed, which may mark
-investigation runs stale; leaving the signature columns out of that trigger needs a schema
+member's copy holds an application of this copy whose tag cannot arrive. Signing a note changes its
+row, so the Case revision counter advances and the change log gains one row per note signed, which
+may mark investigation runs stale; leaving the signature columns out of that trigger needs a schema
 migration. The share signs the whole backlog in one transaction on the main process, one RSA
 signature per row, about a second per thousand rows as measured in review, and the app waits for it
 on the first invite.

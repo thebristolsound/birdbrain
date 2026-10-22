@@ -2683,10 +2683,14 @@ describe("an import's id map holds only its own renames", () => {
   // The two tests above with the map left out of the archive, so nothing
   // refuses it at import, and written into the new Case directory afterwards.
   // The binding applies the archive's rules to whatever map it reads.
-  async function importThenPlant(archive: string, [name, text]: [string, string]): Promise<string> {
+  async function importThenPlant(
+    archive: string,
+    [name, text]: [string, string],
+    { fresh = true }: { fresh?: boolean } = {}
+  ): Promise<string> {
     expect(idMapEntries(archive).size).toBe(0)
     expect(inspectCaseArchive(archive).verification.overallValid).toBe(true)
-    await freshDatabase()
+    if (fresh) await freshDatabase()
     const { newCaseId } = await importCaseArchive(archive)
     mkdirSync(carriedDir(newCaseId))
     writeFileSync(join(storageRoot, newCaseId, name), text)
@@ -2748,6 +2752,46 @@ describe("an import's id map holds only its own renames", () => {
       detail: 'entry-mismatch'
     })
     expect(await lifecycle().duplicate('x1')).toMatchObject({ status: 'duplicated' })
+  })
+
+  // The test above, imported beside the source Case, so the import renames x1
+  // on collision. The Case keeps x1's row under the id the import gave it, and
+  // only that id shows the renamed-away x1 is still held.
+  it('binds nothing through a planted map whose renamed-away id the import renamed again', async () => {
+    const { caseId, caseDir } = sameHashCase('Planted renamed', ['x1', 'x2'])
+    const planted = signImport(caseDir, mapText({ x1: 'r1' }))
+    const archive = join(tempDir, 'planted-renamed.birdbrain')
+    await exportCaseArchive(caseId, archive)
+    rewriteArchive(archive, (entries) => {
+      entries.set('files/r1.mhtml', entries.get('files/x2.mhtml')!)
+      entries.delete('files/x2.mhtml')
+      editRows(entries, (rows, kind) => {
+        const x1 = rows.find((row) => row.id === 'x1')!
+        return rows.map((row) =>
+          row.id === 'x2'
+            ? {
+                ...row,
+                id: 'r1',
+                [indexField(kind)]: x1[indexField(kind)],
+                ...(kind === 'captures' ? { mhtml_path: `${caseId}/r1.mhtml` } : {})
+              }
+            : row
+        )
+      })
+    })
+    const newCaseId = await importThenPlant(archive, planted, { fresh: false })
+    const kept = (remappedIn(newCaseId) as Record<string, string>).x1
+    expect(kept).toBeDefined()
+    expect(listCaptures(newCaseId).map(({ id }) => id)).toEqual(
+      expect.arrayContaining([kept, 'r1'])
+    )
+
+    expect(await lifecycle().duplicate('r1')).toEqual({
+      status: 'rejected',
+      reason: 'not_verified',
+      detail: 'entry-mismatch'
+    })
+    expect(await lifecycle().duplicate(kept)).toMatchObject({ status: 'duplicated' })
   })
 
   // An honest first import renamed z to v. A forged later map renames x, coined

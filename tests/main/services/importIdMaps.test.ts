@@ -124,7 +124,18 @@ describe('composeIdMaps', () => {
     const shared = map({ a: 'v' })
     expect(composeIdMaps([shared, shared])).toBeUndefined()
     const empty = map({})
-    expect(composeIdMaps([empty, empty])).toEqual({ resolve: expect.any(Function), record: {} })
+    expect(composeIdMaps([empty, empty])).toEqual({
+      resolve: expect.any(Function),
+      trail: expect.any(Function),
+      record: {}
+    })
+  })
+
+  it('lists every id an id takes along the maps, the id itself first', () => {
+    const composed = composeIdMaps([map({ o: 'r' }), map({ n: 'm' }), map({ r: 's' })])!
+    expect(composed.trail('o')).toEqual(['o', 'r', 's'])
+    expect(composed.trail('r')).toEqual(['r', 's'])
+    expect(composed.trail('elsewhere')).toEqual(['elsewhere'])
   })
 
   it('never resolves an id through the prototype', () => {

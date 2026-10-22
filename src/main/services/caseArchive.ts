@@ -397,7 +397,7 @@ export async function exportCaseArchive(
     heldIdMaps(caseDir, caseId, importEntriesIn(manifestText))
   )
   for (const [name, bytes] of carried.accepted) add(name, bytes)
-  const derived = anchoredDerivedFiles(archiveChains, manifestText, data, carried.resolve)
+  const derived = anchoredDerivedFiles(archiveChains, manifestText, data, carried.trail)
   for (const [name, file] of derived) {
     const abs = join(caseDir, ...file.inCase.split('/'))
     if (!existsSync(abs) || !lstatSync(abs).isFile()) continue
@@ -545,14 +545,17 @@ function acceptedInCasePath(outputPath: string, owned: ReadonlySet<string>): str
 // (`<id>_thumb.jpg`). That name is the other Capture's: its backfill would
 // write over the file, and a delete or the orphan report would read it as
 // belonging to that Capture. Any artifact-shaped name under any spelling counts
-// unless it is the parent's own, exactly: two Captures' ids may differ only in
-// case. A renamed parent has two names: the id its entries sign, which a
-// thumbnail restored from the source carries, and its row id, which a
-// thumbnail backfilled after the rename carries (#1017).
-function namesAnotherCapture(inCase: string, signedId: string, rowId: string): boolean {
+// unless it is one of the parent's own, exactly: two Captures' ids may differ
+// only in case. A renamed parent has a name for each id on its trail through
+// the carried maps (#1017): the id its entries sign, which a thumbnail restored
+// from the source carries, and every row id it has held since, which a
+// thumbnail backfilled after one of the renames carries. None of them is
+// another Capture's: no carried map renames onto a signed id, and no row keeps
+// an id the maps rename away.
+function namesAnotherCapture(inCase: string, parentIds: readonly string[]): boolean {
   if (inCase.includes('/') || !parseArtifactFilename(inCase.toLowerCase())) return false
   const named = parseArtifactFilename(inCase)?.captureId
-  return named !== signedId && named !== rowId
+  return named === undefined || !parentIds.includes(named)
 }
 
 // Every entry the archive's verified chains hold, each once: a Shared Case
@@ -622,9 +625,10 @@ function heldIdMaps(caseDir: string, caseId: string, imports: ImportEntry[]): Ma
 interface CarriedIdMaps {
   // The `import-id-maps/` entries the archive may carry and the import keeps.
   accepted: Map<string, Buffer>
-  // A signed id to the row it names once every import's map applies: the
-  // identity unless every import on the chain has an accepted map.
-  resolve: (id: string) => string
+  // The ids a signed id passes through as every import's map applies, the
+  // signed id first and the row it names last: the signed id alone unless
+  // every import on the chain has an accepted map.
+  trail: (id: string) => string[]
 }
 
 // Which carried id maps count (#1017). One function for export, inspect and
@@ -647,7 +651,7 @@ function acceptCarriedIdMaps(
   data: CaseArchiveData,
   candidates: ReadonlyMap<string, Buffer>
 ): CarriedIdMaps {
-  const none = (): CarriedIdMaps => ({ accepted: new Map(), resolve: (id) => id })
+  const none = (): CarriedIdMaps => ({ accepted: new Map(), trail: (id) => [id] })
   const verified = verifiedEntries(archiveChains, manifestText)
   if (!verified || candidates.size === 0) return none()
   const manifest = Buffer.from(manifestText, 'utf-8')
@@ -672,10 +676,10 @@ function acceptCarriedIdMaps(
   const composed = composeIdMaps(present)
   if (!composed) return none()
   const accepted = new Map(candidates)
-  if (present.length < positions.length) return { accepted, resolve: (id) => id }
+  if (present.length < positions.length) return { accepted, trail: (id) => [id] }
   const rows = [...data.captures, ...(data.exhibits ?? [])].map((row) => row.id)
   if (rows.some((id) => typeof id === 'string' && composed.resolve(id) !== id)) return none()
-  return { accepted, resolve: composed.resolve }
+  return { accepted, trail: composed.trail }
 }
 
 // The archive's `import-id-maps/` entries, by name.
@@ -689,7 +693,7 @@ function carriedIdMapEntries(entries: Map<string, Buffer>): Map<string, Buffer> 
 //
 // Only verified chains vouch (all or nothing, as the app's binding is), and a
 // file is anchored when a `derivation` entry on them names a parent the archive
-// carries a row for, through the carried id maps (`resolve`), at a path the
+// carries a row for, through the carried id maps (`trail`), at a path the
 // import may write and not named as another Capture's artifact. A path two
 // signed parents claim, or one spelt two ways, is refused whole: either reading
 // could be the forgery.
@@ -697,8 +701,9 @@ function anchoredDerivedFiles(
   archiveChains: ArchiveChains,
   manifestText: string,
   data: CaseArchiveData,
-  resolve: (id: string) => string
+  trail: (id: string) => string[]
 ): Map<string, AnchoredDerivedFile> {
+  const resolve = (id: string): string => trail(id).at(-1)!
   const anchored = new Map<string, AnchoredDerivedFile>()
   const verified = verifiedEntries(archiveChains, manifestText)
   if (!verified) return anchored
@@ -723,8 +728,9 @@ function anchoredDerivedFiles(
     if (spellings.size !== 1 || named.size !== 1) continue
     const [inCase] = spellings
     const [parentExhibitId] = named
-    const rowId = resolve(parentExhibitId)
-    if (namesAnotherCapture(inCase, parentExhibitId, rowId)) continue
+    const parentIds = trail(parentExhibitId)
+    if (namesAnotherCapture(inCase, parentIds)) continue
+    const rowId = parentIds[parentIds.length - 1]
     anchored.set(`${DERIVED_FILES_PREFIX}${inCase}`, { inCase, parentExhibitId, rowId, entries })
   }
   return anchored
@@ -857,7 +863,7 @@ export function inspectCaseArchive(archivePath: string): ArchiveInspectReport {
     const idMaps = carriedIdMapEntries(entries)
     const carried = acceptCarriedIdMaps(archiveChains, manifestText, data, idMaps)
     for (const name of idMaps.keys()) if (!carried.accepted.has(name)) artifactFailureCount++
-    const anchored = anchoredDerivedFiles(archiveChains, manifestText, data, carried.resolve)
+    const anchored = anchoredDerivedFiles(archiveChains, manifestText, data, carried.trail)
     for (const [name, buf] of entries) {
       if (!name.startsWith(DERIVED_FILES_PREFIX)) continue
       const hash = sha256(buf)
@@ -1063,7 +1069,7 @@ export async function importCaseArchive(
     data,
     carriedIdMapEntries(entries)
   )
-  const anchored = anchoredDerivedFiles(archiveChains, manifestText, data, carried.resolve)
+  const anchored = anchoredDerivedFiles(archiveChains, manifestText, data, carried.trail)
 
   const newCaseId = randomUUID()
   const idMap: Record<string, string> = {}

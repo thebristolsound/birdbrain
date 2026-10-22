@@ -1594,6 +1594,46 @@ describe('caseArchive Derived Files (#1813)', () => {
     }
   })
 
+  // The same thumbnail when every import runs on this installation, so the
+  // next import renames the row again and the file keeps a name that is
+  // neither the signed id nor the final row id.
+  it('carries a thumbnail named for a row id a later import renamed again (#1017)', async () => {
+    await exportCaseArchive(caseId, archivePath)
+    const { newCaseId: renamedCaseId } = await importCaseArchive(archivePath)
+    const [row] = listCaptures(renamedCaseId)
+    signDerivedFile({
+      caseId: renamedCaseId,
+      parentExhibitId: captureId,
+      parentContentHash: contentHash,
+      bytes: thumbnail,
+      outputPath: `${renamedCaseId}/${row.id}_thumb.jpg`,
+      recordRow: false
+    })
+    const rowThumb = `files/derived/${row.id}_thumb.jpg`
+    const second = join(tempDir, 'second.birdbrain')
+    await exportCaseArchive(renamedCaseId, second)
+    const { newCaseId: againCaseId } = await importCaseArchive(second)
+    const [again] = listCaptures(againCaseId)
+    expect(again.id).not.toBe(row.id)
+    const third = join(tempDir, 'third.birdbrain')
+
+    await exportCaseArchive(againCaseId, third)
+
+    expect(zipNames(third)).toContain(rowThumb)
+    closeDatabase()
+    await initDatabase(':memory:')
+    const { newCaseId, report } = await importCaseArchive(third)
+    expect(report.verification.overallValid).toBe(true)
+    const [restored] = listDerivedFilesForCase(newCaseId)
+    expect(restored).toMatchObject({
+      exhibitId: again.id,
+      path: join(newCaseId, `${row.id}_thumb.jpg`)
+    })
+    expect((await verifyCaseDerivedFiles(newCaseId)).get(again.id)).toEqual([
+      expect.objectContaining({ derivedFileId: restored.id, status: 'verified' })
+    ])
+  })
+
   // Only a carried map anchors that file, so without one it is unclaimed.
   it("fails a renamed thumbnail's archive whose carried maps were stripped", async () => {
     sign()

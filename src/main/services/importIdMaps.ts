@@ -90,12 +90,17 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 // The maps of a chain's imports, oldest first, applied in that order: an id is
 // renamed by each map that holds it as a key. Undefined when two positions
-// rename onto one id, which would bind two signed ids to one row. `record`
-// maps every key of every map to where the fold takes it, as own properties
-// only, so no id resolves through the prototype.
-export function composeIdMaps(
-  maps: ReadonlyArray<ReadonlyMap<string, string>>
-): { resolve: (id: string) => string; record: Record<string, string> } | undefined {
+// rename onto one id, which would bind two signed ids to one row. `trail`
+// lists every id the fold passes through, the id itself first and where it
+// ends last. `record` maps every key of every map to where the fold takes it,
+// as own properties only, so no id resolves through the prototype.
+export function composeIdMaps(maps: ReadonlyArray<ReadonlyMap<string, string>>):
+  | {
+      resolve: (id: string) => string
+      trail: (id: string) => string[]
+      record: Record<string, string>
+    }
+  | undefined {
   const seen = new Set<string>()
   for (const map of maps) {
     for (const value of map.values()) {
@@ -103,10 +108,17 @@ export function composeIdMaps(
       seen.add(value)
     }
   }
-  const resolve = (id: string): string =>
-    maps.reduce((current, map) => map.get(current) ?? current, id)
+  const trail = (id: string): string[] =>
+    maps.reduce(
+      (ids, map) => {
+        const next = map.get(ids[ids.length - 1])
+        return next === undefined ? ids : [...ids, next]
+      },
+      [id]
+    )
+  const resolve = (id: string): string => trail(id).at(-1)!
   const record = Object.fromEntries(
     maps.flatMap((map) => [...map.keys()]).map((key) => [key, resolve(key)])
   )
-  return { resolve, record }
+  return { resolve, trail, record }
 }

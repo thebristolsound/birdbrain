@@ -25,7 +25,7 @@ import {
   rebuildRosterCache,
   writeRosterFiles
 } from '@main/services/sharing/rosterCache'
-import { storedEntries } from '@main/services/sharing/entryAcceptance'
+import { nonEmptyLines, storedEntries } from '@main/services/sharing/entryAcceptance'
 import { signOwnUnsignedRows } from '@main/services/sharing/workingRows'
 import { isChainInstallationId } from '../../../packages/evidence-package-layout/index'
 
@@ -80,9 +80,11 @@ function ownerMemberAdd(entries: ManifestEntry[]): MemberAddEntry | undefined {
 // installation's, whichever installation it names: the archive header that names the exporter
 // is unsigned, and the chain does not cover the rows. An `archive-export` signs nothing: another
 // copy may hold the rows under the same ids, and a signed copy would collide there and roll back
-// every session.
+// every session. So does a line that does not parse as an entry, which may be either of them.
 function signOlderRows(caseId: string, caseDir: string): void {
-  const entries = ownEntries(caseDir)
+  const { jsonl } = readManifestSnapshot(caseDir)
+  const entries = storedEntries(jsonl)
+  if (entries.length !== nonEmptyLines(jsonl.toString('utf-8')).length) return
   if (entries.some((e) => e.type === 'archive-export')) return
   const held = idsReachingMembers(entries)
   signOwnUnsignedRows(caseId, {

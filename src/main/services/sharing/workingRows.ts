@@ -229,8 +229,10 @@ function verifiesAsOwn(row: StoredRow): boolean {
 // when a member's copy would refuse it and, with it, every row of that session: one that needs
 // a Capture or Exhibit no member can hold (`membersHold` false), and a tag application whose
 // note or tag does not arrive with it, because that row stays unsigned or is this
-// installation's row signed over content it no longer holds (verifiesAsOwn). Returns the
-// number of rows signed.
+// installation's row signed over content it no longer holds (verifiesAsOwn). A row another copy
+// may hold under its id is the caller's to rule out: the first share does not call this for a
+// Case whose chain records an export or holds a line that does not parse (membership.ts).
+// Returns the number of rows signed.
 export function signOwnUnsignedRows(caseId: string, reach: OlderRowsReach): number {
   return withTransaction(() => {
     const { membersHold, imported } = reach

@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join, resolve } from 'path'
 import { tmpdir } from 'os'
-import { DEMO_CASE_ARCHIVE_FILENAME, DEMO_CASE_OPERATOR_NAME } from '@shared/constants'
+import {
+  DEMO_CASE_ARCHIVE_FILENAME,
+  DEMO_CASE_OPERATOR_NAME,
+  MANIFEST_FILENAME
+} from '@shared/constants'
 import { closeDatabase, getDb } from '@main/services/db/core'
 import { deleteCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
 import { createCase, getCase } from '@main/services/db/caseRepo'
@@ -699,6 +703,21 @@ describe('older rows at first share (#1910)', () => {
     expect(parsedChain(ownChainText(caseId)).some((e) => e.type === 'archive-export')).toBe(true)
     expectUnsigned(keysOf(w))
     expect(recordSource(caseId, A).rows.get(A.installationId) ?? []).toEqual([])
+  })
+
+  // storedEntries skips a line that does not parse as an entry, and a damaged `import` or
+  // `archive-export` would then read as no archive at all, so the share signs nothing.
+  it('a chain line that does not parse as an entry leaves every older row unsigned at first share', async () => {
+    const w = await olderRows()
+    const loose = createNote({ caseId, title: 'Older loose note', body: 'before signing' })
+    unsign([{ table: 'notes', key: { id: loose.id } }])
+    const path = join(caseDirOf(caseId), MANIFEST_FILENAME)
+    const damaged = JSON.stringify({ type: 'import', index: 0 })
+    writeFileSync(path, `${damaged}\n${readFileSync(path, 'utf-8')}`)
+
+    await shareCase(caseId, { nodeId: `node-${A.name}` })
+
+    expectUnsigned([...keysOf(w), { table: 'notes', key: { id: loose.id } }])
   })
 
   // A tag written since signing is signed, but its older application on a Capture no member

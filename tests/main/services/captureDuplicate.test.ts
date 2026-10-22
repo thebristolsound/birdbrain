@@ -967,6 +967,29 @@ describe('createCaptureLifecycle.duplicate on an imported case (#827)', () => {
     await expectDuplicated(caseId, capture)
   })
 
+  it('duplicates a renamed capture when the earlier map holds more ids than SQLite binds', async () => {
+    // SQLite binds at most 32,766 parameters, so the earlier map renames
+    // more rows than one IN (...) over its ids could take.
+    const { getDb } = await import('@main/services/db/core')
+    const insert = getDb().prepare(
+      'INSERT INTO notes (id, case_id, created_at, updated_at) VALUES (?, ?, ?, ?)'
+    )
+    getDb().transaction(() => {
+      for (let i = 0; i < 16_400; i++) {
+        insert.run(
+          `note-${i}`,
+          sourceCaseId,
+          '2026-04-05T12:00:00.000Z',
+          '2026-04-05T12:00:00.000Z'
+        )
+      }
+    })()
+    await exportCaseArchive(sourceCaseId, archivePath)
+    const { caseId, capture } = await importTwice({ freshDatabase: true })
+
+    await expectDuplicated(caseId, capture)
+  }, 30_000)
+
   it('refuses a capture renamed at an earlier import when its carried map is gone', async () => {
     const { caseId, capture } = await importTwice({ freshDatabase: true })
     rmSync(carriedMapPath(caseId))

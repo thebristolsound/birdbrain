@@ -8,7 +8,7 @@ import {
 } from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
 import * as captureRepo from '@main/services/db/captureRepo'
-import { getExhibit } from '@main/services/db/exhibitRepo'
+import { getExhibit, listExhibits } from '@main/services/db/exhibitRepo'
 import { listDerivedFilesForExhibit } from '@main/services/db/derivedFileRepo'
 import { nextExhibitNumber } from '@main/services/exhibitNumbering'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
@@ -843,11 +843,14 @@ function readAnchoredIdMap(
 }
 
 // Whether a row of this case, Capture or other Exhibit, has any of these ids.
+// The case's ids are read whole: an earlier map can rename more rows than
+// SQLite binds parameters in one `IN (...)`.
 function holdsRow(caseId: string, ids: string[]): boolean {
-  return (
-    captureRepo.getCapturesByIds(ids).some((row) => row.caseId === caseId) ||
-    ids.some((id) => getExhibit(id)?.caseId === caseId)
-  )
+  const held = new Set([
+    ...captureRepo.collectCapturesForCase(caseId).map((row) => row.id),
+    ...listExhibits(caseId).map(({ id }) => id)
+  ])
+  return ids.some((id) => held.has(id))
 }
 
 // The operator gate every ingest and duplicate passes. A signed entry naming

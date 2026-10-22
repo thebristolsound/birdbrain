@@ -20,7 +20,7 @@ import {
 } from '@main/services/manifest'
 import { getPublicKeyPem } from '@main/services/signingKey'
 import { defaultCaptureStore, type CaptureStore } from '@main/services/captureStore'
-import { entryDescribesRow, verifyCapture } from '@main/services/captureLifecycle'
+import { entryDescribesRow, rowDescriber, verifyCapture } from '@main/services/captureLifecycle'
 import {
   bindDerivedFile,
   describeRepeatedExhibitNumber,
@@ -309,7 +309,8 @@ async function verifyDerivedFiles(
   exhibit: Exhibit,
   store: CaptureStore,
   chains: CaseChains,
-  author: AuthorChain
+  author: AuthorChain,
+  describes = rowDescriber(store.caseDir(exhibit.caseId), chains.own)
 ): Promise<DerivedFileVerification[]> {
   // Two sets, because "the chain has no entry for this file" and "the chain has
   // one but does not verify" are different findings. Binding uses the verified
@@ -322,18 +323,13 @@ async function verifyDerivedFiles(
   const entries = sources.flatMap((source) =>
     source.chain.valid ? readDerivations(source.entries) : []
   )
-  const caseDir = store.caseDir(exhibit.caseId)
   // The entry names the parent through the Case's custody records rather than
   // by bare id equality, the same resolution `verifyExhibit` gives an Exhibit:
   // an archive import keeps the source's id on the entry and only the anchored
-  // id map may reconcile the two.
+  // id map may reconcile the two. Every file is matched against every entry,
+  // so `describes` reads the maps once per pass, not once per pair (#1017).
   const parentMatches = (entry: DerivationEntryFacts): boolean =>
-    entryDescribesRow(
-      { caseId: entry.caseId, rowId: entry.parentExhibitId },
-      exhibit,
-      chains.own,
-      caseDir
-    )
+    describes({ caseId: entry.caseId, rowId: entry.parentExhibitId }, exhibit)
 
   const results: DerivedFileVerification[] = []
   for (const file of listDerivedFilesForExhibit(exhibit.id)) {
@@ -402,8 +398,10 @@ export async function verifyCaseDerivedFiles(
   const exhibits = listExhibits(caseId)
   if (exhibits.length === 0) return byExhibitId
   const chains = readCaseChains(store.caseDir(caseId))
+  const describes = rowDescriber(store.caseDir(caseId), chains.own)
   for (const exhibit of exhibits) {
-    const results = await verifyDerivedFiles(exhibit, store, chains, authorChain(chains, exhibit))
+    const author = authorChain(chains, exhibit)
+    const results = await verifyDerivedFiles(exhibit, store, chains, author, describes)
     if (results.length > 0) byExhibitId.set(exhibit.id, results)
   }
   return byExhibitId

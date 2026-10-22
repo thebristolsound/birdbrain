@@ -12,10 +12,12 @@ import { initManifest } from '@main/services/manifest'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
 import { backfillCase, THUMBNAIL_DERIVATION } from '@main/services/exhibitBackfill'
+import { verifyCaseDerivedFiles } from '@main/services/exhibits'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { IMPORT_ID_MAP_FILENAME } from '@shared/constants'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
+import { signDerivedFile } from '../../helpers/archiveDerivedFiles'
 
 // The startup backfill runs before the window opens, on every Case, on every
 // launch. On a renamed import each Capture row's signed id is resolved through
@@ -159,6 +161,59 @@ describe('the backfill on a renamed import of many Captures', () => {
 
     vi.mocked(readFileSync).mockClear()
     await backfillCase(newCaseId, { toolVersion: TOOL_VERSION })
+    expect(idMapReads()).toBe(1)
+    expect(carriedMapReads()).toBe(1)
+  })
+
+  // Each Exhibit's Derived Files are matched against every `derivation` entry
+  // in the Case, so resolving the parent through the maps once per entry read
+  // them, and the Case's rows, the square of the thumbnails times.
+  it('reads the own map and each carried map once per Derived File pass of a Case imported twice', async () => {
+    const source = createCase({ name: 'Thumbnails' }).id
+    ensureCaseDir(source)
+    initManifest(join(tempDir, 'captures', source))
+    const lifecycle = createCaptureLifecycle({
+      selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle
+    })
+    for (let n = 0; n < 12; n++) {
+      const body = `thumbnailed ${n}`
+      await lifecycle.ingest({
+        caseId: source,
+        url: `https://example.com/${n}`,
+        title: `Capture ${n}`,
+        timestamp: '2026-04-05T12:00:00.000Z',
+        stream: Readable.from([Buffer.from(body)]) as unknown as ReadableStream<Uint8Array>,
+        textContent: body,
+        headers: {},
+        browserVersion: 'Chrome/120',
+        userAgent: 'Mozilla/5.0',
+        httpStatus: 200,
+        operatorId: 'op-1',
+        operatorName: 'Test Operator',
+        toolVersion: TOOL_VERSION
+      })
+    }
+    for (const { id, contentHash } of listExhibits(source)) {
+      signDerivedFile({
+        caseId: source,
+        parentExhibitId: id,
+        parentContentHash: contentHash,
+        bytes: Buffer.from(`thumbnail of ${id}`)
+      })
+    }
+    const once = join(tempDir, 'once.birdbrain')
+    await exportCaseArchive(source, once)
+    const { newCaseId: renamedCaseId } = await importCaseArchive(once)
+    const twice = join(tempDir, 'twice.birdbrain')
+    await exportCaseArchive(renamedCaseId, twice)
+    const { newCaseId } = await importCaseArchive(twice)
+
+    vi.mocked(readFileSync).mockClear()
+    const verified = await verifyCaseDerivedFiles(newCaseId)
+
+    expect([...verified.values()].flat().map(({ status }) => status)).toEqual(
+      Array(12).fill('verified')
+    )
     expect(idMapReads()).toBe(1)
     expect(carriedMapReads()).toBe(1)
   })

@@ -1,15 +1,24 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'fs'
 import { join, resolve } from 'path'
 import { tmpdir } from 'os'
 import {
   DEMO_CASE_ARCHIVE_FILENAME,
   DEMO_CASE_OPERATOR_NAME,
+  IMPORT_ID_MAPS_DIRECTORY,
   MANIFEST_FILENAME
 } from '@shared/constants'
 import { closeDatabase, getDb } from '@main/services/db/core'
 import { deleteCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
-import { createCase, getCase } from '@main/services/db/caseRepo'
+import { createCase, deleteCase, getCase } from '@main/services/db/caseRepo'
 import { listCaseMembers, upsertCaseMember } from '@main/services/db/caseMemberRepo'
 import { createNote, listNotes, updateNote } from '@main/services/db/noteRepo'
 import { insertExhibit } from '@main/services/db/exhibitRepo'
@@ -833,6 +842,54 @@ describe('older rows at first share (#1910)', () => {
     expect(listNotes(newCaseId).map((note) => note.title)).toEqual(['Alice 2 note'])
     expect(getAnnotations(fresh.captureId).pins.map((pin) => pin.body)).toEqual(['Alice 2 pin'])
     expect(listTags()).toEqual([])
+  })
+
+  // A Case imported twice keeps the first import's id map under `import-id-maps/` (#1017). The
+  // share reads only the chain: a Capture created between the imports sits before the last
+  // `import`, so the rows on it stay local, and the middle Case, which recorded the export,
+  // signs nothing. The middle Case is deleted before the second import so that import keeps
+  // every id and only the chain tells the rows apart.
+  it('a Case imported twice signs only the rows on Captures created since its last import', async () => {
+    const X = await createPeer(root, 'xavier', 'Xavier Exporter', 'XE')
+    const sourceId = createCase({ name: 'Exported by Xavier' }).id
+    mkdirSync(caseDirOf(sourceId), { recursive: true })
+    await addCapture(sourceId, X, 1)
+    const first = join(root, 'xavier.birdbrain')
+    await exportCaseArchive(sourceId, first)
+
+    await activate(A)
+    const { newCaseId: middleId } = await importCaseArchive(first)
+    const between = await olderRows(middleId, 2)
+    const second = join(root, 'middle.birdbrain')
+    await exportCaseArchive(middleId, second)
+    await shareCase(middleId, { nodeId: `node-${A.name}` })
+    expectUnsigned(keysOf(between))
+    deleteCase(middleId)
+    const { newCaseId } = await importCaseArchive(second)
+    expect(readdirSync(join(caseDirOf(newCaseId), IMPORT_ID_MAPS_DIRECTORY))).toHaveLength(1)
+    expect(listCaptures(newCaseId).map(({ id }) => id)).toContain(between.captureId)
+    const carried = ownUnsignedRowsInCase(newCaseId)
+    const fresh = await olderRows(newCaseId, 3)
+
+    await shareCase(newCaseId, { nodeId: `node-${A.name}` })
+    await addMember(newCaseId, memberOfB(B))
+    const roster = listCaseMembers(newCaseId)
+
+    const name = ({ table, key }: { table: SyncedTable; key: RowKey }): string =>
+      `${table} ${JSON.stringify(key)}`
+    expect(ownUnsignedRowsInCase(newCaseId).map(name).sort()).toEqual(
+      [...carried, ...tagRows(fresh)].map(name).sort()
+    )
+    expectUnsigned(otherRows(between))
+    for (const { table, key } of otherRows(fresh)) expectSignedBy(A, table, key, newCaseId)
+
+    const fromAlice = recordSource(newCaseId, A)
+    await activate(B)
+    seedSharedCase(newCaseId, A, [])
+    for (const member of roster) upsertCaseMember(member)
+    const result = await pull(newCaseId, fromAlice)
+    expect(result.errors).toEqual([])
+    expect(listNotes(newCaseId).map((note) => note.title)).toEqual(['Alice 3 note'])
   })
 
   // A tag from before row signing, the Owner's own or one an archive brought, applied in an

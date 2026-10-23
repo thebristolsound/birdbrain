@@ -106,10 +106,42 @@ export function rewriteArchive(
 }
 
 export const DERIVED_ENTRY_PREFIX = 'files/derived/'
+export const ID_MAP_ENTRY_PREFIX = 'import-id-maps/'
+
+// What a Birdbrain at Case Archive schema 11 wrote: no id map entries, and no
+// Derived File whose signed parent is not a row the archive holds, which only
+// a carried id map can anchor (#1017).
+export function downgradeToVersion11(archivePath: string): void {
+  rewriteArchive(archivePath, (entries, header) => {
+    const data = JSON.parse(entries.get('data.json')!.toString('utf-8')) as {
+      exhibits?: Array<{ id: string }>
+    }
+    const rows = new Set((data.exhibits ?? []).map(({ id }) => id))
+    const derivations = (entries.get('manifest.jsonl') ?? Buffer.alloc(0))
+      .toString('utf-8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as Record<string, string>)
+      .filter((entry) => entry.type === 'derivation')
+    for (const name of [...entries.keys()]) {
+      if (name.startsWith(ID_MAP_ENTRY_PREFIX)) entries.delete(name)
+      if (!name.startsWith(DERIVED_ENTRY_PREFIX)) continue
+      const inCase = name.slice(DERIVED_ENTRY_PREFIX.length)
+      const anchored = derivations.some(
+        (entry) =>
+          entry.outputPath.split('/').slice(1).join('/') === inCase &&
+          rows.has(entry.parentExhibitId)
+      )
+      if (!anchored) entries.delete(name)
+    }
+    header.schemaVersion = 11
+  })
+}
 
 // What a Birdbrain at Case Archive schema 10 wrote: the same archive with no
 // Derived File entries.
 export function downgradeToVersion10(archivePath: string): void {
+  downgradeToVersion11(archivePath)
   rewriteArchive(archivePath, (entries, header) => {
     for (const name of [...entries.keys()]) {
       if (name.startsWith(DERIVED_ENTRY_PREFIX)) entries.delete(name)

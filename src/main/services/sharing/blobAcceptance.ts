@@ -11,7 +11,7 @@ import {
   writeSync
 } from 'fs'
 import { dirname, join } from 'path'
-import { MANIFEST_FILENAME } from '@shared/constants'
+import { IMPORT_ID_MAPS_DIRECTORY, MANIFEST_FILENAME } from '@shared/constants'
 import type { ManifestEntry } from '@shared/schemas'
 import { CAPTURE_ENTRY_HASH_FIELDS, type CaptureEntryHashField } from '@shared/verify'
 import {
@@ -47,12 +47,14 @@ export const RESERVED_CASE_FILES: ReadonlySet<string> = new Set([
 
 // Directories under a Case whose contents never sync: the Staging Pool is
 // local-only (decision 17), the pending-delete directory holds files on
-// their way out, and the lineage directory holds the chains of the Cases
-// this one was forked from, which the archive import writes.
+// their way out, the lineage directory holds the chains of the Cases this
+// one was forked from, which the archive import writes, and the id maps an
+// archive import received, which only the import writes (#1017).
 const UNSYNCED_SUBDIRECTORIES: ReadonlySet<string> = new Set([
   STAGING_SUBDIRECTORY,
   PENDING_DELETE_DIRECTORY,
-  LINEAGE_DIRECTORY
+  LINEAGE_DIRECTORY,
+  IMPORT_ID_MAPS_DIRECTORY
 ])
 
 export interface AnchoredFile {

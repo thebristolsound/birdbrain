@@ -45,7 +45,7 @@ import {
 } from '@main/services/manifest'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
-import { initSigningKey, resetSigningKey } from '@main/services/signingKey'
+import { getPublicKeyPem, initSigningKey, resetSigningKey } from '@main/services/signingKey'
 import { readStoredZip } from '@main/services/zipRead'
 import { createStoredZip } from '@main/services/zip'
 import {
@@ -73,6 +73,7 @@ import { listExhibits } from '@main/services/db/exhibitRepo'
 import { commitStagedFiles, uploadToStaging } from '@main/services/staging'
 import {
   downgradeToVersion10,
+  downgradeToVersion11,
   rewriteArchive,
   signDerivedFile
 } from '../../helpers/archiveDerivedFiles'
@@ -264,8 +265,11 @@ describe('caseArchive export', () => {
   // the Case without its decisions, marks and run records.
   // 11 since Derived Files travel (#1813): a pre-11 build passes the checks
   // and then rejects the nested files/derived/ entry, abandoning the import.
-  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 11 since Derived Files travel', () => {
-    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(11)
+  // 12 since id maps travel (#1017): a pre-12 build drops the carried maps
+  // without an error and fails an honest archive on a Derived File only a
+  // carried map anchors.
+  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 12 since id maps travel', () => {
+    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(12)
   })
 
   it('exports a .birdbrain archive with header, data, manifest, and files', async () => {
@@ -1686,29 +1690,143 @@ describe('caseArchive Derived Files (#1813)', () => {
     ])
   })
 
-  // A known limit (#1017): the id map is one hop, so an archive of a renamed
-  // import has no row the source's derivation entry names, and the restored
-  // file stays behind.
-  it("leaves a renamed Capture's restored thumbnail out of an archive of that Case (#1017)", async () => {
+  const idMapNames = (path = archivePath): string[] =>
+    zipNames(path).filter((name) => name.startsWith('import-id-maps/'))
+
+  // An archive of a renamed import carries that import's id map, which anchors
+  // the restored thumbnail to the renamed row (#1017).
+  it("carries a renamed Capture's restored thumbnail in an archive of that Case (#1017)", async () => {
     sign()
     await exportCaseArchive(caseId, archivePath)
     const { newCaseId: renamedCaseId } = await importCaseArchive(archivePath)
     expect(listDerivedFilesForCase(renamedCaseId)).toHaveLength(1)
     const again = join(tempDir, 'again.birdbrain')
     await exportCaseArchive(renamedCaseId, again)
-    expect(zipNames(again).some((name) => name.startsWith('files/derived/'))).toBe(false)
+    expect(zipNames(again)).toContain(thumbName)
+    expect(idMapNames(again)).toEqual([
+      `import-id-maps/${importEntry(renamedCaseId).idMapSha256}.json`
+    ])
+    const [renamed] = listCaptures(renamedCaseId)
     closeDatabase()
     await initDatabase(':memory:')
 
     const { newCaseId, report } = await importCaseArchive(again)
 
     expect(report.verification.overallValid).toBe(true)
-    expect(listDerivedFilesForCase(newCaseId)).toEqual([])
-    expect(existsSync(join(storageRoot, newCaseId, `${captureId}_thumb.jpg`))).toBe(false)
+    const [row] = listCaptures(newCaseId)
+    expect(row.id).toBe(renamed.id)
+    const [restored] = listDerivedFilesForCase(newCaseId)
+    expect(restored).toMatchObject({
+      exhibitId: row.id,
+      path: join(newCaseId, `${captureId}_thumb.jpg`)
+    })
+    expect((await verifyCaseDerivedFiles(newCaseId)).get(row.id)).toEqual([
+      expect.objectContaining({ derivedFileId: restored.id, status: 'verified' })
+    ])
     const idMap = JSON.parse(
       readFileSync(join(storageRoot, newCaseId, 'import-id-map.json'), 'utf-8')
     )
     expect(idMap.remapped).toEqual({})
+  })
+
+  // A thumbnail the renamed Case signed itself names the row in its file name
+  // and the capture entry's id as its parent, which is how the backfill signs
+  // after a rename.
+  it("carries a thumbnail signed after a rename under the capture entry's id (#1017)", async () => {
+    await exportCaseArchive(caseId, archivePath)
+    const { newCaseId: renamedCaseId } = await importCaseArchive(archivePath)
+    const [row] = listCaptures(renamedCaseId)
+    expect(row.id).not.toBe(captureId)
+    signDerivedFile({
+      caseId: renamedCaseId,
+      parentExhibitId: captureId,
+      parentContentHash: contentHash,
+      bytes: thumbnail,
+      outputPath: `${renamedCaseId}/${row.id}_thumb.jpg`,
+      recordRow: false
+    })
+    const rowThumb = `files/derived/${row.id}_thumb.jpg`
+    let archive = join(tempDir, 'hop-1.birdbrain')
+    await exportCaseArchive(renamedCaseId, archive)
+    expect(zipNames(archive)).toContain(rowThumb)
+
+    for (const hop of [2, 3]) {
+      closeDatabase()
+      await initDatabase(':memory:')
+      const { newCaseId, report } = await importCaseArchive(archive)
+      expect(report.verification.overallValid).toBe(true)
+      const [restored] = listDerivedFilesForCase(newCaseId)
+      expect(restored).toMatchObject({
+        exhibitId: row.id,
+        path: join(newCaseId, `${row.id}_thumb.jpg`)
+      })
+      expect((await verifyCaseDerivedFiles(newCaseId)).get(row.id)).toEqual([
+        expect.objectContaining({ derivedFileId: restored.id, status: 'verified' })
+      ])
+      archive = join(tempDir, `hop-${hop}.birdbrain`)
+      await exportCaseArchive(newCaseId, archive)
+      expect(zipNames(archive)).toContain(rowThumb)
+    }
+  })
+
+  // The same thumbnail when every import runs on this installation, so the
+  // next import renames the row again and the file keeps a name that is
+  // neither the signed id nor the final row id.
+  it('carries a thumbnail named for a row id a later import renamed again (#1017)', async () => {
+    await exportCaseArchive(caseId, archivePath)
+    const { newCaseId: renamedCaseId } = await importCaseArchive(archivePath)
+    const [row] = listCaptures(renamedCaseId)
+    signDerivedFile({
+      caseId: renamedCaseId,
+      parentExhibitId: captureId,
+      parentContentHash: contentHash,
+      bytes: thumbnail,
+      outputPath: `${renamedCaseId}/${row.id}_thumb.jpg`,
+      recordRow: false
+    })
+    const rowThumb = `files/derived/${row.id}_thumb.jpg`
+    const second = join(tempDir, 'second.birdbrain')
+    await exportCaseArchive(renamedCaseId, second)
+    const { newCaseId: againCaseId } = await importCaseArchive(second)
+    const [again] = listCaptures(againCaseId)
+    expect(again.id).not.toBe(row.id)
+    const third = join(tempDir, 'third.birdbrain')
+
+    await exportCaseArchive(againCaseId, third)
+
+    expect(zipNames(third)).toContain(rowThumb)
+    closeDatabase()
+    await initDatabase(':memory:')
+    const { newCaseId, report } = await importCaseArchive(third)
+    expect(report.verification.overallValid).toBe(true)
+    const [restored] = listDerivedFilesForCase(newCaseId)
+    expect(restored).toMatchObject({
+      exhibitId: again.id,
+      path: join(newCaseId, `${row.id}_thumb.jpg`)
+    })
+    expect((await verifyCaseDerivedFiles(newCaseId)).get(again.id)).toEqual([
+      expect.objectContaining({ derivedFileId: restored.id, status: 'verified' })
+    ])
+  })
+
+  // Only a carried map anchors that file, so without one it is unclaimed.
+  it("fails a renamed thumbnail's archive whose carried maps were stripped", async () => {
+    sign()
+    await exportCaseArchive(caseId, archivePath)
+    const { newCaseId: renamedCaseId } = await importCaseArchive(archivePath)
+    const again = join(tempDir, 'again.birdbrain')
+    await exportCaseArchive(renamedCaseId, again)
+    rewriteArchive(again, (entries) => {
+      for (const name of idMapNames(again)) entries.delete(name)
+    })
+
+    const { verification } = inspectCaseArchive(again)
+
+    expect(verification).toMatchObject({
+      chainValid: true,
+      overallValid: false,
+      artifactFailureCount: 1
+    })
   })
 
   it("deletes a renamed Capture's restored thumbnail with it, and the source's stays", async () => {
@@ -1769,6 +1887,91 @@ describe('caseArchive Derived Files (#1813)', () => {
     ).toEqual([{ capture_id: row.id, row_signature: 'sig-remote' }])
     expect(getDb().prepare('SELECT id, case_id FROM deleted_captures').all()).toEqual([
       { id: row.id, case_id: newCaseId }
+    ])
+  })
+
+  // The same delete when only the first of two imports renamed the Capture: the
+  // `deletion` entry names it through the carried map (#1017), and the rows on
+  // it settle as on any Capture before the last import (#1877).
+  it('deletes a Capture renamed at the first of two imports in a Shared Case (#1017, #1877)', async () => {
+    sign()
+    await exportCaseArchive(caseId, archivePath)
+    const { newCaseId: renamedCaseId } = await importCaseArchive(archivePath)
+    const [renamed] = listCaptures(renamedCaseId)
+    expect(renamed.id).not.toBe(captureId)
+    const again = join(tempDir, 'again.birdbrain')
+    await exportCaseArchive(renamedCaseId, again)
+    closeDatabase()
+    await initDatabase(':memory:')
+    const { newCaseId } = await importCaseArchive(again)
+    const [row] = listCaptures(newCaseId)
+    expect(row.id).toBe(renamed.id)
+    const restored = join(storageRoot, newCaseId, `${captureId}_thumb.jpg`)
+    expect(existsSync(restored)).toBe(true)
+    getDb()
+      .prepare("UPDATE cases SET shared_at = '2026-10-01T00:00:00.000Z' WHERE id = ?")
+      .run(newCaseId)
+    getDb()
+      .prepare(
+        `INSERT INTO annotations (capture_id, schema_version, shapes_json, image_width,
+           image_height, updated_at, author_installation_id, version, row_signature)
+         VALUES (?, 1, '[]', 640, 480, '2026-10-01T09:00:00.000Z', 'installation-remote', 3,
+                 'sig-remote')`
+      )
+      .run(row.id)
+    const lifecycle = createCaptureLifecycle({
+      selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+    })
+
+    expect(await lifecycle.delete(row.id)).toBe(true)
+
+    expect(existsSync(restored)).toBe(false)
+    const deletions = readEntries(
+      readFileSync(join(storageRoot, newCaseId, 'manifest.jsonl'), 'utf-8')
+    ).filter((entry) => entry.type === 'deletion')
+    expect(deletions.map((entry) => entry.captureId)).toEqual([captureId])
+    expect(
+      getDb()
+        .prepare(
+          'SELECT capture_id, row_signature FROM annotations WHERE author_installation_id = ?'
+        )
+        .all('installation-remote')
+    ).toEqual([{ capture_id: row.id, row_signature: 'sig-remote' }])
+    expect(getDb().prepare('SELECT id, case_id FROM deleted_captures').all()).toEqual([
+      { id: row.id, case_id: newCaseId }
+    ])
+  })
+
+  // The id a Shared Case recorded as deleted counts as held (#1877), so the
+  // import renames the row again, and the carried map composes with that
+  // rename (#1017).
+  it('composes a carried map with a rename onto an id a Shared Case deleted', async () => {
+    sign()
+    await exportCaseArchive(caseId, archivePath)
+    const { newCaseId: renamedCaseId } = await importCaseArchive(archivePath)
+    const [renamed] = listCaptures(renamedCaseId)
+    const again = join(tempDir, 'again.birdbrain')
+    await exportCaseArchive(renamedCaseId, again)
+    getDb()
+      .prepare("UPDATE cases SET shared_at = '2026-10-01T00:00:00.000Z' WHERE id = ?")
+      .run(renamedCaseId)
+    const lifecycle = createCaptureLifecycle({
+      selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+    })
+    expect(await lifecycle.delete(renamed.id)).toBe(true)
+
+    const { newCaseId, report } = await importCaseArchive(again)
+
+    expect(report.verification.overallValid).toBe(true)
+    const [row] = listCaptures(newCaseId)
+    expect([captureId, renamed.id]).not.toContain(row.id)
+    const [restored] = listDerivedFilesForCase(newCaseId)
+    expect(restored).toMatchObject({
+      exhibitId: row.id,
+      path: join(newCaseId, `${captureId}_thumb.jpg`)
+    })
+    expect((await verifyCaseDerivedFiles(newCaseId)).get(row.id)).toEqual([
+      expect.objectContaining({ derivedFileId: restored.id, status: 'verified' })
     ])
   })
 
@@ -1922,6 +2125,11 @@ describe('caseArchive Derived Files (#1813)', () => {
 
   it.each([
     ['the id map', (id: string) => `${id}/import-id-map.json`, 'import-id-map.json'],
+    [
+      'a carried id map',
+      (id: string) => `${id}/import-id-maps/${'a'.repeat(64)}.json`,
+      `import-id-maps/${'a'.repeat(64)}.json`
+    ],
     ['the manifest', (id: string) => `${id}/manifest.jsonl`, 'manifest.jsonl'],
     [
       "a member's chain",
@@ -2177,7 +2385,8 @@ describe('caseArchive Derived Files (#1813)', () => {
 // The import's id map holds exactly this import's own renames (#1813 review).
 // Reading an earlier import's rename off unsigned data.json rows would change
 // what an old archive verifies as, and would let two same-hash rows trade
-// signed provenance.
+// signed provenance. An earlier import's renames travel only as that import's
+// own map, carried in the archive and checked against its signed entry (#1017).
 describe("an import's id map holds only its own renames", () => {
   let tempDir: string
   let storageRoot: string
@@ -2213,14 +2422,30 @@ describe("an import's id map holds only its own renames", () => {
     initManifest(join(getStorageRoot(), id))
     return id
   }
+  const sha = (bytes: Buffer | string): string => createHash('sha256').update(bytes).digest('hex')
+  const chainOf = (caseId: string): Record<string, unknown>[] =>
+    readEntries(readFileSync(join(storageRoot, caseId, 'manifest.jsonl'), 'utf-8'))
+  const importsOf = (caseId: string): Record<string, unknown>[] =>
+    chainOf(caseId).filter((entry) => entry.type === 'import')
+  const carriedDir = (caseId: string): string => join(storageRoot, caseId, 'import-id-maps')
+  const carriedName = (digest: string): string => `import-id-maps/${digest}.json`
+  const idMapEntries = (archive: string): Map<string, Buffer> =>
+    new Map(
+      [...readStoredZip(readFileSync(archive))].filter(([name]) =>
+        name.startsWith('import-id-maps/')
+      )
+    )
+  const freshDatabase = async (): Promise<void> => {
+    closeDatabase()
+    await initDatabase(':memory:')
+  }
 
-  it('imports a version-10 archive of a Case imported twice as main does', async () => {
-    const caseId = freshCase('Origin')
-    const payload = '<html><body>origin</body></html>'
+  async function ingest(caseId: string, name = 'origin'): Promise<string> {
+    const payload = `<html><body>${name}</body></html>`
     const { capture } = await ingestMhtmlCapture({
       caseId,
-      url: 'https://example.com/origin',
-      title: 'Origin',
+      url: `https://example.com/${name}`,
+      title: name,
       timestamp: '2026-09-02T10:00:00.000Z',
       stream: Readable.from([Buffer.from(payload)]) as unknown as ReadableStream<Uint8Array>,
       textContent: payload,
@@ -2233,6 +2458,21 @@ describe("an import's id map holds only its own renames", () => {
       operatorName: 'Test Operator',
       toolVersion: '0.1.0'
     })
+    return capture.id
+  }
+
+  // A Capture and a PDF begun here, exported and imported on this installation
+  // while the original is still here, so the import renames both rows, then
+  // that renamed Case exported again.
+  async function renamedTwice(): Promise<{
+    captureId: string
+    renamedCaseId: string
+    renamedCaptureId: string
+    renamedDocumentId: string
+    archive: string
+  }> {
+    const caseId = freshCase('Origin')
+    const captureId = await ingest(caseId)
     const pdf = join(tempDir, 'doc.pdf')
     writeFileSync(pdf, '%PDF-1.7\n% doc\n%%EOF\n')
     const [staged] = await uploadToStaging(caseId, [pdf])
@@ -2240,84 +2480,673 @@ describe("an import's id map holds only its own renames", () => {
       outcomes: [outcome]
     } = await commitStagedFiles(caseId, [staged.id])
     if (outcome.status !== 'committed') throw new Error(`commit: ${outcome.status}`)
-    // The first import is on this installation, so both rows are renamed.
     const first = join(tempDir, 'first.birdbrain')
     await exportCaseArchive(caseId, first)
     const { newCaseId: renamedCaseId } = await importCaseArchive(first)
     const [renamed] = listCaptures(renamedCaseId)
     const renamedDoc = listExhibits(renamedCaseId).find((row) => row.kind !== 'capture')!
-    expect(renamed.id).not.toBe(capture.id)
+    expect(renamed.id).not.toBe(captureId)
     expect(renamedDoc.id).not.toBe(outcome.exhibitId)
-    const second = join(tempDir, 'second.birdbrain')
-    await exportCaseArchive(renamedCaseId, second)
-    downgradeToVersion10(second)
-    closeDatabase()
-    await initDatabase(':memory:')
+    const archive = join(tempDir, 'second.birdbrain')
+    await exportCaseArchive(renamedCaseId, archive)
+    return {
+      captureId,
+      renamedCaseId,
+      renamedCaptureId: renamed.id,
+      renamedDocumentId: renamedDoc.id,
+      archive
+    }
+  }
 
-    const { newCaseId, report } = await importCaseArchive(second)
+  const deletionIn = (caseId: string): Record<string, unknown> =>
+    chainOf(caseId).find((entry) => entry.type === 'deletion')!
 
-    expect(report.schemaVersion).toBe(10)
-    expect(report.verification.overallValid).toBe(true)
+  // What main gives a Case imported twice: the first import's renames are
+  // lost, so the renamed document and Capture are refused their entries.
+  async function expectBoundAsMain(
+    newCaseId: string,
+    { renamedCaptureId, renamedDocumentId }: { renamedCaptureId: string; renamedDocumentId: string }
+  ): Promise<void> {
     expect(remappedIn(newCaseId)).toEqual({})
+    expect(existsSync(carriedDir(newCaseId))).toBe(false)
     const doc = listExhibits(newCaseId).find((row) => row.kind !== 'capture')!
-    expect(doc.id).toBe(renamedDoc.id)
+    expect(doc.id).toBe(renamedDocumentId)
     expect(await verifyExhibit(newCaseId, doc.id, undefined, { record: false })).toMatchObject({
       status: 'chain-broken',
       reason: 'Exhibit not anchored in manifest chain'
     })
     const [row] = listCaptures(newCaseId)
-    expect(row.id).toBe(renamed.id)
+    expect(row.id).toBe(renamedCaptureId)
     expect(await lifecycle().duplicate(row.id)).toEqual({
       status: 'rejected',
       reason: 'not_verified',
       detail: 'entry-mismatch'
     })
     expect(await lifecycle().delete(row.id)).toBe(true)
-    const deletion = readEntries(
-      readFileSync(join(storageRoot, newCaseId, 'manifest.jsonl'), 'utf-8')
-    ).find((entry) => entry.type === 'deletion')!
-    expect(deletion.captureId).toBe(row.id)
+    expect(deletionIn(newCaseId).captureId).toBe(row.id)
+  }
+
+  // A row renamed at the first import binds to its entries after the second.
+  async function expectBoundThroughCarriedMap(newCaseId: string, captureId: string): Promise<void> {
+    const doc = listExhibits(newCaseId).find((row) => row.kind !== 'capture')!
+    expect(await verifyExhibit(newCaseId, doc.id, undefined, { record: false })).toMatchObject({
+      status: 'verified'
+    })
+    const [row] = listCaptures(newCaseId)
+    expect(await lifecycle().duplicate(row.id)).toMatchObject({ status: 'duplicated' })
+    expect(await lifecycle().delete(row.id)).toBe(true)
+    expect(deletionIn(newCaseId).captureId).toBe(captureId)
+  }
+
+  it('binds a Case imported twice through the id map its archive carries (#1017)', async () => {
+    const { captureId, renamedCaseId, renamedCaptureId, archive } = await renamedTwice()
+    const [first] = importsOf(renamedCaseId)
+    const name = carriedName(first.idMapSha256 as string)
+    expect([...idMapEntries(archive).keys()]).toEqual([name])
+    await freshDatabase()
+
+    const { newCaseId, report } = await importCaseArchive(archive)
+
+    expect(report.schemaVersion).toBe(12)
+    expect(report.verification.overallValid).toBe(true)
+    expect(remappedIn(newCaseId)).toEqual({})
+    expect(readFileSync(join(storageRoot, newCaseId, name))).toEqual(
+      idMapEntries(archive).get(name)
+    )
+    expect(listCaptures(newCaseId)[0].id).toBe(renamedCaptureId)
+    await expectBoundThroughCarriedMap(newCaseId, captureId)
+  })
+
+  it('imports a version-11 archive of a Case imported twice as main does', async () => {
+    const renamed = await renamedTwice()
+    downgradeToVersion11(renamed.archive)
+    expect(idMapEntries(renamed.archive).size).toBe(0)
+    await freshDatabase()
+
+    const { newCaseId, report } = await importCaseArchive(renamed.archive)
+
+    expect(report.schemaVersion).toBe(11)
+    expect(report.verification.overallValid).toBe(true)
+    await expectBoundAsMain(newCaseId, renamed)
+  })
+
+  it('imports a version-10 archive of a Case imported twice as main does', async () => {
+    const renamed = await renamedTwice()
+    downgradeToVersion10(renamed.archive)
+    await freshDatabase()
+
+    const { newCaseId, report } = await importCaseArchive(renamed.archive)
+
+    expect(report.schemaVersion).toBe(10)
+    expect(report.verification.overallValid).toBe(true)
+    await expectBoundAsMain(newCaseId, renamed)
+  })
+
+  // A version-11 archive carries no map, so the first import's renames are
+  // lost, but a Capture only the newest import renamed still binds through
+  // that import's own map, as on main.
+  it('binds a Capture only the newest import renamed, from a version-11 archive', async () => {
+    const caseId = freshCase('Origin')
+    await ingest(caseId)
+    const first = join(tempDir, 'first.birdbrain')
+    await exportCaseArchive(caseId, first)
+    const { newCaseId: renamedCaseId } = await importCaseArchive(first)
+    const later = await ingest(renamedCaseId, 'later')
+    const archive = join(tempDir, 'second.birdbrain')
+    await exportCaseArchive(renamedCaseId, archive)
+    downgradeToVersion11(archive)
+
+    const { newCaseId } = await importCaseArchive(archive)
+
+    const row = listCaptures(newCaseId).find((c) => c.url === 'https://example.com/later')!
+    expect(row.id).not.toBe(later)
+    expect(remappedIn(newCaseId)).toMatchObject({ [later]: row.id })
+    expect(await lifecycle().duplicate(row.id)).toMatchObject({ status: 'duplicated' })
+  })
+
+  // The header is unsigned, so neither its version nor its Case id may change
+  // which maps count or what they compose to.
+  it('composes the same rename whatever the unsigned header says', async () => {
+    const { captureId, renamedCaseId, archive } = await renamedTwice()
+    const [origin] = importsOf(renamedCaseId)
+    for (const edit of [
+      (header: Record<string, unknown>) => ({ ...header, schemaVersion: 11 }),
+      (header: Record<string, unknown>) => ({
+        ...header,
+        case: { ...(header.case as object), id: origin.sourceCaseId }
+      }),
+      (header: Record<string, unknown>) => ({
+        ...header,
+        case: { ...(header.case as object), id: 'a-case-nobody-signed' }
+      })
+    ]) {
+      rewritePackageJson(archive, edit)
+      await freshDatabase()
+
+      const { newCaseId, report } = await importCaseArchive(archive)
+
+      expect(report.verification.overallValid).toBe(true)
+      expect(readdirSync(carriedDir(newCaseId))).toHaveLength(1)
+      await expectBoundThroughCarriedMap(newCaseId, captureId)
+    }
+  })
+
+  it('carries the own id map as the canonical bytes its import entry hashes', async () => {
+    const { renamedCaseId, archive } = await renamedTwice()
+    const [[name, bytes]] = [...idMapEntries(archive)]
+    const [own] = importsOf(renamedCaseId)
+
+    expect(name).toBe(carriedName(own.idMapSha256 as string))
+    expect(sha(bytes)).toBe(own.idMapSha256)
+    const onDisk = readFileSync(join(storageRoot, renamedCaseId, 'import-id-map.json'), 'utf-8')
+    expect(bytes.toString('utf-8')).toBe(canonicalStringify(JSON.parse(onDisk)))
+  })
+
+  it("carries an imported Case's own and received id maps", async () => {
+    const { archive } = await renamedTwice()
+    await freshDatabase()
+    const { newCaseId } = await importCaseArchive(archive)
+    const again = join(tempDir, 'third.birdbrain')
+
+    await exportCaseArchive(newCaseId, again)
+
+    const carried = idMapEntries(again)
+    const digests = importsOf(newCaseId).map((entry) => entry.idMapSha256 as string)
+    expect(digests).toHaveLength(2)
+    expect([...carried.keys()].sort()).toEqual(digests.map(carriedName).sort())
+    for (const [name, bytes] of carried) expect(carriedName(sha(bytes))).toBe(name)
+    expect(inspectCaseArchive(again).verification.overallValid).toBe(true)
+  })
+
+  it('exports no id map for a Case no import created', async () => {
+    const caseId = freshCase('Native')
+    await ingest(caseId)
+    const archive = join(tempDir, 'native.birdbrain')
+
+    await exportCaseArchive(caseId, archive)
+
+    expect(idMapEntries(archive).size).toBe(0)
+    await freshDatabase()
+    const { newCaseId } = await importCaseArchive(archive)
+    expect(existsSync(carriedDir(newCaseId))).toBe(false)
+  })
+
+  it('leaves behind an id map file its own check refuses', async () => {
+    const { renamedCaseId } = await renamedTwice()
+    const unsigned = canonicalStringify({ sourceCaseId: 'a', caseId: 'b', remapped: {} })
+    mkdirSync(carriedDir(renamedCaseId))
+    writeFileSync(join(carriedDir(renamedCaseId), `${sha(unsigned)}.json`), unsigned)
+    writeFileSync(join(carriedDir(renamedCaseId), `${'0'.repeat(64)}.json`), unsigned)
+    mkdirSync(join(carriedDir(renamedCaseId), `${'1'.repeat(64)}.json`))
+    const archive = join(tempDir, 'planted.birdbrain')
+
+    await exportCaseArchive(renamedCaseId, archive)
+
+    expect([...idMapEntries(archive).keys()]).toEqual([
+      carriedName(importsOf(renamedCaseId)[0].idMapSha256 as string)
+    ])
+    expect(inspectCaseArchive(archive).verification.overallValid).toBe(true)
+  })
+
+  it('stages no carried id map from an archive whose chain does not verify', async () => {
+    const { archive } = await renamedTwice()
+    rewriteArchive(archive, (entries) => {
+      const lines = entries.get('manifest.jsonl')!.toString('utf-8').trim().split('\n')
+      const edited = lines.map((line) => {
+        const entry = JSON.parse(line)
+        return entry.type === 'capture'
+          ? JSON.stringify({ ...entry, url: 'https://example.com/edited' })
+          : line
+      })
+      entries.set('manifest.jsonl', Buffer.from(edited.join('\n') + '\n'))
+    })
+    expect(inspectCaseArchive(archive).verification.chainValid).toBe(false)
+    await freshDatabase()
+
+    const { newCaseId } = await importCaseArchive(archive, { overrideTamper: true })
+
+    expect(existsSync(carriedDir(newCaseId))).toBe(false)
+  })
+
+  // Captures with identical bytes, each with its own signed entry.
+  function sameHashCase(name: string, ids: string[]): { caseId: string; caseDir: string } {
+    const caseId = freshCase(name)
+    const caseDir = join(getStorageRoot(), caseId)
+    for (const id of ids) appendCapture(caseId, caseDir, id, id)
+    return { caseId, caseDir }
+  }
+
+  const samePage = Buffer.from('<html>same bytes</html>')
+
+  // A signed `capture` entry naming `entryId`, and a row `rowId` at its index.
+  function appendCapture(caseId: string, caseDir: string, entryId: string, rowId: string): number {
+    const hash = sha(samePage)
+    const url = `https://${entryId}.example`
+    writeFileSync(join(caseDir, `${rowId}.mhtml`), samePage)
+    const { index, entryHash } = appendManifestEntry(caseDir, {
+      type: 'capture',
+      captureId: entryId,
+      caseId,
+      url,
+      timestamp: '2026-04-05T12:00:00.000Z',
+      contentHash: hash,
+      sizeBytes: samePage.length,
+      operatorId: 'op-1',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+    insertCapture({
+      id: rowId,
+      caseId,
+      url,
+      title: url,
+      hash,
+      timestamp: '2026-04-05T12:00:00.000Z',
+      format: 'mhtml',
+      mhtmlPath: `${caseId}/${rowId}.mhtml`,
+      sizeBytes: samePage.length,
+      manifestIndex: index,
+      entryHash
+    })
+    return index
+  }
+
+  // An `import` entry signed with this installation's key over any map bytes,
+  // as a hostile exporter holding every key before the real import can sign.
+  function signImport(
+    caseDir: string,
+    text: string,
+    { caseId = 'c-forged', sourceCaseId = 's-forged' } = {}
+  ): [string, string] {
+    appendManifestEntry(caseDir, {
+      type: 'import',
+      caseId,
+      sourceCaseId,
+      sourceInstallationId: 'installation-forged',
+      sourcePublicKeyPem: getPublicKeyPem(),
+      packageHash: 'f'.repeat(64),
+      idMapSha256: sha(text),
+      verificationResult: {
+        overallValid: true,
+        chainValid: true,
+        artifactCount: 1,
+        artifactFailureCount: 0,
+        captureCount: 1,
+        captureHashFailureCount: 0
+      },
+      timestamp: '2026-04-05T12:30:00.000Z',
+      operatorId: 'op-1',
+      operatorName: 'Forger',
+      toolVersion: '0.1.0'
+    })
+    return [carriedName(sha(text)), text]
+  }
+
+  const mapText = (
+    remapped: Record<string, string>,
+    caseId = 'c-forged',
+    sourceCaseId = 's-forged'
+  ): string => canonicalStringify({ sourceCaseId, caseId, remapped })
+
+  // Moves data.json's rows: `edit` gets each capture and exhibit row by id.
+  const editRows = (
+    entries: Map<string, Buffer>,
+    edit: (rows: Array<Record<string, unknown>>, kind: 'captures' | 'exhibits') => unknown[]
+  ): void => {
+    const data = JSON.parse(entries.get('data.json')!.toString('utf-8'))
+    data.captures = edit(data.captures, 'captures')
+    data.exhibits = edit(data.exhibits, 'exhibits')
+    entries.set('data.json', Buffer.from(JSON.stringify(data, null, 2)))
+  }
+  const indexField = (kind: 'captures' | 'exhibits'): string =>
+    kind === 'captures' ? 'manifest_index' : 'manifest_seq'
+
+  it('accepts and stages a self-signed map that renames only ids no entry signs', async () => {
+    const { caseId, caseDir } = sameHashCase('Fresh', ['x1'])
+    const [name, text] = signImport(caseDir, mapText({ gone: 'fresh-id' }))
+    const archive = join(tempDir, 'fresh.birdbrain')
+    await exportCaseArchive(caseId, archive)
+    rewriteArchive(archive, (entries) => {
+      entries.set(name, Buffer.from(text))
+    })
+    expect(inspectCaseArchive(archive).verification.overallValid).toBe(true)
+    await freshDatabase()
+
+    const { newCaseId } = await importCaseArchive(archive)
+
+    expect(readFileSync(join(storageRoot, newCaseId, name), 'utf-8')).toBe(text)
+  })
+
+  it.each<[string, (caseDir: string) => Array<[string, string]>, number, { truncate?: boolean }?]>([
+    ['matches no signed import entry', () => [[carriedName(sha(mapText({}))), mapText({})]], 1],
+    [
+      'is a second map for an import that has one',
+      (caseDir) => {
+        const other = mapText({ b: 'fresh-2' })
+        return [signImport(caseDir, mapText({ a: 'fresh-1' })), [carriedName(sha(other)), other]]
+      },
+      2
+    ],
+    [
+      'is named for bytes it does not hold',
+      (caseDir) => [[signImport(caseDir, mapText({ a: 'fresh-1' }))[0], mapText({ a: 'other' })]],
+      1
+    ],
+    [
+      'is pretty JSON, whose canonical form its entry does not hash',
+      (caseDir) => [
+        signImport(
+          caseDir,
+          JSON.stringify({ sourceCaseId: 's-forged', caseId: 'c-forged', remapped: {} }, null, 2)
+        )
+      ],
+      1
+    ],
+    [
+      'names another case than its entry',
+      (caseDir) => [signImport(caseDir, mapText({}, 'c-other'))],
+      1
+    ],
+    [
+      'renames two ids onto one',
+      (caseDir) => [signImport(caseDir, mapText({ a: 'v', b: 'v' }))],
+      1
+    ],
+    [
+      'renames onto a key of its own map',
+      (caseDir) => [signImport(caseDir, mapText({ a: 'b', b: 'c' }))],
+      1
+    ],
+    [
+      "renames onto a signed capture's id",
+      (caseDir) => [signImport(caseDir, mapText({ a: 'x1' }))],
+      1
+    ],
+    [
+      'repeats a value another carried map holds',
+      (caseDir) => [
+        signImport(caseDir, mapText({ a: 'v' }, 'c-1'), { caseId: 'c-1' }),
+        signImport(caseDir, mapText({ b: 'v' }, 'c-2', 'c-1'), {
+          caseId: 'c-2',
+          sourceCaseId: 'c-1'
+        })
+      ],
+      2
+    ],
+    [
+      'belongs to an import a truncated chain no longer holds',
+      (caseDir) => [signImport(caseDir, mapText({ a: 'fresh-1' }))],
+      1,
+      { truncate: true }
+    ]
+  ])('fails a carried id map that %s, and stages none', async (_, plant, count, opts) => {
+    const { caseId, caseDir } = sameHashCase('Forged', ['x1'])
+    const planted = plant(caseDir)
+    const archive = join(tempDir, 'forged.birdbrain')
+    await exportCaseArchive(caseId, archive)
+    rewriteArchive(archive, (entries) => {
+      for (const [name, text] of planted) entries.set(name, Buffer.from(text))
+      if (!opts?.truncate) return
+      const lines = entries.get('manifest.jsonl')!.toString('utf-8').trim().split('\n')
+      entries.set('manifest.jsonl', Buffer.from(lines.slice(0, -1).join('\n') + '\n'))
+    })
+
+    const { verification } = inspectCaseArchive(archive)
+
+    expect(verification).toMatchObject({
+      chainValid: true,
+      overallValid: false,
+      artifactFailureCount: count
+    })
+    await freshDatabase()
+    const { newCaseId } = await importCaseArchive(archive, { overrideTamper: true })
+    expect(existsSync(carriedDir(newCaseId))).toBe(false)
+  })
+
+  // The #827 attack through a carried map: x1's signed url would reach x2's
+  // row. x1's row is gone, so only the rule that no value is a signed id
+  // refuses it.
+  it("refuses a map that renames a Capture onto another Capture's signed id", async () => {
+    const { caseId, caseDir } = sameHashCase('Onto', ['x1', 'x2'])
+    const [name, text] = signImport(caseDir, mapText({ x1: 'x2' }))
+    const archive = join(tempDir, 'onto.birdbrain')
+    await exportCaseArchive(caseId, archive)
+    rewriteArchive(archive, (entries) => {
+      entries.set(name, Buffer.from(text))
+      entries.delete('files/x1.mhtml')
+      editRows(entries, (rows, kind) => {
+        const x1 = rows.find((row) => row.id === 'x1')!
+        return rows
+          .filter((row) => row.id !== 'x1')
+          .map((row) =>
+            row.id === 'x2' ? { ...row, [indexField(kind)]: x1[indexField(kind)] } : row
+          )
+      })
+    })
+    expect(inspectCaseArchive(archive).verification).toMatchObject({
+      chainValid: true,
+      overallValid: false,
+      artifactFailureCount: 1
+    })
+    await freshDatabase()
+
+    await importCaseArchive(archive, { overrideTamper: true })
+
+    expect(await lifecycle().duplicate('x2')).toEqual({
+      status: 'rejected',
+      reason: 'not_verified',
+      detail: 'entry-mismatch'
+    })
+  })
+
+  // Two rows would bind x1's entry: x1 by its own id and r1 through the map.
+  it('refuses a map whose renamed-away id data.json still holds', async () => {
+    const { caseId, caseDir } = sameHashCase('Kept', ['x1', 'x2'])
+    const [name, text] = signImport(caseDir, mapText({ x1: 'r1' }))
+    const archive = join(tempDir, 'kept.birdbrain')
+    await exportCaseArchive(caseId, archive)
+    rewriteArchive(archive, (entries) => {
+      entries.set(name, Buffer.from(text))
+      entries.set('files/r1.mhtml', entries.get('files/x2.mhtml')!)
+      entries.delete('files/x2.mhtml')
+      editRows(entries, (rows, kind) => {
+        const x1 = rows.find((row) => row.id === 'x1')!
+        return rows.map((row) =>
+          row.id === 'x2'
+            ? {
+                ...row,
+                id: 'r1',
+                [indexField(kind)]: x1[indexField(kind)],
+                ...(kind === 'captures' ? { mhtml_path: `${caseId}/r1.mhtml` } : {})
+              }
+            : row
+        )
+      })
+    })
+    expect(inspectCaseArchive(archive).verification).toMatchObject({
+      chainValid: true,
+      overallValid: false,
+      artifactFailureCount: 1
+    })
+    await freshDatabase()
+
+    const { newCaseId } = await importCaseArchive(archive, { overrideTamper: true })
+
+    expect(existsSync(carriedDir(newCaseId))).toBe(false)
+    expect(await lifecycle().duplicate('r1')).toEqual({
+      status: 'rejected',
+      reason: 'not_verified',
+      detail: 'entry-mismatch'
+    })
+    expect(await lifecycle().duplicate('x1')).toMatchObject({ status: 'duplicated' })
+  })
+
+  // The two tests above with the map left out of the archive, so nothing
+  // refuses it at import, and written into the new Case directory afterwards.
+  // The binding applies the archive's rules to whatever map it reads.
+  async function importThenPlant(
+    archive: string,
+    [name, text]: [string, string],
+    { fresh = true }: { fresh?: boolean } = {}
+  ): Promise<string> {
+    expect(idMapEntries(archive).size).toBe(0)
+    expect(inspectCaseArchive(archive).verification.overallValid).toBe(true)
+    if (fresh) await freshDatabase()
+    const { newCaseId } = await importCaseArchive(archive)
+    mkdirSync(carriedDir(newCaseId))
+    writeFileSync(join(storageRoot, newCaseId, name), text)
+    return newCaseId
+  }
+
+  it("binds nothing through a planted map that renames a Capture onto another Capture's signed id", async () => {
+    const { caseId, caseDir } = sameHashCase('Planted onto', ['x1', 'x2'])
+    const planted = signImport(caseDir, mapText({ x1: 'x2' }))
+    const archive = join(tempDir, 'planted-onto.birdbrain')
+    await exportCaseArchive(caseId, archive)
+    rewriteArchive(archive, (entries) => {
+      entries.delete('files/x1.mhtml')
+      editRows(entries, (rows, kind) => {
+        const x1 = rows.find((row) => row.id === 'x1')!
+        return rows
+          .filter((row) => row.id !== 'x1')
+          .map((row) =>
+            row.id === 'x2' ? { ...row, [indexField(kind)]: x1[indexField(kind)] } : row
+          )
+      })
+    })
+    await importThenPlant(archive, planted)
+
+    expect(await lifecycle().duplicate('x2')).toEqual({
+      status: 'rejected',
+      reason: 'not_verified',
+      detail: 'entry-mismatch'
+    })
+  })
+
+  it('binds nothing through a planted map whose renamed-away id the Case still holds', async () => {
+    const { caseId, caseDir } = sameHashCase('Planted kept', ['x1', 'x2'])
+    const planted = signImport(caseDir, mapText({ x1: 'r1' }))
+    const archive = join(tempDir, 'planted-kept.birdbrain')
+    await exportCaseArchive(caseId, archive)
+    rewriteArchive(archive, (entries) => {
+      entries.set('files/r1.mhtml', entries.get('files/x2.mhtml')!)
+      entries.delete('files/x2.mhtml')
+      editRows(entries, (rows, kind) => {
+        const x1 = rows.find((row) => row.id === 'x1')!
+        return rows.map((row) =>
+          row.id === 'x2'
+            ? {
+                ...row,
+                id: 'r1',
+                [indexField(kind)]: x1[indexField(kind)],
+                ...(kind === 'captures' ? { mhtml_path: `${caseId}/r1.mhtml` } : {})
+              }
+            : row
+        )
+      })
+    })
+    await importThenPlant(archive, planted)
+
+    expect(await lifecycle().duplicate('r1')).toEqual({
+      status: 'rejected',
+      reason: 'not_verified',
+      detail: 'entry-mismatch'
+    })
+    expect(await lifecycle().duplicate('x1')).toMatchObject({ status: 'duplicated' })
+  })
+
+  // The test above, imported beside the source Case, so the import renames x1
+  // on collision. The Case keeps x1's row under the id the import gave it, and
+  // only that id shows the renamed-away x1 is still held.
+  it('binds nothing through a planted map whose renamed-away id the import renamed again', async () => {
+    const { caseId, caseDir } = sameHashCase('Planted renamed', ['x1', 'x2'])
+    const planted = signImport(caseDir, mapText({ x1: 'r1' }))
+    const archive = join(tempDir, 'planted-renamed.birdbrain')
+    await exportCaseArchive(caseId, archive)
+    rewriteArchive(archive, (entries) => {
+      entries.set('files/r1.mhtml', entries.get('files/x2.mhtml')!)
+      entries.delete('files/x2.mhtml')
+      editRows(entries, (rows, kind) => {
+        const x1 = rows.find((row) => row.id === 'x1')!
+        return rows.map((row) =>
+          row.id === 'x2'
+            ? {
+                ...row,
+                id: 'r1',
+                [indexField(kind)]: x1[indexField(kind)],
+                ...(kind === 'captures' ? { mhtml_path: `${caseId}/r1.mhtml` } : {})
+              }
+            : row
+        )
+      })
+    })
+    const newCaseId = await importThenPlant(archive, planted, { fresh: false })
+    const kept = (remappedIn(newCaseId) as Record<string, string>).x1
+    expect(kept).toBeDefined()
+    expect(listCaptures(newCaseId).map(({ id }) => id)).toEqual(
+      expect.arrayContaining([kept, 'r1'])
+    )
+
+    expect(await lifecycle().duplicate('r1')).toEqual({
+      status: 'rejected',
+      reason: 'not_verified',
+      detail: 'entry-mismatch'
+    })
+    expect(await lifecycle().duplicate(kept)).toMatchObject({ status: 'duplicated' })
+  })
+
+  // An honest first import renamed z to v. A forged later map renames x, coined
+  // after it, onto v as well. Carried together they repeat v; with the honest
+  // map dropped, the forged one alone must not bind x's entry to v.
+  it('binds nothing through a forged later map when an earlier map was dropped', async () => {
+    const caseId = freshCase('Dropped')
+    const caseDir = join(getStorageRoot(), caseId)
+    appendCapture(caseId, caseDir, 'z', 'v')
+    const honest = signImport(caseDir, mapText({ z: 'v' }, 'c-1', 's-0'), {
+      caseId: 'c-1',
+      sourceCaseId: 's-0'
+    })
+    const xIndex = appendCapture(caseId, caseDir, 'x', 'x')
+    const forged = signImport(caseDir, mapText({ x: 'v' }, 'c-2', 'c-1'), {
+      caseId: 'c-2',
+      sourceCaseId: 'c-1'
+    })
+    const both = join(tempDir, 'both.birdbrain')
+    await exportCaseArchive(caseId, both)
+    const dropped = join(tempDir, 'dropped.birdbrain')
+    writeFileSync(dropped, readFileSync(both))
+    rewriteArchive(both, (entries) => {
+      for (const [name, text] of [honest, forged]) entries.set(name, Buffer.from(text))
+    })
+    expect(inspectCaseArchive(both).verification).toMatchObject({
+      chainValid: true,
+      overallValid: false,
+      artifactFailureCount: 2
+    })
+    rewriteArchive(dropped, (entries) => {
+      entries.set(forged[0], Buffer.from(forged[1]))
+      editRows(entries, (rows, kind) =>
+        rows.map((row) => (row.id === 'v' ? { ...row, [indexField(kind)]: xIndex } : row))
+      )
+    })
+    expect(inspectCaseArchive(dropped).verification.overallValid).toBe(true)
+    await freshDatabase()
+
+    const { newCaseId } = await importCaseArchive(dropped)
+
+    expect(existsSync(join(storageRoot, newCaseId, forged[0]))).toBe(true)
+    expect(await lifecycle().duplicate('v')).toEqual({
+      status: 'rejected',
+      reason: 'not_verified',
+      detail: 'entry-mismatch'
+    })
   })
 
   // Two Captures with identical bytes, renamed in data.json with their indexes
   // swapped and the header repaired. Every hash still matches, so only the id
   // map keeps one Capture's signed url off the other's duplicate.
   it('signs no rename for same-hash rows whose indexes data.json swapped', async () => {
-    const caseId = freshCase('Swap')
-    const caseDir = join(getStorageRoot(), caseId)
-    const page = Buffer.from('<html>same bytes</html>')
-    const hash = createHash('sha256').update(page).digest('hex')
-    for (const [id, url] of [
-      ['x1', 'https://one.example'],
-      ['x2', 'https://two.example']
-    ]) {
-      writeFileSync(join(caseDir, `${id}.mhtml`), page)
-      const { index, entryHash } = appendManifestEntry(caseDir, {
-        type: 'capture',
-        captureId: id,
-        caseId,
-        url,
-        timestamp: '2026-04-05T12:00:00.000Z',
-        contentHash: hash,
-        sizeBytes: page.length,
-        operatorId: 'op-1',
-        operatorName: 'Test Operator',
-        toolVersion: '0.1.0'
-      })
-      insertCapture({
-        id,
-        caseId,
-        url,
-        title: url,
-        hash,
-        timestamp: '2026-04-05T12:00:00.000Z',
-        format: 'mhtml',
-        mhtmlPath: `${caseId}/${id}.mhtml`,
-        sizeBytes: page.length,
-        manifestIndex: index,
-        entryHash
-      })
-    }
+    const { caseId } = sameHashCase('Swap', ['x1', 'x2'])
     const archive = join(tempDir, 'swap.birdbrain')
     await exportCaseArchive(caseId, archive)
     const rename: Record<string, string> = { x1: 'r1', x2: 'r2' }
@@ -2346,13 +3175,49 @@ describe("an import's id map holds only its own renames", () => {
       }
     })
     expect(inspectCaseArchive(archive).verification.overallValid).toBe(true)
-    closeDatabase()
-    await initDatabase(':memory:')
+    await freshDatabase()
 
     const { newCaseId } = await importCaseArchive(archive)
 
     expect(remappedIn(newCaseId)).toEqual({})
     expect(await lifecycle().duplicate('r1')).toEqual({
+      status: 'rejected',
+      reason: 'not_verified',
+      detail: 'entry-mismatch'
+    })
+  })
+
+  // The same swap on a Case an import honestly renamed: its carried map binds
+  // each entry to the row it renamed, not to the row data.json now points at.
+  it('signs no rename for same-hash rows whose indexes data.json swapped, with maps carried', async () => {
+    const { caseId } = sameHashCase('Swap carried', ['x1', 'x2'])
+    const first = join(tempDir, 'swap-first.birdbrain')
+    await exportCaseArchive(caseId, first)
+    const { newCaseId: renamedCaseId } = await importCaseArchive(first)
+    const r1 = listCaptures(renamedCaseId).find((c) => c.url === 'https://x1.example')!
+    const r2 = listCaptures(renamedCaseId).find((c) => c.url === 'https://x2.example')!
+    expect([r1.id, r2.id]).not.toContain('x1')
+    const archive = join(tempDir, 'swap-carried.birdbrain')
+    await exportCaseArchive(renamedCaseId, archive)
+    expect(idMapEntries(archive).size).toBe(1)
+    rewriteArchive(archive, (entries) => {
+      editRows(entries, (rows, kind) => {
+        const at = new Map(rows.map((row) => [row.id, row[indexField(kind)]]))
+        return rows.map((row) =>
+          row.id === r1.id
+            ? { ...row, [indexField(kind)]: at.get(r2.id) }
+            : row.id === r2.id
+              ? { ...row, [indexField(kind)]: at.get(r1.id) }
+              : row
+        )
+      })
+    })
+    expect(inspectCaseArchive(archive).verification.overallValid).toBe(true)
+    await freshDatabase()
+
+    await importCaseArchive(archive)
+
+    expect(await lifecycle().duplicate(r1.id)).toEqual({
       status: 'rejected',
       reason: 'not_verified',
       detail: 'entry-mismatch'

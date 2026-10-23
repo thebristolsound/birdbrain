@@ -298,6 +298,7 @@ independent of the Operator who holds it.
 | `src/main/services/verifyScript.ts` | blocking | `verify.sh`, the runbook's executable form, shipped in packages and hashed into `packageHash`. Added 2026-09-19 with #1156: it binds exhibit and derived-file bytes to the chain, so a defect here reports a tampered package as verified |
 | `src/main/services/verifyProcedure.ts` | blocking | The verification step list: step numbers, titles, citations and jq recipes that `verify.sh`, `VERIFY.md` and the report read. Added 2026-10-03; a defect here misnumbers or misspells a step in every package |
 | `src/main/services/caseArchive.ts` | blocking | Archive export/import with id remapping |
+| `src/main/services/importIdMaps.ts` | blocking | Checks and composes the import id maps that bind a renamed row to its signed entries and decide which Derived Files a Case Archive carries (#1017) |
 | `src/main/services/zip.ts` | blocking | Evidence container write |
 | `src/main/services/zipRead.ts` | blocking | Evidence container read |
 | `src/main/services/csvEscape.ts` | blocking | Escaping behind CSV exports of case data |

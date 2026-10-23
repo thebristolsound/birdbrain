@@ -525,6 +525,9 @@ export interface CaptureEntryAtIndex {
   // resolve them — and needs them authenticated by the same chain check, not by
   // a second unverified read.
   imports: ManifestImportEntry[]
+  // Every entry of that read, which say which ids are signed identities that
+  // no carried id map may rename a row onto (#1017).
+  entries: Record<string, unknown>[]
 }
 
 // Reads the capture entry recorded at `index` together with the case's custody
@@ -554,7 +557,7 @@ export function readCaptureEntryAt(
   if (!parsed.success || parsed.data.type !== 'capture' || parsed.data.index !== index) {
     return undefined
   }
-  return { entry: parsed.data, imports: importEntriesOf(snapshot) }
+  return { entry: parsed.data, imports: importEntriesOf(snapshot), entries: snapshot.entries }
 }
 
 // Every `import` entry in a manifest read. Only meaningful over a snapshot the

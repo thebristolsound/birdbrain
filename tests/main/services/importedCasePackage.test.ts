@@ -58,7 +58,7 @@ import { HAS_JQ } from '../../helpers/jq'
 import { createLocalTsa, type LocalTsa } from '../../helpers/localTsa'
 import { extractRunbookBlocks, runRunbookBlocks } from '../../helpers/runbookBlocks'
 import { runVerifyScript } from '../../helpers/verifyScript'
-import { downgradeToVersion10 } from '../../helpers/archiveDerivedFiles'
+import { downgradeToVersion10, downgradeToVersion11 } from '../../helpers/archiveDerivedFiles'
 
 // #1657: a Case that arrived through an import carries entries another
 // installation signed, before its `import` entry. Its Evidence Package must
@@ -280,9 +280,15 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
 
   // The same Case carried on to a third installation: exported again as a Case
   // Archive from where it was imported, and imported on `name`.
-  async function importAgain(caseId: string, name: string): Promise<string> {
+  // `edit` rewrites the archive before the import.
+  async function importAgain(
+    caseId: string,
+    name: string,
+    edit?: (archive: string) => void
+  ): Promise<string> {
     const archive = join(tempDir, `${name}.birdbrain`)
     await exportCaseArchive(caseId, archive)
+    edit?.(archive)
     await useInstallation(name)
     const { newCaseId } = await importCaseArchive(archive)
     return newCaseId
@@ -901,13 +907,36 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
     }
   )
 
-  // A known limit (#1017): the renamed import archived again and imported on a
-  // third installation. The id map is one hop, so that archive has no row the
-  // source's derivation entry names and carries no thumbnail. The package fails
-  // on the source's thumbnail and on the one the third installation backfills,
-  // and binds no derived file.
+  // Both shipped verifiers pass on a package and bind its one derived file.
+  function expectBothPass(dir: string): void {
+    expectInAppPass(dir)
+    const run = runVerifyScript(dir)
+    expect(run.status, run.output).toBe(0)
+    expect(run.output).toContain('verify.sh: PASS')
+    expect(run.output).toContain('1 derived file(s) bound to the signed chain')
+  }
+
+  // The report's integrity statement on the one Exhibit its package names by
+  // `exhibitId`, the id its entry signed. A row whose entry the binding could
+  // not resolve reads "Chain broken" here.
+  function expectVerifiedInReport(dir: string, exhibitId: string): void {
+    const report = readFileSync(join(dir, PACKAGE_ROOT_FILES.report), 'utf-8')
+    const sections = report
+      .split('<section class="sheet exhibit">')
+      .slice(1)
+      .filter((section) => section.includes(exhibitId))
+    expect(sections).toHaveLength(1)
+    expect(sections[0]).toMatch(
+      /Integrity at verification<\/div>\s*<div class="rail-value"><span class="strong">Verified</
+    )
+  }
+
+  // #1017: the renamed import archived again and imported on a third
+  // installation. The archive carries the first import's id map, which anchors
+  // the source's thumbnail to the renamed row, so the thumbnail travels and
+  // binds, and the third installation's backfill signs nothing.
   it.skipIf(!RUNS)(
-    'fails on both thumbnails for a renamed import archived again (#1017)',
+    'passes both shipped verifiers on a renamed import archived again (#1017)',
     async () => {
       const { archive, original } = await backfilledArchive('Twice')
       const { newCaseId: renamedCaseId } = await importCaseArchive(archive)
@@ -915,6 +944,103 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
       expect(renamed.id).not.toBe(original.captureId)
 
       const newCaseId = await importAgain(renamedCaseId, 'third')
+      const [row] = listCaptures(newCaseId)
+      expect(row.id).toBe(renamed.id)
+      expect(listDerivedFilesForCase(newCaseId)).toEqual([
+        expect.objectContaining({
+          exhibitId: row.id,
+          path: join(newCaseId, `${original.captureId}_thumb.jpg`)
+        })
+      ])
+      const backfill = await backfillCase(newCaseId, { toolVersion: '0.1.0' })
+      expect(backfill.thumbnailsAnchored).toBe(0)
+
+      const dir = await exportPackage(newCaseId, 'twice')
+      expectBothPass(dir)
+      expectVerifiedInReport(dir, original.exhibitId)
+    }
+  )
+
+  // Both imports on this installation, so each renames every row again, and
+  // the file and the document bind only through the two maps composed.
+  it.skipIf(!RUNS)(
+    'passes both shipped verifiers on a Case renamed at both imports (#1017)',
+    async () => {
+      const { archive, original } = await backfilledArchive('Both')
+      const { newCaseId: renamedCaseId } = await importCaseArchive(archive)
+      const [renamed] = listCaptures(renamedCaseId)
+      const renamedDoc = listExhibits(renamedCaseId).find((row) => row.kind !== 'capture')!
+      const again = join(tempDir, 'both-again.birdbrain')
+      await exportCaseArchive(renamedCaseId, again)
+
+      const { newCaseId } = await importCaseArchive(again)
+
+      const [row] = listCaptures(newCaseId)
+      const doc = listExhibits(newCaseId).find((exhibit) => exhibit.kind !== 'capture')!
+      expect(new Set([original.captureId, renamed.id, row.id]).size).toBe(3)
+      expect(new Set([original.exhibitId, renamedDoc.id, doc.id]).size).toBe(3)
+      expect(listDerivedFilesForCase(newCaseId)).toEqual([
+        expect.objectContaining({
+          exhibitId: row.id,
+          path: join(newCaseId, `${original.captureId}_thumb.jpg`)
+        })
+      ])
+      const backfill = await backfillCase(newCaseId, { toolVersion: '0.1.0' })
+      expect(backfill.thumbnailsAnchored).toBe(0)
+      const dir = await exportPackage(newCaseId, 'both')
+      expectBothPass(dir)
+      expectVerifiedInReport(dir, original.exhibitId)
+      const evidence = JSON.parse(
+        readFileSync(join(dir, PACKAGE_ROOT_FILES.evidenceIndex), 'utf-8')
+      )
+      expect(evidence.exhibits.map(({ id }: { id: string }) => id).sort()).toEqual(
+        [original.captureId, original.exhibitId].sort()
+      )
+    }
+  )
+
+  // A thumbnail the renamed Case backfilled itself: signed under the capture
+  // entry's id, named for the row.
+  it.skipIf(!RUNS)(
+    'passes both shipped verifiers on a renamed import backfilled before it was archived again (#1017)',
+    async () => {
+      const original = await nativeCase('Between', await pngOf({ r: 30, g: 60, b: 200 }))
+      const archive = join(tempDir, 'between.birdbrain')
+      await exportCaseArchive(original.caseId, archive)
+      const { newCaseId: renamedCaseId } = await importCaseArchive(archive)
+      const [renamed] = listCaptures(renamedCaseId)
+      expect(renamed.id).not.toBe(original.captureId)
+      const first = await backfillCase(renamedCaseId, { toolVersion: '0.1.0' })
+      expect(first.thumbnailsAnchored).toBe(1)
+
+      const newCaseId = await importAgain(renamedCaseId, 'third')
+      const [row] = listCaptures(newCaseId)
+      expect(listDerivedFilesForCase(newCaseId)).toEqual([
+        expect.objectContaining({
+          exhibitId: row.id,
+          path: join(newCaseId, `${renamed.id}_thumb.jpg`)
+        })
+      ])
+      const backfill = await backfillCase(newCaseId, { toolVersion: '0.1.0' })
+      expect(backfill.thumbnailsAnchored).toBe(0)
+
+      expectBothPass(await exportPackage(newCaseId, 'between'))
+    }
+  )
+
+  // An archive from before id maps travelled holds no map and no thumbnail
+  // only a map anchors, so it imports as it did: the package fails on the
+  // source's thumbnail and on the one the third installation backfills, and
+  // binds no derived file.
+  it.skipIf(!RUNS)(
+    'still fails on both thumbnails for a version-11 archive of a renamed import archived again (#1017)',
+    async () => {
+      const { archive, original } = await backfilledArchive('Twice')
+      const { newCaseId: renamedCaseId } = await importCaseArchive(archive)
+      const [renamed] = listCaptures(renamedCaseId)
+      expect(renamed.id).not.toBe(original.captureId)
+
+      const newCaseId = await importAgain(renamedCaseId, 'third', downgradeToVersion11)
       const [row] = listCaptures(newCaseId)
       expect(row.id).toBe(renamed.id)
       expect(listDerivedFilesForCase(newCaseId)).toEqual([])

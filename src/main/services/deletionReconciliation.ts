@@ -15,7 +15,7 @@ import {
   verifyManifestChainText,
   type ManifestImportEntry
 } from '@main/services/manifest'
-import { signedCaptureId } from '@main/services/captureLifecycle'
+import { rowDescriber, signedCaptureId } from '@main/services/captureLifecycle'
 import { getPublicKeyPem } from '@main/services/signingKey'
 
 // #622. A capture delete is write-ahead: the signed `deletion` entry is
@@ -153,11 +153,12 @@ export function scanUnreconciledDeletions(
     // A Capture an import renamed is deleted under the id its signed entry
     // carries (#1815), so its entry is matched to the row by the same rule.
     if (imports.length > 0 && liveIds.size < deletedIds.size) {
+      const describes = rowDescriber(caseDir, { entries, imports })
       for (const capture of captureRepo.listCaptures(caseId)) {
         const { id, manifestIndex } = capture
         const named = manifestIndex === undefined ? undefined : entries[manifestIndex]?.captureId
         if (named === id || typeof named !== 'string' || !deletedIds.has(named)) continue
-        if (signedCaptureId(capture, entries, imports, caseDir) === named) liveIds.set(named, id)
+        if (signedCaptureId(capture, entries, describes) === named) liveIds.set(named, id)
       }
     }
 

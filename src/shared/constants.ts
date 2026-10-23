@@ -62,6 +62,12 @@ export const MANIFEST_FILENAME = 'manifest.jsonl'
 // a source installation's entry ids onto the local rows (#827).
 export const IMPORT_ID_MAP_FILENAME = 'import-id-map.json'
 
+// The id maps of the earlier imports in a Case's chain, kept beside its own
+// map so a row renamed at any of them still binds to its entries (#1017).
+// Each is named `<idMapSha256>.json`, by the digest its signed `import` entry
+// records, in the case directory and in a Case Archive alike.
+export const IMPORT_ID_MAPS_DIRECTORY = 'import-id-maps'
+
 // The highest manifest entry schema version this build can READ. Bump whenever
 // the manifest entry schema changes (a new entry type, a new required field).
 // v3 adds the `exhibit`, `derivation` and `renumber` entry types and the

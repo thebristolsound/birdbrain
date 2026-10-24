@@ -35,8 +35,8 @@ with `pnpm test <file>` and `pnpm typecheck`, `pnpm lint` and `pnpm lint:boundar
 | Slice | Scope | State |
 | --- | --- | --- |
 | S1 | Member hue tokens; `SyncState` widened; `lib/api/sharing.ts`; `memberModel.ts`; `MemberCodeChip`; seed extension; this plan | shipped |
-| S2 | `/cases/$caseId/settings` route and the Members tab with every row and whole-tab state | next |
-| S3 | Invite dialog with the QR code and the join request step; `qrcode-generator` 2.0.4 | |
+| S2 | `/cases/$caseId/settings` route and the Members tab with every row and whole-tab state | shipped |
+| S3 | Invite dialog with the QR code and the join request step; `qrcode-generator` 2.0.4 | next |
 | S4 | Join branch in the wizard, the sync pill component (unmounted), the shared Case card line | |
 | S5 | Attribution and exclusion on capture rows and the details panel | |
 | S6 | Ledger Actor column, chain selector and Timeline (blocking tier, small); screenshots; two-instance e2e; `pnpm preflight` | |
@@ -64,15 +64,36 @@ with `pnpm test <file>` and `pnpm typecheck`, `pnpm lint` and `pnpm lint:boundar
   Exhibit `MR-1` with reason "duplicate of DS-1". The Owner chain is now `member-add` x3,
   `exhibit`, `merge`, `exclude`, `member-revoke`, and still verifies with no findings.
 
-Next command for S2:
+### S2, shipped
+
+- `/cases/$caseId/settings` is declared in `src/renderer/routes/__root.tsx` under `caseRoute`
+  as `investigateRoute` is, with `CaseSettingsRoute` in `src/renderer/routes/cases/$caseId/
+  settings.tsx`. `CaseWorkspace` gives it the `overflow-hidden` outlet, so the page owns its
+  scroll. Nothing links to it: `tests/components/CaseSettingsEntryPoints.test.tsx` pins that
+  the Sidebar, the top bar and the command palette carry no entry, and
+  `tests/components/CaseSettingsRoute.test.tsx` pins the route ids and the outlet.
+- `src/renderer/components/sharing/CaseSettingsView.tsx` is the radix Tabs shell from
+  `SettingsView.tsx` with General and Export as disabled triggers and the nav footnote.
+- `MembersTab.tsx` switches between the three whole-tab states (`UnavailableCard`,
+  `NotSharedCard`, the relay-unreachable banner over the roster) and the shared view:
+  `NetworkNotice`, `IdentityCard`, `SyncCard`, `MembersList` with every row state and the
+  `NewerVersionStrip`, `RelayCard`, `RecoveryCard`, `RevokeDialog`. `memberModel.ts` gained
+  the tone class tables for the Connection cell and `refusalMessage`, the one-sentence inline
+  copy for the refusal codes the mock never draws.
+- The relay-unreachable banner is fed by `syncNow` only in this slice. `createInvite` and
+  `approveJoin` can also refuse `relay-unreachable`; S3 routes those through the same
+  `onRefusal` when it wires the Invite and Review actions, which render and open nothing yet.
+- The row clock is `useTimeTick(30_000)`, the repo's pattern for a render-time `Date.now()`.
+
+Next command for S3:
 
 ```
-cd /home/matt/worktrees/birdbrain/feat-1514 && git log --oneline -8
+cd /home/matt/worktrees/birdbrain/feat-1514 && pnpm add -E qrcode-generator@2.0.4
 ```
 
-then build the route (`src/renderer/routes/cases/$caseId/settings.tsx`, registered in
-`__root.tsx` under `caseRoute` as `investigateRoute` is) and the Members tab components under
-`src/renderer/components/sharing/`, importing from `memberModel.ts` and `lib/api/sharing.ts`.
+then build `InviteDialog.tsx`, `InviteQr.tsx` and `MemberCodeField.tsx` under
+`src/renderer/components/sharing/`, and replace the `onInvite` and `onReview` no-ops in
+`MembersTab.tsx` with the dialog's created and request steps.
 
 ## The widened sync state payload
 

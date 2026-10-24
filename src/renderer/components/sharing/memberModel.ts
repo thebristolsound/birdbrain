@@ -74,6 +74,33 @@ export function nextFreeHue(members: readonly CaseMember[]): MemberHue {
   return rankHue(nonOwnersByAddition(members).length + 1)
 }
 
+// The Connection cell's text, dot and pulse as literal classes, for the same
+// reason HUE_CLASSES is literal. `animate-pulse` stands in for the mock's
+// 1.4 s and 2 s pulses.
+export const CONNECTION_TONE_CLASSES: Record<ConnectionTone, string> = {
+  muted: 'text-text-muted',
+  secondary: 'text-text-secondary',
+  success: 'text-success-fg',
+  warning: 'text-warning-fg',
+  danger: 'text-danger-fg',
+  faint: 'text-text-faint'
+}
+
+export const DOT_TONE_CLASSES: Record<DotTone, string> = {
+  accent: 'bg-accent',
+  success: 'bg-success-fg',
+  warning: 'bg-warning-fg',
+  danger: 'bg-danger-fg',
+  offline: 'bg-border-strong',
+  transparent: 'bg-transparent'
+}
+
+export const PULSE_CLASSES: Record<Pulse, string> = {
+  none: '',
+  syncing: 'animate-pulse',
+  waiting: 'animate-pulse'
+}
+
 // --- Fingerprints and labels ------------------------------------------------
 
 // The first 32 hex characters of a key fingerprint in groups of four, as the
@@ -264,6 +291,32 @@ export const COPY = {
   detailsInMembers: 'Details in Members',
   clickToOpen: 'Click to open Members.'
 } as const
+
+// Refusals the Members tab shows inline, by the code main returns. The mock
+// draws none of these, so each is one plain sentence; any other code or a
+// code-less rejection shows main's own message.
+export function refusalMessage(code: SharingErrorCode | null, fallback: string): string {
+  switch (code) {
+    case 'operator-name-required':
+      return 'Set an Operator name in Settings first; invites carry it.'
+    case 'relay-url-invalid':
+      return 'That is not a URL this build can use as a relay.'
+    case 'owner-not-revocable':
+      return 'The Owner cannot be revoked.'
+    case 'already-revoked':
+      return 'This member is already revoked.'
+    case 'not-owner':
+      return 'Only the Owner of this Case can do that.'
+    case 'not-a-member':
+      return 'This installation is not a member of this Case.'
+    case 'not-shared':
+      return 'This Case is not shared.'
+    case 'sharing-unavailable':
+      return 'Sharing is not available on this computer.'
+    default:
+      return fallback
+  }
+}
 
 // The long notice on the Members tab. `egress` is the label from egressLabel.
 export function networkNoticeBody(egress: string): string {

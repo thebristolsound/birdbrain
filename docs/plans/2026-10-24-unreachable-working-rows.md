@@ -56,3 +56,22 @@ reviewers before opening the draft PR.
 Both final reviews found no remaining findings at `e94e657a`. Full verification passed at
 that head, and draft PR #1966 is open. The plan stays active while human review and merge
 remain pending. The plan status now uses the vocabulary required by `docs/README.md`.
+
+## Merged dependency baseline
+
+The maintainer merged PR #1968 as `eed80c8f`. This branch now includes that main
+commit. The merge preserves this fix's source and regression tests. The frozen
+dependency installation and dependency audit exit 0.
+
+1. [x] Merge the updated main branch without rewriting existing commits.
+2. [x] Install the frozen dependency lockfile.
+3. [x] Run the dependency audit.
+4. [ ] Run clean-head full verification.
+5. [ ] Refresh the PR's verification details.
+6. [ ] Push the updated branch for CI.
+
+Next command:
+
+```sh
+BIRDBRAIN_TEST_SYSTEM_SHARP=1 PKG_CONFIG_PATH=/usr/lib/pkgconfig mise x -- pnpm preflight
+```

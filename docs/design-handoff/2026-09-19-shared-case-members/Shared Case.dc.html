@@ -68,7 +68,7 @@
     <h1 style="margin:6px 0 8px;font-family:var(--font-display);font-size:22px;font-weight:800;letter-spacing:-0.02em">Shared Case members</h1>
     <p style="margin:0 0 14px;font-size:12px;line-height:1.6;color:var(--color-text-secondary);text-wrap:pretty">Seven surfaces from the members UI brief, drawn against the shipped Birdbrain UI tokens. Nothing here is implemented; the spec (<code style="font-family:var(--font-mono);font-size:11px">docs/specs/2026-09-19-collaborative-cases-design.md</code>) is the engineering contract. Designer calls the brief left open are settled below.</p>
     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 24px;font-size:11px;line-height:1.55;color:var(--color-text-secondary)">
-      <div><strong style="color:var(--color-text-primary)">1 · Identity.</strong> The Member Code is the identifier everywhere: a mono chip with a hue dot. Hue is a scanning aid, never the only signal. The local installation is always the accent hue; the other four members take fixed hues 1–4 in join order. Five members, five hues, no collisions.</div>
+      <div><strong style="color:var(--color-text-primary)">1 · Identity.</strong> The Member Code is the identifier everywhere: a mono chip with a hue dot. Hue is a scanning aid, never the only signal. The local installation is always the accent hue; the other four take hues 1–4 by their position in the Owner’s member-add sequence. A revoked member keeps its index, so a hue never moves; sorting the roster does not re-colour it.</div>
       <div><strong style="color:var(--color-text-primary)">2 · Sync indicator.</strong> Top bar, right cluster, beside the extension pill, in the same pill grammar but border-only when idle. A peer dropping mid-sync demotes the pill to “2 of 3 peers” with an amber dot; it never toasts. Click opens Case settings → Members.</div>
       <div><strong style="color:var(--color-text-primary)">3 · Invite form.</strong> The copyable string is primary: invites travel over Signal or email as text. The QR sits behind a disclosure for the same-room case.</div>
       <div><strong style="color:var(--color-text-primary)">4 · Join entry.</strong> A third card on the New Case wizard start step (Blank · Import · Join a shared Case) and a ⌘K action. No new route: join runs inside the wizard.</div>
@@ -76,7 +76,7 @@
   </div>
 
   <!-- ============ 1a Members tab, shared state ============ -->
-  <div style="display:flex;align-items:center;gap:8px;margin:0 0 10px"><a href="#1a" id="1a" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">1a</a><span style="font-size:12px;font-weight:600">Case settings → Members · shared, Owner’s view</span><span style="font-size:11px;color:var(--color-text-muted)">connected · syncing · offline · pending approval · revoked</span></div>
+  <div style="display:flex;align-items:center;gap:8px;margin:0 0 10px"><a href="#1a" id="1a" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">1a</a><span style="font-size:12px;font-weight:600">Case settings → Members · shared, Owner’s view</span><span style="font-size:11px;color:var(--color-text-muted)">connected · syncing · paused on a newer version · pending approval · revoked · network notice (Egress ≠ Direct)</span></div>
   <div style="width:1180px;border:1px solid var(--color-border);border-radius:8px;overflow:hidden;background:var(--color-canvas);box-shadow:var(--shadow-card)">
     <!-- top bar -->
     <header style="display:flex;height:48px;align-items:center;gap:12px;border-bottom:1px solid var(--color-border);background:var(--color-surface);padding:0 16px">
@@ -86,6 +86,7 @@
       <div style="flex:1;display:flex;justify-content:center;padding:0 8px"><div style="display:flex;width:100%;max-width:400px;align-items:center;gap:8px;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-canvas);padding:4px 10px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-search"></use></svg><span style="flex:1;font-size:12px;color:var(--color-text-faint)">Search this case…</span><span style="border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-surface);padding:2px 6px;font-family:var(--font-mono);font-size:10px;color:var(--color-text-faint)">Ctrl F</span></div></div>
       <div style="display:flex;align-items:center;gap:8px">
         <button title="Syncing with M. Brandt · 41 of 63 Exhibits. Click to open Members." style="display:flex;height:28px;align-items:center;gap:6px;border-radius:9999px;border:1px solid var(--color-border-strong);background:transparent;color:var(--color-text-secondary);padding:0 10px;font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font-body)">
+          <sc-if value="{{ egressNotice }}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--bb-warn)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-label="Network addresses visible to teammates and the relay"><use href="#i-alert"></use></svg></sc-if>
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="animation:bbspin 1.4s linear infinite"><use href="#i-refcw"></use></svg>
           <span>Syncing</span><span style="opacity:.6">·</span><span style="font-variant-numeric:tabular-nums">2 of 3 peers</span>
         </button>
@@ -101,8 +102,19 @@
           <div style="display:flex;align-items:center;gap:8px;border-radius:4px;padding:6px 10px;font-size:12px;font-weight:600;color:var(--color-accent);background:var(--color-accent-subtle)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-users"></use></svg>Members</div>
           <div style="display:flex;align-items:center;gap:8px;border-radius:4px;padding:6px 10px;font-size:12px;font-weight:500;color:color-mix(in srgb,var(--color-text-primary) 60%,transparent)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-archive"></use></svg>Export</div>
         </div>
+        <p style="margin:14px 10px 0;font-size:10px;line-height:1.5;color:var(--color-text-faint);text-wrap:pretty">First slice ships Members only. General and Export keep their current homes; the tabs are here so the screen reads as settings.</p>
       </nav>
       <div style="flex:1;min-width:0;overflow:auto;padding:0 0 0 18px;display:flex;flex-direction:column;gap:12px">
+        <!-- network notice: shown whenever Egress is not Direct -->
+        <sc-if value="{{ egressNotice }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;gap:10px;border-radius:4px;border:1px solid color-mix(in srgb,var(--bb-warn) 40%,transparent);background:color-mix(in srgb,var(--bb-warn) 8%,transparent);padding:10px 12px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--bb-warn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px"><use href="#i-alert"></use></svg>
+            <div style="min-width:0;flex:1">
+              <div style="font-size:12px;font-weight:500">Teammates and the relay can see this computer’s network addresses</div>
+              <p style="margin:3px 0 0;font-size:11px;line-height:1.55;color:var(--color-text-secondary);text-wrap:pretty">Egress is set to <span style="font-weight:500">{{ egressLabel }}</span>. That covers captures, not sync: connections to members leave this computer directly. While a connection is set up, a member’s installation receives every network address this computer has, on every interface. A system VPN does not hide them; its own addresses are on that list. The relay sees the address this computer reaches it from. No setting changes this. If these addresses must stay private, do not share this Case from this computer.</p>
+            </div>
+          </div>
+        </sc-if>
         <!-- identity + sync row -->
         <div style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:12px">
           <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:6px;padding:16px">
@@ -139,8 +151,9 @@
           </div>
           <div style="display:grid;grid-template-columns:56px minmax(160px,1fr) 88px 200px 150px 72px;align-items:center;padding:4px 16px;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-faint);border-bottom:1px solid var(--color-border)"><span>Code</span><span>Operator</span><span>Role</span><span>Connection</span><span>Last synced</span><span></span></div>
           <sc-for list="{{ members }}" as="m" hint-placeholder-count="5">
-            <div class="grp hovrow" style="display:grid;grid-template-columns:56px minmax(160px,1fr) 88px 200px 150px 72px;align-items:center;min-height:40px;padding:0 16px;border-bottom:1px solid var(--color-border);font-size:12px;opacity:{{ m.opacity }}">
-              <span><span style="display:inline-flex;align-items:center;gap:5px;height:18px;padding:0 6px;border-radius:4px;background:color-mix(in srgb,{{ m.hue }} 14%,transparent);border:1px solid color-mix(in srgb,{{ m.hue }} 30%,transparent);font-size:10px;font-weight:600;letter-spacing:.02em;color:var(--color-text-primary)"><span style="height:6px;width:6px;border-radius:9999px;background:{{ m.hue }}"></span>{{ m.code }}</span></span>
+            <div style="border-bottom:1px solid var(--color-border)">
+            <div class="grp hovrow" style="display:grid;grid-template-columns:56px minmax(160px,1fr) 88px 200px 150px 72px;align-items:center;min-height:40px;padding:0 16px;font-size:12px;opacity:{{ m.opacity }}">
+              <span style="display:flex;align-items:center"><span style="display:inline-flex;align-items:center;gap:5px;height:18px;padding:0 6px;border-radius:4px;background:color-mix(in srgb,{{ m.hue }} 14%,transparent);border:1px solid color-mix(in srgb,{{ m.hue }} 30%,transparent);font-size:10px;font-weight:600;letter-spacing:.02em;line-height:16px;color:var(--color-text-primary);box-sizing:border-box"><span style="height:6px;width:6px;border-radius:9999px;background:{{ m.hue }}"></span>{{ m.code }}</span></span>
               <span style="min-width:0;display:flex;align-items:baseline;gap:8px;overflow:hidden"><span style="font-weight:500;white-space:nowrap">{{ m.name }}</span><span style="font-family:var(--font-mono);font-size:10px;color:var(--color-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.fp }}</span></span>
               <span style="color:var(--color-text-muted)">{{ m.role }}</span>
               <span style="display:flex;align-items:center;gap:6px;color:{{ m.stateColor }}"><span style="height:6px;width:6px;border-radius:9999px;background:{{ m.dot }};animation:{{ m.dotAnim }}"></span>{{ m.state }}</span>
@@ -149,6 +162,13 @@
                 <sc-if value="{{ m.canRevoke }}" hint-placeholder-val="{{ false }}"><button class="grp-fade" style="height:24px;padding:0 8px;border-radius:4px;border:1px solid var(--color-border);background:transparent;color:var(--bb-alert);font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Revoke</button></sc-if>
                 <sc-if value="{{ m.pending }}" hint-placeholder-val="{{ false }}"><button style="height:24px;padding:0 8px;border-radius:4px;border:none;background:var(--color-accent);color:#fff;font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Review</button></sc-if>
               </span>
+            </div>
+            <sc-if value="{{ m.paused }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:0 16px 10px 72px;display:flex;gap:10px;align-items:flex-start;border-radius:4px;border:1px solid color-mix(in srgb,var(--bb-alert) 35%,transparent);background:color-mix(in srgb,var(--bb-alert) 8%,transparent);padding:8px 10px">
+                <div style="min-width:0;flex:1;font-size:11px;line-height:1.55;color:var(--color-text-secondary);text-wrap:pretty"><span style="font-weight:500;color:var(--color-text-primary)">Sync with S. Idris is paused.</span> Their Birdbrain is newer than this one and wrote an entry this version cannot read. Received up to <span style="font-weight:500">SI-3</span>; <span style="font-weight:500">SI-4</span> and later wait on their machine. Sync with them resumes after this computer updates. Other members are not affected.</div>
+                <button style="flex-shrink:0;height:24px;padding:0 8px;border-radius:4px;border:1px solid var(--color-border);background:var(--color-card);color:var(--color-text-secondary);font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font-body);white-space:nowrap">Check for updates</button>
+              </div>
+            </sc-if>
             </div>
           </sc-for>
           <p style="margin:0;padding:10px 16px 12px;font-size:11px;line-height:1.55;color:var(--color-text-faint);text-wrap:pretty">A member is an installation. One person on two machines appears twice, with two Member Codes. Staging Pool, Selectors, to-do items, and timestamp settings stay on each machine and are not synced.</p>
@@ -252,7 +272,7 @@
           <span style="color:var(--color-text-muted)">Operator name</span><span style="font-weight:500">J. Okafor</span>
           <span style="color:var(--color-text-muted)">Key fingerprint</span><span style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-secondary)">7c2f d418 9f3a 1c7e 44b2 08d1 e6a0 5b93</span>
           <span style="color:var(--color-text-muted)">Member Code</span>
-          <div><div style="display:flex;align-items:center;gap:8px"><input type="text" value="JO" style="width:64px;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-canvas);padding:6px 10px;font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--color-text-primary);outline:none;text-transform:uppercase"><span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--bb-ok)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"></use></svg>Unique in this Case</span></div><div style="margin-top:4px;font-size:11px;color:var(--color-text-faint)">Their Exhibits will read <span style="font-weight:500">JO-1</span>, <span style="font-weight:500">JO-2</span>… Cannot be changed after approval.</div></div>
+          <div><div style="display:flex;align-items:center;gap:8px"><input type="text" value="JO" style="width:64px;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-canvas);padding:6px 10px;font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--color-text-primary);outline:none;text-transform:uppercase"><span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--bb-ok)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"></use></svg>Unique in this Case</span></div><div style="margin-top:4px;font-size:11px;color:var(--color-text-faint)">Their Exhibits will read <span style="font-weight:500">JO-1</span>, <span style="font-weight:500">JO-2</span>… Up to three characters, A–Z and 0–9. Cannot be changed after approval.</div></div>
         </div>
         <div style="margin-top:12px;border-radius:4px;border:1px solid var(--color-border);padding:8px 10px;font-size:11px;line-height:1.55;color:var(--color-text-muted);text-wrap:pretty">The name is what they typed into their own settings. The fingerprint identifies their installation. If you want to be sure this is J. Okafor, ask them to read the fingerprint back over a channel you already trust.</div>
         <div style="margin-top:12px;display:flex;align-items:center;gap:8px;justify-content:flex-end">
@@ -340,12 +360,13 @@
   </div>
 
   <!-- ============ 1e Sync indicator ============ -->
-  <div style="display:flex;align-items:center;gap:8px;margin:36px 0 10px"><a href="#1e" id="1e" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">1e</a><span style="font-size:12px;font-weight:600">Sync indicator · top bar states</span><span style="font-size:11px;color:var(--color-text-muted)">hidden entirely on a single-member Case</span></div>
+  <div style="display:flex;align-items:center;gap:8px;margin:36px 0 10px"><a href="#1e" id="1e" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">1e</a><span style="font-size:12px;font-weight:600">Sync indicator · top bar states</span><span style="font-size:11px;color:var(--color-text-muted)">hidden entirely on a single-member Case · the amber glyph rides on any state while Egress is not Direct</span></div>
   <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">
-    <sc-for list="{{ syncStates }}" as="ss" hint-placeholder-count="5">
+    <sc-for list="{{ syncStates }}" as="ss" hint-placeholder-count="7">
       <div style="width:220px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;padding:12px">
         <div style="font-size:10px;color:var(--color-text-faint);margin-bottom:10px">{{ ss.name }}</div>
         <div style="display:inline-flex;height:28px;align-items:center;gap:6px;border-radius:9999px;border:1px solid {{ ss.border }};background:{{ ss.bg }};color:{{ ss.color }};padding:0 10px;font-size:11px;font-weight:500">
+          <sc-if value="{{ ss.warn }}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--bb-warn)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-alert"></use></svg></sc-if>
           <sc-if value="{{ ss.spin }}" hint-placeholder-val="{{ false }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="animation:bbspin 1.4s linear infinite"><use href="#i-refcw"></use></svg></sc-if>
           <sc-if value="{{ ss.dot }}" hint-placeholder-val="{{ true }}"><span style="height:6px;width:6px;border-radius:9999px;background:{{ ss.dot }}"></span></sc-if>
           <span>{{ ss.a }}</span><span style="opacity:.6">·</span><span style="font-variant-numeric:tabular-nums">{{ ss.b }}</span>
@@ -353,6 +374,16 @@
         <div style="margin-top:8px;font-size:11px;line-height:1.5;color:var(--color-text-muted);text-wrap:pretty">{{ ss.note }}</div>
       </div>
     </sc-for>
+    <div style="width:452px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;padding:12px">
+      <div style="font-size:10px;color:var(--color-text-faint);margin-bottom:10px">Network notice · hover or focus the glyph</div>
+      <div style="display:inline-flex;height:28px;align-items:center;gap:6px;border-radius:9999px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);padding:0 10px;font-size:11px;font-weight:500"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--bb-warn)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-alert"></use></svg><span style="height:6px;width:6px;border-radius:9999px;background:var(--bb-ok)"></span><span>Synced</span><span style="opacity:.6">·</span><span>3 peers</span></div>
+      <div style="margin-top:8px;width:300px;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-elevated);box-shadow:var(--shadow-overlay);padding:10px 12px">
+        <div style="font-size:12px;font-weight:500;line-height:1.4">Teammates and the relay can see this computer’s network addresses</div>
+        <p style="margin:4px 0 0;font-size:11px;line-height:1.55;color:var(--color-text-secondary);text-wrap:pretty">Egress is set to {{ egressLabel }}; sync does not use it. During connection setup a member’s installation receives every address on this computer, including a system VPN’s own. The relay sees the address this computer reaches it from.</p>
+        <div style="margin-top:6px;font-size:11px;color:var(--color-accent)">Details in Members</div>
+      </div>
+      <div style="margin-top:8px;font-size:11px;line-height:1.5;color:var(--color-text-muted);text-wrap:pretty">Same popover chrome as the tag author list. The glyph stays while Egress is not Direct; it never replaces the state dot or spinner.</div>
+    </div>
   </div>
 
   <!-- ============ 1f Attribution ============ -->
@@ -373,7 +404,7 @@
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#i-star"></use></svg>
               </div>
               <div style="margin-top:3px;display:flex;align-items:center;gap:6px;min-width:0"><span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--color-text-muted)">{{ c.host }}</span><span style="flex-shrink:0;font-size:10px;color:var(--color-text-faint)">{{ c.ago }}</span></div>
-              <sc-if value="{{ c.excluded }}" hint-placeholder-val="{{ false }}"><div style="margin-top:6px;display:inline-flex;align-items:center;gap:4px;border-radius:6px;border:1px solid color-mix(in srgb,var(--bb-warn) 45%,transparent);padding:1px 6px;font-size:10px;font-weight:500;color:var(--bb-warn)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-fileoff"></use></svg>Excluded from export</div></sc-if>
+              <sc-if value="{{ c.excluded }}" hint-placeholder-val="{{ false }}"><div style="margin-top:6px;display:inline-flex;align-items:center;gap:4px;border-radius:6px;border:1px solid var(--color-border-strong);padding:1px 6px;font-size:10px;font-weight:500;color:var(--color-text-muted)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-fileoff"></use></svg>Excluded from export</div></sc-if>
             </div>
           </div>
         </sc-for>
@@ -388,9 +419,9 @@
     <div style="width:520px;display:flex;flex-direction:column;gap:16px">
       <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;padding:14px 16px">
         <div style="font-size:10px;color:var(--color-text-faint);margin-bottom:10px">Capture detail header</div>
-        <div style="display:flex;align-items:center;gap:8px"><span style="display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:4px;background:color-mix(in srgb,var(--m1) 14%,transparent);border:1px solid color-mix(in srgb,var(--m1) 30%,transparent);font-size:11px;font-weight:600;letter-spacing:.02em"><span style="height:6px;width:6px;border-radius:9999px;background:var(--m1)"></span>NK-12</span><span style="font-family:var(--font-display);font-size:14px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Nightjar panel — admin login</span><span style="display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid rgba(16,185,129,.2);background:rgba(16,185,129,.1);padding:2px 8px;font-size:10px;font-weight:500;color:var(--bb-ok)">Chain verified</span></div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:4px;background:color-mix(in srgb,var(--m1) 14%,transparent);border:1px solid color-mix(in srgb,var(--m1) 30%,transparent);font-size:11px;font-weight:600;letter-spacing:.02em"><span style="height:6px;width:6px;border-radius:9999px;background:var(--m1)"></span>NK-12</span><span style="font-family:var(--font-display);font-size:14px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Nightjar panel — admin login</span><span style="display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid rgba(16,185,129,.2);background:rgba(16,185,129,.1);padding:2px 8px;font-size:10px;font-weight:500;color:var(--bb-ok)">Verified</span></div>
         <div style="margin-top:6px;font-size:11px;color:var(--color-text-muted)">Captured by <span style="color:var(--color-text-secondary);font-weight:500">N. Kowalski</span> (NK, their machine) · 2026-07-29 09:41:55 · received by you 2026-07-29 10:02 in <span style="font-weight:500">merge #0027</span></div>
-        <div style="margin-top:10px;display:flex;gap:10px;border-radius:4px;border:1px solid color-mix(in srgb,var(--bb-warn) 40%,transparent);background:color-mix(in srgb,var(--bb-warn) 8%,transparent);padding:8px 10px;font-size:11px;line-height:1.5"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--bb-warn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><use href="#i-fileoff"></use></svg><div><span style="font-weight:500;color:var(--color-text-primary)">Excluded from export</span> by A. Renner (Owner) on 2026-08-02 11:20 · “duplicate of NK-11”. The Exhibit stays in the Case and in every member’s copy; exports list it as excluded. <span style="color:var(--color-text-muted)">exclude #0029</span></div></div>
+        <div style="margin-top:10px;display:flex;gap:10px;border-radius:4px;border:1px solid var(--color-border);background:var(--color-elevated);padding:8px 10px;font-size:11px;line-height:1.5"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><use href="#i-fileoff"></use></svg><div><span style="font-weight:500;color:var(--color-text-primary)">Excluded from export</span> by A. Renner (Owner) on 2026-08-02 11:20 · “duplicate of NK-11”. The Exhibit stays in the Case and in every member’s copy; exports list it as excluded. Integrity is unaffected: the entry, bytes, and hash still verify. <span style="color:var(--color-text-muted)">exclude #0029</span></div></div>
       </div>
       <div style="display:flex;gap:16px">
         <div style="flex:1;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;padding:14px 16px">
@@ -435,12 +466,22 @@
   </div>
 
   <!-- ============ 1h Manifest ledger ============ -->
-  <div style="display:flex;align-items:center;gap:8px;margin:36px 0 10px"><a href="#1h" id="1h" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">1h</a><span style="font-size:12px;font-weight:600">Manifest ledger · four new entry kinds</span><span style="font-size:11px;color:var(--color-text-muted)">Data screen, same grid; an Actor column is added</span></div>
+  <div style="display:flex;align-items:center;gap:8px;margin:36px 0 10px"><a href="#1h" id="1h" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">1h</a><span style="font-size:12px;font-weight:600">Manifest ledger · four new entry kinds</span><span style="font-size:11px;color:var(--color-text-muted)">Data screen, same grid; one chain at a time, Seq stays the chain index</span></div>
   <div style="width:1180px;border-radius:6px;border:1px solid var(--color-border);overflow:hidden;background:var(--color-card)">
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--color-border)">
+      <span style="font-size:11px;color:var(--color-text-muted)">Chain</span>
+      <div style="display:flex;gap:4px">
+        <sc-for list="{{ chains }}" as="ch" hint-placeholder-count="5">
+          <button onClick="{{ ch.pick }}" style="display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;border-radius:4px;border:1px solid {{ ch.border }};background:{{ ch.bg }};font-size:11px;font-weight:600;color:var(--color-text-primary);cursor:pointer;font-family:var(--font-body)"><span style="height:6px;width:6px;border-radius:9999px;background:{{ ch.hue }}"></span>{{ ch.code }}<span style="font-weight:400;color:var(--color-text-faint);font-variant-numeric:tabular-nums">{{ ch.count }}</span></button>
+        </sc-for>
+      </div>
+      <span style="flex:1"></span>
+      <span style="font-size:11px;color:var(--color-text-faint)">{{ chainNote }}</span>
+    </div>
     <div style="display:grid;grid-template-columns:52px 148px 120px 72px minmax(200px,1fr) 128px 128px;align-items:center;padding:6px 12px;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-faint);border-bottom:1px solid var(--color-border)"><span>Seq</span><span>Time</span><span>Event</span><span>Actor</span><span>Target</span><span>Entry hash</span><span>Previous</span></div>
     <sc-for list="{{ ledger }}" as="e" hint-placeholder-count="8">
       <div class="hovrow" style="display:grid;grid-template-columns:52px 148px 120px 72px minmax(200px,1fr) 128px 128px;align-items:center;min-height:30px;padding:0 12px;border-bottom:1px solid var(--color-border);font-size:11px;background:{{ e.bg }}">
-        <span style="color:var(--color-text-faint);font-variant-numeric:tabular-nums">{{ e.seq }}</span>
+        <span style="color:var(--color-text-faint);font-variant-numeric:tabular-nums;white-space:nowrap">{{ e.seqLabel }}</span>
         <span style="color:var(--color-text-muted);font-variant-numeric:tabular-nums">{{ e.time }}</span>
         <span style="font-family:var(--font-mono);color:{{ e.evColor }};font-weight:{{ e.evWeight }}">{{ e.event }}</span>
         <span><span style="display:inline-flex;align-items:center;gap:4px;height:16px;padding:0 5px;border-radius:3px;background:color-mix(in srgb,{{ e.hue }} 14%,transparent);border:1px solid color-mix(in srgb,{{ e.hue }} 30%,transparent);font-size:10px;font-weight:600;letter-spacing:.02em;color:var(--color-text-primary)"><span style="height:5px;width:5px;border-radius:9999px;background:{{ e.hue }}"></span>{{ e.actor }}</span></span>
@@ -449,13 +490,13 @@
         <span style="font-family:var(--font-mono);color:var(--color-text-faint)">{{ e.prev }}</span>
       </div>
     </sc-for>
-    <p style="margin:0;padding:10px 12px;font-size:11px;line-height:1.6;color:var(--color-text-faint);text-wrap:pretty">Each member’s chain is shown in its own sequence; this view interleaves them by time. A <span style="font-weight:500">merge</span> entry says which members’ chains advanced and by how many entries. Verification shows each chain was not edited without that member’s key and that every merge names a chain state that exists. It does not show who sat at a member’s machine.</p>
+    <p style="margin:0;padding:10px 12px;font-size:11px;line-height:1.6;color:var(--color-text-faint);text-wrap:pretty">Each member’s chain is its own sequence and is verified on its own; Seq is the index in that chain. The Timeline view interleaves chains by the time each writer asserted, which verification does not check. A <span style="font-weight:500">merge</span> entry says which members’ chains advanced and by how many entries. Verification shows each chain was not edited without that member’s key and that every merge names a chain state that exists. It does not show who sat at a member’s machine.</p>
   </div>
 </section>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark' | 'light'&quot;,&quot;section&quot;:&quot;Appearance&quot;},&quot;showRevoked&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Members list&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark' | 'light'&quot;,&quot;section&quot;:&quot;Appearance&quot;},&quot;showRevoked&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Members list&quot;},&quot;egress&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;direct&quot;,&quot;proxy&quot;,&quot;tor&quot;],&quot;default&quot;:&quot;proxy&quot;,&quot;tsType&quot;:&quot;'direct' | 'proxy' | 'tor'&quot;,&quot;section&quot;:&quot;Network&quot;}}">
 class Component extends DCLogic {
-  state = { fpOpen: false, qrOpen: true }
+  state = { fpOpen: false, qrOpen: true, chain: 'AR' }
   componentDidMount() { this.applyTheme() }
   componentDidUpdate() { this.applyTheme() }
   applyTheme() {
@@ -485,7 +526,7 @@ class Component extends DCLogic {
       { code: 'AR', name: 'A. Renner', fp: '9f3a 1c7e …', role: 'Owner · you', state: 'This machine', stateColor: 'var(--color-text-muted)', dot: 'var(--color-accent)', dotAnim: 'none', synced: '—', hue: 'var(--color-accent)', opacity: '1', canRevoke: false, pending: false },
       { code: 'NK', name: 'N. Kowalski', fp: '2b91 e0c4 …', role: 'Member', state: 'Connected · direct', stateColor: 'var(--bb-ok)', dot: 'var(--bb-ok)', dotAnim: 'none', synced: '2 min ago', hue: 'var(--m1)', opacity: '1', canRevoke: true, pending: false },
       { code: 'MB', name: 'M. Brandt', fp: 'c47d 09aa …', role: 'Member', state: 'Syncing · 41 of 63 via relay', stateColor: 'var(--color-text-secondary)', dot: 'var(--color-accent)', dotAnim: 'bbpulse 1.4s ease-in-out infinite', synced: 'in progress', hue: 'var(--m2)', opacity: '1', canRevoke: true, pending: false },
-      { code: 'SI', name: 'S. Idris', fp: '5e10 f8b2 …', role: 'Member', state: 'Offline · last seen yesterday 21:14', stateColor: 'var(--color-text-muted)', dot: 'var(--color-border-strong)', dotAnim: 'none', synced: 'yesterday 21:14', hue: 'var(--m3)', opacity: '1', canRevoke: true, pending: false },
+      { code: 'SI', name: 'S. Idris', fp: '5e10 f8b2 …', role: 'Member', state: 'Paused · newer Birdbrain', stateColor: 'var(--bb-alert)', dot: 'var(--bb-alert)', dotAnim: 'none', synced: 'today 13:52 · up to SI-3', hue: 'var(--m3)', opacity: '1', canRevoke: true, pending: false, paused: true },
       { code: 'JO?', name: 'J. Okafor', fp: '7c2f d418 …', role: '—', state: 'Pending your approval', stateColor: 'var(--bb-warn)', dot: 'var(--bb-warn)', dotAnim: 'bbpulse 2s ease-in-out infinite', synced: '—', hue: 'var(--m4)', opacity: '1', canRevoke: false, pending: true },
       { code: 'TV', name: 'T. Vance', fp: 'a3d0 61ef …', role: 'Member', state: 'Revoked 2026-09-02 · keeps their copy', stateColor: 'var(--color-text-faint)', dot: 'transparent', dotAnim: 'none', synced: '2026-09-02 08:11', hue: 'var(--color-text-faint)', opacity: '.55', canRevoke: false, pending: false }
     ].filter(m => showAll || m.code !== 'TV')
@@ -501,7 +542,9 @@ class Component extends DCLogic {
       { name: 'Syncing', a: 'Syncing', b: '41 of 63', border: 'var(--color-border-strong)', bg: 'transparent', color: 'var(--color-text-secondary)', dot: '', spin: true, note: 'Spinner replaces the dot. Count is the current transfer.' },
       { name: 'Peer offline mid-sync', a: 'Syncing', b: '2 of 3 peers', border: 'var(--color-border-strong)', bg: 'transparent', color: 'var(--color-text-secondary)', dot: 'var(--bb-warn)', spin: false, note: 'Amber dot, no toast. The pill keeps counting peers; the dropped member shows offline in the list.' },
       { name: 'Idle · a peer offline', a: 'Synced', b: '2 of 3 peers', border: 'var(--color-border)', bg: 'transparent', color: 'var(--color-text-muted)', dot: 'var(--bb-warn)', spin: false, note: 'Same as idle but the count is honest about who is reachable.' },
-      { name: 'Error · relay unreachable', a: 'Relay down', b: '1 peer', border: 'color-mix(in srgb,var(--bb-alert) 35%,transparent)', bg: 'color-mix(in srgb,var(--bb-alert) 8%,transparent)', color: 'var(--bb-alert)', dot: 'var(--bb-alert)', spin: false, note: 'The one state with a tinted fill. Direct peers still count.' }
+      { name: 'Error · any sync failure', a: 'Sync failed', b: 'relay', border: 'color-mix(in srgb,var(--bb-alert) 35%,transparent)', bg: 'color-mix(in srgb,var(--bb-alert) 8%,transparent)', color: 'var(--bb-alert)', dot: 'var(--bb-alert)', spin: false, note: 'Tinted fill marks every error. Second cell names the failure kind: relay, peer, rejected entry, hash mismatch, or newer version. Direct peers still count.' },
+      { name: 'Error · a member on a newer version', a: 'Sync paused', b: 'newer version', border: 'color-mix(in srgb,var(--bb-alert) 35%,transparent)', bg: 'color-mix(in srgb,var(--bb-alert) 8%,transparent)', color: 'var(--bb-alert)', dot: 'var(--bb-alert)', spin: false, note: 'Same error chrome. One member’s Birdbrain wrote an entry this version cannot read; sync with them stops at that entry and resumes after this computer updates. Other members keep syncing. Members names who and the last entry received.' },
+      { name: 'Any state · Egress is not Direct', a: 'Syncing', b: '41 of 63', border: 'var(--color-border-strong)', bg: 'transparent', color: 'var(--color-text-secondary)', dot: '', spin: true, warn: true, note: 'Amber glyph leads the pill for as long as Egress is Proxy or anything else but Direct. Hover shows the notice (right); click still opens Members, where the full banner is.' }
     ]
     const caps = [
       { num: 'AR-7', title: 'Meridian Trust — login', host: 'meridian-trust-secure.com', ago: '3d', hue: 'var(--color-accent)', who: 'Captured by you (AR)', bg: 'var(--color-accent-subtle)', border: 'color-mix(in srgb,var(--color-accent) 40%,transparent)', opacity: '1', excluded: false },
@@ -520,9 +563,16 @@ class Component extends DCLogic {
       { seq: '0029', time: '2026-08-02 11:20:40', event: 'exclude', actor: 'AR', hue: 'var(--color-accent)', target: 'NK-12 · author NK · “duplicate of NK-11”', s: 87, hi: true },
       { seq: '0030', time: '2026-09-02 08:11:19', event: 'member-revoke', actor: 'AR', hue: 'var(--color-accent)', target: 'TV · T. Vance · syncing stopped, replica retained', s: 88, hi: true },
       { seq: '0031', time: '2026-09-19 14:02:11', event: 'merge', actor: 'AR', hue: 'var(--color-accent)', target: 'NK chain → #0018 · 4 entries received', s: 89, hi: true }
-    ].map(e => ({ ...e, hash: sh(e.s), prev: sh(e.s - 1), evColor: e.hi ? 'var(--color-text-primary)' : 'var(--color-text-muted)', evWeight: e.hi ? '600' : '400', bg: e.hi ? 'color-mix(in srgb,var(--color-accent) 5%,transparent)' : 'transparent' }))
+    ].filter(e => s.chain === 'ALL' || e.actor === s.chain)
+      .sort((a, b) => s.chain === 'ALL' ? a.time.localeCompare(b.time) : a.seq.localeCompare(b.seq))
+      .map(e => ({ ...e, seqLabel: s.chain === 'ALL' ? e.actor + '·' + e.seq : e.seq, hash: sh(e.s), prev: sh(e.s - 1), evColor: e.hi ? 'var(--color-text-primary)' : 'var(--color-text-muted)', evWeight: e.hi ? '600' : '400', bg: e.hi ? 'color-mix(in srgb,var(--color-accent) 5%,transparent)' : 'transparent' }))
+    const chainDefs = [['AR', 'var(--color-accent)', 31], ['NK', 'var(--m1)', 18], ['MB', 'var(--m2)', 12], ['SI', 'var(--m3)', 3], ['ALL', 'var(--color-text-faint)', '']]
+    const chains = chainDefs.map(([code, hue, count]) => ({ code: code === 'ALL' ? 'Timeline' : code, hue, count, border: s.chain === code ? 'var(--color-accent)' : 'var(--color-border)', bg: s.chain === code ? 'var(--color-accent-subtle)' : 'transparent', pick: () => this.setState({ chain: code }) }))
+    const chainNote = s.chain === 'ALL' ? 'Cross-chain order is by asserted time, not verified' : 'Verified chain · Seq is the entry index'
+    const egress = this.props.egress ?? 'proxy'
     return {
-      members, failures, syncStates, caps, ledger,
+      members, failures, syncStates, caps, ledger, chains, chainNote,
+      egressNotice: egress !== 'direct', egressLabel: egress.charAt(0).toUpperCase() + egress.slice(1),
       fpText: s.fpOpen ? fpFull : fpFull.slice(0, 9) + ' …',
       fpRot: s.fpOpen ? 'rotate(180deg)' : 'none',
       toggleFp: () => this.setState({ fpOpen: !s.fpOpen }),

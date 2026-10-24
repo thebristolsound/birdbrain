@@ -18,6 +18,182 @@ join) are stated in the mock header. Tweaks: `theme`, `showRevoked`. Member hues
 `--color-accent`. Deliberately not drawn: read-only role, per-Exhibit sharing,
 owner transfer, at-rest encryption (brief "Not in scope").
 
+## Session 2026-10-23 — Shared Case: network notice + newer-version pause
+
+Upstream reported receiving only the 18:22 bundle; the 19:41 revision (chain
+selector, "Verified", Timeline as secondary view) was in the project but never
+delivered. Re-sent with two additions decided 10 Oct, applied to
+`Shared Case.dc.html` and `design_handoff_shared_case/`:
+
+- Network notice whenever Egress ≠ Direct: amber banner at the top of the
+  Members tab and an amber glyph leading the sync pill (hover popover). Copy
+  states that a member's installation receives every interface address on the
+  machine during connection setup, a system VPN's own included, and that the
+  relay sees the connecting address. No dismiss. Tweak `egress`
+  (direct / proxy / tor, default proxy so the mock shows it).
+- Sync error for a member on a newer app version: pill "Sync paused · newer
+  version" in the error chrome; Members row "Paused · newer Birdbrain" with a
+  strip naming the last entry received, the first waiting, and that sync
+  resumes after this machine updates. S. Idris carries it in 1a; the offline
+  row state stays drawn in 1b.
+
+## Session 2026-10-15 — GitHub sync (tree 0c5ee8fc148d)
+
+- Light tokens from upstream `globals.css` (the merged Light Contrast patch) added as a
+  helmet override in `Birdbrain.dc.html`; the bundled DS stylesheet is stale.
+- Top-bar search rebuilt to `SearchBar.tsx`: Exhibit Number chip + 12-char Content Hash on
+  every row, field-hit groups (Link target, Image alt text, mail headers) that open the
+  Links or Text tab, Notes group. Seeded `this.fieldIndex` with ten records.
+- Upstream returned the Launched Browser feasibility assessment (Modify on S1, S2, S3, S6,
+  states 5/9/10/11, tokens, Exhibit Numbers). Revision of `Launched Browser.dc.html` is
+  the next directed turn; details in `github.md`.
+
+## Session 2026-10-14 — Notes screen, backlink map hardening
+
+- Backlink map: node-overlap fixes, reciprocal links deduped, reference edges at 3.25:1,
+  duplicate node names middle-truncated.
+- Selection rail removed from single-select captures (kept for multi-select); Source /
+  Captured rows in the right panel share the 20px left edge with Tags and Notes.
+- Open: fold existing extension screens into the sweep, extend the Browser sim, or skip
+  extension work; then the sweep pass and editor rail / map interaction polish.
+
+## Session 2026-10-06 — Investigate: feasibility-assessment revisions
+
+Applied in `Birdbrain.dc.html` only (reference drawings in `Case
+Investigation.dc.html` unchanged). Every Modify in the 2026-10-04 assessment
+is addressed except where noted.
+
+- **S1.** "Find material for this claim" now lives in the Notes editor: select
+  a passage → selection bar → pick one or two Subjects → "Record Joint and
+  set up a run". It records a proposed Joint titled with the quoted claim,
+  `proposed by you · from Note N-n`, then opens the setup card showing that
+  Joint row. The old inquiry-prefill shortcuts route to Notes instead.
+  Screening cap: "Pairs compared without screening" number field + Raise in
+  the AI-layer setup row; the header count reads from it.
+- **S2.** Header row 2 carries "Followed: 2 Joints out from each starting
+  Subject".
+- **S3.** Map layout is now computed (ring model, see below). `role="group"`
+  replaces `role="application"`; keyboard handling unchanged, the list stays
+  the screen-reader equivalent. Shared Case: member cards appear in the
+  detail pane for any decided Joint; an undecided member shows "Not decided ·
+  As MB sees it: 'Accepted by NK · you have not decided'". List rows keep
+  the status word only (user's call).
+- **S4.** Passage group: "Footer repeated in 9 of 62 Exhibits · ceiling 5".
+- **S5.** Inspector adds "Body not acquired · headers only" (E-40),
+  "unattested" chip when the Manifest never hashed the stored text (E-31),
+  an identifier-frequency chip ("3 Exhibits", total in tooltip) on link
+  targets and mail headers, Dismiss beside Take suggestion, and in a Shared
+  Case two stacked Source Class rows (NK / MB) with "Use this" and the
+  unclassified / AI-origin rule (E-38).
+- **S6.** New Gap group "No longer supported": accepted Joints that lost
+  their last available support or one side (derived; withhold E-23 to see
+  it).
+- **S7.** Breakpoint measured on the view (ResizeObserver on the Investigate
+  root), tabs below 1140px.
+- **S8 / 14 / 17.** Disclosure copy uses decision 21's limit (no "never
+  withheld material"). Review-before-sending adds the hash-check line and,
+  in a Shared Case, "1 member not connected (MB, last synced 2 Oct)". A local
+  model now has its own shorter disclosure before it turns on.
+- **States 6 / 10.** Per ADR-0042 (2026-10-06): withholding, clearing a flag,
+  Source Class, copy marks, own identifiers (Add, Remove, Mark as my own),
+  span placement, and any decision on a Joint the shown run did not create
+  mark it out of date. Exempt: decisions on the shown run's own proposals.
+  Joints carry `run` (the run that created them; seeded j1–j4 = run 1, j5 and
+  Note/placement Joints = none), so Restore on the N-3 Joint, or any decision
+  after run 2, shows the banner. The earlier G12 reading
+  ("withholding no longer stales the run") is withdrawn.
+- **State 13.** "Ollama · llama3.1" → "Local model (placeholder)" everywhere.
+- **States 15 / 16.** Reachable from the setup card via prototype-only
+  "Simulate: Case changed" / "Simulate: AI stopped" buttons. Banners carry
+  the Shared Case sync trigger and the hosted-provider line.
+- **Tokens.** `--bb-*` replaced by `--color-success-fg` / `--color-warning-fg`
+  / `--color-danger-fg` (shimmed in the helmet with the repo's light values
+  `#047857 / #92400e / #b91c1c`; dark unchanged) and `--color-accent-subtle`.
+  Investigate type snapped to 10 / 11 / 12 / 14 / 18; chips 4px, overlays 6px.
+
+### Joint map layout rules (for the pure model module)
+
+1. Starting Subjects share the centre: one sits at it; two or more sit on a
+   small inner ring, clockwise from the top in the order given.
+2. Each hop out by accepted or proposed Joints is one ring further out. A
+   Subject sits at the mean angle of the Subjects it hangs from (all
+   neighbours one ring in); siblings that would collide spread
+   clockwise by a fixed separation. A second-hop Subject sits one step
+   clockwise of its parents.
+3. Subjects with no Joint to the starting set sit on the outermost ring,
+   evenly spaced and offset from the ring inside.
+4. A single-Subject Joint's tab hangs under its Subject; several stack in
+   Joint-list order.
+5. Deterministic: same Case state, same map. Adding a Subject adds one
+   position; existing Subjects move only within their ring.
+
+6. If a wanted position would overlap a placed Subject or tab, or an edge
+   from it would cross one, the Subject steps along its ring (±20°, ±40°…)
+   to the first clear spot. Edge labels start at the midpoint and slide
+   along the edge to the first spot clear of every box.
+
+Map is 360px tall; rings in the 500-wide design space: inner 110×62,
+hop 1 185×152, outer 200×160. Edge labels sit at the midpoint, to the right
+of a steep edge and above a flat one. Fold threshold stays 8.
+
+### Still open
+
+G3 run history, G7 once-per-run lookup approval. Reference drawings not
+redrawn for the new states.
+
+## Session 2026-10-04 — Investigate (Joint map), turn 3
+
+Carried the turn-2 states from `Case Investigation.dc.html` into the live
+Investigate screen, plus map behaviour. Reached by real interaction where the
+Case allows it; otherwise by tweak.
+
+- *Map*: fits the pane width (x-scaled from the 500px design space, measured
+  by ResizeObserver); hovering a Subject dims everything not adjacent; the map
+  is focusable (arrows step through Joints in list order, Enter opens the first
+  Exhibit span, Escape clears the path); above 8 Subjects, those with no Joint
+  fold into an "N more Subjects" chip (tweak `manySubjects` adds six);
+  clicking an edge label opens its first span.
+- *Reach*: a run now shows only Joints connected to its starting Subjects, so
+  starting from Rowan Pike alone reaches "The run proposed no Joints". A case
+  created in New Case has 0 captures → Investigate shows "Nothing to read yet".
+- *Contested* (tweak `sharedCase`): j1 carries MB's rejection; your own
+  accept/reject against it derives Contested (double rule, both member cards,
+  Gaps → Contested Joints, "withheld by you and MB").
+- *cannot-check / missing*: E-44 poster alt text (unreviewed on the proposed
+  Joint, no reading, cannot be added as support); E-27 PDF missing (No longer
+  counted, inspector explains).
+- *AI*: Settings → AI analysis (installation switch, providers, per-Case
+  toggles; turning on Anthropic asks first). Running with Anthropic on opens
+  the review-before-sending dialog; cancel copy says text cannot be recalled.
+  `aiLayer` tweak only seeds the switch.
+- *Own identifiers*: Settings tab beside Personas; "Mark as my own" in the
+  source inspector adds there.
+- *Lookup*: "Find the original…" in the source trail → Direct-connection
+  warning (once per Exhibit, or stopped) → consent prompt → candidate row →
+  "Capture as a new Exhibit" (E-61…, marks the run basis stale).
+
+### Brief feedback applied (2026-10-04, same session)
+
+Decided gaps: G9 two-sided Accept needs a reviewed available span on each
+side (spans carry `about: a|b|both`; the proposed Sato–Ferryman Joint shows
+Accept unavailable with the side named; returning E-17 on the accepted
+Calloway–Sato Joint demonstrates the lost-side state: stays accepted, dotted
+notice, out of paths, weak mark only via the one-source rule). G11 a pair
+with a rejected or proposed direct Joint shows that Joint beside the path
+through other Subjects. G12 (superseded 2026-10-06: withholding does put the
+run out of date; see the session above). G8 shared + hosted: run proceeds, names
+MB's last sync. Confirmed items kept. New surface: same-name choosing lives
+in Subject detail (reachable from a Subject with no Joints): "About this
+Rowan Pike" starts a proposed single-Subject Joint citing the span, the other
+candidate shows where it went, "About neither" parks it, all undoable; the
+Gaps entry tracks the choice. Small things: the Joint list is always
+complete (map rows marked "not on this run's map", fold chip points to the
+list); history and `by` carry rule/model versions; Reject takes an optional
+reason; Source Class has an optional reason shown beside the class
+everywhere; with the AI layer on, the results header carries the provider's
+candidate claims and search terms, labelled as its wording, with "Draft as
+inquiry". Matched-fact Reject/Restore now work and write history.
+
 ## Where things stand
 
 ### Done this session

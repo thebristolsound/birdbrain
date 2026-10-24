@@ -64,6 +64,19 @@ describe('RevokeDialog', () => {
     ).toBeTruthy()
   })
 
+  it('uses the remaining citations after earlier Exhibits are deleted', async () => {
+    rows = [exhibitRow('SI-2', 2), exhibitRow('SI-3', 3)]
+    renderDialog()
+    await screen.findByText(/Their 2 Exhibits \(SI-2–SI-3\)/)
+    expect(screen.queryByText(/SI-1/)).toBeNull()
+  })
+
+  it('does not invent a continuous range across missing Exhibits', async () => {
+    rows = [exhibitRow('SI-1', 1), exhibitRow('SI-3', 3)]
+    renderDialog()
+    await screen.findByText(/Their 2 Exhibits, notes, and tags/)
+  })
+
   it('drops the Exhibit clause when the member has none', async () => {
     rows = [exhibitRow('NK-1', 1)]
     renderDialog()

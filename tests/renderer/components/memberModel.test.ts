@@ -282,6 +282,20 @@ describe('fingerprints, roles and labels', () => {
 })
 
 describe('memberRows', () => {
+  it('shows revocation for this installation before its local connection state', () => {
+    const rows = memberRows({
+      members: members({ installationId: 'inst-tv', isOwner: false }),
+      syncState: sync(),
+      nowMs: NOW
+    })
+    expect(rows.find((row) => row.installationId === 'inst-tv')).toMatchObject({
+      dimmed: true,
+      hue: 'faint',
+      action: null,
+      connection: { label: 'Revoked · keeps their copy', tone: 'faint', dot: 'transparent' }
+    })
+  })
+
   it('draws the Owner’s view: self, connected, syncing, offline, paused, pending and revoked', () => {
     const state = sync({
       phase: 'error',
@@ -758,14 +772,12 @@ describe('copy', () => {
     expect(capturedBy(null, 'AR')).toBe('Captured by you (AR)')
     expect(capturedBy('N. Kowalski', 'NK')).toBe('Captured by N. Kowalski (NK)')
     expect(revokeTitle('S. Idris')).toBe('Revoke S. Idris?')
-    expect(revokeBody('S. Idris', 'SI', 3)).toBe(
+    expect(revokeBody('S. Idris', 'SI', [1, 2, 3])).toBe(
       'S. Idris will stop receiving updates. They keep the copy of this Case they already have. ' +
         'Their 3 Exhibits (SI-1–SI-3), notes, and tags stay in the Case, attributed to them.'
     )
-    expect(revokeBody('S. Idris', 'SI', 1)).toContain(
-      'Their 1 Exhibit (SI-1–SI-1), notes, and tags'
-    )
-    expect(revokeBody('S. Idris', 'SI', 0)).toContain(
+    expect(revokeBody('S. Idris', 'SI', [1])).toContain('Their 1 Exhibit (SI-1), notes, and tags')
+    expect(revokeBody('S. Idris', 'SI', [])).toContain(
       'already have. Their notes, and tags stay in the Case'
     )
     expect(excludeTitle('NK-12')).toBe('Exclude NK-12 from export?')
@@ -793,7 +805,7 @@ describe('copy', () => {
       relayUnreachableBody(['NK'], ['MB']),
       trustNote('J. Okafor'),
       excludeBody('N. Kowalski'),
-      revokeBody('S. Idris', 'SI', 3),
+      revokeBody('S. Idris', 'SI', [1, 2, 3]),
       waitingBody('2026-09-20T14:07:00.000Z', NOW),
       pausedStrip('S. Idris', 'SI', 3).text,
       exclusionBanner({

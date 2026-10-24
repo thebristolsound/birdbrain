@@ -300,3 +300,27 @@ Next command:
 ```sh
 BIRDBRAIN_TEST_SYSTEM_SHARP=1 PKG_CONFIG_PATH=/usr/lib/pkgconfig mise x -- pnpm preflight
 ```
+
+
+## PR review corrections
+
+The external reviews left ten distinct findings across eleven inline comments.
+
+1. [x] Use held citations for revocation summaries, including deletion gaps.
+2. [ ] Keep failed or incomplete Sync now outcomes visible.
+3. [x] Show this installation's revoked membership.
+4. [ ] Show Join's direct-connection disclosure for Tor, proxy and unknown settings.
+5. [ ] Avoid effective exclusion claims from an invalid chain.
+6. [ ] Resolve Capture authorship from persisted identity rather than reused codes.
+7. [ ] Derive exclusion lookups once per snapshot for the Capture list.
+8. [x] Load the sole Owner for a cold ledger with hidden citation prefixes.
+9. [ ] Keep older pending requests from replacing a new invite.
+10. [ ] Explain that relay address changes require a restart.
+11. [ ] Run full verification at the final clean head.
+12. [ ] Push the corrections.
+13. [ ] Reply to each review thread.
+
+Current slice: reproduce and correct revocation and ledger presentation. Next command:
+`BIRDBRAIN_TEST_SYSTEM_SHARP=1 mise x -- pnpm test tests/components/RevokeDialog.test.tsx tests/components/ManifestLedgerSharing.test.tsx tests/renderer/components/memberModel.test.ts`.
+
+Revocation and ledger regressions reproduced four failures before correction. The three focused files now pass all 38 tests. Existing singleton copy assertions now name the one held citation. The next slice handles Sync now outcomes.

@@ -203,10 +203,7 @@ function ChainRows({
   highlighted?: ReadonlySet<number>
 }) {
   const [timeline, setTimeline] = useState(false)
-  const { data: members } = useQuery({
-    ...membersQueryOptions(snapshot.caseId),
-    enabled: snapshot.citationRule.prefixed
-  })
+  const { data: members } = useQuery(membersQueryOptions(snapshot.caseId))
   const self = members?.members.find((member) => member.installationId === members.installationId)
   const rows = toLedgerRows(snapshot.entries, snapshot.citationRule)
   const ordered = timeline

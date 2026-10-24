@@ -45,10 +45,16 @@ export function RevokeDialog({ caseId, open, target, onOpenChange }: RevokeDialo
     enabled: open && target !== null
   })
   const code = target?.code ?? ''
-  const exhibits = (inventory?.rows ?? []).filter(
-    (row) =>
-      row.rowType === 'anchored' && row.entity === 'exhibit' && row.citation.startsWith(`${code}-`)
-  ).length
+  const exhibits = (inventory?.rows ?? [])
+    .filter(
+      (row) =>
+        row.rowType === 'anchored' &&
+        row.entity === 'exhibit' &&
+        row.citation.startsWith(`${code}-`)
+    )
+    .flatMap((row) =>
+      row.rowType === 'anchored' && row.entity === 'exhibit' ? [row.exhibitNumber] : []
+    )
 
   function close() {
     setError(null)

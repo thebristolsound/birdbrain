@@ -426,12 +426,19 @@ export function revokeTitle(name: string): string {
   return `Revoke ${name}?`
 }
 
-// "Their 3 Exhibits (SI-1–SI-3), notes, and tags stay in the Case"; with no
-// Exhibits the clause names the notes and tags alone.
-export function revokeBody(name: string, code: string, exhibits: number): string {
+export function revokeBody(name: string, code: string, exhibitNumbers: number[]): string {
+  const numbers = [...new Set(exhibitNumbers)].sort((a, b) => a - b)
+  const count = numbers.length
+  const contiguous = numbers.every((number, index) => number === numbers[0] + index)
+  const range =
+    count === 0 || !contiguous
+      ? ''
+      : count === 1
+        ? ` (${code}-${numbers[0]})`
+        : ` (${code}-${numbers[0]}–${code}-${numbers[count - 1]})`
   const theirs =
-    exhibits > 0
-      ? `Their ${exhibits} ${exhibits === 1 ? 'Exhibit' : 'Exhibits'} (${code}-1–${code}-${exhibits}), notes, and tags`
+    count > 0
+      ? `Their ${count} ${count === 1 ? 'Exhibit' : 'Exhibits'}${range}, notes, and tags`
       : 'Their notes, and tags'
   return (
     `${name} will stop receiving updates. They keep the copy of this Case they already have. ` +
@@ -573,13 +580,6 @@ export function memberRows({ members, syncState, snapshot, nowMs }: MemberRowsIn
       action: null as MemberRow['action'],
       paused: null as PausedStrip | null
     }
-    if (isSelf) {
-      return {
-        ...base,
-        connection: { label: 'This machine', tone: 'muted', dot: 'accent', pulse: 'none' },
-        lastSynced: '—'
-      }
-    }
     if (member.revokedAtIndex !== null) {
       const entry = revokeEntryOf(snapshot, member)
       const when = entry === null ? '' : ` ${formatDate(entry.timestamp)}`
@@ -594,6 +594,13 @@ export function memberRows({ members, syncState, snapshot, nowMs }: MemberRowsIn
         },
         lastSynced: entry === null ? '—' : formatDateTime(entry.timestamp),
         dimmed: true
+      }
+    }
+    if (isSelf) {
+      return {
+        ...base,
+        connection: { label: 'This machine', tone: 'muted', dot: 'accent', pulse: 'none' },
+        lastSynced: '—'
       }
     }
     const action: MemberRow['action'] = members.isOwner ? 'revoke' : null

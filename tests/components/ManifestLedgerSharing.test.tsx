@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ManifestLedgerView, ManifestLedgerTab } from '@renderer/components/data/ManifestLedger'
 import { fakeBridge } from '../renderer/fakeBridge'
-import { members, snapshot, REVOKE, MERGE_31 } from './sharingFixtures'
+import { AR, members, snapshot, REVOKE, MERGE_31 } from './sharingFixtures'
 
 afterEach(cleanup)
 
@@ -30,6 +30,21 @@ function setup(tab = false, broken = false) {
 }
 
 describe('Shared Case ledger', () => {
+  it('loads the sole Owner for a cold ledger with hidden citation prefixes', async () => {
+    const getMembers = vi.fn(async () => members({ members: [AR] }))
+    fakeBridge({ sharing: { getMembers } })
+    const state = snapshot([MERGE_31])
+    state.citationRule = { prefixed: false, localMemberCode: 'AR' }
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ManifestLedgerView snapshot={state} />
+      </QueryClientProvider>
+    )
+    expect(await within(screen.getByTestId('ledger-row-31')).findByText('AR')).toBeTruthy()
+    expect(getMembers).toHaveBeenCalledWith('case-1')
+    expect(screen.queryByTestId('ledger-chain-selector')).toBeNull()
+  })
+
   it('defaults to chain order, identifies the writer and keeps the snapshot verdict', async () => {
     setup(false, true)
     await screen.findByRole('button', { name: 'AR · 2' })

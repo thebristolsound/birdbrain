@@ -367,7 +367,7 @@ describe('the members list', () => {
     expect(within(dialog).getByRole('heading', { name: 'Revoke N. Kowalski?' })).toBeTruthy()
     await waitFor(() =>
       expect(
-        within(dialog).getByText(/Their 1 Exhibit \(NK-1–NK-1\), notes, and tags/)
+        within(dialog).getByText(/Their 1 Exhibit \(NK-1\), notes, and tags/)
       ).toBeTruthy()
     )
     fireEvent.click(within(dialog).getByRole('button', { name: 'Revoke' }))

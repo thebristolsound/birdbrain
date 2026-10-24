@@ -1,6 +1,6 @@
 # Keep unreachable Capture rows local
 
-**Status:** verification
+**Status:** active
 
 This is the implementation handoff for #1951, the Shared Case sync failure caused by a signed
 working row on an imported or legacy Capture. The issue recommends filtering the offer rather
@@ -35,7 +35,7 @@ note parents, loose notes, and whole eligible version groups. The dirty-tree che
 Next command:
 
 ```
-cd /tmp/birdbrain-wt/shared-case-1951-1 && tail -40 /home/matt/.cache/birdbrain-1514/1951-preflight.log
+cd /tmp/birdbrain-wt/shared-case-1951-1 && tail -40 /home/matt/.cache/birdbrain-1514/1951-preflight-final.log
 ```
 
 This slice is ready for clean-head verification and independent standards and spec reviews,
@@ -52,3 +52,7 @@ request, alongside the live query. The corrected flow passes 103 focused checks.
 full verification run was superseded by this correction and must not be used for the PR body.
 Run full verification at this correction's clean head and recheck the pinned diff with both
 reviewers before opening the draft PR.
+
+Both final reviews found no remaining findings at `e94e657a`. Full verification passed at
+that head, and draft PR #1966 is open. The plan stays active while human review and merge
+remain pending. The plan status now uses the vocabulary required by `docs/README.md`.

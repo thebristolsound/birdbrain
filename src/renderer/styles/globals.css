@@ -76,6 +76,15 @@
   --color-hue-sky-fg: #0369a1;
   --color-hue-pink-fg: #be185d;
 
+  /* Member hues for a Shared Case's chips, dots and bars (#1514): hue N is the
+     Nth member in the Owner's member-add order, revoked members keep theirs,
+     and this installation is always --color-accent. Light uses the 600/700
+     steps; dark lifts to the 400 step (see below). */
+  --color-member-1: #0284c7;
+  --color-member-2: #b45309;
+  --color-member-3: #047857;
+  --color-member-4: #be123c;
+
   --color-slate-100: #f1f5f9;
   --color-slate-200: #e2e8f0;
   --color-slate-300: #cbd5e1;
@@ -149,6 +158,10 @@ html.dark {
   --color-hue-orange-fg: #f97316;
   --color-hue-sky-fg: #0ea5e9;
   --color-hue-pink-fg: #ec4899;
+  --color-member-1: #38bdf8;
+  --color-member-2: #fbbf24;
+  --color-member-3: #34d399;
+  --color-member-4: #fb7185;
   --color-input: var(--color-border-strong);
 }
 

@@ -8,10 +8,14 @@ without adding dependency changes to the Shared Cases implementation branches.
 
 ## Change
 
-- Update Happy DOM to 21.0.4, the same version proposed by Dependabot in PR #1962.
-- Override body-parser 2 to 2.4.0 or later, following the existing override pattern.
-- Raise the existing Undici 6 and 7 overrides to 6.29.1 and 7.30.1.
-- Regenerate the lockfile. Keep the accepted audit exceptions and gate unchanged.
+1. [x] Update Happy DOM to 21.0.4, the same version proposed by Dependabot in PR #1962.
+2. [x] Override body-parser 2 to 2.4.0 or later, following the existing override pattern.
+3. [x] Raise the existing Undici 6 and 7 overrides to 6.29.1 and 7.30.1.
+4. [x] Regenerate the lockfile. Keep the accepted audit exceptions and gate unchanged.
+5. [x] Run the dependency audit after installation.
+6. [ ] Run clean-head full verification and put its output in the draft PR description.
+7. [ ] Open a separate draft PR for human review and merge.
+8. [ ] After it merges, update the Shared Cases branches and rerun their checks.
 
 The version floors come from the published advisories for
 [body-parser](https://github.com/advisories/GHSA-27r3-jxmh-p828),

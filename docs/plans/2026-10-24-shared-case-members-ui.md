@@ -254,3 +254,29 @@ Per slice: `pnpm typecheck`, `pnpm lint`, `pnpm lint:boundaries`, `pnpm test <ch
 At head, in S6: `pnpm preflight` with exit codes captured; screenshots light and dark under
 `/home/matt/.cache/birdbrain-1514/screens/`; `.claude/hooks/vale-prose.sh --base origin/main`
 on this plan.
+
+## CI notice correction
+
+PR #1965's build stopped because qrcode-generator 2.0.4 ships no licence file.
+The same `pnpm build:notices` command reproduced the failure locally. The existing
+notice override now includes the upstream MIT licence, with its copyright line,
+from the commit recorded in that package's npm metadata. The generator then exits 0.
+The source URL is recorded in `scripts/third-party-notices/overrides.json`.
+
+1. [x] Reproduce the missing-licence failure.
+2. [x] Add the upstream licence through the existing notice override.
+3. [x] Generate the third-party notice successfully.
+4. [x] Run the existing third-party notice tests.
+5. [ ] Run clean-head full verification.
+6. [ ] Refresh the PR description from the new verification output.
+7. [ ] Push the correction for CI.
+
+Next command:
+
+```sh
+BIRDBRAIN_TEST_SYSTEM_SHARP=1 PKG_CONFIG_PATH=/usr/lib/pkgconfig mise x -- pnpm preflight
+```
+
+The dependency audit reports the same baseline advisories handled separately in
+PR #1968. Matt's approval at the reviewed head remains necessary for the evidence
+merge gate. No merge or release is authorized by this handoff.

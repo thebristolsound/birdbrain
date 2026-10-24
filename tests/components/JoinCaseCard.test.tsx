@@ -65,8 +65,6 @@ describe('JoinCaseCard', () => {
     await pasteAndJoin()
     await screen.findByRole('status')
     expect((screen.getByRole('button', { name: 'Back' }) as HTMLButtonElement).disabled).toBe(true)
-    expect(
-      (screen.getByRole('button', { name: 'Join' }) as HTMLButtonElement).disabled
-    ).toBe(true)
+    expect((screen.getByRole('button', { name: 'Join' }) as HTMLButtonElement).disabled).toBe(true)
   })
 })

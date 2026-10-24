@@ -144,7 +144,7 @@ Members, capture attribution, the ledger and Join in both themes.
 Next command:
 
 ```
-cd /home/matt/worktrees/birdbrain/feat-1514 && tail -40 /home/matt/.cache/birdbrain-1514/s6-e2e.log
+cd /home/matt/worktrees/birdbrain/feat-1514 && tail -40 /home/matt/.cache/birdbrain-1514/preflight-final.log
 ```
 
 Finish the screen audit and second independent review, then run
@@ -183,7 +183,8 @@ invite screen without a Copy click, and the Owner can exclude their own Captures
 footer now describes this screen's local-chain check and makes no claim about remote chains.
 
 Version pauses now retain the failing chain's author and first unreadable index from the
-session, rather than guessing them from its transport peer. The separate derived `sync-pauses.json` cache keeps each pause across other members' successful sessions;
+session, rather than guessing them from its transport peer. The separate derived
+`sync-pauses.json` cache keeps each pause across other members' successful sessions;
 only receiving the previously unreadable entry clears it. The session forwards its existing
 error metadata to that cache. No evidence entry, database table or protocol message changes.
 Old cache files still read, including their version high-water marks. Older builds ignore the
@@ -193,6 +194,14 @@ The regression for a forwarded chain failed before this correction. The correcte
 the focused renderer checks pass 120 tests. Full verification also found two required import
 aliases and the missing sharing query-log domain; the code now supplies them. Ledger tests
 now include Actor and the required citation-rule fixture field.
+
+The second reviews found two further gaps. The capture sharing read now checks the Case's
+shared flag as well as the citation, so the Owner can exclude a Capture before another member
+joins and while the prefix is hidden. The relay warning reports the last reached and unreached
+members without claiming it knows a connection's path or that a member needs the relay. These
+changes pass 141 focused checks. At the previous head, all 7,684 unit tests and coverage
+thresholds passed with 96.82% changed-line coverage; only one test file's formatting failed.
+The file is formatted for the final verification run.
 
 ## Deviations from the mock
 

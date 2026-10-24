@@ -216,7 +216,7 @@ export const COPY = {
     'You approve every join and can stop syncing with a member later.',
     'Members who leave keep the copy they already hold.'
   ],
-  relayUnreachableTail: 'Nothing is lost; sync resumes when the relay answers.',
+  relayUnreachableTail: 'Try syncing again after the relay answers.',
   retry: 'Retry',
   changeRelay: 'Change relay',
   unavailableTitle: 'Sharing is not available on this Mac',
@@ -359,16 +359,12 @@ export function relayUnreachableTitle(sinceIso: string, nowMs: number): string {
   return `Relay unreachable since ${formatClock(sinceIso, nowMs).replace(/^today /, '')}`
 }
 
-// "Direct connections still work: NK is connected. MB and SI cannot be reached
-// without the relay. Nothing is lost; sync resumes when the relay answers."
+// Reachability records a handshake, not whether it used a relay or a direct connection.
 export function relayUnreachableBody(connected: string[], unreachable: string[]): string {
   const parts: string[] = []
-  if (connected.length > 0) {
-    const verb = connected.length === 1 ? 'is' : 'are'
-    parts.push(`Direct connections still work: ${listWords(connected)} ${verb} connected.`)
-  }
+  if (connected.length > 0) parts.push(`Last reached: ${listWords(connected)}.`)
   if (unreachable.length > 0) {
-    parts.push(`${listWords(unreachable)} cannot be reached without the relay.`)
+    parts.push(`Not reached: ${listWords(unreachable)}.`)
   }
   parts.push(COPY.relayUnreachableTail)
   return parts.join(' ')

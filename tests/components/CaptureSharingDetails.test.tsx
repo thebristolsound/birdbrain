@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { Capture } from '@shared/types'
 import type { ManifestEntry } from '@shared/schemas'
 import { CaptureSharingDetails } from '@renderer/components/sharing/CaptureSharingDetails'
+import { useCaptureSharing } from '@renderer/components/sharing/useCaptureSharing'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { members, snapshot, MERGE_31 } from './sharingFixtures'
 
@@ -59,6 +60,55 @@ function setup(excluded = false, verified = false, own = false) {
 }
 
 describe('Capture sharing details', () => {
+  it('offers Owner exclusion before another member joins, with the prefix hidden', async () => {
+    const roster = members()
+    const excludeExhibit = vi.fn(async () => ({
+      exhibitId: capture.id,
+      authorInstallationId: roster.installationId,
+      index: 32,
+      timestamp: MERGE_31.timestamp,
+      operatorName: 'A. Renner'
+    }))
+    fakeBridge({
+      cases: {
+        get: vi.fn(async () => ({
+          id: capture.caseId,
+          name: 'Shared',
+          sharedAt: MERGE_31.timestamp,
+          isDemo: false,
+          archived: false,
+          createdAt: MERGE_31.timestamp,
+          updatedAt: MERGE_31.timestamp
+        }))
+      },
+      sharing: {
+        getMembers: vi.fn(async () => ({
+          ...roster,
+          members: roster.members.filter((entry) => entry.installationId === roster.installationId)
+        })),
+        excludeExhibit
+      },
+      manifest: { snapshot: vi.fn(async () => snapshot([])) }
+    })
+    function BeforeFirstJoin() {
+      const sharing = useCaptureSharing(capture.caseId, false)
+      return (
+        <CaptureSharingDetails capture={{ ...capture, exhibitCitation: '12' }} sharing={sharing} />
+      )
+    }
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <BeforeFirstJoin />
+      </QueryClientProvider>
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Exclude from export' }))
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByRole('heading', { name: 'Exclude 12 from export?' })).toBeTruthy()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Exclude from export' }))
+    await waitFor(() =>
+      expect(excludeExhibit).toHaveBeenCalledWith(capture.caseId, capture.id, undefined)
+    )
+  })
   it('lets the Owner exclude their own Capture', () => {
     setup(false, false, true)
     expect(screen.getByRole('button', { name: 'Exclude from export' })).toBeTruthy()

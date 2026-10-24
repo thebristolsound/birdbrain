@@ -385,8 +385,7 @@ describe('the relay-unreachable banner', () => {
     expect(within(banner).getByText(/^Relay unreachable since \d\d:\d\d$/)).toBeTruthy()
     expect(
       within(banner).getByText(
-        'Direct connections still work: NK is connected. MB and SI cannot be reached without ' +
-          'the relay. Nothing is lost; sync resumes when the relay answers.'
+        'Last reached: NK. Not reached: MB and SI. Try syncing again after the relay answers.'
       )
     ).toBeTruthy()
     expect(banner.className).toContain('border-warning-line')

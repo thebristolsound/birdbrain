@@ -729,15 +729,13 @@ describe('copy', () => {
     expect(notSharedBody('AR')).toContain('Exhibit Numbers gain your Member Code (AR-7)')
     expect(yourCodeWillBe('AR')).toBe('Your Member Code will be AR')
     expect(relayUnreachableBody(['NK'], ['MB', 'SI'])).toBe(
-      'Direct connections still work: NK is connected. MB and SI cannot be reached without the ' +
-        'relay. Nothing is lost; sync resumes when the relay answers.'
+      'Last reached: NK. Not reached: MB and SI. Try syncing again after the relay answers.'
     )
     expect(relayUnreachableBody([], ['MB'])).toBe(
-      'MB cannot be reached without the relay. Nothing is lost; sync resumes when the relay answers.'
+      'Not reached: MB. Try syncing again after the relay answers.'
     )
     expect(relayUnreachableBody(['NK', 'MB'], ['SI', 'TV', 'JO'])).toBe(
-      'Direct connections still work: NK and MB are connected. SI, TV and JO cannot be reached ' +
-        'without the relay. Nothing is lost; sync resumes when the relay answers.'
+      'Last reached: NK and MB. Not reached: SI, TV and JO. Try syncing again after the relay answers.'
     )
     expect(inviteTitle('Operation Nightjar')).toBe('Invite to Operation Nightjar')
     expect(waitingBody('2026-09-20T14:07:00.000Z', NOW)).toBe(

@@ -84,3 +84,22 @@ The focused sync and migration checks passed after this correction. A further re
 checks the Case boundary, invalid signatures, and rollback of refusal progress with a failed
 batch. The standards reviewer reached its account limit; the final recheck uses another
 configured provider.
+
+## Merged dependency baseline
+
+The maintainer merged PR #1968 as `eed80c8f`. This branch now includes that main
+commit. The merge preserves this fix's source and regression tests. The frozen
+dependency installation and dependency audit exit 0.
+
+1. [x] Merge the updated main branch without rewriting existing commits.
+2. [x] Install the frozen dependency lockfile.
+3. [x] Run the dependency audit.
+4. [ ] Run clean-head full verification.
+5. [ ] Refresh the PR's verification details.
+6. [ ] Push the updated branch for CI.
+
+Next command:
+
+```sh
+BIRDBRAIN_TEST_SYSTEM_SHARP=1 PKG_CONFIG_PATH=/usr/lib/pkgconfig mise x -- pnpm preflight
+```

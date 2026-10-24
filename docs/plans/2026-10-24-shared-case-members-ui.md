@@ -203,6 +203,15 @@ changes pass 141 focused checks. At the previous head, all 7,684 unit tests and 
 thresholds passed with 96.82% changed-line coverage; only one test file's formatting failed.
 The file is formatted for the final verification run.
 
+The final checks passed at `33b89779`: 7,685 unit tests, build, lint and typecheck, with 96.83%
+changed-line coverage. The fresh Electron run passed all ten checks, including two-instance
+sharing. Both final independent reviews found no remaining findings. Draft PR #1965 is open.
+Before starting #1951, a filename check found that the new pause cache also needs the existing
+blob receiver's reserved-name protection. The regression failed before the filename was added.
+Run `mise x -- pnpm preflight` at this correction's clean head, then update #1965's verification.
+The Members worktree stays available for review fixes; the next defect is isolated in
+`/tmp/birdbrain-wt/shared-case-1951-1`.
+
 ## Deviations from the mock
 
 Each is a string or a control the IPC cannot back truthfully. The screens ship narrower rather

@@ -11,6 +11,7 @@ vi.mock('@renderer/hooks/useCaptureThumbnail', () => ({
 }))
 
 import { CaptureItem } from '@renderer/components/captures/CaptureItem'
+import { members } from './sharingFixtures'
 
 // Fixed clock so both time treatments are known-answer assertions rather than
 // "matches /ago/".
@@ -64,6 +65,17 @@ afterEach(() => {
 })
 
 describe('CaptureItem — Exhibit citation chip (#1510)', () => {
+  it('uses the roster hue and author for a shared Capture', () => {
+    renderItem({
+      capture: { ...capture, exhibitCitation: 'NK-12' },
+      sharing: { members: members() }
+    })
+    expect(screen.getByTestId('capture-item-citation').getAttribute('title')).toBe(
+      'Captured by N. Kowalski (NK)'
+    )
+    expect(screen.getByTestId('capture-item-citation').dataset.hue).toBe('2')
+    expect(screen.getByTestId('capture-author-rail')).toBeTruthy()
+  })
   it('shows the citation main resolved before the title, in both views', () => {
     renderItem({ capture: { ...capture, exhibitNumber: 12, exhibitCitation: 'NK-12' } })
     const detailed = screen.getByTestId('capture-item-citation')

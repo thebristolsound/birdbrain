@@ -38,7 +38,7 @@ with `pnpm test <file>` and `pnpm typecheck`, `pnpm lint` and `pnpm lint:boundar
 | S2 | `/cases/$caseId/settings` route and the Members tab with every row and whole-tab state | shipped |
 | S3 | Invite dialog with the QR code and the join request step; `qrcode-generator` 2.0.4 | shipped |
 | S4 | Join branch in the wizard, the sync pill component (unmounted), the shared Case card line | shipped |
-| S5 | Attribution and exclusion on capture rows and the details panel | |
+| S5 | Attribution and exclusion on capture rows and the details panel | shipped |
 | S6 | Ledger Actor column, chain selector and Timeline (blocking tier, small); screenshots; two-instance e2e; `pnpm preflight` | |
 
 ### S1, shipped
@@ -123,14 +123,23 @@ active member count. Join's local fingerprint is omitted because no pre-join rea
 Focused component checks: 21 tests passed. The existing wizard tests now stub `useSearch`,
 because the wizard reads the validated branch choice.
 
-Next command for S5:
+### S5, shipped
+
+Capture rows use roster hue rails and code chips with the author on hover. The details panel
+shows the author and the merge that first received the Capture's chain entry. The Owner can
+confirm exclusion of another member's Exhibit with a recorded reason. The neutral exclusion
+banner prints the integrity sentence only when the Capture's recorded result is verified and
+the snapshot's chain verdict is valid. The list reads roster and snapshot once for all rows.
+
+Focused capture checks: 40 tests passed. Tags and notes remain the documented IPC omissions.
+
+Next command for S6:
 
 ```
 cd /home/matt/worktrees/birdbrain/feat-1514 && git log --oneline -3
 ```
 
-then add capture attribution, the neutral exclusion banner and the Owner's exclude confirmation.
-S6 follows with the ledger, screenshots and full verification. The work remains local and no
+then add the ledger Actor column and chain selector, screenshots and full verification. The work remains local and no
 PR is open. Resume from this worktree, not the roadmap branch.
 
 ## The widened sync state payload

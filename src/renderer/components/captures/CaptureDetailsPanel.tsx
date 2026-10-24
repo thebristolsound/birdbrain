@@ -20,6 +20,12 @@ import {
   ChevronDown
 } from 'lucide-react'
 import type { Capture } from '@shared/types'
+import { MemberCodeChip } from '@renderer/components/sharing/MemberCodeChip'
+import {
+  captureAttribution,
+  useCaptureSharing
+} from '@renderer/components/sharing/useCaptureSharing'
+import { CaptureSharingDetails } from '@renderer/components/sharing/CaptureSharingDetails'
 import {
   notesQueryOptions,
   useNotesMutations,
@@ -69,6 +75,8 @@ export function CaptureDetailsPanel({
   onOpenAddNote
 }: Props) {
   const reduce = useReduceMotion()
+  const sharing = useCaptureSharing(caseId, !!capture.exhibitCitation?.includes('-'))
+  const author = captureAttribution(capture, sharing.members)
   const now = useTimeTick(60_000)
   const { data: notes = [] } = useQuery(notesQueryOptions(caseId))
   const { create: createNote, update: updateNote } = useNotesMutations(caseId)
@@ -232,7 +240,16 @@ export function CaptureDetailsPanel({
       <section className="border-b border-border px-5 py-4 [&:last-child]:border-b-0">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold tracking-tight text-text-primary">Capture</h2>
-          {capture.exhibitCitation ? (
+          {capture.exhibitCitation && author ? (
+            <MemberCodeChip
+              code={capture.exhibitCitation}
+              hue={author.hue}
+              size={20}
+              dot
+              title={author.title}
+              data-testid="capture-details-citation"
+            />
+          ) : capture.exhibitCitation ? (
             <span
               data-testid="capture-details-citation"
               title="Exhibit Number"
@@ -389,6 +406,7 @@ export function CaptureDetailsPanel({
             Recapture failed: {recaptureError.message}
           </p>
         )}
+        <CaptureSharingDetails key={capture.id} capture={capture} sharing={sharing} />
       </section>
 
       {/* Metadata */}

@@ -92,7 +92,8 @@ schema, no write site, no verifier and nothing under `src/main/index.ts` or `db/
   one clock read), and its `heldHead` is the last entry received. Absent when the session failed
   before `hello` identified the peer.
 
-`tests/main/services/sharing/syncState.test.ts` pins the derivation. Three tests that pinned the
+`tests/main/services/sharing/syncState.test.ts` pins the derivation. The match is at millisecond
+resolution, so the test fakes `Date` and moves it between sessions. Three tests that pinned the
 whole payload with `toEqual` (`syncState.test.ts`, `tests/main/ipcHandlers.test.ts`,
 `tests/main/services/sharing/syncPeers.test.ts`) gained the new fields; no other expectation
 moved.

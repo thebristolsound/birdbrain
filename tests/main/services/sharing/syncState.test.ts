@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -64,6 +64,7 @@ describe('sync state (#1512)', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     closeDatabase()
     resetInstallationId()
     resetSyncStateMemory()
@@ -277,6 +278,11 @@ describe('sync state (#1512)', () => {
   // last entry received.
   it("names the failed session's peer and the head held after it on lastError (#1514)", () => {
     share()
+    // Each session ends at its own millisecond: the derivation matches the
+    // error's `at` to a peer's `lastSessionAt`, and two sessions finishing in
+    // one tick would be indistinguishable in the file.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-24T10:00:00.000Z'))
     beginSession(caseId)
     finishSession(caseId, {
       peerInstallationId: PEER_ID,
@@ -304,6 +310,7 @@ describe('sync state (#1512)', () => {
 
     // A session that failed before `hello` identified the peer names nobody,
     // and a peer whose session held no head of its own chain has no index.
+    vi.setSystemTime(new Date('2026-10-24T10:00:01.000Z'))
     beginSession(caseId)
     finishSession(caseId, {
       peerInstallationId: null,
@@ -312,6 +319,7 @@ describe('sync state (#1512)', () => {
       heads: {}
     })
     expect(Object.keys(getSyncState(caseId).lastError!)).toEqual(['kind', 'at'])
+    vi.setSystemTime(new Date('2026-10-24T10:00:02.000Z'))
     finishSession(caseId, {
       peerInstallationId: PEER_ID,
       transfer: { entries: 0, blobs: 0, bytes: 0 },
@@ -322,6 +330,7 @@ describe('sync state (#1512)', () => {
 
     // A later success with the same peer moves its `lastSessionAt` past the
     // error, so the stale error names nobody and the phase reads idle.
+    vi.setSystemTime(new Date('2026-10-24T10:00:03.000Z'))
     finishSession(caseId, {
       peerInstallationId: PEER_ID,
       transfer: { entries: 1, blobs: 0, bytes: 1 },

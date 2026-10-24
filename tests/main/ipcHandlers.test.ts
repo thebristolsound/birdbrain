@@ -810,7 +810,9 @@ describe('ipcHandlers — captures', () => {
       phase: 'idle',
       peersReachable: 0,
       peersTotal: 0,
+      peers: [],
       transfer: null,
+      lastSuccessAt: null,
       lastError: null,
       egress: 'direct'
     })

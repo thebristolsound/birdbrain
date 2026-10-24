@@ -210,7 +210,11 @@ describe('sync state (#1512)', () => {
       phase: 'idle',
       peersReachable: 0,
       peersTotal: 1,
+      peers: [
+        { installationId: PEER_ID, reachable: false, lastSessionAt: null, ok: null, heldHead: null }
+      ],
       transfer: null,
+      lastSuccessAt: null,
       lastError: null,
       egress: 'direct'
     })
@@ -244,6 +248,17 @@ describe('sync state (#1512)', () => {
     const file = readSyncStateFile(caseDir())
     expect(file.peers[PEER_ID]).toMatchObject({ ok: true, heads: { [PEER_ID]: { index: 3 } } })
     expect(file.lastSuccessAt).not.toBeNull()
+    // The Members tab reads the same session off the payload (#1514).
+    expect(ok.lastSuccessAt).toBe(file.lastSuccessAt)
+    expect(ok.peers).toEqual([
+      {
+        installationId: PEER_ID,
+        reachable: true,
+        lastSessionAt: file.peers[PEER_ID].lastSessionAt,
+        ok: true,
+        heldHead: 3
+      }
+    ])
 
     // A reached peer the roster has since revoked no longer counts.
     finishSession(caseId, {
@@ -253,6 +268,69 @@ describe('sync state (#1512)', () => {
       heads: {}
     })
     expect(getSyncState(caseId).peersReachable).toBe(1)
+  })
+
+  // Ruling 2 of 2026-10-10: the Members row names the member whose chain is
+  // paused and the last entry received. Both are read off the session the
+  // file already records; the peer whose `lastSessionAt` is the error's `at`
+  // with `ok: false` is the failed session's peer, and its held head the
+  // last entry received.
+  it("names the failed session's peer and the head held after it on lastError (#1514)", () => {
+    share()
+    beginSession(caseId)
+    finishSession(caseId, {
+      peerInstallationId: PEER_ID,
+      transfer: { entries: 2, blobs: 0, bytes: 10 },
+      error: { kind: 'newer-version', detail: `entry 3 of ${PEER_ID}: schema 9` },
+      heads: { [PEER_ID]: { index: 2, entryHash: 'h2' }, [localId]: { index: 5, entryHash: 'h5' } }
+    })
+    const paused = getSyncState(caseId)
+    expect(paused.phase).toBe('error')
+    expect(paused.lastError).toEqual({
+      kind: 'newer-version',
+      at: readSyncStateFile(caseDir()).peers[PEER_ID].lastSessionAt,
+      installationId: PEER_ID,
+      index: 2
+    })
+    expect(paused.peers).toEqual([
+      {
+        installationId: PEER_ID,
+        reachable: true,
+        lastSessionAt: paused.lastError?.at,
+        ok: false,
+        heldHead: 2
+      }
+    ])
+
+    // A session that failed before `hello` identified the peer names nobody,
+    // and a peer whose session held no head of its own chain has no index.
+    beginSession(caseId)
+    finishSession(caseId, {
+      peerInstallationId: null,
+      transfer: { entries: 0, blobs: 0, bytes: 0 },
+      error: { kind: 'peer', detail: 'hello failed' },
+      heads: {}
+    })
+    expect(Object.keys(getSyncState(caseId).lastError!)).toEqual(['kind', 'at'])
+    finishSession(caseId, {
+      peerInstallationId: PEER_ID,
+      transfer: { entries: 0, blobs: 0, bytes: 0 },
+      error: { kind: 'rejected-entry', detail: 'entry 1 of someone else' },
+      heads: {}
+    })
+    expect(Object.keys(getSyncState(caseId).lastError!)).toEqual(['kind', 'at', 'installationId'])
+
+    // A later success with the same peer moves its `lastSessionAt` past the
+    // error, so the stale error names nobody and the phase reads idle.
+    finishSession(caseId, {
+      peerInstallationId: PEER_ID,
+      transfer: { entries: 1, blobs: 0, bytes: 1 },
+      error: null,
+      heads: {}
+    })
+    const recovered = getSyncState(caseId)
+    expect(recovered.phase).toBe('idle')
+    expect(Object.keys(recovered.lastError!)).toEqual(['kind', 'at'])
   })
 
   it('forgetReached drops one peer from peersReachable and leaves the file alone (#1881)', () => {

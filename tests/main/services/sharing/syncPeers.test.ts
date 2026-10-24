@@ -975,11 +975,17 @@ describe('sync session between peers (#1512)', () => {
     source.files.set(doc.path, Uint8Array.from(Buffer.from('tampered')))
 
     await activate(B)
+    const unseen = { reachable: false, lastSessionAt: null, ok: null, heldHead: null }
     expect(getSyncState(CASE_ID)).toEqual({
       phase: 'idle',
       peersReachable: 0,
       peersTotal: 2,
+      peers: [
+        { installationId: A.installationId, ...unseen },
+        { installationId: C.installationId, ...unseen }
+      ],
       transfer: null,
+      lastSuccessAt: null,
       lastError: null,
       egress: 'direct'
     })

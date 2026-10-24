@@ -222,12 +222,13 @@ export function memberTickets(caseId: string): Record<string, string> {
   return { ...readSyncStateFile(join(getStorageRoot(), caseId)).tickets }
 }
 
-// The payload the sync pill reads. `peersTotal` is the roster less this
-// installation and the revoked; `peersReachable` the peers whose latest
-// session dialled from this process completed `hello`; `phase` is syncing
-// while a session runs, error when the last session failed and none has
-// succeeded since, idle otherwise; `egress` the Egress kind, which sync runs
-// past (ADR-0032 rule 1).
+// The payload the sync pill and the Members tab read. `peersTotal` is the
+// roster less this installation and the revoked; `peersReachable` the peers
+// whose latest session dialled from this process completed `hello`; `phase`
+// is syncing while a session runs, error when the last session failed and
+// none has succeeded since, idle otherwise; `egress` the Egress kind, which
+// sync runs past (ADR-0032 rule 1). `peers` and `lastSuccessAt` are read off
+// the file as written (#1514); nothing here is a new fact about a session.
 export function getSyncState(caseId: string): SyncState {
   const self = getInstallationId()
   const members = listCaseMembers(caseId).filter(
@@ -236,16 +237,44 @@ export function getSyncState(caseId: string): SyncState {
   const state = readSyncStateFile(join(getStorageRoot(), caseId))
   const { lastError, lastSuccessAt, transfer } = state
   const failed = lastError !== null && (lastSuccessAt === null || lastError.at > lastSuccessAt)
+  const reachedIds = reached.get(caseId) ?? new Set<string>()
+  const peers = members.map(({ installationId }) => {
+    const peer = state.peers[installationId]
+    return {
+      installationId,
+      reachable: reachedIds.has(installationId),
+      lastSessionAt: peer?.lastSessionAt ?? null,
+      ok: peer?.ok ?? null,
+      heldHead: peer?.heads[installationId]?.index ?? null
+    }
+  })
   return {
     phase: running.has(caseId) ? 'syncing' : failed ? 'error' : 'idle',
-    peersReachable: [...(reached.get(caseId) ?? [])].filter((id) =>
-      members.some((m) => m.installationId === id)
-    ).length,
+    peersReachable: [...reachedIds].filter((id) => members.some((m) => m.installationId === id))
+      .length,
     peersTotal: members.length,
+    peers,
     transfer,
-    lastError: lastError === null ? null : { kind: lastError.kind, at: lastError.at },
+    lastSuccessAt,
+    lastError: lastError === null ? null : describeLastError(lastError, state.peers),
     egress: getSettings().egress.kind
   }
+}
+
+// The failed session's peer, when the file records one: finishSession writes
+// the error's `at` and that peer's `lastSessionAt` from the same clock read,
+// with `ok: false`, so the pair identifies the session. The index is the head
+// of the peer's own chain this replica held after it, which for a
+// `newer-version` pause is the last entry received.
+function describeLastError(
+  { kind, at }: NonNullable<SyncStateFile['lastError']>,
+  peers: SyncStateFile['peers']
+): NonNullable<SyncState['lastError']> {
+  const match = Object.entries(peers).find(([, peer]) => peer.lastSessionAt === at && !peer.ok)
+  if (!match) return { kind, at }
+  const [installationId, peer] = match
+  const index = peer.heads[installationId]?.index
+  return index === undefined ? { kind, at, installationId } : { kind, at, installationId, index }
 }
 
 // `members.json`: the roster as `case_members` holds it, for a reader of the

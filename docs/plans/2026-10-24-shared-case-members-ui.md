@@ -39,7 +39,7 @@ with `pnpm test <file>` and `pnpm typecheck`, `pnpm lint` and `pnpm lint:boundar
 | S3 | Invite dialog with the QR code and the join request step; `qrcode-generator` 2.0.4 | shipped |
 | S4 | Join branch in the wizard, the sync pill component (unmounted), the shared Case card line | shipped |
 | S5 | Attribution and exclusion on capture rows and the details panel | shipped |
-| S6 | Ledger Actor column, chain selector and Timeline (blocking tier, small); screenshots; two-instance e2e; `pnpm preflight` | |
+| S6 | Ledger Actor column, chain selector and Timeline (blocking tier, small); screenshots; two-instance e2e; `pnpm preflight` | verification |
 
 ### S1, shipped
 
@@ -133,14 +133,24 @@ the snapshot's chain verdict is valid. The list reads roster and snapshot once f
 
 Focused capture checks: 40 tests passed. Tags and notes remain the documented IPC omissions.
 
-Next command for S6:
+### S6, implementation committed
+
+The ledger gains an Actor column from each entry's writer, highlights the four sharing events,
+and defaults to chain order. Timeline sorts by asserted time and prefixes the sequence with the
+writer's code. Neither view changes the snapshot's integrity verdict. Both ledger surfaces say
+that only this installation's chain is available. The new Electron screen check captures
+Members, capture attribution, the ledger and Join in both themes.
+
+Next command:
 
 ```
-cd /home/matt/worktrees/birdbrain/feat-1514 && git log --oneline -3
+cd /home/matt/worktrees/birdbrain/feat-1514 && tail -40 /home/matt/.cache/birdbrain-1514/s6-e2e.log
 ```
 
-then add the ledger Actor column and chain selector, screenshots and full verification. The work remains local and no
-PR is open. Resume from this worktree, not the roadmap branch.
+Finish the screen audit and independent review, address confirmed findings, then commit and run
+`mise x -- pnpm preflight` at a clean head. The work remains local and no PR is open. Resume
+from this worktree, not the roadmap branch. After the screens PR, the serial programme order is
+#1951, #1955, entry points, then #1883. The real two-network sync remains a maintainer action.
 
 ## The widened sync state payload
 

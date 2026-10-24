@@ -1,0 +1,58 @@
+import { mkdir } from 'node:fs/promises'
+import { test, expect } from './fixtures/electronApp'
+import { SHARED_CASE_NAME } from '../scripts/dev-seed/constants'
+import type { BirdbrainAPI } from '../src/shared/birdbrainApi'
+import { seedTitledCapture } from './fixtures/seed'
+
+const SCREENS = process.env.BIRDBRAIN_MEMBERS_SCREEN_DIR ?? 'test-results/shared-case-members'
+
+test.describe('Shared Case members screens', () => {
+  test.use({ seeded: true })
+
+  test('renders the roster, attribution, ledger and Join in both themes', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await mkdir(SCREENS, { recursive: true })
+    const caseId = await page.evaluate(async (name) => {
+      const { birdbrain } = window as unknown as { birdbrain: BirdbrainAPI }
+      const cases = await birdbrain.cases.list()
+      const shared = cases.find((entry) => entry.name === name)
+      if (!shared) throw new Error('Shared Case seed missing')
+      return shared.id
+    }, SHARED_CASE_NAME)
+    await seedTitledCapture(page, caseId, 'https://example.com/shared-ui', 'Shared UI Capture')
+    for (const theme of ['light', 'dark'] as const) {
+      await page.evaluate((value) => {
+        document.documentElement.classList.toggle('dark', value === 'dark')
+        localStorage.setItem('theme', value)
+      }, theme)
+      await page.evaluate((id) => {
+        window.location.hash = `/cases/${id}/settings`
+      }, caseId)
+      await expect(page.getByTestId('identity-card')).toBeVisible()
+      await expect(page.getByText('Morgan Reyes', { exact: true })).toBeVisible()
+      await page.screenshot({ path: `${SCREENS}/members-${theme}.png`, fullPage: true })
+      await page.evaluate((id) => {
+        window.location.hash = `/cases/${id}/captures`
+      }, caseId)
+      await expect(page.getByTestId('capture-item')).toHaveCount(1)
+      await page.getByTestId('capture-item').click()
+      const showDetails = page.getByRole('button', { name: 'Show details', exact: true })
+      if (await showDetails.isVisible()) await showDetails.click()
+      await expect(page.getByTestId('capture-sharing-details')).toContainText(
+        'Captured by you (DS)'
+      )
+      await page.screenshot({ path: `${SCREENS}/attribution-${theme}.png`, fullPage: true })
+      await page.evaluate((id) => {
+        window.location.hash = `/cases/${id}/data`
+      }, caseId)
+      await page.getByRole('treeitem', { name: /Manifest Ledger/ }).click()
+      await expect(page.getByTestId('ledger-chain-selector')).toBeVisible()
+      await page.screenshot({ path: `${SCREENS}/ledger-${theme}.png`, fullPage: true })
+      await page.evaluate(() => {
+        window.location.hash = '/cases/new?join=true'
+      })
+      await expect(page.getByTestId('join-case-card')).toBeVisible()
+      await page.screenshot({ path: `${SCREENS}/join-${theme}.png`, fullPage: true })
+    }
+  })
+})

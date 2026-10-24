@@ -309,13 +309,13 @@ The external reviews left ten distinct findings across eleven inline comments.
 1. [x] Use held citations for revocation summaries, including deletion gaps.
 2. [x] Keep failed or incomplete Sync now outcomes visible.
 3. [x] Show this installation's revoked membership.
-4. [ ] Show Join's direct-connection disclosure for Tor, proxy and unknown settings.
+4. [x] Show Join's direct-connection disclosure for Tor, proxy and unknown settings.
 5. [ ] Avoid effective exclusion claims from an invalid chain.
 6. [ ] Resolve Capture authorship from persisted identity rather than reused codes.
 7. [ ] Derive exclusion lookups once per snapshot for the Capture list.
 8. [x] Load the sole Owner for a cold ledger with hidden citation prefixes.
-9. [ ] Keep older pending requests from replacing a new invite.
-10. [ ] Explain that relay address changes require a restart.
+9. [x] Keep older pending requests from replacing a new invite.
+10. [x] Explain that relay address changes require a restart.
 11. [ ] Run full verification at the final clean head.
 12. [ ] Push the corrections.
 13. [ ] Reply to each review thread.
@@ -326,3 +326,5 @@ Current slice: reproduce and correct revocation and ledger presentation. Next co
 Revocation and ledger regressions reproduced four failures before correction. The three focused files now pass all 38 tests. Existing singleton copy assertions now name the one held citation. The next slice handles Sync now outcomes.
 
 Sync attempts now inspect every outcome. Empty, unreachable, no-address, failed and error-bearing results stay visible; only a nonempty all-success result clears the relay warning. The focused Sync and Members tests pass all 31 cases. Typechecking also caught a missing explicit undefined snapshot in the new revoked-self test, now corrected. Next slice: Join disclosure, pending invite requests and relay restart guidance.
+
+Join disclosure, request isolation and relay guidance reproduced five failing cases. The corrected four component files pass all 71 tests. The invite baseline is captured before creation, so an arriving request can still interrupt the QR screen. Existing requests remain available through Review. Next slice: persisted Capture authorship and exclusion lookups.

@@ -92,9 +92,9 @@ export function MembersTab({ caseId }: { caseId: string }) {
     setInviteOpen(true)
   }
 
-  function onCreated(invite: SharingInvite) {
+  function onCreated(invite: SharingInvite, pendingRequestIds: readonly string[] = []) {
     setHeldInvite(invite)
-    openInvite({ kind: 'created', invite })
+    openInvite({ kind: 'created', invite, pendingRequestIds })
   }
 
   // Invite from the roster: an invite still open reopens on its waiting
@@ -102,6 +102,7 @@ export function MembersTab({ caseId }: { caseId: string }) {
   function onInvite() {
     if (members === undefined) return
     setInviteError(null)
+    const pendingRequestIds = members.pendingJoins.map((join) => join.requestId)
     const [stillOpen] = members.invites
     if (stillOpen) {
       const held = heldInvite?.inviteId === stillOpen.inviteId ? heldInvite.invite : null
@@ -109,14 +110,15 @@ export function MembersTab({ caseId }: { caseId: string }) {
         kind: 'waiting',
         inviteId: stillOpen.inviteId,
         expiresAt: stillOpen.expiresAt,
-        invite: held
+        invite: held,
+        pendingRequestIds
       })
       return
     }
     createInvite.mutate(
       { caseId },
       {
-        onSuccess: onCreated,
+        onSuccess: (invite) => onCreated(invite, pendingRequestIds),
         onError: (err) => {
           const code = sharingErrorCode(err)
           onRefusal(code)

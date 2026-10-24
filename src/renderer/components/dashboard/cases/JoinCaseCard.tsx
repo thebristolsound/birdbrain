@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { LoaderCircle, TriangleAlert, WifiOff, X } from 'lucide-react'
 import type { SharingJoinStep } from '@shared/types'
 import { Button, Card, Label, Textarea } from '@renderer/components/ui'
+import { settingsQueryOptions } from '@renderer/lib/api/settings'
+import { NetworkNotice } from '@renderer/components/sharing/NetworkNotice'
 import { useTimeTick } from '@renderer/hooks/useTimeTick'
 import {
   invitePreviewQueryOptions,
@@ -26,6 +28,7 @@ export function JoinCaseCard({
   const [invite, setInvite] = useState('')
   const [failure, setFailure] = useState<unknown>(null)
   const [step, setStep] = useState<SharingJoinStep>('connecting')
+  const { data: settings } = useQuery(settingsQueryOptions)
   const preview = useQuery(invitePreviewQueryOptions(invite.trim()))
   const { join } = useSharingMutations()
   const nowMs = useTimeTick(30_000)
@@ -65,6 +68,9 @@ export function JoinCaseCard({
     <Card className="mx-auto w-full max-w-[480px] p-6" data-testid="join-case-card">
       <h2 className="font-display text-lg font-extrabold text-text-primary">{COPY.joinTitle}</h2>
       <p className="mt-1 text-xs text-text-muted">{COPY.joinSubtitle}</p>
+      <div className="mt-3">
+        <NetworkNotice egress={settings?.egress.kind ?? 'unavailable'} />
+      </div>
       {join.isPending ? (
         <div role="status" className="mt-5 flex gap-3 rounded border border-border bg-elevated p-4">
           <LoaderCircle size={16} className="animate-spin text-text-muted" />

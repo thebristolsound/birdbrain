@@ -337,6 +337,17 @@ describe('the members list', () => {
     expect(within(dialog).getByTestId('invite-string').textContent).toBe('bbinvite1x')
   })
 
+  it('keeps an existing join request available through Review while showing a new invite', async () => {
+    setup({ roster: members({ pendingJoins: [JO] }) })
+    fireEvent.click(await screen.findByTestId('invite-button'))
+    const dialog = await screen.findByTestId('invite-dialog')
+    expect(dialog.dataset.step).toBe('created')
+    expect(within(dialog).getByTestId('invite-string').textContent).toBe('bbinvite1x')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }))
+    fireEvent.click(within(await row('pending:req-1')).getByRole('button', { name: 'Review' }))
+    expect((await screen.findByTestId('invite-dialog')).dataset.step).toBe('request')
+  })
+
   it('reopens an invite still open on its waiting step without the string', async () => {
     setup({
       roster: members({ invites: [{ inviteId: 'inv-9', expiresAt: '2026-09-20T14:07:00.000Z' }] })

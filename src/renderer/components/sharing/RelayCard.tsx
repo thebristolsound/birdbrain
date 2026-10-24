@@ -49,6 +49,9 @@ export function RelayCard({ relayUrl, inputRef }: RelayCardProps) {
           if (e.key === 'Enter') save()
         }}
       />
+      <p className="mt-1.5 text-[11px] text-text-muted">
+        Restart Birdbrain to use a changed relay address.
+      </p>
       {error ? (
         <p className="mt-1.5 text-[11px] text-danger-fg" data-testid="relay-error">
           {error}

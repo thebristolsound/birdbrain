@@ -29,6 +29,7 @@ describe('RelayCard', () => {
     render(<RelayCard relayUrl={RELAY} />, { wrapper: Wrapper })
     const input = screen.getByLabelText('Relay URL') as HTMLInputElement
     expect(input.value).toBe(RELAY)
+    expect(screen.getByText('Restart Birdbrain to use a changed relay address.')).toBeTruthy()
     fireEvent.change(input, { target: { value: 'https://relay.example.test' } })
     fireEvent.blur(input)
     await waitFor(() => expect(setRelayUrl).toHaveBeenCalledWith('https://relay.example.test'))

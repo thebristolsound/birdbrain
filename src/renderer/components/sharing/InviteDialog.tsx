@@ -34,8 +34,14 @@ import {
 // an invite still open (the string is held only while this window created
 // it), or on a join request from a row's Review.
 export type InviteStart =
-  | { kind: 'created'; invite: SharingInvite }
-  | { kind: 'waiting'; inviteId: string; expiresAt: string; invite: string | null }
+  | { kind: 'created'; invite: SharingInvite; pendingRequestIds: readonly string[] }
+  | {
+      kind: 'waiting'
+      inviteId: string
+      expiresAt: string
+      invite: string | null
+      pendingRequestIds: readonly string[]
+    }
   | { kind: 'request'; join: SharingPendingJoin }
 
 type InviteStep = InviteStart | { kind: 'done'; member: CaseMember }
@@ -84,7 +90,9 @@ export function InviteDialog({
   const [error, setError] = useState<string | null>(null)
 
   // A join that arrives while the dialog waits on the invite takes it over.
-  const arrived = members.pendingJoins[0]
+  const pendingRequestIds =
+    step?.kind === 'created' || step?.kind === 'waiting' ? step.pendingRequestIds : []
+  const arrived = members.pendingJoins.find((join) => !pendingRequestIds.includes(join.requestId))
   const current: InviteStep | null =
     (step?.kind === 'waiting' || step?.kind === 'created') && arrived
       ? { kind: 'request', join: arrived }
@@ -107,7 +115,7 @@ export function InviteDialog({
       notify.error('Couldn’t copy the invite to your clipboard', { cause })
       return
     }
-    setStep({ kind: 'waiting', inviteId, expiresAt, invite })
+    setStep({ kind: 'waiting', inviteId, expiresAt, invite, pendingRequestIds })
   }
 
   function cancel(inviteId: string) {

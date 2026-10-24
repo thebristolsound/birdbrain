@@ -3,14 +3,18 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { JoinCaseCard } from '@renderer/components/dashboard/cases/JoinCaseCard'
 import { fakeBridge } from '../renderer/fakeBridge'
-import { refusal } from './sharingFixtures'
+import { refusal, settings } from './sharingFixtures'
 
 afterEach(cleanup)
 
-function setup(join = vi.fn(async () => ({ caseId: 'joined', caseName: 'Shared' }))) {
+function setup(
+  join = vi.fn(async () => ({ caseId: 'joined', caseName: 'Shared' })),
+  getSettings = vi.fn(async () => settings())
+) {
   const onJoined = vi.fn()
   const onBack = vi.fn()
   fakeBridge({
+    settings: { get: getSettings },
     sharing: {
       readInvite: vi.fn(async () => ({
         caseId: 'joined',
@@ -36,6 +40,33 @@ async function pasteAndJoin() {
 }
 
 describe('JoinCaseCard', () => {
+  it.each(['tor', 'proxy', 'unavailable'] as const)(
+    'shows the direct-connection warning before Join with %s settings',
+    async (kind) => {
+      const getSettings =
+        kind === 'unavailable'
+          ? vi.fn().mockRejectedValue(new Error('Settings unavailable'))
+          : vi.fn(async () =>
+              settings({
+                egress:
+                  kind === 'tor'
+                    ? { kind, proxyUrl: 'socks5://127.0.0.1:9050', label: '' }
+                    : { kind, proxyUrl: 'socks5://h:1', label: '' }
+              })
+            )
+      const { join } = setup(undefined, getSettings)
+      fireEvent.change(screen.getByLabelText('Invite'), { target: { value: 'bbinvite1example' } })
+      await screen.findByText('Alex')
+      expect(await screen.findByTestId('network-notice')).toBeTruthy()
+      expect(screen.getByTestId('network-notice').textContent).toContain(
+        'connections to members leave this computer directly'
+      )
+      expect(join).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByRole('button', { name: 'Join' }))
+      await waitFor(() => expect(join).toHaveBeenCalled())
+    }
+  )
+
   it('previews offline and navigates only after the join succeeds', async () => {
     const { join, onJoined } = setup()
     await pasteAndJoin()

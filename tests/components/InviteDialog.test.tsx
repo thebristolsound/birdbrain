@@ -16,12 +16,13 @@ const INVITE = {
     'bbinvite1mfrggzdfmzt' + 'wq2lknnwg2zlonfxxaylcmvygczlsmfzxi2lpnyqgc3teebtg64ranfxhm2lumu2g',
   expiresAt: '2026-09-20T14:07:00.000Z'
 }
-const CREATED: InviteStart = { kind: 'created', invite: INVITE }
+const CREATED: InviteStart = { kind: 'created', invite: INVITE, pendingRequestIds: [] }
 const WAITING: InviteStart = {
   kind: 'waiting',
   inviteId: 'inv-1',
   expiresAt: INVITE.expiresAt,
-  invite: INVITE.invite
+  invite: INVITE.invite,
+  pendingRequestIds: []
 }
 const REQUEST: InviteStart = { kind: 'request', join: JO }
 
@@ -79,6 +80,17 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('InviteDialog, invite created (mock 1c step 1)', () => {
+  it.each([CREATED, WAITING])('promotes only a new arrival from $kind', (start) => {
+    const oldJoin = { ...JO, requestId: 'old-request', operatorName: 'Earlier peer' }
+    renderDialog(
+      { ...start, pendingRequestIds: [oldJoin.requestId] },
+      members({ pendingJoins: [oldJoin, JO] })
+    )
+    expect(dialog().dataset.step).toBe('request')
+    expect(screen.getByTestId('member-code-input').getAttribute('value')).toBe('JO')
+    expect(within(dialog()).queryByText('Earlier peer')).toBeNull()
+  })
+
   it('shows an arriving QR join without requiring Copy first', () => {
     renderDialog(CREATED, members({ pendingJoins: [JO] }))
     expect(dialog().dataset.step).toBe('request')

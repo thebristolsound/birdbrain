@@ -10,6 +10,7 @@ import { signEntryHash } from '@main/services/signingKey'
 import {
   appendManifestEntry,
   head,
+  idsReachingMembers,
   readChainFileSnapshots,
   readEntries,
   readManifestSnapshot,
@@ -275,6 +276,17 @@ export function liveSyncSource(caseId: string): SyncSource | null {
   if (listCaseMembers(caseId).length === 0) return null
   const installationId = getInstallationId()
   const caseDir = join(getStorageRoot(), caseId)
+  const manifests = [
+    readManifestSnapshot(caseDir).jsonl,
+    ...readChainFileSnapshots(caseDir)
+      .filter((chain) => chain.sourceCaseId === undefined)
+      .map((chain) => chain.jsonl)
+  ]
+  // Keep imported history and legacy Captures' rows local; current-segment deletions still
+  // reach members, so their surviving rows and tombstones remain eligible.
+  const membersHold = new Set(
+    manifests.flatMap((jsonl) => [...idsReachingMembers(storedEntries(jsonl))])
+  )
   return {
     installationId,
     caseId,
@@ -306,7 +318,9 @@ export function liveSyncSource(caseId: string): SyncSource | null {
       const offered = rowsOfAuthorByTable(
         caseId,
         author === installationId ? null : author,
-        sinceVersion
+        sinceVersion,
+        undefined,
+        membersHold
       )
       for (const [table, { rows, complete }] of offered) {
         byTable.set(table, { rows: toWireRows(rows, installationId), complete })

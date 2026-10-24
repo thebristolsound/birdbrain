@@ -1031,6 +1031,51 @@ describe('working-layer rows (#1512)', () => {
     expect(maxAuthorVersionInCase(caseId, REMOTE_ID)).toBe(6)
   })
 
+  it('filters unreachable references before page bounds and keeps whole eligible groups', () => {
+    share()
+    const caps = [1, 2, 3].map((n) => capture(`https://example.com/${n}`))
+    const result = applyRemoteRows(
+      [
+        remoteRow(
+          'tags',
+          { id: 'rt', name: 'remote', color: null, created_at: '2026-10-01T00:00:00.000Z' },
+          1
+        ),
+        remoteRow('notes', noteFields('hidden1', 'local', { capture_id: caps[0] }), 1),
+        remoteRow('notes', noteFields('hidden2', 'local', { capture_id: caps[0] }), 2),
+        remoteRow('notes', noteFields('loose', 'loose'), 3),
+        remoteRow('notes', noteFields('shared', 'shared', { capture_id: caps[1] }), 4),
+        remoteRow('note_tags', { note_id: 'hidden1', tag_id: 'rt' }, 5),
+        ...caps.map((cap) => remoteRow('exhibit_tags', { exhibit_id: cap, tag_id: 'rt' }, 6))
+      ],
+      roster(),
+      new Set([REMOTE_ID]),
+      caseId
+    )
+    expect(result.refused).toEqual([])
+    const membersHold = new Set(caps.slice(1))
+    const first = rowsOfAuthorByTable(caseId, REMOTE_ID, 0, 1, membersHold)
+    expect(first.get('notes')).toMatchObject({
+      rows: [{ fields: { id: 'loose' } }],
+      complete: false
+    })
+    expect(first.get('note_tags')).toEqual({ rows: [], complete: true })
+    expect(first.get('exhibit_tags')?.rows.map(({ fields }) => fields.exhibit_id)).toEqual(
+      caps.slice(1)
+    )
+    expect(first.get('exhibit_tags')?.complete).toBe(false)
+    expect(first.get('tags')?.rows).toHaveLength(1)
+    const next = rowsOfAuthorByTable(caseId, REMOTE_ID, 3, 1, membersHold)
+    expect(next.get('notes')).toMatchObject({
+      rows: [{ fields: { id: 'shared' } }],
+      complete: true
+    })
+    expect(rowsOfAuthorByTable(caseId, REMOTE_ID, 0, 1, new Set()).get('notes')).toMatchObject({
+      rows: [{ fields: { id: 'loose' } }],
+      complete: true
+    })
+  })
+
   // Rows on a deleted Capture (#1877): another member's stay as signed, under
   // the Case they name, and this installation's own are tombstoned.
   describe('a deleted Capture of a Shared Case', () => {

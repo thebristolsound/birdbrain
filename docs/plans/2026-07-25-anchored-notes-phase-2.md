@@ -1,5 +1,11 @@
 # Phase 2 — anchored notes
 
+**Status:** parked on 2026-10-23. Slice 1 (anchor storage and resolution) is on `main`; slices 2 and
+3 were never built, and `noteAnchorResolver.ts` has no production caller. The Notes workspace
+rebuild (71f62c55) replaced the note card slice 3 targets, and Finding anchors in `CONTEXT.md`
+postdate this plan. Picking it up again starts with rewriting the plan against
+`NoteWorkspaceDetail.tsx`.
+
 Date: 2026-07-25
 Design: `docs/specs/2026-07-24-anchored-notes-report-authoring-design.md` (approved)
 Depends on: Phase 1, merged as `49bad66` + `6a1116f`

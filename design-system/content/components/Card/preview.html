@@ -1,0 +1,27 @@
+<!-- @dsCard group="Surfaces" height=230 subtitle="Static rendition of card.tsx" -->
+<!doctype html><html><head><meta charset="utf-8"><style>
+  html,body{margin:0;background:var(--color-canvas);color:var(--color-text-secondary);font-family:var(--font-body);font-size:12px;line-height:16px}
+  .wrap{padding:20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  .col{display:flex;flex-direction:column;gap:12px;align-items:flex-start}
+  .eyebrow{font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:var(--tracking-label);color:var(--color-text-faint);line-height:1}
+  svg.i{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+</style>
+<style>
+  .card{width:320px;background:var(--color-card);border:1px solid var(--color-border);border-radius:var(--radius-2xl);box-shadow:none}
+  .card.hover:hover{border-color:var(--color-border-strong)}
+  .head{display:flex;flex-direction:column;gap:6px;padding:20px 20px 0}
+  .title{font:600 12px/16px var(--font-display);letter-spacing:var(--tracking-display);color:var(--color-text-primary);margin:0}
+  .desc{font:400 14px/20px var(--font-body);color:var(--color-text-muted);margin:0}
+  .content{padding:20px}
+  .panel{border-radius:var(--radius-lg);border:1px solid var(--color-border-strong);background:var(--color-surface);padding:12px;font-family:var(--font-mono);color:var(--color-text-secondary)}
+  .foot{display:flex;align-items:center;gap:8px;padding:0 20px 20px}
+  .btn{display:inline-flex;align-items:center;height:28px;padding:0 11px;border-radius:var(--radius-md);font:500 12px/16px var(--font-body);border:1px solid var(--color-border-strong);background:transparent;color:var(--color-text-primary)}
+</style></head><body>
+<div class="wrap">
+  <div class="card hover">
+    <div class="head"><h3 class="title">Selector coverage</h3><p class="desc">3 of 5 selectors matched a capture this week.</p></div>
+    <div class="content"><div class="panel">domain:example.org → 12 matches</div></div>
+    <div class="foot"><button class="btn">Open selectors</button></div>
+  </div>
+</div>
+</body></html>

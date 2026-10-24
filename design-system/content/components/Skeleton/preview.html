@@ -1,0 +1,19 @@
+<!-- @dsCard group="Feedback" height=120 subtitle="Static rendition of skeleton.tsx" -->
+<!doctype html><html><head><meta charset="utf-8"><style>
+  html,body{margin:0;background:var(--color-canvas);color:var(--color-text-secondary);font-family:var(--font-body);font-size:12px;line-height:16px}
+  .wrap{padding:20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  .col{display:flex;flex-direction:column;gap:12px;align-items:flex-start}
+  .eyebrow{font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:var(--tracking-label);color:var(--color-text-faint);line-height:1}
+  svg.i{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+</style>
+<style>
+  .sk{border-radius:var(--radius-md);background:var(--color-accent);animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite}
+  @keyframes pulse{50%{opacity:.5}}
+  @media (prefers-reduced-motion:reduce){.sk{animation:none;opacity:.6}}
+</style></head><body>
+<div class="wrap col">
+  <div class="sk" style="width:180px;height:12px"></div>
+  <div class="sk" style="width:280px;height:12px"></div>
+  <div class="sk" style="width:120px;height:28px"></div>
+</div>
+</body></html>

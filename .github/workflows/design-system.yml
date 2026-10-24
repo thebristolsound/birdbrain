@@ -1,0 +1,48 @@
+name: Design system
+
+# Rebuilds the design system's file tree from the code and fails on any finding (a token
+# without a note, a preview that uses an undeclared token, a logo whose bytes changed). The
+# output is uploaded as a workflow artifact; publishing it to the Design System artifact is
+# a Claude step, described in design-system/README.md. No install: the producer has no
+# dependencies.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/renderer/styles/globals.css'
+      - 'src/renderer/components/ui/**'
+      - 'design-system/**'
+      - '.github/workflows/design-system.yml'
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    paths:
+      - 'src/renderer/styles/globals.css'
+      - 'src/renderer/components/ui/**'
+      - 'design-system/**'
+      - '.github/workflows/design-system.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: design-system-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Rebuild and check
+        run: node design-system/build.mjs --check --by "CI"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: design-system-${{ github.sha }}
+          path: design-system/dist/project
+          retention-days: 14

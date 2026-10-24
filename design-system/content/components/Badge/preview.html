@@ -1,0 +1,31 @@
+<!-- @dsCard group="Data display" height=110 subtitle="Static rendition of badge.tsx" -->
+<!doctype html><html><head><meta charset="utf-8"><style>
+  html,body{margin:0;background:var(--color-canvas);color:var(--color-text-secondary);font-family:var(--font-body);font-size:12px;line-height:16px}
+  .wrap{padding:20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  .col{display:flex;flex-direction:column;gap:12px;align-items:flex-start}
+  .eyebrow{font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:var(--tracking-label);color:var(--color-text-faint);line-height:1}
+  svg.i{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+</style>
+<style>
+  .badge{display:inline-flex;align-items:center;gap:6px;flex-shrink:0;border-radius:9999px;border:1px solid transparent;font:500 12px/16px var(--font-body);padding:2px 8px;transition:color .15s,background-color .15s}
+  .sm{font-family:var(--font-mono)} .md{padding:2px 10px} .pill{height:28px;padding:0 10px}
+  .default{background:var(--color-accent);color:#fff}
+  .secondary{background:var(--color-elevated);color:var(--color-text-muted)}
+  .outline{border-color:var(--color-border);color:var(--color-text-secondary)}
+  .accent{background:var(--color-accent-subtle);color:var(--color-accent)}
+  .success{background:var(--color-success-surface);border-color:var(--color-success-line);color:var(--color-success-fg)}
+  .danger{background:var(--color-danger-surface);border-color:var(--color-danger-line);color:var(--color-danger-fg)}
+  .warning{background:var(--color-warning-surface);border-color:var(--color-warning-line);color:var(--color-warning-fg)}
+  .dot{width:6px;height:6px;border-radius:9999px;background:currentColor;flex-shrink:0}
+</style></head><body>
+<div class="wrap">
+  <span class="badge sm secondary">MHTML</span>
+  <span class="badge sm outline">sha256</span>
+  <span class="badge sm default">NEW</span>
+  <span class="badge md accent">Active case</span>
+  <span class="badge md success"><span class="dot"></span>Verified</span>
+  <span class="badge md danger"><span class="dot"></span>Chain broken</span>
+  <span class="badge md warning"><span class="dot"></span>Unsigned</span>
+  <span class="badge pill outline"><span class="dot" style="color:var(--color-hue-orange-fg)"></span>Crypto</span>
+</div>
+</body></html>

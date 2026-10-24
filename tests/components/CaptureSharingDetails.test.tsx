@@ -30,7 +30,7 @@ const exclusion: ManifestEntry = {
   index: 32
 }
 
-function setup(excluded = false, verified = false) {
+function setup(excluded = false, verified = false, own = false) {
   const excludeExhibit = vi.fn(async () => ({
     exhibitId: capture.id,
     authorInstallationId: 'inst-nk',
@@ -43,7 +43,11 @@ function setup(excluded = false, verified = false) {
   render(
     <QueryClientProvider client={client}>
       <CaptureSharingDetails
-        capture={{ ...capture, lastVerifiedStatus: verified ? 'verified' : 'tampered' }}
+        capture={{
+          ...capture,
+          exhibitCitation: own ? 'AR-12' : capture.exhibitCitation,
+          lastVerifiedStatus: verified ? 'verified' : 'tampered'
+        }}
         sharing={{
           members: members(),
           snapshot: snapshot(excluded ? [MERGE_31, exclusion] : [MERGE_31])
@@ -55,6 +59,12 @@ function setup(excluded = false, verified = false) {
 }
 
 describe('Capture sharing details', () => {
+  it('lets the Owner exclude their own Capture', () => {
+    setup(false, false, true)
+    expect(screen.getByRole('button', { name: 'Exclude from export' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Exclude from export' }))
+    expect(screen.getByRole('heading', { name: 'Exclude AR-12 from export?' })).toBeTruthy()
+  })
   it('attributes the capture and the merge that received it', () => {
     setup()
     expect(screen.getByTestId('capture-sharing-details').textContent).toContain(

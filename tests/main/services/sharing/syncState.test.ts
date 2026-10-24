@@ -154,6 +154,52 @@ describe('sync state (#1512)', () => {
     })
   })
 
+  it('keeps a forwarded chain pause across other successes until that chain advances', () => {
+    share()
+    getDb()
+      .prepare('UPDATE case_members SET revoked_at_index = NULL WHERE installation_id = ?')
+      .run(REVOKED_ID)
+    finishSession(caseId, {
+      peerInstallationId: REVOKED_ID,
+      transfer: { entries: 2, blobs: 0, bytes: 0 },
+      error: { kind: 'newer-version', detail: 'unsupported', installationId: PEER_ID, index: 3 },
+      heads: {
+        [PEER_ID]: { index: 2, entryHash: 'h2' },
+        [REVOKED_ID]: { index: 8, entryHash: 'h8' }
+      }
+    })
+    expect(getSyncState(caseId).lastError).toMatchObject({
+      installationId: PEER_ID,
+      index: 2,
+      waitingIndex: 3
+    })
+    expect(
+      getSyncState(caseId).peers.find((peer) => peer.installationId === PEER_ID)?.pausedAtIndex
+    ).toBe(3)
+    finishSession(caseId, {
+      peerInstallationId: REVOKED_ID,
+      transfer: { entries: 0, blobs: 0, bytes: 0 },
+      error: null,
+      heads: { [PEER_ID]: { index: 2, entryHash: 'h2' } }
+    })
+    resetSyncStateMemory()
+    expect(getSyncState(caseId).phase).toBe('error')
+    expect(getSyncState(caseId).lastError).toMatchObject({
+      installationId: PEER_ID,
+      waitingIndex: 3
+    })
+    finishSession(caseId, {
+      peerInstallationId: REVOKED_ID,
+      transfer: { entries: 1, blobs: 0, bytes: 0 },
+      error: null,
+      heads: { [PEER_ID]: { index: 3, entryHash: 'h3' } }
+    })
+    expect(getSyncState(caseId).phase).toBe('idle')
+    expect(
+      getSyncState(caseId).peers.find((peer) => peer.installationId === PEER_ID)?.pausedAtIndex
+    ).toBeUndefined()
+  })
+
   it('keeps the high-water mark in every Shared Case and never lowers it', () => {
     expect(localVersionHighWater()).toBe(0)
     recordLocalVersion(5)
@@ -287,7 +333,12 @@ describe('sync state (#1512)', () => {
     finishSession(caseId, {
       peerInstallationId: PEER_ID,
       transfer: { entries: 2, blobs: 0, bytes: 10 },
-      error: { kind: 'newer-version', detail: `entry 3 of ${PEER_ID}: schema 9` },
+      error: {
+        kind: 'newer-version',
+        detail: `entry 3 of ${PEER_ID}: schema 9`,
+        installationId: PEER_ID,
+        index: 3
+      },
       heads: { [PEER_ID]: { index: 2, entryHash: 'h2' }, [localId]: { index: 5, entryHash: 'h5' } }
     })
     const paused = getSyncState(caseId)
@@ -296,7 +347,8 @@ describe('sync state (#1512)', () => {
       kind: 'newer-version',
       at: readSyncStateFile(caseDir()).peers[PEER_ID].lastSessionAt,
       installationId: PEER_ID,
-      index: 2
+      index: 2,
+      waitingIndex: 3
     })
     expect(paused.peers).toEqual([
       {
@@ -304,9 +356,17 @@ describe('sync state (#1512)', () => {
         reachable: true,
         lastSessionAt: paused.lastError?.at,
         ok: false,
-        heldHead: 2
+        heldHead: 2,
+        pausedAtIndex: 3
       }
     ])
+
+    finishSession(caseId, {
+      peerInstallationId: PEER_ID,
+      transfer: { entries: 1, blobs: 0, bytes: 1 },
+      error: null,
+      heads: { [PEER_ID]: { index: 3, entryHash: 'h3' } }
+    })
 
     // A session that failed before `hello` identified the peer names nobody,
     // and a peer whose session held no head of its own chain has no index.

@@ -284,9 +284,9 @@ export const COPY = {
     'Each member’s chain is its own sequence and is verified on its own; Seq is the index in ' +
     'that chain. The Timeline view interleaves chains by the time each writer asserted, which ' +
     'verification does not check. A merge entry says which members’ chains advanced and by how ' +
-    'many entries. Verification shows each chain was not edited without that member’s key and ' +
-    'that every merge names a chain state that exists. It does not show who sat at a member’s ' +
-    'machine.',
+    'many entries. The verdict above checks this installation’s chain only. It does not check ' +
+    'the other members’ chain files or the states named by merge entries, and it does not show ' +
+    'who sat at a member’s machine.',
   glyphLabel: 'Network addresses visible to teammates and the relay',
   detailsInMembers: 'Details in Members',
   clickToOpen: 'Click to open Members.'
@@ -474,15 +474,23 @@ export interface PausedStrip {
   text: string
 }
 
-export function pausedStrip(name: string, code: string, index: number | undefined): PausedStrip {
+export function pausedStrip(
+  name: string,
+  code: string,
+  index: number | undefined,
+  waitingIndex?: number
+): PausedStrip {
   const lead = `Sync with ${name} is paused.`
   const received = index === undefined ? null : `${code}·${formatSeq(index)}`
-  const waiting = index === undefined ? null : `${code}·${formatSeq(index + 1)}`
+  const firstWaiting = waitingIndex ?? (index === undefined ? undefined : index + 1)
+  const waiting = firstWaiting === undefined ? null : `${code}·${formatSeq(firstWaiting)}`
   const middle =
     ' Their Birdbrain is newer than this one and wrote an entry this version cannot read.'
   const entries =
     received === null
-      ? ''
+      ? waiting === null
+        ? ''
+        : ` ${waiting} and later wait on their machine.`
       : ` Received up to ${received}; ${waiting} and later wait on their machine.`
   const tail =
     ' Sync with them resumes after this computer updates. Other members are not affected.'
@@ -539,9 +547,12 @@ function revokeEntryOf(
 
 function pausedWith(syncState: SyncState | undefined, installationId: string): boolean {
   return (
-    syncState?.phase === 'error' &&
-    syncState.lastError?.kind === 'newer-version' &&
-    syncState.lastError.installationId === installationId
+    syncState?.peers.some(
+      (peer) => peer.installationId === installationId && peer.pausedAtIndex !== undefined
+    ) ||
+    (syncState?.phase === 'error' &&
+      syncState.lastError?.kind === 'newer-version' &&
+      syncState.lastError.installationId === installationId)
   )
 }
 
@@ -591,7 +602,13 @@ export function memberRows({ members, syncState, snapshot, nowMs }: MemberRowsIn
     }
     const action: MemberRow['action'] = members.isOwner ? 'revoke' : null
     if (pausedWith(syncState, member.installationId)) {
-      const index = syncState?.lastError?.index
+      const waiting = peer?.pausedAtIndex ?? syncState?.lastError?.waitingIndex
+      const index =
+        peer?.pausedAtIndex === undefined
+          ? syncState?.lastError?.index
+          : peer.pausedAtIndex > 0
+            ? peer.pausedAtIndex - 1
+            : undefined
       const at = peer?.lastSessionAt
       const upTo = index === undefined ? '' : ` · up to ${member.memberCode}·${formatSeq(index)}`
       return {
@@ -604,7 +621,7 @@ export function memberRows({ members, syncState, snapshot, nowMs }: MemberRowsIn
         },
         lastSynced: at ? `${formatClock(at, nowMs)}${upTo}` : '—',
         action,
-        paused: pausedStrip(member.operatorName, member.memberCode, index)
+        paused: pausedStrip(member.operatorName, member.memberCode, index, waiting)
       }
     }
     const lastSynced = peer?.lastSessionAt ? formatRelativeTime(peer.lastSessionAt, nowMs) : '—'
@@ -698,8 +715,10 @@ export function syncPillModel(state: SyncState | undefined): SyncPill | null {
   const allReachable = peersReachable === peersTotal
   const some = `${peersReachable} of ${peersWord(peersTotal)}`
   let pill: Omit<SyncPill, 'glyph' | 'title'>
-  if (phase === 'error') {
-    const kind = lastError?.kind ?? 'local'
+  if (phase === 'error' || state.peers.some((peer) => peer.pausedAtIndex !== undefined)) {
+    const kind = state.peers.some((peer) => peer.pausedAtIndex !== undefined)
+      ? 'newer-version'
+      : (lastError?.kind ?? 'local')
     pill =
       kind === 'newer-version'
         ? { a: 'Sync paused', b: 'newer version', chrome: 'error', dot: 'danger', spinner: false }

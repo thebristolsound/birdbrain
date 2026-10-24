@@ -79,6 +79,11 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('InviteDialog, invite created (mock 1c step 1)', () => {
+  it('shows an arriving QR join without requiring Copy first', () => {
+    renderDialog(CREATED, members({ pendingJoins: [JO] }))
+    expect(dialog().dataset.step).toBe('request')
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy()
+  })
   it('names the Case, explains the invite and shows the string with its expiry', () => {
     renderDialog(CREATED)
     expect(screen.getByRole('heading', { name: 'Invite to Operation Nightjar' })).toBeTruthy()

@@ -147,7 +147,7 @@ Next command:
 cd /home/matt/worktrees/birdbrain/feat-1514 && tail -40 /home/matt/.cache/birdbrain-1514/s6-e2e.log
 ```
 
-Finish the screen audit and independent review, address confirmed findings, then commit and run
+Finish the screen audit and second independent review, then run
 `mise x -- pnpm preflight` at a clean head. The work remains local and no PR is open. Resume
 from this worktree, not the roadmap branch. After the screens PR, the serial programme order is
 #1951, #1955, entry points, then #1883. The real two-network sync remains a maintainer action.
@@ -157,24 +157,42 @@ from this worktree, not the roadmap branch. After the screens PR, the serial pro
 Item 21 of the feasibility assessment gives `sharing:getSyncState` a case-level shape. The
 Members tab's Connection and Last synced columns and the newer-version strip (ruling 2 of
 2026-10-10, "shown on the Members row as the mock draws it") need per-member facts, and
-`SharingMember` carries none. This PR widens the payload instead of adding a channel. The change
-is confined to two advisory-tier files (`src/shared/types.ts`, `syncState.ts`), changes no file
-schema, no write site, no verifier and nothing under `src/main/index.ts` or `db/**`:
+`SharingMember` carries none. This PR widens the payload instead of adding a channel. No evidence schema, database table
+or verifier changes.
 
 - `lastSuccessAt`: already in the file, dropped from the payload until now.
 - `peers[]`, one per roster member other than self and the revoked: `reachable` from the set the
   function already counts, `lastSessionAt` and `ok` from the file's `peers` record, `heldHead`
   the index of that member's own chain this replica held after the session.
-- `lastError.installationId` and `lastError.index`: the peer whose `lastSessionAt` equals the
-  error's `at` with `ok: false` is the failed session's peer (`finishSession` writes both from
-  one clock read), and its `heldHead` is the last entry received. Absent when the session failed
-  before `hello` identified the peer.
+- `peers[].pausedAtIndex` names the first unreadable entry in that author's chain, including a
+  chain another peer forwarded. A separate derived cache, `sync-pauses.json`, retains it until
+  the chain advances past that entry. The existing sync-state file and its row-version counters
+  keep their format, so older builds still read them.
+- For a version pause, `lastError.installationId`, `index` and `waitingIndex` come from the
+  session's actual failing chain, its held head and its first unreadable entry. An older error
+  with no chain metadata names no member. Other error kinds retain the existing session lookup.
 
-`tests/main/services/sharing/syncState.test.ts` pins the derivation. The match is at millisecond
-resolution, so the test fakes `Date` and moves it between sessions. Three tests that pinned the
-whole payload with `toEqual` (`syncState.test.ts`, `tests/main/ipcHandlers.test.ts`,
-`tests/main/services/sharing/syncPeers.test.ts`) gained the new fields; no other expectation
-moved.
+`tests/main/services/sharing/syncState.test.ts` checks forwarded authorship, persistence across
+other peers' successes, recovery and older cache files. The renderer checks each member's pause
+independently of the Case's current transfer phase.
+
+### Review corrections
+
+The first independent reviews found four behavior gaps. QR joins now interrupt the initial
+invite screen without a Copy click, and the Owner can exclude their own Captures. The ledger
+footer now describes this screen's local-chain check and makes no claim about remote chains.
+
+Version pauses now retain the failing chain's author and first unreadable index from the
+session, rather than guessing them from its transport peer. The separate derived `sync-pauses.json` cache keeps each pause across other members' successful sessions;
+only receiving the previously unreadable entry clears it. The session forwards its existing
+error metadata to that cache. No evidence entry, database table or protocol message changes.
+Old cache files still read, including their version high-water marks. Older builds ignore the
+new sidecar and can still read the unchanged sync-state file.
+
+The regression for a forwarded chain failed before this correction. The corrected flow and
+the focused renderer checks pass 120 tests. Full verification also found two required import
+aliases and the missing sharing query-log domain; the code now supplies them. Ledger tests
+now include Actor and the required citation-rule fixture field.
 
 ## Deviations from the mock
 

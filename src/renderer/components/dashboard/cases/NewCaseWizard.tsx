@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import { JoinCaseCard } from './JoinCaseCard'
+import { JoinCaseCard } from '@renderer/components/dashboard/cases/JoinCaseCard'
 import { useCasesMutations, useSettingsMutations } from '@renderer/lib/queries'
 import { createSelector } from '@renderer/lib/api/selectors'
 import { notify } from '@renderer/lib/notify'

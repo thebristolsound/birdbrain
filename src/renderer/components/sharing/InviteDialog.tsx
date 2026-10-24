@@ -86,7 +86,9 @@ export function InviteDialog({
   // A join that arrives while the dialog waits on the invite takes it over.
   const arrived = members.pendingJoins[0]
   const current: InviteStep | null =
-    step?.kind === 'waiting' && arrived ? { kind: 'request', join: arrived } : step
+    (step?.kind === 'waiting' || step?.kind === 'created') && arrived
+      ? { kind: 'request', join: arrived }
+      : step
 
   function close() {
     setError(null)

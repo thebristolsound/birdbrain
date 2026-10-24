@@ -816,7 +816,8 @@ export async function pullFromPeer(
         blobs: result.blobsReceived,
         bytes: result.bytesReceived
       },
-      error: first ? { kind: first.kind, detail: first.detail } : null,
+      error: first ?? null,
+      errors: result.errors,
       heads
     })
     writeMembersFile(caseId)

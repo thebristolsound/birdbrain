@@ -76,8 +76,7 @@ export function CaptureSharingDetails({
           </p>
         </div>
       ) : (
-        sharing.members?.isOwner &&
-        !author.isSelf && (
+        sharing.members?.isOwner && (
           <Button variant="outline" size="xs" className="mt-2" onClick={() => setOpen(true)}>
             {COPY.excludeAction}
           </Button>

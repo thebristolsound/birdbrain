@@ -1636,6 +1636,8 @@ export interface SyncPeerState {
   lastSessionAt: string | null
   ok: boolean | null
   heldHead: number | null
+  // The first unreadable entry in this member's chain, even when another peer supplied it.
+  pausedAtIndex?: number
 }
 
 // The payload of `sharing:getSyncState`, the shape the sync pill and the
@@ -1648,11 +1650,14 @@ export interface SyncState {
   transfer: SyncTransfer | null
   // When the last session that completed without an error ended.
   lastSuccessAt: string | null
-  // `installationId` and `index` name the peer the failed session was with
-  // and the head of its chain this replica held afterwards, when the file
-  // records that session; the Members row for a `newer-version` pause names
-  // both. Absent when the session failed before the peer was identified.
-  lastError: { kind: SyncErrorKind; at: string; installationId?: string; index?: number } | null
+  // A version pause names the chain author, its last held index and the first unreadable index.
+  lastError: {
+    kind: SyncErrorKind
+    at: string
+    installationId?: string
+    index?: number
+    waitingIndex?: number
+  } | null
   // The Egress setting's kind (ADR-0032 rule 1). Sync does not follow the
   // Egress: while this is not 'direct', sync still runs and teammates and the
   // relay see this computer's addresses, which the members screens say.

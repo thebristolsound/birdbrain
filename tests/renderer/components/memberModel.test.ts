@@ -423,7 +423,27 @@ describe('memberRows', () => {
     expect(rows.every((r) => r.action !== 'revoke')).toBe(true)
   })
 
-  it('pauses nobody once a later success moved the phase back to idle', () => {
+  it('keeps explicit chain pauses while other members sync, including a first-entry pause', () => {
+    const state = sync({ phase: 'syncing', peers: [peer('inst-si', { pausedAtIndex: 0 })] })
+    const rows = memberRows({
+      members: members(),
+      syncState: state,
+      snapshot: undefined,
+      nowMs: NOW
+    })
+    const si = rows.find((row) => row.code === 'SI')
+    expect(si?.connection.label).toBe('Paused · newer Birdbrain')
+    expect(si?.paused?.received).toBeNull()
+    expect(si?.paused?.waiting).toBe('SI·0000')
+    expect(si?.paused?.text).not.toContain('Received up to')
+    expect(syncPillModel(state)).toMatchObject({
+      a: 'Sync paused',
+      b: 'newer version',
+      chrome: 'error'
+    })
+  })
+
+  it('ignores a stale case error once no explicit chain pause remains', () => {
     const rows = memberRows({
       members: members(),
       syncState: sync({

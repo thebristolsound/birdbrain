@@ -247,6 +247,7 @@ describe('DataExplorer results and tabs (#1150)', () => {
       'Seq',
       'Time (UTC)',
       'Event',
+      'Actor',
       'Target',
       'Entry hash',
       'Prev hash'

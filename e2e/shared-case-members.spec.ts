@@ -1,8 +1,8 @@
 import { mkdir } from 'node:fs/promises'
 import { test, expect } from './fixtures/electronApp'
 import { SHARED_CASE_NAME } from '../scripts/dev-seed/constants'
-import type { BirdbrainAPI } from '../src/shared/birdbrainApi'
-import { seedTitledCapture } from './fixtures/seed'
+import type { BirdbrainAPI } from '@shared/birdbrainApi'
+import { mhtmlPage, seedCapture, serverToken } from './fixtures/seed'
 
 const SCREENS = process.env.BIRDBRAIN_MEMBERS_SCREEN_DIR ?? 'test-results/shared-case-members'
 
@@ -10,6 +10,7 @@ test.describe('Shared Case members screens', () => {
   test.use({ seeded: true })
 
   test('renders the roster, attribution, ledger and Join in both themes', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.setViewportSize({ width: 1440, height: 1000 })
     await mkdir(SCREENS, { recursive: true })
     const caseId = await page.evaluate(async (name) => {
@@ -19,7 +20,14 @@ test.describe('Shared Case members screens', () => {
       if (!shared) throw new Error('Shared Case seed missing')
       return shared.id
     }, SHARED_CASE_NAME)
-    await seedTitledCapture(page, caseId, 'https://example.com/shared-ui', 'Shared UI Capture')
+    await seedCapture(page, caseId, await serverToken(page), {
+      slug: 'shared-ui',
+      title: 'Shared UI Capture',
+      mhtml: mhtmlPage(
+        'https://example.com/shared-ui',
+        '<html><head><title>Shared UI Capture</title></head><body>Shared UI Capture</body></html>'
+      )
+    })
     for (const theme of ['light', 'dark'] as const) {
       await page.evaluate((value) => {
         document.documentElement.classList.toggle('dark', value === 'dark')

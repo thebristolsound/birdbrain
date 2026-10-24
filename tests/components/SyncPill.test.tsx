@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SyncPill } from '@renderer/components/status/SyncPill'
+import { queryKeys } from '@renderer/lib/api/keys'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { sync } from './sharingFixtures'
 import type { SyncState } from '@shared/types'
@@ -17,7 +18,7 @@ function setup(state: SyncState) {
       <SyncPill caseId="case-1" onOpenMembers={onOpenMembers} />
     </QueryClientProvider>
   )
-  return { onOpenMembers }
+  return { onOpenMembers, client }
 }
 
 describe('SyncPill', () => {
@@ -45,8 +46,10 @@ describe('SyncPill', () => {
 
   it('hides for a Case with no peers', async () => {
     const state = sync({ peersTotal: 0, peersReachable: 0, peers: [] })
-    setup(state)
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    const { client } = setup(state)
+    await waitFor(() =>
+      expect(client.getQueryState(queryKeys.sharingSyncState('case-1'))?.status).toBe('success')
+    )
     expect(screen.queryByTestId('sync-pill')).toBeNull()
   })
 })

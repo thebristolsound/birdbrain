@@ -37,7 +37,7 @@ test.describe('Shared Case members screens', () => {
         window.location.hash = `/cases/${id}/settings`
       }, caseId)
       await expect(page.getByTestId('identity-card')).toBeVisible()
-      await expect(page.getByText('Morgan Reyes', { exact: true })).toBeVisible()
+      await expect(page.getByTestId('members-list')).toContainText('Morgan Reyes')
       await page.screenshot({ path: `${SCREENS}/members-${theme}.png`, fullPage: true })
       await page.evaluate((id) => {
         window.location.hash = `/cases/${id}/captures`
@@ -45,10 +45,10 @@ test.describe('Shared Case members screens', () => {
       await expect(page.getByTestId('capture-item')).toHaveCount(1)
       await page.getByTestId('capture-item').click()
       const showDetails = page.getByRole('button', { name: 'Show details', exact: true })
-      if (await showDetails.isVisible()) await showDetails.click()
-      await expect(page.getByTestId('capture-sharing-details')).toContainText(
-        'Captured by you (DS)'
-      )
+      const details = page.getByTestId('capture-sharing-details')
+      await expect(details.or(showDetails).first()).toBeVisible()
+      if (!(await details.isVisible())) await showDetails.click()
+      await expect(details).toContainText('Captured by you (DS)')
       await page.screenshot({ path: `${SCREENS}/attribution-${theme}.png`, fullPage: true })
       await page.evaluate((id) => {
         window.location.hash = `/cases/${id}/data`

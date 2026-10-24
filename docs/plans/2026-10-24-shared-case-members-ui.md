@@ -39,7 +39,7 @@ with `pnpm test <file>` and `pnpm typecheck`, `pnpm lint` and `pnpm lint:boundar
 | S3 | Invite dialog with the QR code and the join request step; `qrcode-generator` 2.0.4 | shipped |
 | S4 | Join branch in the wizard, the sync pill component (unmounted), the shared Case card line | shipped |
 | S5 | Attribution and exclusion on capture rows and the details panel | shipped |
-| S6 | Ledger Actor column, chain selector and Timeline (blocking tier, small); screenshots; two-instance e2e; `pnpm preflight` | verification |
+| S6 | Ledger Actor column, chain selector and Timeline (blocking tier, small); screenshots; two-instance e2e; `pnpm preflight` | shipped |
 
 ### S1, shipped
 
@@ -47,7 +47,8 @@ with `pnpm test <file>` and `pnpm typecheck`, `pnpm lint` and `pnpm lint:boundar
   `html.dark`, with the README's values. The local installation is always `--color-accent`.
 - `SyncState` (`src/shared/types.ts`) gains `peers[]`, `lastSuccessAt` and
   `lastError.installationId` / `lastError.index`; `getSyncState` in
-  `src/main/services/sharing/syncState.ts` derives them from `sync-state.json` as written. See
+  `src/main/services/sharing/syncState.ts` reads session facts from `sync-state.json`. Version
+  pauses use the failing chain metadata and the derived `sync-pauses.json` cache. See
   "The widened sync state payload" below.
 - `src/renderer/lib/api/sharing.ts`: `membersQueryOptions`, `syncStateQueryOptions` (polled every
   5 s while mounted, because `onSharingChanged` fires at the end of a round and `syncing` is
@@ -141,16 +142,9 @@ writer's code. Neither view changes the snapshot's integrity verdict. Both ledge
 that only this installation's chain is available. The new Electron screen check captures
 Members, capture attribution, the ledger and Join in both themes.
 
-Next command:
-
-```
-cd /home/matt/worktrees/birdbrain/feat-1514 && tail -40 /home/matt/.cache/birdbrain-1514/preflight-final.log
-```
-
-Finish the screen audit and second independent review, then run
-`mise x -- pnpm preflight` at a clean head. The work remains local and no PR is open. Resume
-from this worktree, not the roadmap branch. After the screens PR, the serial programme order is
-#1951, #1955, entry points, then #1883. The real two-network sync remains a maintainer action.
+S6 verification completed before PR #1965 opened. External review corrections are tracked
+below. Entry points remain deferred until both sync fixes merge. The real two-network sync
+remains a maintainer action.
 
 ## The widened sync state payload
 
@@ -205,12 +199,10 @@ The file is formatted for the final verification run.
 
 The final checks passed at `33b89779`: 7,685 unit tests, build, lint and typecheck, with 96.83%
 changed-line coverage. The fresh Electron run passed all ten checks, including two-instance
-sharing. Both final independent reviews found no remaining findings. Draft PR #1965 is open.
-Before starting #1951, a filename check found that the new pause cache also needs the existing
-blob receiver's reserved-name protection. The regression failed before the filename was added.
-Run `mise x -- pnpm preflight` at this correction's clean head, then update #1965's verification.
-The Members worktree stays available for review fixes; the next defect is isolated in
-`/tmp/birdbrain-wt/shared-case-1951-1`.
+sharing. Both independent reviews at that head found no remaining findings. PR #1965 opened
+as a draft and the maintainer later marked it ready for review. The pause cache filename also
+received the blob receiver's reserved-name protection, after its regression reproduced the gap.
+Subsequent verification and external review corrections are recorded below.
 
 ## Deviations from the mock
 
@@ -251,9 +243,9 @@ than invent a value.
 ## Verification
 
 Per slice: `pnpm typecheck`, `pnpm lint`, `pnpm lint:boundaries`, `pnpm test <changed files>`.
-At head, in S6: `pnpm preflight` with exit codes captured; screenshots light and dark under
-`/home/matt/.cache/birdbrain-1514/screens/`; `.claude/hooks/vale-prose.sh --base origin/main`
-on this plan.
+At head: `pnpm preflight` with exit codes captured. The Electron screen check writes light and
+dark screenshots under `test-results/shared-case-members/` unless an output directory is set.
+Run `.claude/hooks/vale-prose.sh --base origin/main` on this plan.
 
 ## CI notice correction
 
@@ -267,19 +259,13 @@ The source URL is recorded in `scripts/third-party-notices/overrides.json`.
 2. [x] Add the upstream licence through the existing notice override.
 3. [x] Generate the third-party notice successfully.
 4. [x] Run the existing third-party notice tests.
-5. [ ] Run clean-head full verification.
-6. [ ] Refresh the PR description from the new verification output.
-7. [ ] Push the correction for CI.
+5. [x] Run clean-head full verification.
+6. [x] Refresh the PR description from the new verification output.
+7. [x] Push the correction for CI.
 
-Next command:
-
-```sh
-BIRDBRAIN_TEST_SYSTEM_SHARP=1 PKG_CONFIG_PATH=/usr/lib/pkgconfig mise x -- pnpm preflight
-```
-
-The dependency audit reports the same baseline advisories handled separately in
-PR #1968. Matt's approval at the reviewed head remains necessary for the evidence
-merge gate. No merge or release is authorized by this handoff.
+The dependency advisories were corrected separately in PR #1968, which the maintainer merged.
+Matt's approval at the reviewed head remains necessary for the evidence merge gate. No merge or
+release is authorized by this handoff.
 
 ## Merged dependency baseline
 
@@ -291,16 +277,9 @@ and its licence override. Dependency auditing and notice generation exit 0.
 2. [x] Install the frozen dependency lockfile.
 3. [x] Run the dependency audit.
 4. [x] Generate the third-party notice.
-5. [ ] Run clean-head full verification.
-6. [ ] Refresh the PR's verification details.
-7. [ ] Push the updated branch for CI.
-
-Next command:
-
-```sh
-BIRDBRAIN_TEST_SYSTEM_SHARP=1 PKG_CONFIG_PATH=/usr/lib/pkgconfig mise x -- pnpm preflight
-```
-
+5. [x] Run clean-head full verification.
+6. [x] Refresh the PR's verification details.
+7. [x] Push the updated branch for CI.
 
 ## PR review corrections
 
@@ -317,20 +296,45 @@ The external reviews left fourteen distinct findings across sixteen inline comme
 9. [x] Keep older pending requests from replacing a new invite.
 10. [x] Explain that relay address changes require a restart.
 11. [x] Date the persisted integrity result instead of claiming current verification.
-12. [ ] Remove contradictory plan status and machine-specific paths.
-13. [ ] Wait for a visible details control in the Electron screen check.
-14. [ ] Wait for the empty-peer query result before asserting a hidden sync pill.
+12. [x] Remove contradictory plan status and machine-specific paths.
+13. [x] Wait for a visible details control in the Electron screen check.
+14. [x] Wait for the empty-peer query result before asserting a hidden sync pill.
 15. [ ] Run full verification at the final clean head.
 16. [ ] Push the corrections.
 17. [ ] Reply to each review thread.
 
-Current slice: reproduce and correct revocation and ledger presentation. Next command:
-`BIRDBRAIN_TEST_SYSTEM_SHARP=1 mise x -- pnpm test tests/components/RevokeDialog.test.tsx tests/components/ManifestLedgerSharing.test.tsx tests/renderer/components/memberModel.test.ts`.
+Current slice: run full verification and the Electron screen checks, then push and reply.
+Next command:
 
-Revocation and ledger regressions reproduced four failures before correction. The three focused files now pass all 38 tests. Existing singleton copy assertions now name the one held citation. The next slice handles Sync now outcomes.
+```sh
+BIRDBRAIN_TEST_SYSTEM_SHARP=1 PKG_CONFIG_PATH=/usr/lib/pkgconfig mise x -- pnpm preflight
+```
 
-Sync attempts now inspect every outcome. Empty, unreachable, no-address, failed and error-bearing results stay visible; only a nonempty all-success result clears the relay warning. The focused Sync and Members tests pass all 31 cases. Typechecking also caught a missing explicit undefined snapshot in the new revoked-self test, now corrected. Next slice: Join disclosure, pending invite requests and relay restart guidance.
+Revocation and ledger regressions reproduced four failures before correction. The three focused
+files now pass all 38 tests. Existing singleton copy assertions now name the one held citation.
+The next slice handles Sync now outcomes.
 
-Join disclosure, request isolation and relay guidance reproduced five failing cases. The corrected four component files pass all 71 tests. The invite baseline is captured before creation, so an arriving request can still interrupt the QR screen. Existing requests remain available through Review. Next slice: persisted Capture authorship and exclusion lookups.
+Sync attempts now inspect every outcome. Empty, unreachable, no-address, failed and error-
+bearing results stay visible; only a nonempty all-success result clears the relay warning. The
+focused Sync and Members tests pass all 31 cases. Typechecking also caught a missing explicit
+undefined snapshot in the new revoked-self test, now corrected. Next slice: Join disclosure,
+pending invite requests and relay restart guidance.
 
-Capture regressions reproduced misattribution through a reused code, an effective exclusion from a broken chain, and repeated full-chain scans. The list now shares a memoized lookup, invalid snapshots supply no effective exclusions, and attribution requires the persisted operator installation plus a matching citation. Unknown attribution does not remove the Owner exclusion action. A later review also reproduced the undated integrity claim; the banner now dates the last verification when its timestamp is available. Next slice: review-test waits and plan corrections.
+Join disclosure, request isolation and relay guidance reproduced five failing cases. The
+corrected four component files pass all 71 tests. The invite baseline is captured before
+creation, so an arriving request can still interrupt the QR screen. Existing requests remain
+available through Review. Next slice: persisted Capture authorship and exclusion lookups.
+
+Capture regressions reproduced misattribution through a reused code, an effective exclusion from
+a broken chain, and repeated full-chain scans. The list now shares a memoized lookup, invalid
+snapshots supply no effective exclusions, and attribution requires the persisted operator
+installation plus a matching citation. Unknown attribution does not remove the Owner exclusion
+action. A later review also reproduced the undated integrity claim; the banner now dates the
+last verification when its timestamp is available. Next slice: review-test waits and plan
+corrections.
+
+The capture corrections pass 59 focused tests and all six typechecks. Review-test corrections
+replace a fixed sleep with a successful-query wait and wait for the details panel or its
+opening control before branching. Historical handoff commands and machine-specific paths
+have been removed. The initial ten review issues and the four later issues now have source
+corrections; full verification at the final head remains pending.

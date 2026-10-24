@@ -1,6 +1,7 @@
 /**
  * Fills a prepared throwaway profile (see `profile.mjs`) with the data `pnpm dev:seed` opens on:
- * an ordinary Case and a two-member Shared Case. Main-process code, run through the app's own
+ * an ordinary Case and a Shared Case with a second member, a revoked third member and one
+ * excluded Exhibit (#1514). Main-process code, run through the app's own
  * modules: `launch.mjs` bundles it and runs it under Electron, and `tests/devSeed.test.ts` runs
  * it in the unit suite.
  *
@@ -28,9 +29,12 @@ import { resolveToolVersion } from '@main/services/toolVersion'
 import { canonicalStringify } from '@shared/verify'
 import { memberChainPath } from '../../src/packages/evidence-package-layout/index'
 import {
+  EXCLUDE_REASON,
   MEMBER_MEMBER_CODE,
   ORDINARY_CASE_NAME,
   OWNER_MEMBER_CODE,
+  REVOKED_MEMBER_CODE,
+  REVOKED_MEMBER_NAME,
   SELECTOR_PATTERN,
   SHARED_CASE_NAME
 } from './constants'
@@ -39,6 +43,7 @@ export interface SeededProfile {
   caseId: string
   sharedCaseId: string
   memberInstallationId: string
+  revokedInstallationId: string
 }
 
 interface Operator {
@@ -273,20 +278,28 @@ function commitDocument(
   return { exhibitId, path, name, contentHash, sizeBytes: bytes.length, index }
 }
 
-function seedSharedCase(owner: Operator): Omit<SeededProfile, 'caseId'> {
-  const timestamp = new Date().toISOString()
-  const { id: caseId } = createCase({
-    name: SHARED_CASE_NAME,
-    description: 'Seeded by pnpm dev:seed: a two-member Shared Case with one invented member.'
-  })
-  const caseDir = ensureCaseDir(caseId)
-
-  const memberKey = generateKeyPairSync('rsa', {
+const newMemberKey = () =>
+  generateKeyPairSync('rsa', {
     modulusLength: 2048,
     publicKeyEncoding: { type: 'spki', format: 'pem' },
     privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
   })
+
+function seedSharedCase(owner: Operator): Omit<SeededProfile, 'caseId'> {
+  const timestamp = new Date().toISOString()
+  const { id: caseId } = createCase({
+    name: SHARED_CASE_NAME,
+    description:
+      'Seeded by pnpm dev:seed: a Shared Case with two invented members, one of them revoked.'
+  })
+  const caseDir = ensureCaseDir(caseId)
+
+  const memberKey = newMemberKey()
   const memberId = randomUUID()
+  // The revoked member has a key and a roster row but no chain file: the Owner merged nothing
+  // from it before revoking it, which the Shared Case walk accepts without a finding.
+  const revokedKey = newMemberKey()
+  const revokedId = randomUUID()
   const member: Operator = {
     operatorId: memberId,
     operatorName: 'Morgan Reyes',
@@ -328,6 +341,7 @@ function seedSharedCase(owner: Operator): Omit<SeededProfile, 'caseId'> {
     })
   memberAdd(owner.operatorId, getPublicKeyPem(), OWNER_MEMBER_CODE, owner.operatorName, 'owner')
   memberAdd(memberId, memberKey.publicKey, MEMBER_MEMBER_CODE, member.operatorName, 'member')
+  memberAdd(revokedId, revokedKey.publicKey, REVOKED_MEMBER_CODE, REVOKED_MEMBER_NAME, 'member')
   const ownerDoc = commitDocument(
     ownerChain,
     caseId,
@@ -351,21 +365,44 @@ function seedSharedCase(owner: Operator): Omit<SeededProfile, 'caseId'> {
     ...owner,
     schemaVersion: 4
   })
+  // The Owner excludes the member's Exhibit from exports, then revokes the third member. Both
+  // entries follow the merge: an `exclude` names an Exhibit the Owner has received, and the
+  // revocation is the chain's last word on that member.
+  ownerChain.append({
+    type: 'exclude',
+    caseId,
+    exhibitId: memberDoc.exhibitId,
+    authorInstallationId: memberId,
+    reason: EXCLUDE_REASON,
+    timestamp,
+    ...owner,
+    schemaVersion: 4
+  })
+  const revokedAtIndex = ownerChain.append({
+    type: 'member-revoke',
+    caseId,
+    memberInstallationId: revokedId,
+    timestamp,
+    ...owner,
+    schemaVersion: 4
+  })
   writeFileSync(join(caseDir, 'manifest.jsonl'), ownerChain.jsonl)
   writeFileSync(join(caseDir, memberChainPath(memberId)), memberChain.jsonl)
 
-  // The roster is a cache of the `member-add` entries, so it is written from them.
+  // The roster is a cache of the `member-add` entries, so it is written from them; the revoked
+  // row carries the `member-revoke` entry's index.
   for (const entry of ownerChain.entries.filter((e) => e.type === 'member-add')) {
+    const installationId = entry.memberInstallationId as string
     upsertCaseMember({
       caseId,
-      installationId: entry.memberInstallationId as string,
+      installationId,
       publicKeyPem: entry.memberPublicKeyPem as string,
       memberCode: entry.memberCode as string,
       operatorName: entry.memberOperatorName as string,
       nodeId: entry.nodeId as string,
       role: entry.role as 'owner' | 'member',
       addedAtIndex: entry.index as number,
-      revokedAtIndex: null
+      revokedAtIndex: installationId === revokedId ? revokedAtIndex : null
     })
   }
 
@@ -407,7 +444,7 @@ function seedSharedCase(owner: Operator): Omit<SeededProfile, 'caseId'> {
     owner.operatorId,
     caseId
   )
-  return { sharedCaseId: caseId, memberInstallationId: memberId }
+  return { sharedCaseId: caseId, memberInstallationId: memberId, revokedInstallationId: revokedId }
 }
 
 /** Seeds `userData`, which `prepareProfile` has already prepared, and closes the database. */

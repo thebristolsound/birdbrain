@@ -37,7 +37,7 @@ with `pnpm test <file>` and `pnpm typecheck`, `pnpm lint` and `pnpm lint:boundar
 | S1 | Member hue tokens; `SyncState` widened; `lib/api/sharing.ts`; `memberModel.ts`; `MemberCodeChip`; seed extension; this plan | shipped |
 | S2 | `/cases/$caseId/settings` route and the Members tab with every row and whole-tab state | shipped |
 | S3 | Invite dialog with the QR code and the join request step; `qrcode-generator` 2.0.4 | shipped |
-| S4 | Join branch in the wizard, the sync pill component (unmounted), the shared Case card line | next |
+| S4 | Join branch in the wizard, the sync pill component (unmounted), the shared Case card line | shipped |
 | S5 | Attribution and exclusion on capture rows and the details panel | |
 | S6 | Ledger Actor column, chain selector and Timeline (blocking tier, small); screenshots; two-instance e2e; `pnpm preflight` | |
 
@@ -112,16 +112,26 @@ with `pnpm test <file>` and `pnpm typecheck`, `pnpm lint` and `pnpm lint:boundar
 - The Case name in the title comes from `caseQueryOptions`; `MembersTab` reads it once for the
   dialog.
 
-Next command for S4:
+### S4, shipped
+
+The wizard's validated `join=true` search opens `JoinCaseCard`; the default wizard has no Join
+entry. The card previews the sender and expiry offline, follows join progress, shows the five
+refusal states, and opens the Case only after adoption succeeds. `SyncPill` remains unmounted;
+its network notice opens on hover or focus. Shared Case cards show the local code, Owner and
+active member count. Join's local fingerprint is omitted because no pre-join read returns it.
+
+Focused component checks: 21 tests passed. The existing wizard tests now stub `useSearch`,
+because the wizard reads the validated branch choice.
+
+Next command for S5:
 
 ```
 cd /home/matt/worktrees/birdbrain/feat-1514 && git log --oneline -3
 ```
 
-then add `validateNewCaseSearch` to `NewCaseWizard.tsx` and register it on `newCaseRoute` in
-`src/renderer/routes/__root.tsx`, build `JoinCaseCard.tsx` beside the wizard,
-`src/renderer/components/status/SyncPill.tsx` (built and tested, not mounted in `TopBar.tsx`),
-and the shared line on `CaseCard.tsx`.
+then add capture attribution, the neutral exclusion banner and the Owner's exclude confirmation.
+S6 follows with the ledger, screenshots and full verification. The work remains local and no
+PR is open. Resume from this worktree, not the roadmap branch.
 
 ## The widened sync state payload
 

@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useSearch } from '@tanstack/react-router'
+import { JoinCaseCard } from './JoinCaseCard'
 import { useCasesMutations, useSettingsMutations } from '@renderer/lib/queries'
 import { createSelector } from '@renderer/lib/api/selectors'
 import { notify } from '@renderer/lib/notify'
@@ -40,8 +41,13 @@ const SELECTOR_PRESETS = [
   { id: 'username', label: 'Usernames', pattern: '@[a-zA-Z0-9_]{1,15}', isRegex: true }
 ]
 
+export function validateNewCaseSearch(search: Record<string, unknown>): { join?: true } {
+  return { join: search.join === true || search.join === 'true' ? true : undefined }
+}
+
 export function NewCaseWizard() {
   const navigate = useNavigate()
+  const { join } = useSearch({ from: '/cases/new' })
   const { create } = useCasesMutations()
   const { update: updateSettings } = useSettingsMutations()
 
@@ -95,6 +101,16 @@ export function NewCaseWizard() {
       setSubmitting(false)
     }
   }
+
+  if (join)
+    return (
+      <div className="h-full overflow-y-auto px-6 py-12">
+        <JoinCaseCard
+          onBack={() => navigate({ to: '/cases/new', search: {} })}
+          onJoined={(caseId) => navigate({ to: '/cases/$caseId', params: { caseId } })}
+        />
+      </div>
+    )
 
   return (
     <div className="mx-auto max-w-2xl py-12 px-6">

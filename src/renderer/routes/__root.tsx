@@ -13,7 +13,10 @@ import { MotionProvider } from '@renderer/lib/motion'
 import { Dashboard } from '@renderer/components/dashboard/Dashboard'
 import { useQuery } from '@tanstack/react-query'
 import { casesQueryOptions } from '@renderer/lib/queries'
-import { NewCaseWizard } from '@renderer/components/dashboard/cases/NewCaseWizard'
+import {
+  NewCaseWizard,
+  validateNewCaseSearch
+} from '@renderer/components/dashboard/cases/NewCaseWizard'
 import { CaseWorkspace } from '@renderer/components/dashboard/cases/CaseWorkspace'
 import { CaseOverview } from '@renderer/components/overview/CaseOverview'
 import { CapturesRoute } from '@renderer/routes/cases/$caseId/captures'
@@ -219,6 +222,7 @@ const settingsRoute = createRoute({
 const newCaseRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/cases/new',
+  validateSearch: validateNewCaseSearch,
   component: NewCaseWizard,
   errorComponent: RouteErrorComponent
 })

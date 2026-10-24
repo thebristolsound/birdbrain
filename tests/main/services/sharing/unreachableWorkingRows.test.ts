@@ -11,6 +11,7 @@ import { addTagToCapture, addTagToNote, createTag } from '@main/services/db/tagR
 import { getAnnotations, saveAnnotations, upsertPin } from '@main/services/annotations'
 import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
 import { addMember, shareCase } from '@main/services/sharing/membership'
+import { liveSyncSource } from '@main/services/sharing/session'
 import { resetSyncStateMemory } from '@main/services/sharing/syncState'
 import { resetInstallationId } from '@main/services/installationId'
 import { resetSigningKey } from '@main/services/signingKey'
@@ -43,6 +44,50 @@ describe('working rows on Captures that members cannot receive (#1951)', () => {
     resetSigningKey()
     resetSyncStateMemory()
     rmSync(root, { recursive: true, force: true })
+  })
+
+  it('refreshes eligibility after a Capture is written during a live connection', async () => {
+    const caseId = createCase({ name: 'Live source' }).id
+    mkdirSync(caseDirOf(caseId), { recursive: true })
+    await shareCase(caseId, { nodeId: `node-${owner.name}` })
+    await addMember(caseId, {
+      installationId: member.installationId,
+      publicKeyPem: member.publicKeyPem,
+      operatorName: member.operatorName,
+      nodeId: `node-${member.name}`,
+      memberCode: member.memberCode
+    })
+    const roster = listCaseMembers(caseId)
+    const live = liveSyncSource(caseId)!
+    const { captureId } = await addCapture(caseId, owner, 1)
+    const linked = createNote({ caseId, captureId, title: 'New Capture note' })
+    const loose = createNote({ caseId, title: 'Later loose note' })
+    const source = recordSource(caseId, owner)
+    source.rows.set(
+      owner.installationId,
+      live.rowsSince(owner.installationId, 0, Number.POSITIVE_INFINITY).rows
+    )
+    await activate(member)
+    seedSharedCase(caseId, owner, [])
+    roster.forEach(upsertCaseMember)
+    expect((await pull(caseId, source)).errors).toEqual([])
+    expect
+      .soft(
+        listNotes(caseId)
+          .map(({ id }) => id)
+          .sort()
+      )
+      .toEqual([linked.id, loose.id].sort())
+
+    await activate(owner)
+    const next = recordSource(caseId, owner)
+    await activate(member)
+    expect((await pull(caseId, next)).errors).toEqual([])
+    expect(
+      listNotes(caseId)
+        .map(({ id }) => id)
+        .sort()
+    ).toEqual([linked.id, loose.id].sort())
   })
 
   it.each(['imported', 'legacy'] as const)(

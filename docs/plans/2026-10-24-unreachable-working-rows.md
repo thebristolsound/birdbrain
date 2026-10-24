@@ -42,3 +42,13 @@ This slice is ready for clean-head verification and independent standards and sp
 then a draft PR with `agent-authored` and `evidence-affecting`. Keep #1955 in
 its own change. Human review and merge remain required; the real two-network relay check is
 also a maintainer action.
+
+## Review correction
+
+Both first reviews found that caching eligible ids when a connection opens could lose a new
+Capture's note: a later loose note advances the cursor past it. The new live-source regression
+reproduced the omission on the first and next sync. Eligibility now refreshes with every row
+request, alongside the live query. The corrected flow passes 103 focused checks. The prior
+full verification run was superseded by this correction and must not be used for the PR body.
+Run full verification at this correction's clean head and recheck the pinned diff with both
+reviewers before opening the draft PR.

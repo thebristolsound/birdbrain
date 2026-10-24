@@ -276,17 +276,6 @@ export function liveSyncSource(caseId: string): SyncSource | null {
   if (listCaseMembers(caseId).length === 0) return null
   const installationId = getInstallationId()
   const caseDir = join(getStorageRoot(), caseId)
-  const manifests = [
-    readManifestSnapshot(caseDir).jsonl,
-    ...readChainFileSnapshots(caseDir)
-      .filter((chain) => chain.sourceCaseId === undefined)
-      .map((chain) => chain.jsonl)
-  ]
-  // Keep imported history and legacy Captures' rows local; current-segment deletions still
-  // reach members, so their surviving rows and tombstones remain eligible.
-  const membersHold = new Set(
-    manifests.flatMap((jsonl) => [...idsReachingMembers(storedEntries(jsonl))])
-  )
   return {
     installationId,
     caseId,
@@ -314,6 +303,17 @@ export function liveSyncSource(caseId: string): SyncSource | null {
       return Uint8Array.from(readFileSync(abs))
     },
     rowsSince: (author, sinceVersion, maxBytes) => {
+      const manifests = [
+        readManifestSnapshot(caseDir).jsonl,
+        ...readChainFileSnapshots(caseDir)
+          .filter((chain) => chain.sourceCaseId === undefined)
+          .map((chain) => chain.jsonl)
+      ]
+      // Refresh with the live row query: caching this set can skip a newly written Capture's
+      // rows while a later loose note advances the peer's cursor past them.
+      const membersHold = new Set(
+        manifests.flatMap((jsonl) => [...idsReachingMembers(storedEntries(jsonl))])
+      )
       const byTable = new Map<string, TableOffer<WireRow>>()
       const offered = rowsOfAuthorByTable(
         caseId,

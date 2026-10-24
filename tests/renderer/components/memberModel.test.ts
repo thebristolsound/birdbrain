@@ -286,6 +286,7 @@ describe('memberRows', () => {
     const rows = memberRows({
       members: members({ installationId: 'inst-tv', isOwner: false }),
       syncState: sync(),
+      snapshot: undefined,
       nowMs: NOW
     })
     expect(rows.find((row) => row.installationId === 'inst-tv')).toMatchObject({

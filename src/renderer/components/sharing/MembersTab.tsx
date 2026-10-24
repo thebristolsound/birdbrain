@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { SharingErrorCode, SharingInvite } from '@shared/types'
+import type { SharingErrorCode, SharingInvite, SharingSyncOutcome } from '@shared/types'
 import { caseQueryOptions } from '@renderer/lib/api/cases'
 import { settingsQueryOptions } from '@renderer/lib/api/settings'
 import { useTimeTick } from '@renderer/hooks/useTimeTick'
@@ -26,6 +26,7 @@ import { UnavailableCard } from '@renderer/components/sharing/UnavailableCard'
 import {
   memberRows,
   refusalMessage,
+  syncAttemptMessage,
   type MemberRow
 } from '@renderer/components/sharing/memberModel'
 
@@ -44,6 +45,7 @@ export function MembersTab({ caseId }: { caseId: string }) {
   // The time of the last 'relay-unreachable' refusal; no field reports relay
   // status, so the banner lives on this and clears on the next success.
   const [relayDownSince, setRelayDownSince] = useState<string | null>(null)
+  const [attemptMessage, setAttemptMessage] = useState<string | null>(null)
   const [revokeTarget, setRevokeTarget] = useState<RevokeTarget | null>(null)
   const [revokeOpen, setRevokeOpen] = useState(false)
   const relayInput = useRef<HTMLInputElement>(null)
@@ -62,11 +64,20 @@ export function MembersTab({ caseId }: { caseId: string }) {
     if (code === 'relay-unreachable') setRelayDownSince(new Date().toISOString())
   }
 
+  function onSyncOutcome(outcomes: SharingSyncOutcome[]) {
+    const message = syncAttemptMessage(outcomes)
+    setAttemptMessage(message)
+    if (message === null) setRelayDownSince(null)
+  }
+
+  function onSyncError(error: unknown) {
+    const code = sharingErrorCode(error)
+    onRefusal(code)
+    setAttemptMessage(refusalMessage(code, error instanceof Error ? error.message : String(error)))
+  }
+
   function retry() {
-    syncNow.mutate(caseId, {
-      onSuccess: () => setRelayDownSince(null),
-      onError: (err) => onRefusal(sharingErrorCode(err))
-    })
+    syncNow.mutate(caseId, { onSuccess: onSyncOutcome, onError: onSyncError })
   }
 
   function onRevoke(row: MemberRow) {
@@ -156,15 +167,6 @@ export function MembersTab({ caseId }: { caseId: string }) {
 
   const rows = memberRows({ members, syncState, snapshot, nowMs })
   const self = members.members.find((m) => m.installationId === members.installationId)
-  const relayDown =
-    relayDownSince !== null &&
-    !(
-      syncState?.phase === 'idle' &&
-      syncState.lastSuccessAt !== null &&
-      syncState.lastSuccessAt > relayDownSince
-    )
-      ? relayDownSince
-      : null
   const reachable = new Set(
     (syncState?.peers ?? []).filter((p) => p.reachable).map((p) => p.installationId)
   )
@@ -181,9 +183,9 @@ export function MembersTab({ caseId }: { caseId: string }) {
   return (
     <div className="flex flex-col gap-3" data-testid="members-tab">
       <NetworkNotice egress={egress} />
-      {relayDown !== null ? (
+      {relayDownSince !== null ? (
         <RelayUnreachableBanner
-          since={relayDown}
+          since={relayDownSince}
           nowMs={nowMs}
           connected={connectedCodes}
           unreachable={unreachableCodes}
@@ -200,8 +202,9 @@ export function MembersTab({ caseId }: { caseId: string }) {
           syncState={syncState}
           snapshot={snapshot}
           nowMs={nowMs}
-          onRefusal={onRefusal}
-          onResolved={() => setRelayDownSince(null)}
+          attemptMessage={attemptMessage}
+          onOutcome={onSyncOutcome}
+          onError={onSyncError}
         />
       </div>
       <MembersList

@@ -307,7 +307,7 @@ BIRDBRAIN_TEST_SYSTEM_SHARP=1 PKG_CONFIG_PATH=/usr/lib/pkgconfig mise x -- pnpm 
 The external reviews left ten distinct findings across eleven inline comments.
 
 1. [x] Use held citations for revocation summaries, including deletion gaps.
-2. [ ] Keep failed or incomplete Sync now outcomes visible.
+2. [x] Keep failed or incomplete Sync now outcomes visible.
 3. [x] Show this installation's revoked membership.
 4. [ ] Show Join's direct-connection disclosure for Tor, proxy and unknown settings.
 5. [ ] Avoid effective exclusion claims from an invalid chain.
@@ -324,3 +324,5 @@ Current slice: reproduce and correct revocation and ledger presentation. Next co
 `BIRDBRAIN_TEST_SYSTEM_SHARP=1 mise x -- pnpm test tests/components/RevokeDialog.test.tsx tests/components/ManifestLedgerSharing.test.tsx tests/renderer/components/memberModel.test.ts`.
 
 Revocation and ledger regressions reproduced four failures before correction. The three focused files now pass all 38 tests. Existing singleton copy assertions now name the one held citation. The next slice handles Sync now outcomes.
+
+Sync attempts now inspect every outcome. Empty, unreachable, no-address, failed and error-bearing results stay visible; only a nonempty all-success result clears the relay warning. The focused Sync and Members tests pass all 31 cases. Typechecking also caught a missing explicit undefined snapshot in the new revoked-self test, now corrected. Next slice: Join disclosure, pending invite requests and relay restart guidance.

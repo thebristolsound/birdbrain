@@ -5,6 +5,7 @@ import type {
   SharingErrorCode,
   SharingMembers,
   SharingPendingJoin,
+  SharingSyncOutcome,
   SyncErrorKind,
   SyncState
 } from '@shared/types'
@@ -420,6 +421,16 @@ export function sharedByLine(ownerName: string, count: number): string {
 
 export function capturedBy(name: string | null, code: string): string {
   return name === null ? `Captured by you (${code})` : `Captured by ${name} (${code})`
+}
+
+export function syncAttemptMessage(outcomes: SharingSyncOutcome[]): string | null {
+  if (outcomes.length === 0) return 'No peers were available for this sync attempt.'
+  const completed = outcomes.filter(
+    (result) => result.outcome === 'synced' && result.errors === 0
+  ).length
+  return completed === outcomes.length
+    ? null
+    : `Sync incomplete · ${completed} of ${outcomes.length} peers completed without errors`
 }
 
 export function revokeTitle(name: string): string {

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import type { SharingErrorCode, SyncState } from '@shared/types'
+import type { SharingSyncOutcome, SyncState } from '@shared/types'
 import { SyncCard } from '@renderer/components/sharing/SyncCard'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { CASE_ID, members, peer, refusal, snapshot, sync } from './sharingFixtures'
@@ -11,8 +11,8 @@ import { CASE_ID, members, peer, refusal, snapshot, sync } from './sharingFixtur
 const NOW = new Date('2026-09-19T14:05:00.000Z').getTime()
 
 let syncNow: ReturnType<typeof vi.fn>
-let onRefusal: Mock<(code: SharingErrorCode | null) => void>
-let onResolved: Mock<() => void>
+let onError: Mock<(error: unknown) => void>
+let onOutcome: Mock<(outcomes: SharingSyncOutcome[]) => void>
 
 function renderCard(state: SyncState | undefined, withSnapshot = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -26,8 +26,8 @@ function renderCard(state: SyncState | undefined, withSnapshot = false) {
       syncState={state}
       snapshot={withSnapshot ? snapshot() : undefined}
       nowMs={NOW}
-      onRefusal={onRefusal}
-      onResolved={onResolved}
+      onError={onError}
+      onOutcome={onOutcome}
     />,
     { wrapper: Wrapper }
   )
@@ -35,8 +35,8 @@ function renderCard(state: SyncState | undefined, withSnapshot = false) {
 
 beforeEach(() => {
   syncNow = vi.fn(async () => [])
-  onRefusal = vi.fn()
-  onResolved = vi.fn()
+  onError = vi.fn()
+  onOutcome = vi.fn()
   fakeBridge({ sharing: { syncNow } })
 })
 
@@ -67,7 +67,7 @@ describe('SyncCard', () => {
     expect(button.hasAttribute('disabled')).toBe(false)
     fireEvent.click(button)
     await waitFor(() => expect(syncNow).toHaveBeenCalledWith(CASE_ID))
-    await waitFor(() => expect(onResolved).toHaveBeenCalled())
+    await waitFor(() => expect(onOutcome).toHaveBeenCalled())
   })
 
   it('reads the pill label in danger when the last round failed', () => {
@@ -107,7 +107,11 @@ describe('SyncCard', () => {
     syncNow.mockRejectedValue(refusal('relay-unreachable'))
     renderCard(sync())
     fireEvent.click(screen.getByRole('button', { name: 'Sync now' }))
-    await waitFor(() => expect(onRefusal).toHaveBeenCalledWith('relay-unreachable'))
-    expect(onResolved).not.toHaveBeenCalled()
+    await waitFor(() =>
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: expect.stringContaining('relay-unreachable') })
+      )
+    )
+    expect(onOutcome).not.toHaveBeenCalled()
   })
 })

@@ -1,9 +1,9 @@
 import { RefreshCw } from 'lucide-react'
 import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
-import type { SharingErrorCode, SharingMembers, SyncState } from '@shared/types'
+import type { SharingMembers, SharingSyncOutcome, SyncState } from '@shared/types'
 import { Button, Card, SectionLabel } from '@renderer/components/ui'
 import { formatSeq } from '@renderer/components/data/ledgerModel'
-import { sharingErrorCode, useSharingMutations } from '@renderer/lib/api/sharing'
+import { useSharingMutations } from '@renderer/lib/api/sharing'
 import {
   COPY,
   formatClock,
@@ -17,8 +17,9 @@ interface SyncCardProps {
   syncState: SyncState | undefined
   snapshot: CaseManifestSnapshot | undefined
   nowMs: number
-  onRefusal: (code: SharingErrorCode | null) => void
-  onResolved: () => void
+  attemptMessage?: string | null
+  onOutcome: (outcomes: SharingSyncOutcome[]) => void
+  onError: (error: unknown) => void
 }
 
 function peersConnected(state: SyncState): string {
@@ -34,8 +35,9 @@ export function SyncCard({
   syncState,
   snapshot,
   nowMs,
-  onRefusal,
-  onResolved
+  attemptMessage,
+  onOutcome,
+  onError
 }: SyncCardProps) {
   const { syncNow } = useSharingMutations()
   const roster = members.members
@@ -49,8 +51,8 @@ export function SyncCard({
 
   function run() {
     syncNow.mutate(caseId, {
-      onSuccess: onResolved,
-      onError: (err) => onRefusal(sharingErrorCode(err))
+      onSuccess: (outcomes) => onOutcome(outcomes),
+      onError: (error) => onError(error)
     })
   }
 
@@ -99,6 +101,10 @@ export function SyncCard({
                 {peersConnected(syncState)}
               </div>
             </>
+          ) : attemptMessage ? (
+            <div className="text-xs font-medium text-warning-fg" role="status">
+              {attemptMessage}
+            </div>
           ) : syncState.phase === 'error' ? (
             <div className="text-xs font-medium text-danger-fg">
               {pill ? `${pill.a} · ${pill.b}` : 'Sync failed'}

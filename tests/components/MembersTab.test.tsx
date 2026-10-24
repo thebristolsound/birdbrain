@@ -3,7 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import type { BirdbrainSettings, SharingMembers, SyncState } from '@shared/types'
+import type {
+  BirdbrainSettings,
+  SharingMembers,
+  SharingSyncOutcome,
+  SyncState
+} from '@shared/types'
 import { MembersTab } from '@renderer/components/sharing/MembersTab'
 import { fakeBridge } from '../renderer/fakeBridge'
 import {
@@ -41,7 +46,16 @@ function setup({
 }: Setup) {
   bridge = {
     createInvite: vi.fn(async () => ({ inviteId: 'inv-1', invite: 'bbinvite1x', expiresAt: '' })),
-    syncNow: vi.fn(async () => []),
+    syncNow: vi.fn(async () => [
+      {
+        installationId: 'inst-nk',
+        outcome: 'synced',
+        entries: 0,
+        blobs: 0,
+        rowsApplied: 0,
+        errors: 0
+      }
+    ]),
     revoke: vi.fn(async () => ({})),
     exportArchive: vi.fn(async () => ({})),
     check: vi.fn(async () => ({ phase: 'idle' }))
@@ -366,9 +380,7 @@ describe('the members list', () => {
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByRole('heading', { name: 'Revoke N. Kowalski?' })).toBeTruthy()
     await waitFor(() =>
-      expect(
-        within(dialog).getByText(/Their 1 Exhibit \(NK-1\), notes, and tags/)
-      ).toBeTruthy()
+      expect(within(dialog).getByText(/Their 1 Exhibit \(NK-1\), notes, and tags/)).toBeTruthy()
     )
     fireEvent.click(within(dialog).getByRole('button', { name: 'Revoke' }))
     await waitFor(() => expect(bridge.revoke).toHaveBeenCalledWith(CASE_ID, 'inst-nk'))
@@ -392,6 +404,64 @@ describe('the relay-unreachable banner', () => {
     fireEvent.click(within(banner).getByRole('button', { name: 'Retry' }))
     await waitFor(() => expect(bridge.syncNow).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(screen.queryByTestId('relay-unreachable-banner')).toBeNull())
+  })
+
+  it.each<SharingSyncOutcome[]>([
+    [{ installationId: 'inst-nk', outcome: 'unreachable' }],
+    [{ installationId: 'inst-nk', outcome: 'no-address' }],
+    [{ installationId: 'inst-nk', outcome: 'failed', detail: 'Handshake failed' }],
+    [
+      {
+        installationId: 'inst-nk',
+        outcome: 'synced',
+        entries: 0,
+        blobs: 0,
+        rowsApplied: 0,
+        errors: 1
+      }
+    ]
+  ])(
+    'keeps an unsuccessful retry visible without clearing the relay warning: %j',
+    async (outcome) => {
+      setup({})
+      await screen.findByTestId('members-list')
+      bridge.syncNow.mockRejectedValueOnce(refusal('relay-unreachable'))
+      fireEvent.click(screen.getByRole('button', { name: 'Sync now' }))
+      const banner = await screen.findByTestId('relay-unreachable-banner')
+      bridge.syncNow.mockResolvedValueOnce([outcome])
+      fireEvent.click(within(banner).getByRole('button', { name: 'Retry' }))
+      await waitFor(() =>
+        expect(screen.getByTestId('sync-headline').textContent).toContain('Sync incomplete')
+      )
+      expect(screen.getByTestId('relay-unreachable-banner')).toBeTruthy()
+    }
+  )
+
+  it('reports partial failure from Sync now even when another peer completed', async () => {
+    setup({})
+    await screen.findByTestId('members-list')
+    bridge.syncNow.mockResolvedValueOnce([
+      {
+        installationId: 'inst-nk',
+        outcome: 'synced',
+        entries: 1,
+        blobs: 1,
+        rowsApplied: 0,
+        errors: 0
+      },
+      { installationId: 'inst-mb', outcome: 'unreachable' }
+    ])
+    fireEvent.click(screen.getByRole('button', { name: 'Sync now' }))
+    await screen.findByText('Sync incomplete · 1 of 2 peers completed without errors')
+  })
+
+  it('does not call an empty sync attempt recovery', async () => {
+    setup({})
+    await screen.findByTestId('members-list')
+    bridge.syncNow.mockResolvedValueOnce([])
+    fireEvent.click(screen.getByRole('button', { name: 'Sync now' }))
+    await screen.findByText('No peers were available for this sync attempt.')
+    expect(screen.getByTestId('sync-headline').textContent).not.toContain('Synced')
   })
 
   it('moves focus to the relay field from Change relay', async () => {

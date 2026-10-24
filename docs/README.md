@@ -26,7 +26,7 @@ The rule for whether a doc may ship in the same PR as the code it describes, pla
 ## Conventions
 
 - New design or spec? Drop it in `specs/` with today's date as the prefix.
-- New implementation plan? Drop it in `plans/` with today's date as the prefix, and put a `**Status:**` line under the title: `active`, `done`, or `abandoned`, with a link to the PR or the superseding ADR once it is not `active`.
+- New implementation plan? Drop it in `plans/` with today's date as the prefix, and put a `**Status:**` line under the title: `active`, `done`, `parked`, or `abandoned`, with a link to the PR or the superseding ADR once it is not `active`. A `parked` plan has unbuilt work nobody is scheduled to do: its line gives the date, what was built, and what picking it up again starts with.
 - Superseding an existing doc? Move the old file to `archive/` (keep its original name) before adding the replacement.
 - Permanent technical reference (architecture, pipelines, protocols)? Goes in `website/content/docs/` without a date prefix, as `.mdx` with `title`/`description` frontmatter, plus an entry in `navigation` in `website/content/docs.json`. See `docs/agents/website.md` for the MDX constraints (braces, link form, image paths).
 - Writing any of the above? See [`agents/writing-guide.md`](agents/writing-guide.md) for audience, claim discipline, tone, and the shape each document type takes.

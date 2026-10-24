@@ -1,7 +1,9 @@
 # Slop audit: a tracked-tree audit for agentic code tells
 
 - Status: approved by the maintainer on 2026-09-04, after a 2026-09-03 design review, with
-  consumer wiring cut from scope. No code exists yet; the implementation plan comes next.
+  consumer wiring cut from scope. Phase 1 shipped as the `pnpm lint:slop` skeleton (#1227).
+  Phases 2 to 10 were parked on 2026-10-23: none has started or has an issue, and each needs its
+  own plan when picked up again.
 - Date: 2026-09-03
 - Source research: `docs/specs/2026-09-03-agentic-code-slop-patterns-research.md`, committed on
   branch `t3code/research-agentic-code-slop` (commit 1bd0f82b). Section numbers below (1.1,

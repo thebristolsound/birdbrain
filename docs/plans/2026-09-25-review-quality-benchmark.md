@@ -1,11 +1,13 @@
 # Review quality benchmark
 
+**Status:** parked on 2026-10-23. None of the five stages was built and the open questions at the
+end were never answered. The baseline model it names was replaced on 2026-09-27 (#1615), so
+the first step on picking it up is choosing a baseline.
+
 A repeatable measurement of how well a model reviews code and plans inside this repository's
 agent setup, so a model change is a measured decision rather than an argued one. It scores one
 model against a fixed corpus under a fixed configuration and reports the result beside the
 current dispatch model's baseline.
-
-Status: proposed 2026-09-25, awaiting the open questions at the end.
 
 Constraint set 2026-09-25: no API keys. Every model call goes through a subscription
 command-line tool, `claude -p` on Claude Max and `codex exec` on Codex Pro. Anything the

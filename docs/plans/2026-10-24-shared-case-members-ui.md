@@ -280,3 +280,23 @@ BIRDBRAIN_TEST_SYSTEM_SHARP=1 PKG_CONFIG_PATH=/usr/lib/pkgconfig mise x -- pnpm 
 The dependency audit reports the same baseline advisories handled separately in
 PR #1968. Matt's approval at the reviewed head remains necessary for the evidence
 merge gate. No merge or release is authorized by this handoff.
+
+## Merged dependency baseline
+
+The maintainer merged PR #1968 as `eed80c8f`. This branch now includes that main
+commit. The merge preserves the feature source and tests, including the QR package
+and its licence override. Dependency auditing and notice generation exit 0.
+
+1. [x] Merge the updated main branch without rewriting existing commits.
+2. [x] Install the frozen dependency lockfile.
+3. [x] Run the dependency audit.
+4. [x] Generate the third-party notice.
+5. [ ] Run clean-head full verification.
+6. [ ] Refresh the PR's verification details.
+7. [ ] Push the updated branch for CI.
+
+Next command:
+
+```sh
+BIRDBRAIN_TEST_SYSTEM_SHARP=1 PKG_CONFIG_PATH=/usr/lib/pkgconfig mise x -- pnpm preflight
+```

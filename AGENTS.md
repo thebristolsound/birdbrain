@@ -91,7 +91,7 @@ Two `gh` traps that produce wrong numbers rather than errors. **`gh api --jq` re
 
 Five canonical triage roles using their default label strings (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
 
-Two further labels gate dispatch (ADR-0028). `queued` is the maintainer's hand-picked dispatch list: the frontier is `ready-for-agent` and `queued` together, never `ready-for-agent` alone. `process` marks work about the agent pipeline itself (dispatch, gates, ADRs, Vale, CI, skills) and is frozen: never queue it, never dispatch it. `.github/workflows/stale-agent-issues.yml` closes machine-filed issues untouched for 14 days unless they carry `queued` or `agent-wip`.
+Two further labels gate dispatch (ADR-0028). `queued` is the maintainer's hand-picked dispatch list: the frontier is `ready-for-agent` and `queued` together, never `ready-for-agent` alone. `process` marks work about the agent pipeline itself (dispatch, gates, ADRs, Vale, CI, skills) and is frozen: never queue it, never dispatch it. `.github/workflows/stale-agent-issues.yml` warns on machine-filed issues untouched for 7 days and closes them at the next weekly run, except those carrying `queued`, `agent-wip`, `evidence-affecting`, `security`, `court-admissibility`, `blocker`, `severity:blocking`, `ready-for-human` or `needs-triage` (ADR-0053).
 
 ### Domain docs
 

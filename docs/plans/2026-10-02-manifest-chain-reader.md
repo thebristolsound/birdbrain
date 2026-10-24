@@ -1,5 +1,10 @@
 # One reader for the Manifest
 
+**Status:** parked on 2026-10-23. No slice was started. Since this was written, `verify.sh` walks
+member chains (#1880), Case Archives compose every import's id map (#1953) and `merge` entries carry
+receipt stamps (#1912), so the problem statement and the slice list need re-checking against `main`
+before any slice starts.
+
 Written 2026-10-02 from an architecture review lead, revised the same day after an adversarial
 review (see "Review disposition"). Not started. Most slices touch a blocking-tier path, so they
 carry `evidence-affecting` and wait for human review.

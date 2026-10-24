@@ -1,5 +1,9 @@
 # Hunchly Case Import — Feasibility Assessment
 
+**Status:** parked on 2026-10-23. No phase was built (#1168 is open). This assessment predates MHTML
+storage, Notes, Exhibits, and the signed `capture` entry with its closed list of Capture Methods, so
+an import needs a fresh assessment against the current evidence model before it is designed.
+
 **Date:** 2026-04-03
 **Analyzed export:** `Brett Stevens Hunchly.zip` (Hunchly v2 case export)
 **Author:** Matt Donovan

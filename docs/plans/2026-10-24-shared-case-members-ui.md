@@ -36,8 +36,8 @@ with `pnpm test <file>` and `pnpm typecheck`, `pnpm lint` and `pnpm lint:boundar
 | --- | --- | --- |
 | S1 | Member hue tokens; `SyncState` widened; `lib/api/sharing.ts`; `memberModel.ts`; `MemberCodeChip`; seed extension; this plan | shipped |
 | S2 | `/cases/$caseId/settings` route and the Members tab with every row and whole-tab state | shipped |
-| S3 | Invite dialog with the QR code and the join request step; `qrcode-generator` 2.0.4 | next |
-| S4 | Join branch in the wizard, the sync pill component (unmounted), the shared Case card line | |
+| S3 | Invite dialog with the QR code and the join request step; `qrcode-generator` 2.0.4 | shipped |
+| S4 | Join branch in the wizard, the sync pill component (unmounted), the shared Case card line | next |
 | S5 | Attribution and exclusion on capture rows and the details panel | |
 | S6 | Ledger Actor column, chain selector and Timeline (blocking tier, small); screenshots; two-instance e2e; `pnpm preflight` | |
 
@@ -85,15 +85,43 @@ with `pnpm test <file>` and `pnpm typecheck`, `pnpm lint` and `pnpm lint:boundar
   `onRefusal` when it wires the Invite and Review actions, which render and open nothing yet.
 - The row clock is `useTimeTick(30_000)`, the repo's pattern for a render-time `Date.now()`.
 
-Next command for S3:
+### S3, shipped
+
+- `qrcode-generator` 2.0.4 is the one new dependency, pinned exactly (ruling 3 of 2026-10-10).
+  `src/renderer/components/sharing/InviteQr.tsx` is its only import: the encoder's modules become
+  `<rect>`s in a 100 px SVG on a white pad, so no library markup reaches the DOM. White pad and
+  `#111` modules are raw values on purpose, for scanner contrast in both themes.
+- `InviteDialog.tsx` carries the four steps of the mock's 1c. It opens where the parent says
+  (`InviteStart`: the invite just created, an invite still open, or a row's join request) and
+  moves on its own: created to waiting on Copy, waiting to request when a pending join arrives,
+  request to done on Approve. The done row reads "Syncing" with no count (see "Transfer totals"
+  below) and the `member-add #NNNN` caption from the approved member's `addedAtIndex`.
+- `MemberCodeField.tsx` draws `memberCodeCheck`'s result: "Unique in this Case", or the holder of
+  a taken code with the model's two alternatives. An invalid code (empty, four characters, a
+  symbol) marks the input and disables Approve without a second copy of the rule, which the
+  helper under the field already states.
+- `MembersTab.tsx` owns the dialog above its state switch, because the first invite shares the
+  Case and flips the tab from the not-shared card to the roster while the dialog is open. Invite
+  on the roster reopens an invite still open on its waiting step; the string is held in the tab's
+  memory only (main keeps no copy to read back), so "Copy again" shows while this tab still has
+  it and is hidden after a reload. Refusal codes: `member-code-rejected` under the input;
+  `already-member`, `join-request-unknown` and `invite-not-found` refetch the roster and close;
+  `relay-unreachable` and `sharing-unavailable` raise the tab's relay banner through the same
+  `onRefusal` as `syncNow`; anything else is one inline sentence from `refusalMessage`, beside
+  the Invite button or in the dialog.
+- The Case name in the title comes from `caseQueryOptions`; `MembersTab` reads it once for the
+  dialog.
+
+Next command for S4:
 
 ```
-cd /home/matt/worktrees/birdbrain/feat-1514 && pnpm add -E qrcode-generator@2.0.4
+cd /home/matt/worktrees/birdbrain/feat-1514 && git log --oneline -3
 ```
 
-then build `InviteDialog.tsx`, `InviteQr.tsx` and `MemberCodeField.tsx` under
-`src/renderer/components/sharing/`, and replace the `onInvite` and `onReview` no-ops in
-`MembersTab.tsx` with the dialog's created and request steps.
+then add `validateNewCaseSearch` to `NewCaseWizard.tsx` and register it on `newCaseRoute` in
+`src/renderer/routes/__root.tsx`, build `JoinCaseCard.tsx` beside the wizard,
+`src/renderer/components/status/SyncPill.tsx` (built and tested, not mounted in `TopBar.tsx`),
+and the shared line on `CaseCard.tsx`.
 
 ## The widened sync state payload
 

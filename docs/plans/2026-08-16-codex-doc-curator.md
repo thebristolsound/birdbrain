@@ -1,6 +1,10 @@
 # Doc curator — weekly, pre-gated, two-model (Opus authors, Fable reviews)
 
-Status: implemented locally 2026-08-16, pending secrets + dry run. Decisions settled by interview on 2026-08-16.
+**Status:** parked on 2026-10-23. The workflow is disabled after its scheduled runs failed (the last
+on 2026-09-21), and no curator PR was ever opened. ADR-0029 governs a restart: verify the spend
+limits and get the maintainer's explicit authorization first.
+
+Decisions settled by interview on 2026-08-16.
 
 ## Decision summary
 

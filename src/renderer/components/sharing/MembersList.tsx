@@ -18,6 +18,10 @@ const GRID = 'grid grid-cols-[56px_minmax(160px,1fr)_88px_200px_150px_72px] item
 interface MembersListProps {
   members: SharingMembers
   rows: MemberRow[]
+  // A refusal of the last Invite, shown beside the button; the mock draws
+  // none, so it is one plain sentence from refusalMessage.
+  inviteError?: string | null
+  inviting?: boolean
   onInvite: () => void
   onReview: (row: MemberRow) => void
   onRevoke: (row: MemberRow) => void
@@ -26,7 +30,15 @@ interface MembersListProps {
 // The roster (#1514, mock 1a): one row per member plus one per pending join,
 // in the shape memberRows() computed. Nothing here decides a state; the cell
 // classes come from the model's tone tables.
-export function MembersList({ members, rows, onInvite, onReview, onRevoke }: MembersListProps) {
+export function MembersList({
+  members,
+  rows,
+  inviteError = null,
+  inviting = false,
+  onInvite,
+  onReview,
+  onRevoke
+}: MembersListProps) {
   return (
     <Card className="p-0" data-testid="members-list">
       <div className="flex items-center gap-2 px-4 pb-2 pt-3">
@@ -34,8 +46,18 @@ export function MembersList({ members, rows, onInvite, onReview, onRevoke }: Mem
           Members · {memberCount(members.members)}
         </SectionLabel>
         <span className="flex-1" />
+        {inviteError ? (
+          <span className="text-[11px] text-danger-fg" data-testid="invite-error">
+            {inviteError}
+          </span>
+        ) : null}
         {members.isOwner ? (
-          <Button onClick={onInvite} className="gap-1.5" data-testid="invite-button">
+          <Button
+            onClick={onInvite}
+            disabled={inviting}
+            className="gap-1.5"
+            data-testid="invite-button"
+          >
             <Plus size={12} strokeWidth={2.2} aria-hidden="true" />
             {COPY.invite}
           </Button>

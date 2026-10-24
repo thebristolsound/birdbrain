@@ -61,7 +61,10 @@ function setup({
     exhibits: {
       inventory: vi.fn(async () => ({ caseId: CASE_ID, rows: [exhibitRow('NK-1', 1)] }))
     },
-    cases: { exportArchive: bridge.exportArchive },
+    cases: {
+      exportArchive: bridge.exportArchive,
+      get: vi.fn(async () => ({ id: CASE_ID, name: 'Operation Nightjar' }))
+    },
     updates: { check: bridge.check }
   })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -111,6 +114,10 @@ describe('the Members tab whole-tab states', () => {
     fireEvent.click(within(card).getByRole('button', { name: 'Invite' }))
     await waitFor(() => expect(bridge.createInvite).toHaveBeenCalledWith(CASE_ID, 'AR'))
     expect(screen.queryByTestId('members-list')).toBeNull()
+    // The first invite shares the Case; the dialog opens on the string.
+    const dialog = await screen.findByTestId('invite-dialog')
+    expect(dialog.dataset.step).toBe('created')
+    expect(within(dialog).getByTestId('invite-string').textContent).toBe('bbinvite1x')
   })
 
   it('says an Operator name is needed when the first invite is refused for it', async () => {
@@ -304,12 +311,52 @@ describe('the members list', () => {
     ).toBeTruthy()
   })
 
-  it('renders Invite and Review that open nothing until the invite dialog ships', async () => {
-    setup({ roster: members({ pendingJoins: [JO] }) })
+  it('creates an invite from the roster and opens the dialog on the string', async () => {
+    setup({})
     fireEvent.click(await screen.findByTestId('invite-button'))
-    fireEvent.click(within(await row('pending:req-1')).getByRole('button', { name: 'Review' }))
-    expect(screen.queryByRole('dialog')).toBeNull()
+    await waitFor(() => expect(bridge.createInvite).toHaveBeenCalledWith(CASE_ID, undefined))
+    const dialog = await screen.findByTestId('invite-dialog')
+    expect(dialog.dataset.step).toBe('created')
+    expect(
+      within(dialog).getByRole('heading', { name: 'Invite to Operation Nightjar' })
+    ).toBeTruthy()
+    expect(within(dialog).getByTestId('invite-string').textContent).toBe('bbinvite1x')
+  })
+
+  it('reopens an invite still open on its waiting step without the string', async () => {
+    setup({
+      roster: members({ invites: [{ inviteId: 'inv-9', expiresAt: '2026-09-20T14:07:00.000Z' }] })
+    })
+    fireEvent.click(await screen.findByTestId('invite-button'))
+    const dialog = await screen.findByTestId('invite-dialog')
+    expect(dialog.dataset.step).toBe('waiting')
+    expect(within(dialog).getByText('Waiting for someone to use this invite')).toBeTruthy()
+    expect(within(dialog).queryByRole('button', { name: 'Copy again' })).toBeNull()
     expect(bridge.createInvite).not.toHaveBeenCalled()
+  })
+
+  it('shows an Invite refusal beside the button and a relay refusal as the banner', async () => {
+    setup({})
+    bridge.createInvite.mockRejectedValueOnce(refusal('not-owner'))
+    fireEvent.click(await screen.findByTestId('invite-button'))
+    expect((await screen.findByTestId('invite-error')).textContent).toBe(
+      'Only the Owner of this Case can do that.'
+    )
+    expect(screen.queryByTestId('invite-dialog')).toBeNull()
+    bridge.createInvite.mockRejectedValueOnce(refusal('relay-unreachable'))
+    fireEvent.click(screen.getByTestId('invite-button'))
+    expect((await screen.findByTestId('relay-unreachable-banner')).textContent).toContain(
+      'Relay unreachable since'
+    )
+  })
+
+  it('opens the join request from a pending row’s Review', async () => {
+    setup({ roster: members({ pendingJoins: [JO] }) })
+    fireEvent.click(within(await row('pending:req-1')).getByRole('button', { name: 'Review' }))
+    const dialog = await screen.findByTestId('invite-dialog')
+    expect(dialog.dataset.step).toBe('request')
+    expect(within(dialog).getByRole('heading', { name: 'Join request' })).toBeTruthy()
+    expect((within(dialog).getByTestId('member-code-input') as HTMLInputElement).value).toBe('JO')
   })
 
   it('opens the revoke confirmation from a row and revokes that member', async () => {

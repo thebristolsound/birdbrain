@@ -21,6 +21,7 @@ import {
   InvestigateRoute,
   validateInvestigateSearch
 } from '@renderer/routes/cases/$caseId/investigate'
+import { CaseSettingsRoute } from '@renderer/routes/cases/$caseId/settings'
 import { NotesOverview } from '@renderer/components/notes/NotesOverview'
 import { SignalsOverview } from '@renderer/components/signals/SignalsOverview'
 import { DataExplorer } from '@renderer/components/dashboard/cases/DataExplorer'
@@ -295,6 +296,15 @@ const investigateRoute = createRoute({
   errorComponent: RouteErrorComponent
 })
 
+// Case settings (#1514): registered the way Investigate is, with no sidebar, top-bar or palette
+// entry until the sync defects #1951 and #1955 merge. Reachable by URL for the Members tab.
+const caseSettingsRoute = createRoute({
+  getParentRoute: () => caseRoute,
+  path: '/settings',
+  component: CaseSettingsRoute,
+  errorComponent: RouteErrorComponent
+})
+
 // Build the tree
 export const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -307,6 +317,7 @@ export const routeTree = rootRoute.addChildren([
     notesRoute,
     signalsRoute,
     dataRoute,
-    investigateRoute
+    investigateRoute,
+    caseSettingsRoute
   ])
 ])

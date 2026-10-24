@@ -18,6 +18,7 @@ import {
   ownLiveRowsOnCapture,
   ownUnsignedRowsInCase,
   readRow,
+  recordAuthorRowCursor,
   recordDeletedCapture,
   referenceError,
   referenceOf,
@@ -479,7 +480,7 @@ export function verifyRemoteRows(
 
 // Refuse demonstrated id collisions and their tag applications individually, after all pages
 // verify. Keeping a colliding tag's application would attach it to the held author's tag.
-export function applyVerifiedRows(rows: RemoteRow[]): RemoteApplyOutcome {
+export function applyVerifiedRows(rows: RemoteRow[], caseId: string): RemoteApplyOutcome {
   return withTransaction(() => {
     const collisions = new Map<RemoteRow, string>()
     const parentKey = (table: SyncedTable, id: RowFields[string]): string => `${table}\u0000${id}`
@@ -511,7 +512,14 @@ export function applyVerifiedRows(rows: RemoteRow[]): RemoteApplyOutcome {
         })
       }
     }
-    return { ...applyRows(accepted), refused }
+    const outcome = applyRows(accepted)
+    const versions = new Map<string, number>()
+    for (const row of rows) {
+      if (CURSOR_FREE_TABLES.has(row.table)) continue
+      versions.set(row.author, Math.max(versions.get(row.author) ?? 0, row.version))
+    }
+    for (const [author, version] of versions) recordAuthorRowCursor(caseId, author, version)
+    return { ...outcome, refused }
   })
 }
 
@@ -529,7 +537,7 @@ export function applyRemoteRows(
   const outcome: RemoteApplyOutcome = { applied: 0, skipped: 0, refused }
   if (accepted.length === 0) return outcome
   try {
-    const { applied, skipped, refused } = applyVerifiedRows(accepted)
+    const { applied, skipped, refused } = applyVerifiedRows(accepted, caseId)
     outcome.applied = applied
     outcome.skipped = skipped
     outcome.refused.push(...refused)

@@ -734,9 +734,9 @@ export async function pullFromPeer(
     if (advanced.length > 0 || inserted > 0) reconcileCaseMirrors(caseId)
 
     // 5. Rows: every other member's working-layer rows above the version this
-    // replica holds for them, applied only under that member's signature and
-    // only above the stored version (workingRows.ts). The cursor is read from
-    // the rows themselves, so a database restore moves it back with them. A
+    // replica holds or explicitly refused, applied only under that member's signature and
+    // only above the stored version (workingRows.ts). The cursor lives in the database,
+    // so a restore moves it back with the rows it describes. A
     // revoked member's rows are not asked for: peers stop syncing with the
     // member (decision 11), and a row has no index to bound it by.
     options.onPhase?.('rows')
@@ -778,7 +778,7 @@ export async function pullFromPeer(
     // next session asks from the same cursors.
     if (received.length > 0) {
       try {
-        const applied = applyVerifiedRows(received)
+        const applied = applyVerifiedRows(received, caseId)
         result.rowsApplied += applied.applied
         result.errors.push(...applied.refused)
       } catch (err) {

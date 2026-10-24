@@ -6,9 +6,10 @@ import { closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { listCaseMembers, upsertCaseMember } from '@main/services/db/caseMemberRepo'
 import { createNote, deleteNote, listNotes, updateNote } from '@main/services/db/noteRepo'
-import { readRow } from '@main/services/db/workingRowRepo'
+import { maxAuthorVersionInCase, readRow } from '@main/services/db/workingRowRepo'
 import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
 import { addMember, shareCase } from '@main/services/sharing/membership'
+import { MAX_ROW_PAGES } from '@main/services/sharing/session'
 import { resetSyncStateMemory } from '@main/services/sharing/syncState'
 import { resetInstallationId } from '@main/services/installationId'
 import { resetSigningKey } from '@main/services/signingKey'
@@ -39,6 +40,44 @@ describe('archive-imported working row collisions (#1955)', () => {
     resetSigningKey()
     resetSyncStateMemory()
     rmSync(root, { recursive: true, force: true })
+  })
+
+  it('resumes beyond a session made entirely of refused imported rows', async () => {
+    const caseId = createCase({ name: 'Refused backlog' }).id
+    mkdirSync(caseDirOf(caseId), { recursive: true })
+    for (let n = 0; n <= MAX_ROW_PAGES; n++) createNote({ caseId, title: `Archived ${n}` })
+    const archive = join(root, 'backlog.birdbrain')
+    await exportCaseArchive(caseId, archive)
+    await activate(member)
+    await importCaseArchive(archive)
+    await activate(owner)
+    await shareCase(caseId, { nodeId: `node-${owner.name}` })
+    await addMember(caseId, {
+      installationId: member.installationId,
+      publicKeyPem: member.publicKeyPem,
+      operatorName: member.operatorName,
+      nodeId: `node-${member.name}`,
+      memberCode: member.memberCode
+    })
+    const roster = listCaseMembers(caseId)
+    const later = createNote({ caseId, title: 'Beyond the refused backlog' })
+    const source = recordSource(caseId, owner)
+    const versions = source.rows
+      .get(owner.installationId)!
+      .map(({ version }) => version)
+      .sort((a, b) => a - b)
+    await activate(member)
+    seedSharedCase(caseId, owner, [])
+    roster.forEach(upsertCaseMember)
+    const first = await pull(caseId, source, {}, { pageBytes: 1 })
+    expect(first.rowsApplied).toBe(0)
+    expect(first.errors).toHaveLength(MAX_ROW_PAGES)
+    expect
+      .soft(maxAuthorVersionInCase(caseId, owner.installationId))
+      .toBe(versions[MAX_ROW_PAGES - 1])
+    const second = await pull(caseId, source, {}, { pageBytes: 1 })
+    expect(second.rowsApplied).toBe(1)
+    expect(listNotes(caseId).map(({ id }) => id)).toEqual([later.id])
   })
 
   it.each(['edit', 'delete', 'already-signed'] as const)(

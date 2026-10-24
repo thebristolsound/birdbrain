@@ -521,6 +521,7 @@ describe('working-layer rows (#1512)', () => {
       refused: []
     })
     expect(getNote('rn')?.title).toBe('v2')
+    expect(maxAuthorVersionInCase(caseId, REMOTE_ID)).toBe(2)
     expect(applyRemoteRows([first, second], roster(), new Set([REMOTE_ID]), caseId)).toEqual({
       applied: 0,
       skipped: 2,
@@ -558,6 +559,7 @@ describe('working-layer rows (#1512)', () => {
     ])
     expect(getNote('rn')?.title).toBe('v2')
     const unasked = applyRemoteRows([first], roster(), new Set(), caseId)
+    expect(maxAuthorVersionInCase(caseId, REMOTE_ID)).toBe(2)
     expect(unasked.refused[0]?.detail).toBe(
       `notes row of ${REMOTE_ID} at version 1: author not requested`
     )
@@ -581,6 +583,7 @@ describe('working-layer rows (#1512)', () => {
     expect(getNote(mine.id)?.title).toBe('Mine')
     expect(getNote('unrelated')?.title).toBe('Still arrives')
 
+    const cursorBefore = maxAuthorVersionInCase(caseId, REMOTE_ID)
     const dangling = applyRemoteRows(
       [
         remoteRow('notes', noteFields('rn', 'Fine'), 2),
@@ -594,6 +597,7 @@ describe('working-layer rows (#1512)', () => {
     expect(dangling.refused[0]?.kind).toBe('peer')
     expect(dangling.refused[0]?.detail).toContain('FOREIGN KEY')
     expect(getNote('rn')).toBeUndefined()
+    expect(maxAuthorVersionInCase(caseId, REMOTE_ID)).toBe(cursorBefore)
 
     // A reference satisfied within the batch lands whatever the order.
     const ordered = applyRemoteRows(

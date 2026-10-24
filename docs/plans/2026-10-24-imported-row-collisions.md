@@ -1,6 +1,6 @@
 # Keep syncing after an imported row id collides
 
-**Status:** verification
+**Status:** active
 
 This is the implementation handoff for #1955. An archive import can retain a note or tag id
 under the importing installation's local authorship. When its original writer later shares
@@ -28,9 +28,12 @@ transaction. The receiver reports each refusal with its author. An application o
 tag must also be refused, or it would silently apply the held tag's different meaning.
 
 The raw database apply guard still refuses a collision. Missing references still roll back the
-remaining batch, and signature, Case and author validation still precede this filter. There is
-no schema, manifest, signature envelope, protocol or dependency change. Imported-id
-reconciliation is not added. The ambiguous row can still be reported as refused while later
+remaining batch, and signature, Case and author validation still precede this filter.
+Migration 42 adds a local working-row cursor table so a session containing only verified
+refusals can resume beyond its page limit. The cursor commits with the batch and restores with
+the database. Cursor-free tags, unverifiable rows and failed transactions move it nowhere.
+The manifest, signature envelope, protocol and dependencies stay unchanged. The change adds
+no imported-id reconciliation. The ambiguous row can still be reported as refused while later
 valid work arrives.
 
 The older test expecting a collision to invalidate the whole batch changes because #1955
@@ -43,15 +46,29 @@ notes when their tag collides, including an application arriving before its pare
 
 The three initial scenarios failed before the correction. Focused regression checks passed;
 the dirty-tree check passed 2,321 related tests, all typechecks, formatting, lint and boundaries.
-Commit this slice, run full verification at its clean head, then obtain independent standards
-and spec reviews before opening a draft PR carrying
+The cursor correction passes 70 focused sync checks. Run full verification at the corrected
+clean head and recheck the two review findings before opening a draft PR carrying
 `agent-authored` and `evidence-affecting`.
 
 Next command:
 
 ```
-cd /tmp/birdbrain-wt/shared-case-1955-1 && tail -40 /home/matt/.cache/birdbrain-1514/1955-preflight.log
+cd /tmp/birdbrain-wt/shared-case-1955-1 && tail -40 /home/matt/.cache/birdbrain-1514/1955-preflight-r2.log
 ```
 
 No merge or release is authorized. Keep the worktree for review fixes. Entry points remain
 gated on the two defect merges; the real two-network relay sync remains a maintainer action.
+
+## Review corrections
+
+The first spec review found that a backlog containing only refused rows could consume all
+1,000 pages, then repeat from the same cursor forever. The new two-peer regression uses
+one-row pages and an imported backlog, reproduces the missing later note after the second
+session, and now reaches that note. Verified progress lives in the database with the rows,
+so restoring a database also restores its cursor. Migration and database checks passed 180
+tests, including a populated v41 upgrade, rerunning the migration, Case and author scope,
+deletion and database restoration.
+
+The plan status now uses `active`, the vocabulary required by `docs/README.md`. The prose
+correction removes the sentence opening reported by Vale. The prior full run passed every
+code check and 7,565 tests but failed that prose check, so its block is not the final proof.

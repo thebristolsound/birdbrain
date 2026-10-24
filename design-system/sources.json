@@ -1,0 +1,71 @@
+{
+  "_": "What build.mjs reads from the repository and where the published system lives. Paths are repository-relative.",
+  "title": "Birdbrain",
+  "namespace": "Birdbrain",
+  "artifact": "https://claude.ai/artifact/PuSPirFB3S21HN5daWk8CG",
+  "createdOnFiles": { "v": 1, "at": "2026-10-20T17:40:00Z" },
+  "repo": "thebristolsound/birdbrain",
+  "css": "src/renderer/styles/globals.css",
+  "fonts": [
+    {
+      "family": "Inter Variable",
+      "src": "extension/src/fonts/inter-latin-wght-normal.woff2",
+      "weight": "100 900",
+      "style": "normal"
+    },
+    {
+      "family": "JetBrains Mono Variable",
+      "src": "docs/design-handoff/2026-09-14-design-project-export/_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/fonts/jetbrains-mono-latin-wght-normal.woff2",
+      "weight": "100 800",
+      "style": "normal"
+    }
+  ],
+  "fontLicense": "extension/src/fonts/OFL.txt",
+  "assets": {
+    "Logos": {
+      "tile": "l",
+      "files": [
+        {
+          "name": "birdbrain-logo-256.png",
+          "src": "src/renderer/assets/logo.png",
+          "blob": "63a10d63414ff72bcb6c32575e9f2a1b",
+          "size": 65868,
+          "type": "image/png"
+        },
+        {
+          "name": "birdbrain-icon-1024.png",
+          "src": "resources/icon.png",
+          "blob": "1f21179a3415b651f2685d0ccd1d5edc",
+          "size": 855907,
+          "type": "image/png"
+        }
+      ]
+    }
+  },
+  "docs": [
+    "CONTEXT.md",
+    "docs/agents/writing-guide.md",
+    "docs/specs/2026-06-28-openrouter-theme-reskin-design.md"
+  ],
+  "components": {
+    "Button": "src/renderer/components/ui/button.tsx",
+    "Badge": "src/renderer/components/ui/badge.tsx",
+    "Input": "src/renderer/components/ui/input.tsx",
+    "Textarea": "src/renderer/components/ui/textarea.tsx",
+    "Label": "src/renderer/components/ui/label.tsx",
+    "Card": "src/renderer/components/ui/card.tsx",
+    "SectionLabel": "src/renderer/components/ui/section-label.tsx",
+    "Dialog": "src/renderer/components/ui/dialog.tsx",
+    "Tabs": "src/renderer/components/ui/tabs.tsx",
+    "ContextMenu": "src/renderer/components/ui/context-menu.tsx",
+    "ScrollArea": "src/renderer/components/ui/scroll-area.tsx",
+    "Skeleton": "src/renderer/components/ui/skeleton.tsx",
+    "AppToaster": "src/renderer/components/ui/toaster.tsx"
+  },
+  "familyNotes": {
+    "shadow": "Flat by decision: surfaces are border-defined, not elevated. Only floating overlays carry a soft shadow; the glow and button shadows are kept as tokens that resolve to none.",
+    "spacing": "Birdbrain pads by density step, not by a fixed scale. Three steps are set on <html data-density>: compact (a fresh install's default), the :root default, and comfortable. Values below are the :root step; each note gives compact / comfortable. Radius is not a density concern.",
+    "radius": "The scale is 2 / 4 / 6 and nothing else. xl and 2xl alias down to the 6px ceiling so every rounded-xl/rounded-2xl call site collapses with the token. rounded-full stays legal only for status pills and dots.",
+    "tracking": "Letter-spacing tokens from the @theme block."
+  }
+}

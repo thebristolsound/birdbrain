@@ -1,0 +1,39 @@
+<!-- @dsCard height=288 -->
+<!doctype html><html><head><meta charset="utf-8">
+<style>
+  html,body{margin:0;background:var(--color-canvas)}
+  .cover{position:relative;width:960px;height:288px;overflow:hidden}
+  .name{position:absolute;left:40px;bottom:50px;margin:0;font:600 80px/0.95 var(--font-display);letter-spacing:var(--tracking-display);color:var(--color-text-primary);max-width:440px}
+  .tag{position:absolute;left:40px;bottom:26px;margin:0;font:400 13px/16px var(--font-body);color:var(--color-text-muted);max-width:440px}
+  svg{position:absolute;left:0;top:0}
+  .accent{fill:var(--color-accent)} .ink{fill:var(--color-text-primary)} .tint{fill:var(--color-border)} .signal{fill:var(--color-success-fg)}
+  .dot{fill:var(--color-canvas)} .edge{stroke:var(--color-accent);stroke-width:2;fill:none}
+  .r{rx:var(--radius)}
+</style></head><body>
+<div class="cover">
+<!--
+  blocks: color-accent 216×240 (12×d-pad × 8×d-row); color-text-primary 198×144 (11×d-pad × 8×d-pad); color-border 96×84; color-success-fg 90×84 (5×d-pad); all corners radius (6px)
+  arrangement: one tall accent slab at x=504 with an ink block beside it and two satellites beneath the ink, bleeding toward the right edge; zinc neutrals plus one indigo, as the README says
+  pattern: "precise, technical, mono, a 4px grid → a dot grid at one spacing step": a dot grid at d-tree (24px) pitch cut from the ink block in canvas, with four accent edges joining dots as the mark's node graph does on the bird's wing
+  scales: d-pad 18, d-row 30, d-tree 24 pitch, d-listgap 3 dot diameter, radius 6px
+-->
+<svg width="960" height="288" viewBox="0 0 960 288" aria-hidden="true">
+  <rect class="accent r" x="504" y="24" width="216" height="240"/>
+  <rect class="ink r" x="732" y="24" width="198" height="144"/>
+  <rect class="tint r" x="732" y="180" width="96" height="84"/>
+  <rect class="signal r" x="840" y="180" width="90" height="84"/>
+  <g class="dot">
+    <circle cx="747" cy="39" r="1.5"/><circle cx="771" cy="39" r="1.5"/><circle cx="795" cy="39" r="1.5"/><circle cx="819" cy="39" r="1.5"/><circle cx="843" cy="39" r="1.5"/><circle cx="867" cy="39" r="1.5"/><circle cx="891" cy="39" r="1.5"/><circle cx="915" cy="39" r="1.5"/>
+    <circle cx="747" cy="63" r="1.5"/><circle cx="771" cy="63" r="1.5"/><circle cx="795" cy="63" r="1.5"/><circle cx="819" cy="63" r="1.5"/><circle cx="843" cy="63" r="1.5"/><circle cx="867" cy="63" r="1.5"/><circle cx="891" cy="63" r="1.5"/><circle cx="915" cy="63" r="1.5"/>
+    <circle cx="747" cy="87" r="1.5"/><circle cx="771" cy="87" r="1.5"/><circle cx="795" cy="87" r="1.5"/><circle cx="819" cy="87" r="1.5"/><circle cx="843" cy="87" r="1.5"/><circle cx="867" cy="87" r="1.5"/><circle cx="891" cy="87" r="1.5"/><circle cx="915" cy="87" r="1.5"/>
+    <circle cx="747" cy="111" r="1.5"/><circle cx="771" cy="111" r="1.5"/><circle cx="795" cy="111" r="1.5"/><circle cx="819" cy="111" r="1.5"/><circle cx="843" cy="111" r="1.5"/><circle cx="867" cy="111" r="1.5"/><circle cx="891" cy="111" r="1.5"/><circle cx="915" cy="111" r="1.5"/>
+    <circle cx="747" cy="135" r="1.5"/><circle cx="771" cy="135" r="1.5"/><circle cx="795" cy="135" r="1.5"/><circle cx="819" cy="135" r="1.5"/><circle cx="843" cy="135" r="1.5"/><circle cx="867" cy="135" r="1.5"/><circle cx="891" cy="135" r="1.5"/><circle cx="915" cy="135" r="1.5"/>
+    <circle cx="747" cy="159" r="1.5"/><circle cx="771" cy="159" r="1.5"/><circle cx="795" cy="159" r="1.5"/><circle cx="819" cy="159" r="1.5"/><circle cx="843" cy="159" r="1.5"/><circle cx="867" cy="159" r="1.5"/><circle cx="891" cy="159" r="1.5"/><circle cx="915" cy="159" r="1.5"/>
+  </g>
+  <path class="edge" d="M771 63 L843 87 L819 135 M843 87 L891 63 M819 135 L771 159"/>
+  <g class="accent"><circle cx="771" cy="63" r="4"/><circle cx="843" cy="87" r="4"/><circle cx="819" cy="135" r="4"/><circle cx="891" cy="63" r="4"/><circle cx="771" cy="159" r="4"/></g>
+</svg>
+<h1 class="name">Birdbrain</h1>
+<p class="tag">Open source web investigation and capture tool.</p>
+</div>
+</body></html>

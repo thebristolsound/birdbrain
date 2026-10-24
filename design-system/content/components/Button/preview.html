@@ -1,0 +1,35 @@
+<!-- @dsCard group="Actions" height=150 subtitle="Static rendition of button.tsx" -->
+<!doctype html><html><head><meta charset="utf-8"><style>
+  html,body{margin:0;background:var(--color-canvas);color:var(--color-text-secondary);font-family:var(--font-body);font-size:12px;line-height:16px}
+  .wrap{padding:20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  .col{display:flex;flex-direction:column;gap:12px;align-items:flex-start}
+  .eyebrow{font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:var(--tracking-label);color:var(--color-text-faint);line-height:1}
+  svg.i{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+</style>
+<style>
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:28px;padding:0 11px;border-radius:var(--radius-md);font:500 12px/16px var(--font-body);border:1px solid transparent;background:transparent;color:inherit;cursor:pointer;transition:background-color .15s,color .15s,border-color .15s}
+  .btn:focus-visible{outline:2px solid var(--color-ring);outline-offset:2px}
+  .btn:disabled{opacity:.5;pointer-events:none}
+  .default{background:var(--color-accent);color:#fff;box-shadow:var(--shadow-btn)} .default:hover{background:var(--color-accent-hover)}
+  .destructive{background:var(--color-red-600);color:#fff} .destructive:hover{background:#b91c1c}
+  .outline{border-color:var(--color-border-strong);color:var(--color-text-primary)} .outline:hover{background:var(--color-elevated)}
+  .ghost{color:var(--color-text-muted)} .ghost:hover{background:var(--color-elevated);color:var(--color-text-primary)}
+  .link{color:var(--color-accent);text-underline-offset:4px} .link:hover{text-decoration:underline}
+  .lg{height:36px;padding:0 20px;font-size:14px;line-height:20px;border-radius:var(--radius-lg)}
+  .icon{width:28px;padding:0} .icon-sm{width:24px;height:24px;padding:0}
+</style></head><body>
+<div class="wrap">
+  <button class="btn default">Capture page</button>
+  <button class="btn destructive">Delete capture</button>
+  <button class="btn outline">Export</button>
+  <button class="btn ghost">Cancel</button>
+  <button class="btn link">View manifest</button>
+  <button class="btn default" disabled>Capture page</button>
+</div>
+<div class="wrap" style="padding-top:0">
+  <button class="btn default lg">Create a case</button>
+  <button class="btn outline icon" aria-label="Settings"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+  <button class="btn ghost icon-sm" aria-label="Close"><svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  <span class="eyebrow">28px · 4px · 0 11px · 12px</span>
+</div>
+</body></html>

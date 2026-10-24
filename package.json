@@ -26,6 +26,7 @@
     "build:demo-fixture": "node scripts/build-demo-fixture.mjs",
     "eval:retrieval": "node scripts/run-retrieval-eval.mjs",
     "build:notices": "node scripts/third-party-notices/notices.mjs",
+    "design-system": "node design-system/build.mjs",
     "test": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs run",
     "test:watch": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs",
     "test:coverage": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs run --coverage",

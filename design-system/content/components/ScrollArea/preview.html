@@ -1,0 +1,24 @@
+<!-- @dsCard group="Surfaces" height=170 subtitle="Static rendition of scroll-area.tsx" -->
+<!doctype html><html><head><meta charset="utf-8"><style>
+  html,body{margin:0;background:var(--color-canvas);color:var(--color-text-secondary);font-family:var(--font-body);font-size:12px;line-height:16px}
+  .wrap{padding:20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  .col{display:flex;flex-direction:column;gap:12px;align-items:flex-start}
+  .eyebrow{font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:var(--tracking-label);color:var(--color-text-faint);line-height:1}
+  svg.i{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+</style>
+<style>
+  .area{width:320px;height:130px;min-height:0;overflow-y:auto;overflow-x:hidden;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-card);scrollbar-width:thin;scrollbar-color:var(--color-border) transparent}
+  .area::-webkit-scrollbar{width:6px;height:6px} .area::-webkit-scrollbar-track{background:transparent} .area::-webkit-scrollbar-thumb{background:var(--color-border);border-radius:3px}
+  .row{display:flex;align-items:center;height:var(--d-row);padding:0 var(--d-rowpad);border-bottom:1px solid var(--color-border);color:var(--color-text-secondary)}
+  .row .k{margin-left:auto;font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)}
+</style></head><body>
+<div class="wrap"><div class="area">
+  <div class="row">example.org/article<span class="k">09:41</span></div>
+  <div class="row">news.example.com/2026/10/19<span class="k">09:38</span></div>
+  <div class="row">archive.example/record/7<span class="k">09:31</span></div>
+  <div class="row">forum.example.net/thread/221<span class="k">09:12</span></div>
+  <div class="row">example.org/about<span class="k">08:57</span></div>
+  <div class="row">social.example/post/8812<span class="k">08:40</span></div>
+  <div class="row">docs.example.io/policy<span class="k">08:22</span></div>
+</div></div>
+</body></html>

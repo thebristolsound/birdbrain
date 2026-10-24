@@ -1,0 +1,24 @@
+<!-- @dsCard group="Feedback" height=230 subtitle="Static rendition of toaster.tsx" -->
+<!doctype html><html><head><meta charset="utf-8"><style>
+  html,body{margin:0;background:var(--color-canvas);color:var(--color-text-secondary);font-family:var(--font-body);font-size:12px;line-height:16px}
+  .wrap{padding:20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  .col{display:flex;flex-direction:column;gap:12px;align-items:flex-start}
+  .eyebrow{font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:var(--tracking-label);color:var(--color-text-faint);line-height:1}
+  svg.i{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+</style>
+<style>
+  .toast{display:flex;width:fit-content;max-width:520px;align-items:center;gap:11px;border-radius:var(--radius-lg);border:1px solid var(--color-border-strong);background:var(--color-card);padding:9px 9px 9px 13px;font-family:var(--font-body);box-shadow:var(--shadow-overlay)}
+  .med{display:grid;place-items:center;width:17px;height:17px;flex-shrink:0;border-radius:9999px}
+  .med svg{width:10px;height:10px;stroke-width:3}
+  .success{background:var(--color-success-surface);color:var(--color-success-fg)} .error{background:var(--color-danger-surface);color:var(--color-danger-fg)} .warning{background:var(--color-warning-surface);color:var(--color-warning-fg)} .info{background:var(--color-accent-subtle);color:var(--color-accent)}
+  .c{min-width:0} .t{font-weight:600;color:var(--color-text-primary)} .d{font-size:10px;color:var(--color-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .act{height:26px;flex-shrink:0;border-radius:var(--radius-lg);border:1px solid color-mix(in srgb,var(--color-accent) 35%,transparent);background:var(--color-accent-subtle);padding:0 10px;font:600 11px var(--font-body);color:var(--color-accent)}
+  .x{order:99;display:grid;place-items:center;width:22px;height:22px;flex-shrink:0;border-radius:var(--radius-md);color:var(--color-text-faint);background:transparent;border:0}
+  .x svg{width:11px;height:11px}
+</style></head><body>
+<div class="wrap col">
+  <div class="toast" role="status"><span class="med success"><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span class="c"><div class="t">Capture saved</div><div class="d">Exhibit 8 written to Case 7 · manifest entry signed</div></span><button class="act">View</button><button class="x" aria-label="Dismiss"><svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+  <div class="toast" role="status"><span class="med error"><svg class="i" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3zM12 9v4M12 17h.01"/></svg></span><span class="c"><div class="t">Chain verification failed</div><div class="d">Entry 41 does not hash to entry 42</div></span><button class="x" aria-label="Dismiss"><svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+  <div class="toast" role="status"><span class="med info"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span><span class="c"><div class="t">Recapture queued</div><div class="d">Runs through the Tor egress you chose</div></span><button class="x" aria-label="Dismiss"><svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+</div>
+</body></html>

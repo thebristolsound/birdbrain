@@ -1,0 +1,21 @@
+<!-- @dsCard group="Navigation" height=150 subtitle="Static rendition of tabs.tsx" -->
+<!doctype html><html><head><meta charset="utf-8"><style>
+  html,body{margin:0;background:var(--color-canvas);color:var(--color-text-secondary);font-family:var(--font-body);font-size:12px;line-height:16px}
+  .wrap{padding:20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  .col{display:flex;flex-direction:column;gap:12px;align-items:flex-start}
+  .eyebrow{font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:var(--tracking-label);color:var(--color-text-faint);line-height:1}
+  svg.i{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+</style>
+<style>
+  .list{display:inline-flex;width:fit-content;align-items:center;justify-content:center;height:36px;padding:3px;border-radius:var(--radius-lg);background:var(--color-muted);color:var(--color-muted-foreground)}
+  .trig{position:relative;display:inline-flex;height:calc(100% - 1px);flex:1;align-items:center;justify-content:center;gap:6px;padding:4px 8px;border-radius:var(--radius-md);border:1px solid transparent;font:500 14px/20px var(--font-body);white-space:nowrap;color:color-mix(in srgb,var(--color-foreground) 60%,transparent);background:transparent}
+  .trig.active{background:var(--color-background);color:var(--color-foreground);box-shadow:0 1px 3px 0 rgba(0,0,0,.1),0 1px 2px -1px rgba(0,0,0,.1)}
+  .line{background:transparent;gap:4px;border-radius:0}
+  .line .trig.active{background:transparent;box-shadow:none}
+  .line .trig.active::after{content:"";position:absolute;left:0;right:0;bottom:-5px;height:2px;background:var(--color-foreground)}
+</style></head><body>
+<div class="wrap col" style="gap:20px">
+  <div class="list" role="tablist"><button class="trig active" role="tab">Captures</button><button class="trig" role="tab">Notes</button><button class="trig" role="tab">Signals</button></div>
+  <div class="list line" role="tablist"><button class="trig active" role="tab">Overview</button><button class="trig" role="tab">Data</button><button class="trig" role="tab">Export</button></div>
+</div>
+</body></html>

@@ -69,6 +69,13 @@ export const queryKeys = {
   exhibitVerification: (caseId: string, exhibitId: string) =>
     ['exhibits', 'verification', caseId, exhibitId] as const,
   manifestSnapshot: (caseId: string) => ['manifest', 'snapshot', caseId] as const,
+  // Shared Case reads (#1514). The roster and the sync state are keyed per
+  // Case so a sharing event can refetch one Case's screens; the invite
+  // preview is keyed by the pasted string, which never leaves this process.
+  sharingMembers: (caseId: string) => ['sharing', 'members', caseId] as const,
+  sharingSyncState: (caseId: string) => ['sharing', 'syncState', caseId] as const,
+  sharingAvailable: ['sharing', 'available'] as const,
+  sharingInvitePreview: (invite: string) => ['sharing', 'invitePreview', invite] as const,
   // Case investigation (engine plan, E10). Each family is keyed per Case, so a write can
   // invalidate one Case's reads by prefix.
   investigationRevision: (caseId: string) => ['investigation', 'revision', caseId] as const,

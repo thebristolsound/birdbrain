@@ -563,19 +563,23 @@ describe('working-layer rows (#1512)', () => {
     )
   })
 
-  it('refuses a batch whose reference is not satisfied, and one that collides with a local row', () => {
+  it('refuses a collision individually and a batch whose reference is not satisfied', () => {
     share()
     const mine = createNote({ caseId, title: 'Mine', body: '' })
     const collision = applyRemoteRows(
-      [remoteRow('notes', noteFields(mine.id, 'Taken over'), 1)],
+      [
+        remoteRow('notes', noteFields(mine.id, 'Taken over'), 1),
+        remoteRow('notes', noteFields('unrelated', 'Still arrives'), 2)
+      ],
       roster(),
       new Set([REMOTE_ID]),
       caseId
     )
-    expect(collision.applied).toBe(0)
-    expect(collision.refused[0]?.kind).toBe('peer')
+    expect(collision.applied).toBe(1)
+    expect(collision.refused[0]?.kind).toBe('rejected-entry')
     expect(collision.refused[0]?.detail).toContain('collides with a row of this installation')
     expect(getNote(mine.id)?.title).toBe('Mine')
+    expect(getNote('unrelated')?.title).toBe('Still arrives')
 
     const dangling = applyRemoteRows(
       [
@@ -608,6 +612,48 @@ describe('working-layer rows (#1512)', () => {
     )
     expect(ordered).toEqual({ applied: 3, skipped: 0, refused: [] })
     expect(getTagsForNote('rn').map((t) => t.name)).toEqual(['remote'])
+  })
+
+  it('refuses applications of a colliding tag without relabelling held notes or Captures', () => {
+    share()
+    const captureId = capture()
+    const tag = createTag({ name: 'Held meaning' })
+    const mine = createNote({ caseId, title: 'Held note' })
+    const outcome = applyRemoteRows(
+      [
+        remoteRow('note_tags', { note_id: 'linked', tag_id: tag.id }, 6),
+        remoteRow('notes', noteFields(mine.id, 'Different author'), 1),
+        remoteRow(
+          'tags',
+          {
+            id: tag.id,
+            name: 'Remote meaning',
+            color: null,
+            created_at: '2026-10-01T00:00:00.000Z'
+          },
+          2
+        ),
+        remoteRow('notes', noteFields('linked', 'New note'), 3),
+        remoteRow('exhibit_tags', { exhibit_id: captureId, tag_id: tag.id }, 4),
+        remoteRow('note_tags', { note_id: mine.id, tag_id: tag.id }, 5),
+        remoteRow('notes', noteFields('unrelated', 'Still arrives'), 7)
+      ],
+      roster(),
+      new Set([REMOTE_ID]),
+      caseId
+    )
+    expect(outcome.applied).toBe(2)
+    expect(outcome.refused).toHaveLength(5)
+    expect(outcome.refused.every(({ kind }) => kind === 'rejected-entry')).toBe(true)
+    expect(outcome.refused.find(({ detail }) => detail.startsWith('tags row'))?.detail).toContain(
+      'collides with a row of this installation'
+    )
+    expect(getTag(tag.id)?.name).toBe('Held meaning')
+    expect(getNote(mine.id)?.title).toBe('Held note')
+    expect(getNote('unrelated')?.title).toBe('Still arrives')
+    expect(getTagsForCapture(captureId)).toEqual([])
+    expect(getTagsForNote(mine.id)).toEqual([])
+    expect(getTagsForNote('linked')).toEqual([])
   })
 
   // Scheduled review finding 2: a received row was never checked against

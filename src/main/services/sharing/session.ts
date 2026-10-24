@@ -40,6 +40,7 @@ import {
   safeCasePath
 } from '@main/services/sharing/blobAcceptance'
 import {
+  applyVerifiedRows,
   cursorAfter,
   offerPage,
   toWireRows,
@@ -56,7 +57,6 @@ import {
 import { rebuildRosterCache } from '@main/services/sharing/rosterCache'
 import { isChainInstallationId } from '../../../packages/evidence-package-layout/index'
 import {
-  applyRows,
   maxAuthorVersionInCase,
   rowsOfAuthorByTable,
   type RemoteRow,
@@ -778,7 +778,9 @@ export async function pullFromPeer(
     // next session asks from the same cursors.
     if (received.length > 0) {
       try {
-        result.rowsApplied += applyRows(received).applied
+        const applied = applyVerifiedRows(received)
+        result.rowsApplied += applied.applied
+        result.errors.push(...applied.refused)
       } catch (err) {
         fail('peer', `rows received this session could not be applied: ${(err as Error).message}`)
       }

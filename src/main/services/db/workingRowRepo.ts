@@ -690,6 +690,19 @@ function conflictTarget(table: SyncedTable): string {
     : `${key.join(', ')}, COALESCE(author_installation_id, '')`
 }
 
+// An id-keyed row cannot take an id already held by another author, including an archive's
+// local copy. An archive header cannot establish authorship, so the held row stays untouched.
+export function rowIdCollision(row: RemoteRow): string | null {
+  const { table, author, fields } = row
+  if (conflictTarget(table) !== 'id') return null
+  const holder = getDb()
+    .prepare(`SELECT author_installation_id FROM ${table} WHERE id = ?`)
+    .get(fields.id) as { author_installation_id: string | null } | undefined
+  return holder && holder.author_installation_id !== author
+    ? `${table} row ${fields.id} of ${author} collides with a row of ${holder.author_installation_id ?? 'this installation'}`
+    : null
+}
+
 // Applies every row a session received, every author's and every page's, in
 // one transaction with foreign keys deferred to its commit (the design's
 // "Working-layer rows" rule, ruling of 2026-10-15): a row may arrive before
@@ -721,14 +734,8 @@ export function applyRows(rows: RemoteRow[]): ApplyOutcome {
         continue
       }
       if (!existing && conflictTarget(table) === 'id') {
-        const holder = getDb()
-          .prepare(`SELECT author_installation_id FROM ${table} WHERE id = ?`)
-          .get(key.id) as { author_installation_id: string | null } | undefined
-        if (holder) {
-          throw new Error(
-            `${table} row ${key.id} of ${author} collides with a row of ${holder.author_installation_id ?? 'this installation'}`
-          )
-        }
+        const collision = rowIdCollision(row)
+        if (collision !== null) throw new Error(collision)
       }
       const reference = referenceOf(table, row.fields)
       if (reference?.state === 'missing') {

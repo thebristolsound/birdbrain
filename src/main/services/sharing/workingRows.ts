@@ -24,6 +24,7 @@ import {
   removeCaptureDependents,
   removeExhibitDependents,
   removeOwnRowsOnCapture,
+  rowIdCollision,
   signedColumns,
   writeRowSync,
   type RemoteRow,
@@ -476,6 +477,44 @@ export function verifyRemoteRows(
   return { accepted, refused }
 }
 
+// Refuse demonstrated id collisions and their tag applications individually, after all pages
+// verify. Keeping a colliding tag's application would attach it to the held author's tag.
+export function applyVerifiedRows(rows: RemoteRow[]): RemoteApplyOutcome {
+  return withTransaction(() => {
+    const collisions = new Map<RemoteRow, string>()
+    const parentKey = (table: SyncedTable, id: RowFields[string]): string => `${table}\u0000${id}`
+    const blocked = new Set<string>()
+    for (const row of rows) {
+      const collision = rowIdCollision(row)
+      if (collision === null) continue
+      collisions.set(row, collision)
+      blocked.add(parentKey(row.table, row.fields.id))
+    }
+    const accepted: RemoteRow[] = []
+    const refused: RowRefusal[] = []
+    for (const row of rows) {
+      const parent = (PARENT_ROWS[row.table] ?? []).find(({ parent, column }) =>
+        blocked.has(parentKey(parent, row.fields[column]))
+      )
+      const reason =
+        collisions.get(row) ??
+        (parent
+          ? `references colliding ${parent.parent} row ${row.fields[parent.column]}`
+          : undefined)
+      if (reason === undefined) {
+        accepted.push(row)
+      } else {
+        refused.push({
+          kind: 'rejected-entry',
+          installationId: row.author,
+          detail: `${row.table} row of ${row.author} at version ${row.version}: ${reason}`
+        })
+      }
+    }
+    return { ...applyRows(accepted), refused }
+  })
+}
+
 // Verifies received rows and applies the accepted ones in one transaction
 // (applyRows); a batch whose references are not satisfied is refused whole.
 // The session verifies page by page and applies once at its end; this is
@@ -490,9 +529,10 @@ export function applyRemoteRows(
   const outcome: RemoteApplyOutcome = { applied: 0, skipped: 0, refused }
   if (accepted.length === 0) return outcome
   try {
-    const { applied, skipped } = applyRows(accepted)
+    const { applied, skipped, refused } = applyVerifiedRows(accepted)
     outcome.applied = applied
     outcome.skipped = skipped
+    outcome.refused.push(...refused)
   } catch (err) {
     outcome.refused.push({
       kind: 'peer',

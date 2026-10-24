@@ -12,6 +12,10 @@ on:
     paths:
       - 'src/renderer/styles/globals.css'
       - 'src/renderer/components/ui/**'
+      - 'extension/src/fonts/**'
+      - 'docs/design-handoff/2026-09-14-design-project-export/_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/fonts/**'
+      - 'src/renderer/assets/logo.png'
+      - 'resources/icon.png'
       - 'design-system/**'
       - '.github/workflows/design-system.yml'
   pull_request:
@@ -19,6 +23,10 @@ on:
     paths:
       - 'src/renderer/styles/globals.css'
       - 'src/renderer/components/ui/**'
+      - 'extension/src/fonts/**'
+      - 'docs/design-handoff/2026-09-14-design-project-export/_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/fonts/**'
+      - 'src/renderer/assets/logo.png'
+      - 'resources/icon.png'
       - 'design-system/**'
       - '.github/workflows/design-system.yml'
   workflow_dispatch:

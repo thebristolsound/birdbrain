@@ -7,6 +7,7 @@ import { createCase } from '@main/services/db/caseRepo'
 import { listCaseMembers, upsertCaseMember } from '@main/services/db/caseMemberRepo'
 import { createNote, deleteNote, listNotes, updateNote } from '@main/services/db/noteRepo'
 import { maxAuthorVersionInCase, readRow } from '@main/services/db/workingRowRepo'
+import { addTagToNote, createTag, getTagsForNote } from '@main/services/db/tagRepo'
 import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
 import { addMember, shareCase } from '@main/services/sharing/membership'
 import { MAX_ROW_PAGES } from '@main/services/sharing/session'
@@ -78,6 +79,43 @@ describe('archive-imported working row collisions (#1955)', () => {
     const second = await pull(caseId, source, {}, { pageBytes: 1 })
     expect(second.rowsApplied).toBe(1)
     expect(listNotes(caseId).map(({ id }) => id)).toEqual([later.id])
+  })
+
+  it('passes a refused application of an imported note without writing into its Case', async () => {
+    const caseId = createCase({ name: 'Imported note application' }).id
+    mkdirSync(caseDirOf(caseId), { recursive: true })
+    const older = createNote({ caseId, title: 'Archived note' })
+    const archive = join(root, 'application.birdbrain')
+    await exportCaseArchive(caseId, archive)
+    await activate(member)
+    const { newCaseId: importedCaseId } = await importCaseArchive(archive)
+    const imported = readRow('notes', { id: older.id }, null)
+    await activate(owner)
+    await shareCase(caseId, { nodeId: `node-${owner.name}` })
+    await addMember(caseId, {
+      installationId: member.installationId,
+      publicKeyPem: member.publicKeyPem,
+      operatorName: member.operatorName,
+      nodeId: `node-${member.name}`,
+      memberCode: member.memberCode
+    })
+    const roster = listCaseMembers(caseId)
+    updateNote({ id: older.id, title: 'Owner edit' })
+    const tag = createTag({ name: 'Owner tag' })
+    addTagToNote({ noteId: older.id, tagId: tag.id })
+    const later = createNote({ caseId, title: 'After the application' })
+    const source = recordSource(caseId, owner)
+    await activate(member)
+    seedSharedCase(caseId, owner, [])
+    roster.forEach(upsertCaseMember)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await pull(caseId, source, {}, { pageBytes: 1 })
+      expect(result.errors.some(({ kind }) => kind === 'peer')).toBe(false)
+      expect.soft(listNotes(caseId).map(({ id }) => id)).toEqual([later.id])
+      expect(readRow('notes', { id: older.id }, null)).toEqual(imported)
+      expect(listNotes(importedCaseId).map(({ title }) => title)).toEqual(['Archived note'])
+      expect(getTagsForNote(older.id)).toEqual([])
+    }
   })
 
   it.each(['edit', 'delete', 'already-signed'] as const)(

@@ -741,6 +741,7 @@ export async function pullFromPeer(
     // member (decision 11), and a row has no index to bound it by.
     options.onPhase?.('rows')
     const received: RemoteRow[] = []
+    const refusedDependencies: RemoteRow[] = []
     for (const member of roster) {
       if (member.installationId === self || member.revokedAtIndex !== null) continue
       const { installationId } = member
@@ -756,15 +757,15 @@ export async function pullFromPeer(
         if (page.installationId !== installationId || page.sinceVersion !== since) {
           throw new ProtocolError(`rows answered for ${page.installationId}@${page.sinceVersion}`)
         }
-        const { accepted, refused } = verifyRemoteRows(
-          page.rows,
-          roster,
-          new Set([installationId]),
-          caseId
-        )
+        const {
+          accepted,
+          refused,
+          refusedDependencies: dependencies
+        } = verifyRemoteRows(page.rows, roster, new Set([installationId]), caseId)
         result.errors.push(...refused)
         received.push(...accepted)
-        const top = cursorAfter(accepted, since)
+        refusedDependencies.push(...dependencies)
+        const top = cursorAfter([...accepted, ...dependencies], since)
         if (!page.more || top <= since) break
         since = top
       }
@@ -776,9 +777,9 @@ export async function pullFromPeer(
     // received Capture whose files arrived; a row that references one this
     // replica still lacks rolls back the session's rows as a whole, and the
     // next session asks from the same cursors.
-    if (received.length > 0) {
+    if (received.length > 0 || refusedDependencies.length > 0) {
       try {
-        const applied = applyVerifiedRows(received, caseId)
+        const applied = applyVerifiedRows(received, caseId, refusedDependencies)
         result.rowsApplied += applied.applied
         result.errors.push(...applied.refused)
       } catch (err) {

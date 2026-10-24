@@ -722,6 +722,45 @@ describe('working-layer rows (#1512)', () => {
     expect(fine).toEqual({ applied: 3, skipped: 0, refused: [] })
   })
 
+  it('advances only verified Case-bound foreign-note refusals and rolls back failed batches', () => {
+    share()
+    const elsewhere = createCase({ name: 'Imported copy' }).id
+    const held = createNote({ caseId: elsewhere, title: 'Held elsewhere' })
+    const tag = createTag({ name: 'Held tag' })
+    const fields = { note_id: held.id, tag_id: tag.id }
+    const wrongCase = remoteRow('note_tags', fields, 10, null, elsewhere)
+    const invalid = { ...remoteRow('note_tags', fields, 11), signature: 'bm90' }
+    const refused = applyRemoteRows([wrongCase, invalid], roster(), new Set([REMOTE_ID]), caseId)
+    expect(refused.applied).toBe(0)
+    expect(refused.refused).toHaveLength(2)
+    expect(maxAuthorVersionInCase(caseId, REMOTE_ID)).toBe(0)
+
+    const bound = applyRemoteRows(
+      [remoteRow('note_tags', fields, 12)],
+      roster(),
+      new Set([REMOTE_ID]),
+      caseId
+    )
+    expect(bound.applied).toBe(0)
+    expect(bound.refused[0]?.detail).toContain(`references a row of Case ${elsewhere}`)
+    expect(maxAuthorVersionInCase(caseId, REMOTE_ID)).toBe(12)
+    const failed = applyRemoteRows(
+      [
+        remoteRow('notes', noteFields('pending', 'Rolls back'), 13),
+        remoteRow('note_tags', { note_id: 'pending', tag_id: 'missing' }, 14),
+        remoteRow('note_tags', fields, 15)
+      ],
+      roster(),
+      new Set([REMOTE_ID]),
+      caseId
+    )
+    expect(failed.refused.some(({ kind }) => kind === 'peer')).toBe(true)
+    expect(getNote('pending')).toBeUndefined()
+    expect(maxAuthorVersionInCase(caseId, REMOTE_ID)).toBe(12)
+    expect(getNote(held.id)?.title).toBe('Held elsewhere')
+    expect(getTagsForNote(held.id)).toEqual([])
+  })
+
   // Fourth pre-pass, finding 2: a received note was checked on its own
   // case column only, so its Capture column or anchor could name a Capture
   // the receiver holds in another Case, which a local write refuses.

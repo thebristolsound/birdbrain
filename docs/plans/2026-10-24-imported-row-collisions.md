@@ -72,3 +72,15 @@ deletion and database restoration.
 The plan status now uses `active`, the vocabulary required by `docs/README.md`. The prose
 correction removes the sentence opening reported by Vale. The prior full run passed every
 code check and 7,565 tests but failed that prose check, so its block is not the final proof.
+
+The second spec review found that a tag application on an imported note failed the existing
+Case check before the collision filter could record progress. With one-row pages, that
+application repeatedly stopped the next request. The new archive regression reproduced the
+missing later note on two sessions. A signature-verified application signed for the syncing
+Case now contributes refusal progress when its note id belongs to another Case. It remains
+refused and never writes into that Case. Invalid signatures and envelopes naming another
+Case still move no cursor. The refusal progress commits only if the remaining batch succeeds.
+The focused sync and migration checks passed after this correction. A further regression
+checks the Case boundary, invalid signatures, and rollback of refusal progress with a failed
+batch. The standards reviewer reached its account limit; the final recheck uses another
+configured provider.

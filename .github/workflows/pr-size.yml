@@ -1,0 +1,67 @@
+name: PR size
+
+# Applies one size:* label to every PR, from its changed-line count, after T3 Code's pr-size
+# workflow. Test files are left out of the count unless the PR changes nothing else, so a
+# change with a large test suite reads as the size of the change. The labels themselves are
+# described in docs/agents/triage-labels.md.
+#
+# pull_request_target, so a fork PR gets a token that can label. The job never checks out or
+# runs the PR's code: it reads per-file line counts from the PR files API and nothing else.
+# Keep it that way; anything that needs the PR's tree belongs in ci.yml.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  pull-requests: write
+
+concurrency:
+  group: pr-size-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Sync the size label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # Matches the repository's test layout: tests/** (at any depth), e2e/**, and *.test.* / *.spec.*.
+          test_re='(^|/)(tests|e2e)/|[.](test|spec)[.][^/]+$'
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR}/files?per_page=100" \
+            --jq '.[] | "\(.additions + .deletions)\t\(.filename)"' > files.tsv
+          total="$(awk -F'\t' '{ s += $1 } END { print s + 0 }' files.tsv)"
+          non_test="$(awk -F'\t' -v re="$test_re" '$2 !~ re { s += $1 } END { print s + 0 }' files.tsv)"
+          lines="$non_test"
+          if [ "$non_test" -eq 0 ]; then lines="$total"; fi
+
+          if [ "$lines" -lt 10 ]; then size=XS
+          elif [ "$lines" -lt 30 ]; then size=S
+          elif [ "$lines" -lt 100 ]; then size=M
+          elif [ "$lines" -lt 500 ]; then size=L
+          elif [ "$lines" -lt 1000 ]; then size=XL
+          else size=XXL
+          fi
+          want="size:${size}"
+          echo "PR #${PR}: ${non_test} non-test lines of ${total} -> ${want}"
+
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/labels" --jq '.[].name' > current.txt
+          while read -r name; do
+            case "$name" in
+              size:*)
+                if [ "$name" != "$want" ]; then
+                  gh api --method DELETE \
+                    "repos/${GITHUB_REPOSITORY}/issues/${PR}/labels/${name}" > /dev/null
+                fi
+                ;;
+            esac
+          done < current.txt
+          if ! grep -qx "$want" current.txt; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR}/labels" \
+              -f "labels[]=${want}" > /dev/null
+          fi

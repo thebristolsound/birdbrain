@@ -67,7 +67,7 @@ afterEach(() => {
 describe('CaptureItem — Exhibit citation chip (#1510)', () => {
   it('uses the roster hue and author for a shared Capture', () => {
     renderItem({
-      capture: { ...capture, exhibitCitation: 'NK-12' },
+      capture: { ...capture, exhibitCitation: 'NK-12', operatorId: 'inst-nk' },
       sharing: { members: members() }
     })
     expect(screen.getByTestId('capture-item-citation').getAttribute('title')).toBe(
@@ -76,6 +76,17 @@ describe('CaptureItem — Exhibit citation chip (#1510)', () => {
     expect(screen.getByTestId('capture-item-citation').dataset.hue).toBe('2')
     expect(screen.getByTestId('capture-author-rail')).toBeTruthy()
   })
+  it('does not assign an inherited citation to a new member reusing its code', () => {
+    const roster = members()
+    roster.members = [{ ...roster.members[0], memberCode: 'NK' }]
+    renderItem({
+      capture: { ...capture, exhibitCitation: 'NK-12', operatorId: 'original-author' },
+      sharing: { members: roster }
+    })
+    expect(screen.getByTestId('capture-item-citation').getAttribute('title')).toBe('Exhibit Number')
+    expect(screen.queryByTestId('capture-author-rail')).toBeNull()
+  })
+
   it('shows the citation main resolved before the title, in both views', () => {
     renderItem({ capture: { ...capture, exhibitNumber: 12, exhibitCitation: 'NK-12' } })
     const detailed = screen.getByTestId('capture-item-citation')

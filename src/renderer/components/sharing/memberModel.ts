@@ -264,7 +264,7 @@ export const COPY = {
     'Code.',
   joinFingerprintLead: 'Your fingerprint, if they ask:',
   excludedPill: 'Excluded from export',
-  excludedIntegrity: 'Integrity is unaffected: the entry, bytes, and hash still verify.',
+  excludedIntegrity: 'At the last verification, the entry, bytes, and hash verified.',
   excludedStays:
     'The Exhibit stays in the Case and in every member’s copy; exports list it as excluded.',
   revokeNote:
@@ -859,6 +859,7 @@ export function exclusionsOf(
   snapshot: CaseManifestSnapshot | undefined
 ): Map<string, ExclusionFact> {
   const out = new Map<string, ExclusionFact>()
+  if (!snapshot?.chain.valid) return out
   for (const entry of parsedEntries(snapshot)) {
     if (entry.type !== 'exclude' || out.has(entry.exhibitId)) continue
     out.set(entry.exhibitId, {

@@ -625,8 +625,8 @@ describe('chain facts', () => {
       lead: 'Excluded from export',
       body:
         ' by A. Renner (Owner) on 2026-08-02 11:20 · “duplicate of NK-11”. The Exhibit stays in ' +
-        'the Case and in every member’s copy; exports list it as excluded. Integrity is ' +
-        'unaffected: the entry, bytes, and hash still verify.',
+        'the Case and in every member’s copy; exports list it as excluded. At the last ' +
+        'verification, the entry, bytes, and hash verified.',
       ref: 'exclude #0029'
     })
     expect(

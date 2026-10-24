@@ -1,6 +1,6 @@
 import { Star, Check, CopyPlus, RefreshCcw, Clock, FileX } from 'lucide-react'
 import { MemberCodeChip } from '@renderer/components/sharing/MemberCodeChip'
-import { COPY, exclusionsOf, HUE_CLASSES } from '@renderer/components/sharing/memberModel'
+import { COPY, HUE_CLASSES } from '@renderer/components/sharing/memberModel'
 import {
   captureAttribution,
   type CaptureSharing
@@ -70,7 +70,7 @@ export function CaptureItem({
   const shownSelectors = matchingSelectors.slice(0, 2)
   const overflowSelectors = matchingSelectors.slice(2)
   const author = captureAttribution(capture, sharing?.members)
-  const excluded = exclusionsOf(sharing?.snapshot).has(capture.id)
+  const excluded = sharing?.exclusions?.has(capture.id) ?? false
   const exclusion = excluded ? (
     <span
       className="inline-flex items-center gap-1 rounded-full border border-border-strong px-1.5 text-[10px] text-text-muted"

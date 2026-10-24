@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { Capture } from '@shared/types'
 import type { ManifestEntry } from '@shared/schemas'
 import { CaptureSharingDetails } from '@renderer/components/sharing/CaptureSharingDetails'
+import { exclusionsOf } from '@renderer/components/sharing/memberModel'
 import { useCaptureSharing } from '@renderer/components/sharing/useCaptureSharing'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { members, snapshot, MERGE_31 } from './sharingFixtures'
@@ -19,6 +20,7 @@ const capture: Capture = {
   createdAt: '2026-09-19T12:00:00Z',
   format: 'mhtml',
   method: 'extension',
+  operatorId: 'inst-nk',
   exhibitCitation: 'NK-12',
   manifestIndex: 18
 }
@@ -31,7 +33,7 @@ const exclusion: ManifestEntry = {
   index: 32
 }
 
-function setup(excluded = false, verified = false, own = false) {
+function setup(excluded = false, verified = false, own = false, broken = false) {
   const excludeExhibit = vi.fn(async () => ({
     exhibitId: capture.id,
     authorInstallationId: 'inst-nk',
@@ -41,17 +43,22 @@ function setup(excluded = false, verified = false, own = false) {
   }))
   fakeBridge({ sharing: { excludeExhibit } })
   const client = new QueryClient()
+  const state = snapshot(excluded ? [MERGE_31, exclusion] : [MERGE_31])
+  if (broken) state.chain = { valid: false, brokenAt: 32, reason: 'signature mismatch' }
   render(
     <QueryClientProvider client={client}>
       <CaptureSharingDetails
         capture={{
           ...capture,
           exhibitCitation: own ? 'AR-12' : capture.exhibitCitation,
-          lastVerifiedStatus: verified ? 'verified' : 'tampered'
+          operatorId: own ? 'inst-ar' : capture.operatorId,
+          lastVerifiedStatus: verified ? 'verified' : 'tampered',
+          lastVerifiedAt: verified ? '2026-09-19T13:00:00Z' : undefined
         }}
         sharing={{
           members: members(),
-          snapshot: snapshot(excluded ? [MERGE_31, exclusion] : [MERGE_31])
+          snapshot: state,
+          exclusions: exclusionsOf(state)
         }}
       />
     </QueryClientProvider>
@@ -93,7 +100,10 @@ describe('Capture sharing details', () => {
     function BeforeFirstJoin() {
       const sharing = useCaptureSharing(capture.caseId, false)
       return (
-        <CaptureSharingDetails capture={{ ...capture, exhibitCitation: '12' }} sharing={sharing} />
+        <CaptureSharingDetails
+          capture={{ ...capture, exhibitCitation: '12', operatorId: 'inst-ar' }}
+          sharing={sharing}
+        />
       )
     }
     render(
@@ -143,10 +153,32 @@ describe('Capture sharing details', () => {
     expect(banner.className).not.toMatch(/warning|danger/)
   })
 
-  it('shows the integrity sentence when the recorded result verifies', () => {
+  it('does not treat a parsed exclusion in a broken chain as effective', () => {
+    setup(true, true, false, true)
+    expect(screen.queryByTestId('capture-exclusion-banner')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Exclude from export' })).toBeTruthy()
+  })
+
+  it('dates the integrity sentence to the persisted verification', () => {
     setup(true, true)
-    expect(screen.getByTestId('capture-exclusion-banner').textContent).toContain(
-      'hash still verify'
+    const text = screen.getByTestId('capture-exclusion-banner').textContent
+    expect(text).toContain(
+      'At the last verification on 2026-09-19 13:00, the entry, bytes, and hash verified.'
     )
+    expect(text).not.toContain('still verify')
+  })
+
+  it('keeps Owner exclusion available when the payload cannot establish authorship', () => {
+    fakeBridge()
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <CaptureSharingDetails
+          capture={{ ...capture, operatorId: undefined }}
+          sharing={{ members: members() }}
+        />
+      </QueryClientProvider>
+    )
+    expect(screen.queryByText(/Captured by/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Exclude from export' })).toBeTruthy()
   })
 })

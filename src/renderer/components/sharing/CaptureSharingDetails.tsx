@@ -17,7 +17,6 @@ import {
   excludeBody,
   excludeTitle,
   exclusionBanner,
-  exclusionsOf,
   formatDateTime,
   mergeReceiving,
   refusalMessage
@@ -41,11 +40,11 @@ export function CaptureSharingDetails({
   const [error, setError] = useState<string | null>(null)
   const reasonId = useId()
   const { excludeExhibit } = useSharingMutations()
-  if (!author) return null
-  const fact = exclusionsOf(sharing.snapshot).get(capture.id)
+  if (!sharing.members || sharing.members.members.length === 0) return null
+  const fact = sharing.exclusions?.get(capture.id)
   const banner = fact ? exclusionBanner(fact) : null
   const received =
-    author.isSelf || capture.manifestIndex === undefined
+    !author || author.isSelf || capture.manifestIndex === undefined
       ? null
       : mergeReceiving(sharing.snapshot, author.member.installationId, capture.manifestIndex)
   const close = () => {
@@ -55,12 +54,14 @@ export function CaptureSharingDetails({
   }
   return (
     <div className="mt-3 text-[11px] text-text-muted" data-testid="capture-sharing-details">
-      <p>
-        {author.title}
-        {author.isSelf ? '' : ', their machine'} · {formatDateTime(capture.timestamp)}
-        {received &&
-          ` · received by you ${formatDateTime(received.timestamp)} in merge #${formatSeq(received.index)}`}
-      </p>
+      {author && (
+        <p>
+          {author.title}
+          {author.isSelf ? '' : ', their machine'} · {formatDateTime(capture.timestamp)}
+          {received &&
+            ` · received by you ${formatDateTime(received.timestamp)} in merge #${formatSeq(received.index)}`}
+        </p>
+      )}
       {banner ? (
         <div
           className="mt-2 flex gap-2 rounded border border-border bg-elevated p-2.5"
@@ -70,7 +71,12 @@ export function CaptureSharingDetails({
           <p>
             <span className="font-medium">{banner.lead}</span>
             {capture.lastVerifiedStatus === 'verified' && sharing.snapshot?.chain.valid
-              ? banner.body
+              ? capture.lastVerifiedAt
+                ? banner.body.replace(
+                    COPY.excludedIntegrity,
+                    `At the last verification on ${formatDateTime(capture.lastVerifiedAt)}, the entry, bytes, and hash verified.`
+                  )
+                : banner.body
               : banner.body.replace(` ${COPY.excludedIntegrity}`, '')}
             <span className="ml-1 font-mono">{banner.ref}</span>
           </p>
@@ -96,7 +102,7 @@ export function CaptureSharingDetails({
         >
           <DialogTitle>{excludeTitle(capture.exhibitCitation ?? '')}</DialogTitle>
           <DialogDescription className="mt-2 text-xs leading-relaxed">
-            {excludeBody(author.member.operatorName)}
+            {excludeBody(author?.member.operatorName ?? 'the author')}
           </DialogDescription>
           <Label htmlFor={reasonId} className="mt-3 mb-1 block text-xs">
             {COPY.reasonLabel} <span className="text-text-faint">{COPY.reasonOptional}</span>

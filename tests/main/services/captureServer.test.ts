@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { existsSync, mkdtempSync, rmSync } from 'fs'
 import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
@@ -39,7 +40,6 @@ vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
   return { ...actual, fetchCertChain: vi.fn(async () => null) }
 })
 
-let nextPort = 19846
 let sessionService: SessionService
 const TEST_TOKEN = 'test-server-token'
 
@@ -55,7 +55,6 @@ describe('captureServer', () => {
   let baseUrl: string
 
   beforeEach(async () => {
-    const port = nextPort++
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-server-test-'))
     await initDatabase(':memory:')
     initStorage(join(tempDir, 'captures'))
@@ -65,15 +64,18 @@ describe('captureServer', () => {
     resetInstallationId()
     initInstallationId(tempDir)
     sessionService = createSessionService()
-    baseUrl = `http://127.0.0.1:${port}`
     const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
     // The lifecycle admits every route, so it shares the server's session:
     // 'auto' takes the Active Case from it and counts into it.
     const captureLifecycle = createCaptureLifecycle({ selectorLifecycle, sessionService })
+    // Port 0 takes an OS-assigned port, read back through
+    // getCaptureServerPort(), so a foreign listener can never collide with
+    // the suite (#948).
     await startCaptureServer(
       { selectorLifecycle, captureLifecycle, token: TEST_TOKEN, sessionService },
-      port
+      0
     )
+    baseUrl = `http://127.0.0.1:${getCaptureServerPort()}`
   })
 
   afterEach(async () => {
@@ -522,8 +524,6 @@ describe('captureServer', () => {
     // Rebind the server to a lifecycle whose admission fails — the injection
     // seam the server exposes for exactly this kind of test.
     await stopCaptureServer()
-    const port = nextPort++
-    baseUrl = `http://127.0.0.1:${port}`
     const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
     const realLifecycle = createCaptureLifecycle({ selectorLifecycle, sessionService })
     const failingLifecycle = {
@@ -535,8 +535,9 @@ describe('captureServer', () => {
     }
     await startCaptureServer(
       { selectorLifecycle, captureLifecycle: failingLifecycle, token: TEST_TOKEN, sessionService },
-      port
+      0
     )
+    baseUrl = `http://127.0.0.1:${getCaptureServerPort()}`
     const res = await postCapture({
       source: 'manual',
       caseId: testCase.id,
@@ -856,8 +857,9 @@ describe('captureServer', () => {
     // screenshot through the multipart parser. On a 2-core CI runner it costs
     // ~0.9s idle, ~1.0s under coverage and ~4.6s at 3.5x CPU oversubscription,
     // rising roughly linearly from there: ~9.8s at 8x, so 15s is reachable near
-    // 12x. At the ~3x contention #555 reports the budget is ample, so look for a
-    // beforeEach port collision (#948) before raising this again.
+    // 12x. At the ~3x contention #555 reports the budget is ample; the port
+    // collision #948 described is gone (the suite binds port 0), so look for
+    // load headroom before raising this again.
   }, 15000)
 
   it('returns screenshotStatus "none" when no screenshot is sent', async () => {
@@ -1650,8 +1652,6 @@ describe('captureServer', () => {
         // Rebind the server to a lifecycle whose ingest throws — the injection
         // seam the server already exposes for exactly this kind of test.
         await stopCaptureServer()
-        const port = nextPort++
-        baseUrl = `http://127.0.0.1:${port}`
         const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
         const realLifecycle = createCaptureLifecycle({ selectorLifecycle, sessionService })
         const failingLifecycle = {
@@ -1668,8 +1668,9 @@ describe('captureServer', () => {
             token: TEST_TOKEN,
             sessionService
           },
-          port
+          0
         )
+        baseUrl = `http://127.0.0.1:${getCaptureServerPort()}`
         const res = await postAttach(
           '/api/tags/apply',
           { caseId: testCase.id, url: PAGE_URL, tagName: 'Evidence' },
@@ -1691,8 +1692,6 @@ describe('captureServer', () => {
         // lookup — while the second arrives. Unserialized, the second passes
         // its own lookup too and ingest runs twice.
         await stopCaptureServer()
-        const port = nextPort++
-        baseUrl = `http://127.0.0.1:${port}`
         const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
         const realLifecycle = createCaptureLifecycle({ selectorLifecycle, sessionService })
         let release!: () => void
@@ -1715,8 +1714,9 @@ describe('captureServer', () => {
             token: TEST_TOKEN,
             sessionService
           },
-          port
+          0
         )
+        baseUrl = `http://127.0.0.1:${getCaptureServerPort()}`
 
         const first = postAttach(
           '/api/tags/apply',
@@ -1885,15 +1885,19 @@ describe('startCaptureServer bind failure', () => {
     )
   }
 
-  async function occupy(port: number): Promise<() => Promise<void>> {
+  // Port 0 lets the OS pick the held port, so the suite never reaches for a
+  // predictable one (#948).
+  async function occupy(): Promise<{ port: number; release: () => Promise<void> }> {
     const blocker = createServer()
-    await new Promise<void>((resolve) => blocker.listen(port, '127.0.0.1', resolve))
-    return () => new Promise<void>((resolve) => blocker.close(() => resolve()))
+    await new Promise<void>((resolve) => blocker.listen(0, '127.0.0.1', resolve))
+    return {
+      port: (blocker.address() as AddressInfo).port,
+      release: () => new Promise<void>((resolve) => blocker.close(() => resolve()))
+    }
   }
 
   it('rejects with CaptureServerBindError when the port is already held', async () => {
-    const port = nextPort++
-    const release = await occupy(port)
+    const { port, release } = await occupy()
     try {
       const err = await startOn(port).catch((e: unknown) => e)
       expect(err).toBeInstanceOf(CaptureServerBindError)
@@ -1911,16 +1915,19 @@ describe('startCaptureServer bind failure', () => {
   })
 
   it('leaves the server startable on another port after a failed bind', async () => {
-    const held = nextPort++
-    const release = await occupy(held)
+    const { port: held, release } = await occupy()
     try {
       await expect(startOn(held)).rejects.toBeInstanceOf(CaptureServerBindError)
     } finally {
       await release()
     }
-    const free = nextPort++
-    await startOn(free)
-    expect(getCaptureServerPort()).toBe(free)
+    await startOn(0)
+    // The lookup reads back the OS-assigned port the successful bind got, and
+    // the status answer proves a server is serving on it.
+    const port = getCaptureServerPort()
+    expect(port).toBeGreaterThan(0)
+    const status = await readJson(await fetch(`http://127.0.0.1:${port}/api/status`))
+    expect(status.running).toBe(true)
   })
 
   // The durable app.startup_failed entry is all an operator sends in, and
@@ -1928,8 +1935,7 @@ describe('startCaptureServer bind failure', () => {
   // which would leave a bind failure indistinguishable from every other fatal
   // boot error in that log.
   it('survives log sanitizing with its own name and errno', async () => {
-    const port = nextPort++
-    const release = await occupy(port)
+    const { port, release } = await occupy()
     try {
       const err = await startOn(port).catch((e: unknown) => e)
       const logged = sanitizeError(err)

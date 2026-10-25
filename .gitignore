@@ -61,7 +61,7 @@ coverage/
 !.claude/settings.json
 # The Plain Technical output style that settings.json selects.
 !.claude/output-styles/
-# Re-opened so the two definitions below can be re-included: git cannot re-include a file
+# Re-opened so the definitions below can be re-included: git cannot re-include a file
 # whose parent directory is excluded.
 !.claude/agents/
 .claude/agents/*
@@ -69,6 +69,8 @@ coverage/
 !.claude/agents/birdbrain-implementer.md
 # The reviewer agent the dispatch routine spawns for the read-only pre-pass.
 !.claude/agents/birdbrain-reviewer.md
+# The reviewer that checks whether a PR's tests would fail if what they claim broke.
+!.claude/agents/test-reliability-reviewer.md
 # Re-opened so the shared skills below can be re-included, as for agents above.
 !.claude/skills/
 .claude/skills/*

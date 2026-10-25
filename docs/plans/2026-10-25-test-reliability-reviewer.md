@@ -55,8 +55,8 @@ probed: each mutant would need a fresh `pnpm build`. The agent covers them.
 
 ## Slices
 
-- [ ] Probe library and command line, with unit tests (`tests/testReliability/`).
-- [ ] `pnpm test:reliability` script and coverage include for `scripts/test-reliability/`.
-- [ ] `.github/workflows/test-reliability.yml`, advisory.
-- [ ] Reviewer agent, and a paragraph in `birdbrain-reviewer` on reading the job.
-- [ ] Testing guide section and the `CLAUDE.md` command line.
+- [x] Probe library and command line, with unit tests (`tests/testReliability/`).
+- [x] `pnpm test:reliability` script and coverage include for `scripts/test-reliability/`.
+- [x] `.github/workflows/test-reliability.yml`, advisory.
+- [x] Reviewer agent, and a paragraph in `birdbrain-reviewer` on reading the job.
+- [x] Testing guide section and the `CLAUDE.md` command line.

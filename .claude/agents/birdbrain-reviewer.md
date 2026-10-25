@@ -68,6 +68,15 @@ Read CLAUDE.md first for the codebase map. You review; you do not fix — never 
    under 90% is a blocking finding. Inspect uncovered lines, especially error and
    rollback paths, before reporting the finding.
 
+   **Read the `Test reliability` check.** Diff coverage shows a changed line ran; this job
+   shows whether a test depends on it. Its summary lists tests the PR touched that still pass
+   with the PR's source changes reverted, and changed lines where a mutant left every related
+   test green. The job is advisory and never fails on a finding. For each item on behaviour the
+   PR claims is tested, decide whether a test would catch that behaviour breaking: one that
+   would not is a finding, blocking on an evidence-affecting path, and an equivalent mutant is
+   not. The `test-reliability-reviewer` agent reads every test against its title; the session
+   that spawned you decides whether to run it.
+
    **Run shell-semantics checks under `bash -c`, not in the tool shell.** Your tool is named
    `Bash` but is not always bash: on the maintainer's workstation it is zsh (`ZSH_VERSION=5.9`,
    `BASH_VERSION` unset), while on a GitHub Actions runner it is bash. Everything you review is

@@ -30,3 +30,20 @@ The workaround builds sharp against the system libvips, so it shares Electron's 
 The swap is test-only by design. `src/main/services/thumbnails.ts` is a blocking-tier evidence path: its output is hashed into signed `derivation` entries that record `sharpVersion` and `libvipsVersion`, and a system build reports the same libvips version while encoding with different codec libraries. Keeping the system build out of `node_modules` keeps it out of the dev app and every package. The cost is that thumbnail bytes in local tests may differ from CI; CI stays the authority for them.
 
 Two approaches that look simpler do not work. Preloading the prebuilt `libvips-cpp.so` with `LD_PRELOAD` crashes Electron itself, and loading the addon with `RTLD_DEEPBIND` aborts in `free()` because Electron's allocator and the deep-bound library disagree.
+
+## Test reliability probe
+
+Diff coverage shows that a changed line ran under a test. It does not show that any assertion depends on that line. `pnpm test:reliability` checks the second question for the unit tests, and `.github/workflows/test-reliability.yml` runs it on every pull request that changes `src/`, `extension/src/` or `tests/`. The job is advisory: it writes its report to the job summary and as warning annotations on the diff, exits 0 when it has findings, and fails only when the probe cannot run.
+
+The probe runs two experiments against the merge base with `origin/main` (`--base <ref>` for another):
+
+- **Revert probe.** It restores every changed source file to its merge-base content, keeps the branch's tests, and reruns the test files the branch added or edited. A test the branch added or edited that still passes did not need the change. For a fix or a feature, that test does not pin the change. For a refactor that should preserve behaviour, it is the expected result.
+- **Mutation probe.** For each changed source file it runs `vitest related` once as a baseline, then makes one change at a time on the lines the branch added: it flips a comparison, logical or arithmetic operator, swaps `true` and `false`, drops a `!`, negates an `if` condition, returns `undefined` in place of a value, or deletes a call statement. Each mutant reruns the baseline's test files with `--bail=1`. A mutant that leaves every test green has survived, and the line it changed is one no assertion depends on. A file whose baseline is red is not probed, and a file no unit test imports is listed as such.
+
+A surviving mutant is not always a gap. An equivalent mutant changes nothing any input can observe, for example `>=` in place of `>` where the two values can never be equal. Read each survivor and name the input that would expose it, or the reason none exists.
+
+The probe samples at most 40 mutants (`--max-mutants`), spread evenly over the changed lines, and stops starting new ones after 15 minutes (`--budget <seconds>`). `--no-revert` and `--no-mutate` turn off one experiment, `--json` prints the result as JSON, `--summary <file>` appends the Markdown report to a file, and `--annotations` prints workflow annotations.
+
+The probe does not run end-to-end specs, because each mutant would need a fresh `pnpm build`. The `test-reliability-reviewer` agent (`.claude/agents/test-reliability-reviewer.md`) reads changed specs and unit tests against their titles, and uses the probe's report as evidence.
+
+Both experiments edit tracked files while the tests run and put them back afterwards. The probe refuses to start on a tree with uncommitted changes, and `SIGINT` or `SIGTERM` stops the running tests and restores the files before it exits. While any file is edited, `.cache/test-reliability/journal.json` lists it. A run killed with no chance to restore leaves the journal, and the next run refuses to start and prints the `git checkout` command that restores the files. Do not edit files or run other tests in the same tree while the probe runs.

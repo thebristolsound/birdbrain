@@ -12,6 +12,7 @@ const SI = { installationId: 'inst-si', code: 'SI', name: 'S. Idris' }
 
 let revoke: ReturnType<typeof vi.fn>
 let rows: InventoryRow[]
+let inventory: ReturnType<typeof vi.fn>
 
 function renderDialog() {
   const onOpenChange = vi.fn()
@@ -33,9 +34,10 @@ beforeEach(() => {
     exhibitRow('SI-2', 2),
     exhibitRow('SI-3', 3)
   ]
+  inventory = vi.fn(async () => ({ caseId: CASE_ID, rows }))
   fakeBridge({
     sharing: { revoke },
-    exhibits: { inventory: vi.fn(async () => ({ caseId: CASE_ID, rows })) }
+    exhibits: { inventory }
   })
 })
 
@@ -44,6 +46,37 @@ afterEach(cleanup)
 // "Revoke S. Idris?" (#1514, mock 1g), with the brief's copy: the member keeps
 // the copy they already have, and the entry is a member-revoke.
 describe('RevokeDialog', () => {
+  it('waits for the Exhibit summary before enabling confirmation', async () => {
+    let finish!: (value: { caseId: string; rows: InventoryRow[] }) => void
+    inventory.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    renderDialog()
+    expect(screen.getByText('Loading Exhibit summary…')).toBeTruthy()
+    expect(screen.queryByText(/Their notes, and tags stay/)).toBeNull()
+    const confirm = screen.getByRole('button', { name: 'Revoke' }) as HTMLButtonElement
+    expect(confirm.disabled).toBe(true)
+    fireEvent.click(confirm)
+    expect(revoke).not.toHaveBeenCalled()
+    finish({ caseId: CASE_ID, rows })
+    await screen.findByText(/Their 3 Exhibits/)
+    await waitFor(() => expect(confirm.disabled).toBe(false))
+  })
+
+  it('keeps confirmation disabled when the summary cannot be loaded', async () => {
+    inventory.mockRejectedValue(new Error('Inventory unavailable'))
+    renderDialog()
+    await screen.findByText('Exhibit summary is unavailable. Close this dialog and try again.')
+    expect((screen.getByRole('button', { name: 'Revoke' }) as HTMLButtonElement).disabled).toBe(
+      true
+    )
+    expect(screen.queryByText(/Their notes, and tags stay/)).toBeNull()
+    expect(revoke).not.toHaveBeenCalled()
+  })
+
   it('names the member and the range of their Exhibits', async () => {
     renderDialog()
     expect(screen.getByRole('heading', { name: 'Revoke S. Idris?' })).toBeTruthy()
@@ -88,6 +121,7 @@ describe('RevokeDialog', () => {
 
   it('revokes through the sharing channel and closes', async () => {
     const { onOpenChange } = renderDialog()
+    await screen.findByText(/Their 3 Exhibits/)
     fireEvent.click(screen.getByRole('button', { name: 'Revoke' }))
     await waitFor(() => expect(revoke).toHaveBeenCalledWith(CASE_ID, 'inst-si'))
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
@@ -101,6 +135,7 @@ describe('RevokeDialog', () => {
   ])('shows a %s refusal inline and stays open', async (code, message) => {
     revoke.mockRejectedValue(refusal(code))
     const { onOpenChange } = renderDialog()
+    await screen.findByText(/Their 3 Exhibits/)
     fireEvent.click(screen.getByRole('button', { name: 'Revoke' }))
     expect((await screen.findByTestId('revoke-error')).textContent).toBe(message)
     expect(onOpenChange).not.toHaveBeenCalled()
@@ -109,6 +144,7 @@ describe('RevokeDialog', () => {
   it('shows main’s own message for a refusal it has no words for', async () => {
     revoke.mockRejectedValue(new Error('Case not found'))
     renderDialog()
+    await screen.findByText(/Their 3 Exhibits/)
     fireEvent.click(screen.getByRole('button', { name: 'Revoke' }))
     expect((await screen.findByTestId('revoke-error')).textContent).toBe('Case not found')
   })

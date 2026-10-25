@@ -299,11 +299,11 @@ The external reviews left fourteen distinct findings across sixteen inline comme
 12. [x] Remove contradictory plan status and machine-specific paths.
 13. [x] Wait for a visible details control in the Electron screen check.
 14. [x] Wait for the empty-peer query result before asserting a hidden sync pill.
-15. [ ] Run full verification at the final clean head.
-16. [ ] Push the corrections.
-17. [ ] Reply to each review thread.
+15. [x] Run full verification at the initial review head.
+16. [x] Push the initial review corrections.
+17. [x] Reply to the initial review threads.
 
-Current slice: run full verification and the Electron screen checks, then push and reply.
+The initial review corrections were verified and published at `a6d92c9b`.
 Next command:
 
 ```sh
@@ -337,4 +337,28 @@ The capture corrections pass 59 focused tests and all six typechecks. Review-tes
 replace a fixed sleep with a successful-query wait and wait for the details panel or its
 opening control before branching. Historical handoff commands and machine-specific paths
 have been removed. The initial ten review issues and the four later issues now have source
-corrections; full verification at the final head remains pending.
+corrections. Full verification and the focused Electron checks passed at `a6d92c9b`.
+
+
+## Second external review corrections
+
+1. [x] Require a loaded Exhibit summary before confirming revocation.
+2. [ ] Give a current sync error precedence over an older attempt summary.
+3. [ ] Show an attempt result when sync-state data is unavailable.
+4. [x] Check the remote Owner-exclusion finding against the disclosed IPC limitation.
+5. [ ] Run clean-head full verification.
+6. [ ] Push the corrections.
+7. [ ] Reply to the review threads.
+
+Remote Owner exclusions on a joiner remain the documented omission in the PR's Changes
+section and the member-chain limitation above. Supporting them requires verified shared-case
+data through an expanded renderer contract. This review round preserves that deferred scope.
+
+Next command:
+`BIRDBRAIN_TEST_SYSTEM_SHARP=1 mise x -- pnpm test tests/components/RevokeDialog.test.tsx tests/components/SyncCard.test.tsx`.
+
+
+The new loading, unavailable-summary and sync-status regressions reproduced five failures.
+The corrected Revoke, Sync and Members component tests pass all 48 cases. Existing revocation
+command tests now wait for the required summary before attempting confirmation. Revocation
+confirmation remains disabled during refresh and after a failed inventory read.

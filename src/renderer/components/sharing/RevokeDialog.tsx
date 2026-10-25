@@ -40,10 +40,15 @@ export function RevokeDialog({ caseId, open, target, onOpenChange }: RevokeDialo
   const titleId = useId()
   const { revoke } = useSharingMutations()
   const [error, setError] = useState<string | null>(null)
-  const { data: inventory } = useQuery({
+  const {
+    data: inventory,
+    isFetching,
+    isError
+  } = useQuery({
     ...exhibitInventoryQueryOptions(caseId),
     enabled: open && target !== null
   })
+  const summaryReady = inventory !== undefined && !isFetching && !isError
   const code = target?.code ?? ''
   const exhibits = (inventory?.rows ?? [])
     .filter(
@@ -62,7 +67,7 @@ export function RevokeDialog({ caseId, open, target, onOpenChange }: RevokeDialo
   }
 
   function confirm() {
-    if (!target) return
+    if (!target || !summaryReady) return
     revoke.mutate(
       { caseId, installationId: target.installationId },
       {
@@ -82,7 +87,11 @@ export function RevokeDialog({ caseId, open, target, onOpenChange }: RevokeDialo
           {revokeTitle(target?.name ?? '')}
         </DialogTitle>
         <DialogDescription className="mt-2 text-xs leading-[1.6] text-text-secondary">
-          {revokeBody(target?.name ?? '', code, exhibits)}
+          {isError
+            ? 'Exhibit summary is unavailable. Close this dialog and try again.'
+            : !summaryReady
+              ? 'Loading Exhibit summary…'
+              : revokeBody(target?.name ?? '', code, exhibits)}
         </DialogDescription>
         <p className="mt-2 text-[11px] text-text-muted">{COPY.revokeNote}</p>
         {error ? (
@@ -94,7 +103,11 @@ export function RevokeDialog({ caseId, open, target, onOpenChange }: RevokeDialo
           <Button variant="outline" className="border-border text-text-secondary" onClick={close}>
             {COPY.cancel}
           </Button>
-          <Button variant="destructive" disabled={revoke.isPending} onClick={confirm}>
+          <Button
+            variant="destructive"
+            disabled={!summaryReady || revoke.isPending}
+            onClick={confirm}
+          >
             {COPY.revoke}
           </Button>
         </DialogFooter>

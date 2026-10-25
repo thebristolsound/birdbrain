@@ -343,8 +343,8 @@ corrections. Full verification and the focused Electron checks passed at `a6d92c
 ## Second external review corrections
 
 1. [x] Require a loaded Exhibit summary before confirming revocation.
-2. [ ] Give a current sync error precedence over an older attempt summary.
-3. [ ] Show an attempt result when sync-state data is unavailable.
+2. [x] Give a current sync error precedence over an older attempt summary.
+3. [x] Show an attempt result when sync-state data is unavailable.
 4. [x] Check the remote Owner-exclusion finding against the disclosed IPC limitation.
 5. [ ] Run clean-head full verification.
 6. [ ] Push the corrections.
@@ -362,3 +362,9 @@ The new loading, unavailable-summary and sync-status regressions reproduced five
 The corrected Revoke, Sync and Members component tests pass all 48 cases. Existing revocation
 command tests now wait for the required summary before attempting confirmation. Revocation
 confirmation remains disabled during refresh and after a failed inventory read.
+
+
+Both UI corrections are committed as separate changes. Current errors and newer-version
+pauses take precedence over a retained attempt message. If sync-state data is unavailable,
+the card still reports the known attempt result. Full verification is the next action:
+`BIRDBRAIN_TEST_SYSTEM_SHARP=1 PKG_CONFIG_PATH=/usr/lib/pkgconfig mise x -- pnpm preflight`.

@@ -90,9 +90,7 @@ export function SyncCard({
           />
         ) : null}
         <div className="min-w-0 flex-1" data-testid="sync-headline">
-          {syncState === undefined ? (
-            <div className="text-xs text-text-muted">—</div>
-          ) : syncing ? (
+          {syncState?.phase === 'syncing' ? (
             <>
               <div className="text-xs font-medium text-text-primary">
                 Syncing with {reachableNames.length > 0 ? reachableNames.join(', ') : 'members'}
@@ -101,14 +99,16 @@ export function SyncCard({
                 {peersConnected(syncState)}
               </div>
             </>
+          ) : syncState?.phase === 'error' ? (
+            <div className="text-xs font-medium text-danger-fg">
+              {pill ? `${pill.a} · ${pill.b}` : 'Sync failed'}
+            </div>
           ) : attemptMessage ? (
             <div className="text-xs font-medium text-warning-fg" role="status">
               {attemptMessage}
             </div>
-          ) : syncState.phase === 'error' ? (
-            <div className="text-xs font-medium text-danger-fg">
-              {pill ? `${pill.a} · ${pill.b}` : 'Sync failed'}
-            </div>
+          ) : syncState === undefined ? (
+            <div className="text-xs text-text-muted">—</div>
           ) : (
             <div className="text-xs font-medium tabular-nums text-text-primary">
               Synced · {peersConnected(syncState)}

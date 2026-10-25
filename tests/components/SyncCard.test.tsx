@@ -14,7 +14,7 @@ let syncNow: ReturnType<typeof vi.fn>
 let onError: Mock<(error: unknown) => void>
 let onOutcome: Mock<(outcomes: SharingSyncOutcome[]) => void>
 
-function renderCard(state: SyncState | undefined, withSnapshot = false) {
+function renderCard(state: SyncState | undefined, withSnapshot = false, attemptMessage?: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -26,6 +26,7 @@ function renderCard(state: SyncState | undefined, withSnapshot = false) {
       syncState={state}
       snapshot={withSnapshot ? snapshot() : undefined}
       nowMs={NOW}
+      attemptMessage={attemptMessage}
       onError={onError}
       onOutcome={onOutcome}
     />,
@@ -84,6 +85,30 @@ describe('SyncCard', () => {
       })
     )
     expect(screen.getByText('Sync paused · newer version')).toBeTruthy()
+  })
+
+  it.each(['relay', 'newer-version'] as const)(
+    'keeps a current %s status above a retained attempt summary',
+    (kind) => {
+      const message = 'Sync incomplete · 0 of 2 peers completed without errors'
+      renderCard(
+        sync({
+          phase: 'error',
+          lastError: { kind, at: '2026-09-19T14:03:00Z', installationId: 'inst-si' }
+        }),
+        false,
+        message
+      )
+      expect(screen.getByTestId('sync-headline').textContent).toBe(
+        kind === 'relay' ? 'Sync failed · relay' : 'Sync paused · newer version'
+      )
+    }
+  )
+
+  it('shows an attempt result when the sync-state query is unavailable', () => {
+    const message = 'Sync incomplete · 0 of 2 peers completed without errors'
+    renderCard(undefined, false, message)
+    expect(screen.getByTestId('sync-headline').textContent).toBe(message)
   })
 
   it('footers the last completed sync and the latest merge from the chain', () => {

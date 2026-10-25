@@ -1,0 +1,74 @@
+name: Test reliability
+
+# Asks whether the unit tests depend on the lines a PR changed, which diff coverage cannot:
+# a line can run under a test that asserts nothing about it (#1217). The probe reverts the PR's
+# source changes and reruns the tests the PR touched, then mutates the changed source lines one
+# at a time and reruns the tests that import each file. How to read the result: "Test
+# reliability probe" in docs/agents/testing.md. Plan:
+# docs/plans/2026-10-25-test-reliability-reviewer.md.
+#
+# Advisory. Findings go to the job summary and appear as warning annotations on the diff; the
+# job exits 0 when it has findings and fails only when the probe cannot run. It is not a
+# required check, so a `paths:` filter is safe here, unlike in ci.yml, where a required context
+# that never reports blocks the merge.
+#
+# No secrets and a read-only token. It runs the PR's own code, as ci.yml's test job does.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    paths:
+      - 'src/**'
+      - 'extension/src/**'
+      - 'tests/**'
+      - 'scripts/test-reliability/**'
+      - '.github/workflows/test-reliability.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-reliability-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  # The same apt hardening as ci.yml; its comments explain both.
+  APT_OPTS: -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15
+  DROP_AZURE_MIRROR: >-
+    sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g'
+    /etc/apt/apt-mirrors.txt 2>/dev/null || true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    # The probe's own budget is 15 minutes of mutants; install and the revert probe come first.
+    timeout-minutes: 30
+    steps:
+      # fetch-depth: 0 so the probe can resolve a merge base with the base branch.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install native build dependencies
+        timeout-minutes: 5
+        run: |
+          ${{ env.DROP_AZURE_MIRROR }}
+          sudo apt-get $APT_OPTS update
+          sudo apt-get $APT_OPTS install -y build-essential python3
+
+      - run: pnpm install
+
+      - name: Probe the changed lines
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: >-
+          node scripts/test-reliability/cli.mjs --base "origin/${BASE_REF}"
+          --summary "$GITHUB_STEP_SUMMARY" --annotations

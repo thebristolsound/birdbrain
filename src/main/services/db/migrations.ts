@@ -1862,4 +1862,19 @@ export function runMigrations(db: Database.Database): void {
       db.pragma('foreign_keys = ON')
     }
   }
+
+  if (version < 42) {
+    db.transaction(() => {
+      // Verified refusals must advance paged sync too, and roll back with rows on restore.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS working_row_cursors (
+          case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+          author_installation_id TEXT NOT NULL,
+          version INTEGER NOT NULL CHECK (version >= 0),
+          PRIMARY KEY (case_id, author_installation_id)
+        )
+      `)
+      db.pragma('user_version = 42')
+    })()
+  }
 }

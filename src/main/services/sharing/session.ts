@@ -40,6 +40,7 @@ import {
   safeCasePath
 } from '@main/services/sharing/blobAcceptance'
 import {
+  applyVerifiedRows,
   cursorAfter,
   offerPage,
   toWireRows,
@@ -56,7 +57,6 @@ import {
 import { rebuildRosterCache } from '@main/services/sharing/rosterCache'
 import { isChainInstallationId } from '../../../packages/evidence-package-layout/index'
 import {
-  applyRows,
   maxAuthorVersionInCase,
   rowsOfAuthorByTable,
   type RemoteRow,
@@ -734,13 +734,14 @@ export async function pullFromPeer(
     if (advanced.length > 0 || inserted > 0) reconcileCaseMirrors(caseId)
 
     // 5. Rows: every other member's working-layer rows above the version this
-    // replica holds for them, applied only under that member's signature and
-    // only above the stored version (workingRows.ts). The cursor is read from
-    // the rows themselves, so a database restore moves it back with them. A
+    // replica holds or explicitly refused, applied only under that member's signature and
+    // only above the stored version (workingRows.ts). The cursor lives in the database,
+    // so a restore moves it back with the rows it describes. A
     // revoked member's rows are not asked for: peers stop syncing with the
     // member (decision 11), and a row has no index to bound it by.
     options.onPhase?.('rows')
     const received: RemoteRow[] = []
+    const refusedDependencies: RemoteRow[] = []
     for (const member of roster) {
       if (member.installationId === self || member.revokedAtIndex !== null) continue
       const { installationId } = member
@@ -756,15 +757,15 @@ export async function pullFromPeer(
         if (page.installationId !== installationId || page.sinceVersion !== since) {
           throw new ProtocolError(`rows answered for ${page.installationId}@${page.sinceVersion}`)
         }
-        const { accepted, refused } = verifyRemoteRows(
-          page.rows,
-          roster,
-          new Set([installationId]),
-          caseId
-        )
+        const {
+          accepted,
+          refused,
+          refusedDependencies: dependencies
+        } = verifyRemoteRows(page.rows, roster, new Set([installationId]), caseId)
         result.errors.push(...refused)
         received.push(...accepted)
-        const top = cursorAfter(accepted, since)
+        refusedDependencies.push(...dependencies)
+        const top = cursorAfter([...accepted, ...dependencies], since)
         if (!page.more || top <= since) break
         since = top
       }
@@ -776,9 +777,11 @@ export async function pullFromPeer(
     // received Capture whose files arrived; a row that references one this
     // replica still lacks rolls back the session's rows as a whole, and the
     // next session asks from the same cursors.
-    if (received.length > 0) {
+    if (received.length > 0 || refusedDependencies.length > 0) {
       try {
-        result.rowsApplied += applyRows(received).applied
+        const applied = applyVerifiedRows(received, caseId, refusedDependencies)
+        result.rowsApplied += applied.applied
+        result.errors.push(...applied.refused)
       } catch (err) {
         fail('peer', `rows received this session could not be applied: ${(err as Error).message}`)
       }

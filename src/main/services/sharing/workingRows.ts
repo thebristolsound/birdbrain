@@ -18,12 +18,14 @@ import {
   ownLiveRowsOnCapture,
   ownUnsignedRowsInCase,
   readRow,
+  recordAuthorRowCursor,
   recordDeletedCapture,
   referenceError,
   referenceOf,
   removeCaptureDependents,
   removeExhibitDependents,
   removeOwnRowsOnCapture,
+  rowIdCollision,
   signedColumns,
   writeRowSync,
   type RemoteRow,
@@ -427,14 +429,17 @@ export interface RemoteApplyOutcome {
 export interface VerifiedRows {
   accepted: RemoteRow[]
   refused: RowRefusal[]
+  // Signed for this Case, but their note id is held in a different Case. They remain refused;
+  // their versions may advance progress without ever writing into the held note's Case.
+  refusedDependencies: RemoteRow[]
 }
 
 // Checks received rows before any is applied. A row is refused when it names
 // an author this replica did not ask for, one the roster does not hold a key
 // for, a table that does not sync, when its signature does not verify, or
 // when it is not a row of `caseId`, the Case being synced (caseRefusal).
-// What a page moves the cursor to is read from the accepted rows alone, so a
-// peer answering with rows that do not verify moves nothing.
+// Progress includes accepted rows and Case-bound, verified applications of a foreign note
+// id. Those applications remain refused; unverifiable rows and other Cases move nothing.
 export function verifyRemoteRows(
   rows: WireRow[],
   roster: CaseMember[],
@@ -443,6 +448,7 @@ export function verifyRemoteRows(
 ): VerifiedRows {
   const accepted: RemoteRow[] = []
   const refused: RowRefusal[] = []
+  const refusedDependencies: RemoteRow[] = []
   const refuse = (installationId: string, detail: string): void => {
     refused.push({ kind: 'rejected-entry', detail, installationId })
   }
@@ -469,11 +475,63 @@ export function verifyRemoteRows(
     const elsewhere = caseRefusal(row, caseId)
     if (elsewhere !== null) {
       refuse(author, `${name}: ${elsewhere}`)
+      if (table === 'note_tags' && row.caseId === caseId) {
+        refusedDependencies.push({ ...row, table })
+      }
       continue
     }
     accepted.push({ ...row, table })
   }
-  return { accepted, refused }
+  return { accepted, refused, refusedDependencies }
+}
+
+// Refuse demonstrated id collisions and their tag applications individually, after all pages
+// verify. Keeping a colliding tag's application would attach it to the held author's tag.
+export function applyVerifiedRows(
+  rows: RemoteRow[],
+  caseId: string,
+  refusedDependencies: RemoteRow[] = []
+): RemoteApplyOutcome {
+  return withTransaction(() => {
+    const collisions = new Map<RemoteRow, string>()
+    const parentKey = (table: SyncedTable, id: RowFields[string]): string => `${table}\u0000${id}`
+    const blocked = new Set<string>()
+    for (const row of rows) {
+      const collision = rowIdCollision(row)
+      if (collision === null) continue
+      collisions.set(row, collision)
+      blocked.add(parentKey(row.table, row.fields.id))
+    }
+    const accepted: RemoteRow[] = []
+    const refused: RowRefusal[] = []
+    for (const row of rows) {
+      const parent = (PARENT_ROWS[row.table] ?? []).find(({ parent, column }) =>
+        blocked.has(parentKey(parent, row.fields[column]))
+      )
+      const reason =
+        collisions.get(row) ??
+        (parent
+          ? `references colliding ${parent.parent} row ${row.fields[parent.column]}`
+          : undefined)
+      if (reason === undefined) {
+        accepted.push(row)
+      } else {
+        refused.push({
+          kind: 'rejected-entry',
+          installationId: row.author,
+          detail: `${row.table} row of ${row.author} at version ${row.version}: ${reason}`
+        })
+      }
+    }
+    const outcome = applyRows(accepted)
+    const versions = new Map<string, number>()
+    for (const row of [...rows, ...refusedDependencies]) {
+      if (CURSOR_FREE_TABLES.has(row.table)) continue
+      versions.set(row.author, Math.max(versions.get(row.author) ?? 0, row.version))
+    }
+    for (const [author, version] of versions) recordAuthorRowCursor(caseId, author, version)
+    return { ...outcome, refused }
+  })
 }
 
 // Verifies received rows and applies the accepted ones in one transaction
@@ -486,13 +544,19 @@ export function applyRemoteRows(
   requested: ReadonlySet<string>,
   caseId: string
 ): RemoteApplyOutcome {
-  const { accepted, refused } = verifyRemoteRows(rows, roster, requested, caseId)
+  const { accepted, refused, refusedDependencies } = verifyRemoteRows(
+    rows,
+    roster,
+    requested,
+    caseId
+  )
   const outcome: RemoteApplyOutcome = { applied: 0, skipped: 0, refused }
-  if (accepted.length === 0) return outcome
+  if (accepted.length === 0 && refusedDependencies.length === 0) return outcome
   try {
-    const { applied, skipped } = applyRows(accepted)
+    const { applied, skipped, refused } = applyVerifiedRows(accepted, caseId, refusedDependencies)
     outcome.applied = applied
     outcome.skipped = skipped
+    outcome.refused.push(...refused)
   } catch (err) {
     outcome.refused.push({
       kind: 'peer',

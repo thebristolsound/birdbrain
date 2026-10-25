@@ -1,5 +1,7 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { QueryClient } from '@tanstack/react-query'
+import type { BirdbrainAPI } from '@shared/birdbrainApi'
+import type { IpcRefusal } from '@shared/ipc'
 import { SHARING_ERROR_CODES, type SharingErrorCode } from '@shared/types'
 import { queryKeys } from '@renderer/lib/api/keys'
 
@@ -8,10 +10,33 @@ import { queryKeys } from '@renderer/lib/api/keys'
 // mutation that refetches what the main process changed. The screens that
 // read these live under components/sharing/.
 
+// A refused sharing call rejects with a plain IpcRefusal: the context bridge
+// would strip `.code` from an Error (the preload's unwrapIpc). This rebuilds
+// the Error, code included, on this side of the bridge; any other rejection
+// passes through unchanged.
+export function refusalError(err: unknown): unknown {
+  if (err instanceof Error || typeof err !== 'object' || err === null) return err
+  const { message, code } = err as Partial<IpcRefusal>
+  if (typeof message !== 'string') return err
+  const error = new Error(message)
+  if (typeof code === 'string') Object.assign(error, { code })
+  return error
+}
+
+// Every sharing read and command goes through here, so the screens only ever
+// see Errors.
+async function sharing<T>(call: (bridge: BirdbrainAPI['sharing']) => Promise<T>): Promise<T> {
+  try {
+    return await call(window.birdbrain.sharing)
+  } catch (err) {
+    throw refusalError(err)
+  }
+}
+
 export const membersQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.sharingMembers(caseId),
-    queryFn: () => window.birdbrain.sharing.getMembers(caseId),
+    queryFn: () => sharing((bridge) => bridge.getMembers(caseId)),
     enabled: !!caseId
   })
 
@@ -23,7 +48,7 @@ export const SYNC_STATE_POLL_MS = 5000
 export const syncStateQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.sharingSyncState(caseId),
-    queryFn: () => window.birdbrain.sharing.getSyncState(caseId),
+    queryFn: () => sharing((bridge) => bridge.getSyncState(caseId)),
     enabled: !!caseId,
     refetchInterval: SYNC_STATE_POLL_MS
   })
@@ -32,7 +57,7 @@ export const syncStateQueryOptions = (caseId: string) =>
 // process, so never stale.
 export const sharingAvailableQueryOptions = queryOptions({
   queryKey: queryKeys.sharingAvailable,
-  queryFn: () => window.birdbrain.sharing.isAvailable(),
+  queryFn: () => sharing((bridge) => bridge.isAvailable()),
   staleTime: Infinity
 })
 
@@ -40,12 +65,12 @@ export const sharingAvailableQueryOptions = queryOptions({
 export const invitePreviewQueryOptions = (invite: string) =>
   queryOptions({
     queryKey: queryKeys.sharingInvitePreview(invite),
-    queryFn: () => window.birdbrain.sharing.readInvite(invite),
+    queryFn: () => sharing((bridge) => bridge.readInvite(invite)),
     enabled: invite.length > 0
   })
 
-// A sharing refusal reaches the renderer as a plain Error carrying the
-// SharingErrorCode on `.code` (the preload's unwrapIpc). Null for any other
+// A sharing refusal reaches the screens as an Error carrying the
+// SharingErrorCode on `.code` (refusalError above). Null for any other
 // rejection, so a screen that names refusals falls back to the message.
 export function sharingErrorCode(err: unknown): SharingErrorCode | null {
   if (typeof err !== 'object' || err === null || !('code' in err)) return null
@@ -72,7 +97,7 @@ export function sharingMutationOptions(queryClient: QueryClient) {
     // Owner's chain its `member-add`.
     createInvite: {
       mutationFn: ({ caseId, ownerMemberCode }: { caseId: string; ownerMemberCode?: string }) =>
-        window.birdbrain.sharing.createInvite(caseId, ownerMemberCode),
+        sharing((bridge) => bridge.createInvite(caseId, ownerMemberCode)),
       onSuccess: (_data: unknown, { caseId }: { caseId: string }) => {
         invalidateChain(queryClient, caseId)
         queryClient.invalidateQueries({ queryKey: queryKeys.cases })
@@ -82,7 +107,7 @@ export function sharingMutationOptions(queryClient: QueryClient) {
     },
     cancelInvite: {
       mutationFn: ({ caseId, inviteId }: { caseId: string; inviteId: string }) =>
-        window.birdbrain.sharing.cancelInvite(caseId, inviteId),
+        sharing((bridge) => bridge.cancelInvite(caseId, inviteId)),
       onSuccess: (_data: unknown, { caseId }: { caseId: string }) =>
         invalidateSharing(queryClient, caseId),
       meta: { action: 'cancel the invite' }
@@ -96,21 +121,21 @@ export function sharingMutationOptions(queryClient: QueryClient) {
         caseId: string
         requestId: string
         memberCode: string
-      }) => window.birdbrain.sharing.approveJoin(caseId, requestId, memberCode),
+      }) => sharing((bridge) => bridge.approveJoin(caseId, requestId, memberCode)),
       onSuccess: (_data: unknown, { caseId }: { caseId: string }) =>
         invalidateChain(queryClient, caseId),
       meta: { action: 'approve the join' }
     },
     declineJoin: {
       mutationFn: ({ caseId, requestId }: { caseId: string; requestId: string }) =>
-        window.birdbrain.sharing.declineJoin(caseId, requestId),
+        sharing((bridge) => bridge.declineJoin(caseId, requestId)),
       onSuccess: (_data: unknown, { caseId }: { caseId: string }) =>
         invalidateSharing(queryClient, caseId),
       meta: { action: 'decline the join' }
     },
     revoke: {
       mutationFn: ({ caseId, installationId }: { caseId: string; installationId: string }) =>
-        window.birdbrain.sharing.revoke(caseId, installationId),
+        sharing((bridge) => bridge.revoke(caseId, installationId)),
       onSuccess: (_data: unknown, { caseId }: { caseId: string }) =>
         invalidateChain(queryClient, caseId),
       meta: { action: 'revoke the member' }
@@ -124,7 +149,7 @@ export function sharingMutationOptions(queryClient: QueryClient) {
         caseId: string
         exhibitId: string
         reason?: string
-      }) => window.birdbrain.sharing.excludeExhibit(caseId, exhibitId, reason),
+      }) => sharing((bridge) => bridge.excludeExhibit(caseId, exhibitId, reason)),
       onSuccess: (_data: unknown, { caseId }: { caseId: string }) =>
         invalidateChain(queryClient, caseId),
       meta: { action: 'exclude the Exhibit from export' }
@@ -133,7 +158,7 @@ export function sharingMutationOptions(queryClient: QueryClient) {
     // the ledger; `onSharingChanged` refetches them too, so this is only the
     // immediate read after the command resolves.
     syncNow: {
-      mutationFn: (caseId: string) => window.birdbrain.sharing.syncNow(caseId),
+      mutationFn: (caseId: string) => sharing((bridge) => bridge.syncNow(caseId)),
       onSuccess: (_data: unknown, caseId: string) => {
         invalidateSharing(queryClient, caseId)
         queryClient.invalidateQueries({ queryKey: queryKeys.captures(caseId) })
@@ -144,13 +169,13 @@ export function sharingMutationOptions(queryClient: QueryClient) {
       meta: { action: 'sync now' }
     },
     setRelayUrl: {
-      mutationFn: (relayUrl: string) => window.birdbrain.sharing.setRelayUrl(relayUrl),
+      mutationFn: (relayUrl: string) => sharing((bridge) => bridge.setRelayUrl(relayUrl)),
       onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.settings }),
       meta: { action: 'save the relay URL' }
     },
     // A join makes a Case this window has never listed.
     join: {
-      mutationFn: (invite: string) => window.birdbrain.sharing.join(invite),
+      mutationFn: (invite: string) => sharing((bridge) => bridge.join(invite)),
       onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.cases }),
       meta: { action: 'join the shared Case' }
     }

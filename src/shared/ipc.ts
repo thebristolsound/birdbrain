@@ -366,6 +366,14 @@ export const IPC_CHANNELS = {
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]
 
+// How a refused call on a sharing channel reaches the renderer: the preload's
+// unwrapIpc rejects with this plain object, because the context bridge drops
+// every property of an Error except its message.
+export interface IpcRefusal {
+  message: string
+  code?: string
+}
+
 // Event payload types (main -> renderer)
 export interface ExportProgressEvent {
   caseId: string

@@ -10,6 +10,7 @@ import {
   membersQueryOptions,
   sharingAvailableQueryOptions,
   sharingErrorCode,
+  refusalError,
   sharingMutationOptions,
   syncStateQueryOptions,
   useSharingMutations
@@ -76,6 +77,42 @@ describe('sharingErrorCode', () => {
     expect(sharingErrorCode(new Error('disk full'))).toBeNull()
     expect(sharingErrorCode(null)).toBeNull()
     expect(sharingErrorCode('invite-expired')).toBeNull()
+  })
+})
+
+describe('refusalError', () => {
+  it('rebuilds the coded Error the preload sent across the bridge as a plain object', async () => {
+    const createInvite = vi.fn(async () => {
+      throw { message: 'Not a Birdbrain invite', code: 'invite-malformed' }
+    })
+    const readInvite = vi.fn(async () => {
+      throw { message: 'declined', code: 'declined' }
+    })
+    fakeBridge({ sharing: { createInvite, readInvite } })
+
+    const create = sharingMutationOptions(new QueryClient()).createInvite.mutationFn({
+      caseId: 'c1'
+    })
+    await expect(create).rejects.toBeInstanceOf(Error)
+    await expect(create).rejects.toMatchObject({
+      message: 'Not a Birdbrain invite',
+      code: 'invite-malformed'
+    })
+    const preview = invitePreviewQueryOptions('bbinvite1abc').queryFn?.({} as never)
+    const rejection = await Promise.resolve(preview).catch((err: unknown) => err)
+    expect(sharingErrorCode(rejection)).toBe('declined')
+  })
+
+  it('passes any other rejection through unchanged', () => {
+    const error = refused('invite-expired')
+    expect(refusalError(error)).toBe(error)
+    const odd = { reason: 'no message' }
+    expect(refusalError(odd)).toBe(odd)
+    expect(refusalError('text')).toBe('text')
+    expect(refusalError(null)).toBeNull()
+    const uncoded = refusalError({ message: 'disk full' })
+    expect(uncoded).toBeInstanceOf(Error)
+    expect(uncoded).not.toHaveProperty('code')
   })
 })
 

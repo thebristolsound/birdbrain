@@ -160,7 +160,8 @@ describe('agent-tool directories in .gitignore (#1367)', () => {
     const gitignore = editGitignore('!.claude/agents/', (lines, index) => lines.splice(index, 1))
     expect(audit(gitignore, TRACKED)).toEqual([
       '.claude/agents/birdbrain-implementer.md is tracked but ignored',
-      '.claude/agents/birdbrain-reviewer.md is tracked but ignored'
+      '.claude/agents/birdbrain-reviewer.md is tracked but ignored',
+      '.claude/agents/test-reliability-reviewer.md is tracked but ignored'
     ])
   })
 

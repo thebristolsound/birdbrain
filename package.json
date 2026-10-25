@@ -32,6 +32,7 @@
     "coverage:report": "node scripts/coverage-report.mjs",
     "coverage:diff": "node scripts/diff-coverage.mjs",
     "coverage:all": "node scripts/coverage-all.mjs",
+    "test:reliability": "node scripts/test-reliability/cli.mjs",
     "preflight": "node scripts/preflight.mjs",
     "check": "node scripts/check.mjs",
     "lint": "eslint . --ext .ts,.tsx",

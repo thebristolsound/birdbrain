@@ -143,3 +143,7 @@ report-*.html
 
 # The bundled seed step for pnpm dev:seed and the seeded e2e fixture (scripts/dev-seed/launch.mjs)
 /.cache/dev-seed/
+
+# The test reliability probe's journal of files it has edited, and its Vitest reports
+# (scripts/test-reliability/cli.mjs)
+/.cache/test-reliability/

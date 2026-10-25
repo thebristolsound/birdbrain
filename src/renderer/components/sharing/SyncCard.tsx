@@ -99,7 +99,7 @@ export function SyncCard({
                 {peersConnected(syncState)}
               </div>
             </>
-          ) : syncState?.phase === 'error' ? (
+          ) : syncState?.phase === 'error' || pill?.chrome === 'error' ? (
             <div className="text-xs font-medium text-danger-fg">
               {pill ? `${pill.a} · ${pill.b}` : 'Sync failed'}
             </div>

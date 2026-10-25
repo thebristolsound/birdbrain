@@ -87,6 +87,28 @@ describe('SyncCard', () => {
     expect(screen.getByText('Sync paused · newer version')).toBeTruthy()
   })
 
+  it.each([undefined, 'Sync incomplete · 0 of 2 peers completed without errors'])(
+    'keeps an idle peer pause visible with attempt summary %s',
+    (attemptMessage) => {
+      renderCard(
+        sync({
+          phase: 'idle',
+          lastSuccessAt: '2026-09-19T14:04:00Z',
+          peers: [
+            peer('inst-nk', { reachable: true }),
+            peer('inst-mb'),
+            peer('inst-si', { pausedAtIndex: 0 })
+          ]
+        }),
+        false,
+        attemptMessage
+      )
+      const headline = screen.getByTestId('sync-headline')
+      expect(headline.textContent).toBe('Sync paused · newer version')
+      expect(headline.firstElementChild?.className).toContain('text-danger-fg')
+    }
+  )
+
   it.each(['relay', 'newer-version'] as const)(
     'keeps a current %s status above a retained attempt summary',
     (kind) => {

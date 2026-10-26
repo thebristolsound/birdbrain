@@ -5,7 +5,7 @@ test.describe('Annotations', () => {
   test('draw, persist, and reload annotations', async ({ page }) => {
     // Create a case via the hash router.
     await page.evaluate(() => {
-      window.location.hash = '/cases/new'
+      window.location.hash = '/cases/new?blank=true'
     })
     await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'Annotations E2E')
@@ -115,7 +115,7 @@ test.describe('Annotations', () => {
   test('canvas mounts, accepts Ctrl+wheel zoom, and remains interactive', async ({ page }) => {
     // --- Setup: create case + post capture (same shape as the existing test) ---
     await page.evaluate(() => {
-      window.location.hash = '/cases/new'
+      window.location.hash = '/cases/new?blank=true'
     })
     await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'Zoom-Pan E2E')

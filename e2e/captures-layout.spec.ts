@@ -29,7 +29,7 @@ test.describe('Captures three-column layout', () => {
     test.setTimeout(120000)
 
     await page.evaluate(() => {
-      window.location.hash = '/cases/new'
+      window.location.hash = '/cases/new?blank=true'
     })
     await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'Layout E2E')

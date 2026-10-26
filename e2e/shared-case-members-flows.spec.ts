@@ -211,6 +211,6 @@ test.describe('Shared Case members flows', () => {
 
     await alert.getByRole('button', { name: 'Close' }).click()
     await expect(card).toBeHidden()
-    await expect(page.getByTestId('case-name-input')).toBeVisible()
+    await expect(page.getByTestId('case-start-step')).toBeVisible()
   })
 })

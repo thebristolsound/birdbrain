@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { JoinCaseCard } from '@renderer/components/dashboard/cases/JoinCaseCard'
+import { CaseStartStep } from '@renderer/components/dashboard/cases/CaseStartStep'
 import { useCasesMutations, useSettingsMutations } from '@renderer/lib/queries'
 import { createSelector } from '@renderer/lib/api/selectors'
 import { notify } from '@renderer/lib/notify'
@@ -41,13 +42,20 @@ const SELECTOR_PRESETS = [
   { id: 'username', label: 'Usernames', pattern: '@[a-zA-Z0-9_]{1,15}', isRegex: true }
 ]
 
-export function validateNewCaseSearch(search: Record<string, unknown>): { join?: true } {
-  return { join: search.join === true || search.join === 'true' ? true : undefined }
+const flag = (value: unknown): true | undefined =>
+  value === true || value === 'true' ? true : undefined
+
+// No flag is the start step; `blank` is the new-Case form and `join` the join card.
+export function validateNewCaseSearch(search: Record<string, unknown>): {
+  join?: true
+  blank?: true
+} {
+  return { join: flag(search.join), blank: flag(search.blank) }
 }
 
 export function NewCaseWizard() {
   const navigate = useNavigate()
-  const { join } = useSearch({ from: '/cases/new' })
+  const { join, blank } = useSearch({ from: '/cases/new' })
   const { create } = useCasesMutations()
   const { update: updateSettings } = useSettingsMutations()
 
@@ -108,6 +116,16 @@ export function NewCaseWizard() {
         <JoinCaseCard
           onBack={() => navigate({ to: '/cases/new', search: {} })}
           onJoined={(caseId) => navigate({ to: '/cases/$caseId', params: { caseId } })}
+        />
+      </div>
+    )
+
+  if (!blank)
+    return (
+      <div className="h-full overflow-y-auto px-6 py-12">
+        <CaseStartStep
+          onBlank={() => navigate({ to: '/cases/new', search: { blank: true } })}
+          onJoin={() => navigate({ to: '/cases/new', search: { join: true } })}
         />
       </div>
     )

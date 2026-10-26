@@ -7,7 +7,7 @@ test('tag menu drills into export and persists customisation without executing a
   page.on('pageerror', (error) => errors.push(error.message))
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.evaluate(() => {
-    window.location.hash = '/cases/new'
+    window.location.hash = '/cases/new?blank=true'
   })
   await page.getByTestId('case-name-input').fill('Menu design review')
   await page.getByTestId('case-create-btn').click()

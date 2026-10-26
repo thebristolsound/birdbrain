@@ -7,7 +7,7 @@ test.describe('Tags on the Signals screen', () => {
   test('navigate to Signals, create and delete tags, see per-case counts', async ({ page }) => {
     // Create a case via the hash router.
     await page.evaluate(() => {
-      window.location.hash = '/cases/new'
+      window.location.hash = '/cases/new?blank=true'
     })
     await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'Tags E2E Case')

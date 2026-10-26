@@ -42,7 +42,7 @@ function readStoredZipEntries(path: string): Map<string, string> {
 
 async function createCase(page: Page, name: string): Promise<string> {
   await page.evaluate(() => {
-    window.location.hash = '/cases/new'
+    window.location.hash = '/cases/new?blank=true'
   })
   await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
   await page.fill('[data-testid="case-name-input"]', name)

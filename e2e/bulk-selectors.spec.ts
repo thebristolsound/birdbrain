@@ -4,7 +4,7 @@ test.describe('Bulk import selectors', () => {
   test('open drawer, paste 3 patterns, verify 3 new selectors created', async ({ page }) => {
     // Create a case via the hash router.
     await page.evaluate(() => {
-      window.location.hash = '/cases/new'
+      window.location.hash = '/cases/new?blank=true'
     })
     await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'Bulk Selectors E2E')

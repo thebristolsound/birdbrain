@@ -48,7 +48,7 @@ test.describe('Notes', () => {
   test('create, edit, search, and delete a note', async ({ page }) => {
     // Create a case via the hash router
     await page.evaluate(() => {
-      window.location.hash = '/cases/new'
+      window.location.hash = '/cases/new?blank=true'
     })
     await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'Notes E2E Case')
@@ -101,7 +101,7 @@ test.describe('Notes', () => {
 
   test('write a Mention, then rename and delete what it points at', async ({ page }) => {
     await page.evaluate(() => {
-      window.location.hash = '/cases/new'
+      window.location.hash = '/cases/new?blank=true'
     })
     await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'Mention E2E Case')
@@ -173,7 +173,7 @@ test.describe('Notes', () => {
 
   test('Escape closes the Mention popup without touching the note', async ({ page }) => {
     await page.evaluate(() => {
-      window.location.hash = '/cases/new'
+      window.location.hash = '/cases/new?blank=true'
     })
     await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'Escape E2E Case')

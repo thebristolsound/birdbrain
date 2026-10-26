@@ -3,7 +3,7 @@ import { SCREENSHOT_PNG_BASE64, seedCapture, serverToken } from './fixtures/seed
 
 async function seedCaseAndCapture(page: import('@playwright/test').Page, caseName: string) {
   await page.evaluate(() => {
-    window.location.hash = '/cases/new'
+    window.location.hash = '/cases/new?blank=true'
   })
   await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
   await page.fill('[data-testid="case-name-input"]', caseName)

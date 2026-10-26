@@ -41,7 +41,7 @@ test.describe('Global search dropdown', () => {
     test.setTimeout(60000)
 
     await page.evaluate(() => {
-      window.location.hash = '/cases/new'
+      window.location.hash = '/cases/new?blank=true'
     })
     await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'Search Overlap E2E')

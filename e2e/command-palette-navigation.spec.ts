@@ -47,13 +47,13 @@ test.describe('Command palette', () => {
     await page.keyboard.press('Control+k')
     await expect(palette(page)).toBeHidden()
 
-    // A query that matches nothing says so, and Enter goes to New Case.
+    // A query that matches nothing says so, and Enter goes to the New Case start step.
     await page.keyboard.press('Control+k')
     await palette(page).getByPlaceholder('Switch case...').fill('zzz-no-such-case')
     await expect(palette(page)).toContainText('No cases match')
     await palette(page).getByPlaceholder('Switch case...').press('Enter')
     await expect(palette(page)).toBeHidden()
-    await expect(page.getByTestId('case-name-input')).toBeVisible()
+    await expect(page.getByTestId('case-start-step')).toBeVisible()
   })
 
   test('arrow keys move the highlight and clicking outside closes', async ({ page }) => {

@@ -9,7 +9,7 @@ test.describe('MHTML forensic capture', () => {
   test('capture is written, hashed, manifested, and verifies', async ({ electronApp, page }) => {
     // Create a case via the hash router
     await page.evaluate(() => {
-      window.location.hash = '/cases/new'
+      window.location.hash = '/cases/new?blank=true'
     })
     await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'MHTML E2E Test')

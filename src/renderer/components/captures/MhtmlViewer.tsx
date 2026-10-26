@@ -49,8 +49,10 @@ function closeOpenMenu(): void {
 // Links in the guest are live to the pointer (#1708): hovering one shows its
 // destination, and right-clicking opens the link menu. Following one is refused by
 // the main process's navigation guard (decideFrameNavigation), not by anything here.
-// With `linkClicks` on, a left click on a link selects the Case's Capture of it
-// instead (#1735); the guest itself still goes nowhere.
+// A left click on a link in an embedded frame still replaces that frame with an empty
+// document, as it did before #1735: nothing is fetched, and the frame-changed notice
+// below offers a reload (e2e/mhtml-link-interactivity.spec.ts records each case). With
+// `linkClicks` on, a left click on a link also selects the Case's Capture of it.
 export function MhtmlViewer({ captureId, caseId, linkClicks }: Props) {
   const { data: fileUrl, error } = useQuery(captureMhtmlUrlQueryOptions(captureId))
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
@@ -61,6 +63,9 @@ export function MhtmlViewer({ captureId, caseId, linkClicks }: Props) {
   // The hover destination and the last press, read by the press and release handlers.
   const hoverRef = useRef('')
   const pressRef = useRef<GuestPointer | null>(null)
+  // The link a press and release named, until the guest's own attempt to follow a link
+  // says which one it clicked.
+  const clickedRef = useRef<string | null>(null)
   const [hoverUrl, setHoverUrl] = useState('')
   const [notInCase, setNotInCase] = useState<string | null>(null)
   const [hit, setHit] = useState<LinkHit>(NO_HIT)
@@ -72,6 +77,7 @@ export function MhtmlViewer({ captureId, caseId, linkClicks }: Props) {
     if (!wv) return
     hoverRef.current = ''
     pressRef.current = null
+    clickedRef.current = null
     setHoverUrl('')
     setNotInCase(null)
     setFrameChanged(false)
@@ -88,6 +94,7 @@ export function MhtmlViewer({ captureId, caseId, linkClicks }: Props) {
       closeOpenMenu()
       setNotInCase(null)
       pressRef.current = { url: hoverRef.current, button }
+      clickedRef.current = null
     })
     const onMainCommit = () => setFrameChanged(false)
     const blockNav = (e: Event) => e.preventDefault()
@@ -139,20 +146,43 @@ export function MhtmlViewer({ captureId, caseId, linkClicks }: Props) {
 
   // A release pairs with the press before it. Its own effect, so that a change to the
   // Case's Captures re-subscribes it without resetting the guest's state above.
+  //
+  // The press and release can reach this document before the guest has handled the
+  // move that preceded them, so the hover they read can be the link the pointer was on
+  // before. The click is acted on only when the guest then tries to follow the same
+  // link. A link the guest does not try to follow on a plain click (one that opens a
+  // new window, say) does nothing here.
   useEffect(() => {
     const wv = ref.current as Electron.WebviewTag | null
     if (!wv || !linkClicks) return
-    return window.birdbrain.onGuestMouseUp(({ guestWebContentsId, button, modifiers }) => {
-      if (wv.getWebContentsId() !== guestWebContentsId) return
-      const press = pressRef.current
-      pressRef.current = null
-      const url = classifyGuestClick(press, { url: hoverRef.current, button, modifiers })
-      if (!url) return
+    const stopMouseUp = window.birdbrain.onGuestMouseUp(
+      ({ guestWebContentsId, button, modifiers }) => {
+        if (wv.getWebContentsId() !== guestWebContentsId) return
+        const press = pressRef.current
+        pressRef.current = null
+        clickedRef.current = classifyGuestClick(press, {
+          url: hoverRef.current,
+          button,
+          modifiers
+        })
+      }
+    )
+    const onFollow = (e: Event) => {
+      const { url } = e as Electron.DidStartNavigationEvent
+      if (!url || url !== clickedRef.current) return
+      clickedRef.current = null
       const viewed = captures.find(({ id }) => id === captureId)
       const outcome = linkClickOutcome(url, viewed, captures)
       if (outcome.kind === 'open') followCaptureLink(outcome.captureId)
       else if (outcome.kind === 'not-in-case') setNotInCase(outcome.url)
-    })
+    }
+    wv.addEventListener('did-start-navigation', onFollow)
+    wv.addEventListener('will-frame-navigate', onFollow)
+    return () => {
+      stopMouseUp()
+      wv.removeEventListener('did-start-navigation', onFollow)
+      wv.removeEventListener('will-frame-navigate', onFollow)
+    }
   }, [fileUrl, linkClicks, captures, captureId, followCaptureLink])
 
   const unheldTarget = notInCase ? linkTarget({ ...NO_HIT, linkUrl: notInCase }) : null

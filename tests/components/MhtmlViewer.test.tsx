@@ -27,7 +27,8 @@ function renderViewer({ linkClicks = true } = {}) {
 }
 
 // The guest's input as the main process reports it (#1735): a hover, a press and a
-// release, each naming the guest, raised on whatever the viewer subscribed.
+// release, each naming the guest, raised on whatever the viewer subscribed. `follow`
+// is the guest's own attempt to follow a link, which Electron raises on the element.
 function guestInput() {
   let down: (event: GuestMouseDownEvent) => void = () => {}
   let up: (event: GuestMouseUpEvent) => void = () => {}
@@ -38,6 +39,8 @@ function guestInput() {
     act(() => down({ guestWebContentsId, button }))
   const release = ({ guestWebContentsId = 7, button = 'left', modifiers = [] }: Release = {}) =>
     act(() => up({ guestWebContentsId, button, clickCount: 1, modifiers }))
+  const follow = (guest: HTMLElement, url: string, type = 'did-start-navigation') =>
+    fireEvent(guest, Object.assign(new Event(type), { url }))
   return {
     bridge: {
       onGuestMouseDown: (callback: typeof down) => {
@@ -52,10 +55,12 @@ function guestInput() {
     hover,
     press,
     release,
+    follow,
     click: (guest: HTMLElement, url: string, input: Release = {}) => {
       hover(guest, url)
       press(input)
       release(input)
+      follow(guest, url)
     }
   }
 }
@@ -367,6 +372,48 @@ describe('MhtmlViewer', () => {
 
     expect(useAppStore.getState().selectedCaptureId).toBe('cap1')
     expect(useAppStore.getState().captureTrail).toEqual([])
+  })
+
+  // #1735 review, finding 1. The press and release can arrive before the guest reports
+  // the link the pointer moved onto, so they name the previous one; the guest's own
+  // attempt to follow a link says which it clicked.
+  it('acts on a click only when the guest then follows the link it named', async () => {
+    const input = guestInput()
+    fakeBridge({
+      captures: {
+        getMhtmlUrl: vi.fn().mockResolvedValue(FILE_URL),
+        list: vi.fn().mockResolvedValue([VIEWED, HELD])
+      },
+      ...input.bridge
+    })
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: [] })
+    renderViewer()
+    const guest = await screen.findByTestId('mhtml-viewer')
+    Object.assign(guest, { getWebContentsId: () => 7 })
+    await waitFor(() => {
+      input.click(guest, HELD.url)
+      expect(useAppStore.getState().selectedCaptureId).toBe('held')
+    })
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: [] })
+
+    // The hover still names the held link, but the guest follows another.
+    input.hover(guest, HELD.url)
+    input.press()
+    input.release()
+    input.follow(guest, 'https://elsewhere.example/b')
+    // A click the guest does not follow, then a follow after the next press.
+    input.press()
+    input.release()
+    input.press()
+    input.follow(guest, HELD.url)
+
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap1')
+    expect(screen.queryByTestId('link-not-in-case')).toBeNull()
+
+    // A main-frame click raises will-frame-navigate too; either one confirms it.
+    input.release()
+    input.follow(guest, HELD.url, 'will-frame-navigate')
+    expect(useAppStore.getState().selectedCaptureId).toBe('held')
   })
 
   it('says a clicked link is not in this Case and offers Capture link until the next press', async () => {

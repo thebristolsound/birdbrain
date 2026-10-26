@@ -7,7 +7,13 @@ import {
 
 type TestResult = { fullName: string; status: string; line: number | null }
 type FileResult = { path: string; tests: TestResult[] }
-type RunArgs = { mode: string; files: string[]; bail?: boolean; timeoutMs?: number }
+type RunArgs = {
+  mode: string
+  files: string[]
+  bail?: boolean
+  timeoutMs?: number
+  moduleCache?: boolean
+}
 type RunResult = {
   ok: boolean
   timedOut?: boolean

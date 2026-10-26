@@ -1373,7 +1373,8 @@ function buildEvidenceZip(
   const { entries, artifacts, add } = createArtifactAccumulator()
 
   const manifestJsonl = manifest.jsonl
-  const timestampEntries = caseEntriesOf(manifest, sharedCase).filter(isTimestampEntry)
+  const caseEntries = caseEntriesOf(manifest, sharedCase)
+  const timestampEntries = caseEntries.filter(isTimestampEntry)
   const latestManifestEntry = manifest.head
 
   // Same path rule the report was rendered against, over the same Exhibits in
@@ -1504,6 +1505,14 @@ function buildEvidenceZip(
   // resolve to the same path. Emit the zip entry once; multiple capture
   // records may still reference it. createStoredZip does not dedupe entry names.
   const emittedContentPaths = new Set<string>()
+  // Each Capture's signed entry, by its chain id; where a chain holds more
+  // than one, the last wins, as in resolveEntrySignatures.
+  const captureEntries = new Map<string, Record<string, unknown>>()
+  for (const entry of caseEntries) {
+    if (entry.type === 'capture' && typeof entry.captureId === 'string') {
+      captureEntries.set(entry.captureId, entry)
+    }
+  }
   const addContentAddressed = (
     bytes: Buffer | null,
     packagePath: (digest: string) => string
@@ -1549,17 +1558,22 @@ function buildEvidenceZip(
         : null,
       packagedScreenshotPath
     )
-    // The Transaction Record and the PDF follow no include option: Package
-    // Verification fails a signed hash whose file the package lacks (D10 of
+    // The Transaction Record and the PDF ship only when the signed entry
+    // anchors them, as a Derived File no entry names is held back (X34):
+    // neither verifier checks a file the entry carries no hash for. No include
+    // option leaves out an anchored one, because Package Verification fails a
+    // signed hash whose file the package lacks (D10 of
     // docs/plans/2026-10-10-capture-engine-first-slice.md).
+    const entry = captureEntries.get(id)
+    const anchored = (field: string, type: 'warc.gz' | 'pdf'): Buffer | null =>
+      typeof entry?.[field] === 'string'
+        ? defaultCaptureStore.readArtifact(capture.caseId, capture.id, type)
+        : null
     const transactionRecord = addContentAddressed(
-      defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'warc.gz'),
+      anchored('transactionRecordHash', 'warc.gz'),
       packagedTransactionRecordPath
     )
-    const pdf = addContentAddressed(
-      defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'pdf'),
-      packagedPdfPath
-    )
+    const pdf = addContentAddressed(anchored('pdfHash', 'pdf'), packagedPdfPath)
 
     return {
       id,

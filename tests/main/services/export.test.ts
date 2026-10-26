@@ -67,7 +67,10 @@ import {
 } from '@main/services/installationId'
 import type { ExportOptions, Note } from '@shared/types'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
-import { seedEngineCapture } from '../../helpers/captureEngineCapture'
+import {
+  ENGINE_ENTRY_FIELDS_WITHOUT_FILES,
+  seedEngineCapture
+} from '../../helpers/captureEngineCapture'
 import {
   ENGINE_BOUND_TLS,
   ENGINE_FILES,
@@ -1196,6 +1199,8 @@ describe('export', () => {
       expect(status(`capture ${ENGINE_ID} pdf`)).toBe('pass')
     })
 
+    // Membership only: Package Verification fails this package on its anchored
+    // screenshot, a defect that predates this change (#1986).
     it('ships both when the export leaves screenshots out, since no option omits them', async () => {
       await seed()
       const { entries } = await exportZip('engine-no-screenshots', { screenshots: false })
@@ -1232,6 +1237,32 @@ describe('export', () => {
         pdfPath: null,
         pdfSha256: null
       })
+    })
+
+    it('holds back a stored file the signed entry carries no hash for', async () => {
+      await seedEngineCapture({
+        caseDir: join(tempDir, 'captures', caseId),
+        caseId,
+        captureId: ENGINE_ID,
+        store: defaultCaptureStore,
+        fields: ENGINE_ENTRY_FIELDS_WITHOUT_FILES
+      })
+      // Written straight into the store, as a Case Archive import or a hand
+      // can leave a file there that the entry does not anchor.
+      defaultCaptureStore.writeTransactionRecord(caseId, ENGINE_ID, ENGINE_FILES.transactionRecord)
+      defaultCaptureStore.writePdf(caseId, ENGINE_ID, ENGINE_FILES.pdf)
+      const { entries, evidence } = await exportZip('engine-unanchored')
+
+      expect(underNewDirectories(entries)).toEqual([])
+      expect(evidence.captures.find((c) => c.id === ENGINE_ID)).toMatchObject({
+        transactionRecordPath: null,
+        transactionRecordSha256: null,
+        pdfPath: null,
+        pdfSha256: null
+      })
+      expect(
+        evidence.artifacts.some((a) => a.path === recordPath || a.path === enginePdfPath)
+      ).toBe(false)
     })
 
     it('leaves a Working Copy without them', async () => {

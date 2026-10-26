@@ -46,9 +46,12 @@ probed: each mutant would need a fresh `pnpm build`. The agent covers them.
   shadow-first route (ADR-0031).
 - **No new dependency.** Mutation sites come from the TypeScript compiler API, already a
   development dependency, rather than from a mutation framework such as Stryker.
-- **No paid runs.** The agent is for interactive use. Adding it to the scheduled PR review or the
-  dispatch pre-pass would add model spend to unattended runs, which ADR-0029 reserves for the
-  maintainer to authorize. `birdbrain-reviewer` reads the CI job's result instead.
+- **The dispatch pre-pass only.** The maintainer approved running the agent in the dispatch
+  pre-pass on 2026-10-25, on a PR that adds or edits a test, after `birdbrain-reviewer` and
+  under the same cycle claim. The spend cap counts cycles, so the pass makes a cycle cost more
+  without adding cycles. The scheduled PR review does not run it, because ADR-0029 reserves
+  that spend for the maintainer and the approval named dispatch alone. `birdbrain-reviewer` reads the
+  CI job's result on both paths.
 - **Static test smells stay with the slop audit.** Skipped tests, assertion-free tests and mocked
   subjects are the slop audit's phase 5 checks (`docs/specs/2026-09-03-slop-audit-design.md`).
   This work does not duplicate them.
@@ -60,3 +63,4 @@ probed: each mutant would need a fresh `pnpm build`. The agent covers them.
 - [x] `.github/workflows/test-reliability.yml`, advisory.
 - [x] Reviewer agent, and a paragraph in `birdbrain-reviewer` on reading the job.
 - [x] Testing guide section and the `CLAUDE.md` command line.
+- [x] The test pass in the dispatch pre-pass (`.claude/skills/dispatch/SKILL.md`, section 4).

@@ -104,9 +104,10 @@ exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
 - **Run only in a fresh session.** The agent registry loads at session start; a long-lived
   session cannot see agent definitions merged after it started. Never architect this routine as
   a persistent session — each trigger is a new session running one cycle.
-- Sub-work goes to the named agents: `birdbrain-implementer` (writes code, worktree isolation)
-  and `birdbrain-reviewer` (read-only pre-pass). If either agent type fails to resolve, stop
-  and report — do not substitute an inline reimplementation of their contracts.
+- Sub-work goes to the named agents: `birdbrain-implementer` (writes code, worktree isolation),
+  `birdbrain-reviewer` (read-only pre-pass) and `test-reliability-reviewer` (the pre-pass's
+  test pass, section 4). If an agent type fails to resolve, stop and report — do not
+  substitute an inline reimplementation of their contracts.
 - **Relay review feedback by pointer, never by paraphrase.** When handing a PR to the
   implementer, give it the PR number and the instruction to re-enumerate the review surface
   itself, with `--paginate` on each (`gh api --paginate .../pulls/<n>/reviews`,
@@ -893,6 +894,24 @@ controls (`git log origin/main..HEAD`) were computed against a different HEAD th
 named. Harmless there because the merge was main-into-branch, but nothing guaranteed that, and
 ADR-0007's hygiene check keys off the *final* pre-pass verdict — which is ambiguous when the
 sha it names is not head.
+
+### The test pass — when the PR adds or edits a test
+
+The maintainer approved this pass on 2026-10-25. When the PR's files
+(`gh api --paginate repos/thebristolsound/birdbrain/pulls/<n>/files --jq '.[].filename'`)
+include a unit test (`tests/**`, `src/packages/**/tests/**`) or an end-to-end spec (`e2e/**`),
+spawn `test-reliability-reviewer` after `birdbrain-reviewer` returns, in the foreground, under
+the same claim and the same pinned sha. Not alongside it: both run tests in the one checkout,
+and the test pass may edit a source file for a moment to prove a test can fail. A PR that
+touches no test skips the pass. So does a delta pass or a carried-forward verdict, which keep
+the previous round's test findings.
+
+Brief it with the PR number, the pinned sha and the head branch, and tell it to post nothing,
+to read the `Test reliability` check's report from CI and run the probe itself only when no
+`probe` job ran on the pinned sha, and to leave the tree clean. Then merge the two reports into the one verdict: `request changes` when either
+has a blocking finding, the five top-layer findings chosen from both by severity, and its full
+report after the reviewer's inside the same collapsed block, under a `Test pass` line. Its
+friction notes join the reviewer's.
 
 ### Do not re-trigger CodeRabbit with a reply storm
 

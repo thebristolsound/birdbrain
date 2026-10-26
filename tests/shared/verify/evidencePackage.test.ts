@@ -35,6 +35,14 @@ import {
 } from '../../helpers/receiptPackage'
 import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import type { ExportOptions } from '@shared/types'
+import { defaultCaptureStore } from '@main/services/captureStore'
+import {
+  ENGINE_ENTRY_FIELDS_WITHOUT_FILES,
+  seedEngineCapture,
+  type EngineEntryFields
+} from '../../helpers/captureEngineCapture'
+import { ENGINE_HASHES } from '../../helpers/captureEnginePackage'
+import { pdfPath, transactionRecordPath } from '../../../src/packages/evidence-package-layout/index'
 
 // Parses a Birdbrain stored-ZIP (all entries STORE/method 0) into a name->bytes
 // map, mirroring the export test's reader.
@@ -2141,6 +2149,119 @@ describe('verifyEvidencePackage — exhibits of every kind (#1156)', () => {
       }
     } finally {
       rmSync(selDir, { recursive: true, force: true })
+    }
+  })
+})
+
+// Step 4 of docs/plans/2026-10-10-capture-engine-first-slice.md, on a package
+// the export path wrote from a Capture built by hand: nothing acquires the
+// Transaction Record or the PDF yet.
+describe('verifyEvidencePackage — the Transaction Record and the PDF (#1926)', () => {
+  const ENGINE_ID = 'engine-capture'
+  const FILES = [
+    {
+      label: 'Transaction Record',
+      check: 'transaction record',
+      path: transactionRecordPath(ENGINE_HASHES.transactionRecord)
+    },
+    { label: 'PDF', check: 'pdf', path: pdfPath(ENGINE_HASHES.pdf) }
+  ]
+  let tempDir: string
+  let pkgDir: string
+
+  const exportEngineCapture = async (fields?: EngineEntryFields): Promise<void> => {
+    const { id: caseId } = createCase({ name: 'Engine Case', description: 'capture engine' })
+    ensureCaseDir(caseId)
+    const caseDir = join(tempDir, 'captures', caseId)
+    initManifest(caseDir)
+    await seedEngineCapture({
+      caseDir,
+      caseId,
+      captureId: ENGINE_ID,
+      store: defaultCaptureStore,
+      fields
+    })
+    const outputPath = join(tempDir, 'engine-evidence.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'evidence',
+        outputPath
+      },
+      createCaptureLifecycle({
+        selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+      })
+    )
+    unzipToDir(outputPath, pkgDir)
+  }
+
+  const row = (result: PackageVerifyResult, check: string): PackageCheck | undefined =>
+    result.checks.find((c) => c.name === `capture ${ENGINE_ID} ${check}`)
+
+  beforeEach(async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'bb-engineverify-'))
+    pkgDir = mkdtempSync(join(tmpdir(), 'bb-enginepkg-'))
+    initStorage(join(tempDir, 'captures'))
+    await initDatabase(':memory:')
+    resetInstallationId()
+    initInstallationId(tempDir)
+    initSettings(tempDir)
+    updateSettings({ operatorName: 'Test Operator', operatorRole: '', operatorOrganization: '' })
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+    rmSync(pkgDir, { recursive: true, force: true })
+  })
+
+  it('passes an exported package and binds both files', async () => {
+    await exportEngineCapture()
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
+    for (const { check } of FILES) expect(row(result, check)?.status).toBe('pass')
+  })
+
+  it.each(FILES)('fails a changed byte in the $label', async ({ label, check, path }) => {
+    await exportEngineCapture()
+    const file = join(pkgDir, path)
+    const bytes = readFileSync(file)
+    bytes[0] ^= 0xff
+    writeFileSync(file, bytes)
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    expect(row(result, check)).toMatchObject({
+      status: 'fail',
+      reason: `capture ${ENGINE_ID}: ${label} hash does not match manifest`
+    })
+  })
+
+  it.each(FILES)('fails a missing $label', async ({ label, check, path }) => {
+    await exportEngineCapture()
+    rmSync(join(pkgDir, path))
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    expect(row(result, check)).toMatchObject({
+      status: 'fail',
+      reason: `capture ${ENGINE_ID}: ${label} file missing`
+    })
+  })
+
+  it('skips both for an entry that anchors neither, and the package encloses neither', async () => {
+    await exportEngineCapture(ENGINE_ENTRY_FIELDS_WITHOUT_FILES)
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
+    for (const { check, path } of FILES) {
+      expect(row(result, check)?.status).toBe('skip')
+      expect(existsSync(join(pkgDir, path))).toBe(false)
     }
   })
 })

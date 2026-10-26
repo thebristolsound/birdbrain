@@ -140,11 +140,18 @@ const SCROLL_HELPERS = `
     if (el.scrollTo) el.scrollTo({ top: y, behavior: 'instant' })
     else el.scrollTop = y
   }
+  // A root already scrolled to its end moves only up, so the probe tries both
+  // ways. Probing down alone reads the bottom of a page as nothing to scroll,
+  // which ends the loop before the stall detector can.
   const canScroll = (el) => {
     if (!el || el.scrollHeight <= el.clientHeight + 2) return false
     const prev = el.scrollTop
     setScrollTop(el, prev + 1)
-    const moved = el.scrollTop !== prev
+    let moved = el.scrollTop !== prev
+    if (!moved && prev > 0) {
+      setScrollTop(el, prev - 1)
+      moved = el.scrollTop !== prev
+    }
     setScrollTop(el, prev)
     return moved
   }

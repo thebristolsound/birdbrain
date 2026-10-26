@@ -477,10 +477,12 @@ against a Chromium 152 response.
   length as `Content-Length` (spec open question 1, ruled 2026-10-10).
 - **Text bodies.** Ruled 2026-10-26, after the review of #1979 measured `Network.getResponseBody`
   returning a windows-1252 page as a decoded string: the writer stores a body the browser hands
-  over as text encoded in UTF-8, which can differ from the bytes the server sent. Each record that
-  holds such a body carries `x-birdbrain-decoded-text: utf-8`, the `warcinfo` record states the
-  limit, and the payload digest covers the stored UTF-8 bytes. Spike #1983 measures, before step 9,
-  whether the browser can hand over the served bytes instead.
+  over as text encoded in UTF-8. The charset spike (#1983) then measured that a session sent
+  `Network.configureDurableMessages` returns the served bytes, as text only when they are valid
+  UTF-8, and the maintainer's rulings of the same day adopted it (step 9, "Text bodies"). Step 9
+  keeps a text body only from such a session, so the writer's UTF-8 encoding of it is the served
+  bytes, and it removed the `x-birdbrain-decoded-text: utf-8` record marker and its `warcinfo`
+  sentence that #1979 added.
 - **Protocol.** Ruled 2026-10-26: request and status lines read `HTTP/1.0` when CDP reports
   `http/1.0` and `HTTP/1.1` otherwise, so WARC readers can parse them, and each request and response
   record carries `WARC-Protocol` with the protocol CDP reported, in lower case. browsertrix-crawler
@@ -795,9 +797,9 @@ length as `Content-Length`, and keep the reported length as `x-orig-content-leng
 states the renaming in `warcinfo` (D8), and step 9 states it in `features.mdx`.
 
 **Ruled 2026-10-26:** a body the browser hands over as text is stored as that text encoded in
-UTF-8, which can differ from the bytes the server sent. The writer marks each record that holds
-one and states the limit in `warcinfo` (D8, "Text bodies"). Spike #1983 measures, before step 9,
-whether the browser can hand over the served bytes instead.
+UTF-8. After spike #1983, step 9 keeps such a body only from a session whose
+`Network.configureDurableMessages` answered, so the stored bytes are the served bytes, and the
+record marker #1979 added is gone (D8, "Text bodies").
 
 The spec asks what browser-based archiving tools write, and to follow it if it is documented (spec,
 Open questions). This plan found no published statement, and the two Webrecorder recorders differ

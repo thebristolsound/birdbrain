@@ -19,20 +19,11 @@ const CREDENTIAL = new Set(CREDENTIAL_HEADERS)
 // length.
 const RENAMED = new Set(['content-encoding', 'transfer-encoding', 'content-length'])
 
-// The maintainer's ruling of 2026-10-26 (plan D8): CDP can hand a text body over as a string
-// decoded from the page's character set (the review of #1979 measured it; spike #1983 measures it
-// for step 9). The original bytes cannot be recovered from the string, so the record stores the
-// text as UTF-8 and says so on each record that holds such a body.
-const TEXT_BODY = { 'x-birdbrain-decoded-text': 'utf-8' }
-
 const DECODED_BODIES =
   'Response bodies are stored as the browser decoded them. Each response keeps the ' +
   'Content-Encoding, Transfer-Encoding and Content-Length the browser reported as ' +
   'x-orig-content-encoding, x-orig-transfer-encoding and x-orig-content-length, and its ' +
-  'Content-Length is the length of the stored body. A body the browser handed over as text is ' +
-  'stored as that text encoded in UTF-8, which can differ from the bytes the server sent, for ' +
-  'example when the page used another character set; each record holding such a body carries ' +
-  'x-birdbrain-decoded-text: utf-8.'
+  'Content-Length is the length of the stored body.'
 
 const CREDENTIALS =
   'The values of the Cookie, Set-Cookie, Authorization and Proxy-Authorization headers are ' +
@@ -77,20 +68,16 @@ const headerLines = (headers: HeaderMap, replaced: Set<string>): HeaderLine[] =>
       })
     })
 
-interface StoredBody {
-  bytes: Uint8Array
-  /** The browser handed the body over as text, not as base64 bytes. */
-  text: boolean
-}
+const NO_BODY = new Uint8Array()
 
-const NO_BODY: StoredBody = { bytes: new Uint8Array(), text: false }
-
-const stored = (body: BodyData | undefined): StoredBody => {
+// The collector keeps a response body returned as text only from a session sent
+// `Network.configureDurableMessages`, where every text body the charset spike measured encoded
+// back to the served bytes as UTF-8 (docs/specs/2026-10-26-transaction-record-charset-spike.md,
+// Question 1). The spike did not measure request bodies.
+const stored = (body: BodyData | undefined): Uint8Array => {
   if (body === undefined) return NO_BODY
   const { data, base64Encoded } = body
-  return base64Encoded
-    ? { bytes: Buffer.from(data, 'base64'), text: false }
-    : { bytes: Buffer.from(data, 'utf8'), text: true }
+  return Buffer.from(data, base64Encoded ? 'base64' : 'utf8')
 }
 
 const pathOf = (url: string): string => {
@@ -148,11 +135,10 @@ const requestRecord = (exchange: Exchange, replaced: Set<string>): WARCRecord =>
     statusline: `${request.method} ${pathOf(request.url)} ${httpVersion(protocol)}`,
     // Plan D8: the headers the ExtraInfo event reported when it arrived, as for the response.
     lines: headerLines(request.extraInfo?.headers ?? request.headers, replaced),
-    body: body.bytes,
+    body,
     warcHeaders: {
       ...protocolField(protocol),
-      ...(requestBody && !requestBody.complete ? TRUNCATED : {}),
-      ...(body.text ? TEXT_BODY : {})
+      ...(requestBody && !requestBody.complete ? TRUNCATED : {})
     }
   })
 }
@@ -184,8 +170,7 @@ const responseRecord = (
   )
   const warcHeaders: Record<string, string> = {
     ...protocolField(protocol),
-    ...(state === 'body-omitted' ? TRUNCATED : {}),
-    ...(body.text ? TEXT_BODY : {})
+    ...(state === 'body-omitted' ? TRUNCATED : {})
   }
   // Plan D8 and ADR-0032 rule 5: through a proxy the reported address can be the proxy's.
   if (input.egress === 'direct' && response.remoteIPAddress !== undefined) {
@@ -195,8 +180,8 @@ const responseRecord = (
     url: request.url,
     date: startedAt,
     statusline: [httpVersion(protocol), status, statusText].filter((part) => part !== '').join(' '),
-    lines: [...lines, ['Content-Length', String(body.bytes.length)]],
-    body: body.bytes,
+    lines: [...lines, ['Content-Length', String(body.length)]],
+    body,
     warcHeaders
   })
 }
@@ -208,34 +193,36 @@ const WITH_RESPONSE = new Set<Exchange['state']>(['complete', 'redirected', 'bod
 /**
  * Writes the exchanges of one render as a Transaction Record: a `.warc.gz` with one gzip member
  * per record, and the lower-case names of the headers whose values it replaced, sorted and unique.
- * Every value of a credential header is replaced before any record is serialized.
+ * Every value of a credential header is replaced before its record is serialized. Each record is
+ * built and compressed before the next, so one decoded body at a time is held beside the bodies
+ * as the browser returned them and the compressed output.
  */
 export const writeTransactionRecord = async (
   input: WriterInput
 ): Promise<WrittenTransactionRecord> => {
   const replaced = new Set<string>()
-  const records = [
-    WARCRecord.createWARCInfo(
-      { date: input.date, warcVersion: WARC_1_1 },
-      {
-        software: `Birdbrain ${input.birdbrainVersion}`,
-        format: 'WARC File Format 1.1',
-        browser: input.browserVersion,
-        'http-header-user-agent': input.userAgent,
-        'capture-id': input.captureId,
-        'decoded-bodies': DECODED_BODIES,
-        'credential-headers': CREDENTIALS,
-        'http-message-lines': MESSAGE_LINES
-      }
+  const members: Uint8Array[] = [
+    await serialize(
+      WARCRecord.createWARCInfo(
+        { date: input.date, warcVersion: WARC_1_1 },
+        {
+          software: `Birdbrain ${input.birdbrainVersion}`,
+          format: 'WARC File Format 1.1',
+          browser: input.browserVersion,
+          'http-header-user-agent': input.userAgent,
+          'capture-id': input.captureId,
+          'decoded-bodies': DECODED_BODIES,
+          'credential-headers': CREDENTIALS,
+          'http-message-lines': MESSAGE_LINES
+        }
+      )
     )
   ]
   for (const exchange of input.exchanges) {
-    records.push(requestRecord(exchange, replaced))
+    members.push(await serialize(requestRecord(exchange, replaced)))
     if (WITH_RESPONSE.has(exchange.state)) {
-      records.push(responseRecord(exchange, input, replaced))
+      members.push(await serialize(responseRecord(exchange, input, replaced)))
     }
   }
-  const members: Uint8Array[] = []
-  for (const record of records) members.push(await serialize(record))
   return { bytes: Buffer.concat(members), replacedHeaders: [...replaced].sort() }
 }

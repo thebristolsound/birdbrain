@@ -28,9 +28,12 @@ describe('classifyPath', () => {
     expect(classifyPath('extension/src/background.ts')).toBe('source')
   })
 
+  it('keeps a types.ts file, whose runtime exports the tests can load', () => {
+    expect(classifyPath('src/shared/types.ts')).toBe('source')
+  })
+
   it('leaves out source the unit runner never loads, as the coverage excludes do', () => {
     expect(classifyPath('src/renderer/env.d.ts')).toBeNull()
-    expect(classifyPath('src/main/types.ts')).toBeNull()
     expect(classifyPath('src/renderer/routeTree.gen.ts')).toBeNull()
     expect(classifyPath('src/main/index.ts')).toBeNull()
     expect(classifyPath('src/preload/index.ts')).toBeNull()

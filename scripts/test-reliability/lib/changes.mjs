@@ -6,11 +6,11 @@
 export const UNIT_TEST = /^(tests\/|src\/packages\/.+\/tests\/).*\.test\.(ts|tsx|mts|cts)$/
 export const E2E_SPEC = /^e2e\/.*\.spec\.tsx?$/
 
-// Mirrors the coverage excludes in vitest.config.ts: these files never run under the unit
-// runner, so a mutant in them would be reported as untested by construction.
+// The coverage excludes in vitest.config.ts that never run under the unit runner, so a mutant
+// in them would be reported as untested by construction. Coverage also excludes `types.ts`,
+// but those files can hold runtime exports the tests load, so the probes keep them.
 const NOT_UNIT_SOURCE = [
   /\.d\.ts$/,
-  /(^|\/)types\.ts$/,
   /\.gen\.tsx?$/,
   /^src\/main\/index\.ts$/,
   /^src\/mcp\/index\.ts$/,

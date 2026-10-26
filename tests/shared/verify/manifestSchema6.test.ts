@@ -252,6 +252,18 @@ describe('manifest schema 6 — the schema', () => {
     })
   })
 
+  it('refuses a Scroll-to-load record that never ran but names an end, with a named error', () => {
+    const message = '`outcome` and `endHeight` require `ran` to be true'
+    const notRun = { requested: true, ran: false, scrollLockLifted: false }
+    expect(parse({ ...CAPTURE_BODY_ENGINE, scrollToLoad: notRun }).success).toBe(true)
+    for (const extra of [{ outcome: 'time-budget' }, { endHeight: 900 }]) {
+      const scrollToLoad = { ...notRun, ...extra }
+      expect(messages({ ...CAPTURE_BODY_ENGINE, scrollToLoad }), JSON.stringify(extra)).toEqual([
+        message
+      ])
+    }
+  })
+
   it('refuses a time that is a number or not an ISO 8601 date-time', () => {
     const times: Array<Array<string | number>> = [
       ['boundTls', 'validFrom'],
@@ -490,6 +502,17 @@ describe('manifest schema 6 — the app verifier', () => {
       ...base,
       scrollToLoad: fields.scrollToLoad
     })
+    // The inventory alone, with no file it could anchor: the two hashes need
+    // it, so it is the one field of the six that a valid entry can carry alone.
+    appendManifestEntry(caseDir, {
+      type: 'capture',
+      ...base,
+      inventory: {
+        ...ENGINE_INVENTORY,
+        transactionRecord: { present: false, reason: 'not-taken' },
+        pdf: { present: false, reason: 'not-taken' }
+      } as CaptureEntryContext['inventory']
+    })
     appendManifestEntry(caseDir, { type: 'capture', ...base, boundTls: fields.boundTls })
     appendManifestEntry(caseDir, { type: 'capture', ...base, boundTlsAbsent: 'not-https' })
     appendManifestEntry(caseDir, {
@@ -500,7 +523,7 @@ describe('manifest schema 6 — the app verifier', () => {
       boundTlsAbsent: 'not-reported'
     })
     appendManifestEntry(caseDir, { type: 'capture', ...base, ...fields })
-    expect(stamps()).toEqual([2, 6, 6, 6, 6, 6])
+    expect(stamps()).toEqual([2, 6, 6, 6, 6, 6, 6])
     expect(verifyManifestChain(caseDir).valid).toBe(true)
   })
 
@@ -649,8 +672,16 @@ describe('manifest schema 6 — the package verifier', () => {
     )
     const result = verifyEvidencePackage(pkgDir)
     expect(result.pass).toBe(true)
-    expect(rowFor(result, recordRow)).toEqual({ name: recordRow, status: 'skip' })
-    expect(rowFor(result, pdfRow)).toEqual({ name: pdfRow, status: 'skip' })
+    expect(rowFor(result, recordRow)).toEqual({
+      name: recordRow,
+      status: 'skip',
+      reason: 'the entry anchors no Transaction Record'
+    })
+    expect(rowFor(result, pdfRow)).toEqual({
+      name: pdfRow,
+      status: 'skip',
+      reason: 'the entry anchors no PDF'
+    })
     expect(rowFor(result, headersRow)).toBeUndefined()
   })
 
@@ -658,8 +689,8 @@ describe('manifest schema 6 — the package verifier', () => {
     writeEnginePackage(pkgDir, {})
     const result = verifyEvidencePackage(pkgDir)
     expect(result.pass).toBe(true)
-    expect(rowFor(result, recordRow)?.status).toBe('skip')
-    expect(rowFor(result, pdfRow)?.status).toBe('skip')
+    expect(rowFor(result, recordRow)?.reason).toBe('the entry anchors no Transaction Record')
+    expect(rowFor(result, pdfRow)?.reason).toBe('the entry anchors no PDF')
     expect(rowFor(result, headersRow)).toBeUndefined()
   })
 

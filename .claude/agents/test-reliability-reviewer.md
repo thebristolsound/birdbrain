@@ -28,12 +28,13 @@ Write each claim as one sentence that names the behaviour said to be tested.
 
 ## 2. Run the probe
 
-Read the `Test reliability` check on the PR first. `gh pr checks <n> --json name,link` gives
-the `probe` job's link, which ends in the job id; `gh run view --job <id> --log` prints the
-same report the job summary shows. The commit the report names is the merge commit GitHub
-builds from the head and `main`, not the head itself, so match the job to the pinned sha
-through `gh pr checks`. If no finished `probe` job is listed for the pinned sha, run the probe
-yourself on a clean tree:
+Read the `Test reliability` check on the PR first. `gh pr checks <n> --json name,state,link`
+gives the `probe` job's state and its link, which ends in the job id;
+`gh run view --job <id> --log` prints the same report the job summary shows. The commit the
+report names is the merge commit GitHub builds from the head and `main`, not the head itself,
+so match the job to the pinned sha through `gh pr checks`. Use the job only when its `state` is `SUCCESS`: a pending
+job has no full report yet, and a failed one could not run. If no `probe` job for the pinned
+sha has that state, run the probe yourself on a clean tree:
 `pnpm test:reliability --base origin/main`. It takes a few minutes and restores
 every file it edits. Its two experiments:
 

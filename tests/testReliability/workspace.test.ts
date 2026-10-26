@@ -49,6 +49,7 @@ describe('createWorkspace', () => {
     workspace.write('src/a.ts', 'mutant')
     workspace.remove('src/b.ts')
     expect(JSON.parse(read(JOURNAL))).toEqual({ paths: ['src/a.ts', 'src/b.ts'] })
+    expect(existsSync(join(root, `${JOURNAL}.tmp`))).toBe(false)
     expect(workspace.edited).toEqual(['src/a.ts', 'src/b.ts'])
     workspace.restore()
     expect(existsSync(join(root, JOURNAL))).toBe(false)
@@ -74,6 +75,14 @@ describe('checkJournal', () => {
     createWorkspace(root).write('src/a.ts', 'mutant left behind')
     expect(() => checkJournal(root)).toThrow(
       /edited files in place: src\/a\.ts\. Restore them \(git checkout HEAD -- 'src\/a\.ts'/
+    )
+  })
+
+  it('refuses to start after a run that left an unreadable journal, saying how to recover', () => {
+    mkdirSync(join(root, '.cache/test-reliability'), { recursive: true })
+    writeFileSync(join(root, JOURNAL), '{"paths": ["src/a')
+    expect(() => checkJournal(root)).toThrow(
+      /is unreadable \(.+\)\. Run git status to find the files it edited, restore them/
     )
   })
 })

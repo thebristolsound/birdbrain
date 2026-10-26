@@ -6,7 +6,7 @@
 // A run killed before it restores (SIGKILL, power loss) leaves the journal, and the next run
 // refuses to start until the files are checked out again.
 
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 export const JOURNAL = '.cache/test-reliability/journal.json'
@@ -17,7 +17,17 @@ export const restoreCommand = (paths) =>
 export const checkJournal = (root) => {
   const journal = join(root, JOURNAL)
   if (!existsSync(journal)) return
-  const { paths } = JSON.parse(readFileSync(journal, 'utf8'))
+  let paths
+  try {
+    ;({ paths } = JSON.parse(readFileSync(journal, 'utf8')))
+  } catch (error) {
+    throw new Error(
+      `an earlier run stopped and ${JOURNAL} is unreadable (${error.message}). ` +
+        'Run git status to find the files it edited, restore them with git checkout HEAD -- ' +
+        `<path> (and delete any that HEAD does not have), then delete ${JOURNAL}.`,
+      { cause: error }
+    )
+  }
   throw new Error(
     `an earlier run stopped with edited files in place: ${paths.join(', ')}. ` +
       `Restore them (${restoreCommand(paths)}, and delete any that HEAD does not have), ` +
@@ -34,7 +44,11 @@ export const createWorkspace = (root) => {
     const absolute = join(root, path)
     originals.set(path, existsSync(absolute) ? readFileSync(absolute) : null)
     mkdirSync(dirname(journal), { recursive: true })
-    writeFileSync(journal, JSON.stringify({ paths: [...originals.keys()] }, null, 2))
+    // Written beside the journal and renamed over it, so a kill mid-write leaves the previous
+    // journal whole rather than a truncated one.
+    const next = `${journal}.tmp`
+    writeFileSync(next, JSON.stringify({ paths: [...originals.keys()] }, null, 2))
+    renameSync(next, journal)
   }
 
   return {

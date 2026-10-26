@@ -103,6 +103,18 @@ vi.mock('@main/services/waybackMachine', async (importActual) => {
   }
 })
 
+// The real link lookup by default, over the mocked lookupSnapshots above, so a test can
+// see both what the handler passes in and what reaches the CDX client.
+const lookupLinkSnapshots = vi.hoisted(() => vi.fn())
+vi.mock('@main/services/waybackLinkCheck', async (importActual) => {
+  const actual = await importActual<typeof import('@main/services/waybackLinkCheck')>()
+  lookupLinkSnapshots.mockImplementation(actual.lookupLinkSnapshots)
+  return {
+    ...actual,
+    lookupLinkSnapshots: (...a: unknown[]) => lookupLinkSnapshots(...a)
+  }
+})
+
 // The persona session service needs Electron's `session` and `safeStorage`,
 // neither of which the mock above provides; the handlers' routing and the
 // dialog handshake are what this file checks, so the service is a stub.
@@ -3201,11 +3213,17 @@ describe('archive handlers', () => {
         captureId: cap.id,
         url: 'https://elsewhere.example/a'
       })
-      expect(expectOk(res)).toEqual(answer)
+      expect(expectOk(res)).toEqual({ ...answer, countIsMinimum: false })
+      // The lookup follows the Egress (ADR-0032): egressFetch is its only route out.
+      expect(lookupLinkSnapshots).toHaveBeenCalledExactlyOnceWith(
+        'https://elsewhere.example/a',
+        '2026-08-01T12:00:00.000Z',
+        egressFetch
+      )
       expect(lookupSnapshots).toHaveBeenCalledExactlyOnceWith(
         'https://elsewhere.example/a',
         '2026-08-01T12:00:00.000Z',
-        { fetchImpl: egressFetch, limit: 20 }
+        { fetchImpl: expect.any(Function), limit: 20 }
       )
     })
 
@@ -3221,6 +3239,7 @@ describe('archive handlers', () => {
       const cap = storedPage()
       const res = await invoke<Res>(IPC_CHANNELS.WAYBACK_LOOKUP_LINK, { captureId: cap.id, url })
       expect(res).toMatchObject({ ok: false, error: reason, code: 'WAYBACK_LINK_REFUSED' })
+      expect(lookupLinkSnapshots).not.toHaveBeenCalled()
       expect(lookupSnapshots).not.toHaveBeenCalled()
     })
 

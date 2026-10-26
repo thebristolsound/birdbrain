@@ -6,7 +6,6 @@ import { MENTION_TARGET_TYPES } from '@shared/noteDoc'
 import { validateIgnorePattern } from '@shared/urlPatterns'
 import { regexPatternError } from '@shared/selectorPattern'
 import { captureLinkBlockReason } from '@shared/localAddress'
-import { WAYBACK_LINK_LOOKUP_LIMIT } from '@shared/wayback'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
@@ -89,6 +88,7 @@ import {
 import { deleteDemoCase } from '@main/services/demoCase'
 import { getExtensionPath, extensionPathExists } from '@main/services/extensionPath'
 import { lookupSnapshots, isPersistableSnapshot } from '@main/services/waybackMachine'
+import { lookupLinkSnapshots } from '@main/services/waybackLinkCheck'
 import { egressFetch } from '@main/services/egress'
 import { buildCsv } from '@main/services/csvEscape'
 import { getInstallationId } from '@main/services/installationId'
@@ -880,10 +880,7 @@ export function registerIpcHandlers(deps: {
     const refused = captureLinkBlockReason(p.url)
     if (refused) throw new IpcFailure(refused, 'WAYBACK_LINK_REFUSED')
     try {
-      return await lookupSnapshots(p.url, capture.timestamp, {
-        fetchImpl: egressFetch,
-        limit: WAYBACK_LINK_LOOKUP_LIMIT
-      })
+      return await lookupLinkSnapshots(p.url, capture.timestamp, egressFetch)
     } catch (err) {
       throw new IpcFailure(
         err instanceof Error ? err.message : 'Wayback lookup failed',

@@ -780,6 +780,76 @@ describe('dbAdmin', () => {
     })
   })
 
+  // The capture engine's two files: a stray is reported, and a missing one never
+  // reports its Capture (open question F of the capture engine first-slice plan).
+  describe('findOrphans and the Transaction Record and PDF', () => {
+    let tempDir: string
+    let caseId: string
+
+    beforeEach(() => {
+      tempDir = mkdtempSync(join(tmpdir(), 'bb-db-admin-engine-'))
+      initStorage(tempDir)
+      caseId = createCase({ name: 'Engine', description: '' }).id
+      ensureCaseDir(caseId)
+    })
+
+    afterEach(() => {
+      rmSync(tempDir, { recursive: true, force: true })
+    })
+
+    function seedCapture(id: string, files: Array<'warc.gz' | 'pdf'>): string {
+      const mhtml = defaultCaptureStore.artifactPaths(caseId, id, 'mhtml')
+      insertCapture({
+        id,
+        caseId,
+        url: `https://example.com/${id}`,
+        title: id,
+        hash: 'h',
+        timestamp: '2026-10-18T12:00:00.000Z',
+        format: 'mhtml',
+        mhtmlPath: mhtml.rel
+      })
+      writeFileSync(mhtml.abs, 'mhtml')
+      for (const type of files) {
+        writeFileSync(defaultCaptureStore.artifactPaths(caseId, id, type).abs, type)
+      }
+      return id
+    }
+
+    it("reports a stray .warc.gz and .pdf, and never a live Capture's", () => {
+      seedCapture('live', ['warc.gz', 'pdf'])
+      const strays = ['ghost-capture.warc.gz', 'ghost-capture.pdf'].map((name) => {
+        writeFileSync(join(tempDir, caseId, name), 'stray')
+        return join(caseId, name)
+      })
+
+      const report = findOrphans()
+
+      expect(report.dbOrphans).toEqual([])
+      expect([...report.fileOrphans].sort()).toEqual([...strays].sort())
+    })
+
+    it('leaves a Capture whose Transaction Record or PDF is missing out of the report', () => {
+      const noRecord = seedCapture('no-record', ['pdf'])
+      const noPdf = seedCapture('no-pdf', ['warc.gz'])
+
+      const report = findOrphans()
+      expect(report).toEqual({ dbOrphans: [], fileOrphans: [] })
+      expect(cleanOrphans(report)).toEqual({ dbRecordsRemoved: 0, filesRemoved: 0 })
+
+      expect(getCapture(noRecord)).toBeDefined()
+      expect(getCapture(noPdf)).toBeDefined()
+      for (const [id, type] of [
+        [noRecord, 'mhtml'],
+        [noRecord, 'pdf'],
+        [noPdf, 'mhtml'],
+        [noPdf, 'warc.gz']
+      ] as const) {
+        expect(existsSync(defaultCaptureStore.artifactPaths(caseId, id, type).abs)).toBe(true)
+      }
+    })
+  })
+
   describe('exportTableData', () => {
     it('exports table as CSV string', () => {
       createRow('tags', { id: 'tag-1', name: 'Urgent', color: '#ff0000' })

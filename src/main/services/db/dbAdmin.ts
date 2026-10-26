@@ -670,6 +670,10 @@ export function findOrphans(): OrphanReport {
     // October 2026 on PR #1865). They stay in `captures` below, so their
     // files are not reported either.
     if (cap.shared) continue
+    // A missing Transaction Record or PDF is never a reason to report a
+    // Capture, since cleanOrphans deletes every Capture this reports;
+    // verifySidecars reports the file `missing` instead (open question F of
+    // docs/plans/2026-10-10-capture-engine-first-slice.md).
     const missing: string[] = []
     if (cap.html_path && !existsSync(join(storageRoot, cap.html_path))) {
       missing.push(cap.html_path)

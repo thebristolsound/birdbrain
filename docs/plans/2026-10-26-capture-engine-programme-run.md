@@ -34,6 +34,14 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
   `WARC-Protocol` header with the real protocol.
 - **Re-encoded text bodies.** Ruled 2026-10-26: #1979 marks and states the limit, and spike #1983
   measures whether the browser can hand over the served bytes before step 9.
+- **Exact text bytes.** Ruled 2026-10-26 on spike #1988: step 9 sends
+  `Network.configureDurableMessages` on every session, keeps a text body only from a session where
+  it answered, drops the re-encoded marker, accepts service-worker-answered page copies as body
+  omitted, and applies the per-resource limit itself.
+- **Private host names.** Ruled 2026-10-26 (slice 3 ruling 3): the shared rule refuses
+  hosts with no dot and `.local`, `.internal` and `.home.arpa` names for the lookup and Capture link. #1990
+  puts it in `localAddressKind`, so the background capture's redirect refusal takes it too; that
+  scope is put to the maintainer.
 - **The link writer step.** ADR-0040's writer (slice 2 plan, B4 step 3) adds a migration and
   touches more than ten files, so its plan needs approval under ADR-0016 before work starts.
 - **The release tag** that carries step 1's verifier. Steps 6, 9, and 10 merge only after it.
@@ -51,11 +59,12 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Step 1, verifier and schema | #1904 | #1978 | review: request changes, fix round pushed at `eac4b91d` |
 | Step 2, mirror columns | #1907 | #1980 | draft, preflight green, stacked on #1978, migration 43 |
 | Step 3, the Case carries the files | #1925 | #1982 | review: approve, fix round pushed at `7dc83929` |
-| Step 5, the report states the fields | #1927 | #1985 | draft, stacked on #1984, export wired, under review |
-| Step 4, packages carry the files | #1926 | #1984 | review: request changes, fix round in flight |
+| Step 5, the report states the fields | #1927 | #1985 | fix round pushed at `b4bd9b71`, preflight green |
+| Step 4, packages carry the files | #1926 | #1984 | fix round pushed at `b7e5e2a8`, preflight green |
 | Step 8, WARC writer | #1906 | #1979 | fix round pushed at `b4e11287`, preflight green |
-| Character set spike | #1983 | - | in flight, runs before step 9 |
-| Viewer slice 2 Part A | #1735 | - | in flight, from main |
+| Character set spike | #1983 | #1988 | exact bytes available; rulings being recorded |
+| Viewer slice 2 Part A | #1735 | #1987 | review: request changes, fix round in flight |
+| Viewer slice 3, one-link lookup | #1737 | #1990 | draft, under review |
 | ADR-0040 acceptance | #1736 | #1977 | draft, preflight green |
 | ADR-0040 verifier, schema 6 | #1976 | #1981 | review: approve, stacked on #1978 |
 
@@ -80,7 +89,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 
 ## Next
 
-Viewer slice 3 (#1737) with S2 rewritten around `src/shared/localAddress.ts`. Open decision for the maintainer from #1979:
+Viewer slice 3's batch PR (ruling 2) after #1990. Open decision for the maintainer from #1979:
 the status line takes its code from the response event, not the ExtraInfo event, because the
 ExtraInfo event carries no reason phrase. Viewer slice 2 Part A (#1735) is
 independent of the schema and takes the next free slot after that.

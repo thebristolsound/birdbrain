@@ -1,0 +1,178 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { mkdirSync, mkdtempSync, rmSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { closeDatabase, getDb } from '@main/services/db/core'
+import { createCase } from '@main/services/db/caseRepo'
+import { listCaseMembers, upsertCaseMember } from '@main/services/db/caseMemberRepo'
+import { createNote, deleteNote, listNotes, updateNote } from '@main/services/db/noteRepo'
+import { maxAuthorVersionInCase, readRow } from '@main/services/db/workingRowRepo'
+import { addTagToNote, createTag, getTagsForNote } from '@main/services/db/tagRepo'
+import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
+import { addMember, shareCase } from '@main/services/sharing/membership'
+import { MAX_ROW_PAGES } from '@main/services/sharing/session'
+import { resetSyncStateMemory } from '@main/services/sharing/syncState'
+import { resetInstallationId } from '@main/services/installationId'
+import { resetSigningKey } from '@main/services/signingKey'
+import {
+  activate,
+  caseDirOf,
+  createPeer,
+  pull,
+  recordSource,
+  seedSharedCase,
+  type Peer
+} from '../../../helpers/syncPeers'
+
+describe('archive-imported working row collisions (#1955)', () => {
+  let root: string
+  let owner: Peer
+  let member: Peer
+
+  beforeEach(async () => {
+    root = mkdtempSync(join(tmpdir(), 'bb-imported-row-collision-'))
+    member = await createPeer(root, 'bob', 'Bob Member', 'BM')
+    owner = await createPeer(root, 'alice', 'Alice Owner', 'AO')
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    resetInstallationId()
+    resetSigningKey()
+    resetSyncStateMemory()
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('resumes beyond a session made entirely of refused imported rows', async () => {
+    const caseId = createCase({ name: 'Refused backlog' }).id
+    mkdirSync(caseDirOf(caseId), { recursive: true })
+    for (let n = 0; n <= MAX_ROW_PAGES; n++) createNote({ caseId, title: `Archived ${n}` })
+    const archive = join(root, 'backlog.birdbrain')
+    await exportCaseArchive(caseId, archive)
+    await activate(member)
+    await importCaseArchive(archive)
+    await activate(owner)
+    await shareCase(caseId, { nodeId: `node-${owner.name}` })
+    await addMember(caseId, {
+      installationId: member.installationId,
+      publicKeyPem: member.publicKeyPem,
+      operatorName: member.operatorName,
+      nodeId: `node-${member.name}`,
+      memberCode: member.memberCode
+    })
+    const roster = listCaseMembers(caseId)
+    const later = createNote({ caseId, title: 'Beyond the refused backlog' })
+    const source = recordSource(caseId, owner)
+    const versions = source.rows
+      .get(owner.installationId)!
+      .map(({ version }) => version)
+      .sort((a, b) => a - b)
+    await activate(member)
+    seedSharedCase(caseId, owner, [])
+    roster.forEach(upsertCaseMember)
+    const first = await pull(caseId, source, {}, { pageBytes: 1 })
+    expect(first.rowsApplied).toBe(0)
+    expect(first.errors).toHaveLength(MAX_ROW_PAGES)
+    expect
+      .soft(maxAuthorVersionInCase(caseId, owner.installationId))
+      .toBe(versions[MAX_ROW_PAGES - 1])
+    const second = await pull(caseId, source, {}, { pageBytes: 1 })
+    expect(second.rowsApplied).toBe(1)
+    expect(listNotes(caseId).map(({ id }) => id)).toEqual([later.id])
+  })
+
+  it('passes a refused application of an imported note without writing into its Case', async () => {
+    const caseId = createCase({ name: 'Imported note application' }).id
+    mkdirSync(caseDirOf(caseId), { recursive: true })
+    const older = createNote({ caseId, title: 'Archived note' })
+    const archive = join(root, 'application.birdbrain')
+    await exportCaseArchive(caseId, archive)
+    await activate(member)
+    const { newCaseId: importedCaseId } = await importCaseArchive(archive)
+    const imported = readRow('notes', { id: older.id }, null)
+    await activate(owner)
+    await shareCase(caseId, { nodeId: `node-${owner.name}` })
+    await addMember(caseId, {
+      installationId: member.installationId,
+      publicKeyPem: member.publicKeyPem,
+      operatorName: member.operatorName,
+      nodeId: `node-${member.name}`,
+      memberCode: member.memberCode
+    })
+    const roster = listCaseMembers(caseId)
+    updateNote({ id: older.id, title: 'Owner edit' })
+    const tag = createTag({ name: 'Owner tag' })
+    addTagToNote({ noteId: older.id, tagId: tag.id })
+    const later = createNote({ caseId, title: 'After the application' })
+    const source = recordSource(caseId, owner)
+    await activate(member)
+    seedSharedCase(caseId, owner, [])
+    roster.forEach(upsertCaseMember)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await pull(caseId, source, {}, { pageBytes: 1 })
+      expect(result.errors.some(({ kind }) => kind === 'peer')).toBe(false)
+      expect.soft(listNotes(caseId).map(({ id }) => id)).toEqual([later.id])
+      expect(readRow('notes', { id: older.id }, null)).toEqual(imported)
+      expect(listNotes(importedCaseId).map(({ title }) => title)).toEqual(['Archived note'])
+      expect(getTagsForNote(older.id)).toEqual([])
+    }
+  })
+
+  it.each(['edit', 'delete', 'already-signed'] as const)(
+    'refuses an imported note collision individually after %s and keeps syncing later notes',
+    async (mode) => {
+      const caseId = createCase({ name: 'Before sharing' }).id
+      mkdirSync(caseDirOf(caseId), { recursive: true })
+      const older = createNote({ caseId, title: 'Archived note', body: 'Original text' })
+      if (mode !== 'already-signed') {
+        getDb()
+          .prepare('UPDATE notes SET version = 0, row_signature = NULL WHERE id = ?')
+          .run(older.id)
+      }
+      const archive = join(root, 'owner.birdbrain')
+      await exportCaseArchive(caseId, archive)
+      await activate(member)
+      const { newCaseId: importedCaseId } = await importCaseArchive(archive)
+      expect(listNotes(importedCaseId).map(({ id }) => id)).toEqual([older.id])
+      const imported = readRow('notes', { id: older.id }, null)
+
+      await activate(owner)
+      await shareCase(caseId, { nodeId: `node-${owner.name}` })
+      await addMember(caseId, {
+        installationId: member.installationId,
+        publicKeyPem: member.publicKeyPem,
+        operatorName: member.operatorName,
+        nodeId: `node-${member.name}`,
+        memberCode: member.memberCode
+      })
+      const roster = listCaseMembers(caseId)
+      const first = createNote({ caseId, title: 'First shared note' })
+      const initial = recordSource(caseId, owner)
+      await activate(member)
+      seedSharedCase(caseId, owner, [])
+      roster.forEach(upsertCaseMember)
+      expect
+        .soft((await pull(caseId, initial)).errors.some(({ kind }) => kind === 'peer'))
+        .toBe(false)
+
+      await activate(owner)
+      if (mode === 'edit') updateNote({ id: older.id, title: 'Edited by Owner' })
+      if (mode === 'delete') deleteNote(older.id)
+      const later = createNote({ caseId, title: 'Later shared note' })
+      const source = recordSource(caseId, owner)
+      await activate(member)
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const result = await pull(caseId, source)
+        expect.soft(result.errors.some(({ kind }) => kind === 'peer')).toBe(false)
+        expect
+          .soft(
+            listNotes(caseId)
+              .map(({ id }) => id)
+              .sort()
+          )
+          .toEqual([first.id, later.id].sort())
+        expect.soft(readRow('notes', { id: older.id }, null)).toEqual(imported)
+      }
+    }
+  )
+})

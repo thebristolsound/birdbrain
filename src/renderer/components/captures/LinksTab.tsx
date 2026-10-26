@@ -9,6 +9,11 @@ import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContex
 import { useLinkMenuTarget, type LinkHit } from '@renderer/components/captures/useLinkMenuTarget'
 import { filterLinks, isWebHref, splitAtHost } from '@renderer/components/captures/linksTabModel'
 import { WaybackLinkCell } from '@renderer/components/captures/WaybackLinkCell'
+import {
+  WaybackBatchControls,
+  WaybackBatchStatus
+} from '@renderer/components/captures/WaybackBatchControls'
+import { useWaybackLinkBatch } from '@renderer/components/captures/useWaybackLinkBatch'
 
 const KIND_LABELS: Record<CaptureLink['kind'], string> = {
   http: 'web',
@@ -140,6 +145,7 @@ export function LinksTab({ capture, hit }: { capture: Capture; hit?: FieldHit })
   })
   const { data: captures = [] } = useQuery(capturesQueryOptions(capture.caseId))
   const linkTarget = useLinkMenuTarget(capture.caseId, capture.id)
+  const waybackBatch = useWaybackLinkBatch(capture.id)
   const [query, setQuery] = useState('')
   const [externalOnly, setExternalOnly] = useState(false)
   const [menuHit, setMenuHit] = useState<LinkHit>(NO_HIT)
@@ -280,7 +286,9 @@ export function LinksTab({ capture, hit }: { capture: Capture; hit?: FieldHit })
         <span data-testid="links-count" className="shrink-0 text-[11px] text-text-faint">
           {shown.length} of {data.links.length}
         </span>
+        <WaybackBatchControls urls={shown.map(({ href }) => href)} batch={waybackBatch} />
       </div>
+      <WaybackBatchStatus batch={waybackBatch} />
       {noticeList}
       {shown.length === 0 ? (
         <EmptyState title="No links match" detail="Change the search or turn off External only." />
@@ -314,7 +322,11 @@ export function LinksTab({ capture, hit }: { capture: Capture; hit?: FieldHit })
                 hit={hit && matchesHit(link, hit) ? hit : undefined}
                 wayback={
                   isWebHref(link.href) ? (
-                    <WaybackLinkCell capture={capture} url={link.href} />
+                    <WaybackLinkCell
+                      capture={capture}
+                      url={link.href}
+                      batch={waybackBatch.cells.get(link.href)}
+                    />
                   ) : undefined
                 }
               />

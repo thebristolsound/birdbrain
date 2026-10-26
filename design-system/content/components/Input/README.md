@@ -8,7 +8,7 @@ Any one-line value: search, a URL, a name, a selector pattern. Pair it with `Lab
 
 ## What the consumer provides
 
-All native `<input>` props: `value`, `onChange`, `placeholder`, `type`, `disabled`. There are no variants.
+All native `<input>` props: `value`, `onChange`, `placeholder`, `type`, `disabled`. Input has no variants.
 
 ## Rules
 

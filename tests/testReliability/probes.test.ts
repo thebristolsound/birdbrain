@@ -123,6 +123,23 @@ describe('revertProbe', () => {
     })
   })
 
+  it('runs the reverted tests without the module cache, and HEAD with it', async () => {
+    const workspace = memoryWorkspace({ 'src/a.ts': 'head a', 'tests/a.test.ts': TEST_FILE })
+    const runs: RunArgs[] = []
+    const run = async (args: RunArgs) => {
+      runs.push(args)
+      return result(head)
+    }
+    await revertProbe({
+      changes: changes(),
+      read: (path: string) => workspace.tree.get(path),
+      readBase: () => 'base',
+      workspace,
+      run
+    })
+    expect(runs.map(({ moduleCache }) => moduleCache)).toEqual([undefined, false])
+  })
+
   it('counts a touched test that fails at HEAD without judging it', async () => {
     const workspace = memoryWorkspace({ 'tests/a.test.ts': TEST_FILE })
     const failingHead = [
@@ -245,7 +262,7 @@ describe('mutationProbe', () => {
       budgetMs: 60_000,
       now: () => 0
     })
-    expect(runs[0]).toEqual({ mode: 'related', files: ['src/a.ts'] })
+    expect(runs[0]).toEqual({ mode: 'related', files: ['src/a.ts'], moduleCache: false })
     expect(runs.slice(1).every((args) => args.bail && args.timeoutMs === 90_000)).toBe(true)
     expect(runs[1].files).toEqual(['tests/a.test.ts'])
     expect(outcome.candidates).toBe(2)

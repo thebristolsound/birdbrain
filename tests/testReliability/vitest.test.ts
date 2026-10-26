@@ -79,6 +79,13 @@ describe('vitestArgs', () => {
     expect(args.slice(1, 4)).toEqual(['related', 'src/a.ts', '--run'])
     expect(args.at(-1)).toBe('--bail=1')
   })
+
+  it('turns the module cache off only when asked', () => {
+    const args = (moduleCache?: boolean) =>
+      vitestArgs({ mode: 'run', files: [], outputFile: '/o.json', moduleCache })
+    expect(args()).not.toContain('--fsModuleCache=false')
+    expect(args(false)).toContain('--fsModuleCache=false')
+  })
 })
 
 describe('parseReport', () => {
@@ -181,6 +188,8 @@ describe('createRunner', () => {
     const result = await run({ mode: 'run', files: ['tests/a.test.ts'] })
     expect(calls[0].command).toBe('/bin/electron')
     expect(calls[0].args).not.toContain('--bail=1')
+    await run({ mode: 'run', files: ['tests/a.test.ts'], moduleCache: false })
+    expect(calls[1].args).toContain('--fsModuleCache=false')
     expect(calls[0].options.detached).toBe(process.platform !== 'win32')
     expect(calls[0].options).toMatchObject({
       cwd: root,

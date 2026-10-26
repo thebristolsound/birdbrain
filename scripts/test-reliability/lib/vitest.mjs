@@ -11,7 +11,10 @@ const OUTPUT_TAIL = 4000
 // Required from Node, the electron package exports the path of its binary.
 export const electronBinary = () => createRequire(import.meta.url)('electron')
 
-export const vitestArgs = ({ mode, files, outputFile, bail }) => [
+// A run made while the revert probe has removed a file the branch added leaves Vitest's
+// on-disk module cache holding the test file with that import unresolved, and a later
+// `related` run then finds no test for the file. `moduleCache: false` turns that cache off.
+export const vitestArgs = ({ mode, files, outputFile, bail, moduleCache = true }) => [
   './node_modules/vitest/vitest.mjs',
   mode,
   ...files,
@@ -21,6 +24,7 @@ export const vitestArgs = ({ mode, files, outputFile, bail }) => [
   '--includeTaskLocation',
   '--coverage.enabled=false',
   '--passWithNoTests',
+  ...(moduleCache ? [] : ['--fsModuleCache=false']),
   ...(bail ? ['--bail=1'] : [])
 ]
 
@@ -91,7 +95,7 @@ export const createRunner = ({
 }) => {
   let count = 0
   let active = null
-  const run = async ({ mode, files, bail = false, timeoutMs }) => {
+  const run = async ({ mode, files, bail = false, timeoutMs, moduleCache = true }) => {
     mkdirSync(reportDir, { recursive: true })
     const outputFile = join(reportDir, `run-${++count}.json`)
     rmSync(outputFile, { force: true })
@@ -99,7 +103,7 @@ export const createRunner = ({
     const { code, timedOut, output } = await spawnAndWait({
       spawn,
       command: electron(),
-      args: vitestArgs({ mode, files, outputFile, bail }),
+      args: vitestArgs({ mode, files, outputFile, bail, moduleCache }),
       options: { cwd: root, env: { ...env, ELECTRON_RUN_AS_NODE: '1' } },
       timeoutMs,
       onSpawn: (child) => {

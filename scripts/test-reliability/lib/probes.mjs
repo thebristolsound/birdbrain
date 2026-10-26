@@ -51,7 +51,7 @@ export const revertProbe = async ({ changes, read, readBase, workspace, run }) =
       if (status === 'A') workspace.remove(path)
       else workspace.write(path, readBase(path))
     }
-    base = await run({ mode: 'run', files })
+    base = await run({ mode: 'run', files, moduleCache: false })
   } finally {
     workspace.restore()
   }
@@ -108,7 +108,8 @@ export const mutationProbe = async ({
       results.push(...notRun(mutants, 'not-run'))
       continue
     }
-    const baseline = await run({ mode: 'related', files: [path] })
+    // Without the module cache, so the files this finds do not depend on an earlier run.
+    const baseline = await run({ mode: 'related', files: [path], moduleCache: false })
     const tests = (baseline.report?.files ?? []).map((file) => file.path)
     if (!baseline.ok) {
       files.push({ path, outcome: 'red-baseline', tests })

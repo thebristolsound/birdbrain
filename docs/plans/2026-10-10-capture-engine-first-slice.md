@@ -475,6 +475,17 @@ against a Chromium 152 response.
 - **Decoded bodies under original headers.** The writer keeps the reported `Content-Encoding`,
   `Transfer-Encoding`, and `Content-Length` under `x-orig-` names and writes the stored body's
   length as `Content-Length` (spec open question 1, ruled 2026-10-10).
+- **Text bodies.** Ruled 2026-10-26, after the review of #1979 measured `Network.getResponseBody`
+  returning a windows-1252 page as a decoded string: the writer stores a body the browser hands
+  over as text encoded in UTF-8, which can differ from the bytes the server sent. Each record that
+  holds such a body carries `x-birdbrain-decoded-text: utf-8`, the `warcinfo` record states the
+  limit, and the payload digest covers the stored UTF-8 bytes. Spike #1983 measures, before step 9,
+  whether the browser can hand over the served bytes instead.
+- **Protocol.** Ruled 2026-10-26: request and status lines read `HTTP/1.0` when CDP reports
+  `http/1.0` and `HTTP/1.1` otherwise, so WARC readers can parse them, and each request and response
+  record carries `WARC-Protocol` with the protocol CDP reported, in lower case. browsertrix-crawler
+  does the same (`src/util/reqresp.ts` and `src/util/recorder.ts` at `e582608a`). The `warcinfo`
+  record states the convention.
 - **Addresses.** The writer sets `WARC-IP-Address` only while the Egress is Direct. Through a proxy,
   CDP's `remoteIPAddress` and `remotePort` can name the proxy, and ADR-0032 rule 5 keeps the proxy's
   host and port out of every record (the agent briefs plan, CE-7).
@@ -782,6 +793,11 @@ evidence behind its answer.
 `x-orig-content-encoding` and `x-orig-transfer-encoding` with their values kept, write the stored
 length as `Content-Length`, and keep the reported length as `x-orig-content-length`. The writer
 states the renaming in `warcinfo` (D8), and step 9 states it in `features.mdx`.
+
+**Ruled 2026-10-26:** a body the browser hands over as text is stored as that text encoded in
+UTF-8, which can differ from the bytes the server sent. The writer marks each record that holds
+one and states the limit in `warcinfo` (D8, "Text bodies"). Spike #1983 measures, before step 9,
+whether the browser can hand over the served bytes instead.
 
 The spec asks what browser-based archiving tools write, and to follow it if it is documented (spec,
 Open questions). This plan found no published statement, and the two Webrecorder recorders differ

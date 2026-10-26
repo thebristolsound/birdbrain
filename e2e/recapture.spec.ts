@@ -27,6 +27,38 @@ const LAZY_PAGE = `<!doctype html><html><head><title>Lazy Growth Fixture</title>
 </body></html>`
 const LAZY_PAGE_HEIGHT = 4001
 
+// Pages whose content scrolls in inner panels, not the document. Each panel
+// adds a chunk when its 1px sentinel scrolls into view, so a chunk's label in
+// the stored text shows the scroll phase reached the end of that panel.
+const lazyPanel = (panel: string, sentinel: string, box: string, chunk: string, max: number) =>
+  `(() => { let n = 0; const root = document.getElementById('${panel}')
+  new IntersectionObserver((entries) => {
+    if (entries.some((e) => e.isIntersecting) && n < ${max}) {
+      const d = document.createElement('div'); d.style.height = '${chunk}'
+      d.textContent = '${panel.toUpperCase()}LAZY' + n++
+      document.getElementById('${box}').appendChild(d)
+    }
+  }, { root }).observe(document.getElementById('${sentinel}')) })();`
+
+// The app-shell layout: body{height:100vh} keeps the default 8px margin, so the
+// document overflows by 16px, and <main> holds the content: 2000px plus a 1px
+// sentinel, growing by four 2000px chunks to 10001px.
+const APP_SHELL_PAGE = `<!doctype html><html><head><title>App Shell Fixture</title></head>
+<body style="height:100vh"><main id="main" style="height:100%;overflow:auto">
+<div id="main-box"><div style="height:2000px">MAIN</div></div><div id="main-end" style="height:1px"></div>
+</main><script>${lazyPanel('main', 'main-end', 'main-box', '2000px', 4)}</script></body></html>`
+
+// Two panes side by side, the document not overflowing: a 2001px <nav> that
+// grows by one 1000px chunk, and a 4001px <main> that grows by one 2000px chunk.
+const TWO_PANE_PAGE = `<!doctype html><html><head><title>Two Pane Fixture</title></head>
+<body style="margin:0;display:flex;height:100vh">
+<nav id="nav" style="width:300px;height:100%;overflow:auto">
+<div id="nav-box"><div style="height:2000px">NAV</div></div><div id="nav-end" style="height:1px"></div></nav>
+<main id="main" style="flex:1;height:100%;overflow:auto">
+<div id="main-box"><div style="height:4000px">MAIN</div></div><div id="main-end" style="height:1px"></div></main>
+<script>${lazyPanel('nav', 'nav-end', 'nav-box', '1000px', 1)}
+${lazyPanel('main', 'main-end', 'main-box', '2000px', 1)}</script></body></html>`
+
 async function queueUrl(page: Page, caseName: string, url: string): Promise<string> {
   await page.evaluate(() => {
     window.location.hash = '/cases/new'
@@ -72,8 +104,13 @@ test.describe('Recapture (background capture)', () => {
   test.beforeAll(async () => {
     server = createServer((req, res) => {
       res.writeHead(200, { 'content-type': 'text/html' })
-      if (req.url === '/lazy') {
-        res.end(LAZY_PAGE)
+      const fixtures: Record<string, string> = {
+        '/lazy': LAZY_PAGE,
+        '/app-shell': APP_SHELL_PAGE,
+        '/two-pane': TWO_PANE_PAGE
+      }
+      if (req.url && fixtures[req.url]) {
+        res.end(fixtures[req.url])
         return
       }
       res.end(
@@ -280,4 +317,51 @@ test.describe('Recapture (background capture)', () => {
     }, capture.id)
     expect(verification.status).toBe('verified')
   })
+
+  // The phase scrolls a page's inner panels, larger overflow first, and ends on
+  // the stall detector at the end of the largest one.
+  for (const fixture of [
+    {
+      name: 'an app-shell page whose content scrolls in an inner panel',
+      path: '/app-shell',
+      title: 'App Shell Fixture',
+      endHeight: 10001,
+      chunks: ['MAINLAZY3']
+    },
+    {
+      name: 'a page with two scrolling panes',
+      path: '/two-pane',
+      title: 'Two Pane Fixture',
+      endHeight: 6001,
+      chunks: ['NAVLAZY0', 'MAINLAZY0']
+    }
+  ]) {
+    test(`scrolls ${fixture.name} and records where it stopped growing`, async ({ page }) => {
+      test.setTimeout(150000)
+
+      const caseId = await queueUrl(page, `${fixture.title} E2E`, `${baseUrl}${fixture.path}`)
+      await expect(page.getByText(fixture.title, { exact: true }).first()).toBeVisible({
+        timeout: 60000
+      })
+
+      const entry = await lastCaptureEntry(page, caseId)
+      expect(entry.scrollToLoad).toEqual({
+        requested: true,
+        ran: true,
+        outcome: 'stopped-growing',
+        endHeight: fixture.endHeight,
+        scrollLockLifted: false
+      })
+
+      const text = await page.evaluate(async (captureId: string) => {
+        const w = window as unknown as {
+          birdbrain: {
+            captures: { getContent: (id: string, type: 'txt') => Promise<string | null> }
+          }
+        }
+        return w.birdbrain.captures.getContent(captureId, 'txt')
+      }, String(entry.captureId))
+      for (const chunk of fixture.chunks) expect(text ?? '').toContain(chunk)
+    })
+  }
 })

@@ -130,7 +130,7 @@ async function waitForDocumentComplete(wc: WebContents, timeoutMs: number): Prom
   )
 }
 
-// Shared by the scroll-phase scripts below. canScroll probes actual movement —
+// Shared by the scroll-phase scripts below. The probes test actual movement —
 // a viewport scroll-locked by overflow: hidden clamps even programmatic
 // scrolling. pickRoot prefers the document, falling back to the largest
 // scrollable descendant (app-shell layouts scroll an inner container).
@@ -141,35 +141,42 @@ const SCROLL_HELPERS = `
     if (el.scrollTo) el.scrollTo({ top: y, behavior: 'instant' })
     else el.scrollTop = y
   }
-  // A root already scrolled to its end moves only up, so the probe tries both
-  // ways. Probing down alone reads the bottom of a page as nothing to scroll,
-  // which ends the loop before the stall detector can.
-  const canScroll = (el) => {
+  const moves = (el, delta) => {
     if (!el || el.scrollHeight <= el.clientHeight + 2) return false
     const prev = el.scrollTop
-    setScrollTop(el, prev + 1)
-    let moved = el.scrollTop !== prev
-    if (!moved && prev > 0) {
-      setScrollTop(el, prev - 1)
-      moved = el.scrollTop !== prev
-    }
+    if (prev + delta < 0) return false
+    setScrollTop(el, prev + delta)
+    const moved = el.scrollTop !== prev
     setScrollTop(el, prev)
     return moved
   }
+  const canScroll = (el) => moves(el, 1)
+  const atEnd = (el) => !canScroll(el) && moves(el, -1)
   const doc = document.scrollingElement || document.documentElement || document.body
-  const pickRoot = () => {
+  // A root that can still move down wins: the document, else the inner one
+  // with the most overflow. With allowAtEnd, and only when no root can move
+  // down, it returns the root at its end with the most overflow, so the step
+  // loop ends on its stall detector at a real bottom rather than on "nothing
+  // to scroll".
+  const pickRoot = (allowAtEnd) => {
     if (canScroll(doc)) return doc
     let best = null
     let bestGain = 0
+    let end = allowAtEnd && atEnd(doc) ? doc : null
+    let endGain = end ? doc.scrollHeight - doc.clientHeight : 0
     const minHeight = Math.max((window.innerHeight || 0) / 2, 150)
     for (const el of document.querySelectorAll('body *')) {
       const gain = el.scrollHeight - el.clientHeight
-      if (gain > bestGain && el.clientHeight >= minHeight && canScroll(el)) {
+      if (el.clientHeight < minHeight) continue
+      if (gain > bestGain && canScroll(el)) {
         best = el
         bestGain = gain
+      } else if (allowAtEnd && gain > endGain && atEnd(el)) {
+        end = el
+        endGain = gain
       }
     }
-    return best
+    return best || end
   }
 `
 
@@ -192,9 +199,9 @@ const SCROLL_UNLOCK_SCRIPT = `(() => {
 // One scroll step: advance the root by one viewport (re-picked each step so a
 // layout change mid-phase can't strand the loop) and report position/height
 // for the main-process stall detector. null = nothing scrollable.
-const SCROLL_STEP_SCRIPT = `(() => {
+export const SCROLL_STEP_SCRIPT = `(() => {
   ${SCROLL_HELPERS}
-  const root = pickRoot()
+  const root = pickRoot(true)
   if (!root) return null
   const viewportHeight = Math.max(root.clientHeight || 0, window.innerHeight || 0, 1)
   const maxY = Math.max(0, root.scrollHeight - viewportHeight)
@@ -273,7 +280,10 @@ export async function scrollToLoadLazyContent(
       await sleep(SCROLL_PAUSE_MS)
 
       const atBottom = state.y + state.viewportHeight >= state.height - 2
-      const noHeightGrowth = state.height <= lastHeight
+      // A height that differs from the last step's, up or down, is either new
+      // content or a step that moved on to another root (a second pane), and
+      // either restarts the stall count.
+      const noHeightGrowth = state.height === lastHeight
       const noScrollProgress = state.y <= lastY + 1
 
       if ((atBottom && noHeightGrowth) || (noHeightGrowth && noScrollProgress)) {

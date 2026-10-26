@@ -2,8 +2,8 @@
 
 **Date:** 2026-10-26
 
-**Status:** Complete. A measurement, not a decision. It recommends a collector change for step 9,
-which waits for the maintainer's ruling (see "Rulings this asks for").
+**Status:** Complete. A measurement, not a decision. It recommended a collector change for step 9,
+and the maintainer ruled on its three questions on 2026-10-26 (see "Rulings, 2026-10-26").
 
 **Frame of reference:** every run used a checkout of `50966b79` (`origin/main` on 2026-10-26).
 Citations of the writer point at `b4e11287`, the head of `feat/1906-warc-writer` (PR #1979) on the
@@ -85,6 +85,19 @@ four came back as other bytes. This spike ran no writer, so it shows the bytes a
    a reader takes "over the budget" to mean those limits. If the record states a per-resource
    limit, step 9 has to enforce it itself. D17 item 7 already makes the engine's own cap the bound
    on the total.
+
+## Rulings, 2026-10-26
+
+The maintainer ruled on the three questions above on 2026-10-26.
+
+1. **The collector change: adopted.** Step 9 makes the collector change as the Recommendation
+   states it. A target counts as recorded only when its `Network.configureDurableMessages`
+   answered, and the collector keeps a text body only from such a session. Step 9's pull request
+   removes the `x-birdbrain-decoded-text` marker and its `warcinfo` sentence.
+2. **Service-worker responses: accepted.** A page's copy of a response that a service worker
+   answered becomes `body-omitted`.
+3. **The per-resource limit: step 9 applies it.** Step 9 applies the per-resource limit itself
+   before it keeps a body, and records an oversized body as omitted.
 
 ## Environment
 

@@ -1206,6 +1206,16 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   to the Export bullet that lists what an evidence package contains. A test-only certificate
   allowance, from step 0's question 6, joins CE-2's loopback allowance, which a packaged build
   cannot turn on.
+- **Text bodies (ruled 2026-10-26).** The
+  [charset spike](../specs/2026-10-26-transaction-record-charset-spike.md) measured that
+  `Network.getResponseBody` returns the served bytes once the session has been sent
+  `Network.configureDurableMessages`, and the maintainer ruled on its three questions (the spike,
+  "Rulings, 2026-10-26"). Step 9 sends that command with the `Network.enable` limits on the page's
+  session and on each attached session in D17's order, and counts a target as recorded only when
+  it answered. The collector keeps a text body only from such a session. Step 9 applies the
+  per-resource limit itself before it keeps a body and records an oversized body as omitted. A
+  page's copy of a response that a service worker answered is `body-omitted`. Step 9's pull request
+  removes the writer's `x-birdbrain-decoded-text` marker and its `warcinfo` sentence.
 - **Time.** The render races one deadline and, when the deadline wins, rejects with "Recapture
   timed out" and stores nothing; `FINAL_ARTIFACT_RESERVE_MS` reserves 20 s for the screenshot,
   MHTML, and text only (`renderPageInHiddenWindow`). Two new phases need time at the end: the
@@ -1582,3 +1592,7 @@ folded in.
   review: the setup order set per target type from a rerun measurement, the body cap applied
   before fetching, the page's own auto-attach bounded and counted, and the departure from ADR-0035
   named for approval. Step 1 waits for its approval.
+- **2026-10-26.** The charset spike (#1983, PR #1988) found a way for the collector to keep a text
+  response's served bytes, and the maintainer ruled on its three questions the same day. Step 9's
+  Changes gain a "Text bodies" item with the rulings; the spike records them under "Rulings,
+  2026-10-26".

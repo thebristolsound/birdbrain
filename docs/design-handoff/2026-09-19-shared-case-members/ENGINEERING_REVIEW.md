@@ -119,6 +119,13 @@ Answers `docs/specs/2026-09-19-shared-case-members-ui-brief.md`. The spec on
 `t3code/privacy-first-collaboration` is the contract; these are the
 view-layer calls that need an Accept / Modify / Reject.
 
+Verdicts returned 2026-09-19 in
+`docs/specs/2026-09-19-shared-case-members-feasibility-assessment.md` and
+applied to the mock the same day: 19 Modify (Members ships alone), 20 Accept
+(hue index = `member-add` position), 21 Accept (error covers every failure
+kind), 22 Accept (code ≤ 3 chars), 23 Accept, 24 Modify (per-chain default,
+Timeline secondary), 25 Modify (neutral). Label: "Chain verified" → "Verified".
+
 19. **Case settings screen.** New case-scoped screen (General / Members /
     Export) reached from the top-bar sync pill and the case ⋯ menu. Upstream
     has only app-level `SettingsView.tsx`. Confirm a case-settings route is

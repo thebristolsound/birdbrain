@@ -5,13 +5,19 @@ import {
   type ContractedChannel,
   type IpcEventChannel,
   type IpcEventContract,
-  type IpcInvokeContract
+  type IpcInvokeContract,
+  type IpcRefusal
 } from '@shared/ipc'
 
 // Every invoke channel is registered through handle(), so every result carries
 // the { ok, data | error } envelope. A result without one means the channel was
 // registered raw — a wiring bug we surface rather than pass through.
-async function unwrapIpc<T>(promise: Promise<unknown>): Promise<T> {
+//
+// The context bridge copies only an Error's message into the renderer, so a
+// `code` set here never arrives. A channel whose callers branch on the code
+// rejects with a plain IpcRefusal instead, which crosses whole; the renderer
+// turns it back into an Error (refusalError in src/renderer/lib/api/sharing.ts).
+async function unwrapIpc<T>(promise: Promise<unknown>, refusal: 'error' | 'object'): Promise<T> {
   const result = await promise
   if (!result || typeof result !== 'object' || !('ok' in result)) {
     throw new Error('IPC result is missing its envelope')
@@ -20,6 +26,10 @@ async function unwrapIpc<T>(promise: Promise<unknown>): Promise<T> {
     return (result as { ok: true; data: T }).data
   }
   const err = result as { ok: false; error: string; code?: string }
+  if (refusal === 'object') {
+    const refused: IpcRefusal = { message: err.error, code: err.code }
+    throw refused
+  }
   const error = new Error(err.error)
   ;(error as unknown as { code?: string }).code = err.code
   throw error
@@ -29,10 +39,14 @@ async function unwrapIpc<T>(promise: Promise<unknown>): Promise<T> {
 // tuple and the resolved type come from IpcInvokeContract, so a bridge method
 // has no hand-written signature that could drift from its handler.
 function bridge<C extends ContractedChannel>(
-  channel: C
+  channel: C,
+  refusal: 'error' | 'object' = 'error'
 ): (...args: IpcInvokeContract[C]['args']) => Promise<IpcInvokeContract[C]['result']> {
-  return (...args) => unwrapIpc(ipcRenderer.invoke(channel, ...args))
+  return (...args) => unwrapIpc(ipcRenderer.invoke(channel, ...args), refusal)
 }
+
+// A sharing channel, whose refusals the Members screens tell apart by code.
+const refusable = <C extends ContractedChannel>(channel: C) => bridge(channel, 'object')
 
 // Builds a renderer-facing subscribe method for one event channel. The callback
 // payload comes from IpcEventContract; the returned function detaches the
@@ -210,19 +224,19 @@ const birdbrain = {
   },
 
   sharing: {
-    getSyncState: bridge(IPC_CHANNELS.SHARING_GET_SYNC_STATE),
-    createInvite: bridge(IPC_CHANNELS.SHARING_CREATE_INVITE),
-    cancelInvite: bridge(IPC_CHANNELS.SHARING_CANCEL_INVITE),
-    readInvite: bridge(IPC_CHANNELS.SHARING_READ_INVITE),
-    join: bridge(IPC_CHANNELS.SHARING_JOIN),
-    approveJoin: bridge(IPC_CHANNELS.SHARING_APPROVE_JOIN),
-    declineJoin: bridge(IPC_CHANNELS.SHARING_DECLINE_JOIN),
-    revoke: bridge(IPC_CHANNELS.SHARING_REVOKE),
-    excludeExhibit: bridge(IPC_CHANNELS.SHARING_EXCLUDE_EXHIBIT),
-    syncNow: bridge(IPC_CHANNELS.SHARING_SYNC_NOW),
-    getMembers: bridge(IPC_CHANNELS.SHARING_GET_MEMBERS),
-    isAvailable: bridge(IPC_CHANNELS.SHARING_IS_AVAILABLE),
-    setRelayUrl: bridge(IPC_CHANNELS.SHARING_SET_RELAY_URL)
+    getSyncState: refusable(IPC_CHANNELS.SHARING_GET_SYNC_STATE),
+    createInvite: refusable(IPC_CHANNELS.SHARING_CREATE_INVITE),
+    cancelInvite: refusable(IPC_CHANNELS.SHARING_CANCEL_INVITE),
+    readInvite: refusable(IPC_CHANNELS.SHARING_READ_INVITE),
+    join: refusable(IPC_CHANNELS.SHARING_JOIN),
+    approveJoin: refusable(IPC_CHANNELS.SHARING_APPROVE_JOIN),
+    declineJoin: refusable(IPC_CHANNELS.SHARING_DECLINE_JOIN),
+    revoke: refusable(IPC_CHANNELS.SHARING_REVOKE),
+    excludeExhibit: refusable(IPC_CHANNELS.SHARING_EXCLUDE_EXHIBIT),
+    syncNow: refusable(IPC_CHANNELS.SHARING_SYNC_NOW),
+    getMembers: refusable(IPC_CHANNELS.SHARING_GET_MEMBERS),
+    isAvailable: refusable(IPC_CHANNELS.SHARING_IS_AVAILABLE),
+    setRelayUrl: refusable(IPC_CHANNELS.SHARING_SET_RELAY_URL)
   },
 
   investigation: {

@@ -72,6 +72,10 @@
       "note": "Neither the published package nor its source repository (https://github.com/develar/lazy-val) carries a licence file. The package declares the MIT License and names Vladimir Krivosheev as its author; the standard MIT License text follows.",
       "texts": ["MIT.txt"]
     },
+    "qrcode-generator": {
+      "note": "The published 2.0.4 package carries no licence file. This text is the LICENSE file from its source repository at the commit recorded in the package's npm gitHead (https://github.com/kazuhikoarase/qrcode-generator/blob/83b7e8fe3fddd3b0368dbafd6ce56995bd25e3c8/LICENSE).",
+      "texts": ["qrcode-generator-LICENSE.txt"]
+    },
     "react-remove-scroll-bar": {
       "note": "The published package carries no licence file. This text is the LICENSE file from its source repository (https://github.com/theKashey/react-remove-scroll-bar), without the email address that follows the author's name in the copyright line.",
       "texts": ["react-remove-scroll-bar-LICENSE.txt"]

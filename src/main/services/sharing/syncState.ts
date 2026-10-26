@@ -10,7 +10,7 @@ import {
 } from 'fs'
 import { join } from 'path'
 import { z } from 'zod'
-import { SYNC_ERROR_KINDS, type SyncState } from '@shared/types'
+import { SYNC_ERROR_KINDS, type SyncErrorKind, type SyncState } from '@shared/types'
 import { listCaseMembers } from '@main/services/db/caseMemberRepo'
 import { listSharedCaseIds } from '@main/services/db/caseRepo'
 import { getInstallationId } from '@main/services/installationId'
@@ -34,7 +34,25 @@ import { getStorageRoot } from '@main/services/storage'
 // a new version is always above it (workingRows.ts, allocateLocalVersion).
 
 export const SYNC_STATE_FILENAME = 'sync-state.json'
+export const SYNC_PAUSES_FILENAME = 'sync-pauses.json'
 export const MEMBERS_FILENAME = 'members.json'
+
+const VersionPausesSchema = z.record(
+  z.string(),
+  z
+    .object({
+      at: z.string(),
+      index: z.number().int().nonnegative(),
+      heldIndex: z.number().int().nonnegative().optional()
+    })
+    .strict()
+)
+
+// Kept apart from the high-water mark: older builds reject unknown sync-state fields.
+function readVersionPauses(caseDir: string): z.infer<typeof VersionPausesSchema> {
+  const path = join(caseDir, SYNC_PAUSES_FILENAME)
+  return existsSync(path) ? VersionPausesSchema.parse(JSON.parse(readFileSync(path, 'utf-8'))) : {}
+}
 
 const ChainHeadRefSchema = z
   .object({ index: z.number().int().nonnegative(), entryHash: z.string() })
@@ -168,9 +186,16 @@ export interface SessionOutcome {
   transfer: { entries: number; blobs: number; bytes: number }
   // The first error, when the session had one.
   error: {
-    kind: SyncState['lastError'] extends infer E ? (E extends { kind: infer K } ? K : never) : never
+    kind: SyncErrorKind
     detail: string
+    installationId?: string
+    index?: number
   } | null
+  errors?: Array<{
+    kind: SyncErrorKind
+    installationId?: string
+    index?: number
+  }>
   heads: Record<string, { index: number; entryHash: string }>
 }
 
@@ -190,6 +215,24 @@ export function finishSession(caseId: string, outcome: SessionOutcome): void {
   const caseDir = join(getStorageRoot(), caseId)
   const state = readSyncStateFile(caseDir)
   const peers = { ...state.peers }
+  const versionPauses = readVersionPauses(caseDir)
+  for (const [author, pause] of Object.entries(versionPauses)) {
+    if ((heads[author]?.index ?? -1) >= pause.index) delete versionPauses[author]
+  }
+  for (const failure of outcome.errors ?? (error ? [error] : [])) {
+    if (
+      failure.kind !== 'newer-version' ||
+      failure.installationId === undefined ||
+      failure.index === undefined
+    )
+      continue
+    const heldIndex = heads[failure.installationId]?.index
+    versionPauses[failure.installationId] = {
+      at: now,
+      index: failure.index,
+      ...(heldIndex === undefined ? {} : { heldIndex })
+    }
+  }
   if (peerInstallationId !== null) {
     peers[peerInstallationId] = { lastSessionAt: now, ok: error === null, heads }
   }
@@ -201,6 +244,10 @@ export function finishSession(caseId: string, outcome: SessionOutcome): void {
       error === null ? state.lastError : { kind: error.kind, at: now, detail: error.detail },
     peers
   })
+  const pausesPath = join(caseDir, SYNC_PAUSES_FILENAME)
+  if (existsSync(pausesPath) || Object.keys(versionPauses).length > 0) {
+    writeWhole(pausesPath, JSON.stringify(versionPauses, null, 2) + '\n')
+  }
 }
 
 // Drops one peer from the Case's reached set: its latest dialled session did
@@ -222,30 +269,79 @@ export function memberTickets(caseId: string): Record<string, string> {
   return { ...readSyncStateFile(join(getStorageRoot(), caseId)).tickets }
 }
 
-// The payload the sync pill reads. `peersTotal` is the roster less this
-// installation and the revoked; `peersReachable` the peers whose latest
-// session dialled from this process completed `hello`; `phase` is syncing
-// while a session runs, error when the last session failed and none has
-// succeeded since, idle otherwise; `egress` the Egress kind, which sync runs
-// past (ADR-0032 rule 1).
+// The payload the sync pill and the Members tab read. `peersTotal` is the
+// roster less this installation and the revoked; `peersReachable` the peers
+// whose latest session dialled from this process completed `hello`; `phase`
+// is syncing while a session runs, error while a chain is paused or the last session failed
+// and none has succeeded since, idle otherwise; `egress` the Egress kind, which
+// sync runs past (ADR-0032 rule 1). `peers` and `lastSuccessAt` are read off
+// the file as written (#1514); nothing here is a new fact about a session.
 export function getSyncState(caseId: string): SyncState {
   const self = getInstallationId()
   const members = listCaseMembers(caseId).filter(
     (m) => m.installationId !== self && m.revokedAtIndex === null
   )
-  const state = readSyncStateFile(join(getStorageRoot(), caseId))
+  const caseDir = join(getStorageRoot(), caseId)
+  const state = readSyncStateFile(caseDir)
+  const versionPauses = readVersionPauses(caseDir)
   const { lastError, lastSuccessAt, transfer } = state
+  const activePauses = Object.entries(versionPauses).filter(([id]) =>
+    members.some((member) => member.installationId === id)
+  )
+  const latestPause = activePauses.sort((a, b) => b[1].at.localeCompare(a[1].at))[0]
   const failed = lastError !== null && (lastSuccessAt === null || lastError.at > lastSuccessAt)
+  const reachedIds = reached.get(caseId) ?? new Set<string>()
+  const peers = members.map(({ installationId }) => {
+    const peer = state.peers[installationId]
+    return {
+      installationId,
+      reachable: reachedIds.has(installationId),
+      lastSessionAt: peer?.lastSessionAt ?? null,
+      ok: peer?.ok ?? null,
+      heldHead: peer?.heads[installationId]?.index ?? null,
+      ...(versionPauses[installationId]
+        ? { pausedAtIndex: versionPauses[installationId].index }
+        : {})
+    }
+  })
   return {
-    phase: running.has(caseId) ? 'syncing' : failed ? 'error' : 'idle',
-    peersReachable: [...(reached.get(caseId) ?? [])].filter((id) =>
-      members.some((m) => m.installationId === id)
-    ).length,
+    phase: running.has(caseId) ? 'syncing' : failed || latestPause ? 'error' : 'idle',
+    peersReachable: [...reachedIds].filter((id) => members.some((m) => m.installationId === id))
+      .length,
     peersTotal: members.length,
+    peers,
     transfer,
-    lastError: lastError === null ? null : { kind: lastError.kind, at: lastError.at },
+    lastSuccessAt,
+    lastError: latestPause
+      ? {
+          kind: 'newer-version',
+          at: latestPause[1].at,
+          installationId: latestPause[0],
+          waitingIndex: latestPause[1].index,
+          ...(latestPause[1].heldIndex === undefined ? {} : { index: latestPause[1].heldIndex })
+        }
+      : lastError === null
+        ? null
+        : describeLastError(lastError, state.peers),
     egress: getSettings().egress.kind
   }
+}
+
+// The failed session's peer, when the file records one: finishSession writes
+// the error's `at` and that peer's `lastSessionAt` from the same clock read,
+// with `ok: false`, so the pair identifies the session. Version pauses use the explicit
+// chain metadata above; the transport peer cannot identify the failing chain.
+function describeLastError(
+  { kind, at }: NonNullable<SyncStateFile['lastError']>,
+  peers: SyncStateFile['peers']
+): NonNullable<SyncState['lastError']> {
+  // Older files did not retain the failing chain author. The transport peer cannot supply it.
+  if (kind === 'newer-version') return { kind, at }
+  const match = Object.entries(peers).find(([, peer]) => peer.lastSessionAt === at && !peer.ok)
+  if (!match) return { kind, at }
+  const [installationId, peer] = match
+  const index = peer.heads[installationId]?.index
+  return index === undefined ? { kind, at, installationId } : { kind, at, installationId, index }
 }
 
 // `members.json`: the roster as `case_members` holds it, for a reader of the

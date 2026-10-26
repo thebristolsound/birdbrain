@@ -235,6 +235,9 @@ describe('useServerStatus', () => {
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: queryKeys.manifestSnapshot('case-7')
     })
+    // The Members tab and the sync pill (#1514) read these two.
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.sharingMembers('case-7') })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.sharingSyncState('case-7') })
   })
 
   it('routes deep links to settings or dashboard', () => {

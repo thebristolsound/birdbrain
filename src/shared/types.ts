@@ -1624,13 +1624,40 @@ export interface SyncTransfer {
   bytes: number
 }
 
-// The payload of `sharing:getSyncState`, the shape the sync pill reads.
+// One roster member other than this installation and the revoked, as this
+// replica last saw it (#1514): `reachable` is whether its latest session
+// dialled from this process completed `hello`; the rest is what
+// sync-state.json remembers of the last session with it, null before one.
+// `heldHead` is the index of the member's own chain this replica held after
+// that session.
+export interface SyncPeerState {
+  installationId: string
+  reachable: boolean
+  lastSessionAt: string | null
+  ok: boolean | null
+  heldHead: number | null
+  // The first unreadable entry in this member's chain, even when another peer supplied it.
+  pausedAtIndex?: number
+}
+
+// The payload of `sharing:getSyncState`, the shape the sync pill and the
+// Members tab read.
 export interface SyncState {
   phase: 'idle' | 'syncing' | 'error'
   peersReachable: number
   peersTotal: number
+  peers: SyncPeerState[]
   transfer: SyncTransfer | null
-  lastError: { kind: SyncErrorKind; at: string } | null
+  // When the last session that completed without an error ended.
+  lastSuccessAt: string | null
+  // A version pause names the chain author, its last held index and the first unreadable index.
+  lastError: {
+    kind: SyncErrorKind
+    at: string
+    installationId?: string
+    index?: number
+    waitingIndex?: number
+  } | null
   // The Egress setting's kind (ADR-0032 rule 1). Sync does not follow the
   // Egress: while this is not 'direct', sync still runs and teammates and the
   // relay see this computer's addresses, which the members screens say.

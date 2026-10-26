@@ -10,6 +10,7 @@ import { signEntryHash } from '@main/services/signingKey'
 import {
   appendManifestEntry,
   head,
+  idsReachingMembers,
   readChainFileSnapshots,
   readEntries,
   readManifestSnapshot,
@@ -302,11 +303,24 @@ export function liveSyncSource(caseId: string): SyncSource | null {
       return Uint8Array.from(readFileSync(abs))
     },
     rowsSince: (author, sinceVersion, maxBytes) => {
+      const manifests = [
+        readManifestSnapshot(caseDir).jsonl,
+        ...readChainFileSnapshots(caseDir)
+          .filter((chain) => chain.sourceCaseId === undefined)
+          .map((chain) => chain.jsonl)
+      ]
+      // Refresh with the live row query: caching this set can skip a newly written Capture's
+      // rows while a later loose note advances the peer's cursor past them.
+      const membersHold = new Set(
+        manifests.flatMap((jsonl) => [...idsReachingMembers(storedEntries(jsonl))])
+      )
       const byTable = new Map<string, TableOffer<WireRow>>()
       const offered = rowsOfAuthorByTable(
         caseId,
         author === installationId ? null : author,
-        sinceVersion
+        sinceVersion,
+        undefined,
+        membersHold
       )
       for (const [table, { rows, complete }] of offered) {
         byTable.set(table, { rows: toWireRows(rows, installationId), complete })
@@ -819,7 +833,8 @@ export async function pullFromPeer(
         blobs: result.blobsReceived,
         bytes: result.bytesReceived
       },
-      error: first ? { kind: first.kind, detail: first.detail } : null,
+      error: first ?? null,
+      errors: result.errors,
       heads
     })
     writeMembersFile(caseId)

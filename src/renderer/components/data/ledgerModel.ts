@@ -24,6 +24,8 @@ export interface LedgerRow {
   prevHash: string
   schemaVersion: number | null
   parsed: boolean
+  actorId?: string
+  actorName?: string
   reason?: string
 }
 
@@ -100,7 +102,9 @@ export function toLedgerRows(
       entryHash: entry.entryHash,
       prevHash: entry.prevHash,
       schemaVersion: entry.schemaVersion,
-      parsed: true
+      parsed: true,
+      actorId: entry.operatorId,
+      actorName: entry.operatorName
     }
   })
 }

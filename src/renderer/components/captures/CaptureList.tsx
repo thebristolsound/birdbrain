@@ -9,6 +9,7 @@ import { presets, STAGGER_INTERVAL, STAGGER_VISIBLE_CAP } from '@renderer/lib/mo
 import { useAppStore } from '@renderer/stores/appStore'
 import { useFavorites } from '@renderer/hooks/useFavorites'
 import { CaptureItem } from '@renderer/components/captures/CaptureItem'
+import { useCaptureSharing } from '@renderer/components/sharing/useCaptureSharing'
 import { CaptureListEmptyState } from '@renderer/components/captures/CaptureListEmptyState'
 import { CaptureMenu } from '@renderer/components/captures/CaptureMenu'
 import { CaptureSelectionBar } from '@renderer/components/captures/CaptureSelectionBar'
@@ -77,6 +78,10 @@ export function CaptureList({
     error,
     refetch
   } = useQuery(capturesQueryOptions(caseId))
+  const sharing = useCaptureSharing(
+    caseId,
+    captures.some((capture) => capture.exhibitCitation?.includes('-'))
+  )
   const selectedCaptureId = useAppStore((s) => s.selectedCaptureId)
   const filteredCaptureIds = useAppStore((s) => s.filteredCaptureIds)
   const tagFilteredCaptureIds = useAppStore((s) => s.tagFilteredCaptureIds)
@@ -467,6 +472,7 @@ export function CaptureList({
               <EntityContextMenu target={buildMenuTarget(cap)}>
                 <CaptureItem
                   capture={cap}
+                  sharing={sharing}
                   view={view}
                   nowMs={nowMs}
                   isSelected={cap.id === selectedCaptureId}

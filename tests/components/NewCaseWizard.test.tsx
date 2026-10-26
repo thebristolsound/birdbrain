@@ -11,7 +11,8 @@ const navigate = vi.hoisted(() => vi.fn())
 const notifySuccess = vi.hoisted(() => vi.fn())
 
 vi.mock('@tanstack/react-router', () => ({
-  useNavigate: () => navigate
+  useNavigate: () => navigate,
+  useSearch: () => ({})
 }))
 
 vi.mock('@renderer/lib/notify', () => ({

@@ -121,7 +121,8 @@ const ROOT_LEVEL_LEAVES = new Set([
   'onGuestMouseDown',
   'onSharingChanged',
   'onSharingJoinProgress',
-  'onInvestigationProgress'
+  'onInvestigationProgress',
+  'onWaybackLinkProgress'
 ])
 
 // Method names that predate the action-segment convention, keyed by the channel
@@ -222,6 +223,8 @@ describe('preload bridge', () => {
     expect(wayback).toEqual({
       'wayback.lookup': 'wayback:lookup',
       'wayback.lookupLink': 'wayback:lookupLink',
+      'wayback.lookupLinks': 'wayback:lookupLinks',
+      'wayback.cancelLookupLinks': 'wayback:cancelLookupLinks',
       'wayback.list': 'wayback:list',
       'wayback.listForCase': 'wayback:listForCase',
       'wayback.pin': 'wayback:pin',

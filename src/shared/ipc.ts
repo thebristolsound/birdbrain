@@ -54,6 +54,7 @@ import type {
   UpdateStatus,
   WaybackLookupResult,
   WaybackSnapshot,
+  KnownEgress,
   Persona,
   PersonaImportResult,
   PersonaStorageState,
@@ -218,6 +219,8 @@ export const IPC_CHANNELS = {
   // Wayback Machine corroboration
   WAYBACK_LOOKUP: 'wayback:lookup',
   WAYBACK_LOOKUP_LINK: 'wayback:lookupLink',
+  WAYBACK_LOOKUP_LINKS: 'wayback:lookupLinks',
+  WAYBACK_CANCEL_LOOKUP_LINKS: 'wayback:cancelLookupLinks',
   WAYBACK_LIST: 'wayback:list',
   WAYBACK_LIST_FOR_CASE: 'wayback:listForCase',
   WAYBACK_PIN: 'wayback:pin',
@@ -340,6 +343,7 @@ export const IPC_CHANNELS = {
   GUEST_FRAME_REPLACED: 'event:guestFrameReplaced',
   GUEST_MOUSE_DOWN: 'event:guestMouseDown',
   INVESTIGATION_PROGRESS: 'event:investigationProgress',
+  WAYBACK_LINK_PROGRESS: 'event:waybackLinkProgress',
 
   // Capture pipeline observability
   CAPTURE_ACTIVITY: 'event:captureActivity',
@@ -634,6 +638,37 @@ export interface LookupWaybackLinkParams {
 export interface WaybackLinkLookupResult extends WaybackLookupResult {
   countIsMinimum: boolean
 }
+
+// Every listed link of a stored page (#1738). `urls` are the rows the Operator confirmed;
+// main plans them again with `planLinkBatch`. `egress` is the route the confirmation
+// stated, and main sends nothing while the Egress setting differs from it.
+export interface LookupWaybackLinksParams {
+  captureId: string
+  urls: string[]
+  egress: KnownEgress
+}
+
+// Why a batch ended before its last address: the Operator cancelled, archive.org answered
+// 429 or 503, or the Egress setting no longer matched the confirmed route.
+export type WaybackLinkBatchStop = 'cancelled' | 'rate-limited' | 'route-changed'
+
+export interface WaybackLinkBatchResult {
+  answered: number
+  failed: number
+  notChecked: number
+  stopped: WaybackLinkBatchStop | null
+  /** The HTTP status that stopped a rate-limited batch. */
+  status?: number
+}
+
+// One address of a running batch, keyed by Capture id and address. `not-checked` returns
+// an address to its earlier state: archive.org refused it with 429 or 503.
+export type WaybackLinkProgressEvent = { captureId: string; url: string } & (
+  | { state: 'checking' }
+  | { state: 'answered'; result: WaybackLinkLookupResult }
+  | { state: 'failed'; error: string }
+  | { state: 'not-checked' }
+)
 
 export interface PinWaybackSnapshotParams {
   captureId: string
@@ -1045,6 +1080,11 @@ export interface IpcInvokeContract {
     args: [params: LookupWaybackLinkParams]
     result: WaybackLinkLookupResult
   }
+  'wayback:lookupLinks': {
+    args: [params: LookupWaybackLinksParams]
+    result: WaybackLinkBatchResult
+  }
+  'wayback:cancelLookupLinks': { args: [captureId: string]; result: boolean }
   'wayback:list': { args: [captureId: string]; result: WaybackRef[] }
   'wayback:listForCase': { args: [caseId: string]; result: CaseWaybackRef[] }
   'wayback:pin': { args: [params: PinWaybackSnapshotParams]; result: WaybackRef }
@@ -1220,6 +1260,7 @@ export interface IpcEventContract {
   'event:sharingChanged': SharingChangedEvent
   'event:sharingJoinProgress': SharingJoinProgressEvent
   'event:investigationProgress': RunProgressEvent
+  'event:waybackLinkProgress': WaybackLinkProgressEvent
 }
 
 export type IpcEventChannel = keyof IpcEventContract

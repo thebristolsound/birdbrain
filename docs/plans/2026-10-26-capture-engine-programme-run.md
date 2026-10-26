@@ -68,7 +68,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Step 6, scroll and screenshot record (writer) | #1928 | #1996 | draft, under review; merges after the tag; fixes a scroll probe bug |
 | ADR-0040 link writer | #1995 | #1997 | draft, under review; migration 44, Case Archive 14; merges after the tag |
 | Viewer slice 2 Part A | #1735 | #1987 | fix round pushed at `3f015984`; a left click on a new-window link now does nothing |
-| Viewer slice 3, one-link lookup | #1737 | #1990 | review: request changes, fix round in flight |
+| Viewer slice 3, one-link lookup | #1737 | #1990 | fix round pushed at `1a1dfa3d`, preflight green |
 | ADR-0040 acceptance | #1736 | #1977 | draft, preflight green |
 | ADR-0040 verifier, schema 6 | #1976 | #1981 | review: approve, stacked on #1978 |
 

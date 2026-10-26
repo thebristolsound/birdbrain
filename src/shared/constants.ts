@@ -76,7 +76,10 @@ export const IMPORT_ID_MAPS_DIRECTORY = 'import-id-maps'
 // `memberCode` on `exhibit` and the optional `subject` on `timestamp`
 // (docs/specs/2026-09-19-collaborative-cases-design.md). v5 adds the optional
 // Egress fields on `capture` (ADR-0032, #1694): `egressKind`, `egressLabel`,
-// `userAgent` and `tlsSkipped`.
+// `userAgent` and `tlsSkipped`. v6 adds the capture engine's optional fields
+// on `capture` (docs/plans/2026-10-10-capture-engine-first-slice.md, D1):
+// `inventory`, `scrollToLoad`, `transactionRecordHash`, `boundTls`,
+// `boundTlsAbsent` and `pdfHash`.
 //
 // A per-entry `schemaVersion` is the MINIMUM reader version that entry needs,
 // NOT this constant: appendManifestEntry stamps each entry from the per-type
@@ -84,7 +87,7 @@ export const IMPORT_ID_MAPS_DIRECTORY = 'import-id-maps'
 // shapes a schema-2 verifier can still read. That separation is what lets this
 // reader ship before anything writes a v3 entry — a distributed verifier must
 // never meet a version it cannot read before it has had the chance to update.
-export const MANIFEST_SCHEMA_VERSION = 5
+export const MANIFEST_SCHEMA_VERSION = 6
 
 // Default RFC 3161 trusted-timestamp authority (#120, decision D6/#112).
 // DigiCert's unauthenticated endpoint: no account/API key, and its root is

@@ -1,12 +1,12 @@
 import { createHash } from 'crypto'
 import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { ManifestEntrySchema, MANIFEST_ENTRY_TYPES } from '@shared/schemas'
-import type { ManifestEntry } from '@shared/schemas'
+import type { BoundTls, CaptureInventory, ManifestEntry, ScrollToLoadRecord } from '@shared/schemas'
 import { canonicalStringify } from '@shared/verify/canonicalJson'
 import { verifyEntrySignature } from '@shared/verify/signature'
 import { buildTrustedTimeIndexFromEntries } from '@shared/verify/trustedTime'
 import type { TrustedTimeResult } from '@shared/verify/trustedTime'
-import type { EgressKind, TlsRefetchSkip } from '@shared/types'
+import type { BoundTlsAbsence, EgressKind, TlsRefetchSkip } from '@shared/types'
 
 // The digests a verified `capture` entry carries, keyed by manifest index
 // (#234). This is what a hash-verified claim rests on: `screenshotHash` /
@@ -14,8 +14,9 @@ import type { EgressKind, TlsRefetchSkip } from '@shared/types'
 // is a cache maintained for convenience and carries no chain integrity of its
 // own (migrations.ts:369 — "the manifest remains the authority").
 //
-// The Egress fields (ADR-0032) are carried on the same footing, each set only
-// when the verified entry carries it.
+// The Egress fields (ADR-0032) and the capture engine's fields (schema 6) are
+// carried on the same footing, each set only when the verified entry carries
+// it.
 export interface CaptureChainEntry {
   contentHash: string
   screenshotHash?: string
@@ -24,14 +25,22 @@ export interface CaptureChainEntry {
   egressLabel?: string
   userAgent?: string
   tlsSkipped?: TlsRefetchSkip
+  inventory?: CaptureInventory
+  scrollToLoad?: ScrollToLoadRecord
+  transactionRecordHash?: string
+  boundTls?: BoundTls
+  boundTlsAbsent?: BoundTlsAbsence
+  pdfHash?: string
 }
 
 // The hash fields a `capture` entry anchors, one file each: the page archive,
 // the screenshot and the extracted text. The sync session (#1512) builds the
 // list of files it fetches for a received Capture from this, one per field
-// the entry carries; the Transaction Record and PDF hashes join it with CE-P
-// step 1. A capture entry always carries `contentHash`; the other two are
-// present only when the sidecar was captured.
+// the entry carries. A capture entry always carries `contentHash`; the other
+// two are present only when the sidecar was captured. `transactionRecordHash`
+// and `pdfHash` are not in it yet: the sync maps each field to a Capture Store
+// file type (`CAPTURE_ARTIFACT_BY_FIELD` in blobAcceptance.ts), and the store
+// has a type for neither file until the capture engine plan's step 3.
 export const CAPTURE_ENTRY_HASH_FIELDS = ['contentHash', 'screenshotHash', 'textHash'] as const
 export type CaptureEntryHashField = (typeof CAPTURE_ENTRY_HASH_FIELDS)[number]
 
@@ -434,6 +443,8 @@ export function verifyManifestChainText(
     if (entry.type === 'capture') {
       captureHashesByIndex.set(entry.index, entry.contentHash)
       const { egressKind, egressLabel, userAgent, tlsSkipped } = entry
+      const { inventory, scrollToLoad, transactionRecordHash, boundTls, boundTlsAbsent, pdfHash } =
+        entry
       captureEntriesByIndex.set(entry.index, {
         contentHash: entry.contentHash,
         screenshotHash: entry.screenshotHash,
@@ -441,7 +452,13 @@ export function verifyManifestChainText(
         ...(egressKind !== undefined ? { egressKind } : {}),
         ...(egressLabel !== undefined ? { egressLabel } : {}),
         ...(userAgent !== undefined ? { userAgent } : {}),
-        ...(tlsSkipped !== undefined ? { tlsSkipped } : {})
+        ...(tlsSkipped !== undefined ? { tlsSkipped } : {}),
+        ...(inventory !== undefined ? { inventory } : {}),
+        ...(scrollToLoad !== undefined ? { scrollToLoad } : {}),
+        ...(transactionRecordHash !== undefined ? { transactionRecordHash } : {}),
+        ...(boundTls !== undefined ? { boundTls } : {}),
+        ...(boundTlsAbsent !== undefined ? { boundTlsAbsent } : {}),
+        ...(pdfHash !== undefined ? { pdfHash } : {})
       })
     }
   }

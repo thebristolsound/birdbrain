@@ -66,7 +66,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Step 8, WARC writer | #1906 | #1979 | fix round pushed at `b4e11287`, preflight green |
 | Character set spike | #1983 | #1988 | rulings recorded at `33ed5a01`; posted on #1929 |
 | Step 6, scroll and screenshot record (writer) | #1928 | #1996 | draft, under review; merges after the tag; fixes a scroll probe bug |
-| ADR-0040 link writer | #1995 | - | plan approved 2026-10-26; in flight, stacked on #1985 and #1981 |
+| ADR-0040 link writer | #1995 | #1997 | draft, under review; migration 44, Case Archive 14; merges after the tag |
 | Viewer slice 2 Part A | #1735 | #1987 | fix round pushed at `3f015984`; a left click on a new-window link now does nothing |
 | Viewer slice 3, one-link lookup | #1737 | #1990 | review: request changes, fix round in flight |
 | ADR-0040 acceptance | #1736 | #1977 | draft, preflight green |

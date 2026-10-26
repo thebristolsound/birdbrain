@@ -79,7 +79,8 @@ export const IMPORT_ID_MAPS_DIRECTORY = 'import-id-maps'
 // `userAgent` and `tlsSkipped`. v6 adds the capture engine's optional fields
 // on `capture` (docs/plans/2026-10-10-capture-engine-first-slice.md, D1):
 // `inventory`, `scrollToLoad`, `transactionRecordHash`, `boundTls`,
-// `boundTlsAbsent` and `pdfHash`.
+// `boundTlsAbsent` and `pdfHash`, and the link provenance fields (ADR-0040):
+// `linkedFromCaptureId`, `linkedFromContentHash` and `linkHref`.
 //
 // A per-entry `schemaVersion` is the MINIMUM reader version that entry needs,
 // NOT this constant: appendManifestEntry stamps each entry from the per-type

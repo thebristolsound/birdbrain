@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { getPublicKeyPem } from '@main/services/signingKey'
 import { buildSignedChain } from '../../helpers/egressPackage'
 import { ENGINE_INVENTORY, engineCaptureEntry } from '../../helpers/captureEnginePackage'
+import { LINK_CAPTURE_BODY } from '../../helpers/linkProvenance'
 
 // A schema-5 verifier meeting a capture entry that carries the capture engine's
-// fields (ADR-0023 X25). This file pins the read ceiling back to 5, the
+// fields or the link provenance fields (ADR-0023 X25, ADR-0040). This file pins the read ceiling back to 5, the
 // release before this one, and hands it a chain whose second entry carries
 // the fields under the stamp the writer gives them: the answer must be
 // "verifier too old", never a broken chain. Its own file because the mock is
@@ -75,5 +76,21 @@ describe('a schema-5 verifier against capture entries carrying the capture engin
     expect(result.unsupported).toBeUndefined()
     expect(result.brokenAt).toBe(1)
     expect(result.reason).toBe('Invalid signature')
+  })
+})
+
+describe('a schema-5 verifier against a capture entry carrying the link provenance fields', () => {
+  // The entry whose digest manifestSchema6LinkProvenance.test.ts freezes.
+  it('reports the entry as verifier too old, not as a broken chain', () => {
+    const result = verify(buildSignedChain([PLAIN_CAPTURE, LINK_CAPTURE_BODY]))
+    expect(result.valid).toBe(false)
+    expect(result.brokenAt).toBeUndefined()
+    expect(result.unsupported).toEqual({
+      index: 1,
+      entryType: 'capture',
+      schemaVersionSeen: 6,
+      supportedSchemaVersion: 5
+    })
+    expect(result.reason).toContain('verifier too old')
   })
 })

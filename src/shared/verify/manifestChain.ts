@@ -14,9 +14,9 @@ import type { BoundTlsAbsence, EgressKind, TlsRefetchSkip } from '@shared/types'
 // is a cache maintained for convenience and carries no chain integrity of its
 // own (migrations.ts:369 — "the manifest remains the authority").
 //
-// The Egress fields (ADR-0032) and the capture engine's fields (schema 6) are
-// carried on the same footing, each set only when the verified entry carries
-// it.
+// The Egress fields (ADR-0032), the capture engine's fields (schema 6) and the
+// link provenance fields (ADR-0040) are carried on the same footing, each set
+// only when the verified entry carries it.
 export interface CaptureChainEntry {
   contentHash: string
   screenshotHash?: string
@@ -31,6 +31,9 @@ export interface CaptureChainEntry {
   boundTls?: BoundTls
   boundTlsAbsent?: BoundTlsAbsence
   pdfHash?: string
+  linkedFromCaptureId?: string
+  linkedFromContentHash?: string
+  linkHref?: string
 }
 
 // The hash fields a `capture` entry anchors, one file each: the page archive,
@@ -445,6 +448,7 @@ export function verifyManifestChainText(
       const { egressKind, egressLabel, userAgent, tlsSkipped } = entry
       const { inventory, scrollToLoad, transactionRecordHash, boundTls, boundTlsAbsent, pdfHash } =
         entry
+      const { linkedFromCaptureId, linkedFromContentHash, linkHref } = entry
       captureEntriesByIndex.set(entry.index, {
         contentHash: entry.contentHash,
         screenshotHash: entry.screenshotHash,
@@ -458,7 +462,10 @@ export function verifyManifestChainText(
         ...(transactionRecordHash !== undefined ? { transactionRecordHash } : {}),
         ...(boundTls !== undefined ? { boundTls } : {}),
         ...(boundTlsAbsent !== undefined ? { boundTlsAbsent } : {}),
-        ...(pdfHash !== undefined ? { pdfHash } : {})
+        ...(pdfHash !== undefined ? { pdfHash } : {}),
+        ...(linkedFromCaptureId !== undefined ? { linkedFromCaptureId } : {}),
+        ...(linkedFromContentHash !== undefined ? { linkedFromContentHash } : {}),
+        ...(linkHref !== undefined ? { linkHref } : {})
       })
     }
   }

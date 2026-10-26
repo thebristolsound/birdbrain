@@ -350,6 +350,11 @@ inventory: {
   - `cancelled` and `failed`: `Network.loadingFailed` with `canceled` true and false. Step 0 checks
     how the consent filter's cancels arrive.
   - `inFlight`: neither `loadingFinished` nor `loadingFailed` had arrived when collection stopped.
+    Step 9 also counts here a request whose `loadingFinished` arrived with no response, which its
+    first end-to-end run saw for a service worker's main script; the record has no response to
+    write for it. That widens this definition, which awaits the maintainer's ruling (the
+    [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md),
+    Deviations, step 9).
   - `bodiesOmitted`: a finished response whose body `Network.getResponseBody` did not return,
     because it was over the budget or the browser no longer held it. One count covers both, because
     the probe tested neither case and nothing yet shows the two failures can be told apart. With
@@ -729,7 +734,9 @@ first order stalls a frame in Electron.
 **The two counts.** A target is the page or one `Target.attachedToTarget` session, and each target
 collection saw is in exactly one count. `recordedTargets` is the page when its
 `Target.setAutoAttach` answered, plus each attached `iframe`, `worker`, or `service_worker` target
-whose `Network.enable` and `Target.setAutoAttach` both answered within the child setup bound.
+whose `Network.enable` and `Target.setAutoAttach` both answered within the child setup bound. Under
+the charset spike's rulings of 2026-10-26, each target's `Network.configureDurableMessages` must
+have answered too (step 9, "Text bodies").
 `unrecordedTargets` is every other target: the page when its `Target.setAutoAttach` failed or did
 not answer, each such attached target whose commands failed or did not answer, and each target of
 another type (item 5). The page counted there still has its own requests recorded; the count says
@@ -1653,3 +1660,16 @@ folded in.
   response's served bytes, and the maintainer ruled on its three questions the same day. Step 9's
   Changes gain a "Text bodies" item with the rulings; the spike records them under "Rulings,
   2026-10-26".
+- **2026-10-26.** Step 9 (#1929) is built as a draft that merges after the schema-6 release tag.
+  Its choices: the budget stays at 50,000,000 and 10,000,000 bytes (`src/shared/constants.ts`); the
+  page's setup commands wait 5 s each and a child's 2 s; the body fetches still out when
+  collection stops get 5 s and the writer 10 s, which raises the end reserve from 20 s to 35 s.
+  Collection stops before the screenshot. The render keeps `wc.loadURL` and the extra
+  `history.length` entry as a known limitation, since the second decision on #1823 is still
+  open, and D15's script expects the passes one entry apart. The session setup lives in
+  `src/main/services/transactionRecorder.ts`, beside the renderer, and the test certificate
+  allowance in `src/main/services/testCertificateAllowance.ts`; both join the assessment's
+  blocking tier. The hand-written WARC reader moved to the package's `lib/` behind a
+  `warcReader.ts` entry point, so the e2e spec reads records with it. The step's results, its
+  record sizes, and its one deviation are in the
+  [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md).

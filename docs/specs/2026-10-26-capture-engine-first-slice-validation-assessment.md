@@ -21,6 +21,14 @@ screenshot as present, with the screenshot facts of D6, and the Transaction Reco
 absent with the reason `not-taken`. A Duplicate re-anchors both fields from its source's signed
 entry and mirrors them on its own row (D11).
 
+**Step 9 (#1929).** A `background` Capture gains a Transaction Record, `{captureId}.warc.gz`
+beside the MHTML, written from the events of every debugger session the render set up (D17,
+with the charset spike's rulings of 2026-10-26). Its signed entry gains `transactionRecordHash`,
+the Transaction Record part of `inventory`, and `boundTls` or `boundTlsAbsent` (D7), and its row
+mirrors the three. When recording fails or runs out of time, the inventory records the record
+absent as `failed`, `boundTlsAbsent` is `not-recorded`, and the Capture stores. A Duplicate
+re-anchors `transactionRecordHash` and its row mirrors it, with no Bound TLS Details (D11).
+
 ## Environments
 
 **Step 6.** One Linux workstation: kernel 7.2.8 (Omarchy), Node 20.20.2, Electron 44.9.1 with
@@ -29,6 +37,14 @@ the system libvips (`pnpm build:test-sharp`). The end-to-end specs run the built
 `xvfb-run`; `e2e/recapture.spec.ts` ran inside `unshare -rn`, a network namespace with loopback
 only, because a running Birdbrain held the capture server's port, and the other Recapture specs
 ran outside it. Windows and macOS were not run.
+
+**Step 9.** The same workstation, Node 20.20.2, and Electron 44.9.1 with Chromium
+152.0.7977.167. The unit suite ran as in step 6. Every Recapture end-to-end spec ran against the
+built app under `xvfb-run`, outside a network namespace: no process held the capture server's
+port. The fixture servers are HTTP/1.1 on loopback, one of them over TLS 1.3 with a leaf from a
+test authority each run makes. The probe command of D15 ran under `xvfb-run` on Node 20.20.2.
+Python `warcio` was not installed on the workstation, so the manual `warcio check` of ruling 26
+did not run (Known limitations).
 
 ## Expected and observed results
 
@@ -47,6 +63,27 @@ ran outside it. Windows and macOS were not run.
 | An end-to-end Recapture of an invented page that grows from 1601 to 4001 CSS pixels as it is scrolled (`e2e/recapture.spec.ts`)                                      | `stopped-growing`, `endHeight` 4001, `scrollLockLifted` false; screenshot not scaled, not truncated, not trimmed, `contentHeight` 4001, `width` and `height` equal to the stored PNG's; row equal to entry; the Capture verifies                                                                           | As expected, after the first deviation below was fixed                                                                                                                     |
 | An end-to-end Recapture of an app-shell page: the document overflows by its 16px margin and an inner panel grows from 2001 to 10001 px as it is scrolled (same file) | `stopped-growing`, `endHeight` 10001, and the panel's last lazy chunk in the stored text                                                                                                                                                                                                                   | As expected, after the second deviation below was fixed                                                                                                                    |
 | An end-to-end Recapture of a page with two scrolling panes, a 2001 px pane growing to 3001 and a 4001 px pane growing to 6001 (same file)                            | `stopped-growing`, `endHeight` 6001, and both panes' lazy chunks in the stored text                                                                                                                                                                                                                        | As expected                                                                                                                                                                |
+
+**Step 9.**
+
+| Check                                                                                                                                                                                     | Expected                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Observed                                                                                                                                                                                                     |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| The page session's setup (`tests/main/services/transactionRecorder.test.ts`)                                                                                                              | `Network.enable`, `Network.configureDurableMessages`, then `Target.setAutoAttach`, each with the budget; an `enable` that fails or does not answer records nothing and resumes any target that attaches                                                                                                                                                                                                                                                                                                                         | As expected                                                                                                                                                                                                  |
+| Each attached target's setup (same file)                                                                                                                                                  | A frame or a dedicated worker gets three commands together and is resumed once, after they answer or the 2 s bound runs out; a service worker is resumed with them; any other type is resumed at once and counted unrecorded; a target that attaches after collection stops is resumed and not counted                                                                                                                                                                                                                          | As expected                                                                                                                                                                                                  |
+| The body budget (same file)                                                                                                                                                               | No fetch of a body whose reported length is over the per-resource limit, or whose four-thirds estimate would take the held total past the cap; a returned body over either limit is not kept; the returned length replaces the estimate                                                                                                                                                                                                                                                                                         | As expected, with the limits scaled down for the test                                                                                                                                                        |
+| Text bodies (`src/packages/transaction-record/tests`)                                                                                                                                     | A text body is kept only from a session whose durable messages answered, judged by the session that reported `loadingFinished`; a base64 body from any session; the writer stores the served windows-1252 bytes, payload digest `sha256:f92b1f90c50a0068a6c9dfce9c853e9333a8337b6475fab8a4393f1b1fccd319`; no record carries `x-birdbrain-decoded-text`                                                                                                                                                                         | As expected                                                                                                                                                                                                  |
+| The render (`tests/main/services/backgroundRenderer.test.ts`)                                                                                                                             | `about:blank`, the page setup, then the target; collection stops before the screenshot; a failed `enable`, a body fetch that never settles, and a writer that throws each return the record as `failed` before the deadline; no certificate allowance without the switch or in a packaged build                                                                                                                                                                                                                                 | As expected; the fetch that never settled ended at the 5 s bound                                                                                                                                             |
+| Ingest and the Duplicate (`tests/main/services/recapture.test.ts`, `captureLifecycle.test.ts`)                                                                                            | The entry passes the strict schema with the record's hash, inventory part, and `boundTls` or `boundTlsAbsent`; the file is stored under the id the render was given; the row mirrors the entry; a changed byte reads `tampered`; a failed record writes no file and `not-recorded`; a Duplicate's entry and row carry the hash and no Bound TLS Details                                                                                                                                                                         | As expected                                                                                                                                                                                                  |
+| Two peers over the in-process transport (`tests/main/services/sharing/syncPeers.test.ts`)                                                                                                 | A record altered in transit is refused as `hash-mismatch` and not written; the next session takes the genuine bytes                                                                                                                                                                                                                                                                                                                                                                                                             | As expected                                                                                                                                                                                                  |
+| An end-to-end Recapture of a fixture page with a cross-site frame, a dedicated worker in the page and one in the frame, and a service worker (`e2e/recapture-transaction-record.spec.ts`) | One request record for each request the servers logged, plus the cached second use, the page's copy of the response its service worker answered, and the request the consent filter blocked; `cached` 1, `cancelled` 1, `failed` 2, `inFlight` 2, `recordedTargets` 5, `unrecordedTargets` 0; `exchanges` and `bodiesOmitted` equal to the response records and the truncated ones                                                                                                                                              | As expected, after the first deviation below was fixed: 24 exchanges, 2 bodies omitted                                                                                                                       |
+| Known answers in the same record                                                                                                                                                          | Payload digests equal the SHA-256 of the served bodies for a `gzip` body, a plain one, windows-1252, Shift_JIS, UTF-8 with a byte-order mark, and UTF-8 under a windows-1252 label; both redirect hops, same-origin and cross-origin, have a `302` response with no body; the over-limit body and the page's copy of the service worker's answer are `WARC-Truncated`; the cookie the page set and sent appears nowhere in the inflated record; `WARC-IP-Address` 127.0.0.1; `boundTlsAbsent` `not-https`; the Capture verifies | As expected                                                                                                                                                                                                  |
+| Stubbed setup failures (same file)                                                                                                                                                        | A frame's failed `Network.enable` moves `unrecordedTargets`; the page's failed `Target.setAutoAttach` makes the page unrecorded; both keep the record                                                                                                                                                                                                                                                                                                                                                                           | As expected: 2 unrecorded for the frame and the worker it starts, 1 for the page                                                                                                                             |
+| A page over TLS through the test certificate allowance (same file)                                                                                                                        | `boundTls` states the leaf's subject, alternative names, issuer, and validity; without the allowance the Recapture fails with `ERR_CERT_AUTHORITY_INVALID`                                                                                                                                                                                                                                                                                                                                                                      | As expected                                                                                                                                                                                                  |
+| A proxy Egress through the SOCKS5 fixture (same file)                                                                                                                                     | No `WARC-IP-Address`, and neither the record nor the inventory names the proxy's port                                                                                                                                                                                                                                                                                                                                                                                                                                           | As expected                                                                                                                                                                                                  |
+| The other Recapture specs (`e2e/recapture.spec.ts`, `recapture-consent.spec.ts`, `recapture-egress.spec.ts`, `recapture-permissions.spec.ts`, `recapture-local-redirect.spec.ts`)         | Pass with the Network domain on                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | All passed, in one run with the new spec: 15 of 15                                                                                                                                                           |
+| D15's probe, `xvfb-run --auto-servernum node scripts/capture-probe/run.mjs`                                                                                                               | The passes agree on `navigator.webdriver`, the `window.chrome` keys, the `Error.stack` getter count, and the resource timing list; `history.length` 1 off and 2 on                                                                                                                                                                                                                                                                                                                                                              | As expected, exit 0                                                                                                                                                                                          |
+| Record sizes (plan, open question 3)                                                                                                                                                      | Reported                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 33,470 bytes for the fixture page above, the largest; 1,882 to 2,640 bytes for the stub, TLS, and proxy pages; 3,248 to 3,385 bytes for each of the three demo fixture pages (`scripts/demo-fixture/pages/`) |
+| The writer at the 50,000,000-byte cap                                                                                                                                                     | Inside its 10 s bound                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Five 7,500,000-byte bodies held as base64: 1,397 ms for random bytes, 37,515,985 bytes written; 410 ms for one repeated byte                                                                                 |
 
 ## Deviations
 
@@ -83,6 +120,20 @@ before it ends the phase. A feed whose next chunk takes longer than the half-sec
 arrives before the third stall step, keeps loading: where the build before step 6 stopped at the
 first bottom, it now runs to the height cap or the phase's time limit.
 
+**Step 9.**
+
+- The first end-to-end run of the fixture page stored the Capture with the record absent as
+  `failed`. The service worker's own session reported its main script with
+  `Network.requestWillBeSent`, `Network.dataReceived`, and `Network.loadingFinished`, and no
+  `Network.responseReceived`. The collector took the request as finished, so the writer met an
+  exchange it had to write a response for and had none, and threw. The fix counts a request
+  that finished with no response as in flight, so the record keeps a request record for it and
+  the Capture keeps its record. D4 defines `inFlight` as a request with neither
+  `loadingFinished` nor `loadingFailed`, so this reading widens it, which the maintainer rules on.
+- In the same run, the fixture service worker's install handler fetched a file without reading
+  its body; that exchange reported its response and data and no `loadingFinished`. Every fixture
+  fetch now reads its body, so the counts above do not depend on it.
+
 ## False positives and negatives
 
 **Step 6.**
@@ -99,6 +150,18 @@ first bottom, it now runs to the height cap or the phase's time limit.
   height, and the outcome records what the page reported. A height that is not a non-negative
   integer is left out of the entry rather than signed.
 
+**Step 9.**
+
+- `inFlight` also counts a request that finished with no response, such as a service worker's
+  main script on its own session (Deviations).
+- `bodiesOmitted` is one count for a body over the per-resource limit, one the cap left
+  unfetched, one the browser no longer held, a text body from a session whose durable messages
+  did not answer, and the page's copy of a response its service worker answered.
+- `failed` counts a request the consent filter blocked, which arrives with `canceled` false.
+- A frame or worker whose setup answered after the 2 s bound counts unrecorded although its
+  requests may still be recorded, and its text bodies are left out, since durable messages count
+  only when they answered within the bound.
+
 ## Known limitations
 
 **Step 6.**
@@ -114,7 +177,28 @@ first bottom, it now runs to the height cap or the phase's time limit.
   pinning ran and found nothing; only the entry's `toolVersion` tells the two apart. Step 6 should
   not ship in a release without #1843.
 - Until steps 9 and 10, every inventory records the Transaction Record and the PDF as
-  `not-taken`. That is true of the build that writes it, and it stays in the chain.
+  `not-taken`. That is true of the build that writes it, and it stays in the chain. From step 9,
+  only the PDF is `not-taken`.
+
+**Step 9.**
+
+- The page reads one more `history.length` entry than a direct load gives it, because the render
+  loads `about:blank` before the target. Which of the renderer spike's three options the slice
+  takes is the second open decision on #1823; this build keeps `wc.loadURL` and records the
+  difference, the plan's fallback.
+- The record holds nothing of a resource reused inside the page, of a shared worker's own
+  requests, or of what runs below a target whose `Target.setAutoAttach` failed (D17).
+- The values of the four credential headers are replaced; a token in a URL, a body, or any other
+  header stays in the record (ADR-0036).
+- The charset spike measured response bodies only. A request body the browser returns as text
+  is stored as its UTF-8 encoding, unmeasured against the bytes sent.
+- The manual `warcio check` of ruling 26 did not run: Python `warcio` was not installed. The
+  hand-written reader parsed every record the end-to-end spec stored and checked each block and
+  payload digest. The check to run is `python3 -m warcio check <capture>.warc.gz` with `warcio`
+  1.8.1.
+- The end reserve grew from 20 s to 35 s for the two new phases, so within the 120 s Recapture
+  timeout the load, the idle waits, and Scroll-to-load share 85 s, where they had 100 s.
+- Every fixture is HTTP/1.1 on loopback; no HTTP/2, HTTP/3, or remote server was recorded.
 
 ## Acceptance decision
 

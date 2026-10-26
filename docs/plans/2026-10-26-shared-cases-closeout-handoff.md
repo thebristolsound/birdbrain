@@ -22,8 +22,8 @@ with the housekeeping slice.
 
 | Slice | Branch | State |
 | --- | --- | --- |
-| 1. Members UI entry points (#1514) | `feat/1514-members-entry-points` | built, reviewer findings fixed, preflight pending |
-| 2. Docs (#1883) | `docs/1883-shared-cases-docs` | committed; preflight and reviewer pending |
+| 1. Members UI entry points (#1514) | `feat/1514-members-entry-points` | PR #1972, ready for review; pre-pass approve at `8d09ea22`; preflight green |
+| 2. Docs (#1883) | `docs/1883-shared-cases-docs` | PR #1973, draft; first pre-pass requested changes, fixed at `6021eb96`; re-review pending |
 | 3. Housekeeping (#1508 checklist, plan statuses, roadmap) | not cut | waits for slices 1 and 2 to merge |
 | Close-out sync | maintainer | steps below; waits for slices 1 and 2 |
 | Release | maintainer | notes drafted below; waits for the sync |
@@ -36,19 +36,25 @@ with the housekeeping slice.
   the Case card's menu (assessment item 19 left it to engineering); the start step; the
   palette's Join a shared Case action.
 - Reviewer pre-pass: request changes, four findings fixed (the `.bbcase` subtitle, diff
-  coverage under 90%, no successful-import test, the duplicated import handler). The reviewer
-  found no path on the evidence list, so the PR answers Evidence-affecting: No.
+  coverage under 90%, no successful-import test, the duplicated import handler); then two
+  tests the reliability probe showed could not fail were tightened. Approved at `8d09ea22`.
+  The reviewer found no path on the evidence list, so the PR answers Evidence-affecting: No.
 
 ### Slice 2: docs
 
 - Threat model Shared Cases section, features limit line, tester guide section, and the
   `CONTEXT.md` terms, each checked against the code at main.
 - `pnpm dlx mint broken-links` passes and the pages render under `mint dev`.
+- The first pre-pass found three overstatements, now corrected: receipt stamps cover only the
+  newest unstamped `merge` (every five minutes), a revoked installation cannot rejoin on a new
+  invite, and no code enforces the five-member size.
+- Filed #1974: the note in the Revoke dialog says a new invite lets the member back; the join is
+  refused.
 
 ## Next command
 
 ```sh
-cd /home/matt/worktrees/birdbrain/feat-1514-members-entry-points && cat .preflight/verification.md
+cd /home/matt/worktrees/birdbrain/docs-1883-shared-cases-docs && cat .preflight/verification.md
 ```
 
 ## Close-out sync: steps for the maintainer
@@ -85,7 +91,8 @@ job copies the body, or on both repositories afterwards.
 ```markdown
 ## Shared Cases
 
-You can now share a Case with up to four teammates. Every member keeps a full copy, no server
+You can now share a Case with teammates; it is designed for teams of two to five. Every
+member keeps a full copy, no server
 holds the Case, and each member's captures stay signed by their own installation. Open a Case
 card's menu on the dashboard and choose **Members** to invite someone; a teammate joins from
 **Start New Case → Join a shared Case**. Sharing is not available on Intel Macs.
@@ -103,4 +110,7 @@ says what checking a Shared Case proves and what it does not.
 
 ## Open questions
 
-- None at this point.
+- The design sizes a Shared Case at two to five members, the screens say up to four peers,
+  and no code refuses a sixth. Enforce it, or leave it as guidance? The docs now call it a
+  design size.
+- #1974: correct the Revoke note, or let a revoked installation rejoin?

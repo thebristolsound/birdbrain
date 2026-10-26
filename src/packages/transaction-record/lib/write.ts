@@ -172,8 +172,9 @@ const responseRecord = (
     throw new Error(`A complete exchange for ${request.url} has no body to write`)
   }
   const body = state === 'complete' ? stored(responseBody) : NO_BODY
-  // The status code and reason phrase come from one event, the response event: the ExtraInfo event
-  // reports a code and no reason phrase. An empty reason phrase leaves no trailing space.
+  // The status code and reason phrase come from one event, the response event, because the
+  // ExtraInfo event has a status code field and no reason phrase field. An empty reason phrase
+  // leaves no trailing space.
   const { status, statusText } = response
   const lines = headerLines(response.extraInfo?.headers ?? response.headers, replaced).map(
     ([name, value]): HeaderLine => {

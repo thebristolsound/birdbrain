@@ -11,7 +11,7 @@ import {
 } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { createCaptureStore } from '@main/services/captureStore'
+import { createCaptureStore, type CaptureArtifactType } from '@main/services/captureStore'
 import { ManifestEntrySchema, type ManifestEntry } from '@shared/schemas'
 import {
   BLOB_PARTIAL_SUFFIX,
@@ -20,6 +20,12 @@ import {
   missingAnchoredFiles,
   safeCasePath
 } from '@main/services/sharing/blobAcceptance'
+import {
+  ENGINE_CAPTURE_ID,
+  ENGINE_FILES,
+  ENGINE_HASHES,
+  engineCaptureEntry
+} from '../../../helpers/captureEnginePackage'
 
 // Acceptance of another member's bytes (#1512): a file becomes visible under
 // its path only once the bytes on disk hash to what the entry anchors, and a
@@ -216,6 +222,33 @@ describe('blob acceptance', () => {
         { path: `${CASE_ID}/documents/x-1.pdf`, hash: 'e'.repeat(64) },
         { path: `${CASE_ID}/documents/x-1_thumb.jpg`, hash: 'f'.repeat(64) }
       ])
+    })
+
+    // Plan D14: a member fetches and hash-checks the capture engine's two files
+    // as it does the screenshot.
+    it('lists the Transaction Record and the PDF a schema-6 entry anchors, for acceptance', () => {
+      const capture = entry({ ...engineCaptureEntry(), caseId: CASE_ID, index: 0 })
+      const pathOf = (type: CaptureArtifactType): string =>
+        store.artifactPaths(CASE_ID, ENGINE_CAPTURE_ID, type).rel
+
+      const files = anchoredFiles([capture], CASE_ID, store)
+
+      expect(files).toEqual([
+        { path: pathOf('mhtml'), hash: ENGINE_HASHES.page },
+        { path: pathOf('png'), hash: ENGINE_HASHES.screenshot },
+        { path: pathOf('warc.gz'), hash: ENGINE_HASHES.transactionRecord },
+        { path: pathOf('pdf'), hash: ENGINE_HASHES.pdf }
+      ])
+      const [, , record, pdf] = files
+      const accept = ({ path, hash }: { path: string; hash: string }, bytes: Buffer) =>
+        acceptBlob({ storageRoot, caseId: CASE_ID, path, expectedHash: hash, bytes })
+      expect(accept(record, ENGINE_FILES.pdf).outcome).toBe('hash-mismatch')
+      expect(accept(record, ENGINE_FILES.transactionRecord).outcome).toBe('accepted')
+      expect(accept(pdf, ENGINE_FILES.pdf).outcome).toBe('accepted')
+      expect(store.readArtifact(CASE_ID, ENGINE_CAPTURE_ID, 'warc.gz')).toEqual(
+        ENGINE_FILES.transactionRecord
+      )
+      expect(store.readArtifact(CASE_ID, ENGINE_CAPTURE_ID, 'pdf')).toEqual(ENGINE_FILES.pdf)
     })
 
     it('skips what the author deleted and the history before an import', () => {

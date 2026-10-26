@@ -101,7 +101,11 @@ export const applyMutant = (text, { start, end, replacement }) =>
   text.slice(0, start) + replacement + text.slice(end)
 
 export const describeMutant = ({ operator, original, replacement }) => {
-  const shown = (value) => (value.length > 60 ? `${value.slice(0, 57)}...` : value)
+  // One line with no backtick, so the code cannot end the inline-code span it is shown in.
+  const shown = (value) => {
+    const flat = value.replace(/\s+/g, ' ').replace(/`/g, "'")
+    return flat.length > 60 ? `${flat.slice(0, 57)}...` : flat
+  }
   if (operator === 'call') return `deleted the call \`${shown(original)}\``
   if (operator === 'return') return `returned \`undefined\` in place of \`${shown(original)}\``
   if (operator === 'condition') return `negated the condition \`${shown(original)}\``

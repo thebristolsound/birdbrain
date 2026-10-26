@@ -132,6 +132,21 @@ describe('describeMutant', () => {
       `deleted the call \`${'x'.repeat(57)}...\``
     )
   })
+
+  it('shows code on one line with no backtick, so it cannot end the code span', () => {
+    expect(
+      describeMutant({
+        ...base,
+        operator: 'call',
+        original: 'save(\n  `${id}`,\n  row\n)',
+        replacement: 'void 0'
+      })
+    ).toBe("deleted the call `save( '${id}', row )`")
+    const original = `f(\`${'x'.repeat(70)}\`)`
+    expect(describeMutant({ ...base, operator: 'call', original, replacement: 'void 0' })).toBe(
+      `deleted the call \`f('${'x'.repeat(54)}...\``
+    )
+  })
 })
 
 describe('selectMutants', () => {

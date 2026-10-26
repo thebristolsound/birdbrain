@@ -1,13 +1,26 @@
 import * as captureRepo from '@main/services/db/captureRepo'
-import type { CaptureLifecycle } from '@main/services/captureLifecycle'
+import { getExhibit } from '@main/services/db/exhibitRepo'
+import {
+  entryDescribesRow,
+  verifyCapture,
+  type CaptureLifecycle
+} from '@main/services/captureLifecycle'
+import { defaultCaptureStore } from '@main/services/captureStore'
 import { blockedSkipReason, matchCaseExclusion } from '@main/services/exclusionPolicy'
 import type { CaptureEgress } from '@main/services/egress'
 import { getInstallationId } from '@main/services/installationId'
 import { RefusedAddressError, refusedAddressClass } from '@main/services/localAddressPolicy'
+import { authorChainOf, readCaseChains } from '@main/services/manifest'
 import { getSettings } from '@main/services/settings'
 import { resolveToolVersion } from '@main/services/toolVersion'
-import type { Capture, CaptureEvent, ConsentSuppression } from '@shared/types'
-import type { EnqueueResult, RecaptureQueueStatus } from '@shared/ipc'
+import { ManifestEntrySchema } from '@shared/schemas'
+import type { Capture, CaptureEvent, ConsentSuppression, LinkProvenance } from '@shared/types'
+import type {
+  EnqueueResult,
+  LinkedFrom,
+  RecaptureEnqueuePayload,
+  RecaptureQueueStatus
+} from '@shared/ipc'
 
 export interface RenderedPage {
   // The live renderer hands over a Node ReadStream on its temp file, so the fd
@@ -36,6 +49,8 @@ export interface RecaptureJob {
   url: string
   caseId: string
   supersedesCaptureId?: string
+  // Set by Capture link (ADR-0040). `runJob` checks the source before it renders.
+  linkedFrom?: LinkedFrom
 }
 
 export interface RecaptureDeps {
@@ -48,6 +63,8 @@ export interface RecaptureDeps {
 
 export interface RecaptureService {
   enqueue: (jobs: RecaptureJob[]) => EnqueueResult
+  // Capture link's route (ADR-0040): one job, whose URL is the link address.
+  enqueueLink: (payload: RecaptureEnqueuePayload) => EnqueueResult
   status: () => RecaptureQueueStatus
   // resolves when the queue drains — used by tests only
   idle: () => Promise<void>
@@ -100,6 +117,59 @@ function canonicalizeUrl(raw: string): string {
   }
 }
 
+const SHA256_HEX = /^[0-9a-f]{64}$/
+
+// The link provenance a Capture link job signs (ADR-0040), or why the job is refused. The
+// row only finds the source: Settings -> Database can edit it, so the Content Hash comes
+// from the source's `capture` entry on the chain that verified, bound to this row as the
+// Duplicate path binds its source, and the source's bytes must still hash to it. The
+// manifest writer runs no schema check, so a hash the strict schema would refuse in
+// `linkedFromContentHash` is refused here instead.
+async function readLinkSource(
+  job: RecaptureJob,
+  { captureId, linkHref }: LinkedFrom
+): Promise<{ provenance: LinkProvenance } | { refused: string }> {
+  if (job.url !== linkHref) return { refused: 'Link address differs from the queued address' }
+  const source = captureRepo.getCapture(captureId)
+  if (!source) return { refused: 'Link source not found' }
+  if (source.caseId !== job.caseId) return { refused: 'Link source is in another case' }
+  const { manifestIndex } = source
+  if (manifestIndex === undefined) return { refused: 'Link source has no manifest entry' }
+  const caseDir = defaultCaptureStore.caseDir(source.caseId)
+  const { chain, entries, imports } = authorChainOf(readCaseChains(caseDir), {
+    authorInstallationId: getExhibit(captureId)?.authorInstallationId ?? null,
+    manifestIndex,
+    contentHash: source.hash
+  })
+  const parsed = ManifestEntrySchema.safeParse(entries.find(({ index }) => index === manifestIndex))
+  if (
+    !chain.valid ||
+    !parsed.success ||
+    parsed.data.type !== 'capture' ||
+    !entryDescribesRow(
+      { caseId: parsed.data.caseId, rowId: parsed.data.captureId },
+      source,
+      { entries, imports },
+      caseDir
+    )
+  ) {
+    return { refused: 'Link source has no verified manifest entry' }
+  }
+  const { contentHash } = parsed.data
+  if (!SHA256_HEX.test(contentHash)) {
+    return { refused: 'Link source Content Hash is not lower-case SHA-256 hex' }
+  }
+  const { status, computedHash } = await verifyCapture(captureId, defaultCaptureStore, {
+    record: false
+  })
+  if (status !== 'verified' || computedHash !== contentHash) {
+    return { refused: `Link source does not verify (${status})` }
+  }
+  return {
+    provenance: { linkedFromCaptureId: captureId, linkedFromContentHash: contentHash, linkHref }
+  }
+}
+
 function validateUrl(raw: string): string | null {
   try {
     const u = new URL(raw)
@@ -130,6 +200,22 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     let rendered: RenderedPage | undefined
     const started = Date.now()
     try {
+      let linkProvenance: LinkProvenance | undefined
+      if (job.linkedFrom) {
+        const source = await readLinkSource(job, job.linkedFrom)
+        if ('refused' in source) {
+          deps.emitEvent({
+            type: 'skipped',
+            source: 'recapture',
+            url: job.url,
+            timestamp: new Date().toISOString(),
+            skipReason: source.refused
+          })
+          return
+        }
+        linkProvenance = source.provenance
+      }
+
       // The renderer honors timeoutMs itself; race defensively so a hung
       // implementation can never wedge the serial queue.
       let fallbackTimer: NodeJS.Timeout | undefined
@@ -211,7 +297,8 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         method: 'background',
         supersedesCaptureId: job.supersedesCaptureId,
         consentSuppression: rendered.consentSuppression,
-        egress: rendered.egress
+        egress: rendered.egress,
+        linkProvenance
       })
 
       const warning = looksLikeLoginWall({
@@ -271,7 +358,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     })
   }
 
-  return {
+  const service: RecaptureService = {
     enqueue(jobs) {
       const rejected: Array<{ url: string; reason: string }> = []
       let accepted = 0
@@ -308,6 +395,26 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       if (accepted > 0) drain()
       return { accepted, rejected }
     },
+    // The checks the payload alone can answer, so the menu reports them at once. The source's
+    // entry and bytes are checked when the job runs, closest to the signing.
+    enqueueLink({ urls, caseId, supersedesCaptureId, linkedFrom }) {
+      const { captureId, linkHref } = linkedFrom ?? {}
+      const refuse = (reason: string): EnqueueResult => ({
+        accepted: 0,
+        rejected: [{ url: typeof linkHref === 'string' ? linkHref : '', reason }]
+      })
+      if (typeof captureId !== 'string' || typeof linkHref !== 'string' || !captureId) {
+        return refuse('Invalid link source')
+      }
+      if (supersedesCaptureId !== undefined) return refuse('A link capture supersedes nothing')
+      if (urls.length !== 1 || urls[0] !== linkHref) {
+        return refuse('Capture link takes exactly the link address')
+      }
+      const source = captureRepo.getCapture(captureId)
+      if (!source) return refuse('Link source not found')
+      if (source.caseId !== caseId) return refuse('Link source is in another case')
+      return service.enqueue([{ url: linkHref, caseId, linkedFrom: { captureId, linkHref } }])
+    },
     status() {
       return { pending: queue.length + (activeUrl ? 1 : 0), activeUrl }
     },
@@ -315,4 +422,5 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       while (draining) await draining
     }
   }
+  return service
 }

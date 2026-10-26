@@ -1010,6 +1010,7 @@ export function registerIpcHandlers(deps: {
     if (!payload || !Array.isArray(payload.urls) || typeof payload.caseId !== 'string') {
       throw new IpcFailure('Invalid recapture payload', 'INVALID_RECAPTURE_PAYLOAD')
     }
+    if (payload.linkedFrom !== undefined) return recaptureService.enqueueLink(payload)
     return recaptureService.enqueue(
       payload.urls.map((url) => ({
         url,

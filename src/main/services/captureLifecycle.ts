@@ -47,6 +47,7 @@ import type {
   CaptureSource,
   ConsentSuppression,
   HashVerification,
+  LinkProvenance,
   TlsRefetchSkip
 } from '@shared/types'
 import type { BatchDeleteOutcome, BatchDeleteResult, DuplicateCaptureResult } from '@shared/ipc'
@@ -113,6 +114,9 @@ export interface IngestParams {
   // re-fetch opens a raw socket the proxy cannot carry, so it does not run, and
   // the entry says so (rule 3). For every method, extension included.
   tlsSkipped?: TlsRefetchSkip
+  // Passed only by a Capture link job, after the recapture queue read the hash from the
+  // source's verified entry (ADR-0040). The entry and the row then carry all three.
+  linkProvenance?: LinkProvenance
 }
 
 export interface IngestResult {
@@ -394,6 +398,7 @@ export async function ingestMhtmlCapture(
         egressLabel: params.egress?.label,
         userAgent: params.egress ? params.userAgent : undefined,
         tlsSkipped: params.tlsSkipped,
+        ...params.linkProvenance,
         operatorId: params.operatorId,
         operatorName: params.operatorName,
         toolVersion: params.toolVersion
@@ -441,6 +446,7 @@ export async function ingestMhtmlCapture(
           method: params.method,
           supersedesCaptureId: params.supersedesCaptureId,
           consentSuppression: params.consentSuppression,
+          ...params.linkProvenance,
           exhibitNumber
         })
         return { capture, contentHash: hash }

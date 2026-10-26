@@ -13,9 +13,11 @@ import { tmpdir } from 'os'
 import { once } from 'events'
 import { MANIFEST_FILENAME } from '@shared/constants'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
-import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase, setAutoCapturePolicy } from '@main/services/db/caseRepo'
-import { getCapture } from '@main/services/db/captureRepo'
+import { getCapture, insertCapture } from '@main/services/db/captureRepo'
+import { defaultCaptureStore } from '@main/services/captureStore'
+import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { createCaptureLifecycle, verifyCapture } from '@main/services/captureLifecycle'
@@ -484,5 +486,266 @@ describe('redirectedFinalUrl (#797)', () => {
   it('compares unparseable input as text rather than throwing', () => {
     expect(redirectedFinalUrl('not a url', 'not a url')).toBeUndefined()
     expect(redirectedFinalUrl('not a url', 'https://example.com/')).toBe('https://example.com/')
+  })
+})
+
+// Capture link (ADR-0040): the job names the Capture whose stored page held the link and the
+// link's address; the queue checks both and signs the source's Content Hash from its entry.
+describe('Capture link jobs (ADR-0040)', () => {
+  const LINK = 'http://example.com/linked'
+  const LANDED = 'https://example.com/linked'
+  let tempDir: string
+  let caseId: string
+  let events: CaptureEvent[]
+  let newCaptures: Capture[]
+  let captureLifecycle: ReturnType<typeof createCaptureLifecycle>
+  let svc: ReturnType<typeof createRecaptureService>
+
+  beforeEach(async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-link-capture-'))
+    initStorage(join(tempDir, 'captures'))
+    await initDatabase(':memory:')
+    initSettings(tempDir)
+    resetInstallationId()
+    initInstallationId(tempDir)
+    updateSettings({ operatorName: 'Op' })
+    caseId = createCase({ name: 'Link source' }).id
+    ensureCaseDir(caseId)
+    events = []
+    newCaptures = []
+    captureLifecycle = createCaptureLifecycle({
+      selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle
+    })
+    // The link redirects from http to https, the case where `url` alone loses the address.
+    svc = createRecaptureService({
+      renderPage: (url, opts) => fakeRender(url === LINK ? { finalUrl: LANDED } : {})(url, opts),
+      captureLifecycle,
+      emitEvent: (e) => events.push(e),
+      emitNewCapture: (c) => newCaptures.push(c),
+      timeoutMs: 45_000
+    })
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  const entries = (): Array<Record<string, unknown>> =>
+    readFileSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+  const entryOf = (id: string) => entries().find((e) => e.captureId === id)!
+
+  async function sourceCapture(url = 'https://example.com/source'): Promise<Capture> {
+    svc.enqueue([{ url, caseId }])
+    await svc.idle()
+    return getCapture(newCaptures[newCaptures.length - 1].id)!
+  }
+
+  function linkPayload(captureId: string, urls: string[] = [LINK]) {
+    return { urls, caseId, linkedFrom: { captureId, linkHref: LINK } }
+  }
+
+  // A refused job writes nothing: no Capture, no manifest line.
+  async function expectNothingWritten(before: number, captures: number): Promise<void> {
+    await svc.idle()
+    expect(newCaptures).toHaveLength(captures)
+    expect(entries()).toHaveLength(before)
+  }
+
+  it('signs the source, its Content Hash from the entry, and the link address', async () => {
+    const source = await sourceCapture()
+    expect(svc.enqueueLink(linkPayload(source.id))).toEqual({ accepted: 1, rejected: [] })
+    await svc.idle()
+
+    const linked = getCapture(newCaptures[1].id)!
+    expect(linked.url).toBe(LANDED)
+    const provenance = {
+      linkedFromCaptureId: source.id,
+      linkedFromContentHash: entryOf(source.id).contentHash,
+      linkHref: LINK
+    }
+    expect(provenance.linkedFromContentHash).toBe(source.hash)
+    expect(linked).toMatchObject({ method: 'background', ...provenance })
+    expect(entryOf(linked.id)).toMatchObject({ ...provenance, schemaVersion: 6 })
+    expect((await verifyCapture(linked.id)).status).toBe('verified')
+  })
+
+  it('writes none of the fields on an ordinary job, or on a Recapture of a link Capture', async () => {
+    const source = await sourceCapture()
+    svc.enqueueLink(linkPayload(source.id))
+    await svc.idle()
+    const linkedId = newCaptures[1].id
+    svc.enqueue([{ url: LINK, caseId, supersedesCaptureId: linkedId }])
+    await svc.idle()
+    const recaptureId = newCaptures[2].id
+
+    for (const id of [source.id, recaptureId]) {
+      const { linkedFromCaptureId, linkedFromContentHash, linkHref } = getCapture(id)!
+      expect([linkedFromCaptureId, linkedFromContentHash, linkHref]).toEqual([
+        undefined,
+        undefined,
+        undefined
+      ])
+      const entry = entryOf(id)
+      const fields = ['linkedFromCaptureId', 'linkedFromContentHash', 'linkHref']
+      expect(fields.filter((field) => field in entry)).toEqual([])
+    }
+    expect(getCapture(recaptureId)!.supersedesCaptureId).toBe(linkedId)
+  })
+
+  // `linkHref` is the address before canonicalization, so the check is exact: a spelling
+  // that canonicalizes to the same address is still another string than the one signed.
+  it.each([
+    ['no address', []],
+    ['two addresses', [LINK, 'http://example.com/other']],
+    ['another address', ['http://example.com/other']],
+    ['a canonical spelling of the address', ['http://example.com/linked/']]
+  ])('refuses a payload whose urls hold %s', async (_label, urls) => {
+    const source = await sourceCapture()
+    const before = entries().length
+    expect(svc.enqueueLink(linkPayload(source.id, urls))).toEqual({
+      accepted: 0,
+      rejected: [{ url: LINK, reason: 'Capture link takes exactly the link address' }]
+    })
+    await expectNothingWritten(before, 1)
+  })
+
+  it('refuses a payload with no source id, or one that also supersedes a Capture', async () => {
+    const source = await sourceCapture()
+    const before = entries().length
+    expect(
+      svc.enqueueLink({ urls: [LINK], caseId, linkedFrom: { captureId: '', linkHref: LINK } })
+    ).toEqual({ accepted: 0, rejected: [{ url: LINK, reason: 'Invalid link source' }] })
+    expect(svc.enqueueLink({ urls: [LINK], caseId })).toEqual({
+      accepted: 0,
+      rejected: [{ url: '', reason: 'Invalid link source' }]
+    })
+    expect(svc.enqueueLink({ ...linkPayload(source.id), supersedesCaptureId: source.id })).toEqual({
+      accepted: 0,
+      rejected: [{ url: LINK, reason: 'A link capture supersedes nothing' }]
+    })
+    await expectNothingWritten(before, 1)
+  })
+
+  it('refuses a source in another Case, or one deleted', async () => {
+    const source = await sourceCapture()
+    const otherCase = createCase({ name: 'Other' }).id
+    ensureCaseDir(otherCase)
+    expect(svc.enqueueLink({ ...linkPayload(source.id), caseId: otherCase }).rejected).toEqual([
+      { url: LINK, reason: 'Link source is in another case' }
+    ])
+    expect(await captureLifecycle.delete(source.id)).toBe(true)
+    const before = entries().length
+    expect(svc.enqueueLink(linkPayload(source.id)).rejected).toEqual([
+      { url: LINK, reason: 'Link source not found' }
+    ])
+    await expectNothingWritten(before, 1)
+  })
+
+  // The payload checks run again when the job does, for a job that reached the queue by
+  // another route or whose source went away after it was queued.
+  it.each([
+    ['a different address', 'other', 'Link address differs from the queued address'],
+    ['a deleted source', 'deleted', 'Link source not found'],
+    ['a source in another Case', 'elsewhere', 'Link source is in another case']
+  ])('skips a queued job naming %s, before it renders', async (_label, kind, reason) => {
+    const source = await sourceCapture()
+    let job = { url: LINK, caseId, linkedFrom: { captureId: source.id, linkHref: LINK } }
+    if (kind === 'other') job = { ...job, url: 'http://example.com/other' }
+    if (kind === 'deleted') await captureLifecycle.delete(source.id)
+    if (kind === 'elsewhere') {
+      job = { ...job, caseId: createCase({ name: 'Other' }).id }
+      ensureCaseDir(job.caseId)
+    }
+    const before = entries().length
+    expect(svc.enqueue([job]).accepted).toBe(1)
+    await expectNothingWritten(before, 1)
+    expect(events.at(-1)).toMatchObject({ type: 'skipped', url: job.url, skipReason: reason })
+  })
+
+  it('skips a source whose stored page no longer verifies', async () => {
+    const source = await sourceCapture()
+    writeFileSync(defaultCaptureStore.resolveAbsolute(source.mhtmlPath!), 'altered bytes')
+    const before = entries().length
+    expect(svc.enqueueLink(linkPayload(source.id)).accepted).toBe(1)
+    await expectNothingWritten(before, 1)
+    expect(events.at(-1)).toMatchObject({
+      type: 'skipped',
+      skipReason: 'Link source does not verify (tampered)'
+    })
+  })
+
+  it('skips a source whose row points at another Capture’s entry', async () => {
+    const source = await sourceCapture()
+    const other = await sourceCapture('https://example.com/other-source')
+    getDb()
+      .prepare('UPDATE captures SET manifest_index = ? WHERE id = ?')
+      .run(other.manifestIndex, source.id)
+    const before = entries().length
+    expect(svc.enqueueLink(linkPayload(source.id)).accepted).toBe(1)
+    await expectNothingWritten(before, 2)
+    expect(events.at(-1)).toMatchObject({
+      type: 'skipped',
+      skipReason: 'Link source has no verified manifest entry'
+    })
+  })
+
+  it('skips a source with no manifest entry', async () => {
+    const legacy = insertCapture({
+      caseId,
+      url: 'https://example.com/legacy',
+      title: 'Legacy',
+      hash: 'a'.repeat(64),
+      timestamp: '2026-01-01T00:00:00.000Z'
+    })
+    expect(svc.enqueueLink(linkPayload(legacy.id)).accepted).toBe(1)
+    await svc.idle()
+    expect(newCaptures).toHaveLength(0)
+    expect(events.at(-1)).toMatchObject({
+      type: 'skipped',
+      skipReason: 'Link source has no manifest entry'
+    })
+  })
+
+  // The manifest writer runs no schema check, and the strict schema refuses a
+  // `linkedFromContentHash` that is not lower-case SHA-256 hex. A signed capture entry's own
+  // `contentHash` can be any string, so the queue refuses such a source rather than sign it.
+  it('skips a source whose signed Content Hash is not lower-case SHA-256 hex', async () => {
+    const contentHash = 'A'.repeat(64)
+    const caseDir = join(getStorageRoot(), caseId)
+    initManifest(caseDir)
+    const id = 'upper-case-source'
+    const { index } = appendManifestEntry(caseDir, {
+      type: 'capture',
+      captureId: id,
+      caseId,
+      url: 'https://example.com/upper',
+      timestamp: '2026-01-01T00:00:00.000Z',
+      contentHash,
+      sizeBytes: 1,
+      operatorId: 'op',
+      operatorName: 'Op',
+      toolVersion: '0.4.0'
+    })
+    insertCapture({
+      id,
+      caseId,
+      url: 'https://example.com/upper',
+      title: 'Upper',
+      hash: contentHash,
+      timestamp: '2026-01-01T00:00:00.000Z',
+      format: 'mhtml',
+      manifestIndex: index
+    })
+    const before = entries().length
+    expect(svc.enqueueLink(linkPayload(id)).accepted).toBe(1)
+    await expectNothingWritten(before, 0)
+    expect(events.at(-1)).toMatchObject({
+      type: 'skipped',
+      skipReason: 'Link source Content Hash is not lower-case SHA-256 hex'
+    })
   })
 })

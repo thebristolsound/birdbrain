@@ -1217,6 +1217,11 @@ export interface CaptureEntryContext {
   boundTls?: BoundTls
   boundTlsAbsent?: BoundTlsAbsence
   pdfHash?: string
+  // A link Capture's source (ADR-0040), schema 6; omitted when absent, so every
+  // other entry keeps its canonical body.
+  linkedFromCaptureId?: string
+  linkedFromContentHash?: string
+  linkHref?: string
   sizeBytes: number
   operatorId: string
   operatorName: string
@@ -1271,6 +1276,13 @@ export async function withCaptureEntry<T>(
       ...(ctx.boundTls !== undefined ? { boundTls: ctx.boundTls } : {}),
       ...(ctx.boundTlsAbsent !== undefined ? { boundTlsAbsent: ctx.boundTlsAbsent } : {}),
       ...(ctx.pdfHash !== undefined ? { pdfHash: ctx.pdfHash } : {}),
+      ...(ctx.linkedFromCaptureId !== undefined
+        ? { linkedFromCaptureId: ctx.linkedFromCaptureId }
+        : {}),
+      ...(ctx.linkedFromContentHash !== undefined
+        ? { linkedFromContentHash: ctx.linkedFromContentHash }
+        : {}),
+      ...(ctx.linkHref !== undefined ? { linkHref: ctx.linkHref } : {}),
       sizeBytes: ctx.sizeBytes,
       operatorId: ctx.operatorId,
       operatorName: ctx.operatorName,

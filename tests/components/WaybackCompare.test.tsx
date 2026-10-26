@@ -17,7 +17,9 @@ vi.mock('@renderer/lib/notify', () => ({
 // The MHTML viewer's own <webview> is covered by its own surface; here it stands
 // in so the assertions are about the compare, not about the file: URL query.
 vi.mock('@renderer/components/captures/MhtmlViewer', () => ({
-  MhtmlViewer: () => <div data-testid="mhtml-viewer-stub" />
+  MhtmlViewer: ({ linkClicks }: { linkClicks: boolean }) => (
+    <div data-testid="mhtml-viewer-stub" data-link-clicks={String(linkClicks)} />
+  )
 }))
 
 import { WaybackCompare } from '@renderer/components/captures/WaybackCompare'
@@ -109,7 +111,8 @@ describe('WaybackCompare', () => {
     select()
     renderCompare()
 
-    expect(screen.getByTestId('mhtml-viewer-stub')).toBeDefined()
+    // A link click there would swap out the page being compared (#1735, plan A6).
+    expect(screen.getByTestId('mhtml-viewer-stub').dataset.linkClicks).toBe('false')
     const guest = screen.getByTestId('wayback-replay-webview')
     expect(guest.getAttribute('src')).toBe(SNAPSHOT_URL)
     expect(guest.getAttribute('partition')).toBe(WAYBACK_PARTITION)

@@ -142,6 +142,7 @@ function EmptyPane({ captureId }: { captureId: string }) {
 // consent model says has not happened yet.
 function CapturePane({ capture }: { capture: Capture }) {
   if (capture.format === 'mhtml')
-    return <MhtmlViewer captureId={capture.id} caseId={capture.caseId} />
+    // A link click here would move the selection and swap out the page being compared.
+    return <MhtmlViewer captureId={capture.id} caseId={capture.caseId} linkClicks={false} />
   return <LegacyHtmlViewer captureId={capture.id} emptyLabel="No stored page archive available" />
 }

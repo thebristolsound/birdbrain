@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { execFileSync, spawnSync } from 'child_process'
+import { createHash } from 'crypto'
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { dirname, join, resolve } from 'path'
@@ -82,7 +83,9 @@ describe('design-system/build.mjs --check', () => {
     writeFileSync(logo, bytes)
 
     const { status, stdout } = check(repo)
-    expect(stdout).toContain(`${LOGO} has changed since it was uploaded (sha256`)
+    // The full digest, since that is what the guide says to copy into sources.json.
+    const digest = createHash('sha256').update(bytes).digest('hex')
+    expect(stdout).toContain(`${LOGO} has changed since it was uploaded (sha256 ${digest},`)
     expect(status).toBe(1)
   })
 

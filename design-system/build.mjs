@@ -251,7 +251,7 @@ for (const [group, g] of Object.entries(sources.assets)) {
       warn(`${a.src}: sources.json records no sha256 for this upload; add it (${sha256})`)
     } else if (sha256 !== a.sha256) {
       warn(
-        `${a.src} has changed since it was uploaded (sha256 ${sha256.slice(0, 12)}…, recorded ${a.sha256.slice(0, 12)}…): upload it again and update blob, size and sha256`
+        `${a.src} has changed since it was uploaded (sha256 ${sha256}, recorded ${a.sha256.slice(0, 12)}…): upload it again and update blob, size and sha256`
       )
     }
     if (bytes.length !== a.size)

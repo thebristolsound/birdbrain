@@ -22,8 +22,8 @@ with the housekeeping slice.
 
 | Slice | Branch | State |
 | --- | --- | --- |
-| 1. Members UI entry points (#1514) | `feat/1514-members-entry-points` | PR #1972, ready for review; pre-pass approve at `8d09ea22`; preflight green |
-| 2. Docs (#1883) | `docs/1883-shared-cases-docs` | PR #1973, draft; first pre-pass requested changes, fixed at `6021eb96`; re-review pending |
+| 1. Members UI entry points (#1514) | `feat/1514-members-entry-points` | PR #1972 at `8d09ea22`: ready, pre-pass approve, preflight and all CI green including the merge gate; waits for the maintainer's merge |
+| 2. Docs (#1883) | `docs/1883-shared-cases-docs` | PR #1973 at `806a9024`: ready, pre-pass approve, preflight green; merge gate waits for the maintainer's approving review; merges after #1972 |
 | 3. Housekeeping (#1508 checklist, plan statuses, roadmap) | not cut | waits for slices 1 and 2 to merge |
 | Close-out sync | maintainer | steps below; waits for slices 1 and 2 |
 | Release | maintainer | notes drafted below; waits for the sync |
@@ -53,8 +53,11 @@ with the housekeeping slice.
 
 ## Next command
 
+Maintainer: merge #1972, then approve and merge #1973. Then the agent cuts the housekeeping
+branch from the new `main`:
+
 ```sh
-cd /home/matt/worktrees/birdbrain/docs-1883-shared-cases-docs && cat .preflight/verification.md
+git -C /home/matt/worktrees/birdbrain/feat-1514-members-entry-points fetch origin && git -C /home/matt/worktrees/birdbrain/feat-1514-members-entry-points log --oneline -3 origin/main
 ```
 
 ## Close-out sync: steps for the maintainer

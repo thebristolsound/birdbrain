@@ -287,6 +287,13 @@ starts, against the releases that have shipped, not against the ones in flight.
      that constant's own rule: a release that does not know the columns drops them on import,
      because its `CAPTURE_COLUMNS` does not read them, and the version gate turns that into the
      "update Birdbrain" refusal instead.
+   - `linkHref` is the address before `canonicalizeUrl` (`src/shared/urlCanonicalize.ts`),
+     settled when step 3 was built (#1995):
+     the string the menu read (the Page tab's `params.linkURL`, a Links tab row's `href`),
+     sent as the job's one URL and rendered as given. The single-URL check compares the two as
+     exact strings, so a spelling that canonicalizes to the same address is refused, not
+     signed. Recording the canonical form instead would drop the fragment and the trailing
+     slash the page named, and the entry would state an address the page did not spell.
    - `useLinkMenuTarget` sends the source Capture id and the link address.
    - `CaptureViewer.tsx` shows a "From a link in <title>" link, which opens the source, beside the
      "Duplicate of" link.

@@ -69,6 +69,22 @@ describe('CaseWorkspace per-case reset (#918)', () => {
     expect(store().tagFilteredCaptureIds).toBeNull()
     expect(store().activeSelectorFilters).toEqual([])
   })
+
+  // #1735. Back retraces link clicks within one Case only.
+  it('clears the link trail on a case switch', async () => {
+    const { rerender } = renderWorkspace()
+
+    act(() => {
+      store().selectCapture('a')
+      store().followCaptureLink('b')
+    })
+    expect(store().captureTrail).toEqual(['a'])
+
+    currentCaseId = 'case-2'
+    rerender()
+
+    await waitFor(() => expect(store().captureTrail).toEqual([]))
+  })
 })
 
 // Case search field records (docs/plans/2026-10-09-case-retrieval-first-slice.md, D5):

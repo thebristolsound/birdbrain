@@ -140,6 +140,88 @@ describe('revertProbe', () => {
     expect(runs.map(({ moduleCache }) => moduleCache)).toEqual([undefined, false])
   })
 
+  it('limits each run to the budget, and the reverted run to three times HEAD', async () => {
+    const workspace = memoryWorkspace({ 'tests/a.test.ts': TEST_FILE })
+    const limits: (number | undefined)[] = []
+    const run = async ({ timeoutMs }: RunArgs) => {
+      limits.push(timeoutMs)
+      return { ...result(head), durationMs: 30_000 }
+    }
+    const probe = (remaining: number) =>
+      revertProbe({
+        changes: changes(),
+        read: (path: string) => workspace.tree.get(path),
+        readBase: () => 'base',
+        workspace,
+        run,
+        budget: { remainingMs: () => remaining }
+      })
+    await probe(600_000)
+    await probe(45_000)
+    expect(limits).toEqual([600_000, 90_000, 45_000, 45_000])
+  })
+
+  it('skips the comparison when the budget runs out before or during it', async () => {
+    const workspace = memoryWorkspace({ 'src/a.ts': 'head a', 'tests/a.test.ts': TEST_FILE })
+    const skipped = {
+      skipped: 'the time budget ran out before the tests ran with the changes reverted'
+    }
+    const probe = (remaining: () => number, run: (args: RunArgs) => Promise<RunResult>) =>
+      revertProbe({
+        changes: changes(),
+        read: (path: string) => workspace.tree.get(path),
+        readBase: () => 'base',
+        workspace,
+        run,
+        budget: { remainingMs: remaining }
+      })
+    let left = 1000
+    const runs: RunArgs[] = []
+    const spends = async (args: RunArgs) => {
+      runs.push(args)
+      left = 0
+      return result(head)
+    }
+    expect(await probe(() => left, spends)).toEqual(skipped)
+    expect(runs).toHaveLength(1)
+    expect(workspace.tree.get('src/a.ts')).toBe('head a')
+
+    let calls = 0
+    const cutShort = async () =>
+      ++calls === 1 ? result(head) : { ok: false, timedOut: true, report: null }
+    expect(await probe(() => 1000, cutShort)).toEqual(skipped)
+    expect(workspace.tree.get('src/a.ts')).toBe('head a')
+  })
+
+  it('reads a reverted run that hangs past its own limit as nothing passing', async () => {
+    const workspace = memoryWorkspace({ 'tests/a.test.ts': TEST_FILE })
+    let calls = 0
+    const run = async (): Promise<RunResult> =>
+      ++calls === 1 ? result(head) : { ok: false, timedOut: true, report: null }
+    const outcome = await revertProbe({
+      changes: changes(),
+      read: (path: string) => workspace.tree.get(path),
+      readBase: () => 'base',
+      workspace,
+      run,
+      budget: { remainingMs: () => 600_000 }
+    })
+    expect(outcome).toMatchObject({ testsChecked: 2, findings: [] })
+  })
+
+  it('skips when the tests at HEAD run past the budget', async () => {
+    const workspace = memoryWorkspace({ 'tests/a.test.ts': TEST_FILE })
+    const outcome = await revertProbe({
+      changes: changes(),
+      read: (path: string) => workspace.tree.get(path),
+      readBase: () => 'base',
+      workspace,
+      run: async () => ({ ok: false, timedOut: true, report: null }),
+      budget: { remainingMs: () => 1000 }
+    })
+    expect(outcome).toEqual({ skipped: 'the time budget ran out before the tests ran at HEAD' })
+  })
+
   it('counts a touched test that fails at HEAD without judging it', async () => {
     const workspace = memoryWorkspace({ 'tests/a.test.ts': TEST_FILE })
     const failingHead = [
@@ -259,10 +341,15 @@ describe('mutationProbe', () => {
       workspace,
       run,
       maxMutants: 10,
-      budgetMs: 60_000,
+      budgetMs: 600_000,
       now: () => 0
     })
-    expect(runs[0]).toEqual({ mode: 'related', files: ['src/a.ts'], moduleCache: false })
+    expect(runs[0]).toEqual({
+      mode: 'related',
+      files: ['src/a.ts'],
+      timeoutMs: 600_000,
+      moduleCache: false
+    })
     expect(runs.slice(1).every((args) => args.bail && args.timeoutMs === 90_000)).toBe(true)
     expect(runs[1].files).toEqual(['tests/a.test.ts'])
     expect(outcome.candidates).toBe(2)
@@ -365,6 +452,49 @@ describe('mutationProbe', () => {
       'probed',
       'budget'
     ])
+  })
+
+  it('stops a file whose baseline runs past the budget', async () => {
+    const workspace = memoryWorkspace({ 'src/a.ts': SOURCE })
+    const outcome = await mutationProbe({
+      changes: sourceChanges([{ path: 'src/a.ts', status: 'M', addedLines: new Set([1]) }]),
+      read: (path: string) => workspace.tree.get(path),
+      workspace,
+      run: async () => ({ ...result([]), ok: false, timedOut: true }),
+      maxMutants: 10,
+      budget: { remainingMs: () => 1000 }
+    })
+    expect(outcome.files).toEqual([{ path: 'src/a.ts', outcome: 'budget' }])
+    expect(outcome.results.map(({ outcome: o }: { outcome: string }) => o)).toEqual(['not-run'])
+  })
+
+  it('cuts the last mutant short at the budget and reports it as not run', async () => {
+    const workspace = memoryWorkspace({ 'src/a.ts': SOURCE })
+    let left = 600_000
+    const runs: RunArgs[] = []
+    const run = async (args: RunArgs): Promise<RunResult> => {
+      runs.push(args)
+      if (args.mode === 'related') return { ...result([]), durationMs: 30_000 }
+      if (runs.length === 2) {
+        left = 20_000
+        return { ...result([]), ok: false, timedOut: true }
+      }
+      return { ...result([]), ok: false, timedOut: true }
+    }
+    const outcome = await mutationProbe({
+      changes: sourceChanges([{ path: 'src/a.ts', status: 'M', addedLines: new Set([1, 2]) }]),
+      read: (path: string) => workspace.tree.get(path),
+      workspace,
+      run,
+      maxMutants: 10,
+      budget: { remainingMs: () => left }
+    })
+    expect(runs.slice(1).map(({ timeoutMs }) => timeoutMs)).toEqual([90_000, 20_000])
+    expect(outcome.results.map(({ outcome: o }: { outcome: string }) => o)).toEqual([
+      'timeout',
+      'not-run'
+    ])
+    expect(workspace.tree.get('src/a.ts')).toBe(SOURCE)
   })
 
   it('restores the file when a mutant run throws', async () => {

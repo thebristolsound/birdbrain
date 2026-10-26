@@ -169,10 +169,35 @@ describe('main', () => {
 
   it('reads --budget in seconds', async () => {
     let clock = 0
-    const { out, deps: d } = deps({ now: () => (clock += 400) })
+    const { out, deps: d } = deps({ now: () => (clock += 100) })
     expect(await main(['--budget', '1', '--no-revert'], d)).toBe(0)
     expect(out[0]).toContain('1 survived')
     expect(out[0]).toContain('0 not run for time')
+  })
+
+  it('spends one budget across both probes', async () => {
+    let clock = 0
+    const runner = passingRunner()
+    runner.run.mockImplementation(async () => {
+      clock += 600
+      return {
+        ok: true,
+        durationMs: 600,
+        report: {
+          success: true,
+          files: [
+            {
+              path: 'tests/a.test.ts',
+              tests: [{ fullName: 'compares', status: 'passed', line: 1 }]
+            }
+          ]
+        }
+      }
+    })
+    const { out, deps: d } = deps({ runner, now: () => clock })
+    expect(await main(['--budget', '1'], d)).toBe(0)
+    expect(runner.run).toHaveBeenCalledTimes(2)
+    expect(out[0]).toContain('0 survived, 0 caught, 1 not run for time')
   })
 
   it('skips the revert probe when told to', async () => {

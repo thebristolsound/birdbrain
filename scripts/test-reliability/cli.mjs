@@ -15,7 +15,7 @@ import { appendFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { collectChanges, isClean } from './lib/changes.mjs'
-import { mutationProbe, revertProbe } from './lib/probes.mjs'
+import { createBudget, mutationProbe, revertProbe } from './lib/probes.mjs'
 import { renderAnnotations, renderJson, renderMarkdown } from './lib/report.mjs'
 import { createRunner } from './lib/vitest.mjs'
 import { checkJournal, createWorkspace } from './lib/workspace.mjs'
@@ -117,19 +117,15 @@ export const main = async (argv, deps = {}) => {
     const changes = collectChanges({ git, base: options.base })
     const readBase = (path) => git(['show', `${changes.base}:${path}`])
     onSignals({ workspace, runner })
-    const shared = { changes, read, workspace, run: runner.run }
+    const budget = createBudget({ budgetMs: options.budgetSeconds * 1000, now })
+    const shared = { changes, read, workspace, run: runner.run, budget }
     result = {
       commit: git(['rev-parse', 'HEAD']).trim(),
       base: changes.base,
       e2e: changes.e2e.filter(({ status }) => status !== 'D'),
       revert: options.revert ? await revertProbe({ ...shared, readBase }) : null,
       mutation: options.mutate
-        ? await mutationProbe({
-            ...shared,
-            maxMutants: options.maxMutants,
-            budgetMs: options.budgetSeconds * 1000,
-            now
-          })
+        ? await mutationProbe({ ...shared, maxMutants: options.maxMutants })
         : null
     }
   } catch (error) {

@@ -51,8 +51,8 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Step 1, verifier and schema | #1904 | #1978 | review: request changes, fix round pushed at `eac4b91d` |
 | Step 2, mirror columns | #1907 | #1980 | draft, preflight green, stacked on #1978, migration 43 |
 | Step 3, the Case carries the files | #1925 | #1982 | review: approve, fix round pushed at `7dc83929` |
-| Step 5, the report states the fields | #1927 | #1985 | draft; being restacked on #1984 to wire the export |
-| Step 4, packages carry the files | #1926 | #1984 | draft, stacked on #1982, under review |
+| Step 5, the report states the fields | #1927 | #1985 | draft; moving onto #1984 to wire the export |
+| Step 4, packages carry the files | #1926 | #1984 | review: request changes, fix round in flight |
 | Step 8, WARC writer | #1906 | #1979 | fix round pushed at `b4e11287`, preflight green |
 | Character set spike | #1983 | - | in flight, runs before step 9 |
 | Viewer slice 2 Part A | #1735 | - | in flight, from main |
@@ -73,6 +73,8 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
   The Shared Case receive path (`receivedEvidence.ts`) builds rows without the three fields, so it
   gains them. The writer also settles whether `linkHref` is the address before or after
   `canonicalizeUrl`.
+- **Defects filed.** #1986: an evidence package exported with screenshots off fails its own
+  verification (found by the review of #1984, predates it).
 - **The lane ledger.** The step issues say to claim a lane in a ledger, and no ledger file exists.
   This table is the record for this run.
 

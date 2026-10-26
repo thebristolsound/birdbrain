@@ -617,3 +617,31 @@ describe('report.html capture engine fields over a chain that does not verify', 
     expect(html).not.toContain('Bound TLS Details')
   })
 })
+
+// ADR-0040: a link Capture's source prints beside the "Supersedes" and "Duplicate of" rows.
+describe('report.html on a link Capture', () => {
+  const row = (label: string, value: string) =>
+    `<div class="rail-row">
+    <div class="rail-label">${label}</div>
+    <div class="rail-value">${value}</div>
+  </div>`
+
+  it('prints the source, its Content Hash and the link address', () => {
+    const link = {
+      linkedFromCaptureId: 'source-capture-id',
+      linkedFromContentHash: '5'.repeat(64),
+      linkHref: 'http://example.com/page?a=1&b=<2>'
+    }
+    const html = buildHtmlReport(reportData([capture(link)]), OPTIONS)
+    expect(html).toContain(row('From a link in', 'source-capture-id'))
+    expect(html).toContain(row('Link source SHA-256', '5'.repeat(64)))
+    expect(html).toContain(row('Link address', 'http://example.com/page?a=1&amp;b=&lt;2&gt;'))
+  })
+
+  it('prints none of the rows for any other Capture', () => {
+    const html = buildHtmlReport(reportData([capture()]), OPTIONS)
+    for (const label of ['From a link in', 'Link source SHA-256', 'Link address']) {
+      expect(html).not.toContain(`<div class="rail-label">${label}</div>`)
+    }
+  })
+})

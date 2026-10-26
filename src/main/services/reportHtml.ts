@@ -1599,6 +1599,9 @@ function renderExhibit(e: ExhibitView, total: number, packaged: boolean): string
   add('Consent overlay', c.consentSuppression ? `suppressed (${c.consentSuppression})` : undefined)
   add('Supersedes', c.supersedesCaptureId)
   add('Duplicate of', c.duplicateOfCaptureId)
+  add('From a link in', c.linkedFromCaptureId)
+  add('Link source SHA-256', c.linkedFromContentHash)
+  add('Link address', c.linkHref)
 
   // Every path here comes from what the package actually contains. Nothing is
   // inferred from the capture record, so the report cannot send a reviewer

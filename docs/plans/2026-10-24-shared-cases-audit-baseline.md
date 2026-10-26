@@ -1,6 +1,6 @@
 # Clear the Shared Cases dependency audit blockers
 
-**Status:** active
+**Status:** done, finished by [#1968](https://github.com/thebristolsound/birdbrain/pull/1968)
 
 The dependency audit on PR #1966 reports three unaccepted high-severity advisories.
 Its dependency files match `main` at `e94b30e6`; this change fixes that shared baseline

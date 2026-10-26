@@ -1,6 +1,6 @@
 # Plan: Shared Case members UI (#1514)
 
-**Status:** active
+**Status:** done, finished by [#1972](https://github.com/thebristolsound/birdbrain/pull/1972)
 
 The build plan for issue #1514, "feat(sharing): Members UI from the revised mock", and the
 handoff file for the run that builds it. The design source is the designer's revision of

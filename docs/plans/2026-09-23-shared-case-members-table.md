@@ -1,5 +1,7 @@
 # Shared Case members table and Exhibit Number prefix display
 
+**Status:** done, finished by [#1571](https://github.com/thebristolsound/birdbrain/pull/1571)
+
 Step 2 of the Shared Cases build order (#1508), ticketed as #1510. Contract:
 `docs/specs/2026-09-19-collaborative-cases-design.md`, sections Working-layer rows and
 Database, decision 7 (Exhibit Number) and decision 8 (Member Code). Step 1 (#1509) merged as

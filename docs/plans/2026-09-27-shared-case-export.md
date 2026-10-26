@@ -1,5 +1,7 @@
 # Shared Case export, import and fork (step 3)
 
+**Status:** done, finished by [#1626](https://github.com/thebristolsound/birdbrain/pull/1626)
+
 Build step 3 of [collaborative Cases](../specs/2026-09-19-collaborative-cases-design.md)
 (issue #1511). The verifier half landed in step 1: the package verifier already reads
 `manifest.<installationId>.jsonl` beside `manifest.jsonl` and walks the Shared Case. This

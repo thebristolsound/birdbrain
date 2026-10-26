@@ -21,24 +21,23 @@ wired into a capture, and no renderer code calls the sharing API. The cost is do
 4. **A plan closes with its programme.** When a programme is done, each plan it covers gets
    `**Status:** done` with the PR that finished it.
 
-## Current programme: Shared Cases
+## Current programme: Capture engine first slice
 
-Steps 1 to 5b and 7 of #1508 are on `main`: sync, the Iroh transport, the invite, join, and
-roster writers, Trusted Time on `merge` entries, `verify.sh` member chains and the two-instance e2e
-(#1946). The Members UI (#1514) is being built from the designer's revised bundle, received
-2026-10-23. Shared Cases is done when all of the following hold:
+Steps 1 to 6 and 8 to 10 of the capture engine first slice, in one manifest schema release that
+also takes ADR-0040's link provenance fields and #586; then MHTML viewer slices 2 and 3, with
+slice 3's S2 rewritten around `src/shared/localAddress.ts`. It is done when the release is
+tagged and the viewer plan's three slices are done. The gate the maintainer owes: approve the
+first-slice spec and plan on #1803, and accept or amend ADR-0040 (#1736).
 
-- **#1514, Members UI.** It changes the ledger (item 24), and `src/renderer/components/data/**`
-  is blocking tier in the evidence path assessment, so the PR carries `evidence-affecting`.
-- **#1951 and #1955.** Each stops a teammate's sync for good: a row written on an imported or
-  legacy Capture, and a share with a teammate who earlier imported the Case's archive. Both land
-  before the entry points of the Members UI, because the UI is what makes a Shared Case reachable.
-- **#1883, docs.** The threat model section, the `features.mdx` limit line, the tester guide and
-  the `CONTEXT.md` terms.
-- **The close-out sync.** The maintainer runs one real sync between two networks over the relay.
-- **Housekeeping.** #1697 closes (the spike merged as #1806), #1508's checklist is ticked and the
-  issue closes, and the Shared Cases section of the three-programme briefs plan is marked done.
-- **Release.** A beta tag carries it, with release notes telling members to upgrade together.
+## Done programmes
+
+- **Shared Cases**, done on 2026-10-26. The members screens became reachable in
+  [#1972](https://github.com/thebristolsound/birdbrain/pull/1972), after the two sync defects
+  #1951 and #1955 merged ([#1966](https://github.com/thebristolsound/birdbrain/pull/1966),
+  [#1967](https://github.com/thebristolsound/birdbrain/pull/1967)), and the docs were published
+  in [#1973](https://github.com/thebristolsound/birdbrain/pull/1973). The maintainer ran the
+  close-out sync between two networks, a beta tag carries it, and #1508 is closed. Each plan the
+  programme covered reads `**Status:** done` with the PR that finished it.
 
 ## Defect lane
 
@@ -57,7 +56,6 @@ Slot 2 works defects in this order, one at a time, beside whichever programme is
 
 | Order | Programme | Done when | Gate the maintainer owes |
 |---|---|---|---|
-| 2 | Capture engine first slice, steps 1 to 6 and 8 to 10, in one manifest schema release that also takes ADR-0040's link provenance fields and #586; then MHTML viewer slices 2 and 3, with slice 3's S2 rewritten around `src/shared/localAddress.ts` | The release is tagged, and the viewer plan's three slices are done | Approve the first-slice spec and plan on #1803; accept or amend ADR-0040 (#1736) |
 | 3 | Capture engine stage 2: the launched browser, passive capture (#600) and a profile per Persona (#1833), with Persona phases 2, 3, 5 and 6 rewritten around it; phase 4 moves to the stage 3 Companion pipe | Passive capture and Personas ship, and the Persona plan is done | Answer the schema question on #1498 |
 | 4 | Case investigation engine | The Investigate section gets its navigation entry in a packaged build | An ADR choosing the local model and runtime; the evaluation bar (#1892, CI-B) |
 

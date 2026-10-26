@@ -5,9 +5,8 @@
 The handoff file for the run that finishes the Shared Cases programme under the delivery
 roadmap (`docs/plans/2026-10-23-delivery-roadmap.md`, "Current programme: Shared Cases"). The
 roadmap defines Done: an Operator can reach Shared Cases in a packaged build, the docs are
-published, and the tracking issue (#1508) is closed. This file is committed on the
-`drafts/2026-10-26-shared-cases-closeout-handoff` branch after each slice and lands on `main`
-with the housekeeping slice.
+published, and the tracking issue (#1508) is closed. This file lands on `main` with the housekeeping slice, on `chore/1508-shared-cases-closeout`;
+its first commits were made on `drafts/2026-10-26-shared-cases-closeout-handoff`.
 
 ## State read at the start (2026-10-25)
 
@@ -24,7 +23,7 @@ with the housekeeping slice.
 | --- | --- | --- |
 | 1. Members UI entry points (#1514) | `feat/1514-members-entry-points` | PR #1972 at `8d09ea22`: ready, pre-pass approve, preflight and all CI green including the merge gate; waits for the maintainer's merge |
 | 2. Docs (#1883) | `docs/1883-shared-cases-docs` | PR #1973 at `806a9024`: ready, pre-pass approve, preflight green; merge gate waits for the maintainer's approving review; merges after #1972 |
-| 3. Housekeeping (#1508 checklist, plan statuses, roadmap) | not cut | waits for slices 1 and 2 to merge |
+| 3. Housekeeping (#1508 checklist, plan statuses, roadmap) | `chore/1508-shared-cases-closeout` | draft PR; waits for slices 1 and 2, the sync and the tag |
 | Close-out sync | maintainer | steps below; waits for slices 1 and 2 |
 | Release | maintainer | notes drafted below; waits for the sync |
 
@@ -39,6 +38,19 @@ with the housekeeping slice.
   coverage under 90%, no successful-import test, the duplicated import handler); then two
   tests the reliability probe showed could not fail were tightened. Approved at `8d09ea22`.
   The reviewer found no path on the evidence list, so the PR answers Evidence-affecting: No.
+
+### Slice 3: housekeeping
+
+- Nine plans read `**Status:** done` with the PR that finished them: the members table (#1571),
+  export (#1626), received entries (#1879), receipt stamps (#1912), invite and roster (#1913),
+  the audit baseline (#1968), unreachable rows (#1966), imported row collisions (#1967) and the
+  members UI (#1972). The Shared Cases section of the briefs plan says the programme is done.
+- The roadmap's Current programme names the capture engine first slice, and a Done programmes
+  section records Shared Cases. That record states the sync, the tag and the closed #1508 as
+  facts, so the PR stays a draft until all three hold.
+- Before marking it ready: rebase on `main` after #1972 and #1973 merge, set the members UI
+  plan's S7 row (which arrives with #1972) to shipped, tick #1514 in the #1508 checklist, and
+  name the beta tag in the roadmap record.
 
 ### Slice 2: docs
 

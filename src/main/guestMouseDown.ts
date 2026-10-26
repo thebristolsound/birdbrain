@@ -29,7 +29,9 @@ type KeyListener = (event: unknown, input: GuestKey) => void
 
 interface KeyWatched {
   on(event: 'before-input-event', listener: KeyListener): unknown
+  on(event: 'blur', listener: () => void): unknown
   off(event: 'before-input-event', listener: KeyListener): unknown
+  off(event: 'blur', listener: () => void): unknown
 }
 
 export interface MouseForwardingGuest extends KeyWatched {
@@ -38,8 +40,10 @@ export interface MouseForwardingGuest extends KeyWatched {
     ({ send(channel: string, ...args: unknown[]): void } & KeyWatched) | null
   on(event: 'before-mouse-event', listener: MouseListener): unknown
   on(event: 'before-input-event', listener: KeyListener): unknown
+  on(event: 'blur', listener: () => void): unknown
   off(event: 'before-mouse-event', listener: MouseListener): unknown
   off(event: 'before-input-event', listener: KeyListener): unknown
+  off(event: 'blur', listener: () => void): unknown
   once(event: 'destroyed', listener: () => void): unknown
 }
 
@@ -70,12 +74,17 @@ function heldKeys(input: GuestKey): GuestKeyModifier[] {
  * The release names the modifier keys held. Electron's `before-mouse-event` reports
  * none (the E2E spec pins that), so they are read from the key events the guest and
  * its host see, which are read and never prevented either. A key pressed while focus
- * was outside the app goes unseen.
+ * was outside the app goes unseen, and so does a key let go there, so the held keys
+ * are dropped whenever the guest or its host loses focus, which Electron also reports
+ * on a switch to another window or app.
  */
 export function forwardGuestMouseDown(guest: MouseForwardingGuest): void {
   let modifiers: GuestKeyModifier[] = []
   const onKey: KeyListener = (_event, input) => {
     modifiers = heldKeys(input)
+  }
+  const onBlur = () => {
+    modifiers = []
   }
   const onMouse: MouseListener = (_event, { type, button, clickCount }) => {
     const host = guest.hostWebContents
@@ -98,10 +107,14 @@ export function forwardGuestMouseDown(guest: MouseForwardingGuest): void {
   const host = guest.hostWebContents
   guest.on('before-mouse-event', onMouse)
   guest.on('before-input-event', onKey)
+  guest.on('blur', onBlur)
   host?.on('before-input-event', onKey)
+  host?.on('blur', onBlur)
   guest.once('destroyed', () => {
     guest.off('before-mouse-event', onMouse)
     guest.off('before-input-event', onKey)
+    guest.off('blur', onBlur)
     host?.off('before-input-event', onKey)
+    host?.off('blur', onBlur)
   })
 }

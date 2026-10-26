@@ -13,23 +13,27 @@ type Key = {
 }
 type Listener = (event: unknown, input: never) => void
 
-// Holds the `before-input-event` listeners registered on one webContents.
+// Holds the `before-input-event` and `blur` listeners registered on one webContents.
 function keyEvents() {
   const keys = new Set<Listener>()
+  const blurs = new Set<() => void>()
   return {
     keys,
+    blurs,
     on: (event: string, listener: Listener) => {
       if (event === 'before-input-event') keys.add(listener)
+      if (event === 'blur') blurs.add(listener as () => void)
     },
     off: (event: string, listener: Listener) => {
       if (event === 'before-input-event') keys.delete(listener)
+      if (event === 'blur') blurs.delete(listener as () => void)
     }
   }
 }
 
 function fakeHost() {
-  const { keys, on, off } = keyEvents()
-  return { send: vi.fn<(channel: string, ...args: unknown[]) => void>(), on, off, keys }
+  const { keys, blurs, on, off } = keyEvents()
+  return { send: vi.fn<(channel: string, ...args: unknown[]) => void>(), on, off, keys, blurs }
 }
 
 function key(type: string, name: string, held: Partial<Key> = {}): Key {
@@ -67,8 +71,14 @@ function fakeGuest(host: ReturnType<typeof fakeHost> | null) {
     press: (type: string, input: Omit<Mouse, 'type'> = {}) => raise(mouse, { type, ...input }),
     guestKey: (input: Key) => raise(guestKeys.keys, input),
     hostKey: (input: Key) => host && raise(host.keys, input),
+    guestBlur: () => guestKeys.blurs.forEach((listener) => listener()),
+    hostBlur: () => host?.blurs.forEach((listener) => listener()),
     destroy: () => destroyed?.(),
-    listeners: () => mouse.size + guestKeys.keys.size + (host?.keys.size ?? 0)
+    listeners: () =>
+      mouse.size +
+      guestKeys.keys.size +
+      guestKeys.blurs.size +
+      (host ? host.keys.size + host.blurs.size : 0)
   }
 }
 
@@ -127,6 +137,25 @@ describe('forwardGuestMouseDown', () => {
     expect(released()).toMatchObject({ modifiers: [] })
   })
 
+  // #1735 review. A key let go while another window had focus is never seen to go up,
+  // so it would stay held and make every later plain click a modified one.
+  it('drops the held keys when the guest or its host loses focus', () => {
+    const host = fakeHost()
+    const { guest, press, guestKey, hostKey, guestBlur, hostBlur } = fakeGuest(host)
+    forwardGuestMouseDown(guest)
+    const released = () => host.send.mock.calls.at(-1)?.[1]
+
+    hostKey(key('keyDown', 'Alt', { alt: true }))
+    hostBlur()
+    press('mouseUp', { button: 'left' })
+    expect(released()).toMatchObject({ modifiers: [] })
+
+    guestKey(key('keyDown', 'Meta', { meta: true }))
+    guestBlur()
+    press('mouseUp', { button: 'left' })
+    expect(released()).toMatchObject({ modifiers: [] })
+  })
+
   it('reports a press or release with no button or click count as such', () => {
     const host = fakeHost()
     const { guest, press } = fakeGuest(host)
@@ -177,7 +206,7 @@ describe('forwardGuestMouseDown', () => {
     const host = fakeHost()
     const { guest, press, destroy, listeners } = fakeGuest(host)
     forwardGuestMouseDown(guest)
-    expect(listeners()).toBe(3)
+    expect(listeners()).toBe(5)
 
     destroy()
     press('mouseDown')

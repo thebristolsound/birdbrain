@@ -1592,3 +1592,6 @@ folded in.
   the sync maps each field to a Capture Store file type (`CAPTURE_ARTIFACT_BY_FIELD` in
   `blobAcceptance.ts`), and the store has no type for either new file until step 3. Step 1
   leaves the list for step 3 to extend, a change to D2 and D14 that awaits the maintainer's ruling.
+- **2026-10-26.** Step 3 (#1925) takes Case Archive version 13, the next after 12 on `main`. It
+  adds `transactionRecordHash` and `pdfHash` to `CAPTURE_ENTRY_HASH_FIELDS`, mapped to the new
+  `warc.gz` and `pdf` file types, so a Shared Case member fetches and hash-checks both files.

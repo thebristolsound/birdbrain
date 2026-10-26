@@ -22,6 +22,14 @@ prove and what they do not.
 - Paste a list of URLs and the desktop app captures them in a hidden window. The app labels these
   captures as background captures, warns when a page shows a login wall, and blocks cookie
   banners using consent filter lists.
+- Before a background capture saves the page, it scrolls to load content that appears on
+  scroll. The capture's signed manifest entry records whether the scroll ran and how it ended:
+  nothing to scroll, the page stopped growing, the page reached the height limit, or the time
+  limit ran out. It also records the last page height read and whether the scroll lifted the
+  page's scroll lock.
+- A background capture's signed manifest entry lists the files the capture holds and why any
+  is missing. For the screenshot it records the page size, the image size, and whether the
+  image was scaled down, cut short, or had trailing blank space trimmed.
 - Recapture one page or a selection. The new capture links to the earlier one, which stays in
   the case.
 - Exclude URLs by substring, wildcard, or regular expression. Exclusions apply to all cases or

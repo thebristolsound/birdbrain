@@ -1612,3 +1612,10 @@ folded in.
 - **2026-10-26.** Step 3 (#1925) takes Case Archive version 13, the next after 12 on `main`. It
   adds `transactionRecordHash` and `pdfHash` to `CAPTURE_ENTRY_HASH_FIELDS`, mapped to the new
   `warc.gz` and `pdf` file types, so a Shared Case member fetches and hash-checks both files.
+- **2026-10-26.** Step 6 (#1928) writes both MHTML pin counts as 0, which is true of a build that
+  pins no image; #1843 adds the pinning and the real counts. If the tag also waits for #1843, no
+  released build writes 0 for a page whose `srcset` images the MHTML dropped; that wait is the
+  maintainer's call. Step 6's first end-to-end run found that the step script's scroll probe
+  ended the phase at the bottom of every page with `nothing-to-scroll`, so the stall detector D5
+  maps to `stopped-growing` never ended it there. Step 6 fixes the probe and records the finding
+  in the [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md).

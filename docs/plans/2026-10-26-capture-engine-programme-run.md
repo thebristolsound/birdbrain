@@ -70,7 +70,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Step 4, packages carry the files | #1926 | #1984 | fix round pushed at `b7e5e2a8`, preflight green |
 | Step 8, WARC writer | #1906 | #1979 | fix round pushed at `b4e11287`, preflight green |
 | Character set spike | #1983 | #1988 | rulings recorded at `33ed5a01`; posted on #1929 |
-| Step 6, scroll and screenshot record (writer) | #1928 | #1996 | review: request changes (scroll fix breaks inner-panel pages); fix round in flight |
+| Step 6, scroll and screenshot record (writer) | #1928 | #1996 | fix round pushed at `7d309557`; merges after the tag, with #1843 |
 | ADR-0040 link writer | #1995 | #1997 | review: request changes; fix round in flight; merges after the tag |
 | Viewer slice 2 Part A | #1735 | #1987 | fix round pushed at `3f015984`; a left click on a new-window link now does nothing |
 | Viewer slice 3, one-link lookup | #1737 | #1990 | fix round pushed at `1a1dfa3d`, preflight green |

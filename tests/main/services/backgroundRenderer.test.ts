@@ -3,12 +3,15 @@ import { writeFileSync } from 'fs'
 import { gunzipSync } from 'zlib'
 import sharp from 'sharp'
 import type { WebContents } from 'electron'
+import { runInNewContext } from 'vm'
 import {
+  SCROLL_STEP_SCRIPT,
   captureFullPageScreenshot,
   renderPageInHiddenWindow,
   scrollToLoadLazyContent,
   trimTrailingBackground
 } from '@main/services/backgroundRenderer'
+import { logger } from '@main/services/logger'
 import { ScrollToLoadRecordSchema } from '@shared/schemas'
 import { RefusedAddressError } from '@main/services/localAddressPolicy'
 import { EgressUnavailableError } from '@main/services/egress'
@@ -345,11 +348,25 @@ describe('trimTrailingBackground', () => {
     expect(trimmed).toBe(true)
   })
 
-  it('leaves a page that fills to the bottom untouched', async () => {
-    const png = await pageWithTrailingBackground(400, 1000, 1000, WHITE, RED)
+  it('leaves a page whose content ends within the padding of its bottom edge untouched', async () => {
+    // Content to row 995 on a white page 1000 rows tall: the crop would keep
+    // 995 + 1 + 8 rows, no fewer than the image has, so nothing is cut.
+    const png = await pageWithTrailingBackground(400, 1000, 996, WHITE, RED)
     const out = await trimTrailingBackground(png)
+    expect(out).toEqual({ png, trimmed: false })
     expect(out.png).toBe(png)
-    expect(out.trimmed).toBe(false)
+  })
+
+  it('trims a page whose content ends one row above the padding', async () => {
+    // The boundary beside the case above: 991 + 1 + 8 = 1000 keeps every row,
+    // and content ending at row 990 crops to 999.
+    const untouched = await pageWithTrailingBackground(400, 1000, 992, WHITE, RED)
+    expect((await trimTrailingBackground(untouched)).trimmed).toBe(false)
+
+    const png = await pageWithTrailingBackground(400, 1000, 991, WHITE, RED)
+    const { png: out, trimmed } = await trimTrailingBackground(png)
+    expect(trimmed).toBe(true)
+    expect(await heightOf(out)).toBe(999)
   })
 
   it('leaves an all-background (blank) capture untouched', async () => {
@@ -426,8 +443,13 @@ describe('trimTrailingBackground', () => {
 type StepState = { y: number; height: number; viewportHeight: number } | null
 
 // A WebContents that answers only the scroll phase's three scripts: the unlock
-// probe, one step per call, and the reset. `step` receives the 0-based call.
-function scrollingContents(opts: { unlock?: string[] | null; step: (call: number) => StepState }): {
+// probe, one step per call, and the reset. `step` receives the 0-based call;
+// `resetFails` makes the reset reject.
+function scrollingContents(opts: {
+  unlock?: string[] | null
+  step: (call: number) => StepState
+  resetFails?: boolean
+}): {
   wc: WebContents
   scripts: string[]
 } {
@@ -438,6 +460,7 @@ function scrollingContents(opts: { unlock?: string[] | null; step: (call: number
       scripts.push(script)
       if (script.includes("style.overflow = 'visible'")) return opts.unlock ?? null
       if (script.includes('root.scrollTop + viewportHeight')) return opts.step(call++)
+      if (opts.resetFails) throw new Error('page navigated away during the reset')
       return undefined
     }
   }
@@ -581,6 +604,196 @@ describe('scrollToLoadLazyContent', () => {
     await vi.runAllTimersAsync()
     await settled
     expect(scripts.at(-1)).toContain('window.scrollTo(0, 0)')
+  })
+
+  it('fails, rather than records, a phase whose lifted scroll lock cannot be restored', async () => {
+    const { wc } = scrollingContents({
+      unlock: ['hidden', ''],
+      step: () => ({ y: 0, height: 25_000, viewportHeight: 900 }),
+      resetFails: true
+    })
+
+    const pending = scrollToLoadLazyContent(wc, 10_000)
+    const settled = expect(pending).rejects.toThrow(
+      "Could not restore the page's scroll lock after Scroll-to-load"
+    )
+    await vi.runAllTimersAsync()
+    await settled
+  })
+
+  it('keeps the step error when both a step and the restore fail', async () => {
+    const { wc } = scrollingContents({
+      unlock: ['hidden', ''],
+      step: () => {
+        throw new Error('page navigated away')
+      },
+      resetFails: true
+    })
+
+    const pending = scrollToLoadLazyContent(wc, 10_000)
+    const settled = expect(pending).rejects.toThrow(/^page navigated away$/)
+    await vi.runAllTimersAsync()
+    await settled
+  })
+
+  it('records the phase and logs a failed reset when no scroll lock was lifted', async () => {
+    const logged = vi.spyOn(logger, 'error').mockImplementation(() => 'log-id')
+    const { wc } = scrollingContents({
+      step: () => ({ y: 0, height: 25_000, viewportHeight: 900 }),
+      resetFails: true
+    })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record).toMatchObject({ outcome: 'height-cap', scrollLockLifted: false })
+    expect(logged).toHaveBeenCalledWith(
+      'backgroundRenderer',
+      'backgroundRenderer.scroll_reset_failed',
+      undefined,
+      expect.any(Error)
+    )
+    logged.mockRestore()
+  })
+
+  it('keeps scrolling past a bottom when the page grows before the stall count ends', async () => {
+    // A feed whose next chunk lands two steps after each bottom: 3000px, then
+    // 4000px, and so on, until the deadline.
+    const { wc } = scrollingContents({
+      step: (call) => {
+        const height = 3000 + Math.floor(call / 3) * 1000
+        return { y: height - 900, height, viewportHeight: 900 }
+      }
+    })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record).toMatchObject({ outcome: 'time-budget', endHeight: 9000 })
+  })
+
+  it('restarts the stall count when a step moves on to a second pane', async () => {
+    // Pane A (6000px) at its end for two steps, then pane B (3000px) for two
+    // steps that each count as a stall on their own pane, then A again: no
+    // three stalls run together until A has three steps to itself.
+    const heights = [6000, 6000, 3000, 3000, 6000, 6000, 6000, 6000]
+    const { wc, scripts } = scrollingContents({
+      step: (call) => {
+        const height = heights[Math.min(call, heights.length - 1)]
+        return { y: height - 900, height, viewportHeight: 900 }
+      }
+    })
+
+    const record = await scrollUnderFakeTime(wc, 60_000)
+
+    expect(record).toMatchObject({ outcome: 'stopped-growing', endHeight: 6000 })
+    expect(scripts.filter((s) => s.includes('root.scrollTop + viewportHeight'))).toHaveLength(8)
+  })
+})
+
+// A scrollable box with the browser's clamping: scrollTop stays within
+// [0, scrollHeight - clientHeight].
+class FakeScroller {
+  scrollTop = 0
+  constructor(
+    readonly name: string,
+    public scrollHeight: number,
+    readonly clientHeight: number
+  ) {}
+  scrollTo({ top }: { top: number }) {
+    this.scrollTop = Math.max(0, Math.min(top, this.scrollHeight - this.clientHeight))
+  }
+}
+
+// Runs the step script against a document root and the inner boxes
+// `querySelectorAll('body *')` returns, in a 900px-tall window, and names the
+// box each step moved.
+function stepRunner(doc: FakeScroller, inner: FakeScroller[]) {
+  const context = {
+    document: {
+      scrollingElement: doc,
+      documentElement: doc,
+      body: {},
+      querySelectorAll: () => inner
+    },
+    window: { innerHeight: 900 }
+  }
+  return () => {
+    const before = [doc, ...inner].map((box) => box.scrollTop)
+    const state = runInNewContext(SCROLL_STEP_SCRIPT, context) as StepState
+    const moved = [doc, ...inner].filter((box, i) => box.scrollTop !== before[i])
+    return { state, moved: moved.map((box) => box.name) }
+  }
+}
+
+// Which root the step script scrolls, in the root choice the Electron runs in
+// the validation record exercise on real pages.
+describe('the Scroll-to-load step script', () => {
+  it('scrolls an inner panel once the document, overflowing by its margin, is at its end', () => {
+    // body{height:100vh} with the default 8px margin: the document overflows
+    // by 16px, and the content scrolls in <main>.
+    const doc = new FakeScroller('document', 916, 900)
+    const main = new FakeScroller('main', 10_001, 900)
+    const step = stepRunner(doc, [main])
+
+    expect(step().moved).toEqual(['document'])
+    const rest = Array.from({ length: 12 }, step)
+
+    expect(rest[0].moved).toEqual(['main'])
+    expect(main.scrollTop).toBe(9101)
+    // With every root at its end, the step reports the panel, not the
+    // document, so the stall detector reads the panel's height.
+    expect(rest.at(-1)).toEqual({
+      state: { y: 9101, height: 10_001, viewportHeight: 900 },
+      moved: []
+    })
+  })
+
+  it('scrolls both panes of a two-pane page, the larger first, and ends on the larger', () => {
+    const doc = new FakeScroller('document', 900, 900)
+    const nav = new FakeScroller('nav', 3000, 900)
+    const main = new FakeScroller('main', 6000, 900)
+    const step = stepRunner(doc, [nav, main])
+
+    const moved = Array.from({ length: 12 }, step)
+
+    expect(moved.map((s) => s.moved.join())).toEqual([
+      ...Array(6).fill('main'),
+      ...Array(3).fill('nav'),
+      '',
+      '',
+      ''
+    ])
+    expect(nav.scrollTop).toBe(2100)
+    expect(main.scrollTop).toBe(5100)
+    expect(moved.at(-1)!.state).toEqual({ y: 5100, height: 6000, viewportHeight: 900 })
+  })
+
+  it('reports a document at its end rather than nothing to scroll', () => {
+    const doc = new FakeScroller('document', 3000, 900)
+    doc.scrollTop = 2100
+
+    expect(stepRunner(doc, [])()).toEqual({
+      state: { y: 2100, height: 3000, viewportHeight: 900 },
+      moved: []
+    })
+  })
+
+  it('returns to an inner panel that grew after reaching its end', () => {
+    const doc = new FakeScroller('document', 916, 900)
+    const main = new FakeScroller('main', 2001, 900)
+    const step = stepRunner(doc, [main])
+    for (let i = 0; i < 4; i++) step()
+    expect(main.scrollTop).toBe(1101)
+
+    main.scrollHeight = 4001
+
+    expect(step().moved).toEqual(['main'])
+  })
+
+  it('finds nothing to scroll on a page that does not overflow', () => {
+    const doc = new FakeScroller('document', 900, 900)
+    const short = new FakeScroller('short', 900, 900)
+
+    expect(stepRunner(doc, [short])().state).toBeNull()
   })
 })
 

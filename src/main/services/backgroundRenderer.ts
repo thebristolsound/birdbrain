@@ -150,7 +150,7 @@ async function waitForDocumentComplete(wc: WebContents, timeoutMs: number): Prom
   )
 }
 
-// Shared by the scroll-phase scripts below. canScroll probes actual movement —
+// Shared by the scroll-phase scripts below. The probes test actual movement —
 // a viewport scroll-locked by overflow: hidden clamps even programmatic
 // scrolling. pickRoot prefers the document, falling back to the largest
 // scrollable descendant (app-shell layouts scroll an inner container).
@@ -161,35 +161,42 @@ const SCROLL_HELPERS = `
     if (el.scrollTo) el.scrollTo({ top: y, behavior: 'instant' })
     else el.scrollTop = y
   }
-  // A root already scrolled to its end moves only up, so the probe tries both
-  // ways. Probing down alone reads the bottom of a page as nothing to scroll,
-  // which ends the loop before the stall detector can.
-  const canScroll = (el) => {
+  const moves = (el, delta) => {
     if (!el || el.scrollHeight <= el.clientHeight + 2) return false
     const prev = el.scrollTop
-    setScrollTop(el, prev + 1)
-    let moved = el.scrollTop !== prev
-    if (!moved && prev > 0) {
-      setScrollTop(el, prev - 1)
-      moved = el.scrollTop !== prev
-    }
+    if (prev + delta < 0) return false
+    setScrollTop(el, prev + delta)
+    const moved = el.scrollTop !== prev
     setScrollTop(el, prev)
     return moved
   }
+  const canScroll = (el) => moves(el, 1)
+  const atEnd = (el) => !canScroll(el) && moves(el, -1)
   const doc = document.scrollingElement || document.documentElement || document.body
-  const pickRoot = () => {
+  // A root that can still move down wins: the document, else the inner one
+  // with the most overflow. With allowAtEnd, and only when no root can move
+  // down, it returns the root at its end with the most overflow, so the step
+  // loop ends on its stall detector at a real bottom rather than on "nothing
+  // to scroll".
+  const pickRoot = (allowAtEnd) => {
     if (canScroll(doc)) return doc
     let best = null
     let bestGain = 0
+    let end = allowAtEnd && atEnd(doc) ? doc : null
+    let endGain = end ? doc.scrollHeight - doc.clientHeight : 0
     const minHeight = Math.max((window.innerHeight || 0) / 2, 150)
     for (const el of document.querySelectorAll('body *')) {
       const gain = el.scrollHeight - el.clientHeight
-      if (gain > bestGain && el.clientHeight >= minHeight && canScroll(el)) {
+      if (el.clientHeight < minHeight) continue
+      if (gain > bestGain && canScroll(el)) {
         best = el
         bestGain = gain
+      } else if (allowAtEnd && gain > endGain && atEnd(el)) {
+        end = el
+        endGain = gain
       }
     }
-    return best
+    return best || end
   }
 `
 
@@ -212,9 +219,9 @@ const SCROLL_UNLOCK_SCRIPT = `(() => {
 // One scroll step: advance the root by one viewport (re-picked each step so a
 // layout change mid-phase can't strand the loop) and report position/height
 // for the main-process stall detector. null = nothing scrollable.
-const SCROLL_STEP_SCRIPT = `(() => {
+export const SCROLL_STEP_SCRIPT = `(() => {
   ${SCROLL_HELPERS}
-  const root = pickRoot()
+  const root = pickRoot(true)
   if (!root) return null
   const viewportHeight = Math.max(root.clientHeight || 0, window.innerHeight || 0, 1)
   const maxY = Math.max(0, root.scrollHeight - viewportHeight)
@@ -249,11 +256,12 @@ function recordableHeight(height: unknown): number | undefined {
 
 // Scrolls through the complete document (main-process-driven loop) to trigger
 // lazy-loaded/infinite-scroll content before the artifacts are captured. The
-// scroll lock lifted by SCROLL_UNLOCK_SCRIPT is always restored — before the
-// screenshot and MHTML are taken, so they reflect what the page actually set.
+// scroll lock lifted by SCROLL_UNLOCK_SCRIPT is restored before the screenshot
+// and MHTML are taken, so they reflect what the page actually set.
 // Returns where the loop ended (D5 of
-// docs/plans/2026-10-10-capture-engine-first-slice.md). A step that throws
-// fails the render, so no record says the phase failed.
+// docs/plans/2026-10-10-capture-engine-first-slice.md). A step that throws, or
+// a lifted lock that cannot be restored, fails the render, so no record says
+// the phase failed.
 export async function scrollToLoadLazyContent(
   wc: WebContents,
   timeoutMs: number
@@ -264,6 +272,7 @@ export async function scrollToLoadLazyContent(
   const priorOverflow = (await wc.executeJavaScript(SCROLL_UNLOCK_SCRIPT, true)) as string[] | null
   let outcome: ScrollToLoadOutcome = 'time-budget'
   let endHeight: number | undefined
+  let restoreFailed = false
 
   try {
     let stalls = 0
@@ -291,7 +300,10 @@ export async function scrollToLoadLazyContent(
       await sleep(SCROLL_PAUSE_MS)
 
       const atBottom = state.y + state.viewportHeight >= state.height - 2
-      const noHeightGrowth = state.height <= lastHeight
+      // A height that differs from the last step's, up or down, is either new
+      // content or a step that moved on to another root (a second pane), and
+      // either restarts the stall count.
+      const noHeightGrowth = state.height === lastHeight
       const noScrollProgress = state.y <= lastY + 1
 
       if ((atBottom && noHeightGrowth) || (noHeightGrowth && noScrollProgress)) {
@@ -308,12 +320,21 @@ export async function scrollToLoadLazyContent(
       lastY = state.y
     }
   } finally {
-    // Fail-soft: this only restores scroll position and the lifted overflow
-    // lock. If the page navigated or the webContents was destroyed mid-teardown
-    // the reset throws, but the scroll phase is best-effort and must not fail an
-    // otherwise-complete capture.
-    await wc.executeJavaScript(scrollResetScript(priorOverflow), true).catch(() => {})
+    try {
+      await wc.executeJavaScript(scrollResetScript(priorOverflow), true)
+    } catch (err) {
+      restoreFailed = true
+      logger.error('backgroundRenderer', 'backgroundRenderer.scroll_reset_failed', undefined, err)
+    }
     await sleep(SCROLL_PAUSE_MS)
+  }
+
+  // A reset that only returns the scroll position to the top is cosmetic. One
+  // that leaves a lifted lock in place would have the screenshot and MHTML taken
+  // of a page the entry cannot describe (D5 has no field for it), so the render
+  // fails, as it does for a step that throws.
+  if (restoreFailed && priorOverflow !== null) {
+    throw new Error("Could not restore the page's scroll lock after Scroll-to-load")
   }
 
   return {
@@ -427,8 +448,6 @@ export async function trimTrailingBackground(
     const { data, info } = await sharp(png).greyscale().raw().toBuffer({ resolveWithObject: true })
     const w = info.width
     const h = info.height
-    if (!w || !h) return untouched
-
     const bg = data[(h - 1) * w + (w >> 1)]
     // A row counts as content when more than this many pixels differ from the
     // background — high enough to ignore JPEG/anti-alias speckle, low enough to

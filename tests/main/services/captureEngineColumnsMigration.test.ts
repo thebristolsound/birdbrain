@@ -60,7 +60,7 @@ describe('migration v43 (capture engine mirror columns)', () => {
     })
   }
 
-  function setColumns(id: string, values: Record<string, string | null>): void {
+  function setColumns(id: string, values: Record<string, string | Buffer | null>): void {
     for (const [column, value] of Object.entries(values)) {
       getDb().prepare(`UPDATE captures SET ${column} = ? WHERE id = ?`).run(value, id)
     }
@@ -146,30 +146,61 @@ describe('migration v43 (capture engine mirror columns)', () => {
     expect(fromCache?.boundTls).toBeUndefined()
   })
 
-  it('reads a hand-edited value the entry could not carry back as undefined', () => {
+  it('reads a hand-edited value that fails its own field check back as undefined', () => {
     capture('not-json')
     capture('wrong-shape')
+    capture('blob')
     setColumns('not-json', {
+      transaction_record_hash: 'xyz',
+      pdf_hash: 'not-a-hash',
       inventory: '{not json',
       scroll_to_load: '',
       bound_tls: '{',
       bound_tls_absent: 'unknown-reason'
     })
     setColumns('wrong-shape', {
+      transaction_record_hash: 'A'.repeat(64),
+      pdf_hash: ENGINE_HASHES.pdf.slice(1),
       inventory: JSON.stringify({ ...ENGINE_INVENTORY, mhtml: { present: true } }),
       scroll_to_load: JSON.stringify({ ...ENGINE_SCROLL_TO_LOAD, requested: false }),
       bound_tls: JSON.stringify({ ...ENGINE_BOUND_TLS, unexpected: true }),
       bound_tls_absent: 'FROM-CACHE'
     })
-    for (const id of ['not-json', 'wrong-shape']) {
+    // A BLOB comes back from SQLite as a Buffer, never a string.
+    setColumns('blob', {
+      transaction_record_hash: Buffer.from(ENGINE_HASHES.transactionRecord),
+      pdf_hash: Buffer.from(ENGINE_HASHES.pdf),
+      inventory: Buffer.from(JSON.stringify(ENGINE_INVENTORY)),
+      bound_tls_absent: Buffer.from('from-cache')
+    })
+    for (const id of ['not-json', 'wrong-shape', 'blob']) {
       const read = getCapture(id)
       expect(read).toBeDefined()
-      expect([read?.inventory, read?.scrollToLoad, read?.boundTls, read?.boundTlsAbsent]).toEqual([
-        undefined,
-        undefined,
-        undefined,
-        undefined
-      ])
+      expect([
+        read?.transactionRecordHash,
+        read?.pdfHash,
+        read?.inventory,
+        read?.scrollToLoad,
+        read?.boundTls,
+        read?.boundTlsAbsent
+      ]).toEqual([undefined, undefined, undefined, undefined, undefined, undefined])
     }
+  })
+
+  it('applies no rule across columns, so the row can hold what the signed entry refuses', () => {
+    capture('contradicting')
+    // The entry schema refuses each pairing: `pdfHash` without `inventory`, and `boundTls`
+    // beside `boundTlsAbsent`.
+    setColumns('contradicting', {
+      pdf_hash: ENGINE_HASHES.pdf,
+      bound_tls: JSON.stringify(ENGINE_BOUND_TLS),
+      bound_tls_absent: 'from-cache'
+    })
+    expect(getCapture('contradicting')).toMatchObject({
+      pdfHash: ENGINE_HASHES.pdf,
+      boundTls: ENGINE_BOUND_TLS,
+      boundTlsAbsent: 'from-cache'
+    })
+    expect(getCapture('contradicting')?.inventory).toBeUndefined()
   })
 })

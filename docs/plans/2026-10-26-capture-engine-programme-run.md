@@ -51,7 +51,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Step 1, verifier and schema | #1904 | #1978 | review: request changes, fix round pushed at `eac4b91d` |
 | Step 2, mirror columns | #1907 | #1980 | draft, preflight green, stacked on #1978, migration 43 |
 | Step 3, the Case carries the files | #1925 | #1982 | review: approve, fix round pushed at `7dc83929` |
-| Step 5, the report states the fields | #1927 | #1985 | draft; moving onto #1984 to wire the export |
+| Step 5, the report states the fields | #1927 | #1985 | draft, stacked on #1984, export wired, under review |
 | Step 4, packages carry the files | #1926 | #1984 | review: request changes, fix round in flight |
 | Step 8, WARC writer | #1906 | #1979 | fix round pushed at `b4e11287`, preflight green |
 | Character set spike | #1983 | - | in flight, runs before step 9 |

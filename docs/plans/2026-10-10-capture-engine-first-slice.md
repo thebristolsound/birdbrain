@@ -295,7 +295,7 @@ question D).
 
 ```ts
 inventory: {
-  mhtml: { present: true }
+  mhtml: { present: true; pinnedImages: number; pinnedImagesNotLoaded: number }
   transactionRecord:
     | Absent
     | {
@@ -330,6 +330,11 @@ inventory: {
 
 - **MHTML and the screenshot are always present.** A failed `savePage` or screenshot fails the
   render today, and this slice keeps that, so no build can write either as absent (D2's rule).
+- **The MHTML counts.** `pinnedImages` is the number of images the render pinned to their
+  displayed source before the save, and `pinnedImagesNotLoaded` the number of those not loaded
+  when the save ran (#1843, amended 2026-10-21). The schema requires both whenever `inventory` is
+  present. A fifth refine joins D2's four: `pinnedImagesNotLoaded` above `pinnedImages` fails the schema.
+  #1843 writes the counts; step 1 only teaches the verifier them.
 - **Reasons.** `not-taken` means this build does not take the file: step 6's build writes it for
   the Transaction Record and the PDF. `failed` means the engine tried and failed, or refused a PDF
   over step 10's size bounds, and the log carries the error. The list is closed, so a released
@@ -1582,3 +1587,8 @@ folded in.
   review: the setup order set per target type from a rerun measurement, the body cap applied
   before fetching, the page's own auto-attach bounded and counted, and the departure from ADR-0035
   named for approval. Step 1 waits for its approval.
+- **2026-10-26.** Step 1 (#1904) takes manifest schema 6: beta.23, the latest tag, reads 5. D4
+  gains the two MHTML counts from #1843. `CAPTURE_ENTRY_HASH_FIELDS` stays at its three fields:
+  the sync maps each field to a Capture Store file type (`CAPTURE_ARTIFACT_BY_FIELD` in
+  `blobAcceptance.ts`), and the store has no type for either new file until step 3. Step 1
+  leaves the list for step 3 to extend, a change to D2 and D14 that awaits the maintainer's ruling.

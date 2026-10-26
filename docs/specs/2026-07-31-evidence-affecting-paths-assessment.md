@@ -255,6 +255,7 @@ independent of the Operator who holds it.
 | `src/main/services/installationId.ts` | blocking | Installation identity in manifest entries and certification |
 | `src/shared/verify/**` | blocking | Verification core: canonical JSON, chain, signature, RFC 3161 token, package verifier |
 | `src/verifier/**` | blocking | Standalone verifier CLI (fs+crypto-only constraint) |
+| `src/packages/evidence-package-layout/**` | blocking | The Package Layout: the exporter, Package Verification and `verify.sh` read every Evidence Package path from it, so changing a name changes where verification looks for that file in every package already exported. Added 2026-10-26 with #1904, which put the Transaction Record and PDF paths in it |
 | `src/main/index.ts` | blocking | Enforces evidence-viewer invariants (webview navigation block, sandbox webPreferences); boots DB/capture server/installation id |
 
 ### Capture lifecycle, storage, parsing, extraction

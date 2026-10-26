@@ -164,8 +164,10 @@ export interface AttachedToTarget {
 /**
  * Where an exchange ended. Each exchange has exactly one. When an exchange shows more than one
  * signal, the first that applies wins: `loadingFailed` (`cancelled` or `failed`), a cache signal
- * (`cached`), a redirect (`redirected`), `loadingFinished` (`complete` or `body-omitted`), and
- * otherwise `in-flight`.
+ * (`cached`), a redirect (`redirected`), `loadingFinished` after a response (`complete` or
+ * `body-omitted`), and otherwise `in-flight`. A request whose `loadingFinished` arrived with no
+ * response is `in-flight` too, since the record has no response to show: step 9's e2e run saw a
+ * service worker's own main script reported that way.
  */
 export type ExchangeState =
   'complete' | 'redirected' | 'body-omitted' | 'cached' | 'cancelled' | 'failed' | 'in-flight'

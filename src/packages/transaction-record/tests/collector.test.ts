@@ -1009,3 +1009,22 @@ describe('collectExchanges main document', () => {
     expect(mainDocument).toBeUndefined()
   })
 })
+
+describe('collectExchanges, a request finished with no response', () => {
+  it('counts it in flight and writes no response for it', () => {
+    // What step 9's e2e run saw for a service worker's main script on its own session.
+    const script = 'http://127.0.0.1:8080/sw.js'
+    const { exchanges, counts } = collect({
+      events: [
+        sent('sw', script),
+        page('Network.dataReceived', { requestId: 'sw', dataLength: 328 }),
+        finished('sw')
+      ],
+      responseBodies: body('sw')
+    })
+    expect(exchanges[0]).toMatchObject({ state: 'in-flight', complete: false })
+    expect(exchanges[0].response).toBeUndefined()
+    expect(exchanges[0].responseBody).toBeUndefined()
+    expect(counts).toMatchObject({ exchanges: 0, inFlight: 1, bodiesOmitted: 0 })
+  })
+})

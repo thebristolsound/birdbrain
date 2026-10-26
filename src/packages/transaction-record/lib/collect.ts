@@ -96,7 +96,7 @@ const stateOf = (hop: Hop, next: Hop | undefined, hasBody: boolean): ExchangeSta
   const redirect = next?.sent.redirectResponse
   if (hop.servedFromCache || (hop.response ?? redirect)?.fromDiskCache === true) return 'cached'
   if (redirect) return 'redirected'
-  if (hop.finished) return hasBody ? 'complete' : 'body-omitted'
+  if (hop.finished && hop.response) return hasBody ? 'complete' : 'body-omitted'
   return 'in-flight'
 }
 

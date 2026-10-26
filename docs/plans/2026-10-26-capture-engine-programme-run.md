@@ -42,8 +42,8 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
   hosts with no dot and `.local`, `.internal` and `.home.arpa` names for the lookup and Capture link. #1990
   puts it in `localAddressKind`, so the background capture's redirect refusal takes it too; that
   scope is put to the maintainer.
-- **The link writer step.** ADR-0040's writer (slice 2 plan, B4 step 3) adds a migration and
-  touches more than ten files, so its plan needs approval under ADR-0016 before work starts.
+- **The link writer step.** Approved 2026-10-26 under ADR-0016, filed as #1995, built as a draft
+  that merges after the tag.
 - **The release tag** that carries step 1's verifier. Steps 6, 9, and 10 merge only after it.
   This run holds the tag for steps 3 and 4 as well, pending the maintainer's confirmation: the
   review of #1978 found that without them a Shared Case member never fetches the two new files
@@ -64,6 +64,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Step 8, WARC writer | #1906 | #1979 | fix round pushed at `b4e11287`, preflight green |
 | Character set spike | #1983 | #1988 | rulings recorded at `33ed5a01`; posted on #1929 |
 | Step 6, scroll and screenshot record (writer) | #1928 | - | in flight, stacked on #1985; merges after the tag |
+| ADR-0040 link writer | #1995 | - | plan approved 2026-10-26; in flight, stacked on #1985 and #1981 |
 | Viewer slice 2 Part A | #1735 | #1987 | review: request changes, fix round in flight |
 | Viewer slice 3, one-link lookup | #1737 | #1990 | draft, under review |
 | ADR-0040 acceptance | #1736 | #1977 | draft, preflight green |

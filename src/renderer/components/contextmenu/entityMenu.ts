@@ -38,6 +38,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { accelerator } from '@renderer/lib/accelerator'
+import { WAYBACK_LINK_DISCLOSURE_HINT } from '@renderer/components/captures/waybackLinkModel'
 
 /**
  * The per-kind context-menu registry (#701).
@@ -61,6 +62,8 @@ export interface MenuAction {
   danger?: boolean
   separatorBefore?: boolean
   disabled?: boolean
+  /** A sentence the item shows on hover, such as what running it discloses. */
+  hint?: string
   /**
    * The action moves focus somewhere of its own, such as an inline editor. It
    * runs after the menu has closed, and focus is not handed back to the row.
@@ -277,7 +280,12 @@ export interface LinkMenuTarget {
   selectionText: string
   /** Whether the Case already holds a Capture of `linkUrl`. */
   hasCapturedCopy: boolean
-  /** Why Capture link is unavailable, or null when it is (`captureLinkBlockReason`). */
+  /** Whether `linkUrl` is http(s), the only kind Look up in Wayback is offered for. */
+  isWebLink: boolean
+  /**
+   * Why Capture link and Look up in Wayback are unavailable, or null when they are
+   * (`captureLinkBlockReason`, the rule the lookup's main-process handler also applies).
+   */
   captureBlockedReason: string | null
   actions: {
     copyLinkAddress: () => void
@@ -286,6 +294,7 @@ export interface LinkMenuTarget {
     copyText: () => void
     openCapturedCopy: () => void
     captureLink: () => void
+    lookUpInWayback: () => void
   }
 }
 
@@ -860,11 +869,19 @@ export function eventMenuEntries(target: EventMenuTarget): MenuEntry[] {
  * link: a click-through or an external browser would send the Operator to the
  * page's author's choice of URL outside the Case. Capture link queues a background
  * Capture into the viewed Capture's Case and is shown disabled, with its reason,
- * where `captureBlockedReason` refuses the address.
+ * where `captureBlockedReason` refuses the address. Look up in Wayback (#1737) is
+ * offered for a web link only, and refused for the same addresses.
  */
 export function linkMenuEntries(target: LinkMenuTarget): MenuEntry[] {
-  const { actions, linkUrl, imageUrl, selectionText, hasCapturedCopy, captureBlockedReason } =
-    target
+  const {
+    actions,
+    linkUrl,
+    imageUrl,
+    selectionText,
+    hasCapturedCopy,
+    isWebLink,
+    captureBlockedReason
+  } = target
   const entries: MenuEntry[] = []
   if (imageUrl) {
     entries.push({
@@ -908,6 +925,18 @@ export function linkMenuEntries(target: LinkMenuTarget): MenuEntry[] {
       disabled: captureBlockedReason !== null,
       run: actions.captureLink
     })
+    if (isWebLink) {
+      entries.push({
+        id: 'link-wayback',
+        label: captureBlockedReason
+          ? `Look up in Wayback (${captureBlockedReason})`
+          : 'Look up in Wayback',
+        icon: Archive,
+        hint: WAYBACK_LINK_DISCLOSURE_HINT,
+        disabled: captureBlockedReason !== null,
+        run: actions.lookUpInWayback
+      })
+    }
   }
   if (!linkUrl && !imageUrl && selectionText) {
     entries.push({

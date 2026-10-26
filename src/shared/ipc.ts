@@ -217,6 +217,7 @@ export const IPC_CHANNELS = {
 
   // Wayback Machine corroboration
   WAYBACK_LOOKUP: 'wayback:lookup',
+  WAYBACK_LOOKUP_LINK: 'wayback:lookupLink',
   WAYBACK_LIST: 'wayback:list',
   WAYBACK_LIST_FOR_CASE: 'wayback:listForCase',
   WAYBACK_PIN: 'wayback:pin',
@@ -620,6 +621,12 @@ export interface NoteBacklinksParams {
   caseId: string
   targetType: MentionTargetType
   targetId: string
+}
+
+// A link in a stored page, looked up against the time that page was captured (#1737).
+export interface LookupWaybackLinkParams {
+  captureId: string
+  url: string
 }
 
 export interface PinWaybackSnapshotParams {
@@ -1028,6 +1035,7 @@ export interface IpcInvokeContract {
   'export:generate': { args: [caseId: string, options: ExportOptions]; result: ExportResult }
 
   'wayback:lookup': { args: [captureId: string]; result: WaybackLookupResult }
+  'wayback:lookupLink': { args: [params: LookupWaybackLinkParams]; result: WaybackLookupResult }
   'wayback:list': { args: [captureId: string]; result: WaybackRef[] }
   'wayback:listForCase': { args: [caseId: string]; result: CaseWaybackRef[] }
   'wayback:pin': { args: [params: PinWaybackSnapshotParams]; result: WaybackRef }

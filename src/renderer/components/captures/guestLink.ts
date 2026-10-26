@@ -1,8 +1,6 @@
 // What a right-click or a hover in the stored-page guest reports, and the rules the
 // link menu applies to it (#1708). Pure, so each rule has a known-answer test.
 
-import { localAddressKind, localAddressLabel } from '@shared/localAddress'
-
 /** The fields of a guest `context-menu` the link menu reads. */
 export interface GuestLinkHit {
   linkUrl: string
@@ -41,24 +39,6 @@ export function readGuestContextMenu(event: unknown): GuestLinkHit | null {
   }
   if (!hit.linkUrl && !hit.imageUrl && !hit.selectionText) return null
   return hit
-}
-
-/**
- * Why Capture link is unavailable for a URL, or null when it is available (D9).
- * The page's author chose these URLs, so the menu refuses the ones that would aim
- * the background renderer at the Operator's own machine or network. Only literal
- * addresses are caught: a public name that resolves to a private address is not.
- */
-export function captureLinkBlockReason(url: string): string | null {
-  let parsed: URL
-  try {
-    parsed = new URL(url)
-  } catch {
-    return 'Not a web address'
-  }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return 'Not a web address'
-  const kind = localAddressKind(url)
-  return kind ? `Points at ${localAddressLabel(kind)}` : null
 }
 
 /** Shortens a string from the middle, keeping both ends, to at most `max` characters. */

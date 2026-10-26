@@ -30,6 +30,13 @@ describe('refusedAddressClass', () => {
     expect(refusedAddressClass('http://[::ffff:7f00:1]/')).toBe('a loopback address')
   })
 
+  // The background capture reads the classification the link menu does, so ruling 3's
+  // host names are refused here too (#1737).
+  it('refuses a host with no dot and a name under a private-use suffix', () => {
+    expect(refusedAddressClass('http://intranet/')).toBe('a private network')
+    expect(refusedAddressClass('http://printer.local/')).toBe('a private network')
+  })
+
   it('refuses 127.0.0.1 in a packaged build even with the e2e switch set', () => {
     process.env[E2E_LOOPBACK_SWITCH] = '1'
     expect(refusedAddressClass('http://127.0.0.1:8080/')).toBe('a loopback address')

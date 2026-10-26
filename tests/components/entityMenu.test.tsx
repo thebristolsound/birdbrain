@@ -25,7 +25,7 @@ import {
   type SelectorMenuTarget,
   type TagMenuTarget
 } from '@renderer/components/contextmenu/entityMenu'
-import { captureLinkBlockReason } from '@renderer/components/captures/guestLink'
+import { captureLinkBlockReason } from '@shared/localAddress'
 
 function captureActions(): CaptureMenuActions {
   return {
@@ -640,7 +640,12 @@ describe('link menu', () => {
     ['http://[::127.0.0.1]/', 'Points at an IPv4-compatible address'],
     ['http://[::a00:1]/', 'Points at an IPv4-compatible address'],
     ['http://[64:ff9b::7f00:1]/', 'Points at a NAT64 address'],
-    ['http://[64:ff9b::a9fe:a9fe]/', 'Points at a NAT64 address']
+    ['http://[64:ff9b::a9fe:a9fe]/', 'Points at a NAT64 address'],
+    ['http://wiki/', 'Points at a private network'],
+    ['http://intranet/home', 'Points at a private network'],
+    ['http://printer.local/', 'Points at a private network'],
+    ['https://grafana.corp.internal/', 'Points at a private network'],
+    ['http://nas.home.arpa/', 'Points at a private network']
   ])('never offers an enabled Capture link for %s', (linkUrl, reason) => {
     const entries = linkMenuEntries(linkTarget({ linkUrl }))
     const capture = actionById(entries, 'link-capture')

@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  captureLinkBlockReason,
-  middleTruncate,
-  readGuestContextMenu
-} from '@renderer/components/captures/guestLink'
+import { middleTruncate, readGuestContextMenu } from '@renderer/components/captures/guestLink'
 
 // The shape Electron gives a <webview> `context-menu` listener (#1708 D1): the data is
 // on `event.params`, and the event itself carries none of it.
@@ -72,22 +68,6 @@ describe('readGuestContextMenu', () => {
         contextMenuEvent({ linkURL: 'https://example.com/', linkText: 7, x: 'left', y: NaN })
       )
     ).toMatchObject({ linkText: '', x: 0, y: 0 })
-  })
-})
-
-describe('captureLinkBlockReason', () => {
-  it('answers null for a public web address', () => {
-    expect(captureLinkBlockReason('https://example.com/a?b=c#d')).toBeNull()
-  })
-
-  it('refuses something that is not a URL at all', () => {
-    expect(captureLinkBlockReason('')).toBe('Not a web address')
-    expect(captureLinkBlockReason('not a url')).toBe('Not a web address')
-  })
-
-  it('reads the host after URL normalises it, so an encoded loopback is still caught', () => {
-    expect(captureLinkBlockReason('http://0x7f.1/')).toBe('Points at a loopback address')
-    expect(captureLinkBlockReason('http://LOCALHOST./')).toBe('Points at this computer')
   })
 })
 

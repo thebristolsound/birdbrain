@@ -6,7 +6,8 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { notify } from '@renderer/lib/notify'
 import { copyValue } from '@renderer/components/data/copy'
 import type { LinkMenuTarget } from '@renderer/components/contextmenu/entityMenu'
-import { captureLinkBlockReason, type GuestLinkHit } from '@renderer/components/captures/guestLink'
+import type { GuestLinkHit } from '@renderer/components/captures/guestLink'
+import { captureLinkBlockReason } from '@shared/localAddress'
 import { resolveCaptureForUrl } from '@shared/urlCanonicalize'
 
 export type LinkHit = Pick<GuestLinkHit, 'linkUrl' | 'linkText' | 'imageUrl' | 'selectionText'>
@@ -15,7 +16,7 @@ export type LinkHit = Pick<GuestLinkHit, 'linkUrl' | 'linkText' | 'imageUrl' | '
  * Builds the `link` menu target for a hit in a stored page of `caseId` (#1708).
  * Capture link files into that Case, never the Active Case, through the same
  * `recapture:enqueue` queue every background Capture uses. That queue refuses the
- * same literal local addresses the menu does, from the same classification, and the
+ * same local addresses the menu does, from the same classification, and the
  * hidden render refuses a main-frame redirect to one (#1726).
  */
 export function useLinkMenuTarget(caseId: string): (hit: LinkHit) => LinkMenuTarget {

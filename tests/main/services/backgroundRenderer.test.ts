@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, beforeAll, afterEach } from 'vitest'
 import { writeFileSync } from 'fs'
+import { gunzipSync } from 'zlib'
 import sharp from 'sharp'
 import type { WebContents } from 'electron'
 import {
@@ -11,6 +12,7 @@ import {
 import { ScrollToLoadRecordSchema } from '@shared/schemas'
 import { RefusedAddressError } from '@main/services/localAddressPolicy'
 import { EgressUnavailableError } from '@main/services/egress'
+import { E2E_TRUSTED_CERT_SWITCH } from '@main/services/testCertificateAllowance'
 import type { EgressSetting } from '@shared/types'
 
 // Mutable harness the fake BrowserWindow/webContents read from, so each test can
@@ -30,7 +32,32 @@ const ctl = vi.hoisted(() => ({
   // calls, so a test can see the proxy go on before the first navigation.
   egress: { kind: 'direct' } as EgressSetting,
   loadUrlError: null as string | null,
-  calls: [] as string[]
+  calls: [] as string[],
+  // The Transaction Record half (step 9): every load and CDP command in order,
+  // the commands that fail, whether a body fetch never answers, whether the
+  // writer throws, and whether the build is packaged.
+  order: [] as string[],
+  failingCommands: new Set<string>(),
+  bodyHangs: false,
+  writerThrows: false,
+  isPackaged: false,
+  securityDetails: {
+    protocol: 'TLS 1.3',
+    keyExchange: '',
+    keyExchangeGroup: 'X25519',
+    cipher: 'AES_128_GCM',
+    certificateId: 7,
+    subjectName: 'example.test',
+    sanList: ['example.test'],
+    issuer: 'Birdbrain Test CA',
+    validFrom: 1767225600,
+    validTo: 1798761600,
+    signedCertificateTimestampList: [],
+    certificateTransparencyCompliance: 'unknown',
+    encryptedClientHello: false
+  },
+  // An event the page sends while the screenshot is taken, after collection stops.
+  lateEvent: false
 }))
 
 type Handler = (...args: unknown[]) => void
@@ -42,15 +69,21 @@ interface FakeWindow {
   destroy(): void
 }
 
+type MessageListener = (event: unknown, method: string, params: unknown, sessionId: string) => void
+
 interface FakeWebContents {
   handlers: Map<string, Handler>
   session: unknown
   debugger: {
     attached: boolean
+    listeners: Set<MessageListener>
     attach(): void
     isAttached(): boolean
     detach(): void
-    sendCommand(cmd: string): Promise<unknown>
+    on(event: string, listener: MessageListener): void
+    removeListener(event: string, listener: MessageListener): void
+    emit(method: string, params: unknown): void
+    sendCommand(cmd: string, params?: unknown, sessionId?: string): Promise<unknown>
   }
   setFrameRate(): void
   setWebRTCIPHandlingPolicy(policy: string): void
@@ -78,10 +111,44 @@ const { MockBrowserWindow } = vi.hoisted(() => {
     },
     setPermissionRequestHandler: vi.fn(),
     setPermissionCheckHandler: vi.fn(),
+    setCertificateVerifyProc: vi.fn(() => {
+      ctl.order.push('setCertificateVerifyProc')
+    }),
     setProxy: vi.fn(async (config: unknown) => {
       ctl.calls.push(`setProxy ${JSON.stringify(config)}`)
     })
   })
+
+  // One finished request on the page's own session; the https main document
+  // carries the details Bound TLS Details are made from.
+  const emitPage = (
+    dbg: FakeWebContents['debugger'],
+    requestId: string,
+    url: string,
+    type: string
+  ): void => {
+    dbg.emit('Network.requestWillBeSent', {
+      requestId,
+      wallTime: 1791751674.5,
+      type,
+      frameId: 'main-frame',
+      request: { url, method: 'GET', headers: { Cookie: 'session=fixture-secret' } }
+    })
+    dbg.emit('Network.responseReceived', {
+      requestId,
+      response: {
+        url,
+        status: 200,
+        statusText: 'OK',
+        headers: { 'content-type': 'text/html' },
+        mimeType: 'text/html',
+        protocol: 'h2',
+        ...(url.startsWith('https:') ? { securityDetails: ctl.securityDetails } : {})
+      }
+    })
+    dbg.emit('Network.dataReceived', { requestId, dataLength: 12 })
+    dbg.emit('Network.loadingFinished', { requestId })
+  }
 
   class MockBrowserWindow implements FakeWindow {
     destroyed = false
@@ -95,6 +162,7 @@ const { MockBrowserWindow } = vi.hoisted(() => {
         session,
         debugger: {
           attached: false,
+          listeners: new Set<MessageListener>(),
           attach() {
             this.attached = true
           },
@@ -104,11 +172,30 @@ const { MockBrowserWindow } = vi.hoisted(() => {
           detach() {
             this.attached = false
           },
-          async sendCommand(cmd: string) {
+          on(_event: string, listener: MessageListener) {
+            this.listeners.add(listener)
+          },
+          removeListener(_event: string, listener: MessageListener) {
+            this.listeners.delete(listener)
+          },
+          emit(method: string, params: unknown) {
+            for (const listener of this.listeners) listener({}, method, params, '')
+          },
+          async sendCommand(cmd: string, params?: unknown) {
+            ctl.order.push(cmd)
+            if (ctl.failingCommands.has(cmd)) throw new Error(`${cmd} failed`)
             if (cmd === 'Page.getLayoutMetrics') {
               return { cssContentSize: { x: 0, y: 0, width: 100, height: 100 } }
             }
-            if (cmd === 'Page.captureScreenshot') return { data: ctl.pngBase64 }
+            if (cmd === 'Page.captureScreenshot') {
+              if (ctl.lateEvent) emitPage(this, 'late', 'https://example.test/late.js', 'Script')
+              return { data: ctl.pngBase64 }
+            }
+            if (cmd === 'Network.getResponseBody') {
+              if (ctl.bodyHangs) return new Promise(() => {})
+              const { requestId } = params as { requestId: string }
+              return { body: `<p>${requestId}</p>`, base64Encoded: false }
+            }
             return {}
           }
         },
@@ -124,6 +211,8 @@ const { MockBrowserWindow } = vi.hoisted(() => {
         },
         async loadURL(url: string) {
           ctl.calls.push(`loadURL ${url}`)
+          ctl.order.push(`loadURL ${url}`)
+          if (url === 'about:blank') return
           if (ctl.loadUrlError) throw new Error(ctl.loadUrlError)
           if (ctl.loadUrlShouldReject) throw new Error('navigation failed')
           if (ctl.loadUrlShouldHang) return new Promise<void>(() => {})
@@ -135,6 +224,8 @@ const { MockBrowserWindow } = vi.hoisted(() => {
             if (details.preventDefault.mock.calls.length > 0) throw new Error('ERR_ABORTED (-3)')
           }
           handlers.get('did-navigate')?.({}, url, 200)
+          // The main document, as the debugger reports it once Network is enabled.
+          emitPage(this.debugger, 'doc', url, 'Document')
         },
         async executeJavaScript(script: string) {
           if (script.includes('readyState')) return undefined
@@ -175,8 +266,26 @@ const { MockBrowserWindow } = vi.hoisted(() => {
 
 vi.mock('electron', () => ({
   BrowserWindow: MockBrowserWindow,
-  app: { getPath: vi.fn(() => '/tmp') }
+  app: {
+    getPath: vi.fn(() => '/tmp'),
+    get isPackaged() {
+      return ctl.isPackaged
+    }
+  }
 }))
+
+vi.mock('../../../src/packages/transaction-record/writer', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../../src/packages/transaction-record/writer')>()
+  return {
+    ...actual,
+    writeTransactionRecord: vi.fn((input: Parameters<typeof actual.writeTransactionRecord>[0]) =>
+      ctl.writerThrows
+        ? Promise.reject(new Error('the writer broke'))
+        : actual.writeTransactionRecord(input)
+    )
+  }
+})
 
 vi.mock('@main/services/egress', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@main/services/egress')>()
@@ -581,6 +690,8 @@ describe('captureFullPageScreenshot', () => {
   })
 })
 
+const IDS = { captureId: 'capture-1929', toolVersion: '1.0.1-test' }
+
 describe('renderPageInHiddenWindow', () => {
   beforeAll(async () => {
     // A tiny valid PNG for the mocked CDP captureScreenshot to return.
@@ -600,6 +711,13 @@ describe('renderPageInHiddenWindow', () => {
     ctl.egress = { kind: 'direct' }
     ctl.loadUrlError = null
     ctl.calls = []
+    ctl.order = []
+    ctl.failingCommands = new Set()
+    ctl.bodyHangs = false
+    ctl.writerThrows = false
+    ctl.isPackaged = false
+    ctl.lateEvent = false
+    delete process.env[E2E_TRUSTED_CERT_SWITCH]
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
@@ -611,7 +729,11 @@ describe('renderPageInHiddenWindow', () => {
     }
     ctl.blocker = consentBlocker
 
-    const result = await renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+    // Past the end reserve, so the scroll phase gets a budget.
+    const result = await renderPageInHiddenWindow('https://example.test/', {
+      timeoutMs: 60_000,
+      ...IDS
+    })
 
     expect(Buffer.isBuffer(result.screenshot)).toBe(true)
     expect(result.text).toBe('hello world')
@@ -657,7 +779,10 @@ describe('renderPageInHiddenWindow', () => {
   }, 30_000)
 
   it('denies every permission check as well as every permission request', async () => {
-    const result = await renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+    const result = await renderPageInHiddenWindow('https://example.test/', {
+      timeoutMs: 30_000,
+      ...IDS
+    })
     const session = ctl.lastWindow!.webContents.session as {
       setPermissionRequestHandler: ReturnType<typeof vi.fn>
       setPermissionCheckHandler: ReturnType<typeof vi.fn>
@@ -684,7 +809,10 @@ describe('renderPageInHiddenWindow', () => {
 
   it('records no suppression when the consent blocker is unavailable', async () => {
     ctl.blocker = null
-    const result = await renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+    const result = await renderPageInHiddenWindow('https://example.test/', {
+      timeoutMs: 30_000,
+      ...IDS
+    })
     expect(result.consentSuppression).toBeUndefined()
     for await (const _chunk of result.mhtmlStream) void _chunk
     await result.cleanup()
@@ -694,7 +822,7 @@ describe('renderPageInHiddenWindow', () => {
     ctl.loadUrlShouldReject = true
 
     await expect(
-      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000, ...IDS })
     ).rejects.toThrow(/navigation failed/)
 
     // The error path destroys the window and removes the temp MHTML file.
@@ -706,7 +834,7 @@ describe('renderPageInHiddenWindow', () => {
     ctl.loadUrlShouldHang = true
 
     await expect(
-      renderPageInHiddenWindow('https://example.test/hang', { timeoutMs: 50 })
+      renderPageInHiddenWindow('https://example.test/hang', { timeoutMs: 50, ...IDS })
     ).rejects.toThrow(/timed out/)
 
     // The timeout path also tears the window down.
@@ -723,7 +851,10 @@ describe('renderPageInHiddenWindow', () => {
     async (event, url, reason) => {
       ctl.hop = { event, url, isMainFrame: true }
 
-      const render = renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+      const render = renderPageInHiddenWindow('https://example.test/', {
+        timeoutMs: 30_000,
+        ...IDS
+      })
       await expect(render).rejects.toThrow(RefusedAddressError)
       await expect(render).rejects.toThrow(reason)
 
@@ -736,7 +867,10 @@ describe('renderPageInHiddenWindow', () => {
   it('follows a redirect hop to a public address', async () => {
     ctl.hop = { event: 'will-redirect', url: 'https://example.org/next', isMainFrame: true }
 
-    const result = await renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+    const result = await renderPageInHiddenWindow('https://example.test/', {
+      timeoutMs: 30_000,
+      ...IDS
+    })
 
     expect(ctl.lastHop!.preventDefault).not.toHaveBeenCalled()
     for await (const _chunk of result.mhtmlStream) void _chunk
@@ -746,11 +880,15 @@ describe('renderPageInHiddenWindow', () => {
   it('puts the Egress proxy and the WebRTC policy on the partition before the first load', async () => {
     ctl.egress = { kind: 'tor', proxyUrl: 'socks5://127.0.0.1:9150', label: 'Tor Browser' }
 
-    const result = await renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+    const result = await renderPageInHiddenWindow('https://example.test/', {
+      timeoutMs: 30_000,
+      ...IDS
+    })
 
-    expect(ctl.calls.slice(0, 3)).toEqual([
+    expect(ctl.calls.slice(0, 4)).toEqual([
       'setProxy {"mode":"fixed_servers","proxyRules":"socks5://127.0.0.1:9150","proxyBypassRules":"<-loopback>"}',
       'webrtc disable_non_proxied_udp',
+      'loadURL about:blank',
       'loadURL https://example.test/'
     ])
     expect(result.egress).toEqual({ kind: 'tor', label: 'Tor Browser' })
@@ -759,9 +897,12 @@ describe('renderPageInHiddenWindow', () => {
   }, 30_000)
 
   it('leaves the partition alone and reports no Egress while it is Direct', async () => {
-    const result = await renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+    const result = await renderPageInHiddenWindow('https://example.test/', {
+      timeoutMs: 30_000,
+      ...IDS
+    })
 
-    expect(ctl.calls).toEqual(['loadURL https://example.test/'])
+    expect(ctl.calls).toEqual(['loadURL about:blank', 'loadURL https://example.test/'])
     expect(result.egress).toBeUndefined()
     for await (const _chunk of result.mhtmlStream) void _chunk
     await result.cleanup()
@@ -772,7 +913,7 @@ describe('renderPageInHiddenWindow', () => {
     ctl.loadUrlError = "ERR_PROXY_CONNECTION_FAILED (-130) loading 'https://example.test/'"
 
     await expect(
-      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000, ...IDS })
     ).rejects.toThrow(
       "Could not go through the Egress proxy socks5://127.0.0.1:1080: ERR_PROXY_CONNECTION_FAILED (-130) loading 'https://example.test/'"
     )
@@ -784,7 +925,7 @@ describe('renderPageInHiddenWindow', () => {
     ctl.loadUrlError = "ERR_NO_SUPPORTED_PROXIES (-336) loading 'https://example.test/'"
 
     await expect(
-      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000, ...IDS })
     ).rejects.toThrow('Could not go through the Egress proxy socks5://127.0.0.1:1080')
   }, 30_000)
 
@@ -793,7 +934,7 @@ describe('renderPageInHiddenWindow', () => {
     ctl.loadUrlError = "ERR_NAME_NOT_RESOLVED (-105) loading 'https://example.test/'"
 
     await expect(
-      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000, ...IDS })
     ).rejects.toThrow(/^ERR_NAME_NOT_RESOLVED/)
   }, 30_000)
   it('makes no window and sends nothing while the saved Egress cannot be read', async () => {
@@ -801,10 +942,161 @@ describe('renderPageInHiddenWindow', () => {
     const before = ctl.createdWindows
 
     await expect(
-      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000, ...IDS })
     ).rejects.toThrow(EgressUnavailableError)
 
     expect(ctl.createdWindows).toBe(before)
     expect(ctl.calls).toEqual([])
   }, 30_000)
+})
+
+// Step 9 of docs/plans/2026-10-10-capture-engine-first-slice.md.
+describe('renderPageInHiddenWindow, the Transaction Record', () => {
+  beforeAll(async () => {
+    const png = await sharp({ create: { width: 100, height: 100, channels: 3, background: WHITE } })
+      .png()
+      .toBuffer()
+    ctl.pngBase64 = png.toString('base64')
+  })
+
+  beforeEach(() => {
+    ctl.loadUrlShouldReject = false
+    ctl.loadUrlShouldHang = false
+    ctl.blocker = null
+    ctl.hop = null
+    ctl.egress = { kind: 'direct' }
+    ctl.loadUrlError = null
+    ctl.calls = []
+    ctl.order = []
+    ctl.failingCommands = new Set()
+    ctl.bodyHangs = false
+    ctl.writerThrows = false
+    ctl.isPackaged = false
+    ctl.lateEvent = false
+    delete process.env[E2E_TRUSTED_CERT_SWITCH]
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    delete process.env[E2E_TRUSTED_CERT_SWITCH]
+  })
+
+  async function render(url = 'https://example.test/') {
+    const result = await renderPageInHiddenWindow(url, { timeoutMs: 30_000, ...IDS })
+    for await (const _chunk of result.mhtmlStream) void _chunk
+    await result.cleanup()
+    return result
+  }
+
+  it('loads a blank page, sets up the page session, then loads the target', async () => {
+    await render()
+    const target = ctl.order.indexOf('loadURL https://example.test/')
+    expect(ctl.order.slice(0, target + 1)).toEqual([
+      'loadURL about:blank',
+      'Network.enable',
+      'Network.configureDurableMessages',
+      'Target.setAutoAttach',
+      'loadURL https://example.test/'
+    ])
+  }, 30_000)
+
+  it('records the main document, with Bound TLS Details and its credential header replaced', async () => {
+    const { transactionRecord } = await render()
+    if (!transactionRecord.present) throw transactionRecord.error
+    expect(transactionRecord.inventory).toMatchObject({
+      present: true,
+      exchanges: 1,
+      bodiesOmitted: 0,
+      recordedTargets: 1,
+      unrecordedTargets: 0,
+      replacedHeaders: ['cookie'],
+      budget: { totalBytes: 50_000_000, resourceBytes: 10_000_000 }
+    })
+    expect(transactionRecord.boundTls).toMatchObject({
+      subjectName: 'example.test',
+      issuer: 'Birdbrain Test CA',
+      validFrom: '2026-01-01T00:00:00.000Z',
+      validTo: '2027-01-01T00:00:00.000Z'
+    })
+    expect(transactionRecord.boundTlsAbsent).toBeUndefined()
+    const warc = gunzipSync(transactionRecord.warcGz).toString()
+    expect(warc).toContain('capture-id: capture-1929')
+    expect(warc).toContain('software: Birdbrain 1.0.1-test')
+    expect(warc).toContain('<p>doc</p>')
+    expect(warc).not.toContain('fixture-secret')
+  }, 30_000)
+
+  it('states not-https for an http page', async () => {
+    const { transactionRecord } = await render('http://example.test/')
+    expect(transactionRecord).toMatchObject({ present: true, boundTlsAbsent: 'not-https' })
+  }, 30_000)
+
+  it('stops collection before the screenshot, so a later request is not recorded', async () => {
+    ctl.lateEvent = true
+    const { transactionRecord } = await render()
+    expect(transactionRecord).toMatchObject({ present: true, inventory: { exchanges: 1 } })
+  }, 30_000)
+
+  it('stores the Capture with the record failed when Network.enable fails', async () => {
+    ctl.failingCommands.add('Network.enable')
+    const result = await render()
+    expect(result.transactionRecord).toMatchObject({ present: false, reason: 'failed' })
+    expect(Buffer.isBuffer(result.screenshot)).toBe(true)
+    expect(ctl.order).not.toContain('Target.setAutoAttach')
+    expect(ctl.order).toContain('loadURL https://example.test/')
+  }, 30_000)
+
+  it('keeps the record and counts the page unrecorded when its auto-attach fails', async () => {
+    ctl.failingCommands.add('Target.setAutoAttach')
+    const { transactionRecord } = await render()
+    expect(transactionRecord).toMatchObject({
+      present: true,
+      inventory: { exchanges: 1, recordedTargets: 0, unrecordedTargets: 1 }
+    })
+  }, 30_000)
+
+  it('records the Transaction Record failed, inside the Recapture timeout, when a body fetch never settles', async () => {
+    ctl.bodyHangs = true
+    const startedAt = Date.now()
+    const result = await render()
+    expect(Date.now() - startedAt).toBeLessThan(30_000)
+    expect(result.transactionRecord).toMatchObject({ present: false, reason: 'failed' })
+    expect(String(result.transactionRecord.present || result.transactionRecord.error)).toContain(
+      'The body fetches did not settle'
+    )
+  }, 30_000)
+
+  it('records the Transaction Record failed when the writer throws', async () => {
+    ctl.writerThrows = true
+    const result = await render()
+    expect(result.transactionRecord).toMatchObject({ present: false, reason: 'failed' })
+    expect(Buffer.isBuffer(result.screenshot)).toBe(true)
+  }, 30_000)
+
+  it('removes its debugger listener when the render ends', async () => {
+    await render()
+    expect(ctl.lastWindow!.webContents.debugger.listeners.size).toBe(0)
+  }, 30_000)
+
+  describe('the test certificate allowance', () => {
+    const LEAF = 'aa'.repeat(32)
+
+    it('installs none without the switch', async () => {
+      await render()
+      expect(ctl.order).not.toContain('setCertificateVerifyProc')
+    }, 30_000)
+
+    it('installs none in a packaged build, even with the switch set', async () => {
+      ctl.isPackaged = true
+      process.env[E2E_TRUSTED_CERT_SWITCH] = LEAF
+      await render()
+      expect(ctl.order).not.toContain('setCertificateVerifyProc')
+    }, 30_000)
+
+    it('installs it before the first load in an unpackaged build with the switch set', async () => {
+      process.env[E2E_TRUSTED_CERT_SWITCH] = LEAF
+      await render()
+      expect(ctl.order.indexOf('setCertificateVerifyProc')).toBe(0)
+    }, 30_000)
+  })
 })

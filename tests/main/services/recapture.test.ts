@@ -11,6 +11,7 @@ import {
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { once } from 'events'
+import { createHash } from 'crypto'
 import { MANIFEST_FILENAME } from '@shared/constants'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
@@ -29,7 +30,7 @@ import {
   type ScreenshotRecord
 } from '@main/services/recapture'
 import { RefusedAddressError } from '@main/services/localAddressPolicy'
-import { ManifestEntrySchema, type ScrollToLoadRecord } from '@shared/schemas'
+import { ManifestEntrySchema, type BoundTls, type ScrollToLoadRecord } from '@shared/schemas'
 import type { CaptureEvent, Capture } from '@shared/types'
 
 vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
@@ -57,6 +58,46 @@ const SCROLL_TO_LOAD: ScrollToLoadRecord = {
   scrollLockLifted: true
 }
 
+// Step 9: invented record bytes, its inventory part, and the main document's
+// Bound TLS Details. The store and the hash take the bytes as they are.
+const WARC_GZ = Buffer.from('invented transaction record bytes')
+const WARC_SHA256 = createHash('sha256').update(WARC_GZ).digest('hex')
+const TRANSACTION_RECORD_PART = {
+  present: true as const,
+  exchanges: 4,
+  cached: 1,
+  cancelled: 1,
+  failed: 0,
+  inFlight: 1,
+  bodiesOmitted: 1,
+  incompleteRequestBodies: 0,
+  webSockets: 0,
+  recordedTargets: 2,
+  unrecordedTargets: 1,
+  replacedHeaders: ['cookie' as const, 'set-cookie' as const],
+  budget: { totalBytes: 50_000_000, resourceBytes: 10_000_000 }
+}
+const BOUND_TLS: BoundTls = {
+  protocol: 'TLS 1.3',
+  keyExchange: '',
+  keyExchangeGroup: 'X25519',
+  cipher: 'AES_128_GCM',
+  subjectName: 'example.com',
+  sanList: ['example.com'],
+  issuer: 'Invented CA',
+  validFrom: '2026-01-01T00:00:00.000Z',
+  validTo: '2027-01-01T00:00:00.000Z',
+  signedCertificateTimestampList: [],
+  certificateTransparencyCompliance: 'unknown',
+  encryptedClientHello: false
+}
+const RECORDED: RenderedPage['transactionRecord'] = {
+  present: true,
+  warcGz: WARC_GZ,
+  inventory: TRANSACTION_RECORD_PART,
+  boundTls: BOUND_TLS
+}
+
 function fakeRender(overrides: Partial<RenderedPage> = {}): RenderPage {
   return async (url) => ({
     mhtmlStream: (async function* () {
@@ -71,6 +112,7 @@ function fakeRender(overrides: Partial<RenderedPage> = {}): RenderPage {
     httpStatus: 200,
     userAgent: 'HiddenWindow UA',
     browserVersion: 'Chrome/130',
+    transactionRecord: RECORDED,
     cleanup: async () => {},
     ...overrides
   })
@@ -157,7 +199,7 @@ describe('recapture service', () => {
   describe('the inventory and the Scroll-to-load record', () => {
     const INVENTORY = {
       mhtml: { present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 },
-      transactionRecord: { present: false, reason: 'not-taken' },
+      transactionRecord: TRANSACTION_RECORD_PART,
       screenshot: { present: true, ...SCREENSHOT_RECORD },
       pdf: { present: false, reason: 'not-taken' }
     }
@@ -186,12 +228,98 @@ describe('recapture service', () => {
         scrollToLoad: SCROLL_TO_LOAD,
         schemaVersion: 6
       })
-      expect(entry).not.toHaveProperty('transactionRecordHash')
       expect(entry).not.toHaveProperty('pdfHash')
 
       const row = getCapture(newCaptures[0].id)!
       expect(row.inventory).toEqual(INVENTORY)
       expect(row.scrollToLoad).toEqual(SCROLL_TO_LOAD)
+      await expect(verifyCapture(row.id)).resolves.toMatchObject({ status: 'verified' })
+    })
+
+    // Step 9 of docs/plans/2026-10-10-capture-engine-first-slice.md.
+    it('stores the Transaction Record and signs its hash and Bound TLS Details', async () => {
+      const seen: string[] = []
+      const svc = makeService(async (url, opts) => {
+        seen.push(opts.captureId)
+        return fakeRender()(url, opts)
+      })
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+
+      const [entry] = captureEntries()
+      const parsed = ManifestEntrySchema.safeParse(entry)
+      expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+      expect(entry).toMatchObject({
+        transactionRecordHash: WARC_SHA256,
+        boundTls: BOUND_TLS,
+        inventory: { transactionRecord: TRANSACTION_RECORD_PART }
+      })
+      expect(entry).not.toHaveProperty('boundTlsAbsent')
+      // The record's `warcinfo` names the id the render was given, so the Capture keeps it.
+      expect(entry.captureId).toBe(seen[0])
+      expect(newCaptures[0].id).toBe(seen[0])
+      const file = join(getStorageRoot(), caseId, `${seen[0]}.warc.gz`)
+      expect(readFileSync(file).equals(WARC_GZ)).toBe(true)
+
+      const row = getCapture(seen[0])!
+      expect(row.transactionRecordHash).toBe(WARC_SHA256)
+      expect(row.boundTls).toEqual(BOUND_TLS)
+      expect(row.boundTlsAbsent).toBeUndefined()
+      await expect(verifyCapture(row.id)).resolves.toMatchObject({ status: 'verified' })
+
+      // A changed byte in the stored record fails verification.
+      writeFileSync(file, Buffer.from('invented transaction record byteS'))
+      await expect(verifyCapture(row.id)).resolves.toMatchObject({ status: 'tampered' })
+    })
+
+    it('signs why Bound TLS Details are absent beside a present record', async () => {
+      const svc = makeService(
+        fakeRender({
+          transactionRecord: {
+            present: true,
+            warcGz: WARC_GZ,
+            inventory: TRANSACTION_RECORD_PART,
+            boundTlsAbsent: 'not-https'
+          }
+        })
+      )
+      svc.enqueue([{ url: 'http://example.com/page', caseId }])
+      await svc.idle()
+
+      const [entry] = captureEntries()
+      expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
+      expect(entry.boundTlsAbsent).toBe('not-https')
+      expect(entry).not.toHaveProperty('boundTls')
+      expect(getCapture(newCaptures[0].id)!.boundTlsAbsent).toBe('not-https')
+    })
+
+    it('stores the Capture with the record absent as failed and Bound TLS Details not-recorded', async () => {
+      const svc = makeService(
+        fakeRender({
+          transactionRecord: {
+            present: false,
+            reason: 'failed',
+            error: new Error('The body fetches did not settle within 5000ms')
+          }
+        })
+      )
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+
+      expect(events.map(({ type }) => type)).toEqual(['received', 'stored'])
+      const [entry] = captureEntries()
+      const parsed = ManifestEntrySchema.safeParse(entry)
+      expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+      expect(entry).toMatchObject({
+        inventory: { transactionRecord: { present: false, reason: 'failed' } },
+        boundTlsAbsent: 'not-recorded'
+      })
+      expect(entry).not.toHaveProperty('transactionRecordHash')
+      expect(entry).not.toHaveProperty('boundTls')
+      const row = getCapture(newCaptures[0].id)!
+      expect(row.transactionRecordHash).toBeUndefined()
+      expect(row.boundTlsAbsent).toBe('not-recorded')
+      expect(existsSync(join(getStorageRoot(), caseId, `${row.id}.warc.gz`))).toBe(false)
       await expect(verifyCapture(row.id)).resolves.toMatchObject({ status: 'verified' })
     })
 
@@ -227,11 +355,19 @@ describe('recapture service', () => {
       expect(copy).toMatchObject({
         method: 'duplicate',
         inventory: INVENTORY,
-        scrollToLoad: SCROLL_TO_LOAD
+        scrollToLoad: SCROLL_TO_LOAD,
+        transactionRecordHash: WARC_SHA256
       })
+      // D11: a Duplicate writes no Bound TLS Details, and its row mirrors its entry.
+      expect(copy).not.toHaveProperty('boundTls')
+      expect(copy).not.toHaveProperty('boundTlsAbsent')
       const row = getCapture(result.capture.id)!
       expect(row.inventory).toEqual(INVENTORY)
       expect(row.scrollToLoad).toEqual(SCROLL_TO_LOAD)
+      expect(row.transactionRecordHash).toBe(WARC_SHA256)
+      expect(row.boundTls).toBeUndefined()
+      expect(row.boundTlsAbsent).toBeUndefined()
+      await expect(verifyCapture(row.id)).resolves.toMatchObject({ status: 'verified' })
     })
   })
 
@@ -306,11 +442,11 @@ describe('recapture service', () => {
   it('runs jobs serially in FIFO order', async () => {
     const order: string[] = []
     const gate: Array<() => void> = []
-    const render: RenderPage = async (url) => {
+    const render: RenderPage = async (url, opts) => {
       order.push(`start:${url}`)
       await new Promise<void>((resolve) => gate.push(resolve))
       order.push(`end:${url}`)
-      return fakeRender()(url, { timeoutMs: 0 })
+      return fakeRender()(url, opts)
     }
     const svc = makeService(render)
     svc.enqueue([

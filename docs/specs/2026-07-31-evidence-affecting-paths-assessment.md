@@ -235,6 +235,8 @@ that caused it was to record the carved-out file as an exclusion (#515), which i
 | `src/main/services/egress.ts` | blocking | The Egress (ADR-0032): the proxy configuration every render, the Wayback pane and update checks receive, the routed fetch for the TSA request, the Wayback lookup and the filter lists, and what a signed capture entry records about the route (#1695). Added 2026-10-17 |
 | `src/main/services/consentBlocker.ts` | blocking | Suppresses consent overlays during recapture — alters acquired page content |
 | `src/packages/transaction-record/**` | blocking | Turns the browser's network events into the exchanges a Transaction Record holds and the inventory counts of what it lacks, and a main document's `securityDetails` into Bound TLS Details |
+| `src/main/services/transactionRecorder.ts` | blocking | Sets up each debugger session of a background render, decides which events and bodies reach the Transaction Record and under what budget, and whether the record is present or `failed` (#1929). Added 2026-10-26 |
+| `src/main/services/testCertificateAllowance.ts` | blocking | Holds the test-only switch that makes a render accept one TLS leaf, which a packaged build ignores (#1929). Added 2026-10-26 |
 
 ### Integrity core (hash, manifest, signing, trusted time, verification)
 

@@ -8,6 +8,13 @@ export const MAX_MHTML_SIZE = 200 * 1024 * 1024
 // screenshot whose *encoded PNG* exceeds this.
 export const MAX_SCREENSHOT_SIZE = 100 * 1024 * 1024
 
+// The Transaction Record's budget (docs/plans/2026-10-10-capture-engine-first-slice.md, open
+// question 3): the `maxTotalBufferSize` and `maxResourceBufferSize` every recording session is
+// sent, the cap on body bytes a render holds across its sessions (D17, item 7), and the largest
+// decoded body it keeps. The inventory signs both, so a change needs no schema step.
+export const TRANSACTION_RECORD_TOTAL_BYTES = 50_000_000
+export const TRANSACTION_RECORD_RESOURCE_BYTES = 10_000_000
+
 // Budget the extension spends on a full-page screenshot before it stops adding
 // slices (bytes). Measured on the *raw RGBA bitmap*, which is a different
 // quantity from MAX_SCREENSHOT_SIZE above — a bitmap this large is ~25

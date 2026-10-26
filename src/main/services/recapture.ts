@@ -1,11 +1,13 @@
+import { randomUUID } from 'crypto'
 import * as captureRepo from '@main/services/db/captureRepo'
-import type { CaptureLifecycle } from '@main/services/captureLifecycle'
+import type { CaptureLifecycle, IngestParams } from '@main/services/captureLifecycle'
 import { blockedSkipReason, matchCaseExclusion } from '@main/services/exclusionPolicy'
 import type { CaptureEgress } from '@main/services/egress'
 import { getInstallationId } from '@main/services/installationId'
 import { RefusedAddressError, refusedAddressClass } from '@main/services/localAddressPolicy'
 import { getSettings } from '@main/services/settings'
 import { resolveToolVersion } from '@main/services/toolVersion'
+import type { TransactionRecordOutcome } from '@main/services/transactionRecorder'
 import type { CaptureInventory, ScrollToLoadRecord } from '@shared/schemas'
 import type { Capture, CaptureEvent, ConsentSuppression } from '@shared/types'
 import type { EnqueueResult, RecaptureQueueStatus } from '@shared/ipc'
@@ -35,11 +37,19 @@ export interface RenderedPage {
   consentSuppression?: ConsentSuppression
   // The Egress the render was sent through, when it was not Direct (ADR-0032).
   egress?: CaptureEgress
+  // The Transaction Record and Bound TLS Details, or why the record is absent
+  // (step 9 of docs/plans/2026-10-10-capture-engine-first-slice.md).
+  transactionRecord: TransactionRecordOutcome
   // Releases renderer-owned resources (tmp file, window). Always called.
   cleanup: () => Promise<void>
 }
 
-export type RenderPage = (url: string, opts: { timeoutMs: number }) => Promise<RenderedPage>
+// `captureId` is the id the Capture is stored under, which the Transaction
+// Record's `warcinfo` names; `toolVersion` is the Birdbrain version it names.
+export type RenderPage = (
+  url: string,
+  opts: { timeoutMs: number; captureId: string; toolVersion: string }
+) => Promise<RenderedPage>
 
 export interface RecaptureJob {
   url: string
@@ -104,14 +114,30 @@ export function redirectedFinalUrl(requestedUrl: string, finalUrl: string): stri
 // The inventory a background Capture signs (D4 of
 // docs/plans/2026-10-10-capture-engine-first-slice.md). This build pins no
 // image before the save (#1843 adds the pinning), so both MHTML counts are 0,
-// and it takes no Transaction Record or PDF, so both are `not-taken`.
-function backgroundInventory(screenshot: ScreenshotRecord): CaptureInventory {
+// and it takes no PDF, so that is `not-taken`.
+function backgroundInventory(
+  screenshot: ScreenshotRecord,
+  transactionRecord: TransactionRecordOutcome
+): CaptureInventory {
   return {
     mhtml: { present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 },
-    transactionRecord: { present: false, reason: 'not-taken' },
+    transactionRecord: transactionRecord.present
+      ? transactionRecord.inventory
+      : { present: false, reason: transactionRecord.reason },
     screenshot: { present: true, ...screenshot },
     pdf: { present: false, reason: 'not-taken' }
   }
+}
+
+// The ingest fields the Transaction Record outcome sets: the file, and Bound
+// TLS Details or why they are absent (D7). A Capture with no record has them
+// `not-recorded`.
+function transactionRecordFields(
+  outcome: TransactionRecordOutcome
+): Pick<IngestParams, 'transactionRecord' | 'boundTls' | 'boundTlsAbsent'> {
+  if (!outcome.present) return { boundTlsAbsent: 'not-recorded' }
+  const { warcGz, boundTls, boundTlsAbsent } = outcome
+  return { transactionRecord: warcGz, boundTls, boundTlsAbsent }
 }
 
 function canonicalizeUrl(raw: string): string {
@@ -151,6 +177,8 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
 
     let rendered: RenderedPage | undefined
     const started = Date.now()
+    const captureId = randomUUID()
+    const toolVersion = resolveToolVersion()
     try {
       // The renderer honors timeoutMs itself; race defensively so a hung
       // implementation can never wedge the serial queue.
@@ -163,7 +191,10 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       })
 
       try {
-        rendered = await Promise.race([deps.renderPage(job.url, { timeoutMs }), fallbackTimeout])
+        rendered = await Promise.race([
+          deps.renderPage(job.url, { timeoutMs, captureId, toolVersion }),
+          fallbackTimeout
+        ])
       } finally {
         clearTimeout(fallbackTimer)
       }
@@ -209,6 +240,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
 
       const settings = getSettings()
       const result = await deps.captureLifecycle.ingest({
+        captureId,
         caseId: job.caseId,
         url: rendered.finalUrl,
         title: rendered.title || job.url,
@@ -228,14 +260,15 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         finalUrl: redirectedFinalUrl(job.url, rendered.finalUrl),
         operatorId: getInstallationId(),
         operatorName: settings.operatorName ?? '',
-        toolVersion: resolveToolVersion(),
+        toolVersion,
         screenshot: rendered.screenshot,
         method: 'background',
         supersedesCaptureId: job.supersedesCaptureId,
         consentSuppression: rendered.consentSuppression,
         egress: rendered.egress,
-        inventory: backgroundInventory(rendered.screenshotRecord),
-        scrollToLoad: rendered.scrollToLoad
+        inventory: backgroundInventory(rendered.screenshotRecord, rendered.transactionRecord),
+        scrollToLoad: rendered.scrollToLoad,
+        ...transactionRecordFields(rendered.transactionRecord)
       })
 
       const warning = looksLikeLoginWall({

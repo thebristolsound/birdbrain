@@ -810,6 +810,10 @@ export const LOG_CODES = [
   // retries on the next delete in that Case and at the next launch.
   'captureLifecycle.delete_recovery_failed',
   'backgroundRenderer.trim_failed',
+  // The Transaction Record of a background render failed or ran out of time
+  // (open question E of docs/plans/2026-10-10-capture-engine-first-slice.md).
+  // The Capture stores, and its inventory records the record absent as `failed`.
+  'backgroundRenderer.transaction_record_failed',
   'backgroundRenderer.consent_blocker_disable_failed',
   'backgroundRenderer.consent_blocker_enable_failed',
   'consentBlocker.filter_engine_failed',

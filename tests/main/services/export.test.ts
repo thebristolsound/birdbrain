@@ -1342,6 +1342,66 @@ describe('export', () => {
     })
   })
 
+  // ADR-0040: the report's link rows come from the signed entry, so a Settings -> Database
+  // edit of the row's mirror columns does not reach report.html.
+  it("states a link Capture's source from its entry after the row was edited", async () => {
+    const { capture: source, contentHash } = await ingest(caseId, '<html>source</html>')
+    const signed = {
+      linkedFromCaptureId: source.id,
+      linkedFromContentHash: contentHash,
+      linkHref: 'http://example.com/linked'
+    }
+    const { capture: linked } = await ingestMhtmlCapture({
+      caseId,
+      url: 'https://example.com/linked',
+      title: 'Linked',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      stream: Readable.from([
+        Buffer.from('<html>linked</html>')
+      ]) as unknown as ReadableStream<Uint8Array>,
+      textContent: '',
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      method: 'background',
+      linkSource: { signed, rowId: source.id }
+    })
+    updateRow(
+      'captures',
+      { id: linked.id },
+      { link_href: 'http://forged.example/', linked_from_content_hash: 'f'.repeat(64) }
+    )
+    expect(getCapture(linked.id)?.linkHref).toBe('http://forged.example/')
+
+    const outputPath = join(tempDir, 'link-report.html')
+    await generateReport(
+      caseId,
+      {
+        format: 'html',
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'evidence',
+        outputPath
+      },
+      captureLifecycle
+    )
+    const report = readFileSync(outputPath, 'utf-8')
+
+    expect(report).toContain('http://example.com/linked')
+    expect(report).toContain(contentHash)
+    expect(report).not.toContain('forged.example')
+    expect(report).not.toContain('f'.repeat(64))
+  })
+
   it('renders Trusted Time as a column orthogonal to integrity status', async () => {
     await ingest(caseId, '<html><body>Two axes</body></html>', 'https://example.com', 'Axes')
 

@@ -60,7 +60,11 @@ import {
 import type { TrustedTimeResult } from '@shared/verify'
 import { buildCertification, type SigningKeyRange } from '@main/services/certification'
 import { resolveToolVersion } from '@main/services/toolVersion'
-import { buildHtmlReport, resolveCaptureEngineFacts } from '@main/services/reportHtml'
+import {
+  buildHtmlReport,
+  resolveCaptureEngineFacts,
+  resolveLinkSources
+} from '@main/services/reportHtml'
 import type {
   CaptureEngineEntry,
   EntrySignatureStatus,
@@ -68,6 +72,7 @@ import type {
   ExportFileExhibit,
   ExportSharedCase,
   ExportSharedCaseMember,
+  LinkSourceEntry,
   PackagedArtifacts,
   ReportData
 } from '@main/services/reportHtml'
@@ -128,6 +133,24 @@ export function resolveExportCaptureEngine(
   return new Map([
     ...resolveCaptureEngineFacts(manifest.entries, localVerified),
     ...resolveCaptureEngineFacts(remote, true)
+  ])
+}
+
+/**
+ * A link Capture's source per Capture (ADR-0040), from the same snapshot and over the same
+ * chain verdicts as resolveExportCaptureEngine, so a row edit never reaches the report.
+ */
+export function resolveExportLinkSources(
+  manifest: ManifestSnapshot,
+  sharedCase: SharedCaseSnapshot
+): Map<string, LinkSourceEntry> {
+  const localVerified = verifyManifestChainText(manifest.jsonl.toString('utf-8'), {
+    publicKeyPem: getPublicKeyPem()
+  }).valid
+  const remote = caseEntriesOf(manifest, sharedCase).slice(manifest.entries.length)
+  return new Map([
+    ...resolveLinkSources(manifest.entries, localVerified),
+    ...resolveLinkSources(remote, true)
   ])
 }
 
@@ -547,6 +570,7 @@ export async function generateReport(
     trustedTimeByCaptureId: new Map(),
     entrySignatureByCaptureId: new Map(),
     captureEngineByCaptureId: new Map(),
+    linkSourceByCaptureId: new Map(),
     unreconciledChainCaptureIds: [],
     tsaTrustAnchorBundled: getTsaTrustBundle(settings.tsaUrl).bundled,
     // Pinned archive.org references, read per exported capture (#401). Scoped
@@ -701,6 +725,7 @@ export async function generateReport(
   data.trustedTimeByCaptureId = trustedTime.byCaptureId
   data.entrySignatureByCaptureId = resolveEntrySignatures(captures, caseEntries)
   data.captureEngineByCaptureId = resolveExportCaptureEngine(manifest, sharedCase)
+  data.linkSourceByCaptureId = resolveExportLinkSources(manifest, sharedCase)
   data.fileExhibits = buildFileExhibitRecords(scope.fileExhibits, {
     derivedByExhibitId,
     derivedVerifications,

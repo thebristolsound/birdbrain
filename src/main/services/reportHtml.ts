@@ -43,6 +43,7 @@ import type {
   ExportPreflight,
   HashVerification,
   InventoryAbsenceReason,
+  LinkProvenance,
   ScrollToLoadOutcome,
   TrustedTime,
   WaybackRef
@@ -177,6 +178,39 @@ export function resolveCaptureEngineFacts(
     }
     if (Object.keys(facts).length > 0) byCaptureId.set(raw.captureId, { facts, chainVerified })
     else byCaptureId.delete(raw.captureId)
+  }
+  return byCaptureId
+}
+
+/**
+ * A link Capture's source as its signed `capture` entry records it (ADR-0040), and whether
+ * the chain holding that entry verified over the same read, as for CaptureEngineEntry.
+ */
+export interface LinkSourceEntry {
+  link: LinkProvenance
+  chainVerified: boolean
+}
+
+/**
+ * The link provenance fields per Capture, read from the `capture` entries of the manifest
+ * snapshot a package is built from, never from the `captures` row, which Settings ->
+ * Database can edit. Keyed by the id the entry names, and the last entry for a Capture wins,
+ * as in resolveCaptureEngineFacts; resolveExportLinkSources in export.ts supplies the verdict.
+ */
+export function resolveLinkSources(
+  entries: Record<string, unknown>[],
+  chainVerified: boolean
+): Map<string, LinkSourceEntry> {
+  const byCaptureId = new Map<string, LinkSourceEntry>()
+  for (const raw of entries) {
+    if (raw.type !== 'capture' || typeof raw.captureId !== 'string') continue
+    const parsed = ManifestEntrySchema.safeParse(raw)
+    const entry = parsed.success && parsed.data.type === 'capture' ? parsed.data : undefined
+    const { linkedFromCaptureId, linkedFromContentHash, linkHref } = entry ?? {}
+    if (linkedFromCaptureId && linkedFromContentHash && linkHref) {
+      const link = { linkedFromCaptureId, linkedFromContentHash, linkHref }
+      byCaptureId.set(raw.captureId, { link, chainVerified })
+    } else byCaptureId.delete(raw.captureId)
   }
   return byCaptureId
 }
@@ -387,6 +421,12 @@ export interface ReportData {
    */
   captureEngineByCaptureId: Map<string, CaptureEngineEntry>
   /**
+   * A link Capture's source per Capture, keyed by chain id, resolved from the same manifest
+   * snapshot — see resolveExportLinkSources in export.ts. A Capture with no key prints no
+   * link rows.
+   */
+  linkSourceByCaptureId: Map<string, LinkSourceEntry>
+  /**
    * Captures the chain still claims — a `capture` entry with no matching
    * `deletion` entry — that this package does not contain. Resolved once by
    * resolveUnreconciledChainCaptures in export.ts and shared with evidence.json's
@@ -586,6 +626,8 @@ interface ExhibitView {
   derivedFiles: ExportDerivedFile[]
   /** The capture engine's fields as the entry records them; undefined when it has none. */
   engine: CaptureEngineEntry | undefined
+  /** A link Capture's source as the entry records it; undefined for any other Capture. */
+  linkSource: LinkSourceEntry | undefined
 }
 
 /** A committed non-Capture Exhibit, as the document renders it (#1156). */
@@ -700,7 +742,8 @@ function buildExhibits(data: ReportData, options: ExportOptions): ExhibitView[] 
       ),
       derivedFiles: data.derivedFilesByCaptureId.get(capture.id) ?? [],
       // By chain id, the id the entry names, not the row id.
-      engine: data.captureEngineByCaptureId.get(captureId)
+      engine: data.captureEngineByCaptureId.get(captureId),
+      linkSource: data.linkSourceByCaptureId.get(captureId)
     }
   })
 }
@@ -1599,9 +1642,14 @@ function renderExhibit(e: ExhibitView, total: number, packaged: boolean): string
   add('Consent overlay', c.consentSuppression ? `suppressed (${c.consentSuppression})` : undefined)
   add('Supersedes', c.supersedesCaptureId)
   add('Duplicate of', c.duplicateOfCaptureId)
-  add('From a link in', c.linkedFromCaptureId)
-  add('Link source SHA-256', c.linkedFromContentHash)
-  add('Link address', c.linkHref)
+  // From the signed entry, and only over a chain that verified.
+  if (e.linkSource?.chainVerified) {
+    add('From a link in', e.linkSource.link.linkedFromCaptureId)
+    add('Link source SHA-256', e.linkSource.link.linkedFromContentHash)
+    add('Link address', e.linkSource.link.linkHref)
+  } else if (e.linkSource) {
+    add('From a link in', 'not reported: the manifest chain did not verify')
+  }
 
   // Every path here comes from what the package actually contains. Nothing is
   // inferred from the capture record, so the report cannot send a reviewer

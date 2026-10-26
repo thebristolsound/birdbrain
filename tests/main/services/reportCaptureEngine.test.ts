@@ -13,6 +13,7 @@ import { readManifestSnapshot } from '@main/services/manifest'
 import {
   buildHtmlReport,
   resolveCaptureEngineFacts,
+  resolveLinkSources,
   type CaptureEngineEntry,
   type ReportData
 } from '@main/services/reportHtml'
@@ -88,6 +89,7 @@ function reportData(captures: Capture[], extra: Partial<ReportData> = {}): Repor
     trustedTimeByCaptureId: new Map(),
     entrySignatureByCaptureId: new Map(captures.map(({ id }) => [id, 'signed'])),
     captureEngineByCaptureId: new Map(),
+    linkSourceByCaptureId: new Map(),
     unreconciledChainCaptureIds: [],
     tsaTrustAnchorBundled: true,
     waybackRefsByCaptureId: new Map(),
@@ -618,30 +620,67 @@ describe('report.html capture engine fields over a chain that does not verify', 
   })
 })
 
-// ADR-0040: a link Capture's source prints beside the "Supersedes" and "Duplicate of" rows.
+// ADR-0040: a link Capture's source prints beside the "Supersedes" and "Duplicate of" rows,
+// read from the signed entry over a chain that verified, never from the editable row.
 describe('report.html on a link Capture', () => {
+  const LINK = {
+    linkedFromCaptureId: 'source-capture-id',
+    linkedFromContentHash: '5'.repeat(64),
+    linkHref: 'http://example.com/page?a=1&b=<2>'
+  }
   const row = (label: string, value: string) =>
     `<div class="rail-row">
     <div class="rail-label">${label}</div>
     <div class="rail-value">${value}</div>
   </div>`
+  const label = (text: string) => `<div class="rail-label">${text}</div>`
 
-  it('prints the source, its Content Hash and the link address', () => {
-    const link = {
-      linkedFromCaptureId: 'source-capture-id',
-      linkedFromContentHash: '5'.repeat(64),
-      linkHref: 'http://example.com/page?a=1&b=<2>'
-    }
-    const html = buildHtmlReport(reportData([capture(link)]), OPTIONS)
+  function reportWith(chainVerified: boolean, captureRow: Partial<Capture> = {}): string {
+    const linkSourceByCaptureId = resolveLinkSources(
+      signedEntries([engineCaptureEntry(LINK)]),
+      chainVerified
+    )
+    return buildHtmlReport(reportData([capture(captureRow)], { linkSourceByCaptureId }), OPTIONS)
+  }
+
+  it('prints the source, its Content Hash and the link address from the entry', () => {
+    const html = reportWith(true)
     expect(html).toContain(row('From a link in', 'source-capture-id'))
     expect(html).toContain(row('Link source SHA-256', '5'.repeat(64)))
     expect(html).toContain(row('Link address', 'http://example.com/page?a=1&amp;b=&lt;2&gt;'))
   })
 
-  it('prints none of the rows for any other Capture', () => {
-    const html = buildHtmlReport(reportData([capture()]), OPTIONS)
-    for (const label of ['From a link in', 'Link source SHA-256', 'Link address']) {
-      expect(html).not.toContain(`<div class="rail-label">${label}</div>`)
+  it('prints the entry values over edited row values', () => {
+    const html = reportWith(true, {
+      linkedFromCaptureId: 'forged-source',
+      linkedFromContentHash: 'f'.repeat(64),
+      linkHref: 'http://forged.example/'
+    })
+    expect(html).toContain(row('Link address', 'http://example.com/page?a=1&amp;b=&lt;2&gt;'))
+    for (const forged of ['forged-source', 'f'.repeat(64), 'forged.example']) {
+      expect(html).not.toContain(forged)
+    }
+  })
+
+  it('reports the source as unverified over a chain that did not verify', () => {
+    const html = reportWith(false)
+    expect(html).toContain(row('From a link in', 'not reported: the manifest chain did not verify'))
+    expect(html).not.toContain(label('Link source SHA-256'))
+    expect(html).not.toContain('source-capture-id')
+  })
+
+  it('prints none of the rows from the row alone, or for any other Capture', () => {
+    const rowOnly = buildHtmlReport(reportData([capture(LINK)]), OPTIONS)
+    const plain = buildHtmlReport(
+      reportData([capture()], {
+        linkSourceByCaptureId: resolveLinkSources(signedEntries([engineCaptureEntry()]), true)
+      }),
+      OPTIONS
+    )
+    for (const html of [rowOnly, plain]) {
+      for (const text of ['From a link in', 'Link source SHA-256', 'Link address']) {
+        expect(html).not.toContain(label(text))
+      }
     }
   })
 })

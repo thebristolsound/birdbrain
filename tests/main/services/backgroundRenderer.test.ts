@@ -528,7 +528,7 @@ describe('scrollToLoadLazyContent', () => {
   })
 
   it('records the phase and logs a failed reset when no scroll lock was lifted', async () => {
-    const logged = vi.spyOn(logger, 'error').mockImplementation(() => {})
+    const logged = vi.spyOn(logger, 'error').mockImplementation(() => 'log-id')
     const { wc } = scrollingContents({
       step: () => ({ y: 0, height: 25_000, viewportHeight: 900 }),
       resetFails: true

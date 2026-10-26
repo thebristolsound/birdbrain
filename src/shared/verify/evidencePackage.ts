@@ -195,15 +195,17 @@ function describeReplacedHeaders(
 
 // A file a capture entry anchors by its own sha256, at the package path that
 // digest names: the screenshot's rule (see the screenshot check), applied to
-// the Transaction Record and the PDF. An absent hash SKIPs; a present one FAILs
-// unless the package holds a file there whose sha256 is the hash.
+// the Transaction Record and the PDF. An absent hash SKIPs with the reason
+// that the entry anchors no such file; a present one FAILs unless the package
+// holds a file there whose sha256 is the hash.
 function bindContentAddressed(
   dir: string,
   digest: string | undefined,
   packagePath: (digest: string) => string,
-  subject: string
+  subject: string,
+  noun: string
 ): { status: CheckStatus; reason?: string } {
-  if (digest === undefined) return { status: 'skip' }
+  if (digest === undefined) return { status: 'skip', reason: `the entry anchors no ${noun}` }
   const filePath = join(dir, packagePath(digest))
   if (!existsSync(filePath)) return { status: 'fail', reason: `${subject} file missing` }
   if (sha256File(filePath) !== digest) {
@@ -921,7 +923,8 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
       dir,
       cap.transactionRecordHash,
       transactionRecordPath,
-      `capture ${cap.captureId}: Transaction Record`
+      `capture ${cap.captureId}: Transaction Record`,
+      'Transaction Record'
     )
     add(
       `capture ${cap.captureId} transaction record`,
@@ -932,7 +935,13 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
     if (replacedHeaders !== undefined) {
       add(`capture ${cap.captureId} transaction record headers`, 'skip', replacedHeaders)
     }
-    const pdf = bindContentAddressed(dir, cap.pdfHash, pdfPath, `capture ${cap.captureId}: PDF`)
+    const pdf = bindContentAddressed(
+      dir,
+      cap.pdfHash,
+      pdfPath,
+      `capture ${cap.captureId}: PDF`,
+      'PDF'
+    )
     add(`capture ${cap.captureId} pdf`, pdf.status, pdf.reason)
 
     // Timestamp — STRUCTURAL only: locate the .tst (untrusted name), byte-bind

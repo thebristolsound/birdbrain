@@ -80,6 +80,11 @@ transport interface over sockets on 127.0.0.1, joins the `transport.ts` entry.
 `src/packages/transaction-record/**` was added to Acquisition at blocking tier on 2026-10-17 with
 #1903, the capture engine's step 7 (D12 of the first-slice plan): it decides which of the
 browser's exchanges a Transaction Record holds as complete and how the inventory counts the rest.
+`src/packages/evidence-package-layout/**` was added to Integrity core at blocking tier on
+2026-10-26 with #1904, the capture engine's step 1, which put the Transaction Record and PDF
+package paths in it. It had been on neither list, although Package Verification, `verify.sh`,
+Evidence Package export, the Shared Case sync and Case Archive export and import all take paths
+from it.
 
 ### Known gap: carve-outs are caught by review, not by a check
 
@@ -255,7 +260,7 @@ independent of the Operator who holds it.
 | `src/main/services/installationId.ts` | blocking | Installation identity in manifest entries and certification |
 | `src/shared/verify/**` | blocking | Verification core: canonical JSON, chain, signature, RFC 3161 token, package verifier |
 | `src/verifier/**` | blocking | Standalone verifier CLI (fs+crypto-only constraint) |
-| `src/packages/evidence-package-layout/**` | blocking | The Package Layout: the exporter, Package Verification and `verify.sh` read every Evidence Package path from it, so changing a name changes where verification looks for that file in every package already exported. Added 2026-10-26 with #1904, which put the Transaction Record and PDF paths in it |
+| `src/packages/evidence-package-layout/**` | blocking | The Package Layout: the exporter, Package Verification and `verify.sh` read every Evidence Package path from it, so changing a name changes where verification looks for that file in every package already exported. It also names the member and lineage chain files in a Case directory, which the manifest, the Shared Case sync modules and Case Archive export and import read. Added 2026-10-26 with #1904, which put the Transaction Record and PDF paths in it |
 | `src/main/index.ts` | blocking | Enforces evidence-viewer invariants (webview navigation block, sandbox webPreferences); boots DB/capture server/installation id |
 
 ### Capture lifecycle, storage, parsing, extraction

@@ -6,7 +6,7 @@ import { MENTION_TARGET_TYPES } from '@shared/noteDoc'
 import { validateIgnorePattern } from '@shared/urlPatterns'
 import { regexPatternError } from '@shared/selectorPattern'
 import { captureLinkBlockReason } from '@shared/localAddress'
-import { planLinkBatch } from '@shared/waybackLinkBatch'
+import { confirmedBatchRefusal, WAYBACK_LINK_BATCH_CAP } from '@shared/waybackLinkBatch'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
@@ -896,8 +896,9 @@ export function registerIpcHandlers(deps: {
   })
 
   // Every listed link of a stored page (#1738), one batch at a time, so archive.org never
-  // sees two batches' requests interleaved. Main plans the confirmed rows again and sends
-  // only the plan's addresses; the Egress must still be the route the Operator confirmed.
+  // sees two batches' requests interleaved. Main takes the list the confirmation showed
+  // and sends it whole or not at all (`confirmedBatchRefusal`); the Egress must still be
+  // the route the Operator confirmed.
   let linkBatch: { captureId: string; controller: AbortController } | null = null
   handle(IPC_CHANNELS.WAYBACK_LOOKUP_LINKS, async (event, params: LookupWaybackLinksParams) => {
     const p = params as Partial<LookupWaybackLinksParams> | null | undefined
@@ -905,13 +906,24 @@ export function registerIpcHandlers(deps: {
       !p ||
       typeof p.captureId !== 'string' ||
       !Array.isArray(p.urls) ||
-      !p.urls.every((url) => typeof url === 'string') ||
       typeof p.egress !== 'object' ||
       p.egress === null
     ) {
       throw new IpcFailure('Invalid Wayback batch payload', 'INVALID_WAYBACK_LINK_PAYLOAD')
     }
+    // Bounded before any entry is read.
+    if (p.urls.length > WAYBACK_LINK_BATCH_CAP) {
+      throw new IpcFailure(
+        `A Wayback batch sends at most ${WAYBACK_LINK_BATCH_CAP} addresses`,
+        'WAYBACK_BATCH_TOO_LARGE'
+      )
+    }
+    if (!p.urls.every((url) => typeof url === 'string')) {
+      throw new IpcFailure('Invalid Wayback batch payload', 'INVALID_WAYBACK_LINK_PAYLOAD')
+    }
     const { captureId, urls, egress } = p as LookupWaybackLinksParams
+    const refused = confirmedBatchRefusal(urls)
+    if (refused) throw new IpcFailure(refused, 'WAYBACK_LINK_REFUSED')
     const capture = captureRepo.getCapture(captureId)
     if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
     if (linkBatch) {
@@ -928,7 +940,7 @@ export function registerIpcHandlers(deps: {
     linkBatch = { captureId, controller }
     try {
       return await runLinkBatch({
-        urls: planLinkBatch(urls).send,
+        urls,
         pageCapturedAt: capture.timestamp,
         fetchImpl: egressFetch,
         signal: controller.signal,

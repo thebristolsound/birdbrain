@@ -25,8 +25,8 @@ const LIST_CLASS =
 
 /**
  * The confirmation of a Wayback batch (plan S3). It lists every address that will be
- * sent, after the address rule, de-duplication and the cap, from the same plan main
- * sends; nothing is sent until Send is pressed.
+ * sent, after the address rule, de-duplication and the cap, and Send passes main that
+ * list as shown; nothing is sent until Send is pressed.
  */
 function ConfirmBatch({
   urls,
@@ -35,7 +35,7 @@ function ConfirmBatch({
 }: {
   urls: string[]
   onCancel: () => void
-  onConfirm: (egress: Parameters<WaybackLinkBatch['start']>[2]) => void
+  onConfirm: (...args: Parameters<WaybackLinkBatch['start']>) => void
 }) {
   const { data: settings, isPending } = useQuery(settingsQueryOptions)
   const plan = useMemo(() => planLinkBatch(urls), [urls])
@@ -92,7 +92,7 @@ function ConfirmBatch({
           data-testid="wayback-batch-confirm"
           disabled={send.length === 0 || !isKnownEgress(egress)}
           onClick={() => {
-            if (isKnownEgress(egress)) onConfirm(egress)
+            if (isKnownEgress(egress)) onConfirm(send, egress)
           }}
         >
           Send to archive.org
@@ -135,9 +135,9 @@ export function WaybackBatchControls({ urls, batch }: { urls: string[]; batch: W
         <ConfirmBatch
           urls={urls}
           onCancel={() => setOpen(false)}
-          onConfirm={(egress) => {
+          onConfirm={(send, egress) => {
             setOpen(false)
-            start(urls, planLinkBatch(urls).send.length, egress)
+            start(send, egress)
           }}
         />
       </Dialog>

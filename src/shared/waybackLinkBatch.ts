@@ -25,8 +25,8 @@ export interface LinkBatchPlan {
 }
 
 /**
- * What a batch over `urls` sends. The confirmation and the main process both run this, so
- * the list the Operator reads is the list main sends.
+ * What a batch over the rows `urls` sends: the confirmation lists `send`, and passes that
+ * list, not the rows, to main.
  */
 export function planLinkBatch(urls: readonly string[]): LinkBatchPlan {
   const allowed: string[] = []
@@ -52,4 +52,21 @@ export function planLinkBatch(urls: readonly string[]): LinkBatchPlan {
     overCap: allowed.slice(WAYBACK_LINK_BATCH_CAP),
     refused: [...refused.values()]
   }
+}
+
+/**
+ * Why main refuses a confirmed `send` list, or null. Main does not plan the rows again:
+ * the window's URL parser and main's read some malformed addresses differently (Chromium
+ * reads `http://ex ample.com/` as a web address, Node refuses it), and a second plan
+ * would shift the cap onto addresses the confirmation said were not checked. Main instead
+ * sends a list it accepts whole, so it only ever sends addresses the Operator was shown.
+ * The caller has already refused a list longer than `WAYBACK_LINK_BATCH_CAP`.
+ */
+export function confirmedBatchRefusal(urls: readonly string[]): string | null {
+  if (new Set(urls).size !== urls.length) return 'The batch lists an address twice'
+  for (const url of urls) {
+    const reason = captureLinkBlockReason(url)
+    if (reason) return `${reason}: ${url}`
+  }
+  return null
 }

@@ -16,7 +16,8 @@ export interface WaybackLinkBatch {
   total: number
   outcome: WaybackLinkBatchResult | null
   startError: string | null
-  start: (urls: string[], total: number, egress: KnownEgress) => void
+  /** Sends `send`, the list the confirmation showed, as it is. */
+  start: (send: string[], egress: KnownEgress) => void
   cancel: () => void
 }
 
@@ -75,16 +76,16 @@ export function useWaybackLinkBatch(captureId: string): WaybackLinkBatch {
   )
 
   const start = useCallback(
-    (urls: string[], count: number, egress: KnownEgress) => {
+    (send: string[], egress: KnownEgress) => {
       runningRef.current = true
       setRunning(true)
       setCells(new Map())
       setDone(0)
-      setTotal(count)
+      setTotal(send.length)
       setOutcome(null)
       setStartError(null)
       window.birdbrain.wayback
-        .lookupLinks({ captureId, urls, egress })
+        .lookupLinks({ captureId, urls: send, egress })
         .then(setOutcome, (cause: unknown) => setStartError(messageOf(cause)))
         .finally(() => {
           runningRef.current = false

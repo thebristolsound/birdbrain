@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { planLinkBatch, WAYBACK_LINK_BATCH_CAP } from '@shared/waybackLinkBatch'
+import {
+  confirmedBatchRefusal,
+  planLinkBatch,
+  WAYBACK_LINK_BATCH_CAP
+} from '@shared/waybackLinkBatch'
 
 // #1738, plan S3 and S4: the addresses a Wayback batch sends, which the confirmation lists
-// and main sends again from the same rows.
+// and passes to main as shown.
 
 describe('planLinkBatch', () => {
   it('sends each address once, in the order the rows first show it', () => {
@@ -52,5 +56,31 @@ describe('planLinkBatch', () => {
 
   it('sends nothing for no rows', () => {
     expect(planLinkBatch([])).toEqual({ send: [], overCap: [], refused: [] })
+  })
+})
+
+// #1998 review, finding 1: main accepts the confirmed list whole or refuses it whole.
+describe('confirmedBatchRefusal', () => {
+  it('accepts a list of distinct addresses the rule allows', () => {
+    expect(confirmedBatchRefusal(['https://a.example/', 'https://b.example/'])).toBeNull()
+    expect(confirmedBatchRefusal([])).toBeNull()
+  })
+
+  it('names the first address the rule refuses, with the reason', () => {
+    expect(
+      confirmedBatchRefusal(['https://a.example/', 'http://printer.local/', 'http://localhost/'])
+    ).toBe('Points at a private network: http://printer.local/')
+  })
+
+  it("refuses an address this process's URL parser rejects", () => {
+    expect(confirmedBatchRefusal(['https://a.example/', 'http://ex ample.com/'])).toBe(
+      'Not a web address: http://ex ample.com/'
+    )
+  })
+
+  it('refuses a list that names an address twice', () => {
+    expect(confirmedBatchRefusal(['https://a.example/', 'https://a.example/'])).toBe(
+      'The batch lists an address twice'
+    )
   })
 })

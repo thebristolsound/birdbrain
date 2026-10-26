@@ -639,9 +639,9 @@ export interface WaybackLinkLookupResult extends WaybackLookupResult {
   countIsMinimum: boolean
 }
 
-// Every listed link of a stored page (#1738). `urls` are the rows the Operator confirmed;
-// main plans them again with `planLinkBatch`. `egress` is the route the confirmation
-// stated, and main sends nothing while the Egress setting differs from it.
+// Every listed link of a stored page (#1738). `urls` is the list the confirmation showed,
+// which main sends whole or refuses whole. `egress` is the route the confirmation stated,
+// and main sends nothing while the Egress setting differs from it.
 export interface LookupWaybackLinksParams {
   captureId: string
   urls: string[]

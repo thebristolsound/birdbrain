@@ -3312,18 +3312,13 @@ describe('archive handlers', () => {
       return registered.get(IPC_CHANNELS.WAYBACK_LOOKUP_LINKS)!(event, params) as Promise<Res>
     }
 
-    it('sends each allowed address once, through the Egress, and reports each by capture', async () => {
+    it('sends the confirmed list as it is, through the Egress, and reports each by capture', async () => {
       const cap = storedPage()
-      lookupSnapshots.mockResolvedValue(EMPTY)
+      lookupSnapshots.mockResolvedValueOnce(EMPTY).mockResolvedValueOnce(EMPTY)
       const { send, event } = sender()
       const res = await start(event, {
         captureId: cap.id,
-        urls: [
-          'https://a.example/',
-          'http://intranet/',
-          'https://a.example/',
-          'https://b.example/'
-        ],
+        urls: ['https://a.example/', 'https://b.example/'],
         egress: DIRECT
       })
       expect(expectOk(res)).toEqual({ answered: 2, failed: 0, notChecked: 0, stopped: null })
@@ -3368,12 +3363,63 @@ describe('archive handlers', () => {
       ])
     })
 
-    it('sends only the first 50 addresses, whatever the renderer passed', async () => {
+    const sites = (n: number) => Array.from({ length: n }, (_, i) => `https://site${i}.example/`)
+
+    it('sends a list of 50', async () => {
       const cap = storedPage()
       runLinkBatch.mockResolvedValueOnce({ answered: 0, failed: 0, notChecked: 0, stopped: null })
-      const urls = Array.from({ length: 53 }, (_, i) => `https://site${i}.example/`)
+      const urls = sites(50)
       expectOk(await start(sender().event, { captureId: cap.id, urls, egress: DIRECT }))
-      expect(runLinkBatch.mock.calls[0][0].urls).toEqual(urls.slice(0, 50))
+      expect(runLinkBatch.mock.calls[0][0].urls).toEqual(urls)
+    })
+
+    // The confirmation never lists more than 50, so a longer list is refused whole rather
+    // than cut: cutting it would choose addresses for the Operator.
+    it.each([
+      ['addresses', sites(51)],
+      ['entries of any kind', Array.from({ length: 51 }, () => 1)]
+    ])('refuses 51 %s before reading them', async (_, urls) => {
+      const cap = storedPage()
+      const res = await start(sender().event, { captureId: cap.id, urls, egress: DIRECT })
+      expect(res).toMatchObject({
+        ok: false,
+        error: 'A Wayback batch sends at most 50 addresses',
+        code: 'WAYBACK_BATCH_TOO_LARGE'
+      })
+      expect(runLinkBatch).not.toHaveBeenCalled()
+    })
+
+    // #1998 review, finding 1: the window's URL parser accepts `http://ex ample.com/` and
+    // main's refuses it, so main refuses the whole list rather than sending a different one.
+    it.each([
+      ['http://ex ample.com/', 'Not a web address: http://ex ample.com/'],
+      ['http://intranet/', 'Points at a private network: http://intranet/'],
+      ['http://127.0.0.1/admin', 'Points at a loopback address: http://127.0.0.1/admin']
+    ])('refuses the whole list when main refuses %s', async (bad, error) => {
+      const cap = storedPage()
+      const res = await start(sender().event, {
+        captureId: cap.id,
+        urls: [...sites(49), bad],
+        egress: DIRECT
+      })
+      expect(res).toMatchObject({ ok: false, error, code: 'WAYBACK_LINK_REFUSED' })
+      expect(runLinkBatch).not.toHaveBeenCalled()
+      expect(lookupSnapshots).not.toHaveBeenCalled()
+    })
+
+    it('refuses a list that names an address twice', async () => {
+      const cap = storedPage()
+      const res = await start(sender().event, {
+        captureId: cap.id,
+        urls: ['https://a.example/', 'https://b.example/', 'https://a.example/'],
+        egress: DIRECT
+      })
+      expect(res).toMatchObject({
+        ok: false,
+        error: 'The batch lists an address twice',
+        code: 'WAYBACK_LINK_REFUSED'
+      })
+      expect(runLinkBatch).not.toHaveBeenCalled()
     })
 
     it('sends nothing when the Egress is not the route the Operator confirmed', async () => {
@@ -3431,7 +3477,7 @@ describe('archive handlers', () => {
 
     it('sends no progress to a window that has closed', async () => {
       const cap = storedPage()
-      lookupSnapshots.mockResolvedValue(EMPTY)
+      lookupSnapshots.mockResolvedValueOnce(EMPTY)
       const send = vi.fn()
       const event = { sender: { send, isDestroyed: () => true } } as unknown as IpcMainInvokeEvent
       const res = await start(event, {

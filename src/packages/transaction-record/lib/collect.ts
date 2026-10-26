@@ -28,6 +28,8 @@ interface Hop {
   response?: CdpResponse
   servedFromCache: boolean
   finished: boolean
+  /** The session that reported `Network.loadingFinished`, where the body was fetched. */
+  finishedOn?: string
   failure?: LoadingFailed
   requestExtra?: HeaderMap
   responseExtra?: ResponseExtra
@@ -51,7 +53,7 @@ const RECORDED_TARGET_TYPES = new Set(['iframe', 'worker', 'service_worker'])
 // The page's own debugger session, as `wc.debugger` reports it and step 0's streams are read.
 const PAGE_SESSION = ''
 
-const applyToHop = (hop: Hop, { method, params }: RecordedEvent): void => {
+const applyToHop = (hop: Hop, { sessionId, method, params }: RecordedEvent): void => {
   switch (method) {
     case 'Network.responseReceived':
       hop.response = (params as ResponseReceived).response
@@ -61,6 +63,7 @@ const applyToHop = (hop: Hop, { method, params }: RecordedEvent): void => {
       break
     case 'Network.loadingFinished':
       hop.finished = true
+      hop.finishedOn = sessionId
       break
     case 'Network.loadingFailed':
       hop.failure = params as LoadingFailed
@@ -139,7 +142,16 @@ const toExchanges = (
   // post data to the last hop that reported a body.
   const bodyHop = lastIndex(hops, (hop) => hop.finished)
   const postDataHop = lastIndex(hops, (hop) => hop.sent.request.hasPostData === true)
-  const body = input.responseBodies?.get(requestId)
+  const returned = input.responseBodies?.get(requestId)
+  // The rulings of 2026-10-26 on the charset spike: a text body is the served bytes only from a
+  // session sent `Network.configureDurableMessages`, so from any other it counts as not returned.
+  const finishedOn = bodyHop === -1 ? undefined : hops[bodyHop].finishedOn
+  const body =
+    returned !== undefined &&
+    (returned.base64Encoded ||
+      (finishedOn !== undefined && (input.durableSessions?.has(finishedOn) ?? false)))
+      ? returned
+      : undefined
   return hops.map((hop, index) => {
     const next = hops[index + 1]
     const { sent, failure, requestExtra, responseExtra } = hop
@@ -278,10 +290,20 @@ export const collectExchanges = (input: CollectorInput): CollectedExchanges => {
     }
   }
 
+  let mainDocument: Exchange | undefined
   const exchanges = [...chains.values()]
     .filter((chain) => chain.hops.length > 0)
     .sort(byStart)
-    .flatMap((chain) => toExchanges(chain, input, mainFrameId))
+    .flatMap((chain) => {
+      const written = toExchanges(chain, input, mainFrameId)
+      const [{ sent }] = chain.hops
+      // A page that navigates itself has more than one main frame document; the last one is the
+      // page the artifacts show.
+      if (sent.type === 'Document' && sent.frameId !== undefined && sent.frameId === mainFrameId) {
+        mainDocument = written.at(-1)
+      }
+      return written
+    })
 
   // Each target is in exactly one count (plan D17, "The two counts"). The page is a target too:
   // it counts as recorded only when the caller lists its session, since an auto-attach that
@@ -312,5 +334,5 @@ export const collectExchanges = (input: CollectorInput): CollectedExchanges => {
     recordedTargets,
     unrecordedTargets
   }
-  return { exchanges, counts }
+  return { exchanges, counts, ...(mainDocument ? { mainDocument } : {}) }
 }

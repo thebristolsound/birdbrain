@@ -30,16 +30,29 @@ export interface RequestPostDataResult {
 export interface CollectorInput {
   /** Every event in arrival order, from the page's session and each child session. */
   events: readonly RecordedEvent[]
-  /** Keyed by request id. A finished request missing here had no body returned. */
+  /**
+   * Keyed by request id. A finished request missing here had no body returned. A body returned as
+   * text is kept only when the session that reported the request's `Network.loadingFinished` is
+   * in `durableSessions`; a base64 body is kept from any session.
+   */
   responseBodies?: ReadonlyMap<string, ResponseBodyResult>
+  /**
+   * The sessions whose `Network.configureDurableMessages` answered, by session id, the page's own
+   * `''` included. On any other session the browser can return a text body decoded from the
+   * page's character set (docs/specs/2026-10-26-transaction-record-charset-spike.md), so such a
+   * body is not kept and its exchange is `body-omitted`. Absent, no session is durable.
+   */
+  durableSessions?: ReadonlySet<string>
   /** Keyed by request id. */
   requestPostData?: ReadonlyMap<string, RequestPostDataResult>
   /**
-   * The targets whose setup answered, by session id (plan D17, "The two counts"): the page's own
-   * session `''` when its `Target.setAutoAttach` answered, and each attached frame, dedicated
-   * worker or service worker whose `Network.enable` and `Target.setAutoAttach` both answered. A
-   * target not listed here, the page included, counts as unrecorded; so does an attached target of
-   * any other type, listed or not. Absent, every target counts as unrecorded.
+   * The targets whose setup answered, by session id (plan D17, "The two counts", with the
+   * charset spike's rulings of 2026-10-26): the page's own session `''` when its
+   * `Network.configureDurableMessages` and `Target.setAutoAttach` answered, and each attached
+   * frame, dedicated worker or service worker whose `Network.enable`,
+   * `Network.configureDurableMessages` and `Target.setAutoAttach` all answered. A target not
+   * listed here, the page included, counts as unrecorded; so does an attached target of any other
+   * type, listed or not. Absent, every target counts as unrecorded.
    */
   recordedSessions?: ReadonlySet<string>
 }
@@ -229,6 +242,11 @@ export interface TransactionRecordCounts {
 export interface CollectedExchanges {
   exchanges: Exchange[]
   counts: TransactionRecordCounts
+  /**
+   * The last hop of the main frame's last document request: the response Bound TLS Details
+   * describe (plan D7). Absent when no main frame document request was recorded.
+   */
+  mainDocument?: Exchange
 }
 
 export interface WriterInput {

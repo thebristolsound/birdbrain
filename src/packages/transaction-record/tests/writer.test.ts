@@ -471,7 +471,8 @@ describe('writeTransactionRecord credential headers (ADR-0036)', () => {
     responseBodies: new Map([
       ['doc', { body: '<p>signed in</p>', base64Encoded: false }],
       ['plain', { body: '{}', base64Encoded: false }]
-    ])
+    ]),
+    durableSessions: new Set([''])
   })
 
   it('collects the fixture as three complete exchanges', () => {
@@ -717,7 +718,8 @@ describe('writeTransactionRecord on the step 0 streams', () => {
     const events = spikeStream(name)
     const { exchanges, counts } = collectExchanges({
       events,
-      responseBodies: inventedBodies(events)
+      responseBodies: inventedBodies(events),
+      durableSessions: new Set([''])
     })
     const { records } = await writeAndRead(exchanges)
     const types = records.map((record) => record.warc('WARC-Type'))

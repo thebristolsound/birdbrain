@@ -3,8 +3,8 @@
 **Status:** active
 
 The handoff file for the interactive run that works programme 2 of
-[the delivery roadmap](2026-10-23-delivery-roadmap.md), started 2026-10-26. The goal is the done-when
-of programme 2 in the roadmap: the manifest schema release that carries first-slice steps 1
+[the delivery roadmap](2026-10-23-delivery-roadmap.md), started 2026-10-26. The goal is the
+done-when of programme 2 in the roadmap: the manifest schema release that carries first-slice steps 1
 to 6 and 8 to 10, the ADR-0040 link fields and #586's schema step is tagged, and the three MHTML
 viewer slices are done. Programme 3 (stage 2) is out of this run's scope unless the maintainer
 extends it.
@@ -26,9 +26,12 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 
 ## Gates the maintainer owes
 
-- **ADR-0040 (#1736).** Accept or amend. Schema 5 shipped, so the fields take 6.
-- **#586's schema step.** Whether it joins schema 6, and which slice of the chain head anchoring
-  design is the schema step.
+- **ADR-0040 (#1736).** Ruled 2026-10-26: accepted at schema 6. Recorded in #1977; its verifier
+  step is #1976.
+- **#586's schema step.** Ruled 2026-10-26: deferred to a later schema number once its design is
+  approved, so it does not hold the schema-6 release.
+- **The link writer step.** ADR-0040's writer (slice 2 plan, B4 step 3) adds a migration and
+  touches more than ten files, so its plan needs approval under ADR-0016 before work starts.
 - **The release tag** that carries step 1's verifier. Steps 6, 9, and 10 merge only after it.
 - **Merges.** Every step is `evidence-affecting`, so each needs the maintainer's approval at head.
 
@@ -38,6 +41,8 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | --- | --- | --- | --- |
 | Step 1, verifier and schema | #1904 | - | in flight, 2026-10-26 |
 | Step 8, WARC writer | #1906 | - | in flight, 2026-10-26 |
+| ADR-0040 acceptance | #1736 | #1977 | draft, preflight green |
+| ADR-0040 verifier, schema 6 | #1976 | - | filed, stacks on #1904 |
 
 ## Next
 

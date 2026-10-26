@@ -2510,6 +2510,20 @@ describe('createCaptureLifecycle.verify', () => {
       await expect(lifecycle.verify(ENGINE_ID)).resolves.toMatchObject({ status: 'verified' })
     })
 
+    it('streams both files instead of reading either whole', async () => {
+      const real = createCaptureStore({ getRoot: getStorageRoot })
+      const store: CaptureStore = {
+        ...real,
+        readArtifact: (c, id, type) => {
+          if (type === 'warc.gz' || type === 'pdf') throw new Error(`read ${type} whole`)
+          return real.readArtifact(c, id, type)
+        }
+      }
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub, store })
+      await seeded()
+      await expect(lifecycle.verify(ENGINE_ID)).resolves.toMatchObject({ status: 'verified' })
+    })
+
     it.each(cases)(
       'reports a changed $label as tampered, even when the row agrees with it',
       async ({ type, label, column, hash }) => {

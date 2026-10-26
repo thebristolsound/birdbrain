@@ -460,6 +460,17 @@ describe('captureStore: the Transaction Record and the PDF', () => {
     expect(store.readArtifact('case-1', 'cap-2', 'pdf')).toBeNull()
   })
 
+  it('hashes each as it streams from disk, and answers null for one that is absent', async () => {
+    writeBoth()
+    await expect(store.hashArtifact('case-1', 'cap-1', 'warc.gz')).resolves.toBe(
+      createHash('sha256').update(RECORD).digest('hex')
+    )
+    await expect(store.hashArtifact('case-1', 'cap-1', 'pdf')).resolves.toBe(
+      createHash('sha256').update(PDF).digest('hex')
+    )
+    await expect(store.hashArtifact('case-1', 'cap-2', 'pdf')).resolves.toBeNull()
+  })
+
   it('copies each onto the new id, reporting the digest of the bytes that landed', async () => {
     writeBoth()
     const { artifacts } = await store.copyArtifacts('case-1', 'cap-1', 'cap-2')

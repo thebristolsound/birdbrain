@@ -678,6 +678,20 @@ describe('Capture link jobs (ADR-0040)', () => {
     })
   })
 
+  // The page still matches its entry, so only the verdict refuses it: a check that compared
+  // the hash alone would sign a source whose screenshot no longer verifies.
+  it('skips a source whose screenshot no longer verifies, though its page does', async () => {
+    const source = await sourceCapture()
+    writeFileSync(defaultCaptureStore.resolveAbsolute(source.screenshotPath!), 'altered png')
+    const before = entries().length
+    expect(svc.enqueueLink(linkPayload(source.id)).accepted).toBe(1)
+    await expectNothingWritten(before, 1)
+    expect(events.at(-1)).toMatchObject({
+      type: 'skipped',
+      skipReason: 'Link source does not verify (tampered)'
+    })
+  })
+
   it('skips a source whose row points at another Capture’s entry', async () => {
     const source = await sourceCapture()
     const other = await sourceCapture('https://example.com/other-source')

@@ -44,7 +44,7 @@ export function MhtmlViewer({ captureId, caseId }: Props) {
   const [hoverUrl, setHoverUrl] = useState('')
   const [hit, setHit] = useState<LinkHit>(NO_HIT)
   const [frameChanged, setFrameChanged] = useState(false)
-  const linkTarget = useLinkMenuTarget(caseId)
+  const linkTarget = useLinkMenuTarget(caseId, captureId)
 
   useEffect(() => {
     const wv = ref.current as Electron.WebviewTag | null

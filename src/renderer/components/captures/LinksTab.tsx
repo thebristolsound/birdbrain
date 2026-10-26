@@ -135,7 +135,7 @@ export function LinksTab({ capture, hit }: { capture: Capture; hit?: FieldHit })
     enabled: isMhtml
   })
   const { data: captures = [] } = useQuery(capturesQueryOptions(capture.caseId))
-  const linkTarget = useLinkMenuTarget(capture.caseId)
+  const linkTarget = useLinkMenuTarget(capture.caseId, capture.id)
   const [query, setQuery] = useState('')
   const [externalOnly, setExternalOnly] = useState(false)
   const [menuHit, setMenuHit] = useState<LinkHit>(NO_HIT)

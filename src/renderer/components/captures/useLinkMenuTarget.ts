@@ -16,9 +16,13 @@ export type LinkHit = Pick<GuestLinkHit, 'linkUrl' | 'linkText' | 'imageUrl' | '
  * Capture link files into that Case, never the Active Case, through the same
  * `recapture:enqueue` queue every background Capture uses. That queue refuses the
  * same literal local addresses the menu does, from the same classification, and the
- * hidden render refuses a main-frame redirect to one (#1726).
+ * hidden render refuses a main-frame redirect to one (#1726). The job also names
+ * `captureId`, the viewed Capture, and the link address as the menu read it (ADR-0040).
  */
-export function useLinkMenuTarget(caseId: string): (hit: LinkHit) => LinkMenuTarget {
+export function useLinkMenuTarget(
+  caseId: string,
+  captureId: string
+): (hit: LinkHit) => LinkMenuTarget {
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
   const selectCapture = useAppStore((s) => s.selectCapture)
   const { enqueue } = useRecaptureMutations(caseId)
@@ -46,7 +50,7 @@ export function useLinkMenuTarget(caseId: string): (hit: LinkHit) => LinkMenuTar
           },
           captureLink: () =>
             mutate(
-              { urls: [linkUrl] },
+              { urls: [linkUrl], linkedFrom: { captureId, linkHref: linkUrl } },
               {
                 onSuccess: ({ accepted, rejected }) => {
                   if (accepted > 0) notify.success('Link capture queued', { description: linkUrl })
@@ -57,6 +61,6 @@ export function useLinkMenuTarget(caseId: string): (hit: LinkHit) => LinkMenuTar
         }
       }
     },
-    [captures, selectCapture, mutate]
+    [captures, selectCapture, mutate, captureId]
   )
 }

@@ -92,6 +92,41 @@ describe('CaptureViewer provenance chrome (#827)', () => {
     expect(useAppStore.getState().selectedCaptureId).toBe('cap0')
   })
 
+  // ADR-0040: a link Capture names the Capture whose stored page held the link.
+  it('links a link Capture back to the Capture it came from', async () => {
+    const source = { ...capture, id: 'cap0', title: 'Profile page' }
+    const linked = {
+      ...capture,
+      method: 'background' as const,
+      linkedFromCaptureId: 'cap0',
+      linkedFromContentHash: 'b'.repeat(64),
+      linkHref: 'http://example.com/linked'
+    }
+    fakeBridge({ captures: { list: vi.fn(async () => [linked, source]), getContent } })
+    renderViewer()
+
+    const link = await screen.findByTestId('linked-from-source')
+    expect(link.textContent).toBe('← From a link in Profile page')
+    fireEvent.click(link)
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap0')
+  })
+
+  it('names a link source by its address when it has no title, and not at all once deleted', async () => {
+    const source = { ...capture, id: 'cap0', title: '', url: 'https://example.com/profile' }
+    const linked = { ...capture, linkedFromCaptureId: 'cap0' }
+    fakeBridge({ captures: { list: vi.fn(async () => [linked, source]), getContent } })
+    const { unmount } = renderViewer()
+    expect((await screen.findByTestId('linked-from-source')).textContent).toBe(
+      '← From a link in https://example.com/profile'
+    )
+    unmount()
+
+    fakeBridge({ captures: { list: vi.fn(async () => [linked]), getContent } })
+    renderViewer()
+    expect(await screen.findByText('Example evidence page')).toBeTruthy()
+    expect(screen.queryByTestId('linked-from-source')).toBeNull()
+  })
+
   it('still badges a duplicate whose source has been deleted', async () => {
     const duplicate = { ...capture, method: 'duplicate' as const, duplicateOfCaptureId: 'gone' }
     fakeBridge({ captures: { list: vi.fn(async () => [duplicate]), getContent } })

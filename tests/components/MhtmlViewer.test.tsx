@@ -164,11 +164,15 @@ describe('MhtmlViewer', () => {
 
     await waitFor(() => expect(warn).toHaveBeenCalled())
     expect(enqueue).toHaveBeenCalledTimes(2)
-    expect(enqueue).toHaveBeenCalledWith({
-      urls: ['https://a.example/one'],
-      caseId: 'case1',
-      supersedesCaptureId: undefined
-    })
+    // The job names the viewed Capture and the address as the menu read it (ADR-0040).
+    expect(enqueue.mock.calls[0]).toStrictEqual([
+      {
+        urls: ['https://a.example/one'],
+        caseId: 'case1',
+        supersedesCaptureId: undefined,
+        linkedFrom: { captureId: 'cap1', linkHref: 'https://a.example/one' }
+      }
+    ])
     expect(success).toHaveBeenCalledWith('Link capture queued', {
       description: 'https://a.example/one'
     })

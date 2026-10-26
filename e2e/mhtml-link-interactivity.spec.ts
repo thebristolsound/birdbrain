@@ -547,6 +547,64 @@ test.describe('stored-page viewer links', () => {
     expect(sentinel.requests).toEqual([])
   })
 
+  // ADR-0040. The Case holds no Capture of https://example.test/main, which resolves
+  // nowhere, so the main process answers it in every session created from here on: the
+  // hidden render's is the only one. The viewer's session already exists and is left alone.
+  test('Capture link files a Capture that names the stored page the link was in', async ({
+    electronApp,
+    page
+  }) => {
+    test.setTimeout(180000)
+    await recordGuestEvents(electronApp)
+    const caseId = await openLinksCapture(page, sentinel, fileTarget)
+    await waitForGuestLoad(electronApp)
+    const rows = page.getByTestId('capture-item')
+    const list = (id: string) =>
+      page.evaluate(async (target) => {
+        const w = window as unknown as {
+          birdbrain: {
+            captures: { list: (caseId: string) => Promise<Array<Record<string, unknown>>> }
+          }
+        }
+        return w.birdbrain.captures.list(target)
+      }, id)
+    const [source] = await list(caseId)
+    await electronApp.evaluate(({ app }) => {
+      app.on('session-created', (ses) => {
+        ses.protocol.handle('https', (request) =>
+          new URL(request.url).hostname === 'example.test'
+            ? new Response(
+                '<html><head><title>Linked Page</title></head><body>linked</body></html>',
+                {
+                  headers: { 'content-type': 'text/html' }
+                }
+              )
+            : new Response('', { status: 404 })
+        )
+      })
+    })
+
+    await guestMouse(electronApp, { x: ROW.x, y: rowY('public', 'main'), button: 'right' })
+    await expect(page.getByTestId('entity-context-menu')).toHaveAttribute(
+      'aria-label',
+      'Link actions: https://example.test/main'
+    )
+    await page.getByTestId('context-menu-item-link-capture').click()
+
+    await expect(rows).toHaveCount(2, { timeout: 90000 })
+    await rows.filter({ hasText: 'Linked Page' }).click()
+    const from = page.getByTestId('linked-from-source')
+    await expect(from).toHaveText('← From a link in Links')
+    const linked = (await list(caseId)).find(({ title }) => title === 'Linked Page')
+    expect(linked).toMatchObject({
+      linkedFromCaptureId: source.id,
+      linkHref: 'https://example.test/main'
+    })
+    await from.click()
+    await expect(page.getByTestId('mhtml-viewer')).toBeVisible()
+    expect(sentinel.requests).toEqual([])
+  })
+
   test('the Links tab lists both frames’ links from the stored archive', async ({ page }) => {
     test.setTimeout(120000)
     await openLinksCapture(page, sentinel, fileTarget)

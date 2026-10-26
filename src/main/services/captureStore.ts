@@ -143,6 +143,13 @@ export interface CaptureStore {
   writeTransactionRecord: (caseId: string, captureId: string, warcGz: Buffer) => ArtifactPaths
   writePdf: (caseId: string, captureId: string, pdf: Buffer) => ArtifactPaths
   readArtifact: (caseId: string, captureId: string, type: CaptureArtifactType) => Buffer | null
+  // The SHA-256 of an artifact, streamed from disk rather than read whole;
+  // null when the file is absent.
+  hashArtifact: (
+    caseId: string,
+    captureId: string,
+    type: CaptureArtifactType
+  ) => Promise<string | null>
   readThumbnail: (caseId: string, captureId: string) => Buffer | null
   writeThumbnail: (caseId: string, captureId: string, jpeg: Buffer) => void
   copyArtifacts: (
@@ -390,6 +397,16 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
     return hasher.digest('hex')
   }
 
+  async function hashArtifact(
+    caseId: string,
+    captureId: string,
+    type: CaptureArtifactType
+  ): Promise<string | null> {
+    const { abs } = artifactPaths(caseId, captureId, type)
+    if (!existsSync(abs)) return null
+    return hashFile(abs)
+  }
+
   async function copyArtifact(
     caseId: string,
     sourceCaptureId: string,
@@ -549,6 +566,7 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
     writeTransactionRecord,
     writePdf,
     readArtifact,
+    hashArtifact,
     readThumbnail,
     writeThumbnail,
     copyArtifacts,

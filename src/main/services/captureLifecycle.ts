@@ -626,25 +626,42 @@ async function verifySidecars(
   store: CaptureStore,
   entry: CaptureChainEntry | undefined
 ): Promise<SidecarFailure | undefined> {
-  const sidecars: Array<{ hash: string | undefined; type: CaptureArtifactType; label: string }> = [
-    { hash: entry?.screenshotHash, type: 'png', label: 'Screenshot' },
-    { hash: entry?.textHash, type: 'txt', label: 'Extracted text' },
-    { hash: entry?.transactionRecordHash, type: 'warc.gz', label: 'Transaction Record' },
-    { hash: entry?.pdfHash, type: 'pdf', label: 'PDF' }
+  // The Transaction Record and the PDF are hashed as they stream from disk, as
+  // the MHTML is, so a large file never sits whole in the main process.
+  const sidecars: Array<{
+    hash: string | undefined
+    type: CaptureArtifactType
+    label: string
+    streamed: boolean
+  }> = [
+    { hash: entry?.screenshotHash, type: 'png', label: 'Screenshot', streamed: false },
+    { hash: entry?.textHash, type: 'txt', label: 'Extracted text', streamed: false },
+    {
+      hash: entry?.transactionRecordHash,
+      type: 'warc.gz',
+      label: 'Transaction Record',
+      streamed: true
+    },
+    { hash: entry?.pdfHash, type: 'pdf', label: 'PDF', streamed: true }
   ]
   let absent: SidecarFailure | undefined
 
-  for (const { hash, type, label } of sidecars) {
+  for (const { hash, type, label, streamed } of sidecars) {
     if (!hash) continue
-    const buf = store.readArtifact(capture.caseId, capture.id, type)
-    if (!buf) {
+    let computed: string | null
+    if (streamed) {
+      computed = await store.hashArtifact(capture.caseId, capture.id, type)
+    } else {
+      const buf = store.readArtifact(capture.caseId, capture.id, type)
+      computed = buf ? createHash('sha256').update(buf).digest('hex') : null
+    }
+    if (computed === null) {
       absent ??= {
         status: 'missing',
         reason: label + ' missing: expected ' + hash.slice(0, 12) + '...'
       }
       continue
     }
-    const computed = createHash('sha256').update(buf).digest('hex')
     if (computed !== hash) {
       return {
         status: 'tampered',

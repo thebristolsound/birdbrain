@@ -71,7 +71,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Step 8, WARC writer | #1906 | #1979 | fix round pushed at `b4e11287`, preflight green |
 | Character set spike | #1983 | #1988 | rulings recorded at `33ed5a01`; posted on #1929 |
 | Step 6, scroll and screenshot record (writer) | #1928 | #1996 | fix round pushed at `7d309557`; merges after the tag, with #1843 |
-| ADR-0040 link writer | #1995 | #1997 | review: request changes; fix round in flight; merges after the tag |
+| ADR-0040 link writer | #1995 | #1997 | fix round pushed at `5db2bc69`; merges after the tag |
 | Viewer slice 2 Part A | #1735 | #1987 | fix round pushed at `3f015984`; a left click on a new-window link now does nothing |
 | Viewer slice 3, one-link lookup | #1737 | #1990 | fix round pushed at `1a1dfa3d`, preflight green |
 | Viewer slice 3, batch lookup | #1738 | #1998 | review: request changes (main could send unlisted addresses); fix round in flight |

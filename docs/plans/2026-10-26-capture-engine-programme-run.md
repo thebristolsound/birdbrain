@@ -41,7 +41,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | --- | --- | --- | --- |
 | Step 1, verifier and schema | #1904 | #1978 | draft, preflight green, under review |
 | Step 2, mirror columns | #1907 | - | in flight, stacked on #1978 |
-| Step 8, WARC writer | #1906 | - | in flight, 2026-10-26 |
+| Step 8, WARC writer | #1906 | #1979 | draft, preflight green, under review |
 | ADR-0040 acceptance | #1736 | #1977 | draft, preflight green |
 | ADR-0040 verifier, schema 6 | #1976 | - | filed, stacks on #1904 |
 

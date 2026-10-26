@@ -348,6 +348,11 @@ export interface Capture {
   // that wrote it — this column is remapped on archive import, so it is the
   // link that survives a case moving between installations.
   duplicateOfCaptureId?: string
+  // Set on a Capture made with Capture link (ADR-0040, migration v44), all three or none.
+  // `linkedFromCaptureId` is remapped on archive import, as `duplicateOfCaptureId` is.
+  linkedFromCaptureId?: string
+  linkedFromContentHash?: string
+  linkHref?: string
   // Consent-overlay suppression active while the page rendered; mirrors the
   // value anchored in the manifest capture entry. undefined = none.
   consentSuppression?: ConsentSuppression
@@ -386,6 +391,11 @@ export interface Capture {
   // manifest and used as the retry-worker queue (#120).
   trustedTimeStatus?: TrustedTime
 }
+
+// The three link provenance fields as a link Capture's entry and row carry them.
+export type LinkProvenance = Required<
+  Pick<Capture, 'linkedFromCaptureId' | 'linkedFromContentHash' | 'linkHref'>
+>
 
 // --- Wayback Machine corroboration (#wayback) ---
 // Post-capture, corroboration-only lookup of archive.org's independent record

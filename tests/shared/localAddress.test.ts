@@ -38,7 +38,12 @@ describe('localAddressKind', () => {
     ['http://local/', 'private-name'],
     ['https://grafana.corp.internal/d/1', 'private-name'],
     ['http://nas.home.arpa/', 'private-name'],
-    ['http://home.arpa/', 'private-name']
+    ['http://home.arpa/', 'private-name'],
+    // `URL` keeps all but one trailing dot, so each is stripped before the host is read.
+    ['http://wiki../', 'private-name'],
+    ['http://printer.local../', 'private-name'],
+    ['http://localhost../', 'this-computer'],
+    ['http://127.0.0.1../', 'loopback']
   ])('classifies %s as %s', (url, kind) => {
     expect(localAddressKind(url)).toBe(kind)
   })
@@ -107,6 +112,12 @@ describe('captureLinkBlockReason', () => {
     expect(captureLinkBlockReason('http://printer.local/')).toBe('Points at a private network')
     expect(captureLinkBlockReason('https://git.internal/')).toBe('Points at a private network')
     expect(captureLinkBlockReason('http://nas.home.arpa/')).toBe('Points at a private network')
+  })
+
+  it('refuses a host written with several trailing dots', () => {
+    expect(captureLinkBlockReason('http://wiki../')).toBe('Points at a private network')
+    expect(captureLinkBlockReason('http://printer.local../')).toBe('Points at a private network')
+    expect(captureLinkBlockReason('http://localhost../')).toBe('Points at this computer')
   })
 
   it('passes a dotted public name, whatever it resolves to', () => {

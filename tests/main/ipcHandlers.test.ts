@@ -3214,6 +3214,7 @@ describe('archive handlers', () => {
       ['http://192.168.1.1/', 'Points at a private address'],
       ['http://intranet/', 'Points at a private network'],
       ['http://printer.local/', 'Points at a private network'],
+      ['http://wiki../', 'Points at a private network'],
       ['mailto:someone@example.com', 'Not a web address'],
       ['javascript:alert(1)', 'Not a web address']
     ])('refuses %s without contacting archive.org', async (url, reason) => {

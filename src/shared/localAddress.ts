@@ -103,8 +103,9 @@ export function localAddressKind(url: string): LocalAddressKind | null {
   } catch {
     return null
   }
-  // A trailing dot names the same host: `localhost.` is localhost.
-  const host = parsed.hostname.toLowerCase().replace(/\.$/, '')
+  // Trailing dots name the same host: `localhost.` is localhost. `URL` keeps all but one of
+  // them (`wiki..` stays `wiki..`), so every one is stripped before the host is read.
+  const host = parsed.hostname.toLowerCase().replace(/\.+$/, '')
   if (host === 'localhost' || host.endsWith('.localhost')) return 'this-computer'
   if (host.startsWith('[')) return ipv6Kind(host)
   const kind = ipv4Kind(host)

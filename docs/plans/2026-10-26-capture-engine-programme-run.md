@@ -50,6 +50,9 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
   This run holds the tag for steps 3 and 4 as well, pending the maintainer's confirmation: the
   review of #1978 found that without them a Shared Case member never fetches the two new files
   and `verify.sh` checks neither.
+- **Step 6 and #1843 in one release.** Open: the review of #1996 recommends that no release
+  carry step 6 without #1843, because step 6 signs zero pinned-image counts that read the same as
+  a pinning pass that ran and found nothing.
 - **The replaced-header ordering.** Open: whether schema 6 refuses an unsorted or repeated
   `replacedHeaders` list, which D2's self-contradiction rule does not cover.
 - **Merges.** Every step is `evidence-affecting`, so each needs the maintainer's approval at head.
@@ -65,7 +68,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Step 4, packages carry the files | #1926 | #1984 | fix round pushed at `b7e5e2a8`, preflight green |
 | Step 8, WARC writer | #1906 | #1979 | fix round pushed at `b4e11287`, preflight green |
 | Character set spike | #1983 | #1988 | rulings recorded at `33ed5a01`; posted on #1929 |
-| Step 6, scroll and screenshot record (writer) | #1928 | #1996 | draft, under review; merges after the tag; fixes a scroll probe bug |
+| Step 6, scroll and screenshot record (writer) | #1928 | #1996 | review: request changes (scroll fix breaks inner-panel pages); fix round in flight |
 | ADR-0040 link writer | #1995 | #1997 | draft, under review; migration 44, Case Archive 14; merges after the tag |
 | Viewer slice 2 Part A | #1735 | #1987 | fix round pushed at `3f015984`; a left click on a new-window link now does nothing |
 | Viewer slice 3, one-link lookup | #1737 | #1990 | fix round pushed at `1a1dfa3d`, preflight green |

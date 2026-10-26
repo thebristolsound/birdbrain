@@ -138,8 +138,8 @@ case when you're done.
 
 ## Share a case with teammates
 
-A Shared Case keeps one case in sync across two to five installations of Birdbrain. Every member
-holds a full copy, and no server holds the case. Each member's captures stay signed by their own
+A Shared Case keeps one case in sync across installations of Birdbrain; it is designed for two
+to five. Every member holds a full copy, and no server holds the case. Each member's captures stay signed by their own
 installation. Sharing is not available on Intel Macs.
 
 Members should run the same version of Birdbrain and upgrade together. If a teammate's copy
@@ -171,16 +171,17 @@ Only the case's Owner, the installation that first shared it, can invite.
 ### Sync
 
 Sync runs by itself while Birdbrain is open on both machines and a teammate is reachable.
-**Sync now** on **Members** runs it straight away. Sync connects through n0's public relays by
-default. To use a relay you host, enter its address under **Relay URL** on **Members**, then
-restart Birdbrain. Sync does not follow the Egress setting; [Network use](/docs/features#network-use)
+**Sync now** on **Members** runs it straight away. Machines connect to each other directly where
+they can and fall back to a relay, n0's public relays by default. To use a relay you host, enter
+its address under **Relay URL** on **Members**, then restart Birdbrain. The field appears once
+this machine holds a Shared Case, and the address applies to every Shared Case on it. Sync does not follow the Egress setting; [Network use](/docs/features#network-use)
 lists what the relay and your teammates can see.
 
 ### Revoke a member
 
 The Owner clicks **Revoke** on a member's row. Birdbrain stops syncing with that member and
 records the revocation in the Owner's manifest. The revoked member keeps the copy they already
-hold, and needs a new invite to rejoin.
+hold. The same installation cannot rejoin that case, even with a new invite.
 
 ### If the relay cannot be reached
 

@@ -154,7 +154,7 @@ _Avoid_: host, creator, administrator.
 
 **Member**:
 An installation in a Shared Case's roster, added by the Owner's `member-add` and removed from sync by its `member-revoke`. A member signs its own chain with its installation key and is cited by its Member Code; one person on two machines is two members. A revoked member keeps the copy it holds.
-_Avoid_: peer, teammate, user (as the term).
+_Avoid_: peer, user (as the term).
 
 **Invite**:
 The single-use string (`bbinvite1` and base32) the Owner creates to admit one installation to a Shared Case. It names the Owner's node and relay, never a direct address, carries a one-time secret, and expires after 24 hours. Using it sends a join request that the Owner approves, assigning a Member Code, or declines.

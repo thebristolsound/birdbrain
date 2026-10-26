@@ -10,7 +10,8 @@ name: Test reliability
 # Advisory. Findings go to the job summary and appear as warning annotations on the diff; the
 # job exits 0 when it has findings and fails only when the probe cannot run. It is not a
 # required check, so a `paths:` filter is safe here, unlike in ci.yml, where a required context
-# that never reports blocks the merge.
+# that never reports blocks the merge. .github/scripts/dispatch/checks.sh leaves the job out of
+# the CI the dispatch pre-pass waits on.
 #
 # No secrets and a read-only token. It runs the PR's own code, as ci.yml's test job does.
 
@@ -41,7 +42,7 @@ env:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    # The probe's own budget is 15 minutes of mutants; install and the revert probe come first.
+    # The probe's budget, 15 minutes, bounds both experiments; install comes before it.
     timeout-minutes: 30
     steps:
       # fetch-depth: 0 so the probe can resolve a merge base with the base branch.

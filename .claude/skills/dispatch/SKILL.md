@@ -800,7 +800,9 @@ list is empty, branch on its `failing` list, which counts only the checks "Sessi
 counts. A check it lists as `ignored` neither holds the poll nor makes CI red; name it in the
 report. `merge-gate` lands there (ADR-0041): its rule reads the verdict this step precedes,
 so it is red on every agent PR until the pre-pass posts `success`, and the script leaves it out
-for that reason. A non-zero exit is not a green: do not run the pre-pass, and report the exit.
+for that reason. So does `probe` (`test-reliability.yml`), which is advisory: the test pass
+below runs the probe itself when that job did not succeed. A non-zero exit is not a green: do
+not run the pre-pass, and report the exit.
 
 - **CI red** → do **not** run the pre-pass. Hand the failure straight to
   `birdbrain-implementer` as a cheap, mechanical fix round: the PR number, the failing job, and
@@ -895,7 +897,7 @@ named. Harmless there because the merge was main-into-branch, but nothing guaran
 ADR-0007's hygiene check keys off the *final* pre-pass verdict — which is ambiguous when the
 sha it names is not head.
 
-### The test pass — when the PR adds or edits a test
+### The test pass — when the PR's files include a test
 
 The maintainer approved this pass on 2026-10-25. When the PR's files
 (`gh api --paginate repos/thebristolsound/birdbrain/pulls/<n>/files --jq '.[].filename'`)
@@ -907,11 +909,16 @@ touches no test skips the pass. So does a delta pass or a carried-forward verdic
 the previous round's test findings.
 
 Brief it with the PR number, the pinned sha and the head branch, and tell it to post nothing,
-to read the `Test reliability` check's report from CI and run the probe itself only when no
-`probe` job ran on the pinned sha, and to leave the tree clean. Then merge the two reports into the one verdict: `request changes` when either
-has a blocking finding, the five top-layer findings chosen from both by severity, and its full
-report after the reviewer's inside the same collapsed block, under a `Test pass` line. Its
+to read the `Test reliability` check's report from CI when the `probe` job on the pinned sha
+succeeded and to run the probe itself otherwise (pending, failed, cancelled or absent), and to
+leave the tree clean. Then merge the two reports into the one verdict: `request changes` when
+either has a blocking finding, the five top-layer findings chosen from both by severity, and its
+full report after the reviewer's inside the same collapsed block, under a `Test pass` line. Its
 friction notes join the reviewer's.
+
+If it errors, times out or returns no report, post the reviewer's verdict alone, with a
+`Test pass: not run` line inside the collapsed block naming what happened, and name it in the
+section 5 report. A missing test pass does not hold the verdict.
 
 ### Do not re-trigger CodeRabbit with a reply storm
 

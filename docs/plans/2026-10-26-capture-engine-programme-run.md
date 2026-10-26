@@ -65,7 +65,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Step 4, packages carry the files | #1926 | #1984 | fix round pushed at `b7e5e2a8`, preflight green |
 | Step 8, WARC writer | #1906 | #1979 | fix round pushed at `b4e11287`, preflight green |
 | Character set spike | #1983 | #1988 | rulings recorded at `33ed5a01`; posted on #1929 |
-| Step 6, scroll and screenshot record (writer) | #1928 | - | in flight, stacked on #1985; merges after the tag |
+| Step 6, scroll and screenshot record (writer) | #1928 | #1996 | draft, under review; merges after the tag; fixes a scroll probe bug |
 | ADR-0040 link writer | #1995 | - | plan approved 2026-10-26; in flight, stacked on #1985 and #1981 |
 | Viewer slice 2 Part A | #1735 | #1987 | fix round pushed at `3f015984`; a left click on a new-window link now does nothing |
 | Viewer slice 3, one-link lookup | #1737 | #1990 | review: request changes, fix round in flight |
@@ -86,6 +86,11 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
   The Shared Case receive path (`receivedEvidence.ts`) builds rows without the three fields, so it
   gains them. The writer also settles whether `linkHref` is the address before or after
   `canonicalizeUrl`.
+- **Received rows.** The Shared Case receive path (`receivedEvidence.ts`) builds rows without
+  the mirror columns step 6 fills (#1996) or the link fields (#1995 adds those). A writer step
+  carries the mirror columns there.
+- **#1667.** Closes by hand when #1996 merges, because a stacked base branch does not trigger
+  GitHub's closing keywords.
 - **Defects filed.** #1986: an evidence package exported with screenshots off fails its own
   verification (found by the review of #1984, predates it).
 - **The lane ledger.** The step issues say to claim a lane in a ledger, and no ledger file exists.

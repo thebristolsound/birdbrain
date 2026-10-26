@@ -53,27 +53,31 @@ more versions exist.
 
 ### S2. What may be looked up?
 
-Each lookup discloses the address to archive.org, so the main process decides, not only the menu:
+Each lookup discloses the address to archive.org, so the main process decides, not only the menu.
+Since this plan was drafted, the address rule became shared: `src/shared/localAddress.ts`
+classifies the addresses that aim at the Operator's own machine or network, and both the Capture
+link menu and the background capture's refusal of a link or redirect (#1726) read it. The lookup
+reads the same classification, so the menu, the background capture and the lookup cannot
+disagree.
 
-- A new channel, `wayback:lookupLink`, takes `{ captureId, url }`. Main applies
-  `captureLinkBlockReason`, which refuses what it can see in the address itself: a scheme other
-  than `http:` or `https:`, the host `localhost` or a name under `.localhost`, and a literal IPv4
-  or IPv6 address in a loopback, private, link-local or other non-public range. It does not
-  refuse a host name, so `http://wiki/` or `http://intranet.example/` passes it today, and a name
-  that resolves to a private address passes it by design (the function's own comment). Sending
-  such a name to a third party is a disclosure of the Operator's own network, the same harm
-  slice 1's D9 guards against in the other direction, so this slice recommends one extension,
-  below.
-- `captureLinkBlockReason` moves from `src/renderer/components/captures/guestLink.ts` to
-  `src/shared/` so main and the menu apply one rule. Its tests move with it. The renderer import
-  changes; the move itself does not change the function.
-- **Recommended, awaiting a ruling (ruling 3).** The shared function also refuses a host with no
-  dot (`wiki`, `intranet`) and a name under a reserved private suffix (`.local`, `.internal`,
-  `.home.arpa`), with a "Points at a private network" reason. The Capture link menu then
-  refuses the same addresses, which is the intended effect, because slice 1's D9 names the same
-  harm. A dotted name that resolves to a private address is still sent: checking it means
-  resolving it, which is itself a disclosure to the resolver. That gap stays open and is named
-  here rather than papered over.
+- A new channel, `wayback:lookupLink`, takes `{ captureId, url }`. Main rejects a payload of the
+  wrong shape and an unknown Capture id, then applies `captureLinkBlockReason`, and only then
+  calls `lookupSnapshots` through the Egress (`egressFetch`, the same `fetchImpl` the Capture
+  lookup passes). A refusal returns the function's reason with the code `WAYBACK_LINK_REFUSED`.
+- `captureLinkBlockReason` moves from `src/renderer/components/captures/guestLink.ts` into
+  `src/shared/localAddress.ts`, beside the classification it reads, so the menu and main call one
+  function. Its tests move to `tests/shared/localAddress.test.ts`. It refuses a scheme other than
+  `http:` or `https:` ("Not a web address"), and otherwise any address `localAddressKind`
+  classifies ("Points at ...").
+- `localAddressKind` refuses, from the address alone: the host `localhost` or a name under
+  `.localhost`; a literal IPv4 or IPv6 address in a loopback, private, link-local or other
+  non-public range; and, under ruling 3, a web host with no dot (`wiki`, `intranet`) or a name
+  under `.local`, `.internal` or `.home.arpa`, as "a private network". Because the background
+  capture reads the same classification, it also refuses a link or redirect to such a name
+  ("Points at a private network" at enqueue, "Redirects to a private network" at a hop).
+- A dotted name that resolves to a private address still passes, for the lookup, the menu and the
+  background capture alike: checking it means resolving it, which is itself a disclosure to the
+  resolver. That gap stays open and is named here rather than papered over.
 - Main does not check that the URL appears in the Capture's link list. The list is derived data
   with ceilings, and a link past the row ceiling is still a link the Operator can see in the page.
 
@@ -181,7 +185,7 @@ snapshot's address is not the address the page linked to.
 
 `src/shared/ipc.ts`, `src/main/ipcHandlers.ts`, a new `src/main/services/waybackLinkCheck.ts`,
 `src/preload/index.ts`, `src/shared/birdbrainApi.ts`, `src/renderer/lib/api/wayback.ts` (and
-`keys.ts`), a new `src/shared/linkAddress.ts` holding `captureLinkBlockReason`,
+`keys.ts`), `src/shared/localAddress.ts`, which takes `captureLinkBlockReason` (S2),
 `src/renderer/components/captures/guestLink.ts`, `useLinkMenuTarget.ts`, `LinksTab.tsx`,
 `linksTabModel.ts`, `src/renderer/components/contextmenu/entityMenu.ts`, `src/shared/wayback.ts`,
 and tests. About fourteen files, so under ADR-0016 the implementation needs the maintainer's plan
@@ -196,8 +200,11 @@ The maintainer accepted each recommendation the first draft of this plan made.
    toolbar, because the toolbar states the snapshot's time and source in the stored page itself.
 2. **Batch lookups (S3, S4).** Shipped in this slice as the second PR, because checking a page's
    outbound links one by one is the manual work this slice exists to remove.
-3. **Host-name refusals (S2). Open.** Added 2026-10-06 after the pre-pass review of PR #1734, and
-   not yet ruled on: refuse a host with no dot and a name under a reserved private suffix.
+3. **Host-name refusals (S2).** Added 2026-10-06 after the pre-pass review of PR #1734. Ruled
+   2026-10-26: refuse for both. The shared rule refuses a host with no dot (`wiki`, `intranet`)
+   and a name under `.local`, `.internal` or `.home.arpa`, with the reason "Points at a private
+   network", for the Wayback lookup and the Capture link menu alike. A dotted name that resolves
+   to a private address still passes, and S2 names that gap.
 
 ## Sequencing
 

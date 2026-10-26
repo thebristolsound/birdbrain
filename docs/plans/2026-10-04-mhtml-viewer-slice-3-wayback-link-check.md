@@ -1,7 +1,7 @@
 # MHTML viewer interactivity, slice 3: check a link's destination in the Wayback Machine
 
-PR #1990 implements the single-link lookup (S1, S2, S3 one link, S5, S6); the batch (S3 many
-links, S4) is not built. Slice 1 is
+PR #1990 implements the single-link lookup (S1, S2, S3 one link, S5, S6), and PR #1998,
+stacked on it, implements the batch (S3 many links, S4). Slice 1 is
 [the slice 1 plan](2026-10-02-mhtml-viewer-interactivity.md), merged as PR #1709; its D5 left
 "Look up in Wayback" out of the link menu as slice 3. Slice 2 is
 [the slice 2 plan](2026-10-04-mhtml-viewer-slice-2-click-through-and-provenance.md).

@@ -51,7 +51,10 @@ export async function lookupLinkSnapshots(
  */
 export const WAYBACK_LINK_BATCH_PAUSE_MS = 2_000
 
-/** The statuses that mean archive.org wants fewer requests: the batch stops on either. */
+/**
+ * 429 asks for fewer requests; 503 means archive.org is unavailable or asking for fewer.
+ * The batch stops on either.
+ */
 const THROTTLED = new Set([429, 503])
 
 export type LinkBatchUpdate =

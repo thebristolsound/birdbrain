@@ -229,11 +229,12 @@ function recordableHeight(height: unknown): number | undefined {
 
 // Scrolls through the complete document (main-process-driven loop) to trigger
 // lazy-loaded/infinite-scroll content before the artifacts are captured. The
-// scroll lock lifted by SCROLL_UNLOCK_SCRIPT is always restored — before the
-// screenshot and MHTML are taken, so they reflect what the page actually set.
+// scroll lock lifted by SCROLL_UNLOCK_SCRIPT is restored before the screenshot
+// and MHTML are taken, so they reflect what the page actually set.
 // Returns where the loop ended (D5 of
-// docs/plans/2026-10-10-capture-engine-first-slice.md). A step that throws
-// fails the render, so no record says the phase failed.
+// docs/plans/2026-10-10-capture-engine-first-slice.md). A step that throws, or
+// a lifted lock that cannot be restored, fails the render, so no record says
+// the phase failed.
 export async function scrollToLoadLazyContent(
   wc: WebContents,
   timeoutMs: number
@@ -244,6 +245,7 @@ export async function scrollToLoadLazyContent(
   const priorOverflow = (await wc.executeJavaScript(SCROLL_UNLOCK_SCRIPT, true)) as string[] | null
   let outcome: ScrollToLoadOutcome = 'time-budget'
   let endHeight: number | undefined
+  let restoreFailed = false
 
   try {
     let stalls = 0
@@ -288,12 +290,21 @@ export async function scrollToLoadLazyContent(
       lastY = state.y
     }
   } finally {
-    // Fail-soft: this only restores scroll position and the lifted overflow
-    // lock. If the page navigated or the webContents was destroyed mid-teardown
-    // the reset throws, but the scroll phase is best-effort and must not fail an
-    // otherwise-complete capture.
-    await wc.executeJavaScript(scrollResetScript(priorOverflow), true).catch(() => {})
+    try {
+      await wc.executeJavaScript(scrollResetScript(priorOverflow), true)
+    } catch (err) {
+      restoreFailed = true
+      logger.error('backgroundRenderer', 'backgroundRenderer.scroll_reset_failed', undefined, err)
+    }
     await sleep(SCROLL_PAUSE_MS)
+  }
+
+  // A reset that only returns the scroll position to the top is cosmetic. One
+  // that leaves a lifted lock in place would have the screenshot and MHTML taken
+  // of a page the entry cannot describe (D5 has no field for it), so the render
+  // fails, as it does for a step that throws.
+  if (restoreFailed && priorOverflow !== null) {
+    throw new Error("Could not restore the page's scroll lock after Scroll-to-load")
   }
 
   return {

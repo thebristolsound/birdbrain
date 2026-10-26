@@ -8,6 +8,7 @@ import {
   scrollToLoadLazyContent,
   trimTrailingBackground
 } from '@main/services/backgroundRenderer'
+import { logger } from '@main/services/logger'
 import { ScrollToLoadRecordSchema } from '@shared/schemas'
 import { RefusedAddressError } from '@main/services/localAddressPolicy'
 import { EgressUnavailableError } from '@main/services/egress'
@@ -331,8 +332,13 @@ describe('trimTrailingBackground', () => {
 type StepState = { y: number; height: number; viewportHeight: number } | null
 
 // A WebContents that answers only the scroll phase's three scripts: the unlock
-// probe, one step per call, and the reset. `step` receives the 0-based call.
-function scrollingContents(opts: { unlock?: string[] | null; step: (call: number) => StepState }): {
+// probe, one step per call, and the reset. `step` receives the 0-based call;
+// `resetFails` makes the reset reject.
+function scrollingContents(opts: {
+  unlock?: string[] | null
+  step: (call: number) => StepState
+  resetFails?: boolean
+}): {
   wc: WebContents
   scripts: string[]
 } {
@@ -343,6 +349,7 @@ function scrollingContents(opts: { unlock?: string[] | null; step: (call: number
       scripts.push(script)
       if (script.includes("style.overflow = 'visible'")) return opts.unlock ?? null
       if (script.includes('root.scrollTop + viewportHeight')) return opts.step(call++)
+      if (opts.resetFails) throw new Error('page navigated away during the reset')
       return undefined
     }
   }
@@ -486,6 +493,55 @@ describe('scrollToLoadLazyContent', () => {
     await vi.runAllTimersAsync()
     await settled
     expect(scripts.at(-1)).toContain('window.scrollTo(0, 0)')
+  })
+
+  it('fails, rather than records, a phase whose lifted scroll lock cannot be restored', async () => {
+    const { wc } = scrollingContents({
+      unlock: ['hidden', ''],
+      step: () => ({ y: 0, height: 25_000, viewportHeight: 900 }),
+      resetFails: true
+    })
+
+    const pending = scrollToLoadLazyContent(wc, 10_000)
+    const settled = expect(pending).rejects.toThrow(
+      "Could not restore the page's scroll lock after Scroll-to-load"
+    )
+    await vi.runAllTimersAsync()
+    await settled
+  })
+
+  it('keeps the step error when both a step and the restore fail', async () => {
+    const { wc } = scrollingContents({
+      unlock: ['hidden', ''],
+      step: () => {
+        throw new Error('page navigated away')
+      },
+      resetFails: true
+    })
+
+    const pending = scrollToLoadLazyContent(wc, 10_000)
+    const settled = expect(pending).rejects.toThrow(/^page navigated away$/)
+    await vi.runAllTimersAsync()
+    await settled
+  })
+
+  it('records the phase and logs a failed reset when no scroll lock was lifted', async () => {
+    const logged = vi.spyOn(logger, 'error').mockImplementation(() => {})
+    const { wc } = scrollingContents({
+      step: () => ({ y: 0, height: 25_000, viewportHeight: 900 }),
+      resetFails: true
+    })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record).toMatchObject({ outcome: 'height-cap', scrollLockLifted: false })
+    expect(logged).toHaveBeenCalledWith(
+      'backgroundRenderer',
+      'backgroundRenderer.scroll_reset_failed',
+      undefined,
+      expect.any(Error)
+    )
+    logged.mockRestore()
   })
 })
 

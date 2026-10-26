@@ -48,16 +48,35 @@ export function useLinkMenuTarget(
           openCapturedCopy: () => {
             if (capturedCopy) selectCapture(capturedCopy.id)
           },
-          captureLink: () =>
+          captureLink: () => {
+            // Main checks the source's entry and bytes when the job runs, so a refusal then
+            // arrives as an activity event after the queued notice (ADR-0040). Listening
+            // starts before the request, so a refusal that beats the reply is not missed.
+            let warned = false
+            const stop = window.birdbrain.onCaptureActivity(({ type, url, skipReason, error }) => {
+              if (url !== linkUrl || type === 'received') return
+              stop()
+              if (type === 'stored') return
+              warned = true
+              notify.warn(`Link not captured: ${skipReason ?? error ?? 'refused'}`)
+            })
             mutate(
               { urls: [linkUrl], linkedFrom: { captureId, linkHref: linkUrl } },
               {
                 onSuccess: ({ accepted, rejected }) => {
-                  if (accepted > 0) notify.success('Link capture queued', { description: linkUrl })
-                  else notify.warn(`Link not captured: ${rejected[0]?.reason ?? 'refused'}`)
-                }
+                  if (accepted > 0) {
+                    notify.success('Link capture queued', {
+                      description: `${linkUrl}. Its source is checked before the link renders.`
+                    })
+                    return
+                  }
+                  stop()
+                  if (!warned) notify.warn(`Link not captured: ${rejected[0]?.reason ?? 'refused'}`)
+                },
+                onError: () => stop()
               }
             )
+          }
         }
       }
     },

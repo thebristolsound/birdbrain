@@ -11,6 +11,7 @@ import { MHTML_PARTITION } from '@shared/constants'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
 import { notify } from '@renderer/lib/notify'
 import { useAppStore } from '@renderer/stores/appStore'
+import type { CaptureEvent } from '@shared/types'
 import { fakeBridge } from '../renderer/fakeBridge'
 
 const FILE_URL = 'file:///store/case1/cap1.mhtml'
@@ -174,9 +175,60 @@ describe('MhtmlViewer', () => {
       }
     ])
     expect(success).toHaveBeenCalledWith('Link capture queued', {
-      description: 'https://a.example/one'
+      description: 'https://a.example/one. Its source is checked before the link renders.'
     })
     expect(warn).toHaveBeenCalledWith('Link not captured: excluded by case policy')
+    expect(warn).toHaveBeenCalledTimes(1)
+  })
+
+  // ADR-0040: the source is checked when the job runs, after the queued notice, so a
+  // refusal then is raised as a notice of its own, not only as a Capture Health row.
+  it('raises a notice when the queued job is refused, and none for another link or a stored one', async () => {
+    const listeners: Array<(event: CaptureEvent) => void> = []
+    const onCaptureActivity = vi.fn((callback: (event: CaptureEvent) => void) => {
+      listeners.push(callback)
+      return () => {
+        listeners.splice(listeners.indexOf(callback), 1)
+      }
+    })
+    const emit = (event: Partial<CaptureEvent>) =>
+      act(() => {
+        for (const listener of [...listeners]) {
+          listener({ source: 'recapture', timestamp: '', type: 'skipped', url: '', ...event })
+        }
+      })
+    const enqueue = vi.fn().mockResolvedValue({ accepted: 1, rejected: [] })
+    fakeBridge({
+      captures: {
+        getMhtmlUrl: vi.fn().mockResolvedValue(FILE_URL),
+        list: vi.fn().mockResolvedValue([])
+      },
+      recapture: { enqueue },
+      onCaptureActivity
+    })
+    const warn = vi.spyOn(notify, 'warn')
+    renderViewer()
+    const guest = await screen.findByTestId('mhtml-viewer')
+    const captureLink = async (url: string) => {
+      guestContextMenu(guest, { linkURL: url, linkText: 'link' })
+      fireEvent.click(await screen.findByTestId('context-menu-item-link-capture'))
+      await waitFor(() =>
+        expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ urls: [url] }))
+      )
+    }
+
+    await captureLink('https://a.example/one')
+    emit({ type: 'received', url: 'https://a.example/one' })
+    emit({ url: 'https://a.example/other', skipReason: 'Link source not found' })
+    expect(warn).not.toHaveBeenCalled()
+    emit({ url: 'https://a.example/one', skipReason: 'Link source does not verify (tampered)' })
+    expect(warn).toHaveBeenCalledWith('Link not captured: Link source does not verify (tampered)')
+    expect(listeners).toHaveLength(0)
+
+    await captureLink('https://a.example/two')
+    emit({ type: 'stored', url: 'https://a.example/two' })
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(listeners).toHaveLength(0)
   })
 
   it('offers Open captured copy when the Case holds the link, and selects that Capture', async () => {

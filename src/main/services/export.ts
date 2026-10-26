@@ -59,7 +59,7 @@ import {
 import type { TrustedTimeResult } from '@shared/verify'
 import { buildCertification, type SigningKeyRange } from '@main/services/certification'
 import { resolveToolVersion } from '@main/services/toolVersion'
-import { buildHtmlReport } from '@main/services/reportHtml'
+import { buildHtmlReport, resolveCaptureEngineFacts } from '@main/services/reportHtml'
 import type {
   EntrySignatureStatus,
   ExportDerivedFile,
@@ -523,6 +523,7 @@ export async function generateReport(
     entriesUnderCarriedKeys: false,
     trustedTimeByCaptureId: new Map(),
     entrySignatureByCaptureId: new Map(),
+    captureEngineByCaptureId: new Map(),
     unreconciledChainCaptureIds: [],
     tsaTrustAnchorBundled: getTsaTrustBundle(settings.tsaUrl).bundled,
     // Pinned archive.org references, read per exported capture (#401). Scoped
@@ -676,6 +677,7 @@ export async function generateReport(
   data.preflight = trustedTime.preflight
   data.trustedTimeByCaptureId = trustedTime.byCaptureId
   data.entrySignatureByCaptureId = resolveEntrySignatures(captures, caseEntries)
+  data.captureEngineByCaptureId = resolveCaptureEngineFacts(caseEntries)
   data.fileExhibits = buildFileExhibitRecords(scope.fileExhibits, {
     derivedByExhibitId,
     derivedVerifications,

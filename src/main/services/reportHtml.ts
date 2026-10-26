@@ -369,10 +369,9 @@ export interface ReportData {
   /**
    * The capture engine's fields per Capture, keyed by chain id, from
    * resolveCaptureEngineFacts over the same manifest snapshot. A Capture with no
-   * key renders no capture engine block. Optional because export.ts does not
-   * set it yet.
+   * key renders no capture engine block.
    */
-  captureEngineByCaptureId?: Map<string, CaptureEngineFacts>
+  captureEngineByCaptureId: Map<string, CaptureEngineFacts>
   /**
    * Captures the chain still claims — a `capture` entry with no matching
    * `deletion` entry — that this package does not contain. Resolved once by
@@ -687,7 +686,7 @@ function buildExhibits(data: ReportData, options: ExportOptions): ExhibitView[] 
       ),
       derivedFiles: data.derivedFilesByCaptureId.get(capture.id) ?? [],
       // By chain id, the id the entry names, not the row id.
-      engine: data.captureEngineByCaptureId?.get(captureId) ?? {}
+      engine: data.captureEngineByCaptureId.get(captureId) ?? {}
     }
   })
 }

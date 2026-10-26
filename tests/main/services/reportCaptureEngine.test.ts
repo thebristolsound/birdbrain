@@ -82,6 +82,7 @@ function reportData(captures: Capture[], extra: Partial<ReportData> = {}): Repor
     entriesUnderCarriedKeys: false,
     trustedTimeByCaptureId: new Map(),
     entrySignatureByCaptureId: new Map(captures.map(({ id }) => [id, 'signed'])),
+    captureEngineByCaptureId: new Map(),
     unreconciledChainCaptureIds: [],
     tsaTrustAnchorBundled: true,
     waybackRefsByCaptureId: new Map(),

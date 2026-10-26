@@ -135,18 +135,32 @@ export interface CaptureEngineFacts {
 }
 
 /**
+ * One Capture's capture engine fields as its entry records them, and whether
+ * the chain holding that entry verified over the same read the entry came
+ * from. The report quotes the values only when it did, as the package
+ * verifier declines to quote an entry's values behind a FAILed chain.
+ */
+export interface CaptureEngineEntry {
+  facts: CaptureEngineFacts
+  chainVerified: boolean
+}
+
+/**
  * The capture engine's fields per Capture, read from the `capture` entries of
  * the manifest snapshot a package is built from, never from the `captures`
  * row: its mirror columns are a cache that Settings -> Database can edit (the
  * plan's D9). Keyed by the id the entry names, which is the chain id. An
- * entry the strict schema refuses yields nothing, so the report states no
- * field the verifier would reject. Where a Capture has more than one entry,
- * the last one wins, as in resolveEntrySignatures in export.ts.
+ * entry the strict schema refuses yields nothing. This checks no hash or
+ * signature: `chainVerified` is the caller's verdict on the chain the entries
+ * were read from, and resolveExportCaptureEngine in export.ts reaches it by
+ * verifying that same read. Where a Capture has more than one entry, the last
+ * one wins, as in resolveEntrySignatures in export.ts.
  */
 export function resolveCaptureEngineFacts(
-  entries: Record<string, unknown>[]
-): Map<string, CaptureEngineFacts> {
-  const byCaptureId = new Map<string, CaptureEngineFacts>()
+  entries: Record<string, unknown>[],
+  chainVerified: boolean
+): Map<string, CaptureEngineEntry> {
+  const byCaptureId = new Map<string, CaptureEngineEntry>()
   for (const raw of entries) {
     if (raw.type !== 'capture' || typeof raw.captureId !== 'string') continue
     const parsed = ManifestEntrySchema.safeParse(raw)
@@ -161,7 +175,7 @@ export function resolveCaptureEngineFacts(
       if (boundTlsAbsent !== undefined) facts.boundTlsAbsent = boundTlsAbsent
       if (pdfHash !== undefined) facts.pdfHash = pdfHash
     }
-    if (Object.keys(facts).length > 0) byCaptureId.set(raw.captureId, facts)
+    if (Object.keys(facts).length > 0) byCaptureId.set(raw.captureId, { facts, chainVerified })
     else byCaptureId.delete(raw.captureId)
   }
   return byCaptureId
@@ -367,11 +381,11 @@ export interface ReportData {
    */
   entrySignatureByCaptureId: Map<string, EntrySignatureStatus>
   /**
-   * The capture engine's fields per Capture, keyed by chain id, from
-   * resolveCaptureEngineFacts over the same manifest snapshot. A Capture with no
-   * key renders no capture engine block.
+   * The capture engine's fields per Capture, keyed by chain id, resolved from
+   * the same manifest snapshot — see resolveExportCaptureEngine in export.ts. A
+   * Capture with no key renders no capture engine block.
    */
-  captureEngineByCaptureId: Map<string, CaptureEngineFacts>
+  captureEngineByCaptureId: Map<string, CaptureEngineEntry>
   /**
    * Captures the chain still claims — a `capture` entry with no matching
    * `deletion` entry — that this package does not contain. Resolved once by
@@ -570,8 +584,8 @@ interface ExhibitView {
   waybackRefs: WaybackRef[]
   /** Derived Files computed from this Capture — its thumbnail at head (X34). */
   derivedFiles: ExportDerivedFile[]
-  /** The capture engine's fields as the signed entry records them; empty when it has none. */
-  engine: CaptureEngineFacts
+  /** The capture engine's fields as the entry records them; undefined when it has none. */
+  engine: CaptureEngineEntry | undefined
 }
 
 /** A committed non-Capture Exhibit, as the document renders it (#1156). */
@@ -686,7 +700,7 @@ function buildExhibits(data: ReportData, options: ExportOptions): ExhibitView[] 
       ),
       derivedFiles: data.derivedFilesByCaptureId.get(capture.id) ?? [],
       // By chain id, the id the entry names, not the row id.
-      engine: data.captureEngineByCaptureId.get(captureId) ?? {}
+      engine: data.captureEngineByCaptureId.get(captureId)
     }
   })
 }
@@ -1788,10 +1802,10 @@ function renderExhibit(e: ExhibitView, total: number, packaged: boolean): string
 </section>`
 }
 
-// The capture engine's fields, worded from the signed entry alone (the plan's
-// Step 5). ADR-0035 never lets the Transaction Record read as more than the
-// inventory supports, and ADR-0036 has the credential headers stated as present
-// with their values replaced.
+// The capture engine's fields, worded from the entry alone and quoted only
+// over a chain that verified (the plan's Step 5). ADR-0035 never lets the
+// Transaction Record read as more than the inventory supports, and ADR-0036 has
+// the credential headers stated as present with their values replaced.
 
 const INVENTORY_ABSENCE_TEXT: Record<InventoryAbsenceReason, string> = {
   'not-taken': 'not taken: the build that made this capture does not take this file',
@@ -1812,9 +1826,18 @@ const BOUND_TLS_ABSENCE_TEXT: Record<BoundTlsAbsence, string> = {
   'not-reported': 'the browser reported no security details on the response for the main document'
 }
 
-function captureEngineBlocks(facts: CaptureEngineFacts): string {
+function captureEngineBlocks(engine: CaptureEngineEntry | undefined): string {
+  if (!engine) return ''
+  if (!engine.chainVerified) {
+    return `<div class="note">
+    <p class="note-title">Capture engine fields not reported</p>
+    <p>This capture's manifest entry carries capture engine fields, but the manifest chain did not
+    verify when this report was generated, so the values that entry records are unverified and
+    are not reported here.</p>
+  </div>`
+  }
   const { inventory, scrollToLoad, transactionRecordHash, boundTls, boundTlsAbsent, pdfHash } =
-    facts
+    engine.facts
   return [
     inventory ? inventoryBlock(inventory, transactionRecordHash, pdfHash) : '',
     inventory?.transactionRecord.present ? transactionRecordBlock(inventory.transactionRecord) : '',
@@ -1956,8 +1979,14 @@ function boundTlsBlock(tls: BoundTls): string {
       tls.sanList.length > 0 ? tls.sanList.map(esc).join(', ') : 'none'
     ],
     ['Issuer', esc(tls.issuer)],
-    ['Valid', `${isoUtc(tls.validFrom)} to ${isoUtc(tls.validTo)}`],
-    ['Certificate Transparency compliance', esc(tls.certificateTransparencyCompliance)],
+    [
+      'Certificate validity period, as the browser reported it',
+      `${isoUtc(tls.validFrom)} to ${isoUtc(tls.validTo)}`
+    ],
+    [
+      'Certificate Transparency compliance, as the browser reported it',
+      esc(tls.certificateTransparencyCompliance)
+    ],
     [
       'Server signature algorithm',
       tls.serverSignatureAlgorithm !== undefined

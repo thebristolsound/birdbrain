@@ -4,11 +4,16 @@
  * yet, so every entry here is hand-made: the step 1 fixtures, signed through
  * the same chain builder the package tests use.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { resolveExportCaptureEngine } from '@main/services/export'
+import { readManifestSnapshot } from '@main/services/manifest'
 import {
   buildHtmlReport,
   resolveCaptureEngineFacts,
-  type CaptureEngineFacts,
+  type CaptureEngineEntry,
   type ReportData
 } from '@main/services/reportHtml'
 import type { Capture, ExportOptions } from '@shared/types'
@@ -101,7 +106,7 @@ function signedEntries(bodies: Record<string, unknown>[]): Record<string, unknow
 }
 
 function reportFor(fields: Record<string, unknown>, row: Partial<Capture> = {}): string {
-  const facts = resolveCaptureEngineFacts(signedEntries([engineCaptureEntry(fields)]))
+  const facts = resolveCaptureEngineFacts(signedEntries([engineCaptureEntry(fields)]), true)
   return buildHtmlReport(reportData([capture(row)], { captureEngineByCaptureId: facts }), OPTIONS)
 }
 
@@ -125,24 +130,34 @@ const SCT = ENGINE_BOUND_TLS.signedCertificateTimestampList[0]
 
 describe('resolveCaptureEngineFacts', () => {
   it('reads the six fields from a signed schema-6 capture entry, keyed by its capture id', () => {
-    const facts = resolveCaptureEngineFacts(signedEntries([engineCaptureEntry()]))
+    const resolved = resolveCaptureEngineFacts(signedEntries([engineCaptureEntry()]), true)
 
-    expect([...facts.keys()]).toEqual([ENGINE_CAPTURE_ID])
-    expect(facts.get(ENGINE_CAPTURE_ID)).toEqual({
-      inventory: ENGINE_INVENTORY,
-      scrollToLoad: ENGINE_SCROLL_TO_LOAD,
-      transactionRecordHash: ENGINE_HASHES.transactionRecord,
-      boundTls: ENGINE_BOUND_TLS,
-      pdfHash: ENGINE_HASHES.pdf
+    expect([...resolved.keys()]).toEqual([ENGINE_CAPTURE_ID])
+    expect(resolved.get(ENGINE_CAPTURE_ID)).toEqual({
+      facts: {
+        inventory: ENGINE_INVENTORY,
+        scrollToLoad: ENGINE_SCROLL_TO_LOAD,
+        transactionRecordHash: ENGINE_HASHES.transactionRecord,
+        boundTls: ENGINE_BOUND_TLS,
+        pdfHash: ENGINE_HASHES.pdf
+      },
+      chainVerified: true
     })
+  })
+
+  it("carries the caller's chain verdict with each Capture's fields", () => {
+    const resolved = resolveCaptureEngineFacts(signedEntries([engineCaptureEntry()]), false)
+    expect(resolved.get(ENGINE_CAPTURE_ID)?.chainVerified).toBe(false)
   })
 
   it('carries boundTlsAbsent when the entry has it', () => {
     const fields = engineFields({ boundTls: undefined, boundTlsAbsent: 'from-cache' })
-    const facts = resolveCaptureEngineFacts(signedEntries([engineCaptureEntry(fields)]))
+    const facts = resolveCaptureEngineFacts(signedEntries([engineCaptureEntry(fields)]), true).get(
+      ENGINE_CAPTURE_ID
+    )?.facts
 
-    expect(facts.get(ENGINE_CAPTURE_ID)?.boundTlsAbsent).toBe('from-cache')
-    expect(facts.get(ENGINE_CAPTURE_ID)?.boundTls).toBeUndefined()
+    expect(facts?.boundTlsAbsent).toBe('from-cache')
+    expect(facts?.boundTls).toBeUndefined()
   })
 
   it('lets the last entry for a capture win', () => {
@@ -150,16 +165,18 @@ describe('resolveCaptureEngineFacts', () => {
       scrollToLoad: { requested: true, ran: false, scrollLockLifted: false }
     })
     const replaced = resolveCaptureEngineFacts(
-      signedEntries([engineCaptureEntry(), engineCaptureEntry(later)])
+      signedEntries([engineCaptureEntry(), engineCaptureEntry(later)]),
+      true
     )
-    expect(replaced.get(ENGINE_CAPTURE_ID)?.scrollToLoad).toEqual({
+    expect(replaced.get(ENGINE_CAPTURE_ID)?.facts.scrollToLoad).toEqual({
       requested: true,
       ran: false,
       scrollLockLifted: false
     })
 
     const cleared = resolveCaptureEngineFacts(
-      signedEntries([engineCaptureEntry(), engineCaptureEntry({})])
+      signedEntries([engineCaptureEntry(), engineCaptureEntry({})]),
+      true
     )
     expect(cleared.has(ENGINE_CAPTURE_ID)).toBe(false)
   })
@@ -167,13 +184,24 @@ describe('resolveCaptureEngineFacts', () => {
   it('yields nothing for an entry the strict schema refuses', () => {
     // Schema-6 fields under a schema-5 stamp, which the verifier rejects.
     const refused = { ...engineCaptureEntry(), schemaVersion: 5 }
-    expect(resolveCaptureEngineFacts(signedEntries([refused])).size).toBe(0)
+    expect(resolveCaptureEngineFacts(signedEntries([refused]), true).size).toBe(0)
   })
 
   it('skips entries that are not capture entries', () => {
     const deletion = { type: 'deletion', captureId: ENGINE_CAPTURE_ID }
-    const facts = resolveCaptureEngineFacts([deletion, { type: 'capture' }])
+    const facts = resolveCaptureEngineFacts([deletion, { type: 'capture' }], true)
     expect(facts.size).toBe(0)
+  })
+
+  // In a Shared Case a deletion its author did not write leaves the Capture in
+  // the package (evidencePackage.ts), so a deletion naming it must not clear
+  // the fields its capture entry records.
+  it('keeps the fields when a deletion entry names the same capture', () => {
+    const [captureLine] = signedEntries([engineCaptureEntry()])
+    const deletion = { type: 'deletion', captureId: ENGINE_CAPTURE_ID }
+    const resolved = resolveCaptureEngineFacts([captureLine, deletion], true)
+
+    expect(resolved.get(ENGINE_CAPTURE_ID)?.facts.inventory).toEqual(ENGINE_INVENTORY)
   })
 })
 
@@ -240,8 +268,8 @@ describe('report.html capture engine fields', () => {
       'Subject: example.com',
       'Subject alternative names: example.com, www.example.com',
       'Issuer: Example Issuing CA',
-      'Valid: 2026-09-01T00:00:00Z to 2026-12-01T00:00:00Z',
-      'Certificate Transparency compliance: compliant',
+      'Certificate validity period, as the browser reported it: 2026-09-01T00:00:00Z to 2026-12-01T00:00:00Z',
+      'Certificate Transparency compliance, as the browser reported it: compliant',
       'Server signature algorithm: 1025 (TLS SignatureScheme code point)',
       'Encrypted Client Hello: not used'
     ]) {
@@ -368,12 +396,56 @@ describe('report.html capture engine fields', () => {
     expect(html).toContain('Signed certificate timestamps: 0')
   })
 
-  it('escapes the values the browser reported', () => {
+  // Every free-text value the browser reported; the closed enums, the integers
+  // and the schema-checked dates cannot carry markup.
+  const TLS_TEXT_FIELDS = [
+    'protocol',
+    'keyExchange',
+    'keyExchangeGroup',
+    'cipher',
+    'mac',
+    'subjectName',
+    'issuer'
+  ] as const
+  const SCT_TEXT_FIELDS = [
+    'status',
+    'origin',
+    'logDescription',
+    'logId',
+    'hashAlgorithm',
+    'signatureAlgorithm',
+    'signatureData'
+  ] as const
+  const markup = (name: string): string => `<i>${name}</i>`
+  const escaped = (name: string): string => `&lt;i&gt;${name}&lt;/i&gt;`
+
+  it.each(TLS_TEXT_FIELDS)('escapes the reported TLS field %s', (name) => {
     const html = reportFor(
-      engineFields({ boundTls: { ...ENGINE_BOUND_TLS, issuer: '<script>x</script>' } })
+      engineFields({ boundTls: { ...ENGINE_BOUND_TLS, [name]: markup(name) } })
     )
-    expect(html).toContain('Issuer: &lt;script&gt;x&lt;/script&gt;')
-    expect(html).not.toContain('<script>x</script>')
+    expect(html).toContain(escaped(name))
+    expect(html).not.toContain(markup(name))
+  })
+
+  it('escapes a reported subject alternative name', () => {
+    const html = reportFor(
+      engineFields({ boundTls: { ...ENGINE_BOUND_TLS, sanList: ['a.example', markup('san')] } })
+    )
+    expect(html).toContain(`a.example, ${escaped('san')}`)
+    expect(html).not.toContain(markup('san'))
+  })
+
+  it.each(SCT_TEXT_FIELDS)('escapes the reported timestamp field %s', (name) => {
+    const html = reportFor(
+      engineFields({
+        boundTls: {
+          ...ENGINE_BOUND_TLS,
+          signedCertificateTimestampList: [{ ...SCT, [name]: markup(name) }]
+        }
+      })
+    )
+    expect(html).toContain(escaped(name))
+    expect(html).not.toContain(markup(name))
   })
 
   it('renders a Capture without the fields as today, whatever its row holds', () => {
@@ -385,7 +457,7 @@ describe('report.html capture engine fields', () => {
       boundTls: ENGINE_BOUND_TLS as Capture['boundTls'],
       pdfHash: ENGINE_HASHES.pdf
     })
-    const facts = resolveCaptureEngineFacts(signedEntries([engineCaptureEntry({})]))
+    const facts = resolveCaptureEngineFacts(signedEntries([engineCaptureEntry({})]), true)
     expect(facts.size).toBe(0)
 
     const today = buildHtmlReport(reportData([capture()]), OPTIONS)
@@ -427,10 +499,13 @@ describe('report.html capture engine fields', () => {
   })
 
   it('finds the fields by the id the signed entry names when the row was renamed', () => {
-    const facts = new Map<string, CaptureEngineFacts>([
+    const facts = new Map<string, CaptureEngineEntry>([
       [
         ENGINE_CAPTURE_ID,
-        { scrollToLoad: { requested: true, ran: false, scrollLockLifted: false } }
+        {
+          facts: { scrollToLoad: { requested: true, ran: false, scrollLockLifted: false } },
+          chainVerified: true
+        }
       ]
     ])
     const renamed = capture({ id: 'renamed-row-id' })
@@ -475,5 +550,70 @@ describe('report.html capture engine fields', () => {
     expect(added.match(/packet capture/g)).toHaveLength(1)
     expect(added).toContain('It is not a packet capture and holds no bytes read from the network')
     expect(added).not.toMatch(/\bwire\b/i)
+  })
+
+  it('states the validity period and Certificate Transparency compliance as the browser reported them', () => {
+    const added = addedText(
+      reportFor(engineFields()),
+      buildHtmlReport(reportData([capture()]), OPTIONS)
+    )
+
+    // The reported value `compliant` appears once, on the row that qualifies it.
+    expect(added.match(/compliant/g)).toHaveLength(1)
+    expect(added).toContain(
+      '<li>Certificate Transparency compliance, as the browser reported it: compliant</li>'
+    )
+    expect(added).not.toMatch(/<li>Valid/)
+    expect(added).toContain(
+      '<li>Certificate validity period, as the browser reported it: 2026-09-01T00:00:00Z to 2026-12-01T00:00:00Z</li>'
+    )
+  })
+})
+
+// The export's read of the chain: the fields are quoted only when the chain
+// verifies over the same snapshot they are read from (resolveExportCaptureEngine).
+describe('report.html capture engine fields over a chain that does not verify', () => {
+  let dir = ''
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'bb-report-engine-'))
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  function reportOver(lines: string[]): string {
+    writeFileSync(join(dir, 'manifest.jsonl'), lines.join('\n') + '\n', 'utf-8')
+    const engine = resolveExportCaptureEngine(readManifestSnapshot(dir), { chains: [] })
+    return buildHtmlReport(reportData([capture()], { captureEngineByCaptureId: engine }), OPTIONS)
+  }
+
+  it('quotes the fields from a chain that verifies', () => {
+    const html = reportOver(buildSignedChain([engineCaptureEntry()]))
+
+    expect(html).toContain('Artifact inventory')
+    expect(html).toContain(
+      '<li>Exchanges recorded as a request and a response (each redirect hop counts): <span class="mono">14</span></li>'
+    )
+    expect(html).not.toContain('Capture engine fields not reported')
+  })
+
+  it('reports a tampered entry as unverified and quotes none of its values', () => {
+    const [line] = buildSignedChain([engineCaptureEntry()])
+    const tampered = JSON.parse(line) as {
+      inventory: { transactionRecord: { exchanges: number } }
+      signature?: string
+    }
+    tampered.inventory.transactionRecord.exchanges = 999
+    delete tampered.signature
+    const html = reportOver([JSON.stringify(tampered)])
+
+    expect(html).toContain('Capture engine fields not reported')
+    expect(html).toMatch(/the manifest chain did not\s+verify when this report was generated/)
+    expect(html).not.toContain('<span class="mono">999</span>')
+    expect(html).not.toContain('Artifact inventory')
+    expect(html).not.toContain('signed manifest entry for this capture records')
+    expect(html).not.toContain('Bound TLS Details')
   })
 })

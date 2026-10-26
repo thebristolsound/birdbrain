@@ -1235,6 +1235,16 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   Each writer step that adds one has Duplicate's `insertCapture` call pass it from the source's
   signed entry, as it passes `screenshotHash`: step 6 the first two, step 9
   `transaction_record_hash`, step 10 `pdf_hash`.
+- **Text bodies (ruled 2026-10-26).** The
+  [charset spike](../specs/2026-10-26-transaction-record-charset-spike.md) measured that
+  `Network.getResponseBody` returns the served bytes once the session has been sent
+  `Network.configureDurableMessages`, and the maintainer ruled on its three questions (the spike,
+  "Rulings, 2026-10-26"). Step 9 sends that command with the `Network.enable` limits on the page's
+  session and on each attached session in D17's order, and counts a target as recorded only when
+  it answered. The collector keeps a text body only from such a session. Step 9 applies the
+  per-resource limit itself before it keeps a body and records an oversized body as omitted. A
+  page's copy of a response that a service worker answered is `body-omitted`. Step 9's pull request
+  removes the writer's `x-birdbrain-decoded-text` marker and its `warcinfo` sentence.
 - **Time.** The render races one deadline and, when the deadline wins, rejects with "Recapture
   timed out" and stores nothing; `FINAL_ARTIFACT_RESERVE_MS` reserves 20 s for the screenshot,
   MHTML, and text only (`renderPageInHiddenWindow`). Two new phases need time at the end: the
@@ -1635,3 +1645,7 @@ folded in.
   ended the phase at the bottom of every page with `nothing-to-scroll`, so the stall detector D5
   maps to `stopped-growing` never ended it there. Step 6 fixes the probe and records the finding
   in the [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md).
+- **2026-10-26.** The charset spike (#1983, PR #1988) found a way for the collector to keep a text
+  response's served bytes, and the maintainer ruled on its three questions the same day. Step 9's
+  Changes gain a "Text bodies" item with the rulings; the spike records them under "Rulings,
+  2026-10-26".

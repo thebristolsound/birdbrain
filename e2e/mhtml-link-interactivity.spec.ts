@@ -723,6 +723,14 @@ test.describe('stored-page viewer links', () => {
     await guestMouse(electronApp, { x: 900, y: 200, button: 'left' })
     await expect(notInCase).toHaveCount(0)
 
+    // A link that opens a new window is one the guest does not try to follow on a plain
+    // click, so the viewer cannot confirm which link was clicked and does nothing.
+    await hover('blank', 'main', `${sentinel.origin}/blank-main`)
+    await guestMouse(electronApp, { x: ROW.x, y: rowY('blank', 'main'), button: 'left' })
+    await page.waitForTimeout(400)
+    await expect(notInCase).toHaveCount(0)
+    await expect(title).toHaveText('Links')
+
     // The Links tab opens an In Case row on Enter, and pushes the trail the same way.
     await page.getByRole('tab', { name: 'Links', exact: true }).click()
     const row = page.getByTestId('links-row').filter({ hasText: 'main public' })
@@ -732,6 +740,50 @@ test.describe('stored-page viewer links', () => {
     await expect(title).toHaveText('Main target')
     await back.click()
     await expect(title).toHaveText('Links')
+    await takeGuestEvents(electronApp)
+    await page.getByRole('tab', { name: 'Page', exact: true }).click()
+    await waitForGuestLoad(electronApp)
+
+    // A modifier pressed in the window and let go after the window lost focus, so its
+    // release is never seen. Losing focus drops it, and a plain click works again.
+    await holdKey(electronApp, 'window', 'alt', 'keyDown')
+    const blurred = await electronApp.evaluate(async ({ BrowserWindow, webContents }) => {
+      const host = webContents.getAllWebContents().find((wc) => wc.getType() === 'window')
+      if (!host) throw new Error('no window webContents')
+      const seen = new Promise<boolean>((resolve) => {
+        host.once('blur', () => resolve(true))
+        setTimeout(() => resolve(false), 3000)
+      })
+      host.focus()
+      const other = new BrowserWindow({ width: 200, height: 200 })
+      other.focus()
+      const result = await seen
+      other.destroy()
+      host.focus()
+      return result
+    })
+    expect(blurred).toBe(true)
+    await hover('public', 'main', targets[0].url)
+    await guestMouse(electronApp, { x: ROW.x, y: rowY('public', 'main'), button: 'left' })
+    await expect(title).toHaveText('Main target')
+    await back.click()
+    await expect(title).toHaveText('Links')
+    await waitForGuestLoad(electronApp)
+
+    // The pointer settles on one link, then moves to another and clicks at once, before
+    // the guest reports the second link. The viewer opens the clicked link's Capture or
+    // nothing, never the first link's.
+    await hover('public', 'main', targets[0].url)
+    await guestMouse(electronApp, { x: ROW.x, y: rowY('public', 'sub'), button: 'left' })
+    await expect
+      .poll(async () =>
+        (await takeGuestEvents(electronApp)).some(
+          (e) => e.ev === 'commit' && e.url === targets[1].url
+        )
+      )
+      .toBe(true)
+    await page.waitForTimeout(400)
+    expect(['Links', targets[1].title]).toContain(await title.textContent())
 
     expect(sentinel.requests).toEqual([])
   })

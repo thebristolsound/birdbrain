@@ -173,7 +173,7 @@ describe('writeTransactionRecord payloads and digests', () => {
     expect(request?.warc('WARC-Truncated')).toBeUndefined()
     expect(request?.warc('WARC-Date')).toBe(STARTED)
     const response = named(records, 'response', 'https://example.test/extra')
-    expect(response?.http?.statusLine).toBe('HTTP/1.1 203 OK')
+    expect(response?.http?.statusLine).toBe('HTTP/1.1 200 OK')
     expect(header(response!, 'X-From')).toEqual(['ExtraInfo'])
     expect(response?.warc('WARC-Date')).toBe(STARTED)
   })
@@ -326,6 +326,13 @@ describe('writeTransactionRecord partial exchanges (plan D8)', () => {
     const responses = records.filter((record) => record.warc('WARC-Type') === 'response')
     expect(responses).toHaveLength(2)
     expect(responses.every((record) => record.http?.payload.length === 0)).toBe(true)
+  })
+
+  it('refuses a complete exchange with no body', async () => {
+    const bodiless = exchange('https://example.test/bodiless', 'complete', {
+      responseBody: undefined
+    })
+    await expect(writeTransactionRecord(input([bodiless]))).rejects.toThrow(/has no body to write/)
   })
 
   it('refuses an exchange whose response it should write but does not have', async () => {
@@ -556,6 +563,8 @@ describe('writeTransactionRecord header blocks', () => {
     const [, request, response] = records
     expect(request.http?.headers).toEqual([['accept', '*/*']])
     expect(response.http?.headers.map(([name]) => name)).toEqual(['content-type', 'Content-Length'])
+    // HTTP/2 has no reason phrase, and the line ends at the status code.
+    expect(response.http?.statusLine).toBe('HTTP/1.1 200')
     expect(inflatedText(bytes).includes(':authority')).toBe(false)
   })
 

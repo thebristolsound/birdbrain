@@ -167,8 +167,14 @@ const responseRecord = (
   if (response === undefined) {
     throw new Error(`A ${state} exchange for ${request.url} has no response to write`)
   }
+  // An empty body here would read as a complete empty response (plan D8, "Partial exchanges").
+  if (state === 'complete' && responseBody === undefined) {
+    throw new Error(`A complete exchange for ${request.url} has no body to write`)
+  }
   const body = state === 'complete' ? stored(responseBody) : NO_BODY
-  const status = response.extraInfo?.statusCode ?? response.status
+  // The status code and reason phrase come from one event, the response event: the ExtraInfo event
+  // reports a code and no reason phrase. An empty reason phrase leaves no trailing space.
+  const { status, statusText } = response
   const lines = headerLines(response.extraInfo?.headers ?? response.headers, replaced).map(
     ([name, value]): HeaderLine => {
       const lower = name.toLowerCase()
@@ -187,7 +193,7 @@ const responseRecord = (
   return httpRecord('response', {
     url: request.url,
     date: startedAt,
-    statusline: `${httpVersion(protocol)} ${status} ${response.statusText}`,
+    statusline: [httpVersion(protocol), status, statusText].filter((part) => part !== '').join(' '),
     lines: [...lines, ['Content-Length', String(body.bytes.length)]],
     body: body.bytes,
     warcHeaders

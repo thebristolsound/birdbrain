@@ -79,6 +79,7 @@ import {
   ENGINE_SCROLL_TO_LOAD
 } from '../../helpers/captureEnginePackage'
 import { updateRow } from '@main/services/db/dbAdmin'
+import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
 import {
   PDF_PACKAGE_DIRECTORY,
   TRANSACTION_RECORD_PACKAGE_DIRECTORY,
@@ -1302,6 +1303,42 @@ describe('export', () => {
       expect(report).not.toContain('it stopped when the phase reached its time limit')
       expect(report).toContain('<li>Subject: example.com</li>')
       expect(report).not.toContain('forged.example')
+    })
+
+    // An import into the installation that already holds the row renames it,
+    // while the imported chain keeps naming the Capture by its original id.
+    it('finds the fields by the chain id for a row an archive import renamed', async () => {
+      await seed()
+      const archivePath = join(tempDir, 'engine.bbcase')
+      await exportCaseArchive(caseId, archivePath)
+      const { newCaseId } = await importCaseArchive(archivePath)
+      const [imported] = listCaptures(newCaseId)
+      expect(imported.id).not.toBe(ENGINE_ID)
+
+      const outputPath = join(tempDir, 'engine-renamed.zip')
+      await generateReport(
+        newCaseId,
+        {
+          format: 'zip',
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
+          exportClass: 'evidence',
+          outputPath
+        },
+        captureLifecycle
+      )
+      const report = readStoredZipEntries(outputPath).get('report.html')!.toString('utf-8')
+
+      expect(report).toContain('Artifact inventory')
+      expect(report).toContain(
+        '<li>Exchanges recorded as a request and a response (each redirect hop counts): <span class="mono">14</span></li>'
+      )
+      expect(report).not.toContain('Capture engine fields not reported')
     })
   })
 

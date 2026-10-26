@@ -213,7 +213,8 @@ describe('MhtmlViewer', () => {
           }
         ],
         closestIndex: 0,
-        checkedAt: '2026-10-26T00:00:00.000Z'
+        checkedAt: '2026-10-26T00:00:00.000Z',
+        countIsMinimum: false
       }))
       const openExternal = lookUpFrom(lookupLink)
       const success = vi.spyOn(notify, 'success')
@@ -233,7 +234,14 @@ describe('MhtmlViewer', () => {
     })
 
     it('says so when archive.org has no successful snapshot', async () => {
-      lookUpFrom(vi.fn(async () => ({ snapshots: [], closestIndex: null, checkedAt: '' })))
+      lookUpFrom(
+        vi.fn(async () => ({
+          snapshots: [],
+          closestIndex: null,
+          checkedAt: '',
+          countIsMinimum: false
+        }))
+      )
       const info = vi.spyOn(notify, 'info')
       await lookUp()
       await waitFor(() =>

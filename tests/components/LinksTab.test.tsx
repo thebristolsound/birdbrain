@@ -420,11 +420,21 @@ describe('LinksTab Wayback cell', () => {
     originalUrl: 'https://a.example/1',
     statusCode: 200
   }
-  const FOUND = { snapshots: [SNAPSHOT], closestIndex: 0, checkedAt: '2026-10-26T00:00:00.000Z' }
+  const FOUND = {
+    snapshots: [SNAPSHOT],
+    closestIndex: 0,
+    checkedAt: '2026-10-26T00:00:00.000Z',
+    countIsMinimum: false
+  }
 
-  function renderWithLookup(links: CaptureLink[], lookupLink: (...args: never[]) => unknown) {
-    const openExternal = vi.fn(async () => undefined)
-    const enqueue = vi.fn(async () => ({ accepted: 1, rejected: [] }))
+  function renderWithLookup(
+    links: CaptureLink[],
+    lookupLink: (...args: never[]) => unknown,
+    {
+      openExternal = vi.fn(async (): Promise<void> => undefined),
+      enqueue = vi.fn(async () => ({ accepted: 1, rejected: [] as unknown[] }))
+    } = {}
+  ) {
     fakeBridge({
       captures: {
         getLinks: vi.fn(async () => result(links)),
@@ -525,10 +535,70 @@ describe('LinksTab Wayback cell', () => {
     )
   })
 
+  async function snapshotCell() {
+    await lookUp('One')
+    const cell = await screen.findByTestId('links-wayback')
+    await waitFor(() => expect(within(cell).getByTestId('links-wayback-open')).toBeDefined())
+    return cell
+  }
+
+  it('says a Capture snapshot was queued only when the queue accepted it', async () => {
+    const success = vi.spyOn(notify, 'success')
+    const warn = vi.spyOn(notify, 'warn').mockImplementation(() => {})
+    renderWithLookup(
+      [link({ href: 'https://a.example/1', text: 'One' })],
+      vi.fn(async () => FOUND)
+    )
+    fireEvent.click(within(await snapshotCell()).getByTestId('links-wayback-capture'))
+    await waitFor(() =>
+      expect(success).toHaveBeenCalledWith('Snapshot capture queued', {
+        description: SNAPSHOT.snapshotUrl
+      })
+    )
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('reports a refused Capture snapshot, and never as queued', async () => {
+    const success = vi.spyOn(notify, 'success')
+    const warn = vi.spyOn(notify, 'warn').mockImplementation(() => {})
+    const enqueue = vi.fn(async () => ({
+      accepted: 0,
+      rejected: [{ url: SNAPSHOT.snapshotUrl, reason: 'excluded by case policy' }] as unknown[]
+    }))
+    renderWithLookup(
+      [link({ href: 'https://a.example/1', text: 'One' })],
+      vi.fn(async () => FOUND),
+      { enqueue }
+    )
+    fireEvent.click(within(await snapshotCell()).getByTestId('links-wayback-capture'))
+    await waitFor(() =>
+      expect(warn).toHaveBeenCalledWith('Snapshot not captured: excluded by case policy')
+    )
+    expect(success).not.toHaveBeenCalledWith('Snapshot capture queued', expect.anything())
+  })
+
+  it('reports a snapshot the browser could not open', async () => {
+    const error = vi.spyOn(notify, 'error').mockImplementation(() => {})
+    const openExternal = vi.fn(async (): Promise<void> => {
+      throw new Error('no browser')
+    })
+    renderWithLookup(
+      [link({ href: 'https://a.example/1', text: 'One' })],
+      vi.fn(async () => FOUND),
+      { openExternal }
+    )
+    fireEvent.click(within(await snapshotCell()).getByTestId('links-wayback-open'))
+    await waitFor(() =>
+      expect(error).toHaveBeenCalledWith("Couldn't open the link in your browser", {
+        cause: expect.any(Error)
+      })
+    )
+  })
+
   it('says No successful snapshot for an empty answer', async () => {
     renderWithLookup(
       [link({ href: 'https://a.example/1', text: 'One' })],
-      vi.fn(async () => ({ snapshots: [], closestIndex: null, checkedAt: FOUND.checkedAt }))
+      vi.fn(async () => ({ ...FOUND, snapshots: [], closestIndex: null }))
     )
     await lookUp('One')
     await waitFor(() =>

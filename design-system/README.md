@@ -36,11 +36,13 @@ that uses `calc()` or `color-mix()`, or a name that fits no family, is reported 
 - an alias of a colour that does not exist
 - a preview or README that uses a `var(--x)` no token declares
 - a component in `sources.json` with no `README.md` or `preview.html` under `content/`
-- a logo whose bytes changed since it was uploaded (its `size` no longer matches)
+- a logo whose bytes changed since it was uploaded (its sha256 no longer matches the one
+  recorded beside the upload), or a logo with no recorded sha256
 
-The workflow in `.github/workflows/design-system.yml` runs it on every pull request that
-touches the stylesheet, the `ui/` primitives or this folder, and uploads the output as a
-workflow artifact.
+The workflow in `.github/workflows/design-system.yml` runs it on pushes to `main` and on every
+pull request that touches the stylesheet, the `ui/` primitives, the font files, the logo files,
+this folder or the workflow itself, and uploads the output as a workflow artifact. The build
+empties its output folder first, so what it leaves is exactly what the inputs produce.
 
 ## Publish
 
@@ -54,7 +56,9 @@ checked out:
 > what is new, and list tokens the code no longer defines before removing them.
 
 The session reads the artifact's current files first, so edits made on the page are merged,
-not overwritten; `lastChange` in the index records who published and from which commit.
+not overwritten. Those page edits stay on the page: nothing carries them back into this
+folder, so the repository is the reviewed source only for what is written here. `lastChange`
+in the index records who ran the build (the git user name, or `--by`) and the source commit.
 
 ## Change something
 
@@ -66,8 +70,9 @@ not overwritten; `lastChange` in the index records who published and from which 
   is `<!-- @dsCard group="…" height=N -->`, then a small static document styled only with
   `var(--token)` values and the classes already in the file), and add an entry to
   `content/components/index.d.ts`.
-- **A logo changed**: upload the new file to the artifact's asset store, then update `blob`
-  and `size` in `sources.json`; the check fails until you do.
+- **A logo changed**: upload the new file to the artifact's asset store, then update `blob`,
+  `size` and `sha256` in `sources.json` (the check prints the new digest); the check fails
+  until the recorded digest matches the file.
 - **A new font file**: add it to `fonts` in `sources.json` with its `@font-face` weight range.
 - **Prose**: edit `content/README.md`; the page shows it as the brand book.
 

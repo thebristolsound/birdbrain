@@ -3,7 +3,10 @@
   "title": "Birdbrain",
   "namespace": "Birdbrain",
   "artifact": "https://claude.ai/artifact/PuSPirFB3S21HN5daWk8CG",
-  "createdOnFiles": { "v": 1, "at": "2026-10-20T17:40:00Z" },
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-10-20T17:40:00Z"
+  },
   "repo": "thebristolsound/birdbrain",
   "css": "src/renderer/styles/globals.css",
   "fonts": [
@@ -30,6 +33,7 @@
           "src": "src/renderer/assets/logo.png",
           "blob": "63a10d63414ff72bcb6c32575e9f2a1b",
           "size": 65868,
+          "sha256": "469c3ccef43beef3f2c97357346a73dcc8b59dc4f63cea36885f984192600e2b",
           "type": "image/png"
         },
         {
@@ -37,6 +41,7 @@
           "src": "resources/icon.png",
           "blob": "1f21179a3415b651f2685d0ccd1d5edc",
           "size": 855907,
+          "sha256": "3d10604a69eb20af602a7a881becd46bb5469fe0251485a033c0bb071f96d267",
           "type": "image/png"
         }
       ]
@@ -65,7 +70,7 @@
   "familyNotes": {
     "shadow": "Flat by decision: surfaces are border-defined, not elevated. Only floating overlays carry a soft shadow; the glow and button shadows are kept as tokens that resolve to none.",
     "spacing": "Birdbrain pads by density step, not by a fixed scale. Three steps are set on <html data-density>: compact (a fresh install's default), the :root default, and comfortable. Values below are the :root step; each note gives compact / comfortable. Radius is not a density concern.",
-    "radius": "The scale is 2 / 4 / 6 and nothing else. xl and 2xl alias down to the 6px ceiling so every rounded-xl/rounded-2xl call site collapses with the token. rounded-full stays legal only for status pills and dots.",
+    "radius": "The scale is 2 / 4 / 6 and nothing else. xl and 2xl alias down to the 6px ceiling so every rounded-xl/rounded-2xl call site collapses with the token. rounded-full stays legal only for status pills, the Badge, and dots.",
     "tracking": "Letter-spacing tokens from the @theme block."
   }
 }

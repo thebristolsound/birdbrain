@@ -1,10 +1,10 @@
 name: Design system
 
 # Rebuilds the design system's file tree from the code and fails on any finding (a token
-# without a note, a preview that uses an undeclared token, a logo whose bytes changed). The
-# output is uploaded as a workflow artifact; publishing it to the Design System artifact is
-# a Claude step, described in design-system/README.md. No install: the producer has no
-# dependencies.
+# without a note, a preview that uses an undeclared token, a logo whose sha256 no longer
+# matches the digest recorded beside its upload). The output is uploaded as a workflow
+# artifact; publishing it to the Design System artifact is a Claude step, described in
+# design-system/README.md. No install: the producer has no dependencies.
 
 on:
   push:

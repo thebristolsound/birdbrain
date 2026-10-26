@@ -11,11 +11,13 @@
 // README.md beside this file. No dependencies beyond Node 20.
 
 import { execSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   statSync,
   writeFileSync,
   cpSync
@@ -201,11 +203,20 @@ for (const t of families.color) {
 
 // --- 3. Fonts, assets, provenance ---------------------------------------------------------
 const sha = execSync('git rev-parse --short HEAD', { cwd: repo }).toString().trim()
+// A pull_request run checks out a detached merge commit, where rev-parse prints HEAD; the
+// Actions variables then name the branch under review. Locally a detached checkout gets no
+// branch name rather than a made-up one.
+const gitBranch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: repo }).toString().trim()
 const branch =
-  execSync('git rev-parse --abbrev-ref HEAD', { cwd: repo }).toString().trim() || 'main'
-const ref = `${branch}@${sha}`
+  gitBranch !== 'HEAD'
+    ? gitBranch
+    : process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || ''
+const ref = branch ? `${branch}@${sha}` : sha
 const now = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
 
+// Start from an empty output folder, so a component, font or asset removed from the inputs
+// does not survive from an earlier run into the tree README.md says to publish in full.
+rmSync(dist, { recursive: true, force: true })
 mkdirSync(join(dist, 'fonts'), { recursive: true })
 const fonts = []
 for (const f of sources.fonts) {
@@ -233,11 +244,19 @@ for (const [group, g] of Object.entries(sources.assets)) {
       warn(`asset missing: ${a.src}`)
       continue
     }
-    const size = statSync(src).size
-    if (size !== a.size)
+    // The upload record must describe these exact bytes: compare a digest of the file, not
+    // its size, since a same-size edit is the common case for a redrawn image.
+    const bytes = readFileSync(src)
+    const sha256 = createHash('sha256').update(bytes).digest('hex')
+    if (!a.sha256) {
+      warn(`${a.src}: sources.json records no sha256 for this upload; add it (${sha256})`)
+    } else if (sha256 !== a.sha256) {
       warn(
-        `${a.src} is ${size} bytes but sources.json records ${a.size}: the file changed, upload it again and update blob/size`
+        `${a.src} has changed since it was uploaded (sha256 ${sha256.slice(0, 12)}…, recorded ${a.sha256.slice(0, 12)}…): upload it again and update blob, size and sha256`
       )
+    }
+    if (bytes.length !== a.size)
+      warn(`${a.src} is ${bytes.length} bytes but sources.json records ${a.size}`)
     files[a.name] = { name: a.name, blob: a.blob, size: a.size, type: a.type }
     order.push(a.name)
     if (withAssets) {
@@ -334,6 +353,7 @@ const index = {
   lastChange: {
     by,
     at: now,
+    // `by` is whoever ran the build (git user.name or --by); `via` names the source commit.
     via: `${process.env.CI ? 'CI' : 'GitHub'} · ${sources.repo}@${sha}`,
     note: argValue('--note') ?? `rebuilt from ${ref}`
   }

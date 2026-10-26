@@ -35,15 +35,20 @@
 
 import type {
   AnnotationPin,
+  BoundTlsAbsence,
   Capture,
   DerivedFileVerification,
   ExhibitVerification,
   ExportOptions,
   ExportPreflight,
   HashVerification,
+  InventoryAbsenceReason,
+  ScrollToLoadOutcome,
   TrustedTime,
   WaybackRef
 } from '@shared/types'
+import { ManifestEntrySchema } from '@shared/schemas'
+import type { BoundTls, CaptureInventory, ScrollToLoadRecord } from '@shared/schemas'
 import type { TrustedTimeResult } from '@shared/verify'
 import { recordedHttpStatus } from '@shared/httpStatus'
 import { formatSnapshotDelta } from '@shared/wayback'
@@ -114,6 +119,53 @@ export interface PackagedArtifacts {
  * the older "legacy record" case the integrity axis already reports.
  */
 export type EntrySignatureStatus = 'signed' | 'unsigned-legacy' | 'no-entry'
+
+/**
+ * The capture engine's fields on one Capture's signed `capture` entry
+ * (docs/plans/2026-10-10-capture-engine-first-slice.md, D1). Each is set only
+ * when the entry carries it.
+ */
+export interface CaptureEngineFacts {
+  inventory?: CaptureInventory
+  scrollToLoad?: ScrollToLoadRecord
+  transactionRecordHash?: string
+  boundTls?: BoundTls
+  boundTlsAbsent?: BoundTlsAbsence
+  pdfHash?: string
+}
+
+/**
+ * The capture engine's fields per Capture, read from the `capture` entries of
+ * the manifest snapshot a package is built from, never from the `captures`
+ * row: its mirror columns are a cache that Settings -> Database can edit (the
+ * plan's D9). Keyed by the id the entry names, which is the chain id. An
+ * entry the strict schema refuses yields nothing, so the report states no
+ * field the verifier would reject. Where a Capture has more than one entry,
+ * the last one wins, as in resolveEntrySignatures in export.ts.
+ */
+export function resolveCaptureEngineFacts(
+  entries: Record<string, unknown>[]
+): Map<string, CaptureEngineFacts> {
+  const byCaptureId = new Map<string, CaptureEngineFacts>()
+  for (const raw of entries) {
+    if (raw.type !== 'capture' || typeof raw.captureId !== 'string') continue
+    const parsed = ManifestEntrySchema.safeParse(raw)
+    const facts: CaptureEngineFacts = {}
+    if (parsed.success && parsed.data.type === 'capture') {
+      const { inventory, scrollToLoad, transactionRecordHash, boundTls, boundTlsAbsent, pdfHash } =
+        parsed.data
+      if (inventory !== undefined) facts.inventory = inventory
+      if (scrollToLoad !== undefined) facts.scrollToLoad = scrollToLoad
+      if (transactionRecordHash !== undefined) facts.transactionRecordHash = transactionRecordHash
+      if (boundTls !== undefined) facts.boundTls = boundTls
+      if (boundTlsAbsent !== undefined) facts.boundTlsAbsent = boundTlsAbsent
+      if (pdfHash !== undefined) facts.pdfHash = pdfHash
+    }
+    if (Object.keys(facts).length > 0) byCaptureId.set(raw.captureId, facts)
+    else byCaptureId.delete(raw.captureId)
+  }
+  return byCaptureId
+}
 
 /** One member of a Shared Case, as the export states it (#1511). */
 export interface ExportSharedCaseMember {
@@ -315,6 +367,13 @@ export interface ReportData {
    */
   entrySignatureByCaptureId: Map<string, EntrySignatureStatus>
   /**
+   * The capture engine's fields per Capture, keyed by chain id, from
+   * resolveCaptureEngineFacts over the same manifest snapshot. A Capture with no
+   * key renders no capture engine block. Optional because export.ts does not
+   * set it yet.
+   */
+  captureEngineByCaptureId?: Map<string, CaptureEngineFacts>
+  /**
    * Captures the chain still claims — a `capture` entry with no matching
    * `deletion` entry — that this package does not contain. Resolved once by
    * resolveUnreconciledChainCaptures in export.ts and shared with evidence.json's
@@ -512,6 +571,8 @@ interface ExhibitView {
   waybackRefs: WaybackRef[]
   /** Derived Files computed from this Capture — its thumbnail at head (X34). */
   derivedFiles: ExportDerivedFile[]
+  /** The capture engine's fields as the signed entry records them; empty when it has none. */
+  engine: CaptureEngineFacts
 }
 
 /** A committed non-Capture Exhibit, as the document renders it (#1156). */
@@ -602,11 +663,12 @@ function buildExhibits(data: ReportData, options: ExportOptions): ExhibitView[] 
     const trustedTime = data.trustedTimeByCaptureId.get(capture.id) ?? NO_TRUSTED_TIME
     const packaged = data.packagedPaths.get(capture.id) ?? NO_ARTIFACTS
     const number = data.exhibitNumberByCaptureId.get(capture.id) ?? 0
+    const captureId = data.chainIdByCaptureId.get(capture.id) ?? capture.id
     return {
       number,
       citation: number > 0 ? (data.exhibitCitationByCaptureId.get(capture.id) ?? `${number}`) : '',
       capture,
-      captureId: data.chainIdByCaptureId.get(capture.id) ?? capture.id,
+      captureId,
       verification,
       integrity: integrityView(verification, capture),
       time: { basis: trustedTime.trustedTime, ...trustedTimeView(trustedTime) },
@@ -623,7 +685,9 @@ function buildExhibits(data: ReportData, options: ExportOptions): ExhibitView[] 
       waybackRefs: [...(data.waybackRefsByCaptureId.get(capture.id) ?? [])].sort((a, b) =>
         a.snapshotTimestamp.localeCompare(b.snapshotTimestamp)
       ),
-      derivedFiles: data.derivedFilesByCaptureId.get(capture.id) ?? []
+      derivedFiles: data.derivedFilesByCaptureId.get(capture.id) ?? [],
+      // By chain id, the id the entry names, not the row id.
+      engine: data.captureEngineByCaptureId?.get(captureId) ?? {}
     }
   })
 }
@@ -1717,11 +1781,217 @@ function renderExhibit(e: ExhibitView, total: number, packaged: boolean): string
       ${image}
       ${legend}
       ${derivedFilesBlock(e.derivedFiles, packaged)}
+      ${captureEngineBlocks(e.engine)}
       ${corroboration}
       ${waybackCorroboration}
     </div>
   </div>
 </section>`
+}
+
+// The capture engine's fields, worded from the signed entry alone (the plan's
+// Step 5). ADR-0035 never lets the Transaction Record read as more than the
+// inventory supports, and ADR-0036 has the credential headers stated as present
+// with their values replaced.
+
+const INVENTORY_ABSENCE_TEXT: Record<InventoryAbsenceReason, string> = {
+  'not-taken': 'not taken: the build that made this capture does not take this file',
+  failed: 'not stored: the capture engine attempted this file and stored none'
+}
+
+const SCROLL_TO_LOAD_OUTCOME_TEXT: Record<ScrollToLoadOutcome, string> = {
+  'nothing-to-scroll': 'it found nothing to scroll',
+  'height-cap': 'it stopped when the page reached the height limit the phase scrolls to',
+  'stopped-growing': 'it stopped when the page stopped growing and scrolling made no progress',
+  'time-budget': 'it stopped when the phase reached its time limit'
+}
+
+const BOUND_TLS_ABSENCE_TEXT: Record<BoundTlsAbsence, string> = {
+  'not-recorded': 'this capture has no Transaction Record',
+  'not-https': 'the main document was not served over HTTPS',
+  'from-cache': 'the response for the main document reported a cache hit',
+  'not-reported': 'the browser reported no security details on the response for the main document'
+}
+
+function captureEngineBlocks(facts: CaptureEngineFacts): string {
+  const { inventory, scrollToLoad, transactionRecordHash, boundTls, boundTlsAbsent, pdfHash } =
+    facts
+  return [
+    inventory ? inventoryBlock(inventory, transactionRecordHash, pdfHash) : '',
+    inventory?.transactionRecord.present ? transactionRecordBlock(inventory.transactionRecord) : '',
+    scrollToLoad ? scrollToLoadBlock(scrollToLoad) : '',
+    boundTls ? boundTlsBlock(boundTls) : '',
+    boundTlsAbsent
+      ? `<div class="note">
+    <p class="note-title">Bound TLS Details</p>
+    <p>The manifest entry records no Bound TLS Details: ${esc(BOUND_TLS_ABSENCE_TEXT[boundTlsAbsent])}.</p>
+  </div>`
+      : ''
+  ].join('')
+}
+
+function yesNo(value: boolean): string {
+  return value ? 'yes' : 'no'
+}
+
+function inventoryBlock(
+  inventory: CaptureInventory,
+  transactionRecordHash: string | undefined,
+  pdfHash: string | undefined
+): string {
+  const { mhtml, screenshot, transactionRecord, pdf } = inventory
+  const digest = (hash: string | undefined): string =>
+    hash ? `; the entry anchors it by SHA-256 <span class="mono break">${esc(hash)}</span>` : ''
+  const items = [
+    `<strong>Page archive (MHTML):</strong> taken. ${mhtml.pinnedImages} image${
+      mhtml.pinnedImages === 1 ? ' was' : 's were'
+    } pinned to the source displayed before the save, and ${
+      mhtml.pinnedImagesNotLoaded
+    } of them had not loaded when the save ran.`,
+    `<strong>Screenshot:</strong> taken, ${screenshot.width} × ${screenshot.height} pixels, of a
+    content area of ${screenshot.contentWidth} × ${screenshot.contentHeight} CSS pixels. Scaled
+    down: ${yesNo(screenshot.scaled)}. Cut short of the content height: ${yesNo(
+      screenshot.truncated
+    )}. Trailing background trimmed: ${yesNo(screenshot.trimmed)}.`,
+    `<strong>Transaction Record:</strong> ${
+      transactionRecord.present
+        ? `taken${digest(transactionRecordHash)}.`
+        : `${esc(INVENTORY_ABSENCE_TEXT[transactionRecord.reason])}.`
+    }`,
+    `<strong>PDF:</strong> ${
+      pdf.present
+        ? `taken, printed after network collection stopped${digest(pdfHash)}.`
+        : `${esc(INVENTORY_ABSENCE_TEXT[pdf.reason])}.`
+    }`
+  ]
+  return `<div class="note">
+    <p class="note-title">Artifact inventory</p>
+    <p>What the signed manifest entry for this capture records about each file the capture engine
+    took, and why any is missing.</p>
+    <ul>${items.map((item) => `<li>${item}</li>`).join('')}</ul>
+  </div>`
+}
+
+function transactionRecordBlock(
+  record: Extract<CaptureInventory['transactionRecord'], { present: true }>
+): string {
+  const counts: Array<[string, number]> = [
+    ['Exchanges recorded as a request and a response (each redirect hop counts)', record.exchanges],
+    ['Served from the cache, recorded as a request only', record.cached],
+    ['Cancelled, recorded as a request only', record.cancelled],
+    ['Failed, recorded as a request only', record.failed],
+    ['Still in flight when collection stopped, recorded as a request only', record.inFlight],
+    [
+      'Responses recorded without their body, which was over the size budget or which the browser did not return',
+      record.bodiesOmitted
+    ],
+    ['Requests whose body the browser did not hand over in full', record.incompleteRequestBodies],
+    ['WebSocket connections opened, whose messages are not recorded', record.webSockets],
+    [
+      'Targets recorded: the page, and the frames and workers whose setup answered',
+      record.recordedTargets
+    ],
+    [
+      'Targets not recorded, whose setup failed, did not answer, or was not attempted; requests made in or below one may be missing from the record',
+      record.unrecordedTargets
+    ]
+  ]
+  const replaced =
+    record.replacedHeaders.length > 0
+      ? `Headers present with their values replaced: ${record.replacedHeaders
+          .map((name) => `<code>${esc(name)}</code>`)
+          .join(', ')}. Each named header appears in the record, and its value does not. A token
+    in a URL, a body, or any other header stays in the record.`
+      : 'The entry names no header whose value was replaced. A token in a URL, a body, or any header stays in the record.'
+  return `<div class="note">
+    <p class="note-title">Transaction Record</p>
+    <p>The Transaction Record is the browser's account of the network exchanges the capture engine
+    recorded for this page: headers as the browser parsed them, and bodies as it handed them over,
+    decoded. It is not a packet capture and holds no bytes read from the network, so a stored body
+    can differ from the bytes the server sent. The counts below are from the signed manifest entry.
+    Each one except the exchanges recorded and the two target counts is an exchange the record
+    lacks or holds only in part. An exchange the browser never reported to the capture engine is in
+    neither the record nor these counts.</p>
+    <ul>${counts
+      .map(([label, value]) => `<li>${esc(label)}: <span class="mono">${value}</span></li>`)
+      .join('')}</ul>
+    <p>${replaced}</p>
+    <p>Size budget the record was kept under: ${esc(
+      formatBytes(record.budget.totalBytes)
+    )} in total, ${esc(formatBytes(record.budget.resourceBytes))} per resource.</p>
+  </div>`
+}
+
+function scrollToLoadBlock(record: ScrollToLoadRecord): string {
+  const { ran, outcome, endHeight, scrollLockLifted } = record
+  const how = !ran
+    ? 'Requested, and did not run.'
+    : `Requested, and ran; ${
+        outcome ? esc(SCROLL_TO_LOAD_OUTCOME_TEXT[outcome]) : 'the entry records no outcome'
+      }.`
+  const height =
+    endHeight !== undefined ? ` The last document height it read was ${endHeight} CSS pixels.` : ''
+  const lock = scrollLockLifted
+    ? " It lifted the page's scroll lock, which can change which lazy-loaded content loaded."
+    : ' It did not lift a scroll lock.'
+  return `<div class="note">
+    <p class="note-title">Scroll-to-load</p>
+    <p>${how}${height}${lock}</p>
+  </div>`
+}
+
+function boundTlsBlock(tls: BoundTls): string {
+  const keyExchange = tls.keyExchange
+    ? esc(tls.keyExchange)
+    : 'not applicable, as the browser reported it'
+  const rows: Array<[string, string]> = [
+    ['Protocol', esc(tls.protocol)],
+    [
+      'Key exchange',
+      `${keyExchange}${tls.keyExchangeGroup ? `, group ${esc(tls.keyExchangeGroup)}` : ''}`
+    ],
+    ['Cipher', `${esc(tls.cipher)}${tls.mac ? `, MAC ${esc(tls.mac)}` : ''}`],
+    ['Subject', esc(tls.subjectName)],
+    [
+      'Subject alternative names',
+      tls.sanList.length > 0 ? tls.sanList.map(esc).join(', ') : 'none'
+    ],
+    ['Issuer', esc(tls.issuer)],
+    ['Valid', `${isoUtc(tls.validFrom)} to ${isoUtc(tls.validTo)}`],
+    ['Certificate Transparency compliance', esc(tls.certificateTransparencyCompliance)],
+    [
+      'Server signature algorithm',
+      tls.serverSignatureAlgorithm !== undefined
+        ? `${tls.serverSignatureAlgorithm} (TLS SignatureScheme code point)`
+        : 'not reported'
+    ],
+    ['Encrypted Client Hello', tls.encryptedClientHello ? 'used' : 'not used']
+  ]
+  const scts = tls.signedCertificateTimestampList
+  const sctList =
+    scts.length > 0
+      ? `<ul>${scts
+          .map(
+            (sct) =>
+              `<li>${esc(sct.logDescription)} (log ID <span class="mono break">${esc(
+                sct.logId
+              )}</span>), at ${isoUtc(sct.timestamp)}; status as reported: ${esc(
+                sct.status
+              )}; origin: ${esc(sct.origin)}; ${esc(sct.hashAlgorithm)} with ${esc(
+                sct.signatureAlgorithm
+              )}, signature <span class="mono break">${esc(sct.signatureData)}</span></li>`
+          )
+          .join('')}</ul>`
+      : ''
+  return `<div class="note">
+    <p class="note-title">Bound TLS Details: the browser's summary of the captured transaction</p>
+    <p>The browser reported these security details on the response for this page's main document.
+    They are part of this capture, unlike a certificate chain retrieved from the origin after
+    storage. They hold no certificate bytes, so they support no independent signature check.</p>
+    <ul>${rows.map(([label, value]) => `<li>${esc(label)}: ${value}</li>`).join('')}</ul>
+    <p>Signed certificate timestamps: ${scts.length}</p>
+    ${sctList}
+  </div>`
 }
 
 /**

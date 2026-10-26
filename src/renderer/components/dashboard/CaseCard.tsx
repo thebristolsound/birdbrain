@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, memo, type KeyboardEvent } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import type { Case } from '@shared/types'
 import { Camera, ArrowUpRight, MoreVertical } from 'lucide-react'
 import { Card } from '@renderer/components/ui'
@@ -35,6 +36,7 @@ export const CaseCard = memo(function CaseCard({
   onRename,
   onDelete
 }: CaseCardProps) {
+  const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState<string | null>(null)
@@ -250,6 +252,19 @@ export const CaseCard = memo(function CaseCard({
                   }}
                 >
                   Rename
+                </button>
+                <button
+                  role="menuitem"
+                  tabIndex={-1}
+                  data-testid="case-card-members-btn"
+                  className="w-full text-left px-3 py-1.5 text-[11px] text-text-secondary hover:bg-elevated hover:text-text-primary"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setMenuOpen(false)
+                    navigate({ to: '/cases/$caseId/settings', params: { caseId: caseData.id } })
+                  }}
+                >
+                  Members
                 </button>
                 <button
                   role="menuitem"

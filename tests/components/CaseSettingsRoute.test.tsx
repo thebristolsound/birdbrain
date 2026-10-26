@@ -19,10 +19,8 @@ const SLOW = { timeout: 5000 }
 
 afterEach(cleanup)
 
-// Case settings (#1514) is registered the way Investigate is: declared under
-// the Case workspace and reachable by its address, with no entry point until
-// the sync defects #1951 and #1955 merge (tests/components/
-// CaseSettingsEntryPoints.test.tsx pins the absence).
+// Case settings (#1514) is declared under the Case workspace; its entry points
+// are pinned in tests/components/CaseSettingsEntryPoints.test.tsx.
 describe('the Case settings route', () => {
   it('sits under the Case workspace route in the app route tree', async () => {
     const router = createRouter({

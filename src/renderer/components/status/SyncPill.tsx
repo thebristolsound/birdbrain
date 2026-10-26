@@ -9,7 +9,6 @@ import {
   syncPillModel
 } from '@renderer/components/sharing/memberModel'
 
-// Mounted by the entry-points PR after both sync defects have merged.
 export function SyncPill({ caseId, onOpenMembers }: { caseId: string; onOpenMembers: () => void }) {
   const { data: state } = useQuery(syncStateQueryOptions(caseId))
   const pill = syncPillModel(state)

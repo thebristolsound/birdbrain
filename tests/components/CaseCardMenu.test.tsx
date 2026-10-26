@@ -14,6 +14,9 @@ const caseData: Case = {
   updatedAt: '2026-09-01T00:00:00Z'
 }
 
+const navigate = vi.hoisted(() => vi.fn())
+vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
+
 function renderCard() {
   return render(
     <CaseCard
@@ -42,9 +45,11 @@ it('names the kebab, exposes the menu state and closes on Escape back to the tri
   fireEvent.click(trigger)
   expect(trigger.getAttribute('aria-expanded')).toBe('true')
   const menu = screen.getByRole('menu', { name: 'Actions for Investigation One' })
-  const [rename, remove] = screen.getAllByRole('menuitem')
+  const [rename, members, remove] = screen.getAllByRole('menuitem')
   expect(document.activeElement).toBe(rename)
 
+  fireEvent.keyDown(menu, { key: 'ArrowDown' })
+  expect(document.activeElement).toBe(members)
   fireEvent.keyDown(menu, { key: 'ArrowDown' })
   expect(document.activeElement).toBe(remove)
   fireEvent.keyDown(menu, { key: 'ArrowDown' })
@@ -82,5 +87,19 @@ it('lands on Cancel when Delete is chosen, so a second Enter cannot delete, and 
   expect(document.activeElement).toBe(confirm)
 
   fireEvent.keyDown(screen.getByRole('menu'), { key: 'Tab' })
+  expect(screen.queryByRole('menu')).toBeNull()
+})
+
+// The Case's way into Case settings → Members (#1514), shared or not, since the
+// top-bar sync pill only shows once a member has joined.
+it('opens Members for this Case and closes the menu', () => {
+  navigate.mockClear()
+  renderCard()
+  fireEvent.click(screen.getByRole('button', { name: 'Actions for Investigation One' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Members' }))
+  expect(navigate).toHaveBeenCalledWith({
+    to: '/cases/$caseId/settings',
+    params: { caseId: 'case-1' }
+  })
   expect(screen.queryByRole('menu')).toBeNull()
 })

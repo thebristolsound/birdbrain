@@ -10,6 +10,7 @@ import { SearchBar } from '@renderer/components/search/SearchBar'
 import { SessionControls } from '@renderer/components/status/SessionControls'
 import { ConnectionStatus } from '@renderer/components/status/ConnectionStatus'
 import { CaptureHealth } from '@renderer/components/status/CaptureHealth'
+import { SyncPill } from '@renderer/components/status/SyncPill'
 import { ExportMenu } from '@renderer/components/export/ExportMenu'
 import { useTheme } from '@renderer/hooks/useTheme'
 import { useUpdateStatus } from '@renderer/hooks/useUpdateStatus'
@@ -149,6 +150,15 @@ export function TopBar() {
         {/* The case's session switch lives in CaseActionBar, under this bar. */}
         {sessionActive && <RecIndicator />}
 
+        {/* Only a shared Case polls its sync state; the pill hides itself until a member joins. */}
+        {activeCase?.sharedAt && (
+          <SyncPill
+            caseId={activeCase.id}
+            onOpenMembers={() =>
+              navigate({ to: '/cases/$caseId/settings', params: { caseId: activeCase.id } })
+            }
+          />
+        )}
         <ConnectionStatus />
         <CaptureHealth />
 

@@ -38,6 +38,13 @@ export function Dashboard() {
     navigate({ to: '/cases/new' })
   }, [navigate])
 
+  const handleOpenMembers = useCallback(
+    (id: string) => {
+      navigate({ to: '/cases/$caseId/settings', params: { caseId: id } })
+    },
+    [navigate]
+  )
+
   const handleOpenRecent = useCallback(() => {
     recentCasesRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [])
@@ -90,6 +97,7 @@ export function Dashboard() {
           onNewCase={handleNewCase}
           onRenameCase={handleRenameCase}
           onDeleteCase={handleDeleteCase}
+          onOpenMembers={handleOpenMembers}
         />
       </div>
 

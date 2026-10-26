@@ -236,11 +236,25 @@ describe('trimTrailingBackground', () => {
     expect(trimmed).toBe(true)
   })
 
-  it('leaves a page that fills to the bottom untouched', async () => {
-    const png = await pageWithTrailingBackground(400, 1000, 1000, WHITE, RED)
+  it('leaves a page whose content ends within the padding of its bottom edge untouched', async () => {
+    // Content to row 995 on a white page 1000 rows tall: the crop would keep
+    // 995 + 1 + 8 rows, no fewer than the image has, so nothing is cut.
+    const png = await pageWithTrailingBackground(400, 1000, 996, WHITE, RED)
     const out = await trimTrailingBackground(png)
+    expect(out).toEqual({ png, trimmed: false })
     expect(out.png).toBe(png)
-    expect(out.trimmed).toBe(false)
+  })
+
+  it('trims a page whose content ends one row above the padding', async () => {
+    // The boundary beside the case above: 991 + 1 + 8 = 1000 keeps every row,
+    // and content ending at row 990 crops to 999.
+    const untouched = await pageWithTrailingBackground(400, 1000, 992, WHITE, RED)
+    expect((await trimTrailingBackground(untouched)).trimmed).toBe(false)
+
+    const png = await pageWithTrailingBackground(400, 1000, 991, WHITE, RED)
+    const { png: out, trimmed } = await trimTrailingBackground(png)
+    expect(trimmed).toBe(true)
+    expect(await heightOf(out)).toBe(999)
   })
 
   it('leaves an all-background (blank) capture untouched', async () => {

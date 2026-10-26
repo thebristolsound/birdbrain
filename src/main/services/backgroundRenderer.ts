@@ -407,8 +407,6 @@ export async function trimTrailingBackground(
     const { data, info } = await sharp(png).greyscale().raw().toBuffer({ resolveWithObject: true })
     const w = info.width
     const h = info.height
-    if (!w || !h) return untouched
-
     const bg = data[(h - 1) * w + (w >> 1)]
     // A row counts as content when more than this many pixels differ from the
     // background — high enough to ignore JPEG/anti-alias speckle, low enough to

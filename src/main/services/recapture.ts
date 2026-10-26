@@ -3,7 +3,8 @@ import { getExhibit } from '@main/services/db/exhibitRepo'
 import {
   entryDescribesRow,
   verifyCapture,
-  type CaptureLifecycle
+  type CaptureLifecycle,
+  type LinkSource
 } from '@main/services/captureLifecycle'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import { blockedSkipReason, matchCaseExclusion } from '@main/services/exclusionPolicy'
@@ -14,7 +15,7 @@ import { authorChainOf, readCaseChains } from '@main/services/manifest'
 import { getSettings } from '@main/services/settings'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import { ManifestEntrySchema } from '@shared/schemas'
-import type { Capture, CaptureEvent, ConsentSuppression, LinkProvenance } from '@shared/types'
+import type { Capture, CaptureEvent, ConsentSuppression } from '@shared/types'
 import type {
   EnqueueResult,
   LinkedFrom,
@@ -128,7 +129,7 @@ const SHA256_HEX = /^[0-9a-f]{64}$/
 async function readLinkSource(
   job: RecaptureJob,
   { captureId, linkHref }: LinkedFrom
-): Promise<{ provenance: LinkProvenance } | { refused: string }> {
+): Promise<{ source: LinkSource } | { refused: string }> {
   if (job.url !== linkHref) return { refused: 'Link address differs from the queued address' }
   const source = captureRepo.getCapture(captureId)
   if (!source) return { refused: 'Link source not found' }
@@ -165,9 +166,9 @@ async function readLinkSource(
   if (status !== 'verified' || computedHash !== contentHash) {
     return { refused: `Link source does not verify (${status})` }
   }
-  return {
-    provenance: { linkedFromCaptureId: captureId, linkedFromContentHash: contentHash, linkHref }
-  }
+  // The entry names the source by the id its own entry signs (maintainer ruling, 2026-10-26).
+  const signed = { linkedFromCaptureId: parsed.data.captureId, linkedFromContentHash: contentHash }
+  return { source: { signed: { ...signed, linkHref }, rowId: captureId } }
 }
 
 function validateUrl(raw: string): string | null {
@@ -200,20 +201,20 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     let rendered: RenderedPage | undefined
     const started = Date.now()
     try {
-      let linkProvenance: LinkProvenance | undefined
+      let linkSource: LinkSource | undefined
       if (job.linkedFrom) {
-        const source = await readLinkSource(job, job.linkedFrom)
-        if ('refused' in source) {
+        const read = await readLinkSource(job, job.linkedFrom)
+        if ('refused' in read) {
           deps.emitEvent({
             type: 'skipped',
             source: 'recapture',
             url: job.url,
             timestamp: new Date().toISOString(),
-            skipReason: source.refused
+            skipReason: read.refused
           })
           return
         }
-        linkProvenance = source.provenance
+        linkSource = read.source
       }
 
       // The renderer honors timeoutMs itself; race defensively so a hung
@@ -298,7 +299,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         supersedesCaptureId: job.supersedesCaptureId,
         consentSuppression: rendered.consentSuppression,
         egress: rendered.egress,
-        linkProvenance
+        linkSource
       })
 
       const warning = looksLikeLoginWall({

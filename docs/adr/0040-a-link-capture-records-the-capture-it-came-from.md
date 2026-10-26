@@ -37,7 +37,10 @@ another member's chain anchors, where the new entry's own chain cannot resolve t
 optional fields, written only by a Capture link job and omitted from every other entry, so every
 existing canonical body and chain hash is unchanged:
 
-- `linkedFromCaptureId`: the id of the Capture whose stored page held the link.
+- `linkedFromCaptureId`: the id of the Capture whose stored page held the link, as that
+  Capture's own `capture` entry signs it. After an archive import renames the source's row, this
+  is the entry's id and not the row's, the id a `deletion` entry names a Capture by (#1815).
+  The maintainer ruled this on 2026-10-26.
 - `linkedFromContentHash`: that Capture's Content Hash, so the reference binds the source's bytes
   even when the source is anchored in another member's chain.
 - `linkHref`: the link's address as the viewer read it from the stored page, which is the

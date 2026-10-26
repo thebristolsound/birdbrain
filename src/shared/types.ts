@@ -349,7 +349,9 @@ export interface Capture {
   // link that survives a case moving between installations.
   duplicateOfCaptureId?: string
   // Set on a Capture made with Capture link (ADR-0040, migration v44), all three or none.
-  // `linkedFromCaptureId` is remapped on archive import, as `duplicateOfCaptureId` is.
+  // `linkedFromCaptureId` is the source's row id, remapped on archive import as
+  // `duplicateOfCaptureId` is; the signed entry names the source by its entry's id instead
+  // (LinkSource in captureLifecycle.ts).
   linkedFromCaptureId?: string
   linkedFromContentHash?: string
   linkHref?: string

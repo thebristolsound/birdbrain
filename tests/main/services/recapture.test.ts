@@ -15,7 +15,8 @@ import { MANIFEST_FILENAME } from '@shared/constants'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase, setAutoCapturePolicy } from '@main/services/db/caseRepo'
-import { getCapture, insertCapture } from '@main/services/db/captureRepo'
+import { getCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
+import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
@@ -690,6 +691,40 @@ describe('Capture link jobs (ADR-0040)', () => {
       type: 'skipped',
       skipReason: 'Link source does not verify (tampered)'
     })
+  })
+
+  // Maintainer ruling, 2026-10-26: the entry names the source by the id the source's own
+  // entry signs, as a deletion entry does (#1815). An import into the installation that
+  // already holds the row renames it, and the row keeps that new id for the viewer.
+  it('names a source an archive import renamed by the id its own entry signs', async () => {
+    const source = await sourceCapture()
+    const archivePath = join(tempDir, 'source.bbcase')
+    await exportCaseArchive(caseId, archivePath)
+    const { newCaseId } = await importCaseArchive(archivePath)
+    const [renamed] = listCaptures(newCaseId)
+    expect(renamed.id).not.toBe(source.id)
+
+    const payload = {
+      urls: [LINK],
+      caseId: newCaseId,
+      linkedFrom: { captureId: renamed.id, linkHref: LINK }
+    }
+    expect(svc.enqueueLink(payload)).toEqual({ accepted: 1, rejected: [] })
+    await svc.idle()
+
+    const linked = getCapture(newCaptures[1].id)!
+    expect(linked.linkedFromCaptureId).toBe(renamed.id)
+    const entry = readFileSync(join(getStorageRoot(), newCaseId, MANIFEST_FILENAME), 'utf-8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .find((e) => e.captureId === linked.id)
+    expect(entry).toMatchObject({
+      linkedFromCaptureId: source.id,
+      linkedFromContentHash: source.hash,
+      linkHref: LINK
+    })
+    expect((await verifyCapture(linked.id)).status).toBe('verified')
   })
 
   it('skips a source whose row points at another Capture’s entry', async () => {

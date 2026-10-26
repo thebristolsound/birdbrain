@@ -280,7 +280,7 @@ describe('received evidence (#1811)', () => {
         userAgent: '',
         httpStatus: 200,
         method: 'background',
-        linkProvenance,
+        linkSource: { signed: linkProvenance, rowId: source.captureId },
         ...by(A)
       },
       async () => null

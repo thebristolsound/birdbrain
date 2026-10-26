@@ -116,7 +116,16 @@ export interface IngestParams {
   tlsSkipped?: TlsRefetchSkip
   // Passed only by a Capture link job, after the recapture queue read the hash from the
   // source's verified entry (ADR-0040). The entry and the row then carry all three.
-  linkProvenance?: LinkProvenance
+  linkSource?: LinkSource
+}
+
+// A link Capture's source as the ingest records it (ADR-0040). The entry signs `signed`,
+// whose `linkedFromCaptureId` is the id the source's own entry signs, as a `deletion` entry
+// names a Capture (#1815). The row keeps `rowId` instead, so the viewer opens the source and
+// an archive import remaps it; the two differ only after an import renamed the source's row.
+export interface LinkSource {
+  signed: LinkProvenance
+  rowId: string
 }
 
 export interface IngestResult {
@@ -398,7 +407,7 @@ export async function ingestMhtmlCapture(
         egressLabel: params.egress?.label,
         userAgent: params.egress ? params.userAgent : undefined,
         tlsSkipped: params.tlsSkipped,
-        ...params.linkProvenance,
+        ...params.linkSource?.signed,
         operatorId: params.operatorId,
         operatorName: params.operatorName,
         toolVersion: params.toolVersion
@@ -446,7 +455,8 @@ export async function ingestMhtmlCapture(
           method: params.method,
           supersedesCaptureId: params.supersedesCaptureId,
           consentSuppression: params.consentSuppression,
-          ...params.linkProvenance,
+          ...params.linkSource?.signed,
+          linkedFromCaptureId: params.linkSource?.rowId,
           exhibitNumber
         })
         return { capture, contentHash: hash }

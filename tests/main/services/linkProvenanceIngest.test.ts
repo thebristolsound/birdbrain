@@ -90,12 +90,15 @@ describe('the capture entry a link Capture signs', () => {
     signature: expect.any(String)
   })
 
+  // The entry names the source as its own entry signs it; the row keeps the source's row id,
+  // which the viewer opens. They differ only after an archive import renamed the source's row.
   it('carries the three fields at schema 6, and the strict schema reads it', async () => {
-    const { capture, contentHash } = await ingestMhtmlCapture(params({ linkProvenance: LINK }))
+    const linkSource = { signed: LINK, rowId: 'source-row-id' }
+    const { capture, contentHash } = await ingestMhtmlCapture(params({ linkSource }))
     const entry = lastEntry()
     expect(entry).toEqual({ ...body(capture.id, contentHash, 0), ...LINK, schemaVersion: 6 })
     expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
-    expect(getCapture(capture.id)).toMatchObject(LINK)
+    expect(getCapture(capture.id)).toMatchObject({ ...LINK, linkedFromCaptureId: 'source-row-id' })
   })
 
   it('carries none of them on an ordinary entry, which keeps its own stamp', async () => {

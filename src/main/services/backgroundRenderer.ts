@@ -9,8 +9,9 @@ import { randomUUID } from 'crypto'
 import { getConsentBlocker } from '@main/services/consentBlocker'
 import { captureEgressOf, knownEgress, proxyConfigFor } from '@main/services/egress'
 import { RefusedAddressError, refusedAddressClass } from '@main/services/localAddressPolicy'
-import type { RenderPage, RenderedPage } from '@main/services/recapture'
-import type { ConsentSuppression, KnownEgress } from '@shared/types'
+import type { RenderPage, RenderedPage, ScreenshotRecord } from '@main/services/recapture'
+import type { ScrollToLoadRecord } from '@shared/schemas'
+import type { ConsentSuppression, KnownEgress, ScrollToLoadOutcome } from '@shared/types'
 import { logger } from '@main/services/logger'
 
 const VIEWPORT = { width: 1280, height: 900 }
@@ -217,15 +218,32 @@ function scrollResetScript(priorOverflow: string[] | null): string {
   })()`
 }
 
+// A height the page reports goes into the signed entry, whose schema admits only
+// a non-negative integer. The step script runs in the page's world, where a
+// hostile page can redefine `scrollHeight`, so any other value is not recorded.
+function recordableHeight(height: unknown): number | undefined {
+  return typeof height === 'number' && Number.isSafeInteger(height) && height >= 0
+    ? height
+    : undefined
+}
+
 // Scrolls through the complete document (main-process-driven loop) to trigger
 // lazy-loaded/infinite-scroll content before the artifacts are captured. The
 // scroll lock lifted by SCROLL_UNLOCK_SCRIPT is always restored — before the
 // screenshot and MHTML are taken, so they reflect what the page actually set.
-async function scrollToLoadLazyContent(wc: WebContents, timeoutMs: number): Promise<void> {
-  if (timeoutMs <= 0) return
+// Returns where the loop ended (D5 of
+// docs/plans/2026-10-10-capture-engine-first-slice.md). A step that throws
+// fails the render, so no record says the phase failed.
+export async function scrollToLoadLazyContent(
+  wc: WebContents,
+  timeoutMs: number
+): Promise<ScrollToLoadRecord> {
+  if (timeoutMs <= 0) return { requested: true, ran: false, scrollLockLifted: false }
   const deadlineAt = Date.now() + timeoutMs
 
   const priorOverflow = (await wc.executeJavaScript(SCROLL_UNLOCK_SCRIPT, true)) as string[] | null
+  let outcome: ScrollToLoadOutcome = 'time-budget'
+  let endHeight: number | undefined
 
   try {
     let stalls = 0
@@ -238,8 +256,15 @@ async function scrollToLoadLazyContent(wc: WebContents, timeoutMs: number): Prom
         height: number
         viewportHeight: number
       } | null
-      if (!state) break
-      if (state.height >= MAX_SCROLL_CONTENT_HEIGHT_PX) break
+      if (!state) {
+        outcome = 'nothing-to-scroll'
+        break
+      }
+      endHeight = recordableHeight(state.height)
+      if (state.height >= MAX_SCROLL_CONTENT_HEIGHT_PX) {
+        outcome = 'height-cap'
+        break
+      }
 
       // OSR composites continuously, so IntersectionObserver/rAF-driven lazy
       // loaders fire on their own between scroll steps — no forced frame needed.
@@ -251,7 +276,10 @@ async function scrollToLoadLazyContent(wc: WebContents, timeoutMs: number): Prom
 
       if ((atBottom && noHeightGrowth) || (noHeightGrowth && noScrollProgress)) {
         stalls += 1
-        if (stalls >= SCROLL_STALL_THRESHOLD) break
+        if (stalls >= SCROLL_STALL_THRESHOLD) {
+          outcome = 'stopped-growing'
+          break
+        }
       } else {
         stalls = 0
       }
@@ -267,9 +295,36 @@ async function scrollToLoadLazyContent(wc: WebContents, timeoutMs: number): Prom
     await wc.executeJavaScript(scrollResetScript(priorOverflow), true).catch(() => {})
     await sleep(SCROLL_PAUSE_MS)
   }
+
+  return {
+    requested: true,
+    ran: true,
+    outcome,
+    ...(endHeight !== undefined ? { endHeight } : {}),
+    scrollLockLifted: priorOverflow !== null
+  }
 }
 
-async function captureFullPageScreenshot(wc: WebContents): Promise<Buffer> {
+// The pixel dimensions a PNG states in its IHDR chunk, which the format puts
+// first, straight after the 8-byte signature.
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+function pngDimensions(png: Buffer): { width: number; height: number } {
+  if (
+    png.length < 24 ||
+    !png.subarray(0, 8).equals(PNG_SIGNATURE) ||
+    png.toString('ascii', 12, 16) !== 'IHDR'
+  ) {
+    throw new Error('The screenshot is not a PNG')
+  }
+  return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) }
+}
+
+// Returns the stored PNG with the D6 facts about it
+// (docs/plans/2026-10-10-capture-engine-first-slice.md).
+export async function captureFullPageScreenshot(
+  wc: WebContents
+): Promise<{ png: Buffer; record: ScreenshotRecord }> {
   const metrics = (await wc.debugger.sendCommand('Page.getLayoutMetrics')) as {
     cssContentSize?: { x: number; y: number; width: number; height: number }
   }
@@ -314,7 +369,20 @@ async function captureFullPageScreenshot(wc: WebContents): Promise<Buffer> {
     }
   })) as { data: string }
 
-  return trimTrailingBackground(Buffer.from(data, 'base64'))
+  const { png, trimmed } = await trimTrailingBackground(Buffer.from(data, 'base64'))
+  const stored = pngDimensions(png)
+  return {
+    png,
+    record: {
+      scaled: scale < 1,
+      truncated: height < fullHeight,
+      trimmed,
+      contentWidth: width,
+      contentHeight: fullHeight,
+      width: stored.width,
+      height: stored.height
+    }
+  }
 }
 
 // The screenshot clips to the full document height, but ad/embed-heavy and
@@ -327,15 +395,19 @@ async function captureFullPageScreenshot(wc: WebContents): Promise<Buffer> {
 // below the last row with content — is removed; interior gaps are preserved,
 // and a page that fills to its footer (or is all one colour) is left untouched.
 // Cosmetic-only and fail-soft: any error returns the original screenshot.
+// `trimmed` says whether the returned image is a crop of the input.
 const TRIM_TOLERANCE = 8
 const TRIM_PADDING_PX = 8
 
-export async function trimTrailingBackground(png: Buffer): Promise<Buffer> {
+export async function trimTrailingBackground(
+  png: Buffer
+): Promise<{ png: Buffer; trimmed: boolean }> {
+  const untouched = { png, trimmed: false }
   try {
     const { data, info } = await sharp(png).greyscale().raw().toBuffer({ resolveWithObject: true })
     const w = info.width
     const h = info.height
-    if (!w || !h) return png
+    if (!w || !h) return untouched
 
     const bg = data[(h - 1) * w + (w >> 1)]
     // A row counts as content when more than this many pixels differ from the
@@ -357,17 +429,18 @@ export async function trimTrailingBackground(png: Buffer): Promise<Buffer> {
     }
 
     // Entirely background (blank capture) or nothing to trim: leave as-is.
-    if (lastContentRow < 0) return png
+    if (lastContentRow < 0) return untouched
     const cropHeight = Math.min(h, lastContentRow + 1 + TRIM_PADDING_PX)
-    if (cropHeight >= h) return png
+    if (cropHeight >= h) return untouched
 
-    return await sharp(png)
+    const cropped = await sharp(png)
       .extract({ left: 0, top: 0, width: w, height: cropHeight })
       .png()
       .toBuffer()
+    return { png: cropped, trimmed: true }
   } catch (err) {
     logger.error('backgroundRenderer', 'backgroundRenderer.trim_failed', undefined, err)
-    return png
+    return untouched
   }
 }
 
@@ -557,7 +630,7 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
       // Scroll through the complete document to trigger lazy-loaded/infinite-scroll
       // content before saving the MHTML. Unlike the original 30-viewport cap, this
       // runs until the page bottom is stable or the recapture budget is exhausted.
-      await scrollToLoadLazyContent(
+      const scrollToLoad = await scrollToLoadLazyContent(
         wc,
         clampPhaseMs(remainingMs(FINAL_ARTIFACT_RESERVE_MS), MAX_SCROLL_PHASE_MS)
       )
@@ -567,7 +640,7 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
       )
       await sleep(Math.min(FINAL_SETTLE_MS, remainingMs(FINAL_ARTIFACT_RESERVE_MS)))
 
-      const screenshot = await captureFullPageScreenshot(wc)
+      const { png: screenshot, record: screenshotRecord } = await captureFullPageScreenshot(wc)
 
       await wc.savePage(tmpPath, 'MHTML')
 
@@ -578,6 +651,8 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
       return {
         mhtmlStream: createReadStream(tmpPath) as unknown as AsyncIterable<Uint8Array>,
         screenshot,
+        screenshotRecord,
+        scrollToLoad,
         text,
         title: wc.getTitle(),
         finalUrl: wc.getURL(),

@@ -314,6 +314,10 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
         expect('boundTls' in entry).toBe(false)
         expect('boundTlsAbsent' in entry).toBe(false)
         expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
+        expect(getCapture(id)).toMatchObject({
+          inventory: ENGINE_INVENTORY,
+          scrollToLoad: ENGINE_SCROLL_TO_LOAD
+        })
         expect(verifyManifestChain(caseDir).valid).toBe(true)
         await expect(lifecycle.verify(id)).resolves.toMatchObject({ status: 'verified' })
       }

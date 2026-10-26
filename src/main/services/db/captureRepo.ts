@@ -17,6 +17,7 @@ import {
   ScrollToLoadRecordSchema,
   TlsCertChainResultSchema
 } from '@shared/schemas'
+import type { CaptureInventory, ScrollToLoadRecord } from '@shared/schemas'
 import { getDb, type ImportCtx } from '@main/services/db/core'
 import { toFtsMatchQuery } from '@main/services/db/ftsQuery'
 import {
@@ -128,6 +129,9 @@ export interface InsertCaptureParams {
   supersedesCaptureId?: string
   duplicateOfCaptureId?: string
   consentSuppression?: ConsentSuppression
+  // Mirrors of the signed entry's capture engine fields, stored as JSON.
+  inventory?: CaptureInventory
+  scrollToLoad?: ScrollToLoadRecord
   // The Exhibit Number the capture entry carries (X46), so the row and the
   // entry state one number. Not a `captures` column: it lands on `exhibits`.
   exhibitNumber?: number
@@ -238,7 +242,9 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
     method: params.method ?? null,
     supersedes_capture_id: params.supersedesCaptureId ?? null,
     consent_suppression: params.consentSuppression ?? null,
-    duplicate_of_capture_id: params.duplicateOfCaptureId ?? null
+    duplicate_of_capture_id: params.duplicateOfCaptureId ?? null,
+    inventory: params.inventory !== undefined ? JSON.stringify(params.inventory) : null,
+    scroll_to_load: params.scrollToLoad !== undefined ? JSON.stringify(params.scrollToLoad) : null
   }
 
   const run = d.transaction(() => {

@@ -32,7 +32,11 @@ import type { Capture } from '@shared/types'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 import { appendFutureEntry } from '../../helpers/futureManifestEntry'
 import { ENGINE_HASHES } from '../../helpers/captureEnginePackage'
-import { seedEngineCapture } from '../../helpers/captureEngineCapture'
+import {
+  ENGINE_ENTRY_FIELDS_WITHOUT_FILES,
+  seedEngineCapture
+} from '../../helpers/captureEngineCapture'
+import { ManifestEntrySchema } from '@shared/schemas'
 import {
   createCaptureLifecycle,
   BatchCrossCaseError,
@@ -253,6 +257,47 @@ describe('createCaptureLifecycle.ingest', () => {
     expect('headers' in captureEntry).toBe(false)
     expect(capture.id).toBeTruthy()
     expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  it('signs the inventory and Scroll-to-load record it is given, at schema 6, and mirrors both', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { inventory, scrollToLoad } = ENGINE_ENTRY_FIELDS_WITHOUT_FILES
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), {
+        screenshot: Buffer.from('PNG-screenshot-bytes'),
+        method: 'background',
+        inventory,
+        scrollToLoad
+      })
+    )
+
+    const lines = readFileSync(join(tempDir, 'captures', caseId, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    expect(captureEntry).toMatchObject({ inventory, scrollToLoad, schemaVersion: 6 })
+    expect(ManifestEntrySchema.safeParse(captureEntry).success).toBe(true)
+    const row = getCapture(capture.id)!
+    expect(row.inventory).toEqual(inventory)
+    expect(row.scrollToLoad).toEqual(scrollToLoad)
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  it('OMITS the inventory and Scroll-to-load record when given neither, below schema 6', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+
+    const lines = readFileSync(join(tempDir, 'captures', caseId, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    expect('inventory' in captureEntry).toBe(false)
+    expect('scrollToLoad' in captureEntry).toBe(false)
+    expect(captureEntry.schemaVersion).toBeLessThan(6)
+    const row = getDb()
+      .prepare('SELECT inventory, scroll_to_load FROM captures WHERE id = ?')
+      .get(capture.id)
+    expect(row).toEqual({ inventory: null, scroll_to_load: null })
   })
 
   it('anchors the HTTP status in the manifest body and mirrors it on the row (#797)', async () => {

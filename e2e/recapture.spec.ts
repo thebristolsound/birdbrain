@@ -1,5 +1,66 @@
 import { test, expect } from './fixtures/electronApp'
 import { createServer, type Server } from 'http'
+import { readFileSync } from 'fs'
+import { join } from 'path'
+import type { Page } from '@playwright/test'
+
+// Two 800px chunks at load, and one more each time the sentinel scrolls into
+// view, up to five: the page ends 4001px tall (five chunks and the 1px
+// sentinel) once the scroll phase has loaded all of it, then stops growing.
+// Each chunk ends in a dark rule, so the screenshot has content down to its
+// last rows and the trailing-background trim leaves it whole.
+const LAZY_PAGE = `<!doctype html><html><head><title>Lazy Growth Fixture</title><style>
+  html,body{margin:0;background:#fff}
+  .chunk{height:800px;box-sizing:border-box;border-bottom:4px solid #222;background:#cde}
+  #sentinel{height:1px}
+</style></head><body>
+<div id="content"></div><div id="sentinel"></div>
+<script>
+  const content = document.getElementById('content')
+  const add = () => { const d = document.createElement('div'); d.className = 'chunk'; content.appendChild(d) }
+  add(); add()
+  let added = 2
+  new IntersectionObserver((entries) => {
+    if (entries.some((e) => e.isIntersecting) && added < 5) { add(); added++ }
+  }, { rootMargin: '100px' }).observe(document.getElementById('sentinel'))
+</script>
+</body></html>`
+const LAZY_PAGE_HEIGHT = 4001
+
+async function queueUrl(page: Page, caseName: string, url: string): Promise<string> {
+  await page.evaluate(() => {
+    window.location.hash = '/cases/new'
+  })
+  await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
+  await page.fill('[data-testid="case-name-input"]', caseName)
+  await page.click('[data-testid="case-create-btn"]')
+  await page.waitForURL(/#\/cases\/.+\/overview/, { timeout: 10000 })
+  const caseId = page.url().match(/cases\/([^/]+)/)![1]
+  await page.evaluate((id) => {
+    window.location.hash = `/cases/${id}/captures`
+  }, caseId)
+  await page.click('[data-testid="capture-menu-btn"]')
+  await page.click('[data-testid="capture-menu-paste-urls"]')
+  await page.waitForSelector('[data-testid="add-urls-input"]', { timeout: 10000 })
+  await page.fill('[data-testid="add-urls-input"]', url)
+  await page.click('[data-testid="add-urls-submit"]')
+  await page.keyboard.press('Escape')
+  return caseId
+}
+
+async function lastCaptureEntry(page: Page, caseId: string): Promise<Record<string, unknown>> {
+  const storagePath = await page.evaluate(async () => {
+    const w = window as unknown as {
+      birdbrain: { settings: { get: () => Promise<{ storagePath: string }> } }
+    }
+    return (await w.birdbrain.settings.get()).storagePath
+  })
+  const entries = readFileSync(join(storagePath, caseId, 'manifest.jsonl'), 'utf-8')
+    .split('\n')
+    .filter((line) => line.trim())
+    .map((line) => JSON.parse(line) as Record<string, unknown>)
+  return entries.filter((entry) => entry.type === 'capture').at(-1)!
+}
 
 // End-to-end background recapture: serve a fixture page from a local HTTP
 // server, queue it via the Add URLs box, and assert the capture lands with
@@ -11,6 +72,10 @@ test.describe('Recapture (background capture)', () => {
   test.beforeAll(async () => {
     server = createServer((req, res) => {
       res.writeHead(200, { 'content-type': 'text/html' })
+      if (req.url === '/lazy') {
+        res.end(LAZY_PAGE)
+        return
+      }
       res.end(
         '<html><head><title>Recapture Fixture</title></head>' +
           '<body><h1>Recapture fixture page</h1><p>stable content</p></body></html>'
@@ -126,5 +191,93 @@ test.describe('Recapture (background capture)', () => {
     const sibling = captures.find((c) => c.supersedesCaptureId === capture.id)
     expect(sibling).toBeTruthy()
     expect(sibling!.method).toBe('background')
+  })
+
+  // D4 to D6 and D9 of docs/plans/2026-10-10-capture-engine-first-slice.md.
+  test('records how Scroll-to-load ended and the screenshot facts, signed and mirrored', async ({
+    page
+  }) => {
+    test.setTimeout(150000)
+
+    const caseId = await queueUrl(page, 'Scroll record E2E', `${baseUrl}/lazy`)
+    await expect(page.getByText('Lazy Growth Fixture')).toBeVisible({ timeout: 60000 })
+
+    const capture = await page.evaluate(async (id) => {
+      const w = window as unknown as {
+        birdbrain: {
+          captures: {
+            list: (caseId: string) => Promise<
+              Array<{
+                id: string
+                method: string
+                inventory?: unknown
+                scrollToLoad?: unknown
+              }>
+            >
+          }
+        }
+      }
+      return (await w.birdbrain.captures.list(id))[0]
+    }, caseId)
+    expect(capture.method).toBe('background')
+
+    // The stored PNG's own dimensions, which the record must state.
+    const stored = await page.evaluate(async (captureId: string) => {
+      const w = window as unknown as {
+        birdbrain: {
+          captures: { getContent: (id: string, type: 'png') => Promise<string | null> }
+        }
+      }
+      const png = await w.birdbrain.captures.getContent(captureId, 'png')
+      const img = new Image()
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve()
+        img.onerror = () => reject(new Error('Failed to decode captured PNG'))
+        img.src = `data:image/png;base64,${png}`
+      })
+      return { width: img.naturalWidth, height: img.naturalHeight }
+    }, capture.id)
+
+    const entry = await lastCaptureEntry(page, caseId)
+    const scrollToLoad = {
+      requested: true,
+      ran: true,
+      outcome: 'stopped-growing',
+      endHeight: LAZY_PAGE_HEIGHT,
+      scrollLockLifted: false
+    }
+    expect(entry.scrollToLoad).toEqual(scrollToLoad)
+    const inventory = entry.inventory as {
+      screenshot: Record<string, unknown>
+      mhtml: unknown
+      transactionRecord: unknown
+      pdf: unknown
+    }
+    expect(inventory.screenshot).toMatchObject({
+      present: true,
+      scaled: false,
+      truncated: false,
+      trimmed: false,
+      contentHeight: LAZY_PAGE_HEIGHT,
+      width: stored.width,
+      height: stored.height
+    })
+    expect(inventory.screenshot.contentWidth).toBeGreaterThan(0)
+    expect(inventory.mhtml).toEqual({ present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 })
+    expect(inventory.transactionRecord).toEqual({ present: false, reason: 'not-taken' })
+    expect(inventory.pdf).toEqual({ present: false, reason: 'not-taken' })
+    expect(entry.schemaVersion).toBe(6)
+
+    // The row mirrors the entry.
+    expect(capture.scrollToLoad).toEqual(scrollToLoad)
+    expect(capture.inventory).toEqual(entry.inventory)
+
+    const verification = await page.evaluate(async (captureId: string) => {
+      const w = window as unknown as {
+        birdbrain: { captures: { verify: (id: string) => Promise<{ status: string }> } }
+      }
+      return w.birdbrain.captures.verify(captureId)
+    }, capture.id)
+    expect(verification.status).toBe('verified')
   })
 })

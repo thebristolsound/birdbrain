@@ -51,7 +51,12 @@ import type {
 } from '@shared/types'
 import type { BatchDeleteOutcome, BatchDeleteResult, DuplicateCaptureResult } from '@shared/ipc'
 import { ManifestEntrySchema } from '@shared/schemas'
-import type { CaptureUploadSource, ScreenshotStatus } from '@shared/schemas'
+import type {
+  CaptureInventory,
+  CaptureUploadSource,
+  ScreenshotStatus,
+  ScrollToLoadRecord
+} from '@shared/schemas'
 import {
   IMPORT_ID_MAP_FILENAME,
   MANUAL_DEDUPE_WINDOW_MS,
@@ -113,6 +118,11 @@ export interface IngestParams {
   // re-fetch opens a raw socket the proxy cannot carry, so it does not run, and
   // the entry says so (rule 3). For every method, extension included.
   tlsSkipped?: TlsRefetchSkip
+  // The capture engine's inventory and Scroll-to-load record (schema 6), passed
+  // only by a background Recapture. The entry signs them as given and the row
+  // mirrors them; the schema refuses an `inventory` without a `screenshot`.
+  inventory?: CaptureInventory
+  scrollToLoad?: ScrollToLoadRecord
 }
 
 export interface IngestResult {
@@ -394,6 +404,8 @@ export async function ingestMhtmlCapture(
         egressLabel: params.egress?.label,
         userAgent: params.egress ? params.userAgent : undefined,
         tlsSkipped: params.tlsSkipped,
+        inventory: params.inventory,
+        scrollToLoad: params.scrollToLoad,
         operatorId: params.operatorId,
         operatorName: params.operatorName,
         toolVersion: params.toolVersion
@@ -441,6 +453,8 @@ export async function ingestMhtmlCapture(
           method: params.method,
           supersedesCaptureId: params.supersedesCaptureId,
           consentSuppression: params.consentSuppression,
+          inventory: params.inventory,
+          scrollToLoad: params.scrollToLoad,
           exhibitNumber
         })
         return { capture, contentHash: hash }
@@ -1703,6 +1717,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
                 method: 'duplicate',
                 duplicateOfCaptureId: source.id,
                 consentSuppression: sourceEntry.consentSuppression,
+                inventory: sourceEntry.inventory,
+                scrollToLoad: sourceEntry.scrollToLoad,
                 exhibitNumber
               })
           )

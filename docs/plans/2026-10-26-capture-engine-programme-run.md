@@ -62,7 +62,8 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Step 5, the report states the fields | #1927 | #1985 | fix round pushed at `b4bd9b71`, preflight green |
 | Step 4, packages carry the files | #1926 | #1984 | fix round pushed at `b7e5e2a8`, preflight green |
 | Step 8, WARC writer | #1906 | #1979 | fix round pushed at `b4e11287`, preflight green |
-| Character set spike | #1983 | #1988 | exact bytes available; rulings being recorded |
+| Character set spike | #1983 | #1988 | rulings recorded at `33ed5a01`; posted on #1929 |
+| Step 6, scroll and screenshot record (writer) | #1928 | - | in flight, stacked on #1985; merges after the tag |
 | Viewer slice 2 Part A | #1735 | #1987 | review: request changes, fix round in flight |
 | Viewer slice 3, one-link lookup | #1737 | #1990 | draft, under review |
 | ADR-0040 acceptance | #1736 | #1977 | draft, preflight green |

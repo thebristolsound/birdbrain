@@ -40,10 +40,11 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Slice | Issue | Pull request | State |
 | --- | --- | --- | --- |
 | Step 1, verifier and schema | #1904 | #1978 | draft, preflight green, under review |
-| Step 2, mirror columns | #1907 | - | in flight, stacked on #1978 |
+| Step 2, mirror columns | #1907 | #1980 | draft, preflight green, stacked on #1978, migration 43 |
+| Step 3, the Case carries the files | #1925 | - | in flight, stacked on #1980 |
 | Step 8, WARC writer | #1906 | #1979 | draft, preflight green, under review |
 | ADR-0040 acceptance | #1736 | #1977 | draft, preflight green |
-| ADR-0040 verifier, schema 6 | #1976 | - | filed, stacks on #1904 |
+| ADR-0040 verifier, schema 6 | #1976 | - | in flight, stacked on #1978 |
 
 ## Carried forward
 
@@ -51,10 +52,12 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
   `CAPTURE_ENTRY_HASH_FIELDS`, which D2 and D14 put in step 1, because the Shared Case blob
   mapping has no file type for either file until step 3. Step 3 (#1925) adds both, and step 3
   merges before the schema-6 release tag (ruling B), so the release carries them.
+- **The mirror insert path.** #1980 adds the six columns but not the insert parameters; the
+  first writer step (6 or 9) adds them.
 - **The lane ledger.** The step issues say to claim a lane in a ledger, and no ledger file exists.
   This table is the record for this run.
 
 ## Next
 
-Stack #1976 on #1978 when a slot frees, then steps 3 to 5. Viewer slice 2 Part A (#1735) is
+Step 5 (#1927) stacks on #1980 when a slot frees, and step 4 (#1926) on step 3. Viewer slice 2 Part A (#1735) is
 independent of the schema and takes the next free slot after that.

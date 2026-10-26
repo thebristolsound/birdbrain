@@ -52,7 +52,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Step 2, mirror columns | #1907 | #1980 | draft, preflight green, stacked on #1978, migration 43 |
 | Step 3, the Case carries the files | #1925 | #1982 | review: approve, fix round pushed at `7dc83929` |
 | Step 5, the report states the fields | #1927 | - | in flight, stacked on #1980 |
-| Step 4, packages carry the files | #1926 | - | in flight, stacked on #1982 |
+| Step 4, packages carry the files | #1926 | #1984 | draft, stacked on #1982, under review |
 | Step 8, WARC writer | #1906 | #1979 | fix round pushed at `b4e11287`, preflight green |
 | Character set spike | #1983 | - | in flight, runs before step 9 |
 | Viewer slice 2 Part A | #1735 | - | in flight, from main |

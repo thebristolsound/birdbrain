@@ -13,7 +13,10 @@
 # A status counts only from the maintainer or the pipeline (trusted_statuses);
 # agent/pre-pass is the verdict, not CI, and is left out. So is the merge-gate
 # job (ADR-0041): its rule fails every agent PR until that verdict is success, so
-# counting it would hold the verdict behind itself. It is listed under ignored.
+# counting it would hold the verdict behind itself. The probe job of
+# test-reliability.yml is advisory: the pre-pass reads its report, and the test
+# pass runs the probe itself when the job did not succeed. Both are listed under
+# ignored.
 #
 # Usage: checks.sh [--wait <seconds>] <pr-number>. Env: GH_TOKEN, LOGIN (machine
 # login, optional).
@@ -62,6 +65,7 @@ read_checks() {
     --argjson st "$statuses" '
     def bad: ["failure", "cancelled", "timed_out", "action_required"];
     ($runs | map(.why = (if .name == "merge-gate" then "reads the pre-pass verdict (ADR-0041), not CI"
+          elif .name == "probe" then "the advisory test reliability probe, read by the pre-pass"
           elif .app == "github-actions" and (.id as $id | $jobs | index($id)) then null
           else "not a job of the latest workflow runs for this PR" end)))
       as $runs

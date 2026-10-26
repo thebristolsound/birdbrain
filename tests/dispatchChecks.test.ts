@@ -182,6 +182,25 @@ describe.skipIf(!HAS_JQ)('checks.sh counts only the jobs of this PR and trusted 
     expect(out.failing).toEqual(['analyze'])
   })
 
+  // The probe job is advisory: a red one must not send a fix round, and a running one must not
+  // hold the pre-pass, whose test pass runs the probe itself when the job did not succeed.
+  it.each([
+    ['failing', { conclusion: 'failure' }],
+    ['timed-out', { conclusion: 'timed_out' }],
+    ['running', { status: 'in_progress' }]
+  ])('leaves a %s probe job of the PR run out, as advisory', (_label, run) => {
+    const { status, stderr, out } = checks(
+      routes({ checkRuns: [...JOBS.slice(0, 2), { ...JOBS[2], name: 'probe', ...run }] })
+    )
+    expect(status, stderr).toBe(0)
+    expect(out.failing).toEqual([])
+    expect(out.pending).toEqual([])
+    expect(out.passed).toEqual(['lint', 'test'])
+    expect(out.ignored).toEqual([
+      'check run probe (github-actions, 3): the advisory test reliability probe, read by the pre-pass'
+    ])
+  })
+
   // merge-gate fails every agent PR until agent/pre-pass is success (ADR-0041), and the wait
   // here is what precedes that verdict.
   it.each([

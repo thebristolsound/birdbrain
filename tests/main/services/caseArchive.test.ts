@@ -268,8 +268,11 @@ describe('caseArchive export', () => {
   // 12 since id maps travel (#1017): a pre-12 build drops the carried maps
   // without an error and fails an honest archive on a Derived File only a
   // carried map anchors.
-  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 12 since id maps travel', () => {
-    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(12)
+  // 13 since the capture engine's columns and files (#1925): a pre-13 build
+  // drops the six columns and leaves a remapped Capture's Transaction Record
+  // under the source id.
+  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 13 since the capture engine files travel', () => {
+    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(13)
   })
 
   it('exports a .birdbrain archive with header, data, manifest, and files', async () => {
@@ -2547,7 +2550,7 @@ describe("an import's id map holds only its own renames", () => {
 
     const { newCaseId, report } = await importCaseArchive(archive)
 
-    expect(report.schemaVersion).toBe(12)
+    expect(report.schemaVersion).toBe(CASE_ARCHIVE_SCHEMA_VERSION)
     expect(report.verification.overallValid).toBe(true)
     expect(remappedIn(newCaseId)).toEqual({})
     expect(readFileSync(join(storageRoot, newCaseId, name))).toEqual(

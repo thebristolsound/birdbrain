@@ -31,6 +31,8 @@ import type { BatchDeleteOutcome } from '@shared/ipc'
 import type { Capture } from '@shared/types'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 import { appendFutureEntry } from '../../helpers/futureManifestEntry'
+import { ENGINE_HASHES } from '../../helpers/captureEnginePackage'
+import { seedEngineCapture } from '../../helpers/captureEngineCapture'
 import {
   createCaptureLifecycle,
   BatchCrossCaseError,
@@ -2479,6 +2481,80 @@ describe('createCaptureLifecycle.verify', () => {
     expect(result.reason).toBe(
       'Screenshot missing: expected ' + sha256('shot').slice(0, 12) + '...'
     )
+  })
+
+  // The capture engine's two files are bound to the signed entry as the
+  // screenshot is: a changed file is tampered, an absent one missing (#1661).
+  describe('the Transaction Record and the PDF', () => {
+    const ENGINE_ID = 'engine-capture'
+    const cases = [
+      {
+        type: 'warc.gz',
+        label: 'Transaction Record',
+        column: 'transaction_record_hash',
+        hash: ENGINE_HASHES.transactionRecord
+      },
+      { type: 'pdf', label: 'PDF', column: 'pdf_hash', hash: ENGINE_HASHES.pdf }
+    ] as const
+
+    async function seeded(): Promise<Capture> {
+      const store = createCaptureStore({ getRoot: getStorageRoot })
+      const caseDir = join(getStorageRoot(), caseId)
+      return seedEngineCapture({ caseDir, caseId, captureId: ENGINE_ID, store })
+    }
+    const pathOf = (type: string): string => join(getStorageRoot(), caseId, `${ENGINE_ID}.${type}`)
+
+    it('verifies a Capture whose files match the hashes its entry signs', async () => {
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      await seeded()
+      await expect(lifecycle.verify(ENGINE_ID)).resolves.toMatchObject({ status: 'verified' })
+    })
+
+    it('streams both files instead of reading either whole', async () => {
+      const real = createCaptureStore({ getRoot: getStorageRoot })
+      const store: CaptureStore = {
+        ...real,
+        readArtifact: (c, id, type) => {
+          if (type === 'warc.gz' || type === 'pdf') throw new Error(`read ${type} whole`)
+          return real.readArtifact(c, id, type)
+        }
+      }
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub, store })
+      await seeded()
+      await expect(lifecycle.verify(ENGINE_ID)).resolves.toMatchObject({ status: 'verified' })
+    })
+
+    it.each(cases)(
+      'reports a changed $label as tampered, even when the row agrees with it',
+      async ({ type, label, column, hash }) => {
+        const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+        await seeded()
+        const altered = Buffer.from(`altered ${label}`)
+        writeFileSync(pathOf(type), altered)
+        const alteredHash = createHash('sha256').update(altered).digest('hex')
+        getDb()
+          .prepare(`UPDATE captures SET ${column} = ? WHERE id = ?`)
+          .run(alteredHash, ENGINE_ID)
+
+        const result = await lifecycle.verify(ENGINE_ID)
+
+        expect(result.status).toBe('tampered')
+        expect(result.reason).toBe(`${label} hash mismatch: expected ${hash}, got ${alteredHash}`)
+      }
+    )
+
+    it.each(cases)('reports an absent $label as missing', async ({ type, label, hash }) => {
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      await seeded()
+      rmSync(pathOf(type))
+
+      const result = await lifecycle.verify(ENGINE_ID)
+
+      expect(result.status).toBe('missing')
+      expect(result.reason).toBe(`${label} missing: expected ${hash.slice(0, 12)}...`)
+      expect(result.chainValid).toBe(true)
+      expect(getCapture(ENGINE_ID)?.lastVerifiedStatus).toBe('missing')
+    })
   })
 
   it('FAILS verify when the capture is truncated out of the manifest chain (#X-2)', async () => {

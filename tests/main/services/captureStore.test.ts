@@ -17,6 +17,7 @@ import { Readable, Writable } from 'stream'
 import {
   createCaptureStore,
   parseArtifactFilename,
+  splitArtifactFilename,
   StagedRestoreError
 } from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
@@ -407,7 +408,135 @@ describe('captureStore', () => {
   })
 })
 
+// The capture engine's two files (docs/plans/2026-10-10-capture-engine-first-slice.md, D3),
+// with hand-made bytes: nothing acquires either file yet.
+describe('captureStore: the Transaction Record and the PDF', () => {
+  const RECORD = Buffer.from('hand-made Transaction Record bytes')
+  const PDF = Buffer.from('%PDF-1.7 hand-made bytes')
+  let tempDir: string
+  let store: CaptureStore
+  let dir: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-store-engine-'))
+    store = createCaptureStore({ getRoot: () => tempDir })
+    dir = join(tempDir, 'case-1')
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  function writeBoth(captureId = 'cap-1'): void {
+    store.writeTransactionRecord('case-1', captureId, RECORD)
+    store.writePdf('case-1', captureId, PDF)
+  }
+
+  it('names them {captureId}.warc.gz and {captureId}.pdf, flat beside the MHTML', () => {
+    expect(store.artifactPaths('case-1', 'cap-1', 'warc.gz')).toEqual({
+      rel: join('case-1', 'cap-1.warc.gz'),
+      abs: join(tempDir, 'case-1', 'cap-1.warc.gz')
+    })
+    expect(store.artifactPaths('case-1', 'cap-1', 'pdf')).toEqual({
+      rel: join('case-1', 'cap-1.pdf'),
+      abs: join(tempDir, 'case-1', 'cap-1.pdf')
+    })
+  })
+
+  it('writes each, creating the Case directory, and returns its relative path', () => {
+    expect(store.writeTransactionRecord('case-1', 'cap-1', RECORD).rel).toBe(
+      join('case-1', 'cap-1.warc.gz')
+    )
+    expect(store.writePdf('case-1', 'cap-1', PDF).rel).toBe(join('case-1', 'cap-1.pdf'))
+    expect(readFileSync(join(dir, 'cap-1.warc.gz'))).toEqual(RECORD)
+    expect(readFileSync(join(dir, 'cap-1.pdf'))).toEqual(PDF)
+  })
+
+  it('reads each back, and reads null for one that is absent', () => {
+    writeBoth()
+    expect(store.readArtifact('case-1', 'cap-1', 'warc.gz')).toEqual(RECORD)
+    expect(store.readArtifact('case-1', 'cap-1', 'pdf')).toEqual(PDF)
+    expect(store.readArtifact('case-1', 'cap-2', 'warc.gz')).toBeNull()
+    expect(store.readArtifact('case-1', 'cap-2', 'pdf')).toBeNull()
+  })
+
+  it('hashes each as it streams from disk, and answers null for one that is absent', async () => {
+    writeBoth()
+    await expect(store.hashArtifact('case-1', 'cap-1', 'warc.gz')).resolves.toBe(
+      createHash('sha256').update(RECORD).digest('hex')
+    )
+    await expect(store.hashArtifact('case-1', 'cap-1', 'pdf')).resolves.toBe(
+      createHash('sha256').update(PDF).digest('hex')
+    )
+    await expect(store.hashArtifact('case-1', 'cap-2', 'pdf')).resolves.toBeNull()
+  })
+
+  it('copies each onto the new id, reporting the digest of the bytes that landed', async () => {
+    writeBoth()
+    const { artifacts } = await store.copyArtifacts('case-1', 'cap-1', 'cap-2')
+
+    expect(readFileSync(join(dir, 'cap-2.warc.gz'))).toEqual(RECORD)
+    expect(readFileSync(join(dir, 'cap-2.pdf'))).toEqual(PDF)
+    expect(artifacts['warc.gz']).toEqual({
+      rel: join('case-1', 'cap-2.warc.gz'),
+      hash: createHash('sha256').update(RECORD).digest('hex'),
+      sizeBytes: RECORD.length
+    })
+    expect(artifacts.pdf).toEqual({
+      rel: join('case-1', 'cap-2.pdf'),
+      hash: createHash('sha256').update(PDF).digest('hex'),
+      sizeBytes: PDF.length
+    })
+  })
+
+  it('stages each aside with the rest of the Capture, and restores it', () => {
+    writeBoth()
+    store.stageArtifacts('case-1', 'cap-1')
+
+    const staged = join(dir, '.pending-delete', 'cap-1')
+    expect(readdirSync(staged).sort()).toEqual(['cap-1.pdf', 'cap-1.warc.gz'])
+    expect(existsSync(join(dir, 'cap-1.warc.gz'))).toBe(false)
+    expect(existsSync(join(dir, 'cap-1.pdf'))).toBe(false)
+
+    store.restoreStaged('case-1', 'cap-1')
+    expect(readFileSync(join(dir, 'cap-1.warc.gz'))).toEqual(RECORD)
+    expect(readFileSync(join(dir, 'cap-1.pdf'))).toEqual(PDF)
+    expect(existsSync(staged)).toBe(false)
+  })
+
+  it("deletes each with the Capture, and leaves another Capture's alone", () => {
+    writeBoth()
+    writeBoth('cap-2')
+    store.deleteArtifacts('case-1', 'cap-1')
+
+    expect(existsSync(join(dir, 'cap-1.warc.gz'))).toBe(false)
+    expect(existsSync(join(dir, 'cap-1.pdf'))).toBe(false)
+    expect(readFileSync(join(dir, 'cap-2.warc.gz'))).toEqual(RECORD)
+    expect(readFileSync(join(dir, 'cap-2.pdf'))).toEqual(PDF)
+  })
+})
+
+describe('splitArtifactFilename', () => {
+  it('takes .warc.gz whole, and every other extension from the last dot', () => {
+    expect(splitArtifactFilename('cap-1.warc.gz')).toEqual({ stem: 'cap-1', ext: '.warc.gz' })
+    expect(splitArtifactFilename('cap-1.pdf')).toEqual({ stem: 'cap-1', ext: '.pdf' })
+    expect(splitArtifactFilename('archive.tar.gz')).toEqual({ stem: 'archive.tar', ext: '.gz' })
+    expect(splitArtifactFilename('README')).toEqual({ stem: 'README', ext: '' })
+  })
+})
+
 describe('parseArtifactFilename', () => {
+  it('maps the Transaction Record and PDF names to their capture id', () => {
+    expect(parseArtifactFilename('cap-1.warc.gz')).toEqual({ captureId: 'cap-1' })
+    expect(parseArtifactFilename('cap-1.pdf')).toEqual({ captureId: 'cap-1' })
+  })
+
+  it('ignores a .gz that is not a Transaction Record, and an extension with no name', () => {
+    expect(parseArtifactFilename('cap-1.gz')).toBeNull()
+    expect(parseArtifactFilename('.warc.gz')).toBeNull()
+    expect(parseArtifactFilename('.png')).toBeNull()
+  })
+
   it('maps artifact filenames to their capture id', () => {
     expect(parseArtifactFilename('cap-1.mhtml')).toEqual({ captureId: 'cap-1' })
     expect(parseArtifactFilename('cap-1.html')).toEqual({ captureId: 'cap-1' })

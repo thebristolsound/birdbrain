@@ -133,7 +133,9 @@ export function acceptBlob(params: AcceptBlobParams): BlobAcceptance {
 const CAPTURE_ARTIFACT_BY_FIELD: Record<CaptureEntryHashField, CaptureArtifactType> = {
   contentHash: 'mhtml',
   screenshotHash: 'png',
-  textHash: 'txt'
+  textHash: 'txt',
+  transactionRecordHash: 'warc.gz',
+  pdfHash: 'pdf'
 }
 
 // Every file the accepted entries of one chain anchor (ruling 4 of

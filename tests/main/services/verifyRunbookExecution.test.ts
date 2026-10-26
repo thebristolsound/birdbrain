@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, vi } from 'vitest'
 import { createHash, createSign, generateKeyPairSync } from 'crypto'
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
@@ -37,6 +37,15 @@ import {
   type BinaryVerdict,
   type ScriptVerdict
 } from '../../helpers/verifyConformance'
+import { defaultCaptureStore } from '@main/services/captureStore'
+import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
+import {
+  ENGINE_ENTRY_FIELDS_WITHOUT_FILES,
+  seedEngineCapture,
+  type EngineEntryFields
+} from '../../helpers/captureEngineCapture'
+import { ENGINE_HASHES } from '../../helpers/captureEnginePackage'
+import { pdfPath, transactionRecordPath } from '../../../src/packages/evidence-package-layout/index'
 
 // #584: the shipped VERIFY.md is executed against a real evidence package, and
 // the verify.sh that ships beside it is run on that package and on deliberately
@@ -913,6 +922,138 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
         }
       })
     }
+  })
+
+  // Step 4 of docs/plans/2026-10-10-capture-engine-first-slice.md: the two
+  // verifiers agree on each file present, absent, changed and missing, in a
+  // package the export path wrote from a Capture built by hand. A changed or
+  // missing file is written with its index row made to agree, so step 5 is
+  // the only step of verify.sh left to catch it.
+  describe('the Transaction Record and the PDF in both shipped verifiers (#1926)', () => {
+    const ENGINE_ID = 'engine-capture'
+    const FILES = [
+      {
+        label: 'Transaction Record',
+        check: 'transaction record',
+        field: 'transactionRecordHash',
+        path: transactionRecordPath(ENGINE_HASHES.transactionRecord)
+      },
+      { label: 'PDF', check: 'pdf', field: 'pdfHash', path: pdfPath(ENGINE_HASHES.pdf) }
+    ]
+
+    const engineExport = async (name: string, fields?: EngineEntryFields): Promise<string> => {
+      await seedEngineCapture({
+        caseDir: join(tempDir, 'captures', caseId),
+        caseId,
+        captureId: ENGINE_ID,
+        store: defaultCaptureStore,
+        fields
+      })
+      return exportPackage(name)
+    }
+
+    const reindex = (dir: string, path: string): void => {
+      const indexPath = join(dir, 'evidence.json')
+      const evidence = JSON.parse(readFileSync(indexPath, 'utf-8')) as {
+        artifacts: Array<{ path: string; sha256: string; sizeBytes: number }>
+      }
+      evidence.artifacts = evidence.artifacts.flatMap((artifact) => {
+        if (artifact.path !== path) return [artifact]
+        if (!existsSync(join(dir, path))) return []
+        const bytes = readFileSync(join(dir, path))
+        return [{ path, sha256: sha256(bytes), sizeBytes: bytes.length }]
+      })
+      writeFileSync(indexPath, JSON.stringify(evidence, null, 2))
+    }
+
+    const binaryRow = (dir: string, check: string) =>
+      verifyEvidencePackage(dir).checks.find((c) => c.name === `capture ${ENGINE_ID} ${check}`)
+
+    it.skipIf(!RUNS)('agree on both files present: PASS', async () => {
+      const dir = await engineExport('engine-present')
+      const result = checkConformance(dir)
+      expect({ binary: result.binary, script: result.script }, result.scriptOutput).toEqual({
+        binary: 'pass',
+        script: 'pass'
+      })
+      for (const { check } of FILES) expect(binaryRow(dir, check)?.status).toBe('pass')
+      expect(result.scriptOutput).toContain(
+        '1 Transaction Record(s) and 1 PDF(s) bound to the signed chain'
+      )
+    })
+
+    it.skipIf(!RUNS)('agree on an entry that anchors neither: SKIP, and no FAIL', async () => {
+      const dir = await engineExport('engine-absent', ENGINE_ENTRY_FIELDS_WITHOUT_FILES)
+      const result = checkConformance(dir)
+      expect({ binary: result.binary, script: result.script }, result.scriptOutput).toEqual({
+        binary: 'pass',
+        script: 'pass'
+      })
+      for (const { check } of FILES) expect(binaryRow(dir, check)?.status).toBe('skip')
+      expect(result.scriptOutput).toContain(
+        '0 Transaction Record(s) and 0 PDF(s) bound to the signed chain'
+      )
+    })
+
+    for (const { label, check, field, path } of FILES) {
+      it.skipIf(!RUNS)(`agree on a changed byte in the ${label}: FAIL`, async () => {
+        const dir = await engineExport(`engine-changed-${check.replace(/\W/g, '-')}`)
+        const bytes = readFileSync(join(dir, path))
+        bytes[0] ^= 0xff
+        writeFileSync(join(dir, path), bytes)
+        reindex(dir, path)
+        const result = checkConformance(dir)
+        expect(
+          { binary: result.binary, script: result.script, steps: result.scriptSteps },
+          result.scriptOutput
+        ).toEqual({ binary: 'fail', script: 'fail', steps: [5] })
+        expect(binaryRow(dir, check)).toMatchObject({
+          status: 'fail',
+          reason: `capture ${ENGINE_ID}: ${label} hash does not match manifest`
+        })
+        expect(result.scriptOutput).toContain(
+          `FAIL [step 5] capture ${ENGINE_ID}: ${path} does not match its own content address`
+        )
+      })
+
+      it.skipIf(!RUNS)(`agree on a missing ${label}: FAIL`, async () => {
+        const dir = await engineExport(`engine-missing-${check.replace(/\W/g, '-')}`)
+        rmSync(join(dir, path))
+        reindex(dir, path)
+        const result = checkConformance(dir)
+        expect(
+          { binary: result.binary, script: result.script, steps: result.scriptSteps },
+          result.scriptOutput
+        ).toEqual({ binary: 'fail', script: 'fail', steps: [5] })
+        expect(binaryRow(dir, check)).toMatchObject({
+          status: 'fail',
+          reason: `capture ${ENGINE_ID}: ${label} file missing`
+        })
+        expect(result.scriptOutput).toContain(
+          `FAIL [step 5] capture ${ENGINE_ID}: ${path} is missing but its signed entry carries ` +
+            `a ${field}`
+        )
+      })
+    }
+
+    it.skipIf(!RUNS)("runs the runbook's step 5 commands over both files", async () => {
+      const dir = await engineExport('engine-runbook')
+      const step5 = extractRunbookBlocks(VERIFY_RUNBOOK).find(
+        ({ section, code }) => section.startsWith('Step 5') && code.includes('.pdfHash')
+      )!
+      const pickEntry = {
+        section: 'test setup',
+        ordinal: 0,
+        code: `line=$(jq -c 'select(.type == "capture" and .captureId == "${ENGINE_ID}")' manifest.jsonl)\n`,
+        placeholders: []
+      }
+      const result = runRunbookBlocks([pickEntry, step5], { cwd: dir })
+      expect(result.ok, `${result.stdout}\n${result.stderr}`).toBe(true)
+      expect(result.stdout).toContain('content OK')
+      for (const { path } of FILES) {
+        expect(result.stdout).toContain(`${sha256(readFileSync(join(dir, path)))}  ${path}`)
+      }
+    })
   })
 
   it.skipIf(!RUNS)('prints an INCOMPLETE verdict above the checks, as it does a PASS', () => {

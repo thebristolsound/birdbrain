@@ -63,4 +63,38 @@ test.describe('Shared Case members screens', () => {
       await page.screenshot({ path: `${SCREENS}/join-${theme}.png`, fullPage: true })
     }
   })
+
+  test('reaches Members and Join through their entry points', async ({ page }) => {
+    const caseId = await page.evaluate(async (name) => {
+      const { birdbrain } = window as unknown as { birdbrain: BirdbrainAPI }
+      const shared = (await birdbrain.cases.list()).find((entry) => entry.name === name)
+      if (!shared) throw new Error('Shared Case seed missing')
+      return shared.id
+    }, SHARED_CASE_NAME)
+
+    await page.evaluate(() => {
+      window.location.hash = '/'
+    })
+    const card = page.getByTestId('case-card').filter({ hasText: SHARED_CASE_NAME })
+    await card.hover()
+    await card.getByTestId('case-card-menu-btn').click()
+    await card.getByRole('menuitem', { name: 'Members' }).click()
+    await expect(page.getByTestId('identity-card')).toBeVisible()
+
+    await page.evaluate((id) => {
+      window.location.hash = `/cases/${id}/captures`
+    }, caseId)
+    await page.getByTestId('sync-pill').click()
+    await expect(page.getByTestId('identity-card')).toBeVisible()
+    expect(await page.evaluate(() => window.location.hash)).toBe(`#/cases/${caseId}/settings`)
+
+    await page.getByTestId('topbar-case-name').click()
+    await page.getByRole('button', { name: 'Join a shared Case…' }).click()
+    await expect(page.getByTestId('join-case-card')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Back' }).click()
+    await expect(page.getByTestId('case-start-step')).toBeVisible()
+    await page.getByTestId('case-start-join').click()
+    await expect(page.getByTestId('join-case-card')).toBeVisible()
+  })
 })

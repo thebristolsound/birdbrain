@@ -200,6 +200,37 @@ describe('LinksTab', () => {
     expect(screen.getByTestId('context-menu-item-link-capture')).toBeDefined()
   })
 
+  // ADR-0040: Capture link from a row names the Capture whose Links tab it is.
+  it('queues Capture link naming this Capture and the row address', async () => {
+    const enqueue = vi.fn(async () => ({ accepted: 1, rejected: [] }))
+    fakeBridge({
+      captures: {
+        getLinks: vi.fn(async () => result([link({ href: 'https://a.example/1', text: 'One' })])),
+        list: vi.fn(async () => [])
+      },
+      recapture: { enqueue }
+    })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <LinksTab capture={capture} />
+      </QueryClientProvider>
+    )
+    const [row] = await screen.findAllByTestId('links-row')
+    fireEvent.contextMenu(within(row).getByText('One'))
+    fireEvent.click(await screen.findByTestId('context-menu-item-link-capture'))
+
+    await waitFor(() => expect(enqueue).toHaveBeenCalledTimes(1))
+    expect(enqueue.mock.calls[0]).toStrictEqual([
+      {
+        urls: ['https://a.example/1'],
+        caseId: 'case1',
+        supersedesCaptureId: undefined,
+        linkedFrom: { captureId: 'cap1', linkHref: 'https://a.example/1' }
+      }
+    ])
+  })
+
   it('opens no menu off a row', async () => {
     renderTab(result([link({})]))
     const row = await screen.findByTestId('links-row')

@@ -6,8 +6,9 @@ description: 'What Birdbrain''s chain-of-custody controls defend against, what t
 This document states plainly what Birdbrain's chain-of-custody controls defend
 against, what they deliberately do **not**, and why the default trusted-timestamp
 authority is DigiCert. It is the reference a brief or an expert declaration can
-cite. Scope: the on-disk audit manifest (hash chain + signatures, #115/#117) and
-RFC 3161 trusted timestamping (#120).
+cite. Scope: the on-disk audit manifest (hash chain + signatures, #115/#117),
+RFC 3161 trusted timestamping (#120), and Shared Cases, where each member's
+installation keeps its own manifest (#1508).
 
 ## The two independent axes
 
@@ -87,6 +88,61 @@ The endpoint is configurable in Settings for jurisdictions or engagements that
 require a specific TSA. Free/hobbyist authorities (e.g. `freetsa.org`) are a
 documented **development/test fallback only**. Their roots are not in common
 trust stores and should not anchor evidence.
+
+## Shared Cases
+
+A Shared Case is a Case held by two to five installations. Each member's
+installation keeps its own signed manifest chain. A `merge` entry in the
+receiving member's chain records each sync session that brought in entries from
+another member's chain, naming the chain states it received.
+
+### What verification shows, and what it does not
+
+For a Shared Case, verification shows three things:
+
+- Each member's chain was not edited without that member's installation key.
+- Every `merge` entry names chain states that exist.
+- Every `<Member Code>-<n>` citation resolves to one entry.
+
+It does not show three others:
+
+- Who sat at a member's machine.
+- That any member's TSA is honest.
+- That a revoked member deleted its copy of the Case. Revoking stops sync with
+  that member; the member keeps what it already holds.
+
+### The key is held per member
+
+The limits in the signature section above apply to each member's installation
+separately. An operator who controls a member's running process controls that
+member's key. Whether that key is wrapped at rest depends on the credential
+store of that member's machine, so one member's `protected` key says nothing
+about another member's.
+
+### Receipt timestamps
+
+When trusted timestamping is on, the receiving installation submits the Entry
+Hash of each `merge` entry it writes to its own TSA and records the token in its
+chain as a `timestamp` entry with `subject: 'entry'`. The token establishes
+that the receiver's chain held that `merge`, and so the chain states it names,
+no later than the stamped time. It does not date any capture and does not
+change any Exhibit's trusted time. Each member stamps with the TSA configured on
+its own machine; TSA settings do not sync.
+
+### One key links a member across groups
+
+Each installation has one signing key and uses it in every Shared Case it
+joins. Every member sees each member's public key: the Owner's approval dialog
+shows its fingerprint. Two groups that share a member can therefore match that
+member by key.
+
+A member who wants to stay anonymous should set a pseudonym as their operator
+name. That name is installation-wide. Birdbrain writes it into every Manifest
+Entry and into the Certification of every evidence package, from every Case on
+that installation, not only the Shared Case. A pseudonym hides neither the key
+nor the network addresses: teammates and the relay see this machine's network
+addresses during connection setup, as the
+[network use list](/docs/features#network-use) states.
 
 ## Canonical verification path
 

@@ -54,9 +54,9 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Step 5, the report states the fields | #1927 | - | in flight, stacked on #1980 |
 | Step 4, packages carry the files | #1926 | - | in flight, stacked on #1982 |
 | Step 8, WARC writer | #1906 | #1979 | fix round pushed at `b4e11287`, preflight green |
-| Character set spike | #1983 | - | filed, runs before step 9 |
+| Character set spike | #1983 | - | in flight, runs before step 9 |
 | ADR-0040 acceptance | #1736 | #1977 | draft, preflight green |
-| ADR-0040 verifier, schema 6 | #1976 | #1981 | draft, stacked on #1978, under review |
+| ADR-0040 verifier, schema 6 | #1976 | #1981 | review: approve, stacked on #1978 |
 
 ## Carried forward
 
@@ -66,6 +66,12 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
   merges before the schema-6 release tag (ruling B), so the release carries them.
 - **The mirror insert path.** #1980 adds the six columns but not the insert parameters; the
   first writer step (6 or 9) adds them.
+- **For the link writer step.** From the review of #1981: the writer signs without a schema
+  check, so a source entry with a non-hex Content Hash would be copied into
+  `linkedFromContentHash` and break the Operator's own chain; the writer refuses such a source.
+  The Shared Case receive path (`receivedEvidence.ts`) builds rows without the three fields, so it
+  gains them. The writer also settles whether `linkHref` is the address before or after
+  `canonicalizeUrl`.
 - **The lane ledger.** The step issues say to claim a lane in a ledger, and no ledger file exists.
   This table is the record for this run.
 

@@ -824,11 +824,17 @@ describe('LinksTab Wayback batch', () => {
 
   const cells = () => screen.getAllByTestId('links-wayback').map((cell) => cell.textContent)
 
+  const status = () => screen.getByTestId('wayback-batch-status').textContent
+
   it('updates every row that holds an address as its answer lands', async () => {
-    const { emit, finish } = await startBatch()
-    expect(screen.getByTestId('wayback-batch-status').textContent).toBe(
-      'Checking in Wayback: 0 of 2 done.'
-    )
+    const { emit, finish, lookupLinks } = await startBatch()
+    // The list the confirmation showed, not the rows: each address once, refusals left out.
+    expect(lookupLinks).toHaveBeenCalledExactlyOnceWith({
+      captureId: 'cap1',
+      urls: ['https://a.example/1', 'https://b.example/2'],
+      egress: DIRECT
+    })
+    expect(status()).toBe('Checking in Wayback: 0 of 2 done.')
     emit({ captureId: 'cap1', url: 'https://a.example/1', state: 'checking' })
     expect(cells()).toEqual([
       'Wayback:Checking…',
@@ -836,7 +842,10 @@ describe('LinksTab Wayback batch', () => {
       'Wayback:Not checked',
       'Wayback:Not checked'
     ])
+    // A row being checked is not done yet; an answer is.
+    expect(status()).toBe('Checking in Wayback: 0 of 2 done.')
     emit({ captureId: 'cap1', url: 'https://a.example/1', state: 'answered', result: ANSWER })
+    expect(status()).toBe('Checking in Wayback: 1 of 2 done.')
     emit({ captureId: 'cap1', url: 'https://b.example/2', state: 'checking' })
     emit({ captureId: 'cap1', url: 'https://b.example/2', state: 'failed', error: 'timed out' })
     const [first, second, , last] = cells()
@@ -896,6 +905,25 @@ describe('LinksTab Wayback batch', () => {
       expect(screen.getByTestId('wayback-batch-status').textContent).toBe(
         'Batch cancelled. 1 address answered. 1 address not checked.'
       )
+    )
+  })
+
+  it('shows a cancel that fails', async () => {
+    const { cancelLookupLinks } = await startBatch()
+    cancelLookupLinks.mockRejectedValueOnce(new Error('main is busy'))
+    fireEvent.click(screen.getByTestId('wayback-batch-stop'))
+    await waitFor(() => expect(status()).toContain('Could not cancel: main is busy'))
+  })
+
+  it('reports a cancel that fails when the tab closes', async () => {
+    const error = vi.spyOn(notify, 'error').mockImplementation(() => {})
+    const { cancelLookupLinks, unmount } = await startBatch()
+    cancelLookupLinks.mockRejectedValueOnce(new Error('main is busy'))
+    unmount()
+    await waitFor(() =>
+      expect(error).toHaveBeenCalledWith('The Wayback batch could not be cancelled', {
+        cause: expect.any(Error)
+      })
     )
   })
 

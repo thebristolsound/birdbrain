@@ -179,6 +179,59 @@ describe('writeTransactionRecord payloads and digests', () => {
   })
 })
 
+describe('writeTransactionRecord text bodies (ruling of 2026-10-26)', () => {
+  // A windows-1252 page as the server sent it, and as CDP hands it over: a string.
+  const SERVED = Buffer.from('3c703e636166e93c2f703e', 'hex')
+  const TEXT = '<p>caf\u00e9</p>'
+  const w1252 = exchange('https://example.test/w1252', 'complete', {
+    response: {
+      url: 'https://example.test/w1252',
+      status: 200,
+      statusText: 'OK',
+      mimeType: 'text/html',
+      headers: { 'Content-Type': 'text/html; charset=windows-1252', 'Content-Length': '11' }
+    },
+    responseBody: { data: TEXT, base64Encoded: false }
+  })
+
+  it('stores the decoded text as UTF-8 and marks the record (known answer)', async () => {
+    expect(new TextDecoder('windows-1252').decode(SERVED)).toBe(TEXT)
+    const { records } = await writeAndRead([w1252])
+    const response = named(records, 'response', 'https://example.test/w1252')!
+    expect(response.http?.payload.toString('hex')).toBe('3c703e636166c3a93c2f703e')
+    expect(response.warc('WARC-Payload-Digest')).toBe(
+      'sha256:748ae391a17054e980aaf0dcf88abc22a3ca9ff31c0494531dddb4e31b6bd293'
+    )
+    expect(sha256(SERVED)).toBe(
+      'sha256:f92b1f90c50a0068a6c9dfce9c853e9333a8337b6475fab8a4393f1b1fccd319'
+    )
+    expect(response.warc('x-birdbrain-decoded-text')).toBe('utf-8')
+    expect(header(response, 'x-orig-content-length')).toEqual(['11'])
+    expect(header(response, 'Content-Length')).toEqual(['12'])
+    expect(header(response, 'Content-Type')).toEqual(['text/html; charset=windows-1252'])
+  })
+
+  it('marks a text request body, and no base64 body or record without a body', async () => {
+    const posted = exchange('https://example.test/form', 'redirected', {
+      request: { method: 'POST', url: 'https://example.test/form', headers: {} },
+      requestBody: { data: 'q=caf\u00e9', base64Encoded: false, complete: true }
+    })
+    const binary = exchange('https://example.test/binary', 'complete', {
+      responseBody: { data: SERVED.toString('base64'), base64Encoded: true }
+    })
+    const { records } = await writeAndRead([posted, binary])
+    expect(records.map((record) => record.warc('x-birdbrain-decoded-text'))).toEqual([
+      undefined,
+      'utf-8',
+      undefined,
+      undefined,
+      undefined
+    ])
+    const binaryResponse = named(records, 'response', 'https://example.test/binary')!
+    expect(binaryResponse.http?.payload.equals(SERVED)).toBe(true)
+  })
+})
+
 describe('writeTransactionRecord partial exchanges (plan D8)', () => {
   const redirect = exchange('https://example.test/redirect', 'redirected', {
     response: {
@@ -611,6 +664,10 @@ describe('writeTransactionRecord warcinfo and addresses', () => {
       'x-orig-content-encoding, x-orig-transfer-encoding and x-orig-content-length'
     )
     expect(text).toContain(`replaced with ${CREDENTIAL_MARKER}.`)
+    expect(text).toContain(
+      'A body the browser handed over as text is stored as that text encoded in UTF-8, which can ' +
+        'differ from the bytes the server sent'
+    )
     expect(text).toContain(
       'http-message-lines: Request and status lines read HTTP/1.0 when the browser reported ' +
         'http/1.0 and HTTP/1.1 otherwise'

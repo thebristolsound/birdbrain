@@ -19,11 +19,20 @@ const CREDENTIAL = new Set(CREDENTIAL_HEADERS)
 // length.
 const RENAMED = new Set(['content-encoding', 'transfer-encoding', 'content-length'])
 
+// The maintainer's ruling of 2026-10-26 (plan D8): CDP can hand a text body over as a string
+// decoded from the page's character set (the review of #1979 measured it; spike #1983 measures it
+// for step 9). The original bytes cannot be recovered from the string, so the record stores the
+// text as UTF-8 and says so on each record that holds such a body.
+const TEXT_BODY = { 'x-birdbrain-decoded-text': 'utf-8' }
+
 const DECODED_BODIES =
   'Response bodies are stored as the browser decoded them. Each response keeps the ' +
   'Content-Encoding, Transfer-Encoding and Content-Length the browser reported as ' +
   'x-orig-content-encoding, x-orig-transfer-encoding and x-orig-content-length, and its ' +
-  'Content-Length is the length of the stored body.'
+  'Content-Length is the length of the stored body. A body the browser handed over as text is ' +
+  'stored as that text encoded in UTF-8, which can differ from the bytes the server sent, for ' +
+  'example when the page used another character set; each record holding such a body carries ' +
+  'x-birdbrain-decoded-text: utf-8.'
 
 const CREDENTIALS =
   'The values of the Cookie, Set-Cookie, Authorization and Proxy-Authorization headers are ' +
@@ -68,8 +77,21 @@ const headerLines = (headers: HeaderMap, replaced: Set<string>): HeaderLine[] =>
       })
     })
 
-const bytesOf = ({ data, base64Encoded }: BodyData): Uint8Array =>
-  base64Encoded ? Buffer.from(data, 'base64') : Buffer.from(data, 'utf8')
+interface StoredBody {
+  bytes: Uint8Array
+  /** The browser handed the body over as text, not as base64 bytes. */
+  text: boolean
+}
+
+const NO_BODY: StoredBody = { bytes: new Uint8Array(), text: false }
+
+const stored = (body: BodyData | undefined): StoredBody => {
+  if (body === undefined) return NO_BODY
+  const { data, base64Encoded } = body
+  return base64Encoded
+    ? { bytes: Buffer.from(data, 'base64'), text: false }
+    : { bytes: Buffer.from(data, 'utf8'), text: true }
+}
 
 const pathOf = (url: string): string => {
   const { pathname, search } = new URL(url)
@@ -119,16 +141,18 @@ const httpRecord = (
 const requestRecord = (exchange: Exchange, replaced: Set<string>): WARCRecord => {
   const { request, requestBody, startedAt } = exchange
   const protocol = protocolOf(exchange)
+  const body = stored(requestBody)
   return httpRecord('request', {
     url: request.url,
     date: startedAt,
     statusline: `${request.method} ${pathOf(request.url)} ${httpVersion(protocol)}`,
     // Plan D8: the headers the ExtraInfo event reported when it arrived, as for the response.
     lines: headerLines(request.extraInfo?.headers ?? request.headers, replaced),
-    body: requestBody ? bytesOf(requestBody) : new Uint8Array(),
+    body: body.bytes,
     warcHeaders: {
       ...protocolField(protocol),
-      ...(requestBody && !requestBody.complete ? TRUNCATED : {})
+      ...(requestBody && !requestBody.complete ? TRUNCATED : {}),
+      ...(body.text ? TEXT_BODY : {})
     }
   })
 }
@@ -143,7 +167,7 @@ const responseRecord = (
   if (response === undefined) {
     throw new Error(`A ${state} exchange for ${request.url} has no response to write`)
   }
-  const body = state === 'complete' && responseBody ? bytesOf(responseBody) : new Uint8Array()
+  const body = state === 'complete' ? stored(responseBody) : NO_BODY
   const status = response.extraInfo?.statusCode ?? response.status
   const lines = headerLines(response.extraInfo?.headers ?? response.headers, replaced).map(
     ([name, value]): HeaderLine => {
@@ -153,7 +177,8 @@ const responseRecord = (
   )
   const warcHeaders: Record<string, string> = {
     ...protocolField(protocol),
-    ...(state === 'body-omitted' ? TRUNCATED : {})
+    ...(state === 'body-omitted' ? TRUNCATED : {}),
+    ...(body.text ? TEXT_BODY : {})
   }
   // Plan D8 and ADR-0032 rule 5: through a proxy the reported address can be the proxy's.
   if (input.egress === 'direct' && response.remoteIPAddress !== undefined) {
@@ -163,8 +188,8 @@ const responseRecord = (
     url: request.url,
     date: startedAt,
     statusline: `${httpVersion(protocol)} ${status} ${response.statusText}`,
-    lines: [...lines, ['Content-Length', String(body.length)]],
-    body,
+    lines: [...lines, ['Content-Length', String(body.bytes.length)]],
+    body: body.bytes,
     warcHeaders
   })
 }

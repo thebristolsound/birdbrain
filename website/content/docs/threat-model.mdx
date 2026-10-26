@@ -99,8 +99,8 @@ another member's chain, naming the chain states it received.
 
 ### What verification shows, and what it does not
 
-For a Shared Case, checking an exported evidence package (the package checker
-and its `verify.sh`) shows three things:
+For a Shared Case, checking an exported evidence package, with the standalone
+verifier or the `verify.sh` script the package ships, shows three things:
 
 - Each member's chain was not edited without that member's installation key.
 - Every `merge` entry names chain states that exist.
@@ -134,9 +134,9 @@ than the stamped time. It does not date any capture and does not change any
 Exhibit's trusted time. Each member stamps with the TSA configured on its own
 machine; TSA settings do not sync.
 
-Not every `merge` gets its own token. Every five minutes the app stamps the
-newest `merge` in each Shared Case that has none, while sync runs every minute,
-so most `merge` entries carry no token of their own. Each Entry Hash covers the
+Not every `merge` gets its own token. Every five minutes the app looks at the
+newest `merge` in each Shared Case and stamps it if it has no token yet, while
+sync runs every minute, so most `merge` entries carry no token of their own. Each Entry Hash covers the
 entry before it, so a token over a later `merge` also bounds every earlier entry
 in that chain. A `merge` written before the chain's last `import` entry belongs
 to the source Case's history and is never stamped.

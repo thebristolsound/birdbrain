@@ -396,7 +396,8 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       return { accepted, rejected }
     },
     // The checks the payload alone can answer, so the menu reports them at once. The source's
-    // entry and bytes are checked when the job runs, closest to the signing.
+    // entry and bytes are checked when the job runs, before the render: a source deleted or
+    // altered during the render is still named, with the hash its signed entry records.
     enqueueLink({ urls, caseId, supersedesCaptureId, linkedFrom }) {
       const { captureId, linkHref } = linkedFrom ?? {}
       const refuse = (reason: string): EnqueueResult => ({

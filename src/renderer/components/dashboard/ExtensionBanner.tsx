@@ -26,7 +26,10 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
   // banner it is actually describing — present in both connected states, and on
   // the dashboard route the step already declares. Sent back as #707.
   return (
-    <Card data-tour="browser" className="mt-8 p-[var(--d-card)] flex items-center justify-between">
+    <Card
+      data-tour="browser"
+      className="mt-8 p-[var(--d-card)] flex items-center justify-between gap-5"
+    >
       {connected ? (
         <>
           <div className="flex items-center gap-5">
@@ -52,7 +55,7 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
         </>
       ) : (
         <>
-          <div className="flex items-center gap-5">
+          <div className="flex min-w-0 items-center gap-5">
             <div className="w-12 h-12 rounded-2xl bg-accent-subtle border border-accent/20 flex items-center justify-center flex-shrink-0">
               <Puzzle className="h-6 w-6 text-accent" />
             </div>
@@ -71,7 +74,7 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3 whitespace-nowrap">
             <button
               data-testid="extension-banner-setup-guide"
               onClick={() => startTour('ext')}

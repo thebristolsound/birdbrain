@@ -180,6 +180,11 @@ describe('NewCaseWizard start step (#1514)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Import a Case Archive/ }))
     expect(inspectCaseArchive).toHaveBeenCalledOnce()
     expect((await screen.findByRole('alert')).textContent).toBe('Not a Case Archive')
+
+    // A second attempt clears the earlier failure.
+    inspectCaseArchive.mockResolvedValueOnce(null)
+    fireEvent.click(screen.getByRole('button', { name: /Import a Case Archive/ }))
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
   })
 
   it('opens the import dialog on the inspected archive, and nothing when the picker is cancelled', async () => {

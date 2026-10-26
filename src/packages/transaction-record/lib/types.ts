@@ -1,6 +1,8 @@
 // The CDP shapes this package reads, under the names the protocol gives them, and the shapes it
 // hands on. Only the fields a Transaction Record or Bound TLS Details use are listed.
 
+import type { EgressKind } from '@shared/types'
+
 export type HeaderMap = Record<string, string>
 
 /**
@@ -227,4 +229,24 @@ export interface TransactionRecordCounts {
 export interface CollectedExchanges {
   exchanges: Exchange[]
   counts: TransactionRecordCounts
+}
+
+export interface WriterInput {
+  /** Written in this order. */
+  exchanges: readonly Exchange[]
+  captureId: string
+  birdbrainVersion: string
+  browserVersion: string
+  userAgent: string
+  /** The Egress the render went through. Only `direct` lets a record carry a remote address. */
+  egress: 'direct' | EgressKind
+  /** The `warcinfo` record's `WARC-Date`, as ISO 8601. */
+  date: string
+}
+
+export interface WrittenTransactionRecord {
+  /** The `.warc.gz` file: one gzip member per record. */
+  bytes: Uint8Array
+  /** The lower-case names of the headers whose values the record holds replaced, sorted. */
+  replacedHeaders: string[]
 }

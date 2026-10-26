@@ -1615,7 +1615,9 @@ folded in.
 - **2026-10-26.** Step 6 (#1928) writes both MHTML pin counts as 0, which is true of a build that
   pins no image; #1843 adds the pinning and the real counts. If the tag also waits for #1843, no
   released build writes 0 for a page whose `srcset` images the MHTML dropped; that wait is the
-  maintainer's call. Step 6's first end-to-end run found that the step script's scroll probe
-  ended the phase at the bottom of every page with `nothing-to-scroll`, so the stall detector D5
-  maps to `stopped-growing` never ended it there. Step 6 fixes the probe and records the finding
-  in the [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md).
+  maintainer's call; the review of #1996 recommends that step 6 not ship in a release without
+  #1843. Step 6's first end-to-end run found that the step script's scroll probe ended the phase
+  at the bottom of every page with `nothing-to-scroll`, so the stall detector D5 maps to
+  `stopped-growing` never ended it there. Step 6 changes the root choice so the stall detector
+  ends the phase at a real bottom, and records the change and its effect on acquisition in the
+  [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md).

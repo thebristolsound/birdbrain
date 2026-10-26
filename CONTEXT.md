@@ -99,7 +99,7 @@ The network path Birdbrain's outbound traffic takes: Direct from the Operator's 
 _Avoid_: route, VPN mode, anonymous mode.
 
 **Scroll-to-load**:
-An optional phase before a Capture's artifacts are taken in which the page is scrolled to trigger lazy-loaded content. A `background` Capture's Manifest Entry records that the phase was requested, whether it ran, how it ended, the last page height it read, and whether it lifted a scroll lock; a scroll step that fails fails the Capture, so the phase never silently yields a static one. _Planned:_ the extension's scrolling capture, which records nothing and keeps a static Capture when scrolling fails, gives way to the Companion, whose Captures record the phase the same way ([companion design](docs/specs/2026-10-17-capture-engine-companion-design.md)).
+An optional phase before a Capture's artifacts are taken in which the page is scrolled to trigger lazy-loaded content. A `background` Capture's Manifest Entry records that the phase was requested, whether it ran, how it ended, the last height it read of the document or inner panel it scrolled, and whether it lifted a scroll lock. A scroll step that throws, or a lifted scroll lock that cannot be restored, fails the Capture. _Planned:_ the extension's scrolling capture, which records nothing and keeps a static Capture when scrolling fails, gives way to the Companion, whose Captures record the phase the same way ([companion design](docs/specs/2026-10-17-capture-engine-companion-design.md)).
 _Avoid_: scrolling capture, scrolling mode, pre-scroll.
 
 **Bound TLS Details**:

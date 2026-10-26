@@ -523,8 +523,63 @@ describe('writeTransactionRecord header blocks', () => {
   })
 })
 
+describe('writeTransactionRecord protocol (ruling of 2026-10-26)', () => {
+  const over = (protocol: string | undefined, path: string): Exchange =>
+    exchange(`https://example.test/${path}`, 'complete', {
+      response: {
+        url: `https://example.test/${path}`,
+        status: 200,
+        statusText: 'OK',
+        mimeType: 'text/plain',
+        ...(protocol !== undefined ? { protocol } : {}),
+        headers: { 'content-type': 'text/plain' }
+      }
+    })
+
+  it.each([
+    ['h2', 'h2'],
+    ['h3', 'h3']
+  ])(
+    'writes HTTP/1.1 lines and WARC-Protocol %s for an exchange the browser reported as %s',
+    async (protocol) => {
+      const { records } = await writeAndRead([over(protocol, protocol)])
+      const [, request, response] = records
+      expect(request.http?.statusLine).toBe(`GET /${protocol} HTTP/1.1`)
+      expect(response.http?.statusLine).toBe('HTTP/1.1 200 OK')
+      expect(request.warc('WARC-Protocol')).toBe(protocol)
+      expect(response.warc('WARC-Protocol')).toBe(protocol)
+      expect(response.http?.headers).toEqual([
+        ['content-type', 'text/plain'],
+        ['Content-Length', String(Buffer.byteLength(`body of https://example.test/${protocol}`))]
+      ])
+    }
+  )
+
+  it('writes HTTP/1.0 lines for http/1.0, in any case, and lower-cases the protocol', async () => {
+    const { records } = await writeAndRead([over('HTTP/1.0', 'old')])
+    const [, request, response] = records
+    expect(request.http?.statusLine).toBe('GET /old HTTP/1.0')
+    expect(response.http?.statusLine).toBe('HTTP/1.0 200 OK')
+    expect(request.warc('WARC-Protocol')).toBe('http/1.0')
+    expect(response.warc('WARC-Protocol')).toBe('http/1.0')
+  })
+
+  it('writes no WARC-Protocol where the browser reported none', async () => {
+    const { records } = await writeAndRead([
+      over(undefined, 'unknown'),
+      exchange('https://example.test/failed', 'failed', { response: undefined })
+    ])
+    expect(records.slice(1).map((record) => record.warc('WARC-Protocol'))).toEqual([
+      undefined,
+      undefined,
+      undefined
+    ])
+    expect(records[1].http?.statusLine).toBe('GET /unknown HTTP/1.1')
+  })
+})
+
 describe('writeTransactionRecord warcinfo and addresses', () => {
-  it('names the four facts and the two statements, and no host, address or proxy', async () => {
+  it('names the four facts and the fixed statements, and no host, address or proxy', async () => {
     const { records } = await writeAndRead([exchange('https://example.test/', 'complete')])
     const [info] = records
     expect(info.warc('WARC-Type')).toBe('warcinfo')
@@ -542,7 +597,8 @@ describe('writeTransactionRecord warcinfo and addresses', () => {
       'http-header-user-agent',
       'capture-id',
       'decoded-bodies',
-      'credential-headers'
+      'credential-headers',
+      'http-message-lines'
     ])
     const text = info.block.toString()
     expect(text).toContain('software: Birdbrain 1.0.1-beta.23\r\n')
@@ -555,6 +611,10 @@ describe('writeTransactionRecord warcinfo and addresses', () => {
       'x-orig-content-encoding, x-orig-transfer-encoding and x-orig-content-length'
     )
     expect(text).toContain(`replaced with ${CREDENTIAL_MARKER}.`)
+    expect(text).toContain(
+      'http-message-lines: Request and status lines read HTTP/1.0 when the browser reported ' +
+        'http/1.0 and HTTP/1.1 otherwise'
+    )
     const whole = info.inflated.toString()
     expect(whole).not.toContain(hostname())
     expect(whole).not.toContain(REMOTE_IP)

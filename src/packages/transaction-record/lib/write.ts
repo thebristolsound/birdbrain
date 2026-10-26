@@ -29,6 +29,11 @@ const CREDENTIALS =
   'The values of the Cookie, Set-Cookie, Authorization and Proxy-Authorization headers are ' +
   `replaced with ${CREDENTIAL_MARKER}. The header names are kept.`
 
+const MESSAGE_LINES =
+  'Request and status lines read HTTP/1.0 when the browser reported http/1.0 and HTTP/1.1 ' +
+  'otherwise, HTTP/2 and HTTP/3 exchanges included. WARC-Protocol on each request and response ' +
+  'record names the protocol the browser reported, where it reported one.'
+
 type HeaderLine = [string, string]
 
 // warcio's own map joins repeated names with ",,," and splits on it again when it writes, which
@@ -73,6 +78,18 @@ const pathOf = (url: string): string => {
 
 const TRUNCATED = { 'WARC-Truncated': 'unspecified' }
 
+// The maintainer's ruling of 2026-10-26 (plan D8) follows browsertrix-crawler, which writes
+// HTTP/1.x message lines that WARC readers parse and records the reported protocol in
+// `WARC-Protocol` (`src/util/reqresp.ts`, `httpProtocol`, and `src/util/recorder.ts`,
+// `createResponse`, at `e582608a`).
+const protocolOf = ({ response }: Exchange): string | undefined => response?.protocol?.toLowerCase()
+
+const httpVersion = (protocol: string | undefined): string =>
+  protocol === 'http/1.0' ? 'HTTP/1.0' : 'HTTP/1.1'
+
+const protocolField = (protocol: string | undefined): Record<string, string> =>
+  protocol === undefined ? {} : { 'WARC-Protocol': protocol }
+
 const serialize = async (record: WARCRecord): Promise<Uint8Array> =>
   WARCSerializer.serialize(record, { gzip: true })
 
@@ -99,25 +116,30 @@ const httpRecord = (
   return record
 }
 
-const requestRecord = (
-  { request, requestBody, startedAt }: Exchange,
-  replaced: Set<string>
-): WARCRecord =>
-  httpRecord('request', {
+const requestRecord = (exchange: Exchange, replaced: Set<string>): WARCRecord => {
+  const { request, requestBody, startedAt } = exchange
+  const protocol = protocolOf(exchange)
+  return httpRecord('request', {
     url: request.url,
     date: startedAt,
-    statusline: `${request.method} ${pathOf(request.url)} HTTP/1.1`,
+    statusline: `${request.method} ${pathOf(request.url)} ${httpVersion(protocol)}`,
     // Plan D8: the headers the ExtraInfo event reported when it arrived, as for the response.
     lines: headerLines(request.extraInfo?.headers ?? request.headers, replaced),
     body: requestBody ? bytesOf(requestBody) : new Uint8Array(),
-    warcHeaders: requestBody && !requestBody.complete ? { ...TRUNCATED } : {}
+    warcHeaders: {
+      ...protocolField(protocol),
+      ...(requestBody && !requestBody.complete ? TRUNCATED : {})
+    }
   })
+}
 
 const responseRecord = (
-  { request, response, responseBody, startedAt, state }: Exchange,
+  exchange: Exchange,
   input: WriterInput,
   replaced: Set<string>
 ): WARCRecord => {
+  const { request, response, responseBody, startedAt, state } = exchange
+  const protocol = protocolOf(exchange)
   if (response === undefined) {
     throw new Error(`A ${state} exchange for ${request.url} has no response to write`)
   }
@@ -129,7 +151,10 @@ const responseRecord = (
       return RENAMED.has(lower) ? [`x-orig-${lower}`, value] : [name, value]
     }
   )
-  const warcHeaders: Record<string, string> = state === 'body-omitted' ? { ...TRUNCATED } : {}
+  const warcHeaders: Record<string, string> = {
+    ...protocolField(protocol),
+    ...(state === 'body-omitted' ? TRUNCATED : {})
+  }
   // Plan D8 and ADR-0032 rule 5: through a proxy the reported address can be the proxy's.
   if (input.egress === 'direct' && response.remoteIPAddress !== undefined) {
     warcHeaders['WARC-IP-Address'] = response.remoteIPAddress
@@ -137,7 +162,7 @@ const responseRecord = (
   return httpRecord('response', {
     url: request.url,
     date: startedAt,
-    statusline: `HTTP/1.1 ${status} ${response.statusText}`,
+    statusline: `${httpVersion(protocol)} ${status} ${response.statusText}`,
     lines: [...lines, ['Content-Length', String(body.length)]],
     body,
     warcHeaders
@@ -167,7 +192,8 @@ export const writeTransactionRecord = async (
         'http-header-user-agent': input.userAgent,
         'capture-id': input.captureId,
         'decoded-bodies': DECODED_BODIES,
-        'credential-headers': CREDENTIALS
+        'credential-headers': CREDENTIALS,
+        'http-message-lines': MESSAGE_LINES
       }
     )
   ]

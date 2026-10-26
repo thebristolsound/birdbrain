@@ -74,7 +74,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | ADR-0040 link writer | #1995 | #1997 | review: request changes; fix round in flight; merges after the tag |
 | Viewer slice 2 Part A | #1735 | #1987 | fix round pushed at `3f015984`; a left click on a new-window link now does nothing |
 | Viewer slice 3, one-link lookup | #1737 | #1990 | fix round pushed at `1a1dfa3d`, preflight green |
-| Viewer slice 3, batch lookup | #1738 | #1998 | draft, under review; 2 s pause, cap 50 |
+| Viewer slice 3, batch lookup | #1738 | #1998 | review: request changes (main could send unlisted addresses); fix round in flight |
 | Step 9, record the Transaction Record (writer) | #1929 | - | in flight, stacked on #1996 with #1979 and #1988 merged in |
 | ADR-0040 acceptance | #1736 | #1977 | draft, preflight green |
 | ADR-0040 verifier, schema 6 | #1976 | #1981 | review: approve, stacked on #1978 |
@@ -98,6 +98,10 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
   carries the mirror columns there.
 - **#1667.** Closes by hand when #1996 merges, because a stacked base branch does not trigger
   GitHub's closing keywords.
+- **Stacked PRs and CI.** `.github/scripts/dispatch/checks.sh` keeps only workflow runs whose
+  base is `main`, so the scheduled PR review reads every stacked PR's CI as empty. CI itself runs
+  on stacked PRs. A fix is put to the maintainer, because dispatch tooling is under the `process`
+  freeze.
 - **Defects filed.** #1986: an evidence package exported with screenshots off fails its own
   verification (found by the review of #1984, predates it).
 - **The lane ledger.** The step issues say to claim a lane in a ledger, and no ledger file exists.

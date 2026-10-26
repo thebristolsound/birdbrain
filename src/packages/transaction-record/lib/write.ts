@@ -94,10 +94,7 @@ const httpRecord = (
     warcHeaders: Record<string, string>
   }
 ): WARCRecord => {
-  const record = WARCRecord.create(
-    { type, url, date, warcVersion: WARC_1_1, warcHeaders },
-    body.length > 0 ? [body] : undefined
-  )
+  const record = WARCRecord.create({ type, url, date, warcVersion: WARC_1_1, warcHeaders }, [body])
   record.httpHeaders = new StatusAndHeaders({ statusline, headers: new HeaderLines(lines) })
   return record
 }

@@ -264,6 +264,17 @@ describe('writeTransactionRecord partial exchanges (plan D8)', () => {
     expect(whole?.http?.payload.toString()).toBe('body of https://example.test/complete')
   })
 
+  it('writes no body on a redirect or an omitted body, even when one is handed in', async () => {
+    const responseBody = { data: 'a body the state does not admit', base64Encoded: false }
+    const { records } = await writeAndRead([
+      { ...redirect, responseBody },
+      { ...omitted, responseBody }
+    ])
+    const responses = records.filter((record) => record.warc('WARC-Type') === 'response')
+    expect(responses).toHaveLength(2)
+    expect(responses.every((record) => record.http?.payload.length === 0)).toBe(true)
+  })
+
   it('refuses an exchange whose response it should write but does not have', async () => {
     const bare = exchange('https://example.test/bare', 'complete', { response: undefined })
     await expect(writeTransactionRecord(input([bare]))).rejects.toThrow(/has no response/)

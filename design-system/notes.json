@@ -42,7 +42,7 @@
   "color-hue-orange-fg": "Categorical hue: the crypto case-type pill, orange in both themes. Light uses the 800 step because 700 landed at 4.28:1 on its tint over surface; 7:1 on canvas.",
   "color-hue-sky-fg": "Categorical hue: case-type pills and the NEW badge. 5.7:1 on canvas light, 7.2:1 dark.",
   "color-hue-pink-fg": "Categorical hue: case-type pills. 5.8:1 on canvas light, 5.6:1 dark.",
-  "color-member-1": "Shared Case member hue for the first member in member-add order other than the Owner and this installation's own slot; ranks wrap after 4, so the fifth takes it too, and the Owner seen from a member's replica and a pending join take the next free slot. Chip fill at 15%, chip border at 30%, solid dot and text. This installation is always `color-accent`. A revoked member keeps its rank, so no other member's hue moves, and its row in the members list turns `color-text-faint`.",
+  "color-member-1": "Shared Case member hue for the first non-Owner member in member-add order; ranks wrap after 4, so the fifth takes it too. The Owner seen from a member's machine, and a pending join, take the next free hue. Chip fill at 15%, chip border at 30%, solid dot and text. This installation is always `color-accent` but still holds its rank. A revoked member keeps its rank, so no other member's hue moves; the members list shows its chip in `color-text-faint`, while the ledger and capture authors keep its hue.",
   "color-member-2": "Shared Case member hue for rank 2 (and 6). See `color-member-1`.",
   "color-member-3": "Shared Case member hue for rank 3 (and 7). See `color-member-1`.",
   "color-member-4": "Shared Case member hue for rank 4 (and 8). See `color-member-1`.",

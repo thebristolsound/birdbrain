@@ -3,7 +3,12 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, write
 import { dirname, join, relative, sep } from 'path'
 import { Readable } from 'stream'
 import { MANIFEST_FILENAME } from '@shared/constants'
-import { ManifestEntrySchema, type ManifestEntry } from '@shared/schemas'
+import {
+  CaptureInventorySchema,
+  ManifestEntrySchema,
+  ScrollToLoadRecordSchema,
+  type ManifestEntry
+} from '@shared/schemas'
 import { canonicalStringify } from '@shared/verify'
 import { closeDatabase, getDb, initDatabase } from '@main/services/db/core'
 import { upsertCaseMember } from '@main/services/db/caseMemberRepo'
@@ -38,6 +43,7 @@ import { createCaptureLifecycle, ingestMhtmlCapture } from '@main/services/captu
 import type { ExtractionClient } from '@main/services/extraction/processClient'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { MemoryHub, type Transport } from '@main/services/sharing/transport'
+import { ENGINE_INVENTORY, ENGINE_SCROLL_TO_LOAD } from './captureEnginePackage'
 import {
   liveSyncSource,
   pullFromPeer,
@@ -262,6 +268,7 @@ export interface IngestedCapture {
   contentHash: string
   screenshotHash: string
   textHash: string
+  transactionRecordHash?: string
 }
 
 // What a test may put in a Capture in place of the invented defaults.
@@ -269,6 +276,10 @@ export interface CaptureContent {
   mhtml?: Buffer
   text?: string
   screenshot?: Buffer
+  // A background Capture's Transaction Record, ingested with the inventory and
+  // Scroll-to-load record its entry needs beside it (step 9 of the capture
+  // engine first-slice plan).
+  transactionRecord?: Buffer
 }
 
 // One Capture ingested by the active peer through the app's own ingest: the
@@ -296,6 +307,18 @@ export async function addCapture(
       userAgent: '',
       httpStatus: 200,
       screenshot,
+      ...(content.transactionRecord
+        ? {
+            method: 'background' as const,
+            inventory: CaptureInventorySchema.parse({
+              ...ENGINE_INVENTORY,
+              pdf: { present: false, reason: 'not-taken' }
+            }),
+            scrollToLoad: ScrollToLoadRecordSchema.parse(ENGINE_SCROLL_TO_LOAD),
+            transactionRecord: content.transactionRecord,
+            boundTlsAbsent: 'not-reported' as const
+          }
+        : {}),
       ...by(peer)
     },
     async () => null
@@ -305,7 +328,8 @@ export async function addCapture(
     captureId: result.capture.id,
     contentHash: result.contentHash,
     screenshotHash: sha(screenshot),
-    textHash: sha(Buffer.from(text, 'utf-8'))
+    textHash: sha(Buffer.from(text, 'utf-8')),
+    ...(content.transactionRecord ? { transactionRecordHash: sha(content.transactionRecord) } : {})
   }
 }
 

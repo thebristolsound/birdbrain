@@ -581,6 +581,34 @@ describe('sync session between peers (#1512)', () => {
     expect(sha(onDisk(tampered.path))).toBe(tampered.contentHash)
   })
 
+  // D14 of docs/plans/2026-10-10-capture-engine-first-slice.md: whichever of SC-2 and step 9
+  // merged second adds this test, and step 9 writes the record.
+  it('fetches a Transaction Record only when its bytes hash to the signed entry', async () => {
+    await activate(A)
+    const record = Buffer.from('invented warc.gz bytes of a background capture')
+    const capture = await addCapture(CASE_ID, A, 1, { transactionRecord: record })
+    const source = recordSource(CASE_ID, A)
+    const path = defaultCaptureStore.artifactPaths(CASE_ID, capture.captureId, 'warc.gz').rel
+    expect(source.files.has(path)).toBe(true)
+    source.files.set(path, Uint8Array.from(Buffer.from('a record altered in transit')))
+
+    await activate(B)
+    const result = await pull(CASE_ID, source)
+    expect(result.errors).toEqual([
+      {
+        kind: 'hash-mismatch',
+        detail: `${path}: expected ${capture.transactionRecordHash}, received ${sha('a record altered in transit')}`
+      }
+    ])
+    expect(existsSync(join(getStorageRoot(), path))).toBe(false)
+
+    source.files.set(path, Uint8Array.from(record))
+    const again = await pull(CASE_ID, source)
+    expect(again.errors).toEqual([])
+    expect(again.blobsReceived).toBe(1)
+    expect(sha(onDisk(path))).toBe(capture.transactionRecordHash)
+  })
+
   it('leaves a file the peer does not hold for a later session, without an error', async () => {
     await activate(A)
     const doc = addDocument(CASE_ID, A, 1)

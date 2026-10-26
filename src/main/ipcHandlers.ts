@@ -898,7 +898,7 @@ export function registerIpcHandlers(deps: {
   // Every listed link of a stored page (#1738), one batch at a time, so archive.org never
   // sees two batches' requests interleaved. Main takes the list the confirmation showed
   // and sends it whole or not at all (`confirmedBatchRefusal`); the Egress must still be
-  // the route the Operator confirmed.
+  // the route the Operator confirmed, and the window that asked must still be there.
   let linkBatch: { captureId: string; controller: AbortController } | null = null
   handle(IPC_CHANNELS.WAYBACK_LOOKUP_LINKS, async (event, params: LookupWaybackLinksParams) => {
     const p = params as Partial<LookupWaybackLinksParams> | null | undefined
@@ -938,6 +938,22 @@ export function registerIpcHandlers(deps: {
     }
     const controller = new AbortController()
     linkBatch = { captureId, controller }
+    // The Cancel control lives in the window that asked. When that window closes, crashes
+    // or loads a new document, nothing is left on screen to stop the batch, so it stops.
+    const { sender } = event
+    const stop = () => controller.abort()
+    const stopOnNewDocument = ({
+      isMainFrame,
+      isSameDocument
+    }: {
+      isMainFrame: boolean
+      isSameDocument: boolean
+    }) => {
+      if (isMainFrame && !isSameDocument) controller.abort()
+    }
+    sender.on('destroyed', stop)
+    sender.on('render-process-gone', stop)
+    sender.on('did-start-navigation', stopOnNewDocument)
     try {
       return await runLinkBatch({
         urls,
@@ -946,11 +962,14 @@ export function registerIpcHandlers(deps: {
         signal: controller.signal,
         routeHolds,
         onUpdate: (update) => {
-          if (event.sender.isDestroyed()) return
-          sendEvent(event.sender, IPC_CHANNELS.WAYBACK_LINK_PROGRESS, { captureId, ...update })
+          if (sender.isDestroyed()) return
+          sendEvent(sender, IPC_CHANNELS.WAYBACK_LINK_PROGRESS, { captureId, ...update })
         }
       })
     } finally {
+      sender.removeListener('destroyed', stop)
+      sender.removeListener('render-process-gone', stop)
+      sender.removeListener('did-start-navigation', stopOnNewDocument)
       linkBatch = null
     }
   })

@@ -14,6 +14,7 @@ import {
 } from 'fs'
 import { join } from 'path'
 import { egressFetch } from '@main/services/egress'
+import { EventEmitter } from 'events'
 import { readStoredZip } from '@main/services/zipRead'
 import { tmpdir } from 'os'
 import { pathToFileURL } from 'url'
@@ -3302,10 +3303,20 @@ describe('archive handlers', () => {
       })
     }
 
+    // The requesting window: an emitter, so a test can close, crash or reload it.
     function sender() {
       const send = vi.fn()
-      const event = { sender: { send, isDestroyed: () => false } } as unknown as IpcMainInvokeEvent
-      return { send, event }
+      let destroyed = false
+      const contents = Object.assign(new EventEmitter(), {
+        send,
+        isDestroyed: () => destroyed
+      })
+      const event = { sender: contents } as unknown as IpcMainInvokeEvent
+      const destroy = () => {
+        destroyed = true
+        contents.emit('destroyed')
+      }
+      return { send, event, contents, destroy }
     }
 
     function start(event: IpcMainInvokeEvent, params: unknown): Promise<Res> {
@@ -3475,18 +3486,76 @@ describe('archive handlers', () => {
       })
     })
 
+    // #1998 review, finding 2: with its window gone, nothing on screen can stop a batch.
+    it.each([
+      ['closes', ({ destroy }: ReturnType<typeof sender>) => destroy()],
+      [
+        'loses its render process',
+        ({ contents }: ReturnType<typeof sender>) =>
+          contents.emit('render-process-gone', {}, { reason: 'crashed' })
+      ],
+      [
+        'loads a new document',
+        ({ contents }: ReturnType<typeof sender>) =>
+          contents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false })
+      ]
+    ])('stops before the next request when its window %s', async (_, leave) => {
+      const cap = storedPage()
+      let answer: (value: unknown) => void = () => {}
+      lookupSnapshots.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)))
+      const window = sender()
+      const running = start(window.event, {
+        captureId: cap.id,
+        urls: ['https://a.example/', 'https://b.example/'],
+        egress: DIRECT
+      })
+      await vi.waitFor(() => expect(lookupSnapshots).toHaveBeenCalledOnce())
+      leave(window)
+      answer(EMPTY)
+      expect(expectOk(await running)).toMatchObject({ answered: 1, stopped: 'cancelled' })
+      expect(lookupSnapshots).toHaveBeenCalledOnce()
+      for (const name of ['destroyed', 'render-process-gone', 'did-start-navigation']) {
+        expect(window.contents.listenerCount(name)).toBe(0)
+      }
+    })
+
     it('sends no progress to a window that has closed', async () => {
       const cap = storedPage()
-      lookupSnapshots.mockResolvedValueOnce(EMPTY)
-      const send = vi.fn()
-      const event = { sender: { send, isDestroyed: () => true } } as unknown as IpcMainInvokeEvent
-      const res = await start(event, {
+      let answer: (value: unknown) => void = () => {}
+      lookupSnapshots.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)))
+      const window = sender()
+      const running = start(window.event, {
         captureId: cap.id,
         urls: ['https://a.example/'],
         egress: DIRECT
       })
-      expect(expectOk(res)).toMatchObject({ answered: 1 })
-      expect(send).not.toHaveBeenCalled()
+      await vi.waitFor(() => expect(lookupSnapshots).toHaveBeenCalledOnce())
+      window.destroy()
+      window.send.mockClear()
+      answer(EMPTY)
+      expectOk(await running)
+      expect(window.send).not.toHaveBeenCalled()
+    })
+
+    it('keeps running through a navigation inside the same document or a frame', async () => {
+      const cap = storedPage()
+      const window = sender()
+      lookupSnapshots
+        .mockImplementationOnce(async () => {
+          window.contents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: true })
+          window.contents.emit('did-start-navigation', {
+            isMainFrame: false,
+            isSameDocument: false
+          })
+          return EMPTY
+        })
+        .mockResolvedValueOnce(EMPTY)
+      const res = await start(window.event, {
+        captureId: cap.id,
+        urls: ['https://a.example/', 'https://b.example/'],
+        egress: DIRECT
+      })
+      expect(expectOk(res)).toEqual({ answered: 2, failed: 0, notChecked: 0, stopped: null })
     })
 
     it('rejects an unknown capture without contacting archive.org', async () => {

@@ -28,8 +28,9 @@ function messageOf(cause: unknown): string {
 /**
  * A Wayback batch over the Links tab of `captureId` (#1738, plan S4). Answers land in the
  * same cache the single-link lookup fills, keyed by Capture and address, so an answer
- * reaches every row that holds its address. Leaving the tab cancels a running batch: no
- * batch runs where the Operator cannot see it or stop it.
+ * reaches every row that holds its address. Leaving the tab cancels a running batch, and
+ * main stops one whose window closes, crashes or loads a new document, so a batch does not
+ * outlive its Cancel control. A cancel that fails is reported.
  */
 export function useWaybackLinkBatch(captureId: string): WaybackLinkBatch {
   const queryClient = useQueryClient()

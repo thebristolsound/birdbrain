@@ -50,9 +50,10 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | --- | --- | --- | --- |
 | Step 1, verifier and schema | #1904 | #1978 | review: request changes, fix round pushed at `eac4b91d` |
 | Step 2, mirror columns | #1907 | #1980 | draft, preflight green, stacked on #1978, migration 43 |
-| Step 3, the Case carries the files | #1925 | #1982 | draft, stacked on #1980, Case Archive 13, under review |
+| Step 3, the Case carries the files | #1925 | #1982 | review: approve; small fix round in flight |
+| Step 5, the report states the fields | #1927 | - | in flight, stacked on #1980 |
 | Step 4, packages carry the files | #1926 | - | in flight, stacked on #1982 |
-| Step 8, WARC writer | #1906 | #1979 | review: request changes, fix round in flight |
+| Step 8, WARC writer | #1906 | #1979 | fix round pushed at `b4e11287`, preflight green |
 | Character set spike | #1983 | - | filed, runs before step 9 |
 | ADR-0040 acceptance | #1736 | #1977 | draft, preflight green |
 | ADR-0040 verifier, schema 6 | #1976 | #1981 | draft, stacked on #1978, under review |
@@ -70,6 +71,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 
 ## Next
 
-Step 5 (#1927) stacks on #1980 when a slot frees, then spike #1983 and viewer slice 2 Part A
-(#1735). Viewer slice 2 Part A (#1735) is
+Spike #1983, then viewer slice 2 Part A (#1735). Open decision for the maintainer from #1979:
+the status line takes its code from the response event, not the ExtraInfo event, because the
+ExtraInfo event carries no reason phrase. Viewer slice 2 Part A (#1735) is
 independent of the schema and takes the next free slot after that.

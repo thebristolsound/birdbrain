@@ -1,4 +1,10 @@
-import { Star, Check, CopyPlus, RefreshCcw, Clock } from 'lucide-react'
+import { Star, Check, CopyPlus, RefreshCcw, Clock, FileX } from 'lucide-react'
+import { MemberCodeChip } from '@renderer/components/sharing/MemberCodeChip'
+import { COPY, HUE_CLASSES } from '@renderer/components/sharing/memberModel'
+import {
+  captureAttribution,
+  type CaptureSharing
+} from '@renderer/components/sharing/useCaptureSharing'
 import type { Capture, Selector } from '@shared/types'
 import { useCaptureThumbnail } from '@renderer/hooks/useCaptureThumbnail'
 import { getProvenanceColor } from '@renderer/components/captures/getProvenanceColor'
@@ -32,6 +38,7 @@ interface CaptureItemProps {
   // Sticky mode: once any row is checked, every row's checkbox stays visible.
   showCheckbox?: boolean
   matchingSelectors?: Selector[]
+  sharing?: CaptureSharing
 }
 
 export function CaptureItem({
@@ -45,7 +52,8 @@ export function CaptureItem({
   isMultiSelected = false,
   onToggleMultiSelect,
   showCheckbox = false,
-  matchingSelectors = []
+  matchingSelectors = [],
+  sharing
 }: CaptureItemProps) {
   const { thumbnail } = useCaptureThumbnail(capture.id)
 
@@ -61,18 +69,38 @@ export function CaptureItem({
   const fullTimestamp = `Captured ${formatCaptureTimestampFull(capture.timestamp)}`
   const shownSelectors = matchingSelectors.slice(0, 2)
   const overflowSelectors = matchingSelectors.slice(2)
+  const author = captureAttribution(capture, sharing?.members)
+  const excluded = sharing?.exclusions?.has(capture.id) ?? false
+  const exclusion = excluded ? (
+    <span
+      className="inline-flex items-center gap-1 rounded-full border border-border-strong px-1.5 text-[10px] text-text-muted"
+      data-testid="capture-excluded-pill"
+    >
+      <FileX size={10} />
+      {COPY.excludedPill}
+    </span>
+  ) : null
   // The Exhibit citation as a 16px chip before the title (assessment item 22):
   // `NK-12` in a Shared Case with more than one member, `12` otherwise. Main
   // resolved the string; the row only prints it.
-  const citation = capture.exhibitCitation ? (
-    <span
-      data-testid="capture-item-citation"
-      title="Exhibit Number"
-      className="h-4 shrink-0 rounded border border-border-strong px-1 font-mono text-[10px] leading-[15px] text-text-secondary"
-    >
-      {capture.exhibitCitation}
-    </span>
-  ) : null
+  const citation =
+    capture.exhibitCitation && author ? (
+      <MemberCodeChip
+        code={capture.exhibitCitation}
+        hue={author.hue}
+        size={16}
+        title={author.title}
+        data-testid="capture-item-citation"
+      />
+    ) : capture.exhibitCitation ? (
+      <span
+        data-testid="capture-item-citation"
+        title="Exhibit Number"
+        className="h-4 shrink-0 rounded border border-border-strong px-1 font-mono text-[10px] leading-[15px] text-text-secondary"
+      >
+        {capture.exhibitCitation}
+      </span>
+    ) : null
 
   const rowClass = `group relative w-full cursor-pointer rounded-[4px] border text-left transition-colors ${
     isSelected ? 'border-accent/35' : isMultiSelected ? 'border-accent/20' : 'border-transparent'
@@ -110,11 +138,11 @@ export function CaptureItem({
   // only. Keeping it is deliberate: multi-select is shipped, e2e-covered
   // behaviour and dropping the control would remove the only pointer-visible
   // way into it.
-  const rail = isMultiSelected && (
+  const rail = (isMultiSelected || author) && (
     <span
       aria-hidden="true"
-      data-testid="capture-multiselect-rail"
-      className={`absolute left-0 w-0.5 rounded-r-sm bg-accent ${
+      data-testid={isMultiSelected ? 'capture-multiselect-rail' : 'capture-author-rail'}
+      className={`absolute left-0 w-0.5 rounded-r-sm ${author ? HUE_CLASSES[author.hue].dot : 'bg-accent'} ${
         view === 'detailed' ? 'bottom-1.5 top-1.5' : 'bottom-[3px] top-[3px]'
       }`}
     />
@@ -150,6 +178,7 @@ export function CaptureItem({
           title={provenance.label}
         />
         {citation}
+        {exclusion}
         <span
           className="min-w-0 flex-1 truncate text-xs font-medium text-text-primary"
           title={capture.title || hostname}
@@ -278,6 +307,7 @@ export function CaptureItem({
             stands as tall as its siblings; the invisible strut takes its
             height from the same box as a real chip. */}
         <div data-testid="capture-item-chip-line" className="mt-1.5 flex flex-wrap gap-1">
+          {exclusion}
           {shownSelectors.map((selector) => (
             <div
               key={selector.id}

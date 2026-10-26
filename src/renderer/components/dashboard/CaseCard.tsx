@@ -3,6 +3,7 @@ import type { Case } from '@shared/types'
 import { Camera, ArrowUpRight, MoreVertical } from 'lucide-react'
 import { Card } from '@renderer/components/ui'
 import { getCaseTypeStyle } from '@renderer/components/dashboard/caseTypeStyle'
+import { SharedCaseLine } from '@renderer/components/sharing/SharedCaseLine'
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -163,6 +164,7 @@ export const CaseCard = memo(function CaseCard({
       </p>
 
       {/* Stats row */}
+      {caseData.sharedAt && <SharedCaseLine caseId={caseData.id} />}
       <div className="flex items-center gap-4 mb-3">
         <div className="flex items-center gap-1.5">
           <Camera className="h-3 w-3 text-text-faint" />

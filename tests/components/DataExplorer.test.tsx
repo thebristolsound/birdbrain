@@ -45,7 +45,8 @@ beforeEach(() => {
         entries: [{ index: 0, parsed: false, reason: 'x' }],
         chain: { valid: true },
         signers: [],
-        head: null
+        head: null,
+        citationRule: { prefixed: false, localMemberCode: null }
       }))
     },
     extractedData: {

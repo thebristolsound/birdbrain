@@ -85,6 +85,10 @@ export function useServerStatus() {
       queryClient.invalidateQueries({ queryKey: queryKeys.captureCounts })
       queryClient.invalidateQueries({ queryKey: queryKeys.exhibitInventory(caseId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.manifestSnapshot(caseId) })
+      // The Members tab and the sync pill read the roster and the sync state
+      // (#1514); a join, an approval or a finished round moved both.
+      queryClient.invalidateQueries({ queryKey: queryKeys.sharingMembers(caseId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.sharingSyncState(caseId) })
     })
 
     // Deep links (birdbrain://) from the extension popup route the window here.

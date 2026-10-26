@@ -631,23 +631,41 @@ export function rowsOfAuthorByTable(
   caseId: string,
   author: string | null,
   sinceVersion: number,
-  limit = ROWS_PAGE_LIMIT
+  limit = ROWS_PAGE_LIMIT,
+  membersHold?: ReadonlySet<string>
 ): Map<SyncedTable, TableOffer> {
   const byTable = new Map<SyncedTable, TableOffer>()
+  const members_hold = membersHold === undefined ? null : JSON.stringify([...membersHold])
+  const reachesMember = (column: string): string =>
+    `(${column} IS NULL OR ${column} IN (SELECT value FROM json_each(@members_hold)))`
   for (const table of SYNCED_TABLES) {
+    const { references } = SPECS[table]
+    const reachable =
+      table === 'note_tags'
+        ? `EXISTS (SELECT 1 FROM notes n WHERE n.id = t.note_id
+                     AND ${reachesMember('n.capture_id')})`
+        : references === null
+          ? '1'
+          : reachesMember(`t.${references.column}`)
+    // Filter before the page limit, including note applications whose parent stays local.
+    const inCase = `(${SPECS[table].inCase})
+                      AND (@members_hold IS NULL OR ${reachable})`
     const select = (predicate: string, tail: string): StoredRow[] =>
       (
         getDb()
           .prepare(
             `SELECT t.* FROM ${table} t
               WHERE ${AUTHOR_MATCH} AND t.row_signature IS NOT NULL
-                AND (${SPECS[table].inCase}) ${predicate}
+                AND ${inCase} ${predicate}
               ORDER BY t.version ${tail}`
           )
-          .all({ case_id: caseId, author, since: sinceVersion, fetch: limit + 1 }) as Record<
-          string,
-          unknown
-        >[]
+          .all({
+            case_id: caseId,
+            author,
+            since: sinceVersion,
+            fetch: limit + 1,
+            members_hold
+          }) as Record<string, unknown>[]
       ).map((r) => toStoredRow(table, r))
     if (CURSOR_FREE_TABLES.has(table)) {
       byTable.set(table, { rows: select('', ''), complete: true })
@@ -662,9 +680,9 @@ export function rowsOfAuthorByTable(
             .prepare(
               `SELECT t.* FROM ${table} t
                 WHERE ${AUTHOR_MATCH} AND t.row_signature IS NOT NULL
-                  AND (${SPECS[table].inCase}) AND t.version = @version`
+                  AND ${inCase} AND t.version = @version`
             )
-            .all({ case_id: caseId, author, version }) as Record<string, unknown>[]
+            .all({ case_id: caseId, author, version, members_hold }) as Record<string, unknown>[]
         ).map((r) => toStoredRow(table, r))
       )
     )

@@ -71,6 +71,7 @@ describe('blob acceptance', () => {
       expect(safe(`${CASE_ID}/manifest.installation-x.jsonl`)).toBeNull()
       expect(safe(`${CASE_ID}/members.json`)).toBeNull()
       expect(safe(`${CASE_ID}/sync-state.json`)).toBeNull()
+      expect(safe(`${CASE_ID}/sync-pauses.json`)).toBeNull()
       expect(safe(`${CASE_ID}/staging/pooled.bin`)).toBeNull()
       expect(safe(`${CASE_ID}/.pending-delete/x/x.mhtml`)).toBeNull()
       expect(safe(`${CASE_ID}/x.mhtml${BLOB_PARTIAL_SUFFIX}`)).toBeNull()

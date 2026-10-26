@@ -13,7 +13,10 @@ import { MotionProvider } from '@renderer/lib/motion'
 import { Dashboard } from '@renderer/components/dashboard/Dashboard'
 import { useQuery } from '@tanstack/react-query'
 import { casesQueryOptions } from '@renderer/lib/queries'
-import { NewCaseWizard } from '@renderer/components/dashboard/cases/NewCaseWizard'
+import {
+  NewCaseWizard,
+  validateNewCaseSearch
+} from '@renderer/components/dashboard/cases/NewCaseWizard'
 import { CaseWorkspace } from '@renderer/components/dashboard/cases/CaseWorkspace'
 import { CaseOverview } from '@renderer/components/overview/CaseOverview'
 import { CapturesRoute } from '@renderer/routes/cases/$caseId/captures'
@@ -21,6 +24,7 @@ import {
   InvestigateRoute,
   validateInvestigateSearch
 } from '@renderer/routes/cases/$caseId/investigate'
+import { CaseSettingsRoute } from '@renderer/routes/cases/$caseId/settings'
 import { NotesOverview } from '@renderer/components/notes/NotesOverview'
 import { SignalsOverview } from '@renderer/components/signals/SignalsOverview'
 import { DataExplorer } from '@renderer/components/dashboard/cases/DataExplorer'
@@ -218,6 +222,7 @@ const settingsRoute = createRoute({
 const newCaseRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/cases/new',
+  validateSearch: validateNewCaseSearch,
   component: NewCaseWizard,
   errorComponent: RouteErrorComponent
 })
@@ -295,6 +300,15 @@ const investigateRoute = createRoute({
   errorComponent: RouteErrorComponent
 })
 
+// Case settings (#1514): registered the way Investigate is, with no sidebar, top-bar or palette
+// entry until the sync defects #1951 and #1955 merge. Reachable by URL for the Members tab.
+const caseSettingsRoute = createRoute({
+  getParentRoute: () => caseRoute,
+  path: '/settings',
+  component: CaseSettingsRoute,
+  errorComponent: RouteErrorComponent
+})
+
 // Build the tree
 export const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -307,6 +321,7 @@ export const routeTree = rootRoute.addChildren([
     notesRoute,
     signalsRoute,
     dataRoute,
-    investigateRoute
+    investigateRoute,
+    caseSettingsRoute
   ])
 ])

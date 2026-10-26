@@ -227,6 +227,7 @@ export const QUERY_DOMAINS = [
   'selectors',
   'session',
   'settings',
+  'sharing',
   'tags',
   'wayback',
   // queryClient's fallback when a key is empty.

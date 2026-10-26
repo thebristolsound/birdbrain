@@ -1,4 +1,10 @@
 import { ShieldAlert, ShieldCheck, ShieldQuestion } from 'lucide-react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import type { SharingMembers } from '@shared/types'
+import { membersQueryOptions } from '@renderer/lib/api/sharing'
+import { MemberCodeChip } from '@renderer/components/sharing/MemberCodeChip'
+import { COPY, hueFor } from '@renderer/components/sharing/memberModel'
 import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
 import { cn } from '@renderer/lib/utils'
 import {
@@ -46,7 +52,8 @@ export function ChainVerdict({ snapshot }: { snapshot: CaseManifestSnapshot }) {
   )
 }
 
-const COLUMNS = '56px minmax(120px,140px) minmax(90px,120px) minmax(160px,1fr) 110px 110px'
+const COLUMNS = '60px 148px 120px 72px minmax(200px,1fr) 128px 128px'
+const SHARING_TYPES = new Set(['member-add', 'member-revoke', 'merge', 'exclude'])
 
 // The row-level routes (#1151): a row click shows the entry's target, and each
 // hash cell copies on click. No context menu: it would hold only those.
@@ -89,15 +96,19 @@ function HashCell({
 function LedgerRows({
   rows,
   actions = {},
-  highlighted
+  highlighted,
+  members,
+  timeline = false
 }: {
   rows: LedgerRow[]
   actions?: LedgerRowActions
   // Indexes of the entries naming the selected row, tinted in place (#1552).
   highlighted?: ReadonlySet<number>
+  members?: SharingMembers
+  timeline?: boolean
 }) {
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto" data-testid="ledger-rows">
+    <div className="min-h-0 flex-1 overflow-auto" data-testid="ledger-rows">
       <div
         className="sticky top-0 z-[2] grid h-[var(--d-head)] items-center border-b border-border bg-canvas px-[var(--d-rowpad)] font-display text-[10px] font-semibold uppercase tracking-label text-text-faint"
         style={{ gridTemplateColumns: COLUMNS }}
@@ -105,6 +116,7 @@ function LedgerRows({
         <span>Seq</span>
         <span>Time (UTC)</span>
         <span>Event</span>
+        <span>Actor</span>
         <span>Target</span>
         <span>Entry hash</span>
         <span>Prev hash</span>
@@ -112,46 +124,143 @@ function LedgerRows({
       {rows.length === 0 ? (
         <div className="p-9 text-center text-xs text-text-faint">No entries.</div>
       ) : (
-        rows.map((row) => (
-          <div
-            key={row.index}
-            className={cn(
-              'grid min-h-[var(--d-row)] items-center border-b border-border px-[var(--d-rowpad)] font-mono text-[11px]',
-              row.parsed ? 'text-text-muted' : 'text-warning-fg',
-              highlighted?.has(row.index) && 'bg-accent-subtle',
-              actions.onShowTarget && 'cursor-pointer hover:bg-elevated'
-            )}
-            style={{ gridTemplateColumns: COLUMNS }}
-            data-testid={`ledger-row-${row.index}`}
-            data-entry-type={row.type}
-            data-highlighted={highlighted?.has(row.index) || undefined}
-            tabIndex={actions.onShowTarget ? 0 : undefined}
-            onClick={() => actions.onShowTarget?.(row)}
-            onKeyDown={(event) => {
-              // Only the row's own Enter: a keydown bubbling from a hash
-              // cell is that button's copy, not a Show target.
-              if (event.key === 'Enter' && event.target === event.currentTarget) {
-                actions.onShowTarget?.(row)
-              }
-            }}
-          >
-            <span className="tabular-nums text-text-faint">{formatSeq(row.index)}</span>
-            <span className="tabular-nums">{row.time ? formatStamp(row.time) : '—'}</span>
-            <span className="text-text-secondary">{row.type}</span>
-            <span className="truncate" title={row.target}>
-              {row.target}
-            </span>
-            <HashCell value={row.entryHash} label="entry hash" onCopy={actions.onCopyHash} />
-            <HashCell
-              value={row.prevHash}
-              label="previous hash"
-              onCopy={actions.onCopyHash}
-              placeholder={row.parsed ? 'genesis' : undefined}
-            />
-          </div>
-        ))
+        rows.map((row) => {
+          const actor = members?.members.find((member) => member.installationId === row.actorId)
+          return (
+            <div
+              key={row.index}
+              className={cn(
+                'grid min-h-[var(--d-row)] items-center border-b border-border px-[var(--d-rowpad)] font-mono text-[11px]',
+                row.parsed ? 'text-text-muted' : 'text-warning-fg',
+                highlighted?.has(row.index) && 'bg-accent-subtle',
+                SHARING_TYPES.has(row.type) && 'bg-accent/5',
+                actions.onShowTarget && 'cursor-pointer hover:bg-elevated'
+              )}
+              style={{ gridTemplateColumns: COLUMNS }}
+              data-testid={`ledger-row-${row.index}`}
+              data-entry-type={row.type}
+              data-highlighted={highlighted?.has(row.index) || undefined}
+              tabIndex={actions.onShowTarget ? 0 : undefined}
+              onClick={() => actions.onShowTarget?.(row)}
+              onKeyDown={(event) => {
+                // Only the row's own Enter: a keydown bubbling from a hash
+                // cell is that button's copy, not a Show target.
+                if (event.key === 'Enter' && event.target === event.currentTarget) {
+                  actions.onShowTarget?.(row)
+                }
+              }}
+            >
+              <span className="tabular-nums text-text-faint">
+                {timeline
+                  ? `${actor?.memberCode ?? '?'}·${formatSeq(row.index)}`
+                  : formatSeq(row.index)}
+              </span>
+              <span className="tabular-nums">{row.time ? formatStamp(row.time) : '—'}</span>
+              <span
+                className={cn(
+                  'text-text-secondary',
+                  SHARING_TYPES.has(row.type) && 'font-semibold text-text-primary'
+                )}
+              >
+                {row.type}
+              </span>
+              <span title={row.actorName}>
+                {actor && members ? (
+                  <MemberCodeChip
+                    code={actor.memberCode}
+                    hue={hueFor(members.members, members.installationId, actor.installationId)}
+                    size={16}
+                  />
+                ) : (
+                  '—'
+                )}
+              </span>
+              <span className="truncate" title={row.target}>
+                {row.target}
+              </span>
+              <HashCell value={row.entryHash} label="entry hash" onCopy={actions.onCopyHash} />
+              <HashCell
+                value={row.prevHash}
+                label="previous hash"
+                onCopy={actions.onCopyHash}
+                placeholder={row.parsed ? 'genesis' : undefined}
+              />
+            </div>
+          )
+        })
       )}
     </div>
+  )
+}
+
+function ChainRows({
+  snapshot,
+  actions,
+  highlighted
+}: {
+  snapshot: CaseManifestSnapshot
+  actions?: LedgerRowActions
+  highlighted?: ReadonlySet<number>
+}) {
+  const [timeline, setTimeline] = useState(false)
+  const { data: members } = useQuery(membersQueryOptions(snapshot.caseId))
+  const self = members?.members.find((member) => member.installationId === members.installationId)
+  const rows = toLedgerRows(snapshot.entries, snapshot.citationRule)
+  const ordered = timeline
+    ? [...rows].sort((a, b) => a.time.localeCompare(b.time) || a.index - b.index)
+    : rows
+  return (
+    <>
+      {snapshot.citationRule.prefixed && (
+        <div
+          className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3.5 py-2 text-[11px] text-text-muted"
+          data-testid="ledger-chain-selector"
+        >
+          <span>{COPY.chainLabel}</span>
+          <button
+            type="button"
+            aria-pressed={!timeline}
+            onClick={() => setTimeline(false)}
+            className={cn(
+              'h-6 rounded border px-2',
+              !timeline ? 'border-accent bg-accent-subtle' : 'border-border'
+            )}
+          >
+            {self?.memberCode ?? snapshot.citationRule.localMemberCode ?? 'This installation'} ·{' '}
+            {rows.length}
+          </button>
+          <button
+            type="button"
+            aria-pressed={timeline}
+            onClick={() => setTimeline(true)}
+            className={cn(
+              'h-6 rounded border px-2',
+              timeline ? 'border-accent bg-accent-subtle' : 'border-border'
+            )}
+          >
+            {COPY.timeline}
+          </button>
+          <span className="ml-auto text-text-faint">
+            {timeline ? COPY.chainNoteTimeline : COPY.chainNoteIndex}
+          </span>
+          <p className="w-full text-text-faint">
+            Only this installation's chain is available in this view.
+          </p>
+        </div>
+      )}
+      <LedgerRows
+        rows={ordered}
+        actions={actions}
+        highlighted={highlighted}
+        members={members}
+        timeline={timeline}
+      />
+      {snapshot.citationRule.prefixed && (
+        <p className="shrink-0 border-t border-border px-3.5 py-2 text-[10px] leading-relaxed text-text-faint">
+          {COPY.ledgerFooter}
+        </p>
+      )}
+    </>
   )
 }
 
@@ -183,7 +292,7 @@ export function ManifestLedgerView({
           ))
         )}
       </div>
-      <LedgerRows rows={toLedgerRows(snapshot.entries, snapshot.citationRule)} actions={actions} />
+      <ChainRows key={snapshot.caseId} snapshot={snapshot} actions={actions} />
     </div>
   )
 }
@@ -204,8 +313,9 @@ export function ManifestLedgerTab({
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-3.5 py-2">
         <ChainVerdict snapshot={snapshot} />
       </div>
-      <LedgerRows
-        rows={toLedgerRows(snapshot.entries, snapshot.citationRule)}
+      <ChainRows
+        key={snapshot.caseId}
+        snapshot={snapshot}
         actions={actions}
         highlighted={
           new Set(

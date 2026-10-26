@@ -9,7 +9,8 @@ const electronStub = vi.hoisted(() => ({
   exposedKey: null as string | null,
   exposed: null as Record<string, unknown> | null,
   invoked: [] as string[],
-  listened: [] as string[]
+  listened: [] as string[],
+  result: { ok: true, data: null } as Record<string, unknown>
 }))
 
 vi.mock('electron', () => ({
@@ -23,7 +24,7 @@ vi.mock('electron', () => ({
     invoke(channel: string) {
       electronStub.invoked.push(channel)
       // The bridge unwraps an { ok, data } envelope and throws without one.
-      return Promise.resolve({ ok: true, data: null })
+      return Promise.resolve(electronStub.result)
     },
     on(channel: string) {
       electronStub.listened.push(channel)
@@ -226,5 +227,40 @@ describe('preload bridge', () => {
       'wayback.unpin': 'wayback:unpin'
     })
     expect(exposed).not.toHaveProperty('archive')
+  })
+})
+
+describe('preload refusals', () => {
+  const refusal = { ok: false, error: 'Not a Birdbrain invite', code: 'invite-malformed' }
+  const leaf = (path: string) =>
+    path
+      .split('.')
+      .reduce<unknown>((node, key) => (node as Record<string, unknown>)[key], exposed) as (
+      ...args: unknown[]
+    ) => Promise<unknown>
+
+  // The context bridge keeps only an Error's message, so a sharing refusal
+  // crosses as a plain object the renderer turns back into an Error.
+  it('rejects a sharing call with a plain object that keeps the code', async () => {
+    electronStub.result = refusal
+    try {
+      const rejection = await leaf('sharing.readInvite')('x').catch((err: unknown) => err)
+      expect(rejection).not.toBeInstanceOf(Error)
+      expect(rejection).toEqual({ message: 'Not a Birdbrain invite', code: 'invite-malformed' })
+      expect(Object.getPrototypeOf(rejection)).toBe(Object.prototype)
+    } finally {
+      electronStub.result = { ok: true, data: null }
+    }
+  })
+
+  it('rejects every other call with an Error', async () => {
+    electronStub.result = refusal
+    try {
+      const rejection = await leaf('cases.list')().catch((err: unknown) => err)
+      expect(rejection).toBeInstanceOf(Error)
+      expect(rejection).toMatchObject({ message: 'Not a Birdbrain invite' })
+    } finally {
+      electronStub.result = { ok: true, data: null }
+    }
   })
 })

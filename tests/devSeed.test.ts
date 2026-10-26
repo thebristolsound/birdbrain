@@ -17,8 +17,10 @@ import { readManifestSnapshot, readSharedCaseSnapshot } from '@main/services/man
 import { memberChainPath } from '../src/packages/evidence-package-layout/index'
 import { seedProfile, type SeededProfile } from '../scripts/dev-seed/seed'
 import {
+  EXCLUDE_REASON,
   MEMBER_MEMBER_CODE,
   OWNER_MEMBER_CODE,
+  REVOKED_MEMBER_CODE,
   SELECTOR_PATTERN
 } from '../scripts/dev-seed/constants'
 // @ts-expect-error - build script with no type declarations; the tsconfigs exclude scripts/
@@ -105,7 +107,7 @@ describe('pnpm dev:seed profile', () => {
   })
 
   it('writes a Shared Case whose chains verify', () => {
-    const { sharedCaseId, memberInstallationId } = seeded
+    const { sharedCaseId, memberInstallationId, revokedInstallationId } = seeded
     const caseDir = join(dir, 'captures', sharedCaseId)
     const { verification } = readSharedCaseSnapshot(caseDir, readManifestSnapshot(caseDir))
     expect(verification?.findings).toEqual([])
@@ -114,12 +116,21 @@ describe('pnpm dev:seed profile', () => {
 
     const owner = readJsonl(join(caseDir, 'manifest.jsonl'))
     const member = readJsonl(join(caseDir, memberChainPath(memberInstallationId)))
-    expect(owner.map((e) => e.type)).toEqual(['member-add', 'member-add', 'exhibit', 'merge'])
-    expect(owner.slice(0, 2).map((e) => e.memberInstallationId)).toEqual([
-      getInstallationId(),
-      memberInstallationId
+    expect(owner.map((e) => e.type)).toEqual([
+      'member-add',
+      'member-add',
+      'member-add',
+      'exhibit',
+      'merge',
+      'exclude',
+      'member-revoke'
     ])
-    expect(owner[3].heads).toEqual([
+    expect(owner.slice(0, 3).map((e) => e.memberInstallationId)).toEqual([
+      getInstallationId(),
+      memberInstallationId,
+      revokedInstallationId
+    ])
+    expect(owner[4].heads).toEqual([
       {
         installationId: memberInstallationId,
         index: member.length - 1,
@@ -127,6 +138,16 @@ describe('pnpm dev:seed profile', () => {
         entriesReceived: member.length
       }
     ])
+    // The exclusion names the member's Exhibit, which its chain holds (#1514); the revoked
+    // member has no chain file, and the walk expects none since nothing was merged from it.
+    const memberExhibitEntry = member.find((e) => e.type === 'exhibit')!
+    expect(owner[5]).toMatchObject({
+      exhibitId: memberExhibitEntry.exhibitId,
+      authorInstallationId: memberInstallationId,
+      reason: EXCLUDE_REASON
+    })
+    expect(owner[6].memberInstallationId).toBe(revokedInstallationId)
+    expect(verification?.exclusions.map((x) => x.exhibitId)).toEqual([memberExhibitEntry.exhibitId])
 
     const memberExhibit = member.find((e) => e.type === 'exhibit')!
     expect(memberExhibit.operatorId).toBe(memberInstallationId)
@@ -139,17 +160,19 @@ describe('pnpm dev:seed profile', () => {
     })
   })
 
-  it('caches exactly the roster the member-add entries describe', () => {
-    const { sharedCaseId } = seeded
+  it('caches exactly the roster the member-add entries describe, revocation included', () => {
+    const { sharedCaseId, revokedInstallationId } = seeded
     const owner = readJsonl(join(dir, 'captures', sharedCaseId, 'manifest.jsonl'))
     const adds = owner.filter((e) => e.type === 'member-add')
+    const revoke = owner.find((e) => e.type === 'member-revoke')!
     expect(
       listCaseMembers(sharedCaseId).map((m) => ({
         installationId: m.installationId,
         publicKeyPem: m.publicKeyPem,
         memberCode: m.memberCode,
         role: m.role,
-        addedAtIndex: m.addedAtIndex
+        addedAtIndex: m.addedAtIndex,
+        revokedAtIndex: m.revokedAtIndex
       }))
     ).toEqual(
       adds.map((e) => ({
@@ -157,9 +180,15 @@ describe('pnpm dev:seed profile', () => {
         publicKeyPem: e.memberPublicKeyPem,
         memberCode: e.memberCode,
         role: e.role,
-        addedAtIndex: e.index
+        addedAtIndex: e.index,
+        revokedAtIndex: e.memberInstallationId === revokedInstallationId ? revoke.index : null
       }))
     )
+    const revoked = listCaseMembers(sharedCaseId).find(
+      (m) => m.installationId === revokedInstallationId
+    )
+    expect(revoked).toMatchObject({ memberCode: REVOKED_MEMBER_CODE, role: 'member' })
+    expect(revoked?.revokedAtIndex).toBeGreaterThan(revoked!.addedAtIndex)
   })
 
   it("cites each member's Exhibit with its Member Code", () => {

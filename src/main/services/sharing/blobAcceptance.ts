@@ -42,7 +42,8 @@ export const BLOB_PARTIAL_SUFFIX = '.sync-partial'
 export const RESERVED_CASE_FILES: ReadonlySet<string> = new Set([
   MANIFEST_FILENAME,
   'members.json',
-  'sync-state.json'
+  'sync-state.json',
+  'sync-pauses.json'
 ])
 
 // Directories under a Case whose contents never sync: the Staging Pool is

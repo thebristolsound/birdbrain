@@ -116,8 +116,8 @@ const FROZEN_ENTRY_HASHES = {
   // outside this codebase by `jq -cS` and by Python's sorted-key JSON. New
   // answers, not moved ones: `capture` above is the same entry without the
   // fields.
-  captureEngine: '659b73065e159d68a1d389fec72b0316c2a5e7618fb880ab2aa60df456c0fe28',
-  captureEngineTlsAbsent: '1aaf63b7192becf8e68c69efded5bff4660d970dd688ddbd72e2c31a1323bda3'
+  captureEngine: '15c08b9de3895cb309ac1306848140d90505f57ac2dc3c0b48d1916082b48e25',
+  captureEngineTlsAbsent: '4be960e3533ce1c6a8acc2d656ea088189532e80f23f86f9b833dc1778497f28'
 }
 
 function entryHashOf(body: Record<string, unknown>): string {
@@ -193,6 +193,7 @@ describe('manifest schema 6 — the schema', () => {
         'cancelled',
         'failed',
         'inFlight',
+        'finishedWithoutResponse',
         'bodiesOmitted',
         'incompleteRequestBodies',
         'webSockets',
@@ -262,6 +263,17 @@ describe('manifest schema 6 — the schema', () => {
         message
       ])
     }
+  })
+
+  it('refuses a present Transaction Record part without finishedWithoutResponse', () => {
+    const path = ['inventory', 'transactionRecord']
+    const record = omit(ENGINE_INVENTORY.transactionRecord, 'finishedWithoutResponse')
+    const result = parse(withValue(CAPTURE_BODY_ENGINE, path, record))
+    expect(result.success).toBe(false)
+    expect(result.error?.issues.map((issue) => issue.path)).toContainEqual([
+      ...path,
+      'finishedWithoutResponse'
+    ])
   })
 
   it('refuses a time that is a number or not an ISO 8601 date-time', () => {

@@ -27,6 +27,23 @@ prove and what they do not.
   nothing to scroll, the page stopped growing, the page reached the height limit, or the time
   limit ran out. It also records the last page height read and whether the scroll lifted the
   page's scroll lock.
+- After the screenshot and before it saves the page, a background capture pins each image
+  offered as a set of sources to the one the page displayed. The browser's page saver drops the
+  `srcset` attribute, so without this an image offered only through `srcset` would be missing
+  from the saved page, and one that also has a `src` would be filed under that address. An image
+  offered as a set is an `img` element with a `srcset`, or a `picture` element with `source`
+  elements; the saver keeps the second, so only an `img` outside a `picture` is pinned. Pinning
+  sets the image's `src` to the address the browser loaded it from and removes its `srcset` and
+  `sizes`. The capture then waits for the pinned images, for up to 5 seconds of the time left
+  before its final steps, and its signed entry records how many images it pinned and how many of
+  those had not loaded when the page was saved: still loading, or failed to load.
+- Pinning reaches only the page's own document: an image in a frame or a shadow root is not
+  pinned, and the saved page still lacks one offered only through `srcset`. An image the browser
+  was still loading has no displayed source yet, so it is not pinned or counted. An image sized by
+  its `srcset` density or `sizes`, with no `width` and `height` of its own, can show at a
+  different size in the saved page than in the screenshot. Pinning an image whose load failed
+  makes the browser request it again after the Transaction Record stopped, so the record lacks
+  that request.
 - A background capture's signed manifest entry lists the files the capture holds and why any
   is missing. For the screenshot it records the page size, the image size, and whether the
   image was scaled down, cut short, or had trailing blank space trimmed.

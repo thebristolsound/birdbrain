@@ -336,6 +336,22 @@ inventory: {
   when the save ran (#1843, amended 2026-10-21). The schema requires both whenever `inventory` is
   present. A fifth refine joins D2's four: `pinnedImagesNotLoaded` above `pinnedImages` fails the schema.
   #1843 writes the counts; step 1 only teaches the verifier them.
+  - **Which images.** After the screenshot and before `savePage`, the render pins each `img` in
+    the page's own document that has a `srcset` attribute and a non-empty `currentSrc`, unless
+    its parent is a `picture` ([ADR-0055](../adr/0055-a-background-render-pins-image-sources.md)).
+    An image offered as a set is an `img` with `srcset`, or a `picture` with `source` elements;
+    the serializer saves the second correctly (triage of #1843), so only the first is pinned.
+    Frames and shadow roots are not searched.
+  - **Pinned.** The image's `src` becomes its `currentSrc`, the address the browser loaded it
+    from, and its `srcset` and `sizes` attributes are removed.
+  - **Not loaded.** The render then waits for the pinned images, for at most 5 s
+    (`PIN_LOAD_MAX_MS`) and never longer than the time left before the 40 s end reserve. A pinned
+    image counts as not loaded when, at the check that ends the wait, it is not `complete` or
+    has a natural width of 0: still loading, or failed to load.
+  - **Failure.** The MHTML part has no absent form, so a pin script that throws, or returns counts
+    the strict schema refuses, fails the render, as a Scroll-to-load step that throws does. The
+    renderer parses the part with that schema before it reaches the entry. An image still
+    loading when the wait ends is not a failure: it is counted.
 - **Reasons.** `not-taken` means this build does not take the file: step 6's build writes it for
   the Transaction Record and the PDF. `failed` means the engine tried and failed, or refused a PDF
   over step 10's size bounds, and the log carries the error. The list is closed, so a released
@@ -1698,4 +1714,13 @@ folded in.
   items under "Not verified for this plan": `pnpm install` on Node 20 accepts `pdfjs-dist`
   5.6.205, and its text extraction does not work without the optional `@napi-rs/canvas`, which
   pnpm installs by default. The measurements behind the values and the step's results are in the
+  [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md).
+- **2026-10-26.** #1843 is built as a draft, stacked on step 10, that merges after the schema-6
+  release tag. The maintainer ruled the same day, as the orchestrating session relayed it, that
+  no release carries step 6 without #1843, because step 6's zeros read the same as a pinning
+  pass that ran and found nothing; the two ship in one release. #1843 pins the image sources
+  after the screenshot and writes the true MHTML counts (D4), with its wait taken from the time
+  left before the 40 s end reserve, and adds ADR-0055 and the Image Source Pinning glossary entry.
+  The brief's separate report row is not added, because step 5's artifact inventory already
+  states both counts. The browser behaviour behind the limits and the step's results are in the
   [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md).

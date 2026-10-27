@@ -4,7 +4,8 @@
 
 **Status:** Open. Step 6 of the
 [first-slice plan](../plans/2026-10-10-capture-engine-first-slice.md) started this record, and
-steps 9 and 10 extended it. With step 10 it covers every writer of the slice, and the maintainer
+steps 9 and 10 extended it, as did #1843, which writes the MHTML counts. With them it covers
+every writer of the slice, and the maintainer
 records the acceptance decision before the release that ships the writers (plan, D16). The acceptance decision is this record's approval, so nothing
 changes it after that.
 
@@ -37,6 +38,12 @@ runs out of time, a page taller than `MAX_PDF_CONTENT_HEIGHT_PX`, and a PDF over
 each record the PDF absent as `failed`, and the Capture stores. A Duplicate re-anchors `pdfHash`
 and its row mirrors it (D11).
 
+**#1843.** After the screenshot and before the save, the render pins each `srcset` image to the
+source it displayed (ADR-0055, D4), and the inventory's MHTML part carries the true
+`pinnedImages` and `pinnedImagesNotLoaded` in place of step 6's zeros. A pin script that throws,
+or returns counts the strict schema refuses, fails the render. A Duplicate re-anchors the part
+with the rest of the inventory (D11).
+
 ## Environments
 
 **Step 6.** One Linux workstation: kernel 7.2.8 (Omarchy), Node 20.20.2, Electron 44.9.1 with
@@ -64,6 +71,14 @@ port. pdf.js (`pdfjs-dist` 5.6.205) read the stored PDF in the spec's own proces
 sizes and times below come from a standalone Electron 44.9.1 script outside the repository, one
 process per page, in an offscreen sandboxed window on a fresh partition under `xvfb-run`, which
 called `printToPDF({})`, the render's options, 1.5 s after each load.
+
+**#1843.** The same workstation, Node 20.20.2, and Electron 44.9.1 with Chromium
+152.0.7977.167. The unit suite ran as in step 6, and the Recapture end-to-end specs against the
+built app under `xvfb-run`, outside a network namespace. The browser behaviour listed under the
+table comes from a standalone Electron 44.9.1 script outside the repository: an offscreen
+sandboxed window on a fresh partition loads a fixture page from loopback, waits 2.5 s, runs the
+render's pin script, and calls `savePage(path, 'MHTML')`. Each image response is a PNG followed
+by `TAG:<request path>`, and the server logs each request with the phase it arrived in.
 
 ## Expected and observed results
 
@@ -152,6 +167,36 @@ printed only to be discarded. `MAX_PDF_SIZE` is 104,857,600 bytes, the screensho
 (`MAX_SCREENSHOT_SIZE`). The print's own bound, 5 s, is 2.6 times the slowest print measured at
 the layout bound.
 
+**#1843.**
+
+| Check                                                                              | Expected                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Observed                                             |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| The pin script over fake images (`tests/main/services/backgroundRenderer.test.ts`) | Over the triage's five images and a `srcset` image with no `currentSrc`, the three `srcset` images outside a `picture` get their `currentSrc` as `src` and lose `srcset` and `sizes`, the rest are untouched, and the counts are 3 and 0; a page with no `srcset` image counts 0 and 0; an image that never loads counts as not loaded after the whole wait, and so does one whose load fails; the script stops waiting once every image has loaded, and does not wait with no time                                                                                                                                      | As expected                                          |
+| The schema check on the counts (same file)                                         | A not-loaded count above the pinned count, a fraction, a negative, a missing count, and no object each reject, as does a script that throws                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | As expected                                          |
+| The pin in the render (same file)                                                  | Called once, after `Page.captureScreenshot` and before `savePage`; no wait under a 39 s timeout and 5,000 ms under 60 s; under a 3 s timeout an image that never loads is counted and the render returns inside 3 s; a script that throws, or contradictory counts, fail the render with no `savePage` and the window destroyed                                                                                                                                                                                                                                                                                          | As expected                                          |
+| The render handed to the Recapture queue and ingest (same file)                    | The entry's MHTML part signs 3 pinned and 1 not loaded and passes the strict schema, the row mirrors the inventory, the Capture verifies, and a Duplicate's entry and row carry the same part; a pin that throws emits `failed` and stores no Capture                                                                                                                                                                                                                                                                                                                                                                    | As expected                                          |
+| Ingest and the Duplicate (`recapture.test.ts`)                                     | The part the render returns is signed, mirrored, and re-anchored by a Duplicate                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | As expected                                          |
+| End-to-end Recaptures (`e2e/recapture-image-sources.spec.ts`)                      | The renderer spike's `q2-savepage` fixture: a part at `/savepage/srcset-1x.png` whose bytes carry that path's tag, no request for `/savepage/srcset-2x.png`, and counts 1 and 0. The triage's five images: a part for each displayed source holding that source's bytes, no part at an address the server never served (`/five/src-fallback.png` was not requested), counts 3 and 0, a Duplicate re-anchoring them, and an exported package passing Package Verification and `verify.sh`. A `srcset` image answered with a 404: counts 1 and 1, two requests for it in the server log, and one in the Transaction Record | As expected                                          |
+| The `q2-savepage` case with the rewrite disabled (a local edit, reverted)          | The case fails                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Failed: the MHTML had no part for the `srcset` image |
+| Every Recapture end-to-end spec                                                    | Pass with the pinning added                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 22 of 22 in one run                                  |
+
+What the standalone script showed, with a 2,000 ms wait unless stated:
+
+- No request reached the server during the pin for an image that had loaded, a `no-store` one
+  included. Each was `complete` with a natural width straight after its `src` was set, and the
+  MHTML held a part at its address, under a saved `img` naming that address.
+- A `srcset` image answered with a 404, or with a 200 that is not an image, has a `currentSrc`
+  and a natural width of 0. Pinning it sent a second request for it during the pin, and with a
+  300 ms wait it counted as not loaded.
+- A `srcset` image still loading had an empty `currentSrc`, so it was left as it was and not
+  counted, and the MHTML had no part for it.
+- An image in an open or a closed shadow root, and one in a same-origin frame, were not pinned
+  and had no part; the saver wrote each as an `img` with no source.
+- An image with no `width` or `height` attribute, offered at `2x` density or as `8w` with
+  `sizes="2px"`, rendered at 2 by 2 and 1 by 1 CSS pixels before the pin and at 4 by 4 after it.
+- An SVG with a `viewBox` and no width or height reported a natural width of 150 and counted as
+  loaded.
+
 ## Deviations
 
 **Step 6.**
@@ -224,6 +269,16 @@ first bottom, it now runs to the height cap or the phase's time limit.
   with it the same build read the stored PDFs. The package is a development dependency only, and
   no build ships it.
 
+**#1843.**
+
+- The triage brief asks for a separate report row, `Image sources: N pinned to the displayed
+image`, absent when N is 0. Step 5 (#1985) already states both counts from the signed entry in
+  the report's artifact inventory, so this change adds no second row.
+- The brief pins every `srcset` image with a `currentSrc`, which ADR-0055 words as an image that
+  displayed one. The two differ for an image whose load failed, which has a `currentSrc` and
+  displayed nothing. The render follows the brief, so such an image is pinned, requested again,
+  and counted as not loaded.
+
 ## False positives and negatives
 
 **Step 6.**
@@ -262,6 +317,15 @@ first bottom, it now runs to the height cap or the phase's time limit.
   entry's error names the bound.
 - The layout bound reads the content height the screenshot record states (D6), the document's
   content box, so it does not see the height of a panel that scrolls inside the page.
+
+**#1843.**
+
+- `pinnedImagesNotLoaded` is read at the check that ends the wait, just before `savePage`. An
+  image that finishes between the two is still counted, so the count can overstate what was
+  missing at the save, never understate it.
+- The pin script runs in the page's world, so a page that interferes with it can make the counts
+  wrong; the strict schema refuses only counts that are not whole numbers or that contradict
+  each other.
 
 ## Known limitations
 
@@ -320,6 +384,24 @@ first bottom, it now runs to the height cap or the phase's time limit.
 - `printToPDF` hands the whole PDF to the main process before its size can be read, so a PDF over
   `MAX_PDF_SIZE` is held in memory once before it is discarded.
 - pdf.js, the test reader, needs the optional `@napi-rs/canvas` to load on Node 20 (Deviations).
+
+**#1843.**
+
+- Pinning reaches only the `img` elements of the page's own document. An image in a frame or a
+  shadow root keeps its `srcset`, and the MHTML still lacks one offered only through it.
+- An image still loading when the pin runs has no `currentSrc`, so it is neither pinned nor
+  counted, and the MHTML lacks it if it was offered only through `srcset`.
+- Where an image's `srcset` density or `sizes` set its size and the element has no `width` and
+  `height`, the saved page shows it at its natural size. The screenshot, taken before the pin,
+  shows the size the page displayed.
+- Pinning an image whose load had failed makes the browser request it again after collection
+  stopped, so the Transaction Record lacks that request.
+- The wait takes at most 5 s of the time left before the 40 s end reserve and nothing from the
+  reserve. A page whose earlier phases used that time gets no wait, and an image that needed a
+  new request then counts as not loaded.
+- A build with step 6 and without #1843 signs zeros that read the same as a pinning pass that
+  found nothing. The maintainer ruled on 2026-10-26 that no release carries step 6 without
+  #1843.
 
 ## Acceptance decision
 

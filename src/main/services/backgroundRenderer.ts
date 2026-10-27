@@ -37,10 +37,14 @@ const FINAL_SETTLE_MS = 500
 const ARTIFACT_PHASE_MS = 20_000
 // The Transaction Record's two end phases, each under its own bound (step 9 of
 // docs/plans/2026-10-10-capture-engine-first-slice.md, "Time"): the body
-// fetches still out when collection stops, and the writer. A phase that runs
-// out records the Transaction Record absent as `failed` and the Capture stores.
+// fetches still out when collection stops, and the writer. Each is also cut to
+// the time the render has left, less RECORD_END_MARGIN_MS for handing the page
+// back, so a phase that runs out records the Transaction Record absent as
+// `failed` and the Capture stores, and the render never runs past its deadline
+// for it (ruled 2026-10-26).
 const BODY_COLLECT_TIMEOUT_MS = 5_000
 const RECORD_WRITE_TIMEOUT_MS = 10_000
+const RECORD_END_MARGIN_MS = 1_000
 // Reserved at the end of the render, so the phases before it can't starve the
 // artifacts and the Transaction Record into the outer deadline.
 const FINAL_ARTIFACT_RESERVE_MS =
@@ -717,6 +721,7 @@ export const renderPageInHiddenWindow: RenderPage = async (
         ? await finishTransactionRecord(activeRecorder, {
             collectMs: BODY_COLLECT_TIMEOUT_MS,
             writeMs: RECORD_WRITE_TIMEOUT_MS,
+            timeLeftMs: () => remainingMs(RECORD_END_MARGIN_MS),
             writer: {
               captureId,
               birdbrainVersion: toolVersion,
@@ -731,14 +736,6 @@ export const renderPageInHiddenWindow: RenderPage = async (
             reason: 'failed',
             error: new Error('Network.enable failed or did not answer on the page')
           }
-      if (!transactionRecord.present) {
-        logger.error(
-          'backgroundRenderer',
-          'backgroundRenderer.transaction_record_failed',
-          undefined,
-          transactionRecord.error
-        )
-      }
 
       return {
         mhtmlStream: createReadStream(tmpPath) as unknown as AsyncIterable<Uint8Array>,

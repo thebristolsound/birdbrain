@@ -30,6 +30,7 @@ import {
   type ScreenshotRecord
 } from '@main/services/recapture'
 import { RefusedAddressError } from '@main/services/localAddressPolicy'
+import { logger } from '@main/services/logger'
 import { ManifestEntrySchema, type BoundTls, type ScrollToLoadRecord } from '@shared/schemas'
 import type { CaptureEvent, Capture } from '@shared/types'
 
@@ -321,6 +322,76 @@ describe('recapture service', () => {
       expect(row.boundTlsAbsent).toBe('not-recorded')
       expect(existsSync(join(getStorageRoot(), caseId, `${row.id}.warc.gz`))).toBe(false)
       await expect(verifyCapture(row.id)).resolves.toMatchObject({ status: 'verified' })
+    })
+
+    // Finding 4 of the review of #1999: the Operator hears of a stored Capture only once it is.
+    describe('the notice that the record failed', () => {
+      const FAILED: RenderedPage['transactionRecord'] = {
+        present: false,
+        reason: 'failed',
+        error: new Error('The body fetches did not settle within 5000ms')
+      }
+      const notices = (spy: { mock: { calls: unknown[][] } }) =>
+        spy.mock.calls.filter(([, code]) => code === 'backgroundRenderer.transaction_record_failed')
+
+      afterEach(() => {
+        vi.restoreAllMocks()
+      })
+
+      it('is logged once the Capture is stored, with the error', async () => {
+        const spy = vi.spyOn(logger, 'error')
+        let storedWhenLogged = false
+        spy.mockImplementation((_source, code) => {
+          if (code === 'backgroundRenderer.transaction_record_failed') {
+            storedWhenLogged = readFileSync(
+              join(getStorageRoot(), caseId, MANIFEST_FILENAME),
+              'utf-8'
+            ).includes('"type":"capture"')
+          }
+          return ''
+        })
+        const svc = makeService(fakeRender({ transactionRecord: FAILED }))
+        svc.enqueue([{ url: 'https://example.com/page', caseId }])
+        await svc.idle()
+        expect(notices(spy)).toEqual([
+          [
+            'backgroundRenderer',
+            'backgroundRenderer.transaction_record_failed',
+            undefined,
+            FAILED.error
+          ]
+        ])
+        expect(storedWhenLogged).toBe(true)
+      })
+
+      it('is not logged when the job then refuses the final URL', async () => {
+        const spy = vi.spyOn(logger, 'error')
+        const svc = makeService(
+          fakeRender({ transactionRecord: FAILED, finalUrl: 'http://192.168.1.1/' })
+        )
+        svc.enqueue([{ url: 'https://example.com/page', caseId }])
+        await svc.idle()
+        expect(events.map(({ type }) => type)).toEqual(['received', 'skipped'])
+        expect(notices(spy)).toEqual([])
+      })
+
+      it('is not logged when the ingest fails', async () => {
+        const spy = vi.spyOn(logger, 'error')
+        const failing = createCaptureLifecycle({ selectorLifecycle })
+        const svc = createRecaptureService({
+          renderPage: fakeRender({ transactionRecord: FAILED }),
+          captureLifecycle: {
+            ...failing,
+            ingest: () => Promise.reject(new Error('disk full'))
+          },
+          emitEvent: (e) => events.push(e),
+          emitNewCapture: (c) => newCaptures.push(c)
+        })
+        svc.enqueue([{ url: 'https://example.com/page', caseId }])
+        await svc.idle()
+        expect(events.map(({ type }) => type)).toEqual(['received', 'failed'])
+        expect(notices(spy)).toEqual([])
+      })
     })
 
     it('signs a phase that did not run with no outcome and no height', async () => {

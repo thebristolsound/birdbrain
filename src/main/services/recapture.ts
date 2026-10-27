@@ -7,6 +7,7 @@ import { getInstallationId } from '@main/services/installationId'
 import { RefusedAddressError, refusedAddressClass } from '@main/services/localAddressPolicy'
 import { getSettings } from '@main/services/settings'
 import { resolveToolVersion } from '@main/services/toolVersion'
+import { logger } from '@main/services/logger'
 import type { TransactionRecordOutcome } from '@main/services/transactionRecorder'
 import type { CaptureInventory, ScrollToLoadRecord } from '@shared/schemas'
 import type { Capture, CaptureEvent, ConsentSuppression } from '@shared/types'
@@ -278,6 +279,17 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       })
         ? 'Page looks like a login wall — the clean background session is not signed in'
         : undefined
+
+      // Said only once the Capture is stored, so a job that then fails or is skipped
+      // never reports a stored Capture.
+      if (!rendered.transactionRecord.present) {
+        logger.error(
+          'backgroundRenderer',
+          'backgroundRenderer.transaction_record_failed',
+          undefined,
+          rendered.transactionRecord.error
+        )
+      }
 
       const capture = captureRepo.getCapture(result.capture.id) ?? result.capture
       deps.emitNewCapture(capture)

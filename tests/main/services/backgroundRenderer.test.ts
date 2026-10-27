@@ -43,6 +43,7 @@ const ctl = vi.hoisted(() => ({
   failingCommands: new Set<string>(),
   bodyHangs: false,
   writerThrows: false,
+  writerHangs: false,
   isPackaged: false,
   securityDetails: {
     protocol: 'TLS 1.3',
@@ -283,9 +284,11 @@ vi.mock('../../../src/packages/transaction-record/writer', async (importOriginal
   return {
     ...actual,
     writeTransactionRecord: vi.fn((input: Parameters<typeof actual.writeTransactionRecord>[0]) =>
-      ctl.writerThrows
-        ? Promise.reject(new Error('the writer broke'))
-        : actual.writeTransactionRecord(input)
+      ctl.writerHangs
+        ? new Promise<never>(() => {})
+        : ctl.writerThrows
+          ? Promise.reject(new Error('the writer broke'))
+          : actual.writeTransactionRecord(input)
     )
   }
 })
@@ -928,6 +931,7 @@ describe('renderPageInHiddenWindow', () => {
     ctl.failingCommands = new Set()
     ctl.bodyHangs = false
     ctl.writerThrows = false
+    ctl.writerHangs = false
     ctl.isPackaged = false
     ctl.lateEvent = false
     delete process.env[E2E_TRUSTED_CERT_SWITCH]
@@ -1184,6 +1188,7 @@ describe('renderPageInHiddenWindow, the Transaction Record', () => {
     ctl.failingCommands = new Set()
     ctl.bodyHangs = false
     ctl.writerThrows = false
+    ctl.writerHangs = false
     ctl.isPackaged = false
     ctl.lateEvent = false
     delete process.env[E2E_TRUSTED_CERT_SWITCH]
@@ -1194,8 +1199,8 @@ describe('renderPageInHiddenWindow, the Transaction Record', () => {
     delete process.env[E2E_TRUSTED_CERT_SWITCH]
   })
 
-  async function render(url = 'https://example.test/') {
-    const result = await renderPageInHiddenWindow(url, { timeoutMs: 30_000, ...IDS })
+  async function render(url = 'https://example.test/', timeoutMs = 30_000) {
+    const result = await renderPageInHiddenWindow(url, { timeoutMs, ...IDS })
     for await (const _chunk of result.mhtmlStream) void _chunk
     await result.cleanup()
     return result
@@ -1277,6 +1282,32 @@ describe('renderPageInHiddenWindow, the Transaction Record', () => {
     expect(String(result.transactionRecord.present || result.transactionRecord.error)).toContain(
       'The body fetches did not settle'
     )
+  }, 30_000)
+
+  // Ruling (c) of 2026-10-26 on the review of #1999: the end reserve stays at 35 s, and each
+  // record phase is cut to the time left, so the render stores before its deadline.
+  it('reserves 35 s at the end: no Scroll-to-load budget below it, some above it', async () => {
+    const below = await render('https://example.test/', 34_000)
+    expect(below.scrollToLoad.ran).toBe(false)
+    const above = await render('https://example.test/', 37_500)
+    expect(above.scrollToLoad.ran).toBe(true)
+  }, 30_000)
+
+  it('cuts the body fetches to the time left, so the render returns before its deadline', async () => {
+    ctl.bodyHangs = true
+    // Every earlier phase gets nothing under 35 s, so the 5 s collect bound is what is cut.
+    const result = await render('https://example.test/', 3_000)
+    expect(result.transactionRecord).toMatchObject({ present: false, reason: 'failed' })
+    const error = String(result.transactionRecord.present || result.transactionRecord.error)
+    expect(error).toMatch(/The body fetches did not settle within (1\d{3}|2000)ms/)
+  }, 30_000)
+
+  it('cuts the writer to the time left, so the render returns before its deadline', async () => {
+    ctl.writerHangs = true
+    const result = await render('https://example.test/', 3_000)
+    expect(result.transactionRecord).toMatchObject({ present: false, reason: 'failed' })
+    const error = String(result.transactionRecord.present || result.transactionRecord.error)
+    expect(error).toMatch(/The Transaction Record writer did not settle within (1\d{3}|2000)ms/)
   }, 30_000)
 
   it('records the Transaction Record failed when the writer throws', async () => {

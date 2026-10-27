@@ -815,7 +815,8 @@ export const LOG_CODES = [
   'backgroundRenderer.scroll_reset_failed',
   // The Transaction Record of a background render failed or ran out of time
   // (open question E of docs/plans/2026-10-10-capture-engine-first-slice.md).
-  // The Capture stores, and its inventory records the record absent as `failed`.
+  // Logged by the Recapture queue once the Capture is stored; its inventory
+  // records the record absent as `failed`.
   'backgroundRenderer.transaction_record_failed',
   'backgroundRenderer.consent_blocker_disable_failed',
   'backgroundRenderer.consent_blocker_enable_failed',

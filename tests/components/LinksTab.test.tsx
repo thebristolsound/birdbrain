@@ -480,13 +480,14 @@ describe('LinksTab Wayback cell', () => {
     lookupLink: (...args: never[]) => unknown,
     {
       openExternal = vi.fn(async (): Promise<void> => undefined),
-      enqueue = vi.fn(async () => ({ accepted: 1, rejected: [] as unknown[] }))
+      enqueue = vi.fn(async () => ({ accepted: 1, rejected: [] as unknown[] })),
+      cases = [] as Partial<Capture>[]
     } = {}
   ) {
     fakeBridge({
       captures: {
         getLinks: vi.fn(async () => result(links)),
-        list: vi.fn(async () => []),
+        list: vi.fn(async () => cases),
         openExternal
       },
       wayback: { lookupLink },
@@ -641,6 +642,29 @@ describe('LinksTab Wayback cell', () => {
         cause: expect.any(Error)
       })
     )
+  })
+
+  // #1738 merged with #1735: the row text is the click-through control, so the cell's own
+  // buttons on a row the Case holds leave the viewed Capture where it is.
+  it('opens no Capture from a click in the Wayback cell of an In Case row', async () => {
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: [] })
+    const { openExternal } = renderWithLookup(
+      [link({ href: 'https://a.example/1', text: 'One' })],
+      vi.fn(async () => FOUND),
+      { cases: [capture, { id: 'c2', url: 'https://a.example/1', timestamp: '2026-01-01' }] }
+    )
+    const [row] = await screen.findAllByTestId('links-row')
+    await waitFor(() => expect(within(row).queryByTestId('links-in-case')).not.toBeNull())
+    const cell = await snapshotCell()
+
+    fireEvent.click(cell)
+    fireEvent.click(within(cell).getByTestId('links-wayback-open'))
+
+    expect(openExternal).toHaveBeenCalledWith(SNAPSHOT.snapshotUrl)
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap1')
+    expect(useAppStore.getState().captureTrail).toEqual([])
+    fireEvent.click(within(row).getByTestId('links-open'))
+    expect(useAppStore.getState().selectedCaptureId).toBe('c2')
   })
 
   it('says No successful snapshot for an empty answer', async () => {

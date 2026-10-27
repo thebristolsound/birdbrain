@@ -7,7 +7,8 @@
 # GITHUB_TOKEN is the GitHub Actions app's, the same app CI reports as, and
 # `checks: write` lets it create a check run for any commit. So a check run
 # counts here only when it is a job of a workflow run GitHub started for this PR
-# against main at this head, which a check run created through the API is not.
+# against the PR's base at this head, which a check run created through the API
+# is not.
 # Only the newest such run of each workflow counts: an older run at the same head
 # (superseded, often cancelled) left red jobs beside the newer run's green ones.
 # A status counts only from the maintainer or the pipeline (trusted_statuses);
@@ -47,11 +48,16 @@ n="${1:?usage: checks.sh [--wait <seconds>] <pr-number>}"
 me="${LOGIN:-}"
 
 read_checks() {
-  sha="$(gh api "repos/$R/pulls/$n" --jq .head.sha)"
+  pr="$(gh api "repos/$R/pulls/$n" --jq '{sha: .head.sha, base: .base.ref}')"
+  sha="$(jq -r .sha <<< "$pr")"
+  base="$(jq -r .base <<< "$pr")"
+  # The base is filtered in the local jq, where --arg passes it as data: a branch name
+  # spliced into gh's --jq filter would be read as jq code.
   runs="$(gh api --paginate "repos/$R/actions/runs?head_sha=$sha&event=pull_request&per_page=100" \
-    --jq ".workflow_runs[] | select(any(.pull_requests[]?; .number == $n and .base.ref == \"main\"))
-      | {id, workflow_id, run_number}" \
-    | jq -s -r 'group_by(.workflow_id) | map(max_by(.run_number).id) | .[]')"
+    --jq '.workflow_runs[] | {id, workflow_id, run_number, pull_requests}' \
+    | jq -s -r --argjson n "$n" --arg base "$base" '
+      map(select(any(.pull_requests[]?; .number == $n and .base.ref == $base)))
+      | group_by(.workflow_id) | map(max_by(.run_number).id) | .[]')"
   jobs='[]'
   for id in $runs; do
     jobs="$(gh api --paginate "repos/$R/actions/runs/$id/jobs?per_page=100" --jq '.jobs[].id' \

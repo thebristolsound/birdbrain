@@ -164,7 +164,7 @@ exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
     newest first). The combined status and `gh pr checks` do not name the creator.
     `trusted_statuses` in `.github/scripts/dispatch/lib.sh` applies the same rule; change both.
   - **Check runs:** a check run counts only when it is a job of a workflow run GitHub started
-    for this PR against `main` at its head. A workflow on any pushed branch can create a check
+    for this PR against its base at its head. A workflow on any pushed branch can create a check
     run on any commit, under any name, as the same GitHub Actions app CI reports as, so the app
     and the name prove nothing. `bash .github/scripts/dispatch/checks.sh <pr>` applies this rule
     and the status rule and prints the head's counted checks as `failing`, `pending`, `passed`

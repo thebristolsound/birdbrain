@@ -20,31 +20,35 @@ type CheckRun = {
 }
 type Status = { context: string; state: string; by: string | null; at: string }
 
-// CI's workflow run for PR #7 against main (run 100, jobs 1 to 3), an older CI run at the same
-// head that run 100 superseded (run 90, job 4), a second workflow's run for PR #7 (run 300,
-// job 6), and a run on the same head for another PR, #8, against a branch a collaborator
-// controls (run 200, job 9).
+// CI's workflow run for PR #7 against its base (run 100, jobs 1 to 3), an older CI run at the
+// same head that run 100 superseded (run 90, job 4), a second workflow's run for PR #7 (run 300,
+// job 6), a third workflow's run for PR #7 against a base it no longer has (run 400, job 7), and
+// a run on the same head for another PR, #8, against a branch a collaborator controls (run 200,
+// job 9).
 const JOBS: CheckRun[] = [
   { id: 1, name: 'lint' },
   { id: 2, name: 'test' },
   { id: 3, name: 'build' }
 ]
 
-const PR_7 = { number: 7, base: { ref: 'main' } }
+const pr7 = (ref: string) => ({ number: 7, base: { ref } })
 
 const routes = ({
   checkRuns = JOBS,
-  statuses = []
+  statuses = [],
+  base = 'main'
 }: {
   checkRuns?: CheckRun[]
   statuses?: Status[]
+  base?: string
 }): GhRoutes => ({
-  [`${API}/pulls/7`]: { head: { sha: SHA } },
+  [`${API}/pulls/7`]: { head: { sha: SHA }, base: { ref: base } },
   [`${API}/actions/runs?head_sha=${SHA}&event=pull_request&per_page=100`]: {
     workflow_runs: [
-      { id: 100, workflow_id: 11, run_number: 5, pull_requests: [PR_7] },
-      { id: 90, workflow_id: 11, run_number: 4, pull_requests: [PR_7] },
-      { id: 300, workflow_id: 12, run_number: 1, pull_requests: [PR_7] },
+      { id: 100, workflow_id: 11, run_number: 5, pull_requests: [pr7(base)] },
+      { id: 90, workflow_id: 11, run_number: 4, pull_requests: [pr7(base)] },
+      { id: 300, workflow_id: 12, run_number: 1, pull_requests: [pr7(base)] },
+      { id: 400, workflow_id: 13, run_number: 1, pull_requests: [pr7('earlier-base')] },
       {
         id: 200,
         workflow_id: 11,
@@ -56,6 +60,7 @@ const routes = ({
   [`${API}/actions/runs/100/jobs?per_page=100`]: { jobs: [{ id: 1 }, { id: 2 }, { id: 3 }] },
   [`${API}/actions/runs/90/jobs?per_page=100`]: { jobs: [{ id: 4 }] },
   [`${API}/actions/runs/300/jobs?per_page=100`]: { jobs: [{ id: 6 }] },
+  [`${API}/actions/runs/400/jobs?per_page=100`]: { jobs: [{ id: 7 }] },
   [`${API}/actions/runs/200/jobs?per_page=100`]: { jobs: [{ id: 9 }] },
   [`${API}/commits/${SHA}/check-runs?per_page=100`]: {
     check_runs: checkRuns.map(
@@ -151,6 +156,7 @@ describe.skipIf(!HAS_JQ)('checks.sh counts only the jobs of this PR and trusted 
   it.each([
     ['a GitHub Actions check run that is no job', { id: 50, app: 'github-actions' }],
     ['a job of another PR on the same head', { id: 9, app: 'github-actions' }],
+    ['a run for this PR against a base it no longer has', { id: 7, app: 'github-actions' }],
     ['another app', { id: 51, app: 'some-app' }]
   ])('does not count a failing test from %s', (_label, { id, app }) => {
     const { status, stderr, out } = checks(
@@ -161,6 +167,34 @@ describe.skipIf(!HAS_JQ)('checks.sh counts only the jobs of this PR and trusted 
     expect(out.ignored).toEqual([
       `check run test (${app}, ${id}): not a job of the latest workflow runs for this PR`
     ])
+  })
+
+  // CI runs on a PR stacked on another branch too (ci.yml's pull_request trigger), and its
+  // jobs are that PR's CI.
+  it('counts a failing job of the PR run when the PR is stacked on another branch', () => {
+    const { status, stderr, out } = checks(
+      routes({
+        base: 'feat/parent',
+        checkRuns: [JOBS[0], { ...JOBS[1], conclusion: 'failure' }, JOBS[2]]
+      })
+    )
+    expect(status, stderr).toBe(0)
+    expect(out.failing).toEqual(['test'])
+    expect(out.passed).toEqual(['build', 'lint'])
+    expect(out.ignored).toEqual([])
+  })
+
+  // A valid branch name; spliced into the filter as jq code, it would match every run on the head.
+  it('reads a base branch name with quotes in it as a name', () => {
+    const { status, stderr, out } = checks(
+      routes({
+        base: 'x"or(true)or"y',
+        checkRuns: [...JOBS, { id: 9, name: 'test', conclusion: 'failure' }]
+      })
+    )
+    expect(status, stderr).toBe(0)
+    expect(out.failing).toEqual([])
+    expect(out.passed).toEqual(['build', 'lint', 'test'])
   })
 
   it('does not count a job of an older run of the same workflow at the same head', () => {

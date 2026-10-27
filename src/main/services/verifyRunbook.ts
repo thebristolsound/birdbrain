@@ -19,8 +19,10 @@ import {
   capturePagePath,
   lineageChainPath,
   memberChainPath,
+  pdfPath,
   screenshotPath,
-  timestampTokenPath
+  timestampTokenPath,
+  transactionRecordPath
 } from '../../packages/evidence-package-layout/index'
 import {
   MEMBER_CHAINS_STEP,
@@ -177,6 +179,8 @@ internal consistency*, **not** timestamp authenticity — this runbook's
 | \`${ROOT.tsaIntermediates}\` | Responder + intermediate certs lifted from the tokens (chain-building only, never trusted on their own) |
 | \`${capturePagePath('{captureId}')}\` | Captured content (hashed as \`contentHash\`) |
 | \`${screenshotPath('{sha256}')}\` | Captured screenshot (hashed as \`screenshotHash\`) |
+| \`${transactionRecordPath('{sha256}')}\` | Transaction Record: the HTTP exchanges the browser handed over, as WARC records, with four credential header values replaced (see ${stepRef(5)}); the entry's \`inventory\` accounts for any exchange it lacks or holds in part (hashed as \`transactionRecordHash\`, enclosed only for an entry that carries one) |
+| \`${pdfPath('{sha256}')}\` | The page as a PDF (hashed as \`pdfHash\`, enclosed only for an entry that carries one) |
 | \`attachments/\`, \`images/\`, \`documents/\` | Committed exhibits of other kinds, one file per exhibit named \`{exhibitId}\` plus its stored extension (hashed as the \`exhibit\` entry's \`contentHash\`) |
 | \`{exhibit directory}/{exhibitId}_{suffix}\` | Derived files, enclosed beside the exhibit they were computed from — a capture's thumbnail sits in \`${CAPTURE_PACKAGE_DIRECTORY}/\` (hashed as the \`derivation\` entry's \`outputHash\`) |
 | \`${TIMESTAMP_PACKAGE_DIRECTORY}/*.tst\` | RFC 3161 tokens, when present (see ${stepRef('6c')} on their encoding) |
@@ -251,9 +255,10 @@ jq -r '"\\(.index) \\(.prevHash) \\(.entryHash)"' ${ROOT.manifest}
 ${runbookHeading(5)}
 
 For each \`type: "capture"\` entry, confirm the actual captured bytes match the
-hash **inside that signed entry** (NOT the value in \`${ROOT.evidenceIndex}\`). Without
-this you could verify a pristine signed chain yet never confirm the MHTML/PNG
-bytes are the ones it attests.
+hash **inside that signed entry** (NOT the value in \`${ROOT.evidenceIndex}\`): the
+page, the screenshot, the Transaction Record and the PDF. Without this you could
+verify a pristine signed chain yet never confirm the captured bytes are the ones
+it attests.
 
 **Selection-scoped packages:** if a **verified** \`${ROOT.exportEntry}\` (see
 Trust model) carries \`scope: "selection"\`, only the exhibits listed in its
@@ -277,7 +282,29 @@ got=$(sha256sum "${capturePagePath('$id')}" | cut -d' ' -f1)
 # Screenshot (if the entry has screenshotHash; the file is named by that hash):
 shot=$(echo "$line" | jq -r '.screenshotHash // empty')
 [ -n "$shot" ] && sha256sum "${screenshotPath('$shot')}"   # must equal $shot
+
+# Transaction Record and PDF, by the screenshot's rule:
+record=$(echo "$line" | jq -r '.transactionRecordHash // empty')
+[ -n "$record" ] && sha256sum "${transactionRecordPath('$record')}"   # must equal $record
+pdf=$(echo "$line" | jq -r '.pdfHash // empty')
+[ -n "$pdf" ] && sha256sum "${pdfPath('$pdf')}"   # must equal $pdf
 \`\`\`
+
+An entry with no \`screenshotHash\`, \`transactionRecordHash\` or \`pdfHash\`
+anchors no such file, so there is nothing to check for it, and Birdbrain
+encloses no Transaction Record or PDF for an entry that lacks its hash. An
+entry that carries one anchors the file that hash names: a missing file, or one
+whose hash differs, fails the package, as a changed page does.
+
+**What the Transaction Record holds of credentials.** Before Birdbrain writes a
+Transaction Record, it replaces the values of four headers, \`Cookie\`,
+\`Set-Cookie\`, \`Authorization\` and \`Proxy-Authorization\`, with a marker. The
+headers are present, their values are not. The capture entry's
+\`inventory.transactionRecord.replacedHeaders\` names each header whose value
+was replaced, and Birdbrain's verifier quotes that list. A token anywhere else
+stays in the record: in a URL, in a response body, in any other header, and in
+a request body of a \`background\` record, the record a \`background\` Capture
+made, which a Duplicate of that Capture carries byte for byte.
 
 **Exhibits of other kinds.** A capture is one kind of exhibit; an attachment,
 image or document committed to the case is another, and each has its own signed

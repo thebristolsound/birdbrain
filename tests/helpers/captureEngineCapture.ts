@@ -32,6 +32,33 @@ export const ENGINE_ENTRY_FIELDS: EngineEntryFields = {
   pdfHash: ENGINE_HASHES.pdf
 }
 
+// The same Capture with neither file: its inventory records both as not
+// taken, so its entry carries neither hash.
+export const ENGINE_ENTRY_FIELDS_WITHOUT_FILES: EngineEntryFields = {
+  ...ENGINE_ENTRY_FIELDS,
+  inventory: CaptureInventorySchema.parse({
+    ...ENGINE_INVENTORY,
+    transactionRecord: { present: false, reason: 'not-taken' },
+    pdf: { present: false, reason: 'not-taken' }
+  }),
+  transactionRecordHash: undefined,
+  pdfHash: undefined
+}
+
+// The same Capture with one of the two files: its inventory records the other
+// as not taken, so its entry carries only the kept file's hash.
+export function engineEntryFieldsWithOnly(kept: 'transactionRecord' | 'pdf'): EngineEntryFields {
+  const dropped = kept === 'pdf' ? 'transactionRecord' : 'pdf'
+  return {
+    ...ENGINE_ENTRY_FIELDS,
+    inventory: CaptureInventorySchema.parse({
+      ...ENGINE_INVENTORY,
+      [dropped]: { present: false, reason: 'not-taken' }
+    }),
+    ...(kept === 'pdf' ? { transactionRecordHash: undefined } : { pdfHash: undefined })
+  }
+}
+
 export const ENGINE_URL = 'https://example.com/engine'
 export const ENGINE_TIMESTAMP = '2026-10-18T12:00:00.000Z'
 
@@ -46,8 +73,10 @@ export async function seedEngineCapture(params: {
   const mhtml = store.artifactPaths(caseId, captureId, 'mhtml')
   writeFileSync(mhtml.abs, ENGINE_FILES.page)
   const screenshot = store.writeScreenshot(caseId, captureId, ENGINE_FILES.screenshot)
-  store.writeTransactionRecord(caseId, captureId, ENGINE_FILES.transactionRecord)
-  store.writePdf(caseId, captureId, ENGINE_FILES.pdf)
+  if (fields.transactionRecordHash) {
+    store.writeTransactionRecord(caseId, captureId, ENGINE_FILES.transactionRecord)
+  }
+  if (fields.pdfHash) store.writePdf(caseId, captureId, ENGINE_FILES.pdf)
   const sizeBytes = ENGINE_FILES.page.length
   return withCaptureEntry(
     caseDir,

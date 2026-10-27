@@ -51,8 +51,10 @@ import {
   derivedFilePackagePath,
   exhibitPackageDirectory,
   exhibitPackagePath,
+  pdfPath as packagedPdfPath,
   screenshotPath as packagedScreenshotPath,
-  timestampTokenPath
+  timestampTokenPath,
+  transactionRecordPath as packagedTransactionRecordPath
 } from '../../packages/evidence-package-layout/index'
 import type { TrustedTimeResult } from '@shared/verify'
 import { buildCertification, type SigningKeyRange } from '@main/services/certification'
@@ -1369,7 +1371,8 @@ function buildEvidenceZip(
   const { entries, artifacts, add } = createArtifactAccumulator()
 
   const manifestJsonl = manifest.jsonl
-  const timestampEntries = caseEntriesOf(manifest, sharedCase).filter(isTimestampEntry)
+  const caseEntries = caseEntriesOf(manifest, sharedCase)
+  const timestampEntries = caseEntries.filter(isTimestampEntry)
   const latestManifestEntry = manifest.head
 
   // Same path rule the report was rendered against, over the same Exhibits in
@@ -1496,7 +1499,31 @@ function buildEvidenceZip(
   if (tsaTrust.bundled) add(PACKAGE_ROOT_FILES.tsaRoot, tsaTrust.pem)
 
   const capturesMissingContent: string[] = []
-  const emittedScreenshotPaths = new Set<string>()
+  // Content-addressed: identical bytes across captures (a Duplicate's copies)
+  // resolve to the same path. Emit the zip entry once; multiple capture
+  // records may still reference it. createStoredZip does not dedupe entry names.
+  const emittedContentPaths = new Set<string>()
+  // Each Capture's signed entry, by its chain id; where a chain holds more
+  // than one, the last wins, as in resolveEntrySignatures.
+  const captureEntries = new Map<string, Record<string, unknown>>()
+  for (const entry of caseEntries) {
+    if (entry.type === 'capture' && typeof entry.captureId === 'string') {
+      captureEntries.set(entry.captureId, entry)
+    }
+  }
+  const addContentAddressed = (
+    bytes: Buffer | null,
+    packagePath: (digest: string) => string
+  ): { path: string | null; sha256: string | null } => {
+    if (!bytes) return { path: null, sha256: null }
+    const digest = sha256(bytes)
+    const path = packagePath(digest)
+    if (!emittedContentPaths.has(path)) {
+      add(path, bytes)
+      emittedContentPaths.add(path)
+    }
+    return { path, sha256: digest }
+  }
   const captureEvidence = data.captures.map((capture) => {
     const id = chainIdOf(capture.id)
     const mhtml = defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'mhtml')
@@ -1523,22 +1550,28 @@ function buildEvidenceZip(
     // ship them via the content-addressed sidecar. The raw on-disk bytes are
     // used (not the possibly-annotated report copy) so the digest matches the
     // screenshotHash anchored at ingest.
-    const screenshot = data.screenshots.has(capture.id)
-      ? defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'png')
-      : null
-    let screenshotPath: string | null = null
-    let screenshotSha256: string | null = null
-    if (screenshot) {
-      screenshotSha256 = sha256(screenshot)
-      screenshotPath = packagedScreenshotPath(screenshotSha256)
-      // Content-addressed: identical screenshot bytes across captures resolve to
-      // the same path. Emit the zip entry once; multiple capture records may
-      // still reference it. createStoredZip does not dedupe entry names.
-      if (!emittedScreenshotPaths.has(screenshotPath)) {
-        add(screenshotPath, screenshot)
-        emittedScreenshotPaths.add(screenshotPath)
-      }
-    }
+    const screenshot = addContentAddressed(
+      data.screenshots.has(capture.id)
+        ? defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'png')
+        : null,
+      packagedScreenshotPath
+    )
+    // The Transaction Record and the PDF ship only when the signed entry
+    // anchors them, as a Derived File no entry names is held back (X34):
+    // neither verifier checks a file the entry carries no hash for. No include
+    // option leaves out an anchored one, because Package Verification fails a
+    // signed hash whose file the package lacks (D10 of
+    // docs/plans/2026-10-10-capture-engine-first-slice.md).
+    const entry = captureEntries.get(id)
+    const anchored = (field: string, type: 'warc.gz' | 'pdf'): Buffer | null =>
+      typeof entry?.[field] === 'string'
+        ? defaultCaptureStore.readArtifact(capture.caseId, capture.id, type)
+        : null
+    const transactionRecord = addContentAddressed(
+      anchored('transactionRecordHash', 'warc.gz'),
+      packagedTransactionRecordPath
+    )
+    const pdf = addContentAddressed(anchored('pdfHash', 'pdf'), packagedPdfPath)
 
     return {
       id,
@@ -1554,8 +1587,12 @@ function buildEvidenceZip(
       stampedAt: trusted.stampedAt,
       mhtmlPath: mhtml ? mhtmlPath : null,
       mhtmlSha256,
-      screenshotPath,
-      screenshotSha256,
+      screenshotPath: screenshot.path,
+      screenshotSha256: screenshot.sha256,
+      transactionRecordPath: transactionRecord.path,
+      transactionRecordSha256: transactionRecord.sha256,
+      pdfPath: pdf.path,
+      pdfSha256: pdf.sha256,
       textSha256: capture.textHash ?? null,
       // Corroboration-only TLS cert chain (#123, ADR-0002). NOT bound to the
       // captured transaction — the origin was re-contacted from the main process

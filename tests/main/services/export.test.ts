@@ -10,7 +10,7 @@ import {
   existsSync,
   writeFileSync
 } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
 import { createHash } from 'crypto'
@@ -66,6 +66,19 @@ import {
   resetInstallationId
 } from '@main/services/installationId'
 import type { ExportOptions, Note } from '@shared/types'
+import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
+import {
+  ENGINE_ENTRY_FIELDS_WITHOUT_FILES,
+  engineEntryFieldsWithOnly,
+  seedEngineCapture
+} from '../../helpers/captureEngineCapture'
+import { ENGINE_FILES, ENGINE_HASHES } from '../../helpers/captureEnginePackage'
+import {
+  PDF_PACKAGE_DIRECTORY,
+  TRANSACTION_RECORD_PACKAGE_DIRECTORY,
+  pdfPath,
+  transactionRecordPath
+} from '../../../src/packages/evidence-package-layout/index'
 
 // Skipped rather than failed when jq is absent: unlike openssl, jq is not a
 // keystone proof — it is the convenience command the runbook offers for finding
@@ -1083,6 +1096,232 @@ describe('export', () => {
     expect(rec.screenshotPath).toBeNull()
     expect(rec.screenshotSha256).toBeNull()
     expect(evidence.artifacts.some((a) => a.path.startsWith('screenshots/'))).toBe(false)
+  })
+
+  // Step 4 of docs/plans/2026-10-10-capture-engine-first-slice.md, on a Capture
+  // built by hand: nothing acquires the two files yet.
+  describe('the Transaction Record and the PDF (#1926)', () => {
+    const ENGINE_ID = 'engine-capture'
+    const recordPath = transactionRecordPath(ENGINE_HASHES.transactionRecord)
+    const enginePdfPath = pdfPath(ENGINE_HASHES.pdf)
+
+    interface EngineEvidence {
+      captures: Array<{
+        id: string
+        transactionRecordPath: string | null
+        transactionRecordSha256: string | null
+        pdfPath: string | null
+        pdfSha256: string | null
+      }>
+      artifacts: Array<{ path: string; sha256: string; sizeBytes: number }>
+    }
+
+    const seed = (captureId = ENGINE_ID) =>
+      seedEngineCapture({
+        caseDir: join(tempDir, 'captures', caseId),
+        caseId,
+        captureId,
+        store: defaultCaptureStore
+      })
+
+    const exportZip = async (
+      name: string,
+      overrides: { screenshots?: boolean; exportClass?: ExportOptions['exportClass'] } = {}
+    ): Promise<{ outputPath: string; entries: Map<string, Buffer>; evidence: EngineEvidence }> => {
+      const outputPath = join(tempDir, `${name}.zip`)
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: {
+            captures: true,
+            screenshots: overrides.screenshots ?? true,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
+          exportClass: overrides.exportClass ?? 'evidence',
+          outputPath
+        },
+        captureLifecycle
+      )
+      const entries = readStoredZipEntries(outputPath)
+      const index = entries.get('evidence.json')
+      const evidence = (index ? JSON.parse(index.toString('utf-8')) : null) as EngineEvidence
+      return { outputPath, entries, evidence }
+    }
+
+    const underNewDirectories = (entries: Map<string, Buffer>): string[] =>
+      [...entries.keys()].filter(
+        (name) =>
+          name.startsWith(`${TRANSACTION_RECORD_PACKAGE_DIRECTORY}/`) ||
+          name.startsWith(`${PDF_PACKAGE_DIRECTORY}/`)
+      )
+
+    it('ships both at their content addresses, lists them, and passes Package Verification', async () => {
+      await seed()
+      const { outputPath, entries, evidence } = await exportZip('engine-evidence')
+
+      expect(entries.get(recordPath)).toEqual(ENGINE_FILES.transactionRecord)
+      expect(entries.get(enginePdfPath)).toEqual(ENGINE_FILES.pdf)
+      expect(evidence.captures.find((c) => c.id === ENGINE_ID)).toMatchObject({
+        transactionRecordPath: recordPath,
+        transactionRecordSha256: ENGINE_HASHES.transactionRecord,
+        pdfPath: enginePdfPath,
+        pdfSha256: ENGINE_HASHES.pdf
+      })
+      expect(evidence.artifacts).toEqual(
+        expect.arrayContaining([
+          {
+            path: recordPath,
+            sha256: ENGINE_HASHES.transactionRecord,
+            sizeBytes: ENGINE_FILES.transactionRecord.length
+          },
+          { path: enginePdfPath, sha256: ENGINE_HASHES.pdf, sizeBytes: ENGINE_FILES.pdf.length }
+        ])
+      )
+
+      const dir = join(tempDir, 'engine-unpacked')
+      for (const [name, bytes] of readStoredZipEntries(outputPath)) {
+        mkdirSync(dirname(join(dir, name)), { recursive: true })
+        writeFileSync(join(dir, name), bytes)
+      }
+      const result = verifyEvidencePackage(dir)
+      expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
+      const status = (name: string) => result.checks.find((c) => c.name === name)?.status
+      expect(status(`capture ${ENGINE_ID} transaction record`)).toBe('pass')
+      expect(status(`capture ${ENGINE_ID} pdf`)).toBe('pass')
+    })
+
+    // Membership only: Package Verification fails this package on its anchored
+    // screenshot, a defect that predates this change (#1986).
+    it('ships both when the export leaves screenshots out, since no option omits them', async () => {
+      await seed()
+      const { entries } = await exportZip('engine-no-screenshots', { screenshots: false })
+
+      expect(entries.get(recordPath)).toEqual(ENGINE_FILES.transactionRecord)
+      expect(entries.get(enginePdfPath)).toEqual(ENGINE_FILES.pdf)
+    })
+
+    it("encloses a Duplicate's copies and its source's files as one entry each", async () => {
+      await seed()
+      const duplicated = await captureLifecycle.duplicate(ENGINE_ID)
+      if (duplicated.status !== 'duplicated') throw new Error('expected a duplicate')
+      const { entries, evidence } = await exportZip('engine-duplicate')
+
+      expect(underNewDirectories(entries).sort()).toEqual([enginePdfPath, recordPath].sort())
+      for (const id of [ENGINE_ID, duplicated.capture.id]) {
+        expect(evidence.captures.find((c) => c.id === id)).toMatchObject({
+          transactionRecordPath: recordPath,
+          pdfPath: enginePdfPath
+        })
+      }
+      expect(evidence.artifacts.filter((a) => a.path === recordPath)).toHaveLength(1)
+      expect(evidence.artifacts.filter((a) => a.path === enginePdfPath)).toHaveLength(1)
+    })
+
+    it('adds no member for a Capture without them, and lists none', async () => {
+      const { capture } = await ingest(caseId, '<html><body>No engine files</body></html>')
+      const { entries, evidence } = await exportZip('no-engine-files')
+
+      expect(underNewDirectories(entries)).toEqual([])
+      expect(evidence.captures.find((c) => c.id === capture.id)).toMatchObject({
+        transactionRecordPath: null,
+        transactionRecordSha256: null,
+        pdfPath: null,
+        pdfSha256: null
+      })
+    })
+
+    it('holds back a stored file the signed entry carries no hash for', async () => {
+      await seedEngineCapture({
+        caseDir: join(tempDir, 'captures', caseId),
+        caseId,
+        captureId: ENGINE_ID,
+        store: defaultCaptureStore,
+        fields: ENGINE_ENTRY_FIELDS_WITHOUT_FILES
+      })
+      // Written straight into the store, as a Case Archive import or a hand
+      // can leave a file there that the entry does not anchor.
+      defaultCaptureStore.writeTransactionRecord(caseId, ENGINE_ID, ENGINE_FILES.transactionRecord)
+      defaultCaptureStore.writePdf(caseId, ENGINE_ID, ENGINE_FILES.pdf)
+      const { entries, evidence } = await exportZip('engine-unanchored')
+
+      expect(underNewDirectories(entries)).toEqual([])
+      expect(evidence.captures.find((c) => c.id === ENGINE_ID)).toMatchObject({
+        transactionRecordPath: null,
+        transactionRecordSha256: null,
+        pdfPath: null,
+        pdfSha256: null
+      })
+      expect(
+        evidence.artifacts.some((a) => a.path === recordPath || a.path === enginePdfPath)
+      ).toBe(false)
+    })
+
+    it.each([
+      {
+        kept: 'transactionRecord',
+        keptPath: recordPath,
+        keptCheck: 'transaction record',
+        heldPath: enginePdfPath,
+        heldCheck: 'pdf'
+      },
+      {
+        kept: 'pdf',
+        keptPath: enginePdfPath,
+        keptCheck: 'pdf',
+        heldPath: recordPath,
+        heldCheck: 'transaction record'
+      }
+    ] as const)(
+      'ships only the $kept when the signed entry anchors only the $kept',
+      async ({ kept, keptPath, keptCheck, heldPath, heldCheck }) => {
+        await seedEngineCapture({
+          caseDir: join(tempDir, 'captures', caseId),
+          caseId,
+          captureId: ENGINE_ID,
+          store: defaultCaptureStore,
+          fields: engineEntryFieldsWithOnly(kept)
+        })
+        // Both in the store, so only the per-file gate keeps the other out.
+        defaultCaptureStore.writeTransactionRecord(
+          caseId,
+          ENGINE_ID,
+          ENGINE_FILES.transactionRecord
+        )
+        defaultCaptureStore.writePdf(caseId, ENGINE_ID, ENGINE_FILES.pdf)
+        const { outputPath, entries, evidence } = await exportZip(`engine-only-${kept}`)
+
+        expect(underNewDirectories(entries)).toEqual([keptPath])
+        const keptHash = ENGINE_HASHES[kept]
+        expect(evidence.captures.find((c) => c.id === ENGINE_ID)).toMatchObject(
+          kept === 'pdf'
+            ? { pdfPath: keptPath, pdfSha256: keptHash, transactionRecordPath: null }
+            : { transactionRecordPath: keptPath, transactionRecordSha256: keptHash, pdfPath: null }
+        )
+        expect(evidence.artifacts.some((a) => a.path === heldPath)).toBe(false)
+
+        const dir = join(tempDir, `engine-only-${kept}-unpacked`)
+        for (const [name, bytes] of readStoredZipEntries(outputPath)) {
+          mkdirSync(dirname(join(dir, name)), { recursive: true })
+          writeFileSync(join(dir, name), bytes)
+        }
+        const result = verifyEvidencePackage(dir)
+        expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
+        const status = (name: string) => result.checks.find((c) => c.name === name)?.status
+        expect(status(`capture ${ENGINE_ID} ${keptCheck}`)).toBe('pass')
+        expect(status(`capture ${ENGINE_ID} ${heldCheck}`)).toBe('skip')
+      }
+    )
+
+    it('leaves a Working Copy without them', async () => {
+      await seed()
+      const { entries } = await exportZip('engine-working-copy', { exportClass: 'working-copy' })
+
+      expect(entries.has(`pages/${ENGINE_ID}.mhtml`)).toBe(true)
+      expect(underNewDirectories(entries)).toEqual([])
+    })
   })
 
   it('renders Trusted Time as a column orthogonal to integrity status', async () => {

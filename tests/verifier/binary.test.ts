@@ -28,8 +28,10 @@ import {
   ENGINE_HASHES,
   writeEnginePackage
 } from '../helpers/captureEnginePackage'
+import { seedEngineCapture } from '../helpers/captureEngineCapture'
+import { defaultCaptureStore } from '@main/services/captureStore'
 import { LINK_FIELDS } from '../helpers/linkProvenance'
-import { transactionRecordPath } from '../../src/packages/evidence-package-layout/index'
+import { pdfPath, transactionRecordPath } from '../../src/packages/evidence-package-layout/index'
 import type { ExportOptions } from '@shared/types'
 
 // Integration test for the BUILT SEA binary (#122 §11). It is GATED on the
@@ -479,6 +481,49 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
         'Transaction Record file missing'
     )
     expect(proc.stdout).toContain('RESULT: FAIL')
+    rmSync(engineDir, { recursive: true, force: true })
+  })
+
+  // #1926 through the BUILT binary: a package the export path wrote from a
+  // Capture built by hand carries both files, and the binary binds them.
+  it('exits 0 with a PASS report on an exported package carrying both files', async () => {
+    const { id: caseId } = createCase({ name: 'Binary Engine Export' })
+    ensureCaseDir(caseId)
+    const caseDir = join(tempDir, 'captures', caseId)
+    initManifest(caseDir)
+    await seedEngineCapture({
+      caseDir,
+      caseId,
+      captureId: ENGINE_CAPTURE_ID,
+      store: defaultCaptureStore
+    })
+    const outputPath = join(tempDir, 'engine-export.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'evidence',
+        outputPath
+      },
+      createCaptureLifecycle({
+        selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+      })
+    )
+    const engineDir = mkdtempSync(join(tmpdir(), 'bb-binengineexport-'))
+    unzipToDir(outputPath, engineDir)
+    expect(existsSync(join(engineDir, pdfPath(ENGINE_HASHES.pdf)))).toBe(true)
+    const proc = spawnSync(binaryPath, [engineDir], { encoding: 'utf-8' })
+    expect(proc.status, proc.stdout + proc.stderr).toBe(0)
+    expect(proc.stdout).toContain('RESULT: PASS')
+    expect(proc.stdout).toContain(`[PASS] capture ${ENGINE_CAPTURE_ID} transaction record\n`)
+    expect(proc.stdout).toContain(`[PASS] capture ${ENGINE_CAPTURE_ID} pdf\n`)
     rmSync(engineDir, { recursive: true, force: true })
   })
 

@@ -18,7 +18,7 @@ import type { EnqueueResult, RecaptureQueueStatus } from '@shared/ipc'
 // docs/plans/2026-10-10-capture-engine-first-slice.md).
 export type ScreenshotRecord = Omit<CaptureInventory['screenshot'], 'present'>
 
-type PresentPdf = Extract<CaptureInventory['pdf'], { present: true }>
+export type PresentPdf = Extract<CaptureInventory['pdf'], { present: true }>
 
 // The PDF the render printed, with its inventory part, or why it has none
 // (step 10 of docs/plans/2026-10-10-capture-engine-first-slice.md).

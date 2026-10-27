@@ -84,7 +84,13 @@ const ctl = vi.hoisted(() => ({
   printHangs: false,
   printThrows: false,
   printOptions: [] as unknown[],
-  printEvent: false
+  printEvent: false,
+  // The page the window holds, and a navigation it makes after the save, once
+  // the text is read: to another page, a reload of the same one, or an in-page
+  // change of its address (the review of #2000, finding 2).
+  currentUrl: 'https://example.test/final',
+  currentTitle: 'Mock Title',
+  navigateAfterSave: null as null | 'other-page' | 'reload' | 'in-page'
 }))
 
 type Handler = (...args: unknown[]) => void
@@ -146,6 +152,20 @@ const { MockBrowserWindow } = vi.hoisted(() => {
       ctl.calls.push(`setProxy ${JSON.stringify(config)}`)
     })
   })
+
+  // The page's navigation after the save, as Chromium reports each kind: a
+  // cross-document one emits `did-navigate`, an in-page one changes only the URL.
+  const navigateAfterSave = (handlers: Map<string, Handler>): void => {
+    if (ctl.navigateAfterSave === 'other-page') {
+      ctl.currentUrl = 'https://example.test/elsewhere'
+      ctl.currentTitle = 'Elsewhere'
+      handlers.get('did-navigate')?.({}, ctl.currentUrl, 404)
+    } else if (ctl.navigateAfterSave === 'reload') {
+      handlers.get('did-navigate')?.({}, ctl.currentUrl, 200)
+    } else if (ctl.navigateAfterSave === 'in-page') {
+      ctl.currentUrl = 'https://example.test/final#later'
+    }
+  }
 
   // One finished request on the page's own session; the https main document
   // carries the details Bound TLS Details are made from.
@@ -263,7 +283,10 @@ const { MockBrowserWindow } = vi.hoisted(() => {
             return { y: 0, height: 25000, viewportHeight: 900 }
           }
           if (script.includes('window.scrollTo(0, 0)')) return undefined
-          if (script.includes('innerText')) return 'hello world'
+          if (script.includes('innerText')) {
+            navigateAfterSave(handlers)
+            return 'hello world'
+          }
           return undefined
         },
         async savePage(path: string) {
@@ -281,10 +304,10 @@ const { MockBrowserWindow } = vi.hoisted(() => {
           return ctl.pdfBytes ?? Buffer.from('%PDF-1.4 invented print')
         },
         getTitle() {
-          return 'Mock Title'
+          return ctl.currentTitle
         },
         getURL() {
-          return 'https://example.test/final'
+          return ctl.currentUrl
         },
         getUserAgent() {
           return 'MockAgent/1.0'
@@ -405,6 +428,9 @@ function resetPrint(): void {
   ctl.printThrows = false
   ctl.printOptions = []
   ctl.printEvent = false
+  ctl.currentUrl = 'https://example.test/final'
+  ctl.currentTitle = 'Mock Title'
+  ctl.navigateAfterSave = null
 }
 
 describe('trimTrailingBackground', () => {
@@ -1535,6 +1561,32 @@ describe('renderPageInHiddenWindow, the PDF', () => {
     const at = await render()
     expect(at.pdf.present && at.pdf.bytes.length).toBe(MAX_PDF_SIZE)
   }, 30_000)
+
+  // Finding 2 of the review of #2000: a page that navigates after the save would be printed,
+  // and the Capture stored, as the later page.
+  it.each([
+    ['to another page', 'other-page', 'https://example.test/elsewhere'],
+    ['by reloading itself', 'reload', 'https://example.test/final'],
+    ['to another address in place', 'in-page', 'https://example.test/final#later']
+  ] as const)(
+    'keeps the address, title and status of the save, and does not print, when the page navigates %s',
+    async (_how, navigation, later) => {
+      ctl.navigateAfterSave = navigation
+      const result = await render()
+      expect(ctl.currentUrl).toBe(later)
+      expect(result).toMatchObject({
+        finalUrl: 'https://example.test/final',
+        title: 'Mock Title',
+        httpStatus: 200
+      })
+      expect(ctl.order).not.toContain('printToPDF')
+      expect(result.pdf).toMatchObject({ present: false, reason: 'failed' })
+      expect(errorOf(result.pdf)).toContain(
+        `The page navigated after it was saved, to ${later}, so it was not printed`
+      )
+    },
+    30_000
+  )
 })
 
 // The same render handed to the Recapture queue and the Capture's ingest, so each outcome is
@@ -1616,6 +1668,21 @@ describe('a Recapture of a rendered page, through ingest, and its PDF', () => {
 
     writeFileSync(pdfFile(id), Buffer.from('%PDF-1.4 the printed pagE'))
     await expect(verifyCapture(id)).resolves.toMatchObject({ status: 'tampered' })
+  }, 30_000)
+
+  it('stores a page that navigated after the save under the address and title it saved', async () => {
+    ctl.navigateAfterSave = 'other-page'
+    const { id, entry } = await recaptureOnce()
+    expect(entry).toMatchObject({
+      url: 'https://example.test/final',
+      finalUrl: 'https://example.test/final',
+      httpStatus: 200,
+      inventory: { pdf: { present: false, reason: 'failed' } }
+    })
+    expect(entry).not.toHaveProperty('pdfHash')
+    expect(getCapture(id)).toMatchObject({ url: 'https://example.test/final', title: 'Mock Title' })
+    expect(existsSync(pdfFile(id))).toBe(false)
+    await expect(verifyCapture(id)).resolves.toMatchObject({ status: 'verified' })
   }, 30_000)
 
   it.each([

@@ -124,6 +124,11 @@ const PRINT_PAGE = `<!doctype html><html><head><title>Print Fixture</title>
 <style>@media print { body { background-image: url(/print-only.png) } }</style></head>
 <body><h1>${PRINT_TEXT}</h1></body></html>`
 
+// The review of #2000, finding 2: a page that navigates to another after the save.
+const NAV_A_TEXT = 'Page A, the saved page'
+const NAV_A = `<!doctype html><title>Nav A</title><h1>${NAV_A_TEXT}</h1>`
+const NAV_B = '<!doctype html><title>Nav B</title><h1>Page B, after the save</h1>'
+
 // A page with one cross-site frame, for the stubbed setup failures.
 const STUB_PAGE = (frameOrigin: string) => `<!doctype html><html><head><title>Stub Fixture</title>
 </head><body><iframe src="${frameOrigin}/frame"></iframe></body></html>`
@@ -203,6 +208,10 @@ function startPageServer(log: Logged[], frameOrigin: () => string): Server {
         return send(res, 'text/html', PRINT_PAGE)
       case '/print-only.png':
         return send(res, 'image/png', PNG)
+      case '/nav-a':
+        return send(res, 'text/html', NAV_A)
+      case '/nav-b':
+        return send(res, 'text/html', NAV_B)
       case '/style.css':
         return send(res, 'text/css', 'h1 { color: #222 }')
       case '/redir-same':
@@ -352,6 +361,30 @@ async function verified(page: Page, captureId: string): Promise<string> {
     }
     return (await w.birdbrain.captures.verify(id)).status
   }, captureId)
+}
+
+// Makes the page at `/nav-a` navigate to `/nav-b` once the render has saved it and read its
+// text, and holds the render until the navigation has committed, so the print step meets the
+// later page. Patches the main process of this launch only; the app's code is unchanged.
+async function navigateAfterTheSave(electronApp: ElectronApplication): Promise<void> {
+  await electronApp.evaluate(({ app }) => {
+    app.on('web-contents-created', (_event, contents) => {
+      const original = contents.executeJavaScript.bind(contents)
+      contents.executeJavaScript = async (code: string, userGesture?: boolean) => {
+        const result = await original(code, userGesture)
+        if (code.includes('innerText') && contents.getURL().endsWith('/nav-a')) {
+          await Promise.race([
+            new Promise<void>((resolve) => {
+              contents.once('did-navigate', () => resolve())
+              original("location.href = '/nav-b'").catch(() => {})
+            }),
+            new Promise<void>((resolve) => setTimeout(resolve, 10_000))
+          ])
+        }
+        return result
+      }
+    })
+  })
 }
 
 // Exports the Case as an evidence package through the app, and unpacks it into a new directory.
@@ -720,6 +753,51 @@ test.describe('Transaction Record of a background capture', () => {
       reason: `capture ${captureId}: PDF hash does not match manifest`
     })
     rmSync(dirname(dir), { recursive: true, force: true })
+  })
+
+  // Finding 2 of the review of #2000: the page navigates after the save, before the print.
+  test('stores a page that navigates after the save as the page it saved, and prints no PDF', async ({
+    page,
+    electronApp
+  }) => {
+    test.setTimeout(150000)
+    await navigateAfterTheSave(electronApp)
+    const caseId = await createCase(page, 'Navigation E2E')
+    await recordActivity(page)
+    log.length = 0
+    const url = `${pageServer.origin}/nav-a`
+    const end = await recapture(page, caseId, url)
+    expect(end).toMatchObject({ type: 'stored' })
+    const captureId = end.captureId!
+    expect(log.some(({ url: logged }) => logged === `${pageServer.origin}/nav-b`)).toBe(true)
+
+    const { entry } = await storedCapture(page, caseId, captureId)
+    expect(entry.url).toBe(url)
+    expect(entry).not.toHaveProperty('finalUrl')
+    expect(entry.inventory).toMatchObject({ pdf: { present: false, reason: 'failed' } })
+    expect(entry).not.toHaveProperty('pdfHash')
+    const { storagePath, title } = await page.evaluate(
+      async ({ id, capture }) => {
+        const w = window as unknown as {
+          birdbrain: {
+            settings: { get: () => Promise<{ storagePath: string }> }
+            captures: { list: (caseId: string) => Promise<Array<{ id: string; title: string }>> }
+          }
+        }
+        const rows = await w.birdbrain.captures.list(id)
+        return {
+          storagePath: (await w.birdbrain.settings.get()).storagePath,
+          title: rows.find((row) => row.id === capture)?.title
+        }
+      },
+      { id: caseId, capture: captureId }
+    )
+    expect(title).toBe('Nav A')
+    expect(existsSync(join(storagePath, caseId, `${captureId}.pdf`))).toBe(false)
+    expect(readFileSync(join(storagePath, caseId, `${captureId}.txt`), 'utf-8')).toContain(
+      NAV_A_TEXT
+    )
+    expect(await verified(page, captureId)).toBe('verified')
   })
 })
 

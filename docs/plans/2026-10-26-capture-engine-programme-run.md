@@ -54,8 +54,10 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
   inventory count, `finishedWithoutResponse`, added to schema 6 in #1978. The extra
   `history.length` entry stays and is recorded as a known limitation. The 120 s limit and the 35 s
   reserve stay, and the recording phases shrink to the time left.
-- **The stack after the new count.** Each stacked branch merges #1978's new head and updates any
-  fixture that builds a present Transaction Record inventory.
+- **The stack after the new count.** Done 2026-10-26: #1980, #1981, #1982, #1984, #1985, #1996
+  and #1997 merged #1978's new head with preflight green at each; no fixture or downstream digest
+  needed changing, and #1985's report gained the finished-without-response row. #1999 merges #1996
+  next, then #2000 and the #1843 branch.
 - **Step 10 rulings, 2026-10-26.** The final-artifact reserve rises to 40 s for the print, leaving
   80 s for load and scroll. The dev-only packages pdf.js pulls in (`@napi-rs/canvas` 0.1.100, its
   platform packages, and a stream helper) are accepted.
@@ -72,7 +74,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 
 | Slice | Issue | Pull request | State |
 | --- | --- | --- | --- |
-| Step 1, verifier and schema | #1904 | #1978 | `finishedWithoutResponse` added at `083dba1b`, preflight green; merging down the stack |
+| Step 1, verifier and schema | #1904 | #1978 | `finishedWithoutResponse` added at `083dba1b`, preflight green |
 | Step 2, mirror columns | #1907 | #1980 | scheduled review: request changes; fix round pushed at `b3a68d48` |
 | Step 3, the Case carries the files | #1925 | #1982 | review: approve, fix round pushed at `7dc83929` |
 | Step 5, the report states the fields | #1927 | #1985 | fix round pushed at `b4bd9b71`, preflight green |

@@ -120,10 +120,10 @@ those pages as locked when they load at their top. With `height: 100%` the docum
 by 8 px, and the 5000 px block scrolls inside `body`, which neither build's step considers: its
 inner roots are the descendants of `body`. Loaded at the fragment, that document starts at its
 8 px end. The build before step 6 read that as a lock, lifted it, and scrolled to 5042; this step
-reads a root at its end, lifts nothing, and ends `stopped-growing` at 487, as both builds do for
-the page loaded at its top. So on that page, loaded at the fragment, the phase no longer loosens
-the lock and scrolls none of the block, where the build before step 6 scrolled all of it. In
-quirks mode the full-height document cannot move from script, so both builds lift its lock
+reads a root at its end, lifts nothing, and ends `stopped-growing` at 487; loaded at its top,
+that page stops at 487 in both builds. So on that page, loaded at the fragment, the phase no
+longer loosens the lock and scrolls none of the block, where the build before step 6 scrolled all
+of it. In quirks mode the full-height document cannot move from script, so both builds lift its lock
 wherever the page loads.
 
 ## False positives and negatives
@@ -148,8 +148,9 @@ wherever the page loads.
 
 - `endHeight` is the height of the root the step scrolled. On a page that scrolls an inner
   container, that is the container's height, not the document's.
-- The step never scrolls `body` itself. A page with a doctype and `height: 100%; overflow: hidden`
-  on `html` and `body` scrolls its content there, so the phase lifts no lock and stops at the
+- In standards mode the step never scrolls `body`: the document is `html`, and its inner roots
+  are the descendants of `body`. A page with a doctype and `height: 100%; overflow: hidden` on
+  `html` and `body` scrolls its content there, so the phase lifts no lock and stops at the
   document's 8 px overflow; the scroll-lock runs above give the numbers.
 - When the browser reports no CSS content size, the screenshot is taken of the 1280 by 900
   viewport, and `contentWidth` and `contentHeight` record that box, which D6 defines as the box

@@ -70,6 +70,7 @@ const TRANSACTION_RECORD_PART = {
   cancelled: 1,
   failed: 0,
   inFlight: 1,
+  finishedWithoutResponse: 1,
   bodiesOmitted: 1,
   incompleteRequestBodies: 0,
   webSockets: 0,

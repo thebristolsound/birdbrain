@@ -495,8 +495,6 @@ export async function finishTransactionRecord(
       Math.min(writeMs, timeLeftMs()),
       'The Transaction Record writer'
     )
-    // `counts.finishedWithoutResponse` joins these once the schema-6 inventory has the field
-    // (ruled 2026-10-26, added by #1978); until then the part does not carry it.
     // A part that says `present: true` parses only as the present variant.
     const inventory = TransactionRecordPartSchema.parse({
       present: true,
@@ -505,6 +503,7 @@ export async function finishTransactionRecord(
       cancelled: counts.cancelled,
       failed: counts.failed,
       inFlight: counts.inFlight,
+      finishedWithoutResponse: counts.finishedWithoutResponse,
       bodiesOmitted: counts.bodiesOmitted,
       incompleteRequestBodies: counts.incompleteRequestBodies,
       webSockets: counts.webSockets,

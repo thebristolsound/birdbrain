@@ -627,6 +627,7 @@ describe('finishTransactionRecord', () => {
       cancelled: 0,
       failed: 0,
       inFlight: 0,
+      finishedWithoutResponse: 0,
       bodiesOmitted: 0,
       incompleteRequestBodies: 0,
       webSockets: 0,
@@ -805,7 +806,7 @@ describe('finishTransactionRecord', () => {
     expect(outcome).toMatchObject({ present: false, reason: 'failed' })
   })
 
-  it('signs no count of requests finished with no response until the schema has the field', async () => {
+  it('signs the count of requests finished with no response apart from those in flight', async () => {
     const { fake, recorder } = await started()
     const { on } = page(fake)
     on('sw')('Network.requestWillBeSent', {
@@ -822,8 +823,11 @@ describe('finishTransactionRecord', () => {
       writer: WRITER
     })
     if (!outcome.present) throw outcome.error
-    expect(outcome.inventory).toMatchObject({ exchanges: 0, inFlight: 0 })
-    expect(outcome.inventory).not.toHaveProperty('finishedWithoutResponse')
+    expect(outcome.inventory).toMatchObject({
+      exchanges: 0,
+      inFlight: 0,
+      finishedWithoutResponse: 1
+    })
   })
 
   it('stops listening once disposed', async () => {

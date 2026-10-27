@@ -67,10 +67,10 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 - **#1843 rulings, 2026-10-26.** Pin only images that displayed, while the network is still
   recorded; wait for images offered as sets to settle first, and state that the counts cover only
   settled images.
-- **CI is locked.** From about 04:10Z on 2026-10-27, GitHub Actions jobs fail before starting
-  with a message that the account is locked for a billing issue. Heads pushed after that (#2000 `39ae663a`,
-  #2001 `ae216441`, #2002, #1987 `47aad589`) have no CI result; every other open PR's head had CI green, except
-  #1987.
+- **CI lock.** GitHub Actions jobs failed before starting from about 04:10Z to 06:00Z on
+  2026-10-27 with a billing lock. After the maintainer cleared it, the locked runs on #1987,
+  #2000, #2001 and #2002 were re-run, and CI, Security and the gates passed on all four, apart from
+  the merge gate waiting on the maintainer's sign-off for evidence-affecting PRs.
 - **Step 6 and #1843 in one release.** Ruled 2026-10-26: no release carries step 6 without
   #1843, because step 6 signs zero pinned-image counts that read the same as a pinning pass that
   ran and found nothing.
@@ -93,12 +93,12 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Character set spike | #1983 | #1988 | rulings recorded at `33ed5a01`; posted on #1929 |
 | Step 6, scroll and screenshot record (writer) | #1928 | #1996 | fix round pushed at `7d309557`; merges after the tag, with #1843 |
 | ADR-0040 link writer | #1995 | #1997 | fix round pushed at `5db2bc69`; merges after the tag |
-| Viewer slice 2 Part A | #1735 | #1987 | CI e2e failure reproduced and fixed in the test at `47aad589`; CI re-run owed after the lock |
+| Viewer slice 2 Part A | #1735 | #1987 | CI e2e failure fixed in the test at `47aad589`; CI green |
 | Viewer slice 3, one-link lookup | #1737 | #1990 | fix round pushed at `1a1dfa3d`, preflight green |
 | Viewer slice 3, batch lookup | #1738 | #1998 | fix round pushed at `a45764ce`, preflight green |
 | Step 9, record the Transaction Record (writer) | #1929 | #1999 | fix round and stack merge pushed at `11fcd9c2`; merges after the tag |
-| Step 10, PDF (writer) | #1930 | #2000 | fix round pushed at `39ae663a`, audit passing; merges after the tag |
-| Pin images offered as sets (writer) | #1843 | #2002 | fix round pushed at `d48dae2d`, local checks green; CI owed after the lock; ships with step 6 |
+| Step 10, PDF (writer) | #1930 | #2000 | fix round pushed at `39ae663a`, CI and audit green; merges after the tag |
+| Pin images offered as sets (writer) | #1843 | #2002 | fix round pushed at `d48dae2d`, CI green; ships with step 6 |
 | ADR-0040 acceptance | #1736 | #1977 | draft, preflight green |
 | ADR-0040 verifier, schema 6 | #1976 | #1981 | review: approve, stacked on #1978 |
 
@@ -137,8 +137,7 @@ Every step of programme 2 has an open draft pull request, reviewed and through i
 Nothing is left to build until the account's GitHub Actions lock is lifted and the maintainer
 merges.
 
-1. **Billing.** Clear the Actions billing lock, then re-run CI on #1987, #2000, #2001 and #2002,
-   whose latest heads have no CI result.
+1. **Billing.** Done 2026-10-27: the lock is cleared and the four heads it hit have green CI.
 2. **#2001 first.** It makes the scheduled review read CI on stacked pull requests.
 3. **Before the tag, in stack order.** #1977, then #1978, #1980, #1981, #1982, #1984, #1985,
    and #1979 and #1988 from `main`. Steps 3 and 4 merge before the tag (the hold recorded

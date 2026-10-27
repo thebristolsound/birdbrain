@@ -6,13 +6,18 @@ import { createHash } from 'crypto'
 import { gunzipSync } from 'zlib'
 import sharp from 'sharp'
 import type { WebContents } from 'electron'
-import { runInNewContext } from 'vm'
+import { createContext, runInContext, runInNewContext, type Context } from 'vm'
 import {
+  IMAGE_SETS_LOADING_SCRIPT,
+  PINNED_COUNTS_SCRIPT,
+  PINNED_LOADING_SCRIPT,
+  PIN_IMAGE_SOURCES_SCRIPT,
+  PIN_WORLD_ID,
   SCROLL_STEP_SCRIPT,
   captureFullPageScreenshot,
   pinImageSources,
-  pinImageSourcesScript,
   renderPageInHiddenWindow,
+  settleImageSets,
   scrollToLoadLazyContent,
   trimTrailingBackground
 } from '@main/services/backgroundRenderer'
@@ -95,14 +100,18 @@ const ctl = vi.hoisted(() => ({
   currentTitle: 'Mock Title',
   navigateAfterSave: null as null | 'other-page' | 'reload' | 'in-page',
   setProxyDelayMs: 0,
-  // Image Source Pinning (#1843): the page's images the pin script runs over,
-  // each script it was handed, and a script that throws or whose counts are
-  // replaced. `runPin` runs a script over `images`; it is set below the imports.
+  // Image Source Pinning (#1843): the page's images, each isolated-world call with
+  // its world and time, a pin script that throws, counts that replace the last
+  // script's, a request the page makes while the pin runs, and the content height
+  // the layout metrics report once it has run. `runPinWorld` runs a script in the
+  // window's isolated world; it is set below the imports.
   images: [] as unknown[],
-  pinScripts: [] as string[],
+  pinCalls: [] as Array<{ worldId: number; code: string; at: number }>,
   pinThrows: false,
   pinCounts: undefined as unknown,
-  runPin: null as unknown as (script: string) => Promise<unknown>
+  pinEvent: false,
+  contentHeightAfterPin: null as number | null,
+  runPinWorld: null as unknown as (wc: object, code: string) => unknown
 }))
 
 type Handler = (...args: unknown[]) => void
@@ -138,6 +147,10 @@ interface FakeWebContents {
   on(event: string, cb: Handler): void
   loadURL(url: string): Promise<void>
   executeJavaScript(script: string): Promise<unknown>
+  executeJavaScriptInIsolatedWorld(
+    worldId: number,
+    scripts: Array<{ code: string }>
+  ): Promise<unknown>
   savePage(path: string): Promise<void>
   printToPDF(options: unknown): Promise<Buffer>
   getTitle(): string
@@ -250,10 +263,7 @@ const { MockBrowserWindow } = vi.hoisted(() => {
             if (cmd === 'Page.getLayoutMetrics') {
               return { cssContentSize: { x: 0, y: 0, width: 100, height: ctl.contentHeight } }
             }
-            if (cmd === 'Page.captureScreenshot') {
-              if (ctl.lateEvent) emitPage(this, 'late', 'https://example.test/late.js', 'Script')
-              return { data: ctl.pngBase64 }
-            }
+            if (cmd === 'Page.captureScreenshot') return { data: ctl.pngBase64 }
             if (cmd === 'Network.getResponseBody') {
               if (ctl.bodyHangs) return new Promise(() => {})
               const { requestId } = params as { requestId: string }
@@ -290,13 +300,19 @@ const { MockBrowserWindow } = vi.hoisted(() => {
           // The main document, as the debugger reports it once Network is enabled.
           emitPage(this.debugger, 'doc', url, 'Document')
         },
-        async executeJavaScript(script: string) {
-          if (script.includes("querySelectorAll('img[srcset]')")) {
-            ctl.order.push('pinImageSources')
-            ctl.pinScripts.push(script)
+        async executeJavaScriptInIsolatedWorld(worldId: number, scripts: Array<{ code: string }>) {
+          const [{ code }] = scripts
+          ctl.pinCalls.push({ worldId, code, at: Date.now() })
+          if (code.includes('globalThis.birdbrainPinned = pinned')) {
             if (ctl.pinThrows) throw new Error('the page navigated away during the pin')
-            return ctl.pinCounts !== undefined ? ctl.pinCounts : ctl.runPin(script)
+            if (ctl.pinEvent) {
+              emitPage(this.debugger, 'pin', 'https://example.test/pinned.png', 'Image')
+            }
+            if (ctl.contentHeightAfterPin !== null) ctl.contentHeight = ctl.contentHeightAfterPin
           }
+          return ctl.runPinWorld(this, code)
+        },
+        async executeJavaScript(script: string) {
           if (script.includes('readyState')) return undefined
           if (script.includes("style.overflow = 'visible'")) return null
           if (script.includes('root.scrollTop + viewportHeight')) {
@@ -312,6 +328,8 @@ const { MockBrowserWindow } = vi.hoisted(() => {
         },
         async savePage(path: string) {
           ctl.order.push('savePage')
+          if (ctl.lateEvent)
+            emitPage(this.debugger, 'late', 'https://example.test/late.js', 'Script')
           writeFileSync(path, 'From: test\r\n\r\nMHTML body')
         },
         async printToPDF(options: unknown) {
@@ -421,24 +439,38 @@ async function heightOf(png: Buffer): Promise<number> {
   return (await sharp(png).metadata()).height ?? -1
 }
 
-// An <img> as the pin script reads it, with the browser's `currentSrc`. `loads`
-// is what assigning a `src` does: the image loads at once, never finishes, or
-// fails (`complete` with no natural width).
+// What an <img> holds: an image it displayed, a load still running, or a load
+// that failed (`complete` with no natural size).
+type ImageState = 'shown' | 'loading' | 'failed'
+
+// An <img> as the pin scripts read it, with the browser's `currentSrc`. `onPin`
+// is what assigning a `src` does.
 class FakeImage {
   readonly attributes: Map<string, string>
   readonly assigned: string[] = []
   complete = true
   naturalWidth = 1
+  naturalHeight = 1
+  isConnected = true
   constructor(
     attributes: Record<string, string>,
     readonly currentSrc: string,
-    readonly loads: 'at-once' | 'never' | 'fails' = 'at-once',
+    state: ImageState = 'shown',
+    readonly onPin: ImageState = 'shown',
     readonly parentElement: { localName: string } | null = { localName: 'body' }
   ) {
     this.attributes = new Map(Object.entries(attributes))
+    this.hold(state)
+  }
+  hold(state: ImageState): void {
+    this.complete = state !== 'loading'
+    this.naturalWidth = this.naturalHeight = state === 'shown' ? 1 : 0
   }
   removeAttribute(name: string): void {
     this.attributes.delete(name)
+  }
+  getAttribute(name: string): string | null {
+    return this.attributes.get(name) ?? null
   }
   get src(): string {
     return this.attributes.get('src') ?? ''
@@ -446,30 +478,59 @@ class FakeImage {
   set src(value: string) {
     this.attributes.set('src', value)
     this.assigned.push(value)
-    this.complete = this.loads !== 'never'
-    this.naturalWidth = this.loads === 'at-once' ? 1 : 0
+    this.hold(this.onPin)
   }
 }
 
-// Runs the pin script over `images` as the page's document, with the clock the
-// test runs under, and hands back what structured cloning would.
-async function runPinScript(script: string, images: FakeImage[]): Promise<unknown> {
-  const document = {
-    querySelectorAll: (selector: string) => {
-      expect(selector).toBe('img[srcset]')
-      return images.filter((img) => img.attributes.has('srcset'))
+// An isolated world over `images` as the page's document. Its globals last
+// between scripts, as Electron's isolated worlds do.
+function pinWorld(images: () => FakeImage[]): Context {
+  return createContext({
+    document: {
+      querySelectorAll: (selector: string) => {
+        expect(selector).toBe('img[srcset]')
+        return images().filter((img) => img.attributes.has('srcset'))
+      }
     }
-  }
-  const result: unknown = await runInNewContext(script, { document, setTimeout, Date })
-  return JSON.parse(JSON.stringify(result))
+  })
 }
 
-ctl.runPin = (script) => runPinScript(script, ctl.images as FakeImage[])
+// Runs a pin script in `world` and hands back what structured cloning would.
+function inWorld(world: Context, code: string): unknown {
+  const result: unknown = runInContext(code, world)
+  return result === undefined ? undefined : JSON.parse(JSON.stringify(result))
+}
+
+// The step each pin script is, for the order the render calls them in.
+const PIN_STEPS = new Map([
+  [IMAGE_SETS_LOADING_SCRIPT, 'settleImageSets'],
+  [PIN_IMAGE_SOURCES_SCRIPT, 'pinImageSources'],
+  [PINNED_LOADING_SCRIPT, 'pinnedLoading'],
+  [PINNED_COUNTS_SCRIPT, 'pinnedCounts']
+])
+
+const pinWorlds = new WeakMap<object, Context>()
+ctl.runPinWorld = (wc, code) => {
+  ctl.order.push(PIN_STEPS.get(code) ?? 'unknown pin script')
+  if (code === PINNED_COUNTS_SCRIPT && ctl.pinCounts !== undefined) return ctl.pinCounts
+  let world = pinWorlds.get(wc)
+  if (!world) {
+    world = pinWorld(() => ctl.images as FakeImage[])
+    pinWorlds.set(wc, world)
+  }
+  return inWorld(world, code)
+}
+
+// When each call of a pin step was made.
+const callsOf = (code: string): number[] =>
+  ctl.pinCalls.filter((call) => call.code === code).map(({ at }) => at)
 
 const ORIGIN = 'https://example.test'
 
-// The triage's five images (#1843) and a `srcset` image still loading, which
-// Chromium gives no `currentSrc` until it has loaded: three pinned.
+// The triage's five images (#1843), and three `srcset` images pinning leaves as
+// they are: one still loading, which Chromium gives no `currentSrc` until it
+// has loaded, one whose load failed, and one shown from a `blob:` address.
+// Three are pinned.
 function fiveImagePage(): Record<string, FakeImage> {
   const picture = { localName: 'picture' }
   return {
@@ -491,24 +552,24 @@ function fiveImagePage(): Record<string, FakeImage> {
     picture: new FakeImage(
       { src: '/picture-fallback.png', srcset: '/picture-own.png 1x' },
       `${ORIGIN}/picture-source.png`,
-      'at-once',
+      'shown',
+      'shown',
       picture
     ),
     plain: new FakeImage({ src: '/plain.png' }, `${ORIGIN}/plain.png`),
-    loading: new FakeImage({ srcset: '/slow.png 1x' }, '')
+    loading: new FakeImage({ srcset: '/slow.png 1x' }, '', 'loading'),
+    failed: new FakeImage({ srcset: '/missing.png 1x' }, `${ORIGIN}/missing.png`, 'failed'),
+    blob: new FakeImage({ srcset: `blob:${ORIGIN}/7f3c 1x` }, `blob:${ORIGIN}/7f3c`)
   }
-}
-
-// The wait a pin script was handed.
-function pinWaitOf(script: string): number {
-  return Number(/Date\.now\(\) \+ (\d+)/.exec(script)![1])
 }
 
 function resetPin(): void {
   ctl.images = []
-  ctl.pinScripts = []
+  ctl.pinCalls = []
   ctl.pinThrows = false
   ctl.pinCounts = undefined
+  ctl.pinEvent = false
+  ctl.contentHeightAfterPin = null
 }
 
 // Every control back to a page that loads, records and prints.
@@ -1011,30 +1072,14 @@ describe('the Scroll-to-load step script', () => {
   })
 })
 
-// Image Source Pinning (#1843, ADR-0055): the in-page script, run over fake
-// images under fake time.
-describe('the Image Source Pinning script', () => {
-  beforeEach(() => {
-    vi.useFakeTimers()
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  async function pin(images: FakeImage[], waitMs: number) {
-    const pending = runPinScript(pinImageSourcesScript(waitMs), images)
-    await vi.runAllTimersAsync()
-    return pending
-  }
-
-  it('pins each srcset image outside a picture to its currentSrc and drops srcset and sizes', async () => {
+// Image Source Pinning (#1843, ADR-0055, rulings of 2026-10-26): the
+// isolated-world scripts, run over fake images.
+describe('the Image Source Pinning scripts', () => {
+  it('pins each displayed srcset image outside a picture to its currentSrc and drops srcset and sizes', () => {
     const page = fiveImagePage()
+    const world = pinWorld(() => Object.values(page))
 
-    expect(await pin(Object.values(page), 5_000)).toEqual({
-      pinnedImages: 3,
-      pinnedImagesNotLoaded: 0
-    })
+    expect(inWorld(world, PIN_IMAGE_SOURCES_SCRIPT)).toBe(3)
 
     for (const [img, src] of [
       [page.srcsetOnly, `${ORIGIN}/srcset-only-1x.png`],
@@ -1043,68 +1088,174 @@ describe('the Image Source Pinning script', () => {
     ] as const) {
       expect(Object.fromEntries(img.attributes)).toEqual({ src })
     }
-    // A picture's image, a plain image, and one with no currentSrc yet are left as they were.
-    expect(page.picture.assigned).toEqual([])
-    expect(page.picture.attributes.get('srcset')).toBe('/picture-own.png 1x')
-    expect(page.plain.assigned).toEqual([])
-    expect(page.loading.assigned).toEqual([])
-    expect(Object.fromEntries(page.loading.attributes)).toEqual({ srcset: '/slow.png 1x' })
+    expect(inWorld(world, PINNED_COUNTS_SCRIPT)).toEqual({
+      pinnedImages: 3,
+      pinnedImagesNotLoaded: 0
+    })
   })
 
-  it('pins nothing and counts 0 on a page with no srcset image', async () => {
-    const plain = new FakeImage({ src: '/plain.png' }, `${ORIGIN}/plain.png`)
-    expect(await pin([plain], 5_000)).toEqual({ pinnedImages: 0, pinnedImagesNotLoaded: 0 })
+  it('leaves a picture image, a plain one, one still loading, a failed one and a blob: one as they were', () => {
+    const page = fiveImagePage()
+    inWorld(
+      pinWorld(() => Object.values(page)),
+      PIN_IMAGE_SOURCES_SCRIPT
+    )
+
+    const { picture, plain, loading, failed, blob } = page
+    for (const img of [picture, plain, loading, failed, blob]) expect(img.assigned).toEqual([])
+    expect(Object.fromEntries(picture.attributes)).toEqual({
+      src: '/picture-fallback.png',
+      srcset: '/picture-own.png 1x'
+    })
+    expect(Object.fromEntries(loading.attributes)).toEqual({ srcset: '/slow.png 1x' })
+    expect(Object.fromEntries(failed.attributes)).toEqual({ srcset: '/missing.png 1x' })
+    expect(Object.fromEntries(blob.attributes)).toEqual({ srcset: `blob:${ORIGIN}/7f3c 1x` })
   })
 
-  it('counts a pinned image that is still loading when the wait runs out, after waiting it all', async () => {
-    const stuck = new FakeImage({ srcset: '/a.png 1x' }, `${ORIGIN}/a.png`, 'never')
-    const loaded = new FakeImage({ srcset: '/b.png 1x' }, `${ORIGIN}/b.png`)
-    const startedAt = Date.now()
+  it('pins nothing and counts 0 on a page with no srcset image', () => {
+    const world = pinWorld(() => [new FakeImage({ src: '/plain.png' }, `${ORIGIN}/plain.png`)])
+    expect(inWorld(world, PIN_IMAGE_SOURCES_SCRIPT)).toBe(0)
+    expect(inWorld(world, PINNED_COUNTS_SCRIPT)).toEqual({
+      pinnedImages: 0,
+      pinnedImagesNotLoaded: 0
+    })
+  })
 
-    expect(await pin([stuck, loaded], 2_000)).toEqual({
-      pinnedImages: 2,
+  it('counts the images offered as sets still loading, outside a picture', () => {
+    const page = fiveImagePage()
+    const pictureLoading = new FakeImage({ srcset: '/p.png 1x' }, '', 'loading', 'shown', {
+      localName: 'picture'
+    })
+    const plainLoading = new FakeImage({ src: '/q.png' }, '', 'loading')
+    const world = pinWorld(() => [...Object.values(page), pictureLoading, plainLoading])
+
+    expect(inWorld(world, IMAGE_SETS_LOADING_SCRIPT)).toBe(1)
+    page.loading.hold('failed')
+    expect(inWorld(world, IMAGE_SETS_LOADING_SCRIPT)).toBe(0)
+  })
+
+  it('counts a pinned image as not loaded while it loads its new source, and after that fails', () => {
+    const loads = new FakeImage({ srcset: '/a.png 1x' }, `${ORIGIN}/a.png`, 'shown', 'loading')
+    const fails = new FakeImage({ srcset: '/b.png 1x' }, `${ORIGIN}/b.png`, 'shown', 'failed')
+    const shown = new FakeImage({ srcset: '/c.png 1x' }, `${ORIGIN}/c.png`)
+    const world = pinWorld(() => [loads, fails, shown])
+
+    expect(inWorld(world, PIN_IMAGE_SOURCES_SCRIPT)).toBe(3)
+    expect(inWorld(world, PINNED_LOADING_SCRIPT)).toBe(1)
+    expect(inWorld(world, PINNED_COUNTS_SCRIPT)).toEqual({
+      pinnedImages: 3,
+      pinnedImagesNotLoaded: 2
+    })
+    loads.hold('shown')
+    expect(inWorld(world, PINNED_LOADING_SCRIPT)).toBe(0)
+    expect(inWorld(world, PINNED_COUNTS_SCRIPT)).toEqual({
+      pinnedImages: 3,
       pinnedImagesNotLoaded: 1
     })
-    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(2_000)
   })
 
-  it('counts a pinned image whose load fails as not loaded', async () => {
-    const broken = new FakeImage({ srcset: '/missing.png 1x' }, `${ORIGIN}/missing.png`, 'fails')
-    expect(await pin([broken], 0)).toEqual({ pinnedImages: 1, pinnedImagesNotLoaded: 1 })
+  it('counts again over the DOM: an image the page removed or pointed elsewhere is not pinned', () => {
+    const removed = new FakeImage({ srcset: '/a.png 1x' }, `${ORIGIN}/a.png`)
+    const moved = new FakeImage({ srcset: '/b.png 1x' }, `${ORIGIN}/b.png`)
+    const restored = new FakeImage({ srcset: '/c.png 1x' }, `${ORIGIN}/c.png`)
+    const world = pinWorld(() => [removed, moved, restored])
+    expect(inWorld(world, PIN_IMAGE_SOURCES_SCRIPT)).toBe(3)
+
+    removed.isConnected = false
+    moved.attributes.set('src', '/elsewhere.png')
+    // The serializer drops a `srcset` the page puts back and saves the pinned `src`.
+    restored.attributes.set('srcset', '/c.png 1x')
+
+    expect(inWorld(world, PINNED_COUNTS_SCRIPT)).toEqual({
+      pinnedImages: 1,
+      pinnedImagesNotLoaded: 0
+    })
   })
 
-  it('stops waiting once every pinned image has loaded', async () => {
-    const late = new FakeImage({ srcset: '/late.png 1x' }, `${ORIGIN}/late.png`, 'never')
-    const startedAt = Date.now()
-    const pending = runPinScript(pinImageSourcesScript(5_000), [late])
-    await vi.advanceTimersByTimeAsync(120)
-    late.complete = true
-    late.naturalWidth = 1
-    await vi.runAllTimersAsync()
-
-    expect(await pending).toEqual({ pinnedImages: 1, pinnedImagesNotLoaded: 0 })
-    expect(Date.now() - startedAt).toBeLessThan(500)
-  })
-
-  it('does not wait when it has no time', async () => {
-    const stuck = new FakeImage({ srcset: '/a.png 1x' }, `${ORIGIN}/a.png`, 'never')
-    const startedAt = Date.now()
-    expect(await pin([stuck], 0)).toEqual({ pinnedImages: 1, pinnedImagesNotLoaded: 1 })
-    expect(Date.now() - startedAt).toBe(0)
+  it('throws when the world holds no pin, as after the page was replaced', () => {
+    const world = pinWorld(() => [])
+    expect(() => inWorld(world, PINNED_LOADING_SCRIPT)).toThrow('The pinned images are gone')
+    expect(() => inWorld(world, PINNED_COUNTS_SCRIPT)).toThrow('The pinned images are gone')
   })
 })
 
-describe('pinImageSources', () => {
-  const contents = (answer: () => unknown): WebContents =>
-    ({ executeJavaScript: async () => answer() }) as unknown as WebContents
-
-  it('returns the inventory part, which the strict schema accepts', async () => {
-    const part = await pinImageSources(
-      contents(() => ({ pinnedImages: 3, pinnedImagesNotLoaded: 1 })),
-      0
-    )
-    expect(part).toEqual({ present: true, pinnedImages: 3, pinnedImagesNotLoaded: 1 })
+// The main process's side: its clock bounds both waits, and every script runs
+// in the pin's isolated world.
+describe('settleImageSets and pinImageSources', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
   })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  // A WebContents whose isolated world holds `images`, recording each call.
+  function worldContents(images: FakeImage[]) {
+    const world = pinWorld(() => images)
+    const calls: Array<{ worldId: number; code: string; at: number }> = []
+    const wc = {
+      async executeJavaScriptInIsolatedWorld(worldId: number, [{ code }]: Array<{ code: string }>) {
+        calls.push({ worldId, code, at: Date.now() })
+        return inWorld(world, code)
+      }
+    }
+    return { wc: wc as unknown as WebContents, calls }
+  }
+
+  async function underFakeTime<T>(pending: Promise<T>): Promise<T> {
+    await vi.runAllTimersAsync()
+    return pending
+  }
+
+  it('waits for an image offered as a set to settle, and no longer', async () => {
+    const late = new FakeImage({ srcset: '/late.png 1x' }, '', 'loading')
+    const { wc } = worldContents([late])
+    const startedAt = Date.now()
+    setTimeout(() => late.hold('shown'), 120)
+
+    await underFakeTime(settleImageSets(wc, 5_000))
+
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(120)
+    expect(Date.now() - startedAt).toBeLessThan(250)
+  })
+
+  it('stops waiting for images that never settle when the wait ends on the main clock', async () => {
+    const { wc, calls } = worldContents([new FakeImage({ srcset: '/x.png 1x' }, '', 'loading')])
+    const startedAt = Date.now()
+
+    await underFakeTime(settleImageSets(wc, 2_000))
+
+    expect(Date.now() - startedAt).toBe(2_000)
+    expect(calls.at(-1)!.at - startedAt).toBe(2_000)
+  })
+
+  it('checks once, and does not wait, with no time', async () => {
+    const { wc, calls } = worldContents([new FakeImage({ srcset: '/x.png 1x' }, '', 'loading')])
+    await underFakeTime(settleImageSets(wc, 0))
+    expect(calls).toHaveLength(1)
+  })
+
+  it('pins, waits for the new sources on the main clock, and returns the parsed part', async () => {
+    const page = fiveImagePage()
+    page.widths = new FakeImage({ srcset: '/w.png 400w' }, `${ORIGIN}/w.png`, 'shown', 'loading')
+    const { wc, calls } = worldContents(Object.values(page))
+    const startedAt = Date.now()
+
+    const part = await underFakeTime(pinImageSources(wc, 1_000))
+
+    expect(part).toEqual({ present: true, pinnedImages: 3, pinnedImagesNotLoaded: 1 })
+    expect(Date.now() - startedAt).toBe(1_000)
+    expect(new Set(calls.map(({ worldId }) => worldId))).toEqual(new Set([PIN_WORLD_ID]))
+    expect(calls[0].code).toBe(PIN_IMAGE_SOURCES_SCRIPT)
+    expect(calls.at(-1)!.code).toBe(PINNED_COUNTS_SCRIPT)
+  })
+
+  const contents = (answer: () => unknown): WebContents =>
+    ({
+      executeJavaScriptInIsolatedWorld: async (_worldId: number, [{ code }]: { code: string }[]) =>
+        code === PINNED_COUNTS_SCRIPT ? answer() : 0
+    }) as unknown as WebContents
 
   it.each([
     ['a not-loaded count above the pinned count', { pinnedImages: 1, pinnedImagesNotLoaded: 2 }],
@@ -1121,7 +1272,7 @@ describe('pinImageSources', () => {
     ).rejects.toThrow(/^Image Source Pinning returned counts the schema refuses: /)
   })
 
-  it('fails when the script throws', async () => {
+  it('fails when a script throws', async () => {
     const wc = contents(() => {
       throw new Error('Script failed to execute')
     })
@@ -1582,7 +1733,9 @@ describe('renderPageInHiddenWindow, the Transaction Record', () => {
     expect(transactionRecord).toMatchObject({ present: true, boundTlsAbsent: 'not-https' })
   }, 30_000)
 
-  it('stops collection before the screenshot, so a later request is not recorded', async () => {
+  // Collection stopped before the screenshot until the ruling of 2026-10-26 on #1843 moved it
+  // after Image Source Pinning; the save is still outside it.
+  it('stops collection before the save, so a request made during it is not recorded', async () => {
     ctl.lateEvent = true
     const { transactionRecord } = await render()
     expect(transactionRecord).toMatchObject({ present: true, inventory: { exchanges: 1 } })
@@ -1856,16 +2009,22 @@ describe('renderPageInHiddenWindow, Image Source Pinning', () => {
     return result
   }
 
-  it('captures the screenshot, then pins the image sources, then saves the page', async () => {
+  it('lets image sets settle, takes the screenshot, pins, counts, then saves the page', async () => {
     ctl.images = Object.values(fiveImagePage())
     const { imageSourcePinning } = await render()
 
     expect(imageSourcePinning).toEqual({ present: true, pinnedImages: 3, pinnedImagesNotLoaded: 0 })
-    const at = (step: string) => ctl.order.indexOf(step)
-    expect(at('Page.captureScreenshot')).toBeGreaterThan(-1)
-    expect(at('Page.captureScreenshot')).toBeLessThan(at('pinImageSources'))
-    expect(at('pinImageSources')).toBeLessThan(at('savePage'))
-    expect(ctl.order.filter((step) => step === 'pinImageSources')).toHaveLength(1)
+    const steps = ctl.order.filter((step) =>
+      ['settleImageSets', 'Page.captureScreenshot', 'pinImageSources', 'savePage'].includes(step)
+    )
+    expect(steps).toEqual([
+      'settleImageSets',
+      'Page.captureScreenshot',
+      'pinImageSources',
+      'savePage'
+    ])
+    expect(ctl.order.indexOf('pinnedCounts')).toBeLessThan(ctl.order.indexOf('savePage'))
+    expect(new Set(ctl.pinCalls.map(({ worldId }) => worldId))).toEqual(new Set([PIN_WORLD_ID]))
   }, 30_000)
 
   it('records both counts 0 for a page with no srcset image', async () => {
@@ -1873,22 +2032,69 @@ describe('renderPageInHiddenWindow, Image Source Pinning', () => {
     expect(imageSourcePinning).toEqual({ present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 })
   }, 30_000)
 
-  // The rule of 2026-10-26 for the record phases: the wait takes its time from what is left
-  // before the 40 s end reserve, up to its own 5 s.
-  it('waits nothing below the end reserve, and at most 5 s above it', async () => {
+  // Ruled 2026-10-26: the pin runs while the network is recorded.
+  it('records a request the page makes during the pin, and none made during the save', async () => {
+    ctl.images = Object.values(fiveImagePage())
+    ctl.pinEvent = true
+    ctl.lateEvent = true
+    const { transactionRecord } = await render()
+
+    if (!transactionRecord.present) throw transactionRecord.error
+    expect(transactionRecord.inventory.exchanges).toBe(2)
+    const warc = gunzipSync(transactionRecord.warcGz).toString()
+    expect(warc).toContain('https://example.test/pinned.png')
+    expect(warc).not.toContain('late.js')
+  }, 30_000)
+
+  // Both waits take their time from what is left before the 40 s end reserve, never from it,
+  // each up to its own 5 s (ruled 2026-10-26).
+  it('waits nothing below the end reserve, and up to 5 s for each wait above it', async () => {
+    const page = () => [
+      new FakeImage({ srcset: '/never.png 1x' }, '', 'loading'),
+      new FakeImage({ srcset: '/a.png 1x' }, `${ORIGIN}/a.png`, 'shown', 'loading')
+    ]
+    const spans = () =>
+      [IMAGE_SETS_LOADING_SCRIPT, PINNED_LOADING_SCRIPT].map((code) => {
+        const at = callsOf(code)
+        return at.at(-1)! - at[0]
+      })
+
+    ctl.images = page()
     await render(39_000)
-    await render(60_000)
-    expect(ctl.pinScripts.map(pinWaitOf)).toEqual([0, 5_000])
+    expect(callsOf(IMAGE_SETS_LOADING_SCRIPT)).toHaveLength(1)
+    expect(callsOf(PINNED_LOADING_SCRIPT)).toHaveLength(1)
+
+    ctl.pinCalls = []
+    ctl.images = page()
+    const { imageSourcePinning } = await render(60_000)
+    for (const span of spans()) {
+      expect(span).toBeGreaterThanOrEqual(4_900)
+      expect(span).toBeLessThan(5_500)
+    }
+    expect(imageSourcePinning).toEqual({ present: true, pinnedImages: 1, pinnedImagesNotLoaded: 1 })
   }, 30_000)
 
   it('counts a pinned image that does not load in the time left, and returns before its deadline', async () => {
-    ctl.images = [new FakeImage({ srcset: '/a.png 1x' }, `${ORIGIN}/a.png`, 'never')]
+    ctl.images = [new FakeImage({ srcset: '/a.png 1x' }, `${ORIGIN}/a.png`, 'shown', 'loading')]
     const startedAt = Date.now()
     const { imageSourcePinning } = await render(3_000)
 
     expect(Date.now() - startedAt).toBeLessThan(3_000)
     expect(imageSourcePinning).toEqual({ present: true, pinnedImages: 1, pinnedImagesNotLoaded: 1 })
     expect(ctl.order).toContain('savePage')
+  }, 30_000)
+
+  it("reads the print's height bound after the pin, not from the screenshot", async () => {
+    ctl.images = Object.values(fiveImagePage())
+    ctl.contentHeightAfterPin = MAX_PDF_CONTENT_HEIGHT_PX + 1
+    const { screenshotRecord, pdf } = await render()
+
+    expect(screenshotRecord.contentHeight).toBe(100)
+    expect(ctl.order).not.toContain('printToPDF')
+    expect(pdf).toMatchObject({ present: false, reason: 'failed' })
+    expect(String(pdf.present || pdf.error)).toContain(
+      `The page is ${MAX_PDF_CONTENT_HEIGHT_PX + 1} CSS pixels tall`
+    )
   }, 30_000)
 
   it.each([
@@ -1985,7 +2191,7 @@ describe('a Recapture of a rendered page, through ingest, and its PDF', () => {
 
   it("signs the pinned counts in the entry's MHTML part, mirrors them, and re-anchors them on a Duplicate", async () => {
     const page = fiveImagePage()
-    page.widths = new FakeImage({ srcset: '/w.png 400w' }, `${ORIGIN}/w.png`, 'fails')
+    page.widths = new FakeImage({ srcset: '/w.png 400w' }, `${ORIGIN}/w.png`, 'shown', 'failed')
     ctl.images = Object.values(page)
     const { id, entry } = await recaptureOnce()
     const mhtml = { present: true, pinnedImages: 3, pinnedImagesNotLoaded: 1 }

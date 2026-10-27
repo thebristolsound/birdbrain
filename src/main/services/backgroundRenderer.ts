@@ -40,9 +40,12 @@ const SCROLL_PAUSE_MS = 500
 const SCROLL_STALL_THRESHOLD = 3
 const MAX_SCROLL_PHASE_MS = 75_000
 const FINAL_SETTLE_MS = 500
-// The longest Image Source Pinning waits for the images it pinned, taken from
-// the time left before the end reserve below, so it never cuts into the reserve.
+// Image Source Pinning's two waits, each taken from the time left before the end
+// reserve below and never from it (ruled 2026-10-26): for images offered as sets
+// to settle before the screenshot, and for the pinned images' new sources to load.
+const IMAGE_SET_SETTLE_MAX_MS = 5_000
 const PIN_LOAD_MAX_MS = 5_000
+const PIN_POLL_MS = 50
 // For screenshot + MHTML + text extraction. Sized for the worst case the scroll
 // cap below allows — a page at the full screenshot pixel budget — so the
 // artifact phase can't be starved into the outer deadline.
@@ -514,46 +517,105 @@ export async function trimTrailingBackground(
 
 // Image Source Pinning (ADR-0055, D4 of
 // docs/plans/2026-10-10-capture-engine-first-slice.md). The MHTML serializer
-// drops `srcset` from every <img>, so each <img> in the document that carries
-// `srcset`, is not a <picture>'s image, and has a `currentSrc` gets that source
-// as its `src` and loses `srcset` and `sizes`. The script then waits up to
-// `waitMs` and counts a pinned image not loaded unless it is `complete` with a
-// natural width. It runs in the page's world, like the scroll scripts.
-export function pinImageSourcesScript(waitMs: number): string {
-  return `(async () => {
-    const pinned = []
-    for (const img of document.querySelectorAll('img[srcset]')) {
-      const parent = img.parentElement
-      if ((parent && parent.localName === 'picture') || !img.currentSrc) continue
-      const src = img.currentSrc
-      img.removeAttribute('srcset')
-      img.removeAttribute('sizes')
-      img.src = src
-      pinned.push(img)
-    }
-    const loaded = (img) => img.complete && img.naturalWidth > 0
-    const deadline = Date.now() + ${Math.max(0, Math.floor(waitMs))}
-    while (Date.now() < deadline && !pinned.every(loaded)) {
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    }
-    return {
-      pinnedImages: pinned.length,
-      pinnedImagesNotLoaded: pinned.filter((img) => !loaded(img)).length
-    }
-  })()`
+// drops `srcset` from every <img>, so an image the page displayed from a set of
+// sources is pointed at the one it displayed before the save. The scripts run in
+// an isolated world: the page shares its DOM but not its JavaScript, so it cannot
+// replace what they call or reach what they keep between calls. The main process
+// keeps the clock and polls them.
+export const PIN_WORLD_ID = 1843
+
+// The images offered as sets that pinning considers: each <img> with `srcset`
+// in the document, except a <picture>'s, whose sources the serializer keeps.
+const IMAGE_SET_HELPERS = `
+  const imageSets = () => Array.from(document.querySelectorAll('img[srcset]')).filter(
+    (img) => !(img.parentElement && img.parentElement.localName === 'picture')
+  )
+  const shown = (img) => img.complete && img.naturalWidth > 0 && img.naturalHeight > 0
+`
+
+// How many images offered as sets are still loading.
+export const IMAGE_SETS_LOADING_SCRIPT = `(() => {
+  ${IMAGE_SET_HELPERS}
+  return imageSets().filter((img) => !img.complete).length
+})()`
+
+// Pins each image offered as a set that the page displayed (loaded, with a
+// natural size) to its `currentSrc`, and drops `srcset` and `sizes`. An image
+// still loading or that failed to load is left as it is. So is one shown from a
+// `blob:` address: re-sourcing loads the address again, which fails once the page
+// has revoked it.
+export const PIN_IMAGE_SOURCES_SCRIPT = `(() => {
+  ${IMAGE_SET_HELPERS}
+  const pinned = []
+  for (const img of imageSets()) {
+    const src = img.currentSrc
+    if (!src || src.startsWith('blob:') || !shown(img)) continue
+    img.removeAttribute('srcset')
+    img.removeAttribute('sizes')
+    img.src = src
+    pinned.push({ img, src })
+  }
+  globalThis.birdbrainPinned = pinned
+  return pinned.length
+})()`
+
+const PINNED_HELPERS = `
+  const pinned = globalThis.birdbrainPinned
+  if (!pinned) throw new Error('The pinned images are gone: the page was replaced during the pin')
+`
+
+// How many pinned images have not finished loading their new source.
+export const PINNED_LOADING_SCRIPT = `(() => {
+  ${PINNED_HELPERS}
+  return pinned.filter(({ img }) => !img.complete).length
+})()`
+
+// The counts, taken again over the DOM as it is now: an image the page removed
+// or pointed elsewhere since the pin is not counted as pinned, and a pinned
+// image counts as not loaded unless it holds an image with a natural size.
+export const PINNED_COUNTS_SCRIPT = `(() => {
+  ${IMAGE_SET_HELPERS}
+  ${PINNED_HELPERS}
+  const held = pinned.filter(({ img, src }) => img.isConnected && img.getAttribute('src') === src)
+  return {
+    pinnedImages: held.length,
+    pinnedImagesNotLoaded: held.filter(({ img }) => !shown(img)).length
+  }
+})()`
+
+function inPinWorld(wc: WebContents, code: string): Promise<unknown> {
+  return wc.executeJavaScriptInIsolatedWorld(PIN_WORLD_ID, [{ code }])
+}
+
+// Polls `code` until it reports 0, or until `waitMs` has passed on the main
+// process's clock.
+async function untilNoneLeft(wc: WebContents, code: string, waitMs: number): Promise<void> {
+  const deadlineAt = Date.now() + waitMs
+  while ((await inPinWorld(wc, code)) !== 0 && Date.now() < deadlineAt) {
+    await sleep(Math.min(PIN_POLL_MS, deadlineAt - Date.now()))
+  }
+}
+
+// Gives the images offered as sets up to `waitMs` to finish loading, or fail,
+// before the screenshot; pinning leaves out any still loading after it.
+export function settleImageSets(wc: WebContents, waitMs: number): Promise<void> {
+  return untilNoneLeft(wc, IMAGE_SETS_LOADING_SCRIPT, waitMs)
 }
 
 const MhtmlPartSchema = CaptureInventorySchema.shape.mhtml
 
-// Returns the inventory's MHTML part, parsed with the strict schema. That part
-// has no failed form (D4), so a script that throws, or counts the schema
-// refuses, fails the render, as a Scroll-to-load step that throws does. An
-// image still loading when `waitMs` runs out is counted, not a failure.
+// Pins the image sources, waits up to `waitMs` for the new sources to load, and
+// returns the inventory's MHTML part, parsed with the strict schema. That part
+// has no failed form (D4), so a script that throws, or counts the schema refuses,
+// fails the render, as a Scroll-to-load step that throws does. A pinned image
+// still loading when the wait ends is counted, not a failure.
 export async function pinImageSources(
   wc: WebContents,
   waitMs: number
 ): Promise<ImageSourcePinning> {
-  const counts = (await wc.executeJavaScript(pinImageSourcesScript(waitMs), true)) as {
+  await inPinWorld(wc, PIN_IMAGE_SOURCES_SCRIPT)
+  await untilNoneLeft(wc, PINNED_LOADING_SCRIPT, waitMs)
+  const counts = (await inPinWorld(wc, PINNED_COUNTS_SCRIPT)) as {
     pinnedImages?: unknown
     pinnedImagesNotLoaded?: unknown
   } | null
@@ -852,20 +914,24 @@ export const renderPageInHiddenWindow: RenderPage = async (
         clampPhaseMs(remainingMs(FINAL_ARTIFACT_RESERVE_MS), POST_SCROLL_NETWORK_IDLE_MAX_MS)
       )
       await sleep(Math.min(FINAL_SETTLE_MS, remainingMs(FINAL_ARTIFACT_RESERVE_MS)))
+      await settleImageSets(
+        wc,
+        clampPhaseMs(remainingMs(FINAL_ARTIFACT_RESERVE_MS), IMAGE_SET_SETTLE_MAX_MS)
+      )
 
-      // Collection stops at the moment the screenshot and MHTML are taken (spec,
-      // Transaction Record). The renderer spike saw no request and no event during
-      // either, so stopping here and after the save recorded the same events.
-      activeRecorder.stop()
-      const recordedAt = new Date().toISOString()
       const { png: screenshot, record: screenshotRecord } = await captureFullPageScreenshot(wc)
 
-      // After the screenshot, which shows the page as loaded, and before the save.
+      // After the screenshot, which shows the page as it displayed, and before the save.
       const imageSourcePinning = await pinImageSources(
         wc,
         clampPhaseMs(remainingMs(FINAL_ARTIFACT_RESERVE_MS), PIN_LOAD_MAX_MS)
       )
 
+      // Collection stops after the pin, so a request the pin makes is in the
+      // Transaction Record (ruled 2026-10-26), and just before the save, during
+      // which the renderer spike saw no request and no event.
+      activeRecorder.stop()
+      const recordedAt = new Date().toISOString()
       await wc.savePage(tmpPath, 'MHTML')
       // The Capture is stored under the page the save took, read before anything else
       // awaits: a page can navigate itself during the steps that follow (review of #2000).

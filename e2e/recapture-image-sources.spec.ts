@@ -11,13 +11,20 @@ import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
 import { readWarc } from '../src/packages/transaction-record/warcReader'
 import { PACKAGE_ROOT_FILES } from '../src/packages/evidence-package-layout/index'
 
-// Image Source Pinning (#1843, ADR-0055): a background capture points each srcset image at the
-// source it displayed before saving the MHTML, and signs how many it pinned. Every image the
-// server sends is a 1x1 PNG followed by `TAG:<path>`, so the bytes of each MHTML part name the
-// request that served them.
+// Image Source Pinning (#1843, ADR-0055): a background capture points each srcset image the
+// page displayed at the source it displayed before saving the MHTML, and signs how many it
+// pinned. Every image the server sends is a PNG followed by `TAG:<path>`, so the bytes of each
+// MHTML part name the request that served them.
 
 const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64'
+)
+// 400 by 400, for a `400w` candidate: shown at `sizes="10px"` it has a natural size of 10 by
+// 10. A 1x1 file there would have a natural size below one pixel, and pinning leaves an image
+// with no natural size as it is.
+const PNG_400 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAZAAAAGQAQMAAAC6caSPAAAAA1BMVEXIPDxkWv9aAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAKklEQVR42u3BMQEAAADCoPVP7W8GoAAAAAAAAAAAAAAAAAAAAAAAAACAN0+wAAGUQRhcAAAAAElFTkSuQmCC',
   'base64'
 )
 
@@ -31,14 +38,15 @@ const send =
     res.writeHead(200, { 'content-type': type, ...headers }).end(body)
   }
 const png =
-  (headers: Record<string, string> = {}): Route =>
+  (headers: Record<string, string> = {}, bytes = PNG): Route =>
   (req, res) => {
     res
       .writeHead(200, { 'content-type': 'image/png', ...headers })
-      .end(Buffer.concat([PNG, Buffer.from(`TAG:${req.url}`)]))
+      .end(Buffer.concat([bytes, Buffer.from(`TAG:${req.url}`)]))
   }
 const MAX_AGE = { 'cache-control': 'max-age=3600' }
 const NO_STORE = { 'cache-control': 'no-store' }
+let retryRequests = 0
 
 // The renderer spike's `q2-savepage` fixture
 // (docs/specs/2026-10-11-capture-engine-renderer-spike.md, "Reproduce"), with tagged images.
@@ -91,15 +99,46 @@ const ROUTES: Record<string, Route> = {
 <img src="/five/plain.png" width="10" height="10">`
     )
   ),
+  '/five/srcset-w-400.png': png({}, PNG_400),
 
-  // A srcset image whose load fails: the browser chose it, and it has no image to show.
-  '/broken': send(
+  // Images offered as sets that pinning leaves as they are: one whose load failed, which the
+  // server would answer if asked again; one shown from a `blob:` address the page revokes once
+  // it has loaded; and one inserted after load whose response never comes. One inserted after
+  // load and answered after 1 s is pinned.
+  '/left': send(
     'text/html',
-    page('Broken image fixture', '', '<img srcset="/broken/missing.png 1x" width="10" height="10">')
-  ),
-  '/broken/missing.png': (_req, res) => {
-    res.writeHead(404, { 'content-type': 'text/plain' }).end('not found')
+    page(
+      'Left alone fixture',
+      '',
+      `<img srcset="/left/retry.png 1x" width="10" height="10">
+<img id="blob" width="10" height="10">
+<script>
+fetch('/left/blob-src.png').then((r) => r.blob()).then((b) => {
+  const url = URL.createObjectURL(b)
+  const img = document.getElementById('blob')
+  img.onload = () => URL.revokeObjectURL(url)
+  img.srcset = url + ' 1x'
+})
+addEventListener('load', () => {
+  for (const name of ['fast', 'never']) {
+    const img = new Image(10, 10)
+    img.srcset = '/left/' + name + '.png 1x'
+    document.body.append(img)
   }
+})
+</script>`
+    )
+  ),
+  '/left/retry.png': (req, res) => {
+    if (retryRequests++ === 0) res.writeHead(404, { 'content-type': 'text/plain' }).end('not found')
+    else png()(req, res)
+  },
+  '/left/blob-src.png': png(),
+  '/left/fast.png': (req, res) => {
+    setTimeout(() => png()(req, res), 1000)
+  },
+  // Never answered; the server closes the connection after the tests.
+  '/left/never.png': () => {}
 }
 
 interface Fixture {
@@ -381,28 +420,36 @@ test.describe('Image Source Pinning of a background capture', () => {
     rmSync(dirname(dir), { recursive: true, force: true })
   })
 
-  test('counts a pinned image that failed to load, whose second request the record lacks', async ({
+  // Ruled 2026-10-26: pin only an image that displayed, and leave out one still loading.
+  test('leaves a failed image, a blob: image and one still loading as they were', async ({
     page
   }) => {
     test.setTimeout(180000)
-    const caseId = await createCase(page, 'Broken image pinning E2E')
+    const caseId = await createCase(page, 'Left alone pinning E2E')
     server.served.length = 0
-    const captureId = await recapture(page, caseId, `${server.origin}/broken`)
+    const captureId = await recapture(page, caseId, `${server.origin}/left`)
     const storagePath = await storagePathOf(page)
 
+    // Only the image answered after 1 s is pinned; the counts cover nothing else.
     const [entry] = captureEntries(storagePath, caseId)
     expect(entry.inventory).toMatchObject({
-      mhtml: { present: true, pinnedImages: 1, pinnedImagesNotLoaded: 1 },
+      mhtml: { present: true, pinnedImages: 1, pinnedImagesNotLoaded: 0 },
       transactionRecord: { present: true }
     })
+    const parts = storedMhtml(storagePath, caseId, captureId)
+    const fast = parts.find(({ location }) => location === `${server.origin}/left/fast.png`)
+    expect(fast?.bytes.toString('latin1').endsWith('TAG:/left/fast.png')).toBe(true)
+    for (const path of ['/left/retry.png', '/left/never.png']) {
+      expect(parts.map(({ location }) => location)).not.toContain(`${server.origin}${path}`)
+    }
 
-    // The browser asked for the image again when it was pinned, after collection stopped.
-    const missing = `${server.origin}/broken/missing.png`
-    expect(server.served.filter((path) => path === '/broken/missing.png')).toHaveLength(2)
+    // The failed image was not asked for again, so the server's answer to a second request
+    // never reached the saved page, and the record holds the one request there was.
+    expect(server.served.filter((path) => path === '/left/retry.png')).toHaveLength(1)
+    const retry = `${server.origin}/left/retry.png`
     const records = readWarc(readFileSync(join(storagePath, caseId, `${captureId}.warc.gz`)))
     const requests = records.filter(
-      (record) =>
-        record.warc('WARC-Type') === 'request' && record.warc('WARC-Target-URI') === missing
+      (record) => record.warc('WARC-Type') === 'request' && record.warc('WARC-Target-URI') === retry
     )
     expect(requests).toHaveLength(1)
     expect(await verified(page, captureId)).toBe('verified')

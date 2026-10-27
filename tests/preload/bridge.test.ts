@@ -119,6 +119,7 @@ const ROOT_LEVEL_LEAVES = new Set([
   'onUpdateStatus',
   'onGuestFrameReplaced',
   'onGuestMouseDown',
+  'onGuestMouseUp',
   'onSharingChanged',
   'onSharingJoinProgress',
   'onInvestigationProgress'
@@ -221,6 +222,7 @@ describe('preload bridge', () => {
     )
     expect(wayback).toEqual({
       'wayback.lookup': 'wayback:lookup',
+      'wayback.lookupLink': 'wayback:lookupLink',
       'wayback.list': 'wayback:list',
       'wayback.listForCase': 'wayback:listForCase',
       'wayback.pin': 'wayback:pin',

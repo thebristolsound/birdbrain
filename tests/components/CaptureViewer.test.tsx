@@ -16,7 +16,9 @@ vi.mock('@renderer/components/captures/annotation/AnnotationEditor', () => ({
   AnnotationEditor: () => null
 }))
 vi.mock('@renderer/components/captures/MhtmlViewer', () => ({
-  MhtmlViewer: () => <div data-testid="mhtml-viewer-stub" />
+  MhtmlViewer: ({ linkClicks }: { linkClicks: boolean }) => (
+    <div data-testid="mhtml-viewer-stub" data-link-clicks={String(linkClicks)} />
+  )
 }))
 vi.mock('@renderer/components/captures/CaptureDownloadMenu', () => ({
   CaptureDownloadMenu: () => null
@@ -73,6 +75,7 @@ afterEach(() => {
   useAppStore.getState().setSelectedCaptureId(null)
   useAppStore.getState().setActiveViewerTab('screenshot')
   useAppStore.getState().setViewerHit(null)
+  useAppStore.setState({ captureTrail: [] })
 })
 
 describe('CaptureViewer provenance chrome (#827)', () => {
@@ -241,7 +244,37 @@ describe('CaptureViewer tabs', () => {
     renderViewer()
     fireEvent.click(await screen.findByRole('tab', { name: 'Page' }))
 
-    expect(await screen.findByTestId('mhtml-viewer-stub')).toBeDefined()
+    expect((await screen.findByTestId('mhtml-viewer-stub')).dataset.linkClicks).toBe('true')
+  })
+
+  // #1735, plan A3.
+  it('shows Back to the Capture a link click came from while the trail holds one', async () => {
+    const from = { ...capture, id: 'cap0', title: 'Where the link was' }
+    const gone = 'deleted-since'
+    fakeBridge({ captures: { list: vi.fn(async () => [capture, from]), getContent } })
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: ['cap0', gone] })
+    renderViewer()
+
+    const back = await screen.findByTestId('capture-trail-back')
+    expect(back.textContent).toBe('← Back to Where the link was')
+    fireEvent.click(back)
+
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap0')
+    expect(useAppStore.getState().captureTrail).toEqual([])
+    await waitFor(() => expect(screen.queryByTestId('capture-trail-back')).toBeNull())
+  })
+
+  it('names a Capture with no title by its address on Back, and shows no Back with no trail', async () => {
+    const from = { ...capture, id: 'cap0', title: '', url: 'https://example.com/untitled' }
+    fakeBridge({ captures: { list: vi.fn(async () => [capture, from]), getContent } })
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: ['cap0'] })
+    renderViewer()
+
+    expect((await screen.findByTestId('capture-trail-back')).textContent).toBe(
+      '← Back to https://example.com/untitled'
+    )
+    act(() => useAppStore.setState({ captureTrail: [] }))
+    expect(screen.queryByTestId('capture-trail-back')).toBeNull()
   })
 
   // #906. The Page tab used to render a pre-v11 capture through an

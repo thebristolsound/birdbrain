@@ -5,7 +5,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { createServer as createHttpsServer } from 'https'
 import { execFileSync } from 'child_process'
 import { createHash, X509Certificate } from 'crypto'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { gzipSync } from 'zlib'
@@ -38,6 +38,14 @@ const TEXT_BODIES: Record<string, { type: string; bytes: Buffer }> = {
     bytes: Buffer.from('3c703e636166c3a93c2f703e', 'hex')
   }
 }
+// Request bodies the page posts: windows-1252 and Shift_JIS bytes that are not valid UTF-8, and
+// UTF-8 text. The record should hold the bytes sent.
+const POSTED: Record<string, string> = {
+  '/post?w1252': '636166e9',
+  '/post?sjis': '93fa967b',
+  '/post?utf8': '636166c3a9'
+}
+
 // Over the 10,000,000-byte per-resource limit, so its body is omitted.
 const BIG = Buffer.alloc(10_500_000, 0x61)
 const COOKIE_SECRET = 'COOKIE-SECRET-1929'
@@ -73,6 +81,10 @@ const pagePath = (frameOrigin: string) => `<!doctype html><html><head>
       navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true }))
   }
   await get('/viasw.txt')
+  for (const [url, hex] of ${JSON.stringify(Object.entries(POSTED))}) {
+    const bytes = new Uint8Array(hex.match(/../g).map((pair) => parseInt(pair, 16)))
+    await get(url, { method: 'POST', body: bytes })
+  }
 })()
 </script></body></html>`
 
@@ -91,6 +103,16 @@ self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim(
 self.addEventListener('fetch', (event) => {
   if (event.request.url.includes('viasw')) event.respondWith(fetch(event.request))
 })`
+
+// A page that fetches in a loop for as long as it is open (finding 1 of the review of #1999).
+const LOOP_PAGE = `<!doctype html><title>Loop Fixture</title><script>
+(async () => {
+  for (;;) {
+    await Promise.all(Array.from({ length: 50 }, () =>
+      fetch('/x?' + Math.random()).then((r) => r.text()).catch(() => null)))
+  }
+})()
+</script>`
 
 // A page with one cross-site frame, for the stubbed setup failures.
 const STUB_PAGE = (frameOrigin: string) => `<!doctype html><html><head><title>Stub Fixture</title>
@@ -158,6 +180,13 @@ function startPageServer(log: Logged[], frameOrigin: () => string): Server {
         })
       case '/stub':
         return send(res, 'text/html', STUB_PAGE(frameOrigin()))
+      case '/post':
+        req.resume()
+        return req.on('end', () => send(res, 'text/plain', 'ok'))
+      case '/loop':
+        return send(res, 'text/html', LOOP_PAGE)
+      case '/x':
+        return send(res, 'text/plain', 't')
       case '/simple':
         return send(res, 'text/html', '<!doctype html><title>Simple</title><p>simple</p>')
       case '/style.css':
@@ -418,9 +447,10 @@ test.describe('Transaction Record of a background capture', () => {
       cached: 1,
       cancelled: 1,
       failed: 2,
-      // The request left hanging, and the service worker's main script, which its session
-      // reported finished with no response.
-      inFlight: 2,
+      // The request left hanging.
+      inFlight: 1,
+      // The service worker's main script, which its session reported finished with no response.
+      finishedWithoutResponse: 1,
       webSockets: 0,
       recordedTargets: 5,
       unrecordedTargets: 0,
@@ -454,6 +484,16 @@ test.describe('Transaction Record of a background capture', () => {
       const response = responseFor(records, `${pageServer.origin}${path}`)
       expect(response.http?.payload.equals(bytes), path).toBe(true)
       expect(response.warc('WARC-Payload-Digest'), path).toBe(sha256(bytes))
+    }
+
+    // Request bodies hold the bytes the page sent, whichever character set they are in.
+    for (const [path, hex] of Object.entries(POSTED)) {
+      const posted = ofType(records, 'request').filter(
+        (r) => r.warc('WARC-Target-URI') === `${pageServer.origin}${path}`
+      )
+      expect(posted, path).toHaveLength(1)
+      expect(posted[0].http?.payload.toString('hex'), path).toBe(hex)
+      expect(posted[0].warc('WARC-Truncated'), path).toBeUndefined()
     }
 
     // Redirects, same-origin and cross-origin: the hop has headers and no body.
@@ -507,6 +547,36 @@ test.describe('Transaction Record of a background capture', () => {
       recordedTargets: 1,
       unrecordedTargets: 2
     })
+  })
+
+  test('stores a page that fetches in a loop, with the record failed past the event bound', async ({
+    page
+  }) => {
+    test.setTimeout(150000)
+    const caseId = await createCase(page, 'Loop E2E')
+    await recordActivity(page)
+    const end = await recapture(page, caseId, `${pageServer.origin}/loop`)
+    expect(end).toMatchObject({ type: 'stored' })
+    const storagePath = await page.evaluate(async () => {
+      const w = window as unknown as {
+        birdbrain: { settings: { get: () => Promise<{ storagePath: string }> } }
+      }
+      return (await w.birdbrain.settings.get()).storagePath
+    })
+    const entry = readFileSync(join(storagePath, caseId, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((line) => line.trim())
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .find((candidate) => candidate.captureId === end.captureId)!
+    expect(entry).toMatchObject({
+      inventory: { transactionRecord: { present: false, reason: 'failed' } },
+      boundTlsAbsent: 'not-recorded'
+    })
+    expect(entry).not.toHaveProperty('transactionRecordHash')
+    expect(existsSync(join(storagePath, caseId, `${end.captureId}.warc.gz`))).toBe(false)
+    // More requests reached the server than the record could have held.
+    expect(log.filter(({ url }) => url.includes('/x?')).length).toBeGreaterThan(8_000)
+    expect(await verified(page, end.captureId!)).toBe('verified')
   })
 
   test('counts the page when its auto-attach fails, and keeps the record', async ({
@@ -659,7 +729,7 @@ test.describe('Transaction Record through a proxy Egress', () => {
     await target.close()
   })
 
-  test("holds neither the proxy's host nor its port", async ({ page }) => {
+  test("writes no remote address and never the proxy's port", async ({ page }) => {
     test.setTimeout(150000)
     const caseId = await createCase(page, 'Proxy Record E2E')
     await recordActivity(page)

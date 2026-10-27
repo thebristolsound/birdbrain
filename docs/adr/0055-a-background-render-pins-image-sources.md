@@ -2,63 +2,68 @@
 
 **Status:** Accepted
 
-**Date:** 2026-10-21
+**Date:** 2026-10-21, amended 2026-10-26
 
-The source is the maintainer's ruling during the triage of
-[#1843](https://github.com/thebristolsound/birdbrain/issues/1843) on 2026-10-21. D4 of the
-[first-slice plan](../plans/2026-10-10-capture-engine-first-slice.md) states what the render does,
-and the [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md)
-what was measured.
+This record states three rulings of the maintainer on
+[#1843](https://github.com/thebristolsound/birdbrain/issues/1843) and nothing else: the ruling of
+2026-10-21 in the triage of the issue, and two rulings of 2026-10-26 on the review of #2002, as
+the orchestrating session relayed them. D4 of the
+[first-slice plan](../plans/2026-10-10-capture-engine-first-slice.md) states how the render
+carries them out, and the
+[validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md) what
+was measured.
 
 ## Context
 
-A background Recapture saves the page with the browser's MHTML serializer. The triage of #1843
-reproduced, on Electron 44.7.0, that the serializer drops `srcset` from every `<img>`. An image
-offered only through `srcset` is missing from the saved page although the browser fetched and
-displayed it. An image that also has a `src` is saved with the bytes the page displayed, filed
-under the `src` address, which the browser never requested. Images inside `<picture>` and plain
-images save correctly.
-
+The MHTML serializer drops `srcset` from every `<img>`: an image offered only through `srcset` is
+missing from the saved page, and an image with both `src` and `srcset` is filed under an address
+the browser never requested.
 [ADR-0004](0004-adopt-osint-assurance-baseline.md) treats MHTML as a browser-oriented
 representation and requires a Capture to record the limitations that applied. The Transaction
-Record ([ADR-0035](0035-one-transaction-record-per-capture.md)) holds the bytes the browser
-received only when recording was on before the page loaded, and it does not correct an address
-the MHTML states wrongly.
+Record ([ADR-0035](0035-one-transaction-record-per-capture.md)) holds the true bytes only when
+recording was on before the page loaded, and does not correct an address the MHTML states
+wrongly.
 
 ## Considered options
 
-- **State the gap as a limitation.** Keep the MHTML as the serializer wrote it and record which
-  images are missing or misfiled. It never changes captured content, but the saved page would
-  still name an origin the bytes did not come from.
-- **Rely on the Transaction Record.** Build nothing now. It leaves the wrong address in every
-  MHTML, including Captures taken without a Transaction Record.
+- **State the gap as a limitation.** It never changes captured content, but leaves a wrong origin
+  in the saved page.
+- **Rely on the Transaction Record.** It builds nothing now, and leaves the wrong address in every
+  MHTML.
 - **Pin the image sources before the save.** Chosen.
 
 ## Decision
 
-**After the screenshot and before the save, the render points each affected image at the source
-it displayed.** Each `<img>` outside `<picture>` that carries `srcset` and displayed an image has
-its `src` set to the source it displayed, and its `srcset` and `sizes` removed. An image that
-displayed nothing is left as it is. The screenshot is taken before the change, so it shows the
-page as loaded.
+**Ruling of 2026-10-21.**
 
-**The Capture states that this happened.** Image Source Pinning is recorded in the MHTML part of
-the signed `capture` entry's inventory as two counts, always written: the images pinned, and the
-pinned images that had not loaded when the save ran. The report states the counts. This
-follows Consent Suppression, the existing record of a change the render makes to the page.
+- After the screenshot and before the save, each `<img>` outside `<picture>` that carries
+  `srcset` and displayed an image has its `src` set to the source it displayed, and its `srcset`
+  and `sizes` removed.
+- The save waits for each pinned image to finish loading, bounded by the render's existing time
+  budget, and never extends the render past its deadline.
+- The Capture records Image Source Pinning as two always-written whole-number counts in the MHTML
+  part of the signed inventory, following Consent Suppression: the images pinned, and the pinned
+  images not loaded when the save ran.
+- Background renders only: the extension is untested, and a change there would alter the
+  Operator's own tab.
 
-**Background renders only.** The browser extension saves through the same serializer, but a
-change there would alter the Operator's own tab, and its behaviour has not been tested. It is out
-of scope until someone tests it.
+**Rulings of 2026-10-26.**
+
+1. Only an image that displayed is pinned: one that loaded with a non-zero natural size. An image
+   that failed to load is left as it is. The pin runs while the network is still recorded, so any
+   request it causes is in the Transaction Record. The screenshot is still taken before the pin,
+   so it shows what the page displayed, and recording stops after the pin.
+   `pinnedImagesNotLoaded` counts a displayed image whose pinned source had not finished loading
+   when the wait ended.
+2. Before pinning, the render waits, within the time remaining and never from the 40 s end
+   reserve, for images offered as sets to settle. Any still loading after that wait are left out.
+   The counts cover only images that had settled, and the report, the features page, the
+   glossary, this record and the validation record say so.
 
 ## Consequences
 
 - The saved MHTML is no longer exactly what the serializer would have written from the page as
-  loaded. The signed counts, not the absence of a change, are what a reader relies on.
-- The two counts join the manifest schema number the first-slice verifier takes (#1904), because
-  a released verifier cannot be recalled and no release has shipped that number yet.
-- A verifier rejects an entry whose not-loaded count exceeds its pinned count, the only shape of
-  the two fields that contradicts itself.
-- The render tells "displayed an image" by the browser's `currentSrc`. An image whose load failed
-  also has one, so it is pinned and counted as not loaded; the validation record lists this and
-  the other limits measured on Electron 44.9.1.
+  loaded; the signed counts are what a reader relies on.
+- The counts join the schema number the first-slice verifier takes (#1904), because a released
+  verifier cannot be recalled.
+- A verifier rejects a not-loaded count above the pinned count.

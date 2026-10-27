@@ -116,8 +116,9 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
   GitHub's closing keywords.
 - **Stacked PRs and CI.** `.github/scripts/dispatch/checks.sh` keeps only workflow runs whose
   base is `main`, so the scheduled PR review reads every stacked PR's CI as empty. CI itself runs
-  on stacked PRs. The maintainer asked for the fix on 2026-10-26: PR #2001, which also reports a PR with no counted
-  CI run as pending, the state a child PR is in after GitHub retargets it to `main`.
+  on stacked PRs. The maintainer asked for the fix on 2026-10-26: PR #2001. It also reports a head with no CI run
+  counted against the PR's base as pending. One observation (#1985) shows GitHub reports a PR's
+  current base on its older runs too, so a retarget to `main` probably keeps them counted.
 - **Defects filed.** #1986: an evidence package exported with screenshots off fails its own
   verification (found by the review of #1984, predates it).
 - **The lane ledger.** The step issues say to claim a lane in a ledger, and no ledger file exists.

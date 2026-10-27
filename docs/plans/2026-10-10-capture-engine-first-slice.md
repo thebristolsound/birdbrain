@@ -1690,3 +1690,12 @@ folded in.
 - **2026-10-26.** D4's Transaction Record part gains `finishedWithoutResponse`, on the
   maintainer's ruling during step 9's review (#1999) as the orchestrating session relayed it.
   Step 1 (#1904) adds it to schema 6; making the collector count it is left to step 9.
+- **2026-10-26.** Step 10 (#1930) is built as a draft that merges after the schema-6 release tag.
+  Its choices: the print runs last, after the Transaction Record's two end phases, with
+  `printToPDF({})`, under a 5 s bound cut to the time the render has left, which raises the end
+  reserve from 35 s to 40 s; `MAX_PDF_CONTENT_HEIGHT_PX` is 50,000 CSS pixels and `MAX_PDF_SIZE`
+  104,857,600 bytes (`src/shared/constants.ts`). Duplicate's row now mirrors `pdf_hash`. Of the
+  items under "Not verified for this plan": `pnpm install` on Node 20 accepts `pdfjs-dist`
+  5.6.205, and its text extraction does not work without the optional `@napi-rs/canvas`, which
+  pnpm installs by default. The measurements behind the values and the step's results are in the
+  [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md).

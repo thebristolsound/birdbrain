@@ -53,6 +53,12 @@ prove and what they do not.
   document: protocol, cipher, certificate subject, alternative names, issuer, and validity. They
   are the browser's summary of the connection and hold no certificate bytes, and they are kept
   apart from the certificate chain Birdbrain fetches after the capture.
+- A background capture also saves a PDF of the page, on Letter-size pages. Birdbrain prints it
+  last, after the screenshot, the saved page, and the Transaction Record, so a file the page loads
+  only for printing is not in the record. The signed entry holds the PDF's SHA-256 hash and states
+  that the PDF was printed after recording stopped. If the page is taller than 50,000 pixels, the
+  PDF is larger than 100 MB, or printing fails or runs out of time, Birdbrain still saves the
+  capture, and its entry says the PDF is missing.
 - Recapture one page or a selection. The new capture links to the earlier one, which stays in
   the case.
 - Exclude URLs by substring, wildcard, or regular expression. Exclusions apply to all cases or
@@ -123,8 +129,8 @@ prove and what they do not.
 
 ## Integrity
 
-- Birdbrain hashes the MHTML, screenshot, extracted text, and Transaction Record separately with
-  SHA-256.
+- Birdbrain hashes the MHTML, screenshot, extracted text, Transaction Record, and PDF separately
+  with SHA-256.
 - Each case keeps an append-only, hash-chained manifest signed with an RSA-2048 key. The key is
   a file encrypted through the operating system's credential store when one is available. Without
   one, Birdbrain asks you to accept storing the key as plain text. Birdbrain decides this once,
@@ -139,9 +145,9 @@ prove and what they do not.
 
 - Export an evidence package as a full bundle or as a court exhibit without notes. Each preset
   can be adjusted, and an export can cover only selected captures.
-- An evidence package contains an HTML report, the captures, their screenshots and Transaction
-  Records, the signed manifest, the public key, the timestamp tokens and authority chain,
-  `VERIFY.md`, and a `verify.sh` script.
+- An evidence package contains an HTML report, the captures, their screenshots, Transaction
+  Records, and PDFs, the signed manifest, the public key, the timestamp tokens and authority
+  chain, `VERIFY.md`, and a `verify.sh` script.
 - Export a working copy for your own use. A working copy is not an evidence package: it has no
   certification, no signed manifest, no signing key and no verification material, and it cannot be
   verified.

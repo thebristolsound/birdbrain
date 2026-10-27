@@ -10,6 +10,8 @@ import { runInNewContext } from 'vm'
 import {
   SCROLL_STEP_SCRIPT,
   captureFullPageScreenshot,
+  pinImageSources,
+  pinImageSourcesScript,
   renderPageInHiddenWindow,
   scrollToLoadLazyContent,
   trimTrailingBackground
@@ -25,7 +27,7 @@ import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
-import { getCapture } from '@main/services/db/captureRepo'
+import { getCapture, listCaptures } from '@main/services/db/captureRepo'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { MANIFEST_FILENAME, MAX_PDF_CONTENT_HEIGHT_PX, MAX_PDF_SIZE } from '@shared/constants'
@@ -84,7 +86,15 @@ const ctl = vi.hoisted(() => ({
   printHangs: false,
   printThrows: false,
   printOptions: [] as unknown[],
-  printEvent: false
+  printEvent: false,
+  // Image Source Pinning (#1843): the page's images the pin script runs over,
+  // each script it was handed, and a script that throws or whose counts are
+  // replaced. `runPin` runs a script over `images`; it is set below the imports.
+  images: [] as unknown[],
+  pinScripts: [] as string[],
+  pinThrows: false,
+  pinCounts: undefined as unknown,
+  runPin: null as unknown as (script: string) => Promise<unknown>
 }))
 
 type Handler = (...args: unknown[]) => void
@@ -256,6 +266,12 @@ const { MockBrowserWindow } = vi.hoisted(() => {
           emitPage(this.debugger, 'doc', url, 'Document')
         },
         async executeJavaScript(script: string) {
+          if (script.includes("querySelectorAll('img[srcset]')")) {
+            ctl.order.push('pinImageSources')
+            ctl.pinScripts.push(script)
+            if (ctl.pinThrows) throw new Error('the page navigated away during the pin')
+            return ctl.pinCounts !== undefined ? ctl.pinCounts : ctl.runPin(script)
+          }
           if (script.includes('readyState')) return undefined
           if (script.includes("style.overflow = 'visible'")) return null
           if (script.includes('root.scrollTop + viewportHeight')) {
@@ -377,6 +393,96 @@ async function heightOf(png: Buffer): Promise<number> {
   return (await sharp(png).metadata()).height ?? -1
 }
 
+// An <img> as the pin script reads it, with the browser's `currentSrc`. `loads`
+// is what assigning a `src` does: the image loads at once, never finishes, or
+// fails (`complete` with no natural width).
+class FakeImage {
+  readonly attributes: Map<string, string>
+  readonly assigned: string[] = []
+  complete = true
+  naturalWidth = 1
+  constructor(
+    attributes: Record<string, string>,
+    readonly currentSrc: string,
+    readonly loads: 'at-once' | 'never' | 'fails' = 'at-once',
+    readonly parentElement: { localName: string } | null = { localName: 'body' }
+  ) {
+    this.attributes = new Map(Object.entries(attributes))
+  }
+  removeAttribute(name: string): void {
+    this.attributes.delete(name)
+  }
+  get src(): string {
+    return this.attributes.get('src') ?? ''
+  }
+  set src(value: string) {
+    this.attributes.set('src', value)
+    this.assigned.push(value)
+    this.complete = this.loads !== 'never'
+    this.naturalWidth = this.loads === 'at-once' ? 1 : 0
+  }
+}
+
+// Runs the pin script over `images` as the page's document, with the clock the
+// test runs under, and hands back what structured cloning would.
+async function runPinScript(script: string, images: FakeImage[]): Promise<unknown> {
+  const document = {
+    querySelectorAll: (selector: string) => {
+      expect(selector).toBe('img[srcset]')
+      return images.filter((img) => img.attributes.has('srcset'))
+    }
+  }
+  const result: unknown = await runInNewContext(script, { document, setTimeout, Date })
+  return JSON.parse(JSON.stringify(result))
+}
+
+ctl.runPin = (script) => runPinScript(script, ctl.images as FakeImage[])
+
+const ORIGIN = 'https://example.test'
+
+// The triage's five images (#1843) and a `srcset` image still loading, which
+// Chromium gives no `currentSrc` until it has loaded: three pinned.
+function fiveImagePage(): Record<string, FakeImage> {
+  const picture = { localName: 'picture' }
+  return {
+    srcsetOnly: new FakeImage(
+      { srcset: '/srcset-only-1x.png 1x, /srcset-only-2x.png 2x' },
+      `${ORIGIN}/srcset-only-1x.png`
+    ),
+    srcAndSrcset: new FakeImage(
+      {
+        src: '/src-fallback.png',
+        srcset: '/srcset-with-src-1x.png 1x, /srcset-with-src-2x.png 2x'
+      },
+      `${ORIGIN}/srcset-with-src-1x.png`
+    ),
+    widths: new FakeImage(
+      { srcset: '/srcset-w-400.png 400w, /srcset-w-800.png 800w', sizes: '10px' },
+      `${ORIGIN}/srcset-w-400.png`
+    ),
+    picture: new FakeImage(
+      { src: '/picture-fallback.png', srcset: '/picture-own.png 1x' },
+      `${ORIGIN}/picture-source.png`,
+      'at-once',
+      picture
+    ),
+    plain: new FakeImage({ src: '/plain.png' }, `${ORIGIN}/plain.png`),
+    loading: new FakeImage({ srcset: '/slow.png 1x' }, '')
+  }
+}
+
+// The wait a pin script was handed.
+function pinWaitOf(script: string): number {
+  return Number(/Date\.now\(\) \+ (\d+)/.exec(script)![1])
+}
+
+function resetPin(): void {
+  ctl.images = []
+  ctl.pinScripts = []
+  ctl.pinThrows = false
+  ctl.pinCounts = undefined
+}
+
 // Every control back to a page that loads, records and prints.
 function resetRender(): void {
   ctl.loadUrlShouldReject = false
@@ -395,6 +501,7 @@ function resetRender(): void {
   ctl.isPackaged = false
   ctl.lateEvent = false
   resetPrint()
+  resetPin()
   delete process.env[E2E_TRUSTED_CERT_SWITCH]
 }
 
@@ -872,6 +979,124 @@ describe('the Scroll-to-load step script', () => {
   })
 })
 
+// Image Source Pinning (#1843, ADR-0055): the in-page script, run over fake
+// images under fake time.
+describe('the Image Source Pinning script', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function pin(images: FakeImage[], waitMs: number) {
+    const pending = runPinScript(pinImageSourcesScript(waitMs), images)
+    await vi.runAllTimersAsync()
+    return pending
+  }
+
+  it('pins each srcset image outside a picture to its currentSrc and drops srcset and sizes', async () => {
+    const page = fiveImagePage()
+
+    expect(await pin(Object.values(page), 5_000)).toEqual({
+      pinnedImages: 3,
+      pinnedImagesNotLoaded: 0
+    })
+
+    for (const [img, src] of [
+      [page.srcsetOnly, `${ORIGIN}/srcset-only-1x.png`],
+      [page.srcAndSrcset, `${ORIGIN}/srcset-with-src-1x.png`],
+      [page.widths, `${ORIGIN}/srcset-w-400.png`]
+    ] as const) {
+      expect(Object.fromEntries(img.attributes)).toEqual({ src })
+    }
+    // A picture's image, a plain image, and one with no currentSrc yet are left as they were.
+    expect(page.picture.assigned).toEqual([])
+    expect(page.picture.attributes.get('srcset')).toBe('/picture-own.png 1x')
+    expect(page.plain.assigned).toEqual([])
+    expect(page.loading.assigned).toEqual([])
+    expect(Object.fromEntries(page.loading.attributes)).toEqual({ srcset: '/slow.png 1x' })
+  })
+
+  it('pins nothing and counts 0 on a page with no srcset image', async () => {
+    const plain = new FakeImage({ src: '/plain.png' }, `${ORIGIN}/plain.png`)
+    expect(await pin([plain], 5_000)).toEqual({ pinnedImages: 0, pinnedImagesNotLoaded: 0 })
+  })
+
+  it('counts a pinned image that is still loading when the wait runs out, after waiting it all', async () => {
+    const stuck = new FakeImage({ srcset: '/a.png 1x' }, `${ORIGIN}/a.png`, 'never')
+    const loaded = new FakeImage({ srcset: '/b.png 1x' }, `${ORIGIN}/b.png`)
+    const startedAt = Date.now()
+
+    expect(await pin([stuck, loaded], 2_000)).toEqual({
+      pinnedImages: 2,
+      pinnedImagesNotLoaded: 1
+    })
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(2_000)
+  })
+
+  it('counts a pinned image whose load fails as not loaded', async () => {
+    const broken = new FakeImage({ srcset: '/missing.png 1x' }, `${ORIGIN}/missing.png`, 'fails')
+    expect(await pin([broken], 0)).toEqual({ pinnedImages: 1, pinnedImagesNotLoaded: 1 })
+  })
+
+  it('stops waiting once every pinned image has loaded', async () => {
+    const late = new FakeImage({ srcset: '/late.png 1x' }, `${ORIGIN}/late.png`, 'never')
+    const startedAt = Date.now()
+    const pending = runPinScript(pinImageSourcesScript(5_000), [late])
+    await vi.advanceTimersByTimeAsync(120)
+    late.complete = true
+    late.naturalWidth = 1
+    await vi.runAllTimersAsync()
+
+    expect(await pending).toEqual({ pinnedImages: 1, pinnedImagesNotLoaded: 0 })
+    expect(Date.now() - startedAt).toBeLessThan(500)
+  })
+
+  it('does not wait when it has no time', async () => {
+    const stuck = new FakeImage({ srcset: '/a.png 1x' }, `${ORIGIN}/a.png`, 'never')
+    const startedAt = Date.now()
+    expect(await pin([stuck], 0)).toEqual({ pinnedImages: 1, pinnedImagesNotLoaded: 1 })
+    expect(Date.now() - startedAt).toBe(0)
+  })
+})
+
+describe('pinImageSources', () => {
+  const contents = (answer: () => unknown): WebContents =>
+    ({ executeJavaScript: async () => answer() }) as unknown as WebContents
+
+  it('returns the inventory part, which the strict schema accepts', async () => {
+    const part = await pinImageSources(
+      contents(() => ({ pinnedImages: 3, pinnedImagesNotLoaded: 1 })),
+      0
+    )
+    expect(part).toEqual({ present: true, pinnedImages: 3, pinnedImagesNotLoaded: 1 })
+  })
+
+  it.each([
+    ['a not-loaded count above the pinned count', { pinnedImages: 1, pinnedImagesNotLoaded: 2 }],
+    ['a fraction', { pinnedImages: 1.5, pinnedImagesNotLoaded: 0 }],
+    ['a negative count', { pinnedImages: -1, pinnedImagesNotLoaded: 0 }],
+    ['a missing count', { pinnedImages: 1 }],
+    ['no object at all', null]
+  ])('fails on %s, rather than signing it', async (_name, answer) => {
+    await expect(
+      pinImageSources(
+        contents(() => answer),
+        0
+      )
+    ).rejects.toThrow(/^Image Source Pinning returned counts the schema refuses: /)
+  })
+
+  it('fails when the script throws', async () => {
+    const wc = contents(() => {
+      throw new Error('Script failed to execute')
+    })
+    await expect(pinImageSources(wc, 0)).rejects.toThrow('Script failed to execute')
+  })
+})
+
 // A WebContents whose debugger reports `content` as the CSS content size and
 // returns `png` as the captured image.
 function screenshotContents(
@@ -1007,6 +1232,7 @@ describe('renderPageInHiddenWindow', () => {
     ctl.isPackaged = false
     ctl.lateEvent = false
     resetPrint()
+    resetPin()
     delete process.env[E2E_TRUSTED_CERT_SWITCH]
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
@@ -1265,6 +1491,7 @@ describe('renderPageInHiddenWindow, the Transaction Record', () => {
     ctl.isPackaged = false
     ctl.lateEvent = false
     resetPrint()
+    resetPin()
     delete process.env[E2E_TRUSTED_CERT_SWITCH]
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
@@ -1537,6 +1764,91 @@ describe('renderPageInHiddenWindow, the PDF', () => {
   }, 30_000)
 })
 
+// Image Source Pinning (#1843, ADR-0055) inside the render.
+describe('renderPageInHiddenWindow, Image Source Pinning', () => {
+  beforeAll(async () => {
+    const png = await sharp({ create: { width: 100, height: 100, channels: 3, background: WHITE } })
+      .png()
+      .toBuffer()
+    ctl.pngBase64 = png.toString('base64')
+  })
+
+  beforeEach(() => {
+    resetRender()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  async function render(timeoutMs = 30_000) {
+    const result = await renderPageInHiddenWindow('https://example.test/', { timeoutMs, ...IDS })
+    for await (const _chunk of result.mhtmlStream) void _chunk
+    await result.cleanup()
+    return result
+  }
+
+  it('captures the screenshot, then pins the image sources, then saves the page', async () => {
+    ctl.images = Object.values(fiveImagePage())
+    const { imageSourcePinning } = await render()
+
+    expect(imageSourcePinning).toEqual({ present: true, pinnedImages: 3, pinnedImagesNotLoaded: 0 })
+    const at = (step: string) => ctl.order.indexOf(step)
+    expect(at('Page.captureScreenshot')).toBeGreaterThan(-1)
+    expect(at('Page.captureScreenshot')).toBeLessThan(at('pinImageSources'))
+    expect(at('pinImageSources')).toBeLessThan(at('savePage'))
+    expect(ctl.order.filter((step) => step === 'pinImageSources')).toHaveLength(1)
+  }, 30_000)
+
+  it('records both counts 0 for a page with no srcset image', async () => {
+    const { imageSourcePinning } = await render()
+    expect(imageSourcePinning).toEqual({ present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 })
+  }, 30_000)
+
+  // The rule of 2026-10-26 for the record phases: the wait takes its time from what is left
+  // before the 40 s end reserve, up to its own 5 s.
+  it('waits nothing below the end reserve, and at most 5 s above it', async () => {
+    await render(39_000)
+    await render(60_000)
+    expect(ctl.pinScripts.map(pinWaitOf)).toEqual([0, 5_000])
+  }, 30_000)
+
+  it('counts a pinned image that does not load in the time left, and returns before its deadline', async () => {
+    ctl.images = [new FakeImage({ srcset: '/a.png 1x' }, `${ORIGIN}/a.png`, 'never')]
+    const startedAt = Date.now()
+    const { imageSourcePinning } = await render(3_000)
+
+    expect(Date.now() - startedAt).toBeLessThan(3_000)
+    expect(imageSourcePinning).toEqual({ present: true, pinnedImages: 1, pinnedImagesNotLoaded: 1 })
+    expect(ctl.order).toContain('savePage')
+  }, 30_000)
+
+  it.each([
+    [
+      'the pin script throws',
+      () => {
+        ctl.pinThrows = true
+      },
+      'the page navigated away during the pin'
+    ],
+    [
+      'the counts contradict each other',
+      () => {
+        ctl.pinCounts = { pinnedImages: 1, pinnedImagesNotLoaded: 2 }
+      },
+      'Image Source Pinning returned counts the schema refuses'
+    ]
+  ])(
+    'fails the render, and saves no page, when %s',
+    async (_name, arrange, message) => {
+      arrange()
+      await expect(
+        renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000, ...IDS })
+      ).rejects.toThrow(message)
+      expect(ctl.order).not.toContain('savePage')
+      expect(ctl.lastWindow!.isDestroyed()).toBe(true)
+    },
+    30_000
+  )
+})
+
 // The same render handed to the Recapture queue and the Capture's ingest, so each outcome is
 // shown stored, as the step's acceptance asks.
 describe('a Recapture of a rendered page, through ingest, and its PDF', () => {
@@ -1599,6 +1911,49 @@ describe('a Recapture of a rendered page, through ingest, and its PDF', () => {
   }
 
   const pdfFile = (id: string): string => join(getStorageRoot(), caseId, `${id}.pdf`)
+
+  it("signs the pinned counts in the entry's MHTML part, mirrors them, and re-anchors them on a Duplicate", async () => {
+    const page = fiveImagePage()
+    page.widths = new FakeImage({ srcset: '/w.png 400w' }, `${ORIGIN}/w.png`, 'fails')
+    ctl.images = Object.values(page)
+    const { id, entry } = await recaptureOnce()
+    const mhtml = { present: true, pinnedImages: 3, pinnedImagesNotLoaded: 1 }
+    expect(entry).toMatchObject({ inventory: { mhtml }, schemaVersion: 6 })
+    expect(getCapture(id)!.inventory).toEqual(entry.inventory)
+    await expect(verifyCapture(id)).resolves.toMatchObject({ status: 'verified' })
+
+    const duplicated = await createCaptureLifecycle({ selectorLifecycle }).duplicate(id)
+    if (duplicated.status !== 'duplicated') throw new Error('expected a duplicate')
+    const copy = readFileSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .at(-1)!
+    const parsed = ManifestEntrySchema.safeParse(copy)
+    expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+    expect(copy).toMatchObject({ method: 'duplicate', inventory: entry.inventory })
+    expect(getCapture(duplicated.capture.id)!.inventory).toEqual(entry.inventory)
+  }, 30_000)
+
+  it('stores nothing, and reports the job failed, when the pinning fails', async () => {
+    ctl.pinThrows = true
+    const service = createRecaptureService({
+      renderPage: renderPageInHiddenWindow,
+      captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
+      emitEvent: (event) => events.push(event),
+      emitNewCapture: () => {},
+      timeoutMs: 30_000
+    })
+    service.enqueue([{ url: 'https://example.test/', caseId }])
+    await service.idle()
+
+    expect(events.map(({ type }) => type)).toEqual(['received', 'failed'])
+    expect(events.at(-1)).toMatchObject({ error: 'the page navigated away during the pin' })
+    const manifest = join(getStorageRoot(), caseId, MANIFEST_FILENAME)
+    const written = existsSync(manifest) ? readFileSync(manifest, 'utf-8') : ''
+    expect(written).not.toContain('"type":"capture"')
+    expect(listCaptures(caseId)).toEqual([])
+  }, 30_000)
 
   it('stores the printed PDF, signs its hash and part, and mirrors the hash on the row', async () => {
     const printed = Buffer.from('%PDF-1.4 the printed page')

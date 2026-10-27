@@ -51,6 +51,13 @@ const SCREENSHOT_RECORD: ScreenshotRecord = {
   height: 16384
 }
 
+// Distinct counts, so a part signed as 0 or with the two swapped shows.
+const IMAGE_SOURCE_PINNING: RenderedPage['imageSourcePinning'] = {
+  present: true,
+  pinnedImages: 3,
+  pinnedImagesNotLoaded: 1
+}
+
 const SCROLL_TO_LOAD: ScrollToLoadRecord = {
   requested: true,
   ran: true,
@@ -122,6 +129,7 @@ function fakeRender(overrides: Partial<RenderedPage> = {}): RenderPage {
     screenshot: Buffer.from('png-bytes'),
     screenshotRecord: SCREENSHOT_RECORD,
     scrollToLoad: SCROLL_TO_LOAD,
+    imageSourcePinning: IMAGE_SOURCE_PINNING,
     text: 'page text',
     title: 'Page Title',
     finalUrl: url,
@@ -215,7 +223,7 @@ describe('recapture service', () => {
   // D4, D5 and D9 of docs/plans/2026-10-10-capture-engine-first-slice.md.
   describe('the inventory and the Scroll-to-load record', () => {
     const INVENTORY = {
-      mhtml: { present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 },
+      mhtml: IMAGE_SOURCE_PINNING,
       transactionRecord: TRANSACTION_RECORD_PART,
       screenshot: { present: true, ...SCREENSHOT_RECORD },
       pdf: { present: true, afterCollection: true }

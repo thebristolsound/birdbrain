@@ -19,6 +19,7 @@ import type {
   TransactionRecorder
 } from '@main/services/transactionRecorder'
 import type {
+  ImageSourcePinning,
   PdfOutcome,
   RenderPage,
   RenderedPage,
@@ -38,6 +39,9 @@ const SCROLL_PAUSE_MS = 500
 const SCROLL_STALL_THRESHOLD = 3
 const MAX_SCROLL_PHASE_MS = 75_000
 const FINAL_SETTLE_MS = 500
+// The longest Image Source Pinning waits for the images it pinned, taken from
+// the time left before the end reserve below, so it never cuts into the reserve.
+const PIN_LOAD_MAX_MS = 5_000
 // For screenshot + MHTML + text extraction. Sized for the worst case the scroll
 // cap below allows — a page at the full screenshot pixel budget — so the
 // artifact phase can't be starved into the outer deadline.
@@ -498,6 +502,63 @@ export async function trimTrailingBackground(
   }
 }
 
+// Image Source Pinning (ADR-0055, D4 of
+// docs/plans/2026-10-10-capture-engine-first-slice.md). The MHTML serializer
+// drops `srcset` from every <img>, so each <img> in the document that carries
+// `srcset`, is not a <picture>'s image, and has a `currentSrc` gets that source
+// as its `src` and loses `srcset` and `sizes`. The script then waits up to
+// `waitMs` and counts a pinned image not loaded unless it is `complete` with a
+// natural width. It runs in the page's world, like the scroll scripts.
+export function pinImageSourcesScript(waitMs: number): string {
+  return `(async () => {
+    const pinned = []
+    for (const img of document.querySelectorAll('img[srcset]')) {
+      const parent = img.parentElement
+      if ((parent && parent.localName === 'picture') || !img.currentSrc) continue
+      const src = img.currentSrc
+      img.removeAttribute('srcset')
+      img.removeAttribute('sizes')
+      img.src = src
+      pinned.push(img)
+    }
+    const loaded = (img) => img.complete && img.naturalWidth > 0
+    const deadline = Date.now() + ${Math.max(0, Math.floor(waitMs))}
+    while (Date.now() < deadline && !pinned.every(loaded)) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    return {
+      pinnedImages: pinned.length,
+      pinnedImagesNotLoaded: pinned.filter((img) => !loaded(img)).length
+    }
+  })()`
+}
+
+const MhtmlPartSchema = CaptureInventorySchema.shape.mhtml
+
+// Returns the inventory's MHTML part, parsed with the strict schema. That part
+// has no failed form (D4), so a script that throws, or counts the schema
+// refuses, fails the render, as a Scroll-to-load step that throws does. An
+// image still loading when `waitMs` runs out is counted, not a failure.
+export async function pinImageSources(
+  wc: WebContents,
+  waitMs: number
+): Promise<ImageSourcePinning> {
+  const counts = (await wc.executeJavaScript(pinImageSourcesScript(waitMs), true)) as {
+    pinnedImages?: unknown
+    pinnedImagesNotLoaded?: unknown
+  } | null
+  const parsed = MhtmlPartSchema.safeParse({
+    present: true,
+    pinnedImages: counts?.pinnedImages,
+    pinnedImagesNotLoaded: counts?.pinnedImagesNotLoaded
+  })
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map(({ message }) => message).join('; ')
+    throw new Error(`Image Source Pinning returned counts the schema refuses: ${issues}`)
+  }
+  return parsed.data
+}
+
 // The schema-6 shape of the inventory's PDF part, parsed before it reaches the
 // signed entry, as the Transaction Record's part is.
 const PdfPartSchema = CaptureInventorySchema.shape.pdf
@@ -770,6 +831,12 @@ export const renderPageInHiddenWindow: RenderPage = async (
       const recordedAt = new Date().toISOString()
       const { png: screenshot, record: screenshotRecord } = await captureFullPageScreenshot(wc)
 
+      // After the screenshot, which shows the page as loaded, and before the save.
+      const imageSourcePinning = await pinImageSources(
+        wc,
+        clampPhaseMs(remainingMs(FINAL_ARTIFACT_RESERVE_MS), PIN_LOAD_MAX_MS)
+      )
+
       await wc.savePage(tmpPath, 'MHTML')
 
       const text = (await wc.executeJavaScript(
@@ -810,6 +877,7 @@ export const renderPageInHiddenWindow: RenderPage = async (
         screenshot,
         screenshotRecord,
         scrollToLoad,
+        imageSourcePinning,
         text,
         title: wc.getTitle(),
         finalUrl: wc.getURL(),

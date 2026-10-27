@@ -1243,10 +1243,13 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   `Network.configureDurableMessages`, and the maintainer ruled on its three questions (the spike,
   "Rulings, 2026-10-26"). Step 9 sends that command with the `Network.enable` limits on the page's
   session and on each attached session in D17's order, and counts a target as recorded only when
-  it answered. The collector keeps a text body only from such a session. Step 9 applies the
-  per-resource limit itself before it keeps a body and records an oversized body as omitted. A
-  page's copy of a response that a service worker answered is `body-omitted`. Step 9's pull request
-  removes the writer's `x-birdbrain-decoded-text` marker and its `warcinfo` sentence.
+  it answered. The collector keeps a body returned as a string only from such a session. Step 9
+  applies the per-resource limit itself before it keeps a body and records an oversized body as
+  omitted. A page's copy of a response that a service worker answered is `body-omitted`. Step 9's
+  pull request removes the writer's `x-birdbrain-decoded-text` marker and its `warcinfo` sentence.
+  The spike ran on Electron 44.9.1, so step 9 re-checks the experimental
+  `Network.configureDurableMessages` on the Electron version `main` pins (45.0.0 since #1994)
+  before it relies on it.
 - **Time.** The render races one deadline and, when the deadline wins, rejects with "Recapture
   timed out" and stores nothing; `FINAL_ARTIFACT_RESERVE_MS` reserves 20 s for the screenshot,
   MHTML, and text only (`renderPageInHiddenWindow`). Two new phases need time at the end: the

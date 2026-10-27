@@ -69,7 +69,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 
 | Slice | Issue | Pull request | State |
 | --- | --- | --- | --- |
-| Step 1, verifier and schema | #1904 | #1978 | fix round pushed at `eac4b91d`; adding the `finishedWithoutResponse` count |
+| Step 1, verifier and schema | #1904 | #1978 | `finishedWithoutResponse` added at `083dba1b`, preflight green; merging down the stack |
 | Step 2, mirror columns | #1907 | #1980 | scheduled review: request changes; fix round pushed at `b3a68d48` |
 | Step 3, the Case carries the files | #1925 | #1982 | review: approve, fix round pushed at `7dc83929` |
 | Step 5, the report states the fields | #1927 | #1985 | fix round pushed at `b4bd9b71`, preflight green |

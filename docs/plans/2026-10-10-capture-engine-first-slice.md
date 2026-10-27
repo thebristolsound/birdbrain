@@ -488,7 +488,8 @@ against a Chromium 152 response.
   over as text encoded in UTF-8, which can differ from the bytes the server sent. Each record that
   holds such a body carries `x-birdbrain-decoded-text: utf-8`, the `warcinfo` record states the
   limit, and the payload digest covers the stored UTF-8 bytes. Spike #1983 measures, before step 9,
-  whether the browser can hand over the served bytes instead.
+  whether the browser can hand over the served bytes instead. The spike's rulings of 2026-10-26
+  amend this; step 9's "Text bodies" item states the change.
 - **Protocol.** Ruled 2026-10-26: request and status lines read `HTTP/1.0` when CDP reports
   `http/1.0` and `HTTP/1.1` otherwise, so WARC readers can parse them, and each request and response
   record carries `WARC-Protocol` with the protocol CDP reported, in lower case. browsertrix-crawler
@@ -805,7 +806,8 @@ states the renaming in `warcinfo` (D8), and step 9 states it in `features.mdx`.
 **Ruled 2026-10-26:** a body the browser hands over as text is stored as that text encoded in
 UTF-8, which can differ from the bytes the server sent. The writer marks each record that holds
 one and states the limit in `warcinfo` (D8, "Text bodies"). Spike #1983 measures, before step 9,
-whether the browser can hand over the served bytes instead.
+whether the browser can hand over the served bytes instead. The spike's rulings of 2026-10-26
+amend this; step 9's "Text bodies" item states the change.
 
 The spec asks what browser-based archiving tools write, and to follow it if it is documented (spec,
 Open questions). This plan found no published statement, and the two Webrecorder recorders differ
@@ -1235,6 +1237,19 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   to the Export bullet that lists what an evidence package contains. A test-only certificate
   allowance, from step 0's question 6, joins CE-2's loopback allowance, which a packaged build
   cannot turn on.
+- **Text bodies (ruled 2026-10-26).** The
+  [charset spike](../specs/2026-10-26-transaction-record-charset-spike.md) measured that
+  `Network.getResponseBody` returns the served bytes once the session has been sent
+  `Network.configureDurableMessages`, and the maintainer ruled on its three questions (the spike,
+  "Rulings, 2026-10-26"). Step 9 sends that command with the `Network.enable` limits on the page's
+  session and on each attached session in D17's order, and counts a target as recorded only when
+  it answered. The collector keeps a body returned as a string only from such a session. Step 9
+  applies the per-resource limit itself before it keeps a body and records an oversized body as
+  omitted. A page's copy of a response that a service worker answered is `body-omitted`. Step 9's
+  pull request removes the writer's `x-birdbrain-decoded-text` marker and its `warcinfo` sentence.
+  The spike ran on Electron 44.9.1, so step 9 re-checks the experimental
+  `Network.configureDurableMessages` on the Electron version `main` pins (45.0.0 since #1994)
+  before it relies on it.
 - **Time.** The render races one deadline and, when the deadline wins, rejects with "Recapture
   timed out" and stores nothing; `FINAL_ARTIFACT_RESERVE_MS` reserves 20 s for the screenshot,
   MHTML, and text only (`renderPageInHiddenWindow`). Two new phases need time at the end: the
@@ -1626,3 +1641,7 @@ folded in.
 - **2026-10-26.** D4's Transaction Record part gains `finishedWithoutResponse`, on the
   maintainer's ruling during step 9's review (#1999) as the orchestrating session relayed it.
   Step 1 (#1904) adds it to schema 6; making the collector count it is left to step 9.
+- **2026-10-26.** The charset spike (#1983, PR #1988) found a way for the collector to keep a text
+  response's served bytes, and the maintainer ruled on its three questions the same day. Step 9's
+  Changes gain a "Text bodies" item with the rulings; the spike records them under "Rulings,
+  2026-10-26".

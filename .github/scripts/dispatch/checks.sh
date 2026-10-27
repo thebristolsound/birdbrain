@@ -7,8 +7,10 @@
 # GITHUB_TOKEN is the GitHub Actions app's, the same app CI reports as, and
 # `checks: write` lets it create a check run for any commit. So a check run
 # counts here only when it is a job of a workflow run GitHub started for this PR
-# against the PR's base at this head, which a check run created through the API
-# is not.
+# at this head and lists against the PR's current base, which a check run created
+# through the API is not. GitHub lists the current base on runs that started
+# before a retarget, so after one, CI that ran against the former base still
+# counts until the next push.
 # Only the newest such run of each workflow counts: an older run at the same head
 # (superseded, often cancelled) left red jobs beside the newer run's green ones.
 # A status counts only from the maintainer or the pipeline (trusted_statuses);
@@ -19,10 +21,10 @@
 # pass runs the probe itself when the job did not succeed. Both are listed under
 # ignored.
 #
-# When CI (ci.yml) has no run for this PR at this head against its base, `pending`
-# holds one entry saying so, and --wait keeps waiting on it: an empty read is not a
-# green. Another workflow's run is not enough, since merge-gate.yml runs on
-# `edited`, which a base change fires, and pre-pass-gate.yml on `labeled`, and
+# When CI (ci.yml) has no run that GitHub lists for this PR at this head against
+# its current base, `pending` holds one entry saying so, and --wait keeps waiting on
+# it: an empty read is not a green. Another workflow's run is not enough, since
+# merge-gate.yml also runs on `edited` and pre-pass-gate.yml on `labeled`, and
 # neither event starts CI.
 #
 # Usage: checks.sh [--wait <seconds>] <pr-number>. Env: GH_TOKEN, LOGIN (machine

@@ -474,8 +474,16 @@ function parseTlsCertChain(value: unknown): TlsCertChainResult | undefined {
   return result.success ? result.data : undefined
 }
 
-// The capture engine's mirror columns. A value that is not what the entry could carry reads
-// back undefined, as parseTlsCertChain does, since Settings → Database can hand-edit the row.
+// The capture engine's mirror columns. Settings → Database can hand-edit the row, so each
+// column reads back undefined when it fails its own entry field's check, as parseTlsCertChain
+// does. No rule across columns applies: the row is a cache, and can hold a combination the
+// signed entry would refuse.
+const SHA256_HEX = /^[0-9a-f]{64}$/
+
+function parseMirroredHash(value: unknown): string | undefined {
+  return typeof value === 'string' && SHA256_HEX.test(value) ? value : undefined
+}
+
 function parseMirroredJson<T>(value: unknown, schema: z.ZodType<T>): T | undefined {
   if (typeof value !== 'string' || value.length === 0) return undefined
   let parsed: unknown
@@ -513,8 +521,8 @@ function rowToCapture(row: Record<string, unknown>): Capture {
     screenshotHash: (row.screenshot_hash as string) || undefined,
     textHash: (row.text_hash as string) || undefined,
     tlsCertChain: parseTlsCertChain(row.tls_cert_chain),
-    transactionRecordHash: (row.transaction_record_hash as string) || undefined,
-    pdfHash: (row.pdf_hash as string) || undefined,
+    transactionRecordHash: parseMirroredHash(row.transaction_record_hash),
+    pdfHash: parseMirroredHash(row.pdf_hash),
     inventory: parseMirroredJson(row.inventory, CaptureInventorySchema),
     scrollToLoad: parseMirroredJson(row.scroll_to_load, ScrollToLoadRecordSchema),
     boundTls: parseMirroredJson(row.bound_tls, BoundTlsSchema),

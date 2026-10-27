@@ -39,7 +39,7 @@ ran outside it. Windows and macOS were not run.
 | Each D5 ending, driven with a mocked `WebContents` (`tests/main/services/backgroundRenderer.test.ts`, `scrollToLoadLazyContent`)                                     | Budget zero records `ran: false` and no outcome; no scrollable root records `nothing-to-scroll`; a page at the scroll cap records `height-cap`; three steps without a change in height record `stopped-growing`; the phase deadline records `time-budget`                                                  | Each as expected, and each record passes the strict schema                                                                                                                 |
 | The stall count (same file)                                                                                                                                          | A page that grows before the third stall step keeps scrolling; a step that moves on to a second pane, at a different height, restarts the count; a page whose height falls, or moves down and up, at every step runs to the deadline                                                                       | As expected                                                                                                                                                                |
 | The root each step scrolls, with the step script run against a simulated page (same file, the step script's tests)                                                   | The document first; once it cannot move down, the inner panel with the most overflow that can; once nothing can move down, the root at its end with the most overflow, reported rather than `null`; `null` only when nothing overflows                                                                     | As expected for a document at its end, an app-shell page whose document overflows by its 16px margin, a page with two panes, and a panel that grows after reaching its end |
-| Whether the phase lifts a scroll lock, with the unlock, step and reset scripts run against a simulated page (same file, the scroll lock's tests)                     | A page that starts at its end lifts no lock and records `scrollLockLifted` false; a page locked with `overflow: hidden`, at its top or after it scrolled itself to its end, has the lock lifted, records true, and has the lock restored                                                                   | As expected                                                                                                                                                                |
+| Whether the phase lifts a scroll lock, with the unlock, step and reset scripts run against a simulated page (same file, the scroll lock's tests)                     | A page that starts at its end lifts no lock and records `scrollLockLifted` false; a page locked with `overflow: hidden` whose document cannot move from script, at its top or after it scrolled itself to its end, has the lock lifted, records true, and has the lock restored                            | As expected                                                                                                                                                                |
 | A step that throws (same file)                                                                                                                                       | The phase rejects, so the render fails, and the page's scroll position and lock are restored                                                                                                                                                                                                               | As expected                                                                                                                                                                |
 | A restore that fails (same file)                                                                                                                                     | With a lifted scroll lock, the phase rejects, so the render fails; a step's own error wins over the restore's; with no lock lifted, the failure is logged and the phase recorded                                                                                                                           | As expected                                                                                                                                                                |
 | A height the page reports that is not a non-negative integer (same file)                                                                                             | No `endHeight`                                                                                                                                                                                                                                                                                             | As expected for a fraction, a negative number, and text                                                                                                                    |
@@ -70,7 +70,8 @@ ran outside it. Windows and macOS were not run.
   document already at its end when the phase started, such as a page loaded at a fragment near
   its bottom, read as locked: the phase set `overflow: visible` on `html` and `body`, and the
   entry signed `scrollLockLifted: true`. The check now uses the step's root choice, so a root at
-  its end is not a lock.
+  its end is not a lock. On one locked page that also leaves the lock in place; the scroll-lock
+  runs below show which.
 
 The effect on acquisition, against the build before step 6 (`b4bd9b71`). Each row is one
 Electron run of the step script, extracted from the source named, driven through the renderer's
@@ -94,12 +95,36 @@ at every step, down as well as up, runs to the height cap or the phase's time li
 before step 6 counted a fall in height as a stall step, so a page that shrank at its bottom three
 steps in a row stopped there.
 
-The scroll lock, in Electron runs set up as the rows above, on a page holding a 5000 px block and
-a closing paragraph. Loaded at the paragraph's fragment, the page starts at its end: the build
-before step 6 lifted a lock it did not have, setting `overflow: visible` on `html` and `body`,
-and this step lifts none and ends `stopped-growing` at 5058. With `overflow: hidden` on `html` and
-`body` and loaded at its top, both builds lift the lock; this step also lifts it when the locked
-page is loaded at the fragment, and ends `stopped-growing` at 5042 either way.
+The scroll lock, in Electron runs of the unlock and step scripts set up as the rows above, from
+the source at `c7219ba3` (the same renderer file as `b4bd9b71`) and at `7b449b26`. Each page holds
+a 5000 px block and a closing paragraph, the window shows 479 px, and each run read the page's
+`document.compatMode` before the phase. Every page was loaded at its top and at the paragraph's
+fragment. The build before step 6 recorded no outcome, so its column names where its loop ended
+in D5's terms; "no height" means the first step found no root.
+
+| Page                                                              | Loaded at | Before step 6                              | This step                             |
+| ----------------------------------------------------------------- | --------- | ------------------------------------------ | ------------------------------------- |
+| No doctype (`BackCompat`), no styles                              | top       | not lifted, `nothing-to-scroll` at 5058    | not lifted, `stopped-growing` at 5058 |
+| No doctype, no styles                                             | fragment  | lifted, `nothing-to-scroll`, no height     | not lifted, `stopped-growing` at 5058 |
+| No doctype, `overflow: hidden` on `html` and `body`               | either    | not lifted, `nothing-to-scroll`, no height | the same                              |
+| No doctype, `height: 100%; overflow: hidden` on `html` and `body` | either    | lifted, `nothing-to-scroll` at 5042        | lifted, `stopped-growing` at 5042     |
+| Doctype (`CSS1Compat`), no styles                                 | top       | not lifted, `nothing-to-scroll` at 5058    | not lifted, `stopped-growing` at 5058 |
+| Doctype, no styles                                                | fragment  | lifted, `nothing-to-scroll`, no height     | not lifted, `stopped-growing` at 5058 |
+| Doctype, `overflow: hidden` on `html` and `body`                  | top       | not lifted, `nothing-to-scroll` at 5066    | not lifted, `stopped-growing` at 5066 |
+| Doctype, `overflow: hidden` on `html` and `body`                  | fragment  | lifted, `nothing-to-scroll`, no height     | not lifted, `stopped-growing` at 5066 |
+| Doctype, `height: 100%; overflow: hidden` on `html` and `body`    | top       | not lifted, `nothing-to-scroll` at 487     | not lifted, `stopped-growing` at 487  |
+| Doctype, `height: 100%; overflow: hidden` on `html` and `body`    | fragment  | lifted, `nothing-to-scroll` at 5042        | not lifted, `stopped-growing` at 487  |
+
+A script can scroll a standards-mode document styled `overflow: hidden`, so neither build reads
+those pages as locked when they load at their top. With `height: 100%` the document overflows
+by 8 px, and the 5000 px block scrolls inside `body`, which neither build's step considers: its
+inner roots are the descendants of `body`. Loaded at the fragment, that document starts at its
+8 px end. The build before step 6 read that as a lock, lifted it, and scrolled to 5042; this step
+reads a root at its end, lifts nothing, and ends `stopped-growing` at 487, as both builds do for
+the page loaded at its top. So on that page, loaded at the fragment, the phase no longer loosens
+the lock and scrolls none of the block, where the build before step 6 scrolled all of it. In
+quirks mode the full-height document cannot move from script, so both builds lift its lock
+wherever the page loads.
 
 ## False positives and negatives
 
@@ -123,6 +148,9 @@ page is loaded at the fragment, and ends `stopped-growing` at 5042 either way.
 
 - `endHeight` is the height of the root the step scrolled. On a page that scrolls an inner
   container, that is the container's height, not the document's.
+- The step never scrolls `body` itself. A page with a doctype and `height: 100%; overflow: hidden`
+  on `html` and `body` scrolls its content there, so the phase lifts no lock and stops at the
+  document's 8 px overflow; the scroll-lock runs above give the numbers.
 - When the browser reports no CSS content size, the screenshot is taken of the 1280 by 900
   viewport, and `contentWidth` and `contentHeight` record that box, which D6 defines as the box
   the screenshot was asked for.

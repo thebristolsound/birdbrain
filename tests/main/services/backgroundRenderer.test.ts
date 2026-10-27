@@ -615,7 +615,8 @@ describe('scrollToLoadLazyContent', () => {
 
 // A scrollable box with the browser's clamping: scrollTop stays within
 // [0, scrollHeight - clientHeight]. With overflow: hidden it does not move,
-// as Chromium's scroll-locked viewport does not.
+// which models a document that cannot move from script, as in a Chromium page
+// with no doctype. A standards-mode document with overflow: hidden still moves.
 class FakeScroller {
   scrollTop = 0
   style = { overflow: '' }

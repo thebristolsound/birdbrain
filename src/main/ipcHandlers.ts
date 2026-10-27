@@ -5,6 +5,7 @@ import { safeFilename } from '@shared/safeFilename'
 import { MENTION_TARGET_TYPES } from '@shared/noteDoc'
 import { validateIgnorePattern } from '@shared/urlPatterns'
 import { regexPatternError } from '@shared/selectorPattern'
+import { captureLinkBlockReason } from '@shared/localAddress'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
@@ -22,6 +23,7 @@ import type {
   CreateNoteParams,
   UpdateNoteParams,
   NoteBacklinksParams,
+  LookupWaybackLinkParams,
   PinWaybackSnapshotParams,
   BulkCreateSelectorsParams,
   DbTableRowsParams,
@@ -86,6 +88,7 @@ import {
 import { deleteDemoCase } from '@main/services/demoCase'
 import { getExtensionPath, extensionPathExists } from '@main/services/extensionPath'
 import { lookupSnapshots, isPersistableSnapshot } from '@main/services/waybackMachine'
+import { lookupLinkSnapshots } from '@main/services/waybackLinkCheck'
 import { egressFetch } from '@main/services/egress'
 import { buildCsv } from '@main/services/csvEscape'
 import { getInstallationId } from '@main/services/installationId'
@@ -856,6 +859,28 @@ export function registerIpcHandlers(deps: {
     try {
       // The lookup follows the Egress (ADR-0032); through a stopped proxy it fails here.
       return await lookupSnapshots(capture.url, capture.timestamp, { fetchImpl: egressFetch })
+    } catch (err) {
+      throw new IpcFailure(
+        err instanceof Error ? err.message : 'Wayback lookup failed',
+        'WAYBACK_LOOKUP_FAILED'
+      )
+    }
+  })
+
+  // A link in a stored page (#1737). Each lookup discloses the address to archive.org, so
+  // main refuses here what the link menu refuses, by the same rule, before any request.
+  // The stored page's capture time is the moment the snapshots are ranked against.
+  handle(IPC_CHANNELS.WAYBACK_LOOKUP_LINK, async (_, params: LookupWaybackLinkParams) => {
+    const p = params as Partial<LookupWaybackLinkParams> | null | undefined
+    if (!p || typeof p.captureId !== 'string' || typeof p.url !== 'string') {
+      throw new IpcFailure('Invalid Wayback link payload', 'INVALID_WAYBACK_LINK_PAYLOAD')
+    }
+    const capture = captureRepo.getCapture(p.captureId)
+    if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
+    const refused = captureLinkBlockReason(p.url)
+    if (refused) throw new IpcFailure(refused, 'WAYBACK_LINK_REFUSED')
+    try {
+      return await lookupLinkSnapshots(p.url, capture.timestamp, egressFetch)
     } catch (err) {
       throw new IpcFailure(
         err instanceof Error ? err.message : 'Wayback lookup failed',

@@ -54,19 +54,19 @@ links out of its MHTML again shows it.
 `CAPTURE_METHODS` gains no value. A link Capture observed its destination afresh: it is a new
 sighting, unlike a Duplicate.
 
-**The fields need schema 5.** `ManifestCaptureEntrySchema` is strict, so a verifier that does not
+**The fields need schema 6.** `ManifestCaptureEntrySchema` is strict, so a verifier that does not
 know the fields would read an entry carrying them as a broken chain. The rule `exhibitNumber`
 follows at 3 has two halves, and the fields take both. The schema accepts them only on an entry
-whose `schemaVersion` is at least 5, so a schema-4 verifier reports that it is too old, and only
+whose `schemaVersion` is at least 6, so a schema-5 verifier reports that it is too old, and only
 as a complete set of three, so an entry carrying one or two of them is rejected. The writer's
-`fieldMinReaderSchemaVersion` in `src/main/services/manifest.ts` stamps 5 on an entry that carries
-them, as it stamps 3 for `exhibitNumber` and 5 for the Egress fields. Schema 5 exists on `main`
-since PR #1747 taught the verifier ADR-0032's Egress fields, and no tagged release carried it on
-2026-10-06. The fields join that first schema-5 verifier release when they land in the schema
-before it is tagged. When it is tagged first, they take 6: a shipped schema-5 verifier passes the
-too-old check at 5 and fails its strict parse on the fields, so stamping 5 would read as a broken
-chain in a release already in recipients' hands. The release that knows the fields ships before
-any build writes them, as [ADR-0023](0023-exhibits-are-the-unit-of-evidence.md) requires.
+`fieldMinReaderSchemaVersion` in `src/main/services/manifest.ts` stamps 6 on an entry that carries
+them, as it stamps 3 for `exhibitNumber` and 5 for the Egress fields. When this record was
+proposed, schema 5 was on `main` and no tagged release carried it, so the fields could have joined
+it. `v1.0.1-beta.23` then shipped a schema-5 verifier without them: it passes the too-old check at
+5 and fails its strict parse on the fields, so stamping 5 would read as a broken chain in a
+release already in recipients' hands. The fields therefore join schema 6, the number the capture
+engine's first-slice verifier takes, and ship in its release. The release that knows the fields
+ships before any build writes them, as [ADR-0023](0023-exhibits-are-the-unit-of-evidence.md) requires.
 
 ## Considered options
 

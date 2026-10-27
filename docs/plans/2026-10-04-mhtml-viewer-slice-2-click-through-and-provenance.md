@@ -351,3 +351,9 @@ tab and makes the link text the button; B3 and B4 step 2 add the writer half of 
 the complete-set rule and the schema-6 case; B4 step 3 binds the job to one URL, reads the
 Content Hash from the verified entry, and adds the `CAPTURE_COLUMNS`, import remap and archive
 version changes. These are review findings adopted into the plan, not rulings.
+
+2026-10-26: the maintainer accepted ADR-0040 at schema 6. `v1.0.1-beta.23` shipped a schema-5
+verifier without the three fields, so B3's second case holds: the reader refine requires 6, and
+`fieldMinReaderSchemaVersion` stamps 6. B4 step 2 joins the schema-6 release that carries the
+capture engine first slice's verifier (#1904), and its known-answer tests sit beside the schema-6
+cases rather than the schema-5 ones.

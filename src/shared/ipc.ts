@@ -217,6 +217,7 @@ export const IPC_CHANNELS = {
 
   // Wayback Machine corroboration
   WAYBACK_LOOKUP: 'wayback:lookup',
+  WAYBACK_LOOKUP_LINK: 'wayback:lookupLink',
   WAYBACK_LIST: 'wayback:list',
   WAYBACK_LIST_FOR_CASE: 'wayback:listForCase',
   WAYBACK_PIN: 'wayback:pin',
@@ -338,6 +339,7 @@ export const IPC_CHANNELS = {
   UPDATE_STATUS: 'event:updateStatus',
   GUEST_FRAME_REPLACED: 'event:guestFrameReplaced',
   GUEST_MOUSE_DOWN: 'event:guestMouseDown',
+  GUEST_MOUSE_UP: 'event:guestMouseUp',
   INVESTIGATION_PROGRESS: 'event:investigationProgress',
 
   // Capture pipeline observability
@@ -427,9 +429,24 @@ export interface GuestFrameReplacedEvent {
 
 // A mouse button went down in the stored-page viewer's guest (#1708). Input inside a
 // <webview> never reaches the embedding document, so this is how that document learns
-// of a click there.
+// of a click there. `button` is null when Electron reports none.
+export type GuestMouseButton = 'left' | 'middle' | 'right'
+
 export interface GuestMouseDownEvent {
   guestWebContentsId: number
+  button: GuestMouseButton | null
+}
+
+// The keys that turn a click into another gesture, such as opening a new tab.
+export type GuestKeyModifier = 'shift' | 'control' | 'alt' | 'meta'
+
+// The release that pairs with a press, so the viewer can tell a click on a link from
+// a drag off it or a modified click (#1735).
+export interface GuestMouseUpEvent {
+  guestWebContentsId: number
+  button: GuestMouseButton | null
+  clickCount: number
+  modifiers: GuestKeyModifier[]
 }
 
 export type SelectorRematchedStatus = 'done' | 'error'
@@ -620,6 +637,18 @@ export interface NoteBacklinksParams {
   caseId: string
   targetType: MentionTargetType
   targetId: string
+}
+
+// A link in a stored page, looked up against the time that page was captured (#1737).
+export interface LookupWaybackLinkParams {
+  captureId: string
+  url: string
+}
+
+// `countIsMinimum`: archive.org may hold versions the answer does not count, because the
+// lookup reached its row limit or dropped a row it could not read.
+export interface WaybackLinkLookupResult extends WaybackLookupResult {
+  countIsMinimum: boolean
 }
 
 export interface PinWaybackSnapshotParams {
@@ -1037,6 +1066,10 @@ export interface IpcInvokeContract {
   'export:generate': { args: [caseId: string, options: ExportOptions]; result: ExportResult }
 
   'wayback:lookup': { args: [captureId: string]; result: WaybackLookupResult }
+  'wayback:lookupLink': {
+    args: [params: LookupWaybackLinkParams]
+    result: WaybackLinkLookupResult
+  }
   'wayback:list': { args: [captureId: string]; result: WaybackRef[] }
   'wayback:listForCase': { args: [caseId: string]; result: CaseWaybackRef[] }
   'wayback:pin': { args: [params: PinWaybackSnapshotParams]; result: WaybackRef }
@@ -1206,6 +1239,7 @@ export interface IpcEventContract {
   'event:updateStatus': UpdateStatus
   'event:guestFrameReplaced': GuestFrameReplacedEvent
   'event:guestMouseDown': GuestMouseDownEvent
+  'event:guestMouseUp': GuestMouseUpEvent
   'event:logEntry': LogEntry
   // Shared Cases (#1810): any invite, pending join or roster change in a
   // Case, and each step of a join in flight.

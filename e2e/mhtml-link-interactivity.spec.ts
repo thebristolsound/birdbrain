@@ -107,16 +107,38 @@ function linksMhtml(sentinel: string, fileTarget: string): string {
   ].join('\r\n')
 }
 
-async function seedCapture(page: Page, caseId: string, body: string, url: string) {
+// A one-part archive of a page the Case holds, with nothing in it to fetch.
+function targetMhtml(url: string, title: string): string {
+  return [
+    'From: <Saved by Blink>',
+    `Snapshot-Content-Location: ${url}`,
+    `Subject: ${title}`,
+    'MIME-Version: 1.0',
+    'Content-Type: multipart/related; type="text/html"; boundary="----BOUNDARY"',
+    '',
+    '------BOUNDARY',
+    'Content-Type: text/html',
+    'Content-ID: <frame-main@mhtml.blink>',
+    'Content-Transfer-Encoding: binary',
+    `Content-Location: ${url}`,
+    '',
+    `<html><body><p>${title}</p></body></html>`,
+    '',
+    '------BOUNDARY--',
+    ''
+  ].join('\r\n')
+}
+
+async function seedCapture(page: Page, caseId: string, body: string, url: string, title = 'Links') {
   const result = await page.evaluate(
-    async ({ caseId, body, url }) => {
+    async ({ caseId, body, url, title }) => {
       const status = await fetch('http://127.0.0.1:19845/api/status')
       const token = (await status.json()).serverToken ?? ''
       const form = new FormData()
       form.append('source', 'manual')
       form.append('caseId', caseId)
       form.append('url', url)
-      form.append('title', 'Links')
+      form.append('title', title)
       form.append('timestamp', new Date().toISOString())
       form.append('textContent', 'links')
       form.append('extensionVersion', '0.1.0')
@@ -130,7 +152,7 @@ async function seedCapture(page: Page, caseId: string, body: string, url: string
       })
       return r.json()
     },
-    { caseId, body, url }
+    { caseId, body, url, title }
   )
   expect(result.status).toBe('ok')
 }
@@ -193,6 +215,32 @@ async function guestMouse(
   }, input)
 }
 
+const KEY_CODES: Record<Modifier, string> = {
+  control: 'Control',
+  shift: 'Shift',
+  meta: 'Meta',
+  alt: 'Alt'
+}
+
+// Presses or releases a modifier key in the guest, or in the window around it.
+async function holdKey(
+  electronApp: ElectronApplication,
+  to: 'guest' | 'window',
+  modifier: Modifier,
+  type: 'keyDown' | 'keyUp'
+) {
+  await electronApp.evaluate(
+    ({ webContents }, { to, keyCode, modifier, type }) => {
+      const target = webContents
+        .getAllWebContents()
+        .find((wc) => wc.getType() === (to === 'guest' ? 'webview' : 'window'))
+      if (!target) throw new Error(`no ${to} webContents`)
+      target.sendInputEvent({ type, keyCode, modifiers: type === 'keyDown' ? [modifier] : [] })
+    },
+    { to, keyCode: KEY_CODES[modifier], modifier, type }
+  )
+}
+
 // Waits for the guest's load to finish, which is its iframe part committing, and
 // returns the events it raised on the way.
 async function waitForGuestLoad(electronApp: ElectronApplication): Promise<GuestEvent[]> {
@@ -219,16 +267,30 @@ async function guestState(electronApp: ElectronApplication) {
   })
 }
 
-async function openLinksCapture(page: Page, sentinel: Sentinel, fileTarget: string) {
+interface Target {
+  url: string
+  title: string
+}
+
+// `targets` are further Captures in the Case, each of a page the fixture links to.
+async function openLinksCapture(
+  page: Page,
+  sentinel: Sentinel,
+  fileTarget: string,
+  targets: Target[] = []
+) {
   await page.setViewportSize({ width: 1200, height: 800 })
   await page.evaluate(() => {
-    window.location.hash = '/cases/new'
+    window.location.hash = '/cases/new?blank=true'
   })
   await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
   await page.fill('[data-testid="case-name-input"]', 'Link interactivity E2E')
   await page.click('[data-testid="case-create-btn"]')
   await page.waitForURL(/#\/cases\/.+\/overview/, { timeout: 10000 })
   const caseId = page.url().match(/cases\/([^/]+)/)![1]
+  for (const { url, title } of targets) {
+    await seedCapture(page, caseId, targetMhtml(url, title), url, title)
+  }
   await seedCapture(
     page,
     caseId,
@@ -239,8 +301,8 @@ async function openLinksCapture(page: Page, sentinel: Sentinel, fileTarget: stri
     window.location.hash = `/cases/${id}/captures`
   }, caseId)
   const rows = page.getByTestId('capture-item')
-  await expect(rows).toHaveCount(1, { timeout: 15000 })
-  await rows.first().click()
+  await expect(rows).toHaveCount(1 + targets.length, { timeout: 15000 })
+  await rows.filter({ hasText: 'Links' }).click()
   await page.getByRole('tab', { name: 'Page', exact: true }).click()
   await expect(page.getByTestId('mhtml-viewer')).toBeVisible({ timeout: 15000 })
   return caseId
@@ -544,6 +606,208 @@ test.describe('stored-page viewer links', () => {
       return { guest: wv.getWebContentsId(), guestPresses }
     })
     expect(presses.guestPresses).toEqual([presses.guest])
+    expect(sentinel.requests).toEqual([])
+  })
+
+  // #1735. The fixture has no link that sits in both frames, so the Case holds a
+  // Capture of each frame's public link. A click moves the viewer's selection, and the
+  // guard still refuses the guest's own navigation, which the click matrices above pin.
+  test('a click on a link the Case holds opens that Capture, and Back returns', async ({
+    electronApp,
+    page
+  }) => {
+    test.setTimeout(180000)
+    await recordGuestEvents(electronApp)
+    const targets = [
+      { url: 'https://example.test/main', title: 'Main target' },
+      { url: 'https://example.test/sub', title: 'Sub target' }
+    ]
+    await openLinksCapture(page, sentinel, fileTarget, targets)
+    await waitForGuestLoad(electronApp)
+    const title = page.getByTestId('capture-viewer-title')
+    const back = page.getByTestId('capture-trail-back')
+    const bubble = page.getByTestId('link-status-bubble')
+    const notInCase = page.getByTestId('link-not-in-case')
+    await expect(title).toHaveText('Links')
+    const stored = (await guestState(electronApp)).url
+
+    // The press is paired with the hover destination the viewer already holds, so the
+    // pointer settles on the link first, as an Operator's does.
+    const hover = async (name: RowName, frame: 'main' | 'sub', url: string) => {
+      await guestMouse(electronApp, { x: ROW.x, y: rowY(name, frame) })
+      await expect(bubble).toHaveText(url)
+    }
+
+    // Electron's before-mouse-event names no modifier keys, even for a release sent
+    // with one, which is why the forwarder reads them from key events instead.
+    const released = await electronApp.evaluate(({ webContents }) => {
+      const guest = webContents.getAllWebContents().find((wc) => wc.getType() === 'webview')
+      if (!guest) throw new Error('no guest webContents')
+      return new Promise<string[]>((resolve) => {
+        guest.once('before-mouse-event', (_event, mouse) => resolve(Object.keys(mouse)))
+        guest.sendInputEvent({
+          type: 'mouseUp',
+          x: 900,
+          y: 200,
+          button: 'left',
+          modifiers: ['control']
+        })
+      })
+    })
+    expect(released).not.toContain('modifiers')
+
+    // A middle click and a modified click on a held link are not link clicks. Each key
+    // is held through the click, from the guest or from the page around it, as the
+    // Operator's keyboard focus may be in either.
+    await hover('public', 'main', targets[0].url)
+    const ignored: { button: Button; modifiers?: Modifier[]; keysTo?: 'guest' | 'window' }[] = [
+      { button: 'middle' },
+      { button: 'left', modifiers: ['control'], keysTo: 'guest' },
+      { button: 'left', modifiers: ['shift'], keysTo: 'window' },
+      { button: 'left', modifiers: ['alt'], keysTo: 'guest' },
+      { button: 'left', modifiers: ['meta'], keysTo: 'window' }
+    ]
+    for (const { keysTo = 'guest', ...click } of ignored) {
+      const [modifier] = click.modifiers ?? []
+      if (modifier) await holdKey(electronApp, keysTo, modifier, 'keyDown')
+      await guestMouse(electronApp, { x: ROW.x, y: rowY('public', 'main'), ...click })
+      if (modifier) await holdKey(electronApp, keysTo, modifier, 'keyUp')
+      await page.waitForTimeout(400)
+      const label = `${click.button} ${modifier ?? ''} ${keysTo}`
+      await expect(title, label).toHaveText('Links')
+      await expect(back, label).toHaveCount(0)
+      await expect(notInCase, label).toHaveCount(0)
+      expect((await guestState(electronApp)).url, label).toBe(stored)
+    }
+
+    for (const [frame, target] of [
+      ['main', targets[0]],
+      ['sub', targets[1]]
+    ] as const) {
+      await hover('public', frame, target.url)
+      await guestMouse(electronApp, { x: ROW.x, y: rowY('public', frame), button: 'left' })
+      await expect(title, frame).toHaveText(target.title)
+      await expect(back, frame).toHaveText('← Back to Links')
+      // The viewer mounts a new guest for the Capture it opens; between the two there
+      // is none, which reads here as no address.
+      const opened = () =>
+        guestState(electronApp).then(
+          ({ url }) => url !== stored && url.startsWith('file:'),
+          () => false
+        )
+      await expect.poll(opened, frame).toBe(true)
+
+      await back.click()
+      await expect(title, frame).toHaveText('Links')
+      await expect(back, frame).toHaveCount(0)
+      await waitForGuestLoad(electronApp)
+      expect((await guestState(electronApp)).url, frame).toBe(stored)
+    }
+
+    // A link the Case does not hold. This one is on the loopback sentinel, so the
+    // offered Capture link is turned off with the reason the menu gives.
+    await hover('absolute', 'main', `${sentinel.origin}/absolute-main`)
+    await guestMouse(electronApp, { x: ROW.x, y: rowY('absolute', 'main'), button: 'left' })
+    await expect(notInCase).toContainText('Not in this Case')
+    const captureLink = notInCase.getByRole('button')
+    await expect(captureLink).toHaveText('Capture link (Points at a loopback address)')
+    await expect(captureLink).toBeDisabled()
+    await expect(title).toHaveText('Links')
+    // The next press in the guest clears it. The pointer leaves the link first, so the
+    // press is not read as a second click on it.
+    await takeGuestEvents(electronApp)
+    await guestMouse(electronApp, { x: 900, y: 200 })
+    await expect
+      .poll(async () => (await takeGuestEvents(electronApp)).some((e) => e.ev === 'target'))
+      .toBe(true)
+    await guestMouse(electronApp, { x: 900, y: 200, button: 'left' })
+    await expect(notInCase).toHaveCount(0)
+
+    // A link that opens a new window is one the guest does not try to follow on a plain
+    // click, so the viewer cannot confirm which link was clicked and does nothing.
+    await hover('blank', 'main', `${sentinel.origin}/blank-main`)
+    await guestMouse(electronApp, { x: ROW.x, y: rowY('blank', 'main'), button: 'left' })
+    await page.waitForTimeout(400)
+    await expect(notInCase).toHaveCount(0)
+    await expect(title).toHaveText('Links')
+
+    // The Links tab opens an In Case row on Enter, and pushes the trail the same way.
+    await page.getByRole('tab', { name: 'Links', exact: true }).click()
+    const row = page.getByTestId('links-row').filter({ hasText: 'main public' })
+    await expect(row.getByTestId('links-in-case')).toBeVisible()
+    await row.getByTestId('links-open').focus()
+    await page.keyboard.press('Enter')
+    await expect(title).toHaveText('Main target')
+    await back.click()
+    await expect(title).toHaveText('Links')
+    await takeGuestEvents(electronApp)
+    await page.getByRole('tab', { name: 'Page', exact: true }).click()
+    await waitForGuestLoad(electronApp)
+
+    // A modifier pressed in the window and let go after the window lost focus, so its
+    // release is never seen. Losing focus drops it, and a plain click works again.
+    //
+    // The window that takes focus opens in the screen corner furthest from the real
+    // pointer. Opened over it (a new window is centred, and so is Xvfb's pointer), the
+    // X server sends the guest a leave and, once it closes, a move at the real
+    // pointer's position, which takes the hover off the link these synthetic events
+    // point at. The guest must see no mouse event from the switch.
+    await holdKey(electronApp, 'window', 'alt', 'keyDown')
+    const focusSwitch = await electronApp.evaluate(
+      async ({ BrowserWindow, screen, webContents }) => {
+        const all = webContents.getAllWebContents()
+        const host = all.find((wc) => wc.getType() === 'window')
+        const guest = all.find((wc) => wc.getType() === 'webview')
+        if (!host || !guest) throw new Error('no window or guest webContents')
+        const mouse: string[] = []
+        const onMouse = (_event: unknown, { type }: { type: string }) => mouse.push(type)
+        guest.on('before-mouse-event', onMouse)
+        const { x, y, width, height } = screen.getPrimaryDisplay().bounds
+        const pointer = screen.getCursorScreenPoint()
+        const size = 100
+        const blurred = new Promise<boolean>((resolve) => {
+          host.once('blur', () => resolve(true))
+          setTimeout(() => resolve(false), 3000)
+        })
+        host.focus()
+        const other = new BrowserWindow({
+          x: pointer.x - x < width / 2 ? x + width - size : x,
+          y: pointer.y - y < height / 2 ? y + height - size : y,
+          width: size,
+          height: size
+        })
+        other.focus()
+        const result = await blurred
+        other.destroy()
+        host.focus()
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        guest.off('before-mouse-event', onMouse)
+        return { blurred: result, mouse }
+      }
+    )
+    expect(focusSwitch).toEqual({ blurred: true, mouse: [] })
+    await hover('public', 'main', targets[0].url)
+    await guestMouse(electronApp, { x: ROW.x, y: rowY('public', 'main'), button: 'left' })
+    await expect(title).toHaveText('Main target')
+    await back.click()
+    await expect(title).toHaveText('Links')
+    await waitForGuestLoad(electronApp)
+
+    // The pointer settles on one link, then moves to another and clicks at once, before
+    // the guest reports the second link. The viewer opens the clicked link's Capture or
+    // nothing, never the first link's.
+    await hover('public', 'main', targets[0].url)
+    await guestMouse(electronApp, { x: ROW.x, y: rowY('public', 'sub'), button: 'left' })
+    await expect
+      .poll(async () =>
+        (await takeGuestEvents(electronApp)).some(
+          (e) => e.ev === 'commit' && e.url === targets[1].url
+        )
+      )
+      .toBe(true)
+    await page.waitForTimeout(400)
+    expect(['Links', targets[1].title]).toContain(await title.textContent())
+
     expect(sentinel.requests).toEqual([])
   })
 

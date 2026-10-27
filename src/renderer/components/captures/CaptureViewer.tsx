@@ -64,6 +64,8 @@ export function CaptureViewer() {
   const setActiveTab = useAppStore((s) => s.setActiveViewerTab)
   const viewerHit = useAppStore((s) => s.viewerHit)
   const viewerHitOpening = useAppStore((s) => s.viewerHitOpening)
+  const captureTrail = useAppStore((s) => s.captureTrail)
+  const goBackInTrail = useAppStore((s) => s.goBackInTrail)
   const capture = captures.find((item) => item.id === selectedCaptureId) ?? null
 
   // Determine content type based on active tab and capture format. Wayback
@@ -152,6 +154,10 @@ export function CaptureViewer() {
   const linkedFrom = capture.linkedFromCaptureId
     ? captures.find((c) => c.id === capture.linkedFromCaptureId)
     : undefined
+  // Back names the Capture it returns to, which skips any deleted since it was pushed.
+  const liveIds = new Set(captures.map(({ id }) => id))
+  const backId = captureTrail.filter((id) => liveIds.has(id)).at(-1)
+  const backTo = backId ? captures.find(({ id }) => id === backId) : undefined
 
   return (
     <main className="@container/viewer flex flex-1 flex-col overflow-hidden bg-canvas">
@@ -181,7 +187,10 @@ export function CaptureViewer() {
           <ArrowLeft className="h-3.5 w-3.5" />
         </Button>
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="truncate text-sm font-medium text-text-primary">
+          <span
+            data-testid="capture-viewer-title"
+            className="truncate text-sm font-medium text-text-primary"
+          >
             {capture.title || hostname}
           </span>
           {CAPTURE_METHOD_LABELS[capture.method] && (
@@ -191,6 +200,15 @@ export function CaptureViewer() {
             >
               {CAPTURE_METHOD_LABELS[capture.method]}
             </span>
+          )}
+          {backTo && (
+            <button
+              data-testid="capture-trail-back"
+              className="min-w-0 truncate text-xs text-accent underline underline-offset-2"
+              onClick={() => goBackInTrail(liveIds)}
+            >
+              ← Back to {backTo.title || backTo.url}
+            </button>
           )}
           {duplicateOf && (
             <button
@@ -336,7 +354,7 @@ export function CaptureViewer() {
               <ArchivedCopyBanner timestamp={capture.timestamp} />
               <div className="min-h-0 flex-1 overflow-hidden">
                 {capture.format === 'mhtml' ? (
-                  <MhtmlViewer captureId={capture.id} caseId={capture.caseId} />
+                  <MhtmlViewer captureId={capture.id} caseId={capture.caseId} linkClicks />
                 ) : (
                   <LegacyHtmlViewer captureId={capture.id} />
                 )}

@@ -166,6 +166,15 @@ export interface CaptureServerStatus {
 /** Whether a screenshot accompanied the capture, and whether it was kept. */
 export type ScreenshotStatus = 'saved' | 'dropped' | 'none'
 
+/**
+ * The kind of screenshot a capture path produced, from most of the page to
+ * least. The full-page helpers fall back down this list rather than fail, so
+ * the operator is told when less than what was asked for was stored (#1667),
+ * and the post-capture card names the kind actually stored (#1769) — it is the
+ * shared spelling for both.
+ */
+export type ScreenshotKind = 'scrolling' | 'full-page' | 'viewport' | 'none'
+
 /** POST /api/captures — success body. */
 export interface CaptureUploadResult {
   captureId: string

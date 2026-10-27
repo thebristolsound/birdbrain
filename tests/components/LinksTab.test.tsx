@@ -3,11 +3,13 @@
 // The Links tab (#1708 D14): rows, filters, the In Case badge, the named empty states
 // and the shared link menu.
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
+import { act, render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { Capture, CaptureLink, CaptureLinks, FieldHit } from '@shared/types'
 import { LinksTab } from '@renderer/components/captures/LinksTab'
+import { useAppStore } from '@renderer/stores/appStore'
+import { notify } from '@renderer/lib/notify'
 import { fakeBridge } from '../renderer/fakeBridge'
 
 const capture: Capture = {
@@ -150,6 +152,52 @@ describe('LinksTab', () => {
     )
     const [row] = await screen.findAllByTestId('links-row')
     await waitFor(() => expect(within(row).queryByTestId('links-in-case')).not.toBeNull())
+  })
+
+  // #1735, plan A5. Each row's text is a native button, so Enter on it is a click;
+  // the E2E spec presses Enter on one in Electron.
+  it('opens an In Case row’s Capture on activation and pushes the viewed one on the trail', async () => {
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: [] })
+    renderTab(
+      result([
+        link({ href: 'https://news.example/held', text: 'Held story' }),
+        link({ href: 'https://elsewhere.example/', text: 'Not held' })
+      ]),
+      {
+        cases: [
+          capture,
+          { id: 'c2', url: 'https://news.example/held', timestamp: '2026-01-01T00:00:00Z' }
+        ]
+      }
+    )
+    const rows = await screen.findAllByTestId('links-row')
+    await waitFor(() => expect(within(rows[0]).queryByTestId('links-in-case')).not.toBeNull())
+    const open = within(rows[0]).getByRole('button', { name: 'Held story' })
+    expect(open.tagName).toBe('BUTTON')
+
+    fireEvent.click(within(rows[1]).getByRole('button', { name: 'Not held' }))
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap1')
+
+    fireEvent.click(open)
+    expect(useAppStore.getState().selectedCaptureId).toBe('c2')
+    expect(useAppStore.getState().captureTrail).toEqual(['cap1'])
+  })
+
+  it('does nothing on activating a same-page row, which resolves to the viewed Capture', async () => {
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: [] })
+    renderTab(
+      result([
+        link({ href: 'https://news.example/story#comments', text: 'Comments', kind: 'same-page' })
+      ]),
+      { cases: [capture] }
+    )
+    const [row] = await screen.findAllByTestId('links-row')
+    await waitFor(() => expect(within(row).queryByTestId('links-in-case')).not.toBeNull())
+
+    fireEvent.click(within(row).getByRole('button', { name: 'Comments' }))
+
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap1')
+    expect(useAppStore.getState().captureTrail).toEqual([])
   })
 
   it('filters by search text and by external only', async () => {
@@ -439,5 +487,227 @@ describe('LinksTab', () => {
     expect((await screen.findByTestId('links-empty')).textContent).toContain(
       "Couldn't read the stored page"
     )
+  })
+})
+
+// #1737, plan S6: a row's Wayback cell reads only the cache the link menu's lookup fills.
+describe('LinksTab Wayback cell', () => {
+  const SNAPSHOT = {
+    timestamp: '2026-07-29T12:00:00.000Z',
+    snapshotUrl: 'https://web.archive.org/web/20260729120000/https://a.example/1',
+    originalUrl: 'https://a.example/1',
+    statusCode: 200
+  }
+  const FOUND = {
+    snapshots: [SNAPSHOT],
+    closestIndex: 0,
+    checkedAt: '2026-10-26T00:00:00.000Z',
+    countIsMinimum: false
+  }
+
+  function renderWithLookup(
+    links: CaptureLink[],
+    lookupLink: (...args: never[]) => unknown,
+    {
+      openExternal = vi.fn(async (): Promise<void> => undefined),
+      enqueue = vi.fn(async () => ({ accepted: 1, rejected: [] as unknown[] }))
+    } = {}
+  ) {
+    fakeBridge({
+      captures: {
+        getLinks: vi.fn(async () => result(links)),
+        list: vi.fn(async () => []),
+        openExternal
+      },
+      wayback: { lookupLink },
+      recapture: { enqueue }
+    })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <LinksTab capture={capture} />
+      </QueryClientProvider>
+    )
+    return { openExternal, enqueue }
+  }
+
+  async function lookUp(text: string) {
+    fireEvent.contextMenu(await screen.findByText(text))
+    fireEvent.click(await screen.findByTestId('context-menu-item-link-wayback'))
+  }
+
+  it('shows Not checked on each web row, asks nothing, and gives other rows no cell', async () => {
+    const lookupLink = vi.fn()
+    renderWithLookup(
+      [
+        link({ href: 'https://a.example/1', text: 'One' }),
+        link({ href: 'mailto:desk@news.example', text: 'Mail', kind: 'mailto' })
+      ],
+      lookupLink
+    )
+    const rows = await screen.findAllByTestId('links-row')
+    expect(within(rows[0]).getByTestId('links-wayback').textContent).toBe('Wayback:Not checked')
+    expect(within(rows[1]).queryByTestId('links-wayback')).toBeNull()
+    expect(lookupLink).not.toHaveBeenCalled()
+  })
+
+  it('looks a row up from its menu, then answers every row with that address', async () => {
+    let answer: (value: unknown) => void = () => {}
+    const lookupLink = vi.fn(() => new Promise((resolve) => (answer = resolve)))
+    const success = vi.spyOn(notify, 'success')
+    renderWithLookup(
+      [
+        link({ href: 'https://a.example/1', text: 'One' }),
+        link({ href: 'https://a.example/1', text: 'One again' })
+      ],
+      lookupLink
+    )
+    await lookUp('One')
+
+    await waitFor(() =>
+      expect(screen.getAllByTestId('links-wayback')[0].textContent).toBe('Wayback:Checking…')
+    )
+    expect(lookupLink).toHaveBeenCalledExactlyOnceWith({
+      captureId: 'cap1',
+      url: 'https://a.example/1'
+    })
+    act(() => answer(FOUND))
+    await waitFor(() => {
+      for (const cell of screen.getAllByTestId('links-wayback')) {
+        expect(cell.textContent).toContain('1 version, closest 3d before this page was captured')
+      }
+    })
+    // The Page tab toasts its answer; here the cell is the answer.
+    expect(success).not.toHaveBeenCalled()
+  })
+
+  it('offers Open at archive.org, Copy snapshot URL and Capture snapshot, and no pin', async () => {
+    const writeText = vi.fn(async () => undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const { openExternal, enqueue } = renderWithLookup(
+      [link({ href: 'https://a.example/1', text: 'One' })],
+      vi.fn(async () => FOUND)
+    )
+    await lookUp('One')
+    const cell = await screen.findByTestId('links-wayback')
+    await waitFor(() => expect(within(cell).getByTestId('links-wayback-open')).toBeDefined())
+    expect(
+      within(cell)
+        .getAllByRole('button')
+        .map((b) => b.textContent)
+    ).toEqual(['Open at archive.org', 'Copy snapshot URL', 'Capture snapshot'])
+
+    fireEvent.click(within(cell).getByTestId('links-wayback-open'))
+    fireEvent.click(within(cell).getByTestId('links-wayback-copy'))
+    fireEvent.click(within(cell).getByTestId('links-wayback-capture'))
+
+    expect(openExternal).toHaveBeenCalledWith(SNAPSHOT.snapshotUrl)
+    expect(writeText).toHaveBeenCalledWith(SNAPSHOT.snapshotUrl)
+    // The replay URL with the toolbar, into the stored page's Case.
+    await waitFor(() =>
+      expect(enqueue).toHaveBeenCalledWith({
+        urls: [SNAPSHOT.snapshotUrl],
+        caseId: 'case1',
+        supersedesCaptureId: undefined
+      })
+    )
+  })
+
+  async function snapshotCell() {
+    await lookUp('One')
+    const cell = await screen.findByTestId('links-wayback')
+    await waitFor(() => expect(within(cell).getByTestId('links-wayback-open')).toBeDefined())
+    return cell
+  }
+
+  it('says a Capture snapshot was queued only when the queue accepted it', async () => {
+    const success = vi.spyOn(notify, 'success')
+    const warn = vi.spyOn(notify, 'warn').mockImplementation(() => {})
+    renderWithLookup(
+      [link({ href: 'https://a.example/1', text: 'One' })],
+      vi.fn(async () => FOUND)
+    )
+    fireEvent.click(within(await snapshotCell()).getByTestId('links-wayback-capture'))
+    await waitFor(() =>
+      expect(success).toHaveBeenCalledWith('Snapshot capture queued', {
+        description: SNAPSHOT.snapshotUrl
+      })
+    )
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('reports a refused Capture snapshot, and never as queued', async () => {
+    const success = vi.spyOn(notify, 'success')
+    const warn = vi.spyOn(notify, 'warn').mockImplementation(() => {})
+    const enqueue = vi.fn(async () => ({
+      accepted: 0,
+      rejected: [{ url: SNAPSHOT.snapshotUrl, reason: 'excluded by case policy' }] as unknown[]
+    }))
+    renderWithLookup(
+      [link({ href: 'https://a.example/1', text: 'One' })],
+      vi.fn(async () => FOUND),
+      { enqueue }
+    )
+    fireEvent.click(within(await snapshotCell()).getByTestId('links-wayback-capture'))
+    await waitFor(() =>
+      expect(warn).toHaveBeenCalledWith('Snapshot not captured: excluded by case policy')
+    )
+    expect(success).not.toHaveBeenCalledWith('Snapshot capture queued', expect.anything())
+  })
+
+  it('reports a snapshot the browser could not open', async () => {
+    const error = vi.spyOn(notify, 'error').mockImplementation(() => {})
+    const openExternal = vi.fn(async (): Promise<void> => {
+      throw new Error('no browser')
+    })
+    renderWithLookup(
+      [link({ href: 'https://a.example/1', text: 'One' })],
+      vi.fn(async () => FOUND),
+      { openExternal }
+    )
+    fireEvent.click(within(await snapshotCell()).getByTestId('links-wayback-open'))
+    await waitFor(() =>
+      expect(error).toHaveBeenCalledWith("Couldn't open the link in your browser", {
+        cause: expect.any(Error)
+      })
+    )
+  })
+
+  it('says No successful snapshot for an empty answer', async () => {
+    renderWithLookup(
+      [link({ href: 'https://a.example/1', text: 'One' })],
+      vi.fn(async () => ({ ...FOUND, snapshots: [], closestIndex: null }))
+    )
+    await lookUp('One')
+    await waitFor(() =>
+      expect(screen.getByTestId('links-wayback').textContent).toBe('Wayback:No successful snapshot')
+    )
+    expect(screen.queryByTestId('links-wayback-open')).toBeNull()
+  })
+
+  it('shows the error a failed lookup reports', async () => {
+    renderWithLookup(
+      [link({ href: 'https://a.example/1', text: 'One' })],
+      vi.fn(async () => {
+        throw new Error('Wayback CDX responded 503 Unavailable')
+      })
+    )
+    await lookUp('One')
+    await waitFor(() =>
+      expect(screen.getByTestId('links-wayback').textContent).toBe(
+        'Wayback:Wayback CDX responded 503 Unavailable'
+      )
+    )
+  })
+
+  it('turns the lookup off for a link to a private network, and sends nothing', async () => {
+    const lookupLink = vi.fn()
+    renderWithLookup([link({ href: 'http://intranet/wiki', text: 'Wiki' })], lookupLink)
+    fireEvent.contextMenu(await screen.findByText('Wiki'))
+    const item = await screen.findByTestId('context-menu-item-link-wayback')
+    expect(item.textContent).toBe('Look up in Wayback (Points at a private network)')
+    expect(item.getAttribute('data-disabled')).not.toBeNull()
+    fireEvent.click(item)
+    expect(lookupLink).not.toHaveBeenCalled()
   })
 })

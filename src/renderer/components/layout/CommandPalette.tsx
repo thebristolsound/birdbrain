@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'motion/react'
-import { Search, Plus, Clock, Compass, MessageSquareWarning } from 'lucide-react'
+import { Search, Plus, Clock, Compass, MessageSquareWarning, Users } from 'lucide-react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { casesQueryOptions, captureCountsQueryOptions } from '@renderer/lib/queries'
 import { presets } from '@renderer/lib/motion'
@@ -185,6 +185,17 @@ export function CommandPalette() {
               >
                 <Plus className="h-4 w-4 shrink-0 text-text-faint" />
                 <span className="text-sm">Create new case</span>
+              </button>
+              <button
+                data-testid="palette-join-shared-case"
+                className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-text-secondary transition-colors hover:bg-elevated"
+                onClick={() => {
+                  navigate({ to: '/cases/new', search: { join: true } })
+                  setOpen(false)
+                }}
+              >
+                <Users className="h-4 w-4 shrink-0 text-text-faint" />
+                <span className="text-sm">Join a shared Case…</span>
               </button>
               <button
                 data-testid="palette-replay-tour"

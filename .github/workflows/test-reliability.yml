@@ -41,7 +41,10 @@ env:
 
 jobs:
   probe:
-    runs-on: ubuntu-latest
+    # Not ubuntu-latest: on Ubuntu 26.04 the unit tests that load sharp under Electron
+    # segfault (electron/electron#46323). See "sharp under Electron on Linux" in
+    # docs/agents/testing.md.
+    runs-on: ubuntu-24.04
     # The probe's budget, 15 minutes, bounds both experiments; install comes before it.
     timeout-minutes: 30
     steps:

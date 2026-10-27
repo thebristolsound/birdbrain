@@ -53,6 +53,7 @@ const EVENTS = [
   'onUpdateStatus',
   'onGuestFrameReplaced',
   'onGuestMouseDown',
+  'onGuestMouseUp',
   'onSharingChanged',
   'onSharingJoinProgress',
   'onInvestigationProgress'

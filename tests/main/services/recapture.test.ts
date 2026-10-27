@@ -316,7 +316,8 @@ describe('recapture service', () => {
       { url: 'http://127.0.0.1:8080/', caseId },
       { url: 'http://localhost/admin', caseId },
       { url: 'http://192.168.1.1/', caseId },
-      { url: 'http://[::ffff:10.0.0.1]/', caseId }
+      { url: 'http://[::ffff:10.0.0.1]/', caseId },
+      { url: 'http://wiki/', caseId }
     ])
     await svc.idle()
 
@@ -325,7 +326,8 @@ describe('recapture service', () => {
       'Points at a loopback address',
       'Points at this computer',
       'Points at a private address',
-      'Points at a private address'
+      'Points at a private address',
+      'Points at a private network'
     ])
     expect(rendered).toBe(0)
     expect(newCaptures).toHaveLength(0)

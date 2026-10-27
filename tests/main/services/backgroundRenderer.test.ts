@@ -500,6 +500,23 @@ describe('scrollToLoadLazyContent', () => {
     })
   })
 
+  it('records no end height when the last height read is not recordable', async () => {
+    const heights = [3000, 1500.5]
+    const { wc } = scrollingContents({
+      step: (call) =>
+        call < heights.length ? { y: 0, height: heights[call], viewportHeight: 900 } : null
+    })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record).toEqual({
+      requested: true,
+      ran: true,
+      outcome: 'nothing-to-scroll',
+      scrollLockLifted: false
+    })
+  })
+
   it('fails, rather than records, a scroll step that throws, and still restores the page', async () => {
     const { wc, scripts } = scrollingContents({
       step: () => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Search } from 'lucide-react'
 import type { Capture, CaptureLink, FieldHit } from '@shared/types'
@@ -10,6 +10,7 @@ import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContex
 import { useLinkMenuTarget, type LinkHit } from '@renderer/components/captures/useLinkMenuTarget'
 import { filterLinks, isWebHref, splitAtHost } from '@renderer/components/captures/linksTabModel'
 import { linkClickOutcome } from '@renderer/components/captures/guestLink'
+import { WaybackLinkCell } from '@renderer/components/captures/WaybackLinkCell'
 
 const KIND_LABELS: Record<CaptureLink['kind'], string> = {
   http: 'web',
@@ -54,13 +55,15 @@ function LinkRow({
   inCase,
   index,
   hit,
-  onOpen
+  onOpen,
+  wayback
 }: {
   link: CaptureLink
   inCase: boolean
   index: number
   hit?: FieldHit
   onOpen: () => void
+  wayback?: ReactNode
 }) {
   const { before, host, after } = splitAtHost(link.href)
   return (
@@ -123,6 +126,7 @@ function LinkRow({
           </span>
         ))}
         {link.occurrences > 1 && <span>×{link.occurrences}</span>}
+        {wayback}
       </div>
       {hit && (
         <div data-testid="links-hit" className="text-[10px] text-warning-fg">
@@ -147,7 +151,7 @@ export function LinksTab({ capture, hit }: { capture: Capture; hit?: FieldHit })
     enabled: isMhtml
   })
   const { data: captures = [] } = useQuery(capturesQueryOptions(capture.caseId))
-  const linkTarget = useLinkMenuTarget(capture.caseId)
+  const linkTarget = useLinkMenuTarget(capture.caseId, capture.id)
   const followCaptureLink = useAppStore((s) => s.followCaptureLink)
   const [query, setQuery] = useState('')
   const [externalOnly, setExternalOnly] = useState(false)
@@ -325,6 +329,11 @@ export function LinksTab({ capture, hit }: { capture: Capture; hit?: FieldHit })
                   const outcome = linkClickOutcome(link.href, capture, captures)
                   if (outcome.kind === 'open') followCaptureLink(outcome.captureId)
                 }}
+                wayback={
+                  isWebHref(link.href) ? (
+                    <WaybackLinkCell capture={capture} url={link.href} />
+                  ) : undefined
+                }
               />
             ))}
           </ul>

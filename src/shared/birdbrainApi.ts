@@ -119,6 +119,8 @@ import type {
   DeepLinkTarget,
   ExportProgressEvent,
   ExportResult,
+  LookupWaybackLinkParams,
+  WaybackLinkLookupResult,
   PinWaybackSnapshotParams,
   ArchiveProgressEvent,
   ArchiveExportResult,
@@ -251,6 +253,7 @@ export interface BirdbrainAPI {
   }
   wayback: {
     lookup(captureId: string): Promise<WaybackLookupResult>
+    lookupLink(params: LookupWaybackLinkParams): Promise<WaybackLinkLookupResult>
     list(captureId: string): Promise<WaybackRef[]>
     listForCase(caseId: string): Promise<CaseWaybackRef[]>
     pin(params: PinWaybackSnapshotParams): Promise<WaybackRef>

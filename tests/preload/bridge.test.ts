@@ -222,6 +222,7 @@ describe('preload bridge', () => {
     )
     expect(wayback).toEqual({
       'wayback.lookup': 'wayback:lookup',
+      'wayback.lookupLink': 'wayback:lookupLink',
       'wayback.list': 'wayback:list',
       'wayback.listForCase': 'wayback:listForCase',
       'wayback.pin': 'wayback:pin',

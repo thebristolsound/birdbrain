@@ -226,6 +226,95 @@ describe('MhtmlViewer', () => {
     expect(warn).toHaveBeenCalledWith('Link not captured: excluded by case policy')
   })
 
+  // #1737, plan S6: the Page tab has no cell, so its answer is a toast.
+  describe('Look up in Wayback', () => {
+    const SNAPSHOT_URL = 'https://web.archive.org/web/20260729120000/https://a.example/one'
+
+    function lookUpFrom(lookupLink: (...args: never[]) => unknown) {
+      const openExternal = vi.fn(async () => undefined)
+      fakeBridge({
+        captures: {
+          getMhtmlUrl: vi.fn().mockResolvedValue(FILE_URL),
+          list: vi
+            .fn()
+            .mockResolvedValue([
+              { id: 'cap1', url: 'https://news.example/', timestamp: '2026-08-01T12:00:00.000Z' }
+            ]),
+          openExternal
+        },
+        wayback: { lookupLink }
+      })
+      return openExternal
+    }
+
+    async function lookUp() {
+      renderViewer()
+      const guest = await screen.findByTestId('mhtml-viewer')
+      guestContextMenu(guest, { linkURL: 'https://a.example/one', linkText: 'one' })
+      fireEvent.click(await screen.findByTestId('context-menu-item-link-wayback'))
+    }
+
+    it('toasts the answer with an Open at archive.org action', async () => {
+      const lookupLink = vi.fn(async () => ({
+        snapshots: [
+          {
+            timestamp: '2026-07-29T12:00:00.000Z',
+            snapshotUrl: SNAPSHOT_URL,
+            originalUrl: 'https://a.example/one'
+          }
+        ],
+        closestIndex: 0,
+        checkedAt: '2026-10-26T00:00:00.000Z',
+        countIsMinimum: false
+      }))
+      const openExternal = lookUpFrom(lookupLink)
+      const success = vi.spyOn(notify, 'success')
+      await lookUp()
+
+      await waitFor(() => expect(success).toHaveBeenCalled())
+      expect(lookupLink).toHaveBeenCalledExactlyOnceWith({
+        captureId: 'cap1',
+        url: 'https://a.example/one'
+      })
+      const [title, opts] = success.mock.calls[0]
+      expect(title).toBe('archive.org: 1 version, closest 3d before this page was captured')
+      expect(opts?.description).toBe('https://a.example/one')
+      expect(opts?.action?.label).toBe('Open at archive.org')
+      opts?.action?.onClick()
+      expect(openExternal).toHaveBeenCalledWith(SNAPSHOT_URL)
+    })
+
+    it('says so when archive.org has no successful snapshot', async () => {
+      lookUpFrom(
+        vi.fn(async () => ({
+          snapshots: [],
+          closestIndex: null,
+          checkedAt: '',
+          countIsMinimum: false
+        }))
+      )
+      const info = vi.spyOn(notify, 'info')
+      await lookUp()
+      await waitFor(() =>
+        expect(info).toHaveBeenCalledWith('archive.org: no successful snapshot of this link')
+      )
+    })
+
+    it('reports a failed lookup', async () => {
+      lookUpFrom(
+        vi.fn(async () => {
+          throw new Error('Wayback CDX responded 503 Unavailable')
+        })
+      )
+      const error = vi.spyOn(notify, 'error').mockImplementation(() => {})
+      await lookUp()
+      await waitFor(() => expect(error).toHaveBeenCalled())
+      expect(error.mock.calls[0][0]).toBe(
+        'Wayback lookup failed: Wayback CDX responded 503 Unavailable'
+      )
+    })
+  })
+
   it('offers Open captured copy when the Case holds the link, and selects that Capture', async () => {
     fakeBridge({
       captures: {

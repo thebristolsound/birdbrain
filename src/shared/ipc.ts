@@ -217,6 +217,7 @@ export const IPC_CHANNELS = {
 
   // Wayback Machine corroboration
   WAYBACK_LOOKUP: 'wayback:lookup',
+  WAYBACK_LOOKUP_LINK: 'wayback:lookupLink',
   WAYBACK_LIST: 'wayback:list',
   WAYBACK_LIST_FOR_CASE: 'wayback:listForCase',
   WAYBACK_PIN: 'wayback:pin',
@@ -638,6 +639,18 @@ export interface NoteBacklinksParams {
   targetId: string
 }
 
+// A link in a stored page, looked up against the time that page was captured (#1737).
+export interface LookupWaybackLinkParams {
+  captureId: string
+  url: string
+}
+
+// `countIsMinimum`: archive.org may hold versions the answer does not count, because the
+// lookup reached its row limit or dropped a row it could not read.
+export interface WaybackLinkLookupResult extends WaybackLookupResult {
+  countIsMinimum: boolean
+}
+
 export interface PinWaybackSnapshotParams {
   captureId: string
   snapshot: WaybackSnapshot
@@ -1044,6 +1057,10 @@ export interface IpcInvokeContract {
   'export:generate': { args: [caseId: string, options: ExportOptions]; result: ExportResult }
 
   'wayback:lookup': { args: [captureId: string]; result: WaybackLookupResult }
+  'wayback:lookupLink': {
+    args: [params: LookupWaybackLinkParams]
+    result: WaybackLinkLookupResult
+  }
   'wayback:list': { args: [captureId: string]; result: WaybackRef[] }
   'wayback:listForCase': { args: [caseId: string]; result: CaseWaybackRef[] }
   'wayback:pin': { args: [params: PinWaybackSnapshotParams]; result: WaybackRef }

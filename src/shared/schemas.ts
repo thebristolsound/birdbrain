@@ -1,10 +1,15 @@
 import { z } from 'zod'
 import { DEFAULT_TSA_URL, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import {
+  BOUND_TLS_ABSENCES,
   CAPTURE_METHODS,
+  CERTIFICATE_TRANSPARENCY_COMPLIANCES,
   CONSENT_SUPPRESSIONS,
+  CREDENTIAL_HEADER_NAMES,
   DEFAULT_UI_DENSITY,
   EGRESS_KINDS,
+  INVENTORY_ABSENCE_REASONS,
+  SCROLL_TO_LOAD_OUTCOMES,
   TLS_REFETCH_SKIPS,
   UI_DENSITIES
 } from '@shared/types'
@@ -390,8 +395,9 @@ export function formatExtensionAttachError(err: z.core.$ZodError): string {
 // (see #118). v3 adds the `exhibit`, `derivation` and `renumber` entry types
 // (ADR-0023) and generalizes `deletion` and `timestamp` to any Exhibit;
 // `capture` entries gain only an optional `exhibitNumber` (X46). v5 adds the
-// optional Egress fields on `capture` (ADR-0032). Mixed-version chains are
-// normal — never retro-sign legacy entries.
+// optional Egress fields on `capture` (ADR-0032), and v6 the capture engine's
+// optional fields on `capture` (below). Mixed-version chains are normal —
+// never retro-sign legacy entries.
 
 // Bounded integer: rejects negatives, floats, NaN, and unknown-future versions
 // (e.g. a v4 entry parsed by a v3 verifier). Auto-tightens on every version bump.
@@ -452,6 +458,148 @@ export const TlsCertChainErrorSchema = z
 
 export const TlsCertChainResultSchema = z.union([TlsCertChainSchema, TlsCertChainErrorSchema])
 
+// The capture engine's schema-6 fields on a `capture` entry
+// (docs/plans/2026-10-10-capture-engine-first-slice.md, D1 to D7). Each part
+// admits only what the first slice can write, so an entry carrying a value
+// nothing in the slice produces fails the parse. Every number is a
+// non-negative integer and every time an ISO 8601 string, which keeps
+// canonicalStringify and the runbook's `jq -cS` recipe producing the same
+// bytes (canonicalJson.ts). Every object is `.strict()`, so a key this build
+// does not know is refused too.
+const nonNegativeIntField = z.number().int().nonnegative()
+// Lower-case SHA-256 hex, the form `digest('hex')` writes. The package verifier
+// builds a file name from it, so it is never more than hex digits.
+const sha256HexField = z.string().regex(/^[0-9a-f]{64}$/)
+const isoTimeField = z.iso.datetime()
+
+const InventoryAbsentSchema = z
+  .object({ present: z.literal(false), reason: z.enum(INVENTORY_ABSENCE_REASONS) })
+  .strict()
+
+const TransactionRecordInventorySchema = z.discriminatedUnion('present', [
+  InventoryAbsentSchema,
+  z
+    .object({
+      present: z.literal(true),
+      exchanges: nonNegativeIntField,
+      cached: nonNegativeIntField,
+      cancelled: nonNegativeIntField,
+      failed: nonNegativeIntField,
+      inFlight: nonNegativeIntField,
+      finishedWithoutResponse: nonNegativeIntField,
+      bodiesOmitted: nonNegativeIntField,
+      incompleteRequestBodies: nonNegativeIntField,
+      webSockets: nonNegativeIntField,
+      recordedTargets: nonNegativeIntField,
+      unrecordedTargets: nonNegativeIntField,
+      replacedHeaders: z.array(z.enum(CREDENTIAL_HEADER_NAMES)),
+      budget: z
+        .object({ totalBytes: nonNegativeIntField, resourceBytes: nonNegativeIntField })
+        .strict()
+    })
+    .strict()
+])
+
+// The images the render pinned to their displayed source before the save, and
+// how many of those had not loaded when it ran (#1843). A pinned image counts
+// in both or only the first, so a second count above the first contradicts
+// itself.
+const MhtmlInventorySchema = z
+  .object({
+    present: z.literal(true),
+    pinnedImages: nonNegativeIntField,
+    pinnedImagesNotLoaded: nonNegativeIntField
+  })
+  .strict()
+  .refine((mhtml) => mhtml.pinnedImagesNotLoaded <= mhtml.pinnedImages, {
+    message: '`pinnedImagesNotLoaded` cannot exceed `pinnedImages`',
+    path: ['pinnedImagesNotLoaded']
+  })
+
+// MHTML and the screenshot have no absent form (D4 gives the reason).
+export const CaptureInventorySchema = z
+  .object({
+    mhtml: MhtmlInventorySchema,
+    transactionRecord: TransactionRecordInventorySchema,
+    screenshot: z
+      .object({
+        present: z.literal(true),
+        scaled: z.boolean(),
+        truncated: z.boolean(),
+        trimmed: z.boolean(),
+        contentWidth: nonNegativeIntField,
+        contentHeight: nonNegativeIntField,
+        width: nonNegativeIntField,
+        height: nonNegativeIntField
+      })
+      .strict(),
+    pdf: z.discriminatedUnion('present', [
+      InventoryAbsentSchema,
+      z.object({ present: z.literal(true), afterCollection: z.literal(true) }).strict()
+    ])
+  })
+  .strict()
+
+export type CaptureInventory = z.infer<typeof CaptureInventorySchema>
+
+export const ScrollToLoadRecordSchema = z
+  .object({
+    requested: z.literal(true),
+    ran: z.boolean(),
+    outcome: z.enum(SCROLL_TO_LOAD_OUTCOMES).optional(),
+    endHeight: nonNegativeIntField.optional(),
+    scrollLockLifted: z.boolean()
+  })
+  .strict()
+  // A phase that never ran has no end and read no height (D5).
+  .refine(
+    (record) => record.ran || (record.outcome === undefined && record.endHeight === undefined),
+    {
+      message: '`outcome` and `endHeight` require `ran` to be true',
+      path: ['ran']
+    }
+  )
+
+export type ScrollToLoadRecord = z.infer<typeof ScrollToLoadRecordSchema>
+
+// The main document response's `securityDetails`, as the browser reported it,
+// without `certificateId` and with its times converted to ISO 8601.
+// `keyExchange` admits the empty string, which CDP reports "if not applicable":
+// a verifier refusing it could not be recalled.
+export const BoundTlsSchema = z
+  .object({
+    protocol: z.string(),
+    keyExchange: z.string(),
+    keyExchangeGroup: z.string().optional(),
+    cipher: z.string(),
+    mac: z.string().optional(),
+    subjectName: z.string(),
+    sanList: z.array(z.string()),
+    issuer: z.string(),
+    validFrom: isoTimeField,
+    validTo: isoTimeField,
+    signedCertificateTimestampList: z.array(
+      z
+        .object({
+          status: z.string(),
+          origin: z.string(),
+          logDescription: z.string(),
+          logId: z.string(),
+          timestamp: isoTimeField,
+          hashAlgorithm: z.string(),
+          signatureAlgorithm: z.string(),
+          signatureData: z.string()
+        })
+        .strict()
+    ),
+    certificateTransparencyCompliance: z.enum(CERTIFICATE_TRANSPARENCY_COMPLIANCES),
+    serverSignatureAlgorithm: nonNegativeIntField.optional(),
+    encryptedClientHello: z.boolean()
+  })
+  .strict()
+
+export type BoundTls = z.infer<typeof BoundTlsSchema>
+
 const ManifestCaptureEntrySchema = z
   .object({
     type: z.literal('capture'),
@@ -503,6 +651,19 @@ const ManifestCaptureEntrySchema = z
     egressLabel: z.string().min(1).optional(),
     userAgent: z.string().min(1).optional(),
     tlsSkipped: z.enum(TLS_REFETCH_SKIPS).optional(),
+    // The capture engine's fields (schema 6), described at their schemas
+    // above. Each is OMITTED when absent, never null, so every entry written
+    // without them keeps its canonical body and chain hash. `transactionRecordHash`
+    // and `pdfHash` anchor the two files as `screenshotHash` anchors the
+    // screenshot. `boundTls` sits beside `tls`, never inside it: it is the
+    // browser's report on the connection that served the main document, and
+    // `tls` is a re-fetch made after the capture was stored.
+    inventory: CaptureInventorySchema.optional(),
+    scrollToLoad: ScrollToLoadRecordSchema.optional(),
+    transactionRecordHash: sha256HexField.optional(),
+    boundTls: BoundTlsSchema.optional(),
+    boundTlsAbsent: z.enum(BOUND_TLS_ABSENCES).optional(),
+    pdfHash: sha256HexField.optional(),
     sizeBytes: z.number(),
     operatorId: z.string(),
     operatorName: z.string(),
@@ -542,6 +703,55 @@ const ManifestCaptureEntrySchema = z
     message: '`tlsSkipped` and `tls` cannot both be present',
     path: ['tlsSkipped']
   })
+  // The same rule for the capture engine's fields: a schema-5 reader's strict
+  // capture shape has none of them.
+  .refine((entry) => !carriesCaptureEngineField(entry) || entry.schemaVersion >= 6, {
+    message: 'the capture engine fields on a capture entry require schemaVersion 6',
+    path: ['schemaVersion']
+  })
+  // The four shapes across the capture engine's fields that contradict
+  // themselves; the MHTML counts and the Scroll-to-load record each carry one
+  // more refine of their own. A released verifier cannot be recalled, so no
+  // other rule is added: none ties a field to a Capture Method, for one.
+  .refine(
+    (entry) =>
+      (entry.transactionRecordHash !== undefined) ===
+      (entry.inventory?.transactionRecord.present === true),
+    {
+      message:
+        '`transactionRecordHash` requires `inventory`, and is present exactly when ' +
+        '`inventory.transactionRecord.present` is true',
+      path: ['transactionRecordHash']
+    }
+  )
+  .refine((entry) => (entry.pdfHash !== undefined) === (entry.inventory?.pdf.present === true), {
+    message:
+      '`pdfHash` requires `inventory`, and is present exactly when `inventory.pdf.present` is true',
+    path: ['pdfHash']
+  })
+  .refine((entry) => entry.inventory === undefined || entry.screenshotHash !== undefined, {
+    message: '`inventory` requires `screenshotHash`',
+    path: ['screenshotHash']
+  })
+  .refine((entry) => entry.boundTls === undefined || entry.boundTlsAbsent === undefined, {
+    message: '`boundTls` and `boundTlsAbsent` cannot both be present',
+    path: ['boundTlsAbsent']
+  })
+
+function carriesCaptureEngineField(entry: {
+  inventory?: unknown
+  scrollToLoad?: unknown
+  transactionRecordHash?: unknown
+  boundTls?: unknown
+  boundTlsAbsent?: unknown
+  pdfHash?: unknown
+}): boolean {
+  const { inventory, scrollToLoad, transactionRecordHash, boundTls, boundTlsAbsent, pdfHash } =
+    entry
+  return [inventory, scrollToLoad, transactionRecordHash, boundTls, boundTlsAbsent, pdfHash].some(
+    (field) => field !== undefined
+  )
+}
 
 function carriesEgressField(entry: {
   egressKind?: unknown

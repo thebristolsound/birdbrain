@@ -23,6 +23,12 @@ import { buildSyntheticToken } from '../helpers/timestampFixtures'
 import { seedMixedKindCase, type MixedKindCase } from '../helpers/mixedKindCase'
 import { EGRESS_CAPTURE_ID, writeEgressPackage } from '../helpers/egressPackage'
 import { RECEIPT_TSA, writeReceiptPackage } from '../helpers/receiptPackage'
+import {
+  ENGINE_CAPTURE_ID,
+  ENGINE_HASHES,
+  writeEnginePackage
+} from '../helpers/captureEnginePackage'
+import { transactionRecordPath } from '../../src/packages/evidence-package-layout/index'
 import type { ExportOptions } from '@shared/types'
 
 // Integration test for the BUILT SEA binary (#122 §11). It is GATED on the
@@ -426,6 +432,40 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
         `${receiptIndex} names merge entry ${mergeIndex} but does not parse or attests another hash`
     )
     rmSync(receiptDir, { recursive: true, force: true })
+  })
+
+  // #1904 through the BUILT binary: a capture entry carrying the capture
+  // engine's fields verifies, both files bind, and the report states which
+  // headers had their values replaced. The same fixture runs in-process in
+  // tests/shared/verify/manifestSchema6.test.ts.
+  it('exits 0 with a PASS report binding the Transaction Record and the PDF', () => {
+    const engineDir = mkdtempSync(join(tmpdir(), 'bb-binengine-'))
+    writeEnginePackage(engineDir)
+    const proc = spawnSync(binaryPath, [engineDir], { encoding: 'utf-8' })
+    expect(proc.status, proc.stdout + proc.stderr).toBe(0)
+    expect(proc.stdout).toContain('RESULT: PASS')
+    expect(proc.stdout).toContain(`[PASS] capture ${ENGINE_CAPTURE_ID} transaction record\n`)
+    expect(proc.stdout).toContain(`[PASS] capture ${ENGINE_CAPTURE_ID} pdf\n`)
+    expect(proc.stdout).toContain(
+      `[SKIP] capture ${ENGINE_CAPTURE_ID} transaction record headers — the signed capture ` +
+        'entry records that the Transaction Record holds the headers cookie, set-cookie with ' +
+        'their values replaced: the headers are present, their values are not'
+    )
+    rmSync(engineDir, { recursive: true, force: true })
+  })
+
+  it('exits 1 with a FAIL report when the Transaction Record is missing', () => {
+    const engineDir = mkdtempSync(join(tmpdir(), 'bb-binengine-'))
+    writeEnginePackage(engineDir)
+    rmSync(join(engineDir, transactionRecordPath(ENGINE_HASHES.transactionRecord)))
+    const proc = spawnSync(binaryPath, [engineDir], { encoding: 'utf-8' })
+    expect(proc.status, proc.stdout + proc.stderr).toBe(1)
+    expect(proc.stdout).toContain(
+      `[FAIL] capture ${ENGINE_CAPTURE_ID} transaction record — capture ${ENGINE_CAPTURE_ID}: ` +
+        'Transaction Record file missing'
+    )
+    expect(proc.stdout).toContain('RESULT: FAIL')
+    rmSync(engineDir, { recursive: true, force: true })
   })
 
   // #399 AC 2 through the BUILT binary: a Working Copy is reported as not a

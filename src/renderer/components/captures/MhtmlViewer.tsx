@@ -70,7 +70,7 @@ export function MhtmlViewer({ captureId, caseId, linkClicks }: Props) {
   const [notInCase, setNotInCase] = useState<string | null>(null)
   const [hit, setHit] = useState<LinkHit>(NO_HIT)
   const [frameChanged, setFrameChanged] = useState(false)
-  const linkTarget = useLinkMenuTarget(caseId)
+  const linkTarget = useLinkMenuTarget(caseId, captureId, { toastWayback: true })
 
   useEffect(() => {
     const wv = ref.current as Electron.WebviewTag | null

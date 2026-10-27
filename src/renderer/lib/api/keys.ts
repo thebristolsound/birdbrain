@@ -90,6 +90,8 @@ export const queryKeys = {
     ['investigation', 'changes', caseId, runId] as const,
   ownIdentifiers: (caseId: string) => ['investigation', 'ownIdentifiers', caseId] as const,
   waybackLookup: (captureId: string) => ['wayback', 'lookup', captureId] as const,
+  waybackLinkLookup: (captureId: string, url: string) =>
+    ['wayback', 'linkLookup', captureId, url] as const,
   waybackPins: (captureId: string) => ['wayback', 'pins', captureId] as const,
   waybackCasePins: (caseId: string) => ['wayback', 'casePins', caseId] as const,
   settings: ['settings'] as const,

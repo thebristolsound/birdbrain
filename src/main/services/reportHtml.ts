@@ -1903,6 +1903,7 @@ function transactionRecordBlock(
     ['Cancelled, recorded as a request only', record.cancelled],
     ['Failed, recorded as a request only', record.failed],
     ['Still in flight when collection stopped, recorded as a request only', record.inFlight],
+    ['Finished with no response, recorded as a request only', record.finishedWithoutResponse],
     [
       'Responses recorded without their body, which was over the size budget or which the browser did not return',
       record.bodiesOmitted

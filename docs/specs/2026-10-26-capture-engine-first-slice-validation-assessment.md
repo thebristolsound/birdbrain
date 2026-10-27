@@ -94,10 +94,12 @@ at every step, down as well as up, runs to the height cap or the phase's time li
 before step 6 counted a fall in height as a stall step, so a page that shrank at its bottom three
 steps in a row stopped there.
 
-The scroll lock, in an Electron run of this step's scripts set up as the rows above, on a page
-holding a 5000 px block and a closing paragraph: loaded at the paragraph's fragment, the phase
-lifted no lock and ended `stopped-growing` at 5058; with `overflow: hidden` on `html` and `body`,
-loaded at its top or at the fragment, it lifted the lock and ended `stopped-growing` at 5042.
+The scroll lock, in Electron runs set up as the rows above, on a page holding a 5000 px block and
+a closing paragraph. Loaded at the paragraph's fragment, the page starts at its end: the build
+before step 6 lifted a lock it did not have, setting `overflow: visible` on `html` and `body`,
+and this step lifts none and ends `stopped-growing` at 5058. With `overflow: hidden` on `html` and
+`body` and loaded at its top, both builds lift the lock; this step also lifts it when the locked
+page is loaded at the fragment, and ends `stopped-growing` at 5042 either way.
 
 ## False positives and negatives
 

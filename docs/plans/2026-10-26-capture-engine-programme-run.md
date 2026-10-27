@@ -56,6 +56,9 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
   reserve stay, and the recording phases shrink to the time left.
 - **The stack after the new count.** Each stacked branch merges #1978's new head and updates any
   fixture that builds a present Transaction Record inventory.
+- **Step 10 rulings, 2026-10-26.** The final-artifact reserve rises to 40 s for the print, leaving
+  80 s for load and scroll. The dev-only packages pdf.js pulls in (`@napi-rs/canvas` 0.1.100, its
+  platform packages, and a stream helper) are accepted.
 - **Step 6 and #1843 in one release.** Ruled 2026-10-26: no release carries step 6 without
   #1843, because step 6 signs zero pinned-image counts that read the same as a pinning pass that
   ran and found nothing.
@@ -82,7 +85,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Viewer slice 3, one-link lookup | #1737 | #1990 | fix round pushed at `1a1dfa3d`, preflight green |
 | Viewer slice 3, batch lookup | #1738 | #1998 | fix round pushed at `a45764ce`, preflight green |
 | Step 9, record the Transaction Record (writer) | #1929 | #1999 | fix round pushed at `50f9a359`; merges #1996 again after the stack merge |
-| Step 10, PDF (writer) | #1930 | - | in flight, stacked on #1999 |
+| Step 10, PDF (writer) | #1930 | #2000 | draft, under review; merges after the tag |
 | ADR-0040 acceptance | #1736 | #1977 | draft, preflight green |
 | ADR-0040 verifier, schema 6 | #1976 | #1981 | review: approve, stacked on #1978 |
 

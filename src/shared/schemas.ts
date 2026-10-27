@@ -486,6 +486,7 @@ const TransactionRecordInventorySchema = z.discriminatedUnion('present', [
       cancelled: nonNegativeIntField,
       failed: nonNegativeIntField,
       inFlight: nonNegativeIntField,
+      finishedWithoutResponse: nonNegativeIntField,
       bodiesOmitted: nonNegativeIntField,
       incompleteRequestBodies: nonNegativeIntField,
       webSockets: nonNegativeIntField,

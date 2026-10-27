@@ -15,6 +15,11 @@ export const MAX_SCREENSHOT_SIZE = 100 * 1024 * 1024
 export const TRANSACTION_RECORD_TOTAL_BYTES = 50_000_000
 export const TRANSACTION_RECORD_RESOURCE_BYTES = 10_000_000
 
+// The Network events a render's Transaction Record holds at most, by count and by the length of
+// their JSON. Past either, the record is absent as `failed` and the Capture stores. Not signed.
+export const TRANSACTION_RECORD_MAX_EVENTS = 25_000
+export const TRANSACTION_RECORD_MAX_EVENT_BYTES = 25_000_000
+
 // Budget the extension spends on a full-page screenshot before it stops adding
 // slices (bytes). Measured on the *raw RGBA bitmap*, which is a different
 // quantity from MAX_SCREENSHOT_SIZE above — a bitmap this large is ~25

@@ -59,9 +59,23 @@ class FakeDebugger implements DebuggerSession {
 }
 
 const TIMINGS = { pageSetupMs: 40, childSetupMs: 40 }
-const BUDGET: RecorderBudget = { totalBytes: 1_000, resourceBytes: 300 }
+const BUDGET: RecorderBudget = {
+  totalBytes: 1_000,
+  resourceBytes: 300,
+  maxEvents: 1_000,
+  maxEventBytes: 1_000_000
+}
 const LIMITS = { maxTotalBufferSize: 1_000, maxResourceBufferSize: 300 }
 const WALL_TIME = 1791751674.5
+
+const WRITER = {
+  captureId: 'capture-1929',
+  birdbrainVersion: '1.0.1-test',
+  browserVersion: 'Chrome/152.0.0.0',
+  userAgent: 'Test/1.0',
+  egress: 'direct' as const,
+  date: '2026-10-26T12:00:00.000Z'
+}
 
 const settle = (ms = 0): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -112,8 +126,8 @@ const body = (text: string, base64Encoded = false) => ({
     : { body: text, base64Encoded }
 })
 
-async function started(fake = new FakeDebugger()) {
-  const recorder = createTransactionRecorder(fake, BUDGET, TIMINGS)
+async function started(fake = new FakeDebugger(), budget: RecorderBudget = BUDGET) {
+  const recorder = createTransactionRecorder(fake, budget, TIMINGS)
   const ok = await recorder.start()
   return { fake, recorder, ok }
 }
@@ -301,6 +315,31 @@ describe('attached targets (plan D17)', () => {
     })
   })
 
+  it('hands the collector the body fetched on the session that finished the request last', async () => {
+    const { fake, recorder } = await started()
+    attach(fake, 'worker', 'worker')
+    await settle()
+    fake.answers.set('Network.getResponseBody@', body('from the page'))
+    fake.answers.set('Network.getResponseBody@worker', body('from the worker'))
+    const { on } = page(fake)
+    on('')('Network.requestWillBeSent', {
+      requestId: 'shared',
+      wallTime: WALL_TIME,
+      request: { url: 'http://127.0.0.1/shared', method: 'GET', headers: {} }
+    })
+    on('')('Network.responseReceived', {
+      requestId: 'shared',
+      response: { url: 'http://127.0.0.1/shared', status: 200, statusText: 'OK', headers: {} }
+    })
+    on('')('Network.loadingFinished', { requestId: 'shared' })
+    on('worker')('Network.loadingFinished', { requestId: 'shared' })
+    const { exchanges } = await recorder.collect(100)
+    expect(exchanges[0]).toMatchObject({
+      state: 'complete',
+      responseBody: { data: 'from the worker' }
+    })
+  })
+
   it('leaves a body omitted when its target detaches before the body returns', async () => {
     const { fake, recorder } = await started()
     fake.answers.set('Network.getResponseBody', { fail: 'Session with given id not found' })
@@ -382,18 +421,193 @@ describe('the body budget (D17, item 7, and ruling 3 of 2026-10-26)', () => {
     expect(exchanges[0].requestBody).toEqual({ data: 'a=1', base64Encoded: false, complete: true })
     expect(counts.incompleteRequestBodies).toBe(0)
   })
+
+  it('keeps a returned body that fills the cap exactly, and none a character past it', async () => {
+    for (const [length, kept] of [
+      [BUDGET.totalBytes, true],
+      [BUDGET.totalBytes + 4, false]
+    ] as const) {
+      const fake = new FakeDebugger()
+      // Base64 of `length` characters, under the per-resource limit once decoded.
+      fake.answers.set('Network.getResponseBody', {
+        value: { body: 'QUFB'.repeat(length / 4), base64Encoded: true }
+      })
+      const { recorder } = await started(fake, { ...BUDGET, resourceBytes: 1_000 })
+      page(fake).exchange('doc', 'http://127.0.0.1/', 1)
+      const { exchanges } = await recorder.collect(100)
+      expect(exchanges[0].state, String(length)).toBe(kept ? 'complete' : 'body-omitted')
+    }
+  })
+
+  it('keeps a body of exactly the per-resource limit once decoded', async () => {
+    const { fake, recorder } = await started()
+    fake.answers.set('Network.getResponseBody', body('z'.repeat(BUDGET.resourceBytes)))
+    page(fake).exchange('doc', 'http://127.0.0.1/', BUDGET.resourceBytes)
+    const { exchanges } = await recorder.collect(100)
+    expect(exchanges[0].state).toBe('complete')
+  })
+})
+
+// Finding 2 of the review of #1999: a request body is reserved before it is fetched.
+describe('request bodies under the budget', () => {
+  const post = (fake: FakeDebugger, requestId: string, request: Record<string, unknown>) =>
+    page(fake).exchange(requestId, `http://127.0.0.1/${requestId}`, 2, '', {
+      request: {
+        url: `http://127.0.0.1/${requestId}`,
+        method: 'POST',
+        hasPostData: true,
+        ...request
+      }
+    })
+  const postDataRequests = (fake: FakeDebugger) =>
+    fake.sent.filter((s) => s.method === 'Network.getRequestPostData').map((s) => s.params)
+
+  it('reserves an unknown length at the per-resource limit and sends nothing past the cap', async () => {
+    const { fake, recorder } = await started()
+    fake.answers.set('Network.getRequestPostData', 'hang')
+    // 300 bytes reserve 400 each: two fit in 1,000, a third would take the total to 1,200.
+    for (const id of ['a', 'b', 'c']) post(fake, id, { headers: {} })
+    expect(postDataRequests(fake)).toEqual([{ requestId: 'a' }, { requestId: 'b' }])
+    await expect(recorder.collect(20)).rejects.toThrow('did not settle')
+  })
+
+  it('reserves a declared length, and fetches none over the per-resource limit', async () => {
+    const { fake } = await started()
+    fake.answers.set('Network.getRequestPostData', 'hang')
+    post(fake, 'small', { headers: { 'content-length': '30' } })
+    post(fake, 'large', { headers: { 'Content-Length': String(BUDGET.resourceBytes + 1) } })
+    expect(postDataRequests(fake)).toEqual([{ requestId: 'small' }])
+  })
+
+  it('reserves what the event already carries when no length is declared', async () => {
+    const { fake } = await started()
+    fake.answers.set('Network.getRequestPostData', 'hang')
+    // 400 base64 characters the event carries, then one 400-character reservation, fill 800 of
+    // the 1,000; a third would take the total to 1,200.
+    post(fake, 'carried', { postDataEntries: [{ bytes: 'A'.repeat(400) }] })
+    post(fake, 'unknown', { headers: {} })
+    post(fake, 'past', { headers: {} })
+    expect(postDataRequests(fake)).toEqual([{ requestId: 'carried' }, { requestId: 'unknown' }])
+  })
+
+  it('keeps returned post data that fills the cap exactly, and none past it', async () => {
+    // The request declares 3 bytes, so 4 characters are reserved, and the response body holds 4
+    // more until it returns. The post data returns first, against 4 held characters.
+    for (const [length, kept] of [
+      [BUDGET.totalBytes - 4, true],
+      [BUDGET.totalBytes - 3, false]
+    ] as const) {
+      const fake = new FakeDebugger()
+      fake.answers.set('Network.getRequestPostData', {
+        value: { postData: 'p'.repeat(length), base64Encoded: false }
+      })
+      fake.answers.set('Network.getResponseBody', body('ok'))
+      const { recorder } = await started(fake, { ...BUDGET, resourceBytes: 1_000 })
+      post(fake, 'form', { headers: { 'Content-Length': '3' } })
+      const { exchanges } = await recorder.collect(100)
+      expect(exchanges[0].requestBody?.data.length, String(length)).toBe(kept ? length : 0)
+    }
+  })
+
+  it('keeps no returned post data over the per-resource limit once decoded', async () => {
+    const { fake, recorder } = await started()
+    fake.answers.set('Network.getRequestPostData', {
+      value: { postData: 'q'.repeat(BUDGET.resourceBytes + 1), base64Encoded: false }
+    })
+    fake.answers.set('Network.getResponseBody', body('ok'))
+    post(fake, 'form', { headers: {} })
+    const { exchanges, counts } = await recorder.collect(100)
+    expect(exchanges[0].requestBody?.complete).toBe(false)
+    expect(counts.incompleteRequestBodies).toBe(1)
+  })
+
+  it('counts a request body incomplete when its fetch fails', async () => {
+    const { fake, recorder } = await started()
+    fake.answers.set('Network.getRequestPostData', { fail: 'No post data available' })
+    fake.answers.set('Network.getResponseBody', body('ok'))
+    post(fake, 'form', { headers: { 'Content-Length': '3' } })
+    const { exchanges, counts } = await recorder.collect(100)
+    expect(exchanges[0].requestBody).toEqual({ data: '', base64Encoded: false, complete: false })
+    expect(counts.incompleteRequestBodies).toBe(1)
+  })
+})
+
+// Finding 1 of the review of #1999: the events a page can make the recorder hold are bounded.
+describe('the event budget', () => {
+  // A page that fetches in a loop: each round trip is three held events, since
+  // `Network.dataReceived` is not held.
+  const loop = (fake: FakeDebugger, rounds: number) => {
+    for (let i = 0; i < rounds; i++) page(fake).exchange(`r${i}`, `http://127.0.0.1/x?${i}`, 1)
+  }
+
+  it('lets everything go past the event count, and records the Transaction Record failed', async () => {
+    const { fake, recorder } = await started(new FakeDebugger(), { ...BUDGET, maxEvents: 30 })
+    fake.answers.set('Network.getResponseBody', body('x'))
+    loop(fake, 10)
+    const fetchesAtBound = fake.methods().filter((m) => m === 'Network.getResponseBody').length
+    expect(fetchesAtBound).toBe(10)
+    loop(fake, 50)
+    // Nothing more is fetched once the bound is reached.
+    expect(fake.methods().filter((m) => m === 'Network.getResponseBody')).toHaveLength(10)
+    await expect(recorder.collect(100)).rejects.toThrow(
+      'The page sent more network events than the Transaction Record holds'
+    )
+    const outcome = await finishTransactionRecord(recorder, {
+      collectMs: 100,
+      writeMs: 100,
+      writer: WRITER
+    })
+    expect(outcome).toMatchObject({ present: false, reason: 'failed' })
+  })
+
+  it('holds exactly the event count, and fails on the next event', async () => {
+    const { fake, recorder } = await started(new FakeDebugger(), { ...BUDGET, maxEvents: 3 })
+    fake.answers.set('Network.getResponseBody', body('x'))
+    loop(fake, 1)
+    const { exchanges } = await recorder.collect(100)
+    expect(exchanges.map(({ state }) => state)).toEqual(['complete'])
+    page(fake).on('')('Network.requestServedFromCache', { requestId: 'r0' })
+    await expect(recorder.collect(100)).rejects.toThrow('network events')
+  })
+
+  it('records the Transaction Record failed past the byte estimate', async () => {
+    const { fake, recorder } = await started(new FakeDebugger(), {
+      ...BUDGET,
+      maxEventBytes: 2_000
+    })
+    loop(fake, 20)
+    await expect(recorder.collect(100)).rejects.toThrow('network events')
+  })
+
+  it('holds no Network.dataReceived event, so data chunks do not count against the bound', async () => {
+    const { fake, recorder } = await started(new FakeDebugger(), { ...BUDGET, maxEvents: 4 })
+    fake.answers.set('Network.getResponseBody', body('x'))
+    const { on } = page(fake)
+    on('')('Network.requestWillBeSent', {
+      requestId: 'r',
+      wallTime: WALL_TIME,
+      request: { url: 'http://127.0.0.1/r', method: 'GET', headers: {} }
+    })
+    on('')('Network.responseReceived', {
+      requestId: 'r',
+      response: { url: 'http://127.0.0.1/r', status: 200, statusText: 'OK', headers: {} }
+    })
+    for (let i = 0; i < 100; i++) on('')('Network.dataReceived', { requestId: 'r', dataLength: 0 })
+    on('')('Network.loadingFinished', { requestId: 'r' })
+    const { exchanges } = await recorder.collect(100)
+    expect(exchanges.map(({ state }) => state)).toEqual(['complete'])
+  })
+
+  it('resumes a target that attaches after the bound, and does not set it up', async () => {
+    const { fake, recorder } = await started(new FakeDebugger(), { ...BUDGET, maxEvents: 4 })
+    loop(fake, 2)
+    fake.emit('Target.attachedToTarget', { sessionId: 'late', targetInfo: { type: 'iframe' } })
+    expect(fake.methods('late')).toEqual(['Runtime.runIfWaitingForDebugger'])
+    await expect(recorder.collect(100)).rejects.toThrow('network events')
+  })
 })
 
 describe('finishTransactionRecord', () => {
-  const WRITER = {
-    captureId: 'capture-1929',
-    birdbrainVersion: '1.0.1-test',
-    browserVersion: 'Chrome/152.0.0.0',
-    userAgent: 'Test/1.0',
-    egress: 'direct' as const,
-    date: '2026-10-26T12:00:00.000Z'
-  }
-
   it('writes the record and states its inventory part, which the strict schema accepts', async () => {
     const { fake, recorder } = await started()
     fake.answers.set('Network.getResponseBody', body('<p>known</p>'))
@@ -482,6 +696,136 @@ describe('finishTransactionRecord', () => {
     expect(outcome).toMatchObject({ present: false, reason: 'failed' })
   })
 
+  // Ruling (c) of 2026-10-26 on the review of #1999: each phase is cut to the time left.
+  it('cuts the body fetches to the time left and records the record failed', async () => {
+    const { fake, recorder } = await started()
+    fake.answers.set('Network.getResponseBody', 'hang')
+    page(fake).exchange('doc', 'http://127.0.0.1/', 12)
+    recorder.stop()
+    const startedAt = Date.now()
+    const outcome = await finishTransactionRecord(recorder, {
+      collectMs: 5_000,
+      writeMs: 10_000,
+      timeLeftMs: () => 30,
+      writer: WRITER
+    })
+    expect(Date.now() - startedAt).toBeLessThan(1_000)
+    expect(outcome).toMatchObject({ present: false, reason: 'failed' })
+    expect(String(outcome.present || outcome.error)).toContain('within 30ms')
+  })
+
+  it('cuts the writer to the time left', async () => {
+    const { recorder } = await started()
+    recorder.stop()
+    let left = 5_000
+    const outcome = await finishTransactionRecord(recorder, {
+      collectMs: 5_000,
+      writeMs: 10_000,
+      timeLeftMs: () => {
+        const now = left
+        left = 30
+        return now
+      },
+      writer: WRITER,
+      write: () => new Promise(() => {})
+    })
+    expect(outcome).toMatchObject({ present: false, reason: 'failed' })
+    expect(String(outcome.present || outcome.error)).toContain('writer did not settle within 30ms')
+  })
+
+  it('records the record failed at once when no time is left', async () => {
+    const { recorder } = await started()
+    recorder.stop()
+    const outcome = await finishTransactionRecord(recorder, {
+      collectMs: 5_000,
+      writeMs: 10_000,
+      timeLeftMs: () => 0,
+      writer: WRITER
+    })
+    expect(outcome).toMatchObject({ present: false, reason: 'failed' })
+  })
+
+  // Finding 5 of the review of #1999: a value the strict schema refuses never reaches the entry.
+  it('records the record failed when the main document reports an SCT the schema refuses', async () => {
+    const { fake, recorder } = await started()
+    fake.answers.set('Network.getResponseBody', body('<p>tls</p>'))
+    const url = 'https://127.0.0.1/'
+    const { on } = page(fake)
+    on('')('Network.requestWillBeSent', {
+      requestId: 'doc',
+      wallTime: WALL_TIME,
+      type: 'Document',
+      frameId: 'main',
+      request: { url, method: 'GET', headers: {} }
+    })
+    on('')('Network.responseReceived', {
+      requestId: 'doc',
+      response: {
+        url,
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        mimeType: 'text/html',
+        securityDetails: {
+          protocol: 'TLS 1.3',
+          keyExchange: '',
+          cipher: 'AES_128_GCM',
+          certificateId: 0,
+          subjectName: '127.0.0.1',
+          sanList: ['127.0.0.1'],
+          issuer: 'Test CA',
+          validFrom: 1767225600,
+          validTo: 1798761600,
+          // Year 33658: `toISOString` writes a six-digit year, which ISO 8601 parsing refuses.
+          signedCertificateTimestampList: [
+            {
+              status: 'Verified',
+              origin: 'Embedded in certificate',
+              logDescription: 'Test log',
+              logId: 'AA',
+              timestamp: 1e15,
+              hashAlgorithm: 'SHA-256',
+              signatureAlgorithm: 'ECDSA',
+              signatureData: 'BB'
+            }
+          ],
+          certificateTransparencyCompliance: 'unknown',
+          encryptedClientHello: false
+        }
+      }
+    })
+    on('')('Network.dataReceived', { requestId: 'doc', dataLength: 10 })
+    on('')('Network.loadingFinished', { requestId: 'doc' })
+    recorder.stop()
+    const outcome = await finishTransactionRecord(recorder, {
+      collectMs: 100,
+      writeMs: 5_000,
+      writer: WRITER
+    })
+    expect(outcome).toMatchObject({ present: false, reason: 'failed' })
+  })
+
+  it('signs no count of requests finished with no response until the schema has the field', async () => {
+    const { fake, recorder } = await started()
+    const { on } = page(fake)
+    on('sw')('Network.requestWillBeSent', {
+      requestId: 'script',
+      wallTime: WALL_TIME,
+      type: 'Other',
+      request: { url: 'http://127.0.0.1/sw.js', method: 'GET', headers: {} }
+    })
+    on('sw')('Network.loadingFinished', { requestId: 'script' })
+    recorder.stop()
+    const outcome = await finishTransactionRecord(recorder, {
+      collectMs: 100,
+      writeMs: 5_000,
+      writer: WRITER
+    })
+    if (!outcome.present) throw outcome.error
+    expect(outcome.inventory).toMatchObject({ exchanges: 0, inFlight: 0 })
+    expect(outcome.inventory).not.toHaveProperty('finishedWithoutResponse')
+  })
+
   it('stops listening once disposed', async () => {
     const { fake, recorder } = await started()
     expect(fake.listening).toBe(1)
@@ -536,6 +880,10 @@ describe('boundTlsOf (plan D7)', () => {
     expect(boundTlsOf(main('https://127.0.0.1/', 'cached'))).toEqual({
       boundTlsAbsent: 'from-cache'
     })
+  })
+
+  it('states not-reported for a main document whose URL does not parse', () => {
+    expect(boundTlsOf(main('not a url', 'complete'))).toEqual({ boundTlsAbsent: 'not-reported' })
   })
 
   it('states not-reported with no details or no main document', () => {

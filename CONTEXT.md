@@ -152,6 +152,14 @@ _Avoid_: team case, synced case, collaborative case (as the term).
 The installation that created a Shared Case. The only one that writes `member-add`, `member-revoke`, and `exclude`; the roster is read from its Manifest and nowhere else.
 _Avoid_: host, creator, administrator.
 
+**Member**:
+An installation in a Shared Case's roster, added by the Owner's `member-add` and removed from sync by its `member-revoke`. A member signs its own chain with its installation key and is cited by its Member Code; one person on two machines is two members. A revoked member keeps the copy it holds.
+_Avoid_: peer, user (as the term).
+
+**Invite**:
+The single-use string (`bbinvite1` and base32) the Owner creates to admit one installation to a Shared Case. It names the Owner's node and relay, never a direct address, carries a one-time secret, and expires after 24 hours. Using it sends a join request that the Owner approves, assigning a Member Code, or declines.
+_Avoid_: invitation code, ticket (the transport ticket is one field inside it).
+
 **Member Code**:
 The one-to-three character prefix (`[A-Z0-9]`) the Owner assigns a member at approval, recorded in its `member-add`. In a Shared Case a citation is `<Member Code>-<Exhibit Number>`; a Case with no `member-add` has no prefix.
 _Avoid_: member prefix, initials.
@@ -161,7 +169,7 @@ The hash over a canonicalized Manifest Entry together with its predecessor's Ent
 _Avoid_: line hash, record hash.
 
 **Content Hash**:
-The SHA-256 over a Capture's stored bytes. The identity a Timestamp Token attests to, and what chain verification re-computes.
+The SHA-256 over a Capture's stored bytes. What chain verification re-computes, and one of the two subjects a Timestamp Token can attest to; the other is a `merge` entry's Entry Hash.
 _Avoid_: file hash, capture hash.
 
 **Trusted Time**:
@@ -169,7 +177,7 @@ The axis recording whether a Capture's Content Hash is anchored by an RFC 3161 t
 _Avoid_: timestamp status, stamp state.
 
 **Timestamp Token**:
-The RFC 3161 token returned by a TSA, binding an asserted time to a submitted imprint.
+The RFC 3161 token returned by a TSA, binding an asserted time to a submitted imprint. Its subject is a Content Hash or, with `subject: 'entry'`, the Entry Hash of a `merge` entry: the receipt a receiving member stamps, which dates the receipt and not any Capture.
 _Avoid_: stamp, TSA response.
 
 **TSA**:

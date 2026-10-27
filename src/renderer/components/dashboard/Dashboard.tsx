@@ -1,14 +1,13 @@
-import { useRef, useCallback, useState } from 'react'
+import { useRef, useCallback } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
-import type { ArchiveInspectReport } from '@shared/types'
 import {
   casesQueryOptions,
   captureCountsQueryOptions,
   useCasesMutations
 } from '@renderer/lib/queries'
-import { inspectCaseArchive } from '@renderer/lib/api/cases'
+import { useCaseArchiveImport } from '@renderer/components/dashboard/cases/useCaseArchiveImport'
 import { ImportCaseDialog } from '@renderer/components/dashboard/cases/ImportCaseDialog'
 import { HeroSection } from '@renderer/components/dashboard/HeroSection'
 import { RecentCases } from '@renderer/components/dashboard/RecentCases'
@@ -22,8 +21,12 @@ export function Dashboard() {
   const { data: captureCounts = {} } = useQuery(captureCountsQueryOptions)
   const { update, remove } = useCasesMutations()
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
-  const [importReport, setImportReport] = useState<ArchiveInspectReport | null>(null)
-  const [importError, setImportError] = useState('')
+  const {
+    report: importReport,
+    error: importError,
+    start: handleImportCase,
+    close: closeImport
+  } = useCaseArchiveImport()
 
   const recentCasesRef = useRef<HTMLDivElement>(null)
 
@@ -55,16 +58,6 @@ export function Dashboard() {
     },
     [remove]
   )
-
-  const handleImportCase = useCallback(async () => {
-    setImportError('')
-    try {
-      const report = await inspectCaseArchive()
-      if (report) setImportReport(report)
-    } catch (err) {
-      setImportError(err instanceof Error ? err.message : String(err))
-    }
-  }, [])
 
   return (
     <div data-testid="dashboard" className="grid-bg min-h-full">
@@ -103,9 +96,7 @@ export function Dashboard() {
 
       <DashboardFooter />
 
-      {importReport && (
-        <ImportCaseDialog report={importReport} onClose={() => setImportReport(null)} />
-      )}
+      {importReport && <ImportCaseDialog report={importReport} onClose={closeImport} />}
     </div>
   )
 }

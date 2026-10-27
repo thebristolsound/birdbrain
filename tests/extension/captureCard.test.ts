@@ -2,7 +2,7 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { updateToast } from '@extension/toast'
 import { suppressCaptureUi, releaseCaptureUiSuppression } from '@extension/captureSuppression'
-import type { CaptureCardDetails } from '@shared/schemas'
+import type { CaptureCardDetails, ScreenshotKind } from '@shared/schemas'
 
 const card: CaptureCardDetails = {
   caseId: 'case-1',
@@ -103,6 +103,72 @@ describe('post-capture card', () => {
     expect(shadow().querySelector('[role=alert]')!.textContent).toBe('Could not update tag')
     expect(shadow().querySelector('.facts')!.textContent).toContain('Full page (scrolling)')
     expect(shadow().querySelector('.warning')!.textContent).toBe('Screenshot too large')
+  })
+
+  it('marks a degraded fallback with the amber marker and names the stored screenshot', () => {
+    updateToast({
+      status: 'degraded',
+      card,
+      scrolling: true,
+      message: 'Captured (full-page screenshot failed; visible part of the page only)',
+      storedScreenshot: 'viewport'
+    })
+    expect(shadow().querySelector('.check')).toBeNull()
+    expect(shadow().querySelector('.warn')).not.toBeNull()
+    expect(shadow().querySelector('.facts')!.textContent).toBe(
+      'Visible-area screenshot only · MHTML · sha256 recorded · #42'
+    )
+    expect(shadow().querySelector('.facts')!.getAttribute('title')).toBe(`SHA-256: ${card.hash}`)
+  })
+
+  it('marks a capture stored without its screenshot as degraded, naming no screenshot', () => {
+    updateToast({
+      status: 'degraded',
+      card,
+      scrolling: true,
+      message: 'Captured (screenshot too large)',
+      storedScreenshot: 'none'
+    })
+    expect(shadow().querySelector('.check')).toBeNull()
+    expect(shadow().querySelector('.warn')).not.toBeNull()
+    expect(shadow().querySelector('.facts')!.textContent).toBe(
+      'No screenshot stored · MHTML · sha256 recorded · #42'
+    )
+  })
+
+  it.each<ScreenshotKind>(['scrolling', 'full-page', 'viewport', 'none'])(
+    'names the stored %s kind as a screenshot on a degraded card',
+    (storedScreenshot) => {
+      updateToast({ status: 'degraded', card, scrolling: true, storedScreenshot })
+      const label = shadow().querySelector('.facts')!.textContent!.split(' · MHTML')[0]
+      expect(label).toMatch(/\bscreenshot\b/)
+      if (storedScreenshot === 'none') expect(label).not.toContain('taken')
+    }
+  )
+
+  it('names a stored scrolling screenshot on a degraded card', () => {
+    updateToast({ status: 'degraded', card, scrolling: true, storedScreenshot: 'scrolling' })
+    expect(shadow().querySelector('.facts')!.textContent).toBe(
+      'Scrolling screenshot · MHTML · sha256 recorded · #42'
+    )
+  })
+
+  it('names a stored full-page screenshot on a degraded card', () => {
+    updateToast({ status: 'degraded', card, storedScreenshot: 'full-page' })
+    expect(shadow().querySelector('.facts')!.textContent).toBe(
+      'Full page screenshot · MHTML · sha256 recorded · #42'
+    )
+  })
+
+  it('keeps the requested-mode facts line on a success card from a scrolling request', () => {
+    // The real outcome carries the stored kind on success too; the
+    // requested-mode line must win over it.
+    updateToast({ status: 'success', card, scrolling: true, storedScreenshot: 'full-page' })
+    expect(shadow().querySelector('.check')).not.toBeNull()
+    expect(shadow().querySelector('.warn')).toBeNull()
+    expect(shadow().querySelector('.facts')!.textContent).toBe(
+      'Full page (scrolling) · MHTML · sha256 recorded · #42'
+    )
   })
 
   it.each(['view', 'recapture'])(

@@ -103,6 +103,18 @@ vi.mock('@main/services/waybackMachine', async (importActual) => {
   }
 })
 
+// The real link lookup by default, over the mocked lookupSnapshots above, so a test can
+// see both what the handler passes in and what reaches the CDX client.
+const lookupLinkSnapshots = vi.hoisted(() => vi.fn())
+vi.mock('@main/services/waybackLinkCheck', async (importActual) => {
+  const actual = await importActual<typeof import('@main/services/waybackLinkCheck')>()
+  lookupLinkSnapshots.mockImplementation(actual.lookupLinkSnapshots)
+  return {
+    ...actual,
+    lookupLinkSnapshots: (...a: unknown[]) => lookupLinkSnapshots(...a)
+  }
+})
+
 // The persona session service needs Electron's `session` and `safeStorage`,
 // neither of which the mock above provides; the handlers' routing and the
 // dialog handshake are what this file checks, so the service is a stub.
@@ -3176,6 +3188,92 @@ describe('archive handlers', () => {
       }
     )
     expect(result.ok).toBe(true)
+  })
+
+  // #1737: one link of a stored page, ranked against that page's capture time.
+  describe('wayback:lookupLink', () => {
+    type Res = { ok: boolean; error?: string; code?: string }
+    function storedPage() {
+      const c = createCase({ name: 'C' })
+      return insertCapture({
+        caseId: c.id,
+        url: 'https://news.example/story',
+        title: 'Story',
+        hash: 'h',
+        timestamp: '2026-08-01T12:00:00.000Z',
+        format: 'mhtml'
+      })
+    }
+
+    it('looks the link up against the stored page, through the Egress, asking for 20', async () => {
+      const cap = storedPage()
+      const answer = { snapshots: [], closestIndex: null, checkedAt: '2026-10-26T00:00:00.000Z' }
+      lookupSnapshots.mockResolvedValueOnce(answer)
+      const res = await invoke<Res & { data?: unknown }>(IPC_CHANNELS.WAYBACK_LOOKUP_LINK, {
+        captureId: cap.id,
+        url: 'https://elsewhere.example/a'
+      })
+      expect(expectOk(res)).toEqual({ ...answer, countIsMinimum: false })
+      // The lookup follows the Egress (ADR-0032): egressFetch is its only route out.
+      expect(lookupLinkSnapshots).toHaveBeenCalledExactlyOnceWith(
+        'https://elsewhere.example/a',
+        '2026-08-01T12:00:00.000Z',
+        egressFetch
+      )
+      expect(lookupSnapshots).toHaveBeenCalledExactlyOnceWith(
+        'https://elsewhere.example/a',
+        '2026-08-01T12:00:00.000Z',
+        { fetchImpl: expect.any(Function), limit: 20 }
+      )
+    })
+
+    it.each([
+      ['http://127.0.0.1/admin', 'Points at a loopback address'],
+      ['http://192.168.1.1/', 'Points at a private address'],
+      ['http://intranet/', 'Points at a private network'],
+      ['http://printer.local/', 'Points at a private network'],
+      ['http://wiki../', 'Points at a private network'],
+      ['mailto:someone@example.com', 'Not a web address'],
+      ['javascript:alert(1)', 'Not a web address']
+    ])('refuses %s without contacting archive.org', async (url, reason) => {
+      const cap = storedPage()
+      const res = await invoke<Res>(IPC_CHANNELS.WAYBACK_LOOKUP_LINK, { captureId: cap.id, url })
+      expect(res).toMatchObject({ ok: false, error: reason, code: 'WAYBACK_LINK_REFUSED' })
+      expect(lookupLinkSnapshots).not.toHaveBeenCalled()
+      expect(lookupSnapshots).not.toHaveBeenCalled()
+    })
+
+    it('rejects an unknown capture without contacting archive.org', async () => {
+      const res = await invoke<Res>(IPC_CHANNELS.WAYBACK_LOOKUP_LINK, {
+        captureId: 'no-such-capture',
+        url: 'https://elsewhere.example/a'
+      })
+      expect(res).toMatchObject({ ok: false, code: 'NOT_FOUND' })
+      expect(lookupSnapshots).not.toHaveBeenCalled()
+    })
+
+    it.each([[null], ['https://elsewhere.example/a'], [{ captureId: 'x' }], [{ url: 'x' }]])(
+      'rejects the payload %j without contacting archive.org',
+      async (payload) => {
+        const res = await invoke<Res>(IPC_CHANNELS.WAYBACK_LOOKUP_LINK, payload)
+        expect(res).toMatchObject({ ok: false, code: 'INVALID_WAYBACK_LINK_PAYLOAD' })
+        expect(lookupSnapshots).not.toHaveBeenCalled()
+      }
+    )
+
+    it('reports a failed lookup with its message', async () => {
+      const cap = storedPage()
+      lookupSnapshots.mockRejectedValueOnce(new Error('Wayback CDX responded 503 Unavailable'))
+      const res = await invoke<Res>(IPC_CHANNELS.WAYBACK_LOOKUP_LINK, {
+        captureId: cap.id,
+        url: 'https://elsewhere.example/a'
+      })
+      expect(res).toMatchObject({
+        ok: false,
+        error: 'Wayback CDX responded 503 Unavailable',
+        code: 'WAYBACK_LOOKUP_FAILED'
+      })
+    })
   })
 
   it('archive:pin then archive:list round-trips a reference', async () => {

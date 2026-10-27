@@ -578,6 +578,22 @@ describe('scrollToLoadLazyContent', () => {
     expect(record).toMatchObject({ outcome: 'time-budget', endHeight: 9000 })
   })
 
+  it.each([
+    ['falls at every step', (call: number) => 20_000 - call * 100],
+    ['moves down and up at every step', (call: number) => (call % 2 === 0 ? 3000 : 2900)]
+  ])('runs to the deadline at the bottom of a page whose height %s', async (_name, heightAt) => {
+    const { wc } = scrollingContents({
+      step: (call) => {
+        const height = heightAt(call)
+        return { y: height - 900, height, viewportHeight: 900 }
+      }
+    })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record).toMatchObject({ outcome: 'time-budget' })
+  })
+
   it('restarts the stall count when a step moves on to a second pane', async () => {
     // Pane A (6000px) at its end for two steps, then pane B (3000px) for two
     // steps that each count as a stall on their own pane, then A again: no

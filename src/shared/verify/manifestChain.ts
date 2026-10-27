@@ -37,14 +37,19 @@ export interface CaptureChainEntry {
 }
 
 // The hash fields a `capture` entry anchors, one file each: the page archive,
-// the screenshot and the extracted text. The sync session (#1512) builds the
-// list of files it fetches for a received Capture from this, one per field
-// the entry carries. A capture entry always carries `contentHash`; the other
-// two are present only when the sidecar was captured. `transactionRecordHash`
-// and `pdfHash` are not in it yet: the sync maps each field to a Capture Store
-// file type (`CAPTURE_ARTIFACT_BY_FIELD` in blobAcceptance.ts), and the store
-// has a type for neither file until the capture engine plan's step 3.
-export const CAPTURE_ENTRY_HASH_FIELDS = ['contentHash', 'screenshotHash', 'textHash'] as const
+// the screenshot, the extracted text, the Transaction Record and the PDF. The
+// sync session (#1512) builds the list of files it fetches for a received
+// Capture from this, one per field the entry carries, each mapped to its
+// Capture Store file type (`CAPTURE_ARTIFACT_BY_FIELD` in blobAcceptance.ts).
+// A capture entry always carries `contentHash`; the others are present only
+// when that file was captured.
+export const CAPTURE_ENTRY_HASH_FIELDS = [
+  'contentHash',
+  'screenshotHash',
+  'textHash',
+  'transactionRecordHash',
+  'pdfHash'
+] as const
 export type CaptureEntryHashField = (typeof CAPTURE_ENTRY_HASH_FIELDS)[number]
 
 // An entry this build cannot read because it comes from a newer schema: its

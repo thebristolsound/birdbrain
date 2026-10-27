@@ -1148,7 +1148,10 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   _Planned_ on the inventory for other Capture Methods and on the Transaction Record and PDF.
   `CONTEXT.md` is the glossary, and the writing guide forbids describing unshipped behaviour in
   the present tense (`docs/agents/writing-guide.md`, Claim discipline). `features.mdx` updates its
-  Capture section.
+  Capture section. Carried from #1982 (step 3): the step that adds the `inventory` and
+  `scroll_to_load` columns to `InsertCaptureParams` also has Duplicate's `insertCapture` call
+  pass both from the source's signed entry, as it passes `screenshotHash` (step 9 lists all four
+  fields).
 - **Done when.** Unit tests drive `scrollToLoadLazyContent` through each ending in D5 with a mocked
   `WebContents`, and the screenshot functions through scaled, truncated, trimmed, and none. An e2e
   Recapture of an invented fixture page records `stopped-growing`, its height, and the screenshot
@@ -1236,7 +1239,12 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   It also adds the Transaction Record to the Integrity bullet that lists what Birdbrain hashes and
   to the Export bullet that lists what an evidence package contains. A test-only certificate
   allowance, from step 0's question 6, joins CE-2's loopback allowance, which a packaged build
-  cannot turn on.
+  cannot turn on. Carried from #1982 (step 3): a Duplicate's row mirrors none of the four fields
+  its signed entry re-anchors (`inventory`, `scroll_to_load`, `transaction_record_hash`,
+  `pdf_hash`), because `InsertCaptureParams` has no mirror columns until a writer step adds them.
+  Each writer step that adds one has Duplicate's `insertCapture` call pass it from the source's
+  signed entry, as it passes `screenshotHash`: step 6 the first two, step 9
+  `transaction_record_hash`, step 10 `pdf_hash`.
 - **Text bodies (ruled 2026-10-26).** The
   [charset spike](../specs/2026-10-26-transaction-record-charset-spike.md) measured that
   `Network.getResponseBody` returns the served bytes once the session has been sent
@@ -1308,7 +1316,9 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   that lists what an evidence package contains. As the test-reader gate ruled on 2026-10-10, the
   step adds `pdfjs-dist` 5.6.205, exact-pinned, to `devDependencies`, and an `ignore` entry for
   `pdfjs-dist` with `versions: ['>=5.7']` to `.github/dependabot.yml`, beside the
-  `dependency-cruiser` entry (outside the paths ADR-0048 holds).
+  `dependency-cruiser` entry (outside the paths ADR-0048 holds). Carried from #1982 (step 3):
+  Duplicate's `insertCapture` call fills the `pdf_hash` column from the source's signed entry
+  once `InsertCaptureParams` has it (step 9 lists all four fields).
 - **Done when.** With the probe's print-only image as a fixture, the image's request is absent from
   the Transaction Record. The stored file parses under `pdfjs-dist` as one page holding the
   fixture's text. A unit test in which `printToPDF` never settles stores the Capture with the PDF
@@ -1638,6 +1648,9 @@ folded in.
   step 3 adds `transactionRecordHash` and `pdfHash` to `CAPTURE_ENTRY_HASH_FIELDS`, with their
   Capture Store file types, the sync fetches neither file, and until step 4 `verify.sh` checks
   neither. Holding the tag until both merge means no released build has that gap.
+- **2026-10-26.** Step 3 (#1925) takes Case Archive version 13, the next after 12 on `main`. It
+  adds `transactionRecordHash` and `pdfHash` to `CAPTURE_ENTRY_HASH_FIELDS`, mapped to the new
+  `warc.gz` and `pdf` file types, so a Shared Case member fetches and hash-checks both files.
 - **2026-10-26.** D4's Transaction Record part gains `finishedWithoutResponse`, on the
   maintainer's ruling during step 9's review (#1999) as the orchestrating session relayed it.
   Step 1 (#1904) adds it to schema 6; making the collector count it is left to step 9.

@@ -80,6 +80,11 @@ transport interface over sockets on 127.0.0.1, joins the `transport.ts` entry.
 `src/packages/transaction-record/**` was added to Acquisition at blocking tier on 2026-10-17 with
 #1903, the capture engine's step 7 (D12 of the first-slice plan): it decides which of the
 browser's exchanges a Transaction Record holds as complete and how the inventory counts the rest.
+`src/packages/evidence-package-layout/**` was added to Integrity core at blocking tier on
+2026-10-26 with #1904, the capture engine's step 1, which put the Transaction Record and PDF
+package paths in it. It had been on neither list, although Package Verification, `verify.sh`,
+Evidence Package export, the Shared Case sync and Case Archive export and import all take paths
+from it.
 
 ### Known gap: carve-outs are caught by review, not by a check
 
@@ -220,7 +225,7 @@ that caused it was to record the carved-out file as an exclusion (#515), which i
 | `src/main/services/captureServer.ts` | blocking | Ingest endpoint: upload validation, case routing, ingest-time selector matching |
 | `src/shared/urlPatterns.ts` | blocking | The ignored-URL matcher both sides run: it decides what never enters a case at all, and names the rule recorded as the reason for the absence |
 | `src/shared/urlCanonicalize.ts` | blocking | Canonical URL identity for the extension attach routes: decides which Capture a Tag or Note binds to, and whether an attach request ingests its payload or binds to an existing Capture |
-| `src/shared/localAddress.ts` | blocking | The address classification the viewer's Capture link and the background capture both run: it decides which links and redirects a background capture refuses to render and store (#1726). Added 2026-10-16 |
+| `src/shared/localAddress.ts` | blocking | The address classification the viewer's Capture link, the background capture and the viewer's Wayback link lookup run: it decides which links and redirects a background capture refuses to render and store (#1726), and which link addresses are never sent to archive.org (#1737). Added 2026-10-16 |
 | `src/main/services/exclusionPolicy.ts` | blocking | Resolves the per-case exclusion list into the answer the acquisition routes check before ingest, so it decides what those routes refuse. Not every route asks: the pipeline self-test (`POST /api/captures/test`) is a documented exception, so read the call sites rather than assuming coverage is total |
 | `src/main/services/serverToken.ts` | blocking | Authenticates ingest; weakening admits spoofed captures into the evidence chain |
 | `src/main/services/session.ts` | blocking | Active-case state deciding which case a capture is filed under |
@@ -255,6 +260,7 @@ independent of the Operator who holds it.
 | `src/main/services/installationId.ts` | blocking | Installation identity in manifest entries and certification |
 | `src/shared/verify/**` | blocking | Verification core: canonical JSON, chain, signature, RFC 3161 token, package verifier |
 | `src/verifier/**` | blocking | Standalone verifier CLI (fs+crypto-only constraint) |
+| `src/packages/evidence-package-layout/**` | blocking | The Package Layout: the exporter, Package Verification and `verify.sh` read every Evidence Package path from it, so changing a name changes where verification looks for that file in every package already exported. It also names the member and lineage chain files in a Case directory, which the manifest, the Shared Case sync modules and Case Archive export and import read. Added 2026-10-26 with #1904, which put the Transaction Record and PDF paths in it |
 | `src/main/index.ts` | blocking | Enforces evidence-viewer invariants (webview navigation block, sandbox webPreferences); boots DB/capture server/installation id |
 
 ### Capture lifecycle, storage, parsing, extraction

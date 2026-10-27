@@ -50,6 +50,12 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
   This run holds the tag for steps 3 and 4 as well, pending the maintainer's confirmation: the
   review of #1978 found that without them a Shared Case member never fetches the two new files
   and `verify.sh` checks neither.
+- **Step 9 rulings, 2026-10-26.** A request reported finished with no response gets its own
+  inventory count, `finishedWithoutResponse`, added to schema 6 in #1978. The extra
+  `history.length` entry stays and is recorded as a known limitation. The 120 s limit and the 35 s
+  reserve stay, and the recording phases shrink to the time left.
+- **The stack after the new count.** Each stacked branch merges #1978's new head and updates any
+  fixture that builds a present Transaction Record inventory.
 - **Step 6 and #1843 in one release.** Ruled 2026-10-26: no release carries step 6 without
   #1843, because step 6 signs zero pinned-image counts that read the same as a pinning pass that
   ran and found nothing.
@@ -63,7 +69,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 
 | Slice | Issue | Pull request | State |
 | --- | --- | --- | --- |
-| Step 1, verifier and schema | #1904 | #1978 | review: request changes, fix round pushed at `eac4b91d` |
+| Step 1, verifier and schema | #1904 | #1978 | fix round pushed at `eac4b91d`; adding the `finishedWithoutResponse` count |
 | Step 2, mirror columns | #1907 | #1980 | scheduled review: request changes; fix round pushed at `b3a68d48` |
 | Step 3, the Case carries the files | #1925 | #1982 | review: approve, fix round pushed at `7dc83929` |
 | Step 5, the report states the fields | #1927 | #1985 | fix round pushed at `b4bd9b71`, preflight green |
@@ -75,7 +81,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Viewer slice 2 Part A | #1735 | #1987 | fix round pushed at `3f015984`; a left click on a new-window link now does nothing |
 | Viewer slice 3, one-link lookup | #1737 | #1990 | fix round pushed at `1a1dfa3d`, preflight green |
 | Viewer slice 3, batch lookup | #1738 | #1998 | fix round pushed at `a45764ce`, preflight green |
-| Step 9, record the Transaction Record (writer) | #1929 | #1999 | draft, under review; merges after the tag |
+| Step 9, record the Transaction Record (writer) | #1929 | #1999 | review: request changes (unbounded events and uploads); fix round in flight |
 | ADR-0040 acceptance | #1736 | #1977 | draft, preflight green |
 | ADR-0040 verifier, schema 6 | #1976 | #1981 | review: approve, stacked on #1978 |
 

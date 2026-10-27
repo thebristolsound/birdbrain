@@ -256,7 +256,9 @@ describe('report.html capture engine fields', () => {
     expect(html).toContain(
       'Requested, and ran; it stopped when the page stopped growing and scrolling made no progress.'
     )
-    expect(html).toContain('The last document height it read was 40000 CSS pixels.')
+    expect(html).toContain(
+      'The last height it read of the document or inner panel it scrolled was 40000 CSS pixels.'
+    )
     expect(html).toContain("It lifted the page's scroll lock")
 
     // Bound TLS Details, every field.
@@ -365,7 +367,7 @@ describe('report.html capture engine fields', () => {
     expect(html).toContain(
       'Requested, and ran; the entry records no outcome. It did not lift a scroll lock.'
     )
-    expect(html).not.toContain('The last document height it read')
+    expect(html).not.toContain('The last height it read')
   })
 
   it('states an empty replaced-header list and the TLS fields a connection may not report', () => {

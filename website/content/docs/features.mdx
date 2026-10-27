@@ -25,8 +25,8 @@ prove and what they do not.
 - Before a background capture saves the page, it scrolls to load content that appears on
   scroll. The capture's signed manifest entry records whether the scroll ran and how it ended:
   nothing to scroll, the page stopped growing, the page reached the height limit, or the time
-  limit ran out. It also records the last page height read and whether the scroll lifted the
-  page's scroll lock.
+  limit ran out. It also records the last height it read of the page or the inner panel it
+  scrolled, and whether the scroll lifted the page's scroll lock.
 - A background capture's signed manifest entry lists the files the capture holds and why any
   is missing. For the screenshot it records the page size, the image size, and whether the
   image was scaled down, cut short, or had trailing blank space trimmed.

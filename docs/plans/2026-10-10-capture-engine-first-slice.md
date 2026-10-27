@@ -383,11 +383,11 @@ inventory: {
 
 `scrollToLoad: { requested: true, ran: boolean, outcome?, endHeight?, scrollLockLifted: boolean }`.
 
-The background renderer always requests the phase. `endHeight` is the last document height the
-step script reported, in CSS pixels, and is absent when the loop read none. `scrollLockLifted` is
-true when `SCROLL_UNLOCK_SCRIPT` lifted a consent wall's lock: the lock is restored before the
-artifacts, but loosening it can change which lazy content loads. `outcome` maps to where
-`scrollToLoadLazyContent` ends today:
+The background renderer always requests the phase. `endHeight` is the last height the step
+script reported for the root it scrolled, the document or an inner panel, in CSS pixels, and is
+absent when the loop read none. `scrollLockLifted` is true when `SCROLL_UNLOCK_SCRIPT` lifted a
+consent wall's lock: the lock is restored before the artifacts, but loosening it can change which
+lazy content loads. `outcome` maps to where `scrollToLoadLazyContent` ends today:
 
 | Record | Where the loop ends |
 | --- | --- |

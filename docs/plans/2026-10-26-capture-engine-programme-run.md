@@ -91,7 +91,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Viewer slice 3, batch lookup | #1738 | #1998 | fix round pushed at `a45764ce`, preflight green |
 | Step 9, record the Transaction Record (writer) | #1929 | #1999 | fix round and stack merge pushed at `11fcd9c2`; merges after the tag |
 | Step 10, PDF (writer) | #1930 | #2000 | review: request changes (PDF of a later page, pdf.js advisory); fix round in flight |
-| Pin images offered as sets (writer) | #1843 | - | in flight, stacked on #2000; ships with step 6 |
+| Pin images offered as sets (writer) | #1843 | #2002 | draft, under review; ships with step 6 |
 | ADR-0040 acceptance | #1736 | #1977 | draft, preflight green |
 | ADR-0040 verifier, schema 6 | #1976 | #1981 | review: approve, stacked on #1978 |
 
@@ -116,7 +116,8 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
   GitHub's closing keywords.
 - **Stacked PRs and CI.** `.github/scripts/dispatch/checks.sh` keeps only workflow runs whose
   base is `main`, so the scheduled PR review reads every stacked PR's CI as empty. CI itself runs
-  on stacked PRs. The maintainer asked for the fix on 2026-10-26; it is being opened as its own PR.
+  on stacked PRs. The maintainer asked for the fix on 2026-10-26: PR #2001, which also reports a PR with no counted
+  CI run as pending, the state a child PR is in after GitHub retargets it to `main`.
 - **Defects filed.** #1986: an evidence package exported with screenshots off fails its own
   verification (found by the review of #1984, predates it).
 - **The lane ledger.** The step issues say to claim a lane in a ledger, and no ledger file exists.

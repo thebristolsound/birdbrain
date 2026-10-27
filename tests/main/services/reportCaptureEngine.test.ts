@@ -16,7 +16,9 @@ import {
   type CaptureEngineEntry,
   type ReportData
 } from '@main/services/reportHtml'
+import type { ManifestEntry } from '@shared/schemas'
 import type { Capture, ExportOptions } from '@shared/types'
+import type { SharedCaseVerifyResult } from '@shared/verify'
 import { buildSignedChain } from '../../helpers/egressPackage'
 import {
   ENGINE_BOUND_TLS,
@@ -616,5 +618,47 @@ describe('report.html capture engine fields over a chain that does not verify', 
     expect(html).not.toContain('Artifact inventory')
     expect(html).not.toContain('signed manifest entry for this capture records')
     expect(html).not.toContain('Bound TLS Details')
+  })
+
+  // The walk keeps a member chain's entries only when it accepted that chain,
+  // so a refused chain's Capture reaches the export with no entry at all.
+  it("quotes an accepted member's fields and states nothing for a refused member's", () => {
+    writeFileSync(join(dir, 'manifest.jsonl'), buildSignedChain([]).join('\n'), 'utf-8')
+    const accepted = signedEntries([engineCaptureEntry()]) as ManifestEntry[]
+    const verification: SharedCaseVerifyResult = {
+      valid: false,
+      outcome: 'chain-broken',
+      findings: [{ outcome: 'chain-broken', installationId: 'member-refused', reason: 'broken' }],
+      owner: {
+        valid: true,
+        trustedTimes: new Map(),
+        captureHashesByIndex: new Map(),
+        captureEntriesByIndex: new Map()
+      },
+      memberChains: new Map(),
+      members: [],
+      citations: new Map(),
+      exclusions: [],
+      lineage: [],
+      entries: new Map([
+        ['local', []],
+        ['member-accepted', accepted]
+      ]),
+      localInstallationId: 'local'
+    }
+    const engine = resolveExportCaptureEngine(readManifestSnapshot(dir), {
+      chains: [],
+      verification
+    })
+    const refused = capture({ id: 'refused-member-capture' })
+    const html = buildHtmlReport(
+      reportData([capture(), refused], { captureEngineByCaptureId: engine }),
+      OPTIONS
+    )
+
+    expect(engine.get(ENGINE_CAPTURE_ID)?.chainVerified).toBe(true)
+    expect(engine.has(refused.id)).toBe(false)
+    expect(html.match(/Artifact inventory/g)).toHaveLength(1)
+    expect(html).not.toContain('Capture engine fields not reported')
   })
 })

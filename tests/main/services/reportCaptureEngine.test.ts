@@ -229,6 +229,7 @@ describe('report.html capture engine fields', () => {
       ['Cancelled, recorded as a request only', 2],
       ['Failed, recorded as a request only', 3],
       ['Still in flight when collection stopped, recorded as a request only', 4],
+      ['Finished with no response, recorded as a request only', 13],
       [
         'Responses recorded without their body, which was over the size budget or which the browser did not return',
         5

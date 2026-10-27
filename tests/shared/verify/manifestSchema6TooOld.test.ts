@@ -40,6 +40,11 @@ describe('a schema-5 verifier against capture entries carrying the capture engin
   })
 
   it('reports the entry as verifier too old, not as a broken chain', () => {
+    // The entry carries every count of the Transaction Record part, the
+    // finished-without-response count included.
+    expect(engineCaptureEntry()).toMatchObject({
+      inventory: { transactionRecord: { finishedWithoutResponse: 13 } }
+    })
     const result = verify(buildSignedChain([PLAIN_CAPTURE, engineCaptureEntry()]))
     expect(result.valid).toBe(false)
     expect(result.brokenAt).toBeUndefined()

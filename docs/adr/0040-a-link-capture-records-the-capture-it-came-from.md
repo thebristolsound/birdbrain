@@ -5,8 +5,8 @@
 **Date:** 2026-10-04, accepted 2026-10-26
 
 The maintainer ruled on the questions this record settles on 2026-10-04 and accepted it on
-2026-10-26, amended to schema 6 (see "The fields need schema 6"). Nothing in it is implemented.
-The work is planned in
+2026-10-26, amended to schema 6 (see "The fields need schema 6"). No build writes the fields
+yet. The verifier learns them under #1976, and the writer is planned in
 [the slice 2 plan](../plans/2026-10-04-mhtml-viewer-slice-2-click-through-and-provenance.md),
 Part B.
 

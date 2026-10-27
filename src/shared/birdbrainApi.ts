@@ -120,7 +120,10 @@ import type {
   ExportProgressEvent,
   ExportResult,
   LookupWaybackLinkParams,
+  LookupWaybackLinksParams,
+  WaybackLinkBatchResult,
   WaybackLinkLookupResult,
+  WaybackLinkProgressEvent,
   PinWaybackSnapshotParams,
   ArchiveProgressEvent,
   ArchiveExportResult,
@@ -254,6 +257,8 @@ export interface BirdbrainAPI {
   wayback: {
     lookup(captureId: string): Promise<WaybackLookupResult>
     lookupLink(params: LookupWaybackLinkParams): Promise<WaybackLinkLookupResult>
+    lookupLinks(params: LookupWaybackLinksParams): Promise<WaybackLinkBatchResult>
+    cancelLookupLinks(captureId: string): Promise<boolean>
     list(captureId: string): Promise<WaybackRef[]>
     listForCase(caseId: string): Promise<CaseWaybackRef[]>
     pin(params: PinWaybackSnapshotParams): Promise<WaybackRef>
@@ -401,6 +406,7 @@ export interface BirdbrainAPI {
   onSharingChanged(callback: (event: SharingChangedEvent) => void): () => void
   onSharingJoinProgress(callback: (event: SharingJoinProgressEvent) => void): () => void
   onInvestigationProgress(callback: (event: RunProgressEvent) => void): () => void
+  onWaybackLinkProgress(callback: (event: WaybackLinkProgressEvent) => void): () => void
   testPipeline(): Promise<{ success: boolean; durationMs: number; error?: string }>
   testHttp(): Promise<{ success: boolean; durationMs: number; error?: string }>
   extractedData: {

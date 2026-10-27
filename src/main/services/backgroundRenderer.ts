@@ -21,12 +21,13 @@ import type {
 import type {
   ImageSourcePinning,
   PdfOutcome,
+  PresentPdf,
   RenderPage,
   RenderedPage,
   ScreenshotRecord
 } from '@main/services/recapture'
 import { CaptureInventorySchema } from '@shared/schemas'
-import type { CaptureInventory, ScrollToLoadRecord } from '@shared/schemas'
+import type { ScrollToLoadRecord } from '@shared/schemas'
 import { MAX_PDF_CONTENT_HEIGHT_PX, MAX_PDF_SIZE } from '@shared/constants'
 import type { ConsentSuppression, KnownEgress, ScrollToLoadOutcome } from '@shared/types'
 import { logger } from '@main/services/logger'
@@ -562,7 +563,6 @@ export async function pinImageSources(
 // The schema-6 shape of the inventory's PDF part, parsed before it reaches the
 // signed entry, as the Transaction Record's part is.
 const PdfPartSchema = CaptureInventorySchema.shape.pdf
-type PresentPdf = Extract<CaptureInventory['pdf'], { present: true }>
 
 class PrintTimeout extends Error {
   constructor(ms: number) {
@@ -571,19 +571,39 @@ class PrintTimeout extends Error {
   }
 }
 
+// The page as the render saved it, which the stored Capture describes.
+interface SavedPage {
+  url: string
+  title: string
+  httpStatus: number
+  // Main-frame navigations committed by the save.
+  navigations: number
+}
+
 // Prints the page to PDF (step 10 of
 // docs/plans/2026-10-10-capture-engine-first-slice.md). The caller runs it last,
 // after collection stopped and the other files were taken, so what the page
 // fetches for printing stays out of the Transaction Record (spec, PDF). Never
-// throws: a page taller than MAX_PDF_CONTENT_HEIGHT_PX is not printed, and that,
-// a print that fails or outlasts `boundMs`, and a PDF over MAX_PDF_SIZE each
-// record the PDF absent as `failed`, with an error that names the bound.
-export async function printPageToPdf(
+// throws: a page that navigated after the save, or is taller than
+// MAX_PDF_CONTENT_HEIGHT_PX, is not printed, and that, a print that fails or
+// outlasts `boundMs`, and a PDF over MAX_PDF_SIZE each record the PDF absent as
+// `failed`, with an error that names the cause.
+async function printPageToPdf(
   wc: WebContents,
-  contentHeight: number,
-  boundMs: number
+  {
+    saved,
+    navigations,
+    contentHeight,
+    boundMs
+  }: { saved: SavedPage; navigations: number; contentHeight: number; boundMs: number }
 ): Promise<PdfOutcome> {
   try {
+    // A print shows whatever the window holds now, so a page that left the saved
+    // document, or changed its address in place, would be printed as another page.
+    const url = wc.getURL()
+    if (url !== saved.url || navigations !== saved.navigations) {
+      throw new Error(`The page navigated after it was saved, to ${url}, so it was not printed`)
+    }
     if (contentHeight > MAX_PDF_CONTENT_HEIGHT_PX) {
       throw new Error(
         `The page is ${contentHeight} CSS pixels tall, over MAX_PDF_CONTENT_HEIGHT_PX ` +
@@ -658,6 +678,11 @@ export const renderPageInHiddenWindow: RenderPage = async (
 
   const tmpPath = join(app.getPath('temp'), `birdbrain-recapture-${randomUUID()}.mhtml`)
 
+  // The time left counts from the moment the deadline timer starts, so setup before the
+  // first load, such as a slow `setProxy`, cannot let a phase settle after the deadline.
+  const startedAt = Date.now()
+  const remainingMs = (reserveMs = 0) =>
+    Math.max(0, timeoutMs - (Date.now() - startedAt) - reserveMs)
   let deadlineTimer: NodeJS.Timeout | undefined
   const deadline = new Promise<never>((_, reject) => {
     deadlineTimer = setTimeout(
@@ -747,16 +772,14 @@ export const renderPageInHiddenWindow: RenderPage = async (
     const certificateAllowance = testCertificateAllowance()
     if (certificateAllowance) session.setCertificateVerifyProc(certificateAllowance)
 
-    const startedAt = Date.now()
-    const remainingMs = (reserveMs = 0) =>
-      Math.max(0, timeoutMs - (Date.now() - startedAt) - reserveMs)
-
     wc.on('will-redirect', checkHop)
     wc.on('will-navigate', checkHop)
 
     let httpStatus = 0
+    let navigations = 0
     wc.on('did-navigate', (_event, _navUrl, httpResponseCode) => {
       httpStatus = httpResponseCode
+      navigations += 1
     })
 
     // The debugger is attached for the whole render, and its Network domain
@@ -838,6 +861,14 @@ export const renderPageInHiddenWindow: RenderPage = async (
       )
 
       await wc.savePage(tmpPath, 'MHTML')
+      // The Capture is stored under the page the save took, read before anything else
+      // awaits: a page can navigate itself during the steps that follow (review of #2000).
+      const saved: SavedPage = {
+        url: wc.getURL(),
+        title: wc.getTitle(),
+        httpStatus,
+        navigations
+      }
 
       const text = (await wc.executeJavaScript(
         'document.body ? document.body.innerText : ""'
@@ -866,11 +897,12 @@ export const renderPageInHiddenWindow: RenderPage = async (
           }
 
       // Last, under its own bound cut to the time left (PRINT_TIMEOUT_MS).
-      const pdf = await printPageToPdf(
-        wc,
-        screenshotRecord.contentHeight,
-        Math.min(PRINT_TIMEOUT_MS, remainingMs(END_MARGIN_MS))
-      )
+      const pdf = await printPageToPdf(wc, {
+        saved,
+        navigations,
+        contentHeight: screenshotRecord.contentHeight,
+        boundMs: Math.min(PRINT_TIMEOUT_MS, remainingMs(END_MARGIN_MS))
+      })
 
       return {
         mhtmlStream: createReadStream(tmpPath) as unknown as AsyncIterable<Uint8Array>,
@@ -879,9 +911,9 @@ export const renderPageInHiddenWindow: RenderPage = async (
         scrollToLoad,
         imageSourcePinning,
         text,
-        title: wc.getTitle(),
-        finalUrl: wc.getURL(),
-        httpStatus,
+        title: saved.title,
+        finalUrl: saved.url,
+        httpStatus: saved.httpStatus,
         userAgent,
         browserVersion,
         consentSuppression,

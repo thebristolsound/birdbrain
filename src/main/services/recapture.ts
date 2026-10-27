@@ -21,7 +21,7 @@ export type ScreenshotRecord = Omit<CaptureInventory['screenshot'], 'present'>
 // The inventory's MHTML part, with the Image Source Pinning counts (ADR-0055).
 export type ImageSourcePinning = CaptureInventory['mhtml']
 
-type PresentPdf = Extract<CaptureInventory['pdf'], { present: true }>
+export type PresentPdf = Extract<CaptureInventory['pdf'], { present: true }>
 
 // The PDF the render printed, with its inventory part, or why it has none
 // (step 10 of docs/plans/2026-10-10-capture-engine-first-slice.md).

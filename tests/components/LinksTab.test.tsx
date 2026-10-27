@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { Capture, CaptureLink, CaptureLinks, FieldHit } from '@shared/types'
 import { LinksTab } from '@renderer/components/captures/LinksTab'
+import { useAppStore } from '@renderer/stores/appStore'
 import { notify } from '@renderer/lib/notify'
 import { fakeBridge } from '../renderer/fakeBridge'
 
@@ -151,6 +152,52 @@ describe('LinksTab', () => {
     )
     const [row] = await screen.findAllByTestId('links-row')
     await waitFor(() => expect(within(row).queryByTestId('links-in-case')).not.toBeNull())
+  })
+
+  // #1735, plan A5. Each row's text is a native button, so Enter on it is a click;
+  // the E2E spec presses Enter on one in Electron.
+  it('opens an In Case row’s Capture on activation and pushes the viewed one on the trail', async () => {
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: [] })
+    renderTab(
+      result([
+        link({ href: 'https://news.example/held', text: 'Held story' }),
+        link({ href: 'https://elsewhere.example/', text: 'Not held' })
+      ]),
+      {
+        cases: [
+          capture,
+          { id: 'c2', url: 'https://news.example/held', timestamp: '2026-01-01T00:00:00Z' }
+        ]
+      }
+    )
+    const rows = await screen.findAllByTestId('links-row')
+    await waitFor(() => expect(within(rows[0]).queryByTestId('links-in-case')).not.toBeNull())
+    const open = within(rows[0]).getByRole('button', { name: 'Held story' })
+    expect(open.tagName).toBe('BUTTON')
+
+    fireEvent.click(within(rows[1]).getByRole('button', { name: 'Not held' }))
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap1')
+
+    fireEvent.click(open)
+    expect(useAppStore.getState().selectedCaptureId).toBe('c2')
+    expect(useAppStore.getState().captureTrail).toEqual(['cap1'])
+  })
+
+  it('does nothing on activating a same-page row, which resolves to the viewed Capture', async () => {
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: [] })
+    renderTab(
+      result([
+        link({ href: 'https://news.example/story#comments', text: 'Comments', kind: 'same-page' })
+      ]),
+      { cases: [capture] }
+    )
+    const [row] = await screen.findAllByTestId('links-row')
+    await waitFor(() => expect(within(row).queryByTestId('links-in-case')).not.toBeNull())
+
+    fireEvent.click(within(row).getByRole('button', { name: 'Comments' }))
+
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap1')
+    expect(useAppStore.getState().captureTrail).toEqual([])
   })
 
   it('filters by search text and by external only', async () => {

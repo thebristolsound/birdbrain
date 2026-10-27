@@ -11,16 +11,67 @@ import { MHTML_PARTITION } from '@shared/constants'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
 import { notify } from '@renderer/lib/notify'
 import { useAppStore } from '@renderer/stores/appStore'
+import type { GuestMouseDownEvent, GuestMouseUpEvent } from '@shared/ipc'
 import { fakeBridge } from '../renderer/fakeBridge'
 
 const FILE_URL = 'file:///store/case1/cap1.mhtml'
 
-function renderViewer() {
+function renderViewer({ linkClicks = true } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  return render(<MhtmlViewer captureId="cap1" caseId="case1" />, { wrapper: Wrapper })
+  return render(<MhtmlViewer captureId="cap1" caseId="case1" linkClicks={linkClicks} />, {
+    wrapper: Wrapper
+  })
+}
+
+// The guest's input as the main process reports it (#1735): a hover, a press and a
+// release, each naming the guest, raised on whatever the viewer subscribed. `follow`
+// is the guest's own attempt to follow a link, which Electron raises on the element.
+function guestInput() {
+  let down: (event: GuestMouseDownEvent) => void = () => {}
+  let up: (event: GuestMouseUpEvent) => void = () => {}
+  type Release = Partial<Omit<GuestMouseUpEvent, 'clickCount'>>
+  const hover = (guest: HTMLElement, url: string) =>
+    fireEvent(guest, Object.assign(new Event('update-target-url'), { url }))
+  const press = ({ guestWebContentsId = 7, button = 'left' }: Release = {}) =>
+    act(() => down({ guestWebContentsId, button }))
+  const release = ({ guestWebContentsId = 7, button = 'left', modifiers = [] }: Release = {}) =>
+    act(() => up({ guestWebContentsId, button, clickCount: 1, modifiers }))
+  const follow = (guest: HTMLElement, url: string, type = 'did-start-navigation') =>
+    fireEvent(guest, Object.assign(new Event(type), { url }))
+  return {
+    bridge: {
+      onGuestMouseDown: (callback: typeof down) => {
+        down = callback
+        return () => {}
+      },
+      onGuestMouseUp: (callback: typeof up) => {
+        up = callback
+        return () => {}
+      }
+    },
+    hover,
+    press,
+    release,
+    follow,
+    click: (guest: HTMLElement, url: string, input: Release = {}) => {
+      hover(guest, url)
+      press(input)
+      release(input)
+      follow(guest, url)
+    }
+  }
+}
+
+const VIEWED = { id: 'cap1', caseId: 'case1', url: 'https://news.example/story', title: 'Story' }
+const HELD = {
+  id: 'held',
+  caseId: 'case1',
+  url: 'https://other.example/a',
+  title: 'Held',
+  timestamp: '2026-02-01T00:00:00Z'
 }
 
 // What Electron raises on the <webview> element for a right-click in the guest: the
@@ -346,6 +397,206 @@ describe('MhtmlViewer', () => {
 
     unmount()
     expect(stop).toHaveBeenCalledOnce()
+  })
+
+  // #1735, plan A2 and A3. The guest goes nowhere; the selection moves.
+  it('opens the Case’s Capture of a clicked link and pushes the viewed one on the trail', async () => {
+    const input = guestInput()
+    fakeBridge({
+      captures: {
+        getMhtmlUrl: vi.fn().mockResolvedValue(FILE_URL),
+        list: vi.fn().mockResolvedValue([VIEWED, HELD])
+      },
+      ...input.bridge
+    })
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: [] })
+    renderViewer()
+    const guest = await screen.findByTestId('mhtml-viewer')
+    Object.assign(guest, { getWebContentsId: () => 7 })
+
+    await waitFor(() => {
+      input.click(guest, 'https://other.example/a#section')
+      expect(useAppStore.getState().selectedCaptureId).toBe('held')
+    })
+    expect(useAppStore.getState().captureTrail).toEqual(['cap1'])
+    expect(screen.queryByTestId('link-not-in-case')).toBeNull()
+  })
+
+  it('does nothing for a middle, modified or dragged click, or one in another guest', async () => {
+    const input = guestInput()
+    fakeBridge({
+      captures: {
+        getMhtmlUrl: vi.fn().mockResolvedValue(FILE_URL),
+        list: vi.fn().mockResolvedValue([VIEWED, HELD])
+      },
+      ...input.bridge
+    })
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: [] })
+    renderViewer()
+    const guest = await screen.findByTestId('mhtml-viewer')
+    Object.assign(guest, { getWebContentsId: () => 7 })
+    // A plain click first, so the Case's Captures are known to have loaded.
+    await waitFor(() => {
+      input.click(guest, HELD.url)
+      expect(useAppStore.getState().selectedCaptureId).toBe('held')
+    })
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: [] })
+
+    input.click(guest, HELD.url, { button: 'middle' })
+    input.click(guest, HELD.url, { button: 'right' })
+    for (const modifier of ['shift', 'control', 'alt', 'meta'] as const) {
+      input.click(guest, HELD.url, { modifiers: [modifier] })
+    }
+    // Pressed on the link and released off it.
+    input.hover(guest, HELD.url)
+    input.press()
+    input.hover(guest, '')
+    input.release()
+    // A press or a release in another guest pairs with nothing here.
+    input.hover(guest, HELD.url)
+    input.press({ guestWebContentsId: 8 })
+    input.release()
+    input.press()
+    input.release({ guestWebContentsId: 8 })
+
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap1')
+    expect(useAppStore.getState().captureTrail).toEqual([])
+  })
+
+  // #1735 review, finding 1. The press and release can arrive before the guest reports
+  // the link the pointer moved onto, so they name the previous one; the guest's own
+  // attempt to follow a link says which it clicked.
+  it('acts on a click only when the guest then follows the link it named', async () => {
+    const input = guestInput()
+    fakeBridge({
+      captures: {
+        getMhtmlUrl: vi.fn().mockResolvedValue(FILE_URL),
+        list: vi.fn().mockResolvedValue([VIEWED, HELD])
+      },
+      ...input.bridge
+    })
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: [] })
+    renderViewer()
+    const guest = await screen.findByTestId('mhtml-viewer')
+    Object.assign(guest, { getWebContentsId: () => 7 })
+    await waitFor(() => {
+      input.click(guest, HELD.url)
+      expect(useAppStore.getState().selectedCaptureId).toBe('held')
+    })
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: [] })
+
+    // The hover still names the held link, but the guest follows another.
+    input.hover(guest, HELD.url)
+    input.press()
+    input.release()
+    input.follow(guest, 'https://elsewhere.example/b')
+    // A click the guest does not follow, then a follow after the next press.
+    input.press()
+    input.release()
+    input.press()
+    input.follow(guest, HELD.url)
+
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap1')
+    expect(screen.queryByTestId('link-not-in-case')).toBeNull()
+
+    // A main-frame click raises will-frame-navigate too; either one confirms it.
+    input.release()
+    input.follow(guest, HELD.url, 'will-frame-navigate')
+    expect(useAppStore.getState().selectedCaptureId).toBe('held')
+  })
+
+  it('says a clicked link is not in this Case and offers Capture link until the next press', async () => {
+    const input = guestInput()
+    const enqueue = vi.fn().mockResolvedValue({ accepted: 1, rejected: [] })
+    fakeBridge({
+      captures: {
+        getMhtmlUrl: vi.fn().mockResolvedValue(FILE_URL),
+        list: vi.fn().mockResolvedValue([VIEWED])
+      },
+      recapture: { enqueue },
+      ...input.bridge
+    })
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: [] })
+    renderViewer()
+    const guest = await screen.findByTestId('mhtml-viewer')
+    Object.assign(guest, { getWebContentsId: () => 7 })
+
+    await waitFor(() => {
+      input.click(guest, 'https://elsewhere.example/page')
+      expect(screen.getByTestId('link-not-in-case')).toBeDefined()
+    })
+    const notice = screen.getByTestId('link-not-in-case')
+    expect(notice.textContent).toContain('Not in this Case')
+    expect(screen.queryByTestId('link-status-bubble')).toBeNull()
+    fireEvent.click(within(notice).getByRole('button', { name: 'Capture link' }))
+    await waitFor(() =>
+      expect(enqueue).toHaveBeenCalledWith({
+        urls: ['https://elsewhere.example/page'],
+        caseId: 'case1',
+        supersedesCaptureId: undefined
+      })
+    )
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap1')
+
+    input.click(guest, 'http://127.0.0.1:8080/admin')
+    const refused = within(await screen.findByTestId('link-not-in-case')).getByRole('button')
+    expect(refused.textContent).toBe('Capture link (Points at a loopback address)')
+    expect((refused as HTMLButtonElement).disabled).toBe(true)
+
+    input.click(guest, '')
+    await waitFor(() => expect(screen.queryByTestId('link-not-in-case')).toBeNull())
+  })
+
+  it('does nothing for a link to the viewed Capture or a non-web scheme', async () => {
+    const input = guestInput()
+    fakeBridge({
+      captures: {
+        getMhtmlUrl: vi.fn().mockResolvedValue(FILE_URL),
+        list: vi.fn().mockResolvedValue([VIEWED, HELD])
+      },
+      ...input.bridge
+    })
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: [] })
+    renderViewer()
+    const guest = await screen.findByTestId('mhtml-viewer')
+    Object.assign(guest, { getWebContentsId: () => 7 })
+    await waitFor(() => {
+      input.click(guest, HELD.url)
+      expect(useAppStore.getState().selectedCaptureId).toBe('held')
+    })
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: [] })
+
+    for (const url of ['https://news.example/story#top', 'mailto:a@b.example']) {
+      input.click(guest, url)
+    }
+
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap1')
+    expect(useAppStore.getState().captureTrail).toEqual([])
+    expect(screen.queryByTestId('link-not-in-case')).toBeNull()
+  })
+
+  // #1735, plan A6. The Wayback compare pane mounts the viewer with link clicks off.
+  it('does nothing on a link click with linkClicks off', async () => {
+    const input = guestInput()
+    fakeBridge({
+      captures: {
+        getMhtmlUrl: vi.fn().mockResolvedValue(FILE_URL),
+        list: vi.fn().mockResolvedValue([VIEWED, HELD])
+      },
+      ...input.bridge
+    })
+    const onGuestMouseUp = vi.spyOn(window.birdbrain, 'onGuestMouseUp')
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: [] })
+    renderViewer({ linkClicks: false })
+    const guest = await screen.findByTestId('mhtml-viewer')
+    Object.assign(guest, { getWebContentsId: () => 7 })
+
+    input.click(guest, HELD.url)
+    input.click(guest, 'https://elsewhere.example/page')
+
+    expect(onGuestMouseUp).not.toHaveBeenCalled()
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap1')
+    expect(screen.queryByTestId('link-not-in-case')).toBeNull()
   })
 
   it('opens no menu for a right-click on the pane around the guest', async () => {

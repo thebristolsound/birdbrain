@@ -260,6 +260,13 @@ describe('trimTrailingBackground', () => {
     expect(await heightOf(out)).toBe(999)
   })
 
+  it('trims a page whose only content is its first row', async () => {
+    const png = await pageWithTrailingBackground(400, 1000, 1, WHITE, RED)
+    const { png: out, trimmed } = await trimTrailingBackground(png)
+    expect(trimmed).toBe(true)
+    expect(await heightOf(out)).toBe(9)
+  })
+
   it('leaves an all-background (blank) capture untouched', async () => {
     const png = await sharp({
       create: { width: 400, height: 2000, channels: 3, background: WHITE }
@@ -461,6 +468,16 @@ describe('scrollToLoadLazyContent', () => {
 
     expect(record.scrollLockLifted).toBe(true)
     expect(scripts.at(-1)).toContain('const prior = ["hidden",""]')
+  })
+
+  it('records an end height of 0 when the page reports 0 for its height', async () => {
+    const { wc } = scrollingContents({
+      step: (call) => (call === 0 ? { y: 0, height: 0, viewportHeight: 900 } : null)
+    })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record).toMatchObject({ outcome: 'nothing-to-scroll', endHeight: 0 })
   })
 
   it.each([
@@ -862,6 +879,22 @@ describe('captureFullPageScreenshot', () => {
     await expect(captureFullPageScreenshot(wc)).rejects.toThrow('The screenshot is not a PNG')
   })
 
+  // Each check on its own: the rest of the image is a real PNG's.
+  it.each([
+    ['is cut off before the end of its header', (png: Buffer) => png.subarray(0, 23)],
+    [
+      'has a wrong signature byte',
+      (png: Buffer) => Buffer.concat([Buffer.from([0]), png.subarray(1)])
+    ],
+    [
+      'does not start with an IHDR chunk',
+      (png: Buffer) => Buffer.concat([png.subarray(0, 12), Buffer.from('IDAT'), png.subarray(16)])
+    ]
+  ])('fails the render on an image that %s', async (_name, damage) => {
+    const { wc } = screenshotContents({ width: 16, height: 8 }, damage(await solid(16, 8)))
+
+    await expect(captureFullPageScreenshot(wc)).rejects.toThrow('The screenshot is not a PNG')
+  })
 })
 
 describe('renderPageInHiddenWindow', () => {

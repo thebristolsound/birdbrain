@@ -381,11 +381,11 @@ function pngDimensions(png: Buffer): { width: number; height: number } {
   return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) }
 }
 
-// Returns the stored PNG with the D6 facts about it
-// (docs/plans/2026-10-10-capture-engine-first-slice.md).
-export async function captureFullPageScreenshot(
+// The document's content box in CSS pixels, which the screenshot clips to and
+// the print's height bound reads.
+async function cssContentSize(
   wc: WebContents
-): Promise<{ png: Buffer; record: ScreenshotRecord }> {
+): Promise<{ x: number; y: number; width: number; height: number }> {
   const metrics = (await wc.debugger.sendCommand('Page.getLayoutMetrics')) as {
     cssContentSize?: { x: number; y: number; width: number; height: number }
   }
@@ -395,12 +395,21 @@ export async function captureFullPageScreenshot(
   // pages, so on the rare page that omits cssContentSize fall back to the known
   // viewport bounds. Capturing with no clip at all would bypass the MAX_CAPTURE_*
   // caps below and risk exceeding GPU texture limits on a large page.
-  const contentSize = metrics.cssContentSize ?? { x: 0, y: 0, ...VIEWPORT }
+  return metrics.cssContentSize ?? { x: 0, y: 0, ...VIEWPORT }
+}
 
-  // getLayoutMetrics can omit dimensions on some pages; coalesce so a missing
-  // field yields a valid 1px clip rather than NaN (which fails captureScreenshot).
-  const width = Math.max(1, Math.ceil(contentSize.width ?? 0))
-  const fullHeight = Math.max(1, Math.ceil(contentSize.height ?? 0))
+// getLayoutMetrics can omit dimensions on some pages; coalesce so a missing
+// field yields a valid 1px clip rather than NaN (which fails captureScreenshot).
+const cssPixels = (value: number | undefined): number => Math.max(1, Math.ceil(value ?? 0))
+
+// Returns the stored PNG with the D6 facts about it
+// (docs/plans/2026-10-10-capture-engine-first-slice.md).
+export async function captureFullPageScreenshot(
+  wc: WebContents
+): Promise<{ png: Buffer; record: ScreenshotRecord }> {
+  const contentSize = await cssContentSize(wc)
+  const width = cssPixels(contentSize.width)
+  const fullHeight = cssPixels(contentSize.height)
   // Downscale so the output width fits the texture ceiling, and cap the
   // captured height so the total bitmap stays bounded — scroll discovery grows
   // infinite feeds up to MAX_SCROLL_CONTENT_HEIGHT_PX. The screenshot is
@@ -590,12 +599,7 @@ interface SavedPage {
 // `failed`, with an error that names the cause.
 async function printPageToPdf(
   wc: WebContents,
-  {
-    saved,
-    navigations,
-    contentHeight,
-    boundMs
-  }: { saved: SavedPage; navigations: number; contentHeight: number; boundMs: number }
+  { saved, navigations, boundMs }: { saved: SavedPage; navigations: number; boundMs: number }
 ): Promise<PdfOutcome> {
   try {
     // A print shows whatever the window holds now, so a page that left the saved
@@ -604,6 +608,8 @@ async function printPageToPdf(
     if (url !== saved.url || navigations !== saved.navigations) {
       throw new Error(`The page navigated after it was saved, to ${url}, so it was not printed`)
     }
+    // Read now, not from the screenshot: pinning can change the page's height.
+    const contentHeight = cssPixels((await cssContentSize(wc)).height)
     if (contentHeight > MAX_PDF_CONTENT_HEIGHT_PX) {
       throw new Error(
         `The page is ${contentHeight} CSS pixels tall, over MAX_PDF_CONTENT_HEIGHT_PX ` +
@@ -900,7 +906,6 @@ export const renderPageInHiddenWindow: RenderPage = async (
       const pdf = await printPageToPdf(wc, {
         saved,
         navigations,
-        contentHeight: screenshotRecord.contentHeight,
         boundMs: Math.min(PRINT_TIMEOUT_MS, remainingMs(END_MARGIN_MS))
       })
 

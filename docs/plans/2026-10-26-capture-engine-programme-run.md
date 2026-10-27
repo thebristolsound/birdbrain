@@ -1,7 +1,7 @@
 # Capture engine programme: run log
 
-**Status:** active. This file lives on the local branch `feat/complete-capture-engine-roadmap`,
-which is not pushed.
+**Status:** active. This file lives on the branch `feat/complete-capture-engine-roadmap`, pushed
+to origin on 2026-10-26.
 
 The handoff file for the interactive run that works programme 2 of
 [the delivery roadmap](2026-10-23-delivery-roadmap.md), started 2026-10-26. The goal is the

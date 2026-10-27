@@ -486,6 +486,7 @@ const TransactionRecordInventorySchema = z.discriminatedUnion('present', [
       cancelled: nonNegativeIntField,
       failed: nonNegativeIntField,
       inFlight: nonNegativeIntField,
+      finishedWithoutResponse: nonNegativeIntField,
       bodiesOmitted: nonNegativeIntField,
       incompleteRequestBodies: nonNegativeIntField,
       webSockets: nonNegativeIntField,
@@ -550,6 +551,14 @@ export const ScrollToLoadRecordSchema = z
     scrollLockLifted: z.boolean()
   })
   .strict()
+  // A phase that never ran has no end and read no height (D5).
+  .refine(
+    (record) => record.ran || (record.outcome === undefined && record.endHeight === undefined),
+    {
+      message: '`outcome` and `endHeight` require `ran` to be true',
+      path: ['ran']
+    }
+  )
 
 export type ScrollToLoadRecord = z.infer<typeof ScrollToLoadRecordSchema>
 
@@ -700,9 +709,10 @@ const ManifestCaptureEntrySchema = z
     message: 'the capture engine fields on a capture entry require schemaVersion 6',
     path: ['schemaVersion']
   })
-  // The four shapes of the capture engine's fields that contradict themselves.
-  // A released verifier cannot be recalled, so no other rule is added: none
-  // ties a field to a Capture Method, for one.
+  // The four shapes across the capture engine's fields that contradict
+  // themselves; the MHTML counts and the Scroll-to-load record each carry one
+  // more refine of their own. A released verifier cannot be recalled, so no
+  // other rule is added: none ties a field to a Capture Method, for one.
   .refine(
     (entry) =>
       (entry.transactionRecordHash !== undefined) ===

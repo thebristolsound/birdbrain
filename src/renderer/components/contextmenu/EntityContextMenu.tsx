@@ -49,6 +49,7 @@ function ActionItem({ action, defer }: { action: MenuAction; defer: Defer }) {
     <ContextMenuItem
       danger={action.danger}
       disabled={action.disabled}
+      title={action.hint}
       data-testid={`context-menu-item-${action.id}`}
       onSelect={() => (action.takesFocus ? defer(action.run) : action.run())}
     >

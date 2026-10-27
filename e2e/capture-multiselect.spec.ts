@@ -11,7 +11,7 @@ test.describe('Captures multiselect', () => {
     test.setTimeout(90000)
 
     await page.evaluate(() => {
-      window.location.hash = '/cases/new'
+      window.location.hash = '/cases/new?blank=true'
     })
     await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'Multiselect E2E')

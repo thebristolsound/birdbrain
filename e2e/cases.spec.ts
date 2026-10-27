@@ -3,7 +3,7 @@ import { test, expect } from './fixtures/electronApp'
 // Helper: navigate to /cases/new via the hash router and wait for the form
 async function goToNewCase(page: import('@playwright/test').Page) {
   await page.evaluate(() => {
-    window.location.hash = '/cases/new'
+    window.location.hash = '/cases/new?blank=true'
   })
   await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
 }

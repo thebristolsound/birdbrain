@@ -2,9 +2,11 @@
 // enabling the CDP Network domain change what a page can observe, do CDP bodies match the served
 // payloads, and does printToPDF work offscreen? Taken from "The probe" in
 // docs/specs/2026-10-02-capture-engine-probe-spike.md, as an ES module, with `history.length`
-// added to the page facts (renderer spike, question 7). A standalone Electron main script, not
-// the app: one pass per process, chosen by PROBE_PASS (`off` or `on`). run.mjs runs both passes
-// and compares them.
+// added to the page facts (renderer spike, question 7), and with the on pass sending the page
+// setup a background render sends after `Network.enable`: `Network.configureDurableMessages` and
+// `Target.setAutoAttach` with `waitForDebuggerOnStart` (step 9). A standalone Electron main
+// script, not the app: one pass per process, chosen by PROBE_PASS (`off` or `on`). run.mjs runs
+// both passes and compares them.
 import { app, BrowserWindow, session } from 'electron'
 import { Buffer } from 'buffer'
 import http from 'http'
@@ -100,6 +102,12 @@ async function pass(base, name, enableNetwork) {
   }
   if (enableNetwork) {
     wc.debugger.on('message', (_e, method, p) => {
+      // A target that attaches waits for the debugger; the render resumes each one, and so does
+      // this pass. The fixture page starts none.
+      if (method === 'Target.attachedToTarget') {
+        ev.attached = (ev.attached ?? 0) + 1
+        wc.debugger.sendCommand('Runtime.runIfWaitingForDebugger', {}, p.sessionId).catch(() => {})
+      }
       if (method === 'Network.requestWillBeSent') {
         // One CDP request id spans every hop of a redirect; keep each hop as its own exchange.
         if (p.redirectResponse) {
@@ -129,9 +137,13 @@ async function pass(base, name, enableNetwork) {
     })
     if (process.env.PROBE_BLANK_FIRST === '1') await wc.loadURL('about:blank')
     try {
-      await wc.debugger.sendCommand('Network.enable', {
-        maxTotalBufferSize: 50e6,
-        maxResourceBufferSize: 10e6
+      const limits = { maxTotalBufferSize: 50e6, maxResourceBufferSize: 10e6 }
+      await wc.debugger.sendCommand('Network.enable', limits)
+      await wc.debugger.sendCommand('Network.configureDurableMessages', limits)
+      await wc.debugger.sendCommand('Target.setAutoAttach', {
+        autoAttach: true,
+        waitForDebuggerOnStart: true,
+        flatten: true
       })
       ev.enableError = null
     } catch (err) {
@@ -219,6 +231,7 @@ async function pass(base, name, enableNetwork) {
           finished: finishedBeforePdf,
           finishedAfterPdf: ev.finished.length - finishedBeforePdf,
           enabledOnFreshWindow: ev.enabledFresh,
+          attachedTargets: ev.attached ?? 0,
           enableError: ev.enableError,
           failed: ev.failed.length,
           servedFromCache: ev.cache.length,

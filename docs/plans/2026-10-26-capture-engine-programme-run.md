@@ -69,7 +69,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
   settled images.
 - **CI is locked.** From about 04:10Z on 2026-10-27, GitHub Actions jobs fail before starting
   with a message that the account is locked for a billing issue. Heads pushed after that (#2000 `39ae663a`,
-  #2001 `ae216441`, #2002) have no CI result; every other open PR's head had CI green, except
+  #2001 `ae216441`, #2002, #1987 `47aad589`) have no CI result; every other open PR's head had CI green, except
   #1987.
 - **Step 6 and #1843 in one release.** Ruled 2026-10-26: no release carries step 6 without
   #1843, because step 6 signs zero pinned-image counts that read the same as a pinning pass that
@@ -93,7 +93,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Character set spike | #1983 | #1988 | rulings recorded at `33ed5a01`; posted on #1929 |
 | Step 6, scroll and screenshot record (writer) | #1928 | #1996 | fix round pushed at `7d309557`; merges after the tag, with #1843 |
 | ADR-0040 link writer | #1995 | #1997 | fix round pushed at `5db2bc69`; merges after the tag |
-| Viewer slice 2 Part A | #1735 | #1987 | CI e2e fails on the new click test at `3f015984`; being fixed |
+| Viewer slice 2 Part A | #1735 | #1987 | CI e2e failure reproduced and fixed in the test at `47aad589`; CI re-run owed after the lock |
 | Viewer slice 3, one-link lookup | #1737 | #1990 | fix round pushed at `1a1dfa3d`, preflight green |
 | Viewer slice 3, batch lookup | #1738 | #1998 | fix round pushed at `a45764ce`, preflight green |
 | Step 9, record the Transaction Record (writer) | #1929 | #1999 | fix round and stack merge pushed at `11fcd9c2`; merges after the tag |

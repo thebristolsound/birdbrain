@@ -617,6 +617,11 @@ export const renderPageInHiddenWindow: RenderPage = async (
 
   const tmpPath = join(app.getPath('temp'), `birdbrain-recapture-${randomUUID()}.mhtml`)
 
+  // The time left counts from the moment the deadline timer starts, so setup before the
+  // first load, such as a slow `setProxy`, cannot let a phase settle after the deadline.
+  const startedAt = Date.now()
+  const remainingMs = (reserveMs = 0) =>
+    Math.max(0, timeoutMs - (Date.now() - startedAt) - reserveMs)
   let deadlineTimer: NodeJS.Timeout | undefined
   const deadline = new Promise<never>((_, reject) => {
     deadlineTimer = setTimeout(
@@ -705,10 +710,6 @@ export const renderPageInHiddenWindow: RenderPage = async (
     // leaf. A packaged build installs nothing here.
     const certificateAllowance = testCertificateAllowance()
     if (certificateAllowance) session.setCertificateVerifyProc(certificateAllowance)
-
-    const startedAt = Date.now()
-    const remainingMs = (reserveMs = 0) =>
-      Math.max(0, timeoutMs - (Date.now() - startedAt) - reserveMs)
 
     wc.on('will-redirect', checkHop)
     wc.on('will-navigate', checkHop)

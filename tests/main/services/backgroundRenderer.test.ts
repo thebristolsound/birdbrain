@@ -87,10 +87,12 @@ const ctl = vi.hoisted(() => ({
   printEvent: false,
   // The page the window holds, and a navigation it makes after the save, once
   // the text is read: to another page, a reload of the same one, or an in-page
-  // change of its address (the review of #2000, finding 2).
+  // change of its address (the review of #2000, finding 2). `setProxyDelayMs`
+  // holds the proxy setup back (finding 5).
   currentUrl: 'https://example.test/final',
   currentTitle: 'Mock Title',
-  navigateAfterSave: null as null | 'other-page' | 'reload' | 'in-page'
+  navigateAfterSave: null as null | 'other-page' | 'reload' | 'in-page',
+  setProxyDelayMs: 0
 }))
 
 type Handler = (...args: unknown[]) => void
@@ -150,6 +152,9 @@ const { MockBrowserWindow } = vi.hoisted(() => {
     }),
     setProxy: vi.fn(async (config: unknown) => {
       ctl.calls.push(`setProxy ${JSON.stringify(config)}`)
+      if (ctl.setProxyDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, ctl.setProxyDelayMs))
+      }
     })
   })
 
@@ -431,6 +436,7 @@ function resetPrint(): void {
   ctl.currentUrl = 'https://example.test/final'
   ctl.currentTitle = 'Mock Title'
   ctl.navigateAfterSave = null
+  ctl.setProxyDelayMs = 0
 }
 
 describe('trimTrailingBackground', () => {
@@ -1587,6 +1593,19 @@ describe('renderPageInHiddenWindow, the PDF', () => {
     },
     30_000
   )
+
+  // Finding 5 of the review of #2000: the time left is counted from the deadline timer, so a
+  // slow proxy setup before the first load cannot carry the print past the deadline.
+  it('cuts the print to the deadline when the proxy setup was slow', async () => {
+    ctl.egress = { kind: 'proxy', proxyUrl: 'socks5://127.0.0.1:1080', label: '' }
+    ctl.setProxyDelayMs = 2_000
+    ctl.printHangs = true
+    const startedAt = Date.now()
+    const result = await render(4_000)
+    expect(Date.now() - startedAt).toBeLessThan(4_000)
+    expect(result.pdf).toMatchObject({ present: false, reason: 'failed' })
+    expect(errorOf(result.pdf)).toMatch(/The print did not settle within (\d{1,3}|1000)ms/)
+  }, 30_000)
 })
 
 // The same render handed to the Recapture queue and the Capture's ingest, so each outcome is

@@ -183,7 +183,7 @@ describe('MhtmlViewer', () => {
 
   // ADR-0040: the source is checked when the job runs, after the queued notice, so a
   // refusal then is raised as a notice of its own, not only as a Capture Health row.
-  it('raises a notice when the queued job is refused, and none for another link or a stored one', async () => {
+  it('raises a notice when the queued job is refused, and none for another job or a stored one', async () => {
     const listeners: Array<(event: CaptureEvent) => void> = []
     const onCaptureActivity = vi.fn((callback: (event: CaptureEvent) => void) => {
       listeners.push(callback)
@@ -217,17 +217,38 @@ describe('MhtmlViewer', () => {
       )
     }
 
-    await captureLink('https://a.example/one')
-    emit({ type: 'received', url: 'https://a.example/one' })
-    emit({ url: 'https://a.example/other', skipReason: 'Link source not found' })
+    const one = 'https://a.example/one'
+    const job = (linkHref: string) => ({ linkedFrom: { captureId: 'cap1', linkHref } })
+    await captureLink(one)
+    emit({ type: 'received', url: one, ...job(one) })
+    emit({ url: 'https://a.example/other', skipReason: 'Link source not found', ...job('other') })
+    // Another job for the same address: a Recapture, a link from another stored page, or a
+    // Capture by another route.
+    emit({ type: 'failed', url: one, error: 'Recapture timed out' })
+    emit({
+      url: one,
+      skipReason: 'Link source not found',
+      linkedFrom: { captureId: 'cap2', linkHref: one }
+    })
+    emit({ source: 'auto', url: one, skipReason: 'Blacklisted: a.example', ...job(one) })
     expect(warn).not.toHaveBeenCalled()
-    emit({ url: 'https://a.example/one', skipReason: 'Link source does not verify (tampered)' })
+    emit({ url: one, skipReason: 'Link source does not verify (tampered)', ...job(one) })
     expect(warn).toHaveBeenCalledWith('Link not captured: Link source does not verify (tampered)')
     expect(listeners).toHaveLength(0)
 
+    // A redirect into an excluded address: the skip names the final address, not the link.
     await captureLink('https://a.example/two')
-    emit({ type: 'stored', url: 'https://a.example/two' })
-    expect(warn).toHaveBeenCalledTimes(1)
+    emit({
+      url: 'https://blocked.example/landing',
+      skipReason: 'Blacklisted: blocked.example',
+      ...job('https://a.example/two')
+    })
+    expect(warn).toHaveBeenCalledWith('Link not captured: Blacklisted: blocked.example')
+    expect(listeners).toHaveLength(0)
+
+    await captureLink('https://a.example/three')
+    emit({ type: 'stored', url: 'https://a.example/three', ...job('https://a.example/three') })
+    expect(warn).toHaveBeenCalledTimes(2)
     expect(listeners).toHaveLength(0)
   })
 

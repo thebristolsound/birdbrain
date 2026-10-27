@@ -189,8 +189,13 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
   let draining: Promise<void> | null = null
 
   async function runJob(job: RecaptureJob): Promise<void> {
+    // A Capture link job names itself on every event, because the exclusion skip names the final
+    // address rather than `job.url`, and another job can share the address (ADR-0040).
+    const { linkedFrom } = job
+    const emitEvent = (event: CaptureEvent): void =>
+      deps.emitEvent(linkedFrom ? { ...event, linkedFrom } : event)
     const timestamp = new Date().toISOString()
-    deps.emitEvent({
+    emitEvent({
       type: 'received',
       source: 'recapture',
       url: job.url,
@@ -205,7 +210,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       if (job.linkedFrom) {
         const read = await readLinkSource(job, job.linkedFrom)
         if ('refused' in read) {
-          deps.emitEvent({
+          emitEvent({
             type: 'skipped',
             source: 'recapture',
             url: job.url,
@@ -239,7 +244,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       const refused = refusedAddressClass(rendered.finalUrl)
       if (refused) {
         rendered.mhtmlStream.destroy?.()
-        deps.emitEvent({
+        emitEvent({
           type: 'skipped',
           source: 'recapture',
           url: job.url,
@@ -262,7 +267,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         // process. Batch recapture fans out one job per capture, so that is one
         // fd and one multi-megabyte file per blocked job (#766).
         rendered.mhtmlStream.destroy?.()
-        deps.emitEvent({
+        emitEvent({
           type: 'skipped',
           source: 'recapture',
           url: rendered.finalUrl,
@@ -312,7 +317,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
 
       const capture = captureRepo.getCapture(result.capture.id) ?? result.capture
       deps.emitNewCapture(capture)
-      deps.emitEvent({
+      emitEvent({
         type: 'stored',
         captureId: capture.id,
         source: 'recapture',
@@ -323,7 +328,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       })
     } catch (err) {
       if (err instanceof RefusedAddressError) {
-        deps.emitEvent({
+        emitEvent({
           type: 'skipped',
           source: 'recapture',
           url: job.url,
@@ -332,7 +337,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         })
         return
       }
-      deps.emitEvent({
+      emitEvent({
         type: 'failed',
         source: 'recapture',
         url: job.url,

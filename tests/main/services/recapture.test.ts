@@ -667,6 +667,25 @@ describe('Capture link jobs (ADR-0040)', () => {
     expect(events.at(-1)).toMatchObject({ type: 'skipped', url: job.url, skipReason: reason })
   })
 
+  // The exclusion skip names the final address, so only `linkedFrom` ties it to the job.
+  it('names the job on each of its events, and on no other job', async () => {
+    const source = await sourceCapture()
+    expect(events.some((e) => 'linkedFrom' in e)).toBe(false)
+    setAutoCapturePolicy(caseId, {
+      exclusions: ['/^https:\\/\\/example\\.com\\/linked$/'],
+      mode: 'stack'
+    })
+    const [before, written] = [events.length, entries().length]
+    expect(svc.enqueueLink(linkPayload(source.id)).accepted).toBe(1)
+    await expectNothingWritten(written, 1)
+
+    const linkedFrom = { captureId: source.id, linkHref: LINK }
+    expect(events.slice(before)).toMatchObject([
+      { type: 'received', url: LINK, linkedFrom },
+      { type: 'skipped', url: LANDED, linkedFrom }
+    ])
+  })
+
   it('skips a source whose stored page no longer verifies', async () => {
     const source = await sourceCapture()
     writeFileSync(defaultCaptureStore.resolveAbsolute(source.mhtmlPath!), 'altered bytes')

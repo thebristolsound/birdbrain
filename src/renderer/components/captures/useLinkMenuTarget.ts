@@ -52,9 +52,13 @@ export function useLinkMenuTarget(
             // Main checks the source's entry and bytes when the job runs, so a refusal then
             // arrives as an activity event after the queued notice (ADR-0040). Listening
             // starts before the request, so a refusal that beats the reply is not missed.
+            // The job is matched by its source and address, not the event's `url`, which a
+            // redirect into an excluded address replaces with the final address.
             let warned = false
-            const stop = window.birdbrain.onCaptureActivity(({ type, url, skipReason, error }) => {
-              if (url !== linkUrl || type === 'received') return
+            const stop = window.birdbrain.onCaptureActivity((event) => {
+              const { type, source, linkedFrom, skipReason, error } = event
+              if (source !== 'recapture' || type === 'received') return
+              if (linkedFrom?.captureId !== captureId || linkedFrom.linkHref !== linkUrl) return
               stop()
               if (type === 'stored') return
               warned = true

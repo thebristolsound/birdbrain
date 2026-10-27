@@ -1395,6 +1395,9 @@ export interface CaptureEvent {
   // exact capture being recaptured, not every capture that shares its URL —
   // recapture creates same-URL siblings, so URL alone is ambiguous.
   supersedesCaptureId?: string
+  // The source and link address of a Capture link job, on every event emitted while it runs, so
+  // the viewer's notice can tell its job from another of the same address (ADR-0040).
+  linkedFrom?: { captureId: string; linkHref: string }
 }
 
 export interface OperatorIdentity {

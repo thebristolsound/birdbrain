@@ -385,7 +385,8 @@ inventory: {
 
 The background renderer always requests the phase. `endHeight` is the last height the step
 script reported for the root it scrolled, the document or an inner panel, in CSS pixels, and is
-absent when the loop read none or the last height it read is not a non-negative integer.
+absent when the loop read none or the last height it read is not a non-negative safe integer
+(`Number.isSafeInteger`, so an integer above 2^53 - 1 is left out too).
 `scrollLockLifted` is true when `SCROLL_UNLOCK_SCRIPT` lifted a consent wall's lock: the lock is
 restored before the artifacts, but loosening it can change which lazy content loads. `outcome`
 maps to where `scrollToLoadLazyContent` ends today:

@@ -471,6 +471,44 @@ describe('SELECTION_ACTION: tag and quote ride the #392 attach endpoints', () =>
     })
   })
 
+  it('carries no screenshot note when the attach bound to a capture the case already held', async () => {
+    // The race: the frames (and their fallback) were collected before the
+    // attach resolved, but the route bound to a capture the case already held
+    // and discarded the supplied bytes — no screenshot of this action was
+    // stored, so neither note can describe the result.
+    fullPageResponse = { error: 'OffscreenCanvas is not available in this context' }
+    vi.mocked(applyTagToUrl).mockResolvedValueOnce({
+      ...TAG_RESULT,
+      captured: false,
+      screenshotStatus: 'none'
+    })
+
+    const response = (await dispatchWithResponse({
+      type: 'SELECTION_ACTION',
+      action: 'tag',
+      text: 'evil@example.com'
+    })) as SelectionActionResponse
+
+    expect(response).toEqual({ ok: true, detail: 'Tagged "evil-example-com"', captured: false })
+  })
+
+  it('carries no screenshot note on a quote that bound to a capture the case already held', async () => {
+    fullPageResponse = { error: 'OffscreenCanvas is not available in this context' }
+    vi.mocked(createNoteOnUrl).mockResolvedValueOnce({
+      ...NOTE_RESULT,
+      captured: false,
+      screenshotStatus: 'none'
+    })
+
+    const response = (await dispatchWithResponse({
+      type: 'SELECTION_ACTION',
+      action: 'quote',
+      text: 'The quoted passage.'
+    })) as SelectionActionResponse
+
+    expect(response).toEqual({ ok: true, detail: 'Quote saved to case notes', captured: false })
+  })
+
   it('reports the Capture the failed attach freshly stored, and stamps the page status', async () => {
     // The one failure that is not a clean refusal: #392 returns the stored
     // capture id on the 500 whose ingest succeeded and whose tag did not,

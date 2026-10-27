@@ -24,8 +24,7 @@ nowhere else in tracked text:
   Investigate route is registered (declared, reachable by URL, no sidebar, top-bar or palette
   entry), opens the join flow only from a validated search parameter on `/cases/new`, builds the
   sync pill as a component with its tests but does not mount it in `TopBar.tsx`, and adds no
-  command-palette action. A later PR on this issue adds the three entry points. A deferred entry
-  point is not a review finding; a mounted one is.
+  command-palette action. A later PR on this issue adds the entry points; S7 below records it.
 
 ## Slices
 
@@ -40,6 +39,7 @@ with `pnpm test <file>` and `pnpm typecheck`, `pnpm lint` and `pnpm lint:boundar
 | S4 | Join branch in the wizard, the sync pill component (unmounted), the shared Case card line | shipped |
 | S5 | Attribution and exclusion on capture rows and the details panel | shipped |
 | S6 | Ledger Actor column, chain selector and Timeline (blocking tier, small); screenshots; two-instance e2e; `pnpm preflight` | shipped |
+| S7 | Entry points: the sync pill in the top bar, Members on the Case card's menu, the wizard's start step and the palette's join action | in review |
 
 ### S1, shipped
 
@@ -145,6 +145,32 @@ Members, capture attribution, the ledger and Join in both themes.
 S6 verification completed before PR #1965 opened. External review corrections are tracked
 below. Entry points remain deferred until both sync fixes merge. The real two-network sync
 remains a maintainer action.
+
+### S7, entry points
+
+Both sync defects have merged (#1951 in PR #1966, #1955 in PR #1967), so this slice makes the
+screens reachable. Each placement follows the mock or the feasibility assessment.
+
+- **Sync pill.** `TopBar.tsx` mounts `SyncPill` left of the extension pill on a Case whose
+  `sharedAt` is set; clicking it opens `/cases/$caseId/settings`. An unshared Case mounts no
+  pill, so it never polls `sharing:getSyncState`. The pill still hides itself until a member
+  joins (mock 1e).
+- **Case card menu.** The card's actions menu gains Members between Rename and Delete. Item 19
+  of the assessment left the second entry to engineering because the renderer had no case-level
+  menu; the Case card's menu is the one that exists. It is the way into Members for a Case that
+  is not shared yet, since the pill is hidden there. The dashboard lists the three most recent
+  Cases, the same reach Rename and Delete have.
+- **Start step.** `/cases/new` opens on the mock's start step (`CaseStartStep.tsx`): Blank Case
+  sets the `blank` search flag and shows the existing form, Import a Case Archive runs the
+  dashboard's archive inspection and dialog, and Join a shared Case sets `join`. The maintainer
+  chose this over a dashboard button on 2026-10-25. End-to-end specs that create a Case open
+  `/cases/new?blank=true`.
+- **Palette.** "Join a shared Case…" sits under "Create new case" and opens the join card.
+
+`tests/components/CaseSettingsEntryPoints.test.tsx` now pins the pill, the palette action and
+the sidebar's absence; `CaseCardMenu.test.tsx` the menu item; `NewCaseWizard.test.tsx` the start
+step. `e2e/shared-case-members.spec.ts` walks the card menu, the pill, the palette and the start
+step in the built app.
 
 ## The widened sync state payload
 

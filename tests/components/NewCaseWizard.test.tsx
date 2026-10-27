@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
-import { NewCaseWizard } from '@renderer/components/dashboard/cases/NewCaseWizard'
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
+import {
+  NewCaseWizard,
+  validateNewCaseSearch
+} from '@renderer/components/dashboard/cases/NewCaseWizard'
 
 // Hoisted so the wizard's own module graph shares the instances the
 // assertions read, and so `create` can resolve to a case with an id.
@@ -9,10 +12,28 @@ const createCase = vi.hoisted(() => vi.fn(async () => ({ id: 'case-1' })))
 const createSelector = vi.hoisted(() => vi.fn())
 const navigate = vi.hoisted(() => vi.fn())
 const notifySuccess = vi.hoisted(() => vi.fn())
+// The form is the `blank` branch; the start step's own tests clear it.
+const search = vi.hoisted(() => ({ current: { blank: true } as Record<string, true> }))
+const inspectCaseArchive = vi.hoisted(() => vi.fn())
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigate,
-  useSearch: () => ({})
+  useSearch: () => search.current
+}))
+
+vi.mock('@renderer/lib/api/cases', () => ({ inspectCaseArchive }))
+vi.mock('@renderer/components/dashboard/cases/ImportCaseDialog', () => ({
+  ImportCaseDialog: ({
+    report,
+    onClose
+  }: {
+    report: { archivePath: string }
+    onClose: () => void
+  }) => (
+    <div role="dialog" aria-label={`Import ${report.archivePath}`}>
+      <button onClick={onClose}>Close import</button>
+    </div>
+  )
 }))
 
 vi.mock('@renderer/lib/notify', () => ({
@@ -30,6 +51,8 @@ vi.mock('@renderer/lib/api/selectors', () => ({
 
 afterEach(() => {
   cleanup()
+  search.current = { blank: true }
+  inspectCaseArchive.mockReset()
   createSelector.mockReset()
   navigate.mockReset()
   notifySuccess.mockReset()
@@ -134,5 +157,61 @@ describe('NewCaseWizard', () => {
     expect(notifySuccess.mock.calls[0][1].description).toBe(
       '“Nightjar” is ready — 1 selector armed.'
     )
+  })
+})
+
+describe('NewCaseWizard start step (#1514)', () => {
+  it('opens on the three ways a Case begins', () => {
+    search.current = {}
+    render(<NewCaseWizard />)
+    expect(screen.getByRole('heading', { name: 'Start a Case' })).toBeTruthy()
+    expect(screen.queryByTestId('case-name-input')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /Blank Case/ }))
+    expect(navigate).toHaveBeenLastCalledWith({ to: '/cases/new', search: { blank: true } })
+    fireEvent.click(screen.getByRole('button', { name: /Join a shared Case/ }))
+    expect(navigate).toHaveBeenLastCalledWith({ to: '/cases/new', search: { join: true } })
+  })
+
+  it('imports an archive from the start step and reports a failed inspection', async () => {
+    search.current = {}
+    inspectCaseArchive.mockRejectedValueOnce(new Error('Not a Case Archive'))
+    render(<NewCaseWizard />)
+    fireEvent.click(screen.getByRole('button', { name: /Import a Case Archive/ }))
+    expect(inspectCaseArchive).toHaveBeenCalledOnce()
+    expect((await screen.findByRole('alert')).textContent).toBe('Not a Case Archive')
+
+    // A second attempt clears the earlier failure.
+    inspectCaseArchive.mockResolvedValueOnce(null)
+    fireEvent.click(screen.getByRole('button', { name: /Import a Case Archive/ }))
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+  })
+
+  it('opens the import dialog on the inspected archive, and nothing when the picker is cancelled', async () => {
+    search.current = {}
+    inspectCaseArchive.mockResolvedValueOnce(null)
+    render(<NewCaseWizard />)
+    const importOption = screen.getByRole('button', { name: /Import a Case Archive/ })
+    fireEvent.click(importOption)
+    await waitFor(() => expect(inspectCaseArchive).toHaveBeenCalledOnce())
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    inspectCaseArchive.mockResolvedValueOnce({ archivePath: '/cases/kestrel.birdbrain' })
+    fireEvent.click(importOption)
+    fireEvent.click(
+      within(
+        await screen.findByRole('dialog', { name: 'Import /cases/kestrel.birdbrain' })
+      ).getByRole('button', { name: 'Close import' })
+    )
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('reads the branch flags from the search string', () => {
+    expect(validateNewCaseSearch({})).toEqual({ join: undefined, blank: undefined })
+    expect(validateNewCaseSearch({ blank: 'true', join: 'nope' })).toEqual({
+      join: undefined,
+      blank: true
+    })
+    expect(validateNewCaseSearch({ join: true })).toEqual({ join: true, blank: undefined })
   })
 })

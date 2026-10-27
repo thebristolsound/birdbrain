@@ -169,6 +169,7 @@ const birdbrain = {
   },
   wayback: {
     lookup: bridge(IPC_CHANNELS.WAYBACK_LOOKUP),
+    lookupLink: bridge(IPC_CHANNELS.WAYBACK_LOOKUP_LINK),
     list: bridge(IPC_CHANNELS.WAYBACK_LIST),
     listForCase: bridge(IPC_CHANNELS.WAYBACK_LIST_FOR_CASE),
     pin: bridge(IPC_CHANNELS.WAYBACK_PIN),
@@ -334,6 +335,8 @@ const birdbrain = {
   onGuestFrameReplaced: subscribe(IPC_CHANNELS.GUEST_FRAME_REPLACED),
 
   onGuestMouseDown: subscribe(IPC_CHANNELS.GUEST_MOUSE_DOWN),
+
+  onGuestMouseUp: subscribe(IPC_CHANNELS.GUEST_MOUSE_UP),
 
   onSharingChanged: subscribe(IPC_CHANNELS.SHARING_CHANGED),
 

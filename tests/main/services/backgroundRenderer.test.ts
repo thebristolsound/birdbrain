@@ -581,15 +581,18 @@ describe('scrollToLoadLazyContent', () => {
 })
 
 // A scrollable box with the browser's clamping: scrollTop stays within
-// [0, scrollHeight - clientHeight].
+// [0, scrollHeight - clientHeight]. With overflow: hidden it does not move,
+// as Chromium's scroll-locked viewport does not.
 class FakeScroller {
   scrollTop = 0
+  style = { overflow: '' }
   constructor(
     readonly name: string,
     public scrollHeight: number,
     readonly clientHeight: number
   ) {}
   scrollTo({ top }: { top: number }) {
+    if (this.style.overflow === 'hidden') return
     this.scrollTop = Math.max(0, Math.min(top, this.scrollHeight - this.clientHeight))
   }
 }
@@ -685,6 +688,72 @@ describe('the Scroll-to-load step script', () => {
     const short = new FakeScroller('short', 900, 900)
 
     expect(stepRunner(doc, [short])().state).toBeNull()
+  })
+})
+
+// A WebContents that runs every script of the phase, the unlock, the steps and
+// the reset, against a document root with no inner boxes, in a 900px-tall window.
+function pageContents(doc: FakeScroller, body: { style: { overflow: string } }): WebContents {
+  const context = {
+    document: { scrollingElement: doc, documentElement: doc, body, querySelectorAll: () => [] },
+    window: { innerHeight: 900, scrollTo: () => {} }
+  }
+  const wc = {
+    async executeJavaScript(script: string) {
+      return runInNewContext(script, context)
+    }
+  }
+  return wc as unknown as WebContents
+}
+
+// Whether the phase lifts a scroll lock, decided by the page's own scripts
+// rather than a canned unlock result.
+describe('the Scroll-to-load scroll lock', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('lifts no lock on a page that starts at its end', async () => {
+    // A page loaded at a fragment near its bottom.
+    const doc = new FakeScroller('document', 5000, 900)
+    doc.scrollTop = 4100
+    const body = { style: { overflow: '' } }
+
+    const record = await scrollUnderFakeTime(pageContents(doc, body), 60_000)
+
+    expect(record).toEqual({
+      requested: true,
+      ran: true,
+      outcome: 'stopped-growing',
+      endHeight: 5000,
+      scrollLockLifted: false
+    })
+    expect([doc.style.overflow, body.style.overflow]).toEqual(['', ''])
+  })
+
+  it.each([
+    ['at its top', 0],
+    ['after it scrolled itself to its end', 4100]
+  ])('lifts and restores the lock of a page locked %s', async (_name, startTop) => {
+    const doc = new FakeScroller('document', 5000, 900)
+    doc.scrollTop = startTop
+    doc.style.overflow = 'hidden'
+    const body = { style: { overflow: 'hidden' } }
+
+    const record = await scrollUnderFakeTime(pageContents(doc, body), 60_000)
+
+    expect(record).toEqual({
+      requested: true,
+      ran: true,
+      outcome: 'stopped-growing',
+      endHeight: 5000,
+      scrollLockLifted: true
+    })
+    expect([doc.style.overflow, body.style.overflow]).toEqual(['hidden', 'hidden'])
   })
 })
 
@@ -792,6 +861,7 @@ describe('captureFullPageScreenshot', () => {
 
     await expect(captureFullPageScreenshot(wc)).rejects.toThrow('The screenshot is not a PNG')
   })
+
 })
 
 describe('renderPageInHiddenWindow', () => {

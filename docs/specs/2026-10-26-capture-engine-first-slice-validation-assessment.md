@@ -39,6 +39,7 @@ ran outside it. Windows and macOS were not run.
 | Each D5 ending, driven with a mocked `WebContents` (`tests/main/services/backgroundRenderer.test.ts`, `scrollToLoadLazyContent`)                                     | Budget zero records `ran: false` and no outcome; no scrollable root records `nothing-to-scroll`; a page at the scroll cap records `height-cap`; three steps without a change in height record `stopped-growing`; the phase deadline records `time-budget`                                                  | Each as expected, and each record passes the strict schema                                                                                                                 |
 | The stall count (same file)                                                                                                                                          | A page that grows before the third stall step keeps scrolling; a step that moves on to a second pane, at a different height, restarts the count                                                                                                                                                            | As expected                                                                                                                                                                |
 | The root each step scrolls, with the step script run against a simulated page (same file, the step script's tests)                                                   | The document first; once it cannot move down, the inner panel with the most overflow that can; once nothing can move down, the root at its end with the most overflow, reported rather than `null`; `null` only when nothing overflows                                                                     | As expected for a document at its end, an app-shell page whose document overflows by its 16px margin, a page with two panes, and a panel that grows after reaching its end |
+| Whether the phase lifts a scroll lock, with the unlock, step and reset scripts run against a simulated page (same file, the scroll lock's tests)                     | A page that starts at its end lifts no lock and records `scrollLockLifted` false; a page locked with `overflow: hidden`, at its top or after it scrolled itself to its end, has the lock lifted, records true, and has the lock restored                                                                   | As expected                                                                                                                                                                |
 | A step that throws (same file)                                                                                                                                       | The phase rejects, so the render fails, and the page's scroll position and lock are restored                                                                                                                                                                                                               | As expected                                                                                                                                                                |
 | A restore that fails (same file)                                                                                                                                     | With a lifted scroll lock, the phase rejects, so the render fails; a step's own error wins over the restore's; with no lock lifted, the failure is logged and the phase recorded                                                                                                                           | As expected                                                                                                                                                                |
 | A height the page reports that is not a non-negative integer (same file)                                                                                             | No `endHeight`                                                                                                                                                                                                                                                                                             | As expected for a fraction, a negative number, and text                                                                                                                    |
@@ -65,6 +66,11 @@ ran outside it. Windows and macOS were not run.
   down does the step report the root at its end with the most overflow. The stall count also
   restarts when the height changes in either direction, so a step that moves on to a second pane
   does not inherit the first pane's stalls.
+- Review of that fix found that the check for a scroll lock still used the down-only test, so a
+  document already at its end when the phase started, such as a page loaded at a fragment near
+  its bottom, read as locked: the phase set `overflow: visible` on `html` and `body`, and the
+  entry signed `scrollLockLifted: true`. The check now uses the step's root choice, so a root at
+  its end is not a lock.
 
 The effect on acquisition, against the build before step 6 (`b4bd9b71`). Each row is one
 Electron run of the step script, extracted from the source named, driven through the renderer's
@@ -82,6 +88,11 @@ So on the first three pages a background render takes one to three more half-sec
 before it ends the phase. A feed whose next chunk takes longer than the half-second pause, but
 arrives before the third stall step, keeps loading: where the build before step 6 stopped at the
 first bottom, it now runs to the height cap or the phase's time limit.
+
+The scroll lock, in an Electron run of this step's scripts set up as the rows above, on a page
+holding a 5000 px block and a closing paragraph: loaded at the paragraph's fragment, the phase
+lifted no lock and ended `stopped-growing` at 5058; with `overflow: hidden` on `html` and `body`,
+loaded at its top or at the fragment, it lifted the lock and ended `stopped-growing` at 5042.
 
 ## False positives and negatives
 

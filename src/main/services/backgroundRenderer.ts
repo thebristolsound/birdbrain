@@ -184,9 +184,11 @@ const SCROLL_HELPERS = `
 // When nothing scrolls but content overflows the viewport, lift the lock for
 // the scroll phase ONLY. Returns the original inline overflow values
 // ([html, body]) for the restore script, or null when no lock was lifted.
+// A root at its end is not locked: a page loaded at a fragment near its
+// bottom starts there.
 const SCROLL_UNLOCK_SCRIPT = `(() => {
   ${SCROLL_HELPERS}
-  if (pickRoot()) return null
+  if (pickRoot(true)) return null
   if (!doc || doc.scrollHeight <= doc.clientHeight + 2) return null
   const prior = []
   for (const el of [document.documentElement, document.body]) {

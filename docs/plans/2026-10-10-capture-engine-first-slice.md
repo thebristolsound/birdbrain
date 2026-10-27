@@ -331,27 +331,45 @@ inventory: {
 
 - **MHTML and the screenshot are always present.** A failed `savePage` or screenshot fails the
   render today, and this slice keeps that, so no build can write either as absent (D2's rule).
-- **The MHTML counts.** `pinnedImages` is the number of images the render pinned to their
-  displayed source before the save, and `pinnedImagesNotLoaded` the number of those not loaded
-  when the save ran (#1843, amended 2026-10-21). The schema requires both whenever `inventory` is
-  present. A fifth refine joins D2's four: `pinnedImagesNotLoaded` above `pinnedImages` fails the schema.
-  #1843 writes the counts; step 1 only teaches the verifier them.
-  - **Which images.** After the screenshot and before `savePage`, the render pins each `img` in
-    the page's own document that has a `srcset` attribute and a non-empty `currentSrc`, unless
-    its parent is a `picture` ([ADR-0055](../adr/0055-a-background-render-pins-image-sources.md)).
-    An image offered as a set is an `img` with `srcset`, or a `picture` with `source` elements;
-    the serializer saves the second correctly (triage of #1843), so only the first is pinned.
-    Frames and shadow roots are not searched.
-  - **Pinned.** The image's `src` becomes its `currentSrc`, the address the browser loaded it
-    from, and its `srcset` and `sizes` attributes are removed.
-  - **Not loaded.** The render then waits for the pinned images, for at most 5 s
-    (`PIN_LOAD_MAX_MS`) and never longer than the time left before the 40 s end reserve. A pinned
-    image counts as not loaded when, at the check that ends the wait, it is not `complete` or
-    has a natural width of 0: still loading, or failed to load.
+- **The MHTML counts.** `pinnedImages` is the number of images offered as sets that the page
+  displayed and the render pinned to their displayed source before the save, and
+  `pinnedImagesNotLoaded` the number of those still loading their pinned source, or failed to,
+  when the wait before the save ended (#1843, amended 2026-10-21 and 2026-10-26). The counts cover
+  only images that had settled and displayed before the pin. The schema requires both whenever
+  `inventory` is present. A fifth refine joins D2's four: `pinnedImagesNotLoaded` above
+  `pinnedImages` fails the schema. #1843 writes the counts; step 1 only teaches the verifier them.
+  [ADR-0055](../adr/0055-a-background-render-pins-image-sources.md) states the rulings; the
+  render carries them out as follows.
+  - **Which images.** An image offered as a set is an `img` with `srcset`, or a `picture` with
+    `source` elements; the serializer saves the second correctly (triage of #1843), so only an
+    `img` with `srcset` whose parent is not a `picture` is considered. Only the page's own
+    document is searched, not its frames or shadow roots.
+  - **Order.** After the post-scroll settle, the render polls until no considered image is still
+    loading (`img.complete` false), for at most 5 s (`IMAGE_SET_SETTLE_MAX_MS`). It then takes
+    the screenshot and pins. Collection stops after the pin, so a request the pin causes is in the
+    Transaction Record, and just before `savePage`.
+  - **Pinned.** A considered image is pinned when it displayed: `complete`, with a natural width
+    and height above 0, and a non-empty `currentSrc` that is not a `blob:` address. Its `src`
+    becomes its `currentSrc` and its `srcset` and `sizes` attributes are removed. An image still
+    loading, one whose load failed, and a `blob:` image are left as they are; re-sourcing a
+    `blob:` address loads it again, which fails once the page has revoked it.
+  - **Not loaded.** The render then polls until no pinned image is still loading, for at most 5 s
+    (`PIN_LOAD_MAX_MS`). A pinned image counts as not loaded when, at the count that ends the wait,
+    it is not `complete` or has no natural size: still loading its pinned source, or failed to.
+    The ruling of 2026-10-26 names only the first; the second is counted too, so a loaded count
+    never stands for an image whose pinned source failed.
+  - **Time.** Both waits are bounded on the main process's clock and take their time from what is
+    left before the 40 s end reserve, never from it.
+  - **Trust.** The scripts run in an isolated world (`PIN_WORLD_ID`), which shares the page's DOM
+    but not its JavaScript, so the page cannot replace what they call, read what they keep
+    between calls, or change their counts. The counts are taken again over the DOM at the end: an
+    image the page removed, or whose `src` it changed, since the pin is not counted.
   - **Failure.** The MHTML part has no absent form, so a pin script that throws, or returns counts
     the strict schema refuses, fails the render, as a Scroll-to-load step that throws does. The
     renderer parses the part with that schema before it reaches the entry. An image still
-    loading when the wait ends is not a failure: it is counted.
+    loading when a wait ends is not a failure.
+  - **PDF.** The print reads the page's content height for `MAX_PDF_CONTENT_HEIGHT_PX` when it
+    prints, after the pin, not from the screenshot record.
 - **Reasons.** `not-taken` means this build does not take the file: step 6's build writes it for
   the Transaction Record and the PDF. `failed` means the engine tried and failed, or refused a PDF
   over step 10's size bounds, and the log carries the error. The list is closed, so a released
@@ -1733,3 +1751,13 @@ folded in.
   The brief's separate report row is not added, because step 5's artifact inventory already
   states both counts. The browser behaviour behind the limits and the step's results are in the
   [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md).
+- **2026-10-26.** The maintainer ruled twice on the review of #2002, as the orchestrating session
+  relayed it. Only an image that displayed is pinned, a failed one is left as it is, and the pin
+  runs while the network is recorded, so collection now stops after the pin instead of before the
+  screenshot. Before the pin, images offered as sets get time to settle, and any still loading
+  after it are left out of the counts. ADR-0055 now states the rulings of 2026-10-21 and
+  2026-10-26 and nothing else. The fix round also, on the orchestrating session's instructions,
+  reads the print's height bound when it prints, runs the pin scripts in an isolated world polled
+  on the main process's clock, recounts over the DOM, leaves `blob:` images alone, and keeps
+  step 5's report sentence, now stating what the counts cover, in place of the brief's separate
+  row. D4 states the result.

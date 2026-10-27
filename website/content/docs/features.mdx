@@ -27,32 +27,40 @@ prove and what they do not.
   nothing to scroll, the page stopped growing, the page reached the height limit, or the time
   limit ran out. It also records the last page height read and whether the scroll lifted the
   page's scroll lock.
-- After the screenshot and before it saves the page, a background capture pins each image
-  offered as a set of sources to the one the page displayed. The browser's page saver drops the
-  `srcset` attribute, so without this an image offered only through `srcset` would be missing
-  from the saved page, and one that also has a `src` would be filed under that address. An image
-  offered as a set is an `img` element with a `srcset`, or a `picture` element with `source`
-  elements; the saver keeps the second, so only an `img` outside a `picture` is pinned. Pinning
-  sets the image's `src` to the address the browser loaded it from and removes its `srcset` and
-  `sizes`. The capture then waits for the pinned images, for up to 5 seconds of the time left
-  before its final steps, and its signed entry records how many images it pinned and how many of
-  those had not loaded when the page was saved: still loading, or failed to load.
-- Pinning reaches only the page's own document: an image in a frame or a shadow root is not
-  pinned, and the saved page still lacks one offered only through `srcset`. An image the browser
-  was still loading has no displayed source yet, so it is not pinned or counted. An image sized by
-  its `srcset` density or `sizes`, with no `width` and `height` of its own, can show at a
-  different size in the saved page than in the screenshot. Pinning an image whose load failed
-  makes the browser request it again after the Transaction Record stopped, so the record lacks
-  that request.
+- Before it saves the page, a background capture pins each image the page displayed from a set
+  of sources to the one it displayed. The browser's page saver drops the `srcset` attribute, so
+  without this an image offered only through `srcset` would be missing from the saved page, and
+  one that also has a `src` would be filed under that address. An image offered as a set is an
+  `img` element with a `srcset`, or a `picture` element with `source` elements; the saver keeps
+  the second, so only an `img` outside a `picture` is pinned.
+- The capture first gives those images up to 5 seconds to finish loading or fail, and then takes
+  the screenshot. It then pins each one that displayed an image, loaded with a natural width and
+  height above zero: it sets the image's `src` to the address the browser loaded it from, removes
+  its `srcset` and `sizes`, and waits up to 5 seconds for the pinned images. Both waits use only
+  time left before the capture's final steps. The Transaction Record keeps recording until the
+  pin is done, so any request it causes is in the record.
+- The signed entry records how many images were pinned, and how many of those were still loading
+  their pinned source, or had failed to, when the second wait ended. The counts cover only images
+  that had settled and displayed an image before the pin. An image still loading after the first
+  wait, one that failed to load, and one shown from a `blob:` address are left as they are and
+  not counted, so the saved page lacks any of them offered only through `srcset`. A `blob:`
+  address is left alone because loading it again fails once the page has revoked it. An image the
+  page has not started loading, such as a lazy image below where the scroll stopped, holds the
+  first wait to its end. Pinning reaches only the page's own document: an image in a frame or a
+  shadow root is not pinned.
+- An image whose `srcset` density or `sizes` set its size, with no `width` and `height` of its
+  own, shows at its file's natural size in the saved page and the PDF, so either can differ from
+  the screenshot. When that density makes the natural size smaller than one pixel, the image
+  counts as not displayed and is left as it is.
 - A background capture's signed manifest entry lists the files the capture holds and why any
   is missing. For the screenshot it records the page size, the image size, and whether the
   image was scaled down, cut short, or had trailing blank space trimmed.
 - A background capture also saves a Transaction Record: a WARC file of the requests and
   responses the browser reported while it loaded the page, those of frames from other sites and
-  of the page's workers and service workers included, until the screenshot is taken. The signed
-  entry holds the file's SHA-256 hash and counts what the record lacks: responses from the cache,
-  failed, cancelled, and unfinished requests, requests the browser reported finished with no
-  response, and bodies it left out, such as one over 10 MB. If recording fails, for example
+  of the page's workers and service workers included, until just before the page is saved. The
+  signed entry holds the file's SHA-256 hash and counts what the record lacks: responses from the
+  cache, failed, cancelled, and unfinished requests, requests the browser reported finished with
+  no response, and bodies it left out, such as one over 10 MB. If recording fails, for example
   because the page made more requests than the record holds, Birdbrain still saves the capture,
   and its entry says the record is missing.
 - The Transaction Record replaces the values of the `Cookie`, `Set-Cookie`, `Authorization`, and
@@ -73,10 +81,12 @@ prove and what they do not.
 - A background capture also saves a PDF of the page, on Letter-size pages. Birdbrain prints it
   last, after the screenshot, the saved page, and the Transaction Record, so a file the page loads
   only for printing is not in the record. The signed entry holds the PDF's SHA-256 hash and states
-  that the PDF was printed after recording stopped. If the page is taller than 50,000 pixels, the
-  PDF is larger than 100 MiB, printing fails or runs out of time, or the page moves to another
-  address after it is saved, Birdbrain still saves the capture, and its entry says the PDF is
-  missing. The capture keeps the address and title of the page it saved.
+  that the PDF was printed after recording stopped. The PDF shows the page after image pinning,
+  which can make it taller than the screenshot shows. If the page, measured when it is printed,
+  is taller than 50,000 pixels, the PDF is larger than 100 MiB, printing fails or runs out of
+  time, or the page moves to another address after it is saved, Birdbrain still saves the
+  capture, and its entry says the PDF is missing. The capture keeps the address and title of the
+  page it saved.
 - Recapture one page or a selection. The new capture links to the earlier one, which stays in
   the case.
 - Exclude URLs by substring, wildcard, or regular expression. Exclusions apply to all cases or

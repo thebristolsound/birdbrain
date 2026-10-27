@@ -818,6 +818,10 @@ export const LOG_CODES = [
   // Logged by the Recapture queue once the Capture is stored; its inventory
   // records the record absent as `failed`.
   'backgroundRenderer.transaction_record_failed',
+  // The PDF of a background render failed, ran out of time, or was over a size
+  // bound, which its error names (step 10 of the same plan). Logged once the
+  // Capture is stored; its inventory records the PDF absent as `failed`.
+  'backgroundRenderer.pdf_failed',
   'backgroundRenderer.consent_blocker_disable_failed',
   'backgroundRenderer.consent_blocker_enable_failed',
   'consentBlocker.filter_engine_failed',

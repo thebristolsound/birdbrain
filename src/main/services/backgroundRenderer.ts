@@ -18,8 +18,15 @@ import type {
   TransactionRecordOutcome,
   TransactionRecorder
 } from '@main/services/transactionRecorder'
-import type { RenderPage, RenderedPage, ScreenshotRecord } from '@main/services/recapture'
-import type { ScrollToLoadRecord } from '@shared/schemas'
+import type {
+  PdfOutcome,
+  RenderPage,
+  RenderedPage,
+  ScreenshotRecord
+} from '@main/services/recapture'
+import { CaptureInventorySchema } from '@shared/schemas'
+import type { CaptureInventory, ScrollToLoadRecord } from '@shared/schemas'
+import { MAX_PDF_CONTENT_HEIGHT_PX, MAX_PDF_SIZE } from '@shared/constants'
 import type { ConsentSuppression, KnownEgress, ScrollToLoadOutcome } from '@shared/types'
 import { logger } from '@main/services/logger'
 
@@ -38,17 +45,21 @@ const ARTIFACT_PHASE_MS = 20_000
 // The Transaction Record's two end phases, each under its own bound (step 9 of
 // docs/plans/2026-10-10-capture-engine-first-slice.md, "Time"): the body
 // fetches still out when collection stops, and the writer. Each is also cut to
-// the time the render has left, less RECORD_END_MARGIN_MS for handing the page
+// the time the render has left, less END_MARGIN_MS for handing the page
 // back, so a phase that runs out records the Transaction Record absent as
 // `failed` and the Capture stores, and the render never runs past its deadline
 // for it (ruled 2026-10-26).
 const BODY_COLLECT_TIMEOUT_MS = 5_000
 const RECORD_WRITE_TIMEOUT_MS = 10_000
-const RECORD_END_MARGIN_MS = 1_000
+// The print, the render's last phase (step 10), under its own bound and cut to
+// the time left by the same rule, so a print that runs out records the PDF
+// absent as `failed` and the Capture stores.
+const PRINT_TIMEOUT_MS = 5_000
+const END_MARGIN_MS = 1_000
 // Reserved at the end of the render, so the phases before it can't starve the
-// artifacts and the Transaction Record into the outer deadline.
+// artifacts, the Transaction Record and the PDF into the outer deadline.
 const FINAL_ARTIFACT_RESERVE_MS =
-  ARTIFACT_PHASE_MS + BODY_COLLECT_TIMEOUT_MS + RECORD_WRITE_TIMEOUT_MS
+  ARTIFACT_PHASE_MS + BODY_COLLECT_TIMEOUT_MS + RECORD_WRITE_TIMEOUT_MS + PRINT_TIMEOUT_MS
 // Chromium's max texture dimension; captures beyond it fail or OOM.
 const MAX_CAPTURE_DIMENSION_PX = 16_384
 const MAX_CAPTURE_PIXELS = 32_000_000
@@ -487,6 +498,56 @@ export async function trimTrailingBackground(
   }
 }
 
+// The schema-6 shape of the inventory's PDF part, parsed before it reaches the
+// signed entry, as the Transaction Record's part is.
+const PdfPartSchema = CaptureInventorySchema.shape.pdf
+type PresentPdf = Extract<CaptureInventory['pdf'], { present: true }>
+
+class PrintTimeout extends Error {
+  constructor(ms: number) {
+    super(`The print did not settle within ${ms}ms`)
+    this.name = 'PrintTimeout'
+  }
+}
+
+// Prints the page to PDF (step 10 of
+// docs/plans/2026-10-10-capture-engine-first-slice.md). The caller runs it last,
+// after collection stopped and the other files were taken, so what the page
+// fetches for printing stays out of the Transaction Record (spec, PDF). Never
+// throws: a page taller than MAX_PDF_CONTENT_HEIGHT_PX is not printed, and that,
+// a print that fails or outlasts `boundMs`, and a PDF over MAX_PDF_SIZE each
+// record the PDF absent as `failed`, with an error that names the bound.
+export async function printPageToPdf(
+  wc: WebContents,
+  contentHeight: number,
+  boundMs: number
+): Promise<PdfOutcome> {
+  try {
+    if (contentHeight > MAX_PDF_CONTENT_HEIGHT_PX) {
+      throw new Error(
+        `The page is ${contentHeight} CSS pixels tall, over MAX_PDF_CONTENT_HEIGHT_PX ` +
+          `(${MAX_PDF_CONTENT_HEIGHT_PX}), so it was not printed`
+      )
+    }
+    if (boundMs <= 0) throw new Error('The Recapture timeout left no time for the print')
+    let timer: NodeJS.Timeout | undefined
+    const bound = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new PrintTimeout(boundMs)), boundMs)
+    })
+    // Electron's defaults, the options the probe printed with.
+    const bytes = await Promise.race([wc.printToPDF({}), bound]).finally(() => clearTimeout(timer))
+    if (bytes.length > MAX_PDF_SIZE) {
+      throw new Error(
+        `The PDF is ${bytes.length} bytes, over MAX_PDF_SIZE (${MAX_PDF_SIZE}), so it was discarded`
+      )
+    }
+    const inventory = PdfPartSchema.parse({ present: true, afterCollection: true }) as PresentPdf
+    return { present: true, bytes, inventory }
+  } catch (error) {
+    return { present: false, reason: 'failed', error }
+  }
+}
+
 // A load that failed at the proxy names the proxy, so the Operator can tell a
 // stopped Tor from an unreachable site. Chromium reports those failures as
 // ERR_PROXY_*, ERR_SOCKS_*, ERR_TUNNEL_* or ERR_NO_SUPPORTED_PROXIES. The address
@@ -721,7 +782,7 @@ export const renderPageInHiddenWindow: RenderPage = async (
         ? await finishTransactionRecord(activeRecorder, {
             collectMs: BODY_COLLECT_TIMEOUT_MS,
             writeMs: RECORD_WRITE_TIMEOUT_MS,
-            timeLeftMs: () => remainingMs(RECORD_END_MARGIN_MS),
+            timeLeftMs: () => remainingMs(END_MARGIN_MS),
             writer: {
               captureId,
               birdbrainVersion: toolVersion,
@@ -737,6 +798,13 @@ export const renderPageInHiddenWindow: RenderPage = async (
             error: new Error('Network.enable failed or did not answer on the page')
           }
 
+      // Last, under its own bound cut to the time left (PRINT_TIMEOUT_MS).
+      const pdf = await printPageToPdf(
+        wc,
+        screenshotRecord.contentHeight,
+        Math.min(PRINT_TIMEOUT_MS, remainingMs(END_MARGIN_MS))
+      )
+
       return {
         mhtmlStream: createReadStream(tmpPath) as unknown as AsyncIterable<Uint8Array>,
         screenshot,
@@ -750,6 +818,7 @@ export const renderPageInHiddenWindow: RenderPage = async (
         browserVersion,
         consentSuppression,
         transactionRecord,
+        pdf,
         egress: captureEgressOf(egress),
         cleanup: async () => {
           if (!win.isDestroyed()) win.destroy()

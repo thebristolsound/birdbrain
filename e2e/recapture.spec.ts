@@ -249,6 +249,7 @@ test.describe('Recapture (background capture)', () => {
                 method: string
                 inventory?: unknown
                 scrollToLoad?: unknown
+                pdfHash?: string
               }>
             >
           }
@@ -302,12 +303,14 @@ test.describe('Recapture (background capture)', () => {
     expect(inventory.screenshot.contentWidth).toBeGreaterThan(0)
     expect(inventory.mhtml).toEqual({ present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 })
     expect(inventory.transactionRecord).toMatchObject({ present: true, exchanges: 1 })
-    expect(inventory.pdf).toEqual({ present: false, reason: 'not-taken' })
+    // Step 10 prints the PDF; e2e/recapture-transaction-record.spec.ts reads it.
+    expect(inventory.pdf).toEqual({ present: true, afterCollection: true })
     expect(entry.schemaVersion).toBe(6)
 
     // The row mirrors the entry.
     expect(capture.scrollToLoad).toEqual(scrollToLoad)
     expect(capture.inventory).toEqual(entry.inventory)
+    expect(capture.pdfHash).toBe(entry.pdfHash)
 
     const verification = await page.evaluate(async (captureId: string) => {
       const w = window as unknown as {

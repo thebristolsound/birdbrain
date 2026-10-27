@@ -100,6 +100,20 @@ const RECORDED: RenderedPage['transactionRecord'] = {
   boundTls: BOUND_TLS
 }
 
+// Step 10: invented PDF bytes, which the store and the hash take as they are.
+const PDF = Buffer.from('%PDF-1.4 invented print of the page')
+const PDF_SHA256 = createHash('sha256').update(PDF).digest('hex')
+const PRINTED: RenderedPage['pdf'] = {
+  present: true,
+  bytes: PDF,
+  inventory: { present: true, afterCollection: true }
+}
+const PRINT_FAILED: RenderedPage['pdf'] = {
+  present: false,
+  reason: 'failed',
+  error: new Error('The print did not settle within 5000ms')
+}
+
 function fakeRender(overrides: Partial<RenderedPage> = {}): RenderPage {
   return async (url) => ({
     mhtmlStream: (async function* () {
@@ -115,6 +129,7 @@ function fakeRender(overrides: Partial<RenderedPage> = {}): RenderPage {
     userAgent: 'HiddenWindow UA',
     browserVersion: 'Chrome/130',
     transactionRecord: RECORDED,
+    pdf: PRINTED,
     cleanup: async () => {},
     ...overrides
   })
@@ -203,7 +218,7 @@ describe('recapture service', () => {
       mhtml: { present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 },
       transactionRecord: TRANSACTION_RECORD_PART,
       screenshot: { present: true, ...SCREENSHOT_RECORD },
-      pdf: { present: false, reason: 'not-taken' }
+      pdf: { present: true, afterCollection: true }
     }
 
     function captureEntries(): Array<Record<string, unknown>> {
@@ -230,7 +245,6 @@ describe('recapture service', () => {
         scrollToLoad: SCROLL_TO_LOAD,
         schemaVersion: 6
       })
-      expect(entry).not.toHaveProperty('pdfHash')
 
       const row = getCapture(newCaptures[0].id)!
       expect(row.inventory).toEqual(INVENTORY)
@@ -323,6 +337,98 @@ describe('recapture service', () => {
       expect(row.boundTlsAbsent).toBe('not-recorded')
       expect(existsSync(join(getStorageRoot(), caseId, `${row.id}.warc.gz`))).toBe(false)
       await expect(verifyCapture(row.id)).resolves.toMatchObject({ status: 'verified' })
+    })
+
+    // Step 10 of docs/plans/2026-10-10-capture-engine-first-slice.md.
+    it('stores the PDF under the Capture id, signs its hash and part, and mirrors the hash', async () => {
+      const svc = makeService(fakeRender())
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+
+      const [entry] = captureEntries()
+      const parsed = ManifestEntrySchema.safeParse(entry)
+      expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+      expect(entry).toMatchObject({
+        pdfHash: PDF_SHA256,
+        inventory: { pdf: { present: true, afterCollection: true } }
+      })
+      const row = getCapture(newCaptures[0].id)!
+      expect(row.pdfHash).toBe(PDF_SHA256)
+      const file = join(getStorageRoot(), caseId, `${row.id}.pdf`)
+      expect(readFileSync(file).equals(PDF)).toBe(true)
+      await expect(verifyCapture(row.id)).resolves.toMatchObject({ status: 'verified' })
+
+      writeFileSync(file, Buffer.from('%PDF-1.4 invented print of the pagE'))
+      await expect(verifyCapture(row.id)).resolves.toMatchObject({ status: 'tampered' })
+    })
+
+    it('stores the Capture with the PDF absent as failed, and no PDF file', async () => {
+      const svc = makeService(fakeRender({ pdf: PRINT_FAILED }))
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+
+      expect(events.map(({ type }) => type)).toEqual(['received', 'stored'])
+      const [entry] = captureEntries()
+      const parsed = ManifestEntrySchema.safeParse(entry)
+      expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+      expect(entry).toMatchObject({
+        inventory: { pdf: { present: false, reason: 'failed' } },
+        transactionRecordHash: WARC_SHA256
+      })
+      expect(entry).not.toHaveProperty('pdfHash')
+      const row = getCapture(newCaptures[0].id)!
+      expect(row.pdfHash).toBeUndefined()
+      expect(existsSync(join(getStorageRoot(), caseId, `${row.id}.pdf`))).toBe(false)
+      await expect(verifyCapture(row.id)).resolves.toMatchObject({ status: 'verified' })
+    })
+
+    describe('the notice that the PDF failed', () => {
+      const notices = (spy: { mock: { calls: unknown[][] } }) =>
+        spy.mock.calls.filter(([, code]) => code === 'backgroundRenderer.pdf_failed')
+
+      afterEach(() => {
+        vi.restoreAllMocks()
+      })
+
+      it('is logged once the Capture is stored, with the error', async () => {
+        const spy = vi.spyOn(logger, 'error')
+        let storedWhenLogged = false
+        spy.mockImplementation((_source, code) => {
+          if (code === 'backgroundRenderer.pdf_failed') {
+            storedWhenLogged = readFileSync(
+              join(getStorageRoot(), caseId, MANIFEST_FILENAME),
+              'utf-8'
+            ).includes('"type":"capture"')
+          }
+          return ''
+        })
+        const svc = makeService(fakeRender({ pdf: PRINT_FAILED }))
+        svc.enqueue([{ url: 'https://example.com/page', caseId }])
+        await svc.idle()
+        expect(notices(spy)).toEqual([
+          ['backgroundRenderer', 'backgroundRenderer.pdf_failed', undefined, PRINT_FAILED.error]
+        ])
+        expect(storedWhenLogged).toBe(true)
+      })
+
+      it('is not logged for a printed PDF, or when the ingest fails', async () => {
+        const spy = vi.spyOn(logger, 'error')
+        const printed = makeService(fakeRender())
+        printed.enqueue([{ url: 'https://example.com/page', caseId }])
+        await printed.idle()
+
+        const failing = createCaptureLifecycle({ selectorLifecycle })
+        const svc = createRecaptureService({
+          renderPage: fakeRender({ pdf: PRINT_FAILED }),
+          captureLifecycle: { ...failing, ingest: () => Promise.reject(new Error('disk full')) },
+          emitEvent: (e) => events.push(e),
+          emitNewCapture: (c) => newCaptures.push(c)
+        })
+        svc.enqueue([{ url: 'https://example.com/other', caseId }])
+        await svc.idle()
+        expect(events.map(({ type }) => type)).toEqual(['received', 'stored', 'received', 'failed'])
+        expect(notices(spy)).toEqual([])
+      })
     })
 
     // Finding 4 of the review of #1999: the Operator hears of a stored Capture only once it is.
@@ -428,7 +534,8 @@ describe('recapture service', () => {
         method: 'duplicate',
         inventory: INVENTORY,
         scrollToLoad: SCROLL_TO_LOAD,
-        transactionRecordHash: WARC_SHA256
+        transactionRecordHash: WARC_SHA256,
+        pdfHash: PDF_SHA256
       })
       // D11: a Duplicate writes no Bound TLS Details, and its row mirrors its entry.
       expect(copy).not.toHaveProperty('boundTls')
@@ -437,6 +544,8 @@ describe('recapture service', () => {
       expect(row.inventory).toEqual(INVENTORY)
       expect(row.scrollToLoad).toEqual(SCROLL_TO_LOAD)
       expect(row.transactionRecordHash).toBe(WARC_SHA256)
+      expect(row.pdfHash).toBe(PDF_SHA256)
+      expect(readFileSync(join(getStorageRoot(), caseId, `${row.id}.pdf`)).equals(PDF)).toBe(true)
       expect(row.boundTls).toBeUndefined()
       expect(row.boundTlsAbsent).toBeUndefined()
       await expect(verifyCapture(row.id)).resolves.toMatchObject({ status: 'verified' })

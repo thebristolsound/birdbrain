@@ -18,6 +18,14 @@ import type { EnqueueResult, RecaptureQueueStatus } from '@shared/ipc'
 // docs/plans/2026-10-10-capture-engine-first-slice.md).
 export type ScreenshotRecord = Omit<CaptureInventory['screenshot'], 'present'>
 
+type PresentPdf = Extract<CaptureInventory['pdf'], { present: true }>
+
+// The PDF the render printed, with its inventory part, or why it has none
+// (step 10 of docs/plans/2026-10-10-capture-engine-first-slice.md).
+export type PdfOutcome =
+  | { present: true; bytes: Buffer; inventory: PresentPdf }
+  | { present: false; reason: 'failed'; error: unknown }
+
 export interface RenderedPage {
   // The live renderer hands over a Node ReadStream on its temp file, so the fd
   // is already open by the time this object exists and `cleanup()` only unlinks
@@ -41,6 +49,8 @@ export interface RenderedPage {
   // The Transaction Record and Bound TLS Details, or why the record is absent
   // (step 9 of docs/plans/2026-10-10-capture-engine-first-slice.md).
   transactionRecord: TransactionRecordOutcome
+  // The PDF, printed last, or why it is absent (step 10).
+  pdf: PdfOutcome
   // Releases renderer-owned resources (tmp file, window). Always called.
   cleanup: () => Promise<void>
 }
@@ -114,11 +124,11 @@ export function redirectedFinalUrl(requestedUrl: string, finalUrl: string): stri
 
 // The inventory a background Capture signs (D4 of
 // docs/plans/2026-10-10-capture-engine-first-slice.md). This build pins no
-// image before the save (#1843 adds the pinning), so both MHTML counts are 0,
-// and it takes no PDF, so that is `not-taken`.
+// image before the save (#1843 adds the pinning), so both MHTML counts are 0.
 function backgroundInventory(
   screenshot: ScreenshotRecord,
-  transactionRecord: TransactionRecordOutcome
+  transactionRecord: TransactionRecordOutcome,
+  pdf: PdfOutcome
 ): CaptureInventory {
   return {
     mhtml: { present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 },
@@ -126,7 +136,7 @@ function backgroundInventory(
       ? transactionRecord.inventory
       : { present: false, reason: transactionRecord.reason },
     screenshot: { present: true, ...screenshot },
-    pdf: { present: false, reason: 'not-taken' }
+    pdf: pdf.present ? pdf.inventory : { present: false, reason: pdf.reason }
   }
 }
 
@@ -267,9 +277,14 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         supersedesCaptureId: job.supersedesCaptureId,
         consentSuppression: rendered.consentSuppression,
         egress: rendered.egress,
-        inventory: backgroundInventory(rendered.screenshotRecord, rendered.transactionRecord),
+        inventory: backgroundInventory(
+          rendered.screenshotRecord,
+          rendered.transactionRecord,
+          rendered.pdf
+        ),
         scrollToLoad: rendered.scrollToLoad,
-        ...transactionRecordFields(rendered.transactionRecord)
+        ...transactionRecordFields(rendered.transactionRecord),
+        pdf: rendered.pdf.present ? rendered.pdf.bytes : undefined
       })
 
       const warning = looksLikeLoginWall({
@@ -288,6 +303,14 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
           'backgroundRenderer.transaction_record_failed',
           undefined,
           rendered.transactionRecord.error
+        )
+      }
+      if (!rendered.pdf.present) {
+        logger.error(
+          'backgroundRenderer',
+          'backgroundRenderer.pdf_failed',
+          undefined,
+          rendered.pdf.error
         )
       }
 

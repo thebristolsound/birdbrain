@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, beforeAll, afterEach } from 'vitest'
-import { writeFileSync } from 'fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { createHash } from 'crypto'
 import { gunzipSync } from 'zlib'
 import sharp from 'sharp'
 import type { WebContents } from 'electron'
@@ -12,11 +15,21 @@ import {
   trimTrailingBackground
 } from '@main/services/backgroundRenderer'
 import { logger } from '@main/services/logger'
-import { ScrollToLoadRecordSchema } from '@shared/schemas'
+import { ManifestEntrySchema, ScrollToLoadRecordSchema } from '@shared/schemas'
 import { RefusedAddressError } from '@main/services/localAddressPolicy'
 import { EgressUnavailableError } from '@main/services/egress'
 import { E2E_TRUSTED_CERT_SWITCH } from '@main/services/testCertificateAllowance'
-import type { EgressSetting } from '@shared/types'
+import { createRecaptureService, type PdfOutcome } from '@main/services/recapture'
+import { createCaptureLifecycle, verifyCapture } from '@main/services/captureLifecycle'
+import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
+import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase } from '@main/services/db/caseRepo'
+import { getCapture } from '@main/services/db/captureRepo'
+import { initInstallationId, resetInstallationId } from '@main/services/installationId'
+import { initSettings, updateSettings } from '@main/services/settings'
+import { MANIFEST_FILENAME, MAX_PDF_CONTENT_HEIGHT_PX, MAX_PDF_SIZE } from '@shared/constants'
+import type { CaptureEvent, EgressSetting } from '@shared/types'
 
 // Mutable harness the fake BrowserWindow/webContents read from, so each test can
 // steer the render (network, scroll steps, load failure, consent blocker).
@@ -61,7 +74,17 @@ const ctl = vi.hoisted(() => ({
     encryptedClientHello: false
   },
   // An event the page sends while the screenshot is taken, after collection stops.
-  lateEvent: false
+  lateEvent: false,
+  // The PDF half (step 10): the content height the layout metrics report, what
+  // `printToPDF` returns or whether it never settles or throws, the options it
+  // was given, and a request the page starts while it prints, as the probe's
+  // print-only image does.
+  contentHeight: 100,
+  pdfBytes: null as Buffer | null,
+  printHangs: false,
+  printThrows: false,
+  printOptions: [] as unknown[],
+  printEvent: false
 }))
 
 type Handler = (...args: unknown[]) => void
@@ -98,6 +121,7 @@ interface FakeWebContents {
   loadURL(url: string): Promise<void>
   executeJavaScript(script: string): Promise<unknown>
   savePage(path: string): Promise<void>
+  printToPDF(options: unknown): Promise<Buffer>
   getTitle(): string
   getURL(): string
   getUserAgent(): string
@@ -189,7 +213,7 @@ const { MockBrowserWindow } = vi.hoisted(() => {
             ctl.order.push(cmd)
             if (ctl.failingCommands.has(cmd)) throw new Error(`${cmd} failed`)
             if (cmd === 'Page.getLayoutMetrics') {
-              return { cssContentSize: { x: 0, y: 0, width: 100, height: 100 } }
+              return { cssContentSize: { x: 0, y: 0, width: 100, height: ctl.contentHeight } }
             }
             if (cmd === 'Page.captureScreenshot') {
               if (ctl.lateEvent) emitPage(this, 'late', 'https://example.test/late.js', 'Script')
@@ -243,7 +267,18 @@ const { MockBrowserWindow } = vi.hoisted(() => {
           return undefined
         },
         async savePage(path: string) {
+          ctl.order.push('savePage')
           writeFileSync(path, 'From: test\r\n\r\nMHTML body')
+        },
+        async printToPDF(options: unknown) {
+          ctl.order.push('printToPDF')
+          ctl.printOptions.push(options)
+          if (ctl.printEvent) {
+            emitPage(this.debugger, 'print-only', 'https://example.test/print-only.png', 'Image')
+          }
+          if (ctl.printHangs) return new Promise<Buffer>(() => {})
+          if (ctl.printThrows) throw new Error('Printing failed')
+          return ctl.pdfBytes ?? Buffer.from('%PDF-1.4 invented print')
         },
         getTitle() {
           return 'Mock Title'
@@ -283,13 +318,14 @@ vi.mock('../../../src/packages/transaction-record/writer', async (importOriginal
     await importOriginal<typeof import('../../../src/packages/transaction-record/writer')>()
   return {
     ...actual,
-    writeTransactionRecord: vi.fn((input: Parameters<typeof actual.writeTransactionRecord>[0]) =>
-      ctl.writerHangs
+    writeTransactionRecord: vi.fn((input: Parameters<typeof actual.writeTransactionRecord>[0]) => {
+      ctl.order.push('writeTransactionRecord')
+      return ctl.writerHangs
         ? new Promise<never>(() => {})
         : ctl.writerThrows
           ? Promise.reject(new Error('the writer broke'))
           : actual.writeTransactionRecord(input)
-    )
+    })
   }
 })
 
@@ -305,6 +341,12 @@ vi.mock('@main/services/egress', async (importOriginal) => {
 vi.mock('@main/services/consentBlocker', () => ({
   getConsentBlocker: vi.fn(async () => ctl.blocker)
 }))
+
+// The ingest's TLS Cert Chain re-fetch would open a socket to the fixture's host.
+vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@main/services/tlsCertChain')>()
+  return { ...actual, fetchCertChain: vi.fn(async () => null) }
+})
 
 type Rgb = { r: number; g: number; b: number }
 const WHITE: Rgb = { r: 255, g: 255, b: 255 }
@@ -333,6 +375,36 @@ async function pageWithTrailingBackground(
 
 async function heightOf(png: Buffer): Promise<number> {
   return (await sharp(png).metadata()).height ?? -1
+}
+
+// Every control back to a page that loads, records and prints.
+function resetRender(): void {
+  ctl.loadUrlShouldReject = false
+  ctl.loadUrlShouldHang = false
+  ctl.blocker = null
+  ctl.hop = null
+  ctl.lastHop = null
+  ctl.egress = { kind: 'direct' }
+  ctl.loadUrlError = null
+  ctl.calls = []
+  ctl.order = []
+  ctl.failingCommands = new Set()
+  ctl.bodyHangs = false
+  ctl.writerThrows = false
+  ctl.writerHangs = false
+  ctl.isPackaged = false
+  ctl.lateEvent = false
+  resetPrint()
+  delete process.env[E2E_TRUSTED_CERT_SWITCH]
+}
+
+function resetPrint(): void {
+  ctl.contentHeight = 100
+  ctl.pdfBytes = null
+  ctl.printHangs = false
+  ctl.printThrows = false
+  ctl.printOptions = []
+  ctl.printEvent = false
 }
 
 describe('trimTrailingBackground', () => {
@@ -934,6 +1006,7 @@ describe('renderPageInHiddenWindow', () => {
     ctl.writerHangs = false
     ctl.isPackaged = false
     ctl.lateEvent = false
+    resetPrint()
     delete process.env[E2E_TRUSTED_CERT_SWITCH]
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
@@ -1191,6 +1264,7 @@ describe('renderPageInHiddenWindow, the Transaction Record', () => {
     ctl.writerHangs = false
     ctl.isPackaged = false
     ctl.lateEvent = false
+    resetPrint()
     delete process.env[E2E_TRUSTED_CERT_SWITCH]
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
@@ -1284,12 +1358,13 @@ describe('renderPageInHiddenWindow, the Transaction Record', () => {
     )
   }, 30_000)
 
-  // Ruling (c) of 2026-10-26 on the review of #1999: the end reserve stays at 35 s, and each
-  // record phase is cut to the time left, so the render stores before its deadline.
-  it('reserves 35 s at the end: no Scroll-to-load budget below it, some above it', async () => {
-    const below = await render('https://example.test/', 34_000)
+  // Ruling (c) of 2026-10-26 on the review of #1999: the end reserve stayed at 35 s for the
+  // record phases, and each is cut to the time left, so the render stores before its deadline.
+  // Step 10 raises the reserve by the print's 5 s bound, as the plan's step 10 says.
+  it('reserves 40 s at the end: no Scroll-to-load budget below it, some above it', async () => {
+    const below = await render('https://example.test/', 39_000)
     expect(below.scrollToLoad.ran).toBe(false)
-    const above = await render('https://example.test/', 37_500)
+    const above = await render('https://example.test/', 42_500)
     expect(above.scrollToLoad.ran).toBe(true)
   }, 30_000)
 
@@ -1343,4 +1418,252 @@ describe('renderPageInHiddenWindow, the Transaction Record', () => {
       expect(ctl.order.indexOf('setCertificateVerifyProc')).toBe(0)
     }, 30_000)
   })
+})
+
+// Step 10 of docs/plans/2026-10-10-capture-engine-first-slice.md.
+describe('renderPageInHiddenWindow, the PDF', () => {
+  beforeAll(async () => {
+    const png = await sharp({ create: { width: 100, height: 100, channels: 3, background: WHITE } })
+      .png()
+      .toBuffer()
+    ctl.pngBase64 = png.toString('base64')
+  })
+
+  beforeEach(() => {
+    resetRender()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  async function render(timeoutMs = 30_000) {
+    const result = await renderPageInHiddenWindow('https://example.test/', { timeoutMs, ...IDS })
+    for await (const _chunk of result.mhtmlStream) void _chunk
+    await result.cleanup()
+    return result
+  }
+
+  const errorOf = (pdf: PdfOutcome): string => String(pdf.present || pdf.error)
+
+  it('prints last, after the screenshot, the MHTML and the record, with the print defaults', async () => {
+    const { pdf } = await render()
+    expect(pdf).toEqual({
+      present: true,
+      bytes: Buffer.from('%PDF-1.4 invented print'),
+      inventory: { present: true, afterCollection: true }
+    })
+    const at = (step: string) => ctl.order.indexOf(step)
+    expect(at('Page.captureScreenshot')).toBeLessThan(at('savePage'))
+    expect(at('savePage')).toBeLessThan(at('writeTransactionRecord'))
+    expect(at('writeTransactionRecord')).toBeLessThan(at('printToPDF'))
+    expect(ctl.order.filter((step) => step === 'printToPDF')).toHaveLength(1)
+    expect(ctl.printOptions).toEqual([{}])
+  }, 30_000)
+
+  it('leaves a request the page starts while printing out of the Transaction Record', async () => {
+    ctl.printEvent = true
+    const { transactionRecord, pdf } = await render()
+    if (!transactionRecord.present) throw transactionRecord.error
+    expect(transactionRecord.inventory.exchanges).toBe(1)
+    expect(gunzipSync(transactionRecord.warcGz).toString()).not.toContain('print-only.png')
+    expect(pdf.present).toBe(true)
+  }, 30_000)
+
+  it('records the PDF failed, inside the Recapture timeout, when printToPDF never settles', async () => {
+    ctl.printHangs = true
+    const startedAt = Date.now()
+    const result = await render()
+    expect(Date.now() - startedAt).toBeLessThan(30_000)
+    expect(result.pdf).toMatchObject({ present: false, reason: 'failed' })
+    expect(errorOf(result.pdf)).toContain('The print did not settle within 5000ms')
+    expect(result.transactionRecord.present).toBe(true)
+  }, 30_000)
+
+  // The rule of 2026-10-26 for the record phases: the print takes its time from what is left,
+  // so a print that runs out records the PDF failed and the render returns before its deadline.
+  it('cuts the print to the time left, so the render returns before its deadline', async () => {
+    ctl.printHangs = true
+    const startedAt = Date.now()
+    const result = await render(3_000)
+    expect(Date.now() - startedAt).toBeLessThan(3_000)
+    expect(result.pdf).toMatchObject({ present: false, reason: 'failed' })
+    expect(errorOf(result.pdf)).toMatch(/The print did not settle within (1\d{3}|2000)ms/)
+  }, 30_000)
+
+  it('does not start the print when the record phases used the time left', async () => {
+    ctl.printHangs = true
+    ctl.writerHangs = true
+    const result = await render(3_000)
+    expect(result.transactionRecord).toMatchObject({ present: false, reason: 'failed' })
+    expect(result.pdf).toMatchObject({ present: false, reason: 'failed' })
+    expect(errorOf(result.pdf)).toBe('Error: The Recapture timeout left no time for the print')
+    expect(ctl.order).not.toContain('printToPDF')
+  }, 30_000)
+
+  it('records the PDF failed when printToPDF throws', async () => {
+    ctl.printThrows = true
+    const result = await render()
+    expect(result.pdf).toMatchObject({ present: false, reason: 'failed' })
+    expect(errorOf(result.pdf)).toContain('Printing failed')
+  }, 30_000)
+
+  it('never calls printToPDF for a page taller than the layout bound', async () => {
+    ctl.contentHeight = MAX_PDF_CONTENT_HEIGHT_PX + 1
+    const result = await render()
+    expect(ctl.order).not.toContain('printToPDF')
+    expect(result.pdf).toMatchObject({ present: false, reason: 'failed' })
+    expect(errorOf(result.pdf)).toContain(
+      `The page is ${MAX_PDF_CONTENT_HEIGHT_PX + 1} CSS pixels tall, over MAX_PDF_CONTENT_HEIGHT_PX`
+    )
+    expect(result.screenshotRecord.contentHeight).toBe(MAX_PDF_CONTENT_HEIGHT_PX + 1)
+  }, 30_000)
+
+  it('prints a page exactly at the layout bound', async () => {
+    ctl.contentHeight = MAX_PDF_CONTENT_HEIGHT_PX
+    const { pdf } = await render()
+    expect(ctl.order).toContain('printToPDF')
+    expect(pdf.present).toBe(true)
+  }, 30_000)
+
+  it('discards a PDF over MAX_PDF_SIZE and keeps one exactly at it', async () => {
+    ctl.pdfBytes = Buffer.allocUnsafe(MAX_PDF_SIZE + 1)
+    const over = await render()
+    expect(over.pdf).toMatchObject({ present: false, reason: 'failed' })
+    expect(errorOf(over.pdf)).toContain(
+      `The PDF is ${MAX_PDF_SIZE + 1} bytes, over MAX_PDF_SIZE (${MAX_PDF_SIZE})`
+    )
+
+    ctl.pdfBytes = Buffer.allocUnsafe(MAX_PDF_SIZE)
+    const at = await render()
+    expect(at.pdf.present && at.pdf.bytes.length).toBe(MAX_PDF_SIZE)
+  }, 30_000)
+})
+
+// The same render handed to the Recapture queue and the Capture's ingest, so each outcome is
+// shown stored, as the step's acceptance asks.
+describe('a Recapture of a rendered page, through ingest, and its PDF', () => {
+  let tempDir: string
+  let caseId: string
+  let events: CaptureEvent[]
+  const selectorLifecycle = {
+    runActiveSelectorsForCapture: vi.fn()
+  } as unknown as SelectorLifecycle
+
+  beforeAll(async () => {
+    const png = await sharp({ create: { width: 100, height: 100, channels: 3, background: WHITE } })
+      .png()
+      .toBuffer()
+    ctl.pngBase64 = png.toString('base64')
+  })
+
+  beforeEach(async () => {
+    resetRender()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-render-pdf-'))
+    initStorage(join(tempDir, 'captures'))
+    await initDatabase(':memory:')
+    initSettings(tempDir)
+    resetInstallationId()
+    initInstallationId(tempDir)
+    updateSettings({ operatorName: 'Op' })
+    caseId = createCase({ name: 'Render PDF' }).id
+    ensureCaseDir(caseId)
+    events = []
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  // One Recapture under a 30 s timeout; resolves with the stored Capture's id and entry.
+  async function recaptureOnce(): Promise<{ id: string; entry: Record<string, unknown> }> {
+    const service = createRecaptureService({
+      renderPage: renderPageInHiddenWindow,
+      captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
+      emitEvent: (event) => events.push(event),
+      emitNewCapture: () => {},
+      timeoutMs: 30_000
+    })
+    service.enqueue([{ url: 'https://example.test/', caseId }])
+    await service.idle()
+    expect(events.map(({ type }) => type)).toEqual(['received', 'stored'])
+    const stored = events.find((event) => event.type === 'stored') as { captureId: string }
+    const entry = readFileSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .find((candidate) => candidate.captureId === stored.captureId)!
+    const parsed = ManifestEntrySchema.safeParse(entry)
+    expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+    return { id: stored.captureId, entry }
+  }
+
+  const pdfFile = (id: string): string => join(getStorageRoot(), caseId, `${id}.pdf`)
+
+  it('stores the printed PDF, signs its hash and part, and mirrors the hash on the row', async () => {
+    const printed = Buffer.from('%PDF-1.4 the printed page')
+    ctl.pdfBytes = printed
+    const { id, entry } = await recaptureOnce()
+    const hash = createHash('sha256').update(printed).digest('hex')
+    expect(entry).toMatchObject({
+      pdfHash: hash,
+      inventory: { pdf: { present: true, afterCollection: true } },
+      schemaVersion: 6
+    })
+    expect(readFileSync(pdfFile(id)).equals(printed)).toBe(true)
+    expect(getCapture(id)!.pdfHash).toBe(hash)
+    await expect(verifyCapture(id)).resolves.toMatchObject({ status: 'verified' })
+
+    writeFileSync(pdfFile(id), Buffer.from('%PDF-1.4 the printed pagE'))
+    await expect(verifyCapture(id)).resolves.toMatchObject({ status: 'tampered' })
+  }, 30_000)
+
+  it.each([
+    {
+      name: 'printToPDF never settles',
+      arrange: () => {
+        ctl.printHangs = true
+      },
+      bound: 'The print did not settle within 5000ms',
+      prints: true
+    },
+    {
+      name: 'the page is taller than the layout bound',
+      arrange: () => {
+        ctl.contentHeight = MAX_PDF_CONTENT_HEIGHT_PX + 1
+      },
+      bound: 'over MAX_PDF_CONTENT_HEIGHT_PX',
+      prints: false
+    },
+    {
+      name: 'printToPDF returns a PDF over MAX_PDF_SIZE',
+      arrange: () => {
+        ctl.pdfBytes = Buffer.allocUnsafe(MAX_PDF_SIZE + 1)
+      },
+      bound: 'over MAX_PDF_SIZE',
+      prints: true
+    }
+  ])(
+    'stores the Capture with the PDF absent as failed, and no .pdf file, when $name',
+    async ({ arrange, bound, prints }) => {
+      arrange()
+      const logged = vi.spyOn(logger, 'error')
+      const startedAt = Date.now()
+      const { id, entry } = await recaptureOnce()
+      expect(Date.now() - startedAt).toBeLessThan(30_000)
+      expect(ctl.order.includes('printToPDF')).toBe(prints)
+      expect(entry).toMatchObject({ inventory: { pdf: { present: false, reason: 'failed' } } })
+      expect(entry).not.toHaveProperty('pdfHash')
+      expect(existsSync(pdfFile(id))).toBe(false)
+      expect(getCapture(id)!.pdfHash).toBeUndefined()
+      await expect(verifyCapture(id)).resolves.toMatchObject({ status: 'verified' })
+      // Logged once the Capture is stored, naming the bound.
+      const notices = logged.mock.calls.filter(
+        ([, code]) => code === 'backgroundRenderer.pdf_failed'
+      )
+      expect(notices).toHaveLength(1)
+      expect(String(notices[0][3])).toContain(bound)
+    },
+    30_000
+  )
 })

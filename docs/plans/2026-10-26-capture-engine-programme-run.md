@@ -133,7 +133,20 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 
 ## Next
 
-Once every writer is up: the maintainer's merges, the schema-6 tag, then the writers. Open decision for the maintainer from #1979:
-the status line takes its code from the response event, not the ExtraInfo event, because the
-ExtraInfo event carries no reason phrase. Viewer slice 2 Part A (#1735) is
-independent of the schema and takes the next free slot after that.
+Every step of programme 2 has an open draft pull request, reviewed and through its fix rounds.
+Nothing is left to build until the account's GitHub Actions lock is lifted and the maintainer
+merges.
+
+1. **Billing.** Clear the Actions billing lock, then re-run CI on #1987, #2000, #2001 and #2002,
+   whose latest heads have no CI result.
+2. **#2001 first.** It makes the scheduled review read CI on stacked pull requests.
+3. **Before the tag, in stack order.** #1977, then #1978, #1980, #1981, #1982, #1984, #1985,
+   and #1979 and #1988 from `main`. Steps 3 and 4 merge before the tag (the hold recorded
+   under Gates).
+4. **Tag** the schema-6 release, with notes telling Shared Case members to upgrade together.
+5. **After the tag.** #1996 (step 6) and #2002 (#1843) in the same release, then #1997, #1999 and
+   #2000. Close #1667 by hand when #1996 merges.
+6. **Viewer slices.** #1987, #1990 and #1998 merge from `main`, independent of the tag.
+
+The decision the maintainer has left open: whether schema 6 refuses an unsorted or repeated
+replaced-header list (Gates).

@@ -18,7 +18,8 @@ describe('appStore', () => {
       activeTagFilters: [],
       tagFilteredCaptureIds: null,
       captureEvents: [],
-      captureStats: { successCount: 0, failCount: 0, skipCount: 0 }
+      captureStats: { successCount: 0, failCount: 0, skipCount: 0 },
+      captureTrail: []
     })
   })
 
@@ -63,6 +64,91 @@ describe('appStore', () => {
       setViewerHit(hit)
       setViewerHit(hit)
       expect(useAppStore.getState().viewerHitOpening).toBe(before + 2)
+    })
+  })
+
+  // #1735, plan A3.
+  describe('link trail', () => {
+    const state = () => useAppStore.getState()
+
+    it('pushes the viewed Capture on a link click and selects the destination', () => {
+      state().selectCapture('a')
+      state().followCaptureLink('b')
+      state().followCaptureLink('c')
+
+      expect(state().selectedCaptureId).toBe('c')
+      expect(state().captureTrail).toEqual(['a', 'b'])
+    })
+
+    it('pushes nothing on a link to the viewed Capture or with none selected', () => {
+      state().followCaptureLink('a')
+      expect(state().selectedCaptureId).toBeNull()
+
+      state().selectCapture('a')
+      state().followCaptureLink('a')
+      expect(state().captureTrail).toEqual([])
+    })
+
+    it('drops a search hit on another Capture when a link click leaves it', () => {
+      state().selectCapture('a')
+      state().setViewerHit({ exhibitId: 'a', fieldId: 1 } as FieldHit)
+      state().followCaptureLink('b')
+
+      expect(state().viewerHit).toBeNull()
+    })
+
+    it('pops the trail on Back, selecting the Capture it came from', () => {
+      state().selectCapture('a')
+      state().followCaptureLink('b')
+      state().followCaptureLink('c')
+
+      state().goBackInTrail(new Set(['a', 'b', 'c']))
+      expect(state().selectedCaptureId).toBe('b')
+      expect(state().captureTrail).toEqual(['a'])
+
+      state().goBackInTrail(new Set(['a', 'b', 'c']))
+      expect(state().selectedCaptureId).toBe('a')
+      expect(state().captureTrail).toEqual([])
+    })
+
+    it('pops past a Capture deleted since it was pushed', () => {
+      state().selectCapture('a')
+      state().followCaptureLink('b')
+      state().followCaptureLink('c')
+
+      state().goBackInTrail(new Set(['a', 'c']))
+      expect(state().selectedCaptureId).toBe('a')
+      expect(state().captureTrail).toEqual([])
+    })
+
+    it('empties the trail and keeps the selection when every pushed Capture is gone', () => {
+      state().selectCapture('a')
+      state().followCaptureLink('b')
+
+      state().goBackInTrail(new Set(['b']))
+      expect(state().selectedCaptureId).toBe('b')
+      expect(state().captureTrail).toEqual([])
+    })
+
+    it('clears on any other selection', () => {
+      for (const select of [
+        () => state().selectCapture('x'),
+        () => state().setSelectedCaptureId('x')
+      ]) {
+        state().selectCapture('a')
+        state().followCaptureLink('b')
+        select()
+        expect(state().captureTrail).toEqual([])
+      }
+    })
+
+    // CaseWorkspace's reset on a Case change goes through setSelectedCaptureId(null).
+    it('clears on a Case change', () => {
+      state().selectCapture('a')
+      state().followCaptureLink('b')
+
+      state().setSelectedCaptureId(null)
+      expect(state().captureTrail).toEqual([])
     })
   })
 

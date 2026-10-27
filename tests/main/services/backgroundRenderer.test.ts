@@ -1067,7 +1067,8 @@ describe('renderPageInHiddenWindow', () => {
     ['will-redirect', 'http://127.0.0.1:8080/admin', 'Redirects to a loopback address'],
     ['will-redirect', 'http://192.168.1.1/', 'Redirects to a private address'],
     ['will-navigate', 'http://10.0.0.5/', 'Redirects to a private address'],
-    ['will-redirect', 'http://localhost/', 'Redirects to this computer']
+    ['will-redirect', 'http://localhost/', 'Redirects to this computer'],
+    ['will-redirect', 'http://intranet/', 'Redirects to a private network']
   ])(
     'refuses a %s hop to %s before following it',
     async (event, url, reason) => {

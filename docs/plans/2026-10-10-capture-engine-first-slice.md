@@ -485,6 +485,18 @@ against a Chromium 152 response.
 - **Decoded bodies under original headers.** The writer keeps the reported `Content-Encoding`,
   `Transfer-Encoding`, and `Content-Length` under `x-orig-` names and writes the stored body's
   length as `Content-Length` (spec open question 1, ruled 2026-10-10).
+- **Text bodies.** Ruled 2026-10-26, after the review of #1979 measured `Network.getResponseBody`
+  returning a windows-1252 page as a decoded string: the writer stores a body the browser hands
+  over as text encoded in UTF-8, which can differ from the bytes the server sent. Each record that
+  holds such a body carries `x-birdbrain-decoded-text: utf-8`, the `warcinfo` record states the
+  limit, and the payload digest covers the stored UTF-8 bytes. Spike #1983 measures, before step 9,
+  whether the browser can hand over the served bytes instead. The spike's rulings of 2026-10-26
+  amend this; step 9's "Text bodies" item states the change.
+- **Protocol.** Ruled 2026-10-26: request and status lines read `HTTP/1.0` when CDP reports
+  `http/1.0` and `HTTP/1.1` otherwise, so WARC readers can parse them, and each request and response
+  record carries `WARC-Protocol` with the protocol CDP reported, in lower case. browsertrix-crawler
+  does the same (`src/util/reqresp.ts` and `src/util/recorder.ts` at `e582608a`). The `warcinfo`
+  record states the convention.
 - **Addresses.** The writer sets `WARC-IP-Address` only while the Egress is Direct. Through a proxy,
   CDP's `remoteIPAddress` and `remotePort` can name the proxy, and ADR-0032 rule 5 keeps the proxy's
   host and port out of every record (the agent briefs plan, CE-7).
@@ -792,6 +804,12 @@ evidence behind its answer.
 `x-orig-content-encoding` and `x-orig-transfer-encoding` with their values kept, write the stored
 length as `Content-Length`, and keep the reported length as `x-orig-content-length`. The writer
 states the renaming in `warcinfo` (D8), and step 9 states it in `features.mdx`.
+
+**Ruled 2026-10-26:** a body the browser hands over as text is stored as that text encoded in
+UTF-8, which can differ from the bytes the server sent. The writer marks each record that holds
+one and states the limit in `warcinfo` (D8, "Text bodies"). Spike #1983 measures, before step 9,
+whether the browser can hand over the served bytes instead. The spike's rulings of 2026-10-26
+amend this; step 9's "Text bodies" item states the change.
 
 The spec asks what browser-based archiving tools write, and to follow it if it is documented (spec,
 Open questions). This plan found no published statement, and the two Webrecorder recorders differ
@@ -1229,6 +1247,19 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   Each writer step that adds one has Duplicate's `insertCapture` call pass it from the source's
   signed entry, as it passes `screenshotHash`: step 6 the first two, step 9
   `transaction_record_hash`, step 10 `pdf_hash`.
+- **Text bodies (ruled 2026-10-26).** The
+  [charset spike](../specs/2026-10-26-transaction-record-charset-spike.md) measured that
+  `Network.getResponseBody` returns the served bytes once the session has been sent
+  `Network.configureDurableMessages`, and the maintainer ruled on its three questions (the spike,
+  "Rulings, 2026-10-26"). Step 9 sends that command with the `Network.enable` limits on the page's
+  session and on each attached session in D17's order, and counts a target as recorded only when
+  it answered. The collector keeps a body returned as a string only from such a session. Step 9
+  applies the per-resource limit itself before it keeps a body and records an oversized body as
+  omitted. A page's copy of a response that a service worker answered is `body-omitted`. Step 9's
+  pull request removes the writer's `x-birdbrain-decoded-text` marker and its `warcinfo` sentence.
+  The spike ran on Electron 44.9.1, so step 9 re-checks the experimental
+  `Network.configureDurableMessages` on the Electron version `main` pins (45.0.0 since #1994)
+  before it relies on it.
 - **Time.** The render races one deadline and, when the deadline wins, rejects with "Recapture
   timed out" and stores nothing; `FINAL_ARTIFACT_RESERVE_MS` reserves 20 s for the screenshot,
   MHTML, and text only (`renderPageInHiddenWindow`). Two new phases need time at the end: the
@@ -1409,7 +1440,7 @@ open.
 | Before beta.23 (#1799, a draft pull request) is tagged, decide which schema steps land in it | 1 | Ruled: beta.23 ships as is, carrying only the schema-5 (Egress) reader; the ADR-0040 and #586 schema steps share the later release with step 1's verifier |
 | Settle the `warcio` licence and approve the test-only readers | 8, and 9 and 10 through it | Ruled: both licence texts through an `append` override, the 2026-10-02 approval covering the runtime and transitive dependencies, and no upstream request now; a hand-written WARC reader plus a manual Python `warcio check`; `pdfjs-dist` 5.6.205, exact-pinned, with a Dependabot ignore for 5.7 and later |
 | Choose how the probe is rerun on each Electron upgrade | 9 | Ruled as recommended: the CI test on each Electron change (D15); step 9 commits the script, and the maintainer opens the pull request that adds the CI job (ADR-0048 sign-off) |
-| Tag a release carrying step 1's verifier, with notes telling Shared Case members to upgrade together | 6, 9, 10 | Owed: the tag. Steps 2 to 5, 7, and 8 do not wait for it (open question A, ruled). The ADR-0040 and #586 schema steps ship in the same release. Sequenced 2026-10-26 by the orchestrating session, pending the maintainer's confirmation: the tag also waits for step 3 (#1925) and step 4 (#1926), so no release reads schema 6 while Shared Case sync fetches neither new file or `verify.sh` checks neither |
+| Tag a release carrying step 1's verifier, with notes telling Shared Case members to upgrade together | 6, 9, 10 | Owed: the tag. Steps 2 to 5, 7, and 8 do not wait for it (open question A, ruled). The ADR-0040 schema step ships in the same release; #586's takes a later number (the delivery roadmap's 2026-10-26 ruling). Sequenced 2026-10-26 by the orchestrating session, pending the maintainer's confirmation: the tag also waits for step 3 (#1925) and step 4 (#1926), so no release reads schema 6 while Shared Case sync fetches neither new file or `verify.sh` checks neither |
 | Tag a release carrying #1747, and rule whether update checks follow the Egress | 9, through CE-3 (#1695) | Owed: the beta.23 tag; #1799 ships as is, carrying #1747's schema-5 reader. Ruled: `electron-updater` traffic goes through the proxy and fails closed, in CE-3's scope and acceptance |
 | Rule on #1694: where the app displays capture fields | Display beyond `report.html` | Ruled: #1694 closed with its verifier half merged; #1816, after CE-8, shows the Egress, the inventory, the Scroll-to-load outcome, and Bound TLS Details on a Capture, apart from the TLS Cert Chain view. Step 5 covers only `report.html` |
 | Whether #1667 closes once its background half is recorded | none | Ruled: #1667 closes when step 6 records its background half; its extension half closes in favor of CE-S3 |
@@ -1634,3 +1665,7 @@ folded in.
 - **2026-10-26.** D4's Transaction Record part gains `finishedWithoutResponse`, on the
   maintainer's ruling during step 9's review (#1999) as the orchestrating session relayed it.
   Step 1 (#1904) adds it to schema 6; making the collector count it is left to step 9.
+- **2026-10-26.** The charset spike (#1983, PR #1988) found a way for the collector to keep a text
+  response's served bytes, and the maintainer ruled on its three questions the same day. Step 9's
+  Changes gain a "Text bodies" item with the rulings; the spike records them under "Rulings,
+  2026-10-26".

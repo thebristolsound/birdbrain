@@ -305,6 +305,7 @@ inventory: {
         cancelled: number
         failed: number
         inFlight: number
+        finishedWithoutResponse: number
         bodiesOmitted: number
         incompleteRequestBodies: number
         webSockets: number
@@ -350,6 +351,13 @@ inventory: {
   - `cancelled` and `failed`: `Network.loadingFailed` with `canceled` true and false. Step 0 checks
     how the consent filter's cancels arrive.
   - `inFlight`: neither `loadingFinished` nor `loadingFailed` had arrived when collection stopped.
+  - `finishedWithoutResponse`: a request the browser reported finished (`loadingFinished`) for
+    which no response arrived (`responseReceived`). It is counted in neither `inFlight` nor
+    `exchanges`, so the signed entry tells "still loading at the moment of Capture" from
+    "finished, but the browser gave no response". Step 9's review (#1999) saw one, a service
+    worker's own main script. Added 2026-10-26 on the maintainer's ruling during that review,
+    as the orchestrating session relayed it: step 9 had counted these in `inFlight`, and the
+    count joins schema 6 before any release carries it.
   - `bodiesOmitted`: a finished response whose body `Network.getResponseBody` did not return,
     because it was over the budget or the browser no longer held it. One count covers both, because
     the probe tested neither case and nothing yet shows the two failures can be told apart. With
@@ -494,7 +502,7 @@ tarball).
 | Redirect hop | `request`, and `response` with headers and no body, as the spec says: the browser keeps no body for one |
 | Body omitted (`bodiesOmitted`) | `request`, and `response` with headers, no body, and `WARC-Truncated: unspecified`, because one count covers an over-budget body and one the browser no longer held (D4) |
 | Request body incomplete (`incompleteRequestBodies`) | `request` holding what `Network.getRequestPostData` returned, with `WARC-Truncated: unspecified`; its response follows the other rows |
-| Failed, cancelled, or in flight (`failed`, `cancelled`, `inFlight`) | `request` only |
+| Failed, cancelled, in flight, or finished with no response (`failed`, `cancelled`, `inFlight`, `finishedWithoutResponse`) | `request` only |
 | Served from the cache (`cached`) | `request` only |
 
 ### D9. The `captures` row
@@ -1399,7 +1407,7 @@ open.
 | Before beta.23 (#1799, a draft pull request) is tagged, decide which schema steps land in it | 1 | Ruled: beta.23 ships as is, carrying only the schema-5 (Egress) reader; the ADR-0040 and #586 schema steps share the later release with step 1's verifier |
 | Settle the `warcio` licence and approve the test-only readers | 8, and 9 and 10 through it | Ruled: both licence texts through an `append` override, the 2026-10-02 approval covering the runtime and transitive dependencies, and no upstream request now; a hand-written WARC reader plus a manual Python `warcio check`; `pdfjs-dist` 5.6.205, exact-pinned, with a Dependabot ignore for 5.7 and later |
 | Choose how the probe is rerun on each Electron upgrade | 9 | Ruled as recommended: the CI test on each Electron change (D15); step 9 commits the script, and the maintainer opens the pull request that adds the CI job (ADR-0048 sign-off) |
-| Tag a release carrying step 1's verifier, with notes telling Shared Case members to upgrade together | 6, 9, 10 | Owed: the tag. Steps 2 to 5, 7, and 8 do not wait for it (open question A, ruled). The ADR-0040 and #586 schema steps ship in the same release |
+| Tag a release carrying step 1's verifier, with notes telling Shared Case members to upgrade together | 6, 9, 10 | Owed: the tag. Steps 2 to 5, 7, and 8 do not wait for it (open question A, ruled). The ADR-0040 and #586 schema steps ship in the same release. Sequenced 2026-10-26 by the orchestrating session, pending the maintainer's confirmation: the tag also waits for step 3 (#1925) and step 4 (#1926), so no release reads schema 6 while Shared Case sync fetches neither new file or `verify.sh` checks neither |
 | Tag a release carrying #1747, and rule whether update checks follow the Egress | 9, through CE-3 (#1695) | Owed: the beta.23 tag; #1799 ships as is, carrying #1747's schema-5 reader. Ruled: `electron-updater` traffic goes through the proxy and fails closed, in CE-3's scope and acceptance |
 | Rule on #1694: where the app displays capture fields | Display beyond `report.html` | Ruled: #1694 closed with its verifier half merged; #1816, after CE-8, shows the Egress, the inventory, the Scroll-to-load outcome, and Bound TLS Details on a Capture, apart from the TLS Cert Chain view. Step 5 covers only `report.html` |
 | Whether #1667 closes once its background half is recorded | none | Ruled: #1667 closes when step 6 records its background half; its extension half closes in favor of CE-S3 |
@@ -1602,6 +1610,16 @@ folded in.
   the sync maps each field to a Capture Store file type (`CAPTURE_ARTIFACT_BY_FIELD` in
   `blobAcceptance.ts`), and the store has no type for either new file until step 3. Step 1
   leaves the list for step 3 to extend, a change to D2 and D14 that awaits the maintainer's ruling.
+- **2026-10-26.** Release sequencing after #1978's review, decided by the orchestrating session
+  and pending the maintainer's confirmation, not a maintainer ruling: the tag carrying step 1's
+  verifier also waits for step 3 (#1925) and step 4 (#1926). A build that reads schema 6 accepts a
+  schema-6 Capture from another member, where beta.23 stops at it and asks for an update. Until
+  step 3 adds `transactionRecordHash` and `pdfHash` to `CAPTURE_ENTRY_HASH_FIELDS`, with their
+  Capture Store file types, the sync fetches neither file, and until step 4 `verify.sh` checks
+  neither. Holding the tag until both merge means no released build has that gap.
 - **2026-10-26.** Step 3 (#1925) takes Case Archive version 13, the next after 12 on `main`. It
   adds `transactionRecordHash` and `pdfHash` to `CAPTURE_ENTRY_HASH_FIELDS`, mapped to the new
   `warc.gz` and `pdf` file types, so a Shared Case member fetches and hash-checks both files.
+- **2026-10-26.** D4's Transaction Record part gains `finishedWithoutResponse`, on the
+  maintainer's ruling during step 9's review (#1999) as the orchestrating session relayed it.
+  Step 1 (#1904) adds it to schema 6; making the collector count it is left to step 9.

@@ -1,14 +1,12 @@
 # A link Capture records the Capture it came from
 
-**Status:** Proposed
+**Status:** Accepted
 
-**Date:** 2026-10-04
+**Date:** 2026-10-04, accepted 2026-10-26
 
-The maintainer ruled on the questions this record settles on 2026-10-04. The record itself
-awaits acceptance, which changes the status line. Nothing in it is implemented. The work is
-planned in
-[the slice 2 plan](../plans/2026-10-04-mhtml-viewer-slice-2-click-through-and-provenance.md),
-Part B.
+The maintainer ruled on the questions this record settles on 2026-10-04 and accepted it on
+2026-10-26, amended to schema 6 (see "The fields need schema 6"). The verifier reads the fields
+from #1981 and Capture link writes them from #1995.
 
 ## Context
 

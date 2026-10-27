@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { resolveExportCaptureEngine } from '@main/services/export'
+import { resolveExportCaptureEngine, resolveExportLinkSources } from '@main/services/export'
 import { readManifestSnapshot } from '@main/services/manifest'
 import {
   buildHtmlReport,
@@ -712,6 +712,49 @@ describe('report.html on a link Capture', () => {
     expect(html).toContain(row('From a link in', 'not reported: the manifest chain did not verify'))
     expect(html).not.toContain(label('Link source SHA-256'))
     expect(html).not.toContain('source-capture-id')
+  })
+
+  // The Shared Case walk keeps another member's entries only from a chain it accepted, so
+  // their link rows print as verified while the local chain holds no entry for the Capture.
+  it("prints an accepted member's link source from that member's entry", () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bb-report-link-'))
+    try {
+      writeFileSync(join(dir, 'manifest.jsonl'), buildSignedChain([]).join('\n'), 'utf-8')
+      const accepted = signedEntries([engineCaptureEntry(LINK)]) as ManifestEntry[]
+      const verification: SharedCaseVerifyResult = {
+        valid: true,
+        outcome: 'pass',
+        findings: [],
+        owner: {
+          valid: true,
+          trustedTimes: new Map(),
+          captureHashesByIndex: new Map(),
+          captureEntriesByIndex: new Map()
+        },
+        memberChains: new Map(),
+        members: [],
+        citations: new Map(),
+        exclusions: [],
+        lineage: [],
+        entries: new Map([
+          ['local', []],
+          ['member-accepted', accepted]
+        ]),
+        localInstallationId: 'local'
+      }
+      const linkSourceByCaptureId = resolveExportLinkSources(readManifestSnapshot(dir), {
+        chains: [],
+        verification
+      })
+      const html = buildHtmlReport(reportData([capture()], { linkSourceByCaptureId }), OPTIONS)
+
+      expect(linkSourceByCaptureId.get(ENGINE_CAPTURE_ID)?.chainVerified).toBe(true)
+      expect(html).toContain(row('From a link in', 'source-capture-id'))
+      expect(html).toContain(row('Link source SHA-256', '5'.repeat(64)))
+      expect(html).not.toContain('not reported: the manifest chain did not verify')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('prints none of the rows from the row alone, or for any other Capture', () => {

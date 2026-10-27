@@ -236,7 +236,10 @@ jobs:
       - run: pnpm typecheck
 
   test:
-    runs-on: ubuntu-latest
+    # Not ubuntu-latest: on Ubuntu 26.04 the unit tests that load sharp under Electron
+    # segfault (electron/electron#46323). See "sharp under Electron on Linux" in
+    # docs/agents/testing.md.
+    runs-on: ubuntu-24.04
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
     timeout-minutes: 20

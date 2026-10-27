@@ -50,6 +50,7 @@ export const ENGINE_INVENTORY = {
     cancelled: 2,
     failed: 3,
     inFlight: 4,
+    finishedWithoutResponse: 13,
     bodiesOmitted: 5,
     incompleteRequestBodies: 6,
     webSockets: 7,

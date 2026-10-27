@@ -305,6 +305,7 @@ inventory: {
         cancelled: number
         failed: number
         inFlight: number
+        finishedWithoutResponse: number
         bodiesOmitted: number
         incompleteRequestBodies: number
         webSockets: number
@@ -350,11 +351,13 @@ inventory: {
   - `cancelled` and `failed`: `Network.loadingFailed` with `canceled` true and false. Step 0 checks
     how the consent filter's cancels arrive.
   - `inFlight`: neither `loadingFinished` nor `loadingFailed` had arrived when collection stopped.
-    Step 9 also counts here a request whose `loadingFinished` arrived with no response, which its
-    first end-to-end run saw for a service worker's main script; the record has no response to
-    write for it. That widens this definition, which awaits the maintainer's ruling (the
-    [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md),
-    Deviations, step 9).
+  - `finishedWithoutResponse`: a request the browser reported finished (`loadingFinished`) for
+    which no response arrived (`responseReceived`). It is counted in neither `inFlight` nor
+    `exchanges`, so the signed entry tells "still loading at the moment of Capture" from
+    "finished, but the browser gave no response". Step 9's review (#1999) saw one, a service
+    worker's own main script. Added 2026-10-26 on the maintainer's ruling during that review,
+    as the orchestrating session relayed it: step 9 had counted these in `inFlight`, and the
+    count joins schema 6 before any release carries it.
   - `bodiesOmitted`: a finished response whose body `Network.getResponseBody` did not return,
     because it was over the budget or the browser no longer held it. One count covers both, because
     the probe tested neither case and nothing yet shows the two failures can be told apart. With
@@ -512,7 +515,7 @@ tarball).
 | Redirect hop | `request`, and `response` with headers and no body, as the spec says: the browser keeps no body for one |
 | Body omitted (`bodiesOmitted`) | `request`, and `response` with headers, no body, and `WARC-Truncated: unspecified`, because one count covers an over-budget body and one the browser no longer held (D4) |
 | Request body incomplete (`incompleteRequestBodies`) | `request` holding what `Network.getRequestPostData` returned, with `WARC-Truncated: unspecified`; its response follows the other rows |
-| Failed, cancelled, or in flight (`failed`, `cancelled`, `inFlight`) | `request` only |
+| Failed, cancelled, in flight, or finished with no response (`failed`, `cancelled`, `inFlight`, `finishedWithoutResponse`) | `request` only |
 | Served from the cache (`cached`) | `request` only |
 
 ### D9. The `captures` row
@@ -1673,3 +1676,6 @@ folded in.
   `warcReader.ts` entry point, so the e2e spec reads records with it. The step's results, its
   record sizes, and its one deviation are in the
   [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md).
+- **2026-10-26.** D4's Transaction Record part gains `finishedWithoutResponse`, on the
+  maintainer's ruling during step 9's review (#1999) as the orchestrating session relayed it.
+  Step 1 (#1904) adds it to schema 6; making the collector count it is left to step 9.

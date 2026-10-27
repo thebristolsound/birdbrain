@@ -42,7 +42,8 @@ import {
   buildTrustedTimeIndexFromEntries,
   extractTimestampTokenCertificatesPem,
   SHARED_CASE_SCHEMA_VERSION,
-  stampFor
+  stampFor,
+  verifyManifestChainText
 } from '@shared/verify'
 import type { SharedCaseMember } from '@shared/verify'
 import {
@@ -59,8 +60,9 @@ import {
 import type { TrustedTimeResult } from '@shared/verify'
 import { buildCertification, type SigningKeyRange } from '@main/services/certification'
 import { resolveToolVersion } from '@main/services/toolVersion'
-import { buildHtmlReport } from '@main/services/reportHtml'
+import { buildHtmlReport, resolveCaptureEngineFacts } from '@main/services/reportHtml'
 import type {
+  CaptureEngineEntry,
   EntrySignatureStatus,
   ExportDerivedFile,
   ExportFileExhibit,
@@ -106,6 +108,27 @@ function caseEntriesOf(
     .filter(([id]) => id !== verification.localInstallationId)
     .flatMap(([, accepted]) => accepted)
   return [...manifest.entries, ...remote]
+}
+
+/**
+ * The capture engine's fields per Capture, from the snapshot the package is
+ * built from. The local chain is verified over that same read, as
+ * readCaptureEntryAt does, so no earlier verification of a separate read
+ * vouches for values written in between. Another member's entries are the
+ * accepted entries of a chain the Shared Case walk verified (caseEntriesOf).
+ */
+export function resolveExportCaptureEngine(
+  manifest: ManifestSnapshot,
+  sharedCase: SharedCaseSnapshot
+): Map<string, CaptureEngineEntry> {
+  const localVerified = verifyManifestChainText(manifest.jsonl.toString('utf-8'), {
+    publicKeyPem: getPublicKeyPem()
+  }).valid
+  const remote = caseEntriesOf(manifest, sharedCase).slice(manifest.entries.length)
+  return new Map([
+    ...resolveCaptureEngineFacts(manifest.entries, localVerified),
+    ...resolveCaptureEngineFacts(remote, true)
+  ])
 }
 
 function exportSharedCaseMember(member: SharedCaseMember): ExportSharedCaseMember {
@@ -523,6 +546,7 @@ export async function generateReport(
     entriesUnderCarriedKeys: false,
     trustedTimeByCaptureId: new Map(),
     entrySignatureByCaptureId: new Map(),
+    captureEngineByCaptureId: new Map(),
     unreconciledChainCaptureIds: [],
     tsaTrustAnchorBundled: getTsaTrustBundle(settings.tsaUrl).bundled,
     // Pinned archive.org references, read per exported capture (#401). Scoped
@@ -676,6 +700,7 @@ export async function generateReport(
   data.preflight = trustedTime.preflight
   data.trustedTimeByCaptureId = trustedTime.byCaptureId
   data.entrySignatureByCaptureId = resolveEntrySignatures(captures, caseEntries)
+  data.captureEngineByCaptureId = resolveExportCaptureEngine(manifest, sharedCase)
   data.fileExhibits = buildFileExhibitRecords(scope.fileExhibits, {
     derivedByExhibitId,
     derivedVerifications,

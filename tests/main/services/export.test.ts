@@ -72,7 +72,15 @@ import {
   engineEntryFieldsWithOnly,
   seedEngineCapture
 } from '../../helpers/captureEngineCapture'
-import { ENGINE_FILES, ENGINE_HASHES } from '../../helpers/captureEnginePackage'
+import {
+  ENGINE_BOUND_TLS,
+  ENGINE_FILES,
+  ENGINE_HASHES,
+  ENGINE_INVENTORY,
+  ENGINE_SCROLL_TO_LOAD
+} from '../../helpers/captureEnginePackage'
+import { updateRow } from '@main/services/db/dbAdmin'
+import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
 import {
   PDF_PACKAGE_DIRECTORY,
   TRANSACTION_RECORD_PACKAGE_DIRECTORY,
@@ -1321,6 +1329,89 @@ describe('export', () => {
 
       expect(entries.has(`pages/${ENGINE_ID}.mhtml`)).toBe(true)
       expect(underNewDirectories(entries)).toEqual([])
+    })
+
+    // #1927: the report reads the signed entry, never the row's mirror columns,
+    // which Settings -> Database can edit.
+    it("states the signed entry's values in report.html after the mirror columns were edited", async () => {
+      await seed()
+      updateRow(
+        'captures',
+        { id: ENGINE_ID },
+        {
+          inventory: JSON.stringify({
+            ...ENGINE_INVENTORY,
+            transactionRecord: { ...ENGINE_INVENTORY.transactionRecord, exchanges: 999 }
+          }),
+          scroll_to_load: JSON.stringify({ ...ENGINE_SCROLL_TO_LOAD, outcome: 'time-budget' }),
+          bound_tls: JSON.stringify({ ...ENGINE_BOUND_TLS, subjectName: 'forged.example' })
+        }
+      )
+      expect(getCapture(ENGINE_ID)?.boundTls?.subjectName).toBe('forged.example')
+
+      const { entries } = await exportZip('engine-edited-mirror')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      expect(report).toContain(
+        '<li>Exchanges recorded as a request and a response (each redirect hop counts): <span class="mono">14</span></li>'
+      )
+      expect(report).not.toContain('<span class="mono">999</span>')
+      expect(report).toContain('it stopped when the page stopped growing')
+      expect(report).not.toContain('it stopped when the phase reached its time limit')
+      expect(report).toContain('<li>Subject: example.com</li>')
+      expect(report).not.toContain('forged.example')
+    })
+
+    it('quotes none of the fields in report.html when the local chain does not verify', async () => {
+      await seed()
+      const manifestPath = join(tempDir, 'captures', caseId, 'manifest.jsonl')
+      const original = readFileSync(manifestPath, 'utf-8')
+      const tampered = original.replace('"exchanges":14', '"exchanges":999')
+      expect(tampered).not.toBe(original)
+      writeFileSync(manifestPath, tampered, 'utf-8')
+
+      const { entries } = await exportZip('engine-tampered-chain')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      expect(report).toContain('Capture engine fields not reported')
+      expect(report).not.toContain('<span class="mono">999</span>')
+      expect(report).not.toContain('Artifact inventory')
+    })
+
+    // An import into the installation that already holds the row renames it,
+    // while the imported chain keeps naming the Capture by its original id.
+    it('finds the fields by the chain id for a row an archive import renamed', async () => {
+      await seed()
+      const archivePath = join(tempDir, 'engine.bbcase')
+      await exportCaseArchive(caseId, archivePath)
+      const { newCaseId } = await importCaseArchive(archivePath)
+      const [imported] = listCaptures(newCaseId)
+      expect(imported.id).not.toBe(ENGINE_ID)
+
+      const outputPath = join(tempDir, 'engine-renamed.zip')
+      await generateReport(
+        newCaseId,
+        {
+          format: 'zip',
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
+          exportClass: 'evidence',
+          outputPath
+        },
+        captureLifecycle
+      )
+      const report = readStoredZipEntries(outputPath).get('report.html')!.toString('utf-8')
+
+      expect(report).toContain('Artifact inventory')
+      expect(report).toContain(
+        '<li>Exchanges recorded as a request and a response (each redirect hop counts): <span class="mono">14</span></li>'
+      )
+      expect(report).not.toContain('Capture engine fields not reported')
     })
   })
 

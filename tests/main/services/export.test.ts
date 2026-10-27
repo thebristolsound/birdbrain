@@ -1362,6 +1362,22 @@ describe('export', () => {
       expect(report).not.toContain('forged.example')
     })
 
+    it('quotes none of the fields in report.html when the local chain does not verify', async () => {
+      await seed()
+      const manifestPath = join(tempDir, 'captures', caseId, 'manifest.jsonl')
+      const original = readFileSync(manifestPath, 'utf-8')
+      const tampered = original.replace('"exchanges":14', '"exchanges":999')
+      expect(tampered).not.toBe(original)
+      writeFileSync(manifestPath, tampered, 'utf-8')
+
+      const { entries } = await exportZip('engine-tampered-chain')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      expect(report).toContain('Capture engine fields not reported')
+      expect(report).not.toContain('<span class="mono">999</span>')
+      expect(report).not.toContain('Artifact inventory')
+    })
+
     // An import into the installation that already holds the row renames it,
     // while the imported chain keeps naming the Capture by its original id.
     it('finds the fields by the chain id for a row an archive import renamed', async () => {

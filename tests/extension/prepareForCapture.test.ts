@@ -15,7 +15,7 @@ import {
   SELECTION_BAR_SELECTOR
 } from '../../extension/src/selectionBar'
 import type { ActiveCaseSelectors } from '@shared/types'
-import type { SelectorMatchInfo } from '@shared/schemas'
+import type { CaptureCardDetails, SelectorMatchInfo } from '@shared/schemas'
 
 type SendResponse = (response?: unknown) => void
 type Listener = (message: unknown, sender: unknown, sendResponse: SendResponse) => unknown
@@ -151,6 +151,35 @@ beforeEach(() => {
   // leaves raised; every test here starts with the page un-suppressed
   releaseCaptureUiSuppression()
   sendMessageMock.mockReset()
+})
+
+describe('capture toast messages', () => {
+  it('relays the stored screenshot kind to the degraded card facts', () => {
+    setPageHtml(PAGE_HTML)
+    const card: CaptureCardDetails = {
+      caseId: 'case-1',
+      captureId: 'capture-1',
+      caseName: 'Nightjar',
+      title: 'Original evidence',
+      format: 'mhtml',
+      hash: 'a'.repeat(64),
+      manifestIndex: 42,
+      tags: []
+    }
+
+    dispatch({
+      type: 'UPDATE_CAPTURE_TOAST',
+      status: 'degraded',
+      message: 'Captured (screenshot too large)',
+      card,
+      storedScreenshot: 'none'
+    })
+
+    const shadow = document.getElementById('birdbrain-capture-toast')!.shadowRoot!
+    const facts = shadow.querySelector('.facts')!.textContent!
+    expect(facts).toMatch(/^No screenshot stored/)
+    expect(facts).not.toContain('Full page')
+  })
 })
 
 describe('PREPARE_FOR_CAPTURE (#379)', () => {

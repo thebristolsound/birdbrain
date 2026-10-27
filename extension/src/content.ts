@@ -546,7 +546,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       status: message.status,
       message: message.message,
       card: message.card,
-      scrolling: message.scrolling
+      scrolling: message.scrolling,
+      storedScreenshot: message.storedScreenshot
     })
     sendResponse({ ok: true })
     return

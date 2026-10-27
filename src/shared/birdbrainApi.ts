@@ -114,6 +114,7 @@ import type {
   SelectorRematchedEvent,
   GuestFrameReplacedEvent,
   GuestMouseDownEvent,
+  GuestMouseUpEvent,
   ExtensionAttachEvent,
   DeepLinkTarget,
   ExportProgressEvent,
@@ -401,6 +402,7 @@ export interface BirdbrainAPI {
   onUpdateStatus(callback: (status: UpdateStatus) => void): () => void
   onGuestFrameReplaced(callback: (event: GuestFrameReplacedEvent) => void): () => void
   onGuestMouseDown(callback: (event: GuestMouseDownEvent) => void): () => void
+  onGuestMouseUp(callback: (event: GuestMouseUpEvent) => void): () => void
   onSharingChanged(callback: (event: SharingChangedEvent) => void): () => void
   onSharingJoinProgress(callback: (event: SharingJoinProgressEvent) => void): () => void
   onInvestigationProgress(callback: (event: RunProgressEvent) => void): () => void

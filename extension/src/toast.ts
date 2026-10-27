@@ -1,5 +1,5 @@
 import { isCaptureUiSuppressed, registerCaptureUiTeardown } from './captureSuppression'
-import type { CaptureCardDetails } from '@shared/schemas'
+import type { CaptureCardDetails, ScreenshotKind } from '@shared/schemas'
 
 const TOAST_ID = 'birdbrain-capture-toast'
 
@@ -8,6 +8,16 @@ interface ToastOptions {
   message?: string
   card?: CaptureCardDetails
   scrolling?: boolean
+  /** What the capture actually stored; absent when no screenshot path ran. */
+  storedScreenshot?: ScreenshotKind
+}
+
+/** The screenshot a degraded outcome stored, as the card's facts line names it. */
+const STORED_SCREENSHOT_LABEL: Record<ScreenshotKind, string> = {
+  scrolling: 'Scrolling screenshot',
+  'full-page': 'Full page screenshot',
+  viewport: 'Visible-area screenshot only',
+  none: 'No screenshot stored'
 }
 
 let removeTimeout: ReturnType<typeof setTimeout> | null = null
@@ -135,7 +145,12 @@ export function updateToast(options: ToastOptions): void {
   }
 
   if (options.card) {
-    showCaptureCard(options.card, options.scrolling ?? false, options.message)
+    showCaptureCard(options.card, {
+      scrolling: options.scrolling ?? false,
+      status: options.status,
+      warning: options.message,
+      storedScreenshot: options.storedScreenshot
+    })
     return
   }
   showToast(options)
@@ -192,8 +207,22 @@ function onCardClick(element: Element, action: () => void | Promise<void>): void
 }
 
 // Text from pages, cases and tags is assigned through textContent, never markup.
-function showCaptureCard(card: CaptureCardDetails, scrolling: boolean, warning?: string): void {
+function showCaptureCard(
+  card: CaptureCardDetails,
+  outcome: {
+    scrolling: boolean
+    status: ToastOptions['status']
+    warning?: string
+    storedScreenshot?: ScreenshotKind
+  }
+): void {
   if (isCaptureUiSuppressed()) return
+  // A degraded capture is not a clean save: the heading carries the amber
+  // warning marker instead of the green check (#1769).
+  const marker =
+    outcome.status === 'degraded'
+      ? '<span class="warn" aria-hidden="true">⚠</span>'
+      : '<span class="check" aria-hidden="true">✓</span>'
   const shadow = getOrCreateHost()
   shadow.innerHTML = `
     <style>${TOAST_STYLES}
@@ -202,6 +231,8 @@ function showCaptureCard(card: CaptureCardDetails, scrolling: boolean, warning?:
       .heading { display: flex; align-items: center; gap: 8px; padding: 10px 12px 0; font-size: 12px; font-weight: 600; }
       .check { display: inline-flex; align-items: center; justify-content: center; width: 16px;
         height: 16px; flex-shrink: 0; border-radius: 50%; background: #10b98124; color: #34d399; }
+      .warn { display: inline-flex; align-items: center; justify-content: center; width: 16px;
+        height: 16px; flex-shrink: 0; border-radius: 50%; background: #fbbf2424; color: #fbbf24; }
       .heading-text { min-width: 0; flex: 1; overflow-wrap: anywhere; }
       button { font: inherit; cursor: pointer; color: #a1a1aa; background: transparent;
         border: 1px solid #3f3f46; border-radius: 4px; }
@@ -224,7 +255,7 @@ function showCaptureCard(card: CaptureCardDetails, scrolling: boolean, warning?:
       @media (prefers-reduced-motion: reduce) { .toast { transition: none; transform: none; } }
     </style>
     <section class="toast card visible" aria-label="Capture saved">
-      <div class="heading"><span class="check" aria-hidden="true">✓</span><span class="heading-text"></span><button class="dismiss" aria-label="Dismiss">×</button></div>
+      <div class="heading">${marker}<span class="heading-text"></span><button class="dismiss" aria-label="Dismiss">×</button></div>
       <div class="title"></div><div class="facts"></div><div class="warning"></div>
       <div class="tags"></div><div class="error" role="alert"></div>
       <div class="actions"><button class="view">View in Birdbrain</button><button class="recapture">Recapture</button></div>
@@ -235,9 +266,17 @@ function showCaptureCard(card: CaptureCardDetails, scrolling: boolean, warning?:
   title.textContent = card.title
   title.title = card.title
   const facts = shadow.querySelector<HTMLElement>('.facts')!
-  facts.textContent = `${scrolling ? 'Full page (scrolling)' : 'Full page'} · ${card.format.toUpperCase()} · sha256 recorded${card.manifestIndex === null ? '' : ` · #${card.manifestIndex}`}`
+  // A degraded outcome names the screenshot actually stored: a fallback
+  // stored less than was asked for, a drop stored none (#1769). Every other
+  // outcome keeps the requested-mode line: a success stored what was asked
+  // for, and with screenshots off no stored kind is sent.
+  const stored = outcome.status === 'degraded' ? outcome.storedScreenshot : undefined
+  const captureLabel = stored
+    ? STORED_SCREENSHOT_LABEL[stored]
+    : `${outcome.scrolling ? 'Full page (scrolling)' : 'Full page'}`
+  facts.textContent = `${captureLabel} · ${card.format.toUpperCase()} · sha256 recorded${card.manifestIndex === null ? '' : ` · #${card.manifestIndex}`}`
   facts.title = `SHA-256: ${card.hash}`
-  shadow.querySelector('.warning')!.textContent = warning ?? ''
+  shadow.querySelector('.warning')!.textContent = outcome.warning ?? ''
   const error = shadow.querySelector('.error')!
   const pause = (): void => {
     if (removeTimeout) clearTimeout(removeTimeout)
@@ -294,7 +333,7 @@ function showCaptureCard(card: CaptureCardDetails, scrolling: boolean, warning?:
     if (await act('view')) removeToastImmediately()
   })
   onCardClick(shadow.querySelector('.recapture')!, async () => {
-    if (await act('recapture', { scrolling })) removeToastImmediately()
+    if (await act('recapture', { scrolling: outcome.scrolling })) removeToastImmediately()
   })
   resume()
 }

@@ -17,6 +17,10 @@ export const CAPTURE_PACKAGE_DIRECTORY = 'pages'
 export const SCREENSHOT_PACKAGE_DIRECTORY = 'screenshots'
 /** Package directory holding RFC 3161 Timestamp Tokens. */
 export const TIMESTAMP_PACKAGE_DIRECTORY = 'timestamps'
+/** Package directory holding content-addressed Transaction Records. */
+export const TRANSACTION_RECORD_PACKAGE_DIRECTORY = 'transaction-records'
+/** Package directory holding content-addressed Capture PDFs. */
+export const PDF_PACKAGE_DIRECTORY = 'pdfs'
 /**
  * Directory holding the member chains of the Cases this one was forked from,
  * one subdirectory per source Case id. Same name in a package, a Case
@@ -27,6 +31,10 @@ export const LINEAGE_DIRECTORY = 'lineage'
 const CAPTURE_PAGE_EXTENSION = '.mhtml'
 const SCREENSHOT_EXTENSION = '.png'
 const TIMESTAMP_TOKEN_EXTENSION = '.tst'
+// A WARC file whose every record is its own gzip member (the capture engine
+// first-slice plan, spec open question 2).
+const TRANSACTION_RECORD_EXTENSION = '.warc.gz'
+const PDF_EXTENSION = '.pdf'
 
 /**
  * The fixed documents at the package root. `manifest` is also the name the
@@ -55,6 +63,16 @@ export function capturePagePath(captureId: string): string {
 /** `screenshots/{sha256}.png`: content-addressed, so the name is its own digest. */
 export function screenshotPath(digest: string): string {
   return `${SCREENSHOT_PACKAGE_DIRECTORY}/${digest}${SCREENSHOT_EXTENSION}`
+}
+
+/** `transaction-records/{sha256}.warc.gz`: content-addressed, like the screenshot. */
+export function transactionRecordPath(digest: string): string {
+  return `${TRANSACTION_RECORD_PACKAGE_DIRECTORY}/${digest}${TRANSACTION_RECORD_EXTENSION}`
+}
+
+/** `pdfs/{sha256}.pdf`: content-addressed, like the screenshot. */
+export function pdfPath(digest: string): string {
+  return `${PDF_PACKAGE_DIRECTORY}/${digest}${PDF_EXTENSION}`
 }
 
 /** `timestamps/{exhibitId}.tst`: named after the first Exhibit sharing the token. */

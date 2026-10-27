@@ -338,6 +338,8 @@ const birdbrain = {
 
   onGuestMouseDown: subscribe(IPC_CHANNELS.GUEST_MOUSE_DOWN),
 
+  onGuestMouseUp: subscribe(IPC_CHANNELS.GUEST_MOUSE_UP),
+
   onSharingChanged: subscribe(IPC_CHANNELS.SHARING_CHANGED),
 
   onSharingJoinProgress: subscribe(IPC_CHANNELS.SHARING_JOIN_PROGRESS),

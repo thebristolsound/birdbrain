@@ -4,8 +4,10 @@ import { join } from 'node:path'
 import {
   CAPTURE_PACKAGE_DIRECTORY,
   PACKAGE_ROOT_FILES,
+  PDF_PACKAGE_DIRECTORY,
   SCREENSHOT_PACKAGE_DIRECTORY,
-  TIMESTAMP_PACKAGE_DIRECTORY
+  TIMESTAMP_PACKAGE_DIRECTORY,
+  TRANSACTION_RECORD_PACKAGE_DIRECTORY
 } from '../index'
 
 // The seam only holds while no consumer spells a path itself. This fails the
@@ -32,7 +34,9 @@ const CONSUMERS = [
 const directories = [
   CAPTURE_PACKAGE_DIRECTORY,
   SCREENSHOT_PACKAGE_DIRECTORY,
-  TIMESTAMP_PACKAGE_DIRECTORY
+  TIMESTAMP_PACKAGE_DIRECTORY,
+  TRANSACTION_RECORD_PACKAGE_DIRECTORY,
+  PDF_PACKAGE_DIRECTORY
 ].join('|')
 const CONSTRUCTED_PATH = new RegExp(`\\b(${directories})/(\\$|\\{|<|\\*|['"\`])`)
 const QUOTED_DIRECTORY = new RegExp(`(['"\`])(${directories})\\1`)

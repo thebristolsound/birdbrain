@@ -124,8 +124,8 @@ of the security policy describes them.
 
 ## Your first capture
 
-1. In the app, go to the dashboard and click **Start New Case**. Name the
-   case anything.
+1. In the app, go to the dashboard, click **Start New Case**, and choose
+   **Blank Case**. Name the case anything.
 2. Browse to any page in Chrome.
 3. Click the Birdbrain toolbar icon, then click **Capture now**. You can also right-click the
    page and choose **Birdbrain → Capture Full Page**.
@@ -135,6 +135,60 @@ of the security policy describes them.
 From there, explore: annotate screenshots, add notes and tags, define selectors, search the
 text of every capture in the case from the search box in the top bar (`Ctrl F`), and export the
 case when you're done.
+
+## Share a case with teammates
+
+A Shared Case keeps one case in sync across installations of Birdbrain; it is designed for two to
+five. Every member holds a full copy, and no server holds the case. Each member's captures stay
+signed by their own installation. Sharing is not available on Intel Macs.
+
+Members should run the same version of Birdbrain and upgrade together. If a teammate's copy
+writes something your version cannot read, sync with that teammate pauses until you update, and
+**Members** names the teammate.
+
+### Invite a teammate
+
+Only the case's Owner, the installation that first shared it, can invite.
+
+1. On the dashboard, open the case card's menu and choose **Members**. Once a teammate has
+   joined, the sync pill in the top bar opens the same screen.
+2. Click **Invite**. Birdbrain shows an invite string; **Show QR** shows the same invite as a QR
+   code. Send the string to one person over a channel you already use. An invite works once and
+   expires after 24 hours, and Birdbrain must be open on your machine when they use it.
+3. When they use it, a join request shows their operator name and key fingerprint. To confirm
+   who sent it, ask them to read their fingerprint aloud over a channel you already trust.
+4. Enter their **Member Code**: up to three characters, A-Z and 0-9, fixed once you approve.
+   Their exhibit numbers carry it, for example `JO-1`. Click **Approve**, or **Decline**.
+
+### Join a case
+
+1. Click **Start New Case** on the dashboard and choose **Join a shared Case**. The command
+   palette (`Ctrl+K`) has the same action.
+2. Paste the invite. The **From** name is what the sender typed; if it is not who you expected,
+   stop.
+3. Click **Join**, then wait while the Owner approves. The case opens once they do.
+
+### Sync
+
+Sync runs by itself while Birdbrain is open on both machines and a teammate is reachable. **Sync
+now** on **Members** runs it straight away. Machines connect to each other directly where they can
+and fall back to a relay, n0's public relays by default. To use a relay you host, enter its address
+under **Relay URL** on a shared case's **Members** screen, then restart Birdbrain. The address
+applies to every Shared Case on this machine. Sync does not follow the Egress setting; [Network
+use](/docs/features#network-use) lists what the relay and your teammates can see.
+
+### Revoke a member
+
+The Owner clicks **Revoke** on a member's row. Birdbrain stops syncing with that member and
+records the revocation in the Owner's manifest. The revoked member keeps the copy they already
+hold. The same installation cannot rejoin that case, even with a new invite.
+
+### If the relay cannot be reached
+
+**Members** shows "Relay unreachable since" and the time. Click **Retry** first. If it persists,
+[report a problem](#reporting-a-problem) with the time shown, whether **Relay URL** is blank (the
+default relays) or your own relay, whether you work behind a VPN, proxy, Tor, or a
+workplace firewall, and your platform. Leave out the invite string and your teammates' names.
 
 ## Updating
 
@@ -231,8 +285,10 @@ Two more things a restore does not do, both worth knowing before you click it:
   yourself. If some other program on your machine is holding that port, Birdbrain refuses to
   start rather than open a window that can't receive captures, and names the port in the error
   it shows. Close whatever is using it, then start Birdbrain again.
-- **Local-only data.** Captures live only on your machine, and export is the only backup that
-  includes capture files. Export anything you can't lose before updating or uninstalling.
+- **Local-only data, unless shared.** Captures live only on your machine unless you share their
+  case. A Shared Case copies them to every member's machine, and a revoked member keeps their
+  copy. Export is the only backup that includes capture files. Export anything you can't lose
+  before updating or uninstalling.
 - **Deleting a capture is not redacting it.** The files go, but the case manifest is
   append-only: the deleted capture's URL, capture time and hashes stay in it permanently and
   ship in every export that includes the audit trail. If a URL is sensitive, deleting the

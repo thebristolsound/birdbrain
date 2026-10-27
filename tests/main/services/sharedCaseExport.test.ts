@@ -46,6 +46,7 @@ import {
 } from '@main/services/installationId'
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import { readStoredZip } from '@main/services/zipRead'
+import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { canonicalStringify } from '@shared/verify'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
 import { extractTimestampTokenCertificatesPem } from '@shared/verify/timestampToken'
@@ -1715,7 +1716,7 @@ describe('Shared Case export, import and fork (#1511)', () => {
         caseId,
         timestamp: TIME,
         ...PEER,
-        schemaVersion: 6
+        schemaVersion: MANIFEST_SCHEMA_VERSION + 1
       })
       writeFileSync(join(dir, peerChain), peer.jsonl)
       reindex(dir, peerChain)
@@ -1725,8 +1726,9 @@ describe('Shared Case export, import and fork (#1511)', () => {
       expect(findings(run.output, 'FAIL')).toEqual([])
       expect(findings(run.output, 'INCOMPLETE')).toEqual([
         `INCOMPLETE [step 4a] ${peerChain} (member RP): entry 1 is from a newer schema than ` +
-          'this script reads (type exhibit-review, schema version 6; it reads up to schema ' +
-          'version 5), so the chain was checked only up to that entry',
+          `this script reads (type exhibit-review, schema version ${MANIFEST_SCHEMA_VERSION + 1}; ` +
+          `it reads up to schema version ${MANIFEST_SCHEMA_VERSION}), so the chain was checked ` +
+          'only up to that entry',
         'INCOMPLETE [step 4a] merge heads, citations and exclusions were not checked: a member ' +
           'chain was not read to its end'
       ])

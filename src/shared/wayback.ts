@@ -18,12 +18,17 @@ export function snapshotDeltaMs(snapshotIso: string, captureIso: string): number
 /**
  * `2d 3h after capture` / `45m before capture`, or null when either timestamp is
  * unparseable — a caller with no interval to state should say nothing rather than
- * print a delta it cannot compute.
+ * print a delta it cannot compute. `reference` names what `captureIso` is the time of,
+ * for a snapshot of some other URL than the capture's own.
  */
-export function formatSnapshotDelta(snapshotIso: string, captureIso: string): string | null {
+export function formatSnapshotDelta(
+  snapshotIso: string,
+  captureIso: string,
+  reference = 'capture'
+): string | null {
   const deltaMs = snapshotDeltaMs(snapshotIso, captureIso)
   if (deltaMs === null) return null
-  const direction = deltaMs < 0 ? 'before capture' : 'after capture'
+  const direction = `${deltaMs < 0 ? 'before' : 'after'} ${reference}`
   // Rounded once, to minutes, then carried up. Rounding each unit separately
   // produces "23h 60m" at the boundaries.
   const totalMinutes = Math.round(Math.abs(deltaMs) / 60_000)
@@ -37,3 +42,9 @@ export function formatSnapshotDelta(snapshotIso: string, captureIso: string): st
   const restHours = totalHours % 24
   return `${days}d ${restHours ? `${restHours}h ` : ''}${direction}`
 }
+
+/**
+ * How many rows a lookup for a link in a stored page asks archive.org for (#1737). Enough
+ * to show the closest version and a count; a result this long means there may be more.
+ */
+export const WAYBACK_LINK_LOOKUP_LIMIT = 20

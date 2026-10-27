@@ -12,6 +12,17 @@ export const waybackLookupQueryOptions = (captureId: string) =>
     staleTime: 5 * 60 * 1000
   })
 
+// One link of a stored page (#1737), keyed by that page's Capture and the address. Also
+// user-initiated: the link menu fills the cache with fetchQuery, and the Links tab's cell
+// only reads it. The answer lives here and nowhere else, so a restart drops it.
+export const waybackLinkLookupQueryOptions = (captureId: string, url: string) =>
+  queryOptions({
+    queryKey: queryKeys.waybackLinkLookup(captureId, url),
+    queryFn: () => window.birdbrain.wayback.lookupLink({ captureId, url }),
+    enabled: false,
+    staleTime: 5 * 60 * 1000
+  })
+
 export const waybackPinsQueryOptions = (captureId: string) =>
   queryOptions({
     queryKey: queryKeys.waybackPins(captureId),

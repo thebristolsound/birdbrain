@@ -46,8 +46,10 @@ import {
   exhibitPackageDirectory,
   exhibitPackagePath,
   parseChainPath,
+  pdfPath,
   screenshotPath,
-  timestampTokenPath
+  timestampTokenPath,
+  transactionRecordPath
 } from '../../packages/evidence-package-layout/index'
 import type { DerivationEntryFacts } from '@shared/verify/exhibitBinding'
 import { canonicalStringify } from '@shared/verify/canonicalJson'
@@ -158,6 +160,58 @@ function describeEgress(cap: Extract<ManifestEntry, { type: 'capture' }>): strin
     `the signed capture entry records Egress ${egressKind}${label}${tls}. ` +
     'It records what Birdbrain asked the browser to do, not which address the site saw'
   )
+}
+
+// The Transaction Record headers row (ADR-0036, Consequences: "the glossary
+// and the verifier say so: the headers are present, their values are not"). It
+// quotes the names the signed inventory records, or is undefined when the entry
+// records no Transaction Record. Behind a FAILed chain the names are
+// unverified, so they are not quoted, as the Egress row's values are not.
+function describeReplacedHeaders(
+  cap: Extract<ManifestEntry, { type: 'capture' }>,
+  unverified: boolean
+): string | undefined {
+  const record = cap.inventory?.transactionRecord
+  if (!record?.present) return undefined
+  if (unverified) {
+    return (
+      'not reported: the manifest chain FAILed, so ' +
+      "this entry's replaced header names are unverified"
+    )
+  }
+  const { replacedHeaders } = record
+  if (replacedHeaders.length === 0) {
+    return (
+      'the signed capture entry records that no header value in the Transaction Record ' +
+      'was replaced'
+    )
+  }
+  return (
+    'the signed capture entry records that the Transaction Record holds the headers ' +
+    `${replacedHeaders.join(', ')} with their values replaced: the headers are present, ` +
+    'their values are not'
+  )
+}
+
+// A file a capture entry anchors by its own sha256, at the package path that
+// digest names: the screenshot's rule (see the screenshot check), applied to
+// the Transaction Record and the PDF. An absent hash SKIPs with the reason
+// that the entry anchors no such file; a present one FAILs unless the package
+// holds a file there whose sha256 is the hash.
+function bindContentAddressed(
+  dir: string,
+  digest: string | undefined,
+  packagePath: (digest: string) => string,
+  subject: string,
+  noun: string
+): { status: CheckStatus; reason?: string } {
+  if (digest === undefined) return { status: 'skip', reason: `the entry anchors no ${noun}` }
+  const filePath = join(dir, packagePath(digest))
+  if (!existsSync(filePath)) return { status: 'fail', reason: `${subject} file missing` }
+  if (sha256File(filePath) !== digest) {
+    return { status: 'fail', reason: `${subject} hash does not match manifest` }
+  }
+  return { status: 'pass' }
 }
 
 // Joins package-relative segments (which originate from the UNTRUSTED
@@ -862,6 +916,33 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
         add(shotName, 'pass')
       }
     }
+
+    // The Transaction Record, the headers row that states what it holds of the
+    // credential headers, and the PDF (capture engine, schema 6).
+    const transactionRecord = bindContentAddressed(
+      dir,
+      cap.transactionRecordHash,
+      transactionRecordPath,
+      `capture ${cap.captureId}: Transaction Record`,
+      'Transaction Record'
+    )
+    add(
+      `capture ${cap.captureId} transaction record`,
+      transactionRecord.status,
+      transactionRecord.reason
+    )
+    const replacedHeaders = describeReplacedHeaders(cap, unverifiedEntries.has(cap))
+    if (replacedHeaders !== undefined) {
+      add(`capture ${cap.captureId} transaction record headers`, 'skip', replacedHeaders)
+    }
+    const pdf = bindContentAddressed(
+      dir,
+      cap.pdfHash,
+      pdfPath,
+      `capture ${cap.captureId}: PDF`,
+      'PDF'
+    )
+    add(`capture ${cap.captureId} pdf`, pdf.status, pdf.reason)
 
     // Timestamp — STRUCTURAL only: locate the .tst (untrusted name), byte-bind
     // it to the SIGNED `tsaToken`, and check the token's imprint == contentHash.

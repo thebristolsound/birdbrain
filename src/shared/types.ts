@@ -4,6 +4,7 @@
 import type { NoteAnchor } from '@shared/noteAnchor'
 import type { MentionTargetType } from '@shared/noteDoc'
 import type { ClaimCheck } from '@shared/investigation'
+import type { BoundTls, CaptureInventory, ScrollToLoadRecord } from '@shared/schemas'
 
 export interface Case {
   id: string
@@ -94,6 +95,56 @@ export type EgressKind = (typeof EGRESS_KINDS)[number]
 // not run while the Egress is not Direct (ADR-0032, rule 3).
 export const TLS_REFETCH_SKIPS = ['egress-not-direct'] as const
 export type TlsRefetchSkip = (typeof TLS_REFETCH_SKIPS)[number]
+
+// The capture engine's closed value lists for the capture entry's schema-6
+// fields (docs/plans/2026-10-10-capture-engine-first-slice.md, D4, D5 and D7).
+// Each holds only the values the first slice can write. A later value takes a
+// schema step, so a released verifier meets it under a newer stamp and reports
+// "verifier too old".
+
+// Why the inventory records the Transaction Record or the PDF as absent:
+// `not-taken`, this build does not take the file; `failed`, the engine tried
+// and failed.
+export const INVENTORY_ABSENCE_REASONS = ['not-taken', 'failed'] as const
+export type InventoryAbsenceReason = (typeof INVENTORY_ABSENCE_REASONS)[number]
+
+// Where Scroll-to-load ended. There is no `failed` value; D5 gives the reason.
+export const SCROLL_TO_LOAD_OUTCOMES = [
+  'nothing-to-scroll',
+  'height-cap',
+  'stopped-growing',
+  'time-budget'
+] as const
+export type ScrollToLoadOutcome = (typeof SCROLL_TO_LOAD_OUTCOMES)[number]
+
+// Why a capture entry carries no Bound TLS Details.
+export const BOUND_TLS_ABSENCES = [
+  'not-recorded',
+  'not-https',
+  'from-cache',
+  'not-reported'
+] as const
+export type BoundTlsAbsence = (typeof BOUND_TLS_ABSENCES)[number]
+
+// CDP's `certificateTransparencyCompliance` values, admitted exactly.
+export const CERTIFICATE_TRANSPARENCY_COMPLIANCES = [
+  'unknown',
+  'not-compliant',
+  'compliant'
+] as const
+export type CertificateTransparencyCompliance =
+  (typeof CERTIFICATE_TRANSPARENCY_COMPLIANCES)[number]
+
+// The four credential headers whose values ADR-0036 keeps out of every
+// Transaction Record, lower-case and sorted, as the inventory's
+// `replacedHeaders` names them.
+export const CREDENTIAL_HEADER_NAMES = [
+  'authorization',
+  'cookie',
+  'proxy-authorization',
+  'set-cookie'
+] as const
+export type CredentialHeaderName = (typeof CREDENTIAL_HEADER_NAMES)[number]
 
 // Orthogonal trusted-time axis (#120), independent of integrity status. A
 // capture is 'rfc3161' once an RFC 3161 token anchors its content hash,
@@ -309,6 +360,13 @@ export interface Capture {
   // Mirror of the corroboration-only TLS cert chain anchored in the v2+ manifest
   // capture entry (#123). undefined for legacy / cert-less captures.
   tlsCertChain?: TlsCertChainResult
+  // Mirrors of the capture engine's schema-6 capture entry fields (migration v43).
+  transactionRecordHash?: string
+  pdfHash?: string
+  inventory?: CaptureInventory
+  scrollToLoad?: ScrollToLoadRecord
+  boundTls?: BoundTls
+  boundTlsAbsent?: BoundTlsAbsence
   sizeBytes?: number
   manifestIndex?: number
   prevHash?: string

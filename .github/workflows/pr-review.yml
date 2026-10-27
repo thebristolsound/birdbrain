@@ -75,7 +75,10 @@ jobs:
           || (github.event.label.name == 'review:requested'
             && github.event.sender.login == 'thebristolsound')))
     environment: paid-runs
-    runs-on: ubuntu-latest
+    # Not ubuntu-latest: the agent sessions here run the unit tests, and on Ubuntu 26.04
+    # the ones that load sharp under Electron segfault (electron/electron#46323). See
+    # "sharp under Electron on Linux" in docs/agents/testing.md.
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
       GH_TOKEN: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}

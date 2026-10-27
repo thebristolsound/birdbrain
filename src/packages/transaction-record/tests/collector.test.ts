@@ -146,6 +146,7 @@ describe('collectExchanges on the step 0 streams', () => {
       cached: 0,
       cancelled: 0,
       failed: 0,
+      finishedWithoutResponse: 0,
       inFlight: 0,
       bodiesOmitted: 0,
       incompleteRequestBodies: 0,
@@ -174,14 +175,16 @@ describe('collectExchanges on the step 0 streams', () => {
     expect(document.response?.securityDetails).not.toHaveProperty('certificateId')
   })
 
-  it('puts every exchange in exactly one of the five state counts, for every stream', () => {
+  it('puts every exchange in exactly one of the six state counts, for every stream', () => {
     for (const name of SPIKE_RUNS) {
       for (const result of [collectSpike(name), collect({ events: spikeStream(name) })]) {
         const { exchanges, counts } = result
-        const { cached, cancelled, failed, inFlight, bodiesOmitted } = counts
-        expect(counts.exchanges + cached + cancelled + failed + inFlight, name).toBe(
-          exchanges.length
-        )
+        const { cached, cancelled, failed, finishedWithoutResponse, inFlight, bodiesOmitted } =
+          counts
+        expect(
+          counts.exchanges + cached + cancelled + failed + finishedWithoutResponse + inFlight,
+          name
+        ).toBe(exchanges.length)
         expect(bodiesOmitted, name).toBeLessThanOrEqual(counts.exchanges)
       }
     }
@@ -201,7 +204,7 @@ describe('collectExchanges on the step 0 streams', () => {
 })
 
 // The known answers for each step 0 stream with an invented body for every finished request:
-// all ten counts, so a change that moves any one of them fails here. The spike sent no
+// all eleven counts, so a change that moves any one of them fails here. The spike sent no
 // `Target.setAutoAttach`, so the page is the one target and counts as unrecorded (plan D17).
 const SPIKE_COUNTS: Record<string, Partial<Record<string, number>>> = {
   'q2-savepage': { exchanges: 10 },
@@ -219,12 +222,13 @@ describe('collectExchanges counts on every step 0 stream', () => {
     expect(Object.keys(SPIKE_COUNTS).sort()).toEqual([...SPIKE_RUNS].sort())
   })
 
-  it.each(Object.entries(SPIKE_COUNTS))('pins all ten counts for %s', (name, expected) => {
+  it.each(Object.entries(SPIKE_COUNTS))('pins all eleven counts for %s', (name, expected) => {
     expect(collectSpike(name).counts).toEqual({
       exchanges: 0,
       cached: 0,
       cancelled: 0,
       failed: 0,
+      finishedWithoutResponse: 0,
       inFlight: 0,
       bodiesOmitted: 0,
       incompleteRequestBodies: 0,
@@ -1011,7 +1015,7 @@ describe('collectExchanges main document', () => {
 })
 
 describe('collectExchanges, a request finished with no response', () => {
-  it('counts it in flight and writes no response for it', () => {
+  it('counts it apart from in flight and writes no response for it', () => {
     // What step 9's e2e run saw for a service worker's main script on its own session.
     const script = 'http://127.0.0.1:8080/sw.js'
     const { exchanges, counts } = collect({
@@ -1022,9 +1026,52 @@ describe('collectExchanges, a request finished with no response', () => {
       ],
       responseBodies: body('sw')
     })
-    expect(exchanges[0]).toMatchObject({ state: 'in-flight', complete: false })
+    expect(exchanges[0]).toMatchObject({
+      state: 'finished-without-response',
+      complete: false
+    })
     expect(exchanges[0].response).toBeUndefined()
     expect(exchanges[0].responseBody).toBeUndefined()
-    expect(counts).toMatchObject({ exchanges: 0, inFlight: 1, bodiesOmitted: 0 })
+    expect(counts).toMatchObject({
+      exchanges: 0,
+      finishedWithoutResponse: 1,
+      inFlight: 0,
+      bodiesOmitted: 0
+    })
+  })
+})
+
+describe('collectExchanges, a body fetched on another session', () => {
+  const url = 'http://127.0.0.1:8080/twice'
+  const worker = on('worker-session')
+  const events = [
+    sent('r', url),
+    received('r', url),
+    finished('r'),
+    worker('Network.loadingFinished', { requestId: 'r' })
+  ]
+
+  it('keeps a body fetched on the session that finished the request last', () => {
+    const { exchanges } = collect({
+      events,
+      responseBodies: new Map([
+        ['r', { body: 'from the worker', base64Encoded: false, sessionId: 'worker-session' }]
+      ])
+    })
+    expect(exchanges[0]).toMatchObject({
+      state: 'complete',
+      responseBody: { data: 'from the worker' }
+    })
+  })
+
+  it('omits a body fetched on another session, whatever that session answered', () => {
+    const { exchanges, counts } = collect({
+      events,
+      responseBodies: new Map([
+        ['r', { body: 'from the page', base64Encoded: true, sessionId: '' }]
+      ])
+    })
+    expect(exchanges[0].state).toBe('body-omitted')
+    expect(counts.bodiesOmitted).toBe(1)
   })
 })

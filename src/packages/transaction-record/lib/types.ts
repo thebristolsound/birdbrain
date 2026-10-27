@@ -19,6 +19,12 @@ export interface RecordedEvent {
 export interface ResponseBodyResult {
   body: string
   base64Encoded: boolean
+  /**
+   * The session the body was fetched on. When given, the body is kept only if it is the session
+   * that reported the request's last `Network.loadingFinished`, the one whose durable messages
+   * decide a text body.
+   */
+  sessionId?: string
 }
 
 /** What `Network.getRequestPostData` returned for a request id. */
@@ -165,12 +171,19 @@ export interface AttachedToTarget {
  * Where an exchange ended. Each exchange has exactly one. When an exchange shows more than one
  * signal, the first that applies wins: `loadingFailed` (`cancelled` or `failed`), a cache signal
  * (`cached`), a redirect (`redirected`), `loadingFinished` after a response (`complete` or
- * `body-omitted`), and otherwise `in-flight`. A request whose `loadingFinished` arrived with no
- * response is `in-flight` too, since the record has no response to show: step 9's e2e run saw a
- * service worker's own main script reported that way.
+ * `body-omitted`), `loadingFinished` with no response (`finished-without-response`, which step
+ * 9's e2e run saw for a service worker's own main script; ruled 2026-10-26 to be its own count),
+ * and otherwise `in-flight`.
  */
 export type ExchangeState =
-  'complete' | 'redirected' | 'body-omitted' | 'cached' | 'cancelled' | 'failed' | 'in-flight'
+  | 'complete'
+  | 'redirected'
+  | 'body-omitted'
+  | 'cached'
+  | 'cancelled'
+  | 'failed'
+  | 'finished-without-response'
+  | 'in-flight'
 
 export interface BodyData {
   data: string
@@ -224,7 +237,8 @@ export interface Exchange {
 
 /**
  * The Transaction Record counts of the inventory (plan D4 and D17). Every exchange falls in exactly
- * one of `exchanges`, `cached`, `cancelled`, `failed`, and `inFlight`. `bodiesOmitted` is part of
+ * one of `exchanges`, `cached`, `cancelled`, `failed`, `finishedWithoutResponse`, and `inFlight`.
+ * `bodiesOmitted` is part of
  * `exchanges`, and `incompleteRequestBodies` counts request bodies whatever state their exchange
  * ended in.
  */
@@ -233,6 +247,8 @@ export interface TransactionRecordCounts {
   cached: number
   cancelled: number
   failed: number
+  /** A request whose `Network.loadingFinished` arrived with no response: a request record only. */
+  finishedWithoutResponse: number
   inFlight: number
   bodiesOmitted: number
   incompleteRequestBodies: number

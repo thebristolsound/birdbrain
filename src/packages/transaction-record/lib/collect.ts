@@ -96,7 +96,10 @@ const stateOf = (hop: Hop, next: Hop | undefined, hasBody: boolean): ExchangeSta
   const redirect = next?.sent.redirectResponse
   if (hop.servedFromCache || (hop.response ?? redirect)?.fromDiskCache === true) return 'cached'
   if (redirect) return 'redirected'
-  if (hop.finished && hop.response) return hasBody ? 'complete' : 'body-omitted'
+  if (hop.finished) {
+    if (hop.response === undefined) return 'finished-without-response'
+    return hasBody ? 'complete' : 'body-omitted'
+  }
   return 'in-flight'
 }
 
@@ -146,8 +149,14 @@ const toExchanges = (
   // The rulings of 2026-10-26 on the charset spike: a text body is the served bytes only from a
   // session sent `Network.configureDurableMessages`, so from any other it counts as not returned.
   const finishedOn = bodyHop === -1 ? undefined : hops[bodyHop].finishedOn
+  // A body fetched on another session than the one that finished the request is not judged by
+  // that session's answer: it is not kept.
+  const fromFinishingSession =
+    returned !== undefined &&
+    (returned.sessionId === undefined || returned.sessionId === finishedOn)
   const body =
     returned !== undefined &&
+    fromFinishingSession &&
     (returned.base64Encoded ||
       (finishedOn !== undefined && (input.durableSessions?.has(finishedOn) ?? false)))
       ? returned
@@ -325,6 +334,7 @@ export const collectExchanges = (input: CollectorInput): CollectedExchanges => {
     cached: countOf(exchanges, 'cached'),
     cancelled: countOf(exchanges, 'cancelled'),
     failed: countOf(exchanges, 'failed'),
+    finishedWithoutResponse: countOf(exchanges, 'finished-without-response'),
     inFlight: countOf(exchanges, 'in-flight'),
     bodiesOmitted: countOf(exchanges, 'body-omitted'),
     incompleteRequestBodies: exchanges.filter(

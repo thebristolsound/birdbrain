@@ -252,9 +252,20 @@ describe('writeTransactionRecord partial exchanges (plan D8)', () => {
   const failed = exchange('https://example.test/failed', 'failed')
   const cancelled = exchange('https://example.test/cancelled', 'cancelled')
   const inFlight = exchange('https://example.test/in-flight', 'in-flight')
+  const noResponse = exchange('https://example.test/no-response', 'finished-without-response')
   const cached = exchange('https://example.test/cached', 'cached')
   const complete = exchange('https://example.test/complete', 'complete')
-  const all = [complete, redirect, omitted, shortBody, failed, cancelled, inFlight, cached]
+  const all = [
+    complete,
+    redirect,
+    omitted,
+    shortBody,
+    failed,
+    cancelled,
+    inFlight,
+    noResponse,
+    cached
+  ]
 
   it('writes the records each row of the table names', async () => {
     const { records } = await writeAndRead(all)
@@ -271,6 +282,7 @@ describe('writeTransactionRecord partial exchanges (plan D8)', () => {
       'request https://example.test/failed',
       'request https://example.test/cancelled',
       'request https://example.test/in-flight',
+      'request https://example.test/no-response',
       'request https://example.test/cached'
     ])
   })

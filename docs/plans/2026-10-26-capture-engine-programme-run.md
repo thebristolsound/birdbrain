@@ -144,8 +144,9 @@ merges.
    and #1979 and #1988 from `main`. Steps 3 and 4 merge before the tag (the hold recorded
    under Gates).
 4. **Tag** the schema-6 release, with notes telling Shared Case members to upgrade together.
-5. **After the tag.** #1996 (step 6) and #2002 (#1843) in the same release, then #1997, #1999 and
-   #2000. Close #1667 by hand when #1996 merges.
+5. **After the tag.** In stack order: #1996 (step 6), #1999 (step 9), #2000 (step 10) and #2002
+   (#1843); #1997 (the link writer) after #1985 and #1981. #1996 and #2002 ship in the same
+   release. Close #1667 by hand when #1996 merges.
 6. **Viewer slices.** #1987, #1990 and #1998 merge from `main`, independent of the tag.
 
 The decision the maintainer has left open: whether schema 6 refuses an unsorted or repeated

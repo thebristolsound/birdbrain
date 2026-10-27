@@ -746,23 +746,46 @@ test.describe('stored-page viewer links', () => {
 
     // A modifier pressed in the window and let go after the window lost focus, so its
     // release is never seen. Losing focus drops it, and a plain click works again.
+    //
+    // The window that takes focus opens in the screen corner furthest from the real
+    // pointer. Opened over it (a new window is centred, and so is Xvfb's pointer), the
+    // X server sends the guest a leave and, once it closes, a move at the real
+    // pointer's position, which takes the hover off the link these synthetic events
+    // point at. The guest must see no mouse event from the switch.
     await holdKey(electronApp, 'window', 'alt', 'keyDown')
-    const blurred = await electronApp.evaluate(async ({ BrowserWindow, webContents }) => {
-      const host = webContents.getAllWebContents().find((wc) => wc.getType() === 'window')
-      if (!host) throw new Error('no window webContents')
-      const seen = new Promise<boolean>((resolve) => {
-        host.once('blur', () => resolve(true))
-        setTimeout(() => resolve(false), 3000)
-      })
-      host.focus()
-      const other = new BrowserWindow({ width: 200, height: 200 })
-      other.focus()
-      const result = await seen
-      other.destroy()
-      host.focus()
-      return result
-    })
-    expect(blurred).toBe(true)
+    const focusSwitch = await electronApp.evaluate(
+      async ({ BrowserWindow, screen, webContents }) => {
+        const all = webContents.getAllWebContents()
+        const host = all.find((wc) => wc.getType() === 'window')
+        const guest = all.find((wc) => wc.getType() === 'webview')
+        if (!host || !guest) throw new Error('no window or guest webContents')
+        const mouse: string[] = []
+        const onMouse = (_event: unknown, { type }: { type: string }) => mouse.push(type)
+        guest.on('before-mouse-event', onMouse)
+        const { x, y, width, height } = screen.getPrimaryDisplay().bounds
+        const pointer = screen.getCursorScreenPoint()
+        const size = 100
+        const blurred = new Promise<boolean>((resolve) => {
+          host.once('blur', () => resolve(true))
+          setTimeout(() => resolve(false), 3000)
+        })
+        host.focus()
+        const other = new BrowserWindow({
+          x: pointer.x - x < width / 2 ? x + width - size : x,
+          y: pointer.y - y < height / 2 ? y + height - size : y,
+          width: size,
+          height: size
+        })
+        other.focus()
+        const result = await blurred
+        other.destroy()
+        host.focus()
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        guest.off('before-mouse-event', onMouse)
+        return { blurred: result, mouse }
+      }
+    )
+    expect(focusSwitch).toEqual({ blurred: true, mouse: [] })
     await hover('public', 'main', targets[0].url)
     await guestMouse(electronApp, { x: ROW.x, y: rowY('public', 'main'), button: 'left' })
     await expect(title).toHaveText('Main target')

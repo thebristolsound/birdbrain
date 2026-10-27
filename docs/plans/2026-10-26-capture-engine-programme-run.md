@@ -86,7 +86,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Viewer slice 2 Part A | #1735 | #1987 | fix round pushed at `3f015984`; a left click on a new-window link now does nothing |
 | Viewer slice 3, one-link lookup | #1737 | #1990 | fix round pushed at `1a1dfa3d`, preflight green |
 | Viewer slice 3, batch lookup | #1738 | #1998 | fix round pushed at `a45764ce`, preflight green |
-| Step 9, record the Transaction Record (writer) | #1929 | #1999 | fix round pushed at `50f9a359`; merges #1996 again after the stack merge |
+| Step 9, record the Transaction Record (writer) | #1929 | #1999 | fix round and stack merge pushed at `11fcd9c2`; merges after the tag |
 | Step 10, PDF (writer) | #1930 | #2000 | draft, under review; merges after the tag |
 | Pin images offered as sets (writer) | #1843 | - | in flight, stacked on #2000; ships with step 6 |
 | ADR-0040 acceptance | #1736 | #1977 | draft, preflight green |

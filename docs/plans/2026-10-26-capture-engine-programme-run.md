@@ -90,7 +90,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
 | Viewer slice 3, one-link lookup | #1737 | #1990 | fix round pushed at `1a1dfa3d`, preflight green |
 | Viewer slice 3, batch lookup | #1738 | #1998 | fix round pushed at `a45764ce`, preflight green |
 | Step 9, record the Transaction Record (writer) | #1929 | #1999 | fix round and stack merge pushed at `11fcd9c2`; merges after the tag |
-| Step 10, PDF (writer) | #1930 | #2000 | review: request changes (PDF of a later page, pdf.js advisory); fix round in flight |
+| Step 10, PDF (writer) | #1930 | #2000 | fix round pushed at `39ae663a`, audit passing; merges after the tag |
 | Pin images offered as sets (writer) | #1843 | #2002 | draft, under review; ships with step 6 |
 | ADR-0040 acceptance | #1736 | #1977 | draft, preflight green |
 | ADR-0040 verifier, schema 6 | #1976 | #1981 | review: approve, stacked on #1978 |

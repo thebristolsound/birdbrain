@@ -72,6 +72,12 @@ import { initInstallationId, resetInstallationId } from '@main/services/installa
 import { initSigningKey, resetSigningKey } from '@main/services/signingKey'
 import { readStoredZip } from '@main/services/zipRead'
 import { signDerivedFile } from '../../helpers/archiveDerivedFiles'
+import {
+  ENGINE_BOUND_TLS,
+  ENGINE_HASHES,
+  ENGINE_INVENTORY,
+  ENGINE_SCROLL_TO_LOAD
+} from '../../helpers/captureEnginePackage'
 
 type Row = Record<string, unknown>
 
@@ -138,6 +144,20 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
       consentSuppression: 'filter-list',
       tlsCertChain: '{"status":"unavailable"}'
     })
+    // Every capture engine mirror column set (#1907), so the deep comparison below fails if
+    // the import drops one. No entry carries both `boundTls` and `boundTlsAbsent`, but the
+    // import copies each column on its own.
+    const engineColumns: Row = {
+      transaction_record_hash: ENGINE_HASHES.transactionRecord,
+      pdf_hash: ENGINE_HASHES.pdf,
+      inventory: JSON.stringify(ENGINE_INVENTORY),
+      scroll_to_load: JSON.stringify(ENGINE_SCROLL_TO_LOAD),
+      bound_tls: JSON.stringify(ENGINE_BOUND_TLS),
+      bound_tls_absent: 'from-cache'
+    }
+    for (const [column, value] of Object.entries(engineColumns)) {
+      getDb().prepare(`UPDATE captures SET ${column} = ? WHERE id = ?`).run(value, cap2.id)
+    }
     setCaptureVerification(cap1.id, {
       status: 'verified',
       computedHash: 'h1',
@@ -296,6 +316,7 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
     expect(imported2.supersedes_capture_id).toBe(mapId(cap1.id)) // REMAPPED, not copied
     expect(imported2.method).toBe('background') // non-default survived
     expect(imported2.consent_suppression).toBe('filter-list')
+    expect(imported2).toMatchObject(engineColumns)
     // cap1 left the source verified and the export carried that result; the
     // import writes null, so the imported Capture reads unverified (#1523).
     const source1 = src.captures.find((r) => r.id === cap1.id) as Row

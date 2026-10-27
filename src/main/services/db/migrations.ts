@@ -1877,4 +1877,31 @@ export function runMigrations(db: Database.Database): void {
       db.pragma('user_version = 42')
     })()
   }
+
+  if (version < 43) {
+    db.transaction(() => {
+      // The capture engine's schema-6 fields on a capture entry (docs/plans/2026-10-10-capture-
+      // engine-first-slice.md, D1 and D9), mirrored for queries and in-app display. Checks read
+      // the signed entry, never this row, which Settings → Database can hand-edit. Two hashes,
+      // then JSON or the enum value, as tls_cert_chain holds JSON. No path columns: the
+      // Capture Store derives each path from the Capture id and the type.
+      //
+      // A restored copy marked one version back runs this block again, and SQLite has no
+      // ADD COLUMN IF NOT EXISTS, so a column already present is skipped.
+      const present = new Set(
+        (db.pragma('table_info(captures)') as Array<{ name: string }>).map(({ name }) => name)
+      )
+      for (const column of [
+        'transaction_record_hash',
+        'pdf_hash',
+        'inventory',
+        'scroll_to_load',
+        'bound_tls',
+        'bound_tls_absent'
+      ]) {
+        if (!present.has(column)) db.exec(`ALTER TABLE captures ADD COLUMN ${column} TEXT`)
+      }
+      db.pragma('user_version = 43')
+    })()
+  }
 }

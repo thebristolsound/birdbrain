@@ -4,6 +4,7 @@
 import type { NoteAnchor } from '@shared/noteAnchor'
 import type { MentionTargetType } from '@shared/noteDoc'
 import type { ClaimCheck } from '@shared/investigation'
+import type { BoundTls, CaptureInventory, ScrollToLoadRecord } from '@shared/schemas'
 
 export interface Case {
   id: string
@@ -359,6 +360,13 @@ export interface Capture {
   // Mirror of the corroboration-only TLS cert chain anchored in the v2+ manifest
   // capture entry (#123). undefined for legacy / cert-less captures.
   tlsCertChain?: TlsCertChainResult
+  // Mirrors of the capture engine's schema-6 capture entry fields (migration v43).
+  transactionRecordHash?: string
+  pdfHash?: string
+  inventory?: CaptureInventory
+  scrollToLoad?: ScrollToLoadRecord
+  boundTls?: BoundTls
+  boundTlsAbsent?: BoundTlsAbsence
   sizeBytes?: number
   manifestIndex?: number
   prevHash?: string

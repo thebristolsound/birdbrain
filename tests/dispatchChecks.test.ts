@@ -31,32 +31,39 @@ const JOBS: CheckRun[] = [
   { id: 3, name: 'build' }
 ]
 
-const pr7 = (ref: string) => ({ number: 7, base: { ref } })
+const CI = '.github/workflows/ci.yml'
+const NO_CI = 'no CI run for this head against base main'
+
+const pr = (number: number, ref: string) => ({ number, base: { ref } })
+
+// PR #7's runs name `runBase`, the PR's base unless a test says otherwise.
+const workflowRuns = (runBase: string) => [
+  { id: 100, workflow_id: 11, run_number: 5, path: CI, pull_requests: [pr(7, runBase)] },
+  { id: 90, workflow_id: 11, run_number: 4, path: CI, pull_requests: [pr(7, runBase)] },
+  { id: 300, workflow_id: 12, run_number: 1, path: 'two.yml', pull_requests: [pr(7, runBase)] },
+  {
+    id: 400,
+    workflow_id: 13,
+    run_number: 1,
+    path: 'three.yml',
+    pull_requests: [pr(7, 'earlier-base')]
+  },
+  { id: 200, workflow_id: 11, run_number: 6, path: CI, pull_requests: [pr(8, 'collaborator-base')] }
+]
 
 const routes = ({
   checkRuns = JOBS,
   statuses = [],
-  base = 'main'
+  base = 'main',
+  runs = workflowRuns(base)
 }: {
   checkRuns?: CheckRun[]
   statuses?: Status[]
   base?: string
+  runs?: ReturnType<typeof workflowRuns>
 }): GhRoutes => ({
   [`${API}/pulls/7`]: { head: { sha: SHA }, base: { ref: base } },
-  [`${API}/actions/runs?head_sha=${SHA}&event=pull_request&per_page=100`]: {
-    workflow_runs: [
-      { id: 100, workflow_id: 11, run_number: 5, pull_requests: [pr7(base)] },
-      { id: 90, workflow_id: 11, run_number: 4, pull_requests: [pr7(base)] },
-      { id: 300, workflow_id: 12, run_number: 1, pull_requests: [pr7(base)] },
-      { id: 400, workflow_id: 13, run_number: 1, pull_requests: [pr7('earlier-base')] },
-      {
-        id: 200,
-        workflow_id: 11,
-        run_number: 6,
-        pull_requests: [{ number: 8, base: { ref: 'collaborator-base' } }]
-      }
-    ]
-  },
+  [`${API}/actions/runs?head_sha=${SHA}&event=pull_request&per_page=100`]: { workflow_runs: runs },
   [`${API}/actions/runs/100/jobs?per_page=100`]: { jobs: [{ id: 1 }, { id: 2 }, { id: 3 }] },
   [`${API}/actions/runs/90/jobs?per_page=100`]: { jobs: [{ id: 4 }] },
   [`${API}/actions/runs/300/jobs?per_page=100`]: { jobs: [{ id: 6 }] },
@@ -197,6 +204,43 @@ describe.skipIf(!HAS_JQ)('checks.sh counts only the jobs of this PR and trusted 
     expect(out.passed).toEqual(['build', 'lint', 'test'])
   })
 
+  // A retargeted PR's runs would read like this if GitHub kept the base each run started against:
+  // CI has not run against the base the PR has now.
+  it('reports CI as pending when every run names a base the PR no longer has', () => {
+    const { status, stderr, out } = checks(routes({ runs: workflowRuns('feat/parent') }))
+    expect(status, stderr).toBe(0)
+    expect(out.pending).toEqual([NO_CI])
+    expect(out.failing).toEqual([])
+    expect(out.passed).toEqual([])
+    expect(out.ignored).toHaveLength(3)
+  })
+
+  it('reports CI as pending when the head has no workflow runs', () => {
+    const { status, stderr, out } = checks(routes({ runs: [], checkRuns: [] }))
+    expect(status, stderr).toBe(0)
+    expect(out).toEqual({
+      sha: SHA,
+      failing: [],
+      pending: [NO_CI],
+      passed: [],
+      skipped: [],
+      ignored: []
+    })
+  })
+
+  // merge-gate.yml runs on `edited` and pre-pass-gate.yml on `labeled`; neither event starts CI.
+  it('reports CI as pending when only another workflow ran against the base', () => {
+    const { status, stderr, out } = checks(
+      routes({
+        runs: workflowRuns('main').filter(({ path }) => path !== CI),
+        checkRuns: [{ id: 6, name: 'seed' }]
+      })
+    )
+    expect(status, stderr).toBe(0)
+    expect(out.pending).toEqual([NO_CI])
+    expect(out.passed).toEqual(['seed'])
+  })
+
   it('does not count a job of an older run of the same workflow at the same head', () => {
     const { status, stderr, out } = checks(
       routes({ checkRuns: [...JOBS, { id: 4, name: 'test', conclusion: 'cancelled' }] })
@@ -307,6 +351,12 @@ describe.skipIf(!HAS_JQ)('checks.sh --wait', () => {
     const result = checks(r, ['--wait', '1'])
     expect(result.status).toBe(124)
     expect(JSON.parse(result.stdout).pending).toEqual(['lint'])
+  })
+
+  it('keeps waiting while CI has no run for this head against the base', () => {
+    const result = checks(routes({ runs: [], checkRuns: [] }), ['--wait', '1'])
+    expect(result.status).toBe(124)
+    expect(JSON.parse(result.stdout).pending).toEqual([NO_CI])
   })
 
   it('never sleeps past the deadline, so the command returns within the wait plus one read', () => {

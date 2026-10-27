@@ -19,6 +19,12 @@
 # pass runs the probe itself when the job did not succeed. Both are listed under
 # ignored.
 #
+# When CI (ci.yml) has no run for this PR at this head against its base, `pending`
+# holds one entry saying so, and --wait keeps waiting on it: an empty read is not a
+# green. Another workflow's run is not enough, since merge-gate.yml runs on
+# `edited`, which a base change fires, and pre-pass-gate.yml on `labeled`, and
+# neither event starts CI.
+#
 # Usage: checks.sh [--wait <seconds>] <pr-number>. Env: GH_TOKEN, LOGIN (machine
 # login, optional).
 # Output: {sha, failing, pending, passed, skipped, ignored}: check names, and one
@@ -39,6 +45,7 @@ shopt -s inherit_errexit
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 R="${GITHUB_REPOSITORY:-thebristolsound/birdbrain}"
+ci_workflow=.github/workflows/ci.yml
 wait=0
 if [ "${1:-}" = --wait ]; then
   wait="${2:?usage: checks.sh [--wait <seconds>] <pr-number>}"
@@ -53,11 +60,13 @@ read_checks() {
   base="$(jq -r .base <<< "$pr")"
   # The base is filtered in the local jq, where --arg passes it as data: a branch name
   # spliced into gh's --jq filter would be read as jq code.
-  runs="$(gh api --paginate "repos/$R/actions/runs?head_sha=$sha&event=pull_request&per_page=100" \
-    --jq '.workflow_runs[] | {id, workflow_id, run_number, pull_requests}' \
-    | jq -s -r --argjson n "$n" --arg base "$base" '
+  kept="$(gh api --paginate "repos/$R/actions/runs?head_sha=$sha&event=pull_request&per_page=100" \
+    --jq '.workflow_runs[] | {id, workflow_id, run_number, path, pull_requests}' \
+    | jq -s -c --argjson n "$n" --arg base "$base" '
       map(select(any(.pull_requests[]?; .number == $n and .base.ref == $base)))
-      | group_by(.workflow_id) | map(max_by(.run_number).id) | .[]')"
+      | group_by(.workflow_id) | map(max_by(.run_number) | {id, path})')"
+  runs="$(jq -r '.[].id' <<< "$kept")"
+  ci="$(jq --arg ci "$ci_workflow" 'any(.[]; .path == $ci)' <<< "$kept")"
   jobs='[]'
   for id in $runs; do
     jobs="$(gh api --paginate "repos/$R/actions/runs/$id/jobs?per_page=100" --jq '.jobs[].id' \
@@ -67,8 +76,8 @@ read_checks() {
     --jq '.check_runs[] | {id, name, status, conclusion, app: (.app.slug // "")}' | jq -s .)"
   statuses="$(trusted_statuses "$R" "$sha" "$me")"
 
-  jq -n -c --arg sha "$sha" --argjson jobs "$jobs" --argjson runs "$check_runs" \
-    --argjson st "$statuses" '
+  jq -n -c --arg sha "$sha" --arg base "$base" --argjson ci "$ci" --argjson jobs "$jobs" \
+    --argjson runs "$check_runs" --argjson st "$statuses" '
     def bad: ["failure", "cancelled", "timed_out", "action_required"];
     ($runs | map(.why = (if .name == "merge-gate" then "reads the pre-pass verdict (ADR-0041), not CI"
           elif .name == "probe" then "the advisory test reliability probe, read by the pre-pass"
@@ -81,6 +90,8 @@ read_checks() {
           elif .conclusion == "skipped" then "skipped" else "passed" end)}]
       + [$st[] | select(.value.state != "absent") | {name: .key, state: (.value.state
           | if . == "pending" then "pending" elif . == "success" then "passed" else "failing" end)}]
+      + (if $ci then [] else [{name: "no CI run for this head against base \($base)",
+          state: "pending"}] end)
     | . as $all
     | {sha: $sha}
       + (["failing", "pending", "passed", "skipped"] | map({(.): (. as $s | [$all[] | select(.state == $s)

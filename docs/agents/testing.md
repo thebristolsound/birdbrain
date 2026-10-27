@@ -17,7 +17,7 @@ A type-level assertion in `tests/` is now live, so `expectTypeOf` is available f
 
 ## sharp under Electron on Linux
 
-On some Linux systems every test file that uses sharp dies with `Worker exited unexpectedly with signal SIGSEGV`: on the maintainer's Arch machine, `thumbnails`, `export`, `exhibitModel`, `backgroundRenderer` and `burnAnnotations` under `tests/main/services/`. The missing coverage then fails the `src/main/services/*.ts` threshold. CI on Ubuntu is not affected, and neither is the app: the crash needs `ELECTRON_RUN_AS_NODE=1`, which only the test runner uses.
+On some Linux systems every test file that uses sharp dies with `Worker exited unexpectedly with signal SIGSEGV`: on the maintainer's Arch machine, `thumbnails`, `export`, `exhibitModel`, `backgroundRenderer` and `burnAnnotations` under `tests/main/services/`. The missing coverage then fails the `src/main/services/*.ts` threshold. GitHub's Ubuntu 26.04 runner crashes on the same five files, and `ubuntu-latest` began resolving to it on 2026-10-27, so the workflow jobs that run the unit tests pin `runs-on: ubuntu-24.04`, which does not crash. The app is not affected: the crash needs `ELECTRON_RUN_AS_NODE=1`, which only the test runner uses.
 
 The cause is [electron/electron#46323](https://github.com/electron/electron/issues/46323). The Electron binary links the system GLib and exposes its symbols to the whole process, while sharp's prebuilt libvips bundles its own GLib. A sharp call that releases an image, such as `sharp(buffer).metadata()`, resolves `g_object_unref` to the system copy, which then calls through a null pointer. A core dump shows it as frame 0 at address `0x0`, called from `sharp-linux-x64-<version>.node`.
 

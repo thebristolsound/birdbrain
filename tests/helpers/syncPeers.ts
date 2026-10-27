@@ -269,6 +269,7 @@ export interface IngestedCapture {
   screenshotHash: string
   textHash: string
   transactionRecordHash?: string
+  pdfHash?: string
 }
 
 // What a test may put in a Capture in place of the invented defaults.
@@ -276,10 +277,12 @@ export interface CaptureContent {
   mhtml?: Buffer
   text?: string
   screenshot?: Buffer
-  // A background Capture's Transaction Record, ingested with the inventory and
-  // Scroll-to-load record its entry needs beside it (step 9 of the capture
-  // engine first-slice plan).
+  // A background Capture's Transaction Record or PDF, ingested with the
+  // inventory and Scroll-to-load record its entry needs beside them (steps 9
+  // and 10 of the capture engine first-slice plan). The inventory marks absent,
+  // as `failed`, whichever of the two is not given.
   transactionRecord?: Buffer
+  pdf?: Buffer
 }
 
 // One Capture ingested by the active peer through the app's own ingest: the
@@ -307,16 +310,22 @@ export async function addCapture(
       userAgent: '',
       httpStatus: 200,
       screenshot,
-      ...(content.transactionRecord
+      ...(content.transactionRecord || content.pdf
         ? {
             method: 'background' as const,
             inventory: CaptureInventorySchema.parse({
               ...ENGINE_INVENTORY,
-              pdf: { present: false, reason: 'not-taken' }
+              transactionRecord: content.transactionRecord
+                ? ENGINE_INVENTORY.transactionRecord
+                : { present: false, reason: 'failed' },
+              pdf: content.pdf ? ENGINE_INVENTORY.pdf : { present: false, reason: 'failed' }
             }),
             scrollToLoad: ScrollToLoadRecordSchema.parse(ENGINE_SCROLL_TO_LOAD),
             transactionRecord: content.transactionRecord,
-            boundTlsAbsent: 'not-reported' as const
+            boundTlsAbsent: content.transactionRecord
+              ? ('not-reported' as const)
+              : ('not-recorded' as const),
+            pdf: content.pdf
           }
         : {}),
       ...by(peer)
@@ -329,7 +338,8 @@ export async function addCapture(
     contentHash: result.contentHash,
     screenshotHash: sha(screenshot),
     textHash: sha(Buffer.from(text, 'utf-8')),
-    ...(content.transactionRecord ? { transactionRecordHash: sha(content.transactionRecord) } : {})
+    ...(content.transactionRecord ? { transactionRecordHash: sha(content.transactionRecord) } : {}),
+    ...(content.pdf ? { pdfHash: sha(content.pdf) } : {})
   }
 }
 

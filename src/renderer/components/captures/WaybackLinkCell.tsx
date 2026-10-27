@@ -10,6 +10,7 @@ import {
   closestLinkSnapshot,
   linkLookupSummary
 } from '@renderer/components/captures/waybackLinkModel'
+import type { BatchCellState } from '@renderer/components/captures/useWaybackLinkBatch'
 
 const ACTION_CLASS =
   'rounded px-1 text-accent hover:bg-accent-subtle focus-visible:outline-2 focus-visible:outline-ring'
@@ -49,14 +50,31 @@ function SnapshotActions({ caseId, snapshot }: { caseId: string; snapshot: Wayba
 
 /**
  * A Links tab row's Wayback answer (#1737, plan S6). It only reads the cache the link
- * menu's Look up in Wayback fills, so rendering it never contacts archive.org. Its
- * buttons are controls of their own, apart from the row's link.
+ * menu's Look up in Wayback and a batch (#1738) fill, and the batch's state for its
+ * address, so rendering it never contacts archive.org. Its buttons are controls of their
+ * own, apart from the row's link.
  */
-export function WaybackLinkCell({ capture, url }: { capture: Capture; url: string }) {
-  const { data, error, isFetching } = useQuery(waybackLinkLookupQueryOptions(capture.id, url))
+export function WaybackLinkCell({
+  capture,
+  url,
+  batch
+}: {
+  capture: Capture
+  url: string
+  batch?: BatchCellState
+}) {
+  const { data, error, isFetching, dataUpdatedAt, errorUpdatedAt } = useQuery(
+    waybackLinkLookupQueryOptions(capture.id, url)
+  )
+  // A batch failure lives outside the cache, so the latest of it and the cache's own
+  // answer or error is the one shown.
+  const batchFailed =
+    batch?.state === 'failed' && batch.at >= Math.max(dataUpdatedAt, errorUpdatedAt) ? batch : null
   let body
-  if (isFetching) {
+  if (isFetching || batch?.state === 'checking') {
     body = <span>Checking…</span>
+  } else if (batchFailed) {
+    body = <span className="text-danger-fg">{batchFailed.error}</span>
   } else if (error) {
     body = <span className="text-danger-fg">{error.message}</span>
   } else if (!data) {

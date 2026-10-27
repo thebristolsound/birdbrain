@@ -14,6 +14,7 @@ import {
 } from 'fs'
 import { join } from 'path'
 import { egressFetch } from '@main/services/egress'
+import { EventEmitter } from 'events'
 import { readStoredZip } from '@main/services/zipRead'
 import { tmpdir } from 'os'
 import { pathToFileURL } from 'url'
@@ -105,13 +106,21 @@ vi.mock('@main/services/waybackMachine', async (importActual) => {
 
 // The real link lookup by default, over the mocked lookupSnapshots above, so a test can
 // see both what the handler passes in and what reaches the CDX client.
+// The batch runner is the real one too, with no pause between requests: the pause is
+// pinned in tests/main/services/waybackLinkCheck.test.ts, and 2 s per address here would
+// only slow the suite.
 const lookupLinkSnapshots = vi.hoisted(() => vi.fn())
+const runLinkBatch = vi.hoisted(() => vi.fn())
 vi.mock('@main/services/waybackLinkCheck', async (importActual) => {
   const actual = await importActual<typeof import('@main/services/waybackLinkCheck')>()
   lookupLinkSnapshots.mockImplementation(actual.lookupLinkSnapshots)
+  runLinkBatch.mockImplementation((run: Parameters<typeof actual.runLinkBatch>[0]) =>
+    actual.runLinkBatch({ ...run, pauseMs: 0 })
+  )
   return {
     ...actual,
-    lookupLinkSnapshots: (...a: unknown[]) => lookupLinkSnapshots(...a)
+    lookupLinkSnapshots: (...a: unknown[]) => lookupLinkSnapshots(...a),
+    runLinkBatch: (...a: unknown[]) => runLinkBatch(...a)
   }
 })
 
@@ -3273,6 +3282,303 @@ describe('archive handlers', () => {
         error: 'Wayback CDX responded 503 Unavailable',
         code: 'WAYBACK_LOOKUP_FAILED'
       })
+    })
+  })
+
+  // #1738: every listed link of a stored page, one at a time, with cancel.
+  describe('wayback:lookupLinks', () => {
+    type Res = { ok: boolean; data?: unknown; error?: string; code?: string }
+    const DIRECT = { kind: 'direct' } as const
+    const EMPTY = { snapshots: [], closestIndex: null, checkedAt: '2026-10-26T00:00:00.000Z' }
+
+    function storedPage() {
+      const c = createCase({ name: 'C' })
+      return insertCapture({
+        caseId: c.id,
+        url: 'https://news.example/story',
+        title: 'Story',
+        hash: 'h',
+        timestamp: '2026-08-01T12:00:00.000Z',
+        format: 'mhtml'
+      })
+    }
+
+    // The requesting window: an emitter, so a test can close, crash or reload it.
+    function sender() {
+      const send = vi.fn()
+      let destroyed = false
+      const contents = Object.assign(new EventEmitter(), {
+        send,
+        isDestroyed: () => destroyed
+      })
+      const event = { sender: contents } as unknown as IpcMainInvokeEvent
+      const destroy = () => {
+        destroyed = true
+        contents.emit('destroyed')
+      }
+      return { send, event, contents, destroy }
+    }
+
+    function start(event: IpcMainInvokeEvent, params: unknown): Promise<Res> {
+      return registered.get(IPC_CHANNELS.WAYBACK_LOOKUP_LINKS)!(event, params) as Promise<Res>
+    }
+
+    it('sends the confirmed list as it is, through the Egress, and reports each by capture', async () => {
+      const cap = storedPage()
+      lookupSnapshots.mockResolvedValueOnce(EMPTY).mockResolvedValueOnce(EMPTY)
+      const { send, event } = sender()
+      const res = await start(event, {
+        captureId: cap.id,
+        urls: ['https://a.example/', 'https://b.example/'],
+        egress: DIRECT
+      })
+      expect(expectOk(res)).toEqual({ answered: 2, failed: 0, notChecked: 0, stopped: null })
+      expect(runLinkBatch).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          urls: ['https://a.example/', 'https://b.example/'],
+          pageCapturedAt: '2026-08-01T12:00:00.000Z',
+          fetchImpl: egressFetch
+        })
+      )
+      expect(lookupSnapshots.mock.calls.map(([url]) => url)).toEqual([
+        'https://a.example/',
+        'https://b.example/'
+      ])
+      expect(send.mock.calls).toEqual([
+        [
+          IPC_CHANNELS.WAYBACK_LINK_PROGRESS,
+          { captureId: cap.id, url: 'https://a.example/', state: 'checking' }
+        ],
+        [
+          IPC_CHANNELS.WAYBACK_LINK_PROGRESS,
+          {
+            captureId: cap.id,
+            url: 'https://a.example/',
+            state: 'answered',
+            result: { ...EMPTY, countIsMinimum: false }
+          }
+        ],
+        [
+          IPC_CHANNELS.WAYBACK_LINK_PROGRESS,
+          { captureId: cap.id, url: 'https://b.example/', state: 'checking' }
+        ],
+        [
+          IPC_CHANNELS.WAYBACK_LINK_PROGRESS,
+          {
+            captureId: cap.id,
+            url: 'https://b.example/',
+            state: 'answered',
+            result: { ...EMPTY, countIsMinimum: false }
+          }
+        ]
+      ])
+    })
+
+    const sites = (n: number) => Array.from({ length: n }, (_, i) => `https://site${i}.example/`)
+
+    it('sends a list of 50', async () => {
+      const cap = storedPage()
+      runLinkBatch.mockResolvedValueOnce({ answered: 0, failed: 0, notChecked: 0, stopped: null })
+      const urls = sites(50)
+      expectOk(await start(sender().event, { captureId: cap.id, urls, egress: DIRECT }))
+      expect(runLinkBatch.mock.calls[0][0].urls).toEqual(urls)
+    })
+
+    // The confirmation never lists more than 50, so a longer list is refused whole rather
+    // than cut: cutting it would choose addresses for the Operator.
+    it.each([
+      ['addresses', sites(51)],
+      ['entries of any kind', Array.from({ length: 51 }, () => 1)]
+    ])('refuses 51 %s before reading them', async (_, urls) => {
+      const cap = storedPage()
+      const res = await start(sender().event, { captureId: cap.id, urls, egress: DIRECT })
+      expect(res).toMatchObject({
+        ok: false,
+        error: 'A Wayback batch sends at most 50 addresses',
+        code: 'WAYBACK_BATCH_TOO_LARGE'
+      })
+      expect(runLinkBatch).not.toHaveBeenCalled()
+    })
+
+    // #1998 review, finding 1: the window's URL parser accepts `http://ex ample.com/` and
+    // main's refuses it, so main refuses the whole list rather than sending a different one.
+    it.each([
+      ['http://ex ample.com/', 'Not a web address: http://ex ample.com/'],
+      ['http://intranet/', 'Points at a private network: http://intranet/'],
+      ['http://127.0.0.1/admin', 'Points at a loopback address: http://127.0.0.1/admin']
+    ])('refuses the whole list when main refuses %s', async (bad, error) => {
+      const cap = storedPage()
+      const res = await start(sender().event, {
+        captureId: cap.id,
+        urls: [...sites(49), bad],
+        egress: DIRECT
+      })
+      expect(res).toMatchObject({ ok: false, error, code: 'WAYBACK_LINK_REFUSED' })
+      expect(runLinkBatch).not.toHaveBeenCalled()
+      expect(lookupSnapshots).not.toHaveBeenCalled()
+    })
+
+    it('refuses a list that names an address twice', async () => {
+      const cap = storedPage()
+      const res = await start(sender().event, {
+        captureId: cap.id,
+        urls: ['https://a.example/', 'https://b.example/', 'https://a.example/'],
+        egress: DIRECT
+      })
+      expect(res).toMatchObject({
+        ok: false,
+        error: 'The batch lists an address twice',
+        code: 'WAYBACK_LINK_REFUSED'
+      })
+      expect(runLinkBatch).not.toHaveBeenCalled()
+    })
+
+    it('sends nothing when the Egress is not the route the Operator confirmed', async () => {
+      const cap = storedPage()
+      const res = await start(sender().event, {
+        captureId: cap.id,
+        urls: ['https://a.example/'],
+        egress: { kind: 'proxy', proxyUrl: 'socks5://127.0.0.1:1080', label: '' }
+      })
+      expect(res).toMatchObject({ ok: false, code: 'WAYBACK_EGRESS_CHANGED' })
+      expect(runLinkBatch).not.toHaveBeenCalled()
+      expect(lookupSnapshots).not.toHaveBeenCalled()
+    })
+
+    it('runs one batch at a time, and a cancel stops it before the next request', async () => {
+      const cap = storedPage()
+      let answer: (value: unknown) => void = () => {}
+      lookupSnapshots.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)))
+      const { event } = sender()
+      const running = start(event, {
+        captureId: cap.id,
+        urls: ['https://a.example/', 'https://b.example/'],
+        egress: DIRECT
+      })
+      await vi.waitFor(() => expect(lookupSnapshots).toHaveBeenCalledOnce())
+
+      const second = await start(event, {
+        captureId: cap.id,
+        urls: ['https://c.example/'],
+        egress: DIRECT
+      })
+      expect(second).toMatchObject({ ok: false, code: 'WAYBACK_BATCH_RUNNING' })
+      expect(
+        await invoke<Res>(IPC_CHANNELS.WAYBACK_CANCEL_LOOKUP_LINKS, 'another-capture')
+      ).toEqual({ ok: true, data: false })
+      expect(await invoke<Res>(IPC_CHANNELS.WAYBACK_CANCEL_LOOKUP_LINKS, cap.id)).toEqual({
+        ok: true,
+        data: true
+      })
+
+      answer(EMPTY)
+      expect(expectOk(await running)).toEqual({
+        answered: 1,
+        failed: 0,
+        notChecked: 1,
+        stopped: 'cancelled'
+      })
+      expect(lookupSnapshots).toHaveBeenCalledOnce()
+      // The finished batch frees the slot.
+      expect(await invoke<Res>(IPC_CHANNELS.WAYBACK_CANCEL_LOOKUP_LINKS, cap.id)).toEqual({
+        ok: true,
+        data: false
+      })
+    })
+
+    // #1998 review, finding 2: with its window gone, nothing on screen can stop a batch.
+    it.each([
+      ['closes', ({ destroy }: ReturnType<typeof sender>) => destroy()],
+      [
+        'loses its render process',
+        ({ contents }: ReturnType<typeof sender>) =>
+          contents.emit('render-process-gone', {}, { reason: 'crashed' })
+      ],
+      [
+        'loads a new document',
+        ({ contents }: ReturnType<typeof sender>) =>
+          contents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false })
+      ]
+    ])('stops before the next request when its window %s', async (_, leave) => {
+      const cap = storedPage()
+      let answer: (value: unknown) => void = () => {}
+      lookupSnapshots.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)))
+      const window = sender()
+      const running = start(window.event, {
+        captureId: cap.id,
+        urls: ['https://a.example/', 'https://b.example/'],
+        egress: DIRECT
+      })
+      await vi.waitFor(() => expect(lookupSnapshots).toHaveBeenCalledOnce())
+      leave(window)
+      answer(EMPTY)
+      expect(expectOk(await running)).toMatchObject({ answered: 1, stopped: 'cancelled' })
+      expect(lookupSnapshots).toHaveBeenCalledOnce()
+      for (const name of ['destroyed', 'render-process-gone', 'did-start-navigation']) {
+        expect(window.contents.listenerCount(name)).toBe(0)
+      }
+    })
+
+    it('sends no progress to a window that has closed', async () => {
+      const cap = storedPage()
+      let answer: (value: unknown) => void = () => {}
+      lookupSnapshots.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)))
+      const window = sender()
+      const running = start(window.event, {
+        captureId: cap.id,
+        urls: ['https://a.example/'],
+        egress: DIRECT
+      })
+      await vi.waitFor(() => expect(lookupSnapshots).toHaveBeenCalledOnce())
+      window.destroy()
+      window.send.mockClear()
+      answer(EMPTY)
+      expectOk(await running)
+      expect(window.send).not.toHaveBeenCalled()
+    })
+
+    it('keeps running through a navigation inside the same document or a frame', async () => {
+      const cap = storedPage()
+      const window = sender()
+      lookupSnapshots
+        .mockImplementationOnce(async () => {
+          window.contents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: true })
+          window.contents.emit('did-start-navigation', {
+            isMainFrame: false,
+            isSameDocument: false
+          })
+          return EMPTY
+        })
+        .mockResolvedValueOnce(EMPTY)
+      const res = await start(window.event, {
+        captureId: cap.id,
+        urls: ['https://a.example/', 'https://b.example/'],
+        egress: DIRECT
+      })
+      expect(expectOk(res)).toEqual({ answered: 2, failed: 0, notChecked: 0, stopped: null })
+    })
+
+    it('rejects an unknown capture without contacting archive.org', async () => {
+      const res = await start(sender().event, {
+        captureId: 'no-such-capture',
+        urls: ['https://a.example/'],
+        egress: DIRECT
+      })
+      expect(res).toMatchObject({ ok: false, code: 'NOT_FOUND' })
+      expect(runLinkBatch).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      [null],
+      [{ captureId: 'x', urls: 'https://a.example/', egress: DIRECT }],
+      [{ captureId: 'x', urls: [1], egress: DIRECT }],
+      [{ captureId: 'x', urls: [] }],
+      [{ captureId: 'x', urls: [], egress: null }],
+      [{ urls: [], egress: DIRECT }]
+    ])('rejects the payload %j without contacting archive.org', async (payload) => {
+      const res = await start(sender().event, payload)
+      expect(res).toMatchObject({ ok: false, code: 'INVALID_WAYBACK_LINK_PAYLOAD' })
+      expect(runLinkBatch).not.toHaveBeenCalled()
     })
   })
 

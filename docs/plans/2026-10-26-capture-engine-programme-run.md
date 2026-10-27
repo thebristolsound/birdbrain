@@ -68,7 +68,7 @@ Read from `origin/main` at `50966b79` and the issue tracker on 2026-10-26.
   recorded; wait for images offered as sets to settle first, and state that the counts cover only
   settled images.
 - **CI is locked.** From about 04:10Z on 2026-10-27, GitHub Actions jobs fail before starting
-  with "account is locked due to a billing issue". Heads pushed after that (#2000 `39ae663a`,
+  with a message that the account is locked for a billing issue. Heads pushed after that (#2000 `39ae663a`,
   #2001 `ae216441`, #2002) have no CI result; every other open PR's head had CI green, except
   #1987.
 - **Step 6 and #1843 in one release.** Ruled 2026-10-26: no release carries step 6 without

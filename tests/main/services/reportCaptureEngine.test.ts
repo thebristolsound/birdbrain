@@ -211,8 +211,12 @@ describe('report.html capture engine fields', () => {
 
     // Inventory: each file, the MHTML counts, and the screenshot record.
     expect(html).toContain('Artifact inventory')
-    expect(html).toContain('12 images were pinned to the source displayed before the save')
-    expect(html).toContain('and 10 of them had not loaded when the save ran')
+    expect(html).toContain(
+      '12 images were offered as a set of sources and pinned to the source the page displayed before the save'
+    )
+    expect(html).toMatch(
+      /and 10 of them were still loading that source, or had failed to, when the wait before the save\s+ended\. The counts cover only images in the page's own document/
+    )
     expect(html).toMatch(/taken, 1280 × 24800 pixels, of a\s+content area of 1280 × 40000 CSS/)
     expect(html).toMatch(/Scaled\s+down: no\. Cut short of the content height: yes\./)
     expect(html).toContain('Trailing background trimmed: yes.')
@@ -321,7 +325,9 @@ describe('report.html capture engine fields', () => {
       })
     )
 
-    expect(html).toContain('1 image was pinned to the source displayed before the save')
+    expect(html).toContain(
+      '1 image was offered as a set of sources and pinned to the source the page displayed before the save'
+    )
     expect(html).toContain(
       'Transaction Record:</strong> not taken: the build that made this capture does not take this file.'
     )

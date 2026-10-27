@@ -28,6 +28,7 @@ import {
   ENGINE_HASHES,
   writeEnginePackage
 } from '../helpers/captureEnginePackage'
+import { LINK_FIELDS } from '../helpers/linkProvenance'
 import { transactionRecordPath } from '../../src/packages/evidence-package-layout/index'
 import type { ExportOptions } from '@shared/types'
 
@@ -452,6 +453,19 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
         'their values replaced: the headers are present, their values are not'
     )
     rmSync(engineDir, { recursive: true, force: true })
+  })
+
+  // ADR-0040 through the BUILT binary: a capture entry carrying the link
+  // provenance fields verifies. The same fields run in-process in
+  // tests/shared/verify/manifestSchema6LinkProvenance.test.ts.
+  it('exits 0 with a PASS report on a capture entry carrying the link provenance fields', () => {
+    const linkDir = mkdtempSync(join(tmpdir(), 'bb-binlink-'))
+    writeEnginePackage(linkDir, LINK_FIELDS)
+    const proc = spawnSync(binaryPath, [linkDir], { encoding: 'utf-8' })
+    expect(proc.status, proc.stdout + proc.stderr).toBe(0)
+    expect(proc.stdout).toContain('[PASS] manifest chain')
+    expect(proc.stdout).toContain('RESULT: PASS')
+    rmSync(linkDir, { recursive: true, force: true })
   })
 
   it('exits 1 with a FAIL report when the Transaction Record is missing', () => {

@@ -405,8 +405,8 @@ export function formatExtensionAttachError(err: z.core.$ZodError): string {
 // (ADR-0023) and generalizes `deletion` and `timestamp` to any Exhibit;
 // `capture` entries gain only an optional `exhibitNumber` (X46). v5 adds the
 // optional Egress fields on `capture` (ADR-0032), and v6 the capture engine's
-// optional fields on `capture` (below). Mixed-version chains are normal —
-// never retro-sign legacy entries.
+// optional fields and the link provenance fields (ADR-0040) on `capture`
+// (below). Mixed-version chains are normal — never retro-sign legacy entries.
 
 // Bounded integer: rejects negatives, floats, NaN, and unknown-future versions
 // (e.g. a v4 entry parsed by a v3 verifier). Auto-tightens on every version bump.
@@ -673,6 +673,13 @@ const ManifestCaptureEntrySchema = z
     boundTls: BoundTlsSchema.optional(),
     boundTlsAbsent: z.enum(BOUND_TLS_ABSENCES).optional(),
     pdfHash: sha256HexField.optional(),
+    // Link Capture provenance (ADR-0040), schema-6 fields: the Capture whose
+    // stored page held the link, that Capture's Content Hash, and the link's
+    // address, which `url` does not keep when a redirect intervened. OMITTED
+    // when absent, so an entry without them keeps its canonical body.
+    linkedFromCaptureId: z.string().min(1).optional(),
+    linkedFromContentHash: sha256HexField.optional(),
+    linkHref: z.string().min(1).optional(),
     sizeBytes: z.number(),
     operatorId: z.string(),
     operatorName: z.string(),
@@ -746,6 +753,29 @@ const ManifestCaptureEntrySchema = z
     message: '`boundTls` and `boundTlsAbsent` cannot both be present',
     path: ['boundTlsAbsent']
   })
+  // The same version rule for the link provenance fields (ADR-0040).
+  .refine((entry) => linkProvenanceFieldCount(entry) === 0 || entry.schemaVersion >= 6, {
+    message: 'the link provenance fields on a capture entry require schemaVersion 6',
+    path: ['schemaVersion']
+  })
+  // All three or none: an id without the hash loses the binding to the
+  // source's bytes, and a hash without the address loses what was linked.
+  .refine((entry) => [0, 3].includes(linkProvenanceFieldCount(entry)), {
+    message:
+      '`linkedFromCaptureId`, `linkedFromContentHash` and `linkHref` must be present together',
+    path: ['linkedFromCaptureId']
+  })
+
+function linkProvenanceFieldCount(entry: {
+  linkedFromCaptureId?: unknown
+  linkedFromContentHash?: unknown
+  linkHref?: unknown
+}): number {
+  const { linkedFromCaptureId, linkedFromContentHash, linkHref } = entry
+  return [linkedFromCaptureId, linkedFromContentHash, linkHref].filter(
+    (field) => field !== undefined
+  ).length
+}
 
 function carriesCaptureEngineField(entry: {
   inventory?: unknown

@@ -342,6 +342,7 @@ _Avoid_: risky change, core change, forensic change.
 - **Trusted Time** and **Integrity Status** are orthogonal: a byte-perfect **Capture** is integrity-verified whether or not it carries a trusted timestamp
 - A **Recapture** produces a new **Capture** that supersedes an existing one; both remain visible and neither is overwritten
 - A **Duplicate** is a new **Capture** that links to its source and shares its **Content Hash**; unlike a **Recapture** it observed nothing
+- A link **Capture** observed its destination afresh, so unlike a **Duplicate** it is a new sighting; _planned:_ it names the **Capture** whose stored page held the link (ADR-0040)
 - A **TLS Cert Chain** and a **Wayback Ref** attach to a **Capture** as corroboration only, and bind nothing about the captured transaction
 - **Bound TLS Details** are part of the **Capture** and describe the captured transaction; they never substitute for the **TLS Cert Chain**, which stays the floor wherever it runs; _planned:_ it is skipped while the **Egress** is not Direct (#1695)
 - Creating or updating a **Selector** triggers the **Selector Lifecycle** to (re)compute **Persisted Matches** for the **Case**'s existing **Captures**, asynchronously

@@ -132,6 +132,10 @@ export interface IngestParams {
   transactionRecord?: Buffer
   boundTls?: BoundTls
   boundTlsAbsent?: BoundTlsAbsence
+  // The PDF's bytes (schema 6), passed only by a background Recapture. The entry
+  // signs its hash and the row mirrors it; the schema refuses a hash the
+  // inventory does not mark present.
+  pdf?: Buffer
   // The id to store the Capture under, when the acquiring path already named it:
   // the Transaction Record's `warcinfo` carries the id. Otherwise ingest picks one.
   captureId?: string
@@ -348,6 +352,7 @@ export async function ingestMhtmlCapture(
   const transactionRecordHash = params.transactionRecord
     ? createHash('sha256').update(params.transactionRecord).digest('hex')
     : undefined
+  const pdfHash = params.pdf ? createHash('sha256').update(params.pdf).digest('hex') : undefined
 
   // Anchor the captured response headers into the signed manifest body (#119),
   // but only when present. Omitted (not {}) so headerless/legacy entries keep
@@ -424,6 +429,7 @@ export async function ingestMhtmlCapture(
         transactionRecordHash,
         boundTls: params.boundTls,
         boundTlsAbsent: params.boundTlsAbsent,
+        pdfHash,
         operatorId: params.operatorId,
         operatorName: params.operatorName,
         toolVersion: params.toolVersion
@@ -442,6 +448,10 @@ export async function ingestMhtmlCapture(
 
         if (params.transactionRecord) {
           store.writeTransactionRecord(params.caseId, captureId, params.transactionRecord)
+        }
+
+        if (params.pdf) {
+          store.writePdf(params.caseId, captureId, params.pdf)
         }
 
         const capture = captureRepo.insertCapture({
@@ -480,6 +490,7 @@ export async function ingestMhtmlCapture(
           transactionRecordHash,
           boundTls: params.boundTls,
           boundTlsAbsent: params.boundTlsAbsent,
+          pdfHash,
           exhibitNumber
         })
         return { capture, contentHash: hash }
@@ -1747,6 +1758,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
                 // The row mirrors what the Duplicate's entry re-anchors (D11),
                 // so no Bound TLS Details.
                 transactionRecordHash: sourceEntry.transactionRecordHash,
+                pdfHash: sourceEntry.pdfHash,
                 exhibitNumber
               })
           )

@@ -334,6 +334,60 @@ describe('createCaptureLifecycle.ingest', () => {
     await expect(lifecycle.verify(capture.id)).resolves.toMatchObject({ status: 'verified' })
   })
 
+  // Step 10 of docs/plans/2026-10-10-capture-engine-first-slice.md.
+  it('stores the PDF under the Capture id, signs its hash, and mirrors it', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const inventory = CaptureInventorySchema.parse({
+      ...ENGINE_INVENTORY,
+      transactionRecord: { present: false, reason: 'failed' }
+    })
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), {
+        captureId: 'printed-by-the-render',
+        screenshot: Buffer.from('PNG-screenshot-bytes'),
+        method: 'background',
+        inventory,
+        scrollToLoad: ENGINE_ENTRY_FIELDS.scrollToLoad,
+        boundTlsAbsent: 'not-recorded',
+        pdf: ENGINE_FILES.pdf
+      })
+    )
+
+    const lines = readFileSync(join(tempDir, 'captures', caseId, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    const parsed = ManifestEntrySchema.safeParse(captureEntry)
+    expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+    expect(captureEntry).toMatchObject({
+      captureId: 'printed-by-the-render',
+      pdfHash: ENGINE_HASHES.pdf,
+      inventory: { pdf: { present: true, afterCollection: true } },
+      schemaVersion: 6
+    })
+    expect(captureEntry).not.toHaveProperty('transactionRecordHash')
+    expect(
+      readFileSync(join(tempDir, 'captures', caseId, 'printed-by-the-render.pdf')).equals(
+        ENGINE_FILES.pdf
+      )
+    ).toBe(true)
+    expect(getCapture(capture.id)!.pdfHash).toBe(ENGINE_HASHES.pdf)
+    await expect(lifecycle.verify(capture.id)).resolves.toMatchObject({ status: 'verified' })
+  })
+
+  it('writes no PDF file and signs no hash when given no PDF', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), { captureId: 'not-printed' })
+    )
+    expect(existsSync(join(tempDir, 'captures', caseId, 'not-printed.pdf'))).toBe(false)
+    expect(getCapture(capture.id)!.pdfHash).toBeUndefined()
+    const lines = readFileSync(join(tempDir, 'captures', caseId, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    expect(JSON.parse(lines[lines.length - 1])).not.toHaveProperty('pdfHash')
+  })
+
   it('OMITS the inventory and Scroll-to-load record when given neither, below schema 6', async () => {
     const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
     const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))

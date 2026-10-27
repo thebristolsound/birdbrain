@@ -136,6 +136,7 @@ export interface InsertCaptureParams {
   transactionRecordHash?: string
   boundTls?: BoundTls
   boundTlsAbsent?: BoundTlsAbsence
+  pdfHash?: string
   // The Exhibit Number the capture entry carries (X46), so the row and the
   // entry state one number. Not a `captures` column: it lands on `exhibits`.
   exhibitNumber?: number
@@ -250,6 +251,7 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
     inventory: params.inventory !== undefined ? JSON.stringify(params.inventory) : null,
     scroll_to_load: params.scrollToLoad !== undefined ? JSON.stringify(params.scrollToLoad) : null,
     transaction_record_hash: params.transactionRecordHash ?? null,
+    pdf_hash: params.pdfHash ?? null,
     bound_tls: params.boundTls !== undefined ? JSON.stringify(params.boundTls) : null,
     bound_tls_absent: params.boundTlsAbsent ?? null
   }

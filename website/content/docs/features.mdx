@@ -34,8 +34,10 @@ prove and what they do not.
   responses the browser reported while it loaded the page, those of frames from other sites and
   of the page's workers and service workers included, until the screenshot is taken. The signed
   entry holds the file's SHA-256 hash and counts what the record lacks: responses from the cache,
-  failed, cancelled, and unfinished requests, and bodies it left out, such as one over 10 MB. If
-  recording fails, Birdbrain still saves the capture, and its entry says the record is missing.
+  failed, cancelled, and unfinished requests, requests the browser reported finished with no
+  response, and bodies it left out, such as one over 10 MB. If recording fails, for example
+  because the page made more requests than the record holds, Birdbrain still saves the capture,
+  and its entry says the record is missing.
 - The Transaction Record replaces the values of the `Cookie`, `Set-Cookie`, `Authorization`, and
   `Proxy-Authorization` headers with `[value replaced by Birdbrain]` and keeps the header names.
   A token in a URL, in a request or response body, or in any other header stays in the record,

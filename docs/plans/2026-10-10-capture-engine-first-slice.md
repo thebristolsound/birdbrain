@@ -1668,14 +1668,25 @@ folded in.
   page's setup commands wait 5 s each and a child's 2 s; the body fetches still out when
   collection stops get 5 s and the writer 10 s, which raises the end reserve from 20 s to 35 s.
   Collection stops before the screenshot. The render keeps `wc.loadURL` and the extra
-  `history.length` entry as a known limitation, since the second decision on #1823 is still
-  open, and D15's script expects the passes one entry apart. The session setup lives in
+  `history.length` entry as a known limitation, and D15's script expects the passes one entry
+  apart. The session setup lives in
   `src/main/services/transactionRecorder.ts`, beside the renderer, and the test certificate
   allowance in `src/main/services/testCertificateAllowance.ts`; both join the assessment's
   blocking tier. The hand-written WARC reader moved to the package's `lib/` behind a
   `warcReader.ts` entry point, so the e2e spec reads records with it. The step's results, its
   record sizes, and its one deviation are in the
   [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md).
+- **2026-10-26.** The maintainer ruled on three points of step 9's review (#1999), as the
+  orchestrating session relayed them. A request that finished with no response gets its own
+  count, `finishedWithoutResponse` (below). The extra `history.length` entry from the blank first
+  page stays, recorded as a known limitation in the validation record and in `features.mdx`
+  beside the capability; this settles the second decision on #1823. The 120 s Recapture timeout
+  and the 35 s end reserve stay, and each record phase is cut to the time the render has left, so
+  an overrun records the Transaction Record `failed` and the Capture stores. The same fix round
+  bounds the events the recorder holds (25,000, or 25,000,000 bytes of their JSON, past which the
+  record is `failed`), reserves each request body before fetching it, parses the record's fields
+  with the strict schema before they reach the entry, and tells the Operator a record failed only
+  once the Capture is stored.
 - **2026-10-26.** D4's Transaction Record part gains `finishedWithoutResponse`, on the
   maintainer's ruling during step 9's review (#1999) as the orchestrating session relayed it.
   Step 1 (#1904) adds it to schema 6; making the collector count it is left to step 9.

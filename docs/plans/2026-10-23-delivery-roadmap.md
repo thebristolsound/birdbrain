@@ -32,13 +32,13 @@ release tag.
 
 ## Done programmes
 
-- **Shared Cases**, done on 2026-10-26. The members screens became reachable in
+- **Shared Cases**, done on 2026-10-27. The members screens became reachable in
   [#1972](https://github.com/thebristolsound/birdbrain/pull/1972), after the two sync defects
   #1951 and #1955 merged ([#1966](https://github.com/thebristolsound/birdbrain/pull/1966),
   [#1967](https://github.com/thebristolsound/birdbrain/pull/1967)), and the docs were published
   in [#1973](https://github.com/thebristolsound/birdbrain/pull/1973). The maintainer ran the
-  close-out sync between two networks, a beta tag carries it, and #1508 is closed. Each plan the
-  programme covered reads `**Status:** done` with the PR that finished it.
+  close-out sync between two networks, `v1.0.1-beta.24` carries it, and #1508 is closed. Each
+  plan the programme covered reads `**Status:** done` with the PR that finished it.
 
 ## Defect lane
 

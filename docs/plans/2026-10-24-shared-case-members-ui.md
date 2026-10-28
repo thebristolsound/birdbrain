@@ -39,7 +39,7 @@ with `pnpm test <file>` and `pnpm typecheck`, `pnpm lint` and `pnpm lint:boundar
 | S4 | Join branch in the wizard, the sync pill component (unmounted), the shared Case card line | shipped |
 | S5 | Attribution and exclusion on capture rows and the details panel | shipped |
 | S6 | Ledger Actor column, chain selector and Timeline (blocking tier, small); screenshots; two-instance e2e; `pnpm preflight` | shipped |
-| S7 | Entry points: the sync pill in the top bar, Members on the Case card's menu, the wizard's start step and the palette's join action | in review |
+| S7 | Entry points: the sync pill in the top bar, Members on the Case card's menu, the wizard's start step and the palette's join action | shipped |
 
 ### S1, shipped
 

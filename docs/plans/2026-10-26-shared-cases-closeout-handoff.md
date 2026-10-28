@@ -21,11 +21,12 @@ its first commits were made on `drafts/2026-10-26-shared-cases-closeout-handoff`
 
 | Slice | Branch | State |
 | --- | --- | --- |
-| 1. Members UI entry points (#1514) | `feat/1514-members-entry-points` | PR #1972 at `8d09ea22`: ready, pre-pass approve, preflight and all CI green including the merge gate; waits for the maintainer's merge |
-| 2. Docs (#1883) | `docs/1883-shared-cases-docs` | PR #1973 at `806a9024`: ready, pre-pass approve, preflight green; merge gate waits for the maintainer's approving review; merges after #1972 |
-| 3. Housekeeping (#1508 checklist, plan statuses, roadmap) | `chore/1508-shared-cases-closeout` | draft PR; waits for slices 1 and 2, the sync and the tag |
-| Close-out sync | maintainer | steps below; waits for slices 1 and 2 |
-| Release | maintainer | notes drafted below; waits for the sync |
+| 1. Members UI entry points (#1514) | `feat/1514-members-entry-points` | merged as PR #1972 on 2026-10-27; #1514 closed |
+| 2. Docs (#1883) | `docs/1883-shared-cases-docs` | merged as PR #1973 on 2026-10-27; #1883 closed |
+| 3. Housekeeping (#1508 checklist, plan statuses, roadmap) | `chore/1508-shared-cases-closeout` | PR #1975, brought up to date with `main` on 2026-10-27; #1514 ticked on #1508; waits for the sync and the tag |
+| Version bump | `chore/release-1.0.1-beta.24` | PR opened 2026-10-27; the release run needs it on `main` first |
+| Close-out sync | maintainer | steps below; runs on the `v1.0.1-beta.24` build |
+| Release | maintainer | run `release.yml` from `main` after the bump merges; notes drafted below |
 
 ### Slice 1: entry points
 
@@ -65,12 +66,16 @@ its first commits were made on `drafts/2026-10-26-shared-cases-closeout-handoff`
 
 ## Next command
 
-Maintainer: merge #1972, then approve and merge #1973. Then the agent cuts the housekeeping
-branch from the new `main`:
+Maintainer: merge the version bump, run the release workflow from `main`, publish the draft
+release with the notes below, run the close-out sync on two networks, then merge #1975 and
+close #1508. The agent checks that the tag exists before #1975 leaves draft:
 
 ```sh
-git -C /home/matt/worktrees/birdbrain/feat-1514-members-entry-points fetch origin && git -C /home/matt/worktrees/birdbrain/feat-1514-members-entry-points log --oneline -3 origin/main
+git ls-remote --exit-code --tags origin refs/tags/v1.0.1-beta.24
 ```
+
+Two decisions stay open for the maintainer and are listed under Open questions: the Revoke
+note (#1974) and the member cap.
 
 ## Close-out sync: steps for the maintainer
 

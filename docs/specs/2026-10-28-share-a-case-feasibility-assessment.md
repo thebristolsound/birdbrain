@@ -143,9 +143,9 @@ first of which is a ruling, not an engineering fact.
   `tourSteps.ts` (#404): an update must not ambush an operator mid-case. Every current tester is
   an upgrade, so under that rule nobody the brief is about would see the mark. The mark is one
   dismissible card pointed at a new control, not a chapter, which is a smaller interruption
-  than the rule was written for. Whether it may show on an upgrade is the maintainer's call;
-  see the open ruling below.
-- **A feature mark, not a chapter.** If it may show, it does not go through the chapter engine:
+  than the rule was written for. The maintainer ruled on 2026-10-28 that it may; the ruling
+  is recorded below.
+- **A feature mark, not a chapter.** It does not go through the chapter engine:
   `CoachMark` carries a step counter, a skip link and a Next button the mock does not draw.
   The mark is its own component that reuses the tour's placement (`tourGeometry.markLayout`),
   its card chrome and its `data-tour` anchor, and records its dismissal as a `share` key in the
@@ -169,14 +169,18 @@ and the clock format. Every other string in the bundle's README is taken verbati
 `memberModel.ts`'s `COPY`, where the Members slice keeps its strings, so one test reads them
 all.
 
-## Open ruling for the maintainer
+## Ruling
 
 **May the coachmark show on an upgrade?** The design shows the one-time "New: share a Case
 with teammates" card to every installation the first time it opens a Case after this version
 lands, which is the audience the brief is about. The tour's standing rule is that an update
 never starts a walkthrough on its own. Recommended: yes, as a one-card exception for this mark
-only, recorded here and in `tourSteps.ts` beside the rule it excepts. If no, the mark shows to
-fresh installs only and the pill does the announcing on its own.
+only, recorded here and in `tourSteps.ts` beside the rule it excepts. The alternative was
+fresh installs only, with the pill doing the announcing on its own.
+
+**Ruled yes on 2026-10-28.** The mark shows once to every installation, upgrades included, as
+the one exception to the rule. `shouldShowShareMark` in `tourSteps.ts` carries the exception
+beside the rule it excepts.
 
 ## Build order
 

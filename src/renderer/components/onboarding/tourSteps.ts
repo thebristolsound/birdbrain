@@ -304,6 +304,25 @@ export function shouldAutoFire(
 
 export const ALL_CHAPTERS: TourChapter[] = ['intro', 'ext', 'case']
 
+/** The `onboardingChapters` key under which the Share mark records its dismissal. */
+export const SHARE_MARK_KEY = 'share'
+
+/**
+ * The one exception to the fresh-install rule above: the Share mark
+ * (docs/design-handoff/2026-10-28-share-a-case/, frame A) shows once to every
+ * installation, upgrades included, the first time it opens a Case after the
+ * control arrives. It is a single dismissible card pointed at a new control,
+ * not a chapter, which is a smaller interruption than the rule was written
+ * for; the exception is recorded in the 2026-10-28 feasibility assessment.
+ * It waits until no chapter is still due to auto-fire, so a fresh install's
+ * case chapter is never interrupted by it.
+ */
+export function shouldShowShareMark(settings: AutoFireSettings | undefined): boolean {
+  if (!settings) return false
+  if (settings.onboardingChapters?.[SHARE_MARK_KEY]) return false
+  return ALL_CHAPTERS.every((chapter) => !shouldAutoFire(settings, chapter))
+}
+
 export type TourOutcome = 'finished' | 'skipped'
 
 /**

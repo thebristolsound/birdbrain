@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SharePill } from '@renderer/components/status/SharePill'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { AR, JO, members, sync } from './sharingFixtures'
 import type { SharingMembers, SyncState } from '@shared/types'
@@ -123,6 +124,18 @@ describe('SharePill', () => {
       expect(client.getQueryState(queryKeys.sharingMembers('case-1'))?.status).toBe('success')
     )
     expect(screen.queryByTestId('share-pill')).toBeNull()
+  })
+
+  it('wears a ring while the Share mark shows', async () => {
+    useAppStore.setState({ shareMarkOpen: true })
+    try {
+      setup({ roster: LOCAL })
+      const pill = await screen.findByTestId('share-pill')
+      expect(pill.dataset.marked).toBe('true')
+      expect(pill.className).toContain('ring-[3px]')
+    } finally {
+      useAppStore.setState({ shareMarkOpen: false })
+    }
   })
 
   it('falls back to Share once the Owner is alone on the roster', async () => {

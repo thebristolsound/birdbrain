@@ -57,6 +57,9 @@ export async function prepareProfile(dir, settings) {
       join(dir, 'settings.json'),
       JSON.stringify({
         operatorName: settings.operatorName,
+        // An existing install that has seen the Share mark, so a spec that opens a Case is
+        // not handed the card; e2e/onboarding-tour.spec.ts clears it to see the mark.
+        onboardingChapters: { share: true },
         ...(settings.completedOnboarding ? { hasCompletedOnboarding: true } : {})
       })
     )

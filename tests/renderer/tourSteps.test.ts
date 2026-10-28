@@ -12,7 +12,9 @@ import {
   routeOfPath,
   screenCountLabel,
   screenSteps,
+  SHARE_MARK_KEY,
   shouldAutoFire,
+  shouldShowShareMark,
   tourSteps,
   type TourChapter
 } from '@renderer/components/onboarding/tourSteps'
@@ -210,6 +212,34 @@ describe('shouldAutoFire', () => {
     const settings = { isFreshInstall: true, onboardingChapters: { intro: true } }
     expect(shouldAutoFire(settings, 'intro')).toBe(false)
     expect(shouldAutoFire(settings, 'case')).toBe(true)
+  })
+})
+
+// The one exception to the upgrade rule (2026-10-28 handoff, frame A).
+describe('shouldShowShareMark', () => {
+  it('shows once to an existing install, and not again after a dismissal', () => {
+    expect(shouldShowShareMark({ isFreshInstall: false, onboardingChapters: {} })).toBe(true)
+    expect(
+      shouldShowShareMark({ isFreshInstall: false, onboardingChapters: { share: true } })
+    ).toBe(false)
+    expect(shouldShowShareMark(undefined)).toBe(false)
+  })
+
+  it('waits until a fresh install has no chapter left to auto-fire', () => {
+    expect(shouldShowShareMark({ isFreshInstall: true, onboardingChapters: {} })).toBe(false)
+    expect(
+      shouldShowShareMark({ isFreshInstall: true, onboardingChapters: { intro: true, case: true } })
+    ).toBe(false)
+    expect(
+      shouldShowShareMark({
+        isFreshInstall: true,
+        onboardingChapters: { intro: true, ext: true, case: true }
+      })
+    ).toBe(true)
+  })
+
+  it('records its dismissal under a key that is not a chapter', () => {
+    expect(ALL_CHAPTERS).not.toContain(SHARE_MARK_KEY)
   })
 })
 

@@ -300,7 +300,13 @@ export const COPY = {
   membersAction: 'Members…',
   members: 'Members',
   localOnly: 'On this machine only',
-  sharedBadge: 'Shared'
+  sharedBadge: 'Shared',
+  shareMarkTitle: 'New: share a Case with teammates',
+  shareMarkBody:
+    'Up to four other people who run Birdbrain, each with a full copy that stays in sync. You ' +
+    'approve every join.',
+  showMe: 'Show me',
+  gotIt: 'Got it'
 } as const
 
 // Refusals the Members tab shows inline, by the code main returns. The mock

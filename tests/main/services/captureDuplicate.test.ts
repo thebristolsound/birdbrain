@@ -25,6 +25,17 @@ import { ManifestEntrySchema } from '@shared/schemas'
 import { canonicalStringify } from '@shared/verify'
 import type { Capture } from '@shared/types'
 import { appendFutureEntry } from '../../helpers/futureManifestEntry'
+import {
+  ENGINE_FILES,
+  ENGINE_HASHES,
+  ENGINE_INVENTORY,
+  ENGINE_SCROLL_TO_LOAD
+} from '../../helpers/captureEnginePackage'
+import {
+  ENGINE_ENTRY_FIELDS,
+  seedEngineCapture,
+  type EngineEntryFields
+} from '../../helpers/captureEngineCapture'
 
 // Duplication is a same-bytes operation, so the corroboration-only TLS re-fetch
 // (#123) that ingest performs would otherwise open a real socket while building
@@ -254,6 +265,98 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
     })
     expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
     expect(verifyManifestChain(caseDir).valid).toBe(true)
+  })
+
+  // D11 of docs/plans/2026-10-10-capture-engine-first-slice.md, on a source
+  // built by hand: nothing acquires the two files yet.
+  describe('a source whose entry carries the capture engine fields', () => {
+    const ENGINE_ID = 'engine-source'
+    const storeRoot = (): string => join(tempDir, 'captures')
+    const seed = (fields?: EngineEntryFields): Promise<Capture> =>
+      seedEngineCapture({
+        caseDir,
+        caseId,
+        captureId: ENGINE_ID,
+        store: createCaptureStore({ getRoot: storeRoot }),
+        fields
+      })
+
+    it.each([
+      { name: 'Bound TLS Details', fields: ENGINE_ENTRY_FIELDS },
+      {
+        name: 'a Bound TLS absence',
+        fields: { ...ENGINE_ENTRY_FIELDS, boundTls: undefined, boundTlsAbsent: 'from-cache' }
+      }
+    ] satisfies Array<{ name: string; fields: EngineEntryFields }>)(
+      'copies both files and re-anchors their facts, dropping $name',
+      async ({ fields }) => {
+        await seed(fields)
+        const sourceEntry = manifestLines().at(-1)!
+        expect(sourceEntry.boundTls).toEqual(fields.boundTls)
+        expect(sourceEntry.boundTlsAbsent).toEqual(fields.boundTlsAbsent)
+
+        const result = await lifecycle.duplicate(ENGINE_ID)
+        if (result.status !== 'duplicated') throw new Error('expected a duplicate')
+
+        const { id } = result.capture
+        const copied = (type: string): Buffer => readFileSync(join(caseDir, `${id}.${type}`))
+        expect(copied('warc.gz')).toEqual(ENGINE_FILES.transactionRecord)
+        expect(copied('pdf')).toEqual(ENGINE_FILES.pdf)
+        const entry = manifestLines().at(-1)!
+        expect(entry).toMatchObject({
+          method: 'duplicate',
+          inventory: ENGINE_INVENTORY,
+          scrollToLoad: ENGINE_SCROLL_TO_LOAD,
+          transactionRecordHash: ENGINE_HASHES.transactionRecord,
+          pdfHash: ENGINE_HASHES.pdf,
+          schemaVersion: 6
+        })
+        expect('boundTls' in entry).toBe(false)
+        expect('boundTlsAbsent' in entry).toBe(false)
+        expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
+        expect(verifyManifestChain(caseDir).valid).toBe(true)
+        await expect(lifecycle.verify(id)).resolves.toMatchObject({ status: 'verified' })
+      }
+    )
+
+    it.each(['warc.gz', 'pdf'] as const)(
+      'refuses, and cleans up, when the copied .%s does not hash to its anchored value',
+      async (type) => {
+        await seed()
+        const realStore = createCaptureStore({ getRoot: storeRoot })
+        const corrupted = Buffer.from('corrupted copy')
+        const corruptStore: CaptureStore = {
+          ...realStore,
+          copyArtifacts: async (cid, sourceId, targetId) => {
+            const copied = await realStore.copyArtifacts(cid, sourceId, targetId)
+            const { abs, rel } = realStore.artifactPaths(cid, targetId, type)
+            writeFileSync(abs, corrupted)
+            const hash = createHash('sha256').update(corrupted).digest('hex')
+            return {
+              ...copied,
+              artifacts: { ...copied.artifacts, [type]: { rel, hash, sizeBytes: corrupted.length } }
+            }
+          }
+        }
+        const corruptLifecycle = createCaptureLifecycle({
+          selectorLifecycle: {
+            runActiveSelectorsForCapture: vi.fn()
+          } as unknown as SelectorLifecycle,
+          store: corruptStore
+        })
+        const before = manifestLines().length
+
+        const result = await corruptLifecycle.duplicate(ENGINE_ID)
+
+        expect(result).toEqual({ status: 'rejected', reason: 'copy_mismatch' })
+        expect(manifestLines()).toHaveLength(before)
+        expect(listCaptures(caseId)).toHaveLength(2)
+        const strays = readdirSync(caseDir).filter(
+          (f) => !f.startsWith(source.id) && !f.startsWith(ENGINE_ID) && f !== 'manifest.jsonl'
+        )
+        expect(strays).toEqual([])
+      }
+    )
   })
 
   it('copies no tags, notes or extracted data — only the bytes and their provenance', async () => {

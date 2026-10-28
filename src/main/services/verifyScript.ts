@@ -833,8 +833,9 @@ export const VERIFY_SCRIPT = `#!/bin/sh
 # for it - the enclosed public key, or, for an entry before an import entry,
 # the key the first import entry after it carries - and recomputes to its own
 # entryHash, and for every capture this package's
-# signed chain still calls active and in scope, its page, screenshot and RFC
-# 3161 token are enclosed and match that signed entry. In a Shared Case package
+# signed chain still calls active and in scope, its page and RFC 3161 token are
+# enclosed and match that signed entry, and so are its screenshot, Transaction
+# Record and PDF wherever that entry carries their hashes. In a Shared Case package
 # it also means that every other member's chain the package carries verifies,
 # to its last line and by that same rule, under the key the member-add for that
 # member in its Case Owner's chain carries; that every merge entry names an
@@ -1279,7 +1280,29 @@ deleted=$(jq -r 'select(.type == "deletion") | .captureId' "$manifest_entries")
   --slurpfile r "$tmp/remote.jsonl" '${JQ_DELETED}')
 jq -c 'select(.type == "capture")' "$case_entries" >"$tmp/captures.jsonl"
 
+# The screenshot's rule for the Transaction Record and the PDF, as the Birdbrain
+# verifier applies it: capture $1's entry $2 anchors a file by the sha256 in its
+# field $3, at the path helper $4 gives that digest. Returns 0 when the file is
+# there and hashes to it, 1 after a FAIL, and 2 when the entry carries no such
+# hash, which that verifier reports as a SKIP.
+bind_content_address() {
+  bca_hash=$(field "$2" ".$3 // empty")
+  [ -n "$bca_hash" ] || return 2
+  bca_file=$($4 "$bca_hash")
+  if [ ! -f "$bca_file" ]; then
+    fail "capture $1: $bca_file is missing but its signed entry carries a $3"
+    return 1
+  fi
+  if [ "$(sha256_of "$bca_file")" != "$bca_hash" ]; then
+    fail "capture $1: $bca_file does not match its own content address"
+    return 1
+  fi
+  return 0
+}
+
 bound=0
+records_bound=0
+pdfs_bound=0
 captures_total=0
 captures_outside=0
 while IFS= read -r line; do
@@ -1312,11 +1335,16 @@ while IFS= read -r line; do
       fail "capture $id: $shot_file does not match its own content address"
     fi
   fi
+  bind_content_address "$id" "$line" transactionRecordHash transaction_record_path &&
+    records_bound=$((records_bound + 1))
+  bind_content_address "$id" "$line" pdfHash pdf_path &&
+    pdfs_bound=$((pdfs_bound + 1))
 done <"$tmp/captures.jsonl"
 if [ "$captures_outside" -gt 0 ]; then
   note "$captures_outside of $captures_total capture(s) are outside the signed export selection and expected absent - the omission is declared in a signed entry, not inferred (re-run with -v to list them)"
 fi
 note "$bound capture(s) bound to the signed chain"
+note "$records_bound Transaction Record(s) and $pdfs_bound PDF(s) bound to the signed chain"
 
 # Exhibits of every other kind (ADR-0023). The signed entry carries the path the
 # Case store holds the bytes at; the package holds them at the part of that path

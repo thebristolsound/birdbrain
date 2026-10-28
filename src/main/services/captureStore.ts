@@ -21,18 +21,28 @@ import { getStorageRoot } from '@main/services/storage'
 import { MAX_MHTML_SIZE } from '@shared/constants'
 
 // The Capture Store is the ONLY module that knows where a Capture's bytes live
-// on disk and what they are called: {caseId}/{captureId}.{mhtml|html|png|txt}
-// plus the {captureId}_thumb.jpg thumbnail. Everything else — ingest, verify,
-// delete, extraction, thumbnailing, orphan scanning — goes through it.
-
-export type CaptureArtifactType = 'mhtml' | 'html' | 'png' | 'txt'
+// on disk and what they are called: {caseId}/{captureId}.{type} for each type
+// below, plus the {captureId}_thumb.jpg thumbnail. Everything else — ingest,
+// verify, delete, extraction, thumbnailing, orphan scanning — goes through it.
+//
+// The type is the file's extension. `warc.gz` is the Transaction Record and
+// `pdf` the PDF (docs/plans/2026-10-10-capture-engine-first-slice.md, D3).
+export type CaptureArtifactType = 'mhtml' | 'html' | 'png' | 'txt' | 'warc.gz' | 'pdf'
 
 export const CAPTURE_ARTIFACT_TYPES: readonly CaptureArtifactType[] = [
   'mhtml',
   'html',
   'png',
-  'txt'
+  'txt',
+  'warc.gz',
+  'pdf'
 ]
+
+// Extensions of more than one part, so `{id}.warc.gz` is never read as the
+// Capture `{id}.warc` with a `.gz` file.
+const MULTI_PART_EXTENSIONS = CAPTURE_ARTIFACT_TYPES.filter((type) => type.includes('.')).map(
+  (type) => `.${type}`
+)
 
 const THUMBNAIL_SUFFIX = '_thumb.jpg'
 
@@ -130,7 +140,16 @@ export interface CaptureStore {
   ) => Promise<MhtmlWriteResult>
   writeText: (caseId: string, captureId: string, text: string) => ArtifactPaths
   writeScreenshot: (caseId: string, captureId: string, png: Buffer) => ArtifactPaths
+  writeTransactionRecord: (caseId: string, captureId: string, warcGz: Buffer) => ArtifactPaths
+  writePdf: (caseId: string, captureId: string, pdf: Buffer) => ArtifactPaths
   readArtifact: (caseId: string, captureId: string, type: CaptureArtifactType) => Buffer | null
+  // The SHA-256 of an artifact, streamed from disk rather than read whole;
+  // null when the file is absent.
+  hashArtifact: (
+    caseId: string,
+    captureId: string,
+    type: CaptureArtifactType
+  ) => Promise<string | null>
   readThumbnail: (caseId: string, captureId: string) => Buffer | null
   writeThumbnail: (caseId: string, captureId: string, jpeg: Buffer) => void
   copyArtifacts: (
@@ -153,12 +172,29 @@ export interface CaptureStore {
   listStagedDeletes: (caseId: string) => string[]
 }
 
+// Splits a file name into the name before its extension and the extension,
+// dot included. The one rule for where an extension starts, which the Case
+// Archive import shares so a remapped id renames `{id}.warc.gz` whole.
+export function splitArtifactFilename(fileName: string): { stem: string; ext: string } {
+  const multi = MULTI_PART_EXTENSIONS.find((ext) => fileName.endsWith(ext))
+  if (multi) return { stem: fileName.slice(0, -multi.length), ext: multi }
+  const dot = fileName.lastIndexOf('.')
+  return dot === -1
+    ? { stem: fileName, ext: '' }
+    : { stem: fileName.slice(0, dot), ext: fileName.slice(dot) }
+}
+
+const ARTIFACT_EXTENSIONS: ReadonlySet<string> = new Set([
+  ...CAPTURE_ARTIFACT_TYPES.map((type) => `.${type}`),
+  '.jpg'
+])
+
 // Recognizes capture artifact filenames inside a case directory, mapping a
 // filename back to its capture id (thumbnails strip the _thumb suffix).
 export function parseArtifactFilename(fileName: string): { captureId: string } | null {
-  const match = fileName.match(/^(.+)\.(html|png|txt|mhtml|jpg)$/)
-  if (!match) return null
-  return { captureId: match[1].replace(/_thumb$/, '') }
+  const { stem, ext } = splitArtifactFilename(fileName)
+  if (stem === '' || !ARTIFACT_EXTENSIONS.has(ext)) return null
+  return { captureId: stem.replace(/_thumb$/, '') }
 }
 
 async function closeAndUnlink(ws: WriteStream, path: string): Promise<void> {
@@ -308,6 +344,24 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
     return paths
   }
 
+  function writeTransactionRecord(
+    caseId: string,
+    captureId: string,
+    warcGz: Buffer
+  ): ArtifactPaths {
+    ensureDir(caseId)
+    const paths = artifactPaths(caseId, captureId, 'warc.gz')
+    writeFileSync(paths.abs, warcGz)
+    return paths
+  }
+
+  function writePdf(caseId: string, captureId: string, pdf: Buffer): ArtifactPaths {
+    ensureDir(caseId)
+    const paths = artifactPaths(caseId, captureId, 'pdf')
+    writeFileSync(paths.abs, pdf)
+    return paths
+  }
+
   function readArtifact(
     caseId: string,
     captureId: string,
@@ -341,6 +395,16 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
       rs.on('error', reject)
     })
     return hasher.digest('hex')
+  }
+
+  async function hashArtifact(
+    caseId: string,
+    captureId: string,
+    type: CaptureArtifactType
+  ): Promise<string | null> {
+    const { abs } = artifactPaths(caseId, captureId, type)
+    if (!existsSync(abs)) return null
+    return hashFile(abs)
   }
 
   async function copyArtifact(
@@ -499,7 +563,10 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
     writeMhtmlStream,
     writeText,
     writeScreenshot,
+    writeTransactionRecord,
+    writePdf,
     readArtifact,
+    hashArtifact,
     readThumbnail,
     writeThumbnail,
     copyArtifacts,

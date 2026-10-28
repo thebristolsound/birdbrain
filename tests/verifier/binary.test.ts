@@ -23,6 +23,15 @@ import { buildSyntheticToken } from '../helpers/timestampFixtures'
 import { seedMixedKindCase, type MixedKindCase } from '../helpers/mixedKindCase'
 import { EGRESS_CAPTURE_ID, writeEgressPackage } from '../helpers/egressPackage'
 import { RECEIPT_TSA, writeReceiptPackage } from '../helpers/receiptPackage'
+import {
+  ENGINE_CAPTURE_ID,
+  ENGINE_HASHES,
+  writeEnginePackage
+} from '../helpers/captureEnginePackage'
+import { seedEngineCapture } from '../helpers/captureEngineCapture'
+import { defaultCaptureStore } from '@main/services/captureStore'
+import { LINK_FIELDS } from '../helpers/linkProvenance'
+import { pdfPath, transactionRecordPath } from '../../src/packages/evidence-package-layout/index'
 import type { ExportOptions } from '@shared/types'
 
 // Integration test for the BUILT SEA binary (#122 §11). It is GATED on the
@@ -426,6 +435,96 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
         `${receiptIndex} names merge entry ${mergeIndex} but does not parse or attests another hash`
     )
     rmSync(receiptDir, { recursive: true, force: true })
+  })
+
+  // #1904 through the BUILT binary: a capture entry carrying the capture
+  // engine's fields verifies, both files bind, and the report states which
+  // headers had their values replaced. The same fixture runs in-process in
+  // tests/shared/verify/manifestSchema6.test.ts.
+  it('exits 0 with a PASS report binding the Transaction Record and the PDF', () => {
+    const engineDir = mkdtempSync(join(tmpdir(), 'bb-binengine-'))
+    writeEnginePackage(engineDir)
+    const proc = spawnSync(binaryPath, [engineDir], { encoding: 'utf-8' })
+    expect(proc.status, proc.stdout + proc.stderr).toBe(0)
+    expect(proc.stdout).toContain('RESULT: PASS')
+    expect(proc.stdout).toContain(`[PASS] capture ${ENGINE_CAPTURE_ID} transaction record\n`)
+    expect(proc.stdout).toContain(`[PASS] capture ${ENGINE_CAPTURE_ID} pdf\n`)
+    expect(proc.stdout).toContain(
+      `[SKIP] capture ${ENGINE_CAPTURE_ID} transaction record headers — the signed capture ` +
+        'entry records that the Transaction Record holds the headers cookie, set-cookie with ' +
+        'their values replaced: the headers are present, their values are not'
+    )
+    rmSync(engineDir, { recursive: true, force: true })
+  })
+
+  // ADR-0040 through the BUILT binary: a capture entry carrying the link
+  // provenance fields verifies. The same fields run in-process in
+  // tests/shared/verify/manifestSchema6LinkProvenance.test.ts.
+  it('exits 0 with a PASS report on a capture entry carrying the link provenance fields', () => {
+    const linkDir = mkdtempSync(join(tmpdir(), 'bb-binlink-'))
+    writeEnginePackage(linkDir, LINK_FIELDS)
+    const proc = spawnSync(binaryPath, [linkDir], { encoding: 'utf-8' })
+    expect(proc.status, proc.stdout + proc.stderr).toBe(0)
+    expect(proc.stdout).toContain('[PASS] manifest chain')
+    expect(proc.stdout).toContain('RESULT: PASS')
+    rmSync(linkDir, { recursive: true, force: true })
+  })
+
+  it('exits 1 with a FAIL report when the Transaction Record is missing', () => {
+    const engineDir = mkdtempSync(join(tmpdir(), 'bb-binengine-'))
+    writeEnginePackage(engineDir)
+    rmSync(join(engineDir, transactionRecordPath(ENGINE_HASHES.transactionRecord)))
+    const proc = spawnSync(binaryPath, [engineDir], { encoding: 'utf-8' })
+    expect(proc.status, proc.stdout + proc.stderr).toBe(1)
+    expect(proc.stdout).toContain(
+      `[FAIL] capture ${ENGINE_CAPTURE_ID} transaction record — capture ${ENGINE_CAPTURE_ID}: ` +
+        'Transaction Record file missing'
+    )
+    expect(proc.stdout).toContain('RESULT: FAIL')
+    rmSync(engineDir, { recursive: true, force: true })
+  })
+
+  // #1926 through the BUILT binary: a package the export path wrote from a
+  // Capture built by hand carries both files, and the binary binds them.
+  it('exits 0 with a PASS report on an exported package carrying both files', async () => {
+    const { id: caseId } = createCase({ name: 'Binary Engine Export' })
+    ensureCaseDir(caseId)
+    const caseDir = join(tempDir, 'captures', caseId)
+    initManifest(caseDir)
+    await seedEngineCapture({
+      caseDir,
+      caseId,
+      captureId: ENGINE_CAPTURE_ID,
+      store: defaultCaptureStore
+    })
+    const outputPath = join(tempDir, 'engine-export.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'evidence',
+        outputPath
+      },
+      createCaptureLifecycle({
+        selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+      })
+    )
+    const engineDir = mkdtempSync(join(tmpdir(), 'bb-binengineexport-'))
+    unzipToDir(outputPath, engineDir)
+    expect(existsSync(join(engineDir, pdfPath(ENGINE_HASHES.pdf)))).toBe(true)
+    const proc = spawnSync(binaryPath, [engineDir], { encoding: 'utf-8' })
+    expect(proc.status, proc.stdout + proc.stderr).toBe(0)
+    expect(proc.stdout).toContain('RESULT: PASS')
+    expect(proc.stdout).toContain(`[PASS] capture ${ENGINE_CAPTURE_ID} transaction record\n`)
+    expect(proc.stdout).toContain(`[PASS] capture ${ENGINE_CAPTURE_ID} pdf\n`)
+    rmSync(engineDir, { recursive: true, force: true })
   })
 
   // #399 AC 2 through the BUILT binary: a Working Copy is reported as not a

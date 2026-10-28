@@ -55,7 +55,7 @@ The primary artifacts taken from one observation of a single web page, stored on
 _Avoid_: page, snapshot, record.
 
 **Transaction Record**:
-_Planned._ The WARC holding the HTTP requests and responses of the observed navigation that the browser handed over complete, from its first request to the moment of Capture. The Capture's inventory accounts for every exchange the record lacks or holds in part: one served from the cache, failed, cancelled, still in flight, or over the size budget, and a request whose body the browser did not hand over in full. The record holds what the browser's network stack handed over (decoded bodies, headers as parsed), never bytes read off the wire. The values of four standard credential headers (`Cookie`, `Set-Cookie`, `Authorization`, `Proxy-Authorization`) are replaced with a marker before the record is written, and the inventory names them ([`ADR-0036`](docs/adr/0036-credential-header-values-never-enter-a-transaction-record.md)). A Transaction Record from a launched browser (`launched` or `launched-passive`) holds no request body, and the inventory lists each request whose body the engine withheld ([`ADR-0051`](docs/adr/0051-a-launched-browser-records-no-request-body.md)). A secret in any other header, a URL, or a response body stays in the record, and so does one in a request body of a `background` record. Present only when recording was on before the page loaded; never reconstructed afterwards.
+_Planned._ The WARC holding the HTTP requests and responses of the observed navigation that the browser handed over complete, from its first request to the moment of Capture. The Capture's inventory accounts for every exchange the record lacks or holds in part: one served from the cache, failed, cancelled, still in flight, reported finished with no response, or over the size budget, and a request whose body the browser did not hand over in full. The record holds what the browser's network stack handed over (decoded bodies, headers as parsed), never bytes read off the wire. The values of four standard credential headers (`Cookie`, `Set-Cookie`, `Authorization`, `Proxy-Authorization`) are replaced with a marker before the record is written, and the inventory names them ([`ADR-0036`](docs/adr/0036-credential-header-values-never-enter-a-transaction-record.md)). A Transaction Record from a launched browser (`launched` or `launched-passive`) holds no request body, and the inventory lists each request whose body the engine withheld ([`ADR-0051`](docs/adr/0051-a-launched-browser-records-no-request-body.md)). A secret in any other header, a URL, or a response body stays in the record, and so does one in a request body of a `background` record. Present only when recording was on before the page loaded; never reconstructed afterwards.
 _Avoid_: network log, HAR, archive, WARC file (as the general term).
 
 **Capture Server**:
@@ -152,6 +152,14 @@ _Avoid_: team case, synced case, collaborative case (as the term).
 The installation that created a Shared Case. The only one that writes `member-add`, `member-revoke`, and `exclude`; the roster is read from its Manifest and nowhere else.
 _Avoid_: host, creator, administrator.
 
+**Member**:
+An installation in a Shared Case's roster, added by the Owner's `member-add` and removed from sync by its `member-revoke`. A member signs its own chain with its installation key and is cited by its Member Code; one person on two machines is two members. A revoked member keeps the copy it holds.
+_Avoid_: peer, user (as the term).
+
+**Invite**:
+The single-use string (`bbinvite1` and base32) the Owner creates to admit one installation to a Shared Case. It names the Owner's node and relay, never a direct address, carries a one-time secret, and expires after 24 hours. Using it sends a join request that the Owner approves, assigning a Member Code, or declines.
+_Avoid_: invitation code, ticket (the transport ticket is one field inside it).
+
 **Member Code**:
 The one-to-three character prefix (`[A-Z0-9]`) the Owner assigns a member at approval, recorded in its `member-add`. In a Shared Case a citation is `<Member Code>-<Exhibit Number>`; a Case with no `member-add` has no prefix.
 _Avoid_: member prefix, initials.
@@ -161,7 +169,7 @@ The hash over a canonicalized Manifest Entry together with its predecessor's Ent
 _Avoid_: line hash, record hash.
 
 **Content Hash**:
-The SHA-256 over a Capture's stored bytes. The identity a Timestamp Token attests to, and what chain verification re-computes.
+The SHA-256 over a Capture's stored bytes. What chain verification re-computes, and one of the two subjects a Timestamp Token can attest to; the other is a `merge` entry's Entry Hash.
 _Avoid_: file hash, capture hash.
 
 **Trusted Time**:
@@ -169,7 +177,7 @@ The axis recording whether a Capture's Content Hash is anchored by an RFC 3161 t
 _Avoid_: timestamp status, stamp state.
 
 **Timestamp Token**:
-The RFC 3161 token returned by a TSA, binding an asserted time to a submitted imprint.
+The RFC 3161 token returned by a TSA, binding an asserted time to a submitted imprint. Its subject is a Content Hash or, with `subject: 'entry'`, the Entry Hash of a `merge` entry: the receipt a receiving member stamps, which dates the receipt and not any Capture.
 _Avoid_: stamp, TSA response.
 
 **TSA**:
@@ -334,6 +342,7 @@ _Avoid_: risky change, core change, forensic change.
 - **Trusted Time** and **Integrity Status** are orthogonal: a byte-perfect **Capture** is integrity-verified whether or not it carries a trusted timestamp
 - A **Recapture** produces a new **Capture** that supersedes an existing one; both remain visible and neither is overwritten
 - A **Duplicate** is a new **Capture** that links to its source and shares its **Content Hash**; unlike a **Recapture** it observed nothing
+- A link **Capture** observed its destination afresh, so unlike a **Duplicate** it is a new sighting; _planned:_ it names the **Capture** whose stored page held the link (ADR-0040)
 - A **TLS Cert Chain** and a **Wayback Ref** attach to a **Capture** as corroboration only, and bind nothing about the captured transaction
 - **Bound TLS Details** are part of the **Capture** and describe the captured transaction; they never substitute for the **TLS Cert Chain**, which stays the floor wherever it runs; _planned:_ it is skipped while the **Egress** is not Direct (#1695)
 - Creating or updating a **Selector** triggers the **Selector Lifecycle** to (re)compute **Persisted Matches** for the **Case**'s existing **Captures**, asynchronously

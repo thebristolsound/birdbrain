@@ -6,7 +6,7 @@ import {
   parseArtifactFilename,
   StagedRestoreError
 } from '@main/services/captureStore'
-import type { CaptureStore } from '@main/services/captureStore'
+import type { CaptureArtifactType, CaptureStore } from '@main/services/captureStore'
 import * as captureRepo from '@main/services/db/captureRepo'
 import { getExhibit, listExhibits } from '@main/services/db/exhibitRepo'
 import { listDerivedFilesForExhibit } from '@main/services/db/derivedFileRepo'
@@ -610,56 +610,62 @@ interface SidecarFailure {
   reason: string
 }
 
-// Recomputes the screenshot/text sidecar digests against the hashes recorded
-// in the SIGNED manifest capture entry (#234) — never `captures.screenshot_hash`
-// / `captures.text_hash`, which are an unauthoritative DB mirror (see the
-// caller). Returns undefined when everything binds. An entry with no recorded
-// hash for an artifact is not checked for that artifact — same grandfathering
-// the mirror-based check had.
+// Recomputes the sidecar digests (the screenshot, the text, the Transaction
+// Record and the PDF) against the hashes recorded in the SIGNED manifest
+// capture entry (#234) — never the `captures` row's hash columns, which are an
+// unauthoritative DB mirror (see the caller). Returns undefined when
+// everything binds. An entry with no recorded hash for an artifact is not
+// checked for that artifact — same grandfathering the mirror-based check had.
 //
 // An absent file is `missing`, never `tampered`: it shows nothing about whether
-// any bytes changed (#1661). It does not end the scan: a mismatch in either
-// file is reported ahead of an absent one, so an absent screenshot cannot mask
-// an altered text file.
+// any bytes changed (#1661). It does not end the scan: a mismatch in any file
+// is reported ahead of an absent one, so an absent screenshot cannot mask an
+// altered text file.
 async function verifySidecars(
   capture: NonNullable<ReturnType<typeof captureRepo.getCapture>>,
   store: CaptureStore,
   entry: CaptureChainEntry | undefined
 ): Promise<SidecarFailure | undefined> {
+  // The Transaction Record and the PDF are hashed as they stream from disk, as
+  // the MHTML is, so a large file never sits whole in the main process.
+  const sidecars: Array<{
+    hash: string | undefined
+    type: CaptureArtifactType
+    label: string
+    streamed: boolean
+  }> = [
+    { hash: entry?.screenshotHash, type: 'png', label: 'Screenshot', streamed: false },
+    { hash: entry?.textHash, type: 'txt', label: 'Extracted text', streamed: false },
+    {
+      hash: entry?.transactionRecordHash,
+      type: 'warc.gz',
+      label: 'Transaction Record',
+      streamed: true
+    },
+    { hash: entry?.pdfHash, type: 'pdf', label: 'PDF', streamed: true }
+  ]
   let absent: SidecarFailure | undefined
 
-  if (entry?.screenshotHash) {
-    const buf = store.readArtifact(capture.caseId, capture.id, 'png')
-    if (!buf) {
-      absent = {
-        status: 'missing',
-        reason: 'Screenshot missing: expected ' + entry.screenshotHash.slice(0, 12) + '...'
-      }
+  for (const { hash, type, label, streamed } of sidecars) {
+    if (!hash) continue
+    let computed: string | null
+    if (streamed) {
+      computed = await store.hashArtifact(capture.caseId, capture.id, type)
     } else {
-      const computed = createHash('sha256').update(buf).digest('hex')
-      if (computed !== entry.screenshotHash) {
-        return {
-          status: 'tampered',
-          reason: 'Screenshot hash mismatch: expected ' + entry.screenshotHash + ', got ' + computed
-        }
-      }
+      const buf = store.readArtifact(capture.caseId, capture.id, type)
+      computed = buf ? createHash('sha256').update(buf).digest('hex') : null
     }
-  }
-
-  if (entry?.textHash) {
-    const buf = store.readArtifact(capture.caseId, capture.id, 'txt')
-    if (!buf) {
+    if (computed === null) {
       absent ??= {
         status: 'missing',
-        reason: 'Extracted text missing: expected ' + entry.textHash.slice(0, 12) + '...'
+        reason: label + ' missing: expected ' + hash.slice(0, 12) + '...'
       }
-    } else {
-      const computed = createHash('sha256').update(buf).digest('hex')
-      if (computed !== entry.textHash) {
-        return {
-          status: 'tampered',
-          reason: 'Extracted text hash mismatch: expected ' + entry.textHash + ', got ' + computed
-        }
+      continue
+    }
+    if (computed !== hash) {
+      return {
+        status: 'tampered',
+        reason: label + ' hash mismatch: expected ' + hash + ', got ' + computed
       }
     }
   }
@@ -1590,6 +1596,17 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
             store.deleteArtifacts(source.caseId, duplicateId)
             return { status: 'rejected', reason: 'copy_mismatch' }
           }
+          if (
+            sourceEntry.transactionRecordHash &&
+            artifacts['warc.gz']?.hash !== sourceEntry.transactionRecordHash
+          ) {
+            store.deleteArtifacts(source.caseId, duplicateId)
+            return { status: 'rejected', reason: 'copy_mismatch' }
+          }
+          if (sourceEntry.pdfHash && artifacts.pdf?.hash !== sourceEntry.pdfHash) {
+            store.deleteArtifacts(source.caseId, duplicateId)
+            return { status: 'rejected', reason: 'copy_mismatch' }
+          }
 
           const duplicatedAt = new Date().toISOString()
           // The duplicate's search text comes from ITS OWN copied .txt bytes,
@@ -1637,6 +1654,14 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
               egressLabel: sourceEntry.egressLabel,
               userAgent: sourceEntry.userAgent,
               tlsSkipped: sourceEntry.tlsSkipped,
+              // The capture engine's facts about the copied files (D11 of
+              // docs/plans/2026-10-10-capture-engine-first-slice.md). No
+              // `boundTls` or `boundTlsAbsent`: `CONTEXT.md` has Bound TLS
+              // Details absent for `duplicate` Captures.
+              inventory: sourceEntry.inventory,
+              scrollToLoad: sourceEntry.scrollToLoad,
+              transactionRecordHash: sourceEntry.transactionRecordHash,
+              pdfHash: sourceEntry.pdfHash,
               sizeBytes: mhtml.sizeBytes,
               operatorId: getInstallationId(),
               operatorName,

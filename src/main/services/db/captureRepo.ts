@@ -1,5 +1,7 @@
 import { v4 as uuid } from 'uuid'
+import type { z } from 'zod'
 import type {
+  BoundTlsAbsence,
   Capture,
   CaptureFormat,
   CaptureMethod,
@@ -8,7 +10,13 @@ import type {
   TrustedTime,
   TlsCertChainResult
 } from '@shared/types'
-import { TlsCertChainResultSchema } from '@shared/schemas'
+import { BOUND_TLS_ABSENCES } from '@shared/types'
+import {
+  BoundTlsSchema,
+  CaptureInventorySchema,
+  ScrollToLoadRecordSchema,
+  TlsCertChainResultSchema
+} from '@shared/schemas'
 import { getDb, type ImportCtx } from '@main/services/db/core'
 import { toFtsMatchQuery } from '@main/services/db/ftsQuery'
 import {
@@ -167,7 +175,13 @@ export const CAPTURE_COLUMNS: ReadonlyArray<{ column: string; default: unknown }
   { column: 'method', default: 'extension' },
   { column: 'supersedes_capture_id', default: null },
   { column: 'consent_suppression', default: null },
-  { column: 'duplicate_of_capture_id', default: null }
+  { column: 'duplicate_of_capture_id', default: null },
+  { column: 'transaction_record_hash', default: null },
+  { column: 'pdf_hash', default: null },
+  { column: 'inventory', default: null },
+  { column: 'scroll_to_load', default: null },
+  { column: 'bound_tls', default: null },
+  { column: 'bound_tls_absent', default: null }
 ]
 
 const ARTIFACT_PATH_COLUMNS = new Set(['html_path', 'screenshot_path', 'mhtml_path'])
@@ -454,6 +468,32 @@ function parseTlsCertChain(value: unknown): TlsCertChainResult | undefined {
   return result.success ? result.data : undefined
 }
 
+// The capture engine's mirror columns. Settings → Database can hand-edit the row, so each
+// column reads back undefined when it fails its own entry field's check, as parseTlsCertChain
+// does. No rule across columns applies: the row is a cache, and can hold a combination the
+// signed entry would refuse.
+const SHA256_HEX = /^[0-9a-f]{64}$/
+
+function parseMirroredHash(value: unknown): string | undefined {
+  return typeof value === 'string' && SHA256_HEX.test(value) ? value : undefined
+}
+
+function parseMirroredJson<T>(value: unknown, schema: z.ZodType<T>): T | undefined {
+  if (typeof value !== 'string' || value.length === 0) return undefined
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value)
+  } catch {
+    return undefined
+  }
+  const result = schema.safeParse(parsed)
+  return result.success ? result.data : undefined
+}
+
+function parseBoundTlsAbsent(value: unknown): BoundTlsAbsence | undefined {
+  return BOUND_TLS_ABSENCES.find((absence) => absence === value)
+}
+
 function rowToCapture(row: Record<string, unknown>): Capture {
   return {
     id: row.id as string,
@@ -475,6 +515,12 @@ function rowToCapture(row: Record<string, unknown>): Capture {
     screenshotHash: (row.screenshot_hash as string) || undefined,
     textHash: (row.text_hash as string) || undefined,
     tlsCertChain: parseTlsCertChain(row.tls_cert_chain),
+    transactionRecordHash: parseMirroredHash(row.transaction_record_hash),
+    pdfHash: parseMirroredHash(row.pdf_hash),
+    inventory: parseMirroredJson(row.inventory, CaptureInventorySchema),
+    scrollToLoad: parseMirroredJson(row.scroll_to_load, ScrollToLoadRecordSchema),
+    boundTls: parseMirroredJson(row.bound_tls, BoundTlsSchema),
+    boundTlsAbsent: parseBoundTlsAbsent(row.bound_tls_absent),
     sizeBytes: (row.size_bytes as number) ?? undefined,
     manifestIndex: (row.manifest_index as number) ?? undefined,
     prevHash: (row.prev_hash as string) || undefined,

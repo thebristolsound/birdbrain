@@ -23,11 +23,12 @@ wired into a capture, and no renderer code calls the sharing API. The cost is do
 
 ## Current programme: Capture engine first slice
 
-Steps 1 to 6 and 8 to 10 of the capture engine first slice, in one manifest schema release that
-also takes ADR-0040's link provenance fields and #586; then MHTML viewer slices 2 and 3, with
-slice 3's S2 rewritten around `src/shared/localAddress.ts`. It is done when the release is
-tagged and the viewer plan's three slices are done. The gate the maintainer owes: approve the
-first-slice spec and plan on #1803, and accept or amend ADR-0040 (#1736).
+Steps 1 to 6 and 8 to 10 of the capture engine first slice, in one manifest schema release
+(schema 6) that also takes ADR-0040's link provenance fields; then MHTML viewer slices 2 and 3,
+with slice 3's S2 rewritten around `src/shared/localAddress.ts`. It is done when the release is
+tagged and the viewer plan's three slices are done. The spec and plan were approved on #1803 and
+ADR-0040 was accepted at schema 6 on 2026-10-26; the gate the maintainer still owes is the
+release tag.
 
 ## Done programmes
 
@@ -58,6 +59,10 @@ Slot 2 works defects in this order, one at a time, beside whichever programme is
 |---|---|---|---|
 | 3 | Capture engine stage 2: the launched browser, passive capture (#600) and a profile per Persona (#1833), with Persona phases 2, 3, 5 and 6 rewritten around it; phase 4 moves to the stage 3 Companion pipe | Passive capture and Personas ship, and the Persona plan is done | Answer the schema question on #1498 |
 | 4 | Case investigation engine | The Investigate section gets its navigation entry in a packaged build | An ADR choosing the local model and runtime; the evaluation bar (#1892, CI-B) |
+
+**Ruling, 2026-10-26.** The maintainer accepted ADR-0040 at schema 6 and moved #586's schema
+step out of the schema-6 release: chain head anchoring takes a later schema number once its
+design is approved, so it does not hold back the capture engine's writer steps.
 
 ## Parked on 2026-10-23
 

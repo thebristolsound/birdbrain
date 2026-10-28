@@ -114,10 +114,16 @@ import type {
   SelectorRematchedEvent,
   GuestFrameReplacedEvent,
   GuestMouseDownEvent,
+  GuestMouseUpEvent,
   ExtensionAttachEvent,
   DeepLinkTarget,
   ExportProgressEvent,
   ExportResult,
+  LookupWaybackLinkParams,
+  LookupWaybackLinksParams,
+  WaybackLinkBatchResult,
+  WaybackLinkLookupResult,
+  WaybackLinkProgressEvent,
   PinWaybackSnapshotParams,
   ArchiveProgressEvent,
   ArchiveExportResult,
@@ -250,6 +256,9 @@ export interface BirdbrainAPI {
   }
   wayback: {
     lookup(captureId: string): Promise<WaybackLookupResult>
+    lookupLink(params: LookupWaybackLinkParams): Promise<WaybackLinkLookupResult>
+    lookupLinks(params: LookupWaybackLinksParams): Promise<WaybackLinkBatchResult>
+    cancelLookupLinks(captureId: string): Promise<boolean>
     list(captureId: string): Promise<WaybackRef[]>
     listForCase(caseId: string): Promise<CaseWaybackRef[]>
     pin(params: PinWaybackSnapshotParams): Promise<WaybackRef>
@@ -393,9 +402,11 @@ export interface BirdbrainAPI {
   onUpdateStatus(callback: (status: UpdateStatus) => void): () => void
   onGuestFrameReplaced(callback: (event: GuestFrameReplacedEvent) => void): () => void
   onGuestMouseDown(callback: (event: GuestMouseDownEvent) => void): () => void
+  onGuestMouseUp(callback: (event: GuestMouseUpEvent) => void): () => void
   onSharingChanged(callback: (event: SharingChangedEvent) => void): () => void
   onSharingJoinProgress(callback: (event: SharingJoinProgressEvent) => void): () => void
   onInvestigationProgress(callback: (event: RunProgressEvent) => void): () => void
+  onWaybackLinkProgress(callback: (event: WaybackLinkProgressEvent) => void): () => void
   testPipeline(): Promise<{ success: boolean; durationMs: number; error?: string }>
   testHttp(): Promise<{ success: boolean; durationMs: number; error?: string }>
   extractedData: {

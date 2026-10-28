@@ -17,7 +17,13 @@ import { join } from 'path'
 import { createHash } from 'crypto'
 import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { ManifestEntrySchema } from '@shared/schemas'
-import type { DerivationParameters, ManifestEntry } from '@shared/schemas'
+import type {
+  BoundTls,
+  CaptureInventory,
+  DerivationParameters,
+  ManifestEntry,
+  ScrollToLoadRecord
+} from '@shared/schemas'
 import {
   canonicalStringify,
   SHARED_CASE_ENTRY_TYPES,
@@ -45,6 +51,7 @@ import type {
   TrustedTime,
   ArchiveVerificationResult,
   CaptureMethod,
+  BoundTlsAbsence,
   ConsentSuppression,
   EgressKind,
   TlsRefetchSkip
@@ -683,6 +690,21 @@ export type ManifestEntryInput =
       egressLabel?: string
       userAgent?: string
       tlsSkipped?: TlsRefetchSkip
+      // The capture engine's fields, described at the capture entry schema in
+      // schemas.ts. Schema-6 fields, so an entry carrying any of them is
+      // stamped 6 (CAPTURE_ENGINE_MIN_READER).
+      inventory?: CaptureInventory
+      scrollToLoad?: ScrollToLoadRecord
+      transactionRecordHash?: string
+      boundTls?: BoundTls
+      boundTlsAbsent?: BoundTlsAbsence
+      pdfHash?: string
+      // Link Capture provenance (ADR-0040), described at the capture entry
+      // schema in schemas.ts. Schema-6 fields, so an entry carrying any of
+      // them is stamped 6 (CAPTURE_LINK_PROVENANCE_MIN_READER).
+      linkedFromCaptureId?: string
+      linkedFromContentHash?: string
+      linkHref?: string
       sizeBytes: number
       operatorId: string
       operatorName: string
@@ -929,7 +951,7 @@ export interface AppendResult {
 // verifier reporting a valid chain as broken is a false accusation, and nothing
 // can recall a distributed copy). So each type declares the oldest verifier
 // that can read it, and the v3 types (ADR-0023) stamp 3. A `capture` entry
-// stamps 3 or 5 only when it carries a schema-3 or schema-5 field
+// stamps 3, 5 or 6 only when it carries a schema-3, schema-5 or schema-6 field
 // (fieldMinReaderSchemaVersion).
 //
 // Typed as a total Record over the input union so adding an entry type without
@@ -978,6 +1000,12 @@ const CAPTURE_EXHIBIT_NUMBER_MIN_READER = 3
 // verifier reads an entry carrying one as "verifier too old" only under a 5.
 const CAPTURE_EGRESS_MIN_READER = 5
 
+// The capture engine's fields are schema 6 on the same reasoning.
+const CAPTURE_ENGINE_MIN_READER = 6
+
+// So are the link provenance fields (ADR-0040, "The fields need schema 6").
+const CAPTURE_LINK_PROVENANCE_MIN_READER = 6
+
 // A `timestamp` entry's `subject` is a schema-4 field (#1518): the schema
 // itself refuses one stamped lower, and a schema-3 verifier would read it as a
 // broken chain rather than "verifier too old".
@@ -996,6 +1024,23 @@ function fieldMinReaderSchemaVersion(entry: ManifestEntryInput): number {
     return entry.memberCode !== undefined ? EXHIBIT_MEMBER_CODE_MIN_READER : 0
   }
   if (entry.type !== 'capture') return 0
+  const { inventory, scrollToLoad, transactionRecordHash, boundTls, boundTlsAbsent, pdfHash } =
+    entry
+  const engineFields = [
+    inventory,
+    scrollToLoad,
+    transactionRecordHash,
+    boundTls,
+    boundTlsAbsent,
+    pdfHash
+  ]
+  if (engineFields.some((field) => field !== undefined)) {
+    return CAPTURE_ENGINE_MIN_READER
+  }
+  const { linkedFromCaptureId, linkedFromContentHash, linkHref } = entry
+  if ([linkedFromCaptureId, linkedFromContentHash, linkHref].some((field) => field !== undefined)) {
+    return CAPTURE_LINK_PROVENANCE_MIN_READER
+  }
   const { egressKind, egressLabel, userAgent, tlsSkipped, exhibitNumber } = entry
   if ([egressKind, egressLabel, userAgent, tlsSkipped].some((field) => field !== undefined)) {
     return CAPTURE_EGRESS_MIN_READER
@@ -1164,6 +1209,14 @@ export interface CaptureEntryContext {
   egressLabel?: string
   userAgent?: string
   tlsSkipped?: TlsRefetchSkip
+  // The capture engine's fields (schema 6), passed through as given and
+  // omitted from the manifest body when undefined.
+  inventory?: CaptureInventory
+  scrollToLoad?: ScrollToLoadRecord
+  transactionRecordHash?: string
+  boundTls?: BoundTls
+  boundTlsAbsent?: BoundTlsAbsence
+  pdfHash?: string
   sizeBytes: number
   operatorId: string
   operatorName: string
@@ -1210,6 +1263,14 @@ export async function withCaptureEntry<T>(
       ...(ctx.egressLabel !== undefined ? { egressLabel: ctx.egressLabel } : {}),
       ...(ctx.userAgent !== undefined ? { userAgent: ctx.userAgent } : {}),
       ...(ctx.tlsSkipped !== undefined ? { tlsSkipped: ctx.tlsSkipped } : {}),
+      ...(ctx.inventory !== undefined ? { inventory: ctx.inventory } : {}),
+      ...(ctx.scrollToLoad !== undefined ? { scrollToLoad: ctx.scrollToLoad } : {}),
+      ...(ctx.transactionRecordHash !== undefined
+        ? { transactionRecordHash: ctx.transactionRecordHash }
+        : {}),
+      ...(ctx.boundTls !== undefined ? { boundTls: ctx.boundTls } : {}),
+      ...(ctx.boundTlsAbsent !== undefined ? { boundTlsAbsent: ctx.boundTlsAbsent } : {}),
+      ...(ctx.pdfHash !== undefined ? { pdfHash: ctx.pdfHash } : {}),
       sizeBytes: ctx.sizeBytes,
       operatorId: ctx.operatorId,
       operatorName: ctx.operatorName,

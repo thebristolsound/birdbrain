@@ -295,7 +295,7 @@ question D).
 
 ```ts
 inventory: {
-  mhtml: { present: true }
+  mhtml: { present: true; pinnedImages: number; pinnedImagesNotLoaded: number }
   transactionRecord:
     | Absent
     | {
@@ -305,6 +305,7 @@ inventory: {
         cancelled: number
         failed: number
         inFlight: number
+        finishedWithoutResponse: number
         bodiesOmitted: number
         incompleteRequestBodies: number
         webSockets: number
@@ -330,6 +331,11 @@ inventory: {
 
 - **MHTML and the screenshot are always present.** A failed `savePage` or screenshot fails the
   render today, and this slice keeps that, so no build can write either as absent (D2's rule).
+- **The MHTML counts.** `pinnedImages` is the number of images the render pinned to their
+  displayed source before the save, and `pinnedImagesNotLoaded` the number of those not loaded
+  when the save ran (#1843, amended 2026-10-21). The schema requires both whenever `inventory` is
+  present. A fifth refine joins D2's four: `pinnedImagesNotLoaded` above `pinnedImages` fails the schema.
+  #1843 writes the counts; step 1 only teaches the verifier them.
 - **Reasons.** `not-taken` means this build does not take the file: step 6's build writes it for
   the Transaction Record and the PDF. `failed` means the engine tried and failed, or refused a PDF
   over step 10's size bounds, and the log carries the error. The list is closed, so a released
@@ -345,6 +351,13 @@ inventory: {
   - `cancelled` and `failed`: `Network.loadingFailed` with `canceled` true and false. Step 0 checks
     how the consent filter's cancels arrive.
   - `inFlight`: neither `loadingFinished` nor `loadingFailed` had arrived when collection stopped.
+  - `finishedWithoutResponse`: a request the browser reported finished (`loadingFinished`) for
+    which no response arrived (`responseReceived`). It is counted in neither `inFlight` nor
+    `exchanges`, so the signed entry tells "still loading at the moment of Capture" from
+    "finished, but the browser gave no response". Step 9's review (#1999) saw one, a service
+    worker's own main script. Added 2026-10-26 on the maintainer's ruling during that review,
+    as the orchestrating session relayed it: step 9 had counted these in `inFlight`, and the
+    count joins schema 6 before any release carries it.
   - `bodiesOmitted`: a finished response whose body `Network.getResponseBody` did not return,
     because it was over the budget or the browser no longer held it. One count covers both, because
     the probe tested neither case and nothing yet shows the two failures can be told apart. With
@@ -470,6 +483,18 @@ against a Chromium 152 response.
 - **Decoded bodies under original headers.** The writer keeps the reported `Content-Encoding`,
   `Transfer-Encoding`, and `Content-Length` under `x-orig-` names and writes the stored body's
   length as `Content-Length` (spec open question 1, ruled 2026-10-10).
+- **Text bodies.** Ruled 2026-10-26, after the review of #1979 measured `Network.getResponseBody`
+  returning a windows-1252 page as a decoded string: the writer stores a body the browser hands
+  over as text encoded in UTF-8, which can differ from the bytes the server sent. Each record that
+  holds such a body carries `x-birdbrain-decoded-text: utf-8`, the `warcinfo` record states the
+  limit, and the payload digest covers the stored UTF-8 bytes. Spike #1983 measures, before step 9,
+  whether the browser can hand over the served bytes instead. The spike's rulings of 2026-10-26
+  amend this; step 9's "Text bodies" item states the change.
+- **Protocol.** Ruled 2026-10-26: request and status lines read `HTTP/1.0` when CDP reports
+  `http/1.0` and `HTTP/1.1` otherwise, so WARC readers can parse them, and each request and response
+  record carries `WARC-Protocol` with the protocol CDP reported, in lower case. browsertrix-crawler
+  does the same (`src/util/reqresp.ts` and `src/util/recorder.ts` at `e582608a`). The `warcinfo`
+  record states the convention.
 - **Addresses.** The writer sets `WARC-IP-Address` only while the Egress is Direct. Through a proxy,
   CDP's `remoteIPAddress` and `remotePort` can name the proxy, and ADR-0032 rule 5 keeps the proxy's
   host and port out of every record (the agent briefs plan, CE-7).
@@ -489,7 +514,7 @@ tarball).
 | Redirect hop | `request`, and `response` with headers and no body, as the spec says: the browser keeps no body for one |
 | Body omitted (`bodiesOmitted`) | `request`, and `response` with headers, no body, and `WARC-Truncated: unspecified`, because one count covers an over-budget body and one the browser no longer held (D4) |
 | Request body incomplete (`incompleteRequestBodies`) | `request` holding what `Network.getRequestPostData` returned, with `WARC-Truncated: unspecified`; its response follows the other rows |
-| Failed, cancelled, or in flight (`failed`, `cancelled`, `inFlight`) | `request` only |
+| Failed, cancelled, in flight, or finished with no response (`failed`, `cancelled`, `inFlight`, `finishedWithoutResponse`) | `request` only |
 | Served from the cache (`cached`) | `request` only |
 
 ### D9. The `captures` row
@@ -777,6 +802,12 @@ evidence behind its answer.
 `x-orig-content-encoding` and `x-orig-transfer-encoding` with their values kept, write the stored
 length as `Content-Length`, and keep the reported length as `x-orig-content-length`. The writer
 states the renaming in `warcinfo` (D8), and step 9 states it in `features.mdx`.
+
+**Ruled 2026-10-26:** a body the browser hands over as text is stored as that text encoded in
+UTF-8, which can differ from the bytes the server sent. The writer marks each record that holds
+one and states the limit in `warcinfo` (D8, "Text bodies"). Spike #1983 measures, before step 9,
+whether the browser can hand over the served bytes instead. The spike's rulings of 2026-10-26
+amend this; step 9's "Text bodies" item states the change.
 
 The spec asks what browser-based archiving tools write, and to follow it if it is documented (spec,
 Open questions). This plan found no published statement, and the two Webrecorder recorders differ
@@ -1117,7 +1148,10 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   _Planned_ on the inventory for other Capture Methods and on the Transaction Record and PDF.
   `CONTEXT.md` is the glossary, and the writing guide forbids describing unshipped behaviour in
   the present tense (`docs/agents/writing-guide.md`, Claim discipline). `features.mdx` updates its
-  Capture section.
+  Capture section. Carried from #1982 (step 3): the step that adds the `inventory` and
+  `scroll_to_load` columns to `InsertCaptureParams` also has Duplicate's `insertCapture` call
+  pass both from the source's signed entry, as it passes `screenshotHash` (step 9 lists all four
+  fields).
 - **Done when.** Unit tests drive `scrollToLoadLazyContent` through each ending in D5 with a mocked
   `WebContents`, and the screenshot functions through scaled, truncated, trimmed, and none. An e2e
   Recapture of an invented fixture page records `stopped-growing`, its height, and the screenshot
@@ -1205,7 +1239,25 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   It also adds the Transaction Record to the Integrity bullet that lists what Birdbrain hashes and
   to the Export bullet that lists what an evidence package contains. A test-only certificate
   allowance, from step 0's question 6, joins CE-2's loopback allowance, which a packaged build
-  cannot turn on.
+  cannot turn on. Carried from #1982 (step 3): a Duplicate's row mirrors none of the four fields
+  its signed entry re-anchors (`inventory`, `scroll_to_load`, `transaction_record_hash`,
+  `pdf_hash`), because `InsertCaptureParams` has no mirror columns until a writer step adds them.
+  Each writer step that adds one has Duplicate's `insertCapture` call pass it from the source's
+  signed entry, as it passes `screenshotHash`: step 6 the first two, step 9
+  `transaction_record_hash`, step 10 `pdf_hash`.
+- **Text bodies (ruled 2026-10-26).** The
+  [charset spike](../specs/2026-10-26-transaction-record-charset-spike.md) measured that
+  `Network.getResponseBody` returns the served bytes once the session has been sent
+  `Network.configureDurableMessages`, and the maintainer ruled on its three questions (the spike,
+  "Rulings, 2026-10-26"). Step 9 sends that command with the `Network.enable` limits on the page's
+  session and on each attached session in D17's order, and counts a target as recorded only when
+  it answered. The collector keeps a body returned as a string only from such a session. Step 9
+  applies the per-resource limit itself before it keeps a body and records an oversized body as
+  omitted. A page's copy of a response that a service worker answered is `body-omitted`. Step 9's
+  pull request removes the writer's `x-birdbrain-decoded-text` marker and its `warcinfo` sentence.
+  The spike ran on Electron 44.9.1, so step 9 re-checks the experimental
+  `Network.configureDurableMessages` on the Electron version `main` pins (45.0.0 since #1994)
+  before it relies on it.
 - **Time.** The render races one deadline and, when the deadline wins, rejects with "Recapture
   timed out" and stores nothing; `FINAL_ARTIFACT_RESERVE_MS` reserves 20 s for the screenshot,
   MHTML, and text only (`renderPageInHiddenWindow`). Two new phases need time at the end: the
@@ -1264,7 +1316,9 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   that lists what an evidence package contains. As the test-reader gate ruled on 2026-10-10, the
   step adds `pdfjs-dist` 5.6.205, exact-pinned, to `devDependencies`, and an `ignore` entry for
   `pdfjs-dist` with `versions: ['>=5.7']` to `.github/dependabot.yml`, beside the
-  `dependency-cruiser` entry (outside the paths ADR-0048 holds).
+  `dependency-cruiser` entry (outside the paths ADR-0048 holds). Carried from #1982 (step 3):
+  Duplicate's `insertCapture` call fills the `pdf_hash` column from the source's signed entry
+  once `InsertCaptureParams` has it (step 9 lists all four fields).
 - **Done when.** With the probe's print-only image as a fixture, the image's request is absent from
   the Transaction Record. The stored file parses under `pdfjs-dist` as one page holding the
   fixture's text. A unit test in which `printToPDF` never settles stores the Capture with the PDF
@@ -1384,7 +1438,7 @@ open.
 | Before beta.23 (#1799, a draft pull request) is tagged, decide which schema steps land in it | 1 | Ruled: beta.23 ships as is, carrying only the schema-5 (Egress) reader; the ADR-0040 and #586 schema steps share the later release with step 1's verifier |
 | Settle the `warcio` licence and approve the test-only readers | 8, and 9 and 10 through it | Ruled: both licence texts through an `append` override, the 2026-10-02 approval covering the runtime and transitive dependencies, and no upstream request now; a hand-written WARC reader plus a manual Python `warcio check`; `pdfjs-dist` 5.6.205, exact-pinned, with a Dependabot ignore for 5.7 and later |
 | Choose how the probe is rerun on each Electron upgrade | 9 | Ruled as recommended: the CI test on each Electron change (D15); step 9 commits the script, and the maintainer opens the pull request that adds the CI job (ADR-0048 sign-off) |
-| Tag a release carrying step 1's verifier, with notes telling Shared Case members to upgrade together | 6, 9, 10 | Owed: the tag. Steps 2 to 5, 7, and 8 do not wait for it (open question A, ruled). The ADR-0040 and #586 schema steps ship in the same release |
+| Tag a release carrying step 1's verifier, with notes telling Shared Case members to upgrade together | 6, 9, 10 | Owed: the tag. Steps 2 to 5, 7, and 8 do not wait for it (open question A, ruled). The ADR-0040 schema step ships in the same release; #586's takes a later number (the delivery roadmap's 2026-10-26 ruling). Sequenced 2026-10-26 by the orchestrating session, pending the maintainer's confirmation: the tag also waits for step 3 (#1925) and step 4 (#1926), so no release reads schema 6 while Shared Case sync fetches neither new file or `verify.sh` checks neither |
 | Tag a release carrying #1747, and rule whether update checks follow the Egress | 9, through CE-3 (#1695) | Owed: the beta.23 tag; #1799 ships as is, carrying #1747's schema-5 reader. Ruled: `electron-updater` traffic goes through the proxy and fails closed, in CE-3's scope and acceptance |
 | Rule on #1694: where the app displays capture fields | Display beyond `report.html` | Ruled: #1694 closed with its verifier half merged; #1816, after CE-8, shows the Egress, the inventory, the Scroll-to-load outcome, and Bound TLS Details on a Capture, apart from the TLS Cert Chain view. Step 5 covers only `report.html` |
 | Whether #1667 closes once its background half is recorded | none | Ruled: #1667 closes when step 6 records its background half; its extension half closes in favor of CE-S3 |
@@ -1582,3 +1636,25 @@ folded in.
   review: the setup order set per target type from a rerun measurement, the body cap applied
   before fetching, the page's own auto-attach bounded and counted, and the departure from ADR-0035
   named for approval. Step 1 waits for its approval.
+- **2026-10-26.** Step 1 (#1904) takes manifest schema 6: beta.23, the latest tag, reads 5. D4
+  gains the two MHTML counts from #1843. `CAPTURE_ENTRY_HASH_FIELDS` stays at its three fields:
+  the sync maps each field to a Capture Store file type (`CAPTURE_ARTIFACT_BY_FIELD` in
+  `blobAcceptance.ts`), and the store has no type for either new file until step 3. Step 1
+  leaves the list for step 3 to extend, a change to D2 and D14 that awaits the maintainer's ruling.
+- **2026-10-26.** Release sequencing after #1978's review, decided by the orchestrating session
+  and pending the maintainer's confirmation, not a maintainer ruling: the tag carrying step 1's
+  verifier also waits for step 3 (#1925) and step 4 (#1926). A build that reads schema 6 accepts a
+  schema-6 Capture from another member, where beta.23 stops at it and asks for an update. Until
+  step 3 adds `transactionRecordHash` and `pdfHash` to `CAPTURE_ENTRY_HASH_FIELDS`, with their
+  Capture Store file types, the sync fetches neither file, and until step 4 `verify.sh` checks
+  neither. Holding the tag until both merge means no released build has that gap.
+- **2026-10-26.** Step 3 (#1925) takes Case Archive version 13, the next after 12 on `main`. It
+  adds `transactionRecordHash` and `pdfHash` to `CAPTURE_ENTRY_HASH_FIELDS`, mapped to the new
+  `warc.gz` and `pdf` file types, so a Shared Case member fetches and hash-checks both files.
+- **2026-10-26.** D4's Transaction Record part gains `finishedWithoutResponse`, on the
+  maintainer's ruling during step 9's review (#1999) as the orchestrating session relayed it.
+  Step 1 (#1904) adds it to schema 6; making the collector count it is left to step 9.
+- **2026-10-26.** The charset spike (#1983, PR #1988) found a way for the collector to keep a text
+  response's served bytes, and the maintainer ruled on its three questions the same day. Step 9's
+  Changes gain a "Text bodies" item with the rulings; the spike records them under "Rulings,
+  2026-10-26".

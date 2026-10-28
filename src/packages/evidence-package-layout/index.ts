@@ -4,8 +4,10 @@ export {
   CAPTURE_PACKAGE_DIRECTORY,
   LINEAGE_DIRECTORY,
   PACKAGE_ROOT_FILES,
+  PDF_PACKAGE_DIRECTORY,
   SCREENSHOT_PACKAGE_DIRECTORY,
   TIMESTAMP_PACKAGE_DIRECTORY,
+  TRANSACTION_RECORD_PACKAGE_DIRECTORY,
   capturePagePath,
   derivedFilePackagePath,
   exhibitPackageDirectory,
@@ -15,7 +17,9 @@ export {
   lineageChainPath,
   memberChainPath,
   parseChainPath,
+  pdfPath,
   screenshotPath,
-  timestampTokenPath
+  timestampTokenPath,
+  transactionRecordPath
 } from './lib/paths'
 export type { ChainPath } from './lib/paths'

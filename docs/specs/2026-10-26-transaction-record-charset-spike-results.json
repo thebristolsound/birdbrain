@@ -1,0 +1,6738 @@
+{
+  "spike": "#1983",
+  "runtime": {
+    "node": "24.22.0",
+    "acorn": "8.18.0",
+    "ada": "4.0.0",
+    "amaro": "1.1.11",
+    "ares": "1.34.8",
+    "brotli": "1.2.0",
+    "cldr": "48.0",
+    "icu": "78.2",
+    "llhttp": "9.4.3",
+    "merve": "1.2.2",
+    "modules": "149",
+    "napi": "10",
+    "nbytes": "0.1.4",
+    "ncrypto": "0.0.1",
+    "nghttp2": "1.70.0",
+    "nghttp3": "",
+    "ngtcp2": "",
+    "openssl": "0.0.0",
+    "simdjson": "4.6.11",
+    "simdutf": "7.7.0",
+    "sqlite": "3.53.4",
+    "tz": "2026d",
+    "undici": "7.29.1",
+    "unicode": "17.0",
+    "uv": "1.52.1",
+    "uvwasi": "0.0.23",
+    "v8": "15.2.124.43-electron.0",
+    "zlib": "1.3.2.1-motley",
+    "zstd": "1.6.0",
+    "electron": "44.9.1",
+    "chrome": "152.0.7977.167"
+  },
+  "browserVersion": "Chrome/152.0.7977.167",
+  "protocolVersion": "1.3",
+  "commands": [
+    {
+      "command": "Fetch.enable",
+      "experimental": false,
+      "deprecated": false,
+      "description": "Enables issuing of requestPaused events. A request will be paused until client\ncalls one of failRequest, fulfillRequest or continueRequest/continueWithAuth.",
+      "parameters": [
+        {
+          "name": "patterns",
+          "experimental": false,
+          "description": "If specified, only requests matching any of these patterns will produce\nfetchRequested event and will be paused until clients response. If not set,\nall requests will be affected."
+        },
+        {
+          "name": "handleAuthRequests",
+          "experimental": false,
+          "description": "If true, authRequired events will be issued and requests will be paused\nexpecting a call to continueWithAuth."
+        }
+      ]
+    },
+    {
+      "command": "Fetch.fulfillRequest",
+      "experimental": false,
+      "deprecated": false,
+      "description": "Provides response to the request.",
+      "parameters": [
+        {
+          "name": "requestId",
+          "experimental": false,
+          "description": "An id the client received in requestPaused event."
+        },
+        {
+          "name": "responseCode",
+          "experimental": false,
+          "description": "An HTTP response code."
+        },
+        {
+          "name": "responseHeaders",
+          "experimental": false,
+          "description": "Response headers."
+        },
+        {
+          "name": "binaryResponseHeaders",
+          "experimental": false,
+          "description": "Alternative way of specifying response headers as a \\0-separated\nseries of name: value pairs. Prefer the above method unless you\nneed to represent some non-UTF8 values that can't be transmitted\nover the protocol as text."
+        },
+        {
+          "name": "body",
+          "experimental": false,
+          "description": "A response body. If absent, original response body will be used if\nthe request is intercepted at the response stage and empty body\nwill be used if the request is intercepted at the request stage."
+        },
+        {
+          "name": "responsePhrase",
+          "experimental": false,
+          "description": "A textual representation of responseCode.\nIf absent, a standard phrase matching responseCode is used."
+        }
+      ]
+    },
+    {
+      "command": "Fetch.continueRequest",
+      "experimental": false,
+      "deprecated": false,
+      "description": "Continues the request, optionally modifying some of its parameters.",
+      "parameters": [
+        {
+          "name": "requestId",
+          "experimental": false,
+          "description": "An id the client received in requestPaused event."
+        },
+        {
+          "name": "url",
+          "experimental": false,
+          "description": "If set, the request url will be modified in a way that's not observable by page."
+        },
+        {
+          "name": "method",
+          "experimental": false,
+          "description": "If set, the request method is overridden."
+        },
+        {
+          "name": "postData",
+          "experimental": false,
+          "description": "If set, overrides the post data in the request."
+        },
+        {
+          "name": "headers",
+          "experimental": false,
+          "description": "If set, overrides the request headers. Note that the overrides do not\nextend to subsequent redirect hops, if a redirect happens. Another override\nmay be applied to a different request produced by a redirect."
+        },
+        {
+          "name": "interceptResponse",
+          "experimental": true,
+          "description": "If set, overrides response interception behavior for this request."
+        }
+      ]
+    },
+    {
+      "command": "Fetch.getResponseBody",
+      "experimental": false,
+      "deprecated": false,
+      "description": "Causes the body of the response to be received from the server and\nreturned as a single string. May only be issued for a request that\nis paused in the Response stage and is mutually exclusive with\ntakeResponseBodyForInterceptionAsStream. Calling other methods that\naffect the request or disabling fetch domain before body is received\nresults in an undefined behavior.\nNote that the response body is not available for redirects. Requests\npaused in the _redirect received_ state may be differentiated by\n`responseCode` and presence of `location` response header, see\ncomments to `requestPaused` for details.",
+      "parameters": [
+        {
+          "name": "requestId",
+          "experimental": false,
+          "description": "Identifier for the intercepted request to get body for."
+        }
+      ]
+    },
+    {
+      "command": "Fetch.takeResponseBodyAsStream",
+      "experimental": false,
+      "deprecated": false,
+      "description": "Returns a handle to the stream representing the response body.\nThe request must be paused in the HeadersReceived stage.\nNote that after this command the request can't be continued\nas is -- client either needs to cancel it or to provide the\nresponse body.\nThe stream only supports sequential read, IO.read will fail if the position\nis specified.\nThis method is mutually exclusive with getResponseBody.\nCalling other methods that affect the request or disabling fetch\ndomain before body is received results in an undefined behavior.",
+      "parameters": [
+        {
+          "name": "requestId",
+          "experimental": false
+        }
+      ]
+    },
+    {
+      "command": "IO.close",
+      "experimental": false,
+      "deprecated": false,
+      "description": "Close the stream, discard any temporary backing storage.",
+      "parameters": [
+        {
+          "name": "handle",
+          "experimental": false,
+          "description": "Handle of the stream to close."
+        }
+      ]
+    },
+    {
+      "command": "IO.read",
+      "experimental": false,
+      "deprecated": false,
+      "description": "Read a chunk of the stream",
+      "parameters": [
+        {
+          "name": "handle",
+          "experimental": false,
+          "description": "Handle of the stream to read."
+        },
+        {
+          "name": "offset",
+          "experimental": false,
+          "description": "Seek to the specified offset before reading (if not specified, proceed with offset\nfollowing the last read). Some types of streams may only support sequential reads."
+        },
+        {
+          "name": "size",
+          "experimental": false,
+          "description": "Maximum number of bytes to read (left upon the agent discretion if not specified)."
+        }
+      ]
+    },
+    {
+      "command": "Network.enable",
+      "experimental": false,
+      "deprecated": false,
+      "description": "Enables network tracking, network events will now be delivered to the client.",
+      "parameters": [
+        {
+          "name": "maxTotalBufferSize",
+          "experimental": true,
+          "description": "Buffer size in bytes to use when preserving network payloads (XHRs, etc).\nThis is the maximum number of bytes that will be collected by this\nDevTools session."
+        },
+        {
+          "name": "maxResourceBufferSize",
+          "experimental": true,
+          "description": "Per-resource buffer size in bytes to use when preserving network payloads (XHRs, etc)."
+        },
+        {
+          "name": "maxPostDataSize",
+          "experimental": false,
+          "description": "Longest post body size (in bytes) that would be included in requestWillBeSent notification"
+        },
+        {
+          "name": "reportDirectSocketTraffic",
+          "experimental": true,
+          "description": "Whether DirectSocket chunk send/receive events should be reported."
+        },
+        {
+          "name": "enableDurableMessages",
+          "experimental": true,
+          "description": "Enable storing response bodies outside of renderer, so that these survive\na cross-process navigation. Requires maxTotalBufferSize to be set.\nCurrently defaults to false. This field is being deprecated in favor of the dedicated\nconfigureDurableMessages command, due to the possibility of deadlocks when awaiting\nNetwork.enable before issuing Runtime.runIfWaitingForDebugger."
+        }
+      ]
+    },
+    {
+      "command": "Network.configureDurableMessages",
+      "experimental": true,
+      "deprecated": false,
+      "description": "Configures storing response bodies outside of renderer, so that these survive\na cross-process navigation.\nIf maxTotalBufferSize is not set, durable messages are disabled.",
+      "parameters": [
+        {
+          "name": "maxTotalBufferSize",
+          "experimental": false,
+          "description": "Buffer size in bytes to use when preserving network payloads (XHRs, etc)."
+        },
+        {
+          "name": "maxResourceBufferSize",
+          "experimental": false,
+          "description": "Per-resource buffer size in bytes to use when preserving network payloads (XHRs, etc)."
+        }
+      ]
+    },
+    {
+      "command": "Network.getResponseBody",
+      "experimental": false,
+      "deprecated": false,
+      "description": "Returns content served for the given request.",
+      "parameters": [
+        {
+          "name": "requestId",
+          "experimental": false,
+          "description": "Identifier of the network request to get content for."
+        }
+      ]
+    },
+    {
+      "command": "Network.getResponseBodyForInterception",
+      "experimental": true,
+      "deprecated": false,
+      "description": "Returns content served for the given currently intercepted request.",
+      "parameters": [
+        {
+          "name": "interceptionId",
+          "experimental": false,
+          "description": "Identifier for the intercepted request to get body for."
+        }
+      ]
+    },
+    {
+      "command": "Network.takeResponseBodyForInterceptionAsStream",
+      "experimental": true,
+      "deprecated": false,
+      "description": "Returns a handle to the stream representing the response body. Note that after this command,\nthe intercepted request can't be continued as is -- you either need to cancel it or to provide\nthe response body. The stream only supports sequential read, IO.read will fail if the position\nis specified.",
+      "parameters": [
+        {
+          "name": "interceptionId",
+          "experimental": false
+        }
+      ]
+    },
+    {
+      "command": "Network.setRequestInterception",
+      "experimental": true,
+      "deprecated": true,
+      "description": "Sets the requests to intercept that match the provided patterns and optionally resource types.\nDeprecated, please use Fetch.enable instead.",
+      "parameters": [
+        {
+          "name": "patterns",
+          "experimental": false,
+          "description": "Requests matching any of these patterns will be forwarded and wait for the corresponding\ncontinueInterceptedRequest call."
+        }
+      ]
+    },
+    {
+      "command": "Network.streamResourceContent",
+      "experimental": true,
+      "deprecated": false,
+      "description": "Enables streaming of the response for the given requestId.\nIf enabled, the dataReceived event contains the data that was received during streaming.",
+      "parameters": [
+        {
+          "name": "requestId",
+          "experimental": false,
+          "description": "Identifier of the request to stream."
+        }
+      ]
+    },
+    {
+      "command": "Network.loadNetworkResource",
+      "experimental": true,
+      "deprecated": false,
+      "description": "Fetches the resource and returns the content.",
+      "parameters": [
+        {
+          "name": "frameId",
+          "experimental": false,
+          "description": "Frame id to get the resource for. Mandatory for frame targets, and\nshould be omitted for worker targets."
+        },
+        {
+          "name": "url",
+          "experimental": false,
+          "description": "URL of the resource to get content for."
+        },
+        {
+          "name": "options",
+          "experimental": false,
+          "description": "Options for the request."
+        }
+      ]
+    },
+    {
+      "command": "Page.getResourceContent",
+      "experimental": true,
+      "deprecated": false,
+      "description": "Returns content of the given resource.",
+      "parameters": [
+        {
+          "name": "frameId",
+          "experimental": false,
+          "description": "Frame id to get resource for."
+        },
+        {
+          "name": "url",
+          "experimental": false,
+          "description": "URL of the resource to get content for."
+        }
+      ]
+    }
+  ],
+  "paths": [
+    {
+      "path": "network",
+      "kind": "document",
+      "url": "/w1252",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>café</p>",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": false
+    },
+    {
+      "path": "network",
+      "kind": "document",
+      "url": "/sjis",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>日本</p>",
+      "storedHex": "3c703ee697a5e69cac3c2f703e",
+      "servedHex": "3c703e93fa967b3c2f703e",
+      "matchesServed": false
+    },
+    {
+      "path": "network",
+      "kind": "document",
+      "url": "/bom",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>ab</p>",
+      "storedHex": "3c703e61623c2f703e",
+      "servedHex": "efbbbf3c703e61623c2f703e",
+      "matchesServed": false
+    },
+    {
+      "path": "network",
+      "kind": "document",
+      "url": "/invalid",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Yf9iPC9wPg==",
+      "storedHex": "3c703e61ff623c2f703e",
+      "servedHex": "3c703e61ff623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "network",
+      "kind": "document",
+      "url": "/gzip1252",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>café</p>",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": false
+    },
+    {
+      "path": "network",
+      "kind": "document",
+      "url": "/nolabel",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "network",
+      "kind": "document",
+      "url": "/utf8",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>café</p>",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "network",
+      "kind": "document",
+      "url": "/plain1252",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "café",
+      "storedHex": "636166c3a9",
+      "servedHex": "636166e9",
+      "matchesServed": false
+    },
+    {
+      "path": "network",
+      "kind": "document",
+      "url": "/mojibake",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>cafÃ©</p>",
+      "storedHex": "3c703e636166c383c2a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": false
+    },
+    {
+      "path": "network",
+      "kind": "document",
+      "url": "/utf16",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>ab</p>",
+      "storedHex": "3c703e61623c2f703e",
+      "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "matchesServed": false
+    },
+    {
+      "path": "network",
+      "kind": "subresource",
+      "url": "/css1252?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "/* café */\n",
+      "storedHex": "2f2a20636166c3a9202a2f0a",
+      "servedHex": "2f2a20636166e9202a2f0a",
+      "matchesServed": false
+    },
+    {
+      "path": "network",
+      "kind": "subresource",
+      "url": "/png?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgAAACAAAB4iG8MwAAAABJRU5ErkJggg==",
+      "storedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+      "servedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+      "matchesServed": true
+    },
+    {
+      "path": "network",
+      "kind": "subresource",
+      "url": "/js1252?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "// café\n",
+      "storedHex": "2f2f20636166c3a90a",
+      "servedHex": "2f2f20636166e90a",
+      "matchesServed": false
+    },
+    {
+      "path": "network",
+      "kind": "subresource",
+      "url": "/w1252?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>café</p>",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": false
+    },
+    {
+      "path": "network",
+      "kind": "subresource",
+      "url": "/sjis?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>日本</p>",
+      "storedHex": "3c703ee697a5e69cac3c2f703e",
+      "servedHex": "3c703e93fa967b3c2f703e",
+      "matchesServed": false
+    },
+    {
+      "path": "network",
+      "kind": "subresource",
+      "url": "/bom?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>ab</p>",
+      "storedHex": "3c703e61623c2f703e",
+      "servedHex": "efbbbf3c703e61623c2f703e",
+      "matchesServed": false
+    },
+    {
+      "path": "network",
+      "kind": "subresource",
+      "url": "/invalid?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Yf9iPC9wPg==",
+      "storedHex": "3c703e61ff623c2f703e",
+      "servedHex": "3c703e61ff623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "network",
+      "kind": "subresource",
+      "url": "/utf8?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>café</p>",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "network",
+      "kind": "subresource",
+      "url": "/gzip1252?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>café</p>",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": false
+    },
+    {
+      "path": "network",
+      "kind": "subresource",
+      "url": "/nolabel?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "network",
+      "kind": "subresource",
+      "url": "/plain1252?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "café",
+      "storedHex": "636166c3a9",
+      "servedHex": "636166e9",
+      "matchesServed": false
+    },
+    {
+      "path": "network",
+      "kind": "subresource",
+      "url": "/mojibake?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>cafÃ©</p>",
+      "storedHex": "3c703e636166c383c2a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": false
+    },
+    {
+      "path": "network",
+      "kind": "subresource",
+      "url": "/utf16?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>ab</p>",
+      "storedHex": "3c703e61623c2f703e",
+      "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "matchesServed": false
+    },
+    {
+      "path": "durableEnable",
+      "kind": "document",
+      "url": "/w1252",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "document",
+      "url": "/sjis",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+k/qWezwvcD4=",
+      "storedHex": "3c703e93fa967b3c2f703e",
+      "servedHex": "3c703e93fa967b3c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "document",
+      "url": "/bom",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "﻿<p>ab</p>",
+      "storedHex": "efbbbf3c703e61623c2f703e",
+      "servedHex": "efbbbf3c703e61623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "document",
+      "url": "/invalid",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Yf9iPC9wPg==",
+      "storedHex": "3c703e61ff623c2f703e",
+      "servedHex": "3c703e61ff623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "document",
+      "url": "/gzip1252",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "document",
+      "url": "/nolabel",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "document",
+      "url": "/utf8",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>café</p>",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "document",
+      "url": "/plain1252",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "Y2Fm6Q==",
+      "storedHex": "636166e9",
+      "servedHex": "636166e9",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "document",
+      "url": "/mojibake",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>café</p>",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "document",
+      "url": "/utf16",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "//48AHAAPgBhAGIAPAAvAHAAPgA=",
+      "storedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "subresource",
+      "url": "/css1252?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "LyogY2Fm6SAqLwo=",
+      "storedHex": "2f2a20636166e9202a2f0a",
+      "servedHex": "2f2a20636166e9202a2f0a",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "subresource",
+      "url": "/js1252?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "Ly8gY2Fm6Qo=",
+      "storedHex": "2f2f20636166e90a",
+      "servedHex": "2f2f20636166e90a",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "subresource",
+      "url": "/png?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgAAACAAAB4iG8MwAAAABJRU5ErkJggg==",
+      "storedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+      "servedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "subresource",
+      "url": "/w1252?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "subresource",
+      "url": "/sjis?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+k/qWezwvcD4=",
+      "storedHex": "3c703e93fa967b3c2f703e",
+      "servedHex": "3c703e93fa967b3c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "subresource",
+      "url": "/bom?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "﻿<p>ab</p>",
+      "storedHex": "efbbbf3c703e61623c2f703e",
+      "servedHex": "efbbbf3c703e61623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "subresource",
+      "url": "/invalid?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Yf9iPC9wPg==",
+      "storedHex": "3c703e61ff623c2f703e",
+      "servedHex": "3c703e61ff623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "subresource",
+      "url": "/gzip1252?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "subresource",
+      "url": "/nolabel?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "subresource",
+      "url": "/utf8?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>café</p>",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "subresource",
+      "url": "/plain1252?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "Y2Fm6Q==",
+      "storedHex": "636166e9",
+      "servedHex": "636166e9",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "subresource",
+      "url": "/mojibake?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>café</p>",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableEnable",
+      "kind": "subresource",
+      "url": "/utf16?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "//48AHAAPgBhAGIAPAAvAHAAPgA=",
+      "storedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "document",
+      "url": "/w1252",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "document",
+      "url": "/sjis",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+k/qWezwvcD4=",
+      "storedHex": "3c703e93fa967b3c2f703e",
+      "servedHex": "3c703e93fa967b3c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "document",
+      "url": "/bom",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "﻿<p>ab</p>",
+      "storedHex": "efbbbf3c703e61623c2f703e",
+      "servedHex": "efbbbf3c703e61623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "document",
+      "url": "/invalid",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Yf9iPC9wPg==",
+      "storedHex": "3c703e61ff623c2f703e",
+      "servedHex": "3c703e61ff623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "document",
+      "url": "/gzip1252",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "document",
+      "url": "/nolabel",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "document",
+      "url": "/utf8",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>café</p>",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "document",
+      "url": "/plain1252",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "Y2Fm6Q==",
+      "storedHex": "636166e9",
+      "servedHex": "636166e9",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "document",
+      "url": "/mojibake",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>café</p>",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "document",
+      "url": "/utf16",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "//48AHAAPgBhAGIAPAAvAHAAPgA=",
+      "storedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "subresource",
+      "url": "/css1252?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "LyogY2Fm6SAqLwo=",
+      "storedHex": "2f2a20636166e9202a2f0a",
+      "servedHex": "2f2a20636166e9202a2f0a",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "subresource",
+      "url": "/js1252?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "Ly8gY2Fm6Qo=",
+      "storedHex": "2f2f20636166e90a",
+      "servedHex": "2f2f20636166e90a",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "subresource",
+      "url": "/png?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgAAACAAAB4iG8MwAAAABJRU5ErkJggg==",
+      "storedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+      "servedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "subresource",
+      "url": "/w1252?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "subresource",
+      "url": "/sjis?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+k/qWezwvcD4=",
+      "storedHex": "3c703e93fa967b3c2f703e",
+      "servedHex": "3c703e93fa967b3c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "subresource",
+      "url": "/bom?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "﻿<p>ab</p>",
+      "storedHex": "efbbbf3c703e61623c2f703e",
+      "servedHex": "efbbbf3c703e61623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "subresource",
+      "url": "/invalid?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Yf9iPC9wPg==",
+      "storedHex": "3c703e61ff623c2f703e",
+      "servedHex": "3c703e61ff623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "subresource",
+      "url": "/gzip1252?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "subresource",
+      "url": "/nolabel?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "subresource",
+      "url": "/utf8?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>café</p>",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "subresource",
+      "url": "/plain1252?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "Y2Fm6Q==",
+      "storedHex": "636166e9",
+      "servedHex": "636166e9",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "subresource",
+      "url": "/mojibake?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": false,
+      "returned": "<p>café</p>",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "durableConfigure",
+      "kind": "subresource",
+      "url": "/utf16?sub",
+      "session": "page",
+      "method": "Network.getResponseBody",
+      "base64Encoded": true,
+      "returned": "//48AHAAPgBhAGIAPAAvAHAAPgA=",
+      "storedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "document",
+      "url": "/w1252",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "document",
+      "url": "/sjis",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+k/qWezwvcD4=",
+      "storedHex": "3c703e93fa967b3c2f703e",
+      "servedHex": "3c703e93fa967b3c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "document",
+      "url": "/bom",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "77u/PHA+YWI8L3A+",
+      "storedHex": "efbbbf3c703e61623c2f703e",
+      "servedHex": "efbbbf3c703e61623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "document",
+      "url": "/invalid",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Yf9iPC9wPg==",
+      "storedHex": "3c703e61ff623c2f703e",
+      "servedHex": "3c703e61ff623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "document",
+      "url": "/gzip1252",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "document",
+      "url": "/nolabel",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "document",
+      "url": "/utf8",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fmw6k8L3A+",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "document",
+      "url": "/plain1252",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "Y2Fm6Q==",
+      "storedHex": "636166e9",
+      "servedHex": "636166e9",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "document",
+      "url": "/mojibake",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fmw6k8L3A+",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "document",
+      "url": "/utf16",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "//48AHAAPgBhAGIAPAAvAHAAPgA=",
+      "storedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "subresource",
+      "url": "/css1252?sub",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "LyogY2Fm6SAqLwo=",
+      "storedHex": "2f2a20636166e9202a2f0a",
+      "servedHex": "2f2a20636166e9202a2f0a",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "subresource",
+      "url": "/js1252?sub",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "Ly8gY2Fm6Qo=",
+      "storedHex": "2f2f20636166e90a",
+      "servedHex": "2f2f20636166e90a",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "subresource",
+      "url": "/png?sub",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgAAACAAAB4iG8MwAAAABJRU5ErkJggg==",
+      "storedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+      "servedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "subresource",
+      "url": "/w1252?sub",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "subresource",
+      "url": "/sjis?sub",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+k/qWezwvcD4=",
+      "storedHex": "3c703e93fa967b3c2f703e",
+      "servedHex": "3c703e93fa967b3c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "subresource",
+      "url": "/bom?sub",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "77u/PHA+YWI8L3A+",
+      "storedHex": "efbbbf3c703e61623c2f703e",
+      "servedHex": "efbbbf3c703e61623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "subresource",
+      "url": "/invalid?sub",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Yf9iPC9wPg==",
+      "storedHex": "3c703e61ff623c2f703e",
+      "servedHex": "3c703e61ff623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "subresource",
+      "url": "/gzip1252?sub",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "subresource",
+      "url": "/nolabel?sub",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "subresource",
+      "url": "/utf8?sub",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fmw6k8L3A+",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "subresource",
+      "url": "/plain1252?sub",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "Y2Fm6Q==",
+      "storedHex": "636166e9",
+      "servedHex": "636166e9",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "subresource",
+      "url": "/mojibake?sub",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fmw6k8L3A+",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetch",
+      "kind": "subresource",
+      "url": "/utf16?sub",
+      "session": "page",
+      "method": "Fetch.getResponseBody",
+      "base64Encoded": true,
+      "returned": "//48AHAAPgBhAGIAPAAvAHAAPgA=",
+      "storedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "document",
+      "url": "/w1252",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "document",
+      "url": "/sjis",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+k/qWezwvcD4=",
+      "storedHex": "3c703e93fa967b3c2f703e",
+      "servedHex": "3c703e93fa967b3c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "document",
+      "url": "/bom",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "77u/PHA+YWI8L3A+",
+      "storedHex": "efbbbf3c703e61623c2f703e",
+      "servedHex": "efbbbf3c703e61623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "document",
+      "url": "/invalid",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Yf9iPC9wPg==",
+      "storedHex": "3c703e61ff623c2f703e",
+      "servedHex": "3c703e61ff623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "document",
+      "url": "/gzip1252",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "document",
+      "url": "/nolabel",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "document",
+      "url": "/utf8",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fmw6k8L3A+",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "document",
+      "url": "/plain1252",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "Y2Fm6Q==",
+      "storedHex": "636166e9",
+      "servedHex": "636166e9",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "document",
+      "url": "/mojibake",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fmw6k8L3A+",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "document",
+      "url": "/utf16",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "//48AHAAPgBhAGIAPAAvAHAAPgA=",
+      "storedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "subresource",
+      "url": "/css1252?sub",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "LyogY2Fm6SAqLwo=",
+      "storedHex": "2f2a20636166e9202a2f0a",
+      "servedHex": "2f2a20636166e9202a2f0a",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "subresource",
+      "url": "/js1252?sub",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "Ly8gY2Fm6Qo=",
+      "storedHex": "2f2f20636166e90a",
+      "servedHex": "2f2f20636166e90a",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "subresource",
+      "url": "/png?sub",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgAAACAAAB4iG8MwAAAABJRU5ErkJggg==",
+      "storedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+      "servedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "subresource",
+      "url": "/w1252?sub",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "subresource",
+      "url": "/sjis?sub",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+k/qWezwvcD4=",
+      "storedHex": "3c703e93fa967b3c2f703e",
+      "servedHex": "3c703e93fa967b3c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "subresource",
+      "url": "/bom?sub",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "77u/PHA+YWI8L3A+",
+      "storedHex": "efbbbf3c703e61623c2f703e",
+      "servedHex": "efbbbf3c703e61623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "subresource",
+      "url": "/invalid?sub",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Yf9iPC9wPg==",
+      "storedHex": "3c703e61ff623c2f703e",
+      "servedHex": "3c703e61ff623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "subresource",
+      "url": "/gzip1252?sub",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "subresource",
+      "url": "/nolabel?sub",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "subresource",
+      "url": "/utf8?sub",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fmw6k8L3A+",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "subresource",
+      "url": "/plain1252?sub",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "Y2Fm6Q==",
+      "storedHex": "636166e9",
+      "servedHex": "636166e9",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "subresource",
+      "url": "/mojibake?sub",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fmw6k8L3A+",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "fetchStream",
+      "kind": "subresource",
+      "url": "/utf16?sub",
+      "session": "page",
+      "method": "Fetch.takeResponseBodyAsStream+IO.read",
+      "base64Encoded": true,
+      "returned": "//48AHAAPgBhAGIAPAAvAHAAPgA=",
+      "storedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "matchesServed": true
+    },
+    {
+      "path": "stream",
+      "kind": "document",
+      "url": "/w1252",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true,
+      "bufferedLength": 11,
+      "dataEvents": 1,
+      "dataChunks": 0
+    },
+    {
+      "path": "stream",
+      "kind": "document",
+      "url": "/sjis",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "PHA+k/qWezwvcD4=",
+      "storedHex": "3c703e93fa967b3c2f703e",
+      "servedHex": "3c703e93fa967b3c2f703e",
+      "matchesServed": true,
+      "bufferedLength": 11,
+      "dataEvents": 1,
+      "dataChunks": 0
+    },
+    {
+      "path": "stream",
+      "kind": "document",
+      "url": "/bom",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "77u/PHA+YWI8L3A+",
+      "storedHex": "efbbbf3c703e61623c2f703e",
+      "servedHex": "efbbbf3c703e61623c2f703e",
+      "matchesServed": true,
+      "bufferedLength": 12,
+      "dataEvents": 1,
+      "dataChunks": 0
+    },
+    {
+      "path": "stream",
+      "kind": "document",
+      "url": "/invalid",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "PHA+Yf9iPC9wPg==",
+      "storedHex": "3c703e61ff623c2f703e",
+      "servedHex": "3c703e61ff623c2f703e",
+      "matchesServed": true,
+      "bufferedLength": 10,
+      "dataEvents": 1,
+      "dataChunks": 0
+    },
+    {
+      "path": "stream",
+      "kind": "document",
+      "url": "/gzip1252",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true,
+      "bufferedLength": 11,
+      "dataEvents": 1,
+      "dataChunks": 0
+    },
+    {
+      "path": "stream",
+      "kind": "document",
+      "url": "/nolabel",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true,
+      "bufferedLength": 11,
+      "dataEvents": 1,
+      "dataChunks": 0
+    },
+    {
+      "path": "stream",
+      "kind": "document",
+      "url": "/utf8",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fmw6k8L3A+",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true,
+      "bufferedLength": 12,
+      "dataEvents": 1,
+      "dataChunks": 0
+    },
+    {
+      "path": "stream",
+      "kind": "document",
+      "url": "/plain1252",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "Y2Fm6Q==",
+      "storedHex": "636166e9",
+      "servedHex": "636166e9",
+      "matchesServed": true,
+      "bufferedLength": 4,
+      "dataEvents": 1,
+      "dataChunks": 0
+    },
+    {
+      "path": "stream",
+      "kind": "document",
+      "url": "/mojibake",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fmw6k8L3A+",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true,
+      "bufferedLength": 12,
+      "dataEvents": 1,
+      "dataChunks": 0
+    },
+    {
+      "path": "stream",
+      "kind": "document",
+      "url": "/utf16",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "//48AHAAPgBhAGIAPAAvAHAAPgA=",
+      "storedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "matchesServed": true,
+      "bufferedLength": 20,
+      "dataEvents": 1,
+      "dataChunks": 0
+    },
+    {
+      "path": "stream",
+      "kind": "subresource",
+      "url": "/css1252?sub",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "",
+      "storedHex": "",
+      "servedHex": "2f2a20636166e9202a2f0a",
+      "matchesServed": false,
+      "bufferedLength": 0,
+      "dataEvents": 2,
+      "dataChunks": 0
+    },
+    {
+      "path": "stream",
+      "kind": "subresource",
+      "url": "/png?sub",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "",
+      "storedHex": "",
+      "servedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+      "matchesServed": false,
+      "bufferedLength": 0,
+      "dataEvents": 2,
+      "dataChunks": 0
+    },
+    {
+      "path": "stream",
+      "kind": "subresource",
+      "url": "/js1252?sub",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "",
+      "storedHex": "",
+      "servedHex": "2f2f20636166e90a",
+      "matchesServed": false,
+      "bufferedLength": 0,
+      "dataEvents": 2,
+      "dataChunks": 0
+    },
+    {
+      "path": "stream",
+      "kind": "subresource",
+      "url": "/w1252?sub",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "servedHex": "3c703e636166e93c2f703e",
+      "error": "Request with the provided ID has already finished loading",
+      "dataEvents": 1
+    },
+    {
+      "path": "stream",
+      "kind": "subresource",
+      "url": "/sjis?sub",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "servedHex": "3c703e93fa967b3c2f703e",
+      "error": "Request with the provided ID has already finished loading",
+      "dataEvents": 1
+    },
+    {
+      "path": "stream",
+      "kind": "subresource",
+      "url": "/bom?sub",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "servedHex": "efbbbf3c703e61623c2f703e",
+      "error": "Request with the provided ID has already finished loading",
+      "dataEvents": 1
+    },
+    {
+      "path": "stream",
+      "kind": "subresource",
+      "url": "/invalid?sub",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "servedHex": "3c703e61ff623c2f703e",
+      "error": "Request with the provided ID has already finished loading",
+      "dataEvents": 1
+    },
+    {
+      "path": "stream",
+      "kind": "subresource",
+      "url": "/utf16?sub",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "error": "Request with the provided ID has already finished loading",
+      "dataEvents": 1
+    },
+    {
+      "path": "stream",
+      "kind": "subresource",
+      "url": "/utf8?sub",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "error": "Request with the provided ID has already finished loading",
+      "dataEvents": 1
+    },
+    {
+      "path": "stream",
+      "kind": "subresource",
+      "url": "/plain1252?sub",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "servedHex": "636166e9",
+      "error": "Request with the provided ID has already finished loading",
+      "dataEvents": 1
+    },
+    {
+      "path": "stream",
+      "kind": "subresource",
+      "url": "/mojibake?sub",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "error": "Request with the provided ID has already finished loading",
+      "dataEvents": 1
+    },
+    {
+      "path": "stream",
+      "kind": "subresource",
+      "url": "/gzip1252?sub",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "servedHex": "3c703e636166e93c2f703e",
+      "error": "Request with the provided ID has already finished loading",
+      "dataEvents": 1
+    },
+    {
+      "path": "stream",
+      "kind": "subresource",
+      "url": "/nolabel?sub",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "servedHex": "3c703e636166e93c2f703e",
+      "error": "Request with the provided ID has already finished loading",
+      "dataEvents": 1
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "document",
+      "url": "/w1252",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "document",
+      "url": "/sjis",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+k/qWezwvcD4=",
+      "storedHex": "3c703e93fa967b3c2f703e",
+      "servedHex": "3c703e93fa967b3c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "document",
+      "url": "/bom",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "77u/PHA+YWI8L3A+",
+      "storedHex": "efbbbf3c703e61623c2f703e",
+      "servedHex": "efbbbf3c703e61623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "document",
+      "url": "/invalid",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Yf9iPC9wPg==",
+      "storedHex": "3c703e61ff623c2f703e",
+      "servedHex": "3c703e61ff623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "document",
+      "url": "/gzip1252",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "document",
+      "url": "/nolabel",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "document",
+      "url": "/utf8",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fmw6k8L3A+",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "document",
+      "url": "/plain1252",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "Y2Fm6Q==",
+      "storedHex": "636166e9",
+      "servedHex": "636166e9",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "document",
+      "url": "/mojibake",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fmw6k8L3A+",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "document",
+      "url": "/utf16",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "//48AHAAPgBhAGIAPAAvAHAAPgA=",
+      "storedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "subresource",
+      "url": "/css1252?sub",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "LyogY2Fm6SAqLwo=",
+      "storedHex": "2f2a20636166e9202a2f0a",
+      "servedHex": "2f2a20636166e9202a2f0a",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "subresource",
+      "url": "/js1252?sub",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "Ly8gY2Fm6Qo=",
+      "storedHex": "2f2f20636166e90a",
+      "servedHex": "2f2f20636166e90a",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "subresource",
+      "url": "/png?sub",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgAAACAAAB4iG8MwAAAABJRU5ErkJggg==",
+      "storedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+      "servedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "subresource",
+      "url": "/w1252?sub",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "subresource",
+      "url": "/sjis?sub",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+k/qWezwvcD4=",
+      "storedHex": "3c703e93fa967b3c2f703e",
+      "servedHex": "3c703e93fa967b3c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "subresource",
+      "url": "/bom?sub",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "77u/PHA+YWI8L3A+",
+      "storedHex": "efbbbf3c703e61623c2f703e",
+      "servedHex": "efbbbf3c703e61623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "subresource",
+      "url": "/invalid?sub",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Yf9iPC9wPg==",
+      "storedHex": "3c703e61ff623c2f703e",
+      "servedHex": "3c703e61ff623c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "subresource",
+      "url": "/gzip1252?sub",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "subresource",
+      "url": "/nolabel?sub",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "subresource",
+      "url": "/utf8?sub",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fmw6k8L3A+",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "subresource",
+      "url": "/plain1252?sub",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "Y2Fm6Q==",
+      "storedHex": "636166e9",
+      "servedHex": "636166e9",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "subresource",
+      "url": "/mojibake?sub",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fmw6k8L3A+",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true
+    },
+    {
+      "path": "loadNetworkResource",
+      "kind": "subresource",
+      "url": "/utf16?sub",
+      "session": "page",
+      "method": "Network.loadNetworkResource+IO.read",
+      "base64Encoded": true,
+      "returned": "//48AHAAPgBhAGIAPAAvAHAAPgA=",
+      "storedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "matchesServed": true
+    },
+    {
+      "path": "pageResource",
+      "kind": "document",
+      "url": "/w1252",
+      "session": "page",
+      "method": "Page.getResourceContent (no Page.enable)",
+      "servedHex": "3c703e636166e93c2f703e",
+      "error": "Agent is not enabled."
+    },
+    {
+      "path": "pageResource",
+      "kind": "document",
+      "url": "/w1252",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "servedHex": "3c703e636166e93c2f703e",
+      "error": "Content unavailable. Resource was not cached"
+    },
+    {
+      "path": "pageResource",
+      "kind": "document",
+      "url": "/sjis",
+      "session": "page",
+      "method": "Page.getResourceContent (no Page.enable)",
+      "servedHex": "3c703e93fa967b3c2f703e",
+      "error": "Agent is not enabled."
+    },
+    {
+      "path": "pageResource",
+      "kind": "document",
+      "url": "/sjis",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "servedHex": "3c703e93fa967b3c2f703e",
+      "error": "Content unavailable. Resource was not cached"
+    },
+    {
+      "path": "pageResource",
+      "kind": "document",
+      "url": "/bom",
+      "session": "page",
+      "method": "Page.getResourceContent (no Page.enable)",
+      "servedHex": "efbbbf3c703e61623c2f703e",
+      "error": "Agent is not enabled."
+    },
+    {
+      "path": "pageResource",
+      "kind": "document",
+      "url": "/bom",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "servedHex": "efbbbf3c703e61623c2f703e",
+      "error": "Content unavailable. Resource was not cached"
+    },
+    {
+      "path": "pageResource",
+      "kind": "document",
+      "url": "/invalid",
+      "session": "page",
+      "method": "Page.getResourceContent (no Page.enable)",
+      "servedHex": "3c703e61ff623c2f703e",
+      "error": "Agent is not enabled."
+    },
+    {
+      "path": "pageResource",
+      "kind": "document",
+      "url": "/invalid",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "servedHex": "3c703e61ff623c2f703e",
+      "error": "Content unavailable. Resource was not cached"
+    },
+    {
+      "path": "pageResource",
+      "kind": "document",
+      "url": "/gzip1252",
+      "session": "page",
+      "method": "Page.getResourceContent (no Page.enable)",
+      "servedHex": "3c703e636166e93c2f703e",
+      "error": "Agent is not enabled."
+    },
+    {
+      "path": "pageResource",
+      "kind": "document",
+      "url": "/gzip1252",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "servedHex": "3c703e636166e93c2f703e",
+      "error": "Content unavailable. Resource was not cached"
+    },
+    {
+      "path": "pageResource",
+      "kind": "document",
+      "url": "/nolabel",
+      "session": "page",
+      "method": "Page.getResourceContent (no Page.enable)",
+      "servedHex": "3c703e636166e93c2f703e",
+      "error": "Agent is not enabled."
+    },
+    {
+      "path": "pageResource",
+      "kind": "document",
+      "url": "/nolabel",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "servedHex": "3c703e636166e93c2f703e",
+      "error": "Content unavailable. Resource was not cached"
+    },
+    {
+      "path": "pageResource",
+      "kind": "document",
+      "url": "/utf8",
+      "session": "page",
+      "method": "Page.getResourceContent (no Page.enable)",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "error": "Agent is not enabled."
+    },
+    {
+      "path": "pageResource",
+      "kind": "document",
+      "url": "/utf8",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "error": "Content unavailable. Resource was not cached"
+    },
+    {
+      "path": "pageResource",
+      "kind": "document",
+      "url": "/plain1252",
+      "session": "page",
+      "method": "Page.getResourceContent (no Page.enable)",
+      "servedHex": "636166e9",
+      "error": "Agent is not enabled."
+    },
+    {
+      "path": "pageResource",
+      "kind": "document",
+      "url": "/plain1252",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "servedHex": "636166e9",
+      "error": "Content unavailable. Resource was not cached"
+    },
+    {
+      "path": "pageResource",
+      "kind": "document",
+      "url": "/mojibake",
+      "session": "page",
+      "method": "Page.getResourceContent (no Page.enable)",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "error": "Agent is not enabled."
+    },
+    {
+      "path": "pageResource",
+      "kind": "document",
+      "url": "/mojibake",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "error": "Content unavailable. Resource was not cached"
+    },
+    {
+      "path": "pageResource",
+      "kind": "document",
+      "url": "/utf16",
+      "session": "page",
+      "method": "Page.getResourceContent (no Page.enable)",
+      "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "error": "Agent is not enabled."
+    },
+    {
+      "path": "pageResource",
+      "kind": "document",
+      "url": "/utf16",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "error": "Content unavailable. Resource was not cached"
+    },
+    {
+      "path": "pageResource",
+      "kind": "subresource",
+      "url": "/css1252?sub",
+      "session": "page",
+      "method": "Page.getResourceContent (no Page.enable)",
+      "servedHex": "2f2a20636166e9202a2f0a",
+      "error": "Agent is not enabled."
+    },
+    {
+      "path": "pageResource",
+      "kind": "subresource",
+      "url": "/css1252?sub",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "base64Encoded": false,
+      "returned": "/* café */\n",
+      "storedHex": "2f2a20636166c3a9202a2f0a",
+      "servedHex": "2f2a20636166e9202a2f0a",
+      "matchesServed": false
+    },
+    {
+      "path": "pageResource",
+      "kind": "subresource",
+      "url": "/js1252?sub",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "base64Encoded": false,
+      "returned": "// café\n",
+      "storedHex": "2f2f20636166c3a90a",
+      "servedHex": "2f2f20636166e90a",
+      "matchesServed": false
+    },
+    {
+      "path": "pageResource",
+      "kind": "subresource",
+      "url": "/png?sub",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "base64Encoded": true,
+      "returned": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgAAACAAAB4iG8MwAAAABJRU5ErkJggg==",
+      "storedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+      "servedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+      "matchesServed": true
+    },
+    {
+      "path": "pageResource",
+      "kind": "subresource",
+      "url": "/w1252?sub",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "servedHex": "3c703e636166e93c2f703e",
+      "error": "No resource with given URL found"
+    },
+    {
+      "path": "pageResource",
+      "kind": "subresource",
+      "url": "/sjis?sub",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "servedHex": "3c703e93fa967b3c2f703e",
+      "error": "No resource with given URL found"
+    },
+    {
+      "path": "pageResource",
+      "kind": "subresource",
+      "url": "/bom?sub",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "servedHex": "efbbbf3c703e61623c2f703e",
+      "error": "No resource with given URL found"
+    },
+    {
+      "path": "pageResource",
+      "kind": "subresource",
+      "url": "/invalid?sub",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "servedHex": "3c703e61ff623c2f703e",
+      "error": "No resource with given URL found"
+    },
+    {
+      "path": "pageResource",
+      "kind": "subresource",
+      "url": "/gzip1252?sub",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "servedHex": "3c703e636166e93c2f703e",
+      "error": "No resource with given URL found"
+    },
+    {
+      "path": "pageResource",
+      "kind": "subresource",
+      "url": "/nolabel?sub",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "servedHex": "3c703e636166e93c2f703e",
+      "error": "No resource with given URL found"
+    },
+    {
+      "path": "pageResource",
+      "kind": "subresource",
+      "url": "/utf8?sub",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "error": "No resource with given URL found"
+    },
+    {
+      "path": "pageResource",
+      "kind": "subresource",
+      "url": "/plain1252?sub",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "servedHex": "636166e9",
+      "error": "No resource with given URL found"
+    },
+    {
+      "path": "pageResource",
+      "kind": "subresource",
+      "url": "/mojibake?sub",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "error": "No resource with given URL found"
+    },
+    {
+      "path": "pageResource",
+      "kind": "subresource",
+      "url": "/utf16?sub",
+      "session": "page",
+      "method": "Page.getResourceContent",
+      "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "error": "No resource with given URL found"
+    }
+  ],
+  "pathsServerRequests": [
+    {
+      "url": "/w1252",
+      "requests": 9
+    },
+    {
+      "url": "/sjis",
+      "requests": 9
+    },
+    {
+      "url": "/bom",
+      "requests": 9
+    },
+    {
+      "url": "/invalid",
+      "requests": 9
+    },
+    {
+      "url": "/gzip1252",
+      "requests": 9
+    },
+    {
+      "url": "/nolabel",
+      "requests": 9
+    },
+    {
+      "url": "/utf8",
+      "requests": 9
+    },
+    {
+      "url": "/plain1252",
+      "requests": 9
+    },
+    {
+      "url": "/mojibake",
+      "requests": 9
+    },
+    {
+      "url": "/utf16",
+      "requests": 9
+    },
+    {
+      "url": "/host",
+      "requests": 8
+    },
+    {
+      "url": "/css1252?sub",
+      "requests": 10
+    },
+    {
+      "url": "/js1252?sub",
+      "requests": 9
+    },
+    {
+      "url": "/png?sub",
+      "requests": 9
+    },
+    {
+      "url": "/w1252?sub",
+      "requests": 9
+    },
+    {
+      "url": "/sjis?sub",
+      "requests": 9
+    },
+    {
+      "url": "/bom?sub",
+      "requests": 9
+    },
+    {
+      "url": "/invalid?sub",
+      "requests": 9
+    },
+    {
+      "url": "/utf8?sub",
+      "requests": 9
+    },
+    {
+      "url": "/gzip1252?sub",
+      "requests": 9
+    },
+    {
+      "url": "/nolabel?sub",
+      "requests": 9
+    },
+    {
+      "url": "/plain1252?sub",
+      "requests": 9
+    },
+    {
+      "url": "/mojibake?sub",
+      "requests": 9
+    },
+    {
+      "url": "/utf16?sub",
+      "requests": 9
+    }
+  ],
+  "largeBodies": {
+    "networkEnableLimits": [
+      {
+        "path": "network",
+        "kind": "document",
+        "url": "/big1252",
+        "session": "page",
+        "method": "Network.getResponseBody",
+        "error": "Request content was evicted from inspector cache"
+      },
+      {
+        "path": "network",
+        "kind": "document",
+        "url": "/under1252",
+        "session": "page",
+        "method": "Network.getResponseBody",
+        "base64Encoded": false,
+        "returnedLength": 9000000,
+        "storedLength": 18000000,
+        "storedSha256": "7e4545e41f81039dfeda758d71e53bbb8cda0e50d426c086d8b2aaea4c486536",
+        "servedLength": 9000000,
+        "servedSha256": "4d866caeef51731020b0daf0e794bb76e3ca3850b2e06880a30ed19748b0fbe6",
+        "matchesServed": false
+      },
+      {
+        "path": "durableEnable",
+        "kind": "document",
+        "url": "/big1252",
+        "session": "page",
+        "method": "Network.getResponseBody",
+        "base64Encoded": true,
+        "returnedLength": 16000000,
+        "storedLength": 12000000,
+        "storedSha256": "0c3448dc5b86cd2b9a4f2bd91e2a135388f3ecb0c0defc62943b8a8204d1268b",
+        "servedLength": 12000000,
+        "servedSha256": "0c3448dc5b86cd2b9a4f2bd91e2a135388f3ecb0c0defc62943b8a8204d1268b",
+        "matchesServed": true
+      },
+      {
+        "path": "durableEnable",
+        "kind": "document",
+        "url": "/under1252",
+        "session": "page",
+        "method": "Network.getResponseBody",
+        "base64Encoded": true,
+        "returnedLength": 12000000,
+        "storedLength": 9000000,
+        "storedSha256": "4d866caeef51731020b0daf0e794bb76e3ca3850b2e06880a30ed19748b0fbe6",
+        "servedLength": 9000000,
+        "servedSha256": "4d866caeef51731020b0daf0e794bb76e3ca3850b2e06880a30ed19748b0fbe6",
+        "matchesServed": true
+      },
+      {
+        "path": "durableConfigure",
+        "kind": "document",
+        "url": "/big1252",
+        "session": "page",
+        "method": "Network.getResponseBody",
+        "base64Encoded": true,
+        "returnedLength": 16000000,
+        "storedLength": 12000000,
+        "storedSha256": "0c3448dc5b86cd2b9a4f2bd91e2a135388f3ecb0c0defc62943b8a8204d1268b",
+        "servedLength": 12000000,
+        "servedSha256": "0c3448dc5b86cd2b9a4f2bd91e2a135388f3ecb0c0defc62943b8a8204d1268b",
+        "matchesServed": true
+      },
+      {
+        "path": "durableConfigure",
+        "kind": "document",
+        "url": "/under1252",
+        "session": "page",
+        "method": "Network.getResponseBody",
+        "base64Encoded": true,
+        "returnedLength": 12000000,
+        "storedLength": 9000000,
+        "storedSha256": "4d866caeef51731020b0daf0e794bb76e3ca3850b2e06880a30ed19748b0fbe6",
+        "servedLength": 9000000,
+        "servedSha256": "4d866caeef51731020b0daf0e794bb76e3ca3850b2e06880a30ed19748b0fbe6",
+        "matchesServed": true
+      },
+      {
+        "path": "fetch",
+        "kind": "document",
+        "url": "/big1252",
+        "session": "page",
+        "method": "Fetch.getResponseBody",
+        "base64Encoded": true,
+        "returnedLength": 16000000,
+        "storedLength": 12000000,
+        "storedSha256": "0c3448dc5b86cd2b9a4f2bd91e2a135388f3ecb0c0defc62943b8a8204d1268b",
+        "servedLength": 12000000,
+        "servedSha256": "0c3448dc5b86cd2b9a4f2bd91e2a135388f3ecb0c0defc62943b8a8204d1268b",
+        "matchesServed": true
+      },
+      {
+        "path": "fetch",
+        "kind": "document",
+        "url": "/under1252",
+        "session": "page",
+        "method": "Fetch.getResponseBody",
+        "base64Encoded": true,
+        "returnedLength": 12000000,
+        "storedLength": 9000000,
+        "storedSha256": "4d866caeef51731020b0daf0e794bb76e3ca3850b2e06880a30ed19748b0fbe6",
+        "servedLength": 9000000,
+        "servedSha256": "4d866caeef51731020b0daf0e794bb76e3ca3850b2e06880a30ed19748b0fbe6",
+        "matchesServed": true
+      }
+    ],
+    "durableLimits1e6Total1e6Resource": [
+      {
+        "path": "durableSmall",
+        "kind": "document",
+        "url": "/w1252",
+        "session": "page",
+        "method": "Network.getResponseBody",
+        "base64Encoded": true,
+        "returned": "PHA+Y2Fm6TwvcD4=",
+        "storedHex": "3c703e636166e93c2f703e",
+        "servedHex": "3c703e636166e93c2f703e",
+        "matchesServed": true
+      },
+      {
+        "path": "durableSmall",
+        "kind": "document",
+        "url": "/under1252",
+        "session": "page",
+        "method": "Network.getResponseBody",
+        "error": "No data found for resource with given identifier"
+      },
+      {
+        "path": "durableSmall",
+        "kind": "document",
+        "url": "/big1252",
+        "session": "page",
+        "method": "Network.getResponseBody",
+        "error": "No data found for resource with given identifier"
+      }
+    ],
+    "durableLimits50e6Total1e6Resource": [
+      {
+        "path": "durableSmall",
+        "kind": "document",
+        "url": "/w1252",
+        "session": "page",
+        "method": "Network.getResponseBody",
+        "base64Encoded": true,
+        "returned": "PHA+Y2Fm6TwvcD4=",
+        "storedHex": "3c703e636166e93c2f703e",
+        "servedHex": "3c703e636166e93c2f703e",
+        "matchesServed": true
+      },
+      {
+        "path": "durableSmall",
+        "kind": "document",
+        "url": "/under1252",
+        "session": "page",
+        "method": "Network.getResponseBody",
+        "base64Encoded": true,
+        "returnedLength": 12000000,
+        "storedLength": 9000000,
+        "storedSha256": "4d866caeef51731020b0daf0e794bb76e3ca3850b2e06880a30ed19748b0fbe6",
+        "servedLength": 9000000,
+        "servedSha256": "4d866caeef51731020b0daf0e794bb76e3ca3850b2e06880a30ed19748b0fbe6",
+        "matchesServed": true
+      },
+      {
+        "path": "durableSmall",
+        "kind": "document",
+        "url": "/big1252",
+        "session": "page",
+        "method": "Network.getResponseBody",
+        "base64Encoded": true,
+        "returnedLength": 16000000,
+        "storedLength": 12000000,
+        "storedSha256": "0c3448dc5b86cd2b9a4f2bd91e2a135388f3ecb0c0defc62943b8a8204d1268b",
+        "servedLength": 12000000,
+        "servedSha256": "0c3448dc5b86cd2b9a4f2bd91e2a135388f3ecb0c0defc62943b8a8204d1268b",
+        "matchesServed": true
+      }
+    ]
+  },
+  "slowStream": [
+    {
+      "path": "stream",
+      "kind": "document",
+      "url": "/slow-w1252?gap=800",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true,
+      "bufferedLength": 5,
+      "dataEvents": 2,
+      "dataChunks": 1
+    },
+    {
+      "path": "stream",
+      "kind": "document",
+      "url": "/slow-sjis?gap=800",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "PHA+k/qWezwvcD4=",
+      "storedHex": "3c703e93fa967b3c2f703e",
+      "servedHex": "3c703e93fa967b3c2f703e",
+      "matchesServed": true,
+      "bufferedLength": 5,
+      "dataEvents": 2,
+      "dataChunks": 1
+    },
+    {
+      "path": "stream",
+      "kind": "document",
+      "url": "/slow-bom?gap=800",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "77u/PHA+YWI8L3A+",
+      "storedHex": "efbbbf3c703e61623c2f703e",
+      "servedHex": "efbbbf3c703e61623c2f703e",
+      "matchesServed": true,
+      "bufferedLength": 6,
+      "dataEvents": 2,
+      "dataChunks": 1
+    },
+    {
+      "path": "stream",
+      "kind": "document",
+      "url": "/slow-invalid?gap=800",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "PHA+Yf9iPC9wPg==",
+      "storedHex": "3c703e61ff623c2f703e",
+      "servedHex": "3c703e61ff623c2f703e",
+      "matchesServed": true,
+      "bufferedLength": 5,
+      "dataEvents": 2,
+      "dataChunks": 1
+    },
+    {
+      "path": "stream",
+      "kind": "document",
+      "url": "/slow-gzip1252?gap=800",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true,
+      "bufferedLength": 4,
+      "dataEvents": 2,
+      "dataChunks": 1
+    },
+    {
+      "path": "stream",
+      "kind": "document",
+      "url": "/slow-nolabel?gap=800",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fm6TwvcD4=",
+      "storedHex": "3c703e636166e93c2f703e",
+      "servedHex": "3c703e636166e93c2f703e",
+      "matchesServed": true,
+      "bufferedLength": 5,
+      "dataEvents": 2,
+      "dataChunks": 1
+    },
+    {
+      "path": "stream",
+      "kind": "document",
+      "url": "/slow-utf8?gap=800",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fmw6k8L3A+",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true,
+      "bufferedLength": 6,
+      "dataEvents": 2,
+      "dataChunks": 1
+    },
+    {
+      "path": "stream",
+      "kind": "document",
+      "url": "/slow-plain1252?gap=800",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "Y2Fm6Q==",
+      "storedHex": "636166e9",
+      "servedHex": "636166e9",
+      "matchesServed": true,
+      "bufferedLength": 4,
+      "dataEvents": 1,
+      "dataChunks": 0
+    },
+    {
+      "path": "stream",
+      "kind": "document",
+      "url": "/slow-mojibake?gap=800",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "PHA+Y2Fmw6k8L3A+",
+      "storedHex": "3c703e636166c3a93c2f703e",
+      "servedHex": "3c703e636166c3a93c2f703e",
+      "matchesServed": true,
+      "bufferedLength": 6,
+      "dataEvents": 2,
+      "dataChunks": 1
+    },
+    {
+      "path": "stream",
+      "kind": "document",
+      "url": "/slow-utf16?gap=800",
+      "session": "page",
+      "method": "Network.streamResourceContent",
+      "base64Encoded": true,
+      "returned": "//48AHAAPgBhAGIAPAAvAHAAPgA=",
+      "storedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+      "matchesServed": true,
+      "bufferedLength": 10,
+      "dataEvents": 2,
+      "dataChunks": 1
+    }
+  ],
+  "consent": [
+    {
+      "path": "network",
+      "title": "done",
+      "events": [
+        {
+          "method": "Network.requestWillBeSent",
+          "url": "/spike-blocked.js"
+        },
+        {
+          "method": "Network.loadingFailed",
+          "url": "",
+          "errorText": "net::ERR_BLOCKED_BY_CLIENT",
+          "canceled": false,
+          "blockedReason": "other"
+        }
+      ],
+      "bodies": [
+        {
+          "path": "network",
+          "kind": "subresource",
+          "url": "/js1252?consent",
+          "session": "page",
+          "method": "Network.getResponseBody",
+          "base64Encoded": false,
+          "returned": "// café\n",
+          "storedHex": "2f2f20636166c3a90a",
+          "servedHex": "2f2f20636166e90a",
+          "matchesServed": false
+        },
+        {
+          "path": "network",
+          "kind": "subresource",
+          "url": "/w1252?consent",
+          "session": "page",
+          "method": "Network.getResponseBody",
+          "base64Encoded": false,
+          "returned": "<p>café</p>",
+          "storedHex": "3c703e636166c3a93c2f703e",
+          "servedHex": "3c703e636166e93c2f703e",
+          "matchesServed": false
+        }
+      ]
+    },
+    {
+      "path": "durableConfigure",
+      "title": "done",
+      "events": [
+        {
+          "method": "Network.requestWillBeSent",
+          "url": "/spike-blocked.js"
+        },
+        {
+          "method": "Network.loadingFailed",
+          "url": "",
+          "errorText": "net::ERR_BLOCKED_BY_CLIENT",
+          "canceled": false,
+          "blockedReason": "other"
+        }
+      ],
+      "bodies": [
+        {
+          "path": "durableConfigure",
+          "kind": "subresource",
+          "url": "/js1252?consent",
+          "session": "page",
+          "method": "Network.getResponseBody",
+          "base64Encoded": true,
+          "returned": "Ly8gY2Fm6Qo=",
+          "storedHex": "2f2f20636166e90a",
+          "servedHex": "2f2f20636166e90a",
+          "matchesServed": true
+        },
+        {
+          "path": "durableConfigure",
+          "kind": "subresource",
+          "url": "/w1252?consent",
+          "session": "page",
+          "method": "Network.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+Y2Fm6TwvcD4=",
+          "storedHex": "3c703e636166e93c2f703e",
+          "servedHex": "3c703e636166e93c2f703e",
+          "matchesServed": true
+        }
+      ]
+    },
+    {
+      "path": "fetch",
+      "title": "done",
+      "events": [
+        {
+          "method": "Fetch.requestPaused",
+          "url": "/consent",
+          "responseStatusCode": 200
+        },
+        {
+          "method": "Network.requestWillBeSent",
+          "url": "/spike-blocked.js"
+        },
+        {
+          "method": "Fetch.requestPaused",
+          "url": "/js1252?consent",
+          "responseStatusCode": 200
+        },
+        {
+          "method": "Network.loadingFailed",
+          "url": "",
+          "errorText": "net::ERR_BLOCKED_BY_CLIENT",
+          "canceled": false,
+          "blockedReason": "other"
+        },
+        {
+          "method": "Fetch.requestPaused",
+          "url": "/w1252?consent",
+          "responseStatusCode": 200
+        }
+      ],
+      "bodies": [
+        {
+          "path": "fetch",
+          "kind": "subresource",
+          "url": "/js1252?consent",
+          "session": "page",
+          "method": "Fetch.getResponseBody",
+          "base64Encoded": true,
+          "returned": "Ly8gY2Fm6Qo=",
+          "storedHex": "2f2f20636166e90a",
+          "servedHex": "2f2f20636166e90a",
+          "matchesServed": true
+        },
+        {
+          "path": "fetch",
+          "kind": "subresource",
+          "url": "/w1252?consent",
+          "session": "page",
+          "method": "Fetch.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+Y2Fm6TwvcD4=",
+          "storedHex": "3c703e636166e93c2f703e",
+          "servedHex": "3c703e636166e93c2f703e",
+          "matchesServed": true
+        }
+      ]
+    }
+  ],
+  "consentServerLog": [
+    "/consent",
+    "/js1252?consent",
+    "/w1252?consent",
+    "/consent",
+    "/js1252?consent",
+    "/w1252?consent",
+    "/consent",
+    "/js1252?consent",
+    "/w1252?consent"
+  ],
+  "frames": [
+    {
+      "path": "network",
+      "page": "/frame-parent",
+      "loadResult": "ok",
+      "attached": [
+        "iframe",
+        "worker",
+        "worker"
+      ],
+      "setupAnswers": [
+        {
+          "type": "worker",
+          "answers": [
+            "ok",
+            "ok"
+          ],
+          "resume": "ok"
+        },
+        {
+          "type": "iframe",
+          "answers": [
+            "ok",
+            "ok"
+          ],
+          "resume": "ok"
+        },
+        {
+          "type": "worker",
+          "answers": [
+            "ok",
+            "ok"
+          ],
+          "resume": "ok"
+        }
+      ],
+      "paused": [],
+      "bodies": [
+        {
+          "path": "network",
+          "kind": "subresource",
+          "url": "/w1252?parent",
+          "session": "page",
+          "method": "Network.getResponseBody",
+          "base64Encoded": false,
+          "returned": "<p>café</p>",
+          "storedHex": "3c703e636166c3a93c2f703e",
+          "servedHex": "3c703e636166e93c2f703e",
+          "matchesServed": false
+        },
+        {
+          "path": "network",
+          "kind": "subresource",
+          "url": "/sjis?worker",
+          "session": "child",
+          "method": "Network.getResponseBody",
+          "base64Encoded": false,
+          "returned": "<p>日本</p>",
+          "storedHex": "3c703ee697a5e69cac3c2f703e",
+          "servedHex": "3c703e93fa967b3c2f703e",
+          "matchesServed": false
+        },
+        {
+          "path": "network",
+          "kind": "subresource",
+          "url": "/css1252?child",
+          "session": "child",
+          "method": "Network.getResponseBody",
+          "base64Encoded": false,
+          "returned": "/* café */\n",
+          "storedHex": "2f2a20636166c3a9202a2f0a",
+          "servedHex": "2f2a20636166e9202a2f0a",
+          "matchesServed": false
+        },
+        {
+          "path": "network",
+          "kind": "subresource",
+          "url": "/w1252?child",
+          "session": "child",
+          "method": "Network.getResponseBody",
+          "base64Encoded": false,
+          "returned": "<p>café</p>",
+          "storedHex": "3c703e636166c3a93c2f703e",
+          "servedHex": "3c703e636166e93c2f703e",
+          "matchesServed": false
+        },
+        {
+          "path": "network",
+          "kind": "subresource",
+          "url": "/sjis?worker-child",
+          "session": "child",
+          "method": "Network.getResponseBody",
+          "base64Encoded": false,
+          "returned": "<p>日本</p>",
+          "storedHex": "3c703ee697a5e69cac3c2f703e",
+          "servedHex": "3c703e93fa967b3c2f703e",
+          "matchesServed": false
+        }
+      ]
+    },
+    {
+      "path": "durableConfigure",
+      "page": "/frame-parent",
+      "loadResult": "ok",
+      "attached": [
+        "iframe",
+        "worker",
+        "worker"
+      ],
+      "setupAnswers": [
+        {
+          "type": "worker",
+          "answers": [
+            "ok",
+            "ok",
+            "ok"
+          ],
+          "resume": "ok"
+        },
+        {
+          "type": "iframe",
+          "answers": [
+            "ok",
+            "ok",
+            "ok"
+          ],
+          "resume": "ok"
+        },
+        {
+          "type": "worker",
+          "answers": [
+            "ok",
+            "ok",
+            "ok"
+          ],
+          "resume": "ok"
+        }
+      ],
+      "paused": [],
+      "bodies": [
+        {
+          "path": "durableConfigure",
+          "kind": "subresource",
+          "url": "/w1252?parent",
+          "session": "page",
+          "method": "Network.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+Y2Fm6TwvcD4=",
+          "storedHex": "3c703e636166e93c2f703e",
+          "servedHex": "3c703e636166e93c2f703e",
+          "matchesServed": true
+        },
+        {
+          "path": "durableConfigure",
+          "kind": "subresource",
+          "url": "/sjis?worker",
+          "session": "child",
+          "method": "Network.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+k/qWezwvcD4=",
+          "storedHex": "3c703e93fa967b3c2f703e",
+          "servedHex": "3c703e93fa967b3c2f703e",
+          "matchesServed": true
+        },
+        {
+          "path": "durableConfigure",
+          "kind": "subresource",
+          "url": "/css1252?child",
+          "session": "child",
+          "method": "Network.getResponseBody",
+          "base64Encoded": true,
+          "returned": "LyogY2Fm6SAqLwo=",
+          "storedHex": "2f2a20636166e9202a2f0a",
+          "servedHex": "2f2a20636166e9202a2f0a",
+          "matchesServed": true
+        },
+        {
+          "path": "durableConfigure",
+          "kind": "subresource",
+          "url": "/w1252?child",
+          "session": "child",
+          "method": "Network.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+Y2Fm6TwvcD4=",
+          "storedHex": "3c703e636166e93c2f703e",
+          "servedHex": "3c703e636166e93c2f703e",
+          "matchesServed": true
+        },
+        {
+          "path": "durableConfigure",
+          "kind": "subresource",
+          "url": "/sjis?worker-child",
+          "session": "child",
+          "method": "Network.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+k/qWezwvcD4=",
+          "storedHex": "3c703e93fa967b3c2f703e",
+          "servedHex": "3c703e93fa967b3c2f703e",
+          "matchesServed": true
+        }
+      ]
+    },
+    {
+      "path": "durableEnable",
+      "page": "/frame-parent",
+      "loadResult": "ok",
+      "attached": [
+        "iframe",
+        "worker",
+        "worker"
+      ],
+      "setupAnswers": [
+        {
+          "type": "worker",
+          "answers": [
+            "ok",
+            "ok"
+          ],
+          "resume": "ok"
+        },
+        {
+          "type": "iframe",
+          "answers": [
+            "ok",
+            "ok"
+          ],
+          "resume": "ok"
+        },
+        {
+          "type": "worker",
+          "answers": [
+            "ok",
+            "ok"
+          ],
+          "resume": "ok"
+        }
+      ],
+      "paused": [],
+      "bodies": [
+        {
+          "path": "durableEnable",
+          "kind": "subresource",
+          "url": "/w1252?parent",
+          "session": "page",
+          "method": "Network.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+Y2Fm6TwvcD4=",
+          "storedHex": "3c703e636166e93c2f703e",
+          "servedHex": "3c703e636166e93c2f703e",
+          "matchesServed": true
+        },
+        {
+          "path": "durableEnable",
+          "kind": "subresource",
+          "url": "/sjis?worker",
+          "session": "child",
+          "method": "Network.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+k/qWezwvcD4=",
+          "storedHex": "3c703e93fa967b3c2f703e",
+          "servedHex": "3c703e93fa967b3c2f703e",
+          "matchesServed": true
+        },
+        {
+          "path": "durableEnable",
+          "kind": "subresource",
+          "url": "/css1252?child",
+          "session": "child",
+          "method": "Network.getResponseBody",
+          "base64Encoded": true,
+          "returned": "LyogY2Fm6SAqLwo=",
+          "storedHex": "2f2a20636166e9202a2f0a",
+          "servedHex": "2f2a20636166e9202a2f0a",
+          "matchesServed": true
+        },
+        {
+          "path": "durableEnable",
+          "kind": "subresource",
+          "url": "/w1252?child",
+          "session": "child",
+          "method": "Network.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+Y2Fm6TwvcD4=",
+          "storedHex": "3c703e636166e93c2f703e",
+          "servedHex": "3c703e636166e93c2f703e",
+          "matchesServed": true
+        },
+        {
+          "path": "durableEnable",
+          "kind": "subresource",
+          "url": "/sjis?worker-child",
+          "session": "child",
+          "method": "Network.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+k/qWezwvcD4=",
+          "storedHex": "3c703e93fa967b3c2f703e",
+          "servedHex": "3c703e93fa967b3c2f703e",
+          "matchesServed": true
+        }
+      ]
+    },
+    {
+      "path": "fetch",
+      "page": "/frame-parent",
+      "loadResult": "ok",
+      "attached": [
+        "iframe",
+        "worker",
+        "worker"
+      ],
+      "setupAnswers": [
+        {
+          "type": "worker",
+          "answers": [
+            "ok",
+            "ok",
+            "'Fetch.enable' wasn't found"
+          ],
+          "resume": "ok"
+        },
+        {
+          "type": "iframe",
+          "answers": [
+            "ok",
+            "ok",
+            "ok"
+          ],
+          "resume": "ok"
+        },
+        {
+          "type": "worker",
+          "answers": [
+            "ok",
+            "ok",
+            "'Fetch.enable' wasn't found"
+          ],
+          "resume": "ok"
+        }
+      ],
+      "paused": [
+        {
+          "url": "/frame-parent",
+          "session": "page"
+        },
+        {
+          "url": "/worker.js",
+          "session": "page"
+        },
+        {
+          "url": "/w1252?parent",
+          "session": "page"
+        },
+        {
+          "url": "/frame-child",
+          "session": "page"
+        },
+        {
+          "url": "/sjis?worker",
+          "session": "page"
+        },
+        {
+          "url": "/css1252?child",
+          "session": "child"
+        },
+        {
+          "url": "/w1252?child",
+          "session": "child"
+        },
+        {
+          "url": "/worker.js?child",
+          "session": "child"
+        },
+        {
+          "url": "/sjis?worker-child",
+          "session": "child"
+        }
+      ],
+      "bodies": [
+        {
+          "path": "fetch",
+          "kind": "subresource",
+          "url": "/w1252?parent",
+          "session": "page",
+          "method": "Fetch.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+Y2Fm6TwvcD4=",
+          "storedHex": "3c703e636166e93c2f703e",
+          "servedHex": "3c703e636166e93c2f703e",
+          "matchesServed": true
+        },
+        {
+          "path": "fetch",
+          "kind": "subresource",
+          "url": "/sjis?worker",
+          "session": "page",
+          "method": "Fetch.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+k/qWezwvcD4=",
+          "storedHex": "3c703e93fa967b3c2f703e",
+          "servedHex": "3c703e93fa967b3c2f703e",
+          "matchesServed": true
+        },
+        {
+          "path": "fetch",
+          "kind": "subresource",
+          "url": "/css1252?child",
+          "session": "child",
+          "method": "Fetch.getResponseBody",
+          "base64Encoded": true,
+          "returned": "LyogY2Fm6SAqLwo=",
+          "storedHex": "2f2a20636166e9202a2f0a",
+          "servedHex": "2f2a20636166e9202a2f0a",
+          "matchesServed": true
+        },
+        {
+          "path": "fetch",
+          "kind": "subresource",
+          "url": "/w1252?child",
+          "session": "child",
+          "method": "Fetch.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+Y2Fm6TwvcD4=",
+          "storedHex": "3c703e636166e93c2f703e",
+          "servedHex": "3c703e636166e93c2f703e",
+          "matchesServed": true
+        },
+        {
+          "path": "fetch",
+          "kind": "subresource",
+          "url": "/sjis?worker-child",
+          "session": "child",
+          "method": "Fetch.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+k/qWezwvcD4=",
+          "storedHex": "3c703e93fa967b3c2f703e",
+          "servedHex": "3c703e93fa967b3c2f703e",
+          "matchesServed": true
+        }
+      ]
+    },
+    {
+      "path": "fetch",
+      "variant": "fetch on the page session only",
+      "page": "/frame-parent",
+      "loadResult": "ok",
+      "attached": [
+        "iframe",
+        "worker",
+        "worker"
+      ],
+      "setupAnswers": [
+        {
+          "type": "worker",
+          "answers": [
+            "ok",
+            "ok"
+          ],
+          "resume": "ok"
+        },
+        {
+          "type": "iframe",
+          "answers": [
+            "ok",
+            "ok"
+          ],
+          "resume": "ok"
+        },
+        {
+          "type": "worker",
+          "answers": [
+            "ok",
+            "ok"
+          ],
+          "resume": "ok"
+        }
+      ],
+      "paused": [
+        {
+          "url": "/frame-parent",
+          "session": "page"
+        },
+        {
+          "url": "/worker.js",
+          "session": "page"
+        },
+        {
+          "url": "/w1252?parent",
+          "session": "page"
+        },
+        {
+          "url": "/frame-child",
+          "session": "page"
+        },
+        {
+          "url": "/sjis?worker",
+          "session": "page"
+        }
+      ],
+      "bodies": [
+        {
+          "path": "fetch",
+          "kind": "subresource",
+          "url": "/w1252?parent",
+          "session": "page",
+          "method": "Fetch.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+Y2Fm6TwvcD4=",
+          "storedHex": "3c703e636166e93c2f703e",
+          "servedHex": "3c703e636166e93c2f703e",
+          "matchesServed": true
+        },
+        {
+          "path": "fetch",
+          "kind": "subresource",
+          "url": "/sjis?worker",
+          "session": "page",
+          "method": "Fetch.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+k/qWezwvcD4=",
+          "storedHex": "3c703e93fa967b3c2f703e",
+          "servedHex": "3c703e93fa967b3c2f703e",
+          "matchesServed": true
+        }
+      ]
+    }
+  ],
+  "framesServerRequests": [
+    {
+      "url": "/frame-parent",
+      "requests": 5
+    },
+    {
+      "url": "/w1252?parent",
+      "requests": 5
+    },
+    {
+      "url": "/worker.js",
+      "requests": 5
+    },
+    {
+      "url": "/sjis?worker",
+      "requests": 5
+    },
+    {
+      "url": "/frame-child",
+      "requests": 5
+    },
+    {
+      "url": "/css1252?child",
+      "requests": 5
+    },
+    {
+      "url": "/w1252?child",
+      "requests": 5
+    },
+    {
+      "url": "/worker.js?child",
+      "requests": 5
+    },
+    {
+      "url": "/sjis?worker-child",
+      "requests": 5
+    }
+  ],
+  "serviceWorkers": [
+    {
+      "path": "network",
+      "page": "/sw-parent",
+      "loadResult": "ok",
+      "attached": [
+        "service_worker"
+      ],
+      "setupAnswers": [
+        {
+          "type": "service_worker",
+          "answers": [
+            "ok",
+            "ok"
+          ],
+          "resume": "ok"
+        }
+      ],
+      "paused": [],
+      "bodies": [
+        {
+          "path": "network",
+          "kind": "subresource",
+          "url": "/sjis?sw",
+          "session": "child",
+          "method": "Network.getResponseBody",
+          "base64Encoded": false,
+          "returned": "<p>日本</p>",
+          "storedHex": "3c703ee697a5e69cac3c2f703e",
+          "servedHex": "3c703e93fa967b3c2f703e",
+          "matchesServed": false
+        },
+        {
+          "path": "network",
+          "kind": "subresource",
+          "url": "/w1252?sw",
+          "session": "child",
+          "method": "Network.getResponseBody",
+          "base64Encoded": false,
+          "returned": "<p>café</p>",
+          "storedHex": "3c703e636166c3a93c2f703e",
+          "servedHex": "3c703e636166e93c2f703e",
+          "matchesServed": false
+        }
+      ]
+    },
+    {
+      "path": "network",
+      "page": "/swfetch-parent",
+      "loadResult": "ok",
+      "attached": [
+        "service_worker"
+      ],
+      "setupAnswers": [
+        {
+          "type": "service_worker",
+          "answers": [
+            "ok",
+            "ok"
+          ],
+          "resume": "ok"
+        }
+      ],
+      "paused": [],
+      "bodies": [
+        {
+          "path": "network",
+          "kind": "subresource",
+          "url": "/w1252?viasw",
+          "session": "child",
+          "method": "Network.getResponseBody",
+          "base64Encoded": false,
+          "returned": "",
+          "storedHex": "",
+          "servedHex": "3c703e636166e93c2f703e",
+          "matchesServed": false
+        },
+        {
+          "path": "network",
+          "kind": "subresource",
+          "url": "/w1252?viasw",
+          "session": "page",
+          "method": "Network.getResponseBody",
+          "base64Encoded": false,
+          "returned": "<p>café</p>",
+          "storedHex": "3c703e636166c3a93c2f703e",
+          "servedHex": "3c703e636166e93c2f703e",
+          "matchesServed": false
+        },
+        {
+          "path": "network",
+          "kind": "subresource",
+          "url": "/sjis?viasw",
+          "session": "child",
+          "method": "Network.getResponseBody",
+          "base64Encoded": false,
+          "returned": "",
+          "storedHex": "",
+          "servedHex": "3c703e93fa967b3c2f703e",
+          "matchesServed": false
+        },
+        {
+          "path": "network",
+          "kind": "subresource",
+          "url": "/sjis?viasw",
+          "session": "page",
+          "method": "Network.getResponseBody",
+          "base64Encoded": false,
+          "returned": "<p>日本</p>",
+          "storedHex": "3c703ee697a5e69cac3c2f703e",
+          "servedHex": "3c703e93fa967b3c2f703e",
+          "matchesServed": false
+        }
+      ]
+    },
+    {
+      "path": "durableConfigure",
+      "page": "/sw-parent",
+      "loadResult": "ok",
+      "attached": [
+        "service_worker"
+      ],
+      "setupAnswers": [
+        {
+          "type": "service_worker",
+          "answers": [
+            "ok",
+            "ok",
+            "ok"
+          ],
+          "resume": "ok"
+        }
+      ],
+      "paused": [],
+      "bodies": [
+        {
+          "path": "durableConfigure",
+          "kind": "subresource",
+          "url": "/sjis?sw",
+          "session": "child",
+          "method": "Network.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+k/qWezwvcD4=",
+          "storedHex": "3c703e93fa967b3c2f703e",
+          "servedHex": "3c703e93fa967b3c2f703e",
+          "matchesServed": true
+        },
+        {
+          "path": "durableConfigure",
+          "kind": "subresource",
+          "url": "/w1252?sw",
+          "session": "child",
+          "method": "Network.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+Y2Fm6TwvcD4=",
+          "storedHex": "3c703e636166e93c2f703e",
+          "servedHex": "3c703e636166e93c2f703e",
+          "matchesServed": true
+        }
+      ]
+    },
+    {
+      "path": "durableConfigure",
+      "page": "/swfetch-parent",
+      "loadResult": "ok",
+      "attached": [
+        "service_worker"
+      ],
+      "setupAnswers": [
+        {
+          "type": "service_worker",
+          "answers": [
+            "ok",
+            "ok",
+            "ok"
+          ],
+          "resume": "ok"
+        }
+      ],
+      "paused": [],
+      "bodies": [
+        {
+          "path": "durableConfigure",
+          "kind": "subresource",
+          "url": "/w1252?viasw",
+          "session": "child",
+          "method": "Network.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+Y2Fm6TwvcD4=",
+          "storedHex": "3c703e636166e93c2f703e",
+          "servedHex": "3c703e636166e93c2f703e",
+          "matchesServed": true
+        },
+        {
+          "path": "durableConfigure",
+          "kind": "subresource",
+          "url": "/sjis?viasw",
+          "session": "child",
+          "method": "Network.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+k/qWezwvcD4=",
+          "storedHex": "3c703e93fa967b3c2f703e",
+          "servedHex": "3c703e93fa967b3c2f703e",
+          "matchesServed": true
+        },
+        {
+          "path": "durableConfigure",
+          "kind": "subresource",
+          "url": "/w1252?viasw",
+          "session": "page",
+          "method": "Network.getResponseBody",
+          "servedHex": "3c703e636166e93c2f703e",
+          "error": "No data found for resource with given identifier"
+        },
+        {
+          "path": "durableConfigure",
+          "kind": "subresource",
+          "url": "/sjis?viasw",
+          "session": "page",
+          "method": "Network.getResponseBody",
+          "servedHex": "3c703e93fa967b3c2f703e",
+          "error": "No data found for resource with given identifier"
+        }
+      ]
+    },
+    {
+      "path": "fetch",
+      "page": "/sw-parent",
+      "loadResult": "ok",
+      "attached": [
+        "service_worker"
+      ],
+      "setupAnswers": [
+        {
+          "type": "service_worker",
+          "answers": [
+            "ok",
+            "ok",
+            "ok"
+          ],
+          "resume": "ok"
+        }
+      ],
+      "paused": [
+        {
+          "url": "/sw-parent",
+          "session": "page"
+        },
+        {
+          "url": "/sw.js",
+          "session": "child"
+        },
+        {
+          "url": "/sjis?sw",
+          "session": "child"
+        },
+        {
+          "url": "/w1252?sw",
+          "session": "child"
+        }
+      ],
+      "bodies": [
+        {
+          "path": "fetch",
+          "kind": "subresource",
+          "url": "/sjis?sw",
+          "session": "child",
+          "method": "Fetch.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+k/qWezwvcD4=",
+          "storedHex": "3c703e93fa967b3c2f703e",
+          "servedHex": "3c703e93fa967b3c2f703e",
+          "matchesServed": true
+        },
+        {
+          "path": "fetch",
+          "kind": "subresource",
+          "url": "/w1252?sw",
+          "session": "child",
+          "method": "Fetch.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+Y2Fm6TwvcD4=",
+          "storedHex": "3c703e636166e93c2f703e",
+          "servedHex": "3c703e636166e93c2f703e",
+          "matchesServed": true
+        }
+      ]
+    },
+    {
+      "path": "fetch",
+      "page": "/swfetch-parent",
+      "loadResult": "ok",
+      "attached": [
+        "service_worker"
+      ],
+      "setupAnswers": [
+        {
+          "type": "service_worker",
+          "answers": [
+            "ok",
+            "ok",
+            "ok"
+          ],
+          "resume": "ok"
+        }
+      ],
+      "paused": [
+        {
+          "url": "/swfetch-parent",
+          "session": "page"
+        },
+        {
+          "url": "/sw2.js",
+          "session": "child"
+        },
+        {
+          "url": "/w1252?viasw",
+          "session": "child"
+        },
+        {
+          "url": "/sjis?viasw",
+          "session": "child"
+        }
+      ],
+      "bodies": [
+        {
+          "path": "fetch",
+          "kind": "subresource",
+          "url": "/w1252?viasw",
+          "session": "child",
+          "method": "Fetch.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+Y2Fm6TwvcD4=",
+          "storedHex": "3c703e636166e93c2f703e",
+          "servedHex": "3c703e636166e93c2f703e",
+          "matchesServed": true
+        },
+        {
+          "path": "fetch",
+          "kind": "subresource",
+          "url": "/sjis?viasw",
+          "session": "child",
+          "method": "Fetch.getResponseBody",
+          "base64Encoded": true,
+          "returned": "PHA+k/qWezwvcD4=",
+          "storedHex": "3c703e93fa967b3c2f703e",
+          "servedHex": "3c703e93fa967b3c2f703e",
+          "matchesServed": true
+        }
+      ]
+    }
+  ],
+  "latency": {
+    "subresources": 150,
+    "reps": 15,
+    "runs": [
+      {
+        "rep": 0,
+        "path": "none",
+        "skipBodies": false,
+        "loadMs": 139,
+        "doneMs": 139,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 0
+      },
+      {
+        "rep": 0,
+        "path": "network",
+        "skipBodies": false,
+        "loadMs": 124,
+        "doneMs": 124,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 0,
+        "path": "durableConfigure",
+        "skipBodies": false,
+        "loadMs": 146,
+        "doneMs": 146,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 0,
+        "path": "fetch",
+        "skipBodies": true,
+        "loadMs": 127,
+        "doneMs": 179,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 0
+      },
+      {
+        "rep": 0,
+        "path": "fetch",
+        "skipBodies": false,
+        "loadMs": 138,
+        "doneMs": 189,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 151
+      },
+      {
+        "rep": 1,
+        "path": "none",
+        "skipBodies": false,
+        "loadMs": 102,
+        "doneMs": 143,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 0
+      },
+      {
+        "rep": 1,
+        "path": "network",
+        "skipBodies": false,
+        "loadMs": 93,
+        "doneMs": 133,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 1,
+        "path": "durableConfigure",
+        "skipBodies": false,
+        "loadMs": 152,
+        "doneMs": 152,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 1,
+        "path": "fetch",
+        "skipBodies": true,
+        "loadMs": 347,
+        "doneMs": 591,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 0
+      },
+      {
+        "rep": 1,
+        "path": "fetch",
+        "skipBodies": false,
+        "loadMs": 427,
+        "doneMs": 595,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 151
+      },
+      {
+        "rep": 2,
+        "path": "none",
+        "skipBodies": false,
+        "loadMs": 284,
+        "doneMs": 408,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 0
+      },
+      {
+        "rep": 2,
+        "path": "network",
+        "skipBodies": false,
+        "loadMs": 279,
+        "doneMs": 388,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 2,
+        "path": "durableConfigure",
+        "skipBodies": false,
+        "loadMs": 350,
+        "doneMs": 360,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 2,
+        "path": "fetch",
+        "skipBodies": true,
+        "loadMs": 384,
+        "doneMs": 509,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 0
+      },
+      {
+        "rep": 2,
+        "path": "fetch",
+        "skipBodies": false,
+        "loadMs": 523,
+        "doneMs": 724,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 151
+      },
+      {
+        "rep": 3,
+        "path": "none",
+        "skipBodies": false,
+        "loadMs": 417,
+        "doneMs": 529,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 0
+      },
+      {
+        "rep": 3,
+        "path": "network",
+        "skipBodies": false,
+        "loadMs": 485,
+        "doneMs": 496,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 3,
+        "path": "durableConfigure",
+        "skipBodies": false,
+        "loadMs": 379,
+        "doneMs": 503,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 3,
+        "path": "fetch",
+        "skipBodies": true,
+        "loadMs": 657,
+        "doneMs": 831,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 0
+      },
+      {
+        "rep": 3,
+        "path": "fetch",
+        "skipBodies": false,
+        "loadMs": 676,
+        "doneMs": 906,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 151
+      },
+      {
+        "rep": 4,
+        "path": "none",
+        "skipBodies": false,
+        "loadMs": 405,
+        "doneMs": 578,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 0
+      },
+      {
+        "rep": 4,
+        "path": "network",
+        "skipBodies": false,
+        "loadMs": 346,
+        "doneMs": 530,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 4,
+        "path": "durableConfigure",
+        "skipBodies": false,
+        "loadMs": 452,
+        "doneMs": 630,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 4,
+        "path": "fetch",
+        "skipBodies": true,
+        "loadMs": 700,
+        "doneMs": 813,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 0
+      },
+      {
+        "rep": 4,
+        "path": "fetch",
+        "skipBodies": false,
+        "loadMs": 920,
+        "doneMs": 1194,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 151
+      },
+      {
+        "rep": 5,
+        "path": "none",
+        "skipBodies": false,
+        "loadMs": 554,
+        "doneMs": 770,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 0
+      },
+      {
+        "rep": 5,
+        "path": "network",
+        "skipBodies": false,
+        "loadMs": 772,
+        "doneMs": 773,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 5,
+        "path": "durableConfigure",
+        "skipBodies": false,
+        "loadMs": 719,
+        "doneMs": 719,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 5,
+        "path": "fetch",
+        "skipBodies": true,
+        "loadMs": 684,
+        "doneMs": 892,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 0
+      },
+      {
+        "rep": 5,
+        "path": "fetch",
+        "skipBodies": false,
+        "loadMs": 692,
+        "doneMs": 898,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 151
+      },
+      {
+        "rep": 6,
+        "path": "none",
+        "skipBodies": false,
+        "loadMs": 680,
+        "doneMs": 680,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 0
+      },
+      {
+        "rep": 6,
+        "path": "network",
+        "skipBodies": false,
+        "loadMs": 423,
+        "doneMs": 629,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 6,
+        "path": "durableConfigure",
+        "skipBodies": false,
+        "loadMs": 500,
+        "doneMs": 754,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 6,
+        "path": "fetch",
+        "skipBodies": true,
+        "loadMs": 657,
+        "doneMs": 954,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 0
+      },
+      {
+        "rep": 6,
+        "path": "fetch",
+        "skipBodies": false,
+        "loadMs": 842,
+        "doneMs": 1130,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 151
+      },
+      {
+        "rep": 7,
+        "path": "none",
+        "skipBodies": false,
+        "loadMs": 636,
+        "doneMs": 943,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 0
+      },
+      {
+        "rep": 7,
+        "path": "network",
+        "skipBodies": false,
+        "loadMs": 761,
+        "doneMs": 782,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 7,
+        "path": "durableConfigure",
+        "skipBodies": false,
+        "loadMs": 385,
+        "doneMs": 385,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 7,
+        "path": "fetch",
+        "skipBodies": true,
+        "loadMs": 522,
+        "doneMs": 670,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 0
+      },
+      {
+        "rep": 7,
+        "path": "fetch",
+        "skipBodies": false,
+        "loadMs": 643,
+        "doneMs": 853,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 151
+      },
+      {
+        "rep": 8,
+        "path": "none",
+        "skipBodies": false,
+        "loadMs": 506,
+        "doneMs": 517,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 0
+      },
+      {
+        "rep": 8,
+        "path": "network",
+        "skipBodies": false,
+        "loadMs": 485,
+        "doneMs": 485,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 8,
+        "path": "durableConfigure",
+        "skipBodies": false,
+        "loadMs": 464,
+        "doneMs": 474,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 8,
+        "path": "fetch",
+        "skipBodies": true,
+        "loadMs": 361,
+        "doneMs": 527,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 0
+      },
+      {
+        "rep": 8,
+        "path": "fetch",
+        "skipBodies": false,
+        "loadMs": 615,
+        "doneMs": 668,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 151
+      },
+      {
+        "rep": 9,
+        "path": "none",
+        "skipBodies": false,
+        "loadMs": 280,
+        "doneMs": 414,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 0
+      },
+      {
+        "rep": 9,
+        "path": "network",
+        "skipBodies": false,
+        "loadMs": 508,
+        "doneMs": 518,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 9,
+        "path": "durableConfigure",
+        "skipBodies": false,
+        "loadMs": 331,
+        "doneMs": 436,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 9,
+        "path": "fetch",
+        "skipBodies": true,
+        "loadMs": 433,
+        "doneMs": 600,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 0
+      },
+      {
+        "rep": 9,
+        "path": "fetch",
+        "skipBodies": false,
+        "loadMs": 598,
+        "doneMs": 805,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 151
+      },
+      {
+        "rep": 10,
+        "path": "none",
+        "skipBodies": false,
+        "loadMs": 325,
+        "doneMs": 489,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 0
+      },
+      {
+        "rep": 10,
+        "path": "network",
+        "skipBodies": false,
+        "loadMs": 270,
+        "doneMs": 492,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 10,
+        "path": "durableConfigure",
+        "skipBodies": false,
+        "loadMs": 387,
+        "doneMs": 532,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 10,
+        "path": "fetch",
+        "skipBodies": true,
+        "loadMs": 506,
+        "doneMs": 671,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 0
+      },
+      {
+        "rep": 10,
+        "path": "fetch",
+        "skipBodies": false,
+        "loadMs": 601,
+        "doneMs": 780,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 151
+      },
+      {
+        "rep": 11,
+        "path": "none",
+        "skipBodies": false,
+        "loadMs": 413,
+        "doneMs": 537,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 0
+      },
+      {
+        "rep": 11,
+        "path": "network",
+        "skipBodies": false,
+        "loadMs": 397,
+        "doneMs": 548,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 11,
+        "path": "durableConfigure",
+        "skipBodies": false,
+        "loadMs": 331,
+        "doneMs": 426,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 11,
+        "path": "fetch",
+        "skipBodies": true,
+        "loadMs": 534,
+        "doneMs": 681,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 0
+      },
+      {
+        "rep": 11,
+        "path": "fetch",
+        "skipBodies": false,
+        "loadMs": 634,
+        "doneMs": 770,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 151
+      },
+      {
+        "rep": 12,
+        "path": "none",
+        "skipBodies": false,
+        "loadMs": 293,
+        "doneMs": 538,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 0
+      },
+      {
+        "rep": 12,
+        "path": "network",
+        "skipBodies": false,
+        "loadMs": 435,
+        "doneMs": 445,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 12,
+        "path": "durableConfigure",
+        "skipBodies": false,
+        "loadMs": 365,
+        "doneMs": 508,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 12,
+        "path": "fetch",
+        "skipBodies": true,
+        "loadMs": 601,
+        "doneMs": 818,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 0
+      },
+      {
+        "rep": 12,
+        "path": "fetch",
+        "skipBodies": false,
+        "loadMs": 610,
+        "doneMs": 817,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 151
+      },
+      {
+        "rep": 13,
+        "path": "none",
+        "skipBodies": false,
+        "loadMs": 382,
+        "doneMs": 517,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 0
+      },
+      {
+        "rep": 13,
+        "path": "network",
+        "skipBodies": false,
+        "loadMs": 455,
+        "doneMs": 598,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 13,
+        "path": "durableConfigure",
+        "skipBodies": false,
+        "loadMs": 534,
+        "doneMs": 678,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 13,
+        "path": "fetch",
+        "skipBodies": true,
+        "loadMs": 593,
+        "doneMs": 838,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 0
+      },
+      {
+        "rep": 13,
+        "path": "fetch",
+        "skipBodies": false,
+        "loadMs": 558,
+        "doneMs": 817,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 151
+      },
+      {
+        "rep": 14,
+        "path": "none",
+        "skipBodies": false,
+        "loadMs": 471,
+        "doneMs": 595,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 0
+      },
+      {
+        "rep": 14,
+        "path": "network",
+        "skipBodies": false,
+        "loadMs": 435,
+        "doneMs": 599,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 14,
+        "path": "durableConfigure",
+        "skipBodies": false,
+        "loadMs": 400,
+        "doneMs": 503,
+        "requests": 151,
+        "paused": 0,
+        "bodies": 151
+      },
+      {
+        "rep": 14,
+        "path": "fetch",
+        "skipBodies": true,
+        "loadMs": 537,
+        "doneMs": 713,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 0
+      },
+      {
+        "rep": 14,
+        "path": "fetch",
+        "skipBodies": false,
+        "loadMs": 707,
+        "doneMs": 968,
+        "requests": 151,
+        "paused": 151,
+        "bodies": 151
+      }
+    ]
+  },
+  "playwright": {
+    "driver": {
+      "windowsEvaluated": 3,
+      "log": [
+        {
+          "url": "http://127.0.0.1:38385/host?round=network",
+          "evaluated": {
+            "href": "http://127.0.0.1:38385/host?round=network",
+            "title": "done",
+            "fetchedHex": "3c703e636166e93c2f703e"
+          }
+        },
+        {
+          "url": "http://127.0.0.1:38385/host?round=durableConfigure",
+          "evaluated": {
+            "href": "http://127.0.0.1:38385/host?round=durableConfigure",
+            "title": "done",
+            "fetchedHex": "3c703e636166e93c2f703e"
+          }
+        },
+        {
+          "url": "http://127.0.0.1:38385/host?round=fetch",
+          "evaluated": {
+            "href": "http://127.0.0.1:38385/host?round=fetch",
+            "title": "done",
+            "fetchedHex": "3c703e636166e93c2f703e"
+          }
+        }
+      ],
+      "exitCode": 0
+    },
+    "runs": [
+      {
+        "path": "network",
+        "enable": "ok",
+        "autoAttach": "ok",
+        "pathSetup": "none",
+        "title": "done",
+        "evaluatedWhileHeld": true,
+        "bodies": [
+          {
+            "path": "network",
+            "kind": "subresource",
+            "url": "/css1252?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": false,
+            "returned": "/* café */\n",
+            "storedHex": "2f2a20636166c3a9202a2f0a",
+            "servedHex": "2f2a20636166e9202a2f0a",
+            "matchesServed": false
+          },
+          {
+            "path": "network",
+            "kind": "subresource",
+            "url": "/js1252?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": false,
+            "returned": "// café\n",
+            "storedHex": "2f2f20636166c3a90a",
+            "servedHex": "2f2f20636166e90a",
+            "matchesServed": false
+          },
+          {
+            "path": "network",
+            "kind": "subresource",
+            "url": "/png?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": true,
+            "returned": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgAAACAAAB4iG8MwAAAABJRU5ErkJggg==",
+            "storedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+            "servedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+            "matchesServed": true
+          },
+          {
+            "path": "network",
+            "kind": "subresource",
+            "url": "/w1252?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": false,
+            "returned": "<p>café</p>",
+            "storedHex": "3c703e636166c3a93c2f703e",
+            "servedHex": "3c703e636166e93c2f703e",
+            "matchesServed": false
+          },
+          {
+            "path": "network",
+            "kind": "subresource",
+            "url": "/sjis?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": false,
+            "returned": "<p>日本</p>",
+            "storedHex": "3c703ee697a5e69cac3c2f703e",
+            "servedHex": "3c703e93fa967b3c2f703e",
+            "matchesServed": false
+          },
+          {
+            "path": "network",
+            "kind": "subresource",
+            "url": "/bom?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": false,
+            "returned": "<p>ab</p>",
+            "storedHex": "3c703e61623c2f703e",
+            "servedHex": "efbbbf3c703e61623c2f703e",
+            "matchesServed": false
+          },
+          {
+            "path": "network",
+            "kind": "subresource",
+            "url": "/invalid?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": true,
+            "returned": "PHA+Yf9iPC9wPg==",
+            "storedHex": "3c703e61ff623c2f703e",
+            "servedHex": "3c703e61ff623c2f703e",
+            "matchesServed": true
+          },
+          {
+            "path": "network",
+            "kind": "subresource",
+            "url": "/gzip1252?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": false,
+            "returned": "<p>café</p>",
+            "storedHex": "3c703e636166c3a93c2f703e",
+            "servedHex": "3c703e636166e93c2f703e",
+            "matchesServed": false
+          },
+          {
+            "path": "network",
+            "kind": "subresource",
+            "url": "/nolabel?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": true,
+            "returned": "PHA+Y2Fm6TwvcD4=",
+            "storedHex": "3c703e636166e93c2f703e",
+            "servedHex": "3c703e636166e93c2f703e",
+            "matchesServed": true
+          },
+          {
+            "path": "network",
+            "kind": "subresource",
+            "url": "/utf8?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": false,
+            "returned": "<p>café</p>",
+            "storedHex": "3c703e636166c3a93c2f703e",
+            "servedHex": "3c703e636166c3a93c2f703e",
+            "matchesServed": true
+          },
+          {
+            "path": "network",
+            "kind": "subresource",
+            "url": "/plain1252?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": false,
+            "returned": "café",
+            "storedHex": "636166c3a9",
+            "servedHex": "636166e9",
+            "matchesServed": false
+          },
+          {
+            "path": "network",
+            "kind": "subresource",
+            "url": "/mojibake?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": false,
+            "returned": "<p>cafÃ©</p>",
+            "storedHex": "3c703e636166c383c2a93c2f703e",
+            "servedHex": "3c703e636166c3a93c2f703e",
+            "matchesServed": false
+          },
+          {
+            "path": "network",
+            "kind": "subresource",
+            "url": "/utf16?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": false,
+            "returned": "<p>ab</p>",
+            "storedHex": "3c703e61623c2f703e",
+            "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+            "matchesServed": false
+          },
+          {
+            "path": "network",
+            "kind": "subresource",
+            "url": "/w1252?pw",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": false,
+            "returned": "<p>café</p>",
+            "storedHex": "3c703e636166c3a93c2f703e",
+            "servedHex": "3c703e636166e93c2f703e",
+            "matchesServed": false
+          }
+        ]
+      },
+      {
+        "path": "durableConfigure",
+        "enable": "ok",
+        "autoAttach": "ok",
+        "pathSetup": "ok",
+        "title": "done",
+        "evaluatedWhileHeld": true,
+        "bodies": [
+          {
+            "path": "durableConfigure",
+            "kind": "subresource",
+            "url": "/css1252?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": true,
+            "returned": "LyogY2Fm6SAqLwo=",
+            "storedHex": "2f2a20636166e9202a2f0a",
+            "servedHex": "2f2a20636166e9202a2f0a",
+            "matchesServed": true
+          },
+          {
+            "path": "durableConfigure",
+            "kind": "subresource",
+            "url": "/png?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": true,
+            "returned": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgAAACAAAB4iG8MwAAAABJRU5ErkJggg==",
+            "storedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+            "servedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+            "matchesServed": true
+          },
+          {
+            "path": "durableConfigure",
+            "kind": "subresource",
+            "url": "/js1252?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": true,
+            "returned": "Ly8gY2Fm6Qo=",
+            "storedHex": "2f2f20636166e90a",
+            "servedHex": "2f2f20636166e90a",
+            "matchesServed": true
+          },
+          {
+            "path": "durableConfigure",
+            "kind": "subresource",
+            "url": "/w1252?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": true,
+            "returned": "PHA+Y2Fm6TwvcD4=",
+            "storedHex": "3c703e636166e93c2f703e",
+            "servedHex": "3c703e636166e93c2f703e",
+            "matchesServed": true
+          },
+          {
+            "path": "durableConfigure",
+            "kind": "subresource",
+            "url": "/utf8?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": false,
+            "returned": "<p>café</p>",
+            "storedHex": "3c703e636166c3a93c2f703e",
+            "servedHex": "3c703e636166c3a93c2f703e",
+            "matchesServed": true
+          },
+          {
+            "path": "durableConfigure",
+            "kind": "subresource",
+            "url": "/sjis?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": true,
+            "returned": "PHA+k/qWezwvcD4=",
+            "storedHex": "3c703e93fa967b3c2f703e",
+            "servedHex": "3c703e93fa967b3c2f703e",
+            "matchesServed": true
+          },
+          {
+            "path": "durableConfigure",
+            "kind": "subresource",
+            "url": "/bom?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": false,
+            "returned": "﻿<p>ab</p>",
+            "storedHex": "efbbbf3c703e61623c2f703e",
+            "servedHex": "efbbbf3c703e61623c2f703e",
+            "matchesServed": true
+          },
+          {
+            "path": "durableConfigure",
+            "kind": "subresource",
+            "url": "/invalid?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": true,
+            "returned": "PHA+Yf9iPC9wPg==",
+            "storedHex": "3c703e61ff623c2f703e",
+            "servedHex": "3c703e61ff623c2f703e",
+            "matchesServed": true
+          },
+          {
+            "path": "durableConfigure",
+            "kind": "subresource",
+            "url": "/gzip1252?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": true,
+            "returned": "PHA+Y2Fm6TwvcD4=",
+            "storedHex": "3c703e636166e93c2f703e",
+            "servedHex": "3c703e636166e93c2f703e",
+            "matchesServed": true
+          },
+          {
+            "path": "durableConfigure",
+            "kind": "subresource",
+            "url": "/nolabel?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": true,
+            "returned": "PHA+Y2Fm6TwvcD4=",
+            "storedHex": "3c703e636166e93c2f703e",
+            "servedHex": "3c703e636166e93c2f703e",
+            "matchesServed": true
+          },
+          {
+            "path": "durableConfigure",
+            "kind": "subresource",
+            "url": "/plain1252?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": true,
+            "returned": "Y2Fm6Q==",
+            "storedHex": "636166e9",
+            "servedHex": "636166e9",
+            "matchesServed": true
+          },
+          {
+            "path": "durableConfigure",
+            "kind": "subresource",
+            "url": "/mojibake?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": false,
+            "returned": "<p>café</p>",
+            "storedHex": "3c703e636166c3a93c2f703e",
+            "servedHex": "3c703e636166c3a93c2f703e",
+            "matchesServed": true
+          },
+          {
+            "path": "durableConfigure",
+            "kind": "subresource",
+            "url": "/utf16?sub",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": true,
+            "returned": "//48AHAAPgBhAGIAPAAvAHAAPgA=",
+            "storedHex": "fffe3c0070003e00610062003c002f0070003e00",
+            "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+            "matchesServed": true
+          },
+          {
+            "path": "durableConfigure",
+            "kind": "subresource",
+            "url": "/w1252?pw",
+            "session": "page",
+            "method": "Network.getResponseBody",
+            "base64Encoded": true,
+            "returned": "PHA+Y2Fm6TwvcD4=",
+            "storedHex": "3c703e636166e93c2f703e",
+            "servedHex": "3c703e636166e93c2f703e",
+            "matchesServed": true
+          }
+        ]
+      },
+      {
+        "path": "fetch",
+        "enable": "ok",
+        "autoAttach": "ok",
+        "pathSetup": "ok",
+        "title": "done",
+        "evaluatedWhileHeld": true,
+        "bodies": [
+          {
+            "path": "fetch",
+            "kind": "subresource",
+            "url": "/css1252?sub",
+            "session": "page",
+            "method": "Fetch.getResponseBody",
+            "base64Encoded": true,
+            "returned": "LyogY2Fm6SAqLwo=",
+            "storedHex": "2f2a20636166e9202a2f0a",
+            "servedHex": "2f2a20636166e9202a2f0a",
+            "matchesServed": true
+          },
+          {
+            "path": "fetch",
+            "kind": "subresource",
+            "url": "/js1252?sub",
+            "session": "page",
+            "method": "Fetch.getResponseBody",
+            "base64Encoded": true,
+            "returned": "Ly8gY2Fm6Qo=",
+            "storedHex": "2f2f20636166e90a",
+            "servedHex": "2f2f20636166e90a",
+            "matchesServed": true
+          },
+          {
+            "path": "fetch",
+            "kind": "subresource",
+            "url": "/png?sub",
+            "session": "page",
+            "method": "Fetch.getResponseBody",
+            "base64Encoded": true,
+            "returned": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgAAACAAAB4iG8MwAAAABJRU5ErkJggg==",
+            "storedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+            "servedHex": "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082",
+            "matchesServed": true
+          },
+          {
+            "path": "fetch",
+            "kind": "subresource",
+            "url": "/w1252?sub",
+            "session": "page",
+            "method": "Fetch.getResponseBody",
+            "base64Encoded": true,
+            "returned": "PHA+Y2Fm6TwvcD4=",
+            "storedHex": "3c703e636166e93c2f703e",
+            "servedHex": "3c703e636166e93c2f703e",
+            "matchesServed": true
+          },
+          {
+            "path": "fetch",
+            "kind": "subresource",
+            "url": "/sjis?sub",
+            "session": "page",
+            "method": "Fetch.getResponseBody",
+            "base64Encoded": true,
+            "returned": "PHA+k/qWezwvcD4=",
+            "storedHex": "3c703e93fa967b3c2f703e",
+            "servedHex": "3c703e93fa967b3c2f703e",
+            "matchesServed": true
+          },
+          {
+            "path": "fetch",
+            "kind": "subresource",
+            "url": "/bom?sub",
+            "session": "page",
+            "method": "Fetch.getResponseBody",
+            "base64Encoded": true,
+            "returned": "77u/PHA+YWI8L3A+",
+            "storedHex": "efbbbf3c703e61623c2f703e",
+            "servedHex": "efbbbf3c703e61623c2f703e",
+            "matchesServed": true
+          },
+          {
+            "path": "fetch",
+            "kind": "subresource",
+            "url": "/invalid?sub",
+            "session": "page",
+            "method": "Fetch.getResponseBody",
+            "base64Encoded": true,
+            "returned": "PHA+Yf9iPC9wPg==",
+            "storedHex": "3c703e61ff623c2f703e",
+            "servedHex": "3c703e61ff623c2f703e",
+            "matchesServed": true
+          },
+          {
+            "path": "fetch",
+            "kind": "subresource",
+            "url": "/gzip1252?sub",
+            "session": "page",
+            "method": "Fetch.getResponseBody",
+            "base64Encoded": true,
+            "returned": "PHA+Y2Fm6TwvcD4=",
+            "storedHex": "3c703e636166e93c2f703e",
+            "servedHex": "3c703e636166e93c2f703e",
+            "matchesServed": true
+          },
+          {
+            "path": "fetch",
+            "kind": "subresource",
+            "url": "/nolabel?sub",
+            "session": "page",
+            "method": "Fetch.getResponseBody",
+            "base64Encoded": true,
+            "returned": "PHA+Y2Fm6TwvcD4=",
+            "storedHex": "3c703e636166e93c2f703e",
+            "servedHex": "3c703e636166e93c2f703e",
+            "matchesServed": true
+          },
+          {
+            "path": "fetch",
+            "kind": "subresource",
+            "url": "/utf8?sub",
+            "session": "page",
+            "method": "Fetch.getResponseBody",
+            "base64Encoded": true,
+            "returned": "PHA+Y2Fmw6k8L3A+",
+            "storedHex": "3c703e636166c3a93c2f703e",
+            "servedHex": "3c703e636166c3a93c2f703e",
+            "matchesServed": true
+          },
+          {
+            "path": "fetch",
+            "kind": "subresource",
+            "url": "/plain1252?sub",
+            "session": "page",
+            "method": "Fetch.getResponseBody",
+            "base64Encoded": true,
+            "returned": "Y2Fm6Q==",
+            "storedHex": "636166e9",
+            "servedHex": "636166e9",
+            "matchesServed": true
+          },
+          {
+            "path": "fetch",
+            "kind": "subresource",
+            "url": "/mojibake?sub",
+            "session": "page",
+            "method": "Fetch.getResponseBody",
+            "base64Encoded": true,
+            "returned": "PHA+Y2Fmw6k8L3A+",
+            "storedHex": "3c703e636166c3a93c2f703e",
+            "servedHex": "3c703e636166c3a93c2f703e",
+            "matchesServed": true
+          },
+          {
+            "path": "fetch",
+            "kind": "subresource",
+            "url": "/utf16?sub",
+            "session": "page",
+            "method": "Fetch.getResponseBody",
+            "base64Encoded": true,
+            "returned": "//48AHAAPgBhAGIAPAAvAHAAPgA=",
+            "storedHex": "fffe3c0070003e00610062003c002f0070003e00",
+            "servedHex": "fffe3c0070003e00610062003c002f0070003e00",
+            "matchesServed": true
+          },
+          {
+            "path": "fetch",
+            "kind": "subresource",
+            "url": "/w1252?pw",
+            "session": "page",
+            "method": "Fetch.getResponseBody",
+            "base64Encoded": true,
+            "returned": "PHA+Y2Fm6TwvcD4=",
+            "storedHex": "3c703e636166e93c2f703e",
+            "servedHex": "3c703e636166e93c2f703e",
+            "matchesServed": true
+          }
+        ]
+      }
+    ]
+  },
+  "renders": [
+    {
+      "file": "paths.json",
+      "path": "network",
+      "url": "/w1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "network",
+      "url": "/sjis",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "network",
+      "url": "/bom",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "network",
+      "url": "/invalid",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "network",
+      "url": "/gzip1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "network",
+      "url": "/nolabel",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "network",
+      "url": "/utf8",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "network",
+      "url": "/plain1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "network",
+      "url": "/mojibake",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "network",
+      "url": "/utf16",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "network",
+      "url": "/host",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableEnable",
+      "url": "/w1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableEnable",
+      "url": "/sjis",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableEnable",
+      "url": "/bom",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableEnable",
+      "url": "/invalid",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableEnable",
+      "url": "/gzip1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableEnable",
+      "url": "/nolabel",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableEnable",
+      "url": "/utf8",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableEnable",
+      "url": "/plain1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableEnable",
+      "url": "/mojibake",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableEnable",
+      "url": "/utf16",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableEnable",
+      "url": "/host",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableConfigure",
+      "url": "/w1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableConfigure",
+      "url": "/sjis",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableConfigure",
+      "url": "/bom",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableConfigure",
+      "url": "/invalid",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableConfigure",
+      "url": "/gzip1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableConfigure",
+      "url": "/nolabel",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableConfigure",
+      "url": "/utf8",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableConfigure",
+      "url": "/plain1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableConfigure",
+      "url": "/mojibake",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableConfigure",
+      "url": "/utf16",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "durableConfigure",
+      "url": "/host",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetch",
+      "url": "/w1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetch",
+      "url": "/sjis",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetch",
+      "url": "/bom",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetch",
+      "url": "/invalid",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetch",
+      "url": "/gzip1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetch",
+      "url": "/nolabel",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetch",
+      "url": "/utf8",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetch",
+      "url": "/plain1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetch",
+      "url": "/mojibake",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetch",
+      "url": "/utf16",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetch",
+      "url": "/host",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetchStream",
+      "url": "/w1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetchStream",
+      "url": "/sjis",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetchStream",
+      "url": "/bom",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetchStream",
+      "url": "/invalid",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetchStream",
+      "url": "/gzip1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetchStream",
+      "url": "/nolabel",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetchStream",
+      "url": "/utf8",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetchStream",
+      "url": "/plain1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetchStream",
+      "url": "/mojibake",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetchStream",
+      "url": "/utf16",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "fetchStream",
+      "url": "/host",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "stream",
+      "url": "/w1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "stream",
+      "url": "/sjis",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "stream",
+      "url": "/bom",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "stream",
+      "url": "/invalid",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "stream",
+      "url": "/gzip1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "stream",
+      "url": "/nolabel",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "stream",
+      "url": "/utf8",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "stream",
+      "url": "/plain1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "stream",
+      "url": "/mojibake",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "stream",
+      "url": "/utf16",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "stream",
+      "url": "/host",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "loadNetworkResource",
+      "url": "/w1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "loadNetworkResource",
+      "url": "/sjis",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "loadNetworkResource",
+      "url": "/bom",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "loadNetworkResource",
+      "url": "/invalid",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "loadNetworkResource",
+      "url": "/gzip1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "loadNetworkResource",
+      "url": "/nolabel",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "loadNetworkResource",
+      "url": "/utf8",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "loadNetworkResource",
+      "url": "/plain1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "loadNetworkResource",
+      "url": "/mojibake",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "loadNetworkResource",
+      "url": "/utf16",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "loadNetworkResource",
+      "url": "/host",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "pageResource",
+      "url": "/w1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "pageResource",
+      "url": "/sjis",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "pageResource",
+      "url": "/bom",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "pageResource",
+      "url": "/invalid",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "pageResource",
+      "url": "/gzip1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "pageResource",
+      "url": "/nolabel",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "pageResource",
+      "url": "/utf8",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "pageResource",
+      "url": "/plain1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "pageResource",
+      "url": "/mojibake",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "pageResource",
+      "url": "/utf16",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "paths.json",
+      "path": "pageResource",
+      "url": "/host",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "big.json",
+      "path": "network",
+      "url": "/big1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "big.json",
+      "path": "network",
+      "url": "/under1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "big.json",
+      "path": "durableEnable",
+      "url": "/big1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "big.json",
+      "path": "durableEnable",
+      "url": "/under1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "big.json",
+      "path": "durableConfigure",
+      "url": "/big1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "big.json",
+      "path": "durableConfigure",
+      "url": "/under1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "big.json",
+      "path": "fetch",
+      "url": "/big1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "big.json",
+      "path": "fetch",
+      "url": "/under1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "durable-small.json",
+      "path": "durableSmall",
+      "url": "/w1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "durable-small.json",
+      "path": "durableSmall",
+      "url": "/under1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "durable-small.json",
+      "path": "durableSmall",
+      "url": "/big1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "durable-resource.json",
+      "path": "durableSmall",
+      "url": "/w1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "durable-resource.json",
+      "path": "durableSmall",
+      "url": "/under1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "durable-resource.json",
+      "path": "durableSmall",
+      "url": "/big1252",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "slow.json",
+      "path": "stream",
+      "url": "/slow-w1252?gap=800",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "slow.json",
+      "path": "stream",
+      "url": "/slow-sjis?gap=800",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "slow.json",
+      "path": "stream",
+      "url": "/slow-bom?gap=800",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "slow.json",
+      "path": "stream",
+      "url": "/slow-invalid?gap=800",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "slow.json",
+      "path": "stream",
+      "url": "/slow-gzip1252?gap=800",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "slow.json",
+      "path": "stream",
+      "url": "/slow-nolabel?gap=800",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "slow.json",
+      "path": "stream",
+      "url": "/slow-utf8?gap=800",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "slow.json",
+      "path": "stream",
+      "url": "/slow-plain1252?gap=800",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "slow.json",
+      "path": "stream",
+      "url": "/slow-mojibake?gap=800",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "slow.json",
+      "path": "stream",
+      "url": "/slow-utf16?gap=800",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "consent.json",
+      "path": "network",
+      "url": "/consent",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "consent.json",
+      "path": "durableConfigure",
+      "url": "/consent",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "consent.json",
+      "path": "fetch",
+      "url": "/consent",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "oopif.json",
+      "path": "network",
+      "url": "/frame-parent",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "oopif.json",
+      "path": "durableConfigure",
+      "url": "/frame-parent",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "oopif.json",
+      "path": "durableEnable",
+      "url": "/frame-parent",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "oopif.json",
+      "path": "fetch",
+      "url": "/frame-parent",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "oopif.json",
+      "path": "fetch",
+      "url": "/frame-parent",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "sw.json",
+      "path": "network",
+      "url": "/sw-parent",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "sw.json",
+      "path": "network",
+      "url": "/swfetch-parent",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "none",
+      "loadResult": "ok"
+    },
+    {
+      "file": "sw.json",
+      "path": "durableConfigure",
+      "url": "/sw-parent",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "sw.json",
+      "path": "durableConfigure",
+      "url": "/swfetch-parent",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "sw.json",
+      "path": "fetch",
+      "url": "/sw-parent",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    },
+    {
+      "file": "sw.json",
+      "path": "fetch",
+      "url": "/swfetch-parent",
+      "enable": "ok",
+      "autoAttach": "ok",
+      "pathSetup": "ok",
+      "loadResult": "ok"
+    }
+  ],
+  "hostEventCounts": [
+    {
+      "path": "network",
+      "counts": {
+        "Network.requestWillBeSent": 14,
+        "Network.responseReceived": 14,
+        "Network.dataReceived": 17,
+        "Network.loadingFinished": 14
+      }
+    },
+    {
+      "path": "durableEnable",
+      "counts": {
+        "Network.requestWillBeSent": 14,
+        "Network.responseReceived": 14,
+        "Network.dataReceived": 17,
+        "Network.loadingFinished": 14
+      }
+    },
+    {
+      "path": "durableConfigure",
+      "counts": {
+        "Network.requestWillBeSent": 14,
+        "Network.responseReceived": 14,
+        "Network.dataReceived": 17,
+        "Network.loadingFinished": 14
+      }
+    },
+    {
+      "path": "fetch",
+      "counts": {
+        "Network.requestWillBeSent": 14,
+        "Fetch.requestPaused": 14,
+        "Network.responseReceived": 14,
+        "Network.dataReceived": 17,
+        "Network.loadingFinished": 14
+      }
+    },
+    {
+      "path": "fetchStream",
+      "counts": {
+        "Network.requestWillBeSent": 14,
+        "Fetch.requestPaused": 14,
+        "Network.responseReceived": 14,
+        "Network.dataReceived": 17,
+        "Network.loadingFinished": 14
+      }
+    },
+    {
+      "path": "stream",
+      "counts": {
+        "Network.requestWillBeSent": 14,
+        "Network.responseReceived": 14,
+        "Network.dataReceived": 17,
+        "Network.loadingFinished": 14
+      }
+    },
+    {
+      "path": "loadNetworkResource",
+      "counts": {
+        "Network.requestWillBeSent": 14,
+        "Network.responseReceived": 14,
+        "Network.dataReceived": 17,
+        "Network.loadingFinished": 14
+      }
+    },
+    {
+      "path": "pageResource",
+      "counts": {
+        "Network.requestWillBeSent": 14,
+        "Network.responseReceived": 15,
+        "Network.dataReceived": 18,
+        "Network.loadingFinished": 15,
+        "Network.loadingFailed": 1
+      }
+    }
+  ],
+  "e2eRenders": [
+    {
+      "url": "/page",
+      "setup": [
+        {
+          "page": "Network.enable",
+          "a": "ok"
+        },
+        {
+          "page": "Network.configureDurableMessages",
+          "a": "ok"
+        },
+        {
+          "page": "Target.setAutoAttach",
+          "a": "ok"
+        }
+      ],
+      "bodies": [
+        {
+          "url": "/page",
+          "base64Encoded": false,
+          "length": 1127,
+          "session": "page"
+        }
+      ]
+    },
+    {
+      "url": "/page",
+      "setup": [
+        {
+          "page": "Network.enable",
+          "a": "ok"
+        },
+        {
+          "page": "Network.configureDurableMessages",
+          "a": "ok"
+        },
+        {
+          "page": "Target.setAutoAttach",
+          "a": "ok"
+        }
+      ],
+      "bodies": [
+        {
+          "url": "/page",
+          "base64Encoded": false,
+          "length": 123,
+          "session": "page"
+        }
+      ]
+    },
+    {
+      "url": "/page",
+      "setup": [
+        {
+          "page": "Network.enable",
+          "a": "ok"
+        },
+        {
+          "page": "Network.configureDurableMessages",
+          "a": "ok"
+        },
+        {
+          "page": "Target.setAutoAttach",
+          "a": "ok"
+        }
+      ],
+      "bodies": [
+        {
+          "url": "/page",
+          "base64Encoded": false,
+          "length": 123,
+          "session": "page"
+        }
+      ]
+    }
+  ]
+}

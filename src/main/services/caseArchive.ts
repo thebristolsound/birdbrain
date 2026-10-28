@@ -44,6 +44,7 @@ import {
   defaultCaptureStore,
   EXHIBIT_KIND_SUBDIRECTORIES,
   parseArtifactFilename,
+  splitArtifactFilename,
   STAGING_SUBDIRECTORY
 } from '@main/services/captureStore'
 import { getSettings } from '@main/services/settings'
@@ -100,6 +101,14 @@ import type {
   CaseArchiveCounts
 } from '@shared/types'
 
+// 13 since the capture engine's columns and files (#1907 and #1925, schema
+// v43): data.json's captures carry `transaction_record_hash`, `pdf_hash`,
+// `inventory`, `scroll_to_load`, `bound_tls` and `bound_tls_absent`, and the
+// zip carries a Capture's Transaction Record as `files/<id>.warc.gz` and its
+// PDF as `files/<id>.pdf`. A Birdbrain from before them drops the six columns
+// without an error, and splits `<id>.warc.gz` at its last dot, so a Capture
+// whose id the import remaps keeps its Transaction Record under the source id.
+// The gate refuses instead.
 // 12 since id maps travel (#1017): the zip carries the id map of every import
 // on the exporter's chain that its Case holds, its own included, under
 // `import-id-maps/<idMapSha256>.json` as the canonical bytes that digest
@@ -174,7 +183,7 @@ import type {
 // anchor_json, which a pre-v27 import would silently drop. Bump this whenever a
 // Case Archive gains data an older release would silently discard or reject
 // opaquely.
-export const CASE_ARCHIVE_SCHEMA_VERSION = 12
+export const CASE_ARCHIVE_SCHEMA_VERSION = 13
 
 export interface CaseArchiveData {
   case: Record<string, unknown>
@@ -305,9 +314,7 @@ const DERIVED_FILES_PREFIX = 'files/derived/'
 const ID_MAPS_PREFIX = `${IMPORT_ID_MAPS_DIRECTORY}/`
 
 function fileExt(path: string): string {
-  const base = path.split('/').pop() ?? path
-  const dot = base.lastIndexOf('.')
-  return dot === -1 ? '' : base.slice(dot)
+  return splitArtifactFilename(path.split('/').pop() ?? path).ext
 }
 
 function sha256(buf: Buffer): string {
@@ -1138,9 +1145,7 @@ export async function importCaseArchive(
       if (base.length === 0 || base.includes('/') || base.includes('\\') || base.includes('..')) {
         throw new Error('Not a valid Birdbrain archive: malformed file entry name')
       }
-      const dot = base.lastIndexOf('.')
-      const oldId = dot === -1 ? base : base.slice(0, dot)
-      const ext = dot === -1 ? '' : base.slice(dot)
+      const { stem: oldId, ext } = splitArtifactFilename(base)
       let subdir = ''
       if (isPooled) subdir = STAGING_SUBDIRECTORY
       else if (isExhibit) {

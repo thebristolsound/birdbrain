@@ -3,11 +3,14 @@
 // The Links tab (#1708 D14): rows, filters, the In Case badge, the named empty states
 // and the shared link menu.
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
+import { act, render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import type { Capture, CaptureLink, CaptureLinks, FieldHit } from '@shared/types'
+import type { Capture, CaptureLink, CaptureLinks, EgressSetting, FieldHit } from '@shared/types'
+import type { WaybackLinkProgressEvent } from '@shared/ipc'
 import { LinksTab } from '@renderer/components/captures/LinksTab'
+import { useAppStore } from '@renderer/stores/appStore'
+import { notify } from '@renderer/lib/notify'
 import { fakeBridge } from '../renderer/fakeBridge'
 
 const capture: Capture = {
@@ -150,6 +153,52 @@ describe('LinksTab', () => {
     )
     const [row] = await screen.findAllByTestId('links-row')
     await waitFor(() => expect(within(row).queryByTestId('links-in-case')).not.toBeNull())
+  })
+
+  // #1735, plan A5. Each row's text is a native button, so Enter on it is a click;
+  // the E2E spec presses Enter on one in Electron.
+  it('opens an In Case row’s Capture on activation and pushes the viewed one on the trail', async () => {
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: [] })
+    renderTab(
+      result([
+        link({ href: 'https://news.example/held', text: 'Held story' }),
+        link({ href: 'https://elsewhere.example/', text: 'Not held' })
+      ]),
+      {
+        cases: [
+          capture,
+          { id: 'c2', url: 'https://news.example/held', timestamp: '2026-01-01T00:00:00Z' }
+        ]
+      }
+    )
+    const rows = await screen.findAllByTestId('links-row')
+    await waitFor(() => expect(within(rows[0]).queryByTestId('links-in-case')).not.toBeNull())
+    const open = within(rows[0]).getByRole('button', { name: 'Held story' })
+    expect(open.tagName).toBe('BUTTON')
+
+    fireEvent.click(within(rows[1]).getByRole('button', { name: 'Not held' }))
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap1')
+
+    fireEvent.click(open)
+    expect(useAppStore.getState().selectedCaptureId).toBe('c2')
+    expect(useAppStore.getState().captureTrail).toEqual(['cap1'])
+  })
+
+  it('does nothing on activating a same-page row, which resolves to the viewed Capture', async () => {
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: [] })
+    renderTab(
+      result([
+        link({ href: 'https://news.example/story#comments', text: 'Comments', kind: 'same-page' })
+      ]),
+      { cases: [capture] }
+    )
+    const [row] = await screen.findAllByTestId('links-row')
+    await waitFor(() => expect(within(row).queryByTestId('links-in-case')).not.toBeNull())
+
+    fireEvent.click(within(row).getByRole('button', { name: 'Comments' }))
+
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap1')
+    expect(useAppStore.getState().captureTrail).toEqual([])
   })
 
   it('filters by search text and by external only', async () => {
@@ -408,5 +457,580 @@ describe('LinksTab', () => {
     expect((await screen.findByTestId('links-empty')).textContent).toContain(
       "Couldn't read the stored page"
     )
+  })
+})
+
+// #1737, plan S6: a row's Wayback cell reads only the cache the link menu's lookup fills.
+describe('LinksTab Wayback cell', () => {
+  const SNAPSHOT = {
+    timestamp: '2026-07-29T12:00:00.000Z',
+    snapshotUrl: 'https://web.archive.org/web/20260729120000/https://a.example/1',
+    originalUrl: 'https://a.example/1',
+    statusCode: 200
+  }
+  const FOUND = {
+    snapshots: [SNAPSHOT],
+    closestIndex: 0,
+    checkedAt: '2026-10-26T00:00:00.000Z',
+    countIsMinimum: false
+  }
+
+  function renderWithLookup(
+    links: CaptureLink[],
+    lookupLink: (...args: never[]) => unknown,
+    {
+      openExternal = vi.fn(async (): Promise<void> => undefined),
+      enqueue = vi.fn(async () => ({ accepted: 1, rejected: [] as unknown[] })),
+      cases = [] as Partial<Capture>[]
+    } = {}
+  ) {
+    fakeBridge({
+      captures: {
+        getLinks: vi.fn(async () => result(links)),
+        list: vi.fn(async () => cases),
+        openExternal
+      },
+      wayback: { lookupLink },
+      recapture: { enqueue }
+    })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <LinksTab capture={capture} />
+      </QueryClientProvider>
+    )
+    return { openExternal, enqueue }
+  }
+
+  async function lookUp(text: string) {
+    fireEvent.contextMenu(await screen.findByText(text))
+    fireEvent.click(await screen.findByTestId('context-menu-item-link-wayback'))
+  }
+
+  it('shows Not checked on each web row, asks nothing, and gives other rows no cell', async () => {
+    const lookupLink = vi.fn()
+    renderWithLookup(
+      [
+        link({ href: 'https://a.example/1', text: 'One' }),
+        link({ href: 'mailto:desk@news.example', text: 'Mail', kind: 'mailto' })
+      ],
+      lookupLink
+    )
+    const rows = await screen.findAllByTestId('links-row')
+    expect(within(rows[0]).getByTestId('links-wayback').textContent).toBe('Wayback:Not checked')
+    expect(within(rows[1]).queryByTestId('links-wayback')).toBeNull()
+    expect(lookupLink).not.toHaveBeenCalled()
+  })
+
+  it('looks a row up from its menu, then answers every row with that address', async () => {
+    let answer: (value: unknown) => void = () => {}
+    const lookupLink = vi.fn(() => new Promise((resolve) => (answer = resolve)))
+    const success = vi.spyOn(notify, 'success')
+    renderWithLookup(
+      [
+        link({ href: 'https://a.example/1', text: 'One' }),
+        link({ href: 'https://a.example/1', text: 'One again' })
+      ],
+      lookupLink
+    )
+    await lookUp('One')
+
+    await waitFor(() =>
+      expect(screen.getAllByTestId('links-wayback')[0].textContent).toBe('Wayback:Checking…')
+    )
+    expect(lookupLink).toHaveBeenCalledExactlyOnceWith({
+      captureId: 'cap1',
+      url: 'https://a.example/1'
+    })
+    act(() => answer(FOUND))
+    await waitFor(() => {
+      for (const cell of screen.getAllByTestId('links-wayback')) {
+        expect(cell.textContent).toContain('1 version, closest 3d before this page was captured')
+      }
+    })
+    // The Page tab toasts its answer; here the cell is the answer.
+    expect(success).not.toHaveBeenCalled()
+  })
+
+  it('offers Open at archive.org, Copy snapshot URL and Capture snapshot, and no pin', async () => {
+    const writeText = vi.fn(async () => undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const { openExternal, enqueue } = renderWithLookup(
+      [link({ href: 'https://a.example/1', text: 'One' })],
+      vi.fn(async () => FOUND)
+    )
+    await lookUp('One')
+    const cell = await screen.findByTestId('links-wayback')
+    await waitFor(() => expect(within(cell).getByTestId('links-wayback-open')).toBeDefined())
+    expect(
+      within(cell)
+        .getAllByRole('button')
+        .map((b) => b.textContent)
+    ).toEqual(['Open at archive.org', 'Copy snapshot URL', 'Capture snapshot'])
+
+    fireEvent.click(within(cell).getByTestId('links-wayback-open'))
+    fireEvent.click(within(cell).getByTestId('links-wayback-copy'))
+    fireEvent.click(within(cell).getByTestId('links-wayback-capture'))
+
+    expect(openExternal).toHaveBeenCalledWith(SNAPSHOT.snapshotUrl)
+    expect(writeText).toHaveBeenCalledWith(SNAPSHOT.snapshotUrl)
+    // The replay URL with the toolbar, into the stored page's Case.
+    await waitFor(() =>
+      expect(enqueue).toHaveBeenCalledWith({
+        urls: [SNAPSHOT.snapshotUrl],
+        caseId: 'case1',
+        supersedesCaptureId: undefined
+      })
+    )
+  })
+
+  async function snapshotCell() {
+    await lookUp('One')
+    const cell = await screen.findByTestId('links-wayback')
+    await waitFor(() => expect(within(cell).getByTestId('links-wayback-open')).toBeDefined())
+    return cell
+  }
+
+  it('says a Capture snapshot was queued only when the queue accepted it', async () => {
+    const success = vi.spyOn(notify, 'success')
+    const warn = vi.spyOn(notify, 'warn').mockImplementation(() => {})
+    renderWithLookup(
+      [link({ href: 'https://a.example/1', text: 'One' })],
+      vi.fn(async () => FOUND)
+    )
+    fireEvent.click(within(await snapshotCell()).getByTestId('links-wayback-capture'))
+    await waitFor(() =>
+      expect(success).toHaveBeenCalledWith('Snapshot capture queued', {
+        description: SNAPSHOT.snapshotUrl
+      })
+    )
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('reports a refused Capture snapshot, and never as queued', async () => {
+    const success = vi.spyOn(notify, 'success')
+    const warn = vi.spyOn(notify, 'warn').mockImplementation(() => {})
+    const enqueue = vi.fn(async () => ({
+      accepted: 0,
+      rejected: [{ url: SNAPSHOT.snapshotUrl, reason: 'excluded by case policy' }] as unknown[]
+    }))
+    renderWithLookup(
+      [link({ href: 'https://a.example/1', text: 'One' })],
+      vi.fn(async () => FOUND),
+      { enqueue }
+    )
+    fireEvent.click(within(await snapshotCell()).getByTestId('links-wayback-capture'))
+    await waitFor(() =>
+      expect(warn).toHaveBeenCalledWith('Snapshot not captured: excluded by case policy')
+    )
+    expect(success).not.toHaveBeenCalledWith('Snapshot capture queued', expect.anything())
+  })
+
+  it('reports a snapshot the browser could not open', async () => {
+    const error = vi.spyOn(notify, 'error').mockImplementation(() => {})
+    const openExternal = vi.fn(async (): Promise<void> => {
+      throw new Error('no browser')
+    })
+    renderWithLookup(
+      [link({ href: 'https://a.example/1', text: 'One' })],
+      vi.fn(async () => FOUND),
+      { openExternal }
+    )
+    fireEvent.click(within(await snapshotCell()).getByTestId('links-wayback-open'))
+    await waitFor(() =>
+      expect(error).toHaveBeenCalledWith("Couldn't open the link in your browser", {
+        cause: expect.any(Error)
+      })
+    )
+  })
+
+  // #1738 merged with #1735: the row text is the click-through control, so the cell's own
+  // buttons on a row the Case holds leave the viewed Capture where it is.
+  it('opens no Capture from a click in the Wayback cell of an In Case row', async () => {
+    useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: [] })
+    const { openExternal } = renderWithLookup(
+      [link({ href: 'https://a.example/1', text: 'One' })],
+      vi.fn(async () => FOUND),
+      { cases: [capture, { id: 'c2', url: 'https://a.example/1', timestamp: '2026-01-01' }] }
+    )
+    const [row] = await screen.findAllByTestId('links-row')
+    await waitFor(() => expect(within(row).queryByTestId('links-in-case')).not.toBeNull())
+    const cell = await snapshotCell()
+
+    fireEvent.click(cell)
+    fireEvent.click(within(cell).getByTestId('links-wayback-open'))
+
+    expect(openExternal).toHaveBeenCalledWith(SNAPSHOT.snapshotUrl)
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap1')
+    expect(useAppStore.getState().captureTrail).toEqual([])
+    fireEvent.click(within(row).getByTestId('links-open'))
+    expect(useAppStore.getState().selectedCaptureId).toBe('c2')
+  })
+
+  it('says No successful snapshot for an empty answer', async () => {
+    renderWithLookup(
+      [link({ href: 'https://a.example/1', text: 'One' })],
+      vi.fn(async () => ({ ...FOUND, snapshots: [], closestIndex: null }))
+    )
+    await lookUp('One')
+    await waitFor(() =>
+      expect(screen.getByTestId('links-wayback').textContent).toBe('Wayback:No successful snapshot')
+    )
+    expect(screen.queryByTestId('links-wayback-open')).toBeNull()
+  })
+
+  it('shows the error a failed lookup reports', async () => {
+    renderWithLookup(
+      [link({ href: 'https://a.example/1', text: 'One' })],
+      vi.fn(async () => {
+        throw new Error('Wayback CDX responded 503 Unavailable')
+      })
+    )
+    await lookUp('One')
+    await waitFor(() =>
+      expect(screen.getByTestId('links-wayback').textContent).toBe(
+        'Wayback:Wayback CDX responded 503 Unavailable'
+      )
+    )
+  })
+
+  it('turns the lookup off for a link to a private network, and sends nothing', async () => {
+    const lookupLink = vi.fn()
+    renderWithLookup([link({ href: 'http://intranet/wiki', text: 'Wiki' })], lookupLink)
+    fireEvent.contextMenu(await screen.findByText('Wiki'))
+    const item = await screen.findByTestId('context-menu-item-link-wayback')
+    expect(item.textContent).toBe('Look up in Wayback (Points at a private network)')
+    expect(item.getAttribute('data-disabled')).not.toBeNull()
+    fireEvent.click(item)
+    expect(lookupLink).not.toHaveBeenCalled()
+  })
+})
+
+// #1738, plan S3 and S4: Look up all in Wayback, its confirmation, progress and cancel.
+describe('LinksTab Wayback batch', () => {
+  const DIRECT: EgressSetting = { kind: 'direct' }
+  const ANSWER = {
+    snapshots: [
+      {
+        timestamp: '2026-07-29T12:00:00.000Z',
+        snapshotUrl: 'https://web.archive.org/web/20260729120000/https://a.example/1',
+        originalUrl: 'https://a.example/1',
+        statusCode: 200
+      }
+    ],
+    closestIndex: 0,
+    checkedAt: '2026-10-26T00:00:00.000Z',
+    countIsMinimum: false
+  }
+
+  function renderBatch(
+    links: CaptureLink[],
+    {
+      egress = DIRECT as EgressSetting,
+      outcome = { answered: 0, failed: 0, notChecked: 0, stopped: null } as unknown
+    } = {}
+  ) {
+    let finish: (value: unknown) => void = () => {}
+    const lookupLinks = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const cancelLookupLinks = vi.fn(async () => true)
+    const listeners: Array<(event: WaybackLinkProgressEvent) => void> = []
+    fakeBridge({
+      captures: { getLinks: vi.fn(async () => result(links)), list: vi.fn(async () => []) },
+      wayback: { lookupLinks, cancelLookupLinks, lookupLink: vi.fn(async () => ANSWER) },
+      settings: { get: vi.fn(async () => ({ egress })) },
+      onWaybackLinkProgress: vi.fn((callback: (event: WaybackLinkProgressEvent) => void) => {
+        listeners.push(callback)
+        return () => {}
+      })
+    })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const view = render(
+      <QueryClientProvider client={client}>
+        <LinksTab capture={capture} />
+      </QueryClientProvider>
+    )
+    const emit = (event: WaybackLinkProgressEvent) =>
+      act(() => listeners.forEach((listener) => listener(event)))
+    return {
+      lookupLinks,
+      cancelLookupLinks,
+      emit,
+      finish: (value: unknown = outcome) => act(() => finish(value)),
+      unmount: view.unmount
+    }
+  }
+
+  async function openConfirmation() {
+    fireEvent.click(await screen.findByTestId('wayback-batch-open'))
+    return screen.findByTestId('wayback-batch-dialog')
+  }
+
+  const MIXED = [
+    link({ href: 'https://a.example/1', text: 'One' }),
+    link({ href: 'https://a.example/1', text: 'One again' }),
+    link({ href: 'http://intranet/wiki', text: 'Wiki' }),
+    link({ href: 'mailto:desk@news.example', text: 'Mail', kind: 'mailto' }),
+    link({ href: 'https://b.example/2', text: 'Two' })
+  ]
+
+  it('lists every address it will send and every refused one, and sends nothing yet', async () => {
+    const { lookupLinks } = renderBatch(MIXED)
+    const dialog = await openConfirmation()
+    expect(within(dialog).getByText('Look up 2 addresses in the Wayback Machine?')).toBeDefined()
+    expect(
+      within(within(dialog).getByTestId('wayback-batch-send'))
+        .getAllByRole('listitem')
+        .map((li) => li.textContent)
+    ).toEqual(['https://a.example/1', 'https://b.example/2'])
+    const refused = within(dialog).getByTestId('wayback-batch-refused')
+    expect(refused.textContent).toContain(
+      '2 rows not sent. The address rule refuses these addresses:'
+    )
+    expect(
+      within(refused)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent)
+    ).toEqual([
+      'http://intranet/wiki: Points at a private network',
+      'mailto:desk@news.example: Not a web address'
+    ])
+    expect(dialog.textContent).toContain(
+      'Each address below is sent to archive.org, which learns that it was asked about.'
+    )
+    await waitFor(() =>
+      expect(dialog.textContent).toContain(
+        "The requests leave over this computer's own connection, because the Egress is set to Direct."
+      )
+    )
+    expect(within(dialog).queryByTestId('wayback-batch-over-cap')).toBeNull()
+
+    fireEvent.click(within(dialog).getByTestId('wayback-batch-cancel'))
+    await waitFor(() => expect(screen.queryByTestId('wayback-batch-dialog')).toBeNull())
+    expect(lookupLinks).not.toHaveBeenCalled()
+  })
+
+  it('acts on the rows the search and External only show', async () => {
+    const { lookupLinks } = renderBatch([
+      link({ href: 'https://news.example/inside', text: 'Inside' }),
+      link({ href: 'https://a.example/1', text: 'Outside one' }),
+      link({ href: 'https://b.example/2', text: 'Outside two' })
+    ])
+    await screen.findAllByTestId('links-row')
+    fireEvent.click(screen.getByLabelText('External only'))
+    fireEvent.change(screen.getByLabelText('Search links'), { target: { value: 'two' } })
+    const dialog = await openConfirmation()
+    expect(within(dialog).getByTestId('wayback-batch-send').textContent).toBe('https://b.example/2')
+    await waitFor(() =>
+      expect(within(dialog).getByTestId('wayback-batch-confirm').hasAttribute('disabled')).toBe(
+        false
+      )
+    )
+    fireEvent.click(within(dialog).getByTestId('wayback-batch-confirm'))
+    expect(lookupLinks).toHaveBeenCalledExactlyOnceWith({
+      captureId: 'cap1',
+      urls: ['https://b.example/2'],
+      egress: DIRECT
+    })
+  })
+
+  it('says only the first 50 are checked above the cap', async () => {
+    renderBatch(
+      Array.from({ length: 53 }, (_, i) =>
+        link({ href: `https://site${i}.example/`, text: `Site ${i}` })
+      )
+    )
+    const dialog = await openConfirmation()
+    expect(within(dialog).getByTestId('wayback-batch-over-cap').textContent).toBe(
+      'Only the first 50 addresses are checked. 3 more addresses are not checked.'
+    )
+    expect(
+      within(within(dialog).getByTestId('wayback-batch-send')).getAllByRole('listitem')
+    ).toHaveLength(50)
+  })
+
+  it('names a proxy Egress by its label, and not its address', async () => {
+    renderBatch(MIXED, {
+      egress: { kind: 'proxy', proxyUrl: 'socks5://10.0.0.5:1080', label: 'Office tunnel' }
+    })
+    const dialog = await openConfirmation()
+    await waitFor(() =>
+      expect(dialog.textContent).toContain(
+        'The requests leave through the proxy set as the Egress ("Office tunnel").'
+      )
+    )
+    expect(dialog.textContent).not.toContain('10.0.0.5')
+  })
+
+  it('sends nothing when the Egress setting cannot be read', async () => {
+    const { lookupLinks } = renderBatch(MIXED, { egress: { kind: 'unavailable' } })
+    const dialog = await openConfirmation()
+    await waitFor(() =>
+      expect(dialog.textContent).toContain(
+        'The Egress setting could not be read, so nothing can be sent.'
+      )
+    )
+    const confirm = within(dialog).getByTestId('wayback-batch-confirm')
+    expect(confirm.hasAttribute('disabled')).toBe(true)
+    fireEvent.click(confirm)
+    expect(lookupLinks).not.toHaveBeenCalled()
+  })
+
+  async function startBatch(links: CaptureLink[] = MIXED, options = {}) {
+    const batch = renderBatch(links, options)
+    const dialog = await openConfirmation()
+    await waitFor(() =>
+      expect(within(dialog).getByTestId('wayback-batch-confirm').hasAttribute('disabled')).toBe(
+        false
+      )
+    )
+    fireEvent.click(within(dialog).getByTestId('wayback-batch-confirm'))
+    await screen.findByTestId('wayback-batch-stop')
+    return batch
+  }
+
+  const cells = () => screen.getAllByTestId('links-wayback').map((cell) => cell.textContent)
+
+  const status = () => screen.getByTestId('wayback-batch-status').textContent
+
+  it('updates every row that holds an address as its answer lands', async () => {
+    const { emit, finish, lookupLinks } = await startBatch()
+    // The list the confirmation showed, not the rows: each address once, refusals left out.
+    expect(lookupLinks).toHaveBeenCalledExactlyOnceWith({
+      captureId: 'cap1',
+      urls: ['https://a.example/1', 'https://b.example/2'],
+      egress: DIRECT
+    })
+    expect(status()).toBe('Checking in Wayback: 0 of 2 done.')
+    emit({ captureId: 'cap1', url: 'https://a.example/1', state: 'checking' })
+    expect(cells()).toEqual([
+      'Wayback:Checking…',
+      'Wayback:Checking…',
+      'Wayback:Not checked',
+      'Wayback:Not checked'
+    ])
+    // A row being checked is not done yet; an answer is.
+    expect(status()).toBe('Checking in Wayback: 0 of 2 done.')
+    emit({ captureId: 'cap1', url: 'https://a.example/1', state: 'answered', result: ANSWER })
+    expect(status()).toBe('Checking in Wayback: 1 of 2 done.')
+    emit({ captureId: 'cap1', url: 'https://b.example/2', state: 'checking' })
+    emit({ captureId: 'cap1', url: 'https://b.example/2', state: 'failed', error: 'timed out' })
+    const [first, second, , last] = cells()
+    expect(first).toContain('1 version, closest 3d before this page was captured')
+    expect(second).toContain('1 version, closest 3d before this page was captured')
+    expect(last).toBe('Wayback:timed out')
+    expect(screen.getByTestId('wayback-batch-status').textContent).toBe(
+      'Checking in Wayback: 2 of 2 done.'
+    )
+
+    finish({ answered: 1, failed: 1, notChecked: 0, stopped: null })
+    await waitFor(() =>
+      expect(screen.getByTestId('wayback-batch-status').textContent).toBe(
+        'Batch finished. 1 address answered, 1 failed.'
+      )
+    )
+    expect(screen.getByTestId('wayback-batch-open')).toBeDefined()
+  })
+
+  it('shows a later menu lookup over an earlier batch failure', async () => {
+    const { emit } = await startBatch()
+    emit({ captureId: 'cap1', url: 'https://a.example/1', state: 'failed', error: 'timed out' })
+    expect(cells()[0]).toBe('Wayback:timed out')
+    await new Promise((resolve) => setTimeout(resolve, 2))
+    fireEvent.contextMenu(screen.getByText('One'))
+    fireEvent.click(await screen.findByTestId('context-menu-item-link-wayback'))
+    await waitFor(() =>
+      expect(cells()[0]).toContain('1 version, closest 3d before this page was captured')
+    )
+  })
+
+  it('ignores progress for another capture', async () => {
+    const { emit } = await startBatch()
+    emit({ captureId: 'other', url: 'https://a.example/1', state: 'checking' })
+    expect(cells()[0]).toBe('Wayback:Not checked')
+  })
+
+  it('returns a row archive.org refused to its earlier state, and reports the stop', async () => {
+    const { emit, finish } = await startBatch()
+    emit({ captureId: 'cap1', url: 'https://a.example/1', state: 'checking' })
+    emit({ captureId: 'cap1', url: 'https://a.example/1', state: 'not-checked' })
+    expect(cells()[0]).toBe('Wayback:Not checked')
+    finish({ answered: 0, failed: 0, notChecked: 2, stopped: 'rate-limited', status: 429 })
+    await waitFor(() =>
+      expect(screen.getByTestId('wayback-batch-status').textContent).toBe(
+        'archive.org answered HTTP 429, so the batch stopped. 0 addresses answered. 2 addresses not checked.'
+      )
+    )
+  })
+
+  it('cancels from the toolbar', async () => {
+    const { cancelLookupLinks, finish } = await startBatch()
+    fireEvent.click(screen.getByTestId('wayback-batch-stop'))
+    expect(cancelLookupLinks).toHaveBeenCalledExactlyOnceWith('cap1')
+    finish({ answered: 1, failed: 0, notChecked: 1, stopped: 'cancelled' })
+    await waitFor(() =>
+      expect(screen.getByTestId('wayback-batch-status').textContent).toBe(
+        'Batch cancelled. 1 address answered. 1 address not checked.'
+      )
+    )
+  })
+
+  it('shows a cancel that fails', async () => {
+    const { cancelLookupLinks } = await startBatch()
+    cancelLookupLinks.mockRejectedValueOnce(new Error('main is busy'))
+    fireEvent.click(screen.getByTestId('wayback-batch-stop'))
+    await waitFor(() => expect(status()).toContain('Could not cancel: main is busy'))
+  })
+
+  it('reports a cancel that fails when the tab closes', async () => {
+    const error = vi.spyOn(notify, 'error').mockImplementation(() => {})
+    const { cancelLookupLinks, unmount } = await startBatch()
+    cancelLookupLinks.mockRejectedValueOnce(new Error('main is busy'))
+    unmount()
+    await waitFor(() =>
+      expect(error).toHaveBeenCalledWith('The Wayback batch could not be cancelled', {
+        cause: expect.any(Error)
+      })
+    )
+  })
+
+  it('clears a row left checking when the batch fails, and shows why', async () => {
+    const { emit } = renderBatch(MIXED)
+    const lookupLinks = vi.fn(async () => {
+      throw new Error('A Wayback batch is already running')
+    })
+    window.birdbrain.wayback.lookupLinks = lookupLinks
+    const dialog = await openConfirmation()
+    await waitFor(() =>
+      expect(within(dialog).getByTestId('wayback-batch-confirm').hasAttribute('disabled')).toBe(
+        false
+      )
+    )
+    fireEvent.click(within(dialog).getByTestId('wayback-batch-confirm'))
+    emit({ captureId: 'cap1', url: 'https://a.example/1', state: 'checking' })
+    await waitFor(() =>
+      expect(screen.getByTestId('wayback-batch-status').textContent).toBe(
+        'A Wayback batch is already running'
+      )
+    )
+    expect(cells()[0]).toBe('Wayback:Not checked')
+  })
+
+  it('cancels a running batch when the tab closes', async () => {
+    const { cancelLookupLinks, unmount } = await startBatch()
+    unmount()
+    expect(cancelLookupLinks).toHaveBeenCalledExactlyOnceWith('cap1')
+  })
+
+  it('cancels nothing when the tab closes after the batch ended', async () => {
+    const { cancelLookupLinks, finish, unmount } = await startBatch()
+    finish()
+    await screen.findByTestId('wayback-batch-open')
+    unmount()
+    expect(cancelLookupLinks).not.toHaveBeenCalled()
   })
 })

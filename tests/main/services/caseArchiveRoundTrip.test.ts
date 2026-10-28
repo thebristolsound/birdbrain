@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest'
 import { createHash } from 'crypto'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { initDatabase, closeDatabase, getDb, withTransaction } from '@main/services/db/core'
@@ -72,6 +72,16 @@ import { initInstallationId, resetInstallationId } from '@main/services/installa
 import { initSigningKey, resetSigningKey } from '@main/services/signingKey'
 import { readStoredZip } from '@main/services/zipRead'
 import { signDerivedFile } from '../../helpers/archiveDerivedFiles'
+import {
+  ENGINE_BOUND_TLS,
+  ENGINE_FILES,
+  ENGINE_HASHES,
+  ENGINE_INVENTORY,
+  ENGINE_SCROLL_TO_LOAD
+} from '../../helpers/captureEnginePackage'
+import { seedEngineCapture } from '../../helpers/captureEngineCapture'
+import { defaultCaptureStore, type CaptureArtifactType } from '@main/services/captureStore'
+import { verifyCapture } from '@main/services/captureLifecycle'
 
 type Row = Record<string, unknown>
 
@@ -138,6 +148,20 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
       consentSuppression: 'filter-list',
       tlsCertChain: '{"status":"unavailable"}'
     })
+    // Every capture engine mirror column set (#1907), so the deep comparison below fails if
+    // the import drops one. No entry carries both `boundTls` and `boundTlsAbsent`, but the
+    // import copies each column on its own.
+    const engineColumns: Row = {
+      transaction_record_hash: ENGINE_HASHES.transactionRecord,
+      pdf_hash: ENGINE_HASHES.pdf,
+      inventory: JSON.stringify(ENGINE_INVENTORY),
+      scroll_to_load: JSON.stringify(ENGINE_SCROLL_TO_LOAD),
+      bound_tls: JSON.stringify(ENGINE_BOUND_TLS),
+      bound_tls_absent: 'from-cache'
+    }
+    for (const [column, value] of Object.entries(engineColumns)) {
+      getDb().prepare(`UPDATE captures SET ${column} = ? WHERE id = ?`).run(value, cap2.id)
+    }
     setCaptureVerification(cap1.id, {
       status: 'verified',
       computedHash: 'h1',
@@ -296,6 +320,7 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
     expect(imported2.supersedes_capture_id).toBe(mapId(cap1.id)) // REMAPPED, not copied
     expect(imported2.method).toBe('background') // non-default survived
     expect(imported2.consent_suppression).toBe('filter-list')
+    expect(imported2).toMatchObject(engineColumns)
     // cap1 left the source verified and the export carried that result; the
     // import writes null, so the imported Capture reads unverified (#1523).
     const source1 = src.captures.find((r) => r.id === cap1.id) as Row
@@ -538,5 +563,81 @@ describe('case archive round-trip of Derived Files', () => {
     expect((await verifyCaseDerivedFiles(newCaseId)).get(captureId)).toEqual([
       expect.objectContaining({ derivedFileId: restored.id, status: 'verified' })
     ])
+  })
+})
+
+// The capture engine's two files (docs/plans/2026-10-10-capture-engine-first-slice.md, Step 3),
+// hand-made because nothing acquires them yet.
+describe('case archive round-trip of the Transaction Record and PDF', () => {
+  const CAPTURE_ID = 'capture-engine-1'
+  let tempDir = ''
+  let source = ''
+  let archive = ''
+
+  beforeEach(async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'bb-archive-engine-'))
+    initStorage(join(tempDir, 'captures'))
+    await initDatabase(':memory:')
+    resetInstallationId()
+    initInstallationId(tempDir)
+    resetSigningKey()
+    initSigningKey(tempDir, { confirmUnprotectedKey: () => true })
+    initSettings(tempDir)
+    updateSettings({ operatorName: 'Test Operator' })
+    source = createCase({ name: 'Engine source', description: '' }).id
+    ensureCaseDir(source)
+    const caseDir = join(getStorageRoot(), source)
+    initManifest(caseDir)
+    await seedEngineCapture({
+      caseDir,
+      caseId: source,
+      captureId: CAPTURE_ID,
+      store: defaultCaptureStore
+    })
+    archive = join(tempDir, 'engine.birdbrain')
+    await exportCaseArchive(source, archive)
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  const onDisk = (caseId: string, captureId: string, type: CaptureArtifactType) =>
+    defaultCaptureStore.readArtifact(caseId, captureId, type)
+
+  it('ships both files, under a header stating this build’s version', () => {
+    const zip = readStoredZip(readFileSync(archive))
+    expect(zip.get(`files/${CAPTURE_ID}.warc.gz`)).toEqual(ENGINE_FILES.transactionRecord)
+    expect(zip.get(`files/${CAPTURE_ID}.pdf`)).toEqual(ENGINE_FILES.pdf)
+    const header = JSON.parse(zip.get('package.json')!.toString('utf-8'))
+    expect(header.schemaVersion).toBe(13)
+  })
+
+  it('restores both files under the id the Capture keeps', async () => {
+    closeDatabase()
+    await initDatabase(':memory:')
+
+    const { newCaseId, report } = await importCaseArchive(archive)
+
+    expect(report.verification.overallValid).toBe(true)
+    expect(onDisk(newCaseId, CAPTURE_ID, 'warc.gz')).toEqual(ENGINE_FILES.transactionRecord)
+    expect(onDisk(newCaseId, CAPTURE_ID, 'pdf')).toEqual(ENGINE_FILES.pdf)
+    expect((await verifyCapture(CAPTURE_ID, defaultCaptureStore)).status).toBe('verified')
+  })
+
+  it('renames both files with a Capture whose id the import remaps', async () => {
+    // The source Case is still here, so the Capture's id collides and is remapped.
+    const { newCaseId, report } = await importCaseArchive(archive)
+
+    expect(report.verification.overallValid).toBe(true)
+    const [imported] = collectCapturesForCase(newCaseId) as Array<{ id: string }>
+    expect(imported.id).not.toBe(CAPTURE_ID)
+    expect(onDisk(newCaseId, imported.id, 'warc.gz')).toEqual(ENGINE_FILES.transactionRecord)
+    expect(onDisk(newCaseId, imported.id, 'pdf')).toEqual(ENGINE_FILES.pdf)
+    expect(
+      readdirSync(join(getStorageRoot(), newCaseId)).filter((name) => name.startsWith(CAPTURE_ID))
+    ).toEqual([])
+    expect((await verifyCapture(imported.id, defaultCaptureStore)).status).toBe('verified')
   })
 })

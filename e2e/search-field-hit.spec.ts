@@ -20,7 +20,7 @@ test.describe('Case search field hits', () => {
     test.setTimeout(60000)
 
     await page.evaluate(() => {
-      window.location.hash = '/cases/new'
+      window.location.hash = '/cases/new?blank=true'
     })
     await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'Header Search E2E')

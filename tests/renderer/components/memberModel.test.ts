@@ -29,9 +29,11 @@ import {
   formatClock,
   hueFor,
   identityLine,
+  inviteExpires,
   inviteTitle,
   joinFailure,
   joinRequestLead,
+  joinRequestsToApprove,
   joinWaitingTitle,
   lastMergeOf,
   memberAddCaption,
@@ -51,11 +53,16 @@ import {
   revokeBody,
   revokeTitle,
   roleLabel,
+  shareActionLabel,
+  sharePillModel,
   sharedByLine,
   syncPillModel,
+  toApprove,
   trustNote,
   waitingBody,
-  yourCodeWillBe
+  youAreLine,
+  yourCodeWillBe,
+  type SharePillInput
 } from '@renderer/components/sharing/memberModel'
 
 // The members screens as pure functions of the three payloads (#1514). The
@@ -554,6 +561,106 @@ describe('syncPillModel', () => {
   })
 })
 
+// The top bar's pill (2026-10-28 handoff, frame B) as a function of the
+// platform check, the roster and the sync state.
+describe('sharePillModel', () => {
+  const local = members({ members: [], invites: [], pendingJoins: [] })
+  const ownerOnly = members({ members: [AR] })
+  const noPeers = sync({ peersTotal: 0, peersReachable: 0, peers: [] })
+  const invite = (inviteId: string, expiresAt: string) => ({ inviteId, expiresAt })
+  const read = (input: Partial<SharePillInput>) =>
+    sharePillModel({ available: true, members: local, syncState: undefined, nowMs: NOW, ...input })
+
+  it('is hidden until the platform check and the roster load, and while peers await a sync state', () => {
+    expect(read({ available: undefined })).toBeNull()
+    expect(read({ members: undefined })).toBeNull()
+    expect(read({ members: members() })).toBeNull()
+  })
+
+  it('reads Share on a Case nobody has shared, and once the Owner is alone again', () => {
+    expect(read({})).toEqual({
+      state: 'share',
+      a: 'Share',
+      b: null,
+      title: 'Share this Case with teammates. Opens Members.',
+      dot: false,
+      pulse: false,
+      sync: null
+    })
+    expect(read({ members: ownerOnly, syncState: noPeers })?.state).toBe('share')
+  })
+
+  it('waits on the invite that expires last, and not on one already expired', () => {
+    const invites = [
+      invite('a', '2026-09-19T14:07:00.000Z'),
+      invite('b', '2026-09-20T09:12:00.000Z')
+    ]
+    expect(read({ members: members({ members: [AR], invites }), syncState: noPeers })).toEqual({
+      state: 'invite',
+      a: 'Share',
+      b: 'invite waiting',
+      title: 'Invite expires tomorrow 09:12',
+      dot: true,
+      pulse: true,
+      sync: null
+    })
+    const expired = [invite('a', '2026-09-19T14:04:00.000Z')]
+    const pill = read({ members: members({ members: [AR], invites: expired }), syncState: noPeers })
+    expect(pill?.state).toBe('share')
+  })
+
+  it('puts a join request ahead of an open invite, with a still dot', () => {
+    const roster = members({
+      members: [AR],
+      invites: [invite('a', '2026-09-19T14:07:00.000Z')],
+      pendingJoins: [JO]
+    })
+    expect(read({ members: roster, syncState: noPeers })).toEqual({
+      state: 'approve',
+      a: 'Share',
+      b: '1 to approve',
+      title: '1 join request to approve',
+      dot: true,
+      pulse: false,
+      sync: null
+    })
+    expect(toApprove(2)).toBe('2 to approve')
+    expect(joinRequestsToApprove(2)).toBe('2 join requests to approve')
+  })
+
+  it('is the sync pill once a peer is on the roster, whatever else is waiting', () => {
+    const pill = read({ members: members({ pendingJoins: [JO] }), syncState: sync() })
+    expect(pill?.state).toBe('synced')
+    expect(pill?.sync).toEqual(syncPillModel(sync()))
+    expect(pill).toMatchObject({
+      a: 'Synced',
+      b: '3 peers',
+      title: 'Synced · 3 peers. Click to open Members.',
+      dot: false,
+      pulse: false
+    })
+  })
+
+  it('draws the unavailable form before reading anything else', () => {
+    expect(read({ available: false, members: undefined })).toEqual({
+      state: 'unavailable',
+      a: 'Share',
+      b: null,
+      title: 'Sharing is not available on this Mac.',
+      dot: false,
+      pulse: false,
+      sync: null
+    })
+  })
+
+  it('labels the palette row and the breadcrumb tooltip', () => {
+    expect(shareActionLabel(false)).toBe('Share this Case…')
+    expect(shareActionLabel(true)).toBe('Members…')
+    expect(youAreLine('AR')).toBe('You are AR in this Case')
+    expect(inviteExpires('2026-09-19T14:07:00.000Z', NOW)).toBe('Invite expires today 14:07')
+  })
+})
+
 describe('memberCodeCheck', () => {
   it('upper-cases, refuses four characters and symbols, and accepts a free code', () => {
     expect(memberCodeCheck('jo', ROSTER, 'J. Okafor')).toEqual({ code: 'JO', ok: true })
@@ -808,6 +915,9 @@ describe('copy', () => {
       excludeBody('N. Kowalski'),
       revokeBody('S. Idris', 'SI', [1, 2, 3]),
       waitingBody('2026-09-20T14:07:00.000Z', NOW),
+      inviteExpires('2026-09-20T14:07:00.000Z', NOW),
+      joinRequestsToApprove(2),
+      youAreLine('AR'),
       pausedStrip('S. Idris', 'SI', 3).text,
       exclusionBanner({
         exhibitId: 'x',

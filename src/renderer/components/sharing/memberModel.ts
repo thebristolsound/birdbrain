@@ -4,6 +4,7 @@ import type {
   CaseMember,
   SharingErrorCode,
   SharingMembers,
+  SharingOpenInvite,
   SharingPendingJoin,
   SharingSyncOutcome,
   SyncErrorKind,
@@ -16,7 +17,8 @@ import { formatRelativeTime } from '@renderer/lib/formatRelativeTime'
 // (#1514): the roster (`sharing:getMembers`), the sync state
 // (`sharing:getSyncState`) and the local chain (`manifest:snapshot`). Every
 // string the screens show is here or derived here, verbatim from
-// docs/design-handoff/2026-09-19-shared-case-members/, so one test can read
+// docs/design-handoff/2026-09-19-shared-case-members/ and the entry points
+// of docs/design-handoff/2026-10-28-share-a-case/, so one test can read
 // them all against the brief's copy constraints. Nothing here computes an
 // integrity claim: the verdict stays in the snapshot.
 
@@ -290,7 +292,12 @@ export const COPY = {
     'who sat at a member’s machine.',
   glyphLabel: 'Network addresses visible to teammates and the relay',
   detailsInMembers: 'Details in Members',
-  clickToOpen: 'Click to open Members.'
+  clickToOpen: 'Click to open Members.',
+  share: 'Share',
+  shareTitle: 'Share this Case with teammates. Opens Members.',
+  inviteWaiting: 'invite waiting',
+  shareThisCase: 'Share this Case…',
+  membersAction: 'Members…'
 } as const
 
 // Refusals the Members tab shows inline, by the code main returns. The mock
@@ -763,6 +770,122 @@ export function syncPillModel(state: SyncState | undefined): SyncPill | null {
       : { a: 'Synced', b: some, chrome: 'idle', dot: 'warning', spinner: false }
   }
   return { ...pill, glyph, title: `${pill.a} · ${pill.b}. ${COPY.clickToOpen}` }
+}
+
+// --- Share pill ------------------------------------------------------------------
+
+// The top bar's one sharing control (docs/design-handoff/2026-10-28-share-a-case/,
+// frame B): "Share" on a Case nobody has shared, what it waits on once an
+// invite is out, the shipped sync pill from the first approved join, and a
+// dashed form where sharing is unavailable. Every state opens Members.
+export type SharePillState = 'share' | 'invite' | 'approve' | 'synced' | 'unavailable'
+
+export interface SharePill {
+  state: SharePillState
+  // The label's two cells, joined by the sync pill's "·": "Share" and, while
+  // the pill waits on something, what it waits on. The synced state carries
+  // the sync pill's own cells.
+  a: string
+  b: string | null
+  title: string
+  // The warning dot that stands in for the users icon while the pill waits:
+  // pulsing for an invite, still for a join request.
+  dot: boolean
+  pulse: boolean
+  sync: SyncPill | null
+}
+
+export interface SharePillInput {
+  available: boolean | undefined
+  members: SharingMembers | undefined
+  syncState: SyncState | undefined
+  nowMs: number
+}
+
+export function toApprove(n: number): string {
+  return `${n} to approve`
+}
+
+export function joinRequestsToApprove(n: number): string {
+  return `${n} join ${n === 1 ? 'request' : 'requests'} to approve`
+}
+
+export function inviteExpires(expiresAt: string, nowMs: number): string {
+  return `Invite expires ${expiryPhrase(expiresAt, nowMs)}`
+}
+
+// The breadcrumb's tooltip tail: "You are AR in this Case".
+export function youAreLine(code: string): string {
+  return `You are ${code} in this Case`
+}
+
+// The command palette's row for the open Case (frame D): the Owner of a local
+// Case is offered sharing; a shared Case, joined or owned, opens Members.
+export function shareActionLabel(shared: boolean): string {
+  return shared ? COPY.membersAction : COPY.shareThisCase
+}
+
+// The invite the pill waits on: the one that expires last. An invite past its
+// expiry is not waiting, whether or not the registry has dropped it yet.
+function latestOpenInvite(invites: readonly SharingOpenInvite[], nowMs: number): string | null {
+  let latest: string | null = null
+  for (const { expiresAt } of invites) {
+    const ts = new Date(expiresAt).getTime()
+    if (Number.isNaN(ts) || ts <= nowMs) continue
+    if (latest === null || ts > new Date(latest).getTime()) latest = expiresAt
+  }
+  return latest
+}
+
+// First match wins: unavailable, synced, a join to approve, an invite
+// waiting, then "Share". Null until the platform check and the roster have
+// loaded, and while a Case with peers waits for its first sync state, so the
+// pill never reads "Share" on its way to "Synced".
+export function sharePillModel({
+  available,
+  members,
+  syncState,
+  nowMs
+}: SharePillInput): SharePill | null {
+  const still = { dot: false, pulse: false, sync: null }
+  if (available === false) {
+    return {
+      state: 'unavailable',
+      a: COPY.share,
+      b: null,
+      title: `${COPY.unavailableTitle}.`,
+      ...still
+    }
+  }
+  if (available === undefined || members === undefined) return null
+  const sync = syncPillModel(syncState)
+  if (sync) return { state: 'synced', a: sync.a, b: sync.b, title: sync.title, ...still, sync }
+  if (syncState === undefined && memberCount(members.members) > 1) return null
+  const joins = members.pendingJoins.length
+  if (joins > 0) {
+    return {
+      state: 'approve',
+      a: COPY.share,
+      b: toApprove(joins),
+      title: joinRequestsToApprove(joins),
+      dot: true,
+      pulse: false,
+      sync: null
+    }
+  }
+  const expiresAt = latestOpenInvite(members.invites, nowMs)
+  if (expiresAt !== null) {
+    return {
+      state: 'invite',
+      a: COPY.share,
+      b: COPY.inviteWaiting,
+      title: inviteExpires(expiresAt, nowMs),
+      dot: true,
+      pulse: true,
+      sync: null
+    }
+  }
+  return { state: 'share', a: COPY.share, b: null, title: COPY.shareTitle, ...still }
 }
 
 // --- Member Code validation ------------------------------------------------------

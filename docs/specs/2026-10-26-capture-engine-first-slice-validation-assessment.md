@@ -286,7 +286,11 @@ wherever the page loads.
   100 s, less the page setup, which can take 15 s when its three commands do not answer. A slow
   page can reach the Scroll-to-load time limit up to 15 s sooner and hold less lazy content.
 - The event bound, 25,000 events or 25,000,000 bytes of their JSON, is not signed and was chosen
-  without a survey of real pages; only the looping fixture was run against it.
+  without a survey of real pages; only the looping fixture was run against it. Uploads count
+  against it too: `Network.enable` is sent without `maxPostDataSize`, so a request event carries
+  its upload as `postData` and again as base64 `postDataEntries`. On Electron 45.0.0 the event of
+  one 11,000,000-byte upload was 25,667,678 characters of JSON, past the bound, so the record is
+  `failed`; that of a 6,000,000-byte upload was 14,001,007, so two such uploads also go past it.
 - Every fixture is HTTP/1.1 on loopback; no HTTP/2, HTTP/3, or remote server was recorded.
 
 ## Acceptance decision

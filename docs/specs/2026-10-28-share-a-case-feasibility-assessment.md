@@ -7,8 +7,10 @@ Contract: the [sharing discoverability brief](2026-10-27-sharing-discoverability
 the [Shared Cases design](2026-09-19-collaborative-cases-design.md) and the
 [members feasibility assessment](2026-09-19-shared-case-members-feasibility-assessment.md), whose
 item 19 left the entry points to engineering.
-Format follows the bundle's round-trip protocol: a verdict, a size, and the constraint behind
-any Modify. No redesigns; the designer revises the mock.
+This bundle carries no `ENGINEERING_REVIEW.md`, so the format follows the round-trip protocol
+in the [members bundle's](../design-handoff/2026-09-19-shared-case-members/ENGINEERING_REVIEW.md):
+a verdict, a size, and the constraint behind any Modify. No redesigns; the designer revises the
+mock.
 
 ## Summary
 
@@ -22,9 +24,9 @@ any Modify. No redesigns; the designer revises the mock.
 | E2  | Role line on the card (3c)         | Modify: the operator name as entered, the clock as shipped | S    |
 | E3  | Card menu label (2b)               | Accept                                                     | XS   |
 | E4  | Older Cases list (5b)              | Accept; one menu shared with the card                      | M    |
-| F   | Coachmark (4a)                     | Modify: needs a maintainer ruling on upgrades              | M    |
+| F   | Coachmark (4a)                     | Modify: shows on upgrades, by ruling                       | M    |
 | G   | Case name menu (frame F)           | Not built, as the bundle says                              | -    |
-| -   | Copy and tokens                    | Three constraints, listed under the items                  | XS   |
+| -   | Copy and tokens                    | Four constraints, listed under the items                   | XS   |
 
 Nothing here touches an evidence path. Every surface navigates to the existing Members screen;
 invite, approve and revoke stay where they are. The pill, the palette row, the card and the
@@ -38,15 +40,19 @@ change, no settings schema change and no new token.
 
 Slot, component and reads all exist. `SyncPill` already sits in the slot the mock
 names and opens Members; today `TopBar` mounts it only for a Case with `sharedAt`, and it hides
-itself until a peer is on the roster. For any Case, shared or not, the roster read returns
-`invites[]`, `pendingJoins[]` and `isOwner`, and the platform read is cached for the process. In
-the renderer the four states derive as follows, first match wins:
+itself until another Member is on the roster. For any Case, shared or not, the roster read
+returns `invites[]`, `pendingJoins[]` and `isOwner`, and the platform read is cached for the
+process. In the renderer, Unavailable overrides the four states when the platform read is
+false. Otherwise the four states derive as follows, first match wins:
 
-1. Unavailable: the platform read is false.
-2. Shared: the sync pill model has a peer (the shipped pill, unchanged).
-3. To approve: a pending join exists.
-4. Invite waiting: an open invite exists.
-5. Share: otherwise.
+1. Shared: the sync pill model counts another Member (the shipped pill, unchanged).
+2. To approve: a pending join exists.
+3. Invite waiting: an open invite exists.
+4. Share: otherwise.
+
+Two departures from the bundle README. Shared keys on another Member in the sync model, not on
+`sharedAt`, because the first invite already sets `sharedAt`. A pending join outranks an open
+invite, because it is the one state that needs the Owner.
 
 The roster query is already refetched on `event:sharingChanged`, which fires on any invite,
 join or roster change, so the pill moves without a second poll. The invite expiry in the
@@ -60,7 +66,7 @@ Constraints, none of which change the drawing:
 - "Share · 1 to approve" pluralises: "2 to approve".
 - On a Case nobody has shared, the local installation is the Owner by definition, so "Share"
   shows to whoever opens a local Case. A member who joined always holds a Case with `sharedAt`
-  set and a peer on the roster, so the "Share" label never shows to a member.
+  set and another Member on the roster, so the "Share" label never shows to a member.
 
 ### B. The pill at 1,000px (G): Modify (M)
 
@@ -72,9 +78,10 @@ Two constraints.
   measuring them, and `e2e/topbar-layout.spec.ts` checks overlap, not labels. A container
   query on the right cluster cannot stand in: the cluster takes its width from its content,
   so a label that hid would shrink the cluster that hid it. Engineering implements the rule
-  the way the Export button already folds: the label hides below the `lg` viewport
-  breakpoint (1,024px), which keeps frame A's label at 1,180px and frame G's icon at 1,000px
-  with or without REC. The behaviour the mock asks for stands; only the trigger changes.
+  the way the top bar's labels already fold, at a viewport breakpoint: the Share label hides
+  below `lg` (1,024px), as the Connected label does (Export folds at `xl`, 1,280px), which
+  keeps frame A's label at 1,180px and frame G's icon at 1,000px with or without REC. The
+  behaviour the mock asks for stands; only the trigger changes.
 - **The sync pill's compact form is new.** `SyncPill` always prints both halves of its label.
   Frame G draws the compact form as the dot alone with the tooltip carrying the label; that is
   enough to build from, and it is new work, which is why this is M rather than S.
@@ -92,10 +99,11 @@ Members slice shipped; nothing in this bundle changes them.
 
 The row goes above "Join a shared Case…" with the same geometry as its siblings. Because the palette
 reads the open Case from the route, which is absent on the dashboard and on the New Case wizard,
-the row hides on both. Its label comes from the same state model as the pill ("Share this
-Case…" on a local Case, "Members…" once shared) and the row hides when the platform read is
-false. Arrow keys in the palette walk the Case list only; the action rows are reached with Tab,
-where Enter is the button's own, as for the rows beside it today.
+the row hides on both. Its label follows `sharedAt`, as the card menu does (E3): "Share this
+Case…" until the first invite, "Members…" after it. Until the first approved join, the row can
+read "Members…" while the pill still reads "Share · invite waiting". The row hides when the
+platform read is false. Arrow keys in the palette walk the Case list only; the action rows
+are reached with Tab, where Enter is the button's own, as for the rows beside it today.
 
 ### E1. "Shared" badge on the card (3b): Accept (XS)
 
@@ -164,10 +172,12 @@ would come from if it is ever wanted.
 
 ### Copy and tokens (XS)
 
-Three constraints, all stated above: the shipped token names, the operator name as entered,
-and the clock format. Every other string in the bundle's README is taken verbatim into
-`memberModel.ts`'s `COPY`, where the Members slice keeps its strings, so one test reads them
-all.
+Four constraints. Three are stated above: the shipped token names, the operator name as
+entered, and the clock format. The fourth is the coachmark's body: it drops "Up to four other
+people who run Birdbrain" for "Other people who run Birdbrain", by the maintainer's ruling of
+2026-10-28, because no code in the app limits a Case's roster to five. Every other string in
+the bundle's README is taken verbatim into `memberModel.ts`'s `COPY`, where the Members slice
+keeps its strings, so one test reads them all.
 
 ## Ruling
 
@@ -178,9 +188,10 @@ never starts a walkthrough on its own. Recommended: yes, as a one-card exception
 only, recorded here and in `tourSteps.ts` beside the rule it excepts. The alternative was
 fresh installs only, with the pill doing the announcing on its own.
 
-**Ruled yes on 2026-10-28.** The mark shows once to every installation, upgrades included, as
-the one exception to the rule. `shouldShowShareMark` in `tourSteps.ts` carries the exception
-beside the rule it excepts.
+**Ruled yes on 2026-10-28.** The mark shows once to every eligible installation, upgrades
+included, as the one exception to the rule; the constraints under F still keep it off where
+they apply. The coachmark pull request adds `shouldShowShareMark` to `tourSteps.ts`, beside the
+rule it excepts.
 
 ## Build order
 
@@ -194,4 +205,4 @@ not evidence-affecting:
 2. **Dashboard (E1 to E4).** `CaseCard.tsx`, the lifted menu component, `RecentCases.tsx`, the
    new Older Cases component, the role line that replaces `SharedCaseLine.tsx`, `Dashboard.tsx`,
    their tests and `e2e/shared-case-members.spec.ts`.
-3. **Coachmark (F)**, after the ruling.
+3. **Coachmark (F)**, as ruled.

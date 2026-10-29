@@ -27,30 +27,19 @@ beforeEach(() => {
 
 afterEach(cleanup)
 
-// Only the Members tab ships in this slice (feasibility item 19): General and
-// Export are drawn so the screen reads as settings, and cannot be opened.
+// Only the Members tab ships (feasibility item 19). General and Export keep
+// their current homes, so the nav draws no placeholder for them and no note
+// explaining their absence.
 describe('CaseSettingsView', () => {
-  it('offers General and Export as disabled placeholders and opens on Members', () => {
+  it('opens on Members and offers no other tab', () => {
     renderView()
     expect(screen.getByText('Case settings')).toBeTruthy()
-    const general = screen.getByRole('tab', { name: 'General' })
-    const exportTab = screen.getByRole('tab', { name: 'Export' })
-    const membersTab = screen.getByRole('tab', { name: 'Members' })
-    expect(general.hasAttribute('disabled')).toBe(true)
-    expect(exportTab.hasAttribute('disabled')).toBe(true)
-    expect(membersTab.hasAttribute('disabled')).toBe(false)
-    expect(membersTab.getAttribute('aria-selected')).toBe('true')
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Members'])
+    expect(tabs[0].getAttribute('aria-selected')).toBe('true')
     expect(screen.getAllByRole('tabpanel')).toHaveLength(1)
-  })
-
-  it('carries the nav footnote verbatim', () => {
-    renderView()
-    expect(
-      screen.getByText(
-        'First slice ships Members only. General and Export keep their current homes; the tabs ' +
-          'are here so the screen reads as settings.'
-      )
-    ).toBeTruthy()
+    expect(screen.queryByText(/First slice ships Members only/)).toBeNull()
+    expect(screen.queryByText(/reads as settings/)).toBeNull()
   })
 
   it('renders the Members tab content', async () => {

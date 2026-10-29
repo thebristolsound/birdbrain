@@ -80,6 +80,14 @@ test.describe('Top bar layout', () => {
         const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth)
         expect(scrollWidth).toBeLessThanOrEqual(width)
 
+        // The Share pill keeps its label from 1,024px up and folds to the icon below that
+        // (docs/design-handoff/2026-10-28-share-a-case/, frame G).
+        const pill = controls.getByTestId('share-pill')
+        await expect(pill).toHaveAttribute('data-state', 'share')
+        const { width: pillWidth } = (await pill.boundingBox())!
+        if (width >= 1024) expect(pillWidth).toBeGreaterThan(40)
+        else expect(pillWidth).toBeLessThanOrEqual(30)
+
         // The text field keeps room to type, and the hint drops out below 16rem.
         const { width: inputWidth } = (await input.boundingBox())!
         expect(inputWidth).toBeGreaterThanOrEqual(80)
@@ -116,6 +124,11 @@ test.describe('Top bar layout', () => {
       expect(width).toBe(400)
       expect(Math.abs(x + width / 2 - 700)).toBeLessThanOrEqual(1)
     }).toPass({ timeout: 5000 })
+
+    // Every state of the pill opens Members; a Case nobody shared lands on the not-shared card.
+    await page.getByTestId('share-pill').click()
+    await expect(page.getByTestId('not-shared-card')).toBeVisible()
+    expect(await page.evaluate(() => window.location.hash)).toMatch(/#\/cases\/[^/]+\/settings$/)
   })
 
   test('the Export dialog covers the narrow-window details overlay', async ({

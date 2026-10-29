@@ -12,7 +12,9 @@ import {
   routeOfPath,
   screenCountLabel,
   screenSteps,
+  SHARE_MARK_KEY,
   shouldAutoFire,
+  shouldShowShareMark,
   tourSteps,
   type TourChapter
 } from '@renderer/components/onboarding/tourSteps'
@@ -210,6 +212,48 @@ describe('shouldAutoFire', () => {
     const settings = { isFreshInstall: true, onboardingChapters: { intro: true } }
     expect(shouldAutoFire(settings, 'intro')).toBe(false)
     expect(shouldAutoFire(settings, 'case')).toBe(true)
+  })
+})
+
+// The one exception to the upgrade rule (2026-10-28 handoff, frame A).
+describe('shouldShowShareMark', () => {
+  it('shows once to an existing install, and not again after a dismissal', () => {
+    expect(shouldShowShareMark({ isFreshInstall: false, onboardingChapters: {} })).toBe(true)
+    expect(
+      shouldShowShareMark({ isFreshInstall: false, onboardingChapters: { share: true } })
+    ).toBe(false)
+    expect(shouldShowShareMark(undefined)).toBe(false)
+  })
+
+  it('waits while a fresh install still has an auto-fired chapter due', () => {
+    expect(shouldShowShareMark({ isFreshInstall: true, onboardingChapters: {} })).toBe(false)
+    expect(shouldShowShareMark({ isFreshInstall: true, onboardingChapters: { intro: true } })).toBe(
+      false
+    )
+  })
+
+  // The extension chapter never starts on its own, so finishing the two that do
+  // leaves its key unset for good. The mark must still show.
+  it('shows once a fresh install finishes the intro and case chapters', () => {
+    const afterIntro = completionAfter({}, 'intro', 'finished', true)
+    const afterCase = completionAfter(afterIntro ?? {}, 'case', 'finished', true)
+    expect(afterCase).toEqual({ intro: true, case: true })
+    expect(shouldShowShareMark({ isFreshInstall: true, onboardingChapters: afterCase ?? {} })).toBe(
+      true
+    )
+  })
+
+  it('shows once a fresh install skips the tour', () => {
+    const afterSkip = completionAfter({}, 'intro', 'skipped', true)
+    expect(shouldShowShareMark({ isFreshInstall: true, onboardingChapters: afterSkip ?? {} })).toBe(
+      true
+    )
+  })
+
+  it('records its dismissal under its own key, which completes no chapter', () => {
+    expect(SHARE_MARK_KEY).toBe('share')
+    const settings = { isFreshInstall: true, onboardingChapters: { [SHARE_MARK_KEY]: true } }
+    for (const chapter of ALL_CHAPTERS) expect(shouldAutoFire(settings, chapter)).toBe(true)
   })
 })
 

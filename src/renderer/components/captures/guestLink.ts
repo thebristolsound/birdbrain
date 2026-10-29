@@ -1,7 +1,12 @@
 // What a right-click or a hover in the stored-page guest reports, and the rules the
 // link menu applies to it (#1708). Pure, so each rule has a known-answer test.
 
-import { localAddressKind, localAddressLabel } from '@shared/localAddress'
+import type { GuestKeyModifier, GuestMouseButton } from '@shared/ipc'
+import {
+  canonicalizeUrl,
+  resolveCaptureForUrl,
+  type CaptureUrlCandidate
+} from '@shared/urlCanonicalize'
 
 /** The fields of a guest `context-menu` the link menu reads. */
 export interface GuestLinkHit {
@@ -43,28 +48,58 @@ export function readGuestContextMenu(event: unknown): GuestLinkHit | null {
   return hit
 }
 
-/**
- * Why Capture link is unavailable for a URL, or null when it is available (D9).
- * The page's author chose these URLs, so the menu refuses the ones that would aim
- * the background renderer at the Operator's own machine or network. Only literal
- * addresses are caught: a public name that resolves to a private address is not.
- */
-export function captureLinkBlockReason(url: string): string | null {
-  let parsed: URL
-  try {
-    parsed = new URL(url)
-  } catch {
-    return 'Not a web address'
-  }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return 'Not a web address'
-  const kind = localAddressKind(url)
-  return kind ? `Points at ${localAddressLabel(kind)}` : null
-}
-
 /** Shortens a string from the middle, keeping both ends, to at most `max` characters. */
 export function middleTruncate(value: string, max: number): string {
   if (value.length <= max) return value
   const keep = max - 1
   const head = Math.ceil(keep / 2)
   return `${value.slice(0, head)}…${value.slice(value.length - (keep - head))}`
+}
+
+/** A press or release in the guest, with the hover destination it happened on. */
+export interface GuestPointer {
+  /** The destination `update-target-url` last reported, or empty when on no link. */
+  url: string
+  button: GuestMouseButton | null
+}
+
+/**
+ * The link a press and the release after it clicked, or null when they were not a
+ * click on a link (#1735). A drag from one link to another, a release off the link,
+ * a middle click and a click with a modifier key held are not plain clicks on one
+ * link, so the viewer leaves them alone.
+ */
+export function classifyGuestClick(
+  press: GuestPointer | null,
+  release: GuestPointer & { modifiers: readonly GuestKeyModifier[] }
+): string | null {
+  if (!press || !press.url || press.url !== release.url) return null
+  if (press.button !== 'left' || release.button !== 'left') return null
+  return release.modifiers.length === 0 ? release.url : null
+}
+
+export type LinkClickOutcome =
+  { kind: 'open'; captureId: string } | { kind: 'not-in-case'; url: string } | { kind: 'none' }
+
+/**
+ * What a click on a link to `url` does in the viewer of `viewed` (#1735, plan A2).
+ * A web address the Case holds opens its newest Capture, the same lookup "Open
+ * captured copy" uses. The viewed Capture's own address, a fragment of it, and any
+ * scheme other than http(s) do nothing.
+ */
+export function linkClickOutcome(
+  url: string,
+  viewed: CaptureUrlCandidate | undefined,
+  captures: readonly CaptureUrlCandidate[]
+): LinkClickOutcome {
+  let protocol: string
+  try {
+    protocol = new URL(url).protocol
+  } catch {
+    return { kind: 'none' }
+  }
+  if (protocol !== 'http:' && protocol !== 'https:') return { kind: 'none' }
+  if (viewed && canonicalizeUrl(viewed.url) === canonicalizeUrl(url)) return { kind: 'none' }
+  const held = resolveCaptureForUrl(url, captures)
+  return held ? { kind: 'open', captureId: held.id } : { kind: 'not-in-case', url }
 }

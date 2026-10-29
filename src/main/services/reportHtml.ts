@@ -1953,7 +1953,9 @@ function scrollToLoadBlock(record: ScrollToLoadRecord): string {
         outcome ? esc(SCROLL_TO_LOAD_OUTCOME_TEXT[outcome]) : 'the entry records no outcome'
       }.`
   const height =
-    endHeight !== undefined ? ` The last document height it read was ${endHeight} CSS pixels.` : ''
+    endHeight !== undefined
+      ? ` The last height it read of the document or inner panel it scrolled was ${endHeight} CSS pixels.`
+      : ''
   const lock = scrollLockLifted
     ? " It lifted the page's scroll lock, which can change which lazy-loaded content loaded."
     : ' It did not lift a scroll lock.'

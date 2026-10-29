@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'motion/react'
-import { Search, Plus, Clock, Compass, MessageSquareWarning } from 'lucide-react'
+import { Search, Plus, Clock, Compass, MessageSquareWarning, Users } from 'lucide-react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { casesQueryOptions, captureCountsQueryOptions } from '@renderer/lib/queries'
+import { sharingAvailableQueryOptions } from '@renderer/lib/api/sharing'
+import { shareActionLabel } from '@renderer/components/sharing/memberModel'
 import { presets } from '@renderer/lib/motion'
 import { trapTab, useModalFocus } from '@renderer/components/ui'
 import { startTour } from '@renderer/components/onboarding/startTour'
@@ -39,6 +41,20 @@ export function CommandPalette() {
 
   const { data: cases = [] } = useQuery(casesQueryOptions)
   const { data: captureCounts = {} } = useQuery(captureCountsQueryOptions)
+  const { data: sharingAvailable } = useQuery(sharingAvailableQueryOptions)
+
+  // The open Case's sharing row (docs/design-handoff/2026-10-28-share-a-case/,
+  // frame D): absent on the dashboard and the wizard, where no Case is open,
+  // and where sharing is unavailable.
+  const activeCase = cases.find((c) => c.id === activeCaseId)
+  const shareRow =
+    activeCaseId !== undefined && sharingAvailable === true
+      ? {
+          caseId: activeCaseId,
+          label: shareActionLabel(Boolean(activeCase?.sharedAt)),
+          caseName: activeCase?.name ?? ''
+        }
+      : null
 
   const filtered = cases.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()))
 
@@ -185,6 +201,33 @@ export function CommandPalette() {
               >
                 <Plus className="h-4 w-4 shrink-0 text-text-faint" />
                 <span className="text-sm">Create new case</span>
+              </button>
+              {shareRow && (
+                <button
+                  data-testid="palette-share-case"
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-text-secondary transition-colors hover:bg-elevated"
+                  onClick={() => {
+                    navigate({ to: '/cases/$caseId/settings', params: { caseId: shareRow.caseId } })
+                    setOpen(false)
+                  }}
+                >
+                  <Users className="h-4 w-4 shrink-0 text-text-faint" />
+                  <span className="min-w-0 flex-1 truncate text-sm">{shareRow.label}</span>
+                  <span className="max-w-[40%] shrink-0 truncate text-xs text-text-faint">
+                    {shareRow.caseName}
+                  </span>
+                </button>
+              )}
+              <button
+                data-testid="palette-join-shared-case"
+                className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-text-secondary transition-colors hover:bg-elevated"
+                onClick={() => {
+                  navigate({ to: '/cases/new', search: { join: true } })
+                  setOpen(false)
+                }}
+              >
+                <Users className="h-4 w-4 shrink-0 text-text-faint" />
+                <span className="text-sm">Join a shared Case…</span>
               </button>
               <button
                 data-testid="palette-replay-tour"

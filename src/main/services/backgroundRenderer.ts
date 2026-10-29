@@ -154,10 +154,11 @@ async function waitForDocumentComplete(wc: WebContents, timeoutMs: number): Prom
   )
 }
 
-// Shared by the scroll-phase scripts below. The probes test actual movement —
-// a viewport scroll-locked by overflow: hidden clamps even programmatic
-// scrolling. pickRoot prefers the document, falling back to the largest
-// scrollable descendant (app-shell layouts scroll an inner container).
+// Shared by the scroll-phase scripts below. The probes test actual movement
+// rather than styles: in Chromium a document with overflow: hidden still moves
+// from script in standards mode, and a full-height one does not in quirks mode.
+// pickRoot prefers the document, falling back to the largest scrollable
+// descendant (app-shell layouts scroll an inner container).
 const SCROLL_HELPERS = `
   // scrollTo with behavior 'instant' so CSS scroll-behavior: smooth can't turn
   // programmatic scrolls into animations the probes would misread.
@@ -208,9 +209,11 @@ const SCROLL_HELPERS = `
 // When nothing scrolls but content overflows the viewport, lift the lock for
 // the scroll phase ONLY. Returns the original inline overflow values
 // ([html, body]) for the restore script, or null when no lock was lifted.
+// A root at its end is not locked: a page loaded at a fragment near its
+// bottom starts there.
 const SCROLL_UNLOCK_SCRIPT = `(() => {
   ${SCROLL_HELPERS}
-  if (pickRoot()) return null
+  if (pickRoot(true)) return null
   if (!doc || doc.scrollHeight <= doc.clientHeight + 2) return null
   const prior = []
   for (const el of [document.documentElement, document.body]) {

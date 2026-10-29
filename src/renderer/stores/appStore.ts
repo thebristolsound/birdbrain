@@ -56,6 +56,10 @@ interface AppState {
     lastError?: { message: string; timestamp: string }
   }
   commandPaletteOpen: boolean
+  // The Share mark is on screen, so the top bar's pill wears its ring.
+  shareMarkOpen: boolean
+  // A tour chapter is running, so the Share mark stays off screen.
+  tourRunning: boolean
   // How many Dialogs are logically open. A count rather than a boolean because
   // dialogs nest, and the inner one closing must not disarm the outer. It is
   // what keyboard guards read: `role="dialog"` survives the close for the
@@ -78,11 +82,17 @@ interface AppState {
   // count, not the object, tells one opening from the next; the exact check's answer
   // belongs to one opening.
   viewerHitOpening: number
+  // The Captures a run of link clicks came through, oldest first, for the viewer's Back
+  // (#1735). Only a link click pushes; every other selection empties it, so it never
+  // describes anything but that run. Not persisted, like the viewer's tab.
+  captureTrail: string[]
 
   setSessionActive: (active: boolean) => void
   setConnectedToExtension: (connected: boolean) => void
   setCommandPaletteOpen: (open: boolean) => void
   toggleCommandPalette: () => void
+  setShareMarkOpen: (open: boolean) => void
+  setTourRunning: (running: boolean) => void
   registerOpenDialog: () => void
   unregisterOpenDialog: () => void
   setPanelCollapsedForced: (forced: boolean) => void
@@ -94,6 +104,8 @@ interface AppState {
   setSelectedSignalId: (id: string | null) => void
   setSearchQuery: (query: string) => void
   selectCapture: (id: string) => void
+  followCaptureLink: (id: string) => void
+  goBackInTrail: (liveIds: ReadonlySet<string>) => void
   toggleCaptureSelection: (id: string) => void
   selectAllCaptures: (ids: string[]) => void
   clearCaptureSelection: () => void
@@ -113,10 +125,11 @@ interface AppState {
   clearCaptureEvents: () => void
 }
 
-function selectedCaptureState(id: string | null) {
+function selectedCaptureState(id: string | null, captureTrail: string[] = []) {
   return ({ viewerHit }: AppState) => ({
     selectedCaptureId: id,
-    viewerHit: viewerHit?.exhibitId === id ? viewerHit : null
+    viewerHit: viewerHit?.exhibitId === id ? viewerHit : null,
+    captureTrail
   })
 }
 
@@ -138,17 +151,22 @@ export const useAppStore = create<AppState>((set) => ({
   captureEvents: [],
   captureStats: { successCount: 0, failCount: 0, skipCount: 0 },
   commandPaletteOpen: false,
+  shareMarkOpen: false,
+  tourRunning: false,
   openDialogCount: 0,
   panelCollapsedForced: false,
   activeViewerTab: 'screenshot',
   waybackSelection: null,
   viewerHit: null,
   viewerHitOpening: 0,
+  captureTrail: [],
 
   setSessionActive: (active) => set({ sessionActive: active }),
   setConnectedToExtension: (connected) => set({ connectedToExtension: connected }),
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   toggleCommandPalette: () => set((s) => ({ commandPaletteOpen: !s.commandPaletteOpen })),
+  setShareMarkOpen: (open) => set({ shareMarkOpen: open }),
+  setTourRunning: (running) => set({ tourRunning: running }),
   registerOpenDialog: () => set((s) => ({ openDialogCount: s.openDialogCount + 1 })),
   // Clamped: an unbalanced release would otherwise drive the count negative and
   // leave every later guard reading "no dialog" while one is up.
@@ -163,6 +181,25 @@ export const useAppStore = create<AppState>((set) => ({
   setSearchQuery: (query) => set({ searchQuery: query }),
 
   selectCapture: (id) => set(selectedCaptureState(id)),
+
+  followCaptureLink: (id) =>
+    set((s) => {
+      const from = s.selectedCaptureId
+      if (from === null || from === id) return {}
+      return selectedCaptureState(id, [...s.captureTrail, from])(s)
+    }),
+
+  // Pops past Captures deleted since they were pushed. With none left alive the trail
+  // empties and the selection stays.
+  goBackInTrail: (liveIds) =>
+    set((s) => {
+      const { captureTrail } = s
+      for (let i = captureTrail.length - 1; i >= 0; i--) {
+        const id = captureTrail[i]
+        if (liveIds.has(id)) return selectedCaptureState(id, captureTrail.slice(0, i))(s)
+      }
+      return { captureTrail: [] }
+    }),
 
   toggleCaptureSelection: (id) =>
     set((s) => {

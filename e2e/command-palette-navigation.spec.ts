@@ -23,10 +23,11 @@ test.describe('Command palette', () => {
     const input = palette(page).getByPlaceholder('Switch case...')
     await expect(input).toBeFocused()
 
-    // Typing filters by name, case-insensitively.
+    // Typing filters by name, case-insensitively. A case row's name starts with the
+    // case name; the open Case's sharing row ends with it, so the matches are anchored.
     await input.fill('alpha')
-    await expect(palette(page).getByRole('button', { name: /Palette Alpha/ })).toBeVisible()
-    await expect(palette(page).getByRole('button', { name: /Palette Bravo/ })).toHaveCount(0)
+    await expect(palette(page).getByRole('button', { name: /^Palette Alpha/ })).toBeVisible()
+    await expect(palette(page).getByRole('button', { name: /^Palette Bravo/ })).toHaveCount(0)
 
     // Enter opens the highlighted case on its Captures view and closes.
     await input.press('Enter')
@@ -47,13 +48,13 @@ test.describe('Command palette', () => {
     await page.keyboard.press('Control+k')
     await expect(palette(page)).toBeHidden()
 
-    // A query that matches nothing says so, and Enter goes to New Case.
+    // A query that matches nothing says so, and Enter goes to the New Case start step.
     await page.keyboard.press('Control+k')
     await palette(page).getByPlaceholder('Switch case...').fill('zzz-no-such-case')
     await expect(palette(page)).toContainText('No cases match')
     await palette(page).getByPlaceholder('Switch case...').press('Enter')
     await expect(palette(page)).toBeHidden()
-    await expect(page.getByTestId('case-name-input')).toBeVisible()
+    await expect(page.getByTestId('case-start-step')).toBeVisible()
   })
 
   test('arrow keys move the highlight and clicking outside closes', async ({ page }) => {
@@ -63,7 +64,7 @@ test.describe('Command palette', () => {
     await page.keyboard.press('Control+k')
     const input = palette(page).getByPlaceholder('Switch case...')
     await input.fill('Arrow')
-    const options = palette(page).getByRole('button', { name: /Arrow (One|Two)/ })
+    const options = palette(page).getByRole('button', { name: /^Arrow (One|Two)/ })
     await expect(options).toHaveCount(2)
 
     // Whichever case is listed second is the one ArrowDown then Enter opens.

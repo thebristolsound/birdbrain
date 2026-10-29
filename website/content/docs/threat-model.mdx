@@ -6,8 +6,9 @@ description: 'What Birdbrain''s chain-of-custody controls defend against, what t
 This document states plainly what Birdbrain's chain-of-custody controls defend
 against, what they deliberately do **not**, and why the default trusted-timestamp
 authority is DigiCert. It is the reference a brief or an expert declaration can
-cite. Scope: the on-disk audit manifest (hash chain + signatures, #115/#117) and
-RFC 3161 trusted timestamping (#120).
+cite. Scope: the on-disk audit manifest (hash chain + signatures, #115/#117),
+RFC 3161 trusted timestamping (#120), and Shared Cases, where each member's
+installation keeps its own manifest (#1508).
 
 ## The two independent axes
 
@@ -87,6 +88,75 @@ The endpoint is configurable in Settings for jurisdictions or engagements that
 require a specific TSA. Free/hobbyist authorities (e.g. `freetsa.org`) are a
 documented **development/test fallback only**. Their roots are not in common
 trust stores and should not anchor evidence.
+
+## Shared Cases
+
+A Shared Case is a Case held by more than one installation; the design sizes
+it for two to five, and the app does not enforce that size. Each member's
+installation keeps its own signed manifest chain. A `merge` entry in the
+receiving member's chain records each sync session that brought in entries from
+another member's chain, naming the chain states it received.
+
+### What verification shows, and what it does not
+
+For a Shared Case, checking an exported evidence package, with the standalone
+verifier or the `verify.sh` script the package ships, shows three things:
+
+- Each member's chain was not edited without that member's installation key.
+- Every `merge` entry names chain states that exist.
+- Every `<Member Code>-<n>` citation resolves to one entry.
+
+It does not show three others:
+
+- Who sat at a member's machine.
+- That any member's TSA is honest.
+- That a revoked member deleted its copy of the Case. Revoking stops sync with
+  that member; the member keeps what it already holds.
+
+The integrity check in the app's own ledger covers only this installation's
+chain; it does not establish the first two claims for the other members.
+
+### The key is held per member
+
+The limits in the signature section above apply to each member's installation
+separately. An operator who controls a member's running process controls that
+member's key. Whether that key is wrapped at rest depends on the credential
+store of that member's machine, so one member's `protected` key says nothing
+about another member's.
+
+### Receipt timestamps
+
+When trusted timestamping is on, the receiving installation submits the Entry
+Hash of a `merge` entry in its chain to its own TSA and records the token as a
+`timestamp` entry with `subject: 'entry'`. The token establishes that the
+receiver's chain held that `merge`, and so the chain states it names, no later
+than the stamped time. It does not date any capture and does not change any
+Exhibit's trusted time. Each member stamps with the TSA configured on its own
+machine; TSA settings do not sync.
+
+Not every `merge` gets its own token. Every five minutes the app looks at the
+newest `merge` in each Shared Case and stamps it if it has no token yet, while
+sync runs every minute, so most `merge` entries carry no token of their own. Each Entry Hash covers the
+entry before it, so a token over a later `merge` also bounds every earlier entry
+in that chain. A `merge` written before the chain's last `import` entry belongs
+to the source Case's history and is never stamped.
+
+### One key links a member across groups
+
+Each installation has one signing key and uses it in every Shared Case it
+joins. Every member sees each member's public key: the Owner's approval dialog
+shows its fingerprint. The installation id and the network node id recorded in
+each `member-add` entry are also the same in every group, and an evidence
+package's Certification prints the installation id. Two groups that share a
+member can therefore match that member by any of the three.
+
+A member who wants to stay anonymous should set a pseudonym as their operator
+name. That name is installation-wide. Birdbrain writes it into every Manifest
+Entry and into the Certification of every evidence package, from every Case on
+that installation, not only the Shared Case. A pseudonym hides neither the
+key, the installation id, nor the network addresses: teammates and the relay
+see this machine's network addresses during connection setup, as the
+[network use list](/docs/features#network-use) states.
 
 ## Canonical verification path
 

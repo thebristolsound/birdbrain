@@ -48,7 +48,7 @@ function rowHeight(page: Page, title: string): Promise<number> {
 test.describe('Capture list row height', () => {
   test('a row without selector chips matches the height of a row with them', async ({ page }) => {
     await page.evaluate(() => {
-      window.location.hash = '/cases/new'
+      window.location.hash = '/cases/new?blank=true'
     })
     await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'Row Height E2E')

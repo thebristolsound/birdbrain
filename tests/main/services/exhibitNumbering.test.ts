@@ -187,6 +187,34 @@ describe('Exhibit Numbers from the chain (#1270)', () => {
     expect(verifyManifestChain(caseDir).valid).toBe(true)
   })
 
+  it('stamps 6, not 3, on a numbered capture entry carrying the link provenance fields', async () => {
+    // Appended by hand: nothing in the app writes the fields yet (ADR-0040).
+    const source = await ingest('source')
+    const sourceEntry = manifestLines(caseDir).find((line) => line.captureId === source)
+    expect(sourceEntry).toMatchObject({ exhibitNumber: 1, schemaVersion: 3 })
+    appendManifestEntry(caseDir, {
+      type: 'capture',
+      captureId: 'linked',
+      caseId,
+      url: 'https://example.com/linked',
+      timestamp: '2026-10-26T10:00:00.000Z',
+      contentHash: createHash('sha256').update('linked').digest('hex'),
+      method: 'background',
+      exhibitNumber: 2,
+      linkedFromCaptureId: source,
+      linkedFromContentHash: String(sourceEntry?.contentHash),
+      linkHref: 'http://example.com/linked',
+      sizeBytes: 1,
+      operatorId: 'op-1',
+      operatorName: 'Test Operator',
+      toolVersion: TOOL_VERSION
+    })
+
+    const entry = manifestLines(caseDir).find((line) => line.captureId === 'linked')
+    expect(entry).toMatchObject({ exhibitNumber: 2, linkedFromCaptureId: source, schemaVersion: 6 })
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+  })
+
   it('gives a duplicate a number of its own on its own entry', async () => {
     const source = await ingest('source')
 

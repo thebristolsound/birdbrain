@@ -699,6 +699,12 @@ export type ManifestEntryInput =
       boundTls?: BoundTls
       boundTlsAbsent?: BoundTlsAbsence
       pdfHash?: string
+      // Link Capture provenance (ADR-0040), described at the capture entry
+      // schema in schemas.ts. Schema-6 fields, so an entry carrying any of
+      // them is stamped 6 (CAPTURE_LINK_PROVENANCE_MIN_READER).
+      linkedFromCaptureId?: string
+      linkedFromContentHash?: string
+      linkHref?: string
       sizeBytes: number
       operatorId: string
       operatorName: string
@@ -997,6 +1003,9 @@ const CAPTURE_EGRESS_MIN_READER = 5
 // The capture engine's fields are schema 6 on the same reasoning.
 const CAPTURE_ENGINE_MIN_READER = 6
 
+// So are the link provenance fields (ADR-0040, "The fields need schema 6").
+const CAPTURE_LINK_PROVENANCE_MIN_READER = 6
+
 // A `timestamp` entry's `subject` is a schema-4 field (#1518): the schema
 // itself refuses one stamped lower, and a schema-3 verifier would read it as a
 // broken chain rather than "verifier too old".
@@ -1027,6 +1036,10 @@ function fieldMinReaderSchemaVersion(entry: ManifestEntryInput): number {
   ]
   if (engineFields.some((field) => field !== undefined)) {
     return CAPTURE_ENGINE_MIN_READER
+  }
+  const { linkedFromCaptureId, linkedFromContentHash, linkHref } = entry
+  if ([linkedFromCaptureId, linkedFromContentHash, linkHref].some((field) => field !== undefined)) {
+    return CAPTURE_LINK_PROVENANCE_MIN_READER
   }
   const { egressKind, egressLabel, userAgent, tlsSkipped, exhibitNumber } = entry
   if ([egressKind, egressLabel, userAgent, tlsSkipped].some((field) => field !== undefined)) {

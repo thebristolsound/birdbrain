@@ -45,6 +45,20 @@ export const ENGINE_ENTRY_FIELDS_WITHOUT_FILES: EngineEntryFields = {
   pdfHash: undefined
 }
 
+// The same Capture with one of the two files: its inventory records the other
+// as not taken, so its entry carries only the kept file's hash.
+export function engineEntryFieldsWithOnly(kept: 'transactionRecord' | 'pdf'): EngineEntryFields {
+  const dropped = kept === 'pdf' ? 'transactionRecord' : 'pdf'
+  return {
+    ...ENGINE_ENTRY_FIELDS,
+    inventory: CaptureInventorySchema.parse({
+      ...ENGINE_INVENTORY,
+      [dropped]: { present: false, reason: 'not-taken' }
+    }),
+    ...(kept === 'pdf' ? { transactionRecordHash: undefined } : { pdfHash: undefined })
+  }
+}
+
 export const ENGINE_URL = 'https://example.com/engine'
 export const ENGINE_TIMESTAMP = '2026-10-18T12:00:00.000Z'
 

@@ -1,20 +1,19 @@
-import { useState, useRef, useEffect, memo, type KeyboardEvent } from 'react'
+import { useState, useRef, useEffect, memo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import type { Case } from '@shared/types'
-import { Camera, ArrowUpRight, MoreVertical } from 'lucide-react'
+import { Camera, ArrowUpRight, Users } from 'lucide-react'
 import { Card } from '@renderer/components/ui'
+import { useTimeTick } from '@renderer/hooks/useTimeTick'
+import { membersQueryOptions } from '@renderer/lib/api/sharing'
 import { getCaseTypeStyle } from '@renderer/components/dashboard/caseTypeStyle'
-import { SharedCaseLine } from '@renderer/components/sharing/SharedCaseLine'
-
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'Just now'
-  if (mins < 60) return `${mins} min ago`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`
-  const days = Math.floor(hours / 24)
-  return `${days} day${days !== 1 ? 's' : ''} ago`
-}
+import { CaseMenu } from '@renderer/components/dashboard/CaseMenu'
+import { timeAgo } from '@renderer/components/dashboard/timeAgo'
+import { CaseRoleLine } from '@renderer/components/sharing/CaseRoleLine'
+import {
+  memberCount,
+  sharedBadge,
+  sharedWithTeammates
+} from '@renderer/components/sharing/memberModel'
 
 interface CaseCardProps {
   caseData: Case
@@ -35,15 +34,21 @@ export const CaseCard = memo(function CaseCard({
   onRename,
   onDelete
 }: CaseCardProps) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const popoverRef = useRef<HTMLDivElement>(null)
+  const nowMs = useTimeTick(60_000)
 
   const { icon: IconComponent, bgClass, iconClass } = getCaseTypeStyle(caseData.type)
+
+  // A shared Case reads its roster for the badge and the role line
+  // (docs/design-handoff/2026-10-28-share-a-case/, frame E); a local one has
+  // nothing to read.
+  const shared = Boolean(caseData.sharedAt)
+  const { data: members } = useQuery({ ...membersQueryOptions(caseData.id), enabled: shared })
+  // "Shared · n" from the first approved join, as the top bar's pill turns to
+  // its sync state then; Recording and Active outrank it, and the role line
+  // still says the Case is shared when the badge yields.
+  const sharedCount = shared && members ? memberCount(members.members) : 0
 
   useEffect(() => {
     if (editingName !== null && inputRef.current) {
@@ -51,61 +56,6 @@ export const CaseCard = memo(function CaseCard({
       inputRef.current.select()
     }
   }, [editingName])
-
-  // Focus enters the menu on open, as the menu role promises. The delete
-  // confirmation swaps the items for Confirm and Cancel; focus lands on Cancel
-  // so a second Enter cannot delete a case by momentum.
-  useEffect(() => {
-    if (!menuOpen) return
-    const items = menuItems()
-    ;(deletingId ? items[items.length - 1] : items[0])?.focus()
-  }, [menuOpen, deletingId])
-
-  function menuItems(): HTMLElement[] {
-    return Array.from(popoverRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])
-  }
-
-  function handleMenuKey(e: KeyboardEvent<HTMLDivElement>) {
-    const items = menuItems()
-    const index = items.indexOf(document.activeElement as HTMLElement)
-    let next = -1
-    if (e.key === 'ArrowDown') next = (index + 1) % items.length
-    else if (e.key === 'ArrowUp') next = (index - 1 + items.length) % items.length
-    else if (e.key === 'Home') next = 0
-    else if (e.key === 'End') next = items.length - 1
-    else if (e.key === 'Tab') {
-      setMenuOpen(false)
-      setDeletingId(null)
-      return
-    }
-    if (next < 0) return
-    e.preventDefault()
-    items[next]?.focus()
-  }
-
-  useEffect(() => {
-    if (!menuOpen) return
-    function handleKeyDown(e: globalThis.KeyboardEvent) {
-      if (e.key !== 'Escape') return
-      setMenuOpen(false)
-      setDeletingId(null)
-      triggerRef.current?.focus()
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [menuOpen])
-
-  useEffect(() => {
-    if (!menuOpen) return
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false)
-        setDeletingId(null)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [menuOpen])
 
   function handleRenameSubmit(value: string) {
     const trimmed = value.trim()
@@ -124,16 +74,25 @@ export const CaseCard = memo(function CaseCard({
           <IconComponent className={`h-5 w-5 ${iconClass}`} />
         </div>
 
-        {/* Status badge */}
+        {/* Status badge; the right margin keeps it clear of the kebab. */}
         {isRecording ? (
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20">
+          <div className="mr-5 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20">
             <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
             <span className="text-[9px] font-bold text-danger-fg">Recording</span>
           </div>
         ) : isActive ? (
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+          <div className="mr-5 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
             <span className="text-[9px] font-bold text-success-fg">Active</span>
+          </div>
+        ) : sharedCount > 1 ? (
+          <div
+            data-testid="case-shared-badge"
+            title={sharedWithTeammates(sharedCount)}
+            className="mr-5 flex h-5 items-center gap-1.5 rounded-full border border-border-strong px-2 text-[9px] font-bold text-text-secondary"
+          >
+            <Users className="h-2.5 w-2.5" strokeWidth={2.4} />
+            <span>{sharedBadge(sharedCount)}</span>
           </div>
         ) : null}
       </div>
@@ -163,8 +122,8 @@ export const CaseCard = memo(function CaseCard({
         {caseData.description || 'No description'}
       </p>
 
-      {/* Stats row */}
-      {caseData.sharedAt && <SharedCaseLine caseId={caseData.id} />}
+      {/* Role line, then the stats row */}
+      <CaseRoleLine shared={shared} members={members} nowMs={nowMs} className="mb-2.5" />
       <div className="flex items-center gap-4 mb-3">
         <div className="flex items-center gap-1.5">
           <Camera className="h-3 w-3 text-text-faint" />
@@ -174,100 +133,18 @@ export const CaseCard = memo(function CaseCard({
 
       {/* Footer */}
       <div className="mt-4 pt-3 border-t border-border-strong flex justify-between items-center">
-        <span className="text-[10px] text-text-faint">Updated {timeAgo(caseData.updatedAt)}</span>
+        <span className="text-[10px] text-text-faint">
+          Updated {timeAgo(caseData.updatedAt, nowMs)}
+        </span>
         <ArrowUpRight className="h-4 w-4 text-text-faint group-hover:text-accent transition-colors" />
       </div>
 
-      {/* Context menu */}
-      <div ref={menuRef} className="absolute right-2 top-2">
-        <button
-          ref={triggerRef}
-          data-testid="case-card-menu-btn"
-          type="button"
-          aria-label={`Actions for ${caseData.name}`}
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 p-1 rounded-md hover:bg-elevated focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent transition-[opacity,background-color]"
-          onClick={(e) => {
-            e.stopPropagation()
-            setMenuOpen(!menuOpen)
-            setDeletingId(null)
-          }}
-        >
-          <MoreVertical className="h-4 w-4 text-text-muted" />
-        </button>
-
-        {menuOpen && (
-          <div
-            ref={popoverRef}
-            role="menu"
-            aria-label={`Actions for ${caseData.name}`}
-            onKeyDown={handleMenuKey}
-            className="absolute right-0 top-8 z-50 w-32 rounded-lg bg-surface border border-border-strong shadow-xl py-1"
-          >
-            {deletingId === caseData.id ? (
-              <div className="px-2 py-1.5">
-                <p className="text-[11px] text-danger-fg font-bold mb-2">Delete?</p>
-                <div className="flex gap-1.5">
-                  <button
-                    role="menuitem"
-                    tabIndex={-1}
-                    data-testid="case-card-delete-confirm-btn"
-                    className="flex-1 text-[10px] font-bold px-2 py-1 rounded bg-danger-surface text-danger-fg border border-danger-line hover:bg-danger-line"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onDelete(caseData.id)
-                      setMenuOpen(false)
-                      setDeletingId(null)
-                    }}
-                  >
-                    Confirm
-                  </button>
-                  <button
-                    role="menuitem"
-                    tabIndex={-1}
-                    className="flex-1 text-[10px] font-bold px-2 py-1 rounded bg-elevated text-text-muted hover:bg-elevated"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setDeletingId(null)
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <button
-                  role="menuitem"
-                  tabIndex={-1}
-                  data-testid="case-card-rename-btn"
-                  className="w-full text-left px-3 py-1.5 text-[11px] text-text-secondary hover:bg-elevated hover:text-text-primary"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setEditingName(caseData.name)
-                    setMenuOpen(false)
-                  }}
-                >
-                  Rename
-                </button>
-                <button
-                  role="menuitem"
-                  tabIndex={-1}
-                  data-testid="case-card-delete-btn"
-                  className="w-full text-left px-3 py-1.5 text-[11px] text-danger-fg hover:bg-elevated"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setDeletingId(caseData.id)
-                  }}
-                >
-                  Delete
-                </button>
-              </>
-            )}
-          </div>
-        )}
-      </div>
+      <CaseMenu
+        caseData={caseData}
+        className="absolute right-2 top-2"
+        onRenameStart={() => setEditingName(caseData.name)}
+        onDelete={onDelete}
+      />
     </Card>
   )
 })

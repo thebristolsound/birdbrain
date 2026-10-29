@@ -61,7 +61,7 @@ ${lazyPanel('main', 'main-end', 'main-box', '2000px', 1)}</script></body></html>
 
 async function queueUrl(page: Page, caseName: string, url: string): Promise<string> {
   await page.evaluate(() => {
-    window.location.hash = '/cases/new'
+    window.location.hash = '/cases/new?blank=true'
   })
   await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
   await page.fill('[data-testid="case-name-input"]', caseName)
@@ -138,7 +138,7 @@ test.describe('Recapture (background capture)', () => {
 
     // Create a case (same flow as mhtml-capture.spec.ts)
     await page.evaluate(() => {
-      window.location.hash = '/cases/new'
+      window.location.hash = '/cases/new?blank=true'
     })
     await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'Recapture E2E')

@@ -372,6 +372,13 @@ describe('trimTrailingBackground', () => {
     expect(await heightOf(out)).toBe(999)
   })
 
+  it('trims a page whose only content is its first row', async () => {
+    const png = await pageWithTrailingBackground(400, 1000, 1, WHITE, RED)
+    const { png: out, trimmed } = await trimTrailingBackground(png)
+    expect(trimmed).toBe(true)
+    expect(await heightOf(out)).toBe(9)
+  })
+
   it('leaves an all-background (blank) capture untouched', async () => {
     const png = await sharp({
       create: { width: 400, height: 2000, channels: 3, background: WHITE }
@@ -575,6 +582,16 @@ describe('scrollToLoadLazyContent', () => {
     expect(scripts.at(-1)).toContain('const prior = ["hidden",""]')
   })
 
+  it('records an end height of 0 when the page reports 0 for its height', async () => {
+    const { wc } = scrollingContents({
+      step: (call) => (call === 0 ? { y: 0, height: 0, viewportHeight: 900 } : null)
+    })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record).toMatchObject({ outcome: 'nothing-to-scroll', endHeight: 0 })
+  })
+
   it.each([
     ['a fraction', 1500.5],
     ['a negative number', -1],
@@ -583,6 +600,23 @@ describe('scrollToLoadLazyContent', () => {
     const { wc } = scrollingContents({
       step: (call) =>
         call === 0 ? ({ y: 0, height, viewportHeight: 900 } as unknown as StepState) : null
+    })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record).toEqual({
+      requested: true,
+      ran: true,
+      outcome: 'nothing-to-scroll',
+      scrollLockLifted: false
+    })
+  })
+
+  it('records no end height when the last height read is not recordable', async () => {
+    const heights = [3000, 1500.5]
+    const { wc } = scrollingContents({
+      step: (call) =>
+        call < heights.length ? { y: 0, height: heights[call], viewportHeight: 900 } : null
     })
 
     const record = await scrollUnderFakeTime(wc, 10_000)
@@ -673,6 +707,22 @@ describe('scrollToLoadLazyContent', () => {
     expect(record).toMatchObject({ outcome: 'time-budget', endHeight: 9000 })
   })
 
+  it.each([
+    ['falls at every step', (call: number) => 20_000 - call * 100],
+    ['moves down and up at every step', (call: number) => (call % 2 === 0 ? 3000 : 2900)]
+  ])('runs to the deadline at the bottom of a page whose height %s', async (_name, heightAt) => {
+    const { wc } = scrollingContents({
+      step: (call) => {
+        const height = heightAt(call)
+        return { y: height - 900, height, viewportHeight: 900 }
+      }
+    })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record).toMatchObject({ outcome: 'time-budget' })
+  })
+
   it('restarts the stall count when a step moves on to a second pane', async () => {
     // Pane A (6000px) at its end for two steps, then pane B (3000px) for two
     // steps that each count as a stall on their own pane, then A again: no
@@ -693,15 +743,19 @@ describe('scrollToLoadLazyContent', () => {
 })
 
 // A scrollable box with the browser's clamping: scrollTop stays within
-// [0, scrollHeight - clientHeight].
+// [0, scrollHeight - clientHeight]. With overflow: hidden it does not move,
+// which models a document that cannot move from script, as in a Chromium page
+// with no doctype. A standards-mode document with overflow: hidden still moves.
 class FakeScroller {
   scrollTop = 0
+  style = { overflow: '' }
   constructor(
     readonly name: string,
     public scrollHeight: number,
     readonly clientHeight: number
   ) {}
   scrollTo({ top }: { top: number }) {
+    if (this.style.overflow === 'hidden') return
     this.scrollTop = Math.max(0, Math.min(top, this.scrollHeight - this.clientHeight))
   }
 }
@@ -797,6 +851,72 @@ describe('the Scroll-to-load step script', () => {
     const short = new FakeScroller('short', 900, 900)
 
     expect(stepRunner(doc, [short])().state).toBeNull()
+  })
+})
+
+// A WebContents that runs every script of the phase, the unlock, the steps and
+// the reset, against a document root with no inner boxes, in a 900px-tall window.
+function pageContents(doc: FakeScroller, body: { style: { overflow: string } }): WebContents {
+  const context = {
+    document: { scrollingElement: doc, documentElement: doc, body, querySelectorAll: () => [] },
+    window: { innerHeight: 900, scrollTo: () => {} }
+  }
+  const wc = {
+    async executeJavaScript(script: string) {
+      return runInNewContext(script, context)
+    }
+  }
+  return wc as unknown as WebContents
+}
+
+// Whether the phase lifts a scroll lock, decided by the page's own scripts
+// rather than a canned unlock result.
+describe('the Scroll-to-load scroll lock', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('lifts no lock on a page that starts at its end', async () => {
+    // A page loaded at a fragment near its bottom.
+    const doc = new FakeScroller('document', 5000, 900)
+    doc.scrollTop = 4100
+    const body = { style: { overflow: '' } }
+
+    const record = await scrollUnderFakeTime(pageContents(doc, body), 60_000)
+
+    expect(record).toEqual({
+      requested: true,
+      ran: true,
+      outcome: 'stopped-growing',
+      endHeight: 5000,
+      scrollLockLifted: false
+    })
+    expect([doc.style.overflow, body.style.overflow]).toEqual(['', ''])
+  })
+
+  it.each([
+    ['at its top', 0],
+    ['after it scrolled itself to its end', 4100]
+  ])('lifts and restores the lock of a page locked %s', async (_name, startTop) => {
+    const doc = new FakeScroller('document', 5000, 900)
+    doc.scrollTop = startTop
+    doc.style.overflow = 'hidden'
+    const body = { style: { overflow: 'hidden' } }
+
+    const record = await scrollUnderFakeTime(pageContents(doc, body), 60_000)
+
+    expect(record).toEqual({
+      requested: true,
+      ran: true,
+      outcome: 'stopped-growing',
+      endHeight: 5000,
+      scrollLockLifted: true
+    })
+    expect([doc.style.overflow, body.style.overflow]).toEqual(['hidden', 'hidden'])
   })
 })
 
@@ -901,6 +1021,23 @@ describe('captureFullPageScreenshot', () => {
 
   it('fails the render on an image that is not a PNG', async () => {
     const { wc } = screenshotContents({ width: 10, height: 10 }, Buffer.from('not a png at all'))
+
+    await expect(captureFullPageScreenshot(wc)).rejects.toThrow('The screenshot is not a PNG')
+  })
+
+  // Each check on its own: the rest of the image is a real PNG's.
+  it.each([
+    ['is cut off before the end of its header', (png: Buffer) => png.subarray(0, 23)],
+    [
+      'has a wrong signature byte',
+      (png: Buffer) => Buffer.concat([Buffer.from([0]), png.subarray(1)])
+    ],
+    [
+      'does not start with an IHDR chunk',
+      (png: Buffer) => Buffer.concat([png.subarray(0, 12), Buffer.from('IDAT'), png.subarray(16)])
+    ]
+  ])('fails the render on an image that %s', async (_name, damage) => {
+    const { wc } = screenshotContents({ width: 16, height: 8 }, damage(await solid(16, 8)))
 
     await expect(captureFullPageScreenshot(wc)).rejects.toThrow('The screenshot is not a PNG')
   })
@@ -1062,7 +1199,8 @@ describe('renderPageInHiddenWindow', () => {
     ['will-redirect', 'http://127.0.0.1:8080/admin', 'Redirects to a loopback address'],
     ['will-redirect', 'http://192.168.1.1/', 'Redirects to a private address'],
     ['will-navigate', 'http://10.0.0.5/', 'Redirects to a private address'],
-    ['will-redirect', 'http://localhost/', 'Redirects to this computer']
+    ['will-redirect', 'http://localhost/', 'Redirects to this computer'],
+    ['will-redirect', 'http://intranet/', 'Redirects to a private network']
   ])(
     'refuses a %s hop to %s before following it',
     async (event, url, reason) => {

@@ -6,6 +6,7 @@ import type { ReactNode } from 'react'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { stubMatchMedia } from './matchMediaStub'
 import { useAppStore } from '@renderer/stores/appStore'
+import { members, sync } from './sharingFixtures'
 
 const routerState = vi.hoisted(() => ({ pathname: '/' }))
 const navigate = vi.hoisted(() => vi.fn())
@@ -129,6 +130,40 @@ describe('the left group', () => {
     renderAt('/cases/case1/overview')
     fireEvent.click(screen.getByTestId('topbar-case-name'))
     expect(useAppStore.getState().commandPaletteOpen).toBe(true)
+  })
+})
+
+// This installation's Member Code leads the Case name on a shared Case
+// (docs/design-handoff/2026-10-28-share-a-case/, frame C).
+describe('the breadcrumb chip', () => {
+  function bridgeWithRoster(roster: ReturnType<typeof members>) {
+    fakeBridge({
+      cases: { get: getCase },
+      sharing: {
+        getMembers: vi.fn(async () => roster),
+        getSyncState: vi.fn(async () => sync()),
+        isAvailable: vi.fn(async () => true)
+      }
+    })
+  }
+
+  it('leads the case name with this installation’s code and names it in the tooltip', async () => {
+    bridgeWithRoster(members())
+    renderAt('/cases/case1/overview')
+    const chip = await screen.findByTestId('topbar-member-code')
+    expect(chip.textContent).toBe('AR')
+    expect(chip.dataset.hue).toBe('accent')
+    const switcher = screen.getByTestId('topbar-case-name')
+    expect(switcher.contains(chip)).toBe(true)
+    expect(switcher.title).toMatch(/^Switch case \(.+\) · You are AR in this Case$/)
+  })
+
+  it('shows no chip and the plain tooltip on a Case nobody has shared', async () => {
+    bridgeWithRoster(members({ members: [], invites: [], pendingJoins: [] }))
+    renderAt('/cases/case1/overview')
+    await waitFor(() => expect(screen.getByTestId('share-pill').dataset.state).toBe('share'))
+    expect(screen.queryByTestId('topbar-member-code')).toBeNull()
+    expect(screen.getByTestId('topbar-case-name').title).toMatch(/^Switch case \(.+\)$/)
   })
 })
 

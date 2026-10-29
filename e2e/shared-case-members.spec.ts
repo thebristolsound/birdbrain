@@ -1,6 +1,6 @@
 import { mkdir } from 'node:fs/promises'
 import { test, expect } from './fixtures/electronApp'
-import { SHARED_CASE_NAME } from '../scripts/dev-seed/constants'
+import { ORDINARY_CASE_NAME, SHARED_CASE_NAME } from '../scripts/dev-seed/constants'
 import type { BirdbrainAPI } from '@shared/birdbrainApi'
 import { mhtmlPage, seedCapture, serverToken } from './fixtures/seed'
 
@@ -62,5 +62,49 @@ test.describe('Shared Case members screens', () => {
       await expect(page.getByTestId('join-case-card')).toBeVisible()
       await page.screenshot({ path: `${SCREENS}/join-${theme}.png`, fullPage: true })
     }
+  })
+
+  test('reaches Members and Join through their entry points', async ({ page }) => {
+    const caseId = await page.evaluate(async (name) => {
+      const { birdbrain } = window as unknown as { birdbrain: BirdbrainAPI }
+      const shared = (await birdbrain.cases.list()).find((entry) => entry.name === name)
+      if (!shared) throw new Error('Shared Case seed missing')
+      return shared.id
+    }, SHARED_CASE_NAME)
+
+    await page.evaluate(() => {
+      window.location.hash = '/'
+    })
+    // A Case nobody shared offers sharing from the same menu, and says so on its card
+    // (docs/design-handoff/2026-10-28-share-a-case/, frame E).
+    const ordinary = page.getByTestId('case-card').filter({ hasText: ORDINARY_CASE_NAME })
+    await expect(ordinary.getByTestId('case-role-line')).toHaveText('On this machine only')
+    await ordinary.hover()
+    await ordinary.getByTestId('case-card-menu-btn').click()
+    await expect(ordinary.getByRole('menuitem', { name: 'Share this Case…' })).toBeVisible()
+    await page.keyboard.press('Escape')
+
+    const card = page.getByTestId('case-card').filter({ hasText: SHARED_CASE_NAME })
+    await expect(card.getByTestId('case-shared-badge')).toHaveText(/^Shared · \d+$/)
+    await card.hover()
+    await card.getByTestId('case-card-menu-btn').click()
+    await card.getByRole('menuitem', { name: 'Members' }).click()
+    await expect(page.getByTestId('identity-card')).toBeVisible()
+
+    await page.evaluate((id) => {
+      window.location.hash = `/cases/${id}/captures`
+    }, caseId)
+    await page.getByTestId('share-pill').click()
+    await expect(page.getByTestId('identity-card')).toBeVisible()
+    expect(await page.evaluate(() => window.location.hash)).toBe(`#/cases/${caseId}/settings`)
+
+    await page.getByTestId('topbar-case-name').click()
+    await page.getByRole('button', { name: 'Join a shared Case…' }).click()
+    await expect(page.getByTestId('join-case-card')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Back' }).click()
+    await expect(page.getByTestId('case-start-step')).toBeVisible()
+    await page.getByTestId('case-start-join').click()
+    await expect(page.getByTestId('join-case-card')).toBeVisible()
   })
 })

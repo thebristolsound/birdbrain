@@ -286,3 +286,23 @@ export interface WrittenTransactionRecord {
   /** The lower-case names of the headers whose values the record holds replaced, sorted. */
   replacedHeaders: string[]
 }
+
+export interface WriterInput {
+  /** Written in this order. */
+  exchanges: readonly Exchange[]
+  captureId: string
+  birdbrainVersion: string
+  browserVersion: string
+  userAgent: string
+  /** The Egress the render went through. Only `direct` lets a record carry a remote address. */
+  egress: 'direct' | EgressKind
+  /** The `warcinfo` record's `WARC-Date`, as ISO 8601. */
+  date: string
+}
+
+export interface WrittenTransactionRecord {
+  /** The `.warc.gz` file: one gzip member per record. */
+  bytes: Uint8Array
+  /** The lower-case names of the headers whose values the record holds replaced, sorted. */
+  replacedHeaders: string[]
+}

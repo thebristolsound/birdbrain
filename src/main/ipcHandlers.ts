@@ -6,6 +6,7 @@ import { MENTION_TARGET_TYPES } from '@shared/noteDoc'
 import { validateIgnorePattern } from '@shared/urlPatterns'
 import { regexPatternError } from '@shared/selectorPattern'
 import { captureLinkBlockReason } from '@shared/localAddress'
+import { confirmedBatchRefusal, WAYBACK_LINK_BATCH_CAP } from '@shared/waybackLinkBatch'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
@@ -24,6 +25,7 @@ import type {
   UpdateNoteParams,
   NoteBacklinksParams,
   LookupWaybackLinkParams,
+  LookupWaybackLinksParams,
   PinWaybackSnapshotParams,
   BulkCreateSelectorsParams,
   DbTableRowsParams,
@@ -88,8 +90,12 @@ import {
 import { deleteDemoCase } from '@main/services/demoCase'
 import { getExtensionPath, extensionPathExists } from '@main/services/extensionPath'
 import { lookupSnapshots, isPersistableSnapshot } from '@main/services/waybackMachine'
-import { lookupLinkSnapshots } from '@main/services/waybackLinkCheck'
-import { egressFetch } from '@main/services/egress'
+import {
+  egressRouteMatches,
+  lookupLinkSnapshots,
+  runLinkBatch
+} from '@main/services/waybackLinkCheck'
+import { currentEgress, egressFetch } from '@main/services/egress'
 import { buildCsv } from '@main/services/csvEscape'
 import { getInstallationId } from '@main/services/installationId'
 import { getCaptureServerPort } from '@main/services/captureServer'
@@ -887,6 +893,91 @@ export function registerIpcHandlers(deps: {
         'WAYBACK_LOOKUP_FAILED'
       )
     }
+  })
+
+  // Every listed link of a stored page (#1738), one batch at a time, so archive.org never
+  // sees two batches' requests interleaved. Main takes the list the confirmation showed
+  // and sends it whole or not at all (`confirmedBatchRefusal`); the Egress must still be
+  // the route the Operator confirmed, and the window that asked must still be there.
+  let linkBatch: { captureId: string; controller: AbortController } | null = null
+  handle(IPC_CHANNELS.WAYBACK_LOOKUP_LINKS, async (event, params: LookupWaybackLinksParams) => {
+    const p = params as Partial<LookupWaybackLinksParams> | null | undefined
+    if (
+      !p ||
+      typeof p.captureId !== 'string' ||
+      !Array.isArray(p.urls) ||
+      typeof p.egress !== 'object' ||
+      p.egress === null
+    ) {
+      throw new IpcFailure('Invalid Wayback batch payload', 'INVALID_WAYBACK_LINK_PAYLOAD')
+    }
+    // Bounded before any entry is read.
+    if (p.urls.length > WAYBACK_LINK_BATCH_CAP) {
+      throw new IpcFailure(
+        `A Wayback batch sends at most ${WAYBACK_LINK_BATCH_CAP} addresses`,
+        'WAYBACK_BATCH_TOO_LARGE'
+      )
+    }
+    if (!p.urls.every((url) => typeof url === 'string')) {
+      throw new IpcFailure('Invalid Wayback batch payload', 'INVALID_WAYBACK_LINK_PAYLOAD')
+    }
+    const { captureId, urls, egress } = p as LookupWaybackLinksParams
+    const refused = confirmedBatchRefusal(urls)
+    if (refused) throw new IpcFailure(refused, 'WAYBACK_LINK_REFUSED')
+    const capture = captureRepo.getCapture(captureId)
+    if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
+    if (linkBatch) {
+      throw new IpcFailure('A Wayback batch is already running', 'WAYBACK_BATCH_RUNNING')
+    }
+    const routeHolds = () => egressRouteMatches(currentEgress(), egress)
+    if (!routeHolds()) {
+      throw new IpcFailure(
+        'The Egress setting is not the route you confirmed, so nothing was sent',
+        'WAYBACK_EGRESS_CHANGED'
+      )
+    }
+    const controller = new AbortController()
+    linkBatch = { captureId, controller }
+    // The Cancel control lives in the window that asked. When that window closes, crashes
+    // or loads a new document, nothing is left on screen to stop the batch, so it stops.
+    const { sender } = event
+    const stop = () => controller.abort()
+    const stopOnNewDocument = ({
+      isMainFrame,
+      isSameDocument
+    }: {
+      isMainFrame: boolean
+      isSameDocument: boolean
+    }) => {
+      if (isMainFrame && !isSameDocument) controller.abort()
+    }
+    sender.on('destroyed', stop)
+    sender.on('render-process-gone', stop)
+    sender.on('did-start-navigation', stopOnNewDocument)
+    try {
+      return await runLinkBatch({
+        urls,
+        pageCapturedAt: capture.timestamp,
+        fetchImpl: egressFetch,
+        signal: controller.signal,
+        routeHolds,
+        onUpdate: (update) => {
+          if (sender.isDestroyed()) return
+          sendEvent(sender, IPC_CHANNELS.WAYBACK_LINK_PROGRESS, { captureId, ...update })
+        }
+      })
+    } finally {
+      sender.removeListener('destroyed', stop)
+      sender.removeListener('render-process-gone', stop)
+      sender.removeListener('did-start-navigation', stopOnNewDocument)
+      linkBatch = null
+    }
+  })
+
+  handle(IPC_CHANNELS.WAYBACK_CANCEL_LOOKUP_LINKS, (_, captureId: string) => {
+    if (linkBatch?.captureId !== captureId) return false
+    linkBatch.controller.abort()
+    return true
   })
 
   handle(IPC_CHANNELS.WAYBACK_LIST, (_, captureId: string) =>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
 import type { Case } from '@shared/types'
 import { cn } from '@renderer/lib/utils'
 import { useTimeTick } from '@renderer/hooks/useTimeTick'
@@ -8,6 +9,7 @@ import { getCaseTypeStyle } from '@renderer/components/dashboard/caseTypeStyle'
 import { CaseMenu } from '@renderer/components/dashboard/CaseMenu'
 import { timeAgo } from '@renderer/components/dashboard/timeAgo'
 import { CaseRoleLine } from '@renderer/components/sharing/CaseRoleLine'
+import { COPY } from '@renderer/components/sharing/memberModel'
 
 // The grid shows this many Cases as cards; the rest are listed here.
 export const RECENT_CASE_COUNT = 3
@@ -81,6 +83,7 @@ function OlderCaseRow({
   onRename,
   onDelete
 }: OlderCaseRowProps) {
+  const navigate = useNavigate()
   const shared = Boolean(caseData.sharedAt)
   const { data: members } = useQuery({ ...membersQueryOptions(caseData.id), enabled: shared })
   const [editingName, setEditingName] = useState<string | null>(null)
@@ -134,7 +137,23 @@ function OlderCaseRow({
         )}
       </div>
       <span className="tabular-nums text-text-muted">{captureCount}</span>
-      <CaseRoleLine shared={shared} members={members} nowMs={nowMs} variant="row" />
+      {shared ? (
+        <CaseRoleLine shared members={members} nowMs={nowMs} />
+      ) : (
+        // A local Case's Sharing cell offers sharing, so it opens Members as the
+        // menu item does, not the Case the row opens.
+        <button
+          type="button"
+          data-testid="older-case-share"
+          className="min-w-0 justify-self-start truncate text-[11px] text-text-muted hover:text-text-primary hover:underline"
+          onClick={(e) => {
+            e.stopPropagation()
+            navigate({ to: '/cases/$caseId/settings', params: { caseId: caseData.id } })
+          }}
+        >
+          {COPY.shareThisCase}
+        </button>
+      )}
       <CaseMenu
         caseData={caseData}
         alwaysVisible

@@ -59,12 +59,11 @@ function install({ settings, cases = [LOCAL_CASE], available = true }: Install =
   })
 }
 
-/** A stand-in for the pill, with a rect the mark can measure. */
-function anchor() {
+/** A stand-in for the pill, with a rect the mark can measure; move `box` to move it. */
+function anchor(box = { top: 10, left: 800, width: 70, height: 28 }) {
   const el = document.createElement('button')
   el.setAttribute('data-tour', 'share')
   el.setAttribute('data-testid', 'anchor-share')
-  const box = { top: 10, left: 800, width: 70, height: 28 }
   el.getBoundingClientRect = () =>
     ({
       ...box,
@@ -110,6 +109,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  window.innerWidth = 1024
+  window.innerHeight = 768
   document.querySelectorAll('[data-tour="share"]').forEach((el) => el.remove())
   useAppStore.setState({ shareMarkOpen: false })
 })
@@ -247,6 +248,80 @@ describe('ShareCoachMark', () => {
     const { client } = renderMark()
     await settled(client)
     expect(screen.queryByTestId('share-mark')).toBeNull()
+  })
+
+  it('finds the pill when it mounts after the mark does', async () => {
+    install()
+    const { client } = renderMark()
+    await settled(client)
+    expect(screen.queryByTestId('share-mark')).toBeNull()
+    anchor()
+    expect(await screen.findByTestId('share-mark')).toBeTruthy()
+  })
+
+  it('stops looking once the pill has been missing for over a second', async () => {
+    install()
+    const { client } = renderMark()
+    await settled(client)
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    anchor()
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    expect(screen.queryByTestId('share-mark')).toBeNull()
+  })
+
+  it('waits for a pill scrolled out of view', async () => {
+    const box = { top: -200, left: 800, width: 70, height: 28 }
+    anchor(box)
+    install()
+    const { client } = renderMark()
+    await settled(client)
+    expect(screen.queryByTestId('share-mark')).toBeNull()
+    box.top = 10
+    expect(await screen.findByTestId('share-mark')).toBeTruthy()
+  })
+
+  it('follows the pill and the window when the window is resized', async () => {
+    const box = { top: 10, left: 800, width: 70, height: 28 }
+    anchor(box)
+    install()
+    renderMark()
+    const mark = await screen.findByTestId('share-mark')
+    const leftAt = () => Number.parseFloat(mark.style.left)
+    const wide = leftAt()
+    const top = mark.style.top
+
+    // A pill scrolled out of view keeps the card where it last was.
+    box.top = -200
+    act(() => {
+      window.dispatchEvent(new Event('resize'))
+    })
+    expect(mark.style.top).toBe(top)
+    box.top = 10
+
+    window.innerWidth = 700
+    act(() => {
+      window.dispatchEvent(new Event('resize'))
+    })
+    // The pill is now off screen, so only the narrower window moves the card.
+    expect(leftAt()).toBeLessThan(wide)
+    const narrow = leftAt()
+
+    box.left = 100
+    act(() => {
+      window.dispatchEvent(new Event('resize'))
+    })
+    expect(leftAt()).toBe(92)
+    expect(leftAt()).toBeLessThan(narrow)
+  })
+
+  it('takes the ring off the pill when it unmounts', async () => {
+    anchor()
+    install()
+    const { unmount } = renderMark()
+    await screen.findByTestId('share-mark')
+    expect(useAppStore.getState().shareMarkOpen).toBe(true)
+    unmount()
+    expect(useAppStore.getState().shareMarkOpen).toBe(false)
   })
 
   it('renders nothing while the pill has not mounted', async () => {

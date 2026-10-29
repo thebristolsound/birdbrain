@@ -44,7 +44,7 @@ export function SharePill({
       data-chrome={sync?.chrome}
       data-tour="share"
       className={cn(
-        'group relative inline-flex h-7 min-w-7 items-center justify-center gap-1.5 rounded-full border px-[7px] text-[11px] font-medium lg:px-2.5',
+        'group relative inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border px-[7px] text-[11px] font-medium lg:px-2.5',
         sync
           ? sync.chrome === 'error'
             ? 'border-danger-fg/35 bg-danger-fg/8 text-danger-fg'

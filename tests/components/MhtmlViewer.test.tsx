@@ -303,6 +303,63 @@ describe('MhtmlViewer', () => {
     expect(listeners).toHaveLength(0)
   })
 
+  // A source with no manifest entry is refused before the job's first await, so the refusal
+  // can reach the viewer before the queue's reply does.
+  it('raises no queued notice after a refusal that beat the reply, and stops listening on an error', async () => {
+    const listeners: Array<(event: CaptureEvent) => void> = []
+    const onCaptureActivity = vi.fn((callback: (event: CaptureEvent) => void) => {
+      listeners.push(callback)
+      return () => {
+        listeners.splice(listeners.indexOf(callback), 1)
+      }
+    })
+    let reply: (value: { accepted: number; rejected: [] }) => void = () => {}
+    const enqueue = vi
+      .fn()
+      .mockReturnValueOnce(new Promise((resolve) => (reply = resolve)))
+      .mockRejectedValueOnce(new Error('queue unavailable'))
+    fakeBridge({
+      captures: {
+        getMhtmlUrl: vi.fn().mockResolvedValue(FILE_URL),
+        list: vi.fn().mockResolvedValue([])
+      },
+      recapture: { enqueue },
+      onCaptureActivity
+    })
+    const success = vi.spyOn(notify, 'success')
+    const warn = vi.spyOn(notify, 'warn')
+    renderViewer()
+    const guest = await screen.findByTestId('mhtml-viewer')
+    const url = 'https://a.example/one'
+    const captureLink = async () => {
+      guestContextMenu(guest, { linkURL: url, linkText: 'one' })
+      fireEvent.click(await screen.findByTestId('context-menu-item-link-capture'))
+    }
+
+    await captureLink()
+    await waitFor(() => expect(enqueue).toHaveBeenCalledTimes(1))
+    act(() => {
+      for (const listener of [...listeners]) {
+        listener({
+          type: 'skipped',
+          source: 'recapture',
+          url,
+          timestamp: '',
+          skipReason: 'Link source has no manifest entry',
+          linkedFrom: { captureId: 'cap1', linkHref: url }
+        })
+      }
+    })
+    await act(async () => reply({ accepted: 1, rejected: [] }))
+    expect(warn).toHaveBeenCalledWith('Link not captured: Link source has no manifest entry')
+    expect(success).not.toHaveBeenCalled()
+
+    await captureLink()
+    await waitFor(() => expect(enqueue).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(listeners).toHaveLength(0))
+    expect(warn).toHaveBeenCalledTimes(1)
+  })
+
   // #1737, plan S6: the Page tab has no cell, so its answer is a toast.
   describe('Look up in Wayback', () => {
     const SNAPSHOT_URL = 'https://web.archive.org/web/20260729120000/https://a.example/one'

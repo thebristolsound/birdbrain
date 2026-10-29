@@ -69,31 +69,33 @@ export function useLinkMenuTarget(
           captureLink: () => {
             // Main checks the source's entry and bytes when the job runs, so a refusal then
             // arrives as an activity event after the queued notice (ADR-0040). Listening
-            // starts before the request, so a refusal that beats the reply is not missed.
+            // starts before the request, so a refusal that beats the reply is not missed, and
+            // the queued notice is then not raised after it.
             // The job is matched by its source and address, not the event's `url`, which a
             // redirect into an excluded address replaces with the final address.
-            let warned = false
+            let settled = false
             const stop = window.birdbrain.onCaptureActivity((event) => {
               const { type, source, linkedFrom, skipReason, error } = event
               if (source !== 'recapture' || type === 'received') return
               if (linkedFrom?.captureId !== captureId || linkedFrom.linkHref !== linkUrl) return
               stop()
+              settled = true
               if (type === 'stored') return
-              warned = true
               notify.warn(`Link not captured: ${skipReason ?? error ?? 'refused'}`)
             })
             mutate(
               { urls: [linkUrl], linkedFrom: { captureId, linkHref: linkUrl } },
               {
                 onSuccess: ({ accepted, rejected }) => {
+                  if (accepted === 0) stop()
+                  if (settled) return
                   if (accepted > 0) {
                     notify.success('Link capture queued', {
                       description: `${linkUrl}. Its source is checked before the link renders.`
                     })
                     return
                   }
-                  stop()
-                  if (!warned) notify.warn(`Link not captured: ${rejected[0]?.reason ?? 'refused'}`)
+                  notify.warn(`Link not captured: ${rejected[0]?.reason ?? 'refused'}`)
                 },
                 onError: () => stop()
               }

@@ -300,8 +300,8 @@ export const COPY = {
   sharedBadge: 'Shared',
   shareMarkTitle: 'New: share a Case with teammates',
   shareMarkBody:
-    'Up to four other people who run Birdbrain, each with a full copy that stays in sync. You ' +
-    'approve every join.',
+    'Other people who run Birdbrain, each with a full copy that stays in sync. You approve ' +
+    'every join.',
   showMe: 'Show me',
   gotIt: 'Got it'
 } as const

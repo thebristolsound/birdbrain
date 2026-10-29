@@ -124,9 +124,11 @@ describe('ShareCoachMark', () => {
     const mark = await screen.findByTestId('share-mark')
     expect(screen.getByRole('dialog', { name: 'New: share a Case with teammates' })).toBeTruthy()
     expect(mark.textContent).toContain(
-      'Up to four other people who run Birdbrain, each with a full copy that stays in sync. ' +
+      'Other people who run Birdbrain, each with a full copy that stays in sync. ' +
         'You approve every join.'
     )
+    // Nothing in the app caps a Case's roster, so the card states no number.
+    expect(mark.textContent).not.toMatch(/up to four/i)
     expect(useAppStore.getState().shareMarkOpen).toBe(true)
     expect(mark.dataset.flipped).toBe('false')
   })

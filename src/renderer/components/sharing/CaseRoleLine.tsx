@@ -1,27 +1,19 @@
 import type { SharingMembers } from '@shared/types'
 import { cn } from '@renderer/lib/utils'
 import { MemberCodeChip } from '@renderer/components/sharing/MemberCodeChip'
-import { COPY, caseRoleLine } from '@renderer/components/sharing/memberModel'
+import { caseRoleLine } from '@renderer/components/sharing/memberModel'
 
 // What this installation is to a Case, in one line (docs/design-handoff/
 // 2026-10-28-share-a-case/, frame E): under a dashboard card's description,
-// and in the Sharing cell of the Older Cases list, where a local Case reads
-// as the action it offers instead.
+// and in the Sharing cell of the Older Cases list for a shared Case.
 interface CaseRoleLineProps {
   shared: boolean
   members: SharingMembers | undefined
   nowMs: number
-  variant?: 'card' | 'row'
   className?: string
 }
 
-export function CaseRoleLine({
-  shared,
-  members,
-  nowMs,
-  variant = 'card',
-  className
-}: CaseRoleLineProps) {
+export function CaseRoleLine({ shared, members, nowMs, className }: CaseRoleLineProps) {
   const line = caseRoleLine(shared, members, nowMs)
   if (line === null) return null
   const local = line.kind === 'local'
@@ -31,7 +23,7 @@ export function CaseRoleLine({
       data-kind={line.kind}
       className={cn(
         'flex min-w-0 items-center gap-1.5 text-[11px]',
-        local && variant === 'card' ? 'text-text-faint' : 'text-text-muted',
+        local ? 'text-text-faint' : 'text-text-muted',
         className
       )}
     >
@@ -41,9 +33,7 @@ export function CaseRoleLine({
       {(line.kind === 'owner' || line.kind === 'joined') && (
         <MemberCodeChip code={line.code} hue="accent" size={16} dot />
       )}
-      <span className="truncate">
-        {local && variant === 'row' ? COPY.shareThisCase : line.text}
-      </span>
+      <span className="truncate">{line.text}</span>
     </div>
   )
 }

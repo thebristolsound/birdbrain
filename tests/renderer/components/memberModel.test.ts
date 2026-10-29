@@ -59,7 +59,6 @@ import {
   shareActionLabel,
   sharePillModel,
   sharedBadge,
-  sharedByLine,
   sharedByOwnerLine,
   sharedWithTeammates,
   syncPillModel,
@@ -595,6 +594,8 @@ describe('sharePillModel', () => {
       sync: null
     })
     expect(read({ members: ownerOnly, syncState: noPeers })?.state).toBe('share')
+    // An Owner alone has no peer to wait on, so the pill does not wait for a sync state.
+    expect(read({ members: ownerOnly, syncState: undefined })?.state).toBe('share')
   })
 
   it('waits on the invite that expires last, and not on one already expired', () => {
@@ -611,6 +612,12 @@ describe('sharePillModel', () => {
       pulse: true,
       sync: null
     })
+    const latestFirst = [...invites].reverse()
+    const reversed = read({
+      members: members({ members: [AR], invites: latestFirst }),
+      syncState: noPeers
+    })
+    expect(reversed?.title).toBe('Invite expires tomorrow 09:12')
     const expired = [invite('a', '2026-09-19T14:04:00.000Z')]
     const pill = read({ members: members({ members: [AR], invites: expired }), syncState: noPeers })
     expect(pill?.state).toBe('share')
@@ -678,6 +685,13 @@ describe('caseRoleLine', () => {
       text: 'On this machine only'
     })
     expect(caseRoleLine(true, undefined, NOW)).toBeNull()
+  })
+
+  it('claims nothing for a shared Case whose roster lacks this installation or the Owner', () => {
+    expect(caseRoleLine(true, members({ members: [] }), NOW)).toBeNull()
+    expect(caseRoleLine(true, members({ installationId: 'inst-unknown' }), NOW)).toBeNull()
+    const ownerless = members().members.map((m) => ({ ...m, role: 'member' as const }))
+    expect(caseRoleLine(true, members({ members: ownerless }), NOW)).toBeNull()
   })
 
   it('tells the Owner they own the members, counting themselves', () => {
@@ -942,8 +956,6 @@ describe('copy', () => {
     )
     expect(memberAddCaption(32)).toBe('Manifest entry member-add #0032 written to your chain.')
     expect(joinWaitingTitle('A. Renner')).toBe('Waiting for A. Renner to approve')
-    expect(sharedByLine('A. Renner', 5)).toBe('Shared by A. Renner · 5 members')
-    expect(sharedByLine('A. Renner', 1)).toBe('Shared by A. Renner · 1 member')
     expect(capturedBy(null, 'AR')).toBe('Captured by you (AR)')
     expect(capturedBy('N. Kowalski', 'NK')).toBe('Captured by N. Kowalski (NK)')
     expect(revokeTitle('S. Idris')).toBe('Revoke S. Idris?')

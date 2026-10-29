@@ -69,7 +69,8 @@ describe('the Older Cases list', () => {
     expect(rows).toHaveLength(2)
     expect(within(rows[0]).getByText('Investigation 3')).toBeTruthy()
     expect(within(rows[0]).getByText('9')).toBeTruthy()
-    expect(within(rows[0]).getByTestId('case-role-line').textContent).toBe('Share this Case…')
+    expect(within(rows[0]).getByTestId('older-case-share').textContent).toBe('Share this Case…')
+    expect(within(rows[0]).queryByTestId('case-role-line')).toBeNull()
     expect(rows[0].querySelector('.bg-orange-500')).toBeTruthy()
     const sharedLine = await within(rows[1]).findByTestId('case-role-line')
     expect(sharedLine.textContent).toBe('ARYou own · 4 members')
@@ -98,6 +99,18 @@ describe('the Older Cases list', () => {
     expect(handlers.onSelectCase).toHaveBeenCalledTimes(1)
   })
 
+  it('opens Members, not the Case, from a local Case’s Sharing cell', () => {
+    renderList(CASES)
+    const [row, sharedRow] = screen.getAllByTestId('older-case-row')
+    fireEvent.click(within(row).getByTestId('older-case-share'))
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/cases/$caseId/settings',
+      params: { caseId: 'case-3' }
+    })
+    expect(handlers.onSelectCase).not.toHaveBeenCalled()
+    expect(within(sharedRow).queryByTestId('older-case-share')).toBeNull()
+  })
+
   it('reads Members on a shared Case', () => {
     renderList(CASES)
     const [, row] = screen.getAllByTestId('older-case-row')
@@ -116,6 +129,19 @@ describe('the Older Cases list', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(handlers.onRenameCase).toHaveBeenCalledWith('case-3', 'Renamed')
     expect(within(row).queryByTestId('case-rename-input')).toBeNull()
+  })
+
+  it('keeps the name when Escape cancels a rename', () => {
+    renderList(CASES)
+    const [row] = screen.getAllByTestId('older-case-row')
+    fireEvent.click(within(row).getByRole('button', { name: 'Actions for Investigation 3' }))
+    fireEvent.click(within(row).getByRole('menuitem', { name: 'Rename' }))
+    const input = within(row).getByTestId('case-rename-input')
+    fireEvent.change(input, { target: { value: 'Discarded' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(within(row).queryByTestId('case-rename-input')).toBeNull()
+    expect(within(row).getByText('Investigation 3')).toBeTruthy()
+    expect(handlers.onRenameCase).not.toHaveBeenCalled()
   })
 
   it('deletes behind the same confirmation as the card', () => {

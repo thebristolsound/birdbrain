@@ -22,7 +22,7 @@ vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 
 const openCase = vi.fn()
 
-function renderCard(data: Case = caseData) {
+function renderCard(data: Case = caseData, onDelete: (id: string) => void = vi.fn()) {
   fakeBridge({ sharing: { getMembers: vi.fn(async () => members()) } })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
@@ -34,7 +34,7 @@ function renderCard(data: Case = caseData) {
         captureCount={0}
         onClick={openCase}
         onRename={vi.fn()}
-        onDelete={vi.fn()}
+        onDelete={onDelete}
       />
     </QueryClientProvider>
   )
@@ -132,4 +132,27 @@ it('starts a rename on the card and closes the menu', () => {
   expect((screen.getByTestId('case-rename-input') as HTMLInputElement).value).toBe(
     'Investigation One'
   )
+})
+
+it('closes when a press lands outside it, and stays open for a press inside', () => {
+  renderCard()
+  fireEvent.click(screen.getByRole('button', { name: 'Actions for Investigation One' }))
+  fireEvent.mouseDown(screen.getByRole('menu'))
+  expect(screen.getByRole('menu')).toBeTruthy()
+  fireEvent.mouseDown(document.body)
+  expect(screen.queryByRole('menu')).toBeNull()
+})
+
+it('returns from the delete confirmation to the items on Cancel, deleting nothing', () => {
+  const onDelete = vi.fn()
+  renderCard(caseData, onDelete)
+  fireEvent.click(screen.getByRole('button', { name: 'Actions for Investigation One' }))
+  fireEvent.click(screen.getByTestId('case-card-delete-btn'))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Cancel' }))
+  expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+    'Rename',
+    'Share this Case…',
+    'Delete'
+  ])
+  expect(onDelete).not.toHaveBeenCalled()
 })

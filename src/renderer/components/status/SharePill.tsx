@@ -48,7 +48,7 @@ export function SharePill({
       data-tour="share"
       data-marked={marked ? 'true' : undefined}
       className={cn(
-        'group relative inline-flex h-7 min-w-7 items-center justify-center gap-1.5 rounded-full border px-[7px] text-[11px] font-medium lg:px-2.5',
+        'group relative inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border px-[7px] text-[11px] font-medium lg:px-2.5',
         marked && 'ring-[3px] ring-accent/30',
         sync
           ? sync.chrome === 'error'

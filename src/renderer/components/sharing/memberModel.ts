@@ -183,9 +183,6 @@ export function expiryPhrase(expiresAt: string, nowMs: number): string {
 // rest are constants.
 export const COPY = {
   navLabel: 'Case settings',
-  navFootnote:
-    'First slice ships Members only. General and Export keep their current homes; the tabs are ' +
-    'here so the screen reads as settings.',
   networkNoticeTitle: 'Teammates and the relay can see this computer’s network addresses',
   fingerprintLabel: 'Key fingerprint',
   fingerprintToggleTitle: 'Show full fingerprint',
@@ -431,10 +428,6 @@ export function joinWaitingTitle(ownerName: string): string {
   return `Waiting for ${ownerName} to approve`
 }
 
-export function sharedByLine(ownerName: string, count: number): string {
-  return `Shared by ${ownerName} · ${count} ${count === 1 ? 'member' : 'members'}`
-}
-
 export function capturedBy(name: string | null, code: string): string {
   return name === null ? `Captured by you (${code})` : `Captured by ${name} (${code})`
 }
@@ -522,8 +515,9 @@ export function caseMenuSharingLabel(shared: boolean): string {
 }
 
 // A Case nobody shared needs no roster. Null while a shared Case's roster has
-// not loaded. An Owner alone with an invite out is waiting on it; an Owner
-// with members owns them; a member reads who shared the Case.
+// not loaded, or when it lacks this installation or the Owner, since none of
+// the lines would be true. An Owner alone with an invite out is waiting on it;
+// an Owner with members owns them; a member reads who shared the Case.
 export function caseRoleLine(
   shared: boolean,
   members: SharingMembers | undefined,
@@ -533,7 +527,7 @@ export function caseRoleLine(
   if (members === undefined) return null
   const self = members.members.find((m) => m.installationId === members.installationId)
   const owner = members.members.find((m) => m.role === 'owner')
-  if (!self || !owner) return { kind: 'local', text: COPY.localOnly }
+  if (!self || !owner) return null
   if (!members.isOwner) {
     return { kind: 'joined', code: self.memberCode, text: sharedByOwnerLine(owner.operatorName) }
   }

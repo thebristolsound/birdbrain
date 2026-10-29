@@ -131,6 +131,19 @@ describe('the Older Cases list', () => {
     expect(within(row).queryByTestId('case-rename-input')).toBeNull()
   })
 
+  it('keeps the name when Escape cancels a rename', () => {
+    renderList(CASES)
+    const [row] = screen.getAllByTestId('older-case-row')
+    fireEvent.click(within(row).getByRole('button', { name: 'Actions for Investigation 3' }))
+    fireEvent.click(within(row).getByRole('menuitem', { name: 'Rename' }))
+    const input = within(row).getByTestId('case-rename-input')
+    fireEvent.change(input, { target: { value: 'Discarded' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(within(row).queryByTestId('case-rename-input')).toBeNull()
+    expect(within(row).getByText('Investigation 3')).toBeTruthy()
+    expect(handlers.onRenameCase).not.toHaveBeenCalled()
+  })
+
   it('deletes behind the same confirmation as the card', () => {
     renderList(CASES)
     const [row] = screen.getAllByTestId('older-case-row')

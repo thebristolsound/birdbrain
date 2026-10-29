@@ -181,9 +181,6 @@ export function expiryPhrase(expiresAt: string, nowMs: number): string {
 // rest are constants.
 export const COPY = {
   navLabel: 'Case settings',
-  navFootnote:
-    'First slice ships Members only. General and Export keep their current homes; the tabs are ' +
-    'here so the screen reads as settings.',
   networkNoticeTitle: 'Teammates and the relay can see this computer’s network addresses',
   fingerprintLabel: 'Key fingerprint',
   fingerprintToggleTitle: 'Show full fingerprint',

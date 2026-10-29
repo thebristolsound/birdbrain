@@ -680,6 +680,13 @@ describe('caseRoleLine', () => {
     expect(caseRoleLine(true, undefined, NOW)).toBeNull()
   })
 
+  it('claims nothing for a shared Case whose roster lacks this installation or the Owner', () => {
+    expect(caseRoleLine(true, members({ members: [] }), NOW)).toBeNull()
+    expect(caseRoleLine(true, members({ installationId: 'inst-unknown' }), NOW)).toBeNull()
+    const ownerless = members().members.map((m) => ({ ...m, role: 'member' as const }))
+    expect(caseRoleLine(true, members({ members: ownerless }), NOW)).toBeNull()
+  })
+
   it('tells the Owner they own the members, counting themselves', () => {
     expect(caseRoleLine(true, members(), NOW)).toEqual({
       kind: 'owner',

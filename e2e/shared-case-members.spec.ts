@@ -84,7 +84,7 @@ test.describe('Shared Case members screens', () => {
     await page.evaluate((id) => {
       window.location.hash = `/cases/${id}/captures`
     }, caseId)
-    await page.getByTestId('sync-pill').click()
+    await page.getByTestId('share-pill').click()
     await expect(page.getByTestId('identity-card')).toBeVisible()
     expect(await page.evaluate(() => window.location.hash)).toBe(`#/cases/${caseId}/settings`)
 

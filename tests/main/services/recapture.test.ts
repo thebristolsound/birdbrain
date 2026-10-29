@@ -31,7 +31,21 @@ import {
   type RenderPage
 } from '@main/services/recapture'
 import { RefusedAddressError } from '@main/services/localAddressPolicy'
+import { getExhibit } from '@main/services/db/exhibitRepo'
+import { resetSigningKey } from '@main/services/signingKey'
+import { resetSyncStateMemory } from '@main/services/sharing/syncState'
 import type { CaptureEvent, Capture } from '@shared/types'
+import {
+  activate,
+  addCapture,
+  appendOwnChainLine,
+  createPeer,
+  memberAddBody,
+  pull,
+  recordSource,
+  seedSharedCase,
+  type Peer
+} from '../../helpers/syncPeers'
 
 vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@main/services/tlsCertChain')>()
@@ -817,5 +831,80 @@ describe('Capture link jobs (ADR-0040)', () => {
       type: 'skipped',
       skipReason: 'Link source Content Hash is not lower-case SHA-256 hex'
     })
+  })
+})
+
+// A Shared Case member can link from a teammate's received Capture: its signed entry is on
+// the author's chain, not the receiver's, and the writer reads it from there (ADR-0040).
+describe("Capture link from a teammate's Capture (ADR-0040)", () => {
+  const CASE_ID = '0196f7a2-aaaa-bbbb-cccc-000000001995'
+  const LINK = 'http://example.com/alice/linked'
+  let root: string
+  let A: Peer
+  let B: Peer
+
+  beforeEach(async () => {
+    root = mkdtempSync(join(tmpdir(), 'birdbrain-link-teammate-'))
+    A = await createPeer(root, 'alice', 'Alice Owner', 'AL')
+    B = await createPeer(root, 'bob', 'Bob Member', 'BO')
+    for (const peer of [A, B]) {
+      await activate(peer)
+      seedSharedCase(CASE_ID, A, [B])
+    }
+    await activate(A)
+    appendOwnChainLine(CASE_ID, memberAddBody(CASE_ID, A, 'owner', A))
+    appendOwnChainLine(CASE_ID, memberAddBody(CASE_ID, B, 'member', A))
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    resetInstallationId()
+    resetSigningKey()
+    resetSyncStateMemory()
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it("signs the author's entry for the source, and the Capture verifies", async () => {
+    const source = await addCapture(CASE_ID, A, 1)
+    const recorded = recordSource(CASE_ID, A)
+    await activate(B)
+    const result = await pull(CASE_ID, recorded)
+    expect(result.errors).toEqual([])
+    expect(getExhibit(source.captureId)?.authorInstallationId).toBe(A.installationId)
+
+    const newCaptures: Capture[] = []
+    const events: CaptureEvent[] = []
+    const svc = createRecaptureService({
+      renderPage: fakeRender(),
+      captureLifecycle: createCaptureLifecycle({
+        selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle
+      }),
+      emitEvent: (e) => events.push(e),
+      emitNewCapture: (c) => newCaptures.push(c),
+      timeoutMs: 45_000
+    })
+    const linkedFrom = { captureId: source.captureId, linkHref: LINK }
+    expect(svc.enqueueLink({ urls: [LINK], caseId: CASE_ID, linkedFrom })).toEqual({
+      accepted: 1,
+      rejected: []
+    })
+    await svc.idle()
+
+    expect(events.filter(({ type }) => type === 'skipped')).toEqual([])
+    expect(newCaptures).toHaveLength(1)
+    const provenance = {
+      linkedFromCaptureId: source.captureId,
+      linkedFromContentHash: source.contentHash,
+      linkHref: LINK
+    }
+    const linked = getCapture(newCaptures[0].id)!
+    expect(linked).toMatchObject(provenance)
+    const entry = readFileSync(join(getStorageRoot(), CASE_ID, MANIFEST_FILENAME), 'utf-8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .find((e) => e.captureId === linked.id)
+    expect(entry).toMatchObject({ ...provenance, schemaVersion: 6 })
+    expect((await verifyCapture(linked.id)).status).toBe('verified')
   })
 })

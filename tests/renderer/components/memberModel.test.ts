@@ -594,6 +594,8 @@ describe('sharePillModel', () => {
       sync: null
     })
     expect(read({ members: ownerOnly, syncState: noPeers })?.state).toBe('share')
+    // An Owner alone has no peer to wait on, so the pill does not wait for a sync state.
+    expect(read({ members: ownerOnly, syncState: undefined })?.state).toBe('share')
   })
 
   it('waits on the invite that expires last, and not on one already expired', () => {
@@ -610,6 +612,12 @@ describe('sharePillModel', () => {
       pulse: true,
       sync: null
     })
+    const latestFirst = [...invites].reverse()
+    const reversed = read({
+      members: members({ members: [AR], invites: latestFirst }),
+      syncState: noPeers
+    })
+    expect(reversed?.title).toBe('Invite expires tomorrow 09:12')
     const expired = [invite('a', '2026-09-19T14:04:00.000Z')]
     const pill = read({ members: members({ members: [AR], invites: expired }), syncState: noPeers })
     expect(pill?.state).toBe('share')

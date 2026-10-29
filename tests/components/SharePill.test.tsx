@@ -62,7 +62,9 @@ describe('SharePill', () => {
         lastError: { kind: 'newer-version', at: '2026-01-01T00:00:00Z' }
       })
     })
-    expect((await screen.findByTestId('share-pill')).dataset.chrome).toBe('error')
+    const pill = await screen.findByTestId('share-pill')
+    expect(pill.className).toContain('text-danger-fg')
+    expect(pill.querySelector('.bg-danger-fg')).not.toBeNull()
     expect(screen.getByText('Sync paused · newer version')).toBeTruthy()
   })
 
@@ -73,6 +75,7 @@ describe('SharePill', () => {
     expect(pill.textContent).toBe('Share')
     expect(pill.title).toBe('Share this Case with teammates. Opens Members.')
     expect(pill.dataset.tour).toBe('share')
+    expect(pill.querySelector('.bg-warning-fg')).toBeNull()
     expect(getSyncState).not.toHaveBeenCalled()
     fireEvent.click(pill)
     expect(onOpenMembers).toHaveBeenCalledOnce()
@@ -88,7 +91,8 @@ describe('SharePill', () => {
     expect(pill.dataset.state).toBe('invite')
     expect(pill.textContent).toBe('Share · invite waiting')
     expect(pill.title).toMatch(/^Invite expires (today|tomorrow) \d\d:\d\d$/)
-    expect(pill.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0)
+    // One dot in the icon's corner for the folded form, one inline for the wide form.
+    expect(pill.querySelectorAll('.bg-warning-fg.animate-pulse')).toHaveLength(2)
   })
 
   it('counts the join requests waiting for approval, with a still dot', async () => {

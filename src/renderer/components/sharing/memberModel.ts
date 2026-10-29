@@ -425,10 +425,6 @@ export function joinWaitingTitle(ownerName: string): string {
   return `Waiting for ${ownerName} to approve`
 }
 
-export function sharedByLine(ownerName: string, count: number): string {
-  return `Shared by ${ownerName} · ${count} ${count === 1 ? 'member' : 'members'}`
-}
-
 export function capturedBy(name: string | null, code: string): string {
   return name === null ? `Captured by you (${code})` : `Captured by ${name} (${code})`
 }

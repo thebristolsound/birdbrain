@@ -59,7 +59,6 @@ import {
   shareActionLabel,
   sharePillModel,
   sharedBadge,
-  sharedByLine,
   sharedByOwnerLine,
   sharedWithTeammates,
   syncPillModel,
@@ -949,8 +948,6 @@ describe('copy', () => {
     )
     expect(memberAddCaption(32)).toBe('Manifest entry member-add #0032 written to your chain.')
     expect(joinWaitingTitle('A. Renner')).toBe('Waiting for A. Renner to approve')
-    expect(sharedByLine('A. Renner', 5)).toBe('Shared by A. Renner · 5 members')
-    expect(sharedByLine('A. Renner', 1)).toBe('Shared by A. Renner · 1 member')
     expect(capturedBy(null, 'AR')).toBe('Captured by you (AR)')
     expect(capturedBy('N. Kowalski', 'NK')).toBe('Captured by N. Kowalski (NK)')
     expect(revokeTitle('S. Idris')).toBe('Revoke S. Idris?')

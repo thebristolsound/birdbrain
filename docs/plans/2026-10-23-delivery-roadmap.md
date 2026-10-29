@@ -32,13 +32,21 @@ release tag.
 
 ## Done programmes
 
-- **Shared Cases**, done on 2026-10-27. The members screens became reachable in
-  [#1972](https://github.com/thebristolsound/birdbrain/pull/1972), after the two sync defects
-  #1951 and #1955 merged ([#1966](https://github.com/thebristolsound/birdbrain/pull/1966),
+- **Shared Cases**, done with the `v1.0.1-beta.24` release. The members screens became
+  reachable in [#1972](https://github.com/thebristolsound/birdbrain/pull/1972), after the two
+  sync defects #1951 and #1955 merged
+  ([#1966](https://github.com/thebristolsound/birdbrain/pull/1966),
   [#1967](https://github.com/thebristolsound/birdbrain/pull/1967)), and the docs were published
-  in [#1973](https://github.com/thebristolsound/birdbrain/pull/1973). The maintainer ran the
-  close-out sync between two networks, `v1.0.1-beta.24` carries it, and #1508 is closed. Each
-  plan the programme covered reads `**Status:** done` with the PR that finished it.
+  in [#1973](https://github.com/thebristolsound/birdbrain/pull/1973).
+  [#2007](https://github.com/thebristolsound/birdbrain/pull/2007) dropped the placeholder tabs
+  from Case settings, and [#2009](https://github.com/thebristolsound/birdbrain/pull/2009) to
+  [#2011](https://github.com/thebristolsound/birdbrain/pull/2011) gave every Case a Share pill
+  in the top bar and a palette row, the dashboard a role line, a Shared badge and an Older Cases
+  list, and the pill a one-time Share card. The maintainer ran the close-out sync between two
+  networks, `v1.0.1-beta.24` carries it, and #1508 is closed. Nine Shared Cases plans read
+  `**Status:** done` with the PR that finished each; the close-out handoff
+  (`2026-10-26-shared-cases-closeout-handoff.md`) keeps the sync steps, the release notes and
+  two open questions.
 
 ## Defect lane
 

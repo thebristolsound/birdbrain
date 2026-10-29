@@ -3,10 +3,11 @@
 **Status:** active
 
 The handoff file for the run that finishes the Shared Cases programme under the delivery
-roadmap (`docs/plans/2026-10-23-delivery-roadmap.md`, "Current programme: Shared Cases"). The
-roadmap defines Done: an Operator can reach Shared Cases in a packaged build, the docs are
-published, and the tracking issue (#1508) is closed. This file lands on `main` with the housekeeping slice, on `chore/1508-shared-cases-closeout`;
-its first commits were made on `drafts/2026-10-26-shared-cases-closeout-handoff`.
+roadmap (`docs/plans/2026-10-23-delivery-roadmap.md`, whose "Done programmes" section records
+it). The roadmap defines Done: an Operator can reach Shared Cases in a packaged build, the docs
+are published, and the tracking issue (#1508) is closed. This file lands on `main` with the
+housekeeping slice, on `chore/1508-shared-cases-closeout`; its first commits were made on
+`drafts/2026-10-26-shared-cases-closeout-handoff`.
 
 ## State read at the start (2026-10-25)
 
@@ -23,7 +24,8 @@ its first commits were made on `drafts/2026-10-26-shared-cases-closeout-handoff`
 | --- | --- | --- |
 | 1. Members UI entry points (#1514) | `feat/1514-members-entry-points` | merged as PR #1972 on 2026-10-27; #1514 closed |
 | 2. Docs (#1883) | `docs/1883-shared-cases-docs` | merged as PR #1973 on 2026-10-27; #1883 closed |
-| 3. Housekeeping (#1508 checklist, plan statuses, roadmap) | `chore/1508-shared-cases-closeout` | PR #1975, brought up to date with `main` on 2026-10-27; #1514 ticked on #1508; waits for the sync and the tag |
+| Sharing follow-ups (#2007, #2009 to #2011) | one branch per PR | merged on 2026-10-28 and 2026-10-29 (UTC): #2007 dropped the placeholder tabs from Case settings; #2009 to #2011 added the top bar's Share pill and palette row, the card's role line, Shared badge and Older Cases list, and the one-time Share card. The sync steps and notes below name these controls |
+| 3. Housekeeping (#1508 checklist, plan statuses, roadmap) | `chore/1508-shared-cases-closeout` | PR #1975, brought up to date with `main` on 2026-10-29; #1514 ticked on #1508; waits for the sync and the tag |
 | Version bump | `chore/release-1.0.1-beta.24` | PR opened 2026-10-27; the release run needs it on `main` first |
 | Close-out sync | maintainer | steps below; runs on the `v1.0.1-beta.24` build |
 | Release | maintainer | run `release.yml` from `main` after the bump merges; notes drafted below |
@@ -80,19 +82,21 @@ note (#1974) and the member cap.
 ## Close-out sync: steps for the maintainer
 
 Run once slices 1 and 2 are on `main`. Two machines on two different networks (for example
-home broadband and a phone's mobile data), each Windows, Linux, or an Apple silicon Mac.
+home broadband and a phone's mobile data), each Windows, Linux, or an Apple Silicon Mac.
 
 1. Build or download the same packaged build from `main` on both machines (a beta tag, or
    `pnpm package` for the platform). Set **Settings → Operator → Operator name** on each.
 2. Machine A (Owner): create a Case with **Start New Case → Blank Case** and capture one page.
-3. Machine A: on the dashboard, open the Case card's menu, choose **Members**, click
-   **Invite**, then **Copy invite**. Send the string to B over Signal or email.
+3. Machine A: in the open Case, click **Share** in the top bar (or, on the dashboard, choose
+   **Share this Case…** on the Case card's menu), click **Invite**, then **Copy invite**. Send
+   the string to B over Signal or email.
 4. Machine B: **Start New Case → Join a shared Case**, paste the invite, check the **From**
    name, click **Join**.
 5. Machine A: compare B's key fingerprint with B over the phone, enter a Member Code, click
    **Approve**.
 6. Expect on B: the Case opens and A's capture arrives with A's code chip. Expect on A: the
-   top bar shows the sync pill reading `Synced · 1 peer`.
+   top bar's **Share** pill reads `Synced · 1 peer`, and the Case card on the dashboard reads
+   `You own · 2 members`.
 7. Machine B: capture a page. Expect it on A within a minute or after **Sync now**.
 8. Either machine: **Data → Manifest Ledger** shows `member-add` and `merge` rows with Actor
    chips.
@@ -106,16 +110,21 @@ banner, and the `verify.sh` summary line.
 ## Release notes draft
 
 To prepend to the beta release body (`gh release edit <tag> --notes-file`), before the mirror
-job copies the body, or on both repositories afterwards.
+job copies the body, or on both repositories afterward.
 
 ```markdown
 ## Shared Cases
 
 You can now share a Case with teammates; it is designed for teams of two to five. Every
-member keeps a full copy, no server
-holds the Case, and each member's captures stay signed by their own installation. Open a Case
-card's menu on the dashboard and choose **Members** to invite someone; a teammate joins from
+member keeps a full copy, no server holds the Case, and each member's captures stay signed by
+their own installation. Open a Case and click **Share** in the top bar to invite someone; the
+command palette and the Case card's menu on the dashboard open the same screen, and a one-time
+card under the pill points it out. A teammate joins from
 **Start New Case → Join a shared Case**. Sharing is not available on Intel Macs.
+
+On the dashboard, each Case card says whether the Case is on this machine only or shared, and
+what you are to it. An Older Cases list below the three cards lists your other Cases that are
+not archived, each with the same menu.
 
 **Upgrade together.** Every member of a Shared Case should install this version, and later
 ones, at the same time. When a teammate's copy writes something an older version cannot read,

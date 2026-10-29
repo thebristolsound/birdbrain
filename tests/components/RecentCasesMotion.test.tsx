@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RecentCases } from '@renderer/components/dashboard/RecentCases'
 import { Sidebar } from '@renderer/components/layout/Sidebar'
 import type { Case } from '@shared/types'
@@ -31,15 +32,19 @@ it('includes New Case in the four-tile entrance and does not replay on return', 
   vi.useFakeTimers()
   const onNewCase = vi.fn()
   const onSelectCase = vi.fn()
+  // The cards read a shared Case's roster through React Query; these are local.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const element = (
-    <RecentCases
-      cases={cases}
-      captureCounts={{ 'case-1': 2 }}
-      onNewCase={onNewCase}
-      onSelectCase={onSelectCase}
-      onRenameCase={vi.fn()}
-      onDeleteCase={vi.fn()}
-    />
+    <QueryClientProvider client={client}>
+      <RecentCases
+        cases={cases}
+        captureCounts={{ 'case-1': 2 }}
+        onNewCase={onNewCase}
+        onSelectCase={onSelectCase}
+        onRenameCase={vi.fn()}
+        onDeleteCase={vi.fn()}
+      />
+    </QueryClientProvider>
   )
   const first = render(element)
   const grid = first.container.querySelector('.screen-stagger')!

@@ -35,6 +35,55 @@ async function readChapters(page: Page): Promise<Record<string, boolean>> {
   })
 }
 
+async function createCase(page: Page, name: string): Promise<void> {
+  await page.evaluate(() => {
+    window.location.hash = '/cases/new?blank=true'
+  })
+  await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
+  await page.fill('[data-testid="case-name-input"]', name)
+  await page.click('[data-testid="case-create-btn"]')
+  await page.waitForURL(/#\/cases\/.+\/overview/, { timeout: 10000 })
+}
+
+test.describe('Share mark', () => {
+  // The one exception to the upgrade rule below: an existing install sees the Share mark
+  // once (docs/design-handoff/2026-10-28-share-a-case/, frame A). The fixture's profile has
+  // it dismissed already, so this clears it; `isFreshInstall` stays false and no tour fires.
+  test('an existing install sees it once, on the first Case it opens', async ({ page }) => {
+    await page.evaluate(async () => {
+      await (window as unknown as SettingsBridge).birdbrain.settings.update({
+        onboardingChapters: {}
+      })
+    })
+    await page.reload()
+    await page.waitForSelector('[data-testid="app-ready"]', { timeout: 15000 })
+    await expect(page.locator('[data-testid="tour-welcome"]')).toHaveCount(0)
+
+    await createCase(page, 'Share mark')
+    const mark = page.getByTestId('share-mark')
+    await expect(mark).toBeVisible()
+    await expect(
+      mark.getByRole('dialog', { name: 'New: share a Case with teammates' })
+    ).toBeVisible()
+    const pill = page.getByTestId('share-pill')
+    await expect(pill).toHaveAttribute('data-marked', 'true')
+
+    await mark.getByTestId('share-mark-got-it').click()
+    await expect(mark).toBeHidden()
+    await expect(pill).not.toHaveAttribute('data-marked', 'true')
+    await expect.poll(() => readChapters(page)).toMatchObject({ share: true })
+
+    // Leaving and returning does not bring it back.
+    await page.evaluate(() => {
+      window.location.hash = '/'
+    })
+    await expect(page.getByTestId('dashboard')).toBeVisible()
+    await page.getByTestId('case-card').first().click()
+    await expect(pill).toBeVisible()
+    await expect(mark).toHaveCount(0)
+  })
+})
+
 test.describe('Onboarding tour', () => {
   test('a fresh install opens on the welcome card and walks the intro chapter', async ({
     page

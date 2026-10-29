@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/fonts/fonts.css">
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/_ds_bundle.css">
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/styles.css">
+  <style>
+    html,body{margin:0;padding:0}
+    body{background:var(--color-canvas);font-family:var(--font-body);color:var(--color-text-primary)}
+    a{color:var(--color-accent);text-decoration:none}
+    a:hover{color:var(--color-accent-hover)}
+    .dv-turn{padding:32px 40px 48px;min-width:1280px;scroll-margin-top:16px}
+    .dv-q{display:flex;align-items:baseline;gap:10px;margin:36px 0 12px;font-family:var(--font-display);font-size:13px;font-weight:700}
+    .dv-q small{font-family:var(--font-body);font-size:11px;font-weight:400;color:var(--color-text-muted)}
+    .dv-opts{display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start}
+    .dv-opt{flex:none;display:flex;flex-direction:column;gap:8px;scroll-margin-top:16px}
+    .dv-oid{font-family:var(--font-mono);font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;background:var(--color-elevated);color:var(--color-text-primary);border:1px solid var(--color-border)}
+    .dv-opt:target .dv-oid,.dv-opt:target .dv-oid:hover{background:var(--color-accent);color:#fff;border-color:var(--color-accent)}
+    .dv-olabel{display:flex;align-items:baseline;gap:8px;font-size:12px;font-weight:600}
+    .dv-olabel small{font-weight:400;color:var(--color-text-muted);font-size:11px}
+    .dv-card{background:var(--color-canvas);border:1px solid var(--color-border);border-radius:6px;overflow:hidden;box-shadow:var(--shadow-card)}
+    .dv-trade{margin:0;max-width:100%;font-size:11px;line-height:1.55;color:var(--color-text-secondary);text-wrap:pretty}
+    .dv-trade b{font-weight:600;color:var(--color-text-primary)}
+    .new{outline:2px dashed var(--color-accent);outline-offset:3px;border-radius:4px}
+    .ph{background:var(--color-elevated);border-radius:3px}
+    .dv-next{margin:28px 0 0;font-size:12px;line-height:1.6;color:var(--color-text-secondary);max-width:900px;text-wrap:pretty}
+    :root{--bb-ok:#047857;--bb-warn:#b45309;--m1:#0284c7;--m2:#b45309;--m3:#047857}
+    html.dark{--bb-ok:#34d399;--bb-warn:#fbbf24;--m1:#38bdf8;--m2:#fbbf24;--m3:#34d399}
+    @keyframes bbpulse{0%,100%{opacity:1}50%{opacity:.45}}
+  </style>
+</helmet>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-chevr" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"></path></symbol>
+    <symbol id="i-chevud" viewBox="0 0 24 24"><path d="m7 15 5 5 5-5"></path><path d="m7 9 5-5 5 5"></path></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></symbol>
+    <symbol id="i-morev" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="19" r="1"></circle></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"></path><path d="M12 5v14"></path></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path><circle cx="12" cy="13" r="3"></circle></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M7 7h10v10"></path><path d="M7 17 17 7"></path></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M9 22V12h6v10"></path></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path><path d="M12 15V3"></path></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path></symbol>
+    <symbol id="i-refcw" viewBox="0 0 24 24"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path></symbol>
+  </defs>
+</svg>
+
+<section class="dv-turn" id="t1">
+  <div style="max-width:900px;margin-bottom:8px">
+    <div style="font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Birdbrain · low-fi options · 2026-10-27</div>
+    <h1 style="margin:6px 0 8px;font-family:var(--font-display);font-size:22px;font-weight:800;letter-spacing:-0.02em">Making sharing visible</h1>
+    <p style="margin:0;font-size:12px;line-height:1.6;color:var(--color-text-secondary);text-wrap:pretty">Wide pass on the five questions in the brief. Each frame is drawn against the shipped shell (48px top bar, 48px rail, <code style="font-family:var(--font-mono);font-size:11px">CaseCard</code>, <code style="font-family:var(--font-mono);font-size:11px">CaseSubhead</code>, ⌘K) at reduced size; the dashed accent outline marks what is new. Every option keeps the fixed rules: only the Owner invites, every join is approved, the Intel Mac state keeps its existing copy. Nothing here changes the Members screen itself. Pick one or two per question and I take them to the fidelity of <a href="Shared Case.dc.html">Shared Case.dc.html</a>.</p>
+  </div>
+
+  <!-- ================= Q1 ================= -->
+  <div class="dv-q">1 · Where sharing is reachable inside an open Case, before anyone has joined<small>six placements; <a class="dv-oid" href="#1a">1a</a> and <a class="dv-oid" href="#1f">1f</a> are permanent homes, the rest are supplements</small></div>
+  <div class="dv-opts">
+
+    <!-- 1a top bar pill -->
+    <div class="dv-opt" id="1a" style="width:640px">
+      <div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Top bar · a Share pill in the slot the sync pill will take<small>toggle the <b>shared</b> tweak to see the hand-off</small></div>
+      <div class="dv-card">
+        <header style="display:flex;height:40px;align-items:center;gap:10px;border-bottom:1px solid var(--color-border);background:var(--color-surface);padding:0 12px">
+          <div style="display:flex;align-items:center;gap:6px"><img src="src/renderer/assets/logo.png" alt="" style="height:20px;width:20px"><span style="font-family:var(--font-display);font-size:11px;font-weight:800;letter-spacing:-0.02em">Birdbrain</span></div>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevr"></use></svg>
+          <div style="display:flex;align-items:center;gap:5px"><span style="font-family:var(--font-display);font-size:11px;font-weight:700;white-space:nowrap">Operation Nightjar</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevud"></use></svg></div>
+          <div style="flex:1;display:flex;justify-content:center"><div style="width:150px;height:22px;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-canvas);display:flex;align-items:center;gap:6px;padding:0 8px;box-sizing:border-box;flex-shrink:1;min-width:0;overflow:hidden"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-search"></use></svg><span style="font-size:10px;color:var(--color-text-faint)">Search this case…</span></div></div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <sc-if value="{{ notShared }}" hint-placeholder-val="{{ true }}">
+              <button class="new" style="display:inline-flex;height:24px;align-items:center;gap:5px;border-radius:9999px;border:1px solid var(--color-border-strong);background:transparent;color:var(--color-text-secondary);padding:0 9px;font-size:10px;font-weight:500;font-family:var(--font-body);cursor:pointer"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-users"></use></svg>Share</button>
+            </sc-if>
+            <sc-if value="{{ isShared }}" hint-placeholder-val="{{ false }}">
+              <button style="display:inline-flex;height:24px;align-items:center;gap:5px;border-radius:9999px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);padding:0 9px;font-size:10px;font-weight:500;font-family:var(--font-body);cursor:pointer"><span style="height:5px;width:5px;border-radius:9999px;background:var(--bb-ok)"></span>Synced<span style="opacity:.6">·</span>2 peers</button>
+            </sc-if>
+            <div style="display:inline-flex;height:24px;align-items:center;gap:5px;border-radius:9999px;border:1px solid rgba(16,185,129,.2);background:rgba(16,185,129,.1);color:var(--bb-ok);padding:0 9px;font-size:10px;font-weight:500"><span style="height:5px;width:5px;border-radius:9999px;background:#10b981"></span>Connected</div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-download"></use></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-settings"></use></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-sun"></use></svg>
+          </div>
+        </header>
+        <div style="display:flex;height:150px">
+          <aside style="width:40px;border-right:1px solid var(--color-border);background:var(--color-surface);display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 0"><span style="height:28px;width:28px;border-radius:4px;background:var(--color-elevated)"></span><span style="height:28px;width:28px;border-radius:4px;background:var(--color-accent-subtle);border-left:2px solid var(--color-accent);box-sizing:border-box"></span><span style="height:28px;width:28px;border-radius:4px;background:var(--color-elevated)"></span><span style="height:28px;width:28px;border-radius:4px;background:var(--color-elevated)"></span></aside>
+          <div style="flex:1;padding:16px 20px"><div style="display:flex;align-items:center;gap:10px"><span style="font-family:var(--font-display);font-size:15px;font-weight:800;letter-spacing:-0.02em">Operation Nightjar</span><span style="display:inline-flex;height:18px;align-items:center;gap:4px;border-radius:9999px;border:1px solid rgba(249,115,22,.2);background:rgba(249,115,22,.1);padding:0 8px;font-size:10px;font-weight:600;font-family:var(--font-display);color:#c2410c">Crypto</span></div><div class="ph" style="margin-top:8px;height:8px;width:360px"></div><div style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="ph" style="height:60px"></div><div class="ph" style="height:60px"></div></div></div>
+        </div>
+      </div>
+      <p class="dv-trade"><b>Tradeoff.</b> Always on screen, in every section, and it occupies the exact slot the sync pill takes after the first join, so the state change reads as the same control changing its label. Cost: the right cluster already holds REC, Connected, capture health, Export, Settings and theme, and has to stay clear of the native window controls; below about 1,020px this pill would have to drop to the icon alone.</p>
+    </div>
+
+    <!-- 1b rail -->
+    <div class="dv-opt" id="1b" style="width:300px">
+      <div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>Rail · a Members glyph pinned at the bottom</div>
+      <div class="dv-card" style="width:300px">
+        <header style="height:40px;border-bottom:1px solid var(--color-border);background:var(--color-surface)"></header>
+        <div style="display:flex;height:150px">
+          <aside style="width:40px;border-right:1px solid var(--color-border);background:var(--color-surface);display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 0">
+            <span style="height:28px;width:28px;border-radius:4px;display:grid;place-items:center;color:var(--color-text-muted)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-home"></use></svg></span>
+            <span style="height:28px;width:28px;border-radius:4px;background:var(--color-accent-subtle);border-left:2px solid var(--color-accent);box-sizing:border-box"></span><span style="height:28px;width:28px;border-radius:4px;background:var(--color-elevated)"></span><span style="height:28px;width:28px;border-radius:4px;background:var(--color-elevated)"></span>
+            <span style="flex:1"></span>
+            <span class="new" style="height:28px;width:28px;border-radius:4px;display:grid;place-items:center;color:var(--color-text-muted);position:relative"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-users"></use></svg></span>
+          </aside>
+          <div style="flex:1;padding:16px;position:relative">
+            <div class="ph" style="height:10px;width:140px"></div><div class="ph" style="margin-top:8px;height:8px;width:200px"></div>
+            <div style="position:absolute;left:8px;bottom:12px;border-radius:4px;background:var(--color-surface);box-shadow:var(--shadow-overlay);border:1px solid var(--color-border);padding:4px 8px;font-size:11px">Share this Case</div>
+          </div>
+        </div>
+      </div>
+      <p class="dv-trade"><b>Tradeoff.</b> One glyph, no new chrome anywhere else, and it stays put as the Case grows. But the rail is section navigation and Members is a settings screen; icon-only means the word “Share” exists only in the tooltip, which is the thing the first tester never saw.</p>
+    </div>
+
+    <!-- 1c subhead -->
+    <div class="dv-opt" id="1c" style="width:640px">
+      <div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>Overview subhead · a Share button in the right column</div>
+      <div class="dv-card">
+        <div style="padding:18px 20px 16px;display:flex;align-items:flex-start;gap:16px">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-family:var(--font-display);font-size:16px;font-weight:800;letter-spacing:-0.02em">Operation Nightjar</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pencil"></use></svg><span style="display:inline-flex;height:20px;align-items:center;gap:4px;border-radius:9999px;border:1px solid rgba(249,115,22,.2);background:rgba(249,115,22,.1);padding:0 9px;font-size:10px;font-weight:600;font-family:var(--font-display);color:#c2410c">Crypto</span><span style="font-family:var(--font-mono);font-size:10px;color:var(--color-text-muted)">No. 2026-0412</span></div>
+            <p style="margin:8px 0 0;font-size:11px;line-height:1.6;color:var(--color-text-muted);max-width:420px">Wallet-drainer campaign targeting Meridian Trust customers; panel infra on gg-cdn.</p>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0">
+            <button class="new" style="display:inline-flex;height:26px;align-items:center;gap:6px;border-radius:4px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-secondary);padding:0 10px;font-size:11px;font-weight:500;font-family:var(--font-body);cursor:pointer"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-users"></use></svg>Share this Case</button>
+            <span style="font-size:10px;color:var(--color-text-faint);font-variant-numeric:tabular-nums">Opened 3 days ago</span>
+          </div>
+        </div>
+        <div style="padding:0 20px 20px;display:grid;grid-template-columns:repeat(5,1fr);gap:8px"><div class="ph" style="height:44px"></div><div class="ph" style="height:44px"></div><div class="ph" style="height:44px"></div><div class="ph" style="height:44px"></div><div class="ph" style="height:44px"></div></div>
+      </div>
+      <p class="dv-trade"><b>Tradeoff.</b> Sits where the Case is described and renamed, next to the only existing “about this Case” metadata, and the button has room for a verb. Overview-only, though: a tester who lands in Captures and stays there never meets it, so it needs <a class="dv-oid" href="#1a">1a</a>, <a class="dv-oid" href="#1b">1b</a> or <a class="dv-oid" href="#1f">1f</a> behind it. After the first join it becomes “Members · 3”.</p>
+    </div>
+
+    <!-- 1d empty-state nudge -->
+    <div class="dv-opt" id="1d" style="width:520px">
+      <div class="dv-olabel"><a class="dv-oid" href="#1d">1d</a>Overview card · a one-time nudge among the Overview cards</div>
+      <div class="dv-card" style="padding:16px">
+        <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:12px">
+          <div class="ph" style="height:auto"></div>
+          <div class="new" style="border-radius:6px;border:1px solid var(--color-border);background:var(--color-card);padding:14px 16px;display:flex;flex-direction:column;gap:6px;min-width:0">
+            <div style="font-family:var(--font-display);font-size:12px;font-weight:700;white-space:nowrap">This Case is on this machine only</div>
+            <p style="margin:0;font-size:11px;line-height:1.5;color:var(--color-text-secondary);text-wrap:pretty">Share it with up to four teammates who run Birdbrain. You approve every join.</p>
+            <div style="display:flex;gap:10px;align-items:center;margin-top:6px"><button style="height:26px;padding:0 11px;border-radius:4px;border:none;background:var(--color-accent);color:#fff;font-size:11px;font-weight:500;font-family:var(--font-body);cursor:pointer;white-space:nowrap">Share this Case</button><button style="height:26px;padding:0 6px;border-radius:4px;border:none;background:transparent;color:var(--color-text-muted);font-size:11px;font-family:var(--font-body);cursor:pointer;white-space:nowrap">Not now</button></div>
+          </div>
+          <div class="ph" style="height:72px;grid-column:1 / -1"></div>
+        </div>
+      </div>
+      <p class="dv-trade"><b>Tradeoff.</b> The only option that explains what sharing is before the person clicks, in the same words as the Members empty state. “Not now” removes it for that Case, so after one dismissal it is gone and something permanent must still exist. Also answers question 4 for the first Case opened, at no extra cost.</p>
+    </div>
+
+    <!-- 1e command palette -->
+    <div class="dv-opt" id="1e" style="width:420px">
+      <div class="dv-olabel"><a class="dv-oid" href="#1e">1e</a>⌘K · “Share this Case…” beside “Join a shared Case…”</div>
+      <div class="dv-card" style="box-shadow:var(--shadow-overlay)">
+        <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--color-border)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-search"></use></svg><span style="font-size:12px;color:var(--color-text-faint)">Switch Case or run an action…</span></div>
+        <div style="padding:6px 4px">
+          <div style="padding:4px 10px 3px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-faint)">Actions</div>
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:12px;color:var(--color-text-secondary)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"></use></svg>New Case</div>
+          <div class="new" style="display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:12px;border-radius:4px;background:var(--color-elevated);color:var(--color-text-primary);margin:0 4px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-users"></use></svg>Share this Case…<span style="flex:1"></span><span style="font-size:10px;color:var(--color-text-faint)">Operation Nightjar</span></div>
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:12px;color:var(--color-text-secondary)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-users"></use></svg>Join a shared Case…</div>
+          <div style="padding:8px 10px 3px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-faint)">Cases</div>
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:12px"><span style="height:6px;width:6px;border-radius:9999px;background:#f97316"></span>Operation Nightjar<span style="font-size:10px;color:var(--color-text-faint)">current</span></div>
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:12px"><span style="height:6px;width:6px;border-radius:9999px;background:#0ea5e9"></span>Loader cluster 2026-04</div>
+        </div>
+      </div>
+      <p class="dv-trade"><b>Tradeoff.</b> No chrome at all and symmetrical with the join action that already lives here, so the two halves of the flow sit together. Invisible to anyone who has not opened the palette, which the first tester had not. A supplement, not an answer on its own.</p>
+    </div>
+
+    <!-- 1f case name menu -->
+    <div class="dv-opt" id="1f" style="width:420px">
+      <div class="dv-olabel"><a class="dv-oid" href="#1f">1f</a>Case name menu · the breadcrumb becomes the Case’s “⋯”</div>
+      <div class="dv-card" style="height:290px;position:relative">
+        <header style="display:flex;height:40px;align-items:center;gap:10px;border-bottom:1px solid var(--color-border);background:var(--color-surface);padding:0 12px">
+          <div style="display:flex;align-items:center;gap:6px"><img src="src/renderer/assets/logo.png" alt="" style="height:20px;width:20px"><span style="font-family:var(--font-display);font-size:11px;font-weight:800;letter-spacing:-0.02em">Birdbrain</span></div>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevr"></use></svg>
+          <div style="display:flex;align-items:center;gap:5px;border-radius:4px;background:var(--color-elevated);padding:3px 6px"><span style="font-family:var(--font-display);font-size:11px;font-weight:700;white-space:nowrap">Operation Nightjar</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevud"></use></svg></div>
+        </header>
+        <div class="new" role="menu" style="position:absolute;left:92px;top:44px;width:220px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-surface);box-shadow:var(--shadow-overlay);padding:4px;font-size:12px">
+          <div style="padding:6px 10px;display:flex;align-items:center;justify-content:space-between;color:var(--color-text-secondary)">Switch Case…<span style="font-family:var(--font-mono);font-size:10px;color:var(--color-text-faint)">⌘K</span></div>
+          <div style="height:1px;background:var(--color-border);margin:4px 0"></div>
+          <div style="padding:6px 10px;color:var(--color-text-secondary)">Rename</div>
+          <div style="padding:6px 10px;border-radius:4px;background:var(--color-elevated);display:flex;align-items:center;gap:8px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-users"></use></svg>Share this Case…</div>
+          <div style="padding:6px 10px;color:var(--color-text-secondary)">Export…</div>
+          <div style="height:1px;background:var(--color-border);margin:4px 0"></div>
+          <div style="padding:6px 10px;color:var(--color-text-secondary)">Case settings</div>
+        </div>
+        <div style="position:absolute;left:92px;right:16px;bottom:12px;font-size:10px;color:var(--color-text-faint);line-height:1.5">Today the name opens ⌘K directly; here it opens this menu and ⌘K is its first item.</div>
+      </div>
+      <p class="dv-trade"><b>Tradeoff.</b> Gives the open Case the action menu the assessment (item 19) noted it lacks, and the item reads as a verb with the Case named right beside it. Changes a shipped behavior: the breadcrumb currently opens the palette on click, so people who learned that lose one click. The menu also becomes the natural home for Rename and Export, which is a larger change than the brief asked for.</p>
+    </div>
+  </div>
+
+  <!-- ================= Q2 ================= -->
+  <div class="dv-q">2 · What the entry is called before the first member joins<small>same five states down each column; the screen itself stays “Members”</small></div>
+  <div class="dv-opts">
+    <div class="dv-opt" id="2a" style="width:300px">
+      <div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>Always “Members”</div>
+      <div class="dv-card" style="padding:12px 14px;display:grid;grid-template-columns:118px 1fr;gap:7px 10px;font-size:11px;align-items:baseline">
+        <span style="color:var(--color-text-muted)">Not shared</span><span style="font-weight:600">Members</span>
+        <span style="color:var(--color-text-muted)">Invite waiting</span><span style="font-weight:600">Members <span style="font-weight:400;color:var(--bb-warn)">· 1 pending</span></span>
+        <span style="color:var(--color-text-muted)">Shared, you own</span><span style="font-weight:600">Members · 3</span>
+        <span style="color:var(--color-text-muted)">Shared, you joined</span><span style="font-weight:600">Members · 3</span>
+        <span style="color:var(--color-text-muted)">Intel Mac</span><span style="font-weight:600;color:var(--color-text-faint)">Members</span>
+      </div>
+      <p class="dv-trade"><b>Tradeoff.</b> One word everywhere, matching the tab, the route and the tester guide. But “Members” on a Case of one is a roster with nobody in it; it describes the screen, not what the person wants to do, which is the gap the first tester fell into.</p>
+    </div>
+    <div class="dv-opt" id="2b" style="width:300px">
+      <div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a>“Share” until the first join, then “Members”</div>
+      <div class="dv-card new" style="padding:12px 14px;display:grid;grid-template-columns:118px 1fr;gap:7px 10px;font-size:11px;align-items:baseline">
+        <span style="color:var(--color-text-muted)">Not shared</span><span style="font-weight:600">Share</span>
+        <span style="color:var(--color-text-muted)">Invite waiting</span><span style="font-weight:600">Share <span style="font-weight:400;color:var(--bb-warn)">· invite waiting</span></span>
+        <span style="color:var(--color-text-muted)">Shared, you own</span><span style="font-weight:600">Members · 3</span>
+        <span style="color:var(--color-text-muted)">Shared, you joined</span><span style="font-weight:600">Members · 3</span>
+        <span style="color:var(--color-text-muted)">Intel Mac</span><span style="font-weight:600;color:var(--color-text-faint)">Share <span style="font-weight:400">· unavailable</span></span>
+      </div>
+      <p class="dv-trade"><b>Tradeoff.</b> Verb while there is something to do, noun once there is something to see; it is also how the top-bar pill in <a class="dv-oid" href="#1a">1a</a> already behaves. The label changes under the person once, at the moment they will be looking at it anyway. The Intel row keeps the control visible so the existing “not available on this Mac” copy has somewhere to appear.</p>
+    </div>
+    <div class="dv-opt" id="2c" style="width:300px">
+      <div class="dv-olabel"><a class="dv-oid" href="#2c">2c</a>Verb in menus, noun on surfaces</div>
+      <div class="dv-card" style="padding:12px 14px;display:grid;grid-template-columns:118px 1fr;gap:7px 10px;font-size:11px;align-items:baseline">
+        <span style="color:var(--color-text-muted)">Menu items, ⌘K</span><span style="font-weight:600">Share this Case…</span>
+        <span style="color:var(--color-text-muted)">Pill, button</span><span style="font-weight:600">Share <span style="font-weight:400;color:var(--color-text-muted)">→</span> Members · 3</span>
+        <span style="color:var(--color-text-muted)">Dashboard card menu</span><span style="font-weight:600">Share this Case… <span style="font-weight:400;color:var(--color-text-muted)">→</span> Members</span>
+        <span style="color:var(--color-text-muted)">Settings nav, title</span><span style="font-weight:600">Members <span style="font-weight:400;color:var(--color-text-muted)">always</span></span>
+        <span style="color:var(--color-text-muted)">Shared, you joined</span><span style="font-weight:600">Members <span style="font-weight:400;color:var(--color-text-muted)">never Share: no invite for you</span></span>
+      </div>
+      <p class="dv-trade"><b>Tradeoff.</b> Each place uses the grammar its neighbours use (menus are verbs: Rename, Delete; pills are states). Most to explain in a spec, and “Invite a teammate” is deliberately not used anywhere: it names one person, and the Members screen is where the number of them is visible.</p>
+    </div>
+  </div>
+
+  <!-- ================= Q3 ================= -->
+  <div class="dv-q">3 · How a shared Case looks different, at a glance<small>dashboard card (three treatments) and inside the Case (two)</small></div>
+  <div class="dv-opts">
+    <!-- 3a chips -->
+    <div class="dv-opt" id="3a" style="width:236px">
+      <div class="dv-olabel"><a class="dv-oid" href="#3a">3a</a>Card · Member Code chips</div>
+      <div class="dv-card" style="background:var(--color-card);padding:18px;width:236px;box-sizing:border-box">
+        <div style="display:flex;justify-content:space-between;margin-bottom:14px"><span style="height:36px;width:36px;border-radius:10px;background:rgba(249,115,22,.12);display:grid;place-items:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c2410c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"></use></svg></span></div>
+        <div style="font-family:var(--font-display);font-size:13px;font-weight:700">Operation Nightjar</div>
+        <p style="margin:3px 0 12px;font-size:10px;line-height:1.5;color:var(--color-text-muted)">Wallet-drainer campaign targeting Meridian Trust customers.</p>
+        <div class="new" style="display:flex;align-items:center;gap:4px;margin-bottom:10px;width:max-content">
+          <span style="display:inline-flex;align-items:center;gap:4px;height:16px;padding:0 5px;border-radius:3px;background:color-mix(in srgb,var(--color-accent) 14%,transparent);border:1px solid color-mix(in srgb,var(--color-accent) 30%,transparent);font-size:9px;font-weight:600"><span style="height:5px;width:5px;border-radius:9999px;background:var(--color-accent)"></span>AR</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;height:16px;padding:0 5px;border-radius:3px;background:color-mix(in srgb,var(--m1) 14%,transparent);border:1px solid color-mix(in srgb,var(--m1) 30%,transparent);font-size:9px;font-weight:600"><span style="height:5px;width:5px;border-radius:9999px;background:var(--m1)"></span>NK</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;height:16px;padding:0 5px;border-radius:3px;background:color-mix(in srgb,var(--m2) 14%,transparent);border:1px solid color-mix(in srgb,var(--m2) 30%,transparent);font-size:9px;font-weight:600"><span style="height:5px;width:5px;border-radius:9999px;background:var(--m2)"></span>MB</span>
+          <span style="font-size:10px;color:var(--color-text-muted);margin-left:2px">you own</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:5px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-camera"></use></svg><span style="font-size:10px;font-weight:700;color:var(--color-text-secondary)">63</span></div>
+        <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--color-border-strong);display:flex;justify-content:space-between;align-items:center"><span style="font-size:9px;color:var(--color-text-faint)">Updated 2 hours ago</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-arrow"></use></svg></div>
+      </div>
+      <p class="dv-trade"><b>Tradeoff.</b> The hues from the Members handoff do the work, so a shared Case is colourful where a local one is not, and who is in it is readable without opening it. The chips mean nothing until someone has learned Member Codes, and five chips plus “you own” is tight at the card’s width.</p>
+    </div>
+    <!-- 3b status pill -->
+    <div class="dv-opt" id="3b" style="width:236px">
+      <div class="dv-olabel"><a class="dv-oid" href="#3b">3b</a>Card · “Shared” in the status slot</div>
+      <div class="dv-card" style="background:var(--color-card);padding:18px;width:236px;box-sizing:border-box">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px"><span style="height:36px;width:36px;border-radius:10px;background:rgba(249,115,22,.12);display:grid;place-items:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c2410c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"></use></svg></span><span class="new" style="display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 7px;border-radius:9999px;border:1px solid var(--color-border-strong);font-size:9px;font-weight:700;color:var(--color-text-secondary)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-users"></use></svg>Shared · 3</span></div>
+        <div style="font-family:var(--font-display);font-size:13px;font-weight:700">Operation Nightjar</div>
+        <p style="margin:3px 0 12px;font-size:10px;line-height:1.5;color:var(--color-text-muted)">Wallet-drainer campaign targeting Meridian Trust customers.</p>
+        <div style="display:flex;align-items:center;gap:5px;margin-bottom:10px;font-size:10px;color:var(--color-text-muted)"><span style="display:inline-flex;align-items:center;height:14px;padding:0 4px;border-radius:3px;background:color-mix(in srgb,var(--color-accent) 14%,transparent);font-size:9px;font-weight:600;color:var(--color-text-primary)">AR</span>Shared by you · 3 members</div>
+        <div style="display:flex;align-items:center;gap:5px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-camera"></use></svg><span style="font-size:10px;font-weight:700;color:var(--color-text-secondary)">63</span></div>
+        <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--color-border-strong);display:flex;justify-content:space-between;align-items:center"><span style="font-size:9px;color:var(--color-text-faint)">Updated 2 hours ago</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-arrow"></use></svg></div>
+      </div>
+      <p class="dv-trade"><b>Tradeoff.</b> Keeps the shipped <code style="font-family:var(--font-mono);font-size:10px">SharedCaseLine</code> and adds one pill where the eye already looks for Case status; a plain Case has an empty slot there, so the difference is immediate. The slot also carries Recording and Active, so when both apply the pills stack or one yields.</p>
+    </div>
+    <!-- 3c owner vs member vs invite -->
+    <div class="dv-opt" id="3c" style="width:236px">
+      <div class="dv-olabel"><a class="dv-oid" href="#3c">3c</a>Card · the line says your role</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="dv-card" style="background:var(--color-card);padding:10px 14px;font-size:10px;color:var(--color-text-muted);display:flex;align-items:center;gap:5px"><span style="display:inline-flex;align-items:center;height:14px;padding:0 4px;border-radius:3px;background:color-mix(in srgb,var(--color-accent) 14%,transparent);font-size:9px;font-weight:600;color:var(--color-text-primary)">AR</span><span class="new">You own · 3 members</span></div>
+        <div class="dv-card" style="background:var(--color-card);padding:10px 14px;font-size:10px;color:var(--color-text-muted);display:flex;align-items:center;gap:5px"><span style="display:inline-flex;align-items:center;height:14px;padding:0 4px;border-radius:3px;background:color-mix(in srgb,var(--color-accent) 14%,transparent);font-size:9px;font-weight:600;color:var(--color-text-primary)">NK</span><span class="new">Shared by A. Renner · you are NK</span></div>
+        <div class="dv-card" style="background:var(--color-card);padding:10px 14px;font-size:10px;color:var(--color-text-muted);display:flex;align-items:center;gap:5px"><span style="height:6px;width:6px;border-radius:9999px;background:var(--bb-warn);animation:bbpulse 2s ease-in-out infinite"></span><span class="new">Invite waiting · expires 14:07</span></div>
+        <div class="dv-card" style="background:var(--color-card);padding:10px 14px;font-size:10px;color:var(--color-text-faint);display:flex;align-items:center;gap:5px"><span class="new" style="font-style:italic">On this machine only</span></div>
+      </div>
+      <p class="dv-trade"><b>Tradeoff.</b> Cheapest change: the line that already exists gets four states instead of one, including the invite-waiting state nothing else shows today and an explicit “on this machine only” on local Cases so the absence is a statement rather than blank. Text-only, so it is the least glanceable of the three; it pairs with <a class="dv-oid" href="#3a">3a</a> or <a class="dv-oid" href="#3b">3b</a>.</p>
+    </div>
+    <!-- 3d subhead -->
+    <div class="dv-opt" id="3d" style="width:560px">
+      <div class="dv-olabel"><a class="dv-oid" href="#3d">3d</a>Inside the Case · members beside the type pill</div>
+      <div class="dv-card">
+        <div style="padding:18px 20px;display:flex;align-items:flex-start;gap:16px">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-family:var(--font-display);font-size:16px;font-weight:800;letter-spacing:-0.02em">Operation Nightjar</span><span style="display:inline-flex;height:20px;align-items:center;gap:4px;border-radius:9999px;border:1px solid rgba(249,115,22,.2);background:rgba(249,115,22,.1);padding:0 9px;font-size:10px;font-weight:600;font-family:var(--font-display);color:#c2410c">Crypto</span>
+              <button class="new" style="display:inline-flex;height:20px;align-items:center;gap:5px;border-radius:9999px;border:1px solid var(--color-border-strong);background:transparent;padding:0 4px 0 8px;font-size:10px;font-weight:600;font-family:var(--font-display);color:var(--color-text-secondary);cursor:pointer"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-users"></use></svg>Shared<span style="display:inline-flex;gap:2px;margin-left:2px"><span style="height:14px;width:14px;border-radius:3px;background:color-mix(in srgb,var(--color-accent) 20%,transparent);font-size:8px;display:grid;place-items:center">AR</span><span style="height:14px;width:14px;border-radius:3px;background:color-mix(in srgb,var(--m1) 20%,transparent);font-size:8px;display:grid;place-items:center">NK</span><span style="height:14px;width:14px;border-radius:3px;background:color-mix(in srgb,var(--m2) 20%,transparent);font-size:8px;display:grid;place-items:center">MB</span></span></button>
+              <span style="font-family:var(--font-mono);font-size:10px;color:var(--color-text-muted)">No. 2026-0412</span></div>
+            <p style="margin:8px 0 0;font-size:11px;line-height:1.6;color:var(--color-text-muted);max-width:420px">Wallet-drainer campaign targeting Meridian Trust customers; panel infra on gg-cdn.</p>
+          </div>
+          <span style="font-size:10px;color:var(--color-text-faint);flex-shrink:0">Opened 3 days ago</span>
+        </div>
+      </div>
+      <p class="dv-trade"><b>Tradeoff.</b> The Case’s identity row gains one pill in the type pill’s grammar, with the roster inside it; click opens Members. On a local Case the same pill reads “Share” (the <a class="dv-oid" href="#1c">1c</a> button folded into the row). Overview-only again, so it is the in-Case half of a pair with <a class="dv-oid" href="#3e">3e</a>.</p>
+    </div>
+    <!-- 3e breadcrumb -->
+    <div class="dv-opt" id="3e" style="width:560px">
+      <div class="dv-olabel"><a class="dv-oid" href="#3e">3e</a>Inside the Case · a mark on the breadcrumb, every section</div>
+      <div class="dv-card">
+        <header style="display:flex;height:40px;align-items:center;gap:10px;border-bottom:1px solid var(--color-border);background:var(--color-surface);padding:0 12px">
+          <div style="display:flex;align-items:center;gap:6px"><img src="src/renderer/assets/logo.png" alt="" style="height:20px;width:20px"><span style="font-family:var(--font-display);font-size:11px;font-weight:800;letter-spacing:-0.02em">Birdbrain</span></div>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevr"></use></svg>
+          <div style="display:flex;align-items:center;gap:5px"><span class="new" style="display:inline-flex;align-items:center;gap:4px;height:14px;padding:0 4px;border-radius:3px;background:color-mix(in srgb,var(--color-accent) 14%,transparent);border:1px solid color-mix(in srgb,var(--color-accent) 30%,transparent);font-size:9px;font-weight:600;letter-spacing:.02em">AR</span><span style="font-family:var(--font-display);font-size:11px;font-weight:700;white-space:nowrap">Operation Nightjar</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevud"></use></svg></div>
+          <div style="flex:1;display:flex;justify-content:center"><div style="width:100px;height:22px;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-canvas)"></div></div>
+          <div style="display:flex;align-items:center;gap:6px"><div style="display:inline-flex;height:24px;align-items:center;gap:5px;border-radius:9999px;border:1px solid var(--color-border);color:var(--color-text-muted);padding:0 9px;font-size:10px;font-weight:500"><span style="height:5px;width:5px;border-radius:9999px;background:var(--bb-ok)"></span>Synced<span style="opacity:.6">·</span>2 peers</div><div style="display:inline-flex;height:24px;align-items:center;gap:5px;border-radius:9999px;border:1px solid rgba(16,185,129,.2);background:rgba(16,185,129,.1);color:var(--bb-ok);padding:0 9px;font-size:10px;font-weight:500"><span style="height:5px;width:5px;border-radius:9999px;background:#10b981"></span>Connected</div></div>
+        </header>
+        <div style="padding:14px 20px;font-size:10px;color:var(--color-text-faint);line-height:1.5">Your own Member Code chip leads the Case name wherever the top bar shows it. The sync pill on the right already says the Case is shared; the chip says who you are in it, which Exhibit Numbers (AR-7) otherwise ask you to remember.</div>
+      </div>
+      <p class="dv-trade"><b>Tradeoff.</b> Visible in Captures, Notes, Data, everywhere, and it ties the Member Code on every Exhibit back to the person reading. Small, so it is a confirmation rather than an announcement; a local Case simply has no chip, which is only noticeable once you have seen a shared one.</p>
+    </div>
+  </div>
+
+  <!-- ================= Q4 ================= -->
+  <div class="dv-q">4 · A first-run moment<small>first Case opened after installing this version; shown once per installation</small></div>
+  <div class="dv-opts">
+    <div class="dv-opt" id="4a" style="width:420px">
+      <div class="dv-olabel"><a class="dv-oid" href="#4a">4a</a>Coachmark on the entry point</div>
+      <div class="dv-card" style="height:200px;position:relative">
+        <header style="display:flex;height:40px;align-items:center;justify-content:flex-end;gap:6px;border-bottom:1px solid var(--color-border);background:var(--color-surface);padding:0 12px">
+          <button style="display:inline-flex;height:24px;align-items:center;gap:5px;border-radius:9999px;border:1px solid var(--color-accent);background:transparent;color:var(--color-text-primary);padding:0 9px;font-size:10px;font-weight:500;font-family:var(--font-body);box-shadow:0 0 0 3px color-mix(in srgb,var(--color-accent) 25%,transparent)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-users"></use></svg>Share</button>
+          <div style="display:inline-flex;height:24px;align-items:center;gap:5px;border-radius:9999px;border:1px solid rgba(16,185,129,.2);background:rgba(16,185,129,.1);color:var(--bb-ok);padding:0 9px;font-size:10px;font-weight:500"><span style="height:5px;width:5px;border-radius:9999px;background:#10b981"></span>Connected</div>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-settings"></use></svg>
+        </header>
+        <div class="new" style="position:absolute;right:96px;top:50px;width:250px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-elevated);box-shadow:var(--shadow-overlay);padding:12px 14px">
+          <div style="font-size:12px;font-weight:600">New: share a Case with teammates</div>
+          <p style="margin:4px 0 0;font-size:11px;line-height:1.5;color:var(--color-text-secondary);text-wrap:pretty">Up to four people who run Birdbrain, each with a full copy. You approve every join.</p>
+          <div style="margin-top:10px;display:flex;gap:8px;align-items:center"><button style="height:24px;padding:0 9px;border-radius:4px;border:none;background:var(--color-accent);color:#fff;font-size:11px;font-weight:500;font-family:var(--font-body);cursor:pointer">Show me</button><button style="height:24px;padding:0 6px;border-radius:4px;border:none;background:transparent;color:var(--color-text-muted);font-size:11px;font-family:var(--font-body);cursor:pointer">Got it</button></div>
+        </div>
+      </div>
+      <p class="dv-trade"><b>Tradeoff.</b> Points at the thing, once, where it lives; the renderer already has <code style="font-family:var(--font-mono);font-size:10px">data-tour</code> anchors, so this is the existing mechanism with one more stop. It interrupts the first Case open, and it needs a fixed entry point (<a class="dv-oid" href="#1a">1a</a>, <a class="dv-oid" href="#1b">1b</a> or <a class="dv-oid" href="#1f">1f</a>) to point at.</p>
+    </div>
+    <div class="dv-opt" id="4b" style="width:420px">
+      <div class="dv-olabel"><a class="dv-oid" href="#4b">4b</a>Dashboard banner, before any Case is open</div>
+      <div class="dv-card" style="padding:16px">
+        <div class="new" style="display:flex;align-items:center;gap:12px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-card);padding:12px 14px">
+          <span style="height:32px;width:32px;border-radius:8px;background:var(--color-accent-subtle);display:grid;place-items:center;flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-users"></use></svg></span>
+          <div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600">Cases can now be shared</div><div style="margin-top:2px;font-size:11px;line-height:1.5;color:var(--color-text-secondary)">Open a Case and choose Share. Teammates join with an invite you approve.</div></div>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#i-x"></use></svg>
+        </div>
+        <div style="margin-top:14px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px"><div class="ph" style="height:70px"></div><div class="ph" style="height:70px"></div><div class="ph" style="height:70px"></div><div class="ph" style="height:70px;border:1px dashed var(--color-border-strong);background:transparent"></div></div>
+      </div>
+      <p class="dv-trade"><b>Tradeoff.</b> Same shape as the extension banner the dashboard already uses, so it costs nothing new and reaches people before they open anything. Banners are closed without being read, and it tells rather than shows: the person still has to find the control it describes.</p>
+    </div>
+    <div class="dv-opt" id="4c" style="width:300px">
+      <div class="dv-olabel"><a class="dv-oid" href="#4c">4c</a>No announcement</div>
+      <div class="dv-card" style="padding:14px 16px;font-size:11px;line-height:1.6;color:var(--color-text-secondary)">Nothing proactive. The permanent entry from question 1 is the announcement, and the Members empty state (“This Case is on this machine only”) does the explaining on first click. Optionally one line in the release notes the tester already reads.</div>
+      <p class="dv-trade"><b>Tradeoff.</b> Zero interruption and nothing to build or later remove. It bets everything on question 1; if the entry chosen there is a glyph (<a class="dv-oid" href="#1b">1b</a>) or hidden (<a class="dv-oid" href="#1e">1e</a>), the second tester can miss it exactly as the first did.</p>
+    </div>
+  </div>
+
+  <!-- ================= Q5 ================= -->
+  <div class="dv-q">5 · The dashboard’s three-card limit, and Share on every Case<small>today an older Case has no reachable Share at all</small></div>
+  <div class="dv-opts">
+    <div class="dv-opt" id="5a" style="width:420px">
+      <div class="dv-olabel"><a class="dv-oid" href="#5a">5a</a>Keep three cards · “All Cases” link to ⌘K</div>
+      <div class="dv-card" style="padding:16px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="font-family:var(--font-display);font-size:14px;font-weight:700;letter-spacing:-0.02em">Recent Cases</span><span style="border-radius:9999px;border:1px solid var(--color-border-strong);background:var(--color-surface);padding:1px 7px;font-size:9px;color:var(--color-text-muted)">9 cases</span><span style="flex:1"></span><a class="new" href="#5a" style="font-family:var(--font-display);font-size:11px;font-weight:600;color:var(--color-text-muted);display:inline-flex;align-items:center;gap:3px">All Cases<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevr"></use></svg></a></div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px"><div class="ph" style="height:90px"></div><div class="ph" style="height:90px"></div><div class="ph" style="height:90px"></div><div style="height:90px;border-radius:3px;border:1px dashed var(--color-border-strong)"></div></div>
+      </div>
+      <p class="dv-trade"><b>Tradeoff.</b> Smallest change; the count badge already hints there are more. It only closes the gap if ⌘K rows gain a Share/Members action (<a class="dv-oid" href="#5c">5c</a>); on its own it leads to a list where the older Case can be opened but still not shared, unless question 1 has put Share inside the Case.</p>
+    </div>
+    <div class="dv-opt" id="5b" style="width:520px">
+      <div class="dv-olabel"><a class="dv-oid" href="#5b">5b</a>Three cards, then a compact list of the rest</div>
+      <div class="dv-card" style="padding:16px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px"><div class="ph" style="height:70px"></div><div class="ph" style="height:70px"></div><div class="ph" style="height:70px"></div><div style="height:70px;border-radius:3px;border:1px dashed var(--color-border-strong)"></div></div>
+        <div class="new" style="border-radius:6px;border:1px solid var(--color-border);background:var(--color-card);overflow:hidden">
+          <div style="display:grid;grid-template-columns:1fr 60px 120px 28px;align-items:center;padding:5px 12px;font-size:9px;font-weight:500;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-faint);border-bottom:1px solid var(--color-border)"><span>Older Cases · 6</span><span>Captures</span><span>Sharing</span><span></span></div>
+          <div style="display:grid;grid-template-columns:1fr 60px 120px 28px;align-items:center;min-height:32px;padding:0 12px;font-size:11px;border-bottom:1px solid var(--color-border)"><span style="display:flex;align-items:center;gap:8px"><span style="height:6px;width:6px;border-radius:9999px;background:#0ea5e9"></span><span style="font-weight:500">Loader cluster 2026-04</span><span style="font-size:9px;color:var(--color-text-faint)">12 days ago</span></span><span style="color:var(--color-text-muted)">148</span><span style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--color-text-muted)"><span style="display:inline-flex;align-items:center;height:13px;padding:0 4px;border-radius:3px;background:color-mix(in srgb,var(--m1) 20%,transparent);font-size:8px;font-weight:600;color:var(--color-text-primary)">LC</span>Shared by A. Renner</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-morev"></use></svg></div>
+          <div style="display:grid;grid-template-columns:1fr 60px 120px 28px;align-items:center;min-height:32px;padding:0 12px;font-size:11px;border-bottom:1px solid var(--color-border);background:var(--color-elevated);position:relative"><span style="display:flex;align-items:center;gap:8px"><span style="height:6px;width:6px;border-radius:9999px;background:#ec4899"></span><span style="font-weight:500">Romance-scam payee network</span><span style="font-size:9px;color:var(--color-text-faint)">3 weeks ago</span></span><span style="color:var(--color-text-muted)">31</span><span style="font-size:10px;color:var(--color-text-faint);font-style:italic">On this machine</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-morev"></use></svg>
+            <div role="menu" style="position:absolute;right:8px;top:28px;z-index:3;width:128px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-surface);box-shadow:var(--shadow-overlay);padding:4px 0;font-size:11px"><div style="padding:5px 12px;color:var(--color-text-secondary)">Rename</div><div style="padding:5px 12px;background:var(--color-elevated)">Share this Case…</div><div style="padding:5px 12px;color:#dc2626">Delete</div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 60px 120px 28px;align-items:center;min-height:32px;padding:0 12px;font-size:11px;border-bottom:1px solid var(--color-border)"><span style="display:flex;align-items:center;gap:8px"><span style="height:6px;width:6px;border-radius:9999px;background:#f97316"></span><span style="font-weight:500">Meridian phishing kit</span><span style="font-size:9px;color:var(--color-text-faint)">1 month ago</span></span><span style="color:var(--color-text-muted)">9</span><span style="font-size:10px;color:var(--color-text-faint);font-style:italic">On this machine</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-morev"></use></svg></div>
+          <div style="padding:6px 12px;font-size:10px;color:var(--color-text-faint)">3 more…</div>
+        </div>
+      </div>
+      <p class="dv-trade"><b>Tradeoff.</b> Every Case gets the same “⋯” menu the cards have, and the Sharing column answers question 3 for Cases that never make the top three. The dashboard grows with the number of Cases, and it is a new component rather than a reuse.</p>
+    </div>
+    <div class="dv-opt" id="5c" style="width:420px">
+      <div class="dv-olabel"><a class="dv-oid" href="#5c">5c</a>⌘K Case rows gain an action</div>
+      <div class="dv-card" style="box-shadow:var(--shadow-overlay)">
+        <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--color-border)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-search"></use></svg><span style="font-size:12px">loader</span></div>
+        <div style="padding:6px 4px">
+          <div style="padding:4px 10px 3px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-faint)">Cases</div>
+          <div class="new" style="display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:12px;border-radius:4px;background:var(--color-elevated);margin:0 4px"><span style="height:6px;width:6px;border-radius:9999px;background:#0ea5e9"></span>Loader cluster 2026-04<span style="flex:1"></span><span style="font-size:10px;color:var(--color-text-muted);display:inline-flex;align-items:center;gap:4px">Open <span style="font-family:var(--font-mono);border:1px solid var(--color-border-strong);border-radius:3px;padding:0 4px;font-size:9px">↵</span></span><span style="font-size:10px;color:var(--color-text-muted);display:inline-flex;align-items:center;gap:4px;margin-left:8px">Share <span style="font-family:var(--font-mono);border:1px solid var(--color-border-strong);border-radius:3px;padding:0 4px;font-size:9px">⌘↵</span></span></div>
+        </div>
+      </div>
+      <p class="dv-trade"><b>Tradeoff.</b> Closes the older-Case gap for anyone who can type its name, with no dashboard change and the Join action already next door. Hidden behind a modifier; it is the keyboard route, not the discoverable one. Pairs with <a class="dv-oid" href="#5a">5a</a>.</p>
+    </div>
+    <div class="dv-opt" id="5d" style="width:420px">
+      <div class="dv-olabel"><a class="dv-oid" href="#5d">5d</a>“Show all” expands the card grid</div>
+      <div class="dv-card" style="padding:16px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px"><div class="ph" style="height:60px"></div><div class="ph" style="height:60px"></div><div class="ph" style="height:60px"></div><div style="height:60px;border-radius:3px;border:1px dashed var(--color-border-strong)"></div><div class="ph" style="height:60px;opacity:.6"></div><div class="ph" style="height:60px;opacity:.6"></div><div class="ph" style="height:60px;opacity:.6"></div><div class="ph" style="height:60px;opacity:.6"></div></div>
+        <div style="margin-top:12px;display:flex;justify-content:center"><button class="new" style="height:26px;padding:0 12px;border-radius:4px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-secondary);font-size:11px;font-weight:500;font-family:var(--font-body);cursor:pointer">Show fewer</button></div>
+      </div>
+      <p class="dv-trade"><b>Tradeoff.</b> No new row component, and every card keeps its “⋯” with Share in it. Nine cards of equal weight bury the three recent ones that the limit was protecting, and the dashboard’s guide and activity sections move down with them.</p>
+    </div>
+  </div>
+
+  <p class="dv-next"><b style="color:var(--color-text-primary)">If I had to pick now:</b> <a class="dv-oid" href="#1a">1a</a> as the permanent home with <a class="dv-oid" href="#1e">1e</a> behind it, labelled per <a class="dv-oid" href="#2b">2b</a>; <a class="dv-oid" href="#3b">3b</a> with the role lines from <a class="dv-oid" href="#3c">3c</a> on the card and <a class="dv-oid" href="#3e">3e</a> inside the Case; <a class="dv-oid" href="#4a">4a</a> pointed at the pill; <a class="dv-oid" href="#5b">5b</a> for the dashboard. The pairing that pulls the other way is <a class="dv-oid" href="#1f">1f</a> + <a class="dv-oid" href="#2c">2c</a>, which gives the Case a proper menu at the cost of a behavior change. Try next: “take 1a, 2b, 3b+3c, 3e, 4a, 5b to Members fidelity” · “show 1f with Export folded in” · “show 1a at 1,000px wide”.</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark' | 'light'&quot;,&quot;section&quot;:&quot;Appearance&quot;},&quot;shared&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;1a · top bar pill&quot;}}">
+class Component extends DCLogic {
+  componentDidMount() { this.applyTheme() }
+  componentDidUpdate() { this.applyTheme() }
+  applyTheme() {
+    document.documentElement.classList.toggle('dark', (this.props.theme ?? 'dark') === 'dark')
+  }
+  renderVals() {
+    const shared = this.props.shared ?? false
+    return { isShared: shared, notShared: !shared }
+  }
+}
+</script>
+</body>
+</html>

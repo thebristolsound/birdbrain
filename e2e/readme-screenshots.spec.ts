@@ -300,7 +300,11 @@ test.describe('README screenshots', () => {
         window as unknown as {
           birdbrain: { settings: { update: (p: object) => Promise<unknown> } }
         }
-      ).birdbrain.settings.update({ isFreshInstall: true, onboardingChapters: {} })
+      ).birdbrain.settings.update({
+        isFreshInstall: true,
+        // The Share mark is dismissed up front so the Case screenshots stay uncovered.
+        onboardingChapters: { share: true }
+      })
     })
     await page.reload()
     await page.waitForSelector('[data-testid="app-ready"]', { timeout: 15000 })

@@ -56,6 +56,10 @@ interface AppState {
     lastError?: { message: string; timestamp: string }
   }
   commandPaletteOpen: boolean
+  // The Share mark is on screen, so the top bar's pill wears its ring.
+  shareMarkOpen: boolean
+  // A tour chapter is running, so the Share mark stays off screen.
+  tourRunning: boolean
   // How many Dialogs are logically open. A count rather than a boolean because
   // dialogs nest, and the inner one closing must not disarm the outer. It is
   // what keyboard guards read: `role="dialog"` survives the close for the
@@ -87,6 +91,8 @@ interface AppState {
   setConnectedToExtension: (connected: boolean) => void
   setCommandPaletteOpen: (open: boolean) => void
   toggleCommandPalette: () => void
+  setShareMarkOpen: (open: boolean) => void
+  setTourRunning: (running: boolean) => void
   registerOpenDialog: () => void
   unregisterOpenDialog: () => void
   setPanelCollapsedForced: (forced: boolean) => void
@@ -145,6 +151,8 @@ export const useAppStore = create<AppState>((set) => ({
   captureEvents: [],
   captureStats: { successCount: 0, failCount: 0, skipCount: 0 },
   commandPaletteOpen: false,
+  shareMarkOpen: false,
+  tourRunning: false,
   openDialogCount: 0,
   panelCollapsedForced: false,
   activeViewerTab: 'screenshot',
@@ -157,6 +165,8 @@ export const useAppStore = create<AppState>((set) => ({
   setConnectedToExtension: (connected) => set({ connectedToExtension: connected }),
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   toggleCommandPalette: () => set((s) => ({ commandPaletteOpen: !s.commandPaletteOpen })),
+  setShareMarkOpen: (open) => set({ shareMarkOpen: open }),
+  setTourRunning: (running) => set({ tourRunning: running }),
   registerOpenDialog: () => set((s) => ({ openDialogCount: s.openDialogCount + 1 })),
   // Clamped: an unbalanced release would otherwise drive the count negative and
   // leave every later guard reading "no dialog" while one is up.

@@ -6,6 +6,7 @@ import {
   syncStateQueryOptions
 } from '@renderer/lib/api/sharing'
 import { useTimeTick } from '@renderer/hooks/useTimeTick'
+import { useAppStore } from '@renderer/stores/appStore'
 import { cn } from '@renderer/lib/utils'
 import {
   COPY,
@@ -31,6 +32,8 @@ export function SharePill({
   const shared = members !== undefined && members.members.length > 0
   const { data: state } = useQuery({ ...syncStateQueryOptions(caseId), enabled: shared })
   const nowMs = useTimeTick(60_000)
+  // The Share mark rings the pill while it shows, instead of the tour's spotlight.
+  const marked = useAppStore((s) => s.shareMarkOpen)
   const pill = sharePillModel({ available, members, syncState: state, nowMs })
   if (!pill) return null
   const { sync } = pill
@@ -43,8 +46,10 @@ export function SharePill({
       data-state={pill.state}
       data-chrome={sync?.chrome}
       data-tour="share"
+      data-marked={marked ? 'true' : undefined}
       className={cn(
         'group relative inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border px-[7px] text-[11px] font-medium lg:px-2.5',
+        marked && 'ring-[3px] ring-accent/30',
         sync
           ? sync.chrome === 'error'
             ? 'border-danger-fg/35 bg-danger-fg/8 text-danger-fg'

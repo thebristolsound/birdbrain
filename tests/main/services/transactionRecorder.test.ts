@@ -340,6 +340,36 @@ describe('attached targets (plan D17)', () => {
     })
   })
 
+  it('keys each response body by its session, so a body that returns later replaces none', async () => {
+    const { fake, recorder } = await started()
+    attach(fake, 'worker', 'worker')
+    await settle()
+    let answerPage: (value: unknown) => void = () => {}
+    fake.answers.set('Network.getResponseBody@', {
+      later: new Promise((resolve) => (answerPage = resolve))
+    })
+    fake.answers.set('Network.getResponseBody@worker', body('from the worker'))
+    const { on } = page(fake)
+    on('')('Network.requestWillBeSent', {
+      requestId: 'shared',
+      wallTime: WALL_TIME,
+      request: { url: 'http://127.0.0.1/shared', method: 'GET', headers: {} }
+    })
+    on('')('Network.responseReceived', {
+      requestId: 'shared',
+      response: { url: 'http://127.0.0.1/shared', status: 200, statusText: 'OK', headers: {} }
+    })
+    on('')('Network.loadingFinished', { requestId: 'shared' })
+    on('worker')('Network.loadingFinished', { requestId: 'shared' })
+    await settle()
+    answerPage(body('from the page').value)
+    const { exchanges } = await recorder.collect(100)
+    expect(exchanges[0]).toMatchObject({
+      state: 'complete',
+      responseBody: { data: 'from the worker' }
+    })
+  })
+
   it('leaves a body omitted when its target detaches before the body returns', async () => {
     const { fake, recorder } = await started()
     fake.answers.set('Network.getResponseBody', { fail: 'Session with given id not found' })

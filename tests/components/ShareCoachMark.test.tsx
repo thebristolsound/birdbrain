@@ -239,7 +239,7 @@ describe('ShareCoachMark', () => {
     expect(screen.queryByTestId('share-mark')).toBeNull()
   })
 
-  it('stays off once any Case on this installation is shared or joined', async () => {
+  it('stays off once a Case on the case list is shared or joined', async () => {
     anchor()
     install({
       cases: [LOCAL_CASE, { ...LOCAL_CASE, id: 'case-2', sharedAt: '2026-09-19T14:00:00.000Z' }]

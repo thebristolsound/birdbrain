@@ -58,8 +58,9 @@ export function ShareCoachMark() {
   const [dismissed, setDismissed] = useState(false)
 
   // Inside a Case, where the pill is, and not while a tour chapter runs; never
-  // where sharing is unavailable, and never once any Case on this
-  // installation is shared or joined.
+  // where sharing is unavailable, and never once a Case on the case list is
+  // shared or joined. That list leaves out archived Cases (`listCases`), so an
+  // installation whose every shared Case is archived can still see the mark.
   const eligible =
     !dismissed &&
     !tourRunning &&

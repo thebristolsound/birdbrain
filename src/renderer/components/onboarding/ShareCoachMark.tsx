@@ -51,15 +51,18 @@ export function ShareCoachMark() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const navigate = useNavigate()
   const setShareMarkOpen = useAppStore((s) => s.setShareMarkOpen)
+  const tourRunning = useAppStore((s) => s.tourRunning)
   const [rect, setRect] = useState<TourRect | null>(null)
   const [viewport, setViewport] = useState<Viewport>(readViewport)
   // Dismissed for this window before the settings write lands.
   const [dismissed, setDismissed] = useState(false)
 
-  // Inside a Case, where the pill is; never where sharing is unavailable, and
-  // never once any Case on this installation is shared or joined.
+  // Inside a Case, where the pill is, and not while a tour chapter runs; never
+  // where sharing is unavailable, and never once any Case on this
+  // installation is shared or joined.
   const eligible =
     !dismissed &&
+    !tourRunning &&
     caseId !== null &&
     pathname.startsWith('/cases/') &&
     pathname !== '/cases/new' &&

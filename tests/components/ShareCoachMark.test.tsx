@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { BirdbrainSettings, Case } from '@shared/types'
@@ -23,6 +23,8 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 
 import { ShareCoachMark } from '@renderer/components/onboarding/ShareCoachMark'
+import { OnboardingTour } from '@renderer/components/onboarding/OnboardingTour'
+import { startTour } from '@renderer/components/onboarding/startTour'
 
 const LOCAL_CASE: Case = {
   id: 'case-1',
@@ -75,12 +77,20 @@ function anchor() {
   return el
 }
 
-function renderMark() {
+function renderMark(withTour = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  return { ...render(<ShareCoachMark />, { wrapper: Wrapper }), client }
+  const ui = withTour ? (
+    <>
+      <OnboardingTour />
+      <ShareCoachMark />
+    </>
+  ) : (
+    <ShareCoachMark />
+  )
+  return { ...render(ui, { wrapper: Wrapper }), client }
 }
 
 async function settled(client: QueryClient) {
@@ -188,6 +198,25 @@ describe('ShareCoachMark', () => {
     install({ settings: { isFreshInstall: true, onboardingChapters: { intro: true, case: true } } })
     renderMark()
     expect(await screen.findByTestId('share-mark')).toBeTruthy()
+  })
+
+  // Replaying the intro from the command palette inside a Case opens its
+  // welcome card there, before the chapter's first route change.
+  it('steps aside while a tour chapter runs, and comes back when it closes', async () => {
+    anchor()
+    install()
+    renderMark(true)
+    await screen.findByTestId('share-mark')
+    act(() => startTour('intro'))
+    await screen.findByTestId('tour-welcome')
+    expect(screen.queryByTestId('share-mark')).toBeNull()
+    expect(useAppStore.getState().shareMarkOpen).toBe(false)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByTestId('tour-welcome')).toBeNull(), {
+      timeout: 5000
+    })
+    expect(await screen.findByTestId('share-mark')).toBeTruthy()
+    expect(updated).toEqual([])
   })
 
   it('stays off the dashboard and the wizard', async () => {

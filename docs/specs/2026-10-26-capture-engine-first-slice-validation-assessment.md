@@ -197,6 +197,22 @@ wherever the page loads.
   stored it, that no test pinned the 35 s reserve, and that the two end phases could carry a
   render past its deadline. The notice now follows the stored Capture, and each phase is cut to
   the time left (ruled 2026-10-26).
+- The second review of #1999 found that the main document was the main frame's last document
+  request, whatever became of it, so a later navigation that did not replace the page, such as a
+  download, supplied the signed Bound TLS Details. The main document is now the last one that
+  replaced the page. What replaced it was measured on Electron 45.0.0 with Chromium
+  156.0.8078.48, in a standalone script outside the repository that loaded a page, navigated it
+  after 300 ms, and read the window's URL and title 2.5 s later:
+
+  | The second navigation                           | Its events                                         | The window showed |
+  | ----------------------------------------------- | -------------------------------------------------- | ----------------- |
+  | A 204 answer                                    | response 204, then `loadingFailed`, canceled true  | the first page    |
+  | An attachment (`Content-Disposition`)           | response 200, then `loadingFailed`, canceled true  | the first page    |
+  | Replaced by a third navigation before answering | `loadingFailed`, canceled true, no response        | the third page    |
+  | A server that never answers                     | `requestWillBeSent` only                           | the first page    |
+  | A body still streaming                          | response 200, no terminal event                    | the second page   |
+  | A body cut short after its response             | response 200, then `loadingFailed`, canceled false | the second page   |
+  | Port 1, which the browser refuses               | `loadingFailed`, canceled false, no response       | the second URL    |
 
 ## False positives and negatives
 

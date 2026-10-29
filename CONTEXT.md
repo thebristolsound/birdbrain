@@ -103,7 +103,7 @@ An optional phase before a Capture's artifacts are taken in which the page is sc
 _Avoid_: scrolling capture, scrolling mode, pre-scroll.
 
 **Bound TLS Details**:
-The TLS security details the browser reported on the response that produced a Capture's bytes, recordable only because the engine was attached before the request was sent. `background` Captures carry them today; _planned:_ `launched` in a Chromium browser. A property of the Capture itself, unlike the TLS Cert Chain: the browser's summary, holding no certificate bytes. Absent, with the reason in the Manifest Entry, when the Capture has no Transaction Record, for an `http:` page, for a cached response, and when the browser reported none; absent for Firefox, and for `companion` and `duplicate` Captures.
+The TLS security details the browser reported on the response that produced a Capture's bytes: when the page navigated itself, the last navigation that replaced the page, never one the browser cancelled, such as a download or an empty answer. Recordable only because the engine was attached before the request was sent. `background` Captures carry them today; _planned:_ `launched` in a Chromium browser. A property of the Capture itself, unlike the TLS Cert Chain: the browser's summary, holding no certificate bytes. Absent, with the reason in the Manifest Entry, when the Capture has no Transaction Record, for an `http:` page, for a cached response, and when the browser reported none; absent for Firefox, and for `companion` and `duplicate` Captures.
 _Avoid_: capture cert, TLS evidence, cert chain (for this).
 
 **Extracted Text**:

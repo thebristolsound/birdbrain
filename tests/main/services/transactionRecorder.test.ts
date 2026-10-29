@@ -806,6 +806,64 @@ describe('finishTransactionRecord', () => {
     expect(outcome).toMatchObject({ present: false, reason: 'failed' })
   })
 
+  it('signs the shown page details when a later navigation was cancelled, as a download is', async () => {
+    const { fake, recorder } = await started()
+    fake.answers.set('Network.getResponseBody', body('<p>shown</p>'))
+    const { on } = page(fake)
+    const navigate = (requestId: string, host: string, wallTime: number): void => {
+      const url = `https://${host}/`
+      on('')('Network.requestWillBeSent', {
+        requestId,
+        wallTime,
+        type: 'Document',
+        frameId: 'main',
+        request: { url, method: 'GET', headers: {} }
+      })
+      on('')('Network.responseReceived', {
+        requestId,
+        response: {
+          url,
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+          mimeType: 'text/html',
+          securityDetails: {
+            protocol: 'TLS 1.3',
+            keyExchange: '',
+            cipher: 'AES_128_GCM',
+            certificateId: 0,
+            subjectName: host,
+            sanList: [host],
+            issuer: 'Test CA',
+            validFrom: 1767225600,
+            validTo: 1798761600,
+            signedCertificateTimestampList: [],
+            certificateTransparencyCompliance: 'unknown',
+            encryptedClientHello: false
+          }
+        }
+      })
+      on('')('Network.dataReceived', { requestId, dataLength: 11 })
+    }
+    navigate('shown', 'shown.example', WALL_TIME)
+    on('')('Network.loadingFinished', { requestId: 'shown' })
+    navigate('download', 'other.example', WALL_TIME + 1)
+    on('')('Network.loadingFailed', {
+      requestId: 'download',
+      errorText: 'net::ERR_ABORTED',
+      canceled: true
+    })
+    recorder.stop()
+    const outcome = await finishTransactionRecord(recorder, {
+      collectMs: 100,
+      writeMs: 5_000,
+      writer: WRITER
+    })
+    if (!outcome.present) throw outcome.error
+    expect(outcome.boundTls).toMatchObject({ subjectName: 'shown.example' })
+    expect(outcome.inventory).toMatchObject({ exchanges: 1, cancelled: 1 })
+  })
+
   it('signs the count of requests finished with no response apart from those in flight', async () => {
     const { fake, recorder } = await started()
     const { on } = page(fake)

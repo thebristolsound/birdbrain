@@ -640,15 +640,33 @@ function makeTestCertificate(): { key: string; cert: string } {
 test.describe('Bound TLS Details of a background capture', () => {
   const log: Logged[] = []
   let tls: Fixture
+  let plain: Fixture
   let leaf: X509Certificate
 
   test.beforeAll(async () => {
     const { key, cert } = makeTestCertificate()
     leaf = new X509Certificate(cert)
+    // An http server whose empty answer leaves the https page in place (finding 1 of the second
+    // review of #1999).
+    plain = await listen(
+      createServer((req, res) => {
+        logRequest(log, req, 'http')
+        res.writeHead(204)
+        res.end()
+      }),
+      '127.0.0.1',
+      'http',
+      log
+    )
     tls = await listen(
       createHttpsServer({ key, cert }, (req, res) => {
         logRequest(log, req, 'https')
-        send(res, 'text/html', '<!doctype html><title>TLS Fixture</title><p>tls</p>')
+        const leave =
+          req.url === '/then-204'
+            ? `<script>addEventListener('load', () => setTimeout(() => {
+  location.href = '${plain.origin}/nocontent' }, 100))</script>`
+            : ''
+        send(res, 'text/html', `<!doctype html><title>TLS Fixture</title><p>tls</p>${leave}`)
       }),
       '127.0.0.1',
       'https',
@@ -661,6 +679,7 @@ test.describe('Bound TLS Details of a background capture', () => {
     delete process.env.BIRDBRAIN_E2E_ALLOW_LOOPBACK
     delete process.env.BIRDBRAIN_E2E_TRUST_CERT_SHA256
     await tls.close()
+    await plain.close()
   })
 
   test.describe('with the test certificate allowance', () => {
@@ -693,6 +712,35 @@ test.describe('Bound TLS Details of a background capture', () => {
       })
       expect(entry).not.toHaveProperty('boundTlsAbsent')
       expect(await verified(page, end.captureId!)).toBe('verified')
+    })
+
+    test('signs the shown page details when it then navigates to an empty answer', async ({
+      page
+    }) => {
+      test.setTimeout(150000)
+      const caseId = await createCase(page, 'Bound TLS 204 E2E')
+      await recordActivity(page)
+      log.length = 0
+      const end = await recapture(page, caseId, `${tls.origin}/then-204`)
+      expect(end).toMatchObject({ type: 'stored' })
+      // The page's navigation reached the http server, and the browser cancelled it.
+      expect(log.map(({ url }) => url)).toContain(`${plain.origin}/nocontent`)
+      const { entry, transactionRecord, records } = await storedCapture(
+        page,
+        caseId,
+        end.captureId!
+      )
+      expect(transactionRecord.cancelled).toBe(1)
+      expect(
+        ofType(records, 'request').some(
+          (r) => r.warc('WARC-Target-URI') === `${plain.origin}/nocontent`
+        )
+      ).toBe(true)
+      expect(entry.boundTls).toMatchObject({
+        subjectName: '127.0.0.1',
+        issuer: 'Birdbrain Test CA'
+      })
+      expect(entry).not.toHaveProperty('boundTlsAbsent')
     })
   })
 

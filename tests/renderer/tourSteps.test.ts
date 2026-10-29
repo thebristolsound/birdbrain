@@ -225,21 +225,35 @@ describe('shouldShowShareMark', () => {
     expect(shouldShowShareMark(undefined)).toBe(false)
   })
 
-  it('waits until a fresh install has no chapter left to auto-fire', () => {
+  it('waits while a fresh install still has an auto-fired chapter due', () => {
     expect(shouldShowShareMark({ isFreshInstall: true, onboardingChapters: {} })).toBe(false)
-    expect(
-      shouldShowShareMark({ isFreshInstall: true, onboardingChapters: { intro: true, case: true } })
-    ).toBe(false)
-    expect(
-      shouldShowShareMark({
-        isFreshInstall: true,
-        onboardingChapters: { intro: true, ext: true, case: true }
-      })
-    ).toBe(true)
+    expect(shouldShowShareMark({ isFreshInstall: true, onboardingChapters: { intro: true } })).toBe(
+      false
+    )
   })
 
-  it('records its dismissal under a key that is not a chapter', () => {
-    expect(ALL_CHAPTERS).not.toContain(SHARE_MARK_KEY)
+  // The extension chapter never starts on its own, so finishing the two that do
+  // leaves its key unset for good. The mark must still show.
+  it('shows once a fresh install finishes the intro and case chapters', () => {
+    const afterIntro = completionAfter({}, 'intro', 'finished', true)
+    const afterCase = completionAfter(afterIntro ?? {}, 'case', 'finished', true)
+    expect(afterCase).toEqual({ intro: true, case: true })
+    expect(shouldShowShareMark({ isFreshInstall: true, onboardingChapters: afterCase ?? {} })).toBe(
+      true
+    )
+  })
+
+  it('shows once a fresh install skips the tour', () => {
+    const afterSkip = completionAfter({}, 'intro', 'skipped', true)
+    expect(shouldShowShareMark({ isFreshInstall: true, onboardingChapters: afterSkip ?? {} })).toBe(
+      true
+    )
+  })
+
+  it('records its dismissal under its own key, which completes no chapter', () => {
+    expect(SHARE_MARK_KEY).toBe('share')
+    const settings = { isFreshInstall: true, onboardingChapters: { [SHARE_MARK_KEY]: true } }
+    for (const chapter of ALL_CHAPTERS) expect(shouldAutoFire(settings, chapter)).toBe(true)
   })
 })
 

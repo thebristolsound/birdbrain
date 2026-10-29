@@ -175,12 +175,19 @@ describe('ShareCoachMark', () => {
     expect(useAppStore.getState().shareMarkOpen).toBe(false)
   })
 
-  it('waits until a fresh install has no chapter left to auto-fire', async () => {
+  it('waits while a fresh install still has its tour to auto-fire', async () => {
     anchor()
     install({ settings: { isFreshInstall: true, onboardingChapters: {} } })
     const { client } = renderMark()
     await settled(client)
     expect(screen.queryByTestId('share-mark')).toBeNull()
+  })
+
+  it('shows once a fresh install has finished the intro and case chapters', async () => {
+    anchor()
+    install({ settings: { isFreshInstall: true, onboardingChapters: { intro: true, case: true } } })
+    renderMark()
+    expect(await screen.findByTestId('share-mark')).toBeTruthy()
   })
 
   it('stays off the dashboard and the wizard', async () => {

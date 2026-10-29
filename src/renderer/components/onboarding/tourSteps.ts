@@ -304,6 +304,9 @@ export function shouldAutoFire(
 
 export const ALL_CHAPTERS: TourChapter[] = ['intro', 'ext', 'case']
 
+/** The chapters `OnboardingTour` starts on its own; `ext` only ever runs as a replay. */
+export const AUTO_FIRE_CHAPTERS: TourChapter[] = ['intro', 'case']
+
 /** The `onboardingChapters` key under which the Share mark records its dismissal. */
 export const SHARE_MARK_KEY = 'share'
 
@@ -315,12 +318,13 @@ export const SHARE_MARK_KEY = 'share'
  * not a chapter, which is a smaller interruption than the rule was written
  * for; the exception is recorded in the 2026-10-28 feasibility assessment.
  * It waits until no chapter is still due to auto-fire, so a fresh install's
- * case chapter is never interrupted by it.
+ * case chapter is never interrupted by it. Only the auto-fired chapters count:
+ * `ext` never starts on its own, so finishing intro and case leaves its key unset.
  */
 export function shouldShowShareMark(settings: AutoFireSettings | undefined): boolean {
   if (!settings) return false
   if (settings.onboardingChapters?.[SHARE_MARK_KEY]) return false
-  return ALL_CHAPTERS.every((chapter) => !shouldAutoFire(settings, chapter))
+  return AUTO_FIRE_CHAPTERS.every((chapter) => !shouldAutoFire(settings, chapter))
 }
 
 export type TourOutcome = 'finished' | 'skipped'

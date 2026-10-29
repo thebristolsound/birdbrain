@@ -48,6 +48,11 @@ through `uvx --from 'warcio==1.8.1'`, on the records the end-to-end spec stored.
 below are from the head after the review of #1999, except the demo page sizes and the writer
 timing, measured at `54e5fcf6`.
 
+After this branch took `main`'s Electron 45.0.0 (#1994), the plan's re-check of
+`Network.configureDurableMessages` ran on Electron 45.0.0 with Chromium 156.0.8078.48, on the
+same workstation under `xvfb-run`: `e2e/recapture-transaction-record.spec.ts` passed all eight
+tests against the built app. The other Recapture specs and the probe were not rerun there.
+
 ## Expected and observed results
 
 **Step 6.**

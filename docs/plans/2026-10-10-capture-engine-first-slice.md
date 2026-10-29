@@ -1261,7 +1261,11 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   pull request removes the writer's `x-birdbrain-decoded-text` marker and its `warcinfo` sentence.
   The spike ran on Electron 44.9.1, so step 9 re-checks the experimental
   `Network.configureDurableMessages` on the Electron version `main` pins (45.0.0 since #1994)
-  before it relies on it.
+  before it relies on it. Done on 2026-10-29 after this branch took `main`: on Electron 45.0.0
+  with Chromium 156.0.8078.48, `e2e/recapture-transaction-record.spec.ts` passed all eight tests.
+  Its known-answer test counted five recorded targets, which needs the command to answer on each
+  session, and matched the windows-1252, Shift_JIS, byte-order-mark and mislabelled text bodies
+  to the served bytes (validation record, step 9, Environments).
 - **Time.** The render races one deadline and, when the deadline wins, rejects with "Recapture
   timed out" and stores nothing; `FINAL_ARTIFACT_RESERVE_MS` reserves 20 s for the screenshot,
   MHTML, and text only (`renderPageInHiddenWindow`). Two new phases need time at the end: the

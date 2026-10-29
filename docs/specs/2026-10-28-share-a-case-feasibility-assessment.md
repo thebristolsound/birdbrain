@@ -55,8 +55,10 @@ Two departures from the bundle README. Shared keys on another Member in the sync
 invite, because it is the one state that needs the Owner.
 
 The roster query is already refetched on `event:sharingChanged`, which fires on any invite,
-join or roster change, so the pill moves without a second poll. The invite expiry in the
-tooltip is `expiryPhrase`, which the invite dialog uses.
+join or roster change and when each one-minute sync round ends, so the pill moves without a
+second poll. An invite that expires sends no event of its own, so an expired invite leaves the
+pill on "Invite waiting" until the next round ends. The invite expiry in the tooltip is
+`expiryPhrase`, which the invite dialog uses.
 
 Constraints, none of which change the drawing:
 
@@ -80,8 +82,9 @@ Two constraints.
   so a label that hid would shrink the cluster that hid it. Engineering implements the rule
   the way the top bar's labels already fold, at a viewport breakpoint: the Share label hides
   below `lg` (1,024px), as the Connected label does (Export folds at `xl`, 1,280px), which
-  keeps frame A's label at 1,180px and frame G's icon at 1,000px with or without REC. The
-  behaviour the mock asks for stands; only the trigger changes.
+  keeps frame A's label at 1,180px and frame G's icon at 1,000px with or without REC. One drawn
+  case changes: at 1,000px without REC the mock keeps the full label, and the breakpoint hides
+  it.
 - **The sync pill's compact form is new.** `SyncPill` always prints both halves of its label.
   Frame G draws the compact form as the dot alone with the tooltip carrying the label; that is
   enough to build from, and it is new work, which is why this is M rather than S.
@@ -129,8 +132,9 @@ constraints:
 
 "Share this Case…" until the Case is shared, which the first invite does, then "Members", same
 destination. The item stays on an
-Intel Mac, as the bundle's fixed rules require. `e2e/shared-case-members.spec.ts` selects the
-menu item by its name on a Case not yet shared, so the spec moves with the label.
+Intel Mac, as the bundle's fixed rules require. `e2e/shared-case-members.spec.ts` selects
+"Members" on the seeded Shared Case, which keeps that label, so the spec does not depend on the
+change.
 
 ### E4. Older Cases list (5b): Accept (M)
 
@@ -189,9 +193,9 @@ only, recorded here and in `tourSteps.ts` beside the rule it excepts. The altern
 fresh installs only, with the pill doing the announcing on its own.
 
 **Ruled yes on 2026-10-28.** The mark shows once to every eligible installation, upgrades
-included, as the one exception to the rule; the constraints under F still keep it off where
-they apply. The coachmark pull request adds `shouldShowShareMark` to `tourSteps.ts`, beside the
-rule it excepts.
+included, as the one exception to the rule; the exclusions in F's second constraint (a running
+chapter, a false platform read, a Case already shared) still keep it off. The coachmark pull
+request adds `shouldShowShareMark` to `tourSteps.ts`, beside the rule it excepts.
 
 ## Build order
 
@@ -204,5 +208,6 @@ not evidence-affecting:
    sentence.
 2. **Dashboard (E1 to E4).** `CaseCard.tsx`, the lifted menu component, `RecentCases.tsx`, the
    new Older Cases component, the role line that replaces `SharedCaseLine.tsx`, `Dashboard.tsx`,
-   their tests and `e2e/shared-case-members.spec.ts`.
+   their tests, and a check in `e2e/shared-case-members.spec.ts` that a Case nobody shared
+   offers "Share this Case…".
 3. **Coachmark (F)**, as ruled.

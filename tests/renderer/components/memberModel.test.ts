@@ -14,6 +14,8 @@ import {
   COPY,
   HUE_CLASSES,
   capturedBy,
+  caseMenuSharingLabel,
+  caseRoleLine,
   egressIsNotDirect,
   egressLabel,
   errorKindLabel,
@@ -31,6 +33,7 @@ import {
   identityLine,
   inviteExpires,
   inviteTitle,
+  inviteWaitingLine,
   joinFailure,
   joinRequestLead,
   joinRequestsToApprove,
@@ -55,12 +58,15 @@ import {
   roleLabel,
   shareActionLabel,
   sharePillModel,
-  sharedByLine,
+  sharedBadge,
+  sharedByOwnerLine,
+  sharedWithTeammates,
   syncPillModel,
   toApprove,
   trustNote,
   waitingBody,
   youAreLine,
+  youOwnLine,
   yourCodeWillBe,
   type SharePillInput
 } from '@renderer/components/sharing/memberModel'
@@ -669,6 +675,73 @@ describe('sharePillModel', () => {
   })
 })
 
+// The dashboard card's role line and badge (2026-10-28 handoff, frame E).
+describe('caseRoleLine', () => {
+  const invite = { inviteId: 'a', expiresAt: '2026-09-19T14:07:00.000Z' }
+
+  it('needs no roster for a local Case and waits for one on a shared Case', () => {
+    expect(caseRoleLine(false, undefined, NOW)).toEqual({
+      kind: 'local',
+      text: 'On this machine only'
+    })
+    expect(caseRoleLine(true, undefined, NOW)).toBeNull()
+  })
+
+  it('claims nothing for a shared Case whose roster lacks this installation or the Owner', () => {
+    expect(caseRoleLine(true, members({ members: [] }), NOW)).toBeNull()
+    expect(caseRoleLine(true, members({ installationId: 'inst-unknown' }), NOW)).toBeNull()
+    const ownerless = members().members.map((m) => ({ ...m, role: 'member' as const }))
+    expect(caseRoleLine(true, members({ members: ownerless }), NOW)).toBeNull()
+  })
+
+  it('tells the Owner they own the members, counting themselves', () => {
+    expect(caseRoleLine(true, members(), NOW)).toEqual({
+      kind: 'owner',
+      code: 'AR',
+      text: 'You own · 4 members'
+    })
+    expect(youOwnLine(1)).toBe('You own · 1 member')
+  })
+
+  it('tells a member who shared the Case, with the member’s own code', () => {
+    const joined = members({ installationId: 'inst-nk', isOwner: false })
+    expect(caseRoleLine(true, joined, NOW)).toEqual({
+      kind: 'joined',
+      code: 'NK',
+      text: 'Shared by A. Renner'
+    })
+  })
+
+  it('waits on an open invite only while the Owner is alone', () => {
+    expect(caseRoleLine(true, members({ members: [AR], invites: [invite] }), NOW)).toEqual({
+      kind: 'invite',
+      text: 'Invite waiting · expires today 14:07'
+    })
+    expect(caseRoleLine(true, members({ invites: [invite] }), NOW)?.kind).toBe('owner')
+    const alone = members({
+      members: [AR],
+      invites: [{ ...invite, expiresAt: '2026-09-19T14:00:00.000Z' }]
+    })
+    expect(caseRoleLine(true, alone, NOW)).toEqual({
+      kind: 'owner',
+      code: 'AR',
+      text: 'You own · 1 member'
+    })
+  })
+
+  it('labels the badge and the menu item', () => {
+    expect(sharedBadge(3)).toBe('Shared · 3')
+    expect(sharedWithTeammates(3)).toBe('Shared with 2 teammates')
+    expect(sharedWithTeammates(2)).toBe('Shared with 1 teammate')
+    expect(caseMenuSharingLabel(false)).toBe('Share this Case…')
+    expect(caseMenuSharingLabel(true)).toBe('Members')
+    expect(sharedByOwnerLine('A. Renner')).toBe('Shared by A. Renner')
+    expect(inviteWaitingLine('2026-09-20T09:12:00.000Z', NOW)).toBe(
+      'Invite waiting · expires tomorrow 09:12'
+    )
+  })
+})
+
 describe('memberCodeCheck', () => {
   it('upper-cases, refuses four characters and symbols, and accepts a free code', () => {
     expect(memberCodeCheck('jo', ROSTER, 'J. Okafor')).toEqual({ code: 'JO', ok: true })
@@ -883,8 +956,6 @@ describe('copy', () => {
     )
     expect(memberAddCaption(32)).toBe('Manifest entry member-add #0032 written to your chain.')
     expect(joinWaitingTitle('A. Renner')).toBe('Waiting for A. Renner to approve')
-    expect(sharedByLine('A. Renner', 5)).toBe('Shared by A. Renner · 5 members')
-    expect(sharedByLine('A. Renner', 1)).toBe('Shared by A. Renner · 1 member')
     expect(capturedBy(null, 'AR')).toBe('Captured by you (AR)')
     expect(capturedBy('N. Kowalski', 'NK')).toBe('Captured by N. Kowalski (NK)')
     expect(revokeTitle('S. Idris')).toBe('Revoke S. Idris?')
@@ -926,6 +997,11 @@ describe('copy', () => {
       inviteExpires('2026-09-20T14:07:00.000Z', NOW),
       joinRequestsToApprove(2),
       youAreLine('AR'),
+      youOwnLine(3),
+      sharedByOwnerLine('A. Renner'),
+      inviteWaitingLine('2026-09-20T14:07:00.000Z', NOW),
+      sharedBadge(3),
+      sharedWithTeammates(3),
       pausedStrip('S. Idris', 'SI', 3).text,
       exclusionBanner({
         exhibitId: 'x',

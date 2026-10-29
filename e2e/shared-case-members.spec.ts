@@ -1,6 +1,6 @@
 import { mkdir } from 'node:fs/promises'
 import { test, expect } from './fixtures/electronApp'
-import { SHARED_CASE_NAME } from '../scripts/dev-seed/constants'
+import { ORDINARY_CASE_NAME, SHARED_CASE_NAME } from '../scripts/dev-seed/constants'
 import type { BirdbrainAPI } from '@shared/birdbrainApi'
 import { mhtmlPage, seedCapture, serverToken } from './fixtures/seed'
 
@@ -75,7 +75,17 @@ test.describe('Shared Case members screens', () => {
     await page.evaluate(() => {
       window.location.hash = '/'
     })
+    // A Case nobody shared offers sharing from the same menu, and says so on its card
+    // (docs/design-handoff/2026-10-28-share-a-case/, frame E).
+    const ordinary = page.getByTestId('case-card').filter({ hasText: ORDINARY_CASE_NAME })
+    await expect(ordinary.getByTestId('case-role-line')).toHaveText('On this machine only')
+    await ordinary.hover()
+    await ordinary.getByTestId('case-card-menu-btn').click()
+    await expect(ordinary.getByRole('menuitem', { name: 'Share this Case…' })).toBeVisible()
+    await page.keyboard.press('Escape')
+
     const card = page.getByTestId('case-card').filter({ hasText: SHARED_CASE_NAME })
+    await expect(card.getByTestId('case-shared-badge')).toHaveText(/^Shared · \d+$/)
     await card.hover()
     await card.getByTestId('case-card-menu-btn').click()
     await card.getByRole('menuitem', { name: 'Members' }).click()

@@ -294,7 +294,10 @@ export const COPY = {
   shareTitle: 'Share this Case with teammates. Opens Members.',
   inviteWaiting: 'invite waiting',
   shareThisCase: 'Share this Case…',
-  membersAction: 'Members…'
+  membersAction: 'Members…',
+  members: 'Members',
+  localOnly: 'On this machine only',
+  sharedBadge: 'Shared'
 } as const
 
 // Refusals the Members tab shows inline, by the code main returns. The mock
@@ -419,10 +422,6 @@ export function joinWaitingTitle(ownerName: string): string {
   return `Waiting for ${ownerName} to approve`
 }
 
-export function sharedByLine(ownerName: string, count: number): string {
-  return `Shared by ${ownerName} · ${count} ${count === 1 ? 'member' : 'members'}`
-}
-
 export function capturedBy(name: string | null, code: string): string {
   return name === null ? `Captured by you (${code})` : `Captured by ${name} (${code})`
 }
@@ -467,6 +466,69 @@ export function excludeTitle(citation: string): string {
 
 export function excludeBody(authorName: string): string {
   return `${COPY.excludeBody} Only ${authorName} can delete it.`
+}
+
+// --- Dashboard card ----------------------------------------------------------------
+
+// The role line under a card's description and the Sharing cell of the Older
+// Cases list (docs/design-handoff/2026-10-28-share-a-case/, frame E): what
+// this installation is to the Case, in one line, with its own chip once the
+// Case is shared.
+export type CaseRoleLine =
+  | { kind: 'owner'; code: string; text: string }
+  | { kind: 'joined'; code: string; text: string }
+  | { kind: 'invite'; text: string }
+  | { kind: 'local'; text: string }
+
+export function youOwnLine(count: number): string {
+  return `You own · ${count} ${count === 1 ? 'member' : 'members'}`
+}
+
+export function sharedByOwnerLine(ownerName: string): string {
+  return `Shared by ${ownerName}`
+}
+
+export function inviteWaitingLine(expiresAt: string, nowMs: number): string {
+  return `Invite waiting · expires ${expiryPhrase(expiresAt, nowMs)}`
+}
+
+// "Shared · 3": every member counted, this installation included.
+export function sharedBadge(count: number): string {
+  return `${COPY.sharedBadge} · ${count}`
+}
+
+export function sharedWithTeammates(count: number): string {
+  const others = count - 1
+  return `Shared with ${others} ${others === 1 ? 'teammate' : 'teammates'}`
+}
+
+// The card menu's sharing item: the Owner of a local Case is offered sharing;
+// once shared, the item is Members.
+export function caseMenuSharingLabel(shared: boolean): string {
+  return shared ? COPY.members : COPY.shareThisCase
+}
+
+// A Case nobody shared needs no roster. Null while a shared Case's roster has
+// not loaded, or when it lacks this installation or the Owner, since none of
+// the lines would be true. An Owner alone with an invite out is waiting on it;
+// an Owner with members owns them; a member reads who shared the Case.
+export function caseRoleLine(
+  shared: boolean,
+  members: SharingMembers | undefined,
+  nowMs: number
+): CaseRoleLine | null {
+  if (!shared) return { kind: 'local', text: COPY.localOnly }
+  if (members === undefined) return null
+  const self = members.members.find((m) => m.installationId === members.installationId)
+  const owner = members.members.find((m) => m.role === 'owner')
+  if (!self || !owner) return null
+  if (!members.isOwner) {
+    return { kind: 'joined', code: self.memberCode, text: sharedByOwnerLine(owner.operatorName) }
+  }
+  const count = memberCount(members.members)
+  const expiresAt = count > 1 ? null : latestOpenInvite(members.invites, nowMs)
+  if (expiresAt !== null) return { kind: 'invite', text: inviteWaitingLine(expiresAt, nowMs) }
+  return { kind: 'owner', code: self.memberCode, text: youOwnLine(count) }
 }
 
 // --- Member rows ---------------------------------------------------------------
@@ -824,7 +886,10 @@ export function shareActionLabel(shared: boolean): string {
 
 // The invite the pill waits on: the one that expires last. An invite past its
 // expiry is not waiting, whether or not the registry has dropped it yet.
-function latestOpenInvite(invites: readonly SharingOpenInvite[], nowMs: number): string | null {
+export function latestOpenInvite(
+  invites: readonly SharingOpenInvite[],
+  nowMs: number
+): string | null {
   let latest: string | null = null
   for (const { expiresAt } of invites) {
     const ts = new Date(expiresAt).getTime()

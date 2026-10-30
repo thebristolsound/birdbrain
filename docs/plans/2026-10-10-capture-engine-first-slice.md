@@ -354,11 +354,20 @@ inventory: {
   - **Pinned.** A considered image is pinned when it displayed: `complete`, with a natural width
     and height above 0, and a non-empty `currentSrc` that is not a `blob:` address. Its `src`
     becomes its `currentSrc`; its `srcset` and `sizes` stay on the live page, where the browser
-    chooses from them again, and the serializer drops both from the saved page. In a set with no
-    1x candidate and no width descriptor the new `src` becomes the 1x candidate, so the image
-    shows at 1x from then on and the screenshot loads it again (validation record, 2026-10-30).
-    An image still loading when the settle wait ended, even one that finished before the pin, one
-    whose load failed, and a `blob:` image are left as they are.
+    chooses from them again, and the serializer drops both from the saved page. An image
+    displayed from a width candidate, or from a density other than 1x, first has its `srcset`
+    narrowed to that one candidate, so it keeps its density
+    ([ruling of 2026-10-30](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6535493015)).
+    The pin parses `srcset` as the HTML standard does, resolves each URL against the document,
+    adds `src` as a 1x candidate when no candidate has a width or a density of 1, and takes the
+    candidates whose URL is `currentSrc`. A width candidate is kept as `<url> <w>w` with the
+    page's `sizes`. A density candidate `d` is written as `<url> 1000w` with `sizes` set to
+    `1000 / d` pixels, because Chromium adds `src` to any set without a width descriptor as a 1x
+    candidate and shows it: narrowed to `<url> 2x`, a 2x-only image still showed at 1x
+    (validation record, 2026-10-30). When no candidate has that URL, or those that do differ in
+    descriptor, the image keeps its whole set and only `src` is set. An image still loading when
+    the settle wait ended, even one that finished before the pin, one whose load failed, and a
+    `blob:` image are left as they are.
   - **Not loaded.** After the pin the render polls until no pinned image is still loading, for at
     most 5 s (`PIN_LOAD_MAX_MS`). A pinned image counts as not loaded when, at the count after the
     screenshot, it is not `complete` or has no natural size: still loading, or failed to load.
@@ -377,8 +386,9 @@ inventory: {
     renderer parses the part with that schema before it reaches the entry. An image still
     loading when a wait ends is not a failure.
   - **PDF.** The print reads the page's content height for `MAX_PDF_CONTENT_HEIGHT_PX` from the
-    screenshot record, taken after the pin. The live page keeps `srcset` and `sizes`, so the print
-    shows a pinned image from a set with width descriptors at the size the page displayed it.
+    screenshot record, taken after the pin. The live page keeps a narrowed set for each image
+    displayed from a width or a density other than 1x, so the print shows it at the size the
+    page displayed it.
 - **Reasons.** `not-taken` means this build does not take the file: step 6's build writes it for
   the Transaction Record and the PDF. `failed` means the engine tried and failed, or refused a PDF
   over step 10's size bounds, and the log carries the error. The list is closed, so a released
@@ -1798,3 +1808,11 @@ folded in.
   collection stops after the count. The print's height bound reads the screenshot record again,
   as step 10 built it, since the screenshot now follows the pin. D4 and ADR-0055 state the
   result, and the validation record what each order measured.
+- **2026-10-30.** The maintainer confirmed that the pin leaves `srcset` and `sizes` on the live
+  page and sets only `src`, and ruled that an image displayed from a candidate whose density is
+  not 1x keeps it, by narrowing its set to that candidate
+  ([comment](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6535493015)).
+  Narrowed to `<url> 2x`, a 2x-only image still showed at 1x, so D4's "Pinned" item writes a
+  density candidate as one width candidate with a `sizes` that gives the same density, and
+  keeps a width candidate as it is with the page's `sizes`. The validation record has the
+  measurements.

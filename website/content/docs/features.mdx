@@ -36,18 +36,24 @@ prove and what they do not.
   a `picture` is pinned.
 - The capture first gives those images up to 5 seconds to finish loading or fail. It then pins
   each one that displayed an image, loaded with a natural width and height above zero: it sets
-  the image's `src` to the address the browser loaded it from, leaves its `srcset` and `sizes` in
-  place, and waits up to 5 seconds for any pinned image that starts loading. Both waits use only
-  time left before the capture's final steps. The screenshot comes after the pin, so it shows the
-  page as the pin left it. The Transaction Record keeps recording until just before the page is
-  saved, so any request the pin or the screenshot causes is in the record.
-- With `srcset` left in place, the browser chooses from the set again and keeps the copy of the
-  image it displayed, so the saved page holds the response the page displayed. An image offered
-  only at densities other than 1x, such as `srcset="photo.png 2x"`, is the exception: the `src`
-  the pin sets joins its set as the 1x candidate, so from then on the image shows at its file's
-  natural size, in the screenshot, the saved page, and the PDF. The screenshot also loads such an
-  image again. For images the server sent with no cache header, the server was asked a second
-  time, the saved page held the second response, and the Transaction Record held both requests.
+  the image's `src` to the address the browser loaded it from, and waits up to 5 seconds for any
+  pinned image that starts loading. Both waits use only time left before the capture's final
+  steps. The screenshot comes after the pin, so it shows the page as the pin left it. The
+  Transaction Record keeps recording until just before the page is saved, so any request the pin
+  or the screenshot causes is in the record.
+- The pin leaves `srcset` and `sizes` on the live page, so the browser chooses from the set again
+  and keeps the copy of the image it displayed. An image displayed from a width descriptor, or
+  from a density other than 1x such as `srcset="photo.png 2x"`, first has its `srcset` narrowed
+  to the one candidate it displayed, so it keeps its density. Without that, the `src` the pin sets
+  would join a set of densities as its 1x candidate, and the image would show at its file's
+  natural size and be loaded again. A width candidate keeps its width and the page's `sizes`. A
+  density candidate is written as a width, with a `sizes` that gives the same density, because
+  the browser adds `src` to any set without a width descriptor as a 1x candidate. On the pages
+  measured, each such image was loaded once, kept its displayed size in the screenshot and the
+  PDF, and was saved with that size as its `width` and `height` when it had none of its own.
+- When the capture cannot tell which candidate an image displayed, for example when its `src`
+  and a candidate at another density share one address, it sets only `src` and keeps the whole
+  set. The one such image measured was loaded again.
 - The signed entry records how many images were pinned, and how many of those were still loading,
   or had failed to load, just before the page was saved. The counts cover only images that had
   settled and displayed an image before the pin. An image still loading after the first wait, one
@@ -57,11 +63,7 @@ prove and what they do not.
   image the page has not started loading, such as a lazy image below where the scroll stopped,
   holds the first wait to its end. Pinning reaches only the page's own document: an image in a
   frame or a shadow root is not pinned.
-- An image shown from a set with width descriptors, such as `srcset="photo-800.png 800w"` with
-  `sizes`, keeps its displayed size in the screenshot, the saved page, and the PDF. On the pages
-  measured, the saver wrote the displayed width and height into each such image that had none of
-  its own.
-  When a density makes an image's natural size smaller than one pixel, the image counts as not
+- When a density makes an image's natural size smaller than one pixel, the image counts as not
   displayed and is left as it is.
 - A background capture's signed manifest entry lists the files the capture holds and why any
   is missing. For the screenshot it records the page size, the image size, and whether the

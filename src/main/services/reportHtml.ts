@@ -1824,7 +1824,7 @@ const BOUND_TLS_ABSENCE_TEXT: Record<BoundTlsAbsence, string> = {
   'not-https': 'the main document was not served over HTTPS',
   'from-cache': 'the response for the main document reported a cache hit',
   'not-reported':
-    'the browser reported no security details on the response for the main document, or the page the capture saved was not one that response loaded'
+    'the browser reported no security details on the response for the main document, the window committed a page after network recording stopped, or the page the capture saved was not one that response loaded'
 }
 
 function captureEngineBlocks(engine: CaptureEngineEntry | undefined): string {

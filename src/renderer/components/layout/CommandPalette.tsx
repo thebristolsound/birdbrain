@@ -6,6 +6,7 @@ import { Search, Plus, Clock, Compass, MessageSquareWarning, Users } from 'lucid
 import { useAppStore } from '@renderer/stores/appStore'
 import { casesQueryOptions, captureCountsQueryOptions } from '@renderer/lib/queries'
 import { sharingAvailableQueryOptions } from '@renderer/lib/api/sharing'
+import { formatRelativeTimeShort } from '@renderer/lib/formatRelativeTime'
 import { shareActionLabel } from '@renderer/components/sharing/memberModel'
 import { presets } from '@renderer/lib/motion'
 import { trapTab, useModalFocus } from '@renderer/components/ui'
@@ -14,17 +15,6 @@ import { useTimeTick } from '@renderer/hooks/useTimeTick'
 
 function pluralCaptures(n: number): string {
   return `${n} capture${n === 1 ? '' : 's'}`
-}
-
-function formatAge(dateStr: string, now: number): string {
-  const diff = now - new Date(dateStr).getTime()
-  const minutes = Math.floor(diff / 60_000)
-  if (minutes < 60) return `${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h`
-  const days = Math.floor(hours / 24)
-  if (days < 7) return `${days}d`
-  return `${Math.floor(days / 7)}w`
 }
 
 export function CommandPalette() {
@@ -181,7 +171,7 @@ export function CommandPalette() {
                         <span>{pluralCaptures(count)}</span>
                         <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
-                          {formatAge(c.createdAt, now)}
+                          {formatRelativeTimeShort(c.createdAt, now)}
                         </span>
                       </div>
                     </button>

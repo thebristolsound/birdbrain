@@ -183,4 +183,33 @@ describe('the case result row', () => {
     expect(screen.getByText('2 captures')).toBeTruthy()
     expect(screen.getByText('0 captures')).toBeTruthy()
   })
+
+  // The palette reads the clock once a minute, so a Case created since the
+  // last tick is newer than `now`. The age is the list view's ladder, which
+  // floors anything under a minute to "now" rather than printing "-1m".
+  it('reads "now" for a Case created after the clock last ticked', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-29T12:00:00.000Z'))
+    try {
+      fakeBridge({
+        cases: {
+          list: vi.fn(async () => [
+            { ...makeCase('fresh', 'Fresh'), createdAt: '2026-10-29T12:00:20.000Z' },
+            { ...makeCase('older', 'Older'), createdAt: '2026-10-29T11:55:00.000Z' }
+          ])
+        },
+        captures: { countsByCase: vi.fn(async () => ({})) }
+      })
+      useAppStore.setState({ commandPaletteOpen: true })
+      render(<CommandPalette />, { wrapper: Wrapper })
+
+      const fresh = (await screen.findByText('Fresh')).closest('button') as HTMLButtonElement
+      const older = screen.getByText('Older').closest('button') as HTMLButtonElement
+      expect(fresh.textContent).toContain('now')
+      expect(fresh.textContent).not.toContain('-1m')
+      expect(older.textContent).toContain('5m')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

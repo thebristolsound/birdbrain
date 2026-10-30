@@ -230,7 +230,7 @@ const CODE_LABELS: Record<LogCode, string> = {
   'searchFields.source_missing':
     "Couldn't find a capture's stored page to index its links and headers for search",
   'searchFields.unreviewed_failed': "Couldn't list this case's unreviewed captures",
-  'sharing.stream_failed': "A teammate's sync with this computer failed",
+  'sharing.stream_failed': 'An incoming sharing request failed',
   'sharing.first_session_failed': "Joined the Case, but the first sync didn't complete",
   'sharing.binding_unavailable': "Shared Cases can't run on this computer",
   'sharing.accept_failed': 'Stopped accepting connections from teammates',

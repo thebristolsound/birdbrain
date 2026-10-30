@@ -59,8 +59,8 @@ export type TransportFailure =
   | 'TRANSPORT_FAILED'
 
 // A stream read or write the network refused. The message is the binding's
-// own text, which a failed session's detail still shows; the log keeps only
-// the name and `code`.
+// own text, which a failed sync session's detail still shows; the log keeps
+// only the name and `code`.
 export class TransportError extends Error {
   constructor(
     message: string,

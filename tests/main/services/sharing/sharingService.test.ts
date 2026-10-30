@@ -810,6 +810,21 @@ describe("logging a teammate's stream that failed", () => {
     expect(warn).not.toHaveBeenCalled()
   })
 
+  it.each([
+    [
+      'ConnectionLost(ApplicationClosed(ApplicationClose { error_code: 7, reason: b"" }))',
+      'PEER_CLOSED_WITH_ERROR'
+    ],
+    ['something new', 'TRANSPORT_FAILED']
+  ] as const)('records %s at warn, since it is no ordinary disconnect', (message, code) => {
+    const info = vi.spyOn(logger, 'info')
+    const warn = vi.spyOn(logger, 'warn')
+    const failure = new TransportError(message, code)
+    logStreamFailure(failure)
+    expect(warn).toHaveBeenCalledWith('sharing', 'sharing.stream_failed', undefined, failure)
+    expect(info).not.toHaveBeenCalled()
+  })
+
   it('records any other failure at warn', () => {
     const info = vi.spyOn(logger, 'info')
     const warn = vi.spyOn(logger, 'warn')

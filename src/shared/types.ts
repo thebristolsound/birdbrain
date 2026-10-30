@@ -947,8 +947,8 @@ export const LOG_CODES = [
   // holds the error.
   'searchFields.unreviewed_failed',
   // Shared Case sharing (#1810): an incoming stream whose handler threw on
-  // this installation (the peer saw the stream close; info when the network
-  // ended it, warn otherwise), and a joiner's first
+  // this installation (the peer saw the stream close; info for an ordinary
+  // disconnect, warn otherwise), and a joiner's first
   // session that failed after the Case was adopted (Sync now retries it).
   'sharing.stream_failed',
   'sharing.first_session_failed',

@@ -162,6 +162,69 @@ describe('the sharing row', () => {
   })
 })
 
+// The rows under the Case list share its highlight: ArrowDown walks past the
+// last Case into them and Enter runs the highlighted one. Before, the arrow
+// keys stopped at the last Case and only a click or Tab reached an action.
+describe('the action rows', () => {
+  function highlighted(): string | null {
+    return document.querySelector('[role="dialog"] button.bg-accent-subtle')?.textContent ?? null
+  }
+
+  async function openWithCases() {
+    fakeBridge({
+      cases: { list: vi.fn(async () => [makeCase('a', 'Alpha'), makeCase('b', 'Bravo')]) },
+      captures: { countsByCase: vi.fn(async () => ({})) }
+    })
+    useAppStore.setState({ commandPaletteOpen: true })
+    render(<CommandPalette />, { wrapper: Wrapper })
+    await screen.findByText('Bravo')
+    return screen.getByPlaceholderText('Switch case...')
+  }
+
+  it('take the highlight after the last Case, and Enter runs the highlighted one', async () => {
+    const input = await openWithCases()
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(highlighted()).toContain('Bravo')
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(highlighted()).toBe('Create new case')
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(highlighted()).toBe('Join a shared Case…')
+
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(navigate).toHaveBeenCalledWith({ to: '/cases/new', search: { join: true } })
+    expect(useAppStore.getState().commandPaletteOpen).toBe(false)
+  })
+
+  it('stop at the last row, and ArrowUp climbs back into the Cases', async () => {
+    const input = await openWithCases()
+
+    for (let i = 0; i < 10; i++) fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(highlighted()).toBe('Report a problem')
+    for (let i = 0; i < 4; i++) fireEvent.keyDown(input, { key: 'ArrowUp' })
+    expect(highlighted()).toContain('Bravo')
+  })
+
+  it('highlight Create new case when nothing matches, so Enter still creates', async () => {
+    const input = await openWithCases()
+
+    fireEvent.change(input, { target: { value: 'zzz' } })
+    expect(screen.getByText(/No cases match/)).toBeTruthy()
+    expect(highlighted()).toBe('Create new case')
+
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(navigate).toHaveBeenCalledWith({ to: '/cases/new' })
+    expect(useAppStore.getState().commandPaletteOpen).toBe(false)
+  })
+
+  it('follow the pointer like the Cases do', async () => {
+    await openWithCases()
+
+    fireEvent.mouseEnter(screen.getByTestId('palette-replay-tour'))
+    expect(highlighted()).toBe('Replay walkthrough')
+  })
+})
+
 describe('the case result row', () => {
   // getByText matches the whole normalized text of the node, so '1 capture'
   // does not match a row reading '1 captures' — which is what pins #471.

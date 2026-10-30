@@ -510,13 +510,21 @@ class FakeImage {
     this.assigned.push(value)
     this.hold(this.onPin)
   }
+  set srcset(value: string) {
+    this.attributes.set('srcset', value)
+  }
+  set sizes(value: string) {
+    this.attributes.set('sizes', value)
+  }
 }
 
 // An isolated world over `images` as the page's document. Its globals last
 // between scripts, as Electron's isolated worlds do.
 function pinWorld(images: () => FakeImage[]): Context {
   return createContext({
+    URL,
     document: {
+      baseURI: `${ORIGIN}/page`,
       querySelectorAll: (selector: string) => {
         expect(selector).toBe('img[srcset]')
         return images().filter((img) => img.attributes.has('srcset'))
@@ -1171,7 +1179,7 @@ describe('the Image Source Pinning scripts', () => {
     return inWorld(world, PIN_IMAGE_SOURCES_SCRIPT)
   }
 
-  it('sets the src of each displayed srcset image outside a picture to its currentSrc, keeping srcset and sizes', () => {
+  it('sets the src of each displayed srcset image outside a picture to its currentSrc', () => {
     const page = fiveImagePage()
     const world = pinWorld(() => Object.values(page))
 
@@ -1186,7 +1194,7 @@ describe('the Image Source Pinning scripts', () => {
       srcset: '/srcset-with-src-1x.png 1x, /srcset-with-src-2x.png 2x'
     })
     expect(Object.fromEntries(page.widths.attributes)).toEqual({
-      srcset: '/srcset-w-400.png 400w, /srcset-w-800.png 800w',
+      srcset: `${ORIGIN}/srcset-w-400.png 400w`,
       sizes: '10px',
       src: `${ORIGIN}/srcset-w-400.png`
     })
@@ -1195,6 +1203,103 @@ describe('the Image Source Pinning scripts', () => {
       pinnedImagesNotLoaded: 0
     })
   })
+
+  // Ruled 2026-10-30 (#1843): an image displayed from a candidate whose density is not 1x keeps
+  // it. The browser adds `src` to a set with no width descriptor as a 1x candidate, so the set
+  // is narrowed to one width candidate with a `sizes` that gives the same density.
+  it.each([
+    ['2x', '/only-2x.png 2x', '/only-2x.png', '500px'],
+    ['1.5x', '/only-1-5x.png 1.5x', '/only-1-5x.png', '666.6666666666666px'],
+    [
+      '3x, after a 0.5x one',
+      '/half.png 0.5x, /triple.png 3x',
+      '/triple.png',
+      '333.3333333333333px'
+    ],
+    ['2x, with a src it did not display', '/two.png 2x', '/two.png', '500px', '/fallback.png']
+  ])(
+    'narrows the set of an image displayed at %s to that candidate, keeping its density',
+    (_name, srcset, displayed, sizes, src?: string) => {
+      const img = new FakeImage(
+        src === undefined ? { srcset } : { src, srcset },
+        `${ORIGIN}${displayed}`
+      )
+      expect(settleThenPin(pinWorld(() => [img]))).toBe(1)
+      expect(Object.fromEntries(img.attributes)).toEqual({
+        srcset: `${ORIGIN}${displayed} 1000w`,
+        sizes,
+        src: `${ORIGIN}${displayed}`
+      })
+    }
+  )
+
+  it('narrows an image displayed from a width candidate to it, keeping the page sizes', () => {
+    const img = new FakeImage(
+      { srcset: '/w-800.png 800w, /w-400.png 400w', sizes: '(min-width: 1px) 200px, 50vw' },
+      `${ORIGIN}/w-400.png`
+    )
+    settleThenPin(pinWorld(() => [img]))
+    expect(Object.fromEntries(img.attributes)).toEqual({
+      srcset: `${ORIGIN}/w-400.png 400w`,
+      sizes: '(min-width: 1px) 200px, 50vw',
+      src: `${ORIGIN}/w-400.png`
+    })
+  })
+
+  it('leaves the set of an image displayed from its src or a 1x candidate as it was', () => {
+    const fromSrc = new FakeImage({ src: '/e.png', srcset: '/e-2x.png 2x' }, `${ORIGIN}/e.png`)
+    const bare = new FakeImage({ srcset: '/bare.png, /bare-2x.png 2x' }, `${ORIGIN}/bare.png`)
+    settleThenPin(pinWorld(() => [fromSrc, bare]))
+    expect(Object.fromEntries(fromSrc.attributes)).toEqual({
+      src: `${ORIGIN}/e.png`,
+      srcset: '/e-2x.png 2x'
+    })
+    expect(Object.fromEntries(bare.attributes)).toEqual({
+      srcset: '/bare.png, /bare-2x.png 2x',
+      src: `${ORIGIN}/bare.png`
+    })
+  })
+
+  it('keeps the whole set when the displayed candidate cannot be told apart, or is not in it', () => {
+    // `src` joins the set at 1x with the URL of its 2x candidate.
+    const twice = new FakeImage({ src: '/f.png', srcset: '/f.png 2x' }, `${ORIGIN}/f.png`)
+    const listedTwice = new FakeImage({ srcset: '/g.png 2x, /g.png 3x' }, `${ORIGIN}/g.png`)
+    const notListed = new FakeImage({ srcset: '/h.png 2x' }, `${ORIGIN}/elsewhere.png`)
+    expect(settleThenPin(pinWorld(() => [twice, listedTwice, notListed]))).toBe(3)
+    expect(twice.attributes.get('srcset')).toBe('/f.png 2x')
+    expect(listedTwice.attributes.get('srcset')).toBe('/g.png 2x, /g.png 3x')
+    expect(notListed.attributes.get('srcset')).toBe('/h.png 2x')
+    for (const img of [twice, listedTwice, notListed]) {
+      expect(img.attributes.has('sizes')).toBe(false)
+      expect(img.src).toBe(img.currentSrc)
+    }
+  })
+
+  // The standard's srcset parser: a URL may hold a comma, a descriptor list may hold one inside
+  // parentheses, and a candidate with an invalid descriptor is dropped.
+  it.each([
+    ['a URL holding a comma', ' /j,x.png 2x ,/k.png 3x', '/j,x.png', { x: 2 }],
+    ['a URL ending in commas', '/l.png,, /m.png 2x', '/l.png', null],
+    ['a width with a future height', '/n.png 400w 300h, /o.png 800w', '/n.png', { w: 400 }],
+    ['a dropped height with no width', '/p.png 300h, /p.png 2x', '/p.png', { x: 2 }],
+    ['a dropped zero width', '/q.png 0w, /q.png 3x', '/q.png', { x: 3 }],
+    ['a dropped bad density', '/r.png 2q, /r.png 1.5e0x', '/r.png', { x: 1.5 }],
+    ['a dropped parenthesised list', '/s.png (2x 3x), /s.png 2x', '/s.png', { x: 2 }],
+    ['a dropped negative density', '/t.png -2x, /t.png 4x', '/t.png', { x: 4 }]
+  ])(
+    'parses %s as the browser does',
+    (_name, srcset, displayed, candidate: { x?: number; w?: number } | null) => {
+      const img = new FakeImage({ srcset }, `${ORIGIN}${displayed}`)
+      settleThenPin(pinWorld(() => [img]))
+      const narrowed = candidate?.w
+        ? `${ORIGIN}${displayed} ${candidate.w}w`
+        : candidate?.x
+          ? `${ORIGIN}${displayed} 1000w`
+          : srcset
+      expect(img.attributes.get('srcset')).toBe(narrowed)
+      if (candidate?.x) expect(img.attributes.get('sizes')).toBe(`${1000 / candidate.x}px`)
+    }
+  )
 
   it('leaves a picture image, a plain one, one still loading, a failed one and a blob: one as they were', () => {
     const page = fiveImagePage()

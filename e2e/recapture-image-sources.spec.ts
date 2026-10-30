@@ -12,8 +12,8 @@ import { readWarc } from '../src/packages/transaction-record/warcReader'
 import { PACKAGE_ROOT_FILES } from '../src/packages/evidence-package-layout/index'
 
 // Image Source Pinning (#1843, ADR-0055): a background capture points each srcset image the
-// page displayed at the source it displayed before saving the MHTML, and signs how many it
-// pinned. Every image the server sends is a PNG followed by `TAG:<path>#<n>`, where n counts the
+// page displayed at the source it displayed before the screenshot and the MHTML, and signs how
+// many it pinned. Every image the server sends is a PNG followed by `TAG:<path>#<n>`, where n counts the
 // requests for that path in the test, so the bytes of each MHTML part name the request that
 // served them.
 
@@ -104,6 +104,25 @@ const ROUTES: Record<string, Route> = {
     )
   ),
   '/five/srcset-w-400.png': png({}, PNG_400),
+
+  // Two images whose displayed source is not the first in the set: a 1x one after a 2x one, and
+  // a 400w one shown at 200px after an 800w one, so the second displays at density 2. And one
+  // offered only at 2x, a set to which the pinned `src` adds a 1x candidate.
+  '/order': send(
+    'text/html',
+    page(
+      'Order fixture',
+      '',
+      `<img id="density" srcset="/order/d-2x.png 2x, /order/d-1x.png 1x">
+<img id="width" srcset="/order/w-800.png 800w, /order/w-400.png 400w" sizes="200px">
+<img id="only2x" srcset="/order/only-2x.png 2x">`
+    )
+  ),
+  '/order/d-1x.png': png(),
+  '/order/d-2x.png': png(),
+  '/order/w-400.png': png({}, PNG_400),
+  '/order/w-800.png': png({}, PNG_400),
+  '/order/only-2x.png': png({}, PNG_400),
 
   // Images offered as sets that pinning leaves as they are: one whose load failed, which the
   // server would answer if asked again; one shown from a `blob:` address the page revokes once
@@ -349,9 +368,9 @@ test.describe('Image Source Pinning of a background capture', () => {
       ({ location }) => location === srcsetImage
     )
     expect(part, 'the MHTML has a part for the srcset image').toBeDefined()
-    // The pin asks for the image again, and the part holds the second response.
-    expect(part!.bytes.toString('latin1')).toMatch(/TAG:\/savepage\/srcset-1x\.png#2$/)
-    expect(server.served.filter((path) => path === '/savepage/srcset-1x.png')).toHaveLength(2)
+    // The pin, before the screenshot, keeps the copy the page displayed (ruled 2026-10-30).
+    expect(part!.bytes.toString('latin1')).toMatch(/TAG:\/savepage\/srcset-1x\.png#1$/)
+    expect(server.served.filter((path) => path === '/savepage/srcset-1x.png')).toHaveLength(1)
     expect(server.served).not.toContain('/savepage/srcset-2x.png')
 
     const [entry] = captureEntries(storagePath, caseId)
@@ -373,32 +392,31 @@ test.describe('Image Source Pinning of a background capture', () => {
     const captureId = await recapture(page, caseId, `${server.origin}/five`)
     const storagePath = await storagePathOf(page)
 
-    // A part for each image's displayed source, holding the bytes served from that address. The
-    // pin asks for each pinned image again while the network is recorded, so its part holds the
-    // second response and the Transaction Record both requests; an image left alone is asked
-    // for once.
+    // A part for each image's displayed source, holding the first response from that address.
+    // The pin runs before the screenshot, so it asks for no image again (ruled 2026-10-30): the
+    // server and the Transaction Record each saw one request per image.
     const parts = storedMhtml(storagePath, caseId, captureId)
     const records = readWarc(readFileSync(join(storagePath, caseId, `${captureId}.warc.gz`)))
-    for (const [path, requests] of [
-      ['/five/srcset-only-1x.png', 2],
-      ['/five/srcset-with-src-1x.png', 2],
-      ['/five/srcset-w-400.png', 2],
-      ['/five/picture-source.png', 1],
-      ['/five/plain.png', 1]
-    ] as const) {
+    for (const path of [
+      '/five/srcset-only-1x.png',
+      '/five/srcset-with-src-1x.png',
+      '/five/srcset-w-400.png',
+      '/five/picture-source.png',
+      '/five/plain.png'
+    ]) {
       const part = parts.find(({ location }) => location === `${server.origin}${path}`)
       expect(part, path).toBeDefined()
-      expect(part!.bytes.toString('latin1').endsWith(`TAG:${path}#${requests}`), path).toBe(true)
+      expect(part!.bytes.toString('latin1').endsWith(`TAG:${path}#1`), path).toBe(true)
       expect(
         server.served.filter((served) => served === path),
         path
-      ).toHaveLength(requests)
+      ).toHaveLength(1)
       const recorded = records.filter(
         (record) =>
           record.warc('WARC-Type') === 'request' &&
           record.warc('WARC-Target-URI') === `${server.origin}${path}`
       )
-      expect(recorded, path).toHaveLength(requests)
+      expect(recorded, path).toHaveLength(1)
     }
     // No part under an address the server never served.
     expect(server.served).not.toContain('/five/src-fallback.png')
@@ -443,6 +461,67 @@ test.describe('Image Source Pinning of a background capture', () => {
     rmSync(dirname(dir), { recursive: true, force: true })
   })
 
+  // Setting `src` before the screenshot leaves `srcset` and `sizes` on the live page, so the
+  // browser chooses from the set again: this checks it keeps the source it displayed when that
+  // is not the first one offered, and what happens to a set with no 1x candidate.
+  test('keeps an image on its displayed source when that is not the first in the set', async ({
+    page
+  }) => {
+    test.setTimeout(180000)
+    const caseId = await createCase(page, 'Order pinning E2E')
+    server.served.length = 0
+    requestNumbers.clear()
+    const captureId = await recapture(page, caseId, `${server.origin}/order`)
+    const storagePath = await storagePathOf(page)
+
+    const parts = storedMhtml(storagePath, caseId, captureId)
+    for (const path of ['/order/d-1x.png', '/order/w-400.png']) {
+      const part = parts.find(({ location }) => location === `${server.origin}${path}`)
+      expect(part?.bytes.toString('latin1').endsWith(`TAG:${path}#1`), path).toBe(true)
+      expect(
+        server.served.filter((served) => served === path),
+        path
+      ).toHaveLength(1)
+    }
+    expect(server.served).not.toContain('/order/d-2x.png')
+    expect(server.served).not.toContain('/order/w-800.png')
+
+    // The serializer drops `srcset` and `sizes`, keeps the pinned `src`, and gives the image shown
+    // at density 2 the size it displayed at.
+    const html = parts.find(({ location }) => location === `${server.origin}/order`)!
+    const markup = html.bytes
+      .toString('latin1')
+      .replace(/=\r?\n/g, '')
+      .replace(/=3D/g, '=')
+    const img = (id: string) => new RegExp(`<img id="${id}"[^>]*>`).exec(markup)?.[0]
+    expect(img('density')).toBe(`<img id="density" src="${server.origin}/order/d-1x.png">`)
+    expect(img('width')).toBe(
+      `<img id="width" src="${server.origin}/order/w-400.png" width="200" height="200">`
+    )
+
+    // The image offered only at 2x is shown at 1x once its `src` is set, and the screenshot
+    // loads it again while the network is recorded: the part holds the second response, and the
+    // Transaction Record both requests.
+    const only = '/order/only-2x.png'
+    expect(server.served.filter((served) => served === only)).toHaveLength(2)
+    const onlyPart = parts.find(({ location }) => location === `${server.origin}${only}`)
+    expect(onlyPart?.bytes.toString('latin1').endsWith(`TAG:${only}#2`)).toBe(true)
+    const records = readWarc(readFileSync(join(storagePath, caseId, `${captureId}.warc.gz`)))
+    const onlyRequests = records.filter(
+      (record) =>
+        record.warc('WARC-Type') === 'request' &&
+        record.warc('WARC-Target-URI') === `${server.origin}${only}`
+    )
+    expect(onlyRequests).toHaveLength(2)
+    expect(img('only2x')).toBe(`<img id="only2x" src="${server.origin}${only}">`)
+
+    const [entry] = captureEntries(storagePath, caseId)
+    expect(entry.inventory).toMatchObject({
+      mhtml: { present: true, pinnedImages: 3, pinnedImagesNotLoaded: 0 }
+    })
+    expect(await verified(page, captureId)).toBe('verified')
+  })
+
   // Ruled 2026-10-26: pin only an image that displayed, and leave out one still loading.
   test('leaves a failed image, a blob: image and one still loading as they were', async ({
     page
@@ -462,8 +541,8 @@ test.describe('Image Source Pinning of a background capture', () => {
     })
     const parts = storedMhtml(storagePath, caseId, captureId)
     const fast = parts.find(({ location }) => location === `${server.origin}/left/fast.png`)
-    expect(fast?.bytes.toString('latin1').endsWith('TAG:/left/fast.png#2')).toBe(true)
-    expect(server.served.filter((path) => path === '/left/fast.png')).toHaveLength(2)
+    expect(fast?.bytes.toString('latin1').endsWith('TAG:/left/fast.png#1')).toBe(true)
+    expect(server.served.filter((path) => path === '/left/fast.png')).toHaveLength(1)
     for (const path of ['/left/retry.png', '/left/never.png']) {
       expect(parts.map(({ location }) => location)).not.toContain(`${server.origin}${path}`)
     }

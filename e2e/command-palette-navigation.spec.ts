@@ -23,10 +23,11 @@ test.describe('Command palette', () => {
     const input = palette(page).getByPlaceholder('Switch case...')
     await expect(input).toBeFocused()
 
-    // Typing filters by name, case-insensitively.
+    // Typing filters by name, case-insensitively. A case row's name starts with the
+    // case name; the open Case's sharing row ends with it, so the matches are anchored.
     await input.fill('alpha')
-    await expect(palette(page).getByRole('button', { name: /Palette Alpha/ })).toBeVisible()
-    await expect(palette(page).getByRole('button', { name: /Palette Bravo/ })).toHaveCount(0)
+    await expect(palette(page).getByRole('button', { name: /^Palette Alpha/ })).toBeVisible()
+    await expect(palette(page).getByRole('button', { name: /^Palette Bravo/ })).toHaveCount(0)
 
     // Enter opens the highlighted case on its Captures view and closes.
     await input.press('Enter')
@@ -63,7 +64,7 @@ test.describe('Command palette', () => {
     await page.keyboard.press('Control+k')
     const input = palette(page).getByPlaceholder('Switch case...')
     await input.fill('Arrow')
-    const options = palette(page).getByRole('button', { name: /Arrow (One|Two)/ })
+    const options = palette(page).getByRole('button', { name: /^Arrow (One|Two)/ })
     await expect(options).toHaveCount(2)
 
     // Whichever case is listed second is the one ArrowDown then Enter opens.
@@ -77,6 +78,33 @@ test.describe('Command palette', () => {
     await expect(palette(page)).toBeVisible()
     await page.mouse.click(10, 10)
     await expect(palette(page)).toBeHidden()
+  })
+
+  test('ArrowDown walks past the last Case into the actions, and Enter runs one', async ({
+    page
+  }) => {
+    const caseId = await createCase(page, 'Arrow Share')
+
+    await page.keyboard.press('Control+k')
+    const input = palette(page).getByPlaceholder('Switch case...')
+    await input.fill('Arrow Share')
+    await expect(palette(page).getByRole('button', { name: /^Arrow Share/ })).toHaveCount(1)
+
+    // One Case listed: the next rows are Create new case, then Share this Case….
+    const create = palette(page).getByRole('button', { name: 'Create new case' })
+    const share = palette(page).getByTestId('palette-share-case')
+    await input.press('ArrowDown')
+    await expect(create).toHaveClass(/bg-accent-subtle/)
+    await input.press('ArrowDown')
+    await expect(share).toHaveClass(/bg-accent-subtle/)
+    await input.press('ArrowUp')
+    await expect(create).toHaveClass(/bg-accent-subtle/)
+    await input.press('ArrowDown')
+
+    await input.press('Enter')
+    await expect(palette(page)).toBeHidden()
+    await page.waitForURL(new RegExp(`#/cases/${caseId}/settings`))
+    await expect(page.getByTestId('not-shared-card')).toBeVisible()
   })
 })
 

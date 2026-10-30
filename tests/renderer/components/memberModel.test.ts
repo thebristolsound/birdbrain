@@ -14,6 +14,8 @@ import {
   COPY,
   HUE_CLASSES,
   capturedBy,
+  caseMenuSharingLabel,
+  caseRoleLine,
   egressIsNotDirect,
   egressLabel,
   errorKindLabel,
@@ -29,9 +31,12 @@ import {
   formatClock,
   hueFor,
   identityLine,
+  inviteExpires,
   inviteTitle,
+  inviteWaitingLine,
   joinFailure,
   joinRequestLead,
+  joinRequestsToApprove,
   joinWaitingTitle,
   lastMergeOf,
   memberAddCaption,
@@ -51,11 +56,19 @@ import {
   revokeBody,
   revokeTitle,
   roleLabel,
-  sharedByLine,
+  shareActionLabel,
+  sharePillModel,
+  sharedBadge,
+  sharedByOwnerLine,
+  sharedWithTeammates,
   syncPillModel,
+  toApprove,
   trustNote,
   waitingBody,
-  yourCodeWillBe
+  youAreLine,
+  youOwnLine,
+  yourCodeWillBe,
+  type SharePillInput
 } from '@renderer/components/sharing/memberModel'
 
 // The members screens as pure functions of the three payloads (#1514). The
@@ -554,6 +567,181 @@ describe('syncPillModel', () => {
   })
 })
 
+// The top bar's pill (2026-10-28 handoff, frame B) as a function of the
+// platform check, the roster and the sync state.
+describe('sharePillModel', () => {
+  const local = members({ members: [], invites: [], pendingJoins: [] })
+  const ownerOnly = members({ members: [AR] })
+  const noPeers = sync({ peersTotal: 0, peersReachable: 0, peers: [] })
+  const invite = (inviteId: string, expiresAt: string) => ({ inviteId, expiresAt })
+  const read = (input: Partial<SharePillInput>) =>
+    sharePillModel({ available: true, members: local, syncState: undefined, nowMs: NOW, ...input })
+
+  it('is hidden until the platform check and the roster load, and while peers await a sync state', () => {
+    expect(read({ available: undefined })).toBeNull()
+    expect(read({ members: undefined })).toBeNull()
+    expect(read({ members: members() })).toBeNull()
+  })
+
+  it('reads Share on a Case nobody has shared, and once the Owner is alone again', () => {
+    expect(read({})).toEqual({
+      state: 'share',
+      a: 'Share',
+      b: null,
+      title: 'Share this Case with teammates. Opens Members.',
+      dot: false,
+      pulse: false,
+      sync: null
+    })
+    expect(read({ members: ownerOnly, syncState: noPeers })?.state).toBe('share')
+    // An Owner alone has no peer to wait on, so the pill does not wait for a sync state.
+    expect(read({ members: ownerOnly, syncState: undefined })?.state).toBe('share')
+  })
+
+  it('waits on the invite that expires last, and not on one already expired', () => {
+    const invites = [
+      invite('a', '2026-09-19T14:07:00.000Z'),
+      invite('b', '2026-09-20T09:12:00.000Z')
+    ]
+    expect(read({ members: members({ members: [AR], invites }), syncState: noPeers })).toEqual({
+      state: 'invite',
+      a: 'Share',
+      b: 'invite waiting',
+      title: 'Invite expires tomorrow 09:12',
+      dot: true,
+      pulse: true,
+      sync: null
+    })
+    const latestFirst = [...invites].reverse()
+    const reversed = read({
+      members: members({ members: [AR], invites: latestFirst }),
+      syncState: noPeers
+    })
+    expect(reversed?.title).toBe('Invite expires tomorrow 09:12')
+    const expired = [invite('a', '2026-09-19T14:04:00.000Z')]
+    const pill = read({ members: members({ members: [AR], invites: expired }), syncState: noPeers })
+    expect(pill?.state).toBe('share')
+  })
+
+  it('puts a join request ahead of an open invite, with a still dot', () => {
+    const roster = members({
+      members: [AR],
+      invites: [invite('a', '2026-09-19T14:07:00.000Z')],
+      pendingJoins: [JO]
+    })
+    expect(read({ members: roster, syncState: noPeers })).toEqual({
+      state: 'approve',
+      a: 'Share',
+      b: '1 to approve',
+      title: '1 join request to approve',
+      dot: true,
+      pulse: false,
+      sync: null
+    })
+    expect(toApprove(2)).toBe('2 to approve')
+    expect(joinRequestsToApprove(2)).toBe('2 join requests to approve')
+  })
+
+  it('is the sync pill once a peer is on the roster, whatever else is waiting', () => {
+    const pill = read({ members: members({ pendingJoins: [JO] }), syncState: sync() })
+    expect(pill?.state).toBe('synced')
+    expect(pill?.sync).toEqual(syncPillModel(sync()))
+    expect(pill).toMatchObject({
+      a: 'Synced',
+      b: '3 peers',
+      title: 'Synced · 3 peers. Click to open Members.',
+      dot: false,
+      pulse: false
+    })
+  })
+
+  it('draws the unavailable form before reading anything else', () => {
+    expect(read({ available: false, members: undefined })).toEqual({
+      state: 'unavailable',
+      a: 'Share',
+      b: null,
+      title: 'Sharing is not available on this Mac.',
+      dot: false,
+      pulse: false,
+      sync: null
+    })
+  })
+
+  it('labels the palette row and the breadcrumb tooltip', () => {
+    expect(shareActionLabel(false)).toBe('Share this Case…')
+    expect(shareActionLabel(true)).toBe('Members…')
+    expect(youAreLine('AR')).toBe('You are AR in this Case')
+    expect(inviteExpires('2026-09-19T14:07:00.000Z', NOW)).toBe('Invite expires today 14:07')
+  })
+})
+
+// The dashboard card's role line and badge (2026-10-28 handoff, frame E).
+describe('caseRoleLine', () => {
+  const invite = { inviteId: 'a', expiresAt: '2026-09-19T14:07:00.000Z' }
+
+  it('needs no roster for a local Case and waits for one on a shared Case', () => {
+    expect(caseRoleLine(false, undefined, NOW)).toEqual({
+      kind: 'local',
+      text: 'On this machine only'
+    })
+    expect(caseRoleLine(true, undefined, NOW)).toBeNull()
+  })
+
+  it('claims nothing for a shared Case whose roster lacks this installation or the Owner', () => {
+    expect(caseRoleLine(true, members({ members: [] }), NOW)).toBeNull()
+    expect(caseRoleLine(true, members({ installationId: 'inst-unknown' }), NOW)).toBeNull()
+    const ownerless = members().members.map((m) => ({ ...m, role: 'member' as const }))
+    expect(caseRoleLine(true, members({ members: ownerless }), NOW)).toBeNull()
+  })
+
+  it('tells the Owner they own the members, counting themselves', () => {
+    expect(caseRoleLine(true, members(), NOW)).toEqual({
+      kind: 'owner',
+      code: 'AR',
+      text: 'You own · 4 members'
+    })
+    expect(youOwnLine(1)).toBe('You own · 1 member')
+  })
+
+  it('tells a member who shared the Case, with the member’s own code', () => {
+    const joined = members({ installationId: 'inst-nk', isOwner: false })
+    expect(caseRoleLine(true, joined, NOW)).toEqual({
+      kind: 'joined',
+      code: 'NK',
+      text: 'Shared by A. Renner'
+    })
+  })
+
+  it('waits on an open invite only while the Owner is alone', () => {
+    expect(caseRoleLine(true, members({ members: [AR], invites: [invite] }), NOW)).toEqual({
+      kind: 'invite',
+      text: 'Invite waiting · expires today 14:07'
+    })
+    expect(caseRoleLine(true, members({ invites: [invite] }), NOW)?.kind).toBe('owner')
+    const alone = members({
+      members: [AR],
+      invites: [{ ...invite, expiresAt: '2026-09-19T14:00:00.000Z' }]
+    })
+    expect(caseRoleLine(true, alone, NOW)).toEqual({
+      kind: 'owner',
+      code: 'AR',
+      text: 'You own · 1 member'
+    })
+  })
+
+  it('labels the badge and the menu item', () => {
+    expect(sharedBadge(3)).toBe('Shared · 3')
+    expect(sharedWithTeammates(3)).toBe('Shared with 2 teammates')
+    expect(sharedWithTeammates(2)).toBe('Shared with 1 teammate')
+    expect(caseMenuSharingLabel(false)).toBe('Share this Case…')
+    expect(caseMenuSharingLabel(true)).toBe('Members')
+    expect(sharedByOwnerLine('A. Renner')).toBe('Shared by A. Renner')
+    expect(inviteWaitingLine('2026-09-20T09:12:00.000Z', NOW)).toBe(
+      'Invite waiting · expires tomorrow 09:12'
+    )
+  })
+})
+
 describe('memberCodeCheck', () => {
   it('upper-cases, refuses four characters and symbols, and accepts a free code', () => {
     expect(memberCodeCheck('jo', ROSTER, 'J. Okafor')).toEqual({ code: 'JO', ok: true })
@@ -768,8 +956,6 @@ describe('copy', () => {
     )
     expect(memberAddCaption(32)).toBe('Manifest entry member-add #0032 written to your chain.')
     expect(joinWaitingTitle('A. Renner')).toBe('Waiting for A. Renner to approve')
-    expect(sharedByLine('A. Renner', 5)).toBe('Shared by A. Renner · 5 members')
-    expect(sharedByLine('A. Renner', 1)).toBe('Shared by A. Renner · 1 member')
     expect(capturedBy(null, 'AR')).toBe('Captured by you (AR)')
     expect(capturedBy('N. Kowalski', 'NK')).toBe('Captured by N. Kowalski (NK)')
     expect(revokeTitle('S. Idris')).toBe('Revoke S. Idris?')
@@ -808,6 +994,14 @@ describe('copy', () => {
       excludeBody('N. Kowalski'),
       revokeBody('S. Idris', 'SI', [1, 2, 3]),
       waitingBody('2026-09-20T14:07:00.000Z', NOW),
+      inviteExpires('2026-09-20T14:07:00.000Z', NOW),
+      joinRequestsToApprove(2),
+      youAreLine('AR'),
+      youOwnLine(3),
+      sharedByOwnerLine('A. Renner'),
+      inviteWaitingLine('2026-09-20T14:07:00.000Z', NOW),
+      sharedBadge(3),
+      sharedWithTeammates(3),
       pausedStrip('S. Idris', 'SI', 3).text,
       exclusionBanner({
         exhibitId: 'x',

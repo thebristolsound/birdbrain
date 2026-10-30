@@ -533,23 +533,32 @@ const IMAGE_SET_HELPERS = `
   const shown = (img) => img.complete && img.naturalWidth > 0 && img.naturalHeight > 0
 `
 
-// How many images offered as sets are still loading.
+// How many images offered as sets are still loading. Each call keeps those
+// images, so the last call of the settle wait holds the ones still loading when
+// it ended, which the pin leaves out even if they finish during the screenshot
+// (ruled 2026-10-26).
 export const IMAGE_SETS_LOADING_SCRIPT = `(() => {
   ${IMAGE_SET_HELPERS}
-  return imageSets().filter((img) => !img.complete).length
+  const loading = imageSets().filter((img) => !img.complete)
+  globalThis.birdbrainUnsettled = new WeakSet(loading)
+  return loading.length
 })()`
 
 // Pins each image offered as a set that the page displayed (loaded, with a
 // natural size) to its `currentSrc`, and drops `srcset` and `sizes`. An image
-// still loading or that failed to load is left as it is. So is one shown from a
-// `blob:` address: re-sourcing loads the address again, which fails once the page
-// has revoked it.
+// still loading when the settle wait ended, or that failed to load, is left as
+// it is. So is one shown from a `blob:` address: re-sourcing loads the address
+// again, which fails once the page has revoked it.
 export const PIN_IMAGE_SOURCES_SCRIPT = `(() => {
   ${IMAGE_SET_HELPERS}
+  const unsettled = globalThis.birdbrainUnsettled
+  if (!unsettled) {
+    throw new Error('The settle wait left no record: the page was replaced before the pin')
+  }
   const pinned = []
   for (const img of imageSets()) {
     const src = img.currentSrc
-    if (!src || src.startsWith('blob:') || !shown(img)) continue
+    if (!src || src.startsWith('blob:') || unsettled.has(img) || !shown(img)) continue
     img.removeAttribute('srcset')
     img.removeAttribute('sizes')
     img.src = src

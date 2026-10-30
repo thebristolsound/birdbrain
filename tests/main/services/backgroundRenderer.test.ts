@@ -102,15 +102,17 @@ const ctl = vi.hoisted(() => ({
   setProxyDelayMs: 0,
   // Image Source Pinning (#1843): the page's images, each isolated-world call with
   // its world and time, a pin script that throws, counts that replace the last
-  // script's, a request the page makes while the pin runs, and the content height
-  // the layout metrics report once it has run. `runPinWorld` runs a script in the
-  // window's isolated world; it is set below the imports.
+  // script's, a request the page makes while the pin runs, the content height
+  // the layout metrics report once it has run, and what happens to the page while
+  // the screenshot is taken. `runPinWorld` runs a script in the window's isolated
+  // world; it is set below the imports.
   images: [] as unknown[],
   pinCalls: [] as Array<{ worldId: number; code: string; at: number }>,
   pinThrows: false,
   pinCounts: undefined as unknown,
   pinEvent: false,
   contentHeightAfterPin: null as number | null,
+  duringScreenshot: null as (() => void) | null,
   runPinWorld: null as unknown as (wc: object, code: string) => unknown
 }))
 
@@ -263,7 +265,10 @@ const { MockBrowserWindow } = vi.hoisted(() => {
             if (cmd === 'Page.getLayoutMetrics') {
               return { cssContentSize: { x: 0, y: 0, width: 100, height: ctl.contentHeight } }
             }
-            if (cmd === 'Page.captureScreenshot') return { data: ctl.pngBase64 }
+            if (cmd === 'Page.captureScreenshot') {
+              ctl.duringScreenshot?.()
+              return { data: ctl.pngBase64 }
+            }
             if (cmd === 'Network.getResponseBody') {
               if (ctl.bodyHangs) return new Promise(() => {})
               const { requestId } = params as { requestId: string }
@@ -570,6 +575,7 @@ function resetPin(): void {
   ctl.pinCounts = undefined
   ctl.pinEvent = false
   ctl.contentHeightAfterPin = null
+  ctl.duringScreenshot = null
 }
 
 // Every control back to a page that loads, records and prints.
@@ -1075,11 +1081,17 @@ describe('the Scroll-to-load step script', () => {
 // Image Source Pinning (#1843, ADR-0055, rulings of 2026-10-26): the
 // isolated-world scripts, run over fake images.
 describe('the Image Source Pinning scripts', () => {
+  // The settle wait's last check, then the pin, as the render runs them.
+  const settleThenPin = (world: Context): unknown => {
+    inWorld(world, IMAGE_SETS_LOADING_SCRIPT)
+    return inWorld(world, PIN_IMAGE_SOURCES_SCRIPT)
+  }
+
   it('pins each displayed srcset image outside a picture to its currentSrc and drops srcset and sizes', () => {
     const page = fiveImagePage()
     const world = pinWorld(() => Object.values(page))
 
-    expect(inWorld(world, PIN_IMAGE_SOURCES_SCRIPT)).toBe(3)
+    expect(settleThenPin(world)).toBe(3)
 
     for (const [img, src] of [
       [page.srcsetOnly, `${ORIGIN}/srcset-only-1x.png`],
@@ -1096,10 +1108,7 @@ describe('the Image Source Pinning scripts', () => {
 
   it('leaves a picture image, a plain one, one still loading, a failed one and a blob: one as they were', () => {
     const page = fiveImagePage()
-    inWorld(
-      pinWorld(() => Object.values(page)),
-      PIN_IMAGE_SOURCES_SCRIPT
-    )
+    settleThenPin(pinWorld(() => Object.values(page)))
 
     const { picture, plain, loading, failed, blob } = page
     for (const img of [picture, plain, loading, failed, blob]) expect(img.assigned).toEqual([])
@@ -1114,7 +1123,7 @@ describe('the Image Source Pinning scripts', () => {
 
   it('pins nothing and counts 0 on a page with no srcset image', () => {
     const world = pinWorld(() => [new FakeImage({ src: '/plain.png' }, `${ORIGIN}/plain.png`)])
-    expect(inWorld(world, PIN_IMAGE_SOURCES_SCRIPT)).toBe(0)
+    expect(settleThenPin(world)).toBe(0)
     expect(inWorld(world, PINNED_COUNTS_SCRIPT)).toEqual({
       pinnedImages: 0,
       pinnedImagesNotLoaded: 0
@@ -1140,7 +1149,7 @@ describe('the Image Source Pinning scripts', () => {
     const shown = new FakeImage({ srcset: '/c.png 1x' }, `${ORIGIN}/c.png`)
     const world = pinWorld(() => [loads, fails, shown])
 
-    expect(inWorld(world, PIN_IMAGE_SOURCES_SCRIPT)).toBe(3)
+    expect(settleThenPin(world)).toBe(3)
     expect(inWorld(world, PINNED_LOADING_SCRIPT)).toBe(1)
     expect(inWorld(world, PINNED_COUNTS_SCRIPT)).toEqual({
       pinnedImages: 3,
@@ -1159,7 +1168,7 @@ describe('the Image Source Pinning scripts', () => {
     const moved = new FakeImage({ srcset: '/b.png 1x' }, `${ORIGIN}/b.png`)
     const restored = new FakeImage({ srcset: '/c.png 1x' }, `${ORIGIN}/c.png`)
     const world = pinWorld(() => [removed, moved, restored])
-    expect(inWorld(world, PIN_IMAGE_SOURCES_SCRIPT)).toBe(3)
+    expect(settleThenPin(world)).toBe(3)
 
     removed.isConnected = false
     moved.attributes.set('src', '/elsewhere.png')
@@ -1172,8 +1181,38 @@ describe('the Image Source Pinning scripts', () => {
     })
   })
 
-  it('throws when the world holds no pin, as after the page was replaced', () => {
+  // Ruled 2026-10-26: an image still loading when the settle wait ends is left out of the pin.
+  it('leaves out an image still loading when the settle wait ended, though it has loaded since', () => {
+    const late = new FakeImage({ srcset: '/late.png 1x' }, `${ORIGIN}/late.png`, 'loading')
+    const shown = new FakeImage({ srcset: '/shown.png 1x' }, `${ORIGIN}/shown.png`)
+    const world = pinWorld(() => [late, shown])
+
+    expect(inWorld(world, IMAGE_SETS_LOADING_SCRIPT)).toBe(1)
+    late.hold('shown')
+
+    expect(inWorld(world, PIN_IMAGE_SOURCES_SCRIPT)).toBe(1)
+    expect(late.assigned).toEqual([])
+    expect(Object.fromEntries(late.attributes)).toEqual({ srcset: '/late.png 1x' })
+    expect(inWorld(world, PINNED_COUNTS_SCRIPT)).toEqual({
+      pinnedImages: 1,
+      pinnedImagesNotLoaded: 0
+    })
+  })
+
+  it('pins an image that settled by the last check of the settle wait', () => {
+    const late = new FakeImage({ srcset: '/late.png 1x' }, `${ORIGIN}/late.png`, 'loading')
+    const world = pinWorld(() => [late])
+
+    expect(inWorld(world, IMAGE_SETS_LOADING_SCRIPT)).toBe(1)
+    late.hold('shown')
+    expect(inWorld(world, IMAGE_SETS_LOADING_SCRIPT)).toBe(0)
+
+    expect(inWorld(world, PIN_IMAGE_SOURCES_SCRIPT)).toBe(1)
+  })
+
+  it('throws when the world holds no settle record or no pin, as after the page was replaced', () => {
     const world = pinWorld(() => [])
+    expect(() => inWorld(world, PIN_IMAGE_SOURCES_SCRIPT)).toThrow('The settle wait left no record')
     expect(() => inWorld(world, PINNED_LOADING_SCRIPT)).toThrow('The pinned images are gone')
     expect(() => inWorld(world, PINNED_COUNTS_SCRIPT)).toThrow('The pinned images are gone')
   })
@@ -1240,6 +1279,8 @@ describe('settleImageSets and pinImageSources', () => {
     const page = fiveImagePage()
     page.widths = new FakeImage({ srcset: '/w.png 400w' }, `${ORIGIN}/w.png`, 'shown', 'loading')
     const { wc, calls } = worldContents(Object.values(page))
+    await underFakeTime(settleImageSets(wc, 0))
+    calls.length = 0
     const startedAt = Date.now()
 
     const part = await underFakeTime(pinImageSources(wc, 1_000))
@@ -2072,6 +2113,20 @@ describe('renderPageInHiddenWindow, Image Source Pinning', () => {
       expect(span).toBeLessThan(5_500)
     }
     expect(imageSourcePinning).toEqual({ present: true, pinnedImages: 1, pinnedImagesNotLoaded: 1 })
+  }, 30_000)
+
+  // Ruled 2026-10-26: an image still loading when the settle wait ends is left out of the pin.
+  it('leaves out an image still loading when the settle wait ended that loads during the screenshot', async () => {
+    const late = new FakeImage({ srcset: '/late.png 1x' }, `${ORIGIN}/late.png`, 'loading')
+    ctl.images = [...Object.values(fiveImagePage()), late]
+    ctl.duringScreenshot = () => late.hold('shown')
+    // Below the end reserve the settle wait checks once and ends.
+    const { imageSourcePinning } = await render(39_000)
+
+    expect(callsOf(IMAGE_SETS_LOADING_SCRIPT)).toHaveLength(1)
+    expect(late.complete).toBe(true)
+    expect(late.assigned).toEqual([])
+    expect(imageSourcePinning).toEqual({ present: true, pinnedImages: 3, pinnedImagesNotLoaded: 0 })
   }, 30_000)
 
   it('counts a pinned image that does not load in the time left, and returns before its deadline', async () => {

@@ -1181,6 +1181,17 @@ describe('the Image Source Pinning scripts', () => {
     })
   })
 
+  it('leaves an image with a natural width or height of 0 as it is, as not displayed', () => {
+    const noHeight = new FakeImage({ srcset: '/h.png 1x' }, `${ORIGIN}/h.png`)
+    const noWidth = new FakeImage({ srcset: '/w.png 1x' }, `${ORIGIN}/w.png`)
+    noHeight.naturalHeight = 0
+    noWidth.naturalWidth = 0
+
+    expect(settleThenPin(pinWorld(() => [noHeight, noWidth]))).toBe(0)
+    expect(noHeight.assigned).toEqual([])
+    expect(noWidth.assigned).toEqual([])
+  })
+
   // Ruled 2026-10-26: an image still loading when the settle wait ends is left out of the pin.
   it('leaves out an image still loading when the settle wait ended, though it has loaded since', () => {
     const late = new FakeImage({ srcset: '/late.png 1x' }, `${ORIGIN}/late.png`, 'loading')

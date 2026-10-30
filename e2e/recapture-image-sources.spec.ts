@@ -344,6 +344,8 @@ test.describe('Image Source Pinning of a background capture', () => {
     )
     expect(part, 'the MHTML has a part for the srcset image').toBeDefined()
     expect(part!.bytes.toString('latin1')).toMatch(/TAG:\/savepage\/srcset-1x\.png$/)
+    // Served once, so the part holds the bytes the page displayed.
+    expect(server.served.filter((path) => path === '/savepage/srcset-1x.png')).toHaveLength(1)
     expect(server.served).not.toContain('/savepage/srcset-2x.png')
 
     const [entry] = captureEntries(storagePath, caseId)
@@ -376,6 +378,17 @@ test.describe('Image Source Pinning of a background capture', () => {
       const part = parts.find(({ location }) => location === `${server.origin}${path}`)
       expect(part, path).toBeDefined()
       expect(part!.bytes.toString('latin1').endsWith(`TAG:${path}`)).toBe(true)
+    }
+    // Each pinned image was served once, so its part holds the bytes the page displayed.
+    for (const path of [
+      '/five/srcset-only-1x.png',
+      '/five/srcset-with-src-1x.png',
+      '/five/srcset-w-400.png'
+    ]) {
+      expect(
+        server.served.filter((served) => served === path),
+        path
+      ).toHaveLength(1)
     }
     // No part under an address the server never served.
     expect(server.served).not.toContain('/five/src-fallback.png')
@@ -439,6 +452,7 @@ test.describe('Image Source Pinning of a background capture', () => {
     const parts = storedMhtml(storagePath, caseId, captureId)
     const fast = parts.find(({ location }) => location === `${server.origin}/left/fast.png`)
     expect(fast?.bytes.toString('latin1').endsWith('TAG:/left/fast.png')).toBe(true)
+    expect(server.served.filter((path) => path === '/left/fast.png')).toHaveLength(1)
     for (const path of ['/left/retry.png', '/left/never.png']) {
       expect(parts.map(({ location }) => location)).not.toContain(`${server.origin}${path}`)
     }

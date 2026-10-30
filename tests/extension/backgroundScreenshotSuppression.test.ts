@@ -39,6 +39,9 @@ let contextMenuListener: ContextMenuListener | undefined
 // ordering (suppression before the frame) as much as about what was called
 const events: string[] = []
 const toasts: Array<{ status?: string; message?: string }> = []
+// The full capture-outcome messages, beyond the status/message slice `toasts`
+// records — the card outcome carries the stored screenshot kind (#1769).
+const outcomeMessages: Array<Record<string, unknown>> = []
 
 // Per-test control over what each capture path answers. Each frame has its
 // own data URL, and the fetch stub turns a URL into a blob of that text, so
@@ -157,7 +160,13 @@ beforeAll(async () => {
       },
       sendMessage: (
         _tabId: number,
-        message: { type: string; status?: string; message?: string }
+        message: {
+          type: string
+          status?: string
+          message?: string
+          card?: unknown
+          storedScreenshot?: unknown
+        }
       ) => {
         events.push(message.type)
         if (message.type === 'PREPARE_FOR_CAPTURE') {
@@ -174,6 +183,7 @@ beforeAll(async () => {
         if (message.type === 'CHECK_SELECTORS') return Promise.resolve([])
         if (message.type === 'UPDATE_CAPTURE_TOAST' || message.type === 'SHOW_CAPTURE_TOAST') {
           toasts.push({ status: message.status, message: message.message })
+          if (message.type === 'UPDATE_CAPTURE_TOAST') outcomeMessages.push({ ...message })
         }
         return Promise.resolve(undefined)
       }
@@ -224,6 +234,7 @@ beforeAll(async () => {
 beforeEach(() => {
   events.length = 0
   toasts.length = 0
+  outcomeMessages.length = 0
   fullPageResponse = { screenshot: FULL_PAGE_FRAME }
   scrollingResponse = { screenshot: SCROLLING_FRAME }
   viewportFails = false
@@ -442,6 +453,48 @@ describe('a screenshot fallback is reported to the operator (#1667)', () => {
     expect(toasts.at(-1)).toEqual({
       status: 'error',
       message: 'Capture aborted: Birdbrain UI could not be removed from the page'
+    })
+  })
+
+  it('carries the stored screenshot kind on the card outcome of a fallback capture', async () => {
+    fullPageResponse = { error: 'OffscreenCanvas is not available in this context' }
+
+    await captureFullPage()
+
+    // The card outcome is the background → toast contract: what it names as
+    // stored must be the screenshot the upload actually carried (the viewport
+    // frame here), so the card renders that instead of the requested mode.
+    expect(outcomeMessages.at(-1)).toMatchObject({
+      type: 'UPDATE_CAPTURE_TOAST',
+      status: 'degraded',
+      message: 'Captured (full-page screenshot failed; visible part of the page only)',
+      storedScreenshot: 'viewport'
+    })
+    expect(await uploadedScreenshot()?.text()).toBe(VIEWPORT_FRAME)
+    expect(outcomeMessages.at(-1)?.card).toBeDefined()
+  })
+
+  it('carries no stored screenshot kind on the outcome whose upload was dropped', async () => {
+    vi.mocked(sendMhtmlCapture).mockResolvedValueOnce({
+      ...UPLOAD_RESULT,
+      screenshotStatus: 'dropped'
+    })
+
+    await captureFullPage()
+
+    expect(outcomeMessages.at(-1)).toMatchObject({
+      status: 'degraded',
+      message: 'Captured (screenshot too large)',
+      storedScreenshot: 'none'
+    })
+  })
+
+  it('carries the requested kind on a plain-success outcome', async () => {
+    await captureFullPage()
+
+    expect(outcomeMessages.at(-1)).toMatchObject({
+      status: 'success',
+      storedScreenshot: 'full-page'
     })
   })
 })

@@ -232,6 +232,13 @@ const byStart = (a: Chain, b: Chain): number => {
 const countOf = (exchanges: Exchange[], state: ExchangeState): number =>
   exchanges.filter((exchange) => exchange.state === state).length
 
+// Whether a main frame navigation replaced the page, as measured on Electron 45 (validation
+// record, step 9, Deviations): a cancelled one, such as a 204 or a download, did not, nor did one
+// with neither a response nor a failure yet. One that failed, and one still loading after its
+// response, left the window on its own URL.
+const replacedThePage = ({ state, response, failure }: Exchange): boolean =>
+  state !== 'cancelled' && (response !== undefined || failure !== undefined)
+
 /**
  * Turns the recorded CDP events of one render into its exchanges and the Transaction Record
  * counts. Each `Network.requestWillBeSent` starts an exchange, so each redirect hop is one under
@@ -306,10 +313,17 @@ export const collectExchanges = (input: CollectorInput): CollectedExchanges => {
     .flatMap((chain) => {
       const written = toExchanges(chain, input, mainFrameId)
       const [{ sent }] = chain.hops
-      // A page that navigates itself has more than one main frame document; the last one is the
-      // page the artifacts show.
-      if (sent.type === 'Document' && sent.frameId !== undefined && sent.frameId === mainFrameId) {
-        mainDocument = written.at(-1)
+      // A page that navigates itself has more than one main frame document; the last one that
+      // replaced the page is the last page a request produced. A later navigation that sends no
+      // request, such as one to `about:blank`, is not seen here; the recorder checks for it.
+      const last = written[written.length - 1]
+      if (
+        sent.type === 'Document' &&
+        sent.frameId !== undefined &&
+        sent.frameId === mainFrameId &&
+        replacedThePage(last)
+      ) {
+        mainDocument = last
       }
       return written
     })

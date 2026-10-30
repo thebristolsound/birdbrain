@@ -2,9 +2,10 @@
 // docs/plans/2026-10-10-capture-engine-first-slice.md). The off pass loads the fixture with no CDP
 // domain enabled; the on pass loads `about:blank`, then sends `Network.enable`,
 // `Network.configureDurableMessages` and `Target.setAutoAttach` on the page as a background
-// render does, then loads it. It does not run the app's code. It fails when `navigator.webdriver`, the `window.chrome` keys, the `Error.stack`
-// getter count or the resource timing list differ between the passes, or when `history.length`
-// differs by anything but the one entry the `about:blank` load adds (renderer spike, question 7).
+// render does, then loads it. It does not run the app's code. It fails when
+// `navigator.webdriver`, the `window.chrome` keys, the `Error.stack` getter count or the
+// resource timing list differ between the passes, or when `history.length` differs by anything
+// but the one entry the `about:blank` load adds (renderer spike, question 7).
 // The 90 s fresh-window case of the probe spike does not run.
 //
 // Run from the repository root on Node 20, with a display:

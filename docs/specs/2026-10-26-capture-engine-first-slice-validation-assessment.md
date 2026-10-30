@@ -74,6 +74,11 @@ through `uvx --from 'warcio==1.8.1'`, on the records the end-to-end spec stored.
 below are from the head after the review of #1999, except the demo page sizes and the writer
 timing, measured at `54e5fcf6`.
 
+After this branch took `main`'s Electron 45.0.0 (#1994), the plan's re-check of
+`Network.configureDurableMessages` ran on Electron 45.0.0 with Chromium 156.0.8078.48, on the
+same workstation under `xvfb-run`: `e2e/recapture-transaction-record.spec.ts` passed all eight
+tests against the built app. The other Recapture specs and the probe were not rerun there.
+
 **Step 10.** The same workstation, Node 20.20.2, and Electron 44.9.1 with Chromium
 152.0.7977.167. The unit suite ran as in step 6. The Recapture end-to-end specs ran against the
 built app under `xvfb-run`, outside a network namespace: no process held the capture server's
@@ -82,6 +87,16 @@ port. pdf.js (`pdfjs-dist` 5.6.205) read the stored PDF in the spec's own proces
 sizes and times below come from a standalone Electron 44.9.1 script outside the repository, one
 process per page, in an offscreen sandboxed window on a fresh partition under `xvfb-run`, which
 called `printToPDF({})`, the render's options, 1.5 s after each load.
+
+After this branch took step 9's Electron 45.0.0, `e2e/recapture-transaction-record.spec.ts` and
+`e2e/recapture.spec.ts` ran on Electron 45.0.0 with Chromium 156.0.8078.48, on the same
+workstation under `xvfb-run`, outside a network namespace. The PDF cases passed. Three
+Transaction Record cases first failed when the app's first window did not open within 30 s. On
+the rerun, two passed, and the known-answers case failed twice: its fixture servers' logs held
+`GET /` requests for `localhost`, which the record did not, of the kind the workstation's T3
+Code server sent to a test listener on a new loopback port. With requests for `/` dropped from those logs, in an uncommitted
+copy of the spec, it passed. The print sizes and times above were not measured again on Electron
+45.
 
 **#1843.** The same workstation, Node 20.20.2, and Electron 44.9.1 with Chromium
 152.0.7977.167. The unit suite ran as in step 6, and the Recapture end-to-end specs against the
@@ -112,11 +127,12 @@ Transaction Record of each Capture; ImageMagick compared and sampled the screens
 | Check                                                                                                                                                                | Expected                                                                                                                                                                                                                                                                                                   | Observed                                                                                                                                                                   |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Each D5 ending, driven with a mocked `WebContents` (`tests/main/services/backgroundRenderer.test.ts`, `scrollToLoadLazyContent`)                                     | Budget zero records `ran: false` and no outcome; no scrollable root records `nothing-to-scroll`; a page at the scroll cap records `height-cap`; three steps without a change in height record `stopped-growing`; the phase deadline records `time-budget`                                                  | Each as expected, and each record passes the strict schema                                                                                                                 |
-| The stall count (same file)                                                                                                                                          | A page that grows before the third stall step keeps scrolling; a step that moves on to a second pane, at a different height, restarts the count                                                                                                                                                            | As expected                                                                                                                                                                |
+| The stall count (same file)                                                                                                                                          | A page that grows before the third stall step keeps scrolling; a step that moves on to a second pane, at a different height, restarts the count; a page whose height falls, or moves down and up, at every step runs to the deadline                                                                       | As expected                                                                                                                                                                |
 | The root each step scrolls, with the step script run against a simulated page (same file, the step script's tests)                                                   | The document first; once it cannot move down, the inner panel with the most overflow that can; once nothing can move down, the root at its end with the most overflow, reported rather than `null`; `null` only when nothing overflows                                                                     | As expected for a document at its end, an app-shell page whose document overflows by its 16px margin, a page with two panes, and a panel that grows after reaching its end |
+| Whether the phase lifts a scroll lock, with the unlock, step and reset scripts run against a simulated page (same file, the scroll lock's tests)                     | A page that starts at its end lifts no lock and records `scrollLockLifted` false; a page locked with `overflow: hidden` whose document cannot move from script, at its top or after it scrolled itself to its end, has the lock lifted, records true, and has the lock restored                            | As expected                                                                                                                                                                |
 | A step that throws (same file)                                                                                                                                       | The phase rejects, so the render fails, and the page's scroll position and lock are restored                                                                                                                                                                                                               | As expected                                                                                                                                                                |
 | A restore that fails (same file)                                                                                                                                     | With a lifted scroll lock, the phase rejects, so the render fails; a step's own error wins over the restore's; with no lock lifted, the failure is logged and the phase recorded                                                                                                                           | As expected                                                                                                                                                                |
-| A height the page reports that is not a non-negative integer (same file)                                                                                             | No `endHeight`                                                                                                                                                                                                                                                                                             | As expected for a fraction, a negative number, and text                                                                                                                    |
+| A height the page reports that is not a non-negative integer (same file)                                                                                             | No `endHeight`                                                                                                                                                                                                                                                                                             | As expected for a fraction, a negative number, and text, and for a fraction read after a whole height                                                                      |
 | The D6 facts (same file, `captureFullPageScreenshot` and `trimTrailingBackground`)                                                                                   | Scaled, truncated, trimmed, and none each recorded, with the stored PNG's dimensions; content ending within the 8px padding of the bottom edge records `trimmed: false`, and one row higher crops; a failed trim keeps the image and records `trimmed: false`; an image that is not a PNG fails the render | As expected                                                                                                                                                                |
 | The signed entry of a Recapture, and of its Duplicate (`tests/main/services/recapture.test.ts`)                                                                      | Both pass the strict manifest schema, stamped 6; both rows mirror the entry                                                                                                                                                                                                                                | As expected                                                                                                                                                                |
 | An end-to-end Recapture of an invented page that grows from 1601 to 4001 CSS pixels as it is scrolled (`e2e/recapture.spec.ts`)                                      | `stopped-growing`, `endHeight` 4001, `scrollLockLifted` false; screenshot not scaled, not truncated, not trimmed, `contentHeight` 4001, `width` and `height` equal to the stored PNG's; row equal to entry; the Capture verifies                                                                           | As expected, after the first deviation below was fixed                                                                                                                     |
@@ -135,7 +151,7 @@ Transaction Record of each Capture; ImageMagick compared and sampled the screens
 | Text bodies (`src/packages/transaction-record/tests`)                                                                                                                                     | A text body is kept only from a session whose durable messages answered, judged by the session that reported `loadingFinished`, and only when it was fetched on that session; a base64 body from any session; the writer stores the served windows-1252 bytes, payload digest `sha256:f92b1f90c50a0068a6c9dfce9c853e9333a8337b6475fab8a4393f1b1fccd319`; no record carries `x-birdbrain-decoded-text`                                                                                                                                                                                                                                   | As expected                                                                                                                                                                                                                             |
 | A request that finished with no response (same tests)                                                                                                                                     | Counted in `finishedWithoutResponse`, in neither `inFlight` nor `exchanges`, and written as a request record only                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | As expected                                                                                                                                                                                                                             |
 | The strict schema (`tests/main/services/transactionRecorder.test.ts`)                                                                                                                     | A main document whose SCT timestamp falls after the year 9999, which `toISOString` writes with a six-digit year, records the Transaction Record `failed` instead of reaching the signed entry                                                                                                                                                                                                                                                                                                                                                                                                                                           | As expected                                                                                                                                                                                                                             |
-| The render (`tests/main/services/backgroundRenderer.test.ts`)                                                                                                                             | `about:blank`, the page setup, then the target; collection stops before the screenshot; a failed `enable`, a body fetch that never settles, and a writer that throws each return the record as `failed`; no certificate allowance without the switch or in a packaged build                                                                                                                                                                                                                                                                                                                                                             | As expected                                                                                                                                                                                                                             |
+| The render (`tests/main/services/backgroundRenderer.test.ts`)                                                                                                                             | `about:blank`, the page setup, then the target; collection stops before the screenshot; a page that ends on the blank page it went back to gets `boundTlsAbsent` `not-reported`; a failed `enable`, a body fetch that never settles, and a writer that throws each return the record as `failed`; no certificate allowance without the switch or in a packaged build                                                                                                                                                                                                                                                                    | As expected                                                                                                                                                                                                                             |
 | The end reserve and the cut (same file)                                                                                                                                                   | No Scroll-to-load budget under a 34 s timeout, some under 37.5 s, so the reserve is 35 s; with a 3 s timeout, a body fetch or a writer that never settles is cut to the time left less the 1 s margin and the render returns its page with the record `failed`                                                                                                                                                                                                                                                                                                                                                                          | As expected; each cut ended between 1,000 and 2,000 ms                                                                                                                                                                                  |
 | The notice that the record failed (`tests/main/services/recapture.test.ts`)                                                                                                               | Logged once the Capture is stored, with the error; not logged when the job then refuses the final URL or the ingest fails                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | As expected                                                                                                                                                                                                                             |
 | Ingest and the Duplicate (`tests/main/services/recapture.test.ts`, `captureLifecycle.test.ts`)                                                                                            | The entry passes the strict schema with the record's hash, inventory part, and `boundTls` or `boundTlsAbsent`; the file is stored under the id the render was given; the row mirrors the entry; a changed byte reads `tampered`; a failed record writes no file and `not-recorded`; a Duplicate's entry and row carry the hash and no Bound TLS Details                                                                                                                                                                                                                                                                                 | As expected                                                                                                                                                                                                                             |
@@ -144,7 +160,7 @@ Transaction Record of each Capture; ImageMagick compared and sampled the screens
 | Known answers in the same record                                                                                                                                                          | Payload digests equal the SHA-256 of the served bodies for a `gzip` body, a plain one, windows-1252, Shift_JIS, UTF-8 with a byte-order mark, and UTF-8 under a windows-1252 label; posted windows-1252 (`636166e9`), Shift_JIS (`93fa967b`) and UTF-8 bodies are stored as the bytes sent; both redirect hops, same-origin and cross-origin, have a `302` response with no body; the over-limit body and the page's copy of the service worker's answer are `WARC-Truncated`; the cookie the page set and sent appears nowhere in the inflated record; `WARC-IP-Address` 127.0.0.1; `boundTlsAbsent` `not-https`; the Capture verifies | As expected                                                                                                                                                                                                                             |
 | A page that fetches in a loop for as long as it is open (same file)                                                                                                                       | The Capture is stored and verifies, with the record absent as `failed`, `boundTlsAbsent` `not-recorded`, and no record file                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | As expected; the server logged more than 8,000 of its requests                                                                                                                                                                          |
 | Stubbed setup failures (same file)                                                                                                                                                        | A frame's failed `Network.enable` moves `unrecordedTargets`; the page's failed `Target.setAutoAttach` makes the page unrecorded; both keep the record                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | As expected: 2 unrecorded for the frame and the worker it starts, 1 for the page                                                                                                                                                        |
-| A page over TLS through the test certificate allowance (same file)                                                                                                                        | `boundTls` states the leaf's subject, alternative names, issuer, and validity; without the allowance the Recapture fails with `ERR_CERT_AUTHORITY_INVALID`                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | As expected                                                                                                                                                                                                                             |
+| A page over TLS through the test certificate allowance (same file)                                                                                                                        | `boundTls` states the leaf's subject, alternative names, issuer, and validity; a page that goes back to the blank page the window loaded first, or sets `location.href` to `about:blank`, is stored under `about:blank` with `boundTlsAbsent` `not-reported`; without the allowance the Recapture fails with `ERR_CERT_AUTHORITY_INVALID`                                                                                                                                                                                                                                                                                               | As expected                                                                                                                                                                                                                             |
 | A proxy Egress through the SOCKS5 fixture (same file)                                                                                                                                     | No `WARC-IP-Address`, and neither the record nor the inventory names the proxy's port; the proxy shares the target's host, 127.0.0.1, so this does not show the host left out                                                                                                                                                                                                                                                                                                                                                                                                                                                           | As expected                                                                                                                                                                                                                             |
 | The other Recapture specs (`e2e/recapture.spec.ts`, `recapture-consent.spec.ts`, `recapture-egress.spec.ts`, `recapture-permissions.spec.ts`, `recapture-local-redirect.spec.ts`)         | Pass with the Network domain on                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | All passed, in one run with the new spec: 18 of 18                                                                                                                                                                                      |
 | `warcio check` (`warcio` 1.8.1) on the five records that run stored                                                                                                                       | Exit 0, every digest it checks passing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Exit 0 on each, with no output; verbose, the fixture page's 61 records (one `warcinfo`, 33 requests, 27 responses) gave 60 `digest pass` and one `no digest to check` for the `warcinfo`, and the four smaller records the same pattern |
@@ -329,6 +345,12 @@ unless the row says otherwise.
   down does the step report the root at its end with the most overflow. The stall count also
   restarts when the height changes in either direction, so a step that moves on to a second pane
   does not inherit the first pane's stalls.
+- Review of that fix found that the check for a scroll lock still used the down-only test, so a
+  document already at its end when the phase started, such as a page loaded at a fragment near
+  its bottom, read as locked: the phase set `overflow: visible` on `html` and `body`, and the
+  entry signed `scrollLockLifted: true`. The check now uses the step's root choice, so a root at
+  its end is not a lock. On one locked page that also leaves the lock in place; the scroll-lock
+  runs below show which.
 
 The effect on acquisition, against the build before step 6 (`b4bd9b71`). Each row is one
 Electron run of the step script, extracted from the source named, driven through the renderer's
@@ -346,6 +368,42 @@ So on the first three pages a background render takes one to three more half-sec
 before it ends the phase. A feed whose next chunk takes longer than the half-second pause, but
 arrives before the third stall step, keeps loading: where the build before step 6 stopped at the
 first bottom, it now runs to the height cap or the phase's time limit.
+
+Every change in height now restarts the stall count, so at its bottom a page whose height changes
+at every step, down as well as up, runs to the height cap or the phase's time limit. The build
+before step 6 counted a fall in height as a stall step, so a page that shrank at its bottom three
+steps in a row stopped there.
+
+The scroll lock, in Electron runs of the unlock and step scripts set up as the rows above, from
+the source at `c7219ba3` (the same renderer file as `b4bd9b71`) and at `7b449b26`. Each page holds
+a 5000 px block and a closing paragraph, the window shows 479 px, and each run read the page's
+`document.compatMode` before the phase. Every page was loaded at its top and at the paragraph's
+fragment. The build before step 6 recorded no outcome, so its column names where its loop ended
+in D5's terms; "no height" means the first step found no root.
+
+| Page                                                              | Loaded at | Before step 6                              | This step                             |
+| ----------------------------------------------------------------- | --------- | ------------------------------------------ | ------------------------------------- |
+| No doctype (`BackCompat`), no styles                              | top       | not lifted, `nothing-to-scroll` at 5058    | not lifted, `stopped-growing` at 5058 |
+| No doctype, no styles                                             | fragment  | lifted, `nothing-to-scroll`, no height     | not lifted, `stopped-growing` at 5058 |
+| No doctype, `overflow: hidden` on `html` and `body`               | either    | not lifted, `nothing-to-scroll`, no height | the same                              |
+| No doctype, `height: 100%; overflow: hidden` on `html` and `body` | either    | lifted, `nothing-to-scroll` at 5042        | lifted, `stopped-growing` at 5042     |
+| Doctype (`CSS1Compat`), no styles                                 | top       | not lifted, `nothing-to-scroll` at 5058    | not lifted, `stopped-growing` at 5058 |
+| Doctype, no styles                                                | fragment  | lifted, `nothing-to-scroll`, no height     | not lifted, `stopped-growing` at 5058 |
+| Doctype, `overflow: hidden` on `html` and `body`                  | top       | not lifted, `nothing-to-scroll` at 5066    | not lifted, `stopped-growing` at 5066 |
+| Doctype, `overflow: hidden` on `html` and `body`                  | fragment  | lifted, `nothing-to-scroll`, no height     | not lifted, `stopped-growing` at 5066 |
+| Doctype, `height: 100%; overflow: hidden` on `html` and `body`    | top       | not lifted, `nothing-to-scroll` at 487     | not lifted, `stopped-growing` at 487  |
+| Doctype, `height: 100%; overflow: hidden` on `html` and `body`    | fragment  | lifted, `nothing-to-scroll` at 5042        | not lifted, `stopped-growing` at 487  |
+
+A script can scroll a standards-mode document styled `overflow: hidden`, so neither build reads
+those pages as locked when they load at their top. With `height: 100%` the document overflows
+by 8 px, and the 5000 px block scrolls inside `body`, which neither build's step considers: its
+inner roots are the descendants of `body`. Loaded at the fragment, that document starts at its
+8 px end. The build before step 6 read that as a lock, lifted it, and scrolled to 5042; this step
+reads a root at its end, lifts nothing, and ends `stopped-growing` at 487; loaded at its top,
+that page stops at 487 in both builds. So on that page, loaded at the fragment, the phase no
+longer loosens the lock and scrolls none of the block, where the build before step 6 scrolled all
+of it. In quirks mode the full-height document cannot move from script, so both builds lift its lock
+wherever the page loads.
 
 **Step 9.**
 
@@ -371,6 +429,38 @@ first bottom, it now runs to the height cap or the phase's time limit.
   stored it, that no test pinned the 35 s reserve, and that the two end phases could carry a
   render past its deadline. The notice now follows the stored Capture, and each phase is cut to
   the time left (ruled 2026-10-26).
+- The second review of #1999 found that the main document was the main frame's last document
+  request, whatever became of it, so a later navigation that did not replace the page, such as a
+  download, supplied the signed Bound TLS Details. The main document is now the last one that
+  replaced the page. What replaced it was measured on Electron 45.0.0 with Chromium
+  156.0.8078.48, in a standalone script outside the repository that loaded a page, navigated it
+  after 300 ms, and read the window's URL and title 2.5 s later:
+
+  | The second navigation                           | Its events                                         | The window showed |
+  | ----------------------------------------------- | -------------------------------------------------- | ----------------- |
+  | A 204 answer                                    | response 204, then `loadingFailed`, canceled true  | the first page    |
+  | An attachment (`Content-Disposition`)           | response 200, then `loadingFailed`, canceled true  | the first page    |
+  | Replaced by a third navigation before answering | `loadingFailed`, canceled true, no response        | the third page    |
+  | A server that never answers                     | `requestWillBeSent` only                           | the first page    |
+  | A body still streaming                          | response 200, no terminal event                    | the second page   |
+  | A body cut short after its response             | response 200, then `loadingFailed`, canceled false | the second page   |
+  | Port 1, which the browser refuses               | `loadingFailed`, canceled false, no response       | the second URL    |
+
+- The third review of #1999 found that a navigation that sends no request left the main document
+  on the earlier page: a page that went back to the blank page the window loads first, or set
+  `location.href` to `about:blank`, was stored under `about:blank` with the earlier page's Bound
+  TLS Details. The maintainer ruled on 2026-10-29 that the entry then records the details absent,
+  and that the blank first page stays. The details are now signed only when the main document's
+  URL, without its fragment, is the URL of the window's last cross-document navigation, as
+  Electron's `did-navigate` reports it; otherwise `boundTlsAbsent` is `not-reported`. Measured on
+  Electron 45.0.0 in a standalone script outside the repository: `history.back()` to the blank
+  page and `location.href = 'about:blank'` each sent no Network event and reported `did-navigate`
+  with `about:blank`; a page loaded with a fragment reported `did-navigate` with the fragment,
+  which the debugger's URL leaves out; `history.pushState` reported only `did-navigate-in-page`;
+  and a 204 answer and an attachment each reported no `did-navigate`. So a navigation of either
+  kind whose cancel arrives after collection stops, which the collector then takes as the main
+  document (finding 4 of that review, not measured), leaves the details absent instead of signing
+  its own.
 
 **Step 10.**
 
@@ -383,6 +473,12 @@ first bottom, it now runs to the height cap or the phase's time limit.
   now reads the URL, title, and HTTP status right after the save, stores the Capture under them,
   and does not print when the window's URL or its count of main-frame navigations has changed
   since; the PDF is then absent as `failed` (Expected and observed results).
+- The pre-pass reviews of #2000 at `39ae663a` found that the check ran once, before the print, so
+  a navigation the window reported only once the print was under way passed it; neither review
+  reproduced it. The render now checks the URL and the navigation count again when `printToPDF`
+  settles, and discards the PDF on a change. Three unit tests in
+  `tests/main/services/backgroundRenderer.test.ts`, one for each kind of navigation, pin it. A
+  navigation the window has not reported by then is not seen.
 - The same review found that the time left was counted from after the proxy setup while the
   deadline timer started before it, so a `setProxy` slower than the 1 s margin could let the
   print, or a record phase, settle after the deadline and lose the Capture. The count now starts
@@ -391,6 +487,24 @@ first bottom, it now runs to the height cap or the phase's time limit.
   the strict schema refuses would have broken the Case's chain. On the ingest of a Capture
   carrying the capture engine's fields, the entry is now parsed before it is signed, and one that
   fails is not written.
+- On taking step 9's committed-page rule (ruled 2026-10-29), the render reads the URL of the
+  window's last cross-document navigation at the save, with the URL, title, and status, and the
+  Transaction Record's end phases compare the main document with that URL. Step 9 read it after
+  the text, where it also read the URL the Capture was stored under. Read there beside a Capture
+  that keeps the saved page, it would leave out the saved page's Bound TLS Details when the page
+  navigated after the save, and would sign the earlier page's details when the page went back to
+  the blank page before the save and returned after it. Two unit tests in
+  `tests/main/services/backgroundRenderer.test.ts` pin the Bound TLS outcome of both cases.
+- The next review found that a reload of the same address after collection stopped and before
+  the save still signed the earlier load's Bound TLS Details, though the record holds no request
+  for the reloaded page. The maintainer ruled on 2026-10-30 that any navigation in that span, a
+  same-address reload included, records the details absent. The render now counts the window's
+  cross-document navigations when collection stops and again at the save, and passes no committed
+  URL when the two differ, so `boundTlsAbsent` is `not-reported`. A unit test in the same file
+  reloads the same address during the save, after collection stops; it fails with the count
+  comparison removed. Since #1843 collection stops after the screenshot, so a navigation during
+  the pin or the screenshot is before it; the page it loads holds no pin, so the count after the
+  screenshot throws and the render saves nothing, which a unit test in the same file pins.
 - The plan leaves unverified whether pdf.js extracts text without the optional `@napi-rs/canvas`.
   It does not: with no `@napi-rs/canvas` to load, the 5.6.205 legacy build stops at import on
   Node 20.20.2 with `ReferenceError: DOMMatrix is not defined`. pnpm installs the optional
@@ -461,12 +575,13 @@ image`, absent when N is 0. Step 5's sentence in the report's artifact inventory
 
 **Step 10.**
 
-- `failed` on the PDF part covers a print that failed, one that ran out of time, and one refused
-  by a size bound. The signed entry does not say which; the `backgroundRenderer.pdf_failed` log
-  entry's error names the bound.
-- The layout bound reads the document's content box, the height the screenshot record states
-  (D6), so it does not see the height of a panel that scrolls inside the page. Since #1843 the
-  screenshot, and so that height, is taken after Image Source Pinning.
+- `failed` on the PDF part covers a print that failed, one that ran out of time, one refused by a
+  size bound, and one refused or discarded because the page navigated after the save. The signed
+  entry does not say which; the `backgroundRenderer.pdf_failed` log entry's error names the bound,
+  or the address the page navigated to.
+- The layout bound reads the content height the screenshot record states (D6), the document's
+  content box, so it does not see the height of a panel that scrolls inside the page. Since #1843
+  the screenshot, and so that height, is taken after Image Source Pinning.
 - The layout bound measures the page as laid out on screen, and print styles can lay out far
   more. In the review's standalone run, a page 479 CSS pixels tall on screen, whose print style
   showed 150 random-pixel 600 by 400 images the screen hid, passed the bound and printed to
@@ -496,6 +611,10 @@ image`, absent when N is 0. Step 5's sentence in the report's artifact inventory
 
 - `endHeight` is the height of the root the step scrolled. On a page that scrolls an inner
   container, that is the container's height, not the document's.
+- In standards mode the step never scrolls `body`: the document is `html`, and its inner roots
+  are the descendants of `body`. A page with a doctype and `height: 100%; overflow: hidden` on
+  `html` and `body` scrolls its content there, so the phase lifts no lock and stops at the
+  document's 8 px overflow; the scroll-lock runs above give the numbers.
 - When the browser reports no CSS content size, the screenshot is taken of the 1280 by 900
   viewport, and `contentWidth` and `contentHeight` record that box, which D6 defines as the box
   the screenshot was asked for.
@@ -514,7 +633,9 @@ image`, absent when N is 0. Step 5's sentence in the report's artifact inventory
   loads `about:blank` before the target. The maintainer ruled on 2026-10-26 to keep this and
   record it as a known limitation (the second decision on #1823). A page that branches on its
   history length can render differently, and nothing in the signed entry beyond `toolVersion`
-  tells a Capture from this build apart from an earlier one in this respect.
+  tells a Capture from this build apart from an earlier one in this respect. The extra history
+  entry also gives the page a blank page to go back to; a Capture whose page is there when it is
+  saved is stored under `about:blank` with no Bound TLS Details (ruled 2026-10-29).
 - The record holds nothing of a resource reused inside the page, of a shared worker's own
   requests, or of what runs below a target whose `Target.setAutoAttach` failed (D17).
 - The values of the four credential headers are replaced; a token in a URL, a body, or any other
@@ -527,7 +648,11 @@ image`, absent when N is 0. Step 5's sentence in the report's artifact inventory
   100 s, less the page setup, which can take 15 s when its three commands do not answer. A slow
   page can reach the Scroll-to-load time limit up to 15 s sooner and hold less lazy content.
 - The event bound, 25,000 events or 25,000,000 bytes of their JSON, is not signed and was chosen
-  without a survey of real pages; only the looping fixture was run against it.
+  without a survey of real pages; only the looping fixture was run against it. Uploads count
+  against it too: `Network.enable` is sent without `maxPostDataSize`, so a request event carries
+  its upload as `postData` and again as base64 `postDataEntries`. On Electron 45.0.0 the event of
+  one 11,000,000-byte upload was 25,667,678 characters of JSON, past the bound, so the record is
+  `failed`; that of a 6,000,000-byte upload was 14,001,007, so two such uploads also go past it.
 - Every fixture is HTTP/1.1 on loopback; no HTTP/2, HTTP/3, or remote server was recorded.
 
 **Step 10.**

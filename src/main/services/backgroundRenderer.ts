@@ -173,10 +173,11 @@ async function waitForDocumentComplete(wc: WebContents, timeoutMs: number): Prom
   )
 }
 
-// Shared by the scroll-phase scripts below. The probes test actual movement —
-// a viewport scroll-locked by overflow: hidden clamps even programmatic
-// scrolling. pickRoot prefers the document, falling back to the largest
-// scrollable descendant (app-shell layouts scroll an inner container).
+// Shared by the scroll-phase scripts below. The probes test actual movement
+// rather than styles: in Chromium a document with overflow: hidden still moves
+// from script in standards mode, and a full-height one does not in quirks mode.
+// pickRoot prefers the document, falling back to the largest scrollable
+// descendant (app-shell layouts scroll an inner container).
 const SCROLL_HELPERS = `
   // scrollTo with behavior 'instant' so CSS scroll-behavior: smooth can't turn
   // programmatic scrolls into animations the probes would misread.
@@ -227,9 +228,11 @@ const SCROLL_HELPERS = `
 // When nothing scrolls but content overflows the viewport, lift the lock for
 // the scroll phase ONLY. Returns the original inline overflow values
 // ([html, body]) for the restore script, or null when no lock was lifted.
+// A root at its end is not locked: a page loaded at a fragment near its
+// bottom starts there.
 const SCROLL_UNLOCK_SCRIPT = `(() => {
   ${SCROLL_HELPERS}
-  if (pickRoot()) return null
+  if (pickRoot(true)) return null
   if (!doc || doc.scrollHeight <= doc.clientHeight + 2) return null
   const prior = []
   for (const el of [document.documentElement, document.body]) {
@@ -654,6 +657,11 @@ interface SavedPage {
   httpStatus: number
   // Main-frame navigations committed by the save.
   navigations: number
+  // The last of them, so Bound TLS Details follow the saved page, not a later one;
+  // undefined when a navigation committed after collection stopped, a same-address
+  // reload included, since no recorded request loaded the saved page (ruling of
+  // 2026-10-30 on #2000).
+  committedUrl: string | undefined
 }
 
 // Prints the page to PDF (step 10 of
@@ -662,8 +670,9 @@ interface SavedPage {
 // fetches for printing stays out of the Transaction Record (spec, PDF). Never
 // throws: a page that navigated after the save, or is taller than
 // MAX_PDF_CONTENT_HEIGHT_PX, is not printed, and that, a print that fails or
-// outlasts `boundMs`, and a PDF over MAX_PDF_SIZE each record the PDF absent as
-// `failed`, with an error that names the cause.
+// outlasts `boundMs`, a page the window reports navigated while it printed, and
+// a PDF over MAX_PDF_SIZE each record the PDF absent as `failed`, with an error
+// that names the cause.
 async function printPageToPdf(
   wc: WebContents,
   {
@@ -671,14 +680,20 @@ async function printPageToPdf(
     navigations,
     contentHeight,
     boundMs
-  }: { saved: SavedPage; navigations: number; contentHeight: number; boundMs: number }
+  }: { saved: SavedPage; navigations: () => number; contentHeight: number; boundMs: number }
 ): Promise<PdfOutcome> {
   try {
-    // A print shows whatever the window holds now, so a page that left the saved
+    // A print shows whatever the window holds, so a page that left the saved
     // document, or changed its address in place, would be printed as another page.
-    const url = wc.getURL()
-    if (url !== saved.url || navigations !== saved.navigations) {
-      throw new Error(`The page navigated after it was saved, to ${url}, so it was not printed`)
+    // Checked again after the print, for a navigation the window reports only then
+    // (review of #2000).
+    const navigatedTo = (): string | null => {
+      const url = wc.getURL()
+      return url !== saved.url || navigations() !== saved.navigations ? url : null
+    }
+    const before = navigatedTo()
+    if (before !== null) {
+      throw new Error(`The page navigated after it was saved, to ${before}, so it was not printed`)
     }
     if (contentHeight > MAX_PDF_CONTENT_HEIGHT_PX) {
       throw new Error(
@@ -693,6 +708,10 @@ async function printPageToPdf(
     })
     // Electron's defaults, the options the probe printed with.
     const bytes = await Promise.race([wc.printToPDF({}), bound]).finally(() => clearTimeout(timer))
+    const during = navigatedTo()
+    if (during !== null) {
+      throw new Error(`The page navigated while it printed, to ${during}, so the PDF was discarded`)
+    }
     if (bytes.length > MAX_PDF_SIZE) {
       throw new Error(
         `The PDF is ${bytes.length} bytes, over MAX_PDF_SIZE (${MAX_PDF_SIZE}), so it was discarded`
@@ -853,9 +872,12 @@ export const renderPageInHiddenWindow: RenderPage = async (
 
     let httpStatus = 0
     let navigations = 0
-    wc.on('did-navigate', (_event, _navUrl, httpResponseCode) => {
+    // Bound TLS Details are signed only for the page this names (`boundTlsOf`).
+    let committedUrl = ''
+    wc.on('did-navigate', (_event, navUrl, httpResponseCode) => {
       httpStatus = httpResponseCode
       navigations += 1
+      committedUrl = navUrl
     })
 
     // The debugger is attached for the whole render, and its Network domain
@@ -866,7 +888,8 @@ export const renderPageInHiddenWindow: RenderPage = async (
     // `Network.enable` gets no answer on a window that has not navigated, so a
     // blank page loads first (probe spike). The page then reads one more
     // `history.length` entry than a direct load gives it, a known limitation
-    // (renderer spike, question 7).
+    // (renderer spike, question 7), and can go back to the blank page, which
+    // `boundTlsOf` then signs no details for.
     recorder = createTransactionRecorder(wc.debugger)
     const activeRecorder = recorder
     await wc.loadURL('about:blank')
@@ -943,6 +966,7 @@ export const renderPageInHiddenWindow: RenderPage = async (
       // load a pinned image again, and just before the save, during which the
       // renderer spike saw no request and no event.
       activeRecorder.stop()
+      const navigationsAtStop = navigations
       const recordedAt = new Date().toISOString()
       await wc.savePage(tmpPath, 'MHTML')
       // The Capture is stored under the page the save took, read before anything else
@@ -951,7 +975,8 @@ export const renderPageInHiddenWindow: RenderPage = async (
         url: wc.getURL(),
         title: wc.getTitle(),
         httpStatus,
-        navigations
+        navigations,
+        committedUrl: navigations === navigationsAtStop ? committedUrl : undefined
       }
 
       const text = (await wc.executeJavaScript(
@@ -965,6 +990,7 @@ export const renderPageInHiddenWindow: RenderPage = async (
             collectMs: BODY_COLLECT_TIMEOUT_MS,
             writeMs: RECORD_WRITE_TIMEOUT_MS,
             timeLeftMs: () => remainingMs(END_MARGIN_MS),
+            committedUrl: saved.committedUrl,
             writer: {
               captureId,
               birdbrainVersion: toolVersion,
@@ -983,7 +1009,7 @@ export const renderPageInHiddenWindow: RenderPage = async (
       // Last, under its own bound cut to the time left (PRINT_TIMEOUT_MS).
       const pdf = await printPageToPdf(wc, {
         saved,
-        navigations,
+        navigations: () => navigations,
         contentHeight: screenshotRecord.contentHeight,
         boundMs: Math.min(PRINT_TIMEOUT_MS, remainingMs(END_MARGIN_MS))
       })

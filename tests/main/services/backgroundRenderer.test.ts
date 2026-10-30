@@ -83,6 +83,8 @@ const ctl = vi.hoisted(() => ({
   },
   // An event the page sends while the screenshot is taken, after collection stops.
   lateEvent: false,
+  // A same-address reload of the target while the page is saved, after collection stops.
+  reloadsBeforeSave: false,
   // The PDF half (step 10): the content height the layout metrics report, what
   // `printToPDF` returns or whether it never settles or throws, the options it
   // was given, and a request the page starts while it prints, as the probe's
@@ -99,8 +101,13 @@ const ctl = vi.hoisted(() => ({
   // holds the proxy setup back (finding 5).
   currentUrl: 'https://example.test/final',
   currentTitle: 'Mock Title',
-  navigateAfterSave: null as null | 'other-page' | 'reload' | 'in-page',
+  navigateAfterSave: null as null | 'other-page' | 'reload' | 'in-page' | 'back-to-target',
+  // The same navigations, made while the page prints (the review of #2000, a later round).
+  navigateDuringPrint: null as null | 'other-page' | 'reload' | 'in-page',
   setProxyDelayMs: 0,
+  // A URL the page navigates to after it loads without sending a request, as going back to the
+  // blank page does: the window reports `did-navigate` and the debugger reports nothing.
+  navigatesTo: null as string | null,
   // Image Source Pinning (#1843): the page's images, each isolated-world call with
   // its world and time, a pin script that throws, counts that replace the last
   // script's, a request the page makes while the pin runs and one during the
@@ -189,15 +196,21 @@ const { MockBrowserWindow } = vi.hoisted(() => {
 
   // The page's navigation after the save, as Chromium reports each kind: a
   // cross-document one emits `did-navigate`, an in-page one changes only the URL.
-  const navigateAfterSave = (handlers: Map<string, Handler>): void => {
-    if (ctl.navigateAfterSave === 'other-page') {
+  const navigate = (
+    handlers: Map<string, Handler>,
+    kind: typeof ctl.navigateAfterSave | typeof ctl.navigateDuringPrint
+  ): void => {
+    if (kind === 'other-page') {
       ctl.currentUrl = 'https://example.test/elsewhere'
       ctl.currentTitle = 'Elsewhere'
       handlers.get('did-navigate')?.({}, ctl.currentUrl, 404)
-    } else if (ctl.navigateAfterSave === 'reload') {
+    } else if (kind === 'reload') {
       handlers.get('did-navigate')?.({}, ctl.currentUrl, 200)
-    } else if (ctl.navigateAfterSave === 'in-page') {
+    } else if (kind === 'in-page') {
       ctl.currentUrl = 'https://example.test/final#later'
+    } else if (kind === 'back-to-target') {
+      // Back to the loaded page without a request, as a history step can.
+      handlers.get('did-navigate')?.({}, 'https://example.test/', 200)
     }
   }
 
@@ -311,6 +324,7 @@ const { MockBrowserWindow } = vi.hoisted(() => {
           handlers.get('did-navigate')?.({}, url, 200)
           // The main document, as the debugger reports it once Network is enabled.
           emitPage(this.debugger, 'doc', url, 'Document')
+          if (ctl.navigatesTo) handlers.get('did-navigate')?.({}, ctl.navigatesTo, -1)
         },
         async executeJavaScriptInIsolatedWorld(worldId: number, scripts: Array<{ code: string }>) {
           const [{ code }] = scripts
@@ -334,7 +348,7 @@ const { MockBrowserWindow } = vi.hoisted(() => {
           }
           if (script.includes('window.scrollTo(0, 0)')) return undefined
           if (script.includes('innerText')) {
-            navigateAfterSave(handlers)
+            navigate(handlers, ctl.navigateAfterSave)
             return 'hello world'
           }
           return undefined
@@ -343,6 +357,8 @@ const { MockBrowserWindow } = vi.hoisted(() => {
           ctl.order.push('savePage')
           if (ctl.lateEvent)
             emitPage(this.debugger, 'late', 'https://example.test/late.js', 'Script')
+          if (ctl.reloadsBeforeSave)
+            handlers.get('did-navigate')?.({}, 'https://example.test/', 200)
           writeFileSync(path, 'From: test\r\n\r\nMHTML body')
         },
         async printToPDF(options: unknown) {
@@ -353,6 +369,7 @@ const { MockBrowserWindow } = vi.hoisted(() => {
           }
           if (ctl.printHangs) return new Promise<Buffer>(() => {})
           if (ctl.printThrows) throw new Error('Printing failed')
+          navigate(handlers, ctl.navigateDuringPrint)
           return ctl.pdfBytes ?? Buffer.from('%PDF-1.4 invented print')
         },
         getTitle() {
@@ -621,6 +638,8 @@ function resetPrint(): void {
   ctl.currentUrl = 'https://example.test/final'
   ctl.currentTitle = 'Mock Title'
   ctl.navigateAfterSave = null
+  ctl.navigateDuringPrint = null
+  ctl.reloadsBeforeSave = false
   ctl.setProxyDelayMs = 0
 }
 
@@ -659,6 +678,13 @@ describe('trimTrailingBackground', () => {
     const { png: out, trimmed } = await trimTrailingBackground(png)
     expect(trimmed).toBe(true)
     expect(await heightOf(out)).toBe(999)
+  })
+
+  it('trims a page whose only content is its first row', async () => {
+    const png = await pageWithTrailingBackground(400, 1000, 1, WHITE, RED)
+    const { png: out, trimmed } = await trimTrailingBackground(png)
+    expect(trimmed).toBe(true)
+    expect(await heightOf(out)).toBe(9)
   })
 
   it('leaves an all-background (blank) capture untouched', async () => {
@@ -864,6 +890,16 @@ describe('scrollToLoadLazyContent', () => {
     expect(scripts.at(-1)).toContain('const prior = ["hidden",""]')
   })
 
+  it('records an end height of 0 when the page reports 0 for its height', async () => {
+    const { wc } = scrollingContents({
+      step: (call) => (call === 0 ? { y: 0, height: 0, viewportHeight: 900 } : null)
+    })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record).toMatchObject({ outcome: 'nothing-to-scroll', endHeight: 0 })
+  })
+
   it.each([
     ['a fraction', 1500.5],
     ['a negative number', -1],
@@ -872,6 +908,23 @@ describe('scrollToLoadLazyContent', () => {
     const { wc } = scrollingContents({
       step: (call) =>
         call === 0 ? ({ y: 0, height, viewportHeight: 900 } as unknown as StepState) : null
+    })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record).toEqual({
+      requested: true,
+      ran: true,
+      outcome: 'nothing-to-scroll',
+      scrollLockLifted: false
+    })
+  })
+
+  it('records no end height when the last height read is not recordable', async () => {
+    const heights = [3000, 1500.5]
+    const { wc } = scrollingContents({
+      step: (call) =>
+        call < heights.length ? { y: 0, height: heights[call], viewportHeight: 900 } : null
     })
 
     const record = await scrollUnderFakeTime(wc, 10_000)
@@ -962,6 +1015,22 @@ describe('scrollToLoadLazyContent', () => {
     expect(record).toMatchObject({ outcome: 'time-budget', endHeight: 9000 })
   })
 
+  it.each([
+    ['falls at every step', (call: number) => 20_000 - call * 100],
+    ['moves down and up at every step', (call: number) => (call % 2 === 0 ? 3000 : 2900)]
+  ])('runs to the deadline at the bottom of a page whose height %s', async (_name, heightAt) => {
+    const { wc } = scrollingContents({
+      step: (call) => {
+        const height = heightAt(call)
+        return { y: height - 900, height, viewportHeight: 900 }
+      }
+    })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record).toMatchObject({ outcome: 'time-budget' })
+  })
+
   it('restarts the stall count when a step moves on to a second pane', async () => {
     // Pane A (6000px) at its end for two steps, then pane B (3000px) for two
     // steps that each count as a stall on their own pane, then A again: no
@@ -982,15 +1051,19 @@ describe('scrollToLoadLazyContent', () => {
 })
 
 // A scrollable box with the browser's clamping: scrollTop stays within
-// [0, scrollHeight - clientHeight].
+// [0, scrollHeight - clientHeight]. With overflow: hidden it does not move,
+// which models a document that cannot move from script, as in a Chromium page
+// with no doctype. A standards-mode document with overflow: hidden still moves.
 class FakeScroller {
   scrollTop = 0
+  style = { overflow: '' }
   constructor(
     readonly name: string,
     public scrollHeight: number,
     readonly clientHeight: number
   ) {}
   scrollTo({ top }: { top: number }) {
+    if (this.style.overflow === 'hidden') return
     this.scrollTop = Math.max(0, Math.min(top, this.scrollHeight - this.clientHeight))
   }
 }
@@ -1350,6 +1423,72 @@ describe('settleImageSets, pinImageSources and countPinnedImages', () => {
   })
 })
 
+// A WebContents that runs every script of the phase, the unlock, the steps and
+// the reset, against a document root with no inner boxes, in a 900px-tall window.
+function pageContents(doc: FakeScroller, body: { style: { overflow: string } }): WebContents {
+  const context = {
+    document: { scrollingElement: doc, documentElement: doc, body, querySelectorAll: () => [] },
+    window: { innerHeight: 900, scrollTo: () => {} }
+  }
+  const wc = {
+    async executeJavaScript(script: string) {
+      return runInNewContext(script, context)
+    }
+  }
+  return wc as unknown as WebContents
+}
+
+// Whether the phase lifts a scroll lock, decided by the page's own scripts
+// rather than a canned unlock result.
+describe('the Scroll-to-load scroll lock', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('lifts no lock on a page that starts at its end', async () => {
+    // A page loaded at a fragment near its bottom.
+    const doc = new FakeScroller('document', 5000, 900)
+    doc.scrollTop = 4100
+    const body = { style: { overflow: '' } }
+
+    const record = await scrollUnderFakeTime(pageContents(doc, body), 60_000)
+
+    expect(record).toEqual({
+      requested: true,
+      ran: true,
+      outcome: 'stopped-growing',
+      endHeight: 5000,
+      scrollLockLifted: false
+    })
+    expect([doc.style.overflow, body.style.overflow]).toEqual(['', ''])
+  })
+
+  it.each([
+    ['at its top', 0],
+    ['after it scrolled itself to its end', 4100]
+  ])('lifts and restores the lock of a page locked %s', async (_name, startTop) => {
+    const doc = new FakeScroller('document', 5000, 900)
+    doc.scrollTop = startTop
+    doc.style.overflow = 'hidden'
+    const body = { style: { overflow: 'hidden' } }
+
+    const record = await scrollUnderFakeTime(pageContents(doc, body), 60_000)
+
+    expect(record).toEqual({
+      requested: true,
+      ran: true,
+      outcome: 'stopped-growing',
+      endHeight: 5000,
+      scrollLockLifted: true
+    })
+    expect([doc.style.overflow, body.style.overflow]).toEqual(['hidden', 'hidden'])
+  })
+})
+
 // A WebContents whose debugger reports `content` as the CSS content size and
 // returns `png` as the captured image.
 function screenshotContents(
@@ -1454,6 +1593,23 @@ describe('captureFullPageScreenshot', () => {
 
     await expect(captureFullPageScreenshot(wc)).rejects.toThrow('The screenshot is not a PNG')
   })
+
+  // Each check on its own: the rest of the image is a real PNG's.
+  it.each([
+    ['is cut off before the end of its header', (png: Buffer) => png.subarray(0, 23)],
+    [
+      'has a wrong signature byte',
+      (png: Buffer) => Buffer.concat([Buffer.from([0]), png.subarray(1)])
+    ],
+    [
+      'does not start with an IHDR chunk',
+      (png: Buffer) => Buffer.concat([png.subarray(0, 12), Buffer.from('IDAT'), png.subarray(16)])
+    ]
+  ])('fails the render on an image that %s', async (_name, damage) => {
+    const { wc } = screenshotContents({ width: 16, height: 8 }, damage(await solid(16, 8)))
+
+    await expect(captureFullPageScreenshot(wc)).rejects.toThrow('The screenshot is not a PNG')
+  })
 })
 
 const IDS = { captureId: 'capture-1929', toolVersion: '1.0.1-test' }
@@ -1486,6 +1642,7 @@ describe('renderPageInHiddenWindow', () => {
     ctl.lateEvent = false
     resetPrint()
     resetPin()
+    ctl.navigatesTo = null
     delete process.env[E2E_TRUSTED_CERT_SWITCH]
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
@@ -1614,7 +1771,8 @@ describe('renderPageInHiddenWindow', () => {
     ['will-redirect', 'http://127.0.0.1:8080/admin', 'Redirects to a loopback address'],
     ['will-redirect', 'http://192.168.1.1/', 'Redirects to a private address'],
     ['will-navigate', 'http://10.0.0.5/', 'Redirects to a private address'],
-    ['will-redirect', 'http://localhost/', 'Redirects to this computer']
+    ['will-redirect', 'http://localhost/', 'Redirects to this computer'],
+    ['will-redirect', 'http://intranet/', 'Redirects to a private network']
   ])(
     'refuses a %s hop to %s before following it',
     async (event, url, reason) => {
@@ -1745,6 +1903,7 @@ describe('renderPageInHiddenWindow, the Transaction Record', () => {
     ctl.lateEvent = false
     resetPrint()
     resetPin()
+    ctl.navigatesTo = null
     delete process.env[E2E_TRUSTED_CERT_SWITCH]
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
@@ -1801,6 +1960,38 @@ describe('renderPageInHiddenWindow, the Transaction Record', () => {
   it('states not-https for an http page', async () => {
     const { transactionRecord } = await render('http://example.test/')
     expect(transactionRecord).toMatchObject({ present: true, boundTlsAbsent: 'not-https' })
+  }, 30_000)
+
+  it('states the details absent when the page ends on the blank page it went back to', async () => {
+    ctl.navigatesTo = 'about:blank'
+    const { transactionRecord } = await render()
+    expect(transactionRecord).toMatchObject({ present: true, boundTlsAbsent: 'not-reported' })
+    expect(transactionRecord).not.toHaveProperty('boundTls')
+  }, 30_000)
+
+  // The Capture is stored as the page the save took, so the committed page is read there too.
+  it('states the details absent when the saved page is the blank page, though the page comes back after', async () => {
+    ctl.navigatesTo = 'about:blank'
+    ctl.navigateAfterSave = 'back-to-target'
+    const { transactionRecord } = await render()
+    expect(transactionRecord).toMatchObject({ present: true, boundTlsAbsent: 'not-reported' })
+    expect(transactionRecord).not.toHaveProperty('boundTls')
+  }, 30_000)
+
+  // The reloaded page came from a request the record does not hold (ruling of 2026-10-30 on #2000).
+  it('states the details absent when the page reloads its own address before the save', async () => {
+    ctl.reloadsBeforeSave = true
+    const { transactionRecord } = await render()
+    expect(transactionRecord).toMatchObject({ present: true, boundTlsAbsent: 'not-reported' })
+    expect(transactionRecord).not.toHaveProperty('boundTls')
+  }, 30_000)
+
+  it('signs the details of the saved page when the page navigates after the save', async () => {
+    ctl.navigateAfterSave = 'other-page'
+    const { transactionRecord } = await render()
+    if (!transactionRecord.present) throw transactionRecord.error
+    expect(transactionRecord.boundTls).toMatchObject({ subjectName: 'example.test' })
+    expect(transactionRecord.boundTlsAbsent).toBeUndefined()
   }, 30_000)
 
   // Collection stopped before the screenshot until the ruling of 2026-10-26 on #1843 moved it
@@ -2044,6 +2235,31 @@ describe('renderPageInHiddenWindow, the PDF', () => {
     30_000
   )
 
+  // The pre-pass reviews of #2000 at 39ae663a: a navigation the window reports only once the
+  // print is under way passed the check made before it.
+  it.each([
+    ['to another page', 'other-page', 'https://example.test/elsewhere'],
+    ['by reloading itself', 'reload', 'https://example.test/final'],
+    ['to another address in place', 'in-page', 'https://example.test/final#later']
+  ] as const)(
+    'discards the PDF, and keeps the saved page, when the page navigates %s while it prints',
+    async (_how, navigation, later) => {
+      ctl.navigateDuringPrint = navigation
+      const result = await render()
+      expect(ctl.order).toContain('printToPDF')
+      expect(result).toMatchObject({
+        finalUrl: 'https://example.test/final',
+        title: 'Mock Title',
+        httpStatus: 200
+      })
+      expect(result.pdf).toMatchObject({ present: false, reason: 'failed' })
+      expect(errorOf(result.pdf)).toContain(
+        `The page navigated while it printed, to ${later}, so the PDF was discarded`
+      )
+    },
+    30_000
+  )
+
   // Finding 5 of the review of #2000: the time left is counted from the deadline timer, so a
   // slow proxy setup before the first load cannot carry the print past the deadline.
   it('cuts the print to the deadline when the proxy setup was slow', async () => {
@@ -2244,6 +2460,37 @@ describe('renderPageInHiddenWindow, Image Source Pinning', () => {
         renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000, ...IDS })
       ).rejects.toThrow(message)
       expect(ctl.order.includes('Page.captureScreenshot')).toBe(screenshotTaken)
+      expect(ctl.order).not.toContain('savePage')
+      expect(ctl.lastWindow!.isDestroyed()).toBe(true)
+    },
+    30_000
+  )
+
+  // Collection stops after the screenshot, so the ruling of 2026-10-30 on #2000, Bound TLS
+  // Details absent after a navigation between the stop and the save, does not reach a reload
+  // during the pin or the screenshot: the reloaded page holds no pin, so no Capture is stored.
+  it.each([
+    [
+      'the pin',
+      'beforePin',
+      'The settle wait left no record: the page was replaced before the pin'
+    ],
+    [
+      'the screenshot',
+      'duringScreenshot',
+      'The pinned images are gone: the page was replaced since the pin'
+    ]
+  ] as const)(
+    'fails the render, so no Bound TLS Details are signed, when the page reloads during %s',
+    async (_name, hook, message) => {
+      ctl.images = Object.values(fiveImagePage())
+      ctl[hook] = () => {
+        pinWorlds = new WeakMap()
+        ctl.lastWindow!.webContents.handlers.get('did-navigate')?.({}, 'https://example.test/', 200)
+      }
+      await expect(
+        renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000, ...IDS })
+      ).rejects.toThrow(message)
       expect(ctl.order).not.toContain('savePage')
       expect(ctl.lastWindow!.isDestroyed()).toBe(true)
     },

@@ -340,6 +340,36 @@ describe('attached targets (plan D17)', () => {
     })
   })
 
+  it('keys each response body by its session, so a body that returns later replaces none', async () => {
+    const { fake, recorder } = await started()
+    attach(fake, 'worker', 'worker')
+    await settle()
+    let answerPage: (value: unknown) => void = () => {}
+    fake.answers.set('Network.getResponseBody@', {
+      later: new Promise((resolve) => (answerPage = resolve))
+    })
+    fake.answers.set('Network.getResponseBody@worker', body('from the worker'))
+    const { on } = page(fake)
+    on('')('Network.requestWillBeSent', {
+      requestId: 'shared',
+      wallTime: WALL_TIME,
+      request: { url: 'http://127.0.0.1/shared', method: 'GET', headers: {} }
+    })
+    on('')('Network.responseReceived', {
+      requestId: 'shared',
+      response: { url: 'http://127.0.0.1/shared', status: 200, statusText: 'OK', headers: {} }
+    })
+    on('')('Network.loadingFinished', { requestId: 'shared' })
+    on('worker')('Network.loadingFinished', { requestId: 'shared' })
+    await settle()
+    answerPage(body('from the page').value)
+    const { exchanges } = await recorder.collect(100)
+    expect(exchanges[0]).toMatchObject({
+      state: 'complete',
+      responseBody: { data: 'from the worker' }
+    })
+  })
+
   it('leaves a body omitted when its target detaches before the body returns', async () => {
     const { fake, recorder } = await started()
     fake.answers.set('Network.getResponseBody', { fail: 'Session with given id not found' })
@@ -555,7 +585,8 @@ describe('the event budget', () => {
     const outcome = await finishTransactionRecord(recorder, {
       collectMs: 100,
       writeMs: 100,
-      writer: WRITER
+      writer: WRITER,
+      committedUrl: 'http://127.0.0.1/'
     })
     expect(outcome).toMatchObject({ present: false, reason: 'failed' })
   })
@@ -617,6 +648,7 @@ describe('finishTransactionRecord', () => {
       collectMs: 100,
       writeMs: 5_000,
       writer: WRITER,
+      committedUrl: 'http://127.0.0.1/',
       budget: BUDGET
     })
     if (!outcome.present) throw outcome.error
@@ -666,7 +698,8 @@ describe('finishTransactionRecord', () => {
     const outcome = await finishTransactionRecord(recorder, {
       collectMs: 50,
       writeMs: 5_000,
-      writer: WRITER
+      writer: WRITER,
+      committedUrl: 'http://127.0.0.1/'
     })
     expect(Date.now() - startedAt).toBeLessThan(1_000)
     expect(outcome).toMatchObject({ present: false, reason: 'failed' })
@@ -679,6 +712,7 @@ describe('finishTransactionRecord', () => {
       collectMs: 50,
       writeMs: 5_000,
       writer: WRITER,
+      committedUrl: 'http://127.0.0.1/',
       write: () => Promise.reject(new Error('writer broke'))
     })
     expect(outcome).toMatchObject({ present: false, reason: 'failed' })
@@ -692,6 +726,7 @@ describe('finishTransactionRecord', () => {
       collectMs: 50,
       writeMs: 30,
       writer: WRITER,
+      committedUrl: 'http://127.0.0.1/',
       write: () => new Promise(() => {})
     })
     expect(outcome).toMatchObject({ present: false, reason: 'failed' })
@@ -708,7 +743,8 @@ describe('finishTransactionRecord', () => {
       collectMs: 5_000,
       writeMs: 10_000,
       timeLeftMs: () => 30,
-      writer: WRITER
+      writer: WRITER,
+      committedUrl: 'http://127.0.0.1/'
     })
     expect(Date.now() - startedAt).toBeLessThan(1_000)
     expect(outcome).toMatchObject({ present: false, reason: 'failed' })
@@ -728,6 +764,7 @@ describe('finishTransactionRecord', () => {
         return now
       },
       writer: WRITER,
+      committedUrl: 'http://127.0.0.1/',
       write: () => new Promise(() => {})
     })
     expect(outcome).toMatchObject({ present: false, reason: 'failed' })
@@ -741,7 +778,8 @@ describe('finishTransactionRecord', () => {
       collectMs: 5_000,
       writeMs: 10_000,
       timeLeftMs: () => 0,
-      writer: WRITER
+      writer: WRITER,
+      committedUrl: 'http://127.0.0.1/'
     })
     expect(outcome).toMatchObject({ present: false, reason: 'failed' })
   })
@@ -801,9 +839,167 @@ describe('finishTransactionRecord', () => {
     const outcome = await finishTransactionRecord(recorder, {
       collectMs: 100,
       writeMs: 5_000,
-      writer: WRITER
+      writer: WRITER,
+      committedUrl: 'https://127.0.0.1/'
     })
     expect(outcome).toMatchObject({ present: false, reason: 'failed' })
+  })
+
+  it('signs the shown page details when a later navigation was cancelled, as a download is', async () => {
+    const { fake, recorder } = await started()
+    fake.answers.set('Network.getResponseBody', body('<p>shown</p>'))
+    const { on } = page(fake)
+    const navigate = (requestId: string, host: string, wallTime: number): void => {
+      const url = `https://${host}/`
+      on('')('Network.requestWillBeSent', {
+        requestId,
+        wallTime,
+        type: 'Document',
+        frameId: 'main',
+        request: { url, method: 'GET', headers: {} }
+      })
+      on('')('Network.responseReceived', {
+        requestId,
+        response: {
+          url,
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+          mimeType: 'text/html',
+          securityDetails: {
+            protocol: 'TLS 1.3',
+            keyExchange: '',
+            cipher: 'AES_128_GCM',
+            certificateId: 0,
+            subjectName: host,
+            sanList: [host],
+            issuer: 'Test CA',
+            validFrom: 1767225600,
+            validTo: 1798761600,
+            signedCertificateTimestampList: [],
+            certificateTransparencyCompliance: 'unknown',
+            encryptedClientHello: false
+          }
+        }
+      })
+      on('')('Network.dataReceived', { requestId, dataLength: 11 })
+    }
+    navigate('shown', 'shown.example', WALL_TIME)
+    on('')('Network.loadingFinished', { requestId: 'shown' })
+    navigate('download', 'other.example', WALL_TIME + 1)
+    on('')('Network.loadingFailed', {
+      requestId: 'download',
+      errorText: 'net::ERR_ABORTED',
+      canceled: true
+    })
+    recorder.stop()
+    const outcome = await finishTransactionRecord(recorder, {
+      collectMs: 100,
+      writeMs: 5_000,
+      writer: WRITER,
+      committedUrl: 'https://shown.example/'
+    })
+    if (!outcome.present) throw outcome.error
+    expect(outcome.boundTls).toMatchObject({ subjectName: 'shown.example' })
+    expect(outcome.inventory).toMatchObject({ exchanges: 1, cancelled: 1 })
+  })
+
+  // The ruling of 2026-10-29 on #1999. Measured on Electron 45.0.0: `history.back()` to the blank
+  // page the window loads first, and `location.href = 'about:blank'`, each send no Network event
+  // and report `did-navigate` with `about:blank`; `history.pushState` reports no `did-navigate`.
+  // An https main frame document whose details name its host; it finishes unless `open`.
+  const shownPage = (fake: FakeDebugger, url: string, requestId = 'doc', open = false): void => {
+    const { on } = page(fake)
+    const { host } = new URL(url)
+    on('')('Network.requestWillBeSent', {
+      requestId,
+      wallTime: WALL_TIME,
+      type: 'Document',
+      frameId: 'main',
+      request: { url, method: 'GET', headers: {} }
+    })
+    on('')('Network.responseReceived', {
+      requestId,
+      response: {
+        url,
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        mimeType: 'text/html',
+        securityDetails: {
+          protocol: 'TLS 1.3',
+          keyExchange: '',
+          cipher: 'AES_128_GCM',
+          certificateId: 0,
+          subjectName: host,
+          sanList: [host],
+          issuer: 'Test CA',
+          validFrom: 1767225600,
+          validTo: 1798761600,
+          signedCertificateTimestampList: [],
+          certificateTransparencyCompliance: 'unknown',
+          encryptedClientHello: false
+        }
+      }
+    })
+    if (open) return
+    on('')('Network.dataReceived', { requestId, dataLength: 11 })
+    on('')('Network.loadingFinished', { requestId })
+  }
+
+  it.each([
+    ['goes back in history to the blank page the window loaded first'],
+    ["sets location.href to 'about:blank'"]
+  ])('states the details absent when the page %s', async () => {
+    const { fake, recorder } = await started()
+    fake.answers.set('Network.getResponseBody', body('<p>shown</p>'))
+    shownPage(fake, 'https://shown.example/')
+    recorder.stop()
+    const outcome = await finishTransactionRecord(recorder, {
+      collectMs: 100,
+      writeMs: 5_000,
+      writer: WRITER,
+      committedUrl: 'about:blank'
+    })
+    if (!outcome.present) throw outcome.error
+    expect(outcome.boundTlsAbsent).toBe('not-reported')
+    expect(outcome.boundTls).toBeUndefined()
+    expect(outcome.inventory).toMatchObject({ exchanges: 1 })
+  })
+
+  it('signs the details of a page the window stays on, whatever fragment it committed with', async () => {
+    const { fake, recorder } = await started()
+    fake.answers.set('Network.getResponseBody', body('<p>shown</p>'))
+    shownPage(fake, 'https://shown.example/')
+    recorder.stop()
+    const outcome = await finishTransactionRecord(recorder, {
+      collectMs: 100,
+      writeMs: 5_000,
+      writer: WRITER,
+      committedUrl: 'https://shown.example/#frag'
+    })
+    if (!outcome.present) throw outcome.error
+    expect(outcome.boundTls).toMatchObject({ subjectName: 'shown.example' })
+    expect(outcome.boundTlsAbsent).toBeUndefined()
+  })
+
+  // Finding 4 of the third review of #1999. A 204 or a download reports no `did-navigate` on
+  // Electron 45.0.0, so one whose cancel arrives after collection stops is not the committed page.
+  it('states the details absent, not the later answer, while a navigation not yet cancelled is open', async () => {
+    const { fake, recorder } = await started()
+    fake.answers.set('Network.getResponseBody', body('<p>shown</p>'))
+    shownPage(fake, 'https://shown.example/')
+    shownPage(fake, 'https://other.example/file', 'download', true)
+    recorder.stop()
+    const outcome = await finishTransactionRecord(recorder, {
+      collectMs: 100,
+      writeMs: 5_000,
+      writer: WRITER,
+      committedUrl: 'https://shown.example/'
+    })
+    if (!outcome.present) throw outcome.error
+    expect(outcome.boundTlsAbsent).toBe('not-reported')
+    expect(outcome.inventory).toMatchObject({ exchanges: 1, inFlight: 1 })
   })
 
   it('signs the count of requests finished with no response apart from those in flight', async () => {
@@ -820,7 +1016,8 @@ describe('finishTransactionRecord', () => {
     const outcome = await finishTransactionRecord(recorder, {
       collectMs: 100,
       writeMs: 5_000,
-      writer: WRITER
+      writer: WRITER,
+      committedUrl: 'http://127.0.0.1/'
     })
     if (!outcome.present) throw outcome.error
     expect(outcome.inventory).toMatchObject({
@@ -871,29 +1068,53 @@ describe('boundTlsOf (plan D7)', () => {
   })
 
   it('states the main document details over https', () => {
-    expect(boundTlsOf(main('https://127.0.0.1/', 'complete'))).toEqual({ boundTls: details })
+    expect(boundTlsOf(main('https://127.0.0.1/', 'complete'), 'https://127.0.0.1/')).toEqual({
+      boundTls: details
+    })
   })
 
   it('states not-https for an http main document', () => {
-    expect(boundTlsOf(main('http://127.0.0.1/', 'complete', false))).toEqual({
+    expect(boundTlsOf(main('http://127.0.0.1/', 'complete', false), 'http://127.0.0.1/')).toEqual({
       boundTlsAbsent: 'not-https'
     })
   })
 
   it('states from-cache for a cached https main document, whatever it reported', () => {
-    expect(boundTlsOf(main('https://127.0.0.1/', 'cached'))).toEqual({
+    expect(boundTlsOf(main('https://127.0.0.1/', 'cached'), 'https://127.0.0.1/')).toEqual({
       boundTlsAbsent: 'from-cache'
     })
   })
 
   it('states not-reported for a main document whose URL does not parse', () => {
-    expect(boundTlsOf(main('not a url', 'complete'))).toEqual({ boundTlsAbsent: 'not-reported' })
+    expect(boundTlsOf(main('not a url', 'complete'), 'not a url')).toEqual({
+      boundTlsAbsent: 'not-reported'
+    })
+  })
+
+  it('states not-reported when the window ends on a page the main document did not produce', () => {
+    expect(boundTlsOf(main('https://127.0.0.1/', 'complete'), 'about:blank')).toEqual({
+      boundTlsAbsent: 'not-reported'
+    })
+    expect(boundTlsOf(main('http://127.0.0.1/', 'complete', false), 'about:blank')).toEqual({
+      boundTlsAbsent: 'not-reported'
+    })
+    expect(boundTlsOf(main('https://127.0.0.1/', 'complete'), 'not a url')).toEqual({
+      boundTlsAbsent: 'not-reported'
+    })
+  })
+
+  it('states not-reported when the saved page came from no recorded request', () => {
+    expect(boundTlsOf(main('https://127.0.0.1/', 'complete'), undefined)).toEqual({
+      boundTlsAbsent: 'not-reported'
+    })
   })
 
   it('states not-reported with no details or no main document', () => {
-    expect(boundTlsOf(main('https://127.0.0.1/', 'complete', false))).toEqual({
-      boundTlsAbsent: 'not-reported'
-    })
-    expect(boundTlsOf(undefined)).toEqual({ boundTlsAbsent: 'not-reported' })
+    expect(boundTlsOf(main('https://127.0.0.1/', 'complete', false), 'https://127.0.0.1/')).toEqual(
+      {
+        boundTlsAbsent: 'not-reported'
+      }
+    )
+    expect(boundTlsOf(undefined, 'https://127.0.0.1/')).toEqual({ boundTlsAbsent: 'not-reported' })
   })
 })

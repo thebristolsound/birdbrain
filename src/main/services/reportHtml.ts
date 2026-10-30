@@ -1823,7 +1823,8 @@ const BOUND_TLS_ABSENCE_TEXT: Record<BoundTlsAbsence, string> = {
   'not-recorded': 'this capture has no Transaction Record',
   'not-https': 'the main document was not served over HTTPS',
   'from-cache': 'the response for the main document reported a cache hit',
-  'not-reported': 'the browser reported no security details on the response for the main document'
+  'not-reported':
+    'the browser reported no security details on the response for the main document, the window committed a page after network recording stopped, or the page the capture saved was not one that response loaded'
 }
 
 function captureEngineBlocks(engine: CaptureEngineEntry | undefined): string {
@@ -1957,7 +1958,9 @@ function scrollToLoadBlock(record: ScrollToLoadRecord): string {
         outcome ? esc(SCROLL_TO_LOAD_OUTCOME_TEXT[outcome]) : 'the entry records no outcome'
       }.`
   const height =
-    endHeight !== undefined ? ` The last document height it read was ${endHeight} CSS pixels.` : ''
+    endHeight !== undefined
+      ? ` The last height it read of the document or inner panel it scrolled was ${endHeight} CSS pixels.`
+      : ''
   const lock = scrollLockLifted
     ? " It lifted the page's scroll lock, which can change which lazy-loaded content loaded."
     : ' It did not lift a scroll lock.'

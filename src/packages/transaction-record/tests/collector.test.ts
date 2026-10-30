@@ -1012,6 +1012,102 @@ describe('collectExchanges main document', () => {
     const { mainDocument } = collect({ events: [sent('r', 'https://example.test/r')] })
     expect(mainDocument).toBeUndefined()
   })
+
+  // The review of #1999: a later navigation that never replaced the page supplied its Bound TLS
+  // Details. Each sequence below is one the validation record measured on Electron 45.
+  const shown = 'https://shown.example/'
+  const other = 'https://other.example/next'
+  const details = (subjectName: string) => ({
+    protocol: 'TLS 1.3',
+    keyExchange: '',
+    keyExchangeGroup: 'X25519',
+    cipher: 'AES_128_GCM',
+    certificateId: 7,
+    subjectName,
+    sanList: [subjectName],
+    issuer: 'Test CA',
+    validFrom: 1790000000,
+    validTo: 1800000000,
+    signedCertificateTimestampList: [],
+    certificateTransparencyCompliance: 'unknown',
+    encryptedClientHello: false
+  })
+  const shownPage = [
+    doc('a', shown, 'main', WALL_TIME),
+    received('a', shown, { securityDetails: details('shown.example') }),
+    finished('a')
+  ]
+  const mainOf = (...later: RecordedEvent[]): Exchange | undefined =>
+    collect({ events: [...shownPage, ...later], responseBodies: body('a') }).mainDocument
+
+  it('keeps the page when a later navigation was cancelled after its response, as a 204 is', () => {
+    const mainDocument = mainOf(
+      doc('b', other, 'main', WALL_TIME + 1),
+      received('b', other, { status: 204, securityDetails: details('other.example') }),
+      failed('b', true)
+    )
+    expect(mainDocument).toMatchObject({ requestId: 'a', state: 'complete' })
+    expect(mainDocument?.response?.securityDetails?.subjectName).toBe('shown.example')
+  })
+
+  it('keeps the page when a later navigation was cancelled before any response', () => {
+    expect(mainOf(doc('b', other, 'main', WALL_TIME + 1), failed('b', true))?.requestId).toBe('a')
+  })
+
+  it('keeps the page when a later navigation has neither a response nor a failure', () => {
+    expect(mainOf(doc('b', other, 'main', WALL_TIME + 1))?.requestId).toBe('a')
+  })
+
+  it('takes a later navigation still loading after its response, which the window shows', () => {
+    const mainDocument = mainOf(
+      doc('b', other, 'main', WALL_TIME + 1),
+      received('b', other, { securityDetails: details('other.example') })
+    )
+    expect(mainDocument).toMatchObject({ requestId: 'b', state: 'in-flight' })
+    expect(mainDocument?.response?.securityDetails?.subjectName).toBe('other.example')
+  })
+
+  it("takes a later navigation that failed, after its response or as the browser's error page", () => {
+    const afterResponse = mainOf(
+      doc('b', other, 'main', WALL_TIME + 1),
+      received('b', other, { securityDetails: details('other.example') }),
+      failed('b', false)
+    )
+    expect(afterResponse).toMatchObject({ requestId: 'b', state: 'failed' })
+    const errorPage = mainOf(doc('b', other, 'main', WALL_TIME + 1), failed('b', false))
+    expect(errorPage).toMatchObject({ requestId: 'b', state: 'failed' })
+    expect(errorPage?.response).toBeUndefined()
+  })
+
+  it('takes no later request of the main frame that is not a document, nor a frame document', () => {
+    const script = 'https://cdn.example/app.js'
+    const frame = 'https://frame.example/'
+    const mainDocument = mainOf(
+      sent('s', script, { type: 'Script', frameId: 'main', wallTime: WALL_TIME + 1 }),
+      received('s', script, { securityDetails: details('cdn.example') }),
+      finished('s'),
+      doc('f', frame, 'child', WALL_TIME + 2),
+      received('f', frame, { securityDetails: details('frame.example') }),
+      finished('f')
+    )
+    expect(mainDocument?.requestId).toBe('a')
+  })
+
+  it('names none when the document requests carried no frame id', () => {
+    const { mainDocument } = collect({
+      events: [
+        page('Network.requestWillBeSent', {
+          requestId: 'a',
+          wallTime: WALL_TIME,
+          type: 'Document',
+          request: { url: shown, method: 'GET', headers: {} }
+        }),
+        received('a', shown),
+        finished('a')
+      ]
+    })
+    expect(mainDocument).toBeUndefined()
+  })
 })
 
 describe('collectExchanges, a request finished with no response', () => {

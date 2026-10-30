@@ -109,6 +109,12 @@ export function OnboardingTour() {
     enabled: Boolean(caseId) && step?.effect === 'select-capture'
   })
   const setSelectedCaptureId = useAppStore((s) => s.setSelectedCaptureId)
+  const setTourRunning = useAppStore((s) => s.setTourRunning)
+
+  useEffect(() => {
+    setTourRunning(chapter !== null)
+    return () => setTourRunning(false)
+  }, [chapter, setTourRunning])
 
   // Step side effects (#405, Q2). Keyed on the step the tour is showing, so a
   // re-render never re-runs one, and scoped to the tour: nothing here happens

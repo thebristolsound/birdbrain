@@ -69,6 +69,7 @@ import type { ExportOptions, Note } from '@shared/types'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
 import {
   ENGINE_ENTRY_FIELDS_WITHOUT_FILES,
+  engineEntryFieldsWithOnly,
   seedEngineCapture
 } from '../../helpers/captureEngineCapture'
 import {
@@ -1266,6 +1267,62 @@ describe('export', () => {
       ).toBe(false)
     })
 
+    it.each([
+      {
+        kept: 'transactionRecord',
+        keptPath: recordPath,
+        keptCheck: 'transaction record',
+        heldPath: enginePdfPath,
+        heldCheck: 'pdf'
+      },
+      {
+        kept: 'pdf',
+        keptPath: enginePdfPath,
+        keptCheck: 'pdf',
+        heldPath: recordPath,
+        heldCheck: 'transaction record'
+      }
+    ] as const)(
+      'ships only the $kept when the signed entry anchors only the $kept',
+      async ({ kept, keptPath, keptCheck, heldPath, heldCheck }) => {
+        await seedEngineCapture({
+          caseDir: join(tempDir, 'captures', caseId),
+          caseId,
+          captureId: ENGINE_ID,
+          store: defaultCaptureStore,
+          fields: engineEntryFieldsWithOnly(kept)
+        })
+        // Both in the store, so only the per-file gate keeps the other out.
+        defaultCaptureStore.writeTransactionRecord(
+          caseId,
+          ENGINE_ID,
+          ENGINE_FILES.transactionRecord
+        )
+        defaultCaptureStore.writePdf(caseId, ENGINE_ID, ENGINE_FILES.pdf)
+        const { outputPath, entries, evidence } = await exportZip(`engine-only-${kept}`)
+
+        expect(underNewDirectories(entries)).toEqual([keptPath])
+        const keptHash = ENGINE_HASHES[kept]
+        expect(evidence.captures.find((c) => c.id === ENGINE_ID)).toMatchObject(
+          kept === 'pdf'
+            ? { pdfPath: keptPath, pdfSha256: keptHash, transactionRecordPath: null }
+            : { transactionRecordPath: keptPath, transactionRecordSha256: keptHash, pdfPath: null }
+        )
+        expect(evidence.artifacts.some((a) => a.path === heldPath)).toBe(false)
+
+        const dir = join(tempDir, `engine-only-${kept}-unpacked`)
+        for (const [name, bytes] of readStoredZipEntries(outputPath)) {
+          mkdirSync(dirname(join(dir, name)), { recursive: true })
+          writeFileSync(join(dir, name), bytes)
+        }
+        const result = verifyEvidencePackage(dir)
+        expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
+        const status = (name: string) => result.checks.find((c) => c.name === name)?.status
+        expect(status(`capture ${ENGINE_ID} ${keptCheck}`)).toBe('pass')
+        expect(status(`capture ${ENGINE_ID} ${heldCheck}`)).toBe('skip')
+      }
+    )
+
     it('leaves a Working Copy without them', async () => {
       await seed()
       const { entries } = await exportZip('engine-working-copy', { exportClass: 'working-copy' })
@@ -1303,6 +1360,22 @@ describe('export', () => {
       expect(report).not.toContain('it stopped when the phase reached its time limit')
       expect(report).toContain('<li>Subject: example.com</li>')
       expect(report).not.toContain('forged.example')
+    })
+
+    it('quotes none of the fields in report.html when the local chain does not verify', async () => {
+      await seed()
+      const manifestPath = join(tempDir, 'captures', caseId, 'manifest.jsonl')
+      const original = readFileSync(manifestPath, 'utf-8')
+      const tampered = original.replace('"exchanges":14', '"exchanges":999')
+      expect(tampered).not.toBe(original)
+      writeFileSync(manifestPath, tampered, 'utf-8')
+
+      const { entries } = await exportZip('engine-tampered-chain')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      expect(report).toContain('Capture engine fields not reported')
+      expect(report).not.toContain('<span class="mono">999</span>')
+      expect(report).not.toContain('Artifact inventory')
     })
 
     // An import into the installation that already holds the row renames it,

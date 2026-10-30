@@ -1,13 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Search } from 'lucide-react'
 import type { Capture, CaptureLink, FieldHit } from '@shared/types'
 import { fieldLabel } from '@shared/searchFields'
 import { canonicalizeUrl } from '@shared/urlCanonicalize'
 import { captureLinksQueryOptions, capturesQueryOptions } from '@renderer/lib/api/captures'
+import { useAppStore } from '@renderer/stores/appStore'
 import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContextMenu'
 import { useLinkMenuTarget, type LinkHit } from '@renderer/components/captures/useLinkMenuTarget'
 import { filterLinks, isWebHref, splitAtHost } from '@renderer/components/captures/linksTabModel'
+import { linkClickOutcome } from '@renderer/components/captures/guestLink'
+import { WaybackLinkCell } from '@renderer/components/captures/WaybackLinkCell'
+import {
+  WaybackBatchControls,
+  WaybackBatchStatus
+} from '@renderer/components/captures/WaybackBatchControls'
+import { useWaybackLinkBatch } from '@renderer/components/captures/useWaybackLinkBatch'
 
 const KIND_LABELS: Record<CaptureLink['kind'], string> = {
   http: 'web',
@@ -51,12 +59,16 @@ function LinkRow({
   link,
   inCase,
   index,
-  hit
+  hit,
+  onOpen,
+  wayback
 }: {
   link: CaptureLink
   inCase: boolean
   index: number
   hit?: FieldHit
+  onOpen: () => void
+  wayback?: ReactNode
 }) {
   const { before, host, after } = splitAtHost(link.href)
   return (
@@ -69,9 +81,15 @@ function LinkRow({
       }`}
     >
       <div className="flex min-w-0 items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-xs font-medium text-text-primary">
+        {/* The text, not the row, is the control, so another cell can hold one of its own. */}
+        <button
+          type="button"
+          data-testid="links-open"
+          onClick={onOpen}
+          className="min-w-0 flex-1 truncate rounded-sm text-left text-xs font-medium text-text-primary focus-visible:outline-2 focus-visible:outline-ring"
+        >
           {link.text || <span className="text-text-faint">(no text)</span>}
-        </span>
+        </button>
         {link.textHostMismatch && (
           <span
             data-testid="links-mismatch"
@@ -113,6 +131,7 @@ function LinkRow({
           </span>
         ))}
         {link.occurrences > 1 && <span>×{link.occurrences}</span>}
+        {wayback}
       </div>
       {hit && (
         <div data-testid="links-hit" className="text-[10px] text-warning-fg">
@@ -126,7 +145,9 @@ function LinkRow({
 /**
  * The Links tab (#1708): every link in the stored page, read from its MHTML in the
  * main process. The rows offer the same menu as a right-click in the Page tab. A search
- * hit opened here marks its rows and scrolls to the first.
+ * hit opened here marks its rows and scrolls to the first. Activating a row the Case
+ * holds opens that Capture as a click in the Page tab does (#1735); any other row does
+ * nothing.
  */
 export function LinksTab({ capture, hit }: { capture: Capture; hit?: FieldHit }) {
   const isMhtml = capture.format === 'mhtml'
@@ -135,7 +156,9 @@ export function LinksTab({ capture, hit }: { capture: Capture; hit?: FieldHit })
     enabled: isMhtml
   })
   const { data: captures = [] } = useQuery(capturesQueryOptions(capture.caseId))
-  const linkTarget = useLinkMenuTarget(capture.caseId)
+  const linkTarget = useLinkMenuTarget(capture.caseId, capture.id)
+  const waybackBatch = useWaybackLinkBatch(capture.id)
+  const followCaptureLink = useAppStore((s) => s.followCaptureLink)
   const [query, setQuery] = useState('')
   const [externalOnly, setExternalOnly] = useState(false)
   const [menuHit, setMenuHit] = useState<LinkHit>(NO_HIT)
@@ -276,7 +299,9 @@ export function LinksTab({ capture, hit }: { capture: Capture; hit?: FieldHit })
         <span data-testid="links-count" className="shrink-0 text-[11px] text-text-faint">
           {shown.length} of {data.links.length}
         </span>
+        <WaybackBatchControls urls={shown.map(({ href }) => href)} batch={waybackBatch} />
       </div>
+      <WaybackBatchStatus batch={waybackBatch} />
       {noticeList}
       {shown.length === 0 ? (
         <EmptyState title="No links match" detail="Change the search or turn off External only." />
@@ -308,6 +333,19 @@ export function LinksTab({ capture, hit }: { capture: Capture; hit?: FieldHit })
                 index={index}
                 inCase={inCaseHrefs.has(link.href)}
                 hit={hit && matchesHit(link, hit) ? hit : undefined}
+                onOpen={() => {
+                  const outcome = linkClickOutcome(link.href, capture, captures)
+                  if (outcome.kind === 'open') followCaptureLink(outcome.captureId)
+                }}
+                wayback={
+                  isWebHref(link.href) ? (
+                    <WaybackLinkCell
+                      capture={capture}
+                      url={link.href}
+                      batch={waybackBatch.cells.get(link.href)}
+                    />
+                  ) : undefined
+                }
               />
             ))}
           </ul>

@@ -1,12 +1,12 @@
 # A link Capture records the Capture it came from
 
-**Status:** Proposed
+**Status:** Accepted
 
-**Date:** 2026-10-04
+**Date:** 2026-10-04, accepted 2026-10-26
 
-The maintainer ruled on the questions this record settles on 2026-10-04. The record itself
-awaits acceptance, which changes the status line. Nothing in it is implemented. The work is
-planned in
+The maintainer ruled on the questions this record settles on 2026-10-04 and accepted it on
+2026-10-26, amended to schema 6 (see "The fields need schema 6"). No build writes the fields
+yet. The verifier learns them under #1976, and the writer is planned in
 [the slice 2 plan](../plans/2026-10-04-mhtml-viewer-slice-2-click-through-and-provenance.md),
 Part B.
 
@@ -53,19 +53,19 @@ links out of its MHTML again shows it.
 `CAPTURE_METHODS` gains no value. A link Capture observed its destination afresh: it is a new
 sighting, unlike a Duplicate.
 
-**The fields need schema 5.** `ManifestCaptureEntrySchema` is strict, so a verifier that does not
+**The fields need schema 6.** `ManifestCaptureEntrySchema` is strict, so a verifier that does not
 know the fields would read an entry carrying them as a broken chain. The rule `exhibitNumber`
 follows at 3 has two halves, and the fields take both. The schema accepts them only on an entry
-whose `schemaVersion` is at least 5, so a schema-4 verifier reports that it is too old, and only
+whose `schemaVersion` is at least 6, so a schema-5 verifier reports that it is too old, and only
 as a complete set of three, so an entry carrying one or two of them is rejected. The writer's
-`fieldMinReaderSchemaVersion` in `src/main/services/manifest.ts` stamps 5 on an entry that carries
-them, as it stamps 3 for `exhibitNumber` and 5 for the Egress fields. Schema 5 exists on `main`
-since PR #1747 taught the verifier ADR-0032's Egress fields, and no tagged release carried it on
-2026-10-06. The fields join that first schema-5 verifier release when they land in the schema
-before it is tagged. When it is tagged first, they take 6: a shipped schema-5 verifier passes the
-too-old check at 5 and fails its strict parse on the fields, so stamping 5 would read as a broken
-chain in a release already in recipients' hands. The release that knows the fields ships before
-any build writes them, as [ADR-0023](0023-exhibits-are-the-unit-of-evidence.md) requires.
+`fieldMinReaderSchemaVersion` in `src/main/services/manifest.ts` stamps 6 on an entry that carries
+them, as it stamps 3 for `exhibitNumber` and 5 for the Egress fields. When this record was
+proposed, schema 5 was on `main` and no tagged release carried it, so the fields could have joined
+it. `v1.0.1-beta.23` then shipped a schema-5 verifier without them: it passes the too-old check at
+5 and fails its strict parse on the fields, so stamping 5 would read as a broken chain in a
+release already in recipients' hands. The fields therefore join schema 6, the number the capture
+engine's first-slice verifier takes, and ship in its release. The release that knows the fields
+ships before any build writes them, as [ADR-0023](0023-exhibits-are-the-unit-of-evidence.md) requires.
 
 ## Considered options
 

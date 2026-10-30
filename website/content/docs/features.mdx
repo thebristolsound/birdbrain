@@ -54,9 +54,11 @@ prove and what they do not.
   validity. When the page navigates itself, they come from the last navigation that replaced it,
   not from one the browser cancelled, such as a download or an empty answer. When the page has
   moved, by the time it is saved, to a page that no request loads, such as the blank page it can
-  go back to or `about:blank`, the entry records the details as absent. They are the browser's
-  summary of the connection and hold no certificate bytes, and they are kept apart from the
-  certificate chain Birdbrain fetches after the capture.
+  go back to or `about:blank`, the entry records the details as absent. It also records them as
+  absent when the window loads a page after recording stops and before the save, even by
+  reloading the same address, because the record holds no request for that load. They are the
+  browser's summary of the connection and hold no certificate bytes, and they are kept apart from
+  the certificate chain Birdbrain fetches after the capture.
 - A background capture also saves a PDF of the page, on Letter-size pages. Birdbrain prints it
   last, after the screenshot, the saved page, and the Transaction Record, so a file the page loads
   only for printing is not in the record. The signed entry holds the PDF's SHA-256 hash and states

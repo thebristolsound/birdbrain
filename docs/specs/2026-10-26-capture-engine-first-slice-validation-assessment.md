@@ -351,6 +351,13 @@ wherever the page loads.
   navigated after the save, and would sign the earlier page's details when the page went back to
   the blank page before the save and returned after it. Two unit tests in
   `tests/main/services/backgroundRenderer.test.ts` pin the Bound TLS outcome of both cases.
+- The next review found that a reload of the same address after collection stopped and before
+  the save still signed the earlier load's Bound TLS Details, though the record holds no request
+  for the reloaded page. The maintainer ruled on 2026-10-30 that any navigation in that span, a
+  same-address reload included, records the details absent. The render now counts the window's
+  cross-document navigations when collection stops and again at the save, and passes no committed
+  URL when the two differ, so `boundTlsAbsent` is `not-reported`. A unit test in the same file
+  reloads the same address during the screenshot; it fails with the count comparison removed.
 - The plan leaves unverified whether pdf.js extracts text without the optional `@napi-rs/canvas`.
   It does not: with no `@napi-rs/canvas` to load, the 5.6.205 legacy build stops at import on
   Node 20.20.2 with `ReferenceError: DOMMatrix is not defined`. pnpm installs the optional
@@ -435,8 +442,8 @@ wherever the page loads.
   record it as a known limitation (the second decision on #1823). A page that branches on its
   history length can render differently, and nothing in the signed entry beyond `toolVersion`
   tells a Capture from this build apart from an earlier one in this respect. The extra history
-  entry also gives the page a blank page to go back to; a Capture that ends there is stored under
-  `about:blank` with no Bound TLS Details (ruled 2026-10-29).
+  entry also gives the page a blank page to go back to; a Capture whose page is there when it is
+  saved is stored under `about:blank` with no Bound TLS Details (ruled 2026-10-29).
 - The record holds nothing of a resource reused inside the page, of a shared worker's own
   requests, or of what runs below a target whose `Target.setAutoAttach` failed (D17).
 - The values of the four credential headers are replaced; a token in a URL, a body, or any other

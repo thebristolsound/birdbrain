@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { fakeBridge } from '../renderer/fakeBridge'
@@ -153,6 +153,26 @@ describe('Case settings entry points', () => {
     const join = screen.getByTestId('palette-join-shared-case')
     expect(row.compareDocumentPosition(join) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     fireEvent.click(row)
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/cases/$caseId/settings',
+      params: { caseId: 'case1' }
+    })
+    expect(useAppStore.getState().commandPaletteOpen).toBe(false)
+  })
+
+  it('reaches Share this Case… with the arrow keys and opens it with Enter', async () => {
+    useAppStore.setState({ commandPaletteOpen: true })
+    render(<CommandPalette />, { wrapper: Wrapper })
+    const row = await screen.findByTestId('palette-share-case')
+    // The Case row and the share row's trailing name both read the Case name.
+    await waitFor(() => expect(screen.getAllByText('Operation Kestrel')).toHaveLength(2))
+    const input = screen.getByPlaceholderText('Switch case...')
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(row.className).toContain('bg-accent-subtle')
+
+    fireEvent.keyDown(input, { key: 'Enter' })
     expect(navigate).toHaveBeenCalledWith({
       to: '/cases/$caseId/settings',
       params: { caseId: 'case1' }

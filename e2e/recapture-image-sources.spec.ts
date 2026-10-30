@@ -5,6 +5,7 @@ import { execFileSync } from 'child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { dirname, join } from 'path'
+import { crc32, deflateSync } from 'zlib'
 import type { ElectronApplication, Page } from '@playwright/test'
 import { readStoredZip } from '@main/services/zipRead'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
@@ -28,6 +29,33 @@ const PNG_400 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAZAAAAGQAQMAAAC6caSPAAAAA1BMVEXIPDxkWv9aAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAKklEQVR42u3BMQEAAADCoPVP7W8GoAAAAAAAAAAAAAAAAAAAAAAAAACAN0+wAAGUQRhcAAAAAElFTkSuQmCC',
   'base64'
 )
+
+// A PNG of one color, for an image whose displayed size is read back from the screenshot.
+function solidPng(width: number, height: number, rgb: [number, number, number]) {
+  const chunk = (type: string, data: Buffer) => {
+    const body = Buffer.concat([Buffer.from(type, 'latin1'), data])
+    const framed = Buffer.alloc(body.length + 8)
+    framed.writeUInt32BE(data.length, 0)
+    body.copy(framed, 4)
+    framed.writeUInt32BE(crc32(body), body.length + 4)
+    return framed
+  }
+  const header = Buffer.alloc(13)
+  header.writeUInt32BE(width, 0)
+  header.writeUInt32BE(height, 4)
+  header[8] = 8
+  header[9] = 2
+  const row = Buffer.alloc(1 + width * 3).map((_, i) => (i === 0 ? 0 : rgb[(i - 1) % 3]))
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(Buffer.concat(Array.from({ length: height }, () => row)))),
+    chunk('IEND', Buffer.alloc(0))
+  ])
+}
+// Colors that read the same in RGBA and BGRA, and that no other image of the page uses.
+const GREEN: [number, number, number] = [0, 200, 0]
+const MAGENTA: [number, number, number] = [200, 0, 200]
 
 type Route = (req: IncomingMessage, res: ServerResponse) => void
 
@@ -106,8 +134,9 @@ const ROUTES: Record<string, Route> = {
   '/five/srcset-w-400.png': png({}, PNG_400),
 
   // Two images whose displayed source is not the first in the set: a 1x one after a 2x one, and
-  // a 400w one shown at 200px after an 800w one, so the second displays at density 2. And one
-  // offered only at 2x, a set to which the pinned `src` adds a 1x candidate.
+  // a 400w one shown at 200px after an 800w one, so the second displays at density 2. And two
+  // offered only at 2x and only at 1.5x, sets to which the pinned `src` would add a 1x
+  // candidate, shown at 200 and 160 CSS pixels.
   '/order': send(
     'text/html',
     page(
@@ -115,14 +144,16 @@ const ROUTES: Record<string, Route> = {
       '',
       `<img id="density" srcset="/order/d-2x.png 2x, /order/d-1x.png 1x">
 <img id="width" srcset="/order/w-800.png 800w, /order/w-400.png 400w" sizes="200px">
-<img id="only2x" srcset="/order/only-2x.png 2x">`
+<img id="only2x" srcset="/order/only-2x.png 2x" style="display:block">
+<img id="only1-5x" srcset="/order/only-1-5x.png 1.5x" style="display:block">`
     )
   ),
   '/order/d-1x.png': png(),
   '/order/d-2x.png': png(),
   '/order/w-400.png': png({}, PNG_400),
   '/order/w-800.png': png({}, PNG_400),
-  '/order/only-2x.png': png({}, PNG_400),
+  '/order/only-2x.png': png({}, solidPng(400, 400, GREEN)),
+  '/order/only-1-5x.png': png({}, solidPng(240, 240, MAGENTA)),
 
   // Images offered as sets that pinning leaves as they are: one whose load failed, which the
   // server would answer if asked again; one shown from a `blob:` address the page revokes once
@@ -293,6 +324,33 @@ function mhtmlParts(mhtml: string): Array<{ location: string; bytes: Buffer }> {
     })
 }
 
+// The width and height of the pixels of `rgb` in the stored screenshot, decoded in the app.
+function colorBox(
+  electronApp: ElectronApplication,
+  path: string,
+  rgb: [number, number, number]
+): Promise<{ width: number; height: number } | null> {
+  return electronApp.evaluate(
+    ({ nativeImage }, { path, rgb }) => {
+      const image = nativeImage.createFromPath(path)
+      const { width, height } = image.getSize()
+      const bitmap = image.toBitmap()
+      let [left, top, right, bottom] = [width, height, -1, -1]
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const at = (y * width + x) * 4
+          if (rgb.every((value, i) => bitmap[at + i] === value)) {
+            ;[left, top] = [Math.min(left, x), Math.min(top, y)]
+            ;[right, bottom] = [Math.max(right, x), Math.max(bottom, y)]
+          }
+        }
+      }
+      return right < 0 ? null : { width: right - left + 1, height: bottom - top + 1 }
+    },
+    { path, rgb }
+  )
+}
+
 function storedMhtml(storagePath: string, caseId: string, captureId: string) {
   return mhtmlParts(readFileSync(join(storagePath, caseId, `${captureId}.mhtml`), 'latin1'))
 }
@@ -461,11 +519,12 @@ test.describe('Image Source Pinning of a background capture', () => {
     rmSync(dirname(dir), { recursive: true, force: true })
   })
 
-  // Setting `src` before the screenshot leaves `srcset` and `sizes` on the live page, so the
-  // browser chooses from the set again: this checks it keeps the source it displayed when that
-  // is not the first one offered, and what happens to a set with no 1x candidate.
+  // Setting `src` before the screenshot leaves `srcset` and `sizes` on the live page, or narrows
+  // the set to the candidate displayed, so the browser chooses again: this checks it keeps the
+  // source it displayed when that is not the first one offered, or not at 1x.
   test('keeps an image on its displayed source when that is not the first in the set', async ({
-    page
+    page,
+    electronApp
   }) => {
     test.setTimeout(180000)
     const caseId = await createCase(page, 'Order pinning E2E')
@@ -499,25 +558,39 @@ test.describe('Image Source Pinning of a background capture', () => {
       `<img id="width" src="${server.origin}/order/w-400.png" width="200" height="200">`
     )
 
-    // The image offered only at 2x is shown at 1x once its `src` is set, and the screenshot
-    // loads it again while the network is recorded: the part holds the second response, and the
-    // Transaction Record both requests.
-    const only = '/order/only-2x.png'
-    expect(server.served.filter((served) => served === only)).toHaveLength(2)
-    const onlyPart = parts.find(({ location }) => location === `${server.origin}${only}`)
-    expect(onlyPart?.bytes.toString('latin1').endsWith(`TAG:${only}#2`)).toBe(true)
+    // The images offered only at 2x and at 1.5x keep their density (ruled 2026-10-30): each is
+    // served once, its part holds that response, the record holds the one request, the
+    // screenshot shows it at the size the page displayed it, and the serializer writes that size.
     const records = readWarc(readFileSync(join(storagePath, caseId, `${captureId}.warc.gz`)))
-    const onlyRequests = records.filter(
-      (record) =>
-        record.warc('WARC-Type') === 'request' &&
-        record.warc('WARC-Target-URI') === `${server.origin}${only}`
-    )
-    expect(onlyRequests).toHaveLength(2)
-    expect(img('only2x')).toBe(`<img id="only2x" src="${server.origin}${only}">`)
+    const screenshot = join(storagePath, caseId, `${captureId}.png`)
+    for (const [id, path, rgb, size] of [
+      ['only2x', '/order/only-2x.png', GREEN, 200],
+      ['only1-5x', '/order/only-1-5x.png', MAGENTA, 160]
+    ] as const) {
+      expect(
+        server.served.filter((served) => served === path),
+        path
+      ).toHaveLength(1)
+      const part = parts.find(({ location }) => location === `${server.origin}${path}`)
+      expect(part?.bytes.toString('latin1').endsWith(`TAG:${path}#1`), path).toBe(true)
+      const requests = records.filter(
+        (record) =>
+          record.warc('WARC-Type') === 'request' &&
+          record.warc('WARC-Target-URI') === `${server.origin}${path}`
+      )
+      expect(requests, path).toHaveLength(1)
+      expect(await colorBox(electronApp, screenshot, [...rgb]), path).toEqual({
+        width: size,
+        height: size
+      })
+      expect(img(id)).toBe(
+        `<img id="${id}" style="display:block" src="${server.origin}${path}" width="${size}" height="${size}">`
+      )
+    }
 
     const [entry] = captureEntries(storagePath, caseId)
     expect(entry.inventory).toMatchObject({
-      mhtml: { present: true, pinnedImages: 3, pinnedImagesNotLoaded: 0 }
+      mhtml: { present: true, pinnedImages: 4, pinnedImagesNotLoaded: 0 }
     })
     expect(await verified(page, captureId)).toBe('verified')
   })

@@ -7,7 +7,11 @@ import { router } from '@renderer/router'
 import { useServerStatus } from '@renderer/hooks/useServerStatus'
 import { reconcilePersistedTheme } from '@renderer/hooks/useTheme'
 import { syncWindowControlsInset } from '@renderer/lib/windowControls'
+import { logUncaughtErrors } from '@renderer/lib/globalErrorLog'
 import '@renderer/styles/globals.css'
+
+// First, so a throw anywhere below reaches the log.
+logUncaughtErrors()
 
 // Before first render, so the top bar never paints under the window controls.
 syncWindowControlsInset()

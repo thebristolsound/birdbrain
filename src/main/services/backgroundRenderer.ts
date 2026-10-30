@@ -42,7 +42,7 @@ const MAX_SCROLL_PHASE_MS = 75_000
 const FINAL_SETTLE_MS = 500
 // Image Source Pinning's two waits, each taken from the time left before the end
 // reserve below and never from it (ruled 2026-10-26): for images offered as sets
-// to settle before the screenshot, and for the pinned images' new sources to load.
+// to settle before the pin, and for the pinned images to load what the pin set.
 const IMAGE_SET_SETTLE_MAX_MS = 5_000
 const PIN_LOAD_MAX_MS = 5_000
 const PIN_POLL_MS = 50
@@ -384,11 +384,11 @@ function pngDimensions(png: Buffer): { width: number; height: number } {
   return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) }
 }
 
-// The document's content box in CSS pixels, which the screenshot clips to and
-// the print's height bound reads.
-async function cssContentSize(
+// Returns the stored PNG with the D6 facts about it
+// (docs/plans/2026-10-10-capture-engine-first-slice.md).
+export async function captureFullPageScreenshot(
   wc: WebContents
-): Promise<{ x: number; y: number; width: number; height: number }> {
+): Promise<{ png: Buffer; record: ScreenshotRecord }> {
   const metrics = (await wc.debugger.sendCommand('Page.getLayoutMetrics')) as {
     cssContentSize?: { x: number; y: number; width: number; height: number }
   }
@@ -398,21 +398,12 @@ async function cssContentSize(
   // pages, so on the rare page that omits cssContentSize fall back to the known
   // viewport bounds. Capturing with no clip at all would bypass the MAX_CAPTURE_*
   // caps below and risk exceeding GPU texture limits on a large page.
-  return metrics.cssContentSize ?? { x: 0, y: 0, ...VIEWPORT }
-}
+  const contentSize = metrics.cssContentSize ?? { x: 0, y: 0, ...VIEWPORT }
 
-// getLayoutMetrics can omit dimensions on some pages; coalesce so a missing
-// field yields a valid 1px clip rather than NaN (which fails captureScreenshot).
-const cssPixels = (value: number | undefined): number => Math.max(1, Math.ceil(value ?? 0))
-
-// Returns the stored PNG with the D6 facts about it
-// (docs/plans/2026-10-10-capture-engine-first-slice.md).
-export async function captureFullPageScreenshot(
-  wc: WebContents
-): Promise<{ png: Buffer; record: ScreenshotRecord }> {
-  const contentSize = await cssContentSize(wc)
-  const width = cssPixels(contentSize.width)
-  const fullHeight = cssPixels(contentSize.height)
+  // getLayoutMetrics can omit dimensions on some pages; coalesce so a missing
+  // field yields a valid 1px clip rather than NaN (which fails captureScreenshot).
+  const width = Math.max(1, Math.ceil(contentSize.width ?? 0))
+  const fullHeight = Math.max(1, Math.ceil(contentSize.height ?? 0))
   // Downscale so the output width fits the texture ceiling, and cap the
   // captured height so the total bitmap stays bounded — scroll discovery grows
   // infinite feeds up to MAX_SCROLL_CONTENT_HEIGHT_PX. The screenshot is
@@ -517,11 +508,12 @@ export async function trimTrailingBackground(
 
 // Image Source Pinning (ADR-0055, D4 of
 // docs/plans/2026-10-10-capture-engine-first-slice.md). The MHTML serializer
-// drops `srcset` from every <img>, so an image the page displayed from a set of
-// sources is pointed at the one it displayed before the save. The scripts run in
-// an isolated world: the page shares its DOM but not its JavaScript, so it cannot
-// replace what they call or reach what they keep between calls. The main process
-// keeps the clock and polls them.
+// drops `srcset` and `sizes` from every <img> and keeps `src`, so an image the
+// page displayed from a set of sources has its `src` set to the one it displayed,
+// before the screenshot and the save. The scripts run in an isolated world: the
+// page shares its DOM but not its JavaScript, so it cannot replace what they call
+// or reach what they keep between calls. The main process keeps the clock and
+// polls them.
 export const PIN_WORLD_ID = 1843
 
 // The images offered as sets that pinning considers: each <img> with `srcset`
@@ -535,7 +527,7 @@ const IMAGE_SET_HELPERS = `
 
 // How many images offered as sets are still loading. Each call keeps those
 // images, so the last call of the settle wait holds the ones still loading when
-// it ended, which the pin leaves out even if they finish during the screenshot
+// it ended, which the pin leaves out even if they finish before it runs
 // (ruled 2026-10-26).
 export const IMAGE_SETS_LOADING_SCRIPT = `(() => {
   ${IMAGE_SET_HELPERS}
@@ -545,10 +537,13 @@ export const IMAGE_SETS_LOADING_SCRIPT = `(() => {
 })()`
 
 // Pins each image offered as a set that the page displayed (loaded, with a
-// natural size) to its `currentSrc`, and drops `srcset` and `sizes`. An image
-// still loading when the settle wait ended, or that failed to load, is left as
-// it is. So is one shown from a `blob:` address: re-sourcing loads the address
-// again, which fails once the page has revoked it.
+// natural size) by setting its `src` to its `currentSrc`. `srcset` and `sizes`
+// stay, so the browser chooses from the set again and keeps the copy it
+// displayed. In a set with no 1x candidate and no width descriptor, `src` joins
+// the set as its 1x candidate: the image is shown at 1x from then on, and the
+// screenshot loads it again (measured 2026-10-30). An image still loading when
+// the settle wait ended, or that failed to load, is left as it is, and so is one
+// shown from a `blob:` address (ruled 2026-10-29).
 export const PIN_IMAGE_SOURCES_SCRIPT = `(() => {
   ${IMAGE_SET_HELPERS}
   const unsettled = globalThis.birdbrainUnsettled
@@ -559,8 +554,6 @@ export const PIN_IMAGE_SOURCES_SCRIPT = `(() => {
   for (const img of imageSets()) {
     const src = img.currentSrc
     if (!src || src.startsWith('blob:') || unsettled.has(img) || !shown(img)) continue
-    img.removeAttribute('srcset')
-    img.removeAttribute('sizes')
     img.src = src
     pinned.push({ img, src })
   }
@@ -570,18 +563,19 @@ export const PIN_IMAGE_SOURCES_SCRIPT = `(() => {
 
 const PINNED_HELPERS = `
   const pinned = globalThis.birdbrainPinned
-  if (!pinned) throw new Error('The pinned images are gone: the page was replaced during the pin')
+  if (!pinned) throw new Error('The pinned images are gone: the page was replaced since the pin')
 `
 
-// How many pinned images have not finished loading their new source.
+// How many pinned images are loading, which they do only if the browser chose
+// another source from the set when the pin set `src`.
 export const PINNED_LOADING_SCRIPT = `(() => {
   ${PINNED_HELPERS}
   return pinned.filter(({ img }) => !img.complete).length
 })()`
 
-// The counts, taken again over the DOM as it is now: an image the page removed
-// or pointed elsewhere since the pin is not counted as pinned, and a pinned
-// image counts as not loaded unless it holds an image with a natural size.
+// The counts, taken after the screenshot over the DOM as it is then: an image the
+// page removed or pointed elsewhere since the pin is not counted as pinned, and
+// a pinned image counts as not loaded unless it holds an image with a natural size.
 export const PINNED_COUNTS_SCRIPT = `(() => {
   ${IMAGE_SET_HELPERS}
   ${PINNED_HELPERS}
@@ -606,24 +600,26 @@ async function untilNoneLeft(wc: WebContents, code: string, waitMs: number): Pro
 }
 
 // Gives the images offered as sets up to `waitMs` to finish loading, or fail,
-// before the screenshot; pinning leaves out any still loading after it.
+// before the pin, which leaves out any still loading after it.
 export function settleImageSets(wc: WebContents, waitMs: number): Promise<void> {
   return untilNoneLeft(wc, IMAGE_SETS_LOADING_SCRIPT, waitMs)
 }
 
-const MhtmlPartSchema = CaptureInventorySchema.shape.mhtml
-
-// Pins the image sources, waits up to `waitMs` for the new sources to load, and
-// returns the inventory's MHTML part, parsed with the strict schema. That part
-// has no failed form (D4), so a script that throws, or counts the schema refuses,
-// fails the render, as a Scroll-to-load step that throws does. A pinned image
-// still loading when the wait ends is counted, not a failure.
-export async function pinImageSources(
-  wc: WebContents,
-  waitMs: number
-): Promise<ImageSourcePinning> {
+// Pins the image sources, and waits up to `waitMs` for any pinned image that
+// started loading. A script that throws fails the render, as a Scroll-to-load
+// step that throws does.
+export async function pinImageSources(wc: WebContents, waitMs: number): Promise<void> {
   await inPinWorld(wc, PIN_IMAGE_SOURCES_SCRIPT)
   await untilNoneLeft(wc, PINNED_LOADING_SCRIPT, waitMs)
+}
+
+const MhtmlPartSchema = CaptureInventorySchema.shape.mhtml
+
+// Counts the pinned images and returns the inventory's MHTML part, parsed with
+// the strict schema. That part has no failed form (D4), so a script that throws,
+// or counts the schema refuses, fails the render. A pinned image still loading
+// is counted, not a failure.
+export async function countPinnedImages(wc: WebContents): Promise<ImageSourcePinning> {
   const counts = (await inPinWorld(wc, PINNED_COUNTS_SCRIPT)) as {
     pinnedImages?: unknown
     pinnedImagesNotLoaded?: unknown
@@ -670,7 +666,12 @@ interface SavedPage {
 // `failed`, with an error that names the cause.
 async function printPageToPdf(
   wc: WebContents,
-  { saved, navigations, boundMs }: { saved: SavedPage; navigations: number; boundMs: number }
+  {
+    saved,
+    navigations,
+    contentHeight,
+    boundMs
+  }: { saved: SavedPage; navigations: number; contentHeight: number; boundMs: number }
 ): Promise<PdfOutcome> {
   try {
     // A print shows whatever the window holds now, so a page that left the saved
@@ -679,8 +680,6 @@ async function printPageToPdf(
     if (url !== saved.url || navigations !== saved.navigations) {
       throw new Error(`The page navigated after it was saved, to ${url}, so it was not printed`)
     }
-    // Read now, not from the screenshot: pinning can change the page's height.
-    const contentHeight = cssPixels((await cssContentSize(wc)).height)
     if (contentHeight > MAX_PDF_CONTENT_HEIGHT_PX) {
       throw new Error(
         `The page is ${contentHeight} CSS pixels tall, over MAX_PDF_CONTENT_HEIGHT_PX ` +
@@ -928,17 +927,21 @@ export const renderPageInHiddenWindow: RenderPage = async (
         clampPhaseMs(remainingMs(FINAL_ARTIFACT_RESERVE_MS), IMAGE_SET_SETTLE_MAX_MS)
       )
 
-      const { png: screenshot, record: screenshotRecord } = await captureFullPageScreenshot(wc)
-
-      // After the screenshot, which shows the page as it displayed, and before the save.
-      const imageSourcePinning = await pinImageSources(
+      // Before the screenshot: once it has run, the browser no longer holds in memory
+      // the images it displayed, so a pin after it would load again each one with no
+      // fresh copy in the HTTP cache (ruled 2026-10-30).
+      await pinImageSources(
         wc,
         clampPhaseMs(remainingMs(FINAL_ARTIFACT_RESERVE_MS), PIN_LOAD_MAX_MS)
       )
 
+      const { png: screenshot, record: screenshotRecord } = await captureFullPageScreenshot(wc)
+      const imageSourcePinning = await countPinnedImages(wc)
+
       // Collection stops after the pin, so a request the pin makes is in the
-      // Transaction Record (ruled 2026-10-26), and just before the save, during
-      // which the renderer spike saw no request and no event.
+      // Transaction Record (ruled 2026-10-26), and after the screenshot, which can
+      // load a pinned image again, and just before the save, during which the
+      // renderer spike saw no request and no event.
       activeRecorder.stop()
       const recordedAt = new Date().toISOString()
       await wc.savePage(tmpPath, 'MHTML')
@@ -981,6 +984,7 @@ export const renderPageInHiddenWindow: RenderPage = async (
       const pdf = await printPageToPdf(wc, {
         saved,
         navigations,
+        contentHeight: screenshotRecord.contentHeight,
         boundMs: Math.min(PRINT_TIMEOUT_MS, remainingMs(END_MARGIN_MS))
       })
 

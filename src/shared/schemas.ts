@@ -501,8 +501,8 @@ const TransactionRecordInventorySchema = z.discriminatedUnion('present', [
 ])
 
 // The images offered as sets that the page displayed and the render pinned to
-// their displayed source before the save, and how many of those were still
-// loading that source, or had failed to, when the wait before the save ended
+// their displayed source before the screenshot and the save, and how many of
+// those were still loading, or had failed to load, just before the save
 // (#1843, ADR-0055). Images still loading or failed before the pin are in
 // neither. A pinned image counts in both or only the first, so a second count
 // above the first contradicts itself.

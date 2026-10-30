@@ -61,7 +61,10 @@ const ctl = vi.hoisted(() => ({
     encryptedClientHello: false
   },
   // An event the page sends while the screenshot is taken, after collection stops.
-  lateEvent: false
+  lateEvent: false,
+  // A URL the page navigates to after it loads without sending a request, as going back to the
+  // blank page does: the window reports `did-navigate` and the debugger reports nothing.
+  navigatesTo: null as string | null
 }))
 
 type Handler = (...args: unknown[]) => void
@@ -230,6 +233,7 @@ const { MockBrowserWindow } = vi.hoisted(() => {
           handlers.get('did-navigate')?.({}, url, 200)
           // The main document, as the debugger reports it once Network is enabled.
           emitPage(this.debugger, 'doc', url, 'Document')
+          if (ctl.navigatesTo) handlers.get('did-navigate')?.({}, ctl.navigatesTo, -1)
         },
         async executeJavaScript(script: string) {
           if (script.includes('readyState')) return undefined
@@ -1071,6 +1075,7 @@ describe('renderPageInHiddenWindow', () => {
     ctl.writerHangs = false
     ctl.isPackaged = false
     ctl.lateEvent = false
+    ctl.navigatesTo = null
     delete process.env[E2E_TRUSTED_CERT_SWITCH]
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
@@ -1329,6 +1334,7 @@ describe('renderPageInHiddenWindow, the Transaction Record', () => {
     ctl.writerHangs = false
     ctl.isPackaged = false
     ctl.lateEvent = false
+    ctl.navigatesTo = null
     delete process.env[E2E_TRUSTED_CERT_SWITCH]
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
@@ -1385,6 +1391,13 @@ describe('renderPageInHiddenWindow, the Transaction Record', () => {
   it('states not-https for an http page', async () => {
     const { transactionRecord } = await render('http://example.test/')
     expect(transactionRecord).toMatchObject({ present: true, boundTlsAbsent: 'not-https' })
+  }, 30_000)
+
+  it('states the details absent when the page ends on the blank page it went back to', async () => {
+    ctl.navigatesTo = 'about:blank'
+    const { transactionRecord } = await render()
+    expect(transactionRecord).toMatchObject({ present: true, boundTlsAbsent: 'not-reported' })
+    expect(transactionRecord).not.toHaveProperty('boundTls')
   }, 30_000)
 
   it('stops collection before the screenshot, so a later request is not recorded', async () => {

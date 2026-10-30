@@ -661,10 +661,17 @@ test.describe('Bound TLS Details of a background capture', () => {
     tls = await listen(
       createHttpsServer({ key, cert }, (req, res) => {
         logRequest(log, req, 'https')
+        // Each navigation leaves the page after it loads; the last two send no request (the
+        // ruling of 2026-10-29 on #1999).
+        const leaves: Record<string, string> = {
+          '/then-204': `location.href = '${plain.origin}/nocontent'`,
+          '/then-back': 'history.back()',
+          '/then-blank': "location.href = 'about:blank'"
+        }
         const leave =
-          req.url === '/then-204'
+          req.url !== undefined && req.url in leaves
             ? `<script>addEventListener('load', () => setTimeout(() => {
-  location.href = '${plain.origin}/nocontent' }, 100))</script>`
+  ${leaves[req.url]} }, 100))</script>`
             : ''
         send(res, 'text/html', `<!doctype html><title>TLS Fixture</title><p>tls</p>${leave}`)
       }),
@@ -742,6 +749,28 @@ test.describe('Bound TLS Details of a background capture', () => {
       })
       expect(entry).not.toHaveProperty('boundTlsAbsent')
     })
+
+    for (const [path, how] of [
+      ['/then-back', 'goes back to the blank page the window loaded first'],
+      ['/then-blank', "sets location.href to 'about:blank'"]
+    ]) {
+      test(`states the details absent when the page ${how}`, async ({ page }) => {
+        test.setTimeout(150000)
+        const caseId = await createCase(page, `Bound TLS ${path} E2E`)
+        await recordActivity(page)
+        const end = await recapture(page, caseId, `${tls.origin}${path}`)
+        expect(end).toMatchObject({ type: 'stored' })
+        const { entry, records } = await storedCapture(page, caseId, end.captureId!)
+        expect(entry.url).toBe('about:blank')
+        expect(
+          ofType(records, 'response').some(
+            (r) => r.warc('WARC-Target-URI') === `${tls.origin}${path}`
+          )
+        ).toBe(true)
+        expect(entry).toMatchObject({ boundTlsAbsent: 'not-reported' })
+        expect(entry).not.toHaveProperty('boundTls')
+      })
+    }
   })
 
   test('refuses the test certificate without the allowance', async ({ page }) => {

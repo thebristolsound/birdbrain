@@ -48,13 +48,15 @@ prove and what they do not.
 - The record shows nothing for a resource the page used a second time without a new request, for
   the requests of a shared worker, or for what runs below a frame or worker whose setup failed.
   The hidden window loads a blank page first, so the page sees one more `history.length` entry
-  than a direct visit gives it.
+  than a direct visit gives it, and can go back to that blank page.
 - For an HTTPS page, the signed entry records the TLS details the browser reported for the page
   the capture shows: protocol, cipher, certificate subject, alternative names, issuer, and
   validity. When the page navigates itself, they come from the last navigation that replaced it,
-  not from one the browser cancelled, such as a download or an empty answer. They are the
-  browser's summary of the connection and hold no certificate bytes, and they are kept apart from
-  the certificate chain Birdbrain fetches after the capture.
+  not from one the browser cancelled, such as a download or an empty answer. When the page then
+  moves to a page that no request loads, such as the blank page it can go back to or
+  `about:blank`, the entry records the details as absent. They are the browser's summary of the
+  connection and hold no certificate bytes, and they are kept apart from the certificate chain
+  Birdbrain fetches after the capture.
 - Recapture one page or a selection. The new capture links to the earlier one, which stays in
   the case.
 - Exclude URLs by substring, wildcard, or regular expression. Exclusions apply to all cases or

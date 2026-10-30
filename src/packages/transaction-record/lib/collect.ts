@@ -314,7 +314,8 @@ export const collectExchanges = (input: CollectorInput): CollectedExchanges => {
       const written = toExchanges(chain, input, mainFrameId)
       const [{ sent }] = chain.hops
       // A page that navigates itself has more than one main frame document; the last one that
-      // replaced the page is the page the artifacts show.
+      // replaced the page is the last page a request produced. A later navigation that sends no
+      // request, such as one to `about:blank`, is not seen here; the recorder checks for it.
       const last = written[written.length - 1]
       if (
         sent.type === 'Document' &&

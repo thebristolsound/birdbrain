@@ -636,8 +636,11 @@ export const renderPageInHiddenWindow: RenderPage = async (
     wc.on('will-navigate', checkHop)
 
     let httpStatus = 0
-    wc.on('did-navigate', (_event, _navUrl, httpResponseCode) => {
+    // Bound TLS Details are signed only for the page this names (`boundTlsOf`).
+    let committedUrl = ''
+    wc.on('did-navigate', (_event, navUrl, httpResponseCode) => {
       httpStatus = httpResponseCode
+      committedUrl = navUrl
     })
 
     // The debugger is attached for the whole render, and its Network domain
@@ -648,7 +651,8 @@ export const renderPageInHiddenWindow: RenderPage = async (
     // `Network.enable` gets no answer on a window that has not navigated, so a
     // blank page loads first (probe spike). The page then reads one more
     // `history.length` entry than a direct load gives it, a known limitation
-    // (renderer spike, question 7).
+    // (renderer spike, question 7), and can go back to the blank page, which
+    // `boundTlsOf` then signs no details for.
     recorder = createTransactionRecorder(wc.debugger)
     const activeRecorder = recorder
     await wc.loadURL('about:blank')
@@ -725,6 +729,7 @@ export const renderPageInHiddenWindow: RenderPage = async (
             collectMs: BODY_COLLECT_TIMEOUT_MS,
             writeMs: RECORD_WRITE_TIMEOUT_MS,
             timeLeftMs: () => remainingMs(RECORD_END_MARGIN_MS),
+            committedUrl,
             writer: {
               captureId,
               birdbrainVersion: toolVersion,

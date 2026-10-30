@@ -344,7 +344,7 @@ describe('report.html capture engine fields', () => {
     ['from-cache', 'the response for the main document reported a cache hit'],
     [
       'not-reported',
-      'the browser reported no security details on the response for the main document, or the window ended on a page that response did not load'
+      'the browser reported no security details on the response for the main document, or the page the capture saved was not one that response loaded'
     ]
   ])('states the Bound TLS absence %s', (reason, text) => {
     const html = reportFor(engineFields({ boundTls: undefined, boundTlsAbsent: reason }))

@@ -52,6 +52,7 @@ import {
 } from '@main/services/sharing/syncState'
 import {
   PeerUnreachableError,
+  TransportError,
   type ByteStream,
   type Connection,
   type Transport
@@ -188,6 +189,14 @@ function replayed(stream: ByteStream, chunks: Uint8Array[]): ByteStream {
 // that ends before its first frame, a first frame that is not a message, and
 // one whose header announces more than a handshake frame close the stream
 // and reach no handler; the sender is unknown here, so no larger body is read.
+// A teammate's stream the network ended (a closed connection, a timeout) is
+// recorded without a toast: their side reports the session it was running,
+// and the next round retries. Anything else is a failure in this app.
+export function logStreamFailure(err: unknown): void {
+  if (err instanceof TransportError) logger.info('sharing', 'sharing.stream_failed', undefined, err)
+  else logger.warn('sharing', 'sharing.stream_failed', undefined, err)
+}
+
 export async function routeIncomingStream(
   stream: ByteStream,
   peerNodeId: string,
@@ -293,9 +302,7 @@ export class SharingService {
             ticketNodeId: (ticket) => transport.nodeIdOf(ticket),
             rememberTicket: rememberPeerTicket
           })
-      }).catch((err: unknown) => {
-        logger.warn('sharing', 'sharing.stream_failed', undefined, err)
-      })
+      }).catch(logStreamFailure)
     })
     return { transport, joins }
   }

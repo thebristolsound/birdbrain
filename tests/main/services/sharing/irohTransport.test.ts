@@ -18,10 +18,15 @@ import {
   isSharingAvailable,
   setRelayUrl,
   startIrohTransport,
+  transportFailure,
   type IrohBinding
 } from '@main/services/sharing/irohTransport'
 import { resetSyncStateMemory } from '@main/services/sharing/syncState'
-import { PeerUnreachableError, type ByteStream } from '@main/services/sharing/transport'
+import {
+  PeerUnreachableError,
+  TransportError,
+  type ByteStream
+} from '@main/services/sharing/transport'
 import { FakeIrohNetwork } from '../../../helpers/fakeIroh'
 import {
   activate,
@@ -257,6 +262,20 @@ describe('the Iroh transport over a stand-in binding (#1809)', () => {
     await listener.close()
   })
 
+  it('rejects a write the peer stopped with a TransportError that keeps the message', async () => {
+    const listener = await start(1)
+    const dialer = await start(2)
+    await listener.listen((stream) => stream.close())
+    const stream = await dialer.openStream(await dialer.dial(listener.ticket))
+    await stream.write(Buffer.from('x'))
+    await new Promise((resolve) => setImmediate(resolve))
+    const failure = await stream.write(Buffer.from('y')).catch((err: unknown) => err)
+    expect(failure).toBeInstanceOf(TransportError)
+    expect(failure).toMatchObject({ code: 'TRANSPORT_FAILED', message: 'sending stopped by peer' })
+    await dialer.close()
+    await listener.close()
+  })
+
   it('serves every stream a connection opens', async () => {
     const listener = await start(1)
     const dialer = await start(2)
@@ -315,6 +334,31 @@ describe('the Iroh transport over a stand-in binding (#1809)', () => {
     // Closing a stream whose connection is gone is not an error.
     stream.close()
     await dialer.close()
+  })
+})
+
+// The strings are what the 1.2.0 binding printed in a probe against n0's
+// relays on 2026-10-30; the first is a peer closing its connection normally.
+describe('naming why the Iroh binding ended a stream', () => {
+  it.each([
+    [
+      'ConnectionLost(ApplicationClosed(ApplicationClose { error_code: 0, reason: b"" }))',
+      'PEER_CLOSED'
+    ],
+    [
+      'ConnectionLost(ApplicationClosed(ApplicationClose { error_code: 7, reason: b"" }))',
+      'PEER_CLOSED_WITH_ERROR'
+    ],
+    ['ConnectionLost(TimedOut)', 'TIMED_OUT'],
+    ['ConnectionLost(LocallyClosed)', 'LOCALLY_CLOSED'],
+    ['ConnectionLost(Reset)', 'CONNECTION_RESET'],
+    ['ConnectionLost(VersionMismatch)', 'CONNECTION_LOST'],
+    ['Stopped(0)', 'STREAM_STOPPED'],
+    ['Reset(0)', 'STREAM_RESET'],
+    ['ClosedStream', 'STREAM_CLOSED'],
+    ['something new', 'TRANSPORT_FAILED']
+  ])('reads %s as %s', (message, code) => {
+    expect(transportFailure(message)).toBe(code)
   })
 })
 

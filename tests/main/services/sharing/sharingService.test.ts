@@ -28,6 +28,7 @@ import {
 import { helloDigest, serveSyncSession } from '@main/services/sharing/session'
 import {
   SharingService,
+  logStreamFailure,
   routeIncomingStream,
   type SharingServiceDeps
 } from '@main/services/sharing/sharingService'
@@ -38,6 +39,7 @@ import {
 } from '@main/services/sharing/syncState'
 import {
   MemoryHub,
+  TransportError,
   type ByteStream,
   type Connection,
   type MemoryTransport
@@ -791,5 +793,29 @@ describe('sharing service (#1810)', () => {
       expect(mergeEntries(caseId)).toEqual([])
       await service.close()
     })
+  })
+})
+
+describe("logging a teammate's stream that failed", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('records a stream the network ended at info, which raises no toast', () => {
+    const info = vi.spyOn(logger, 'info')
+    const warn = vi.spyOn(logger, 'warn')
+    const ended = new TransportError('ConnectionLost(TimedOut)', 'TIMED_OUT')
+    logStreamFailure(ended)
+    expect(info).toHaveBeenCalledWith('sharing', 'sharing.stream_failed', undefined, ended)
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('records any other failure at warn', () => {
+    const info = vi.spyOn(logger, 'info')
+    const warn = vi.spyOn(logger, 'warn')
+    const bug = new TypeError('x is undefined')
+    logStreamFailure(bug)
+    expect(warn).toHaveBeenCalledWith('sharing', 'sharing.stream_failed', undefined, bug)
+    expect(info).not.toHaveBeenCalled()
   })
 })

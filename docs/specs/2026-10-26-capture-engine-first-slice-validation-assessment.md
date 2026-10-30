@@ -79,6 +79,16 @@ sizes and times below come from a standalone Electron 44.9.1 script outside the 
 process per page, in an offscreen sandboxed window on a fresh partition under `xvfb-run`, which
 called `printToPDF({})`, the render's options, 1.5 s after each load.
 
+After this branch took step 9's Electron 45.0.0, `e2e/recapture-transaction-record.spec.ts` and
+`e2e/recapture.spec.ts` ran on Electron 45.0.0 with Chromium 156.0.8078.48, on the same
+workstation under `xvfb-run`, outside a network namespace. The PDF cases passed. Three
+Transaction Record cases first failed when the app's first window did not open within 30 s. On
+the rerun, two passed, and the known-answers case failed twice: its fixture servers' logs held
+`GET /` requests for `localhost`, which the record did not, of the kind the workstation's T3
+Code server sent to a test listener on a new loopback port. With requests for `/` dropped from those logs, in an uncommitted
+copy of the spec, it passed. The print sizes and times above were not measured again on Electron
+45.
+
 ## Expected and observed results
 
 **Step 6.**
@@ -319,6 +329,12 @@ wherever the page loads.
   now reads the URL, title, and HTTP status right after the save, stores the Capture under them,
   and does not print when the window's URL or its count of main-frame navigations has changed
   since; the PDF is then absent as `failed` (Expected and observed results).
+- The pre-pass reviews of #2000 at `39ae663a` found that the check ran once, before the print, so
+  a navigation the window reported only once the print was under way passed it; neither review
+  reproduced it. The render now checks the URL and the navigation count again when `printToPDF`
+  settles, and discards the PDF on a change. Three unit tests in
+  `tests/main/services/backgroundRenderer.test.ts`, one for each kind of navigation, pin it. A
+  navigation the window has not reported by then is not seen.
 - The same review found that the time left was counted from after the proxy setup while the
   deadline timer started before it, so a `setProxy` slower than the 1 s margin could let the
   print, or a record phase, settle after the deadline and lose the Capture. The count now starts
@@ -374,9 +390,10 @@ wherever the page loads.
 
 **Step 10.**
 
-- `failed` on the PDF part covers a print that failed, one that ran out of time, and one refused
-  by a size bound. The signed entry does not say which; the `backgroundRenderer.pdf_failed` log
-  entry's error names the bound.
+- `failed` on the PDF part covers a print that failed, one that ran out of time, one refused by a
+  size bound, and one refused or discarded because the page navigated after the save. The signed
+  entry does not say which; the `backgroundRenderer.pdf_failed` log entry's error names the bound,
+  or the address the page navigated to.
 - The layout bound reads the content height the screenshot record states (D6), the document's
   content box, so it does not see the height of a panel that scrolls inside the page.
 - The layout bound measures the page as laid out on screen, and print styles can lay out far

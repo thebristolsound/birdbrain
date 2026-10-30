@@ -61,9 +61,9 @@ prove and what they do not.
   last, after the screenshot, the saved page, and the Transaction Record, so a file the page loads
   only for printing is not in the record. The signed entry holds the PDF's SHA-256 hash and states
   that the PDF was printed after recording stopped. If the page is taller than 50,000 pixels, the
-  PDF is larger than 100 MiB, printing fails or runs out of time, or the page moves to another
-  address after it is saved, Birdbrain still saves the capture, and its entry says the PDF is
-  missing. The capture keeps the address and title of the page it saved.
+  PDF is larger than 100 MiB, printing fails or runs out of time, or the page navigates again
+  after it is saved, even to the same address, Birdbrain still saves the capture, and its entry
+  says the PDF is missing. The capture keeps the address and title of the page it saved.
 - Recapture one page or a selection. The new capture links to the earlier one, which stays in
   the case.
 - Exclude URLs by substring, wildcard, or regular expression. Exclusions apply to all cases or

@@ -327,19 +327,27 @@ first bottom, it now runs to the height cap or the phase's time limit.
 **#1843.**
 
 - The triage brief asks for a separate report row, `Image sources: N pinned to the displayed
-image`, absent when N is 0. On the orchestrating session's decision, step 5's sentence in the
-  report's artifact inventory (#1985) states both counts instead, shown at 0 too, and now says
-  what they cover, so the counts are stated once.
+image`, absent when N is 0. Step 5's sentence in the report's artifact inventory (#1985) states
+  both counts instead, shown at 0 too, and now says what they cover, so the counts are stated
+  once. The maintainer accepted this as built on 2026-10-29, in place of the brief's wording
+  ([ruling 5](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6515710604)).
 - The first version pinned every `srcset` image with a `currentSrc`, as the brief worded it, which
   pinned a failed image after collection stopped. The ruling of 2026-10-26 pins only an image that
   displayed and moves collection's stop after the pin.
 - The ruling of 2026-10-26 defines `pinnedImagesNotLoaded` as a displayed image whose pinned
   source had not finished loading when the wait ended. The render also counts one whose pinned
   source finished without an image, so a loaded count never stands for an image the saved page
-  lacks. This addition awaits the maintainer.
-- A `blob:` image that displayed is left as it is, on the orchestrating session's instruction
-  that re-sourcing must not break it: the page may have revoked the address, and the render
-  cannot tell without loading it.
+  lacks. The maintainer accepted this as built on 2026-10-29
+  ([ruling 3](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6515710604)).
+- A `blob:` image that displayed is left as it is, so re-sourcing cannot break it: the page may
+  have revoked the address, and the render cannot tell without loading it. The maintainer
+  accepted this as built on 2026-10-29
+  ([ruling 4](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6515710604)).
+- The settle wait first decided only how long the render waited: the pin tested each image again
+  after the screenshot, so an image still loading when the wait ended that finished during the
+  screenshot was pinned and counted. The wait's last check now keeps the images still loading,
+  and the pin leaves them out, as ruling 2 of 2026-10-26 states
+  ([confirmed 2026-10-29](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6515710604)).
 
 ## False positives and negatives
 

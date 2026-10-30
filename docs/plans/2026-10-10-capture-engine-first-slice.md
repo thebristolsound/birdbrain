@@ -345,19 +345,21 @@ inventory: {
     `img` with `srcset` whose parent is not a `picture` is considered. Only the page's own
     document is searched, not its frames or shadow roots.
   - **Order.** After the post-scroll settle, the render polls until no considered image is still
-    loading (`img.complete` false), for at most 5 s (`IMAGE_SET_SETTLE_MAX_MS`). It then takes
-    the screenshot and pins. Collection stops after the pin, so a request the pin causes is in the
+    loading (`img.complete` false), for at most 5 s (`IMAGE_SET_SETTLE_MAX_MS`), and keeps the
+    images its last check found still loading. It then takes the screenshot and pins. Collection stops after the pin, so a request the pin causes is in the
     Transaction Record, and just before `savePage`.
   - **Pinned.** A considered image is pinned when it displayed: `complete`, with a natural width
     and height above 0, and a non-empty `currentSrc` that is not a `blob:` address. Its `src`
     becomes its `currentSrc` and its `srcset` and `sizes` attributes are removed. An image still
-    loading, one whose load failed, and a `blob:` image are left as they are; re-sourcing a
+    loading when the settle wait ended, even one that finished during the screenshot, one whose
+    load failed, and a `blob:` image are left as they are; re-sourcing a
     `blob:` address loads it again, which fails once the page has revoked it.
   - **Not loaded.** The render then polls until no pinned image is still loading, for at most 5 s
     (`PIN_LOAD_MAX_MS`). A pinned image counts as not loaded when, at the count that ends the wait,
     it is not `complete` or has no natural size: still loading its pinned source, or failed to.
     The ruling of 2026-10-26 names only the first; the second is counted too, so a loaded count
-    never stands for an image whose pinned source failed.
+    never stands for an image whose pinned source failed, which the maintainer accepted as built
+    on 2026-10-29 ([ruling 3](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6515710604)).
   - **Time.** Both waits are bounded on the main process's clock and take their time from what is
     left before the 40 s end reserve, never from it.
   - **Trust.** The scripts run in an isolated world (`PIN_WORLD_ID`), which shares the page's DOM
@@ -1761,3 +1763,9 @@ folded in.
   on the main process's clock, recounts over the DOM, leaves `blob:` images alone, and keeps
   step 5's report sentence, now stating what the counts cover, in place of the brief's separate
   row. D4 states the result.
+- **2026-10-29.** The maintainer confirmed the two rulings of 2026-10-26 on #1843 and accepted
+  as built the counting of a pinned source that finished without an image, the `blob:` exclusion
+  and step 5's report sentence
+  ([comment](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6515710604)).
+  ADR-0055 links that comment. The pin now leaves out an image the settle wait's last check found
+  still loading, even one that finished during the screenshot, as ruling 2 states.

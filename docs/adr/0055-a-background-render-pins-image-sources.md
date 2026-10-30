@@ -2,12 +2,14 @@
 
 **Status:** Accepted
 
-**Date:** 2026-10-21, amended 2026-10-26
+**Date:** 2026-10-21, amended 2026-10-26 and 2026-10-29
 
-This record states three rulings of the maintainer on
+This record states six rulings of the maintainer on
 [#1843](https://github.com/thebristolsound/birdbrain/issues/1843) and nothing else: the ruling of
-2026-10-21 in the triage of the issue, and two rulings of 2026-10-26 on the review of #2002, as
-the orchestrating session relayed them. D4 of the
+2026-10-21 in the triage of the issue, two rulings of 2026-10-26 on the review of #2002, and three
+choices in that change that the maintainer accepted as built on 2026-10-29. The maintainer's
+[comment of 2026-10-29 on #1843](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6515710604)
+states the rulings of 2026-10-26 and the three choices. D4 of the
 [first-slice plan](../plans/2026-10-10-capture-engine-first-slice.md) states how the render
 carries them out, and the
 [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md) what
@@ -55,10 +57,17 @@ wrongly.
    so it shows what the page displayed, and recording stops after the pin.
    `pinnedImagesNotLoaded` counts a displayed image whose pinned source had not finished loading
    when the wait ended.
-2. Before pinning, the render waits, within the time remaining and never from the 40 s end
-   reserve, for images offered as sets to settle. Any still loading after that wait are left out.
-   The counts cover only images that had settled, and the report, the features page, the
-   glossary, this record and the validation record say so.
+2. Before the screenshot and the pin, the render waits, within the time remaining and never from
+   the 40 s end reserve, for images offered as sets to settle. Any image still loading when that
+   wait ends is left out of the pin. The counts cover only images that had settled, and the
+   report, the features page, the glossary, this record and the validation record say so.
+
+**Rulings of 2026-10-29.**
+
+3. A pinned image whose pinned source finished without showing an image counts as not loaded.
+4. An image the page shows from a `blob:` address is left as it is.
+5. The report states both counts in one sentence, shown even when both are 0, in place of a
+   separate line left out at 0. This replaces the issue's original wording for that line.
 
 ## Consequences
 

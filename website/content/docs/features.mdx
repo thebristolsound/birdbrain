@@ -27,38 +27,42 @@ prove and what they do not.
   nothing to scroll, the page stopped growing, the page reached the height limit, or the time
   limit ran out. It also records the last page height read and whether the scroll lifted the
   page's scroll lock.
-- Before it saves the page, a background capture pins each image the page displayed from a set
-  of sources to the one it displayed. The browser's page saver drops the `srcset` attribute, so
-  without this an image offered only through `srcset` would be missing from the saved page, and
-  one that also has a `src` would be filed under that address. An image offered as a set is an
-  `img` element with a `srcset`, or a `picture` element with `source` elements; the saver keeps
-  the second, so only an `img` outside a `picture` is pinned.
-- The capture first gives those images up to 5 seconds to finish loading or fail, and then takes
-  the screenshot. It then pins each one that displayed an image, loaded with a natural width and
-  height above zero: it sets the image's `src` to the address the browser loaded it from, removes
-  its `srcset` and `sizes`, and waits up to 5 seconds for the pinned images. Both waits use only
-  time left before the capture's final steps. The Transaction Record keeps recording until the
-  pin is done, so any request it causes is in the record.
-- The full-page screenshot stops the browser reusing the copy of each image it already holds, so
-  pinning loads each pinned image again. When the first response is still fresh in the browser's
-  cache, as with `Cache-Control: max-age=3600`, the cache answers and the server is not asked
-  again. Otherwise the browser asks the server a second time, the saved page holds the second
-  response, and the Transaction Record holds both requests and their responses. If the server
-  answers the second request with different bytes, the saved page differs from what the page
-  displayed and from the screenshot.
-- The signed entry records how many images were pinned, and how many of those were still loading
-  their pinned source, or had failed to, when the second wait ended. The counts cover only images
-  that had settled and displayed an image before the pin. An image still loading after the first
-  wait, one that failed to load, and one shown from a `blob:` address are left as they are and
-  not counted, so the saved page lacks any of them offered only through `srcset`. A `blob:`
-  address is left alone because loading it again fails once the page has revoked it. An image the
-  page has not started loading, such as a lazy image below where the scroll stopped, holds the
-  first wait to its end. Pinning reaches only the page's own document: an image in a frame or a
-  shadow root is not pinned.
-- An image whose `srcset` density or `sizes` set its size, with no `width` and `height` of its
-  own, shows at its file's natural size in the saved page and the PDF, so either can differ from
-  the screenshot. When that density makes the natural size smaller than one pixel, the image
-  counts as not displayed and is left as it is.
+- Before it takes the screenshot and saves the page, a background capture pins each image the
+  page displayed from a set of sources to the one it displayed. The browser's page saver drops
+  the `srcset` and `sizes` attributes and keeps `src`, so without this an image offered only
+  through `srcset` would be missing from the saved page, and one that also has a `src` would be
+  filed under that address. An image offered as a set is an `img` element with a `srcset`, or a
+  `picture` element with `source` elements; the saver keeps the second, so only an `img` outside
+  a `picture` is pinned.
+- The capture first gives those images up to 5 seconds to finish loading or fail. It then pins
+  each one that displayed an image, loaded with a natural width and height above zero: it sets
+  the image's `src` to the address the browser loaded it from, leaves its `srcset` and `sizes` in
+  place, and waits up to 5 seconds for any pinned image that starts loading. Both waits use only
+  time left before the capture's final steps. The screenshot comes after the pin, so it shows the
+  page as the pin left it. The Transaction Record keeps recording until just before the page is
+  saved, so any request the pin or the screenshot causes is in the record.
+- With `srcset` left in place, the browser chooses from the set again and keeps the copy of the
+  image it displayed, so the saved page holds the response the page displayed. An image offered
+  only at densities other than 1x, such as `srcset="photo.png 2x"`, is the exception: the `src`
+  the pin sets joins its set as the 1x candidate, so from then on the image shows at its file's
+  natural size, in the screenshot, the saved page, and the PDF. The screenshot also loads such an
+  image again. For images the server sent with no cache header, the server was asked a second
+  time, the saved page held the second response, and the Transaction Record held both requests.
+- The signed entry records how many images were pinned, and how many of those were still loading,
+  or had failed to load, just before the page was saved. The counts cover only images that had
+  settled and displayed an image before the pin. An image still loading after the first wait, one
+  that failed to load, and one shown from a `blob:` address are left as they are and not counted,
+  so the saved page lacks any of them offered only through `srcset`. A `blob:` address is left
+  alone because the page may have revoked it, and the capture cannot tell without loading it. An
+  image the page has not started loading, such as a lazy image below where the scroll stopped,
+  holds the first wait to its end. Pinning reaches only the page's own document: an image in a
+  frame or a shadow root is not pinned.
+- An image shown from a set with width descriptors, such as `srcset="photo-800.png 800w"` with
+  `sizes`, keeps its displayed size in the screenshot, the saved page, and the PDF. On the pages
+  measured, the saver wrote the displayed width and height into each such image that had none of
+  its own.
+  When a density makes an image's natural size smaller than one pixel, the image counts as not
+  displayed and is left as it is.
 - A background capture's signed manifest entry lists the files the capture holds and why any
   is missing. For the screenshot it records the page size, the image size, and whether the
   image was scaled down, cut short, or had trailing blank space trimmed.
@@ -89,11 +93,10 @@ prove and what they do not.
   last, after the screenshot, the saved page, and the Transaction Record, so a file the page loads
   only for printing is not in the record. The signed entry holds the PDF's SHA-256 hash and states
   that the PDF was printed after recording stopped. The PDF shows the page after image pinning,
-  which can make it taller than the screenshot shows. If the page, measured when it is printed,
-  is taller than 50,000 pixels, the PDF is larger than 100 MiB, printing fails or runs out of
-  time, or the page moves to another address after it is saved, Birdbrain still saves the
-  capture, and its entry says the PDF is missing. The capture keeps the address and title of the
-  page it saved.
+  as the screenshot does. If the page is taller than 50,000 pixels, the PDF is larger than 100
+  MiB, printing fails or runs out of time, or the page moves to another address after it is
+  saved, Birdbrain still saves the capture, and its entry says the PDF is missing. The capture
+  keeps the address and title of the page it saved.
 - Recapture one page or a selection. The new capture links to the earlier one, which stays in
   the case.
 - Exclude URLs by substring, wildcard, or regular expression. Exclusions apply to all cases or

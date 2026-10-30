@@ -332,9 +332,9 @@ inventory: {
 - **MHTML and the screenshot are always present.** A failed `savePage` or screenshot fails the
   render today, and this slice keeps that, so no build can write either as absent (D2's rule).
 - **The MHTML counts.** `pinnedImages` is the number of images offered as sets that the page
-  displayed and the render pinned to their displayed source before the save, and
-  `pinnedImagesNotLoaded` the number of those still loading their pinned source, or failed to,
-  when the wait before the save ended (#1843, amended 2026-10-21 and 2026-10-26). The counts cover
+  displayed and the render pinned to their displayed source before the screenshot and the save,
+  and `pinnedImagesNotLoaded` the number of those still loading, or failed to load, just before
+  the save (#1843, amended 2026-10-21, 2026-10-26 and 2026-10-30). The counts cover
   only images that had settled and displayed before the pin. The schema requires both whenever
   `inventory` is present. A fifth refine joins D2's four: `pinnedImagesNotLoaded` above
   `pinnedImages` fails the schema. #1843 writes the counts; step 1 only teaches the verifier them.
@@ -346,17 +346,22 @@ inventory: {
     document is searched, not its frames or shadow roots.
   - **Order.** After the post-scroll settle, the render polls until no considered image is still
     loading (`img.complete` false), for at most 5 s (`IMAGE_SET_SETTLE_MAX_MS`), and keeps the
-    images its last check found still loading. It then takes the screenshot and pins. Collection stops after the pin, so a request the pin causes is in the
-    Transaction Record, and just before `savePage`.
+    images its last check found still loading. It then pins, waits for any pinned image that
+    started loading, takes the screenshot, and counts (ruled 2026-10-30: the screenshot makes the
+    browser drop its in-memory copy of each displayed image, so a pin after it loaded again each
+    one with no fresh copy in the HTTP cache). Collection stops after the count, so a request the
+    pin or the screenshot causes is in the Transaction Record, and just before `savePage`.
   - **Pinned.** A considered image is pinned when it displayed: `complete`, with a natural width
     and height above 0, and a non-empty `currentSrc` that is not a `blob:` address. Its `src`
-    becomes its `currentSrc` and its `srcset` and `sizes` attributes are removed. An image still
-    loading when the settle wait ended, even one that finished during the screenshot, one whose
-    load failed, and a `blob:` image are left as they are; re-sourcing a
-    `blob:` address loads it again, which fails once the page has revoked it.
-  - **Not loaded.** The render then polls until no pinned image is still loading, for at most 5 s
-    (`PIN_LOAD_MAX_MS`). A pinned image counts as not loaded when, at the count that ends the wait,
-    it is not `complete` or has no natural size: still loading its pinned source, or failed to.
+    becomes its `currentSrc`; its `srcset` and `sizes` stay on the live page, where the browser
+    chooses from them again, and the serializer drops both from the saved page. In a set with no
+    1x candidate and no width descriptor the new `src` becomes the 1x candidate, so the image
+    shows at 1x from then on and the screenshot loads it again (validation record, 2026-10-30).
+    An image still loading when the settle wait ended, even one that finished before the pin, one
+    whose load failed, and a `blob:` image are left as they are.
+  - **Not loaded.** After the pin the render polls until no pinned image is still loading, for at
+    most 5 s (`PIN_LOAD_MAX_MS`). A pinned image counts as not loaded when, at the count after the
+    screenshot, it is not `complete` or has no natural size: still loading, or failed to load.
     The ruling of 2026-10-26 names only the first; the second is counted too, so a loaded count
     never stands for an image whose pinned source failed, which the maintainer accepted as built
     on 2026-10-29 ([ruling 3](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6515710604)).
@@ -364,14 +369,16 @@ inventory: {
     left before the 40 s end reserve, never from it.
   - **Trust.** The scripts run in an isolated world (`PIN_WORLD_ID`), which shares the page's DOM
     but not its JavaScript, so the page cannot replace what they call, read what they keep
-    between calls, or change their counts. The counts are taken again over the DOM at the end: an
-    image the page removed, or whose `src` it changed, since the pin is not counted.
+    between calls, or change their counts. The counts are taken again over the DOM after the
+    screenshot: an image the page removed, or whose `src` it changed, since the pin is not
+    counted, and a page replaced since the pin fails the count.
   - **Failure.** The MHTML part has no absent form, so a pin script that throws, or returns counts
     the strict schema refuses, fails the render, as a Scroll-to-load step that throws does. The
     renderer parses the part with that schema before it reaches the entry. An image still
     loading when a wait ends is not a failure.
-  - **PDF.** The print reads the page's content height for `MAX_PDF_CONTENT_HEIGHT_PX` when it
-    prints, after the pin, not from the screenshot record.
+  - **PDF.** The print reads the page's content height for `MAX_PDF_CONTENT_HEIGHT_PX` from the
+    screenshot record, taken after the pin. The live page keeps `srcset` and `sizes`, so the print
+    shows a pinned image from a set with width descriptors at the size the page displayed it.
 - **Reasons.** `not-taken` means this build does not take the file: step 6's build writes it for
   the Transaction Record and the PDF. `failed` means the engine tried and failed, or refused a PDF
   over step 10's size bounds, and the log carries the error. The list is closed, so a released
@@ -1769,3 +1776,12 @@ folded in.
   ([comment](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6515710604)).
   ADR-0055 links that comment. The pin now leaves out an image the settle wait's last check found
   still loading, even one that finished during the screenshot, as ruling 2 states.
+- **2026-10-30.** The maintainer ruled that the pin runs before the full-page screenshot,
+  amending the order of 2026-10-21
+  ([comment](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6534767262)):
+  the previous fix round of #2002 found that the screenshot makes the browser drop its in-memory
+  copy of each displayed image, so a pin after it fetched each one again. The pin now sets `src`
+  and leaves `srcset` and `sizes` on the live page, the count follows the screenshot, and
+  collection stops after the count. The print's height bound reads the screenshot record again,
+  as step 10 built it, since the screenshot now follows the pin. D4 and ADR-0055 state the
+  result, and the validation record what each order measured.

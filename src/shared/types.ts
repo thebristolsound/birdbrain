@@ -778,6 +778,10 @@ export const LOG_CODES = [
   'mutation.failed',
   'react.render_error',
   // --- appended: real call sites with no pinned-code fit ---
+  // Every failed request through handle() (ipcWrap.ts): refused is an
+  // { ok: false } answer, threw is a defect that rejects in the renderer.
+  'ipc.request_refused',
+  'ipc.request_threw',
   'captureServer.selector_create_failed',
   'captureServer.tag_apply_failed',
   'captureServer.note_create_failed',

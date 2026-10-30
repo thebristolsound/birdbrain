@@ -1,5 +1,5 @@
 import { toast } from 'sonner'
-import type { LogEntry } from '@shared/types'
+import type { LogCode, LogEntry } from '@shared/types'
 import { labelForCode } from '@renderer/lib/notify'
 
 // Main already wrote these to disk, so this path toasts ONLY — routing them
@@ -23,6 +23,15 @@ import { labelForCode } from '@renderer/lib/notify'
 // front is FIFO.
 const SEEN_LIMIT = 200
 
+// Main entries the renderer already surfaces, or chose not to: a failed
+// request reaches the caller, where a failed mutation toasts and a failed
+// query logs without one (queryClient.ts). A toast here would double the first
+// and contradict the second.
+const LOG_ONLY: ReadonlySet<LogCode> = new Set<LogCode>([
+  'ipc.request_refused',
+  'ipc.request_threw'
+])
+
 export function subscribeToMainLog(): () => void {
   const seen = new Set<string>()
 
@@ -38,6 +47,7 @@ export function subscribeToMainLog(): () => void {
   const handle = (entry: LogEntry): void => {
     if (entry.source === 'renderer') return
     if (entry.level !== 'error' && entry.level !== 'warn') return
+    if (LOG_ONLY.has(entry.code)) return
     if (seen.has(entry.id)) return
     remember(entry.id)
 

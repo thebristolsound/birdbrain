@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { LogContext, LogValue } from '@main/services/logSafe'
-import { code, context, ident, sanitizeError, sanitizeText, tag } from '@main/services/logSafe'
+import {
+  channel,
+  code,
+  context,
+  ident,
+  sanitizeError,
+  sanitizeText,
+  tag
+} from '@main/services/logSafe'
 
 // logSafe decides dev-vs-packaged from `app.isPackaged`, reached through a
 // defensive require('electron') so the module still loads outside an Electron
@@ -47,6 +55,16 @@ describe('code', () => {
 
   it('rejects lowercase prose', () => {
     expect(() => code('no such file')).toThrow()
+  })
+})
+
+describe('channel', () => {
+  it('accepts an IPC channel name', () => {
+    expect(channel('notes:update')).toBe('notes:update')
+  })
+
+  it('rejects prose', () => {
+    expect(() => channel('Operation Blackbird:notes')).toThrow()
   })
 })
 

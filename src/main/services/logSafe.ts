@@ -90,6 +90,10 @@ export function code(value: string): LogSafe {
   return CODE.test(value) ? brand(value) : reject('code')
 }
 
+export function channel(value: string): LogSafe {
+  return IPC_CHANNEL_NAMES.test(value) ? brand(value) : reject('channel')
+}
+
 // Electron API vocabularies (values confirmed against the electron/electron
 // docs, not guessed) for the crash-handler call sites this module exists to
 // serve. Both '-gone' events share the same reason set today, per Electron's

@@ -13,8 +13,9 @@ import { PACKAGE_ROOT_FILES } from '../src/packages/evidence-package-layout/inde
 
 // Image Source Pinning (#1843, ADR-0055): a background capture points each srcset image the
 // page displayed at the source it displayed before saving the MHTML, and signs how many it
-// pinned. Every image the server sends is a PNG followed by `TAG:<path>`, so the bytes of each
-// MHTML part name the request that served them.
+// pinned. Every image the server sends is a PNG followed by `TAG:<path>#<n>`, where n counts the
+// requests for that path in the test, so the bytes of each MHTML part name the request that
+// served them.
 
 const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -37,12 +38,15 @@ const send =
   (_req, res) => {
     res.writeHead(200, { 'content-type': type, ...headers }).end(body)
   }
+// How many requests each path has had in the current test.
+const requestNumbers = new Map<string, number>()
 const png =
   (headers: Record<string, string> = {}, bytes = PNG): Route =>
   (req, res) => {
+    const tag = `TAG:${req.url}#${requestNumbers.get(req.url ?? '')}`
     res
       .writeHead(200, { 'content-type': 'image/png', ...headers })
-      .end(Buffer.concat([bytes, Buffer.from(`TAG:${req.url}`)]))
+      .end(Buffer.concat([bytes, Buffer.from(tag)]))
   }
 const MAX_AGE = { 'cache-control': 'max-age=3600' }
 const NO_STORE = { 'cache-control': 'no-store' }
@@ -152,6 +156,7 @@ async function startServer(): Promise<Fixture> {
   const server: Server = createServer((req, res) => {
     const path = (req.url ?? '').split('?')[0]
     served.push(path)
+    requestNumbers.set(path, (requestNumbers.get(path) ?? 0) + 1)
     const route = ROUTES[path] ?? (path.startsWith('/five/') ? png() : undefined)
     if (route) route(req, res)
     else res.writeHead(404).end()
@@ -335,6 +340,7 @@ test.describe('Image Source Pinning of a background capture', () => {
     test.setTimeout(180000)
     const caseId = await createCase(page, 'Savepage pinning E2E')
     server.served.length = 0
+    requestNumbers.clear()
     const captureId = await recapture(page, caseId, `${server.origin}/savepage`)
     const storagePath = await storagePathOf(page)
 
@@ -343,9 +349,9 @@ test.describe('Image Source Pinning of a background capture', () => {
       ({ location }) => location === srcsetImage
     )
     expect(part, 'the MHTML has a part for the srcset image').toBeDefined()
-    expect(part!.bytes.toString('latin1')).toMatch(/TAG:\/savepage\/srcset-1x\.png$/)
-    // Served once, so the part holds the bytes the page displayed.
-    expect(server.served.filter((path) => path === '/savepage/srcset-1x.png')).toHaveLength(1)
+    // The pin asks for the image again, and the part holds the second response.
+    expect(part!.bytes.toString('latin1')).toMatch(/TAG:\/savepage\/srcset-1x\.png#2$/)
+    expect(server.served.filter((path) => path === '/savepage/srcset-1x.png')).toHaveLength(2)
     expect(server.served).not.toContain('/savepage/srcset-2x.png')
 
     const [entry] = captureEntries(storagePath, caseId)
@@ -363,32 +369,36 @@ test.describe('Image Source Pinning of a background capture', () => {
     test.setTimeout(180000)
     const caseId = await createCase(page, 'Five images pinning E2E')
     server.served.length = 0
+    requestNumbers.clear()
     const captureId = await recapture(page, caseId, `${server.origin}/five`)
     const storagePath = await storagePathOf(page)
 
-    // A part for each image's displayed source, holding the bytes served from that address.
+    // A part for each image's displayed source, holding the bytes served from that address. The
+    // pin asks for each pinned image again while the network is recorded, so its part holds the
+    // second response and the Transaction Record both requests; an image left alone is asked
+    // for once.
     const parts = storedMhtml(storagePath, caseId, captureId)
-    for (const path of [
-      '/five/srcset-only-1x.png',
-      '/five/srcset-with-src-1x.png',
-      '/five/srcset-w-400.png',
-      '/five/picture-source.png',
-      '/five/plain.png'
-    ]) {
+    const records = readWarc(readFileSync(join(storagePath, caseId, `${captureId}.warc.gz`)))
+    for (const [path, requests] of [
+      ['/five/srcset-only-1x.png', 2],
+      ['/five/srcset-with-src-1x.png', 2],
+      ['/five/srcset-w-400.png', 2],
+      ['/five/picture-source.png', 1],
+      ['/five/plain.png', 1]
+    ] as const) {
       const part = parts.find(({ location }) => location === `${server.origin}${path}`)
       expect(part, path).toBeDefined()
-      expect(part!.bytes.toString('latin1').endsWith(`TAG:${path}`)).toBe(true)
-    }
-    // Each pinned image was served once, so its part holds the bytes the page displayed.
-    for (const path of [
-      '/five/srcset-only-1x.png',
-      '/five/srcset-with-src-1x.png',
-      '/five/srcset-w-400.png'
-    ]) {
+      expect(part!.bytes.toString('latin1').endsWith(`TAG:${path}#${requests}`), path).toBe(true)
       expect(
         server.served.filter((served) => served === path),
         path
-      ).toHaveLength(1)
+      ).toHaveLength(requests)
+      const recorded = records.filter(
+        (record) =>
+          record.warc('WARC-Type') === 'request' &&
+          record.warc('WARC-Target-URI') === `${server.origin}${path}`
+      )
+      expect(recorded, path).toHaveLength(requests)
     }
     // No part under an address the server never served.
     expect(server.served).not.toContain('/five/src-fallback.png')
@@ -440,6 +450,7 @@ test.describe('Image Source Pinning of a background capture', () => {
     test.setTimeout(180000)
     const caseId = await createCase(page, 'Left alone pinning E2E')
     server.served.length = 0
+    requestNumbers.clear()
     const captureId = await recapture(page, caseId, `${server.origin}/left`)
     const storagePath = await storagePathOf(page)
 
@@ -451,8 +462,8 @@ test.describe('Image Source Pinning of a background capture', () => {
     })
     const parts = storedMhtml(storagePath, caseId, captureId)
     const fast = parts.find(({ location }) => location === `${server.origin}/left/fast.png`)
-    expect(fast?.bytes.toString('latin1').endsWith('TAG:/left/fast.png')).toBe(true)
-    expect(server.served.filter((path) => path === '/left/fast.png')).toHaveLength(1)
+    expect(fast?.bytes.toString('latin1').endsWith('TAG:/left/fast.png#2')).toBe(true)
+    expect(server.served.filter((path) => path === '/left/fast.png')).toHaveLength(2)
     for (const path of ['/left/retry.png', '/left/never.png']) {
       expect(parts.map(({ location }) => location)).not.toContain(`${server.origin}${path}`)
     }

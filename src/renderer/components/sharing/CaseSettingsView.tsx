@@ -41,9 +41,9 @@ export function CaseSettingsView({ caseId }: { caseId: string }) {
       <div className="min-w-0 flex-1 overflow-auto pl-[18px]">
         <TabsContent value="members" className="mt-0 flex flex-col gap-3">
           <Badge
-            variant="accent"
+            variant="outline"
             size="default"
-            className="self-start"
+            className="self-start border-pink-500/20 bg-pink-500/10 text-hue-pink-fg"
             data-testid="sharing-early-access"
           >
             {COPY.earlyAccess}

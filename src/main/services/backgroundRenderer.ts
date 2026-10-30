@@ -520,6 +520,8 @@ interface SavedPage {
   httpStatus: number
   // Main-frame navigations committed by the save.
   navigations: number
+  // The last of them, so Bound TLS Details follow the saved page, not a later one.
+  committedUrl: string
 }
 
 // Prints the page to PDF (step 10 of
@@ -807,7 +809,8 @@ export const renderPageInHiddenWindow: RenderPage = async (
         url: wc.getURL(),
         title: wc.getTitle(),
         httpStatus,
-        navigations
+        navigations,
+        committedUrl
       }
 
       const text = (await wc.executeJavaScript(
@@ -821,7 +824,7 @@ export const renderPageInHiddenWindow: RenderPage = async (
             collectMs: BODY_COLLECT_TIMEOUT_MS,
             writeMs: RECORD_WRITE_TIMEOUT_MS,
             timeLeftMs: () => remainingMs(END_MARGIN_MS),
-            committedUrl,
+            committedUrl: saved.committedUrl,
             writer: {
               captureId,
               birdbrainVersion: toolVersion,

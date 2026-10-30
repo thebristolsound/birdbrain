@@ -327,6 +327,14 @@ wherever the page loads.
   the strict schema refuses would have broken the Case's chain. On the ingest of a Capture
   carrying the capture engine's fields, the entry is now parsed before it is signed, and one that
   fails is not written.
+- On taking step 9's committed-page rule (ruled 2026-10-29), the render reads the URL of the
+  window's last cross-document navigation at the save, with the URL, title, and status, and the
+  Transaction Record's end phases compare the main document with that URL. Step 9 read it after
+  the text, where it also read the URL the Capture was stored under. Read there beside a Capture
+  that keeps the saved page, it would leave out the saved page's Bound TLS Details when the page
+  navigated after the save, and would sign the earlier page's details when the page went back to
+  the blank page before the save and returned after it. Two unit tests in
+  `tests/main/services/backgroundRenderer.test.ts` pin the Bound TLS outcome of both cases.
 - The plan leaves unverified whether pdf.js extracts text without the optional `@napi-rs/canvas`.
   It does not: with no `@napi-rs/canvas` to load, the 5.6.205 legacy build stops at import on
   Node 20.20.2 with `ReferenceError: DOMMatrix is not defined`. pnpm installs the optional

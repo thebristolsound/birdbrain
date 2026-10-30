@@ -91,7 +91,7 @@ const ctl = vi.hoisted(() => ({
   // holds the proxy setup back (finding 5).
   currentUrl: 'https://example.test/final',
   currentTitle: 'Mock Title',
-  navigateAfterSave: null as null | 'other-page' | 'reload' | 'in-page',
+  navigateAfterSave: null as null | 'other-page' | 'reload' | 'in-page' | 'back-to-target',
   setProxyDelayMs: 0,
   // A URL the page navigates to after it loads without sending a request, as going back to the
   // blank page does: the window reports `did-navigate` and the debugger reports nothing.
@@ -172,6 +172,9 @@ const { MockBrowserWindow } = vi.hoisted(() => {
       handlers.get('did-navigate')?.({}, ctl.currentUrl, 200)
     } else if (ctl.navigateAfterSave === 'in-page') {
       ctl.currentUrl = 'https://example.test/final#later'
+    } else if (ctl.navigateAfterSave === 'back-to-target') {
+      // Back to the loaded page without a request, as a history step can.
+      handlers.get('did-navigate')?.({}, 'https://example.test/', 200)
     }
   }
 
@@ -1504,6 +1507,23 @@ describe('renderPageInHiddenWindow, the Transaction Record', () => {
     const { transactionRecord } = await render()
     expect(transactionRecord).toMatchObject({ present: true, boundTlsAbsent: 'not-reported' })
     expect(transactionRecord).not.toHaveProperty('boundTls')
+  }, 30_000)
+
+  // The Capture is stored as the page the save took, so the committed page is read there too.
+  it('states the details absent when the saved page is the blank page, though the page comes back after', async () => {
+    ctl.navigatesTo = 'about:blank'
+    ctl.navigateAfterSave = 'back-to-target'
+    const { transactionRecord } = await render()
+    expect(transactionRecord).toMatchObject({ present: true, boundTlsAbsent: 'not-reported' })
+    expect(transactionRecord).not.toHaveProperty('boundTls')
+  }, 30_000)
+
+  it('signs the details of the saved page when the page navigates after the save', async () => {
+    ctl.navigateAfterSave = 'other-page'
+    const { transactionRecord } = await render()
+    if (!transactionRecord.present) throw transactionRecord.error
+    expect(transactionRecord.boundTls).toMatchObject({ subjectName: 'example.test' })
+    expect(transactionRecord.boundTlsAbsent).toBeUndefined()
   }, 30_000)
 
   it('stops collection before the screenshot, so a later request is not recorded', async () => {

@@ -2,6 +2,7 @@ import { Plus } from 'lucide-react'
 import type { Case } from '@shared/types'
 import { useScreenEntrance } from '@renderer/lib/motion/entrance'
 import { CaseCard } from '@renderer/components/dashboard/CaseCard'
+import { OlderCases, RECENT_CASE_COUNT } from '@renderer/components/dashboard/OlderCases'
 
 interface RecentCasesProps {
   cases: Case[]
@@ -36,7 +37,7 @@ export function RecentCases({
         <div
           className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 ${entering ? 'screen-stagger' : ''}`}
         >
-          {cases.slice(0, 3).map((c) => (
+          {cases.slice(0, RECENT_CASE_COUNT).map((c) => (
             <div key={c.id}>
               <CaseCard
                 caseData={c}
@@ -65,6 +66,14 @@ export function RecentCases({
             </p>
           </div>
         </div>
+
+        <OlderCases
+          cases={cases}
+          captureCounts={captureCounts}
+          onSelectCase={onSelectCase}
+          onRenameCase={onRenameCase}
+          onDeleteCase={onDeleteCase}
+        />
       </div>
     </section>
   )

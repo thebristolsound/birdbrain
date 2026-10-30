@@ -25,7 +25,8 @@ import {
   type SelectorMenuTarget,
   type TagMenuTarget
 } from '@renderer/components/contextmenu/entityMenu'
-import { captureLinkBlockReason } from '@renderer/components/captures/guestLink'
+import { captureLinkBlockReason } from '@shared/localAddress'
+import { isWebHref } from '@renderer/components/captures/linksTabModel'
 
 function captureActions(): CaptureMenuActions {
   return {
@@ -571,6 +572,7 @@ describe('link menu', () => {
       imageUrl: '',
       selectionText: '',
       hasCapturedCopy: false,
+      isWebLink: isWebHref(linkUrl),
       captureBlockedReason: captureLinkBlockReason(linkUrl),
       actions: {
         copyLinkAddress: vi.fn(),
@@ -578,16 +580,22 @@ describe('link menu', () => {
         copyImageAddress: vi.fn(),
         copyText: vi.fn(),
         openCapturedCopy: vi.fn(),
-        captureLink: vi.fn()
+        captureLink: vi.fn(),
+        lookUpInWayback: vi.fn()
       },
       ...overrides
     }
   }
 
-  it('offers the two copies and Capture link on a web link', () => {
+  it('offers the two copies, Capture link and Look up in Wayback on a web link', () => {
     const target = linkTarget()
     const entries = linkMenuEntries(target)
-    expect(labels(entries)).toEqual(['Copy link address', 'Copy link text', 'Capture link'])
+    expect(labels(entries)).toEqual([
+      'Copy link address',
+      'Copy link text',
+      'Capture link',
+      'Look up in Wayback'
+    ])
     expect(actionById(entries, 'link-capture').disabled).toBe(false)
     actionById(entries, 'link-capture').run()
     actionById(entries, 'link-copy-address').run()
@@ -601,7 +609,8 @@ describe('link menu', () => {
       'Copy link address',
       'Copy link text',
       'Open captured copy',
-      'Capture link'
+      'Capture link',
+      'Look up in Wayback'
     ])
     const target = linkTarget({ hasCapturedCopy: true })
     actionById(linkMenuEntries(target), 'link-open-captured').run()
@@ -640,7 +649,12 @@ describe('link menu', () => {
     ['http://[::127.0.0.1]/', 'Points at an IPv4-compatible address'],
     ['http://[::a00:1]/', 'Points at an IPv4-compatible address'],
     ['http://[64:ff9b::7f00:1]/', 'Points at a NAT64 address'],
-    ['http://[64:ff9b::a9fe:a9fe]/', 'Points at a NAT64 address']
+    ['http://[64:ff9b::a9fe:a9fe]/', 'Points at a NAT64 address'],
+    ['http://wiki/', 'Points at a private network'],
+    ['http://intranet/home', 'Points at a private network'],
+    ['http://printer.local/', 'Points at a private network'],
+    ['https://grafana.corp.internal/', 'Points at a private network'],
+    ['http://nas.home.arpa/', 'Points at a private network']
   ])('never offers an enabled Capture link for %s', (linkUrl, reason) => {
     const entries = linkMenuEntries(linkTarget({ linkUrl }))
     const capture = actionById(entries, 'link-capture')
@@ -648,6 +662,37 @@ describe('link menu', () => {
     expect(capture.label).toBe(`Capture link (${reason})`)
     expect(labels(entries).slice(0, 2)).toEqual(['Copy link address', 'Copy link text'])
   })
+
+  // #1737: the lookup discloses the address to archive.org, so it is refused for exactly
+  // the addresses Capture link is, with the same reason.
+  it.each([
+    ['http://127.0.0.1/', 'Points at a loopback address'],
+    ['http://192.168.1.1/', 'Points at a private address'],
+    ['http://wiki/', 'Points at a private network'],
+    ['http://printer.local/', 'Points at a private network']
+  ])('turns Look up in Wayback off for %s, with the reason', (linkUrl, reason) => {
+    const wayback = actionById(linkMenuEntries(linkTarget({ linkUrl })), 'link-wayback')
+    expect(wayback.disabled).toBe(true)
+    expect(wayback.label).toBe(`Look up in Wayback (${reason})`)
+  })
+
+  it('carries the disclosure hint on Look up in Wayback, and runs the lookup', () => {
+    const target = linkTarget()
+    const wayback = actionById(linkMenuEntries(target), 'link-wayback')
+    expect(wayback.disabled).toBe(false)
+    expect(wayback.hint).toBe('Looking up this link discloses it to archive.org.')
+    wayback.run()
+    expect(target.actions.lookUpInWayback).toHaveBeenCalledOnce()
+  })
+
+  it.each(['mailto:someone@example.com', 'tel:+15550100', 'javascript:alert(1)'])(
+    'offers no Look up in Wayback for %s',
+    (linkUrl) => {
+      const entries = linkMenuEntries(linkTarget({ linkUrl }))
+      expect(entries.some((e) => e.id === 'link-wayback')).toBe(false)
+      expect(actionById(entries, 'link-capture').disabled).toBe(true)
+    }
+  )
 
   it.each([
     'https://example.com/',
@@ -676,7 +721,8 @@ describe('link menu', () => {
       'Copy image address',
       'Copy link address',
       'Copy link text',
-      'Capture link'
+      'Capture link',
+      'Look up in Wayback'
     ])
     // An image link has no text of its own to copy.
     expect(actionById(entries, 'link-copy-text').disabled).toBe(true)
@@ -704,8 +750,10 @@ describe('link menu', () => {
     expect(entityMenuHeader(target).ariaLabel).toBe('Selection actions: a quoted passage')
   })
 
+  // Slice 1 also kept Wayback out; slice 3 (#1737) adds Look up in Wayback, which sends
+  // the address to archive.org and never opens the link itself.
   it('never offers to open a link or send it to an external browser', () => {
     const entries = linkMenuEntries(linkTarget({ hasCapturedCopy: true }))
-    expect(entries.some((e) => /external|browser|wayback|follow/i.test(e.label))).toBe(false)
+    expect(entries.some((e) => /external|browser|follow/i.test(e.label))).toBe(false)
   })
 })

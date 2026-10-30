@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'motion/react'
-import { Search, Plus, Clock, Compass, MessageSquareWarning } from 'lucide-react'
+import { Search, Plus, Clock, Compass, MessageSquareWarning, Users } from 'lucide-react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { casesQueryOptions, captureCountsQueryOptions } from '@renderer/lib/queries'
+import { sharingAvailableQueryOptions } from '@renderer/lib/api/sharing'
+import { formatRelativeTimeShort } from '@renderer/lib/formatRelativeTime'
+import { shareActionLabel } from '@renderer/components/sharing/memberModel'
 import { presets } from '@renderer/lib/motion'
 import { trapTab, useModalFocus } from '@renderer/components/ui'
 import { startTour } from '@renderer/components/onboarding/startTour'
@@ -12,17 +15,6 @@ import { useTimeTick } from '@renderer/hooks/useTimeTick'
 
 function pluralCaptures(n: number): string {
   return `${n} capture${n === 1 ? '' : 's'}`
-}
-
-function formatAge(dateStr: string, now: number): string {
-  const diff = now - new Date(dateStr).getTime()
-  const minutes = Math.floor(diff / 60_000)
-  if (minutes < 60) return `${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h`
-  const days = Math.floor(hours / 24)
-  if (days < 7) return `${days}d`
-  return `${Math.floor(days / 7)}w`
 }
 
 export function CommandPalette() {
@@ -39,6 +31,20 @@ export function CommandPalette() {
 
   const { data: cases = [] } = useQuery(casesQueryOptions)
   const { data: captureCounts = {} } = useQuery(captureCountsQueryOptions)
+  const { data: sharingAvailable } = useQuery(sharingAvailableQueryOptions)
+
+  // The open Case's sharing row (docs/design-handoff/2026-10-28-share-a-case/,
+  // frame D): absent on the dashboard and the wizard, where no Case is open,
+  // and where sharing is unavailable.
+  const activeCase = cases.find((c) => c.id === activeCaseId)
+  const shareRow =
+    activeCaseId !== undefined && sharingAvailable === true
+      ? {
+          caseId: activeCaseId,
+          label: shareActionLabel(Boolean(activeCase?.sharedAt)),
+          caseName: activeCase?.name ?? ''
+        }
+      : null
 
   const filtered = cases.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()))
 
@@ -46,6 +52,69 @@ export function CommandPalette() {
   // control inside, and closing hands focus back to whatever opened the
   // palette. Escape stays with useCommandPalette, which owns the Ctrl+K toggle.
   const openerRef = useModalFocus(open, panelRef)
+
+  // The rows under the Case list, in display order. They share the list's
+  // highlight, so ArrowDown walks past the last Case into them and Enter runs
+  // the highlighted one; a click or Tab reaches them as before.
+  const actions: PaletteAction[] = [
+    {
+      key: 'new',
+      icon: <Plus className="h-4 w-4 shrink-0 text-text-faint" />,
+      label: 'Create new case',
+      run: () => {
+        navigate({ to: '/cases/new' })
+        setOpen(false)
+      }
+    },
+    ...(shareRow
+      ? [
+          {
+            key: 'share',
+            testId: 'palette-share-case',
+            icon: <Users className="h-4 w-4 shrink-0 text-text-faint" />,
+            label: shareRow.label,
+            trailing: shareRow.caseName,
+            run: () => {
+              navigate({ to: '/cases/$caseId/settings', params: { caseId: shareRow.caseId } })
+              setOpen(false)
+            }
+          }
+        ]
+      : []),
+    {
+      key: 'join',
+      testId: 'palette-join-shared-case',
+      icon: <Users className="h-4 w-4 shrink-0 text-text-faint" />,
+      label: 'Join a shared Case…',
+      run: () => {
+        navigate({ to: '/cases/new', search: { join: true } })
+        setOpen(false)
+      }
+    },
+    {
+      key: 'tour',
+      testId: 'palette-replay-tour',
+      icon: <Compass className="h-4 w-4 shrink-0 text-text-faint" />,
+      label: 'Replay walkthrough',
+      run: () => {
+        // The tour records whatever holds focus as its opener, and this row
+        // is about to unmount: hand it the palette's.
+        openerRef.current?.focus()
+        setOpen(false)
+        startTour('intro')
+      }
+    },
+    {
+      key: 'report',
+      icon: <MessageSquareWarning className="h-4 w-4 shrink-0 text-text-faint" />,
+      label: 'Report a problem',
+      run: () => {
+        window.dispatchEvent(new CustomEvent('birdbrain:report', { detail: {} }))
+        setOpen(false)
+      }
+    }
+  ]
+  const rowCount = filtered.length + actions.length
 
   // Reset state when palette opens
   useEffect(() => {
@@ -55,10 +124,10 @@ export function CommandPalette() {
     }
   }, [open])
 
-  // Clamp selectedIndex when filtered list changes
+  // Clamp selectedIndex when the rows change
   useEffect(() => {
-    setSelectedIndex((i) => Math.min(i, Math.max(0, filtered.length - 1)))
-  }, [filtered.length])
+    setSelectedIndex((i) => Math.min(i, rowCount - 1))
+  }, [rowCount])
 
   function selectCase(caseId: string) {
     navigate({ to: '/cases/$caseId/captures', params: { caseId } })
@@ -68,19 +137,15 @@ export function CommandPalette() {
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setSelectedIndex((i) => Math.min(i + 1, filtered.length - 1))
+      setSelectedIndex((i) => Math.min(i + 1, rowCount - 1))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setSelectedIndex((i) => Math.max(i - 1, 0))
     } else if (e.key === 'Enter') {
       e.preventDefault()
       const target = filtered[selectedIndex]
-      if (target) {
-        selectCase(target.id)
-      } else if (filtered.length === 0) {
-        navigate({ to: '/cases/new' })
-        setOpen(false)
-      }
+      if (target) selectCase(target.id)
+      else actions[selectedIndex - filtered.length]?.run()
     }
   }
 
@@ -165,7 +230,7 @@ export function CommandPalette() {
                         <span>{pluralCaptures(count)}</span>
                         <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
-                          {formatAge(c.createdAt, now)}
+                          {formatRelativeTimeShort(c.createdAt, now)}
                         </span>
                       </div>
                     </button>
@@ -174,46 +239,47 @@ export function CommandPalette() {
               )}
             </div>
 
-            {/* Create new option */}
+            {/* Actions under the Case list */}
             <div className="border-t border-border py-1">
-              <button
-                className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-text-secondary transition-colors hover:bg-elevated"
-                onClick={() => {
-                  navigate({ to: '/cases/new' })
-                  setOpen(false)
-                }}
-              >
-                <Plus className="h-4 w-4 shrink-0 text-text-faint" />
-                <span className="text-sm">Create new case</span>
-              </button>
-              <button
-                data-testid="palette-replay-tour"
-                className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-text-secondary transition-colors hover:bg-elevated"
-                onClick={() => {
-                  // The tour records whatever holds focus as its opener, and
-                  // this button is about to unmount: hand it the palette's.
-                  openerRef.current?.focus()
-                  setOpen(false)
-                  startTour('intro')
-                }}
-              >
-                <Compass className="h-4 w-4 shrink-0 text-text-faint" />
-                <span className="text-sm">Replay walkthrough</span>
-              </button>
-              <button
-                className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-text-secondary transition-colors hover:bg-elevated"
-                onClick={() => {
-                  window.dispatchEvent(new CustomEvent('birdbrain:report', { detail: {} }))
-                  setOpen(false)
-                }}
-              >
-                <MessageSquareWarning className="h-4 w-4 shrink-0 text-text-faint" />
-                <span className="text-sm">Report a problem</span>
-              </button>
+              {actions.map((action, j) => {
+                const index = filtered.length + j
+                const isSelected = index === selectedIndex
+                return (
+                  <button
+                    key={action.key}
+                    data-testid={action.testId}
+                    className={[
+                      'flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors',
+                      isSelected
+                        ? 'bg-accent-subtle text-text-primary'
+                        : 'text-text-secondary hover:bg-elevated'
+                    ].join(' ')}
+                    onMouseEnter={() => setSelectedIndex(index)}
+                    onClick={action.run}
+                  >
+                    {action.icon}
+                    <span className="min-w-0 flex-1 truncate text-sm">{action.label}</span>
+                    {action.trailing !== undefined && (
+                      <span className="max-w-[40%] shrink-0 truncate text-xs text-text-faint">
+                        {action.trailing}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
             </div>
           </motion.div>
         </motion.div>
       )}
     </AnimatePresence>
   )
+}
+
+type PaletteAction = {
+  key: string
+  testId?: string
+  icon: ReactNode
+  label: string
+  trailing?: string
+  run: () => void
 }

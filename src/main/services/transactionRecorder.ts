@@ -428,19 +428,35 @@ export type TransactionRecordOutcome =
   // Bound TLS Details are then `not-recorded` (D7).
   | { present: false; reason: 'failed'; error: unknown }
 
+// A document's URL without its fragment, which CDP leaves out of a request's URL; undefined when
+// it does not parse.
+const documentUrl = (url: string): URL | undefined => {
+  try {
+    const parsed = new URL(url)
+    parsed.hash = ''
+    return parsed
+  } catch {
+    return undefined
+  }
+}
+
 // D7: why the entry carries no Bound TLS Details, or the details of the main document.
+// `committedUrl` is the URL of the window's last cross-document navigation. A navigation that
+// sends no request, such as going back to the blank page the window loads first or opening
+// `about:blank`, leaves the main document on the earlier page, so its details are signed only
+// when that page is the one the window ends on (ruling of 2026-10-29 on #1999).
 export function boundTlsOf(
-  mainDocument: Exchange | undefined
+  mainDocument: Exchange | undefined,
+  committedUrl: string
 ): { boundTls: BoundTls } | { boundTlsAbsent: Exclude<BoundTlsAbsence, 'not-recorded'> } {
   if (mainDocument === undefined) return { boundTlsAbsent: 'not-reported' }
   const { response, request, state } = mainDocument
-  let protocol: string
-  try {
-    protocol = new URL(response?.url ?? request.url).protocol
-  } catch {
+  const url = documentUrl(response?.url ?? request.url)
+  const committed = documentUrl(committedUrl)
+  if (url === undefined || committed === undefined || url.href !== committed.href) {
     return { boundTlsAbsent: 'not-reported' }
   }
-  if (protocol === 'http:') return { boundTlsAbsent: 'not-https' }
+  if (url.protocol === 'http:') return { boundTlsAbsent: 'not-https' }
   if (state === 'cached') return { boundTlsAbsent: 'from-cache' }
   return response?.securityDetails
     ? { boundTls: response.securityDetails }
@@ -461,6 +477,8 @@ export interface FinishOptions {
    */
   timeLeftMs?: () => number
   writer: Omit<WriterInput, 'exchanges'>
+  /** The URL of the window's last cross-document navigation, which `boundTlsOf` compares. */
+  committedUrl: string
   budget?: RecorderBudget
   write?: (input: WriterInput) => Promise<WrittenTransactionRecord>
 }
@@ -482,6 +500,7 @@ export async function finishTransactionRecord(
     writeMs,
     timeLeftMs = () => Number.POSITIVE_INFINITY,
     writer,
+    committedUrl,
     budget = TRANSACTION_RECORD_BUDGET,
     write = writeTransactionRecord
   }: FinishOptions
@@ -512,7 +531,7 @@ export async function finishTransactionRecord(
       replacedHeaders: replacedHeaders.filter(isCredentialName),
       budget: { totalBytes: budget.totalBytes, resourceBytes: budget.resourceBytes }
     }) as PresentTransactionRecord
-    const bound = boundTlsOf(mainDocument)
+    const bound = boundTlsOf(mainDocument, committedUrl)
     return {
       present: true,
       warcGz: Buffer.from(bytes),

@@ -21,6 +21,7 @@ import { canonicalizeUrl } from '@shared/urlCanonicalize'
 import type {
   CaptureCardDetails,
   ActiveSelectorsResult,
+  ScreenshotKind,
   ScreenshotStatus,
   SelectorMatchInfo
 } from '@shared/schemas'
@@ -105,12 +106,9 @@ async function captureScreenshot(tabId: number): Promise<Blob | undefined> {
   }
 }
 
-// The kinds a screenshot path can produce, from most of the page to least.
-// The two full-page helpers fall back down this list rather than fail, so
-// they report what they produced and the caller tells the operator when it
-// is less than what was asked for (#1667).
-type ScreenshotKind = 'scrolling' | 'full-page' | 'viewport' | 'none'
-
+// The two full-page helpers fall back down ScreenshotKind's list rather than
+// fail, so they report what they produced and the caller tells the operator
+// when it is less than what was asked for (#1667).
 interface ScreenshotResult {
   blob: Blob | undefined
   kind: ScreenshotKind
@@ -887,6 +885,11 @@ async function manualCaptureTab(
           ? 'Captured (screenshot too large)'
           : fallbackNote && `Captured (${fallbackNote})`
       const toastStatus = toastMessage ? 'degraded' : 'success'
+      // What the capture actually stored, so the card names it instead of the
+      // mode that was asked for: a fallback stored less, a drop stored none.
+      // Absent when no screenshot path ran (screenshots turned off).
+      const storedScreenshot: ScreenshotKind | undefined =
+        result.screenshotStatus === 'dropped' ? 'none' : shot?.kind
       if (lastOnTab) {
         card = {
           caseId,
@@ -898,7 +901,12 @@ async function manualCaptureTab(
           manifestIndex: result.manifestIndex ?? null,
           tags: []
         }
-        outcome = { type: 'UPDATE_CAPTURE_TOAST', status: toastStatus, message: toastMessage }
+        outcome = {
+          type: 'UPDATE_CAPTURE_TOAST',
+          status: toastStatus,
+          message: toastMessage,
+          storedScreenshot
+        }
       }
     })
     // The card mounts only after upload AND suppression restoration have settled.
@@ -996,11 +1004,15 @@ function quoteNoteTitle(pageTitle: string, url: string): string {
 // 'degraded' toast. The bar has no toast, so the same fact rides its inline
 // result — without it a capture lands short of a frame and reads as an
 // unqualified success. A dropped screenshot wins, as it does on the toast.
+// When the route bound to a capture the case already held, this action
+// acquired nothing and stored no screenshot, so no note rides the result: the
+// fallback the frames took en route describes bytes the route discarded.
 function attachDetail(
   base: string,
-  result: { screenshotStatus: ScreenshotStatus; screenshotWarning?: string },
+  result: { captured: boolean; screenshotStatus: ScreenshotStatus; screenshotWarning?: string },
   fallbackNote?: string
 ): string {
+  if (!result.captured) return base
   if (result.screenshotStatus === 'dropped') {
     return `${base} — ${result.screenshotWarning || 'screenshot too large'}`
   }

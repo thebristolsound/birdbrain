@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { stubMatchMedia } from './matchMediaStub'
 import { useAppStore } from '@renderer/stores/appStore'
+import { members, sync } from './sharingFixtures'
+import type { Case, SharingMembers } from '@shared/types'
 
 const routerState = vi.hoisted(() => ({ pathname: '/cases/case1/overview' }))
 const navigate = vi.hoisted(() => vi.fn())
@@ -64,16 +66,43 @@ function navigatedToCaseSettings(): boolean {
   })
 }
 
+const getSyncState = vi.fn(async () => sync())
+
+// A Case nobody has shared lists no members.
+const LOCAL_ROSTER = members({ members: [], invites: [], pendingJoins: [] })
+
+function caseRow(extra: Partial<Case> = {}): Case {
+  return {
+    id: 'case1',
+    name: 'Operation Kestrel',
+    isDemo: false,
+    createdAt: '2026-09-19T10:00:00.000Z',
+    updatedAt: '2026-09-19T10:00:00.000Z',
+    archived: false,
+    ...extra
+  }
+}
+
+function bridge(row: Case, roster: SharingMembers = LOCAL_ROSTER) {
+  fakeBridge({
+    cases: {
+      get: vi.fn(async () => row),
+      list: vi.fn(async () => [row])
+    },
+    captures: { countsByCase: vi.fn(async () => ({})) },
+    sharing: {
+      getSyncState,
+      getMembers: vi.fn(async () => roster),
+      isAvailable: vi.fn(async () => true)
+    }
+  })
+}
+
 beforeEach(() => {
   stubMatchMedia(false)
   navigate.mockClear()
-  fakeBridge({
-    cases: {
-      get: vi.fn(async () => ({ id: 'case1', name: 'Operation Kestrel' })),
-      list: vi.fn(async () => [])
-    },
-    captures: { countsByCase: vi.fn(async () => ({})) }
-  })
+  getSyncState.mockClear()
+  bridge(caseRow())
   useAppStore.setState({ sessionActive: false, commandPaletteOpen: false })
 })
 
@@ -82,10 +111,11 @@ afterEach(() => {
   useAppStore.setState({ commandPaletteOpen: false })
 })
 
-// The entry points to Case settings are deferred (#1514, maintainer's
-// correction of 2026-10-23) until the sync defects #1951 and #1955 merge. A
-// mounted one is a finding; this file is what would catch it.
-describe('Case settings has no entry point yet', () => {
+// The entry points to Case settings and the join flow (#1514, and the
+// 2026-10-28 handoff): the top-bar pill on every Case, the Case card's menu
+// (CaseCardMenu.test.tsx), and the palette's share and join actions. The
+// sidebar stays without one.
+describe('Case settings entry points', () => {
   it('is not in the sidebar', () => {
     render(<Sidebar />, { wrapper: Wrapper })
     expect(screen.queryByText(/members|settings/i)).toBeNull()
@@ -93,20 +123,77 @@ describe('Case settings has no entry point yet', () => {
     expect(navigatedToCaseSettings()).toBe(false)
   })
 
-  it('is not in the top bar', async () => {
+  it('opens Members from the sync pill on a shared Case', async () => {
+    bridge(caseRow({ sharedAt: '2026-09-19T14:00:00.000Z' }), members())
     render(<TopBar />, { wrapper: Wrapper })
-    const controls = await screen.findByTestId('topbar-controls')
-    expect(controls.textContent).not.toMatch(/members/i)
-    for (const button of controls.querySelectorAll('button')) fireEvent.click(button)
-    expect(navigatedToCaseSettings()).toBe(false)
+    const pill = await screen.findByTestId('share-pill')
+    expect(pill.dataset.state).toBe('synced')
+    fireEvent.click(pill)
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/cases/$caseId/settings',
+      params: { caseId: 'case1' }
+    })
   })
 
-  it('is not in the command palette', () => {
+  it('offers Share on an unshared Case without polling its sync state', async () => {
+    render(<TopBar />, { wrapper: Wrapper })
+    const pill = await screen.findByTestId('share-pill')
+    expect(pill.dataset.state).toBe('share')
+    expect(pill.textContent).toBe('Share')
+    fireEvent.click(pill)
+    expect(navigatedToCaseSettings()).toBe(true)
+    expect(getSyncState).not.toHaveBeenCalled()
+  })
+
+  it('offers Share this Case… in the command palette while a Case is open', async () => {
     useAppStore.setState({ commandPaletteOpen: true })
     render(<CommandPalette />, { wrapper: Wrapper })
-    const panel = screen.getByRole('dialog', { name: 'Command palette' })
-    expect(panel.textContent).not.toMatch(/case settings|members|join a shared case/i)
-    for (const button of panel.querySelectorAll('button')) fireEvent.click(button)
-    expect(navigatedToCaseSettings()).toBe(false)
+    const row = await screen.findByTestId('palette-share-case')
+    expect(row.textContent).toBe('Share this Case…Operation Kestrel')
+    const join = screen.getByTestId('palette-join-shared-case')
+    expect(row.compareDocumentPosition(join) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    fireEvent.click(row)
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/cases/$caseId/settings',
+      params: { caseId: 'case1' }
+    })
+    expect(useAppStore.getState().commandPaletteOpen).toBe(false)
+  })
+
+  it('reaches Share this Case… with the arrow keys and opens it with Enter', async () => {
+    useAppStore.setState({ commandPaletteOpen: true })
+    render(<CommandPalette />, { wrapper: Wrapper })
+    const row = await screen.findByTestId('palette-share-case')
+    // The Case row and the share row's trailing name both read the Case name.
+    await waitFor(() => expect(screen.getAllByText('Operation Kestrel')).toHaveLength(2))
+    const input = screen.getByPlaceholderText('Switch case...')
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(row.className).toContain('bg-accent-subtle')
+
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/cases/$caseId/settings',
+      params: { caseId: 'case1' }
+    })
+    expect(useAppStore.getState().commandPaletteOpen).toBe(false)
+  })
+
+  it('reads Members… in the palette once the Case is shared', async () => {
+    bridge(caseRow({ sharedAt: '2026-09-19T14:00:00.000Z' }), members())
+    useAppStore.setState({ commandPaletteOpen: true })
+    render(<CommandPalette />, { wrapper: Wrapper })
+    expect((await screen.findByTestId('palette-share-case')).textContent).toBe(
+      'Members…Operation Kestrel'
+    )
+  })
+
+  it('offers Join a shared Case in the command palette', () => {
+    useAppStore.setState({ commandPaletteOpen: true })
+    render(<CommandPalette />, { wrapper: Wrapper })
+    fireEvent.click(screen.getByRole('button', { name: 'Join a shared Case…' }))
+    expect(navigate).toHaveBeenCalledWith({ to: '/cases/new', search: { join: true } })
+    expect(useAppStore.getState().commandPaletteOpen).toBe(false)
   })
 })

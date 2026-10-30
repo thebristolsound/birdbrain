@@ -10,6 +10,10 @@ import { SearchBar } from '@renderer/components/search/SearchBar'
 import { SessionControls } from '@renderer/components/status/SessionControls'
 import { ConnectionStatus } from '@renderer/components/status/ConnectionStatus'
 import { CaptureHealth } from '@renderer/components/status/CaptureHealth'
+import { SharePill } from '@renderer/components/status/SharePill'
+import { MemberCodeChip } from '@renderer/components/sharing/MemberCodeChip'
+import { youAreLine } from '@renderer/components/sharing/memberModel'
+import { membersQueryOptions } from '@renderer/lib/api/sharing'
 import { ExportMenu } from '@renderer/components/export/ExportMenu'
 import { useTheme } from '@renderer/hooks/useTheme'
 import { useUpdateStatus } from '@renderer/hooks/useUpdateStatus'
@@ -53,6 +57,15 @@ export function TopBar() {
     ...caseQueryOptions(activeCaseId ?? ''),
     enabled: !!activeCaseId
   })
+  // This installation's Member Code leads the breadcrumb on a shared Case
+  // (docs/design-handoff/2026-10-28-share-a-case/, frame C); a Case nobody
+  // shared has an empty roster and no chip.
+  const { data: roster } = useQuery({
+    ...membersQueryOptions(activeCaseId ?? ''),
+    enabled: !!activeCaseId
+  })
+  const self = roster?.members.find((m) => m.installationId === roster.installationId) ?? null
+  const switchTitle = `Switch case (${accelerator('K')})`
 
   // Simplified settings header
   if (isOnSettings) {
@@ -123,8 +136,16 @@ export function TopBar() {
               data-tour="caseswitcher"
               onClick={() => setCommandPaletteOpen(true)}
               className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-elevated transition-colors"
-              title={`Switch case (${accelerator('K')})`}
+              title={self ? `${switchTitle} · ${youAreLine(self.memberCode)}` : switchTitle}
             >
+              {self && (
+                <MemberCodeChip
+                  code={self.memberCode}
+                  hue="accent"
+                  size={18}
+                  data-testid="topbar-member-code"
+                />
+              )}
               <span className="max-w-[220px] truncate font-display text-xs font-bold text-text-primary">
                 {activeCase?.name ?? ''}
               </span>
@@ -149,6 +170,15 @@ export function TopBar() {
         {/* The case's session switch lives in CaseActionBar, under this bar. */}
         {sessionActive && <RecIndicator />}
 
+        {/* The Case's one sharing control: "Share" until a peer joins, then the sync state. */}
+        {activeCase && (
+          <SharePill
+            caseId={activeCase.id}
+            onOpenMembers={() =>
+              navigate({ to: '/cases/$caseId/settings', params: { caseId: activeCase.id } })
+            }
+          />
+        )}
         <ConnectionStatus />
         <CaptureHealth />
 

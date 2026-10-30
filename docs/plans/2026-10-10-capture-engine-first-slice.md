@@ -383,11 +383,13 @@ inventory: {
 
 `scrollToLoad: { requested: true, ran: boolean, outcome?, endHeight?, scrollLockLifted: boolean }`.
 
-The background renderer always requests the phase. `endHeight` is the last document height the
-step script reported, in CSS pixels, and is absent when the loop read none. `scrollLockLifted` is
-true when `SCROLL_UNLOCK_SCRIPT` lifted a consent wall's lock: the lock is restored before the
-artifacts, but loosening it can change which lazy content loads. `outcome` maps to where
-`scrollToLoadLazyContent` ends today:
+The background renderer always requests the phase. `endHeight` is the last height the step
+script reported for the root it scrolled, the document or an inner panel, in CSS pixels, and is
+absent when the loop read none or the last height it read is not a non-negative safe integer
+(`Number.isSafeInteger`, so an integer above 2^53 - 1 is left out too).
+`scrollLockLifted` is true when `SCROLL_UNLOCK_SCRIPT` lifted a consent wall's lock: the lock is
+restored before the artifacts, but loosening it can change which lazy content loads. `outcome`
+maps to where `scrollToLoadLazyContent` ends today:
 
 | Record | Where the loop ends |
 | --- | --- |
@@ -1253,10 +1255,17 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   `Network.configureDurableMessages`, and the maintainer ruled on its three questions (the spike,
   "Rulings, 2026-10-26"). Step 9 sends that command with the `Network.enable` limits on the page's
   session and on each attached session in D17's order, and counts a target as recorded only when
-  it answered. The collector keeps a text body only from such a session. Step 9 applies the
-  per-resource limit itself before it keeps a body and records an oversized body as omitted. A
-  page's copy of a response that a service worker answered is `body-omitted`. Step 9's pull request
-  removes the writer's `x-birdbrain-decoded-text` marker and its `warcinfo` sentence.
+  it answered. The collector keeps a body returned as a string only from such a session. Step 9
+  applies the per-resource limit itself before it keeps a body and records an oversized body as
+  omitted. A page's copy of a response that a service worker answered is `body-omitted`. Step 9's
+  pull request removes the writer's `x-birdbrain-decoded-text` marker and its `warcinfo` sentence.
+  The spike ran on Electron 44.9.1, so step 9 re-checks the experimental
+  `Network.configureDurableMessages` on the Electron version `main` pins (45.0.0 since #1994)
+  before it relies on it. Done on 2026-10-29 after this branch took `main`: on Electron 45.0.0
+  with Chromium 156.0.8078.48, `e2e/recapture-transaction-record.spec.ts` passed all eight tests.
+  Its known-answer test counted five recorded targets, which needs the command to answer on each
+  session, and matched the windows-1252, Shift_JIS, byte-order-mark and mislabelled text bodies
+  to the served bytes (validation record, step 9, Environments).
 - **Time.** The render races one deadline and, when the deadline wins, rejects with "Recapture
   timed out" and stores nothing; `FINAL_ARTIFACT_RESERVE_MS` reserves 20 s for the screenshot,
   MHTML, and text only (`renderPageInHiddenWindow`). Two new phases need time at the end: the
@@ -1437,7 +1446,7 @@ open.
 | Before beta.23 (#1799, a draft pull request) is tagged, decide which schema steps land in it | 1 | Ruled: beta.23 ships as is, carrying only the schema-5 (Egress) reader; the ADR-0040 and #586 schema steps share the later release with step 1's verifier |
 | Settle the `warcio` licence and approve the test-only readers | 8, and 9 and 10 through it | Ruled: both licence texts through an `append` override, the 2026-10-02 approval covering the runtime and transitive dependencies, and no upstream request now; a hand-written WARC reader plus a manual Python `warcio check`; `pdfjs-dist` 5.6.205, exact-pinned, with a Dependabot ignore for 5.7 and later |
 | Choose how the probe is rerun on each Electron upgrade | 9 | Ruled as recommended: the CI test on each Electron change (D15); step 9 commits the script, and the maintainer opens the pull request that adds the CI job (ADR-0048 sign-off) |
-| Tag a release carrying step 1's verifier, with notes telling Shared Case members to upgrade together | 6, 9, 10 | Owed: the tag. Steps 2 to 5, 7, and 8 do not wait for it (open question A, ruled). The ADR-0040 and #586 schema steps ship in the same release. Sequenced 2026-10-26 by the orchestrating session, pending the maintainer's confirmation: the tag also waits for step 3 (#1925) and step 4 (#1926), so no release reads schema 6 while Shared Case sync fetches neither new file or `verify.sh` checks neither |
+| Tag a release carrying step 1's verifier, with notes telling Shared Case members to upgrade together | 6, 9, 10 | Owed: the tag. Steps 2 to 5, 7, and 8 do not wait for it (open question A, ruled). The ADR-0040 schema step ships in the same release; #586's takes a later number (the delivery roadmap's 2026-10-26 ruling). Sequenced 2026-10-26 by the orchestrating session, pending the maintainer's confirmation: the tag also waits for step 3 (#1925) and step 4 (#1926), so no release reads schema 6 while Shared Case sync fetches neither new file or `verify.sh` checks neither |
 | Tag a release carrying #1747, and rule whether update checks follow the Egress | 9, through CE-3 (#1695) | Owed: the beta.23 tag; #1799 ships as is, carrying #1747's schema-5 reader. Ruled: `electron-updater` traffic goes through the proxy and fails closed, in CE-3's scope and acceptance |
 | Rule on #1694: where the app displays capture fields | Display beyond `report.html` | Ruled: #1694 closed with its verifier half merged; #1816, after CE-8, shows the Egress, the inventory, the Scroll-to-load outcome, and Bound TLS Details on a Capture, apart from the TLS Cert Chain view. Step 5 covers only `report.html` |
 | Whether #1667 closes once its background half is recorded | none | Ruled: #1667 closes when step 6 records its background half; its extension half closes in favor of CE-S3 |
@@ -1690,6 +1699,10 @@ folded in.
 - **2026-10-26.** D4's Transaction Record part gains `finishedWithoutResponse`, on the
   maintainer's ruling during step 9's review (#1999) as the orchestrating session relayed it.
   Step 1 (#1904) adds it to schema 6; making the collector count it is left to step 9.
+- **2026-10-26.** The charset spike (#1983, PR #1988) found a way for the collector to keep a text
+  response's served bytes, and the maintainer ruled on its three questions the same day. Step 9's
+  Changes gain a "Text bodies" item with the rulings; the spike records them under "Rulings,
+  2026-10-26".
 - **2026-10-26.** Step 10 (#1930) is built as a draft that merges after the schema-6 release tag.
   Its choices: the print runs last, after the Transaction Record's two end phases, with
   `printToPDF({})`, under a 5 s bound cut to the time the render has left, which raises the end

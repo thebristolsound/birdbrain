@@ -93,7 +93,10 @@ read from the source, in the pin's isolated world as the render does: the settle
 5,000 ms, the pin, the load poll up to 2,000 ms, the count, then `savePage(path, 'MHTML')`. Each
 image response is a PNG followed by `TAG:<request path>`, and the server logs each request with
 the phase it arrived in. The review of #2002 ran its own probes, which the fix round confirmed
-from their stored output.
+from their stored output. On 2026-10-30 a further script ran the end-to-end spec's five-image
+page through the render's steps in order (load, settle poll, screenshot, pin, load poll, count,
+save) and switched one difference between the render and the review's probe on at a time; each
+response there is tagged `TAG:<path>#<request number>`.
 
 ## Expected and observed results
 
@@ -207,13 +210,33 @@ the layout bound.
 
 What the standalone scripts showed:
 
-- No request reached the server during the pin for an image that had loaded, a `no-store` one
-  included. Each was `complete` with a natural width straight after its `src` was set, and the
-  MHTML held a part at its address, under a saved `img` naming that address. The app does not
-  behave this way: in the end-to-end run of 2026-10-29, with each response tagged with its
-  request number, the pin asked again for every pinned image, the Transaction Record held both
-  requests, and the MHTML part held the second response. An image the pin left alone was asked
-  for once. Why the app asks again and the standalone window did not was not found.
+- With no screenshot before the pin, no request reached the server during the pin for an image
+  that had loaded, a `no-store` one included. Each was `complete` with a natural width straight
+  after its `src` was set, and the MHTML held a part at its address, under a saved `img` naming
+  that address. The app takes its full-page screenshot between the settle wait and the pin, and
+  in the end-to-end run of 2026-10-29, with each response tagged with its request number, the pin
+  asked again for every pinned image, the Transaction Record held both requests, and the MHTML
+  part held the second response. An image the pin left alone was asked for once.
+- The screenshot is why the app asks again (script of 2026-10-30). Each of these alone left the
+  pin with no request: `Network.enable` with the recorder's buffer limits,
+  `Network.configureDurableMessages`, `Target.setAutoAttach` with `waitForDebuggerOnStart`, the
+  idle tracker's three `webRequest` listeners, and an `onBeforeRequest` handler. The render's
+  screenshot alone, `Page.captureScreenshot` with `captureBeyondViewport`, made the pin request
+  all three pinned images again, and each MHTML part held request `#2`. So did the same call with
+  no clip, and `Emulation.setDeviceMetricsOverride` followed by its clear with no screenshot, at
+  a height of 3,000 pixels or at the window's own size. A screenshot of the viewport only, a 3 s
+  wait, and resizing the window to 3,000 pixels high and back sent no request.
+- After that override the pin's loads reached the browser's network stack, which followed each
+  image's cache headers. With `Cache-Control: max-age=3600` the HTTP cache answered each one
+  (`fromDiskCache` true), the server had one request per image, and each part held request `#1`.
+  With no cache header, with `no-store`, and with `no-cache` and an `ETag` (the script's server
+  answers 200 every time), the server was asked again and each part held request `#2`.
+- Keeping a detached `Image`, or a `link rel=preload`, for each displayed source from before the
+  screenshot did not stop the second request. Setting each `src` to its `currentSrc` before the
+  screenshot, with `srcset` and `sizes` left in place, sent no request: the saver wrote each
+  `img` with that `src` and no `srcset` or `sizes`, the parts held request `#1`, and the counts
+  were 3 and 0. That runs the pin before the screenshot, which the ruling of 2026-10-21 places
+  after it, so the render was not changed.
 - A `srcset` image answered with a 404, or with a 200 that is not an image, has a `currentSrc`
   and a natural width of 0. Under the first version's script, pinning it sent a second request
   during the pin, and the review's probe found that a second request the server answers lands in

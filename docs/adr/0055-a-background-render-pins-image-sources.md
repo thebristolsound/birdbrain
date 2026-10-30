@@ -76,3 +76,9 @@ wrongly.
 - The counts join the schema number the first-slice verifier takes (#1904), because a released
   verifier cannot be recalled.
 - A verifier rejects a not-loaded count above the pinned count.
+- Because the pin runs after the full-page screenshot, each pinned image loads again: the
+  device-metrics override the screenshot applies stops the browser reusing the copy it holds.
+  The browser's cache answers when the first response is still fresh there; otherwise the server
+  is asked a second time and the saved page holds its second answer
+  ([validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md),
+  2026-10-30). Avoiding that by pinning before the screenshot would amend the order of 2026-10-21.

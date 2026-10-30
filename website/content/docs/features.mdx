@@ -39,8 +39,11 @@ prove and what they do not.
   its `srcset` and `sizes`, and waits up to 5 seconds for the pinned images. Both waits use only
   time left before the capture's final steps. The Transaction Record keeps recording until the
   pin is done, so any request it causes is in the record.
-- Pinning asks the server for each pinned image a second time, and the saved page holds the
-  second response. The Transaction Record holds both requests and their responses. If the server
+- The full-page screenshot stops the browser reusing the copy of each image it already holds, so
+  pinning loads each pinned image again. When the first response is still fresh in the browser's
+  cache, as with `Cache-Control: max-age=3600`, the cache answers and the server is not asked
+  again. Otherwise the browser asks the server a second time, the saved page holds the second
+  response, and the Transaction Record holds both requests and their responses. If the server
   answers the second request with different bytes, the saved page differs from what the page
   displayed and from the screenshot.
 - The signed entry records how many images were pinned, and how many of those were still loading

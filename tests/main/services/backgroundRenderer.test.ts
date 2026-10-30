@@ -92,6 +92,8 @@ const ctl = vi.hoisted(() => ({
   currentUrl: 'https://example.test/final',
   currentTitle: 'Mock Title',
   navigateAfterSave: null as null | 'other-page' | 'reload' | 'in-page' | 'back-to-target',
+  // The same navigations, made while the page prints (the review of #2000, a later round).
+  navigateDuringPrint: null as null | 'other-page' | 'reload' | 'in-page',
   setProxyDelayMs: 0,
   // A URL the page navigates to after it loads without sending a request, as going back to the
   // blank page does: the window reports `did-navigate` and the debugger reports nothing.
@@ -163,16 +165,19 @@ const { MockBrowserWindow } = vi.hoisted(() => {
 
   // The page's navigation after the save, as Chromium reports each kind: a
   // cross-document one emits `did-navigate`, an in-page one changes only the URL.
-  const navigateAfterSave = (handlers: Map<string, Handler>): void => {
-    if (ctl.navigateAfterSave === 'other-page') {
+  const navigate = (
+    handlers: Map<string, Handler>,
+    kind: typeof ctl.navigateAfterSave | typeof ctl.navigateDuringPrint
+  ): void => {
+    if (kind === 'other-page') {
       ctl.currentUrl = 'https://example.test/elsewhere'
       ctl.currentTitle = 'Elsewhere'
       handlers.get('did-navigate')?.({}, ctl.currentUrl, 404)
-    } else if (ctl.navigateAfterSave === 'reload') {
+    } else if (kind === 'reload') {
       handlers.get('did-navigate')?.({}, ctl.currentUrl, 200)
-    } else if (ctl.navigateAfterSave === 'in-page') {
+    } else if (kind === 'in-page') {
       ctl.currentUrl = 'https://example.test/final#later'
-    } else if (ctl.navigateAfterSave === 'back-to-target') {
+    } else if (kind === 'back-to-target') {
       // Back to the loaded page without a request, as a history step can.
       handlers.get('did-navigate')?.({}, 'https://example.test/', 200)
     }
@@ -296,7 +301,7 @@ const { MockBrowserWindow } = vi.hoisted(() => {
           }
           if (script.includes('window.scrollTo(0, 0)')) return undefined
           if (script.includes('innerText')) {
-            navigateAfterSave(handlers)
+            navigate(handlers, ctl.navigateAfterSave)
             return 'hello world'
           }
           return undefined
@@ -313,6 +318,7 @@ const { MockBrowserWindow } = vi.hoisted(() => {
           }
           if (ctl.printHangs) return new Promise<Buffer>(() => {})
           if (ctl.printThrows) throw new Error('Printing failed')
+          navigate(handlers, ctl.navigateDuringPrint)
           return ctl.pdfBytes ?? Buffer.from('%PDF-1.4 invented print')
         },
         getTitle() {
@@ -443,6 +449,7 @@ function resetPrint(): void {
   ctl.currentUrl = 'https://example.test/final'
   ctl.currentTitle = 'Mock Title'
   ctl.navigateAfterSave = null
+  ctl.navigateDuringPrint = null
   ctl.setProxyDelayMs = 0
 }
 
@@ -1760,6 +1767,31 @@ describe('renderPageInHiddenWindow, the PDF', () => {
       expect(result.pdf).toMatchObject({ present: false, reason: 'failed' })
       expect(errorOf(result.pdf)).toContain(
         `The page navigated after it was saved, to ${later}, so it was not printed`
+      )
+    },
+    30_000
+  )
+
+  // The pre-pass reviews of #2000 at 39ae663a: a navigation the window reports only once the
+  // print is under way passed the check made before it.
+  it.each([
+    ['to another page', 'other-page', 'https://example.test/elsewhere'],
+    ['by reloading itself', 'reload', 'https://example.test/final'],
+    ['to another address in place', 'in-page', 'https://example.test/final#later']
+  ] as const)(
+    'discards the PDF, and keeps the saved page, when the page navigates %s while it prints',
+    async (_how, navigation, later) => {
+      ctl.navigateDuringPrint = navigation
+      const result = await render()
+      expect(ctl.order).toContain('printToPDF')
+      expect(result).toMatchObject({
+        finalUrl: 'https://example.test/final',
+        title: 'Mock Title',
+        httpStatus: 200
+      })
+      expect(result.pdf).toMatchObject({ present: false, reason: 'failed' })
+      expect(errorOf(result.pdf)).toContain(
+        `The page navigated while it printed, to ${later}, so the PDF was discarded`
       )
     },
     30_000

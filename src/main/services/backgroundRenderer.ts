@@ -530,8 +530,9 @@ interface SavedPage {
 // fetches for printing stays out of the Transaction Record (spec, PDF). Never
 // throws: a page that navigated after the save, or is taller than
 // MAX_PDF_CONTENT_HEIGHT_PX, is not printed, and that, a print that fails or
-// outlasts `boundMs`, and a PDF over MAX_PDF_SIZE each record the PDF absent as
-// `failed`, with an error that names the cause.
+// outlasts `boundMs`, a page the window reports navigated while it printed, and
+// a PDF over MAX_PDF_SIZE each record the PDF absent as `failed`, with an error
+// that names the cause.
 async function printPageToPdf(
   wc: WebContents,
   {
@@ -539,14 +540,20 @@ async function printPageToPdf(
     navigations,
     contentHeight,
     boundMs
-  }: { saved: SavedPage; navigations: number; contentHeight: number; boundMs: number }
+  }: { saved: SavedPage; navigations: () => number; contentHeight: number; boundMs: number }
 ): Promise<PdfOutcome> {
   try {
-    // A print shows whatever the window holds now, so a page that left the saved
+    // A print shows whatever the window holds, so a page that left the saved
     // document, or changed its address in place, would be printed as another page.
-    const url = wc.getURL()
-    if (url !== saved.url || navigations !== saved.navigations) {
-      throw new Error(`The page navigated after it was saved, to ${url}, so it was not printed`)
+    // Checked again after the print, for a navigation the window reports only then
+    // (review of #2000).
+    const navigatedTo = (): string | null => {
+      const url = wc.getURL()
+      return url !== saved.url || navigations() !== saved.navigations ? url : null
+    }
+    const before = navigatedTo()
+    if (before !== null) {
+      throw new Error(`The page navigated after it was saved, to ${before}, so it was not printed`)
     }
     if (contentHeight > MAX_PDF_CONTENT_HEIGHT_PX) {
       throw new Error(
@@ -561,6 +568,10 @@ async function printPageToPdf(
     })
     // Electron's defaults, the options the probe printed with.
     const bytes = await Promise.race([wc.printToPDF({}), bound]).finally(() => clearTimeout(timer))
+    const during = navigatedTo()
+    if (during !== null) {
+      throw new Error(`The page navigated while it printed, to ${during}, so the PDF was discarded`)
+    }
     if (bytes.length > MAX_PDF_SIZE) {
       throw new Error(
         `The PDF is ${bytes.length} bytes, over MAX_PDF_SIZE (${MAX_PDF_SIZE}), so it was discarded`
@@ -843,7 +854,7 @@ export const renderPageInHiddenWindow: RenderPage = async (
       // Last, under its own bound cut to the time left (PRINT_TIMEOUT_MS).
       const pdf = await printPageToPdf(wc, {
         saved,
-        navigations,
+        navigations: () => navigations,
         contentHeight: screenshotRecord.contentHeight,
         boundMs: Math.min(PRINT_TIMEOUT_MS, remainingMs(END_MARGIN_MS))
       })

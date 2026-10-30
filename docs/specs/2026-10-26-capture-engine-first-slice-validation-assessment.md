@@ -209,7 +209,11 @@ What the standalone scripts showed:
 
 - No request reached the server during the pin for an image that had loaded, a `no-store` one
   included. Each was `complete` with a natural width straight after its `src` was set, and the
-  MHTML held a part at its address, under a saved `img` naming that address.
+  MHTML held a part at its address, under a saved `img` naming that address. The app does not
+  behave this way: in the end-to-end run of 2026-10-29, with each response tagged with its
+  request number, the pin asked again for every pinned image, the Transaction Record held both
+  requests, and the MHTML part held the second response. An image the pin left alone was asked
+  for once. Why the app asks again and the standalone window did not was not found.
 - A `srcset` image answered with a 404, or with a 200 that is not an image, has a `currentSrc`
   and a natural width of 0. Under the first version's script, pinning it sent a second request
   during the pin, and the review's probe found that a second request the server answers lands in

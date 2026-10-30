@@ -39,6 +39,10 @@ prove and what they do not.
   its `srcset` and `sizes`, and waits up to 5 seconds for the pinned images. Both waits use only
   time left before the capture's final steps. The Transaction Record keeps recording until the
   pin is done, so any request it causes is in the record.
+- Pinning asks the server for each pinned image a second time, and the saved page holds the
+  second response. The Transaction Record holds both requests and their responses. If the server
+  answers the second request with different bytes, the saved page differs from what the page
+  displayed and from the screenshot.
 - The signed entry records how many images were pinned, and how many of those were still loading
   their pinned source, or had failed to, when the second wait ended. The counts cover only images
   that had settled and displayed an image before the pin. An image still loading after the first

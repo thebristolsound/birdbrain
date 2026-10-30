@@ -67,6 +67,46 @@ describe('appStore', () => {
     })
   })
 
+  describe('viewer tab per capture', () => {
+    const tab = () => useAppStore.getState().activeViewerTab
+
+    beforeEach(() => {
+      useAppStore.setState({ activeViewerTab: 'screenshot', viewerTabs: {} })
+    })
+
+    it('opens a capture that has not been viewed on the Screenshot tab', () => {
+      const { selectCapture, setActiveViewerTab } = useAppStore.getState()
+      selectCapture('cap-1')
+      setActiveViewerTab('wayback')
+      selectCapture('cap-2')
+      expect(tab()).toBe('screenshot')
+    })
+
+    it('reopens each capture on the tab it was left on', () => {
+      const { selectCapture, setSelectedCaptureId, followCaptureLink, setActiveViewerTab } =
+        useAppStore.getState()
+      selectCapture('cap-1')
+      setActiveViewerTab('wayback')
+      selectCapture('cap-2')
+      setActiveViewerTab('links')
+
+      setSelectedCaptureId('cap-1')
+      expect(tab()).toBe('wayback')
+      followCaptureLink('cap-2')
+      expect(tab()).toBe('links')
+      useAppStore.getState().goBackInTrail(new Set(['cap-1']))
+      expect(tab()).toBe('wayback')
+    })
+
+    it('keeps a tab chosen with nothing selected off every capture', () => {
+      const { selectCapture, setSelectedCaptureId, setActiveViewerTab } = useAppStore.getState()
+      setSelectedCaptureId(null)
+      setActiveViewerTab('text')
+      selectCapture('cap-1')
+      expect(tab()).toBe('screenshot')
+    })
+  })
+
   // #1735, plan A3.
   describe('link trail', () => {
     const state = () => useAppStore.getState()

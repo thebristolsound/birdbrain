@@ -19,6 +19,7 @@ import {
 // frames B and G): one button whose label follows the Case from "Share" to its
 // sync state, every state opening Members. Below `lg` the label folds to the
 // icon or the dot and the tooltip carries it, as the Export button's does.
+// Sharing ships as early access, so every state's tooltip leads with it.
 export function SharePill({
   caseId,
   onOpenMembers
@@ -41,7 +42,7 @@ export function SharePill({
     <button
       type="button"
       onClick={onOpenMembers}
-      title={pill.title}
+      title={`${COPY.earlyAccess}. ${pill.title}`}
       data-testid="share-pill"
       data-state={pill.state}
       data-chrome={sync?.chrome}

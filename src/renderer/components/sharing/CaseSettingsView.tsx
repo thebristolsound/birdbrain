@@ -1,6 +1,13 @@
 import { useState } from 'react'
 import { Users } from 'lucide-react'
-import { SectionLabel, Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui'
+import {
+  Badge,
+  SectionLabel,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger
+} from '@renderer/components/ui'
 import { MembersTab } from '@renderer/components/sharing/MembersTab'
 import { COPY } from '@renderer/components/sharing/memberModel'
 
@@ -32,7 +39,15 @@ export function CaseSettingsView({ caseId }: { caseId: string }) {
         </TabsList>
       </nav>
       <div className="min-w-0 flex-1 overflow-auto pl-[18px]">
-        <TabsContent value="members" className="mt-0">
+        <TabsContent value="members" className="mt-0 flex flex-col gap-3">
+          <Badge
+            variant="accent"
+            size="default"
+            className="self-start"
+            data-testid="sharing-early-access"
+          >
+            {COPY.earlyAccess}
+          </Badge>
           <MembersTab caseId={caseId} />
         </TabsContent>
       </div>

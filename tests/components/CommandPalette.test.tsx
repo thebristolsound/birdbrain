@@ -151,6 +151,17 @@ describe('the command palette focus', () => {
   })
 })
 
+// The sharing row belongs to the open Case; CaseSettingsEntryPoints.test.tsx
+// covers it. With none open there is nothing to share.
+describe('the sharing row', () => {
+  it('is absent while no Case is open', () => {
+    useAppStore.setState({ commandPaletteOpen: true })
+    render(<CommandPalette />, { wrapper: Wrapper })
+    expect(screen.getByTestId('palette-join-shared-case')).toBeTruthy()
+    expect(screen.queryByTestId('palette-share-case')).toBeNull()
+  })
+})
+
 describe('the case result row', () => {
   // getByText matches the whole normalized text of the node, so '1 capture'
   // does not match a row reading '1 captures' — which is what pins #471.

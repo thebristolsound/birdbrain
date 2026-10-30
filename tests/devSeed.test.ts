@@ -74,6 +74,7 @@ describe('pnpm dev:seed profile', () => {
   it("opens past onboarding with the profile's own operator and key", () => {
     expect(JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf-8'))).toEqual({
       operatorName: OPERATOR_NAME,
+      onboardingChapters: { share: true },
       hasCompletedOnboarding: true
     })
     expect(getPublicKeyPem()).toBe(readFileSync(join(dir, 'signing-public-key.pem'), 'utf-8'))

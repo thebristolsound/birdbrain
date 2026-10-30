@@ -55,8 +55,9 @@ test.describe('Shared Case members flows', () => {
 
     // The seeded profile reopens its last Case; the Case cards are on Home.
     await page.getByRole('button', { name: 'Home', exact: true }).click()
-    await expect(page.getByTestId('case-card').filter({ hasText: SHARED_CASE_NAME })).toContainText(
-      `Shared by ${OWNER_NAME} · 2 members`
+    const card = page.getByTestId('case-card').filter({ hasText: SHARED_CASE_NAME })
+    await expect(card.getByTestId('case-role-line')).toHaveText(
+      `${OWNER_MEMBER_CODE}You own · 2 members`
     )
 
     await openMembers(page, caseId)

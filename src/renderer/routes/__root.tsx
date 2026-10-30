@@ -33,6 +33,7 @@ import { useSessionRestore } from '@renderer/hooks/useSessionRestore'
 import { useCommandPalette } from '@renderer/hooks/useCommandPalette'
 import { CommandPalette } from '@renderer/components/layout/CommandPalette'
 import { OnboardingTour } from '@renderer/components/onboarding/OnboardingTour'
+import { ShareCoachMark } from '@renderer/components/onboarding/ShareCoachMark'
 import { AppToaster } from '@renderer/components/ui'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 import { subscribeToMainLog } from '@renderer/lib/mainLogBridge'
@@ -142,6 +143,7 @@ const rootRoute = createRootRoute({
           </div>
           <CommandPalette />
           <OnboardingTour />
+          <ShareCoachMark />
           <CrashRecoveryPrompt />
           <ReportProblemDialog
             open={reportOpen}

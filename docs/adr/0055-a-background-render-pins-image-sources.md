@@ -98,7 +98,8 @@ recording stops after that, just before the save.
 - A verifier rejects a not-loaded count above the pinned count.
 - The screenshot shows the page after the pin has changed its DOM. On the pages measured, an
   image whose set has a 1x candidate or width descriptors kept the copy it displayed, with no
-  second request, and the screenshot matched the one taken before the pin pixel for pixel
+  second request, and on each page holding only such images the screenshot matched the one
+  taken before the pin pixel for pixel
   ([validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md),
   2026-10-30).
 - An image offered only at densities other than 1x, such as `srcset="a.png 2x"`, is shown at 1x

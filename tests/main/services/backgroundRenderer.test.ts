@@ -75,6 +75,9 @@ const ctl = vi.hoisted(() => ({
   },
   // An event the page sends while the screenshot is taken, after collection stops.
   lateEvent: false,
+  // A same-address reload of the target while the screenshot is taken, after collection stops
+  // and before the save.
+  reloadsBeforeSave: false,
   // The PDF half (step 10): the content height the layout metrics report, what
   // `printToPDF` returns or whether it never settles or throws, the options it
   // was given, and a request the page starts while it prints, as the probe's
@@ -253,6 +256,9 @@ const { MockBrowserWindow } = vi.hoisted(() => {
             }
             if (cmd === 'Page.captureScreenshot') {
               if (ctl.lateEvent) emitPage(this, 'late', 'https://example.test/late.js', 'Script')
+              if (ctl.reloadsBeforeSave) {
+                handlers.get('did-navigate')?.({}, 'https://example.test/', 200)
+              }
               return { data: ctl.pngBase64 }
             }
             if (cmd === 'Network.getResponseBody') {
@@ -450,6 +456,7 @@ function resetPrint(): void {
   ctl.currentTitle = 'Mock Title'
   ctl.navigateAfterSave = null
   ctl.navigateDuringPrint = null
+  ctl.reloadsBeforeSave = false
   ctl.setProxyDelayMs = 0
 }
 
@@ -1520,6 +1527,14 @@ describe('renderPageInHiddenWindow, the Transaction Record', () => {
   it('states the details absent when the saved page is the blank page, though the page comes back after', async () => {
     ctl.navigatesTo = 'about:blank'
     ctl.navigateAfterSave = 'back-to-target'
+    const { transactionRecord } = await render()
+    expect(transactionRecord).toMatchObject({ present: true, boundTlsAbsent: 'not-reported' })
+    expect(transactionRecord).not.toHaveProperty('boundTls')
+  }, 30_000)
+
+  // The reloaded page came from a request the record does not hold (ruling of 2026-10-30 on #2000).
+  it('states the details absent when the page reloads its own address before the save', async () => {
+    ctl.reloadsBeforeSave = true
     const { transactionRecord } = await render()
     expect(transactionRecord).toMatchObject({ present: true, boundTlsAbsent: 'not-reported' })
     expect(transactionRecord).not.toHaveProperty('boundTls')

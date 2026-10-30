@@ -520,8 +520,11 @@ interface SavedPage {
   httpStatus: number
   // Main-frame navigations committed by the save.
   navigations: number
-  // The last of them, so Bound TLS Details follow the saved page, not a later one.
-  committedUrl: string
+  // The last of them, so Bound TLS Details follow the saved page, not a later one;
+  // undefined when a navigation committed after collection stopped, a same-address
+  // reload included, since no recorded request loaded the saved page (ruling of
+  // 2026-10-30 on #2000).
+  committedUrl: string | undefined
 }
 
 // Prints the page to PDF (step 10 of
@@ -810,6 +813,7 @@ export const renderPageInHiddenWindow: RenderPage = async (
       // Transaction Record). The renderer spike saw no request and no event during
       // either, so stopping here and after the save recorded the same events.
       activeRecorder.stop()
+      const navigationsAtStop = navigations
       const recordedAt = new Date().toISOString()
       const { png: screenshot, record: screenshotRecord } = await captureFullPageScreenshot(wc)
 
@@ -821,7 +825,7 @@ export const renderPageInHiddenWindow: RenderPage = async (
         title: wc.getTitle(),
         httpStatus,
         navigations,
-        committedUrl
+        committedUrl: navigations === navigationsAtStop ? committedUrl : undefined
       }
 
       const text = (await wc.executeJavaScript(

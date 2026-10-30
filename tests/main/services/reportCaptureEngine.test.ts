@@ -217,6 +217,10 @@ describe('report.html capture engine fields', () => {
     expect(html).toMatch(
       /and 10 of them were still loading that source, or had failed to, when the wait before the save\s+ended\. The counts cover only images in the page's own document/
     )
+    expect(html).toMatch(
+      /outside frames, shadow roots\s+and <code>picture<\/code> elements, that had finished loading/
+    )
+    expect(html).toMatch(/an image still loading when the wait before the screenshot ended, one/)
     expect(html).toMatch(/taken, 1280 × 24800 pixels, of a\s+content area of 1280 × 40000 CSS/)
     expect(html).toMatch(/Scaled\s+down: no\. Cut short of the content height: yes\./)
     expect(html).toContain('Trailing background trimmed: yes.')

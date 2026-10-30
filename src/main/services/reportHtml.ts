@@ -1870,10 +1870,11 @@ function inventoryBlock(
     } offered as a set of sources and pinned to the source the page displayed before the save, and ${
       mhtml.pinnedImagesNotLoaded
     } of them were still loading that source, or had failed to, when the wait before the save
-    ended. The counts cover only images in the page's own document, outside frames and shadow
-    roots, that had finished loading and displayed an image before the pin; an image still
-    loading, one that failed to load, and one shown from a <code>blob:</code> address were left
-    as they were and are not counted.`,
+    ended. The counts cover only images in the page's own document, outside frames, shadow roots
+    and <code>picture</code> elements, that had finished loading and displayed an image before the
+    pin; an image still loading when the wait before the screenshot ended, one that failed to
+    load, and one shown from a <code>blob:</code> address were left as they were and are not
+    counted.`,
     `<strong>Screenshot:</strong> taken, ${screenshot.width} × ${screenshot.height} pixels, of a
     content area of ${screenshot.contentWidth} × ${screenshot.contentHeight} CSS pixels. Scaled
     down: ${yesNo(screenshot.scaled)}. Cut short of the content height: ${yesNo(

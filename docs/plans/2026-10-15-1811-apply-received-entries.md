@@ -1,6 +1,6 @@
 # Plan: apply received entries to the local database (#1811)
 
-**Status:** active
+**Status:** done, finished by [#1879](https://github.com/thebristolsound/birdbrain/pull/1879)
 
 The pull request that closes #1811 builds this plan. The maintainer approved the plan on 2026-10-15 and took the
 recommended answer to every question in section 9. Issue #1811 is SC-2b in

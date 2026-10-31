@@ -153,7 +153,7 @@
     "@peculiar/asn1-cms": "^2.11.0",
     "@peculiar/asn1-schema": "^2.11.1",
     "@peculiar/asn1-tsp": "^2.11.0",
-    "@peculiar/asn1-x509": "^2.11.0",
+    "@peculiar/asn1-x509": "^2.11.1",
     "@tanstack/react-query": "^5.105.0",
     "@tanstack/react-router": "^1.170.46",
     "@tiptap/core": "3.32.1",

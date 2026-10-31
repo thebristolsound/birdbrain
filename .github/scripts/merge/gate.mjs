@@ -83,7 +83,14 @@ export function decide(f) {
       `changes ${credential.join(', ')}, which reach the release credentials, with no sign-off at head: ${needs}`
     )
   }
-  return { pass: reasons.length === 0, agent, evidence, credential: credential.length > 0, reasons }
+  return {
+    pass: reasons.length === 0,
+    agent,
+    evidence,
+    credential: credential.length > 0,
+    signedOff,
+    reasons
+  }
 }
 
 function api(path) {

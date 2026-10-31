@@ -1,6 +1,6 @@
 # Keep unreachable Capture rows local
 
-**Status:** active
+**Status:** done, finished by [#1966](https://github.com/thebristolsound/birdbrain/pull/1966)
 
 This is the implementation handoff for #1951, the Shared Case sync failure caused by a signed
 working row on an imported or legacy Capture. The issue recommends filtering the offer rather

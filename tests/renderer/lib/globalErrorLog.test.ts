@@ -31,6 +31,21 @@ describe('logUncaughtErrors', () => {
     })
   })
 
+  it('skips the ResizeObserver loop notice, which carries no error', () => {
+    const message = 'ResizeObserver loop completed with undelivered notifications.'
+    window.dispatchEvent(new ErrorEvent('error', { message }))
+    expect(log).not.toHaveBeenCalled()
+  })
+
+  it('still logs an error event that carries no error object', () => {
+    window.dispatchEvent(new ErrorEvent('error', { message: 'Script error.' }))
+    expect(log).toHaveBeenCalledWith({
+      level: 'error',
+      code: 'app.uncaught_exception',
+      error: 'UnknownError'
+    })
+  })
+
   it('logs a rejection nobody handled', () => {
     window.dispatchEvent(rejection(new RangeError('out of range')))
     expect(log).toHaveBeenCalledWith({

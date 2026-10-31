@@ -745,12 +745,13 @@ image`, absent when N is 0. Step 5's sentence in the report's artifact inventory
   left as they are and not counted, and the MHTML lacks any of them offered only through
   `srcset`. An image the page has not started loading, such as a lazy one below where
   Scroll-to-load stopped, holds the settle wait to its end.
-- An image offered only at densities other than 1x, with no `width` and `height`, shows at its
-  natural size from the pin on, in the screenshot, the saved page and the PDF, and the page can
-  grow (under the scripts of 2026-10-29 the PDF of the tall SVG page went from 7 to 16 pages;
-  this round did not rerun it). The screenshot loads such an image again, so the saved page holds
-  the second response. An image shown from a width descriptor keeps its displayed size in all
-  three: the live page keeps `sizes`, and the serializer writes its `width` and `height`.
+- An image whose plain source is also one of its listed candidates, where the pin cannot tell
+  which candidate the page displayed, keeps its whole `srcset` and only gains `src`. The
+  screenshot loads it again, so the saved page holds the second response, and the Transaction
+  Record holds both (ruling 10). Every other image shown from a density candidate is narrowed to
+  that candidate written as a width entry with a matching `sizes` (rulings 8 and 9), and an image
+  shown from a width descriptor is narrowed to its own entry; both keep their displayed size in
+  the screenshot, the saved page and the PDF, and are fetched once.
 - Both waits take at most 5 s each of the time left before the 40 s end reserve and nothing from
   the reserve. A page whose earlier phases used that time gets no wait: an image offered as a set
   still loading then is left out, and a pinned image that needed a new request counts as not

@@ -291,6 +291,7 @@ export const COPY = {
   detailsInMembers: 'Details in Members',
   clickToOpen: 'Click to open Members.',
   share: 'Share',
+  earlyAccess: 'Early access',
   shareTitle: 'Share this Case with teammates. Opens Members.',
   inviteWaiting: 'invite waiting',
   shareThisCase: 'Share this Case…',

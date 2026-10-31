@@ -215,8 +215,16 @@ describe('report.html capture engine fields', () => {
 
     // Inventory: each file, the MHTML counts, and the screenshot record.
     expect(html).toContain('Artifact inventory')
-    expect(html).toContain('12 images were pinned to the source displayed before the save')
-    expect(html).toContain('and 10 of them had not loaded when the save ran')
+    expect(html).toContain(
+      '12 images were offered as a set of sources and pinned to the source the page displayed before the screenshot and the save'
+    )
+    expect(html).toMatch(
+      /and 10 of them were still loading, or had failed to load, just before the save\. The counts cover\s+only images in the page's own document/
+    )
+    expect(html).toMatch(
+      /outside frames, shadow roots and\s+<code>picture<\/code> elements, that had finished loading/
+    )
+    expect(html).toMatch(/an image still loading when the wait before the pin ended, one/)
     expect(html).toMatch(/taken, 1280 × 24800 pixels, of a\s+content area of 1280 × 40000 CSS/)
     expect(html).toMatch(/Scaled\s+down: no\. Cut short of the content height: yes\./)
     expect(html).toContain('Trailing background trimmed: yes.')
@@ -258,7 +266,9 @@ describe('report.html capture engine fields', () => {
     expect(html).toContain(
       'Requested, and ran; it stopped when the page stopped growing and scrolling made no progress.'
     )
-    expect(html).toContain('The last document height it read was 40000 CSS pixels.')
+    expect(html).toContain(
+      'The last height it read of the document or inner panel it scrolled was 40000 CSS pixels.'
+    )
     expect(html).toContain("It lifted the page's scroll lock")
 
     // Bound TLS Details, every field.
@@ -325,7 +335,9 @@ describe('report.html capture engine fields', () => {
       })
     )
 
-    expect(html).toContain('1 image was pinned to the source displayed before the save')
+    expect(html).toContain(
+      '1 image was offered as a set of sources and pinned to the source the page displayed before the screenshot and the save'
+    )
     expect(html).toContain(
       'Transaction Record:</strong> not taken: the build that made this capture does not take this file.'
     )
@@ -344,7 +356,7 @@ describe('report.html capture engine fields', () => {
     ['from-cache', 'the response for the main document reported a cache hit'],
     [
       'not-reported',
-      'the browser reported no security details on the response for the main document'
+      'the browser reported no security details on the response for the main document, the window committed a page after network recording stopped, or the page the capture saved was not one that response loaded'
     ]
   ])('states the Bound TLS absence %s', (reason, text) => {
     const html = reportFor(engineFields({ boundTls: undefined, boundTlsAbsent: reason }))
@@ -367,7 +379,7 @@ describe('report.html capture engine fields', () => {
     expect(html).toContain(
       'Requested, and ran; the entry records no outcome. It did not lift a scroll lock.'
     )
-    expect(html).not.toContain('The last document height it read')
+    expect(html).not.toContain('The last height it read')
   })
 
   it('states an empty replaced-header list and the TLS fields a connection may not report', () => {

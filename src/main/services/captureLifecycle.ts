@@ -41,6 +41,7 @@ import { resolveToolVersion } from '@main/services/toolVersion'
 import { fetchCertChain as defaultFetchCertChain } from '@main/services/tlsCertChain'
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
 import type {
+  BoundTlsAbsence,
   Capture,
   CaptureEvent,
   CaptureMethod,
@@ -52,7 +53,13 @@ import type {
 } from '@shared/types'
 import type { BatchDeleteOutcome, BatchDeleteResult, DuplicateCaptureResult } from '@shared/ipc'
 import { ManifestEntrySchema } from '@shared/schemas'
-import type { CaptureUploadSource, ScreenshotStatus } from '@shared/schemas'
+import type {
+  BoundTls,
+  CaptureInventory,
+  CaptureUploadSource,
+  ScreenshotStatus,
+  ScrollToLoadRecord
+} from '@shared/schemas'
 import {
   IMPORT_ID_MAP_FILENAME,
   MANUAL_DEDUPE_WINDOW_MS,
@@ -117,6 +124,29 @@ export interface IngestParams {
   // Passed only by a Capture link job, after the recapture queue read the hash from the
   // source's verified entry (ADR-0040). The entry and the row then carry all three.
   linkSource?: LinkSource
+  // The capture engine's inventory and Scroll-to-load record (schema 6), passed
+  // only by a background Recapture. The entry signs them as given and the row
+  // mirrors them. When any capture engine field is given, ingest parses the whole
+  // entry with the strict schema before signing it (strictCaptureEntry), so a
+  // shape the verifier would refuse, such as an `inventory` without a
+  // `screenshot`, fails the ingest and nothing is written.
+  inventory?: CaptureInventory
+  scrollToLoad?: ScrollToLoadRecord
+  // The Transaction Record's `.warc.gz` bytes and Bound TLS Details or why they
+  // are absent (schema 6), passed only by a background Recapture. The entry signs
+  // the record's hash and the row mirrors all three; the strict parse above
+  // refuses a hash the inventory does not mark present, and `boundTls` beside
+  // `boundTlsAbsent`.
+  transactionRecord?: Buffer
+  boundTls?: BoundTls
+  boundTlsAbsent?: BoundTlsAbsence
+  // The PDF's bytes (schema 6), passed only by a background Recapture. The entry
+  // signs its hash and the row mirrors it; the strict parse above refuses a hash
+  // the inventory does not mark present.
+  pdf?: Buffer
+  // The id to store the Capture under, when the acquiring path already named it:
+  // the Transaction Record's `warcinfo` carries the id. Otherwise ingest picks one.
+  captureId?: string
 }
 
 // A link Capture's source as the ingest records it (ADR-0040). The entry signs `signed`,
@@ -305,6 +335,23 @@ function wouldRefetchTls(url: string): boolean {
   }
 }
 
+// `appendManifestEntry` signs what it is given, and an entry the strict schema refuses breaks
+// the Case's chain for every reader. Run before signing on the ingest of a Capture that
+// carries the capture engine's fields (schema 6), it refuses such an entry instead.
+function strictCaptureEntry(entry: Readonly<Record<string, unknown>>): void {
+  const parsed = ManifestEntrySchema.safeParse(entry)
+  if (parsed.success) return
+  const issues = parsed.error.issues.map(({ path, message }) => `${path.join('.')}: ${message}`)
+  throw new Error(`The capture entry fails the strict schema, so it was not signed: ${issues}`)
+}
+
+function carriesCaptureEngineField(params: IngestParams): boolean {
+  const { inventory, scrollToLoad, transactionRecord, boundTls, boundTlsAbsent, pdf } = params
+  return [inventory, scrollToLoad, transactionRecord, boundTls, boundTlsAbsent, pdf].some(
+    (field) => field !== undefined
+  )
+}
+
 // End-to-end MHTML ingest:
 // 1. Stream-write + hash to disk (through the Capture Store)
 // 2. Inside withCaptureEntry's write-ahead seam: write sidecar files (.txt, .png) and insert the
@@ -315,7 +362,7 @@ export async function ingestMhtmlCapture(
   fetchTlsCertChain: FetchCertChain = defaultFetchCertChain,
   store: CaptureStore = defaultCaptureStore
 ): Promise<IngestResult> {
-  const captureId = randomUUID()
+  const captureId = params.captureId ?? randomUUID()
   const {
     rel: mhtmlPath,
     hash,
@@ -336,6 +383,10 @@ export async function ingestMhtmlCapture(
   const textHash = params.textContent
     ? createHash('sha256').update(Buffer.from(params.textContent, 'utf-8')).digest('hex')
     : undefined
+  const transactionRecordHash = params.transactionRecord
+    ? createHash('sha256').update(params.transactionRecord).digest('hex')
+    : undefined
+  const pdfHash = params.pdf ? createHash('sha256').update(params.pdf).digest('hex') : undefined
 
   // Anchor the captured response headers into the signed manifest body (#119),
   // but only when present. Omitted (not {}) so headerless/legacy entries keep
@@ -408,6 +459,12 @@ export async function ingestMhtmlCapture(
         userAgent: params.egress ? params.userAgent : undefined,
         tlsSkipped: params.tlsSkipped,
         ...params.linkSource?.signed,
+        inventory: params.inventory,
+        scrollToLoad: params.scrollToLoad,
+        transactionRecordHash,
+        boundTls: params.boundTls,
+        boundTlsAbsent: params.boundTlsAbsent,
+        pdfHash,
         operatorId: params.operatorId,
         operatorName: params.operatorName,
         toolVersion: params.toolVersion
@@ -422,6 +479,14 @@ export async function ingestMhtmlCapture(
         let screenshotPath: string | undefined
         if (params.screenshot) {
           screenshotPath = store.writeScreenshot(params.caseId, captureId, params.screenshot).rel
+        }
+
+        if (params.transactionRecord) {
+          store.writeTransactionRecord(params.caseId, captureId, params.transactionRecord)
+        }
+
+        if (params.pdf) {
+          store.writePdf(params.caseId, captureId, params.pdf)
         }
 
         const capture = captureRepo.insertCapture({
@@ -457,10 +522,17 @@ export async function ingestMhtmlCapture(
           consentSuppression: params.consentSuppression,
           ...params.linkSource?.signed,
           linkedFromCaptureId: params.linkSource?.rowId,
+          inventory: params.inventory,
+          scrollToLoad: params.scrollToLoad,
+          transactionRecordHash,
+          boundTls: params.boundTls,
+          boundTlsAbsent: params.boundTlsAbsent,
+          pdfHash,
           exhibitNumber
         })
         return { capture, contentHash: hash }
-      }
+      },
+      carriesCaptureEngineField(params) ? { check: strictCaptureEntry } : {}
     )
   } catch (err) {
     // Best-effort cleanup: never let an unlink failure mask the ingest error.
@@ -1719,6 +1791,12 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
                 method: 'duplicate',
                 duplicateOfCaptureId: source.id,
                 consentSuppression: sourceEntry.consentSuppression,
+                inventory: sourceEntry.inventory,
+                scrollToLoad: sourceEntry.scrollToLoad,
+                // The row mirrors what the Duplicate's entry re-anchors (D11),
+                // so no Bound TLS Details.
+                transactionRecordHash: sourceEntry.transactionRecordHash,
+                pdfHash: sourceEntry.pdfHash,
                 exhibitNumber
               })
           )

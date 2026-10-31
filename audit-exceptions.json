@@ -27,6 +27,14 @@
       "path": ".>shadcn>fast-glob>micromatch>braces",
       "reason": "Developer CLI devDependency only: developers run shadcn by hand to add UI component source, no build, test or CI script runs it, and nothing in the shipped app depends on braces (pnpm why --prod). The denial of service needs an attacker-supplied, deeply nested glob pattern; shadcn's patterns come from its own code, this repo's config, and paths the developer types on its command line. No patched version exists (advisory published 2026-09-18), and braces 3.0.3 is its latest release, so no override can clear it.",
       "expires": "2026-12-31"
+    },
+    {
+      "ghsa": "GHSA-hq66-cqwq-w95j",
+      "package": "pdfjs-dist",
+      "tree": ".",
+      "path": ".>pdfjs-dist",
+      "reason": "Test-only devDependency, ruled by the maintainer on 2026-10-26: the Recapture end-to-end spec uses it only to extract the text of a PDF the app printed from a fixture page (getDocument, getPage, getTextContent). The advisory's code path is scripting, read only by the annotation layer and the viewer's scripting manager, which the test never loads. The patched 6.2.108 declares engines.node >=22.13.0 || >=24, and the repo pins Node 20, so no version bump or override clears it here. Nothing from pdf.js ships: pnpm why --prod and pnpm list --prod name neither it nor its optional packages, and an electron-builder --linux dir build's app.asar held none of them (review of #2000).",
+      "expires": "2026-12-31"
     }
   ]
 }

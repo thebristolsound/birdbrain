@@ -1,9 +1,11 @@
+import { randomUUID } from 'crypto'
 import * as captureRepo from '@main/services/db/captureRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
 import {
   entryDescribesRow,
   verifyCapture,
   type CaptureLifecycle,
+  type IngestParams,
   type LinkSource
 } from '@main/services/captureLifecycle'
 import { defaultCaptureStore } from '@main/services/captureStore'
@@ -14,7 +16,10 @@ import { RefusedAddressError, refusedAddressClass } from '@main/services/localAd
 import { authorChainOf, readCaseChains } from '@main/services/manifest'
 import { getSettings } from '@main/services/settings'
 import { resolveToolVersion } from '@main/services/toolVersion'
+import { logger } from '@main/services/logger'
+import type { TransactionRecordOutcome } from '@main/services/transactionRecorder'
 import { ManifestEntrySchema } from '@shared/schemas'
+import type { CaptureInventory, ScrollToLoadRecord } from '@shared/schemas'
 import type { Capture, CaptureEvent, ConsentSuppression } from '@shared/types'
 import type {
   EnqueueResult,
@@ -23,6 +28,22 @@ import type {
   RecaptureQueueStatus
 } from '@shared/ipc'
 
+// What the renderer knows about the screenshot it took: the inventory's
+// screenshot part without `present` (D6 of
+// docs/plans/2026-10-10-capture-engine-first-slice.md).
+export type ScreenshotRecord = Omit<CaptureInventory['screenshot'], 'present'>
+
+// The inventory's MHTML part, with the Image Source Pinning counts (ADR-0055).
+export type ImageSourcePinning = CaptureInventory['mhtml']
+
+export type PresentPdf = Extract<CaptureInventory['pdf'], { present: true }>
+
+// The PDF the render printed, with its inventory part, or why it has none
+// (step 10 of docs/plans/2026-10-10-capture-engine-first-slice.md).
+export type PdfOutcome =
+  | { present: true; bytes: Buffer; inventory: PresentPdf }
+  | { present: false; reason: 'failed'; error: unknown }
+
 export interface RenderedPage {
   // The live renderer hands over a Node ReadStream on its temp file, so the fd
   // is already open by the time this object exists and `cleanup()` only unlinks
@@ -30,6 +51,12 @@ export interface RenderedPage {
   // iterable, but any path that abandons the stream has to call it (#766).
   mhtmlStream: AsyncIterable<Uint8Array> & { destroy?: () => void }
   screenshot: Buffer
+  screenshotRecord: ScreenshotRecord
+  // How the Scroll-to-load phase ended (D5).
+  scrollToLoad: ScrollToLoadRecord
+  // The images pinned to their displayed source before the save, and how many
+  // of them had not loaded when it ran, parsed with the strict schema (D4).
+  imageSourcePinning: ImageSourcePinning
   text: string
   title: string
   finalUrl: string
@@ -40,11 +67,21 @@ export interface RenderedPage {
   consentSuppression?: ConsentSuppression
   // The Egress the render was sent through, when it was not Direct (ADR-0032).
   egress?: CaptureEgress
+  // The Transaction Record and Bound TLS Details, or why the record is absent
+  // (step 9 of docs/plans/2026-10-10-capture-engine-first-slice.md).
+  transactionRecord: TransactionRecordOutcome
+  // The PDF, printed last, or why it is absent (step 10).
+  pdf: PdfOutcome
   // Releases renderer-owned resources (tmp file, window). Always called.
   cleanup: () => Promise<void>
 }
 
-export type RenderPage = (url: string, opts: { timeoutMs: number }) => Promise<RenderedPage>
+// `captureId` is the id the Capture is stored under, which the Transaction
+// Record's `warcinfo` names; `toolVersion` is the Birdbrain version it names.
+export type RenderPage = (
+  url: string,
+  opts: { timeoutMs: number; captureId: string; toolVersion: string }
+) => Promise<RenderedPage>
 
 export interface RecaptureJob {
   url: string
@@ -108,6 +145,35 @@ export function looksLikeLoginWall(input: {
 // own text, so the comparison still happens and never throws.
 export function redirectedFinalUrl(requestedUrl: string, finalUrl: string): string | undefined {
   return canonicalizeUrl(finalUrl) === canonicalizeUrl(requestedUrl) ? undefined : finalUrl
+}
+
+// The inventory a background Capture signs (D4 of
+// docs/plans/2026-10-10-capture-engine-first-slice.md).
+function backgroundInventory(
+  imageSourcePinning: ImageSourcePinning,
+  screenshot: ScreenshotRecord,
+  transactionRecord: TransactionRecordOutcome,
+  pdf: PdfOutcome
+): CaptureInventory {
+  return {
+    mhtml: imageSourcePinning,
+    transactionRecord: transactionRecord.present
+      ? transactionRecord.inventory
+      : { present: false, reason: transactionRecord.reason },
+    screenshot: { present: true, ...screenshot },
+    pdf: pdf.present ? pdf.inventory : { present: false, reason: pdf.reason }
+  }
+}
+
+// The ingest fields the Transaction Record outcome sets: the file, and Bound
+// TLS Details or why they are absent (D7). A Capture with no record has them
+// `not-recorded`.
+function transactionRecordFields(
+  outcome: TransactionRecordOutcome
+): Pick<IngestParams, 'transactionRecord' | 'boundTls' | 'boundTlsAbsent'> {
+  if (!outcome.present) return { boundTlsAbsent: 'not-recorded' }
+  const { warcGz, boundTls, boundTlsAbsent } = outcome
+  return { transactionRecord: warcGz, boundTls, boundTlsAbsent }
 }
 
 function canonicalizeUrl(raw: string): string {
@@ -205,6 +271,8 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
 
     let rendered: RenderedPage | undefined
     const started = Date.now()
+    const captureId = randomUUID()
+    const toolVersion = resolveToolVersion()
     try {
       let linkSource: LinkSource | undefined
       if (job.linkedFrom) {
@@ -233,7 +301,10 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       })
 
       try {
-        rendered = await Promise.race([deps.renderPage(job.url, { timeoutMs }), fallbackTimeout])
+        rendered = await Promise.race([
+          deps.renderPage(job.url, { timeoutMs, captureId, toolVersion }),
+          fallbackTimeout
+        ])
       } finally {
         clearTimeout(fallbackTimer)
       }
@@ -279,6 +350,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
 
       const settings = getSettings()
       const result = await deps.captureLifecycle.ingest({
+        captureId,
         caseId: job.caseId,
         url: rendered.finalUrl,
         title: rendered.title || job.url,
@@ -298,13 +370,22 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         finalUrl: redirectedFinalUrl(job.url, rendered.finalUrl),
         operatorId: getInstallationId(),
         operatorName: settings.operatorName ?? '',
-        toolVersion: resolveToolVersion(),
+        toolVersion,
         screenshot: rendered.screenshot,
         method: 'background',
         supersedesCaptureId: job.supersedesCaptureId,
         consentSuppression: rendered.consentSuppression,
         egress: rendered.egress,
-        linkSource
+        linkSource,
+        inventory: backgroundInventory(
+          rendered.imageSourcePinning,
+          rendered.screenshotRecord,
+          rendered.transactionRecord,
+          rendered.pdf
+        ),
+        scrollToLoad: rendered.scrollToLoad,
+        ...transactionRecordFields(rendered.transactionRecord),
+        pdf: rendered.pdf.present ? rendered.pdf.bytes : undefined
       })
 
       const warning = looksLikeLoginWall({
@@ -314,6 +395,25 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       })
         ? 'Page looks like a login wall — the clean background session is not signed in'
         : undefined
+
+      // Said only once the Capture is stored, so a job that then fails or is skipped
+      // never reports a stored Capture.
+      if (!rendered.transactionRecord.present) {
+        logger.error(
+          'backgroundRenderer',
+          'backgroundRenderer.transaction_record_failed',
+          undefined,
+          rendered.transactionRecord.error
+        )
+      }
+      if (!rendered.pdf.present) {
+        logger.error(
+          'backgroundRenderer',
+          'backgroundRenderer.pdf_failed',
+          undefined,
+          rendered.pdf.error
+        )
+      }
 
       const capture = captureRepo.getCapture(result.capture.id) ?? result.capture
       deps.emitNewCapture(capture)

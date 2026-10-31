@@ -509,10 +509,12 @@ const TransactionRecordInventorySchema = z.discriminatedUnion('present', [
     .strict()
 ])
 
-// The images the render pinned to their displayed source before the save, and
-// how many of those had not loaded when it ran (#1843). A pinned image counts
-// in both or only the first, so a second count above the first contradicts
-// itself.
+// The images offered as sets that the page displayed and the render pinned to
+// their displayed source before the screenshot and the save, and how many of
+// those were still loading, or had failed to load, just before the save
+// (#1843, ADR-0055). Images still loading or failed before the pin are in
+// neither. A pinned image counts in both or only the first, so a second count
+// above the first contradicts itself.
 const MhtmlInventorySchema = z
   .object({
     present: z.literal(true),

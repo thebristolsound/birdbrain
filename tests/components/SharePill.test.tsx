@@ -74,7 +74,7 @@ describe('SharePill', () => {
     const pill = await screen.findByTestId('share-pill')
     expect(pill.dataset.state).toBe('share')
     expect(pill.textContent).toBe('Share')
-    expect(pill.title).toBe('Share this Case with teammates. Opens Members.')
+    expect(pill.title).toBe('Early access. Share this Case with teammates. Opens Members.')
     expect(pill.dataset.tour).toBe('share')
     expect(pill.querySelector('.bg-warning-fg')).toBeNull()
     expect(getSyncState).not.toHaveBeenCalled()
@@ -91,7 +91,7 @@ describe('SharePill', () => {
     const pill = await screen.findByTestId('share-pill')
     expect(pill.dataset.state).toBe('invite')
     expect(pill.textContent).toBe('Share · invite waiting')
-    expect(pill.title).toMatch(/^Invite expires (today|tomorrow) \d\d:\d\d$/)
+    expect(pill.title).toMatch(/^Early access\. Invite expires (today|tomorrow) \d\d:\d\d$/)
     // One dot in the icon's corner for the folded form, one inline for the wide form.
     expect(pill.querySelectorAll('.bg-warning-fg.animate-pulse')).toHaveLength(2)
   })
@@ -101,7 +101,7 @@ describe('SharePill', () => {
     const pill = await screen.findByTestId('share-pill')
     expect(pill.dataset.state).toBe('approve')
     expect(pill.textContent).toBe('Share · 1 to approve')
-    expect(pill.title).toBe('1 join request to approve')
+    expect(pill.title).toBe('Early access. 1 join request to approve')
     expect(pill.querySelector('.animate-pulse')).toBeNull()
   })
 
@@ -110,7 +110,7 @@ describe('SharePill', () => {
     const pill = await screen.findByTestId('share-pill')
     expect(pill.dataset.state).toBe('unavailable')
     expect(pill.textContent).toBe('Share')
-    expect(pill.title).toBe('Sharing is not available on this Mac.')
+    expect(pill.title).toBe('Early access. Sharing is not available on this Mac.')
     expect(pill.className).toContain('border-dashed')
   })
 

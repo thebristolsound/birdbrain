@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { CaseSettingsView } from '@renderer/components/sharing/CaseSettingsView'
@@ -45,5 +45,11 @@ describe('CaseSettingsView', () => {
   it('renders the Members tab content', async () => {
     renderView()
     expect(await screen.findByTestId('members-tab')).toBeTruthy()
+  })
+
+  it('marks the sharing panel as early access', () => {
+    renderView()
+    const panel = screen.getByRole('tabpanel')
+    expect(within(panel).getByTestId('sharing-early-access').textContent).toBe('Early access')
   })
 })

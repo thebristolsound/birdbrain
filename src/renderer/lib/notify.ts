@@ -170,6 +170,10 @@ const CODE_LABELS: Record<LogCode, string> = {
   'captureLifecycle.delete_recovery_failed':
     "Couldn't put back or remove the files of an interrupted capture delete",
   'backgroundRenderer.trim_failed': "Couldn't trim the screenshot",
+  'backgroundRenderer.scroll_reset_failed': "Couldn't scroll the page back after loading it",
+  'backgroundRenderer.transaction_record_failed':
+    "The capture was stored without its record of the page's network exchanges",
+  'backgroundRenderer.pdf_failed': 'The capture was stored without its PDF',
   'backgroundRenderer.consent_blocker_disable_failed':
     "Couldn't turn off the cookie-notice blocker",
   'backgroundRenderer.consent_blocker_enable_failed': "Couldn't turn on the cookie-notice blocker",

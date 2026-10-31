@@ -1874,7 +1874,8 @@ const BOUND_TLS_ABSENCE_TEXT: Record<BoundTlsAbsence, string> = {
   'not-recorded': 'this capture has no Transaction Record',
   'not-https': 'the main document was not served over HTTPS',
   'from-cache': 'the response for the main document reported a cache hit',
-  'not-reported': 'the browser reported no security details on the response for the main document'
+  'not-reported':
+    'the browser reported no security details on the response for the main document, the window committed a page after network recording stopped, or the page the capture saved was not one that response loaded'
 }
 
 function captureEngineBlocks(engine: CaptureEngineEntry | undefined): string {
@@ -1918,9 +1919,13 @@ function inventoryBlock(
   const items = [
     `<strong>Page archive (MHTML):</strong> taken. ${mhtml.pinnedImages} image${
       mhtml.pinnedImages === 1 ? ' was' : 's were'
-    } pinned to the source displayed before the save, and ${
+    } offered as a set of sources and pinned to the source the page displayed before the screenshot and the save, and ${
       mhtml.pinnedImagesNotLoaded
-    } of them had not loaded when the save ran.`,
+    } of them were still loading, or had failed to load, just before the save. The counts cover
+    only images in the page's own document, outside frames, shadow roots and
+    <code>picture</code> elements, that had finished loading and displayed an image before the
+    pin; an image still loading when the wait before the pin ended, one that failed to load, and
+    one shown from a <code>blob:</code> address were left as they were and are not counted.`,
     `<strong>Screenshot:</strong> taken, ${screenshot.width} × ${screenshot.height} pixels, of a
     content area of ${screenshot.contentWidth} × ${screenshot.contentHeight} CSS pixels. Scaled
     down: ${yesNo(screenshot.scaled)}. Cut short of the content height: ${yesNo(
@@ -2004,7 +2009,9 @@ function scrollToLoadBlock(record: ScrollToLoadRecord): string {
         outcome ? esc(SCROLL_TO_LOAD_OUTCOME_TEXT[outcome]) : 'the entry records no outcome'
       }.`
   const height =
-    endHeight !== undefined ? ` The last document height it read was ${endHeight} CSS pixels.` : ''
+    endHeight !== undefined
+      ? ` The last height it read of the document or inner panel it scrolled was ${endHeight} CSS pixels.`
+      : ''
   const lock = scrollLockLifted
     ? " It lifted the page's scroll lock, which can change which lazy-loaded content loaded."
     : ' It did not lift a scroll lock.'

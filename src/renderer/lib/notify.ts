@@ -128,6 +128,8 @@ const CODE_LABELS: Record<LogCode, string> = {
   'capture.server_started': 'Capture server started',
   'capture.extraction_failed': "Couldn't extract data from the page",
   'ipc.handler_threw': 'An internal request failed',
+  'ipc.request_refused': 'The app turned down a request',
+  'ipc.request_threw': 'A request failed with an unexpected error',
   'query.failed': "Couldn't load data",
   'mutation.failed': 'Something went wrong. Please try again.',
   'react.render_error': 'This part of the app failed to render',
@@ -232,7 +234,7 @@ const CODE_LABELS: Record<LogCode, string> = {
   'searchFields.source_missing':
     "Couldn't find a capture's stored page to index its links and headers for search",
   'searchFields.unreviewed_failed': "Couldn't list this case's unreviewed captures",
-  'sharing.stream_failed': "A teammate's connection to this Case ended with an error",
+  'sharing.stream_failed': 'An incoming sharing request failed',
   'sharing.first_session_failed': "Joined the Case, but the first sync didn't complete",
   'sharing.binding_unavailable': "Shared Cases can't run on this computer",
   'sharing.accept_failed': 'Stopped accepting connections from teammates',

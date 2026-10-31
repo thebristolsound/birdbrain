@@ -91,7 +91,7 @@ import { detectInstallFormat } from '@main/services/diagnostics'
 import { markCleanExit, startSession } from '@main/services/sessionLog'
 import { IPC_CHANNELS, type DeepLinkTarget, type SelectorRematchedEvent } from '@shared/ipc'
 import type { EgressSetting } from '@shared/types'
-import { logIpcFailuresTo, sendEvent } from '@main/ipcWrap'
+import { sendEvent } from '@main/ipcWrap'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -521,7 +521,6 @@ if (!gotSingleInstanceLock) {
         installFormat: detectInstallFormat(app.isPackaged)
       })
       initLogger(userDataPath, session.sessionId)
-      logIpcFailuresTo(logger)
       // A Phase 1 tester sends only birdbrain.log via Reveal, so this entry is
       // the ONLY place installation, platform and package format are recorded.
       // Without them a standalone log cannot correlate repeat reports to one

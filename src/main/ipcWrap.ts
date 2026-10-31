@@ -62,8 +62,8 @@ export function ipcError(err: unknown): IpcResult<never> {
 }
 
 // Where handle() records a failed request. The logger imports sendEvent from
-// this module, so it arrives through this setter at startup instead of an
-// import, which would close a runtime cycle.
+// this module, so initLogger() hands itself over through this setter instead
+// of an import, which would close a runtime cycle.
 let failureLog: Pick<Logger, 'warn' | 'error'> | null = null
 
 export function logIpcFailuresTo(log: Pick<Logger, 'warn' | 'error'> | null): void {
@@ -98,7 +98,8 @@ function logFailure(channel: string, err: unknown, refused: boolean): void {
 // Registers an ipcMain.handle that wraps the handler's return value in an
 // IpcResult. Translates `IpcFailure` and known SQLite errors into structured
 // `{ ok: false }` responses; other errors are rethrown so Electron surfaces
-// them as rejected promises in the renderer. Every failure is logged.
+// them as rejected promises in the renderer. Every failure is logged once
+// initLogger() has run.
 //
 // The channel must have an IpcInvokeContract entry, and that entry pins the
 // handler's argument tuple and return type.

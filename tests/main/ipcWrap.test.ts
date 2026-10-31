@@ -1,4 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { IpcMainInvokeEvent } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 
@@ -13,6 +16,7 @@ vi.mock('electron', () => ({
 }))
 
 const { handle, IpcFailure, logIpcFailuresTo } = await import('@main/ipcWrap')
+const { disposeLogger, initLogger, readRecentEntries } = await import('@main/services/logger')
 
 const log = { warn: vi.fn(), error: vi.fn() }
 const event = {} as IpcMainInvokeEvent
@@ -102,5 +106,32 @@ describe('handle() failure logging', () => {
   it('names every contracted channel in a form the log accepts', async () => {
     const { channel } = await import('@main/services/logSafe')
     for (const name of Object.values(IPC_CHANNELS)) expect(() => channel(name)).not.toThrow()
+  })
+})
+
+describe('handle() failure logging at startup', () => {
+  let dir: string
+
+  beforeEach(() => {
+    registered.clear()
+    logIpcFailuresTo(null)
+    dir = mkdtempSync(join(tmpdir(), 'bb-ipcwrap-log-'))
+  })
+
+  afterEach(() => {
+    disposeLogger()
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('writes a failed request to the log once initLogger has run', async () => {
+    initLogger(dir, 'ipc-wrap-session')
+    await expect(
+      invokeWith(() => {
+        throw new TypeError('x is undefined')
+      })
+    ).rejects.toBeInstanceOf(TypeError)
+    expect(readRecentEntries(5)).toMatchObject([
+      { level: 'error', code: 'ipc.request_threw', context: { channel: 'notes:update' } }
+    ])
   })
 })

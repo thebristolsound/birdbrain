@@ -1816,3 +1816,11 @@ folded in.
   density candidate as one width candidate with a `sizes` that gives the same density, and
   keeps a width candidate as it is with the page's `sizes`. The validation record has the
   measurements.
+- **2026-10-30.** The maintainer confirmed the width form for a density candidate and the
+  narrowing of a width candidate to its own entry, and accepted for this release that an image
+  whose displayed candidate cannot be told apart is fetched again during the screenshot
+  ([comment](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6536090389)).
+  The maintainer also ruled that a navigation while the pin loads images or during the
+  screenshot fails the Capture, and nothing is stored
+  ([comment](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6537101827)),
+  as the render already did. ADR-0055 states the three as rulings 9, 10 and 11.

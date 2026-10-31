@@ -40,7 +40,9 @@ prove and what they do not.
   pinned image that starts loading. Both waits use only time left before the capture's final
   steps. The screenshot comes after the pin, so it shows the page as the pin left it. The
   Transaction Record keeps recording until just before the page is saved, so any request the pin
-  or the screenshot causes is in the record.
+  or the screenshot causes is in the record. If the page navigates to another page, even by
+  reloading itself, while the pin waits for images to load or while the screenshot is taken, the
+  capture fails and nothing is stored, because the page the pin prepared is gone.
 - The pin leaves `srcset` and `sizes` on the live page, so the browser chooses from the set again
   and keeps the copy of the image it displayed. An image displayed from a width descriptor, or
   from a density other than 1x such as `srcset="photo.png 2x"`, first has its `srcset` narrowed

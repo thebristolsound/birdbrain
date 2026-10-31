@@ -2,21 +2,26 @@
 
 **Status:** Accepted
 
-**Date:** 2026-10-21, amended 2026-10-26, 2026-10-29 and twice on 2026-10-30
+**Date:** 2026-10-21, amended 2026-10-26, 2026-10-29 and four times on 2026-10-30
 
-This record states nine rulings of the maintainer on
+This record states twelve rulings of the maintainer on
 [#1843](https://github.com/thebristolsound/birdbrain/issues/1843) and nothing else: the ruling of
 2026-10-21 in the triage of the issue, two rulings of 2026-10-26 on the review of #2002, three
-choices in that change that the maintainer accepted as built on 2026-10-29, and three rulings of
+choices in that change that the maintainer accepted as built on 2026-10-29, and six rulings of
 2026-10-30: one moves the pin before the screenshot, one leaves `srcset` and `sizes` on the live
-page, and one keeps the density of an image displayed at a density other than 1x. The
-maintainer's
+page, one keeps the density of an image displayed at a density other than 1x, one confirms how
+the pin narrows a set, one accepts the case in which it cannot, and one fails the Capture when
+the page navigates during the pin or the screenshot. The maintainer's
 [comment of 2026-10-29 on #1843](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6515710604)
 states the rulings of 2026-10-26 and the three choices, the
 [first comment of 2026-10-30](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6534767262)
-ruling 6, and the
+ruling 6, the
 [second](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6535493015)
-rulings 7 and 8. D4 of the
+rulings 7 and 8, the
+[third](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6536090389)
+rulings 9 and 10, and the
+[fourth](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6537101827)
+ruling 11. D4 of the
 [first-slice plan](../plans/2026-10-10-capture-engine-first-slice.md) states how the render
 carries them out, and the
 [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md) what
@@ -66,8 +71,8 @@ wrongly.
    so it shows what the page displayed, and recording stops after the pin. Amended on
    2026-10-30: the screenshot is taken after the pin (ruling 6); recording still stops after
    the pin.
-   `pinnedImagesNotLoaded` counts a displayed image whose pinned source had not finished loading
-   when the wait ended.
+   `pinnedImagesNotLoaded` counts a pinned image whose pinned source was still loading, or had
+   failed to load (ruling 3), at the count after the screenshot, just before the save.
 2. Before the screenshot and the pin, the render waits, within the time remaining and never from
    the 40 s end reserve, for images offered as sets to settle. Any image still loading when that
    wait ends is left out of the pin. The counts cover only images that had settled, and the
@@ -80,7 +85,7 @@ wrongly.
 5. The report states both counts in one sentence, shown even when both are 0, in place of a
    separate line left out at 0. This replaces the issue's original wording for that line.
 
-**Ruling of 2026-10-30.**
+**Rulings of 2026-10-30.**
 
 6. The pin runs before the full-page screenshot, amending the order of 2026-10-21. The rulings
    of 2026-10-29 still hold: only displayed images are pinned, and an image still loading when
@@ -92,6 +97,17 @@ wrongly.
 8. An image the page displayed from a candidate whose density is not 1x keeps its density. The
    pin narrows that image's `srcset` to the one candidate it displayed, with its density label,
    so the image keeps its size in the screenshot and the PDF and is not fetched again.
+9. Confirmed: an image displayed from a density candidate other than 1x is narrowed to its
+   displayed source written as a width candidate with a matching display size, not with its
+   density label, because Chromium shows a lone density candidate at the wrong size. An image
+   displayed from a width candidate is narrowed to its own candidate. Both keep the image at its
+   displayed size and fetch it once.
+10. Accepted for this release: when the image's `src` is also a candidate in its set and the
+    displayed candidate cannot be told apart, the pin sets only `src`, and the screenshot fetches
+    the image again. Both answers are in the signed Transaction Record.
+11. A page that navigates to another page while the pin is loading images, or while the
+    screenshot is being taken, fails the Capture, and nothing is stored. The page the pin
+    prepared is gone, so the screenshot and the saved page could not match it.
 
 The render carries out ruling 6 as the first option of the
 [investigation on #2002](https://github.com/thebristolsound/birdbrain/pull/2002#issuecomment-6525048488)
@@ -100,16 +116,21 @@ proposed, and ruling 7 with it: the saved `<img>` holds only the pinned `src`, a
 than loading `src`. After the screenshot the render counts the pinned images, and recording
 stops after that, just before the save.
 
-The render carries out ruling 8 with one difference from its wording. Chromium adds `src` to any
-set without a width descriptor as a 1x candidate and shows that one, so a set narrowed to
-`<url> 2x` still showed a 2x-only image at 1x and at its natural size
+The render carries out rulings 8 to 10 as follows. Chromium adds `src` to any set without a
+width descriptor as a 1x candidate and shows that one, so a set narrowed to `<url> 2x` still
+showed a 2x-only image at 1x and at its natural size
 ([validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md),
-2026-10-30). The pin therefore writes the density as a width: a candidate displayed at density
-`d` becomes `<url> 1000w` with `sizes` set to `1000 / d` pixels, which gives the browser the
-same density and keeps `src` out of the set. An image displayed from a width candidate, whose
-density the page's `sizes` sets, keeps that candidate alone with the page's `sizes`. When the
-pin cannot tell which candidate displayed, because no candidate has the image's `currentSrc` or
-those that do differ in descriptor, it sets only `src`. D4 of the plan states the parsing.
+2026-10-30). The pin therefore writes the density as a width, as ruling 9 confirms: a
+candidate displayed at density `d` becomes `<url> 1000w` with `sizes` set to `1000 / d` pixels,
+which gives the browser the same density and keeps `src` out of the set. An image displayed
+from a width candidate, whose density the page's `sizes` sets, keeps that candidate alone with
+the page's `sizes`. When the pin cannot tell which candidate displayed, because no candidate has
+the image's `currentSrc` or those that do differ in descriptor, it sets only `src` (ruling 10).
+D4 of the plan states the parsing.
+
+The render carries out ruling 11 because collection stops after the screenshot and the count:
+the page a navigation loads holds no pin, so the next pin script or the count throws, the
+render fails, and no Capture is stored.
 
 ## Consequences
 

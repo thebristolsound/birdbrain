@@ -331,11 +331,64 @@ inventory: {
 
 - **MHTML and the screenshot are always present.** A failed `savePage` or screenshot fails the
   render today, and this slice keeps that, so no build can write either as absent (D2's rule).
-- **The MHTML counts.** `pinnedImages` is the number of images the render pinned to their
-  displayed source before the save, and `pinnedImagesNotLoaded` the number of those not loaded
-  when the save ran (#1843, amended 2026-10-21). The schema requires both whenever `inventory` is
-  present. A fifth refine joins D2's four: `pinnedImagesNotLoaded` above `pinnedImages` fails the schema.
-  #1843 writes the counts; step 1 only teaches the verifier them.
+- **The MHTML counts.** `pinnedImages` is the number of images offered as sets that the page
+  displayed and the render pinned to their displayed source before the screenshot and the save,
+  and `pinnedImagesNotLoaded` the number of those still loading, or failed to load, just before
+  the save (#1843, amended 2026-10-21, 2026-10-26 and 2026-10-30). The counts cover
+  only images that had settled and displayed before the pin. The schema requires both whenever
+  `inventory` is present. A fifth refine joins D2's four: `pinnedImagesNotLoaded` above
+  `pinnedImages` fails the schema. #1843 writes the counts; step 1 only teaches the verifier them.
+  [ADR-0055](../adr/0055-a-background-render-pins-image-sources.md) states the rulings; the
+  render carries them out as follows.
+  - **Which images.** An image offered as a set is an `img` with `srcset`, or a `picture` with
+    `source` elements; the serializer saves the second correctly (triage of #1843), so only an
+    `img` with `srcset` whose parent is not a `picture` is considered. Only the page's own
+    document is searched, not its frames or shadow roots.
+  - **Order.** After the post-scroll settle, the render polls until no considered image is still
+    loading (`img.complete` false), for at most 5 s (`IMAGE_SET_SETTLE_MAX_MS`), and keeps the
+    images its last check found still loading. It then pins, waits for any pinned image that
+    started loading, takes the screenshot, and counts (ruled 2026-10-30: the screenshot makes the
+    browser drop its in-memory copy of each displayed image, so a pin after it loaded again each
+    one with no fresh copy in the HTTP cache). Collection stops after the count, so a request the
+    pin or the screenshot causes is in the Transaction Record, and just before `savePage`.
+  - **Pinned.** A considered image is pinned when it displayed: `complete`, with a natural width
+    and height above 0, and a non-empty `currentSrc` that is not a `blob:` address. Its `src`
+    becomes its `currentSrc`; its `srcset` and `sizes` stay on the live page, where the browser
+    chooses from them again, and the serializer drops both from the saved page. An image
+    displayed from a width candidate, or from a density other than 1x, first has its `srcset`
+    narrowed to that one candidate, so it keeps its density
+    ([ruling of 2026-10-30](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6535493015)).
+    The pin parses `srcset` as the HTML standard does, resolves each URL against the document,
+    adds `src` as a 1x candidate when no candidate has a width or a density of 1, and takes the
+    candidates whose URL is `currentSrc`. A width candidate is kept as `<url> <w>w` with the
+    page's `sizes`. A density candidate `d` is written as `<url> 1000w` with `sizes` set to
+    `1000 / d` pixels, because Chromium adds `src` to any set without a width descriptor as a 1x
+    candidate and shows it: narrowed to `<url> 2x`, a 2x-only image still showed at 1x
+    (validation record, 2026-10-30). When no candidate has that URL, or those that do differ in
+    descriptor, the image keeps its whole set and only `src` is set. An image still loading when
+    the settle wait ended, even one that finished before the pin, one whose load failed, and a
+    `blob:` image are left as they are.
+  - **Not loaded.** After the pin the render polls until no pinned image is still loading, for at
+    most 5 s (`PIN_LOAD_MAX_MS`). A pinned image counts as not loaded when, at the count after the
+    screenshot, it is not `complete` or has no natural size: still loading, or failed to load.
+    The ruling of 2026-10-26 names only the first; the second is counted too, so a loaded count
+    never stands for an image whose pinned source failed, which the maintainer accepted as built
+    on 2026-10-29 ([ruling 3](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6515710604)).
+  - **Time.** Both waits are bounded on the main process's clock and take their time from what is
+    left before the 40 s end reserve, never from it.
+  - **Trust.** The scripts run in an isolated world (`PIN_WORLD_ID`), which shares the page's DOM
+    but not its JavaScript, so the page cannot replace what they call, read what they keep
+    between calls, or change their counts. The counts are taken again over the DOM after the
+    screenshot: an image the page removed, or whose `src` it changed, since the pin is not
+    counted, and a page replaced since the pin fails the count.
+  - **Failure.** The MHTML part has no absent form, so a pin script that throws, or returns counts
+    the strict schema refuses, fails the render, as a Scroll-to-load step that throws does. The
+    renderer parses the part with that schema before it reaches the entry. An image still
+    loading when a wait ends is not a failure.
+  - **PDF.** The print reads the page's content height for `MAX_PDF_CONTENT_HEIGHT_PX` from the
+    screenshot record, taken after the pin. The live page keeps a narrowed set for each image
+    displayed from a width or a density other than 1x, so the print shows it at the size the
+    page displayed it.
 - **Reasons.** `not-taken` means this build does not take the file: step 6's build writes it for
   the Transaction Record and the PDF. `failed` means the engine tried and failed, or refused a PDF
   over step 10's size bounds, and the log carries the error. The list is closed, so a released
@@ -1721,3 +1774,53 @@ folded in.
   the fix round reads the URL, title, and status at the save and does not print a page that has
   navigated since. It also counts the time left from the deadline timer and parses the whole
   capture entry with the strict schema before signing it on the background ingest path.
+- **2026-10-26.** #1843 is built as a draft, stacked on step 10, that merges after the schema-6
+  release tag. The maintainer ruled the same day, as the orchestrating session relayed it, that
+  no release carries step 6 without #1843, because step 6's zeros read the same as a pinning
+  pass that ran and found nothing; the two ship in one release. #1843 pins the image sources
+  after the screenshot and writes the true MHTML counts (D4), with its wait taken from the time
+  left before the 40 s end reserve, and adds ADR-0055 and the Image Source Pinning glossary entry.
+  The brief's separate report row is not added, because step 5's artifact inventory already
+  states both counts. The browser behaviour behind the limits and the step's results are in the
+  [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md).
+- **2026-10-26.** The maintainer ruled twice on the review of #2002, as the orchestrating session
+  relayed it. Only an image that displayed is pinned, a failed one is left as it is, and the pin
+  runs while the network is recorded, so collection now stops after the pin instead of before the
+  screenshot. Before the pin, images offered as sets get time to settle, and any still loading
+  after it are left out of the counts. ADR-0055 now states the rulings of 2026-10-21 and
+  2026-10-26 and nothing else. The fix round also, on the orchestrating session's instructions,
+  reads the print's height bound when it prints, runs the pin scripts in an isolated world polled
+  on the main process's clock, recounts over the DOM, leaves `blob:` images alone, and keeps
+  step 5's report sentence, now stating what the counts cover, in place of the brief's separate
+  row. D4 states the result.
+- **2026-10-29.** The maintainer confirmed the two rulings of 2026-10-26 on #1843 and accepted
+  as built the counting of a pinned source that finished without an image, the `blob:` exclusion
+  and step 5's report sentence
+  ([comment](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6515710604)).
+  ADR-0055 links that comment. The pin now leaves out an image the settle wait's last check found
+  still loading, even one that finished during the screenshot, as ruling 2 states.
+- **2026-10-30.** The maintainer ruled that the pin runs before the full-page screenshot,
+  amending the order of 2026-10-21
+  ([comment](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6534767262)):
+  the previous fix round of #2002 found that the screenshot makes the browser drop its in-memory
+  copy of each displayed image, so a pin after it fetched each one again. The pin now sets `src`
+  and leaves `srcset` and `sizes` on the live page, the count follows the screenshot, and
+  collection stops after the count. The print's height bound reads the screenshot record again,
+  as step 10 built it, since the screenshot now follows the pin. D4 and ADR-0055 state the
+  result, and the validation record what each order measured.
+- **2026-10-30.** The maintainer confirmed that the pin leaves `srcset` and `sizes` on the live
+  page and sets only `src`, and ruled that an image displayed from a candidate whose density is
+  not 1x keeps it, by narrowing its set to that candidate
+  ([comment](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6535493015)).
+  Narrowed to `<url> 2x`, a 2x-only image still showed at 1x, so D4's "Pinned" item writes a
+  density candidate as one width candidate with a `sizes` that gives the same density, and
+  keeps a width candidate as it is with the page's `sizes`. The validation record has the
+  measurements.
+- **2026-10-30.** The maintainer confirmed the width form for a density candidate and the
+  narrowing of a width candidate to its own entry, and accepted for this release that an image
+  whose displayed candidate cannot be told apart is fetched again during the screenshot
+  ([comment](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6536090389)).
+  The maintainer also ruled that a navigation while the pin loads images or during the
+  screenshot fails the Capture, and nothing is stored
+  ([comment](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6537101827)),
+  as the render already did. ADR-0055 states the three as rulings 9, 10 and 11.

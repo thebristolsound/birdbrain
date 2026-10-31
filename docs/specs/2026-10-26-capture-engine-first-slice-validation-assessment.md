@@ -4,7 +4,8 @@
 
 **Status:** Open. Step 6 of the
 [first-slice plan](../plans/2026-10-10-capture-engine-first-slice.md) started this record, and
-steps 9 and 10 extended it. With step 10 it covers every writer of the slice, and the maintainer
+steps 9 and 10 extended it, as did #1843, which writes the MHTML counts. With them it covers
+every writer of the slice, and the maintainer
 records the acceptance decision before the release that ships the writers (plan, D16). The acceptance decision is this record's approval, so nothing
 changes it after that.
 
@@ -45,6 +46,15 @@ pulls in (`@napi-rs/canvas` 0.1.100, its platform packages, and a stream helper)
 and that GHSA-hq66-cqwq-w95j on the development-only `pdfjs-dist` 5.6.205 gets an audit exception
 until 2026-12-31, because its fixed version needs Node 22.13 (`audit-exceptions.json`). The
 programme's run log records the three, as the orchestrating session relayed them.
+
+**#1843.** Before the screenshot and the save, the render lets images offered as sets settle,
+and pins each `srcset` image the page displayed to the source it displayed, narrowing the set of
+one displayed from a width or a density other than 1x to that candidate (ADR-0055, D4), with the
+network still recorded; collection stops after the screenshot and the count. The inventory's MHTML part carries
+the true `pinnedImages` and `pinnedImagesNotLoaded` in place of step 6's zeros, covering only
+images that had settled and displayed. A pin script that throws, or returns counts the strict
+schema refuses, fails the render. A Duplicate re-anchors the part with the rest of the inventory
+(D11). The print reads its height bound after the pin.
 
 ## Environments
 
@@ -88,6 +98,42 @@ the rerun, two passed, and the known-answers case failed twice: its fixture serv
 Code server sent to a test listener on a new loopback port. With requests for `/` dropped from those logs, in an uncommitted
 copy of the spec, it passed. The print sizes and times above were not measured again on Electron
 45.
+
+**#1843.** The same workstation, Node 20.20.2, and Electron 44.9.1 with Chromium
+152.0.7977.167. The unit suite ran as in step 6, and the Recapture end-to-end specs against the
+built app under `xvfb-run`, outside a network namespace. The browser behaviour listed under the
+table comes from standalone Electron 44.9.1 scripts outside the repository, in an offscreen
+sandboxed window on a fresh partition loading a fixture page from loopback. The first version
+ran the review's pin script in the page's world; the fix round's ran the branch's four scripts,
+read from the source, in the pin's isolated world as the render does: the settle poll up to
+5,000 ms, the pin, the load poll up to 2,000 ms, the count, then `savePage(path, 'MHTML')`. Each
+image response is a PNG followed by `TAG:<request path>`, and the server logs each request with
+the phase it arrived in. The review of #2002 ran its own probes, which the fix round confirmed
+from their stored output. On 2026-10-30 a further script ran the end-to-end spec's five-image
+page through the render's steps in order (load, settle poll, screenshot, pin, load poll, count,
+save) and switched one difference between the render and the review's probe on at a time; each
+response there is tagged `TAG:<path>#<request number>`. For the ruling of 2026-10-30, a
+measurement spec outside the repository ran Recaptures through the built app under `xvfb-run`,
+once at `9674d147` (pin after the screenshot) and once at this round's code (pin before it), on
+the end-to-end spec's five-image and `q2-savepage` pages and on three pages of its own, with
+solid-color PNGs of known sizes tagged as above. It kept the screenshot, PDF, MHTML and
+Transaction Record of each Capture; ImageMagick compared and sampled the screenshots, and
+`pdfimages -list` read the image sizes in each PDF. The render's content area there was 639 by
+479 CSS pixels.
+
+For the second ruling of 2026-10-30 (ruling 8), after the branch took its base at `7a931716`,
+the unit suite and the Recapture end-to-end specs ran on Electron 45.0.0 with Chromium
+156.0.8078.48, on the same workstation under `xvfb-run`, outside a network namespace. A
+standalone Electron 45.0.0 script outside the repository loaded a page of ten `srcset` images
+from loopback in an offscreen window on a fresh partition, 640 by 480, with Electron started
+with `--no-sandbox`, waited 1.5 s, changed the images one way per run, waited 800 ms, took the full-page
+screenshot as the render does, and saved the page. One run changed nothing, one set only each
+`src`, two narrowed each set to `<url> <d>x` before and after setting `src`, two narrowed it to
+`<url> 1000w` with `sizes` set to `1000 / d` pixels, and one ran the branch's four scripts read
+from the source in world 1843. The server logged each request with its number, and the images
+were solid PNGs of known sizes. For the PDF, a local copy of the end-to-end spec, not committed,
+kept the PDF, screenshot and MHTML of the Capture of its order page, once with the branch's code
+and once with the narrowing removed.
 
 ## Expected and observed results
 
@@ -183,6 +229,159 @@ out the same on screen and in print, is not printed only to be discarded (False 
 negatives has a page that is not). `MAX_PDF_SIZE` is 104,857,600 bytes, the screenshot's bound
 (`MAX_SCREENSHOT_SIZE`). The print's own bound, 5 s, is 2.6 times the slowest print measured at
 the layout bound.
+
+**#1843.**
+
+| Check                                                                                    | Expected                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Observed                                                                                                                                                               |
+| ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The pin scripts over fake images (`tests/main/services/backgroundRenderer.test.ts`)      | Over the triage's five images and three left-alone `srcset` images (still loading with no `currentSrc`, failed, and `blob:`), the pin returns 3: the three displayed images outside a `picture` get their `currentSrc` as `src` and keep `srcset` and `sizes`, and the rest are untouched; a page with no `srcset` image pins 0; the settle count sees only a considered image still loading; a pinned image counts as not loaded while it loads and after the load fails; an image the page removed or re-pointed since the pin is not counted; the load and count scripts throw when the world holds no pin                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | As expected                                                                                                                                                            |
+| The main process's waits and the schema check (same file)                                | Under fake time, the settle wait ends once the image settles at 120 ms, ends at exactly 2,000 ms for one that never does, and checks once with no time; the pin waits 1,000 ms on the main clock for an image that never loads, and the count then returns 3 and 1; every call goes to world `PIN_WORLD_ID`; a not-loaded count above the pinned count, a fraction, a negative, a missing count, and no object each reject, as does a script that throws                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | As expected                                                                                                                                                            |
+| The pin in the render (same file)                                                        | The order is the settle poll, the pin, the load poll, `Page.captureScreenshot`, the count, then `savePage`; the screenshot sees each pinned `src` set; requests during the pin and the screenshot are in the Transaction Record and one during the save is not; under a 39 s timeout each wait polls once, and under 60 s each spans 4,900 to 5,500 ms; an image still loading at the settle wait's end that loads before the pin is left out; under a 3 s timeout an image that never loads is counted and the render returns inside 3 s; a page the pin makes taller than `MAX_PDF_CONTENT_HEIGHT_PX` has a screenshot record of that height and is not printed; a pin script that throws fails the render with no screenshot and no `savePage`; contradictory counts, and a page replaced during the screenshot, fail it with no `savePage`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | As expected                                                                                                                                                            |
+| Step 9's stop test (same file)                                                           | A request made during `savePage` is not recorded; it was made during the screenshot until collection moved after the pin                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | As expected                                                                                                                                                            |
+| The render with the pin moved back after the screenshot (a local edit, reverted)         | The render's pin tests fail                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | 5 failed: the order, the screenshot seeing the pin, the height bound, a throwing pin, and a page replaced during the screenshot                                        |
+| The render handed to the Recapture queue and ingest (same file)                          | The entry's MHTML part signs 3 pinned and 1 not loaded and passes the strict schema, the row mirrors the inventory, the Capture verifies, and a Duplicate's entry and row carry the same part; a pin that throws emits `failed` and stores no Capture                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | As expected                                                                                                                                                            |
+| Ingest and the Duplicate (`recapture.test.ts`)                                           | The part the render returns is signed, mirrored, and re-anchored by a Duplicate                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | As expected                                                                                                                                                            |
+| The report (`reportCaptureEngine.test.ts`)                                               | The artifact inventory states both counts, defines the second, and says what the counts cover                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | As expected                                                                                                                                                            |
+| End-to-end Recaptures (`e2e/recapture-image-sources.spec.ts`)                            | The renderer spike's `q2-savepage` fixture: one request for `/savepage/srcset-1x.png` and a part holding its response `#1`, no request for `/savepage/srcset-2x.png`, and counts 1 and 0. The triage's five images, the `400w` candidate a 400 by 400 file: one request for each displayed source in the server log and in the Transaction Record, and a part holding response `#1`; no part at an address the server never served (`/five/src-fallback.png` was not requested), counts 3 and 0, a Duplicate re-anchoring them, and an exported package passing Package Verification and `verify.sh`. A page whose displayed sources are not first in their sets (`2x, 1x`, and `800w, 400w` at `sizes="200px"`): one request and part `#1` each, none for the other candidates, the saved `img`s with only `src` and, for the second, `width="200" height="200"`; on the same page images offered only at `2x` and only at `1.5x`, solid 400 and 240 pixel files: one request each in the server log and in the Transaction Record, part `#1`, a box of 200 by 200 and 160 by 160 pixels of their colors in the stored screenshot, and saved `img`s with `width` and `height` 200 and 160; counts 4 and 0. A page with a failed image the server would answer a second time, a revoked `blob:` image, one never answered and one answered after 1 s: counts 1 and 0, one request and part `#1` for the last, none for the failed or unanswered ones, one request for the failed image in the server log and in the Transaction Record | As expected                                                                                                                                                            |
+| The left-alone case with the displayed-only check removed (a local edit, reverted)       | The case fails                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Failed on the counts                                                                                                                                                   |
+| The `q2-savepage` case with the rewrite disabled (a local edit, reverted, first version) | The case fails                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Failed: the MHTML had no part for the `srcset` image                                                                                                                   |
+| Every Recapture end-to-end spec but the Transaction Record known-answer test             | Pass with the pin before the screenshot                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 23 of 23 in one run at the round that moved the pin; the known-answer test fails locally because another local service sends `GET /` to each new loopback port, and is left to CI |
+| The narrowing (`backgroundRenderer.test.ts`)                                              | An image displayed at `2x`, `1.5x`, `3x` after a `0.5x`, or `2x` with a `src` it did not display gets `srcset` `<url> 1000w`, `sizes` `500px`, `666.6666666666666px` or `333.3333333333333px`, and `src` `<url>`; one displayed from `400w` gets `<url> 400w` with the page's `sizes`, and so does one whose `src` is also that `400w` candidate; one displayed from its `src` or a 1x candidate keeps its set; one whose `src` shares its URL with a 2x candidate, one listed at two densities and one not in its set keep their sets; the standard's parser keeps a URL with a comma and drops a zero width, a height with no width, a bad or negative density, and a parenthesised list | As expected                                                                                                                                                            |
+| The same tests with the narrowing removed (a local edit, reverted)                        | They fail                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 13 failed                                                                                                                                                              |
+| The order page end to end with the narrowing removed (a local edit, reverted)             | The case fails                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Failed: two requests for the 2x-only image                                                                                                                             |
+| A reload after the image wait's last check and before the pin, during the pin's load wait, or during the screenshot (`backgroundRenderer.test.ts`) | Collection stops after the screenshot, so the page a reload loads holds no pin: the pin, the load poll or the count throws, and the render fails with no save, so nothing is stored and no Bound TLS Details are signed, as the maintainer ruled on 2026-10-30 ([ruling](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6537101827))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | As expected                                                                                                                                                            |
+| The `src`-as-`400w` case with `src` added as 1x beside width candidates, or always added (local edits, reverted) | The case fails                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | As expected; 1 of 153 failed under each                                                                                                                                |
+| Every Recapture end-to-end spec, at ruling 8's code on Electron 45.0.0                   | Pass                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 27 of 27 in one run, the known-answer test included                                                                                                                    |
+
+What the standalone scripts showed:
+
+- With no screenshot before the pin, no request reached the server during the pin for an image
+  that had loaded, a `no-store` one included. Each was `complete` with a natural width straight
+  after its `src` was set, and the MHTML held a part at its address, under a saved `img` naming
+  that address. Until 2026-10-30 the app took its full-page screenshot between the settle wait
+  and the pin, and in the end-to-end run of 2026-10-29, with each response tagged with its request number, the pin
+  asked again for every pinned image, the Transaction Record held both requests, and the MHTML
+  part held the second response. An image the pin left alone was asked for once.
+- The screenshot is why the app asked again (script of 2026-10-30). Each of these alone left the
+  pin with no request: `Network.enable` with the recorder's buffer limits,
+  `Network.configureDurableMessages`, `Target.setAutoAttach` with `waitForDebuggerOnStart`, the
+  idle tracker's three `webRequest` listeners, and an `onBeforeRequest` handler. The render's
+  screenshot alone, `Page.captureScreenshot` with `captureBeyondViewport`, made the pin request
+  all three pinned images again, and each MHTML part held request `#2`. So did the same call with
+  no clip, and `Emulation.setDeviceMetricsOverride` followed by its clear with no screenshot, at
+  a height of 3,000 pixels or at the window's own size. A screenshot of the viewport only, a 3 s
+  wait, and resizing the window to 3,000 pixels high and back sent no request.
+- After that override the pin's loads reached the browser's network stack, which followed each
+  image's cache headers. With `Cache-Control: max-age=3600` the HTTP cache answered each one
+  (`fromDiskCache` true), the server had one request per image, and each part held request `#1`.
+  With no cache header, with `no-store`, and with `no-cache` and an `ETag` (the script's server
+  answers 200 every time), the server was asked again and each part held request `#2`.
+- Keeping a detached `Image`, or a `link rel=preload`, for each displayed source from before the
+  screenshot did not stop the second request. Setting each `src` to its `currentSrc` before the
+  screenshot, with `srcset` and `sizes` left in place, sent no request: the saver wrote each
+  `img` with that `src` and no `srcset` or `sizes`, the parts held request `#1`, and the counts
+  were 3 and 0. The maintainer's ruling of 2026-10-30 adopted that order; what the app then
+  showed is under "The pin before the screenshot" below.
+- A `srcset` image answered with a 404, or with a 200 that is not an image, has a `currentSrc`
+  and a natural width of 0. Under the first version's script, pinning it sent a second request
+  during the pin, and the review's probe found that a second request the server answers lands in
+  the MHTML. Under the fix round's scripts such an image was left as it was: no second request,
+  and no part.
+- A `srcset` image still loading had an empty `currentSrc`. One inserted after load and answered
+  after 1 s had settled before the settle poll and was pinned; one answered after 20 s was still
+  loading after the 5,000 ms poll, was left as it was, and had no part.
+- A `loading="lazy"` `srcset` image 3,000 pixels down, never scrolled to, stayed not `complete`
+  through the whole 5,000 ms settle poll (98 polls) and was left out.
+- A `blob:` image the page revoked once it loaded was displayed (natural width 1) and was left as
+  it was; the review's probe found the first version re-sourced it to a natural width of 0.
+- A `400w` candidate shown at `sizes="10px"` had a natural size of 10 by 10 from a 400 by 400
+  file and was pinned, and 0 by 0 from a 1 by 1 file, which was left as it was, with no part.
+- An image in an open or a closed shadow root, and one in a same-origin frame, were not pinned
+  and had no part; the saver wrote each as an `img` with no source.
+- Under the scripts of 2026-10-29, which removed `srcset` and `sizes`, an image with no `width`
+  or `height` attribute, offered at `2x` density or as `8w` with `sizes="2px"`, rendered at 2 by
+  2 and 1 by 1 CSS pixels before the pin and at 4 by 4 after it.
+  Three `srcset="/tall.svg 4x"` images of a 400 by 4,000 SVG took the page from 3,112 to 12,112
+  CSS pixels tall, and its print from 7 to 16 pages.
+- A page that replaced `Date.now`, `setTimeout`, the `currentSrc` getter and `removeAttribute`
+  in its own world did not change the isolated world's pin, and the page could not see what the
+  pin kept. A `MutationObserver` that put one image's `srcset` back took it out of the count of
+  the first fix-round script, which also required no `srcset`; the saver still wrote that image
+  under its pinned `src`, so the final script counts by `src` alone, and on the same page it
+  counted 2 pinned and 0 not loaded.
+- An SVG with a `viewBox` and no width or height reported a natural width of 150 and counted as
+  displayed.
+
+**The pin before the screenshot (2026-10-30).** The measurement spec's results at `9674d147`
+(after) and at the code of the round that moved the pin (before), which set only `src`. Each
+image path was served once at that code unless the row says otherwise. Ruling 8 changed the last
+row; its measurements follow this list.
+
+| Page and image                                                                                  | Pin after the screenshot                  | Pin before the screenshot                                                           |
+| ----------------------------------------------------------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------- |
+| Five-image page, the three pinned images                                                        | 2 requests each, part `#2`                | 1 request each, part `#1`                                                           |
+| `q2-savepage`, `srcset-1x.png`                                                                  | 2 requests, part `#2`                     | 1 request, part `#1`                                                                |
+| `srcset="d-2x.png 2x, d-1x.png 1x"`, displayed `d-1x`                                           | 2 requests, part `#2`                     | 1 request, part `#1`, no request for `d-2x`                                         |
+| `srcset="w-800.png 800w, w-200.png 200w" sizes="100px"`, `w-200`                                | 2 requests, part `#2`, saved with no size | 1 request, part `#1`, no request for `w-800`, saved with `width="100" height="100"` |
+| `srcset="v-100.png 100w, v-2000.png 2000w" sizes="50vw"`, `v-2000`                              | 2 requests, part `#2`, saved with no size | 1 request, part `#1`, no request for `v-100`, saved with `width="320" height="320"` |
+| `src` with `srcset="... 2x"`, displayed the `src`; a single `200w` at `sizes="100px"`; `1x, 2x` | 2 requests each, part `#2`                | 1 request each, part `#1`; the `200w` one saved with `width="100" height="100"`     |
+| `srcset="... 2x"`, `srcset="... 1.5x"`, and `srcset="... 2x"` with `width` and `height` 40      | 2 requests each, part `#2`                | 2 requests each, both in the Transaction Record, part `#2`                          |
+
+- **Whether the browser chooses another candidate.** On the first page, whose displayed
+  candidates are not the first in their sets, it did not: the server saw no request for any other
+  candidate, the parts held request `#1`, and the screenshots at the two orders matched with 0
+  differing pixels, as they did on the five-image and `q2-savepage` pages. It did for an image
+  offered only at densities other than 1x. Setting `src` adds a 1x candidate to such a set, and
+  from then on the image shows at 1x: a 2x-only 80 by 80 image the page displayed at 40 by 40
+  filled 80 by 80 pixels of the screenshot at that code (sampled at 79, 79) and 40 by 40
+  at `9674d147`, and that screenshot was 88 pixels tall rather than 48. The second request for
+  such an image arrived during the screenshot: with collection stopped before the screenshot, the
+  Transaction Record held one of the two requests while the part held `#2`, so collection now
+  stops after the screenshot, and the record holds both. An image whose set has a 1x candidate,
+  a width descriptor, or a `src` it displayed kept its copy.
+- **Whether the PDF prints pinned images at another size.** On the five-image and `q2-savepage`
+  pages it did not: every image has `width` and `height` attributes, and `pdfimages -list` gave
+  the same sizes and resolutions at both orders (one page and four). On the first page it did.
+  At `9674d147`, with `srcset` removed, the print laid out `w-200` at 200 CSS pixels and `v-2000`
+  at 2,000, two and six times the widths displayed (100 and 320), and shrank the page to fit:
+  every image at 144 pixels per inch, over 3 pages. At that code it printed each at its
+  displayed width, 40, 100 and 320 CSS pixels (96, 192 and 600 pixels per inch), on 1 page. The
+  single `200w` image printed at 192 pixels per inch rather than 96. Images offered only at
+  densities other than 1x with no `width` and `height` printed at their natural size at both
+  orders.
+
+**Narrowing the set (ruling 8, 2026-10-30).** The standalone script's images, each 40 by 40 CSS
+pixels as the page displayed it, and their width after the screenshot:
+
+| Image                                                         | Nothing changed | `src` only        | `<url> <d>x`      | `<url> 1000w`, `sizes` `1000/d` px | The branch's scripts |
+| ------------------------------------------------------------- | --------------- | ----------------- | ----------------- | ---------------------------------- | -------------------- |
+| `srcset="a.png 2x"`, an 80 pixel file                         | 40              | 80, requested again | 80              | 40                                 | 40                   |
+| `srcset="b.png 1.5x"`, a 60 pixel file                        | 40              | 60, requested again | 60              | 40                                 | 40                   |
+| `srcset="c.png 2x" width="40" height="40"`                    | 40              | 40, requested again | 40              | 40                                 | 40                   |
+| `srcset="d.png 0.5x, d3.png 3x"`, displayed `d3`, 120 pixels  | 40              | 120, requested again | 120            | 40                                 | 40                   |
+| `src="e.png" srcset="e2.png 2x"`, displayed `e`               | 40              | 40                | 40                | 40                                 | 40                   |
+| `src="f.png" srcset="f.png 2x"`, displayed `f` at 1x          | 40              | 40, requested again | 40, requested again | 40, requested again          | 40, requested again  |
+
+- Narrowed to `<url> <d>x`, the 2x-only, 1.5x-only and 3x images showed at their natural size,
+  because the browser added `src` to the set as a 1x candidate and chose it; they were not
+  requested again. Narrowed to one width candidate with a `sizes` that gives the same density,
+  each kept 40 by 40 with no second request, and the saver wrote `width="40" height="40"` into
+  each saved `img` that had no size of its own. The order of setting `srcset` and `src` made no difference.
+- With the branch's scripts, a `400w` image shown at `sizes="200px"` and a `2000w` one at
+  `sizes="50vw"` kept 200 and 320 pixels with no second request, a `2x` image with `width` 40,
+  `height` 40 and a CSS width of 50 pixels kept 50 by 40, and a URL holding an escaped comma was
+  matched. The counts were 10 and 0.
+- `f.png` is the case the pin cannot tell apart: `src` joins its set at 1x with the URL of its 2x
+  candidate. Setting its `src` made the browser request it again in every run that set `src`,
+  and the branch's scripts keep its set, so it is still requested again. The maintainer accepted
+  this for the release on 2026-10-30, and confirmed the width form for density candidates
+  ([ruling](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6536090389)).
+- **The PDF of the order page.** With the narrowing, `pdfimages -list` gave the 400 pixel 2x-only
+  image at 192 pixels per inch and the 240 pixel 1.5x-only one at 144, which print at 200 and 160
+  CSS pixels, the sizes displayed, on 1 page. With it removed, both were at 96 pixels per inch,
+  their natural size, and the screenshot showed the 2x-only image 400 pixels wide, cut off at
+  the bottom of a screenshot 652 pixels tall, with no pixel of the 1.5x-only image's color. The
+  `400w` image at `sizes="200px"` was at 192 pixels per inch in both.
 
 ## Deviations
 
@@ -357,12 +556,46 @@ wherever the page loads.
   same-address reload included, records the details absent. The render now counts the window's
   cross-document navigations when collection stops and again at the save, and passes no committed
   URL when the two differ, so `boundTlsAbsent` is `not-reported`. A unit test in the same file
-  reloads the same address during the screenshot; it fails with the count comparison removed.
+  reloads the same address during the save, after collection stops; it fails with the count
+  comparison removed. Since #1843 collection stops after the screenshot, so a navigation during
+  the pin or the screenshot is before it; the page it loads holds no pin, so the count after the
+  screenshot throws and the render saves nothing, which a unit test in the same file pins.
 - The plan leaves unverified whether pdf.js extracts text without the optional `@napi-rs/canvas`.
   It does not: with no `@napi-rs/canvas` to load, the 5.6.205 legacy build stops at import on
   Node 20.20.2 with `ReferenceError: DOMMatrix is not defined`. pnpm installs the optional
   package by default, and with it the same build read the stored PDFs. The maintainer accepted
   the packages on 2026-10-26 (Scope).
+
+**#1843.**
+
+- The triage brief asks for a separate report row, `Image sources: N pinned to the displayed
+image`, absent when N is 0. Step 5's sentence in the report's artifact inventory (#1985) states
+  both counts instead, shown at 0 too, and now says what they cover, so the counts are stated
+  once. The maintainer accepted this as built on 2026-10-29, in place of the brief's wording
+  ([ruling 5](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6515710604)).
+- The first version pinned every `srcset` image with a `currentSrc`, as the brief worded it, which
+  pinned a failed image after collection stopped. The ruling of 2026-10-26 pins only an image that
+  displayed and moves collection's stop after the pin.
+- The ruling of 2026-10-26 defines `pinnedImagesNotLoaded` as a displayed image whose pinned
+  source had not finished loading when the wait ended. The render also counts one whose pinned
+  source finished without an image, so a loaded count never stands for an image the saved page
+  lacks. The maintainer accepted this as built on 2026-10-29
+  ([ruling 3](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6515710604)).
+- A `blob:` image that displayed is left as it is, so re-sourcing cannot break it: the page may
+  have revoked the address, and the render cannot tell without loading it. The maintainer
+  accepted this as built on 2026-10-29
+  ([ruling 4](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6515710604)).
+- The settle wait first decided only how long the render waited: the pin tested each image again
+  after the screenshot, so an image still loading when the wait ended that finished during the
+  screenshot was pinned and counted. The wait's last check now keeps the images still loading,
+  and the pin leaves them out, as ruling 2 of 2026-10-26 states
+  ([confirmed 2026-10-29](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6515710604)).
+- The ruling of 2026-10-21 has the pin remove `srcset` and `sizes`. Since the
+  [ruling of 2026-10-30](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6534767262)
+  the pin sets `src` and leaves both on the live page, as the investigation's first option
+  proposed, and the serializer drops them from the saved page, so the saved `img` is the same.
+  Removing them before the screenshot would show every image displayed at a density other than
+  1x at its natural size in the screenshot; this round did not measure that.
 
 ## False positives and negatives
 
@@ -402,7 +635,8 @@ wherever the page loads.
   entry does not say which; the `backgroundRenderer.pdf_failed` log entry's error names the bound,
   or the address the page navigated to.
 - The layout bound reads the content height the screenshot record states (D6), the document's
-  content box, so it does not see the height of a panel that scrolls inside the page.
+  content box, so it does not see the height of a panel that scrolls inside the page. Since #1843
+  the screenshot, and so that height, is taken after Image Source Pinning.
 - The layout bound measures the page as laid out on screen, and print styles can lay out far
   more. In the review's standalone run, a page 479 CSS pixels tall on screen, whose print style
   showed 150 random-pixel 600 by 400 images the screen hid, passed the bound and printed to
@@ -412,6 +646,19 @@ wherever the page loads.
 - A page that changes its address in place after the save, through `history.pushState`,
   `history.replaceState`, or a new fragment, gets no PDF, although the print would have shown the
   same document.
+
+**#1843.**
+
+- `pinnedImagesNotLoaded` is read at the count after the screenshot, just before collection
+  stops and `savePage` runs. An image that finishes between the count and the save is still
+  counted, so the count can overstate what was missing at the save, never understate it.
+- The pin scripts run in an isolated world, so the page cannot replace what they call or change
+  what they return, and the final count is taken again over the DOM. The page still owns the DOM:
+  a page script that changes a pinned image's `src` back between the final count and the save
+  makes the counts describe a pin the saved page does not hold. The strict schema refuses only
+  counts that are not whole numbers or that contradict each other.
+- An image that displayed from a natural size below one pixel, which a large `srcset` density
+  gives a small file, counts as not displayed and is left out.
 
 ## Known limitations
 
@@ -487,6 +734,40 @@ wherever the page loads.
 - `printToPDF` hands the whole PDF to the main process before its size can be read, so a PDF over
   `MAX_PDF_SIZE` is held in memory once before it is discarded.
 - pdf.js, the test reader, needs the optional `@napi-rs/canvas` to load on Node 20 (Deviations).
+
+**#1843.**
+
+- The counts cover only images that had settled and displayed before the pin (ruled
+  2026-10-26). Pinning reaches only the `img` elements of the page's own document: an image in a
+  frame or a shadow root keeps its `srcset`, and the MHTML still lacks one offered only through
+  it.
+- An image still loading after the settle wait, one whose load failed, and a `blob:` image are
+  left as they are and not counted, and the MHTML lacks any of them offered only through
+  `srcset`. An image the page has not started loading, such as a lazy one below where
+  Scroll-to-load stopped, holds the settle wait to its end.
+- An image whose plain source is also one of its listed candidates, where the pin cannot tell
+  which candidate the page displayed, keeps its whole `srcset` and only gains `src`. The
+  screenshot loads it again, so the saved page holds the second response, and the Transaction
+  Record holds both (ruling 10). Every other image shown from a density candidate other than 1x,
+  or from a width descriptor, whose candidate the pin can tell apart, is narrowed to that one
+  candidate, a density written as a width entry with a matching `sizes` (rulings 8 and 9); both
+  keep their displayed size in the screenshot, the saved page and the PDF, and are fetched once.
+- Both waits take at most 5 s each of the time left before the 40 s end reserve and nothing from
+  the reserve. A page whose earlier phases used that time gets no wait: an image offered as a set
+  still loading then is left out, and a pinned image that needed a new request counts as not
+  loaded.
+- Collection now stops after the pin and the screenshot, just before the save, rather than
+  before the screenshot, so the Transaction Record can hold requests the page made during the
+  pin and the screenshot that step 9's build did not record.
+- A page that navigates to another page, even by reloading itself, after the image wait's last
+  check and before the pin, while the pin waits for images to load, or during the screenshot fails
+  the Capture, and nothing is stored
+  ([ruled 2026-10-30](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6537101827)).
+  Before this change collection stopped before the screenshot, so a navigation during the
+  screenshot gave a stored Capture with its Bound TLS Details recorded absent.
+- A build with step 6 and without #1843 signs zeros that read the same as a pinning pass that
+  found nothing. The maintainer ruled on 2026-10-26 that no release carries step 6 without
+  #1843.
 
 ## Acceptance decision
 

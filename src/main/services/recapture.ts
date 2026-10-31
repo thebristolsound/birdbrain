@@ -18,6 +18,9 @@ import type { EnqueueResult, RecaptureQueueStatus } from '@shared/ipc'
 // docs/plans/2026-10-10-capture-engine-first-slice.md).
 export type ScreenshotRecord = Omit<CaptureInventory['screenshot'], 'present'>
 
+// The inventory's MHTML part, with the Image Source Pinning counts (ADR-0055).
+export type ImageSourcePinning = CaptureInventory['mhtml']
+
 export type PresentPdf = Extract<CaptureInventory['pdf'], { present: true }>
 
 // The PDF the render printed, with its inventory part, or why it has none
@@ -36,6 +39,9 @@ export interface RenderedPage {
   screenshotRecord: ScreenshotRecord
   // How the Scroll-to-load phase ended (D5).
   scrollToLoad: ScrollToLoadRecord
+  // The images pinned to their displayed source before the save, and how many
+  // of them had not loaded when it ran, parsed with the strict schema (D4).
+  imageSourcePinning: ImageSourcePinning
   text: string
   title: string
   finalUrl: string
@@ -123,15 +129,15 @@ export function redirectedFinalUrl(requestedUrl: string, finalUrl: string): stri
 }
 
 // The inventory a background Capture signs (D4 of
-// docs/plans/2026-10-10-capture-engine-first-slice.md). This build pins no
-// image before the save (#1843 adds the pinning), so both MHTML counts are 0.
+// docs/plans/2026-10-10-capture-engine-first-slice.md).
 function backgroundInventory(
+  imageSourcePinning: ImageSourcePinning,
   screenshot: ScreenshotRecord,
   transactionRecord: TransactionRecordOutcome,
   pdf: PdfOutcome
 ): CaptureInventory {
   return {
-    mhtml: { present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 },
+    mhtml: imageSourcePinning,
     transactionRecord: transactionRecord.present
       ? transactionRecord.inventory
       : { present: false, reason: transactionRecord.reason },
@@ -278,6 +284,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         consentSuppression: rendered.consentSuppression,
         egress: rendered.egress,
         inventory: backgroundInventory(
+          rendered.imageSourcePinning,
           rendered.screenshotRecord,
           rendered.transactionRecord,
           rendered.pdf

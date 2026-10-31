@@ -112,9 +112,9 @@ const ctl = vi.hoisted(() => ({
   // its world and time, a pin script that throws, counts that replace the last
   // script's, a request the page makes while the pin runs and one during the
   // screenshot, the content height the layout metrics report once the pin has
-  // run, and what happens to the page just before the pin and while the screenshot
-  // is taken. `runPinWorld` runs a script in the window's isolated world; it is set
-  // below the imports.
+  // run, and what happens to the page just before the pin, during its load wait and
+  // while the screenshot is taken. `runPinWorld` runs a script in the window's
+  // isolated world; it is set below the imports.
   images: [] as unknown[],
   pinCalls: [] as Array<{ worldId: number; code: string; at: number }>,
   pinThrows: false,
@@ -123,6 +123,7 @@ const ctl = vi.hoisted(() => ({
   screenshotEvent: false,
   contentHeightAfterPin: null as number | null,
   beforePin: null as (() => void) | null,
+  duringPinLoad: null as (() => void) | null,
   duringScreenshot: null as (() => void) | null,
   runPinWorld: null as unknown as (wc: object, code: string) => unknown
 }))
@@ -337,6 +338,7 @@ const { MockBrowserWindow } = vi.hoisted(() => {
             }
             if (ctl.contentHeightAfterPin !== null) ctl.contentHeight = ctl.contentHeightAfterPin
           }
+          if (code.includes('pinned.filter(({ img }) => !img.complete)')) ctl.duringPinLoad?.()
           return ctl.runPinWorld(this, code)
         },
         async executeJavaScript(script: string) {
@@ -611,6 +613,7 @@ function resetPin(): void {
   ctl.screenshotEvent = false
   ctl.contentHeightAfterPin = null
   ctl.beforePin = null
+  ctl.duringPinLoad = null
   ctl.duringScreenshot = null
 }
 
@@ -2586,14 +2589,20 @@ describe('renderPageInHiddenWindow, Image Source Pinning', () => {
     30_000
   )
 
-  // Collection stops after the screenshot, so the ruling of 2026-10-30 on #2000, Bound TLS
-  // Details absent after a navigation between the stop and the save, does not reach a reload
-  // during the pin or the screenshot: the reloaded page holds no pin, so no Capture is stored.
+  // Ruled 2026-10-30 on #1843: a navigation during the pin or the screenshot fails the Capture
+  // and nothing is stored. Collection stops after the screenshot, so the ruling of 2026-10-30 on
+  // #2000, Bound TLS Details absent after a navigation between the stop and the save, does not
+  // reach it: the reloaded page holds no pin.
   it.each([
     [
       'the pin',
       'beforePin',
       'The settle wait left no record: the page was replaced before the pin'
+    ],
+    [
+      "the pin's load wait",
+      'duringPinLoad',
+      'The pinned images are gone: the page was replaced since the pin'
     ],
     [
       'the screenshot',

@@ -1703,3 +1703,21 @@ folded in.
   response's served bytes, and the maintainer ruled on its three questions the same day. Step 9's
   Changes gain a "Text bodies" item with the rulings; the spike records them under "Rulings,
   2026-10-26".
+- **2026-10-26.** Step 10 (#1930) is built as a draft that merges after the schema-6 release tag.
+  Its choices: the print runs last, after the Transaction Record's two end phases, with
+  `printToPDF({})`, under a 5 s bound cut to the time the render has left, which raises the end
+  reserve from 35 s to 40 s; `MAX_PDF_CONTENT_HEIGHT_PX` is 50,000 CSS pixels and `MAX_PDF_SIZE`
+  104,857,600 bytes (`src/shared/constants.ts`). Duplicate's row now mirrors `pdf_hash`. Of the
+  items under "Not verified for this plan": `pnpm install` on Node 20 accepts `pdfjs-dist`
+  5.6.205, and its text extraction does not work without the optional `@napi-rs/canvas`, which
+  pnpm installs by default. The measurements behind the values and the step's results are in the
+  [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md).
+- **2026-10-26.** The maintainer ruled on step 10 (#2000), as the orchestrating session relayed
+  it: the end reserve rises to 40 s for the print; the development-only packages pdf.js pulls in
+  (`@napi-rs/canvas` 0.1.100, its platform packages, and a stream helper) are accepted; and
+  GHSA-hq66-cqwq-w95j on `pdfjs-dist` 5.6.205 gets an audit exception until 2026-12-31, because
+  the fixed version needs Node 22.13. The review of #2000 found that a page navigating after the
+  save was printed, and its Capture stored, as the later page, a gap step 9 opened for the URL;
+  the fix round reads the URL, title, and status at the save and does not print a page that has
+  navigated since. It also counts the time left from the deadline timer and parses the whole
+  capture entry with the strict schema before signing it on the background ingest path.

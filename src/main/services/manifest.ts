@@ -988,6 +988,9 @@ export const MIN_READER_SCHEMA_VERSION: Record<ManifestEntryInput['type'], numbe
 // not a Capture says so here, and the writer stamps the higher of the two.
 export interface AppendOptions {
   minReaderSchemaVersion?: number
+  // Called with the entry as it will be written, its `entryHash` included, before it is signed;
+  // a throw stops the append, so nothing reaches the manifest.
+  check?: (entry: Readonly<Record<string, unknown>>) => void
 }
 
 // A `capture` entry's shape has a schema-2 form, but `exhibitNumber` is a
@@ -1077,6 +1080,7 @@ export function appendManifestEntry(
   }
   const canonical = canonicalStringify(body)
   const entryHash = createHash('sha256').update(canonical).digest('hex')
+  opts.check?.({ ...body, entryHash })
   // Sign the entryHash (G2). The signature is excluded from the canonical body
   // — it covers entryHash, it does not participate in it — so verification can
   // strip it back out and recompute the same hash.
@@ -1230,7 +1234,8 @@ export interface CaptureEntryContext {
 export async function withCaptureEntry<T>(
   caseDir: string,
   ctx: CaptureEntryContext,
-  fn: (result: AppendResult) => T | Promise<T>
+  fn: (result: AppendResult) => T | Promise<T>,
+  opts: AppendOptions = {}
 ): Promise<T> {
   return withManifestEntry(
     caseDir,
@@ -1276,7 +1281,8 @@ export async function withCaptureEntry<T>(
       operatorName: ctx.operatorName,
       toolVersion: ctx.toolVersion
     },
-    fn
+    fn,
+    opts
   )
 }
 

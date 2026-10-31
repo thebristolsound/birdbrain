@@ -20,6 +20,14 @@ export const TRANSACTION_RECORD_RESOURCE_BYTES = 10_000_000
 export const TRANSACTION_RECORD_MAX_EVENTS = 25_000
 export const TRANSACTION_RECORD_MAX_EVENT_BYTES = 25_000_000
 
+// The background render's PDF bounds (docs/plans/2026-10-10-capture-engine-first-slice.md, step
+// 10). `printToPDF` hands the whole file to the main process as one Buffer, so the render skips
+// the print for a page taller than MAX_PDF_CONTENT_HEIGHT_PX CSS pixels and discards a PDF over
+// MAX_PDF_SIZE bytes; either records the PDF absent as `failed`, and the Capture stores. The
+// validation record gives the fixture sizes behind both values. Neither is signed.
+export const MAX_PDF_SIZE = 100 * 1024 * 1024
+export const MAX_PDF_CONTENT_HEIGHT_PX = 50_000
+
 // Budget the extension spends on a full-page screenshot before it stops adding
 // slices (bytes). Measured on the *raw RGBA bitmap*, which is a different
 // quantity from MAX_SCREENSHOT_SIZE above — a bitmap this large is ~25

@@ -441,18 +441,19 @@ const documentUrl = (url: string): URL | undefined => {
 }
 
 // D7: why the entry carries no Bound TLS Details, or the details of the main document.
-// `committedUrl` is the URL of the window's last cross-document navigation. A navigation that
-// sends no request, such as going back to the blank page the window loads first or opening
-// `about:blank`, leaves the main document on the earlier page, so its details are signed only
-// when that page is the one the window ends on (ruling of 2026-10-29 on #1999).
+// `committedUrl` is the URL of the window's last cross-document navigation at the save. A
+// navigation that sends no request, such as going back to the blank page the window loads first
+// or opening `about:blank`, leaves the main document on the earlier page, so its details are
+// signed only when that page is the one the window held at the save (ruling of 2026-10-29 on
+// #1999). It is undefined when the saved page came from no recorded request.
 export function boundTlsOf(
   mainDocument: Exchange | undefined,
-  committedUrl: string
+  committedUrl: string | undefined
 ): { boundTls: BoundTls } | { boundTlsAbsent: Exclude<BoundTlsAbsence, 'not-recorded'> } {
   if (mainDocument === undefined) return { boundTlsAbsent: 'not-reported' }
   const { response, request, state } = mainDocument
   const url = documentUrl(response?.url ?? request.url)
-  const committed = documentUrl(committedUrl)
+  const committed = committedUrl === undefined ? undefined : documentUrl(committedUrl)
   if (url === undefined || committed === undefined || url.href !== committed.href) {
     return { boundTlsAbsent: 'not-reported' }
   }
@@ -477,8 +478,11 @@ export interface FinishOptions {
    */
   timeLeftMs?: () => number
   writer: Omit<WriterInput, 'exchanges'>
-  /** The URL of the window's last cross-document navigation, which `boundTlsOf` compares. */
-  committedUrl: string
+  /**
+   * The URL of the window's last cross-document navigation at the save, which `boundTlsOf`
+   * compares; undefined when the saved page came from no recorded request.
+   */
+  committedUrl: string | undefined
   budget?: RecorderBudget
   write?: (input: WriterInput) => Promise<WrittenTransactionRecord>
 }

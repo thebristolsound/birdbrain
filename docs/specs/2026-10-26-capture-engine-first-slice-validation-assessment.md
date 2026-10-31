@@ -3,9 +3,9 @@
 **Date:** 2026-10-26
 
 **Status:** Open. Step 6 of the
-[first-slice plan](../plans/2026-10-10-capture-engine-first-slice.md) starts this record, steps 9
-and 10 extend it, and the maintainer records the acceptance decision before the release that
-ships the writers (plan, D16). The acceptance decision is this record's approval, so nothing
+[first-slice plan](../plans/2026-10-10-capture-engine-first-slice.md) started this record, and
+steps 9 and 10 extended it. With step 10 it covers every writer of the slice, and the maintainer
+records the acceptance decision before the release that ships the writers (plan, D16). The acceptance decision is this record's approval, so nothing
 changes it after that.
 
 ADR-0004 asks every evidence-affecting release for a version-specific validation record with
@@ -28,6 +28,23 @@ the Transaction Record part of `inventory`, and `boundTls` or `boundTlsAbsent` (
 mirrors the three. When recording fails or runs out of time, the inventory records the record
 absent as `failed`, `boundTlsAbsent` is `not-recorded`, and the Capture stores. A Duplicate
 re-anchors `transactionRecordHash` and its row mirrors it, with no Bound TLS Details (D11).
+
+**Step 10 (#1930).** A `background` Capture gains a PDF, `{captureId}.pdf` beside the MHTML,
+printed with `webContents.printToPDF` after the screenshot, the MHTML, and the Transaction
+Record's two end phases. Its signed entry gains `pdfHash` and the PDF part of `inventory`,
+`{ present: true, afterCollection: true }`, and its row mirrors the hash. A print that fails or
+runs out of time, a page taller than `MAX_PDF_CONTENT_HEIGHT_PX`, a PDF over `MAX_PDF_SIZE`, and
+a page that navigated after the save each record the PDF absent as `failed`, and the Capture
+stores. The Capture's URL, title, and HTTP status are those of the page the save took. A
+Duplicate re-anchors `pdfHash` and its row mirrors it (D11). On the background ingest path, the
+whole capture entry is parsed with the strict schema before it is signed.
+
+**Rulings for step 10, 2026-10-26.** The maintainer ruled that the end reserve rises to 40 s for
+the print, leaving 80 s for the load and Scroll-to-load; that the development-only packages pdf.js
+pulls in (`@napi-rs/canvas` 0.1.100, its platform packages, and a stream helper) are accepted;
+and that GHSA-hq66-cqwq-w95j on the development-only `pdfjs-dist` 5.6.205 gets an audit exception
+until 2026-12-31, because its fixed version needs Node 22.13 (`audit-exceptions.json`). The
+programme's run log records the three, as the orchestrating session relayed them.
 
 ## Environments
 
@@ -52,6 +69,25 @@ After this branch took `main`'s Electron 45.0.0 (#1994), the plan's re-check of
 `Network.configureDurableMessages` ran on Electron 45.0.0 with Chromium 156.0.8078.48, on the
 same workstation under `xvfb-run`: `e2e/recapture-transaction-record.spec.ts` passed all eight
 tests against the built app. The other Recapture specs and the probe were not rerun there.
+
+**Step 10.** The same workstation, Node 20.20.2, and Electron 44.9.1 with Chromium
+152.0.7977.167. The unit suite ran as in step 6. The Recapture end-to-end specs ran against the
+built app under `xvfb-run`, outside a network namespace: no process held the capture server's
+port. pdf.js (`pdfjs-dist` 5.6.205) read the stored PDF in the spec's own process, on Node
+20.20.2, with the optional `@napi-rs/canvas` 0.1.100 that pnpm installed beside it. The print
+sizes and times below come from a standalone Electron 44.9.1 script outside the repository, one
+process per page, in an offscreen sandboxed window on a fresh partition under `xvfb-run`, which
+called `printToPDF({})`, the render's options, 1.5 s after each load.
+
+After this branch took step 9's Electron 45.0.0, `e2e/recapture-transaction-record.spec.ts` and
+`e2e/recapture.spec.ts` ran on Electron 45.0.0 with Chromium 156.0.8078.48, on the same
+workstation under `xvfb-run`, outside a network namespace. The PDF cases passed. Three
+Transaction Record cases first failed when the app's first window did not open within 30 s. On
+the rerun, two passed, and the known-answers case failed twice: its fixture servers' logs held
+`GET /` requests for `localhost`, which the record did not, of the kind the workstation's T3
+Code server sent to a test listener on a new loopback port. With requests for `/` dropped from those logs, in an uncommitted
+copy of the spec, it passed. The print sizes and times above were not measured again on Electron
+45.
 
 ## Expected and observed results
 
@@ -100,6 +136,53 @@ tests against the built app. The other Recapture specs and the probe were not re
 | D15's probe, `xvfb-run --auto-servernum node scripts/capture-probe/run.mjs`                                                                                                               | The on pass sends `Network.enable`, `Network.configureDurableMessages`, and `Target.setAutoAttach`; the passes agree on `navigator.webdriver`, the `window.chrome` keys, the `Error.stack` getter count, and the resource timing list; `history.length` 1 off and 2 on                                                                                                                                                                                                                                                                                                                                                                  | As expected, exit 0                                                                                                                                                                                                                     |
 | Record sizes (plan, open question 3)                                                                                                                                                      | Reported                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | 37,168 bytes for the fixture page above, the largest; 1,879 to 2,643 bytes for the stub, TLS, and proxy pages; 3,248 to 3,385 bytes for each of the three demo fixture pages (`scripts/demo-fixture/pages/`)                            |
 | The writer at the 50,000,000-byte cap                                                                                                                                                     | Inside its 10 s bound                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Five 7,500,000-byte bodies held as base64: 1,397 ms for random bytes, 37,515,985 bytes written; 410 ms for one repeated byte                                                                                                            |
+
+**Step 10.**
+
+| Check                                                                                                                                                                                                                       | Expected                                                                                                                                                                                                                                                                                                                                                                                                                  | Observed                                                                                                                                                                                                                                                                                                                                                                           |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The print's order and options (`tests/main/services/backgroundRenderer.test.ts`)                                                                                                                                            | `printToPDF` called once, with `{}`, after the screenshot, `savePage`, and the Transaction Record writer                                                                                                                                                                                                                                                                                                                  | As expected                                                                                                                                                                                                                                                                                                                                                                        |
+| A request the page starts while it prints (same file)                                                                                                                                                                       | Not in the Transaction Record, which holds the one exchange made before collection stopped                                                                                                                                                                                                                                                                                                                                | As expected                                                                                                                                                                                                                                                                                                                                                                        |
+| The print's bound and the cut (same file)                                                                                                                                                                                   | Under a 30 s timeout, a print that never settles records the PDF `failed` at its 5,000 ms bound; under a 3 s timeout it is cut to the time left less the 1 s margin; when the record phases have used the time left, the print does not start; a print that throws records `failed`; the render returns its page each time                                                                                                | As expected; the cut print ended inside the 1,000 to 2,000 ms the test allows                                                                                                                                                                                                                                                                                                      |
+| The end reserve (same file)                                                                                                                                                                                                 | No Scroll-to-load budget under a 39 s timeout, some under 42.5 s, so the reserve is 40 s                                                                                                                                                                                                                                                                                                                                  | As expected                                                                                                                                                                                                                                                                                                                                                                        |
+| The size bounds (same file)                                                                                                                                                                                                 | A page whose content height is 50,001 CSS pixels is not printed and one at 50,000 is; a PDF of 104,857,601 bytes is discarded and one of 104,857,600 bytes kept; each refusal records `failed` with an error that names its constant                                                                                                                                                                                      | As expected                                                                                                                                                                                                                                                                                                                                                                        |
+| The render handed to the Recapture queue and ingest (same file)                                                                                                                                                             | A printed PDF is stored as `{captureId}.pdf`, its hash signed and mirrored, the entry passing the strict schema, and a changed byte reads `tampered`; a print that never settles, a page over the layout bound, and a PDF over `MAX_PDF_SIZE` each store a Capture that verifies, with the PDF absent as `failed`, no `.pdf` file, no hash, and one `backgroundRenderer.pdf_failed` log entry whose error names the bound | As expected; the case that never settles stored inside 5.2 s of its 30 s timeout                                                                                                                                                                                                                                                                                                   |
+| Ingest, the notice, and the Duplicate (`recapture.test.ts`, `captureLifecycle.test.ts`, `captureDuplicate.test.ts`)                                                                                                         | The notice is logged once the Capture is stored, and not for a printed PDF or a failed ingest; ingest with no PDF writes no file; a Duplicate's entry re-anchors `pdfHash`, and its row mirrors it and `transactionRecordHash`                                                                                                                                                                                            | As expected                                                                                                                                                                                                                                                                                                                                                                        |
+| Two peers over the in-process transport (`tests/main/services/sharing/syncPeers.test.ts`)                                                                                                                                   | A PDF altered in transit is refused as `hash-mismatch` and not written; the next session takes the genuine bytes                                                                                                                                                                                                                                                                                                          | As expected                                                                                                                                                                                                                                                                                                                                                                        |
+| Both shipped verifiers (`tests/main/services/verifyRunbookExecution.test.ts`)                                                                                                                                               | A package exported from a Capture whose PDF the ingest stored passes Package Verification and `verify.sh`, which reports `0 Transaction Record(s) and 1 PDF(s) bound to the signed chain`; a changed byte in the packaged PDF fails both, `verify.sh` at step 5                                                                                                                                                           | As expected                                                                                                                                                                                                                                                                                                                                                                        |
+| An end-to-end Recapture of the probe's print-only image fixture (`e2e/recapture-transaction-record.spec.ts`)                                                                                                                | The server logs `/print-only.png` and no request record names it; the stored PDF hashes to `pdfHash`; pdf.js reads one Letter page, 612 by 792 points, holding the fixture's text; the Capture verifies; a package exported from it passes Package Verification, and a changed PDF byte fails its `pdf` check                                                                                                             | As expected                                                                                                                                                                                                                                                                                                                                                                        |
+| The same case with the print moved before collection stops (a local edit, reverted)                                                                                                                                         | The case fails                                                                                                                                                                                                                                                                                                                                                                                                            | Failed on the record's request list, which held `/print` and `/print-only.png`                                                                                                                                                                                                                                                                                                     |
+| A page that navigates after the save (`backgroundRenderer.test.ts`), the review of #2000, finding 2                                                                                                                         | To another page, by reloading itself, or to another address in place: the render returns the URL, title, and status read at the save, does not call `printToPDF`, and records the PDF `failed` with an error naming the later address                                                                                                                                                                                     | As expected; each of the three failed before the fix                                                                                                                                                                                                                                                                                                                               |
+| The same, through the Recapture queue and ingest (same file)                                                                                                                                                                | The Capture is stored under the saved page's URL and title, verifies, and has the PDF absent as `failed` and no `.pdf` file                                                                                                                                                                                                                                                                                               | As expected; before the fix it was stored under the later page's URL                                                                                                                                                                                                                                                                                                               |
+| A slow proxy setup (same file), finding 5                                                                                                                                                                                   | With `setProxy` taking 2 s under a 4 s timeout, a print that never settles is cut to the time left counted from the deadline timer, and the render returns its page                                                                                                                                                                                                                                                       | As expected; before the fix the render timed out and nothing was stored                                                                                                                                                                                                                                                                                                            |
+| An entry the strict schema refuses (`captureLifecycle.test.ts`), finding 6                                                                                                                                                  | A PDF beside an inventory that marks it absent fails the ingest before signing: the manifest is unchanged, and no row or file remains                                                                                                                                                                                                                                                                                     | As expected; before the fix the entry was signed                                                                                                                                                                                                                                                                                                                                   |
+| An end-to-end Recapture of a page that navigates after the save (`e2e/recapture-transaction-record.spec.ts`; the test patches `executeJavaScript` in its own launch so the page moves to `/nav-b` once its text is read)    | The server serves `/nav-b`; the Capture is stored under `/nav-a` with no `finalUrl`, title `Nav A`, the saved page's text, the PDF absent as `failed`, and no `.pdf` file, and it verifies                                                                                                                                                                                                                                | As expected; with the save-time reads and the navigation check reverted locally, the case failed on the stored URL, `/nav-b`                                                                                                                                                                                                                                                       |
+| The dependency audit (`node scripts/audit-check.mjs`)                                                                                                                                                                       | GHSA-hq66-cqwq-w95j accepted until 2026-12-31, and no blocking advisory                                                                                                                                                                                                                                                                                                                                                   | Exit 0                                                                                                                                                                                                                                                                                                                                                                             |
+| Every Recapture end-to-end spec (`recapture-transaction-record.spec.ts`, `recapture.spec.ts`, `recapture-consent.spec.ts`, `recapture-egress.spec.ts`, `recapture-permissions.spec.ts`, `recapture-local-redirect.spec.ts`) | Pass with the print added                                                                                                                                                                                                                                                                                                                                                                                                 | 19 of 19 in one run, after step 6's case in `recapture.spec.ts`, which expected the PDF `not-taken`, was changed to expect the printed part and the mirrored hash; after the fix round, 20 of 20 in one run, with the navigation case. An earlier run of the fix round failed the consent spec at setup, when the app's first window did not open within 30 s, and it passed alone |
+| PDF sizes (plan, step 10, the size bounds)                                                                                                                                                                                  | Reported                                                                                                                                                                                                                                                                                                                                                                                                                  | 5,578 to 19,616 bytes for the six PDFs the end-to-end spec stored, the fixture page with a frame and workers the largest; 41,003 to 56,925 bytes for the three demo fixture pages (`scripts/demo-fixture/pages/`)                                                                                                                                                                  |
+
+Print size and time against page height, from the standalone script. The text pages hold one
+100-pixel paragraph of invented text per 100 pixels. The image pages hold one 600 by 400 pixel
+PNG of random pixels per 400 pixels, so their images do not compress.
+
+| Page   | Content height (CSS px) | Pages | Bytes      | Print time        |
+| ------ | ----------------------- | ----- | ---------- | ----------------- |
+| Text   | 1,000                   | 2     | 11,372     | 16 ms             |
+| Text   | 25,000                  | 26    | 38,743     | 54 ms             |
+| Text   | 50,000                  | 52    | 67,825     | 108 to 111 ms     |
+| Text   | 100,000                 | 103   | 125,629    | 219 ms            |
+| Text   | 400,000                 | 411   | 473,558    | 1,045 ms          |
+| Images | 4,000                   | 5     | 7,207,461  | 172 ms            |
+| Images | 25,200                  | 32    | 45,402,796 | 978 ms            |
+| Images | 50,000                  | 63    | 90,084,033 | 1,905 to 1,915 ms |
+
+The values follow from these. `MAX_PDF_CONTENT_HEIGHT_PX` is 50,000, twice the height at which
+Scroll-to-load stops (`MAX_SCROLL_CONTENT_HEIGHT_PX`, 25,000): at that height the image page's
+PDF, 90,084,033 bytes, stays under `MAX_PDF_SIZE`, so a page as dense as the fixture, and laid
+out the same on screen and in print, is not printed only to be discarded (False positives and
+negatives has a page that is not). `MAX_PDF_SIZE` is 104,857,600 bytes, the screenshot's bound
+(`MAX_SCREENSHOT_SIZE`). The print's own bound, 5 s, is 2.6 times the slowest print measured at
+the layout bound.
 
 ## Deviations
 
@@ -235,6 +318,52 @@ wherever the page loads.
   document (finding 4 of that review, not measured), leaves the details absent instead of signing
   its own.
 
+**Step 10.**
+
+- The review of #2000 found that a page that navigated after the save was printed as the later
+  page, and its Capture stored under the later page's URL and title, beside an MHTML and a
+  screenshot of the first page, with nothing in the signed entry saying so. Step 9 opened the
+  URL half, by reading the URL after the Transaction Record's end phases; step 10 added the PDF
+  half and up to 5 s more. A rerun of the review's standalone script on Electron 44.9.1 read the
+  URL at the save as `/nav-a` and at the print as `/nav-b`, and the MHTML held page A. The render
+  now reads the URL, title, and HTTP status right after the save, stores the Capture under them,
+  and does not print when the window's URL or its count of main-frame navigations has changed
+  since; the PDF is then absent as `failed` (Expected and observed results).
+- The pre-pass reviews of #2000 at `39ae663a` found that the check ran once, before the print, so
+  a navigation the window reported only once the print was under way passed it; neither review
+  reproduced it. The render now checks the URL and the navigation count again when `printToPDF`
+  settles, and discards the PDF on a change. Three unit tests in
+  `tests/main/services/backgroundRenderer.test.ts`, one for each kind of navigation, pin it. A
+  navigation the window has not reported by then is not seen.
+- The same review found that the time left was counted from after the proxy setup while the
+  deadline timer started before it, so a `setProxy` slower than the 1 s margin could let the
+  print, or a record phase, settle after the deadline and lose the Capture. The count now starts
+  with the deadline timer.
+- The same review found that ingest signed the capture entry without parsing it whole, so a pair
+  the strict schema refuses would have broken the Case's chain. On the ingest of a Capture
+  carrying the capture engine's fields, the entry is now parsed before it is signed, and one that
+  fails is not written.
+- On taking step 9's committed-page rule (ruled 2026-10-29), the render reads the URL of the
+  window's last cross-document navigation at the save, with the URL, title, and status, and the
+  Transaction Record's end phases compare the main document with that URL. Step 9 read it after
+  the text, where it also read the URL the Capture was stored under. Read there beside a Capture
+  that keeps the saved page, it would leave out the saved page's Bound TLS Details when the page
+  navigated after the save, and would sign the earlier page's details when the page went back to
+  the blank page before the save and returned after it. Two unit tests in
+  `tests/main/services/backgroundRenderer.test.ts` pin the Bound TLS outcome of both cases.
+- The next review found that a reload of the same address after collection stopped and before
+  the save still signed the earlier load's Bound TLS Details, though the record holds no request
+  for the reloaded page. The maintainer ruled on 2026-10-30 that any navigation in that span, a
+  same-address reload included, records the details absent. The render now counts the window's
+  cross-document navigations when collection stops and again at the save, and passes no committed
+  URL when the two differ, so `boundTlsAbsent` is `not-reported`. A unit test in the same file
+  reloads the same address during the screenshot; it fails with the count comparison removed.
+- The plan leaves unverified whether pdf.js extracts text without the optional `@napi-rs/canvas`.
+  It does not: with no `@napi-rs/canvas` to load, the 5.6.205 legacy build stops at import on
+  Node 20.20.2 with `ReferenceError: DOMMatrix is not defined`. pnpm installs the optional
+  package by default, and with it the same build read the stored PDFs. The maintainer accepted
+  the packages on 2026-10-26 (Scope).
+
 ## False positives and negatives
 
 **Step 6.**
@@ -266,6 +395,24 @@ wherever the page loads.
   requests may still be recorded, and its text bodies are left out, since durable messages count
   only when they answered within the bound.
 
+**Step 10.**
+
+- `failed` on the PDF part covers a print that failed, one that ran out of time, one refused by a
+  size bound, and one refused or discarded because the page navigated after the save. The signed
+  entry does not say which; the `backgroundRenderer.pdf_failed` log entry's error names the bound,
+  or the address the page navigated to.
+- The layout bound reads the content height the screenshot record states (D6), the document's
+  content box, so it does not see the height of a panel that scrolls inside the page.
+- The layout bound measures the page as laid out on screen, and print styles can lay out far
+  more. In the review's standalone run, a page 479 CSS pixels tall on screen, whose print style
+  showed 150 random-pixel 600 by 400 images the screen hid, passed the bound and printed to
+  108,106,623 bytes, in 6,091 ms there and in 2,365 ms in this step's rerun. In a render, such a
+  print either outlasts its 5 s bound or exceeds `MAX_PDF_SIZE`, and the PDF is absent as
+  `failed`; in the second case the main process has held the whole PDF first.
+- A page that changes its address in place after the save, through `history.pushState`,
+  `history.replaceState`, or a new fragment, gets no PDF, although the print would have shown the
+  same document.
+
 ## Known limitations
 
 **Step 6.**
@@ -295,8 +442,8 @@ wherever the page loads.
   record it as a known limitation (the second decision on #1823). A page that branches on its
   history length can render differently, and nothing in the signed entry beyond `toolVersion`
   tells a Capture from this build apart from an earlier one in this respect. The extra history
-  entry also gives the page a blank page to go back to; a Capture that ends there is stored under
-  `about:blank` with no Bound TLS Details (ruled 2026-10-29).
+  entry also gives the page a blank page to go back to; a Capture whose page is there when it is
+  saved is stored under `about:blank` with no Bound TLS Details (ruled 2026-10-29).
 - The record holds nothing of a resource reused inside the page, of a shared worker's own
   requests, or of what runs below a target whose `Target.setAutoAttach` failed (D17).
 - The values of the four credential headers are replaced; a token in a URL, a body, or any other
@@ -315,6 +462,31 @@ wherever the page loads.
   one 11,000,000-byte upload was 25,667,678 characters of JSON, past the bound, so the record is
   `failed`; that of a 6,000,000-byte upload was 14,001,007, so two such uploads also go past it.
 - Every fixture is HTTP/1.1 on loopback; no HTTP/2, HTTP/3, or remote server was recorded.
+
+**Step 10.**
+
+- The PDF is the page as Chromium prints it, with the page's print styles on Letter pages, with
+  Electron's default options. What it shows can differ from the screenshot and the MHTML. A
+  resource the page fetches only for printing is not in the Transaction Record; the inventory's
+  `afterCollection` states that the print came after collection stopped.
+- With the print's 5 s, the end reserve is 40 s (ruled 2026-10-26), so within the 120 s
+  Recapture timeout the load, the idle waits, and Scroll-to-load share 80 s, where step 9 left
+  them 85 s. A slow page can reach the Scroll-to-load time limit up to 5 s sooner than under step
+  9 and hold less lazy content.
+- The 5 s bound stops the render's wait for the print, not the print: nothing cancels
+  `printToPDF`, so Chromium can go on printing after the render has stopped waiting, and a PDF
+  that then arrives is dropped. Whether destroying the window after ingest stops a print in
+  flight was not checked.
+- The text is read in its own call after the URL and title, so a page that commits a navigation
+  in between has the later page's text stored beside the saved page's MHTML. The PDF check then
+  finds the navigation, and the PDF is absent, but the text is not checked.
+- The size bounds and the print bound were chosen from invented fixtures on one Linux
+  workstation. A page whose images are larger than the fixture's reaches `MAX_PDF_SIZE` at a
+  lower height, and a slower machine can reach the 5 s bound on a long page; either records the
+  PDF `failed`.
+- `printToPDF` hands the whole PDF to the main process before its size can be read, so a PDF over
+  `MAX_PDF_SIZE` is held in memory once before it is discarded.
+- pdf.js, the test reader, needs the optional `@napi-rs/canvas` to load on Node 20 (Deviations).
 
 ## Acceptance decision
 

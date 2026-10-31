@@ -5,13 +5,16 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { createServer as createHttpsServer } from 'https'
 import { execFileSync } from 'child_process'
 import { createHash, X509Certificate } from 'crypto'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { gzipSync } from 'zlib'
 import type { Socket } from 'net'
 import type { ElectronApplication, Page } from '@playwright/test'
+import { readStoredZip } from '@main/services/zipRead'
+import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
 import { readWarc, type WarcRecord } from '../src/packages/transaction-record/warcReader'
+import { pdfPath } from '../src/packages/evidence-package-layout/index'
 
 // Step 9 of docs/plans/2026-10-10-capture-engine-first-slice.md: a background capture records
 // the Transaction Record, its inventory part, and Bound TLS Details, against fixture servers on
@@ -114,6 +117,18 @@ const LOOP_PAGE = `<!doctype html><title>Loop Fixture</title><script>
 })()
 </script>`
 
+// Step 10: the probe's print-only image, which the page requests only while it is printed
+// (docs/specs/2026-10-02-capture-engine-probe-spike.md, "The probe").
+const PRINT_TEXT = 'Printed after collection'
+const PRINT_PAGE = `<!doctype html><html><head><title>Print Fixture</title>
+<style>@media print { body { background-image: url(/print-only.png) } }</style></head>
+<body><h1>${PRINT_TEXT}</h1></body></html>`
+
+// The review of #2000, finding 2: a page that navigates to another after the save.
+const NAV_A_TEXT = 'Page A, the saved page'
+const NAV_A = `<!doctype html><title>Nav A</title><h1>${NAV_A_TEXT}</h1>`
+const NAV_B = '<!doctype html><title>Nav B</title><h1>Page B, after the save</h1>'
+
 // A page with one cross-site frame, for the stubbed setup failures.
 const STUB_PAGE = (frameOrigin: string) => `<!doctype html><html><head><title>Stub Fixture</title>
 </head><body><iframe src="${frameOrigin}/frame"></iframe></body></html>`
@@ -189,6 +204,14 @@ function startPageServer(log: Logged[], frameOrigin: () => string): Server {
         return send(res, 'text/plain', 't')
       case '/simple':
         return send(res, 'text/html', '<!doctype html><title>Simple</title><p>simple</p>')
+      case '/print':
+        return send(res, 'text/html', PRINT_PAGE)
+      case '/print-only.png':
+        return send(res, 'image/png', PNG)
+      case '/nav-a':
+        return send(res, 'text/html', NAV_A)
+      case '/nav-b':
+        return send(res, 'text/html', NAV_B)
       case '/style.css':
         return send(res, 'text/css', 'h1 { color: #222 }')
       case '/redir-same':
@@ -338,6 +361,71 @@ async function verified(page: Page, captureId: string): Promise<string> {
     }
     return (await w.birdbrain.captures.verify(id)).status
   }, captureId)
+}
+
+// Makes the page at `/nav-a` navigate to `/nav-b` once the render has saved it and read its
+// text, and holds the render until the navigation has committed, so the print step meets the
+// later page. Patches the main process of this launch only; the app's code is unchanged.
+async function navigateAfterTheSave(electronApp: ElectronApplication): Promise<void> {
+  await electronApp.evaluate(({ app }) => {
+    app.on('web-contents-created', (_event, contents) => {
+      const original = contents.executeJavaScript.bind(contents)
+      contents.executeJavaScript = async (code: string, userGesture?: boolean) => {
+        const result = await original(code, userGesture)
+        if (code.includes('innerText') && contents.getURL().endsWith('/nav-a')) {
+          await Promise.race([
+            new Promise<void>((resolve) => {
+              contents.once('did-navigate', () => resolve())
+              original("location.href = '/nav-b'").catch(() => {})
+            }),
+            new Promise<void>((resolve) => setTimeout(resolve, 10_000))
+          ])
+        }
+        return result
+      }
+    })
+  })
+}
+
+// Exports the Case as an evidence package through the app, and unpacks it into a new directory.
+async function exportedPackage(
+  electronApp: ElectronApplication,
+  page: Page,
+  caseId: string
+): Promise<string> {
+  const dir = mkdtempSync(join(tmpdir(), 'birdbrain-pdf-package-'))
+  const zipPath = join(dir, 'package.zip')
+  await electronApp.evaluate(({ dialog }, filePath) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath })
+  }, zipPath)
+  const result = await page.evaluate(async (id) => {
+    const w = window as unknown as {
+      birdbrain: {
+        export: {
+          generateReport: (caseId: string, options: object) => Promise<{ canceled: boolean }>
+        }
+      }
+    }
+    return w.birdbrain.export.generateReport(id, {
+      format: 'zip',
+      exportClass: 'evidence',
+      include: {
+        captures: true,
+        screenshots: true,
+        auditTrail: true,
+        notes: false,
+        annotations: 'none'
+      },
+      outputPath: ''
+    })
+  }, caseId)
+  expect(result.canceled).toBe(false)
+  const unpacked = join(dir, 'unpacked')
+  for (const [name, bytes] of readStoredZip(readFileSync(zipPath))) {
+    mkdirSync(dirname(join(unpacked, name)), { recursive: true })
+    writeFileSync(join(unpacked, name), bytes)
+  }
+  return unpacked
 }
 
 const ofType = (records: WarcRecord[], type: string) =>
@@ -600,6 +688,116 @@ test.describe('Transaction Record of a background capture', () => {
         (r) => r.warc('WARC-Target-URI') === `${pageServer.origin}/stub`
       )
     ).toBe(true)
+  })
+
+  // Step 10 of docs/plans/2026-10-10-capture-engine-first-slice.md.
+  test('prints the PDF after collection, and the PDF verifies in an exported package', async ({
+    page,
+    electronApp
+  }) => {
+    test.setTimeout(180000)
+    const caseId = await createCase(page, 'PDF E2E')
+    await recordActivity(page)
+    log.length = 0
+    const end = await recapture(page, caseId, `${pageServer.origin}/print`)
+    expect(end).toMatchObject({ type: 'stored' })
+    const captureId = end.captureId!
+
+    // The print requested the print-only image, and the record holds no request for it.
+    const printOnly = `${pageServer.origin}/print-only.png`
+    await expect.poll(() => log.some(({ url }) => url === printOnly)).toBe(true)
+    const { entry, records } = await storedCapture(page, caseId, captureId)
+    expect(records.length).toBeGreaterThan(1)
+    expect(ofType(records, 'request').map((r) => r.warc('WARC-Target-URI'))).not.toContain(
+      printOnly
+    )
+
+    // The stored file is the one the entry signs, and pdf.js reads it as one page of the
+    // fixture's text.
+    expect(entry.inventory).toMatchObject({ pdf: { present: true, afterCollection: true } })
+    const storagePath = await page.evaluate(async () => {
+      const w = window as unknown as {
+        birdbrain: { settings: { get: () => Promise<{ storagePath: string }> } }
+      }
+      return (await w.birdbrain.settings.get()).storagePath
+    })
+    const pdf = readFileSync(join(storagePath, caseId, `${captureId}.pdf`))
+    expect(createHash('sha256').update(pdf).digest('hex')).toBe(entry.pdfHash)
+    const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs')
+    const document = await getDocument({ data: new Uint8Array(pdf) }).promise
+    expect(document.numPages).toBe(1)
+    const printed = await document.getPage(1)
+    const { items } = await printed.getTextContent()
+    expect(items.map((item) => ('str' in item ? item.str : '')).join(' ')).toContain(PRINT_TEXT)
+    // A Letter page, 612 by 792 points.
+    expect(printed.view).toEqual([0, 0, 612, 792])
+    await document.destroy()
+    expect(await verified(page, captureId)).toBe('verified')
+
+    // A package exported from the Capture verifies, and a changed PDF byte fails.
+    const dir = await exportedPackage(electronApp, page, caseId)
+    const packaged = join(dir, pdfPath(entry.pdfHash as string))
+    expect(readFileSync(packaged).equals(pdf)).toBe(true)
+    const pdfCheck = (result: ReturnType<typeof verifyEvidencePackage>) =>
+      result.checks.find(({ name }) => name === `capture ${captureId} pdf`)
+    const intact = verifyEvidencePackage(dir)
+    expect(intact.pass, JSON.stringify(intact.checks, null, 2)).toBe(true)
+    expect(pdfCheck(intact)?.status).toBe('pass')
+    const changed = Buffer.from(pdf)
+    changed[changed.length - 1] ^= 0xff
+    writeFileSync(packaged, changed)
+    const tampered = verifyEvidencePackage(dir)
+    expect(tampered.pass).toBe(false)
+    expect(pdfCheck(tampered)).toMatchObject({
+      status: 'fail',
+      reason: `capture ${captureId}: PDF hash does not match manifest`
+    })
+    rmSync(dirname(dir), { recursive: true, force: true })
+  })
+
+  // Finding 2 of the review of #2000: the page navigates after the save, before the print.
+  test('stores a page that navigates after the save as the page it saved, and prints no PDF', async ({
+    page,
+    electronApp
+  }) => {
+    test.setTimeout(150000)
+    await navigateAfterTheSave(electronApp)
+    const caseId = await createCase(page, 'Navigation E2E')
+    await recordActivity(page)
+    log.length = 0
+    const url = `${pageServer.origin}/nav-a`
+    const end = await recapture(page, caseId, url)
+    expect(end).toMatchObject({ type: 'stored' })
+    const captureId = end.captureId!
+    expect(log.some(({ url: logged }) => logged === `${pageServer.origin}/nav-b`)).toBe(true)
+
+    const { entry } = await storedCapture(page, caseId, captureId)
+    expect(entry.url).toBe(url)
+    expect(entry).not.toHaveProperty('finalUrl')
+    expect(entry.inventory).toMatchObject({ pdf: { present: false, reason: 'failed' } })
+    expect(entry).not.toHaveProperty('pdfHash')
+    const { storagePath, title } = await page.evaluate(
+      async ({ id, capture }) => {
+        const w = window as unknown as {
+          birdbrain: {
+            settings: { get: () => Promise<{ storagePath: string }> }
+            captures: { list: (caseId: string) => Promise<Array<{ id: string; title: string }>> }
+          }
+        }
+        const rows = await w.birdbrain.captures.list(id)
+        return {
+          storagePath: (await w.birdbrain.settings.get()).storagePath,
+          title: rows.find((row) => row.id === capture)?.title
+        }
+      },
+      { id: caseId, capture: captureId }
+    )
+    expect(title).toBe('Nav A')
+    expect(existsSync(join(storagePath, caseId, `${captureId}.pdf`))).toBe(false)
+    expect(readFileSync(join(storagePath, caseId, `${captureId}.txt`), 'utf-8')).toContain(
+      NAV_A_TEXT
+    )
+    expect(await verified(page, captureId)).toBe('verified')
   })
 })
 

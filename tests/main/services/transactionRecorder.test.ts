@@ -1103,6 +1103,12 @@ describe('boundTlsOf (plan D7)', () => {
     })
   })
 
+  it('states not-reported when the saved page came from no recorded request', () => {
+    expect(boundTlsOf(main('https://127.0.0.1/', 'complete'), undefined)).toEqual({
+      boundTlsAbsent: 'not-reported'
+    })
+  })
+
   it('states not-reported with no details or no main document', () => {
     expect(boundTlsOf(main('https://127.0.0.1/', 'complete', false), 'https://127.0.0.1/')).toEqual(
       {

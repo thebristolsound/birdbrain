@@ -18,8 +18,16 @@ import type {
   TransactionRecordOutcome,
   TransactionRecorder
 } from '@main/services/transactionRecorder'
-import type { RenderPage, RenderedPage, ScreenshotRecord } from '@main/services/recapture'
+import type {
+  PdfOutcome,
+  PresentPdf,
+  RenderPage,
+  RenderedPage,
+  ScreenshotRecord
+} from '@main/services/recapture'
+import { CaptureInventorySchema } from '@shared/schemas'
 import type { ScrollToLoadRecord } from '@shared/schemas'
+import { MAX_PDF_CONTENT_HEIGHT_PX, MAX_PDF_SIZE } from '@shared/constants'
 import type { ConsentSuppression, KnownEgress, ScrollToLoadOutcome } from '@shared/types'
 import { logger } from '@main/services/logger'
 
@@ -38,17 +46,21 @@ const ARTIFACT_PHASE_MS = 20_000
 // The Transaction Record's two end phases, each under its own bound (step 9 of
 // docs/plans/2026-10-10-capture-engine-first-slice.md, "Time"): the body
 // fetches still out when collection stops, and the writer. Each is also cut to
-// the time the render has left, less RECORD_END_MARGIN_MS for handing the page
+// the time the render has left, less END_MARGIN_MS for handing the page
 // back, so a phase that runs out records the Transaction Record absent as
 // `failed` and the Capture stores, and the render never runs past its deadline
 // for it (ruled 2026-10-26).
 const BODY_COLLECT_TIMEOUT_MS = 5_000
 const RECORD_WRITE_TIMEOUT_MS = 10_000
-const RECORD_END_MARGIN_MS = 1_000
+// The print, the render's last phase (step 10), under its own bound and cut to
+// the time left by the same rule, so a print that runs out records the PDF
+// absent as `failed` and the Capture stores.
+const PRINT_TIMEOUT_MS = 5_000
+const END_MARGIN_MS = 1_000
 // Reserved at the end of the render, so the phases before it can't starve the
-// artifacts and the Transaction Record into the outer deadline.
+// artifacts, the Transaction Record and the PDF into the outer deadline.
 const FINAL_ARTIFACT_RESERVE_MS =
-  ARTIFACT_PHASE_MS + BODY_COLLECT_TIMEOUT_MS + RECORD_WRITE_TIMEOUT_MS
+  ARTIFACT_PHASE_MS + BODY_COLLECT_TIMEOUT_MS + RECORD_WRITE_TIMEOUT_MS + PRINT_TIMEOUT_MS
 // Chromium's max texture dimension; captures beyond it fail or OOM.
 const MAX_CAPTURE_DIMENSION_PX = 16_384
 const MAX_CAPTURE_PIXELS = 32_000_000
@@ -490,6 +502,91 @@ export async function trimTrailingBackground(
   }
 }
 
+// The schema-6 shape of the inventory's PDF part, parsed before it reaches the
+// signed entry, as the Transaction Record's part is.
+const PdfPartSchema = CaptureInventorySchema.shape.pdf
+
+class PrintTimeout extends Error {
+  constructor(ms: number) {
+    super(`The print did not settle within ${ms}ms`)
+    this.name = 'PrintTimeout'
+  }
+}
+
+// The page as the render saved it, which the stored Capture describes.
+interface SavedPage {
+  url: string
+  title: string
+  httpStatus: number
+  // Main-frame navigations committed by the save.
+  navigations: number
+  // The last of them, so Bound TLS Details follow the saved page, not a later one;
+  // undefined when a navigation committed after collection stopped, a same-address
+  // reload included, since no recorded request loaded the saved page (ruling of
+  // 2026-10-30 on #2000).
+  committedUrl: string | undefined
+}
+
+// Prints the page to PDF (step 10 of
+// docs/plans/2026-10-10-capture-engine-first-slice.md). The caller runs it last,
+// after collection stopped and the other files were taken, so what the page
+// fetches for printing stays out of the Transaction Record (spec, PDF). Never
+// throws: a page that navigated after the save, or is taller than
+// MAX_PDF_CONTENT_HEIGHT_PX, is not printed, and that, a print that fails or
+// outlasts `boundMs`, a page the window reports navigated while it printed, and
+// a PDF over MAX_PDF_SIZE each record the PDF absent as `failed`, with an error
+// that names the cause.
+async function printPageToPdf(
+  wc: WebContents,
+  {
+    saved,
+    navigations,
+    contentHeight,
+    boundMs
+  }: { saved: SavedPage; navigations: () => number; contentHeight: number; boundMs: number }
+): Promise<PdfOutcome> {
+  try {
+    // A print shows whatever the window holds, so a page that left the saved
+    // document, or changed its address in place, would be printed as another page.
+    // Checked again after the print, for a navigation the window reports only then
+    // (review of #2000).
+    const navigatedTo = (): string | null => {
+      const url = wc.getURL()
+      return url !== saved.url || navigations() !== saved.navigations ? url : null
+    }
+    const before = navigatedTo()
+    if (before !== null) {
+      throw new Error(`The page navigated after it was saved, to ${before}, so it was not printed`)
+    }
+    if (contentHeight > MAX_PDF_CONTENT_HEIGHT_PX) {
+      throw new Error(
+        `The page is ${contentHeight} CSS pixels tall, over MAX_PDF_CONTENT_HEIGHT_PX ` +
+          `(${MAX_PDF_CONTENT_HEIGHT_PX}), so it was not printed`
+      )
+    }
+    if (boundMs <= 0) throw new Error('The Recapture timeout left no time for the print')
+    let timer: NodeJS.Timeout | undefined
+    const bound = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new PrintTimeout(boundMs)), boundMs)
+    })
+    // Electron's defaults, the options the probe printed with.
+    const bytes = await Promise.race([wc.printToPDF({}), bound]).finally(() => clearTimeout(timer))
+    const during = navigatedTo()
+    if (during !== null) {
+      throw new Error(`The page navigated while it printed, to ${during}, so the PDF was discarded`)
+    }
+    if (bytes.length > MAX_PDF_SIZE) {
+      throw new Error(
+        `The PDF is ${bytes.length} bytes, over MAX_PDF_SIZE (${MAX_PDF_SIZE}), so it was discarded`
+      )
+    }
+    const inventory = PdfPartSchema.parse({ present: true, afterCollection: true }) as PresentPdf
+    return { present: true, bytes, inventory }
+  } catch (error) {
+    return { present: false, reason: 'failed', error }
+  }
+}
+
 // A load that failed at the proxy names the proxy, so the Operator can tell a
 // stopped Tor from an unreachable site. Chromium reports those failures as
 // ERR_PROXY_*, ERR_SOCKS_*, ERR_TUNNEL_* or ERR_NO_SUPPORTED_PROXIES. The address
@@ -539,6 +636,11 @@ export const renderPageInHiddenWindow: RenderPage = async (
 
   const tmpPath = join(app.getPath('temp'), `birdbrain-recapture-${randomUUID()}.mhtml`)
 
+  // The time left counts from the moment the deadline timer starts, so setup before the
+  // first load, such as a slow `setProxy`, cannot let a phase settle after the deadline.
+  const startedAt = Date.now()
+  const remainingMs = (reserveMs = 0) =>
+    Math.max(0, timeoutMs - (Date.now() - startedAt) - reserveMs)
   let deadlineTimer: NodeJS.Timeout | undefined
   const deadline = new Promise<never>((_, reject) => {
     deadlineTimer = setTimeout(
@@ -628,18 +730,16 @@ export const renderPageInHiddenWindow: RenderPage = async (
     const certificateAllowance = testCertificateAllowance()
     if (certificateAllowance) session.setCertificateVerifyProc(certificateAllowance)
 
-    const startedAt = Date.now()
-    const remainingMs = (reserveMs = 0) =>
-      Math.max(0, timeoutMs - (Date.now() - startedAt) - reserveMs)
-
     wc.on('will-redirect', checkHop)
     wc.on('will-navigate', checkHop)
 
     let httpStatus = 0
+    let navigations = 0
     // Bound TLS Details are signed only for the page this names (`boundTlsOf`).
     let committedUrl = ''
     wc.on('did-navigate', (_event, navUrl, httpResponseCode) => {
       httpStatus = httpResponseCode
+      navigations += 1
       committedUrl = navUrl
     })
 
@@ -713,10 +813,20 @@ export const renderPageInHiddenWindow: RenderPage = async (
       // Transaction Record). The renderer spike saw no request and no event during
       // either, so stopping here and after the save recorded the same events.
       activeRecorder.stop()
+      const navigationsAtStop = navigations
       const recordedAt = new Date().toISOString()
       const { png: screenshot, record: screenshotRecord } = await captureFullPageScreenshot(wc)
 
       await wc.savePage(tmpPath, 'MHTML')
+      // The Capture is stored under the page the save took, read before anything else
+      // awaits: a page can navigate itself during the steps that follow (review of #2000).
+      const saved: SavedPage = {
+        url: wc.getURL(),
+        title: wc.getTitle(),
+        httpStatus,
+        navigations,
+        committedUrl: navigations === navigationsAtStop ? committedUrl : undefined
+      }
 
       const text = (await wc.executeJavaScript(
         'document.body ? document.body.innerText : ""'
@@ -728,8 +838,8 @@ export const renderPageInHiddenWindow: RenderPage = async (
         ? await finishTransactionRecord(activeRecorder, {
             collectMs: BODY_COLLECT_TIMEOUT_MS,
             writeMs: RECORD_WRITE_TIMEOUT_MS,
-            timeLeftMs: () => remainingMs(RECORD_END_MARGIN_MS),
-            committedUrl,
+            timeLeftMs: () => remainingMs(END_MARGIN_MS),
+            committedUrl: saved.committedUrl,
             writer: {
               captureId,
               birdbrainVersion: toolVersion,
@@ -745,19 +855,28 @@ export const renderPageInHiddenWindow: RenderPage = async (
             error: new Error('Network.enable failed or did not answer on the page')
           }
 
+      // Last, under its own bound cut to the time left (PRINT_TIMEOUT_MS).
+      const pdf = await printPageToPdf(wc, {
+        saved,
+        navigations: () => navigations,
+        contentHeight: screenshotRecord.contentHeight,
+        boundMs: Math.min(PRINT_TIMEOUT_MS, remainingMs(END_MARGIN_MS))
+      })
+
       return {
         mhtmlStream: createReadStream(tmpPath) as unknown as AsyncIterable<Uint8Array>,
         screenshot,
         screenshotRecord,
         scrollToLoad,
         text,
-        title: wc.getTitle(),
-        finalUrl: wc.getURL(),
-        httpStatus,
+        title: saved.title,
+        finalUrl: saved.url,
+        httpStatus: saved.httpStatus,
         userAgent,
         browserVersion,
         consentSuppression,
         transactionRecord,
+        pdf,
         egress: captureEgressOf(egress),
         cleanup: async () => {
           if (!win.isDestroyed()) win.destroy()

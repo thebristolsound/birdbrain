@@ -51,8 +51,8 @@ importers:
         specifier: ^2.11.0
         version: 2.11.0
       '@peculiar/asn1-schema':
-        specifier: ^2.11.0
-        version: 2.11.0
+        specifier: ^2.11.1
+        version: 2.11.1
       '@peculiar/asn1-tsp':
         specifier: ^2.11.0
         version: 2.11.0
@@ -1337,8 +1337,8 @@ packages:
     resolution: {integrity: sha512-SlAiDoT/Cd8qaNmbTt78gqyaEvu2fQd6ML6KWJkdjXGrgDKnHHrusVkfQUelkfinL2p665IIADb0JBixtT8W1g==}
     engines: {node: '>=14'}
 
-  '@peculiar/asn1-schema@2.11.0':
-    resolution: {integrity: sha512-8xh4avo53/vXO6UEv9yaoJ83hY581geaLTygf61NPIXP5AeIZCPjJhpTaYU23IZkG+NpLN/C9FYzWp7hphIT9A==}
+  '@peculiar/asn1-schema@2.11.1':
+    resolution: {integrity: sha512-jaU9OaCcbZUdyXx9hMETZB9xoNmxTGjOGFqd3cOwKFkpKnyKd9WxF3uqj4PvX4cyOMP9bSdHg5YyML2qtx/d/g==}
     engines: {node: '>=14'}
 
   '@peculiar/asn1-tsp@2.11.0':
@@ -7340,13 +7340,13 @@ snapshots:
 
   '@peculiar/asn1-cms@2.11.0':
     dependencies:
-      '@peculiar/asn1-schema': 2.11.0
+      '@peculiar/asn1-schema': 2.11.1
       '@peculiar/asn1-x509': 2.11.0
       '@peculiar/asn1-x509-attr': 2.11.0
       asn1js: 3.1.0
       tslib: 2.8.1
 
-  '@peculiar/asn1-schema@2.11.0':
+  '@peculiar/asn1-schema@2.11.1':
     dependencies:
       '@peculiar/utils': 2.0.3
       asn1js: 3.1.0
@@ -7355,21 +7355,21 @@ snapshots:
   '@peculiar/asn1-tsp@2.11.0':
     dependencies:
       '@peculiar/asn1-cms': 2.11.0
-      '@peculiar/asn1-schema': 2.11.0
+      '@peculiar/asn1-schema': 2.11.1
       '@peculiar/asn1-x509': 2.11.0
       asn1js: 3.1.0
       tslib: 2.8.1
 
   '@peculiar/asn1-x509-attr@2.11.0':
     dependencies:
-      '@peculiar/asn1-schema': 2.11.0
+      '@peculiar/asn1-schema': 2.11.1
       '@peculiar/asn1-x509': 2.11.0
       asn1js: 3.1.0
       tslib: 2.8.1
 
   '@peculiar/asn1-x509@2.11.0':
     dependencies:
-      '@peculiar/asn1-schema': 2.11.0
+      '@peculiar/asn1-schema': 2.11.1
       '@peculiar/utils': 2.0.3
       asn1js: 3.1.0
       tslib: 2.8.1
@@ -7384,7 +7384,7 @@ snapshots:
 
   '@peculiar/webcrypto@1.7.1':
     dependencies:
-      '@peculiar/asn1-schema': 2.11.0
+      '@peculiar/asn1-schema': 2.11.1
       '@peculiar/json-schema': 1.1.12
       '@peculiar/utils': 2.0.3
       tslib: 2.8.1
@@ -12512,7 +12512,7 @@ snapshots:
 
   webcrypto-core@1.9.2:
     dependencies:
-      '@peculiar/asn1-schema': 2.11.0
+      '@peculiar/asn1-schema': 2.11.1
       '@peculiar/json-schema': 1.1.12
       '@peculiar/utils': 2.0.3
       asn1js: 3.1.0

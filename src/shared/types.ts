@@ -791,6 +791,10 @@ export const LOG_CODES = [
   'mutation.failed',
   'react.render_error',
   // --- appended: real call sites with no pinned-code fit ---
+  // Every failed request through handle() (ipcWrap.ts): refused is an
+  // { ok: false } answer, threw is a defect that rejects in the renderer.
+  'ipc.request_refused',
+  'ipc.request_threw',
   'captureServer.selector_create_failed',
   'captureServer.tag_apply_failed',
   'captureServer.note_create_failed',
@@ -969,7 +973,8 @@ export const LOG_CODES = [
   // holds the error.
   'searchFields.unreviewed_failed',
   // Shared Case sharing (#1810): an incoming stream whose handler threw on
-  // this installation (the peer saw the stream close), and a joiner's first
+  // this installation (the peer saw the stream close; info for an ordinary
+  // disconnect, warn otherwise), and a joiner's first
   // session that failed after the Case was adopted (Sync now retries it).
   'sharing.stream_failed',
   'sharing.first_session_failed',
@@ -1054,7 +1059,14 @@ export const ERROR_NAMES = [
   // Without this the durable app.startup_failed entry for a bind failure reads
   // 'UnknownError', which is the one field distinguishing it from any other
   // fatal boot error in a log an operator has sent in (#513).
-  'CaptureServerBindError'
+  'CaptureServerBindError',
+  // Shared Cases (#1810). TransportError carries why the network ended a
+  // stream in its code (irohTransport.ts); the others name a refusal.
+  'TransportError',
+  'SharingError',
+  'ProtocolError',
+  'PeerByeError',
+  'PeerUnreachableError'
 ] as const
 
 export interface LoggedError {

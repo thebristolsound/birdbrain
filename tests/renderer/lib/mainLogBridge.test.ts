@@ -52,6 +52,15 @@ describe('mainLogBridge', () => {
     expect(toastFns.info).not.toHaveBeenCalled()
   })
 
+  it('does not toast a failed request, which the renderer surfaces itself', async () => {
+    const { subscribeToMainLog } = await import('@renderer/lib/mainLogBridge')
+    subscribeToMainLog()
+    listener?.({ ...entry('error'), source: 'ipc', code: 'ipc.request_threw' })
+    listener?.({ ...entry('warn'), id: 'a2', source: 'ipc', code: 'ipc.request_refused' })
+    expect(toastFns.error).not.toHaveBeenCalled()
+    expect(toastFns.warning).not.toHaveBeenCalled()
+  })
+
   it('ignores renderer-originated entries so they do not toast twice', async () => {
     const { subscribeToMainLog } = await import('@renderer/lib/mainLogBridge')
     subscribeToMainLog()

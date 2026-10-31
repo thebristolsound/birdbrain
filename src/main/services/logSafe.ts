@@ -90,6 +90,10 @@ export function code(value: string): LogSafe {
   return CODE.test(value) ? brand(value) : reject('code')
 }
 
+export function channel(value: string): LogSafe {
+  return IPC_CHANNEL_NAMES.test(value) ? brand(value) : reject('channel')
+}
+
 // Electron API vocabularies (values confirmed against the electron/electron
 // docs, not guessed) for the crash-handler call sites this module exists to
 // serve. Both '-gone' events share the same reason set today, per Electron's
@@ -443,8 +447,17 @@ const FRAME_FN = String.raw`(?:new\s|async\s)?[\w$.<>[\]]+`
 const FRAME_LOC = String.raw`(?:[/\\][^\s()]*:\d+:\d+|[A-Za-z]:[\\/][^\s()]*:\d+:\d+|[a-z][a-z0-9+.-]*:[^\s()]*:\d+:\d+|<anonymous>|native)`
 const FRAME = new RegExp(String.raw`^\s*at\s(?:${FRAME_FN}\s\(${FRAME_LOC}\)|${FRAME_LOC})\s*$`)
 
-function stackFrames(stack: string): string[] {
-  return stack.split('\n').filter((line) => FRAME.test(line))
+// The location test refuses whitespace, so a frame under an install root or
+// home directory with a space in it ('C:\Users\Jane Doe') would be dropped
+// whole. Both prefixes come from the process, not from an error message, so
+// the test reads each as one spaceless segment; the function name still has
+// to pass on its own, and the next steps strip both prefixes from what is kept.
+function stackFrames(stack: string, knownRoots: string[]): string[] {
+  const roots = knownRoots.filter((root) => /\s/.test(root))
+  return stack.split('\n').filter((line) => {
+    const tested = roots.reduce((text, root) => text.split(root).join('/root'), line)
+    return FRAME.test(tested)
+  })
 }
 
 // Strips the app's own install/checkout root from each frame so what remains
@@ -513,7 +526,7 @@ export function sanitizeError(
   // subclass or library error can assign anything to it, and a non-string
   // truthy value would throw on .split inside stackFrames.
   if (typeof rawStack === 'string' && rawStack.length > 0) {
-    const frames = stackFrames(rawStack)
+    const frames = stackFrames(rawStack, [appRoot, homeDir])
     if (frames.length > 0) {
       const relativized = relativizeStack(frames.join('\n'), appRoot)
       stack = sanitizeText(relativized, homeDir).split('\n').slice(0, MAX_STACK_FRAMES).join('\n')

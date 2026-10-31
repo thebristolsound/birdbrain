@@ -128,6 +128,10 @@ export interface InsertCaptureParams {
   method?: CaptureMethod
   supersedesCaptureId?: string
   duplicateOfCaptureId?: string
+  // A link Capture's source (ADR-0040), all three or none.
+  linkedFromCaptureId?: string
+  linkedFromContentHash?: string
+  linkHref?: string
   consentSuppression?: ConsentSuppression
   // Mirrors of the signed entry's capture engine fields: the objects as JSON,
   // the hash and the absence reason as text.
@@ -190,7 +194,10 @@ export const CAPTURE_COLUMNS: ReadonlyArray<{ column: string; default: unknown }
   { column: 'inventory', default: null },
   { column: 'scroll_to_load', default: null },
   { column: 'bound_tls', default: null },
-  { column: 'bound_tls_absent', default: null }
+  { column: 'bound_tls_absent', default: null },
+  { column: 'linked_from_capture_id', default: null },
+  { column: 'linked_from_content_hash', default: null },
+  { column: 'link_href', default: null }
 ]
 
 const ARTIFACT_PATH_COLUMNS = new Set(['html_path', 'screenshot_path', 'mhtml_path'])
@@ -248,6 +255,9 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
     supersedes_capture_id: params.supersedesCaptureId ?? null,
     consent_suppression: params.consentSuppression ?? null,
     duplicate_of_capture_id: params.duplicateOfCaptureId ?? null,
+    linked_from_capture_id: params.linkedFromCaptureId ?? null,
+    linked_from_content_hash: params.linkedFromContentHash ?? null,
+    link_href: params.linkHref ?? null,
     inventory: params.inventory !== undefined ? JSON.stringify(params.inventory) : null,
     scroll_to_load: params.scrollToLoad !== undefined ? JSON.stringify(params.scrollToLoad) : null,
     transaction_record_hash: params.transactionRecordHash ?? null,
@@ -525,6 +535,9 @@ function rowToCapture(row: Record<string, unknown>): Capture {
     method: ((row.method as string) || 'extension') as CaptureMethod,
     supersedesCaptureId: (row.supersedes_capture_id as string) || undefined,
     duplicateOfCaptureId: (row.duplicate_of_capture_id as string) || undefined,
+    linkedFromCaptureId: (row.linked_from_capture_id as string) || undefined,
+    linkedFromContentHash: (row.linked_from_content_hash as string) || undefined,
+    linkHref: (row.link_href as string) || undefined,
     consentSuppression: (row.consent_suppression as ConsentSuppression) || undefined,
     mhtmlPath: (row.mhtml_path as string) || undefined,
     screenshotHash: (row.screenshot_hash as string) || undefined,
@@ -574,8 +587,8 @@ export function collectCaptureFavoritesForCase(caseId: string): Record<string, u
 
 // Rows come from a (possibly old-epoch) archive: missing keys fall back to the
 // drift-tested CAPTURE_COLUMNS defaults. id/case_id/supersedes_capture_id/
-// duplicate_of_capture_id are remapped, the verification result is cleared;
-// every capture gets a capture_texts row via ctx.getText.
+// duplicate_of_capture_id/linked_from_capture_id are remapped, the verification
+// result is cleared; every capture gets a capture_texts row via ctx.getText.
 export function importCaptureRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
   const d = getDb()
   const insertCap = d.prepare(CAPTURE_INSERT_SQL)
@@ -604,6 +617,9 @@ export function importCaptureRows(rows: Record<string, unknown>[], ctx: ImportCt
           return cap.duplicate_of_capture_id
             ? ctx.mapId(cap.duplicate_of_capture_id as string)
             : null
+        }
+        if (c.column === 'linked_from_capture_id') {
+          return cap.linked_from_capture_id ? ctx.mapId(cap.linked_from_capture_id as string) : null
         }
         return cap[c.column] ?? c.default ?? null
       })

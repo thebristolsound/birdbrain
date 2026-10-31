@@ -1,0 +1,634 @@
+import { test, expect } from './fixtures/electronApp'
+import { createCase } from './fixtures/seed'
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http'
+import { execFileSync } from 'child_process'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { dirname, join } from 'path'
+import { crc32, deflateSync } from 'zlib'
+import type { ElectronApplication, Page } from '@playwright/test'
+import { readStoredZip } from '@main/services/zipRead'
+import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
+import { readWarc } from '../src/packages/transaction-record/warcReader'
+import { PACKAGE_ROOT_FILES } from '../src/packages/evidence-package-layout/index'
+
+// Image Source Pinning (#1843, ADR-0055): a background capture points each srcset image the
+// page displayed at the source it displayed before the screenshot and the MHTML, and signs how
+// many it pinned. Every image the server sends is a PNG followed by `TAG:<path>#<n>`, where n counts the
+// requests for that path in the test, so the bytes of each MHTML part name the request that
+// served them.
+
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64'
+)
+// 400 by 400, for a `400w` candidate: shown at `sizes="10px"` it has a natural size of 10 by
+// 10. A 1x1 file there would have a natural size below one pixel, and pinning leaves an image
+// with no natural size as it is.
+const PNG_400 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAZAAAAGQAQMAAAC6caSPAAAAA1BMVEXIPDxkWv9aAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAKklEQVR42u3BMQEAAADCoPVP7W8GoAAAAAAAAAAAAAAAAAAAAAAAAACAN0+wAAGUQRhcAAAAAElFTkSuQmCC',
+  'base64'
+)
+
+// A PNG of one color, for an image whose displayed size is read back from the screenshot.
+function solidPng(width: number, height: number, rgb: [number, number, number]) {
+  const chunk = (type: string, data: Buffer) => {
+    const body = Buffer.concat([Buffer.from(type, 'latin1'), data])
+    const framed = Buffer.alloc(body.length + 8)
+    framed.writeUInt32BE(data.length, 0)
+    body.copy(framed, 4)
+    framed.writeUInt32BE(crc32(body), body.length + 4)
+    return framed
+  }
+  const header = Buffer.alloc(13)
+  header.writeUInt32BE(width, 0)
+  header.writeUInt32BE(height, 4)
+  header[8] = 8
+  header[9] = 2
+  const row = Buffer.alloc(1 + width * 3).map((_, i) => (i === 0 ? 0 : rgb[(i - 1) % 3]))
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(Buffer.concat(Array.from({ length: height }, () => row)))),
+    chunk('IEND', Buffer.alloc(0))
+  ])
+}
+// Colors that read the same in RGBA and BGRA, and that no other image of the page uses.
+const GREEN: [number, number, number] = [0, 200, 0]
+const MAGENTA: [number, number, number] = [200, 0, 200]
+
+type Route = (req: IncomingMessage, res: ServerResponse) => void
+
+const page = (title: string, head: string, body: string): string =>
+  `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>${head}</head><body><h1>${title}</h1>${body}</body></html>`
+const send =
+  (type: string, body: string | Buffer, headers: Record<string, string> = {}): Route =>
+  (_req, res) => {
+    res.writeHead(200, { 'content-type': type, ...headers }).end(body)
+  }
+// How many requests each path has had in the current test.
+const requestNumbers = new Map<string, number>()
+const png =
+  (headers: Record<string, string> = {}, bytes = PNG): Route =>
+  (req, res) => {
+    const tag = `TAG:${req.url}#${requestNumbers.get(req.url ?? '')}`
+    res
+      .writeHead(200, { 'content-type': 'image/png', ...headers })
+      .end(Buffer.concat([bytes, Buffer.from(tag)]))
+  }
+const MAX_AGE = { 'cache-control': 'max-age=3600' }
+const NO_STORE = { 'cache-control': 'no-store' }
+let retryRequests = 0
+
+// The renderer spike's `q2-savepage` fixture
+// (docs/specs/2026-10-11-capture-engine-renderer-spike.md, "Reproduce"), with tagged images.
+const ROUTES: Record<string, Route> = {
+  '/savepage': send(
+    'text/html',
+    page(
+      'Savepage fixture',
+      '<link rel="icon" href="/savepage/icon.png"><link rel="stylesheet" href="/savepage/style.css">',
+      `<img src="/savepage/cacheable.png" width="40" height="40">
+<img src="/savepage/nostore.png" width="40" height="40">
+<img srcset="/savepage/srcset-1x.png 1x, /savepage/srcset-2x.png 2x" width="40" height="40">
+<iframe src="/savepage/frame" width="200" height="80"></iframe>
+<div style="height:3000px"></div>
+<img loading="lazy" src="/savepage/lazy.png" width="40" height="40">`
+    )
+  ),
+  '/savepage/style.css': send(
+    'text/css',
+    '@font-face{font-family:SpikeFont;src:url(/savepage/font.woff2)}' +
+      'body{font-family:SpikeFont,sans-serif;background:url(/savepage/bg.png)}' +
+      '@media print{body{background:url(/savepage/print-only.png)}}'
+  ),
+  '/savepage/font.woff2': send('font/woff2', Buffer.from('not a real font')),
+  '/savepage/icon.png': png(),
+  '/savepage/bg.png': png(NO_STORE),
+  '/savepage/print-only.png': png(),
+  '/savepage/cacheable.png': png(MAX_AGE),
+  '/savepage/nostore.png': png(NO_STORE),
+  '/savepage/srcset-1x.png': png(),
+  '/savepage/srcset-2x.png': png(),
+  '/savepage/lazy.png': png(NO_STORE),
+  '/savepage/frame': send(
+    'text/html',
+    page('Savepage frame', '', '<img src="/savepage/frame-nostore.png">'),
+    NO_STORE
+  ),
+  '/savepage/frame-nostore.png': png(NO_STORE),
+
+  // The five images of the triage of #1843.
+  '/five': send(
+    'text/html',
+    page(
+      'Five images fixture',
+      '',
+      `<img srcset="/five/srcset-only-1x.png 1x, /five/srcset-only-2x.png 2x" width="10" height="10">
+<img src="/five/src-fallback.png" srcset="/five/srcset-with-src-1x.png 1x, /five/srcset-with-src-2x.png 2x" width="10" height="10">
+<img srcset="/five/srcset-w-400.png 400w, /five/srcset-w-800.png 800w" sizes="10px" width="10" height="10">
+<picture><source srcset="/five/picture-source.png" type="image/png"><img src="/five/picture-fallback.png" width="10" height="10"></picture>
+<img src="/five/plain.png" width="10" height="10">`
+    )
+  ),
+  '/five/srcset-w-400.png': png({}, PNG_400),
+
+  // Two images whose displayed source is not the first in the set: a 1x one after a 2x one, and
+  // a 400w one shown at 200px after an 800w one, so the second displays at density 2. And two
+  // offered only at 2x and only at 1.5x, sets to which the pinned `src` would add a 1x
+  // candidate, shown at 200 and 160 CSS pixels.
+  '/order': send(
+    'text/html',
+    page(
+      'Order fixture',
+      '',
+      `<img id="density" srcset="/order/d-2x.png 2x, /order/d-1x.png 1x">
+<img id="width" srcset="/order/w-800.png 800w, /order/w-400.png 400w" sizes="200px">
+<img id="only2x" srcset="/order/only-2x.png 2x" style="display:block">
+<img id="only1-5x" srcset="/order/only-1-5x.png 1.5x" style="display:block">`
+    )
+  ),
+  '/order/d-1x.png': png(),
+  '/order/d-2x.png': png(),
+  '/order/w-400.png': png({}, PNG_400),
+  '/order/w-800.png': png({}, PNG_400),
+  '/order/only-2x.png': png({}, solidPng(400, 400, GREEN)),
+  '/order/only-1-5x.png': png({}, solidPng(240, 240, MAGENTA)),
+
+  // Images offered as sets that pinning leaves as they are: one whose load failed, which the
+  // server would answer if asked again; one shown from a `blob:` address the page revokes once
+  // it has loaded; and one inserted after load whose response never comes. One inserted after
+  // load and answered after 1 s is pinned.
+  '/left': send(
+    'text/html',
+    page(
+      'Left alone fixture',
+      '',
+      `<img srcset="/left/retry.png 1x" width="10" height="10">
+<img id="blob" width="10" height="10">
+<script>
+fetch('/left/blob-src.png').then((r) => r.blob()).then((b) => {
+  const url = URL.createObjectURL(b)
+  const img = document.getElementById('blob')
+  img.onload = () => URL.revokeObjectURL(url)
+  img.srcset = url + ' 1x'
+})
+addEventListener('load', () => {
+  for (const name of ['fast', 'never']) {
+    const img = new Image(10, 10)
+    img.srcset = '/left/' + name + '.png 1x'
+    document.body.append(img)
+  }
+})
+</script>`
+    )
+  ),
+  '/left/retry.png': (req, res) => {
+    if (retryRequests++ === 0) res.writeHead(404, { 'content-type': 'text/plain' }).end('not found')
+    else png()(req, res)
+  },
+  '/left/blob-src.png': png(),
+  '/left/fast.png': (req, res) => {
+    setTimeout(() => png()(req, res), 1000)
+  },
+  // Never answered; the server closes the connection after the tests.
+  '/left/never.png': () => {}
+}
+
+interface Fixture {
+  origin: string
+  served: string[]
+  close: () => Promise<void>
+}
+
+async function startServer(): Promise<Fixture> {
+  const served: string[] = []
+  const server: Server = createServer((req, res) => {
+    const path = (req.url ?? '').split('?')[0]
+    served.push(path)
+    requestNumbers.set(path, (requestNumbers.get(path) ?? 0) + 1)
+    const route = ROUTES[path] ?? (path.startsWith('/five/') ? png() : undefined)
+    if (route) route(req, res)
+    else res.writeHead(404).end()
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  const port = typeof address === 'object' && address ? address.port : 0
+  return {
+    origin: `http://127.0.0.1:${port}`,
+    served,
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.closeAllConnections()
+        server.close(() => resolve())
+      })
+  }
+}
+
+// Queues one background capture and resolves with the stored Capture's id.
+async function recapture(page: Page, caseId: string, url: string): Promise<string> {
+  const accepted = await page.evaluate(
+    async ({ id, target }) => {
+      const w = window as unknown as {
+        birdbrain: {
+          recapture: {
+            enqueue: (payload: { caseId: string; urls: string[] }) => Promise<{ accepted: number }>
+          }
+        }
+      }
+      return (await w.birdbrain.recapture.enqueue({ caseId: id, urls: [target] })).accepted
+    },
+    { id: caseId, target: url }
+  )
+  expect(accepted).toBe(1)
+  let stored = ''
+  await expect
+    .poll(
+      async () => {
+        stored = await page.evaluate(async (id) => {
+          const w = window as unknown as {
+            birdbrain: { captures: { list: (caseId: string) => Promise<Array<{ id: string }>> } }
+          }
+          const [capture] = await w.birdbrain.captures.list(id)
+          return capture?.id ?? ''
+        }, caseId)
+        return stored
+      },
+      { timeout: 140000, intervals: [500] }
+    )
+    .not.toBe('')
+  return stored
+}
+
+async function storagePathOf(page: Page): Promise<string> {
+  return page.evaluate(async () => {
+    const w = window as unknown as {
+      birdbrain: { settings: { get: () => Promise<{ storagePath: string }> } }
+    }
+    return (await w.birdbrain.settings.get()).storagePath
+  })
+}
+
+function captureEntries(storagePath: string, caseId: string): Array<Record<string, unknown>> {
+  return readFileSync(join(storagePath, caseId, 'manifest.jsonl'), 'utf-8')
+    .split('\n')
+    .filter((line) => line.trim())
+    .map((line) => JSON.parse(line) as Record<string, unknown>)
+    .filter((entry) => entry.type === 'capture')
+}
+
+async function captureRow(
+  page: Page,
+  caseId: string,
+  captureId: string
+): Promise<{ id: string; inventory?: unknown }> {
+  return page.evaluate(
+    async ({ id, capture }) => {
+      const w = window as unknown as {
+        birdbrain: {
+          captures: {
+            list: (caseId: string) => Promise<Array<{ id: string; inventory?: unknown }>>
+          }
+        }
+      }
+      return (await w.birdbrain.captures.list(id)).find((row) => row.id === capture)!
+    },
+    { id: caseId, capture: captureId }
+  )
+}
+
+async function verified(page: Page, captureId: string): Promise<string> {
+  return page.evaluate(async (id: string) => {
+    const w = window as unknown as {
+      birdbrain: { captures: { verify: (id: string) => Promise<{ status: string }> } }
+    }
+    return (await w.birdbrain.captures.verify(id)).status
+  }, captureId)
+}
+
+// The parts of an MHTML file: each part's Content-Location and its decoded bytes.
+function mhtmlParts(mhtml: string): Array<{ location: string; bytes: Buffer }> {
+  const boundary = /boundary="([^"]+)"/.exec(mhtml)![1]
+  return mhtml
+    .split(`--${boundary}`)
+    .slice(1, -1)
+    .map((chunk) => {
+      const [head, ...rest] = chunk.replace(/^\r?\n/, '').split(/\r?\n\r?\n/)
+      const header = (name: string) => new RegExp(`^${name}: *(.*)$`, 'mi').exec(head)?.[1].trim()
+      const body = rest.join('\r\n\r\n')
+      const bytes =
+        header('Content-Transfer-Encoding') === 'base64'
+          ? Buffer.from(body.replace(/\s+/g, ''), 'base64')
+          : Buffer.from(body, 'latin1')
+      return { location: header('Content-Location') ?? '', bytes }
+    })
+}
+
+// The width and height of the pixels of `rgb` in the stored screenshot, decoded in the app.
+function colorBox(
+  electronApp: ElectronApplication,
+  path: string,
+  rgb: [number, number, number]
+): Promise<{ width: number; height: number } | null> {
+  return electronApp.evaluate(
+    ({ nativeImage }, { path, rgb }) => {
+      const image = nativeImage.createFromPath(path)
+      const { width, height } = image.getSize()
+      const bitmap = image.toBitmap()
+      let [left, top, right, bottom] = [width, height, -1, -1]
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const at = (y * width + x) * 4
+          if (rgb.every((value, i) => bitmap[at + i] === value)) {
+            ;[left, top] = [Math.min(left, x), Math.min(top, y)]
+            ;[right, bottom] = [Math.max(right, x), Math.max(bottom, y)]
+          }
+        }
+      }
+      return right < 0 ? null : { width: right - left + 1, height: bottom - top + 1 }
+    },
+    { path, rgb }
+  )
+}
+
+function storedMhtml(storagePath: string, caseId: string, captureId: string) {
+  return mhtmlParts(readFileSync(join(storagePath, caseId, `${captureId}.mhtml`), 'latin1'))
+}
+
+// Exports the Case as an evidence package through the app, and unpacks it into a new directory.
+async function exportedPackage(
+  electronApp: ElectronApplication,
+  page: Page,
+  caseId: string
+): Promise<string> {
+  const dir = mkdtempSync(join(tmpdir(), 'birdbrain-pinning-package-'))
+  const zipPath = join(dir, 'package.zip')
+  await electronApp.evaluate(({ dialog }, filePath) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath })
+  }, zipPath)
+  const result = await page.evaluate(async (id) => {
+    const w = window as unknown as {
+      birdbrain: {
+        export: {
+          generateReport: (caseId: string, options: object) => Promise<{ canceled: boolean }>
+        }
+      }
+    }
+    return w.birdbrain.export.generateReport(id, {
+      format: 'zip',
+      exportClass: 'evidence',
+      include: {
+        captures: true,
+        screenshots: true,
+        auditTrail: true,
+        notes: false,
+        annotations: 'none'
+      },
+      outputPath: ''
+    })
+  }, caseId)
+  expect(result.canceled).toBe(false)
+  const unpacked = join(dir, 'unpacked')
+  for (const [name, bytes] of readStoredZip(readFileSync(zipPath))) {
+    mkdirSync(dirname(join(unpacked, name)), { recursive: true })
+    writeFileSync(join(unpacked, name), bytes)
+  }
+  return unpacked
+}
+
+test.describe('Image Source Pinning of a background capture', () => {
+  let server: Fixture
+
+  test.beforeAll(async () => {
+    server = await startServer()
+    // The fixture is on 127.0.0.1, which a background capture refuses unless an unpackaged
+    // build is launched with this switch (#1726).
+    process.env.BIRDBRAIN_E2E_ALLOW_LOOPBACK = '1'
+  })
+
+  test.afterAll(async () => {
+    delete process.env.BIRDBRAIN_E2E_ALLOW_LOOPBACK
+    await server.close()
+  })
+
+  test("saves the spike fixture's srcset-only image under the address it was fetched from", async ({
+    page
+  }) => {
+    test.setTimeout(180000)
+    const caseId = await createCase(page, 'Savepage pinning E2E')
+    server.served.length = 0
+    requestNumbers.clear()
+    const captureId = await recapture(page, caseId, `${server.origin}/savepage`)
+    const storagePath = await storagePathOf(page)
+
+    const srcsetImage = `${server.origin}/savepage/srcset-1x.png`
+    const part = storedMhtml(storagePath, caseId, captureId).find(
+      ({ location }) => location === srcsetImage
+    )
+    expect(part, 'the MHTML has a part for the srcset image').toBeDefined()
+    // The pin, before the screenshot, keeps the copy the page displayed (ruled 2026-10-30).
+    expect(part!.bytes.toString('latin1')).toMatch(/TAG:\/savepage\/srcset-1x\.png#1$/)
+    expect(server.served.filter((path) => path === '/savepage/srcset-1x.png')).toHaveLength(1)
+    expect(server.served).not.toContain('/savepage/srcset-2x.png')
+
+    const [entry] = captureEntries(storagePath, caseId)
+    expect(entry.inventory).toMatchObject({
+      mhtml: { present: true, pinnedImages: 1, pinnedImagesNotLoaded: 0 }
+    })
+    expect((await captureRow(page, caseId, captureId)).inventory).toEqual(entry.inventory)
+    expect(await verified(page, captureId)).toBe('verified')
+  })
+
+  test('stores each displayed image under its own address, and the package verifies', async ({
+    page,
+    electronApp
+  }) => {
+    test.setTimeout(180000)
+    const caseId = await createCase(page, 'Five images pinning E2E')
+    server.served.length = 0
+    requestNumbers.clear()
+    const captureId = await recapture(page, caseId, `${server.origin}/five`)
+    const storagePath = await storagePathOf(page)
+
+    // A part for each image's displayed source, holding the first response from that address.
+    // The pin runs before the screenshot, so it asks for no image again (ruled 2026-10-30): the
+    // server and the Transaction Record each saw one request per image.
+    const parts = storedMhtml(storagePath, caseId, captureId)
+    const records = readWarc(readFileSync(join(storagePath, caseId, `${captureId}.warc.gz`)))
+    for (const path of [
+      '/five/srcset-only-1x.png',
+      '/five/srcset-with-src-1x.png',
+      '/five/srcset-w-400.png',
+      '/five/picture-source.png',
+      '/five/plain.png'
+    ]) {
+      const part = parts.find(({ location }) => location === `${server.origin}${path}`)
+      expect(part, path).toBeDefined()
+      expect(part!.bytes.toString('latin1').endsWith(`TAG:${path}#1`), path).toBe(true)
+      expect(
+        server.served.filter((served) => served === path),
+        path
+      ).toHaveLength(1)
+      const recorded = records.filter(
+        (record) =>
+          record.warc('WARC-Type') === 'request' &&
+          record.warc('WARC-Target-URI') === `${server.origin}${path}`
+      )
+      expect(recorded, path).toHaveLength(1)
+    }
+    // No part under an address the server never served.
+    expect(server.served).not.toContain('/five/src-fallback.png')
+    const servedOrigins = new Set(server.served.map((path) => `${server.origin}${path}`))
+    for (const { location } of parts) {
+      if (location.startsWith(server.origin)) expect(servedOrigins).toContain(location)
+    }
+
+    const [entry] = captureEntries(storagePath, caseId)
+    const mhtml = { present: true, pinnedImages: 3, pinnedImagesNotLoaded: 0 }
+    expect(entry.inventory).toMatchObject({ mhtml })
+    expect((await captureRow(page, caseId, captureId)).inventory).toEqual(entry.inventory)
+    expect(await verified(page, captureId)).toBe('verified')
+
+    // A Duplicate re-anchors the source's inventory, and its row mirrors what it re-anchors.
+    const copy = await page.evaluate(async (id) => {
+      const w = window as unknown as {
+        birdbrain: {
+          captures: {
+            duplicate: (id: string) => Promise<{ status: string; capture?: { id: string } }>
+          }
+        }
+      }
+      return w.birdbrain.captures.duplicate(id)
+    }, captureId)
+    expect(copy.status).toBe('duplicated')
+    const duplicateEntry = captureEntries(storagePath, caseId).at(-1)!
+    expect(duplicateEntry).toMatchObject({ method: 'duplicate', inventory: { mhtml } })
+    expect((await captureRow(page, caseId, copy.capture!.id)).inventory).toEqual(
+      duplicateEntry.inventory
+    )
+
+    // The exported package verifies in the app's verifier and in the verify.sh it ships.
+    const dir = await exportedPackage(electronApp, page, caseId)
+    const result = verifyEvidencePackage(dir)
+    expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
+    const script = execFileSync('/bin/sh', [PACKAGE_ROOT_FILES.verifyScript], {
+      cwd: dir,
+      encoding: 'utf-8'
+    })
+    expect(script).toContain('verify.sh: PASS')
+    rmSync(dirname(dir), { recursive: true, force: true })
+  })
+
+  // Setting `src` before the screenshot leaves `srcset` and `sizes` on the live page, or narrows
+  // the set to the candidate displayed, so the browser chooses again: this checks it keeps the
+  // source it displayed when that is not the first one offered, or not at 1x.
+  test('keeps an image on its displayed source when that is not the first in the set', async ({
+    page,
+    electronApp
+  }) => {
+    test.setTimeout(180000)
+    const caseId = await createCase(page, 'Order pinning E2E')
+    server.served.length = 0
+    requestNumbers.clear()
+    const captureId = await recapture(page, caseId, `${server.origin}/order`)
+    const storagePath = await storagePathOf(page)
+
+    const parts = storedMhtml(storagePath, caseId, captureId)
+    for (const path of ['/order/d-1x.png', '/order/w-400.png']) {
+      const part = parts.find(({ location }) => location === `${server.origin}${path}`)
+      expect(part?.bytes.toString('latin1').endsWith(`TAG:${path}#1`), path).toBe(true)
+      expect(
+        server.served.filter((served) => served === path),
+        path
+      ).toHaveLength(1)
+    }
+    expect(server.served).not.toContain('/order/d-2x.png')
+    expect(server.served).not.toContain('/order/w-800.png')
+
+    // The serializer drops `srcset` and `sizes`, keeps the pinned `src`, and gives the image shown
+    // at density 2 the size it displayed at.
+    const html = parts.find(({ location }) => location === `${server.origin}/order`)!
+    const markup = html.bytes
+      .toString('latin1')
+      .replace(/=\r?\n/g, '')
+      .replace(/=3D/g, '=')
+    const img = (id: string) => new RegExp(`<img id="${id}"[^>]*>`).exec(markup)?.[0]
+    expect(img('density')).toBe(`<img id="density" src="${server.origin}/order/d-1x.png">`)
+    expect(img('width')).toBe(
+      `<img id="width" src="${server.origin}/order/w-400.png" width="200" height="200">`
+    )
+
+    // The images offered only at 2x and at 1.5x keep their density (ruled 2026-10-30): each is
+    // served once, its part holds that response, the record holds the one request, the
+    // screenshot shows it at the size the page displayed it, and the serializer writes that size.
+    const records = readWarc(readFileSync(join(storagePath, caseId, `${captureId}.warc.gz`)))
+    const screenshot = join(storagePath, caseId, `${captureId}.png`)
+    for (const [id, path, rgb, size] of [
+      ['only2x', '/order/only-2x.png', GREEN, 200],
+      ['only1-5x', '/order/only-1-5x.png', MAGENTA, 160]
+    ] as const) {
+      expect(
+        server.served.filter((served) => served === path),
+        path
+      ).toHaveLength(1)
+      const part = parts.find(({ location }) => location === `${server.origin}${path}`)
+      expect(part?.bytes.toString('latin1').endsWith(`TAG:${path}#1`), path).toBe(true)
+      const requests = records.filter(
+        (record) =>
+          record.warc('WARC-Type') === 'request' &&
+          record.warc('WARC-Target-URI') === `${server.origin}${path}`
+      )
+      expect(requests, path).toHaveLength(1)
+      expect(await colorBox(electronApp, screenshot, [...rgb]), path).toEqual({
+        width: size,
+        height: size
+      })
+      expect(img(id)).toBe(
+        `<img id="${id}" style="display:block" src="${server.origin}${path}" width="${size}" height="${size}">`
+      )
+    }
+
+    const [entry] = captureEntries(storagePath, caseId)
+    expect(entry.inventory).toMatchObject({
+      mhtml: { present: true, pinnedImages: 4, pinnedImagesNotLoaded: 0 }
+    })
+    expect(await verified(page, captureId)).toBe('verified')
+  })
+
+  // Ruled 2026-10-26: pin only an image that displayed, and leave out one still loading.
+  test('leaves a failed image, a blob: image and one still loading as they were', async ({
+    page
+  }) => {
+    test.setTimeout(180000)
+    const caseId = await createCase(page, 'Left alone pinning E2E')
+    server.served.length = 0
+    requestNumbers.clear()
+    const captureId = await recapture(page, caseId, `${server.origin}/left`)
+    const storagePath = await storagePathOf(page)
+
+    // Only the image answered after 1 s is pinned; the counts cover nothing else.
+    const [entry] = captureEntries(storagePath, caseId)
+    expect(entry.inventory).toMatchObject({
+      mhtml: { present: true, pinnedImages: 1, pinnedImagesNotLoaded: 0 },
+      transactionRecord: { present: true }
+    })
+    const parts = storedMhtml(storagePath, caseId, captureId)
+    const fast = parts.find(({ location }) => location === `${server.origin}/left/fast.png`)
+    expect(fast?.bytes.toString('latin1').endsWith('TAG:/left/fast.png#1')).toBe(true)
+    expect(server.served.filter((path) => path === '/left/fast.png')).toHaveLength(1)
+    for (const path of ['/left/retry.png', '/left/never.png']) {
+      expect(parts.map(({ location }) => location)).not.toContain(`${server.origin}${path}`)
+    }
+
+    // The failed image was not asked for again, so the server's answer to a second request
+    // never reached the saved page, and the record holds the one request there was.
+    expect(server.served.filter((path) => path === '/left/retry.png')).toHaveLength(1)
+    const retry = `${server.origin}/left/retry.png`
+    const records = readWarc(readFileSync(join(storagePath, caseId, `${captureId}.warc.gz`)))
+    const requests = records.filter(
+      (record) => record.warc('WARC-Type') === 'request' && record.warc('WARC-Target-URI') === retry
+    )
+    expect(requests).toHaveLength(1)
+    expect(await verified(page, captureId)).toBe('verified')
+  })
+})

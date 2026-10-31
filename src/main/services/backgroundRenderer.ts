@@ -19,6 +19,7 @@ import type {
   TransactionRecorder
 } from '@main/services/transactionRecorder'
 import type {
+  ImageSourcePinning,
   PdfOutcome,
   PresentPdf,
   RenderPage,
@@ -39,6 +40,12 @@ const SCROLL_PAUSE_MS = 500
 const SCROLL_STALL_THRESHOLD = 3
 const MAX_SCROLL_PHASE_MS = 75_000
 const FINAL_SETTLE_MS = 500
+// Image Source Pinning's two waits, each taken from the time left before the end
+// reserve below and never from it (ruled 2026-10-26): for images offered as sets
+// to settle before the pin, and for the pinned images to load what the pin set.
+const IMAGE_SET_SETTLE_MAX_MS = 5_000
+const PIN_LOAD_MAX_MS = 5_000
+const PIN_POLL_MS = 50
 // For screenshot + MHTML + text extraction. Sized for the worst case the scroll
 // cap below allows — a page at the full screenshot pixel budget — so the
 // artifact phase can't be starved into the outer deadline.
@@ -502,6 +509,262 @@ export async function trimTrailingBackground(
   }
 }
 
+// Image Source Pinning (ADR-0055, D4 of
+// docs/plans/2026-10-10-capture-engine-first-slice.md). The MHTML serializer
+// drops `srcset` and `sizes` from every <img> and keeps `src`, so an image the
+// page displayed from a set of sources has its `src` set to the one it displayed,
+// before the screenshot and the save. The scripts run in an isolated world: the
+// page shares its DOM but not its JavaScript, so it cannot replace what they call
+// or reach what they keep between calls. The main process keeps the clock and
+// polls them.
+export const PIN_WORLD_ID = 1843
+
+// The images offered as sets that pinning considers: each <img> with `srcset`
+// in the document, except a <picture>'s, whose sources the serializer keeps.
+const IMAGE_SET_HELPERS = `
+  const imageSets = () => Array.from(document.querySelectorAll('img[srcset]')).filter(
+    (img) => !(img.parentElement && img.parentElement.localName === 'picture')
+  )
+  const shown = (img) => img.complete && img.naturalWidth > 0 && img.naturalHeight > 0
+`
+
+// How many images offered as sets are still loading. Each call keeps those
+// images, so the last call of the settle wait holds the ones still loading when
+// it ended, which the pin leaves out even if they finish before it runs
+// (ruled 2026-10-26).
+export const IMAGE_SETS_LOADING_SCRIPT = `(() => {
+  ${IMAGE_SET_HELPERS}
+  const loading = imageSets().filter((img) => !img.complete)
+  globalThis.birdbrainUnsettled = new WeakSet(loading)
+  return loading.length
+})()`
+
+// The candidates of an image's `srcset`, parsed as the HTML standard's "parse a
+// srcset attribute" does, each URL resolved against the document. A candidate
+// with an invalid descriptor is dropped, as the browser drops it. `src` joins as
+// a 1x candidate when no candidate has a width or a density of 1, as the
+// standard's "update the source set" adds it.
+const SRCSET_HELPERS = `
+  const DENSITY_WIDTH = 1000
+  const WS = /[\\t\\n\\f\\r ]/
+  const INTEGER = /^\\d+$/
+  const FLOAT = /^-?(\\d+(\\.\\d+)?|\\.\\d+)([eE][+-]?\\d+)?$/
+  const descriptorsOf = (tokens) => {
+    let w
+    let x
+    let h
+    for (const token of tokens) {
+      const value = token.slice(0, -1)
+      const kind = token.slice(-1)
+      if (kind === 'w' && w === undefined && x === undefined && INTEGER.test(value)) {
+        w = Number(value)
+        if (w === 0) return null
+      } else if (kind === 'x' && w === undefined && x === undefined && h === undefined) {
+        if (!FLOAT.test(value) || Number(value) < 0) return null
+        x = Number(value)
+      } else if (kind === 'h' && h === undefined && x === undefined && INTEGER.test(value)) {
+        h = Number(value)
+        if (h === 0) return null
+      } else {
+        return null
+      }
+    }
+    if (h !== undefined && w === undefined) return null
+    return w !== undefined ? { w } : { x: x === undefined ? 1 : x }
+  }
+  const parseSrcset = (input) => {
+    const candidates = []
+    let pos = 0
+    for (;;) {
+      while (pos < input.length && (WS.test(input[pos]) || input[pos] === ',')) pos++
+      if (pos >= input.length) return candidates
+      const start = pos
+      while (pos < input.length && !WS.test(input[pos])) pos++
+      let url = input.slice(start, pos)
+      const tokens = []
+      if (/,$/.test(url)) {
+        url = url.replace(/,+$/, '')
+      } else {
+        while (pos < input.length && WS.test(input[pos])) pos++
+        let current = ''
+        let state = 'in'
+        for (;;) {
+          const c = input[pos]
+          if (state === 'in') {
+            if (c === undefined) {
+              if (current) tokens.push(current)
+              break
+            } else if (WS.test(c)) {
+              if (current) tokens.push(current)
+              current = ''
+              state = 'after'
+            } else if (c === ',') {
+              pos++
+              if (current) tokens.push(current)
+              break
+            } else {
+              current += c
+              if (c === '(') state = 'paren'
+            }
+          } else if (state === 'paren') {
+            if (c === undefined) {
+              tokens.push(current)
+              break
+            }
+            current += c
+            if (c === ')') state = 'in'
+          } else if (c === undefined) {
+            break
+          } else if (!WS.test(c)) {
+            state = 'in'
+            pos--
+          }
+          pos++
+        }
+      }
+      const descriptor = descriptorsOf(tokens)
+      let resolved
+      try {
+        resolved = new URL(url, document.baseURI).href
+      } catch {
+        resolved = undefined
+      }
+      if (descriptor && resolved !== undefined) candidates.push({ url: resolved, ...descriptor })
+    }
+  }
+  const sourceSetOf = (img) => {
+    const set = parseSrcset(img.getAttribute('srcset') || '')
+    const src = img.getAttribute('src')
+    if (src && !set.some((c) => c.w !== undefined || c.x === 1)) {
+      try {
+        set.push({ url: new URL(src, document.baseURI).href, x: 1 })
+      } catch {}
+    }
+    return set
+  }
+  // The candidate the image displayed: the one whose URL is its currentSrc, or
+  // undefined when none is, or when candidates with that URL differ in descriptor.
+  const displayedCandidate = (img, src) => {
+    const matches = sourceSetOf(img).filter((c) => c.url === src)
+    const [first] = matches
+    if (!first) return undefined
+    return matches.every((c) => c.w === first.w && c.x === first.x) ? first : undefined
+  }
+`
+
+// Pins each image offered as a set that the page displayed (loaded, with a
+// natural size) by setting its `src` to its `currentSrc`, before the screenshot
+// (ruled 2026-10-30). `srcset` and `sizes` stay, so the browser chooses from the
+// set again and keeps the copy it displayed, except for an image displayed from a
+// candidate whose density is not 1x, which would then be shown from `src` at 1x
+// or loaded again: its set is narrowed to the one candidate it displayed, keeping
+// its density (ruled 2026-10-30, #1843). A width candidate keeps its width and
+// the page's `sizes`. A density candidate is written as a width with a `sizes`
+// that gives the same density, because the browser adds `src` to a set with no
+// width descriptor as a 1x candidate and shows that one (measured 2026-10-30).
+// An image whose displayed candidate cannot be told apart keeps its whole set. An
+// image still loading when the settle wait ended, or that failed to load, is left
+// as it is, and so is one shown from a `blob:` address (ruled 2026-10-29).
+export const PIN_IMAGE_SOURCES_SCRIPT = `(() => {
+  ${IMAGE_SET_HELPERS}
+  ${SRCSET_HELPERS}
+  const unsettled = globalThis.birdbrainUnsettled
+  if (!unsettled) {
+    throw new Error('The settle wait left no record: the page was replaced before the pin')
+  }
+  const pinned = []
+  for (const img of imageSets()) {
+    const src = img.currentSrc
+    if (!src || src.startsWith('blob:') || unsettled.has(img) || !shown(img)) continue
+    const displayed = displayedCandidate(img, src)
+    if (displayed && displayed.w !== undefined) {
+      img.srcset = src + ' ' + displayed.w + 'w'
+    } else if (displayed && displayed.x > 0 && displayed.x !== 1) {
+      img.srcset = src + ' ' + DENSITY_WIDTH + 'w'
+      img.sizes = DENSITY_WIDTH / displayed.x + 'px'
+    }
+    img.src = src
+    pinned.push({ img, src })
+  }
+  globalThis.birdbrainPinned = pinned
+  return pinned.length
+})()`
+
+const PINNED_HELPERS = `
+  const pinned = globalThis.birdbrainPinned
+  if (!pinned) throw new Error('The pinned images are gone: the page was replaced since the pin')
+`
+
+// How many pinned images are loading, which they do only if the browser chose
+// another source from the set when the pin set `src`.
+export const PINNED_LOADING_SCRIPT = `(() => {
+  ${PINNED_HELPERS}
+  return pinned.filter(({ img }) => !img.complete).length
+})()`
+
+// The counts, taken after the screenshot over the DOM as it is then: an image the
+// page removed or pointed elsewhere since the pin is not counted as pinned, and
+// a pinned image counts as not loaded unless it holds an image with a natural size.
+export const PINNED_COUNTS_SCRIPT = `(() => {
+  ${IMAGE_SET_HELPERS}
+  ${PINNED_HELPERS}
+  const held = pinned.filter(({ img, src }) => img.isConnected && img.getAttribute('src') === src)
+  return {
+    pinnedImages: held.length,
+    pinnedImagesNotLoaded: held.filter(({ img }) => !shown(img)).length
+  }
+})()`
+
+function inPinWorld(wc: WebContents, code: string): Promise<unknown> {
+  return wc.executeJavaScriptInIsolatedWorld(PIN_WORLD_ID, [{ code }])
+}
+
+// Polls `code` until it reports 0, or until `waitMs` has passed on the main
+// process's clock.
+async function untilNoneLeft(wc: WebContents, code: string, waitMs: number): Promise<void> {
+  const deadlineAt = Date.now() + waitMs
+  while ((await inPinWorld(wc, code)) !== 0 && Date.now() < deadlineAt) {
+    await sleep(Math.min(PIN_POLL_MS, deadlineAt - Date.now()))
+  }
+}
+
+// Gives the images offered as sets up to `waitMs` to finish loading, or fail,
+// before the pin, which leaves out any still loading after it.
+export function settleImageSets(wc: WebContents, waitMs: number): Promise<void> {
+  return untilNoneLeft(wc, IMAGE_SETS_LOADING_SCRIPT, waitMs)
+}
+
+// Pins the image sources, and waits up to `waitMs` for any pinned image that
+// started loading. A script that throws fails the render, as a Scroll-to-load
+// step that throws does.
+export async function pinImageSources(wc: WebContents, waitMs: number): Promise<void> {
+  await inPinWorld(wc, PIN_IMAGE_SOURCES_SCRIPT)
+  await untilNoneLeft(wc, PINNED_LOADING_SCRIPT, waitMs)
+}
+
+const MhtmlPartSchema = CaptureInventorySchema.shape.mhtml
+
+// Counts the pinned images and returns the inventory's MHTML part, parsed with
+// the strict schema. That part has no failed form (D4), so a script that throws,
+// or counts the schema refuses, fails the render. A pinned image still loading
+// is counted, not a failure.
+export async function countPinnedImages(wc: WebContents): Promise<ImageSourcePinning> {
+  const counts = (await inPinWorld(wc, PINNED_COUNTS_SCRIPT)) as {
+    pinnedImages?: unknown
+    pinnedImagesNotLoaded?: unknown
+  } | null
+  const parsed = MhtmlPartSchema.safeParse({
+    present: true,
+    pinnedImages: counts?.pinnedImages,
+    pinnedImagesNotLoaded: counts?.pinnedImagesNotLoaded
+  })
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map(({ message }) => message).join('; ')
+    throw new Error(`Image Source Pinning returned counts the schema refuses: ${issues}`)
+  }
+  return parsed.data
+}
+
 // The schema-6 shape of the inventory's PDF part, parsed before it reaches the
 // signed entry, as the Transaction Record's part is.
 const PdfPartSchema = CaptureInventorySchema.shape.pdf
@@ -808,15 +1071,29 @@ export const renderPageInHiddenWindow: RenderPage = async (
         clampPhaseMs(remainingMs(FINAL_ARTIFACT_RESERVE_MS), POST_SCROLL_NETWORK_IDLE_MAX_MS)
       )
       await sleep(Math.min(FINAL_SETTLE_MS, remainingMs(FINAL_ARTIFACT_RESERVE_MS)))
+      await settleImageSets(
+        wc,
+        clampPhaseMs(remainingMs(FINAL_ARTIFACT_RESERVE_MS), IMAGE_SET_SETTLE_MAX_MS)
+      )
 
-      // Collection stops at the moment the screenshot and MHTML are taken (spec,
-      // Transaction Record). The renderer spike saw no request and no event during
-      // either, so stopping here and after the save recorded the same events.
+      // Before the screenshot: once it has run, the browser no longer holds in memory
+      // the images it displayed, so a pin after it would load again each one with no
+      // fresh copy in the HTTP cache (ruled 2026-10-30).
+      await pinImageSources(
+        wc,
+        clampPhaseMs(remainingMs(FINAL_ARTIFACT_RESERVE_MS), PIN_LOAD_MAX_MS)
+      )
+
+      const { png: screenshot, record: screenshotRecord } = await captureFullPageScreenshot(wc)
+      const imageSourcePinning = await countPinnedImages(wc)
+
+      // Collection stops after the pin, so a request the pin makes is in the
+      // Transaction Record (ruled 2026-10-26), and after the screenshot, which can
+      // load a pinned image again, and just before the save, during which the
+      // renderer spike saw no request and no event.
       activeRecorder.stop()
       const navigationsAtStop = navigations
       const recordedAt = new Date().toISOString()
-      const { png: screenshot, record: screenshotRecord } = await captureFullPageScreenshot(wc)
-
       await wc.savePage(tmpPath, 'MHTML')
       // The Capture is stored under the page the save took, read before anything else
       // awaits: a page can navigate itself during the steps that follow (review of #2000).
@@ -868,6 +1145,7 @@ export const renderPageInHiddenWindow: RenderPage = async (
         screenshot,
         screenshotRecord,
         scrollToLoad,
+        imageSourcePinning,
         text,
         title: saved.title,
         finalUrl: saved.url,

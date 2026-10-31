@@ -8,11 +8,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { resolveExportCaptureEngine } from '@main/services/export'
+import { resolveExportCaptureEngine, resolveExportLinkSources } from '@main/services/export'
 import { readManifestSnapshot } from '@main/services/manifest'
 import {
   buildHtmlReport,
   resolveCaptureEngineFacts,
+  resolveLinkSources,
   type CaptureEngineEntry,
   type ReportData
 } from '@main/services/reportHtml'
@@ -90,6 +91,7 @@ function reportData(captures: Capture[], extra: Partial<ReportData> = {}): Repor
     trustedTimeByCaptureId: new Map(),
     entrySignatureByCaptureId: new Map(captures.map(({ id }) => [id, 'signed'])),
     captureEngineByCaptureId: new Map(),
+    linkSourceByCaptureId: new Map(),
     unreconciledChainCaptureIds: [],
     tsaTrustAnchorBundled: true,
     waybackRefsByCaptureId: new Map(),
@@ -213,8 +215,16 @@ describe('report.html capture engine fields', () => {
 
     // Inventory: each file, the MHTML counts, and the screenshot record.
     expect(html).toContain('Artifact inventory')
-    expect(html).toContain('12 images were pinned to the source displayed before the save')
-    expect(html).toContain('and 10 of them had not loaded when the save ran')
+    expect(html).toContain(
+      '12 images were offered as a set of sources and pinned to the source the page displayed before the screenshot and the save'
+    )
+    expect(html).toMatch(
+      /and 10 of them were still loading, or had failed to load, just before the save\. The counts cover\s+only images in the page's own document/
+    )
+    expect(html).toMatch(
+      /outside frames, shadow roots and\s+<code>picture<\/code> elements, that had finished loading/
+    )
+    expect(html).toMatch(/an image still loading when the wait before the pin ended, one/)
     expect(html).toMatch(/taken, 1280 × 24800 pixels, of a\s+content area of 1280 × 40000 CSS/)
     expect(html).toMatch(/Scaled\s+down: no\. Cut short of the content height: yes\./)
     expect(html).toContain('Trailing background trimmed: yes.')
@@ -325,7 +335,9 @@ describe('report.html capture engine fields', () => {
       })
     )
 
-    expect(html).toContain('1 image was pinned to the source displayed before the save')
+    expect(html).toContain(
+      '1 image was offered as a set of sources and pinned to the source the page displayed before the screenshot and the save'
+    )
     expect(html).toContain(
       'Transaction Record:</strong> not taken: the build that made this capture does not take this file.'
     )
@@ -662,5 +674,130 @@ describe('report.html capture engine fields over a chain that does not verify', 
     expect(engine.has(refused.id)).toBe(false)
     expect(html.match(/Artifact inventory/g)).toHaveLength(1)
     expect(html).not.toContain('Capture engine fields not reported')
+  })
+})
+
+// ADR-0040: a link Capture's source prints beside the "Supersedes" and "Duplicate of" rows,
+// read from the signed entry over a chain that verified, never from the editable row.
+describe('report.html on a link Capture', () => {
+  const LINK = {
+    linkedFromCaptureId: 'source-capture-id',
+    linkedFromContentHash: '5'.repeat(64),
+    linkHref: 'http://example.com/page?a=1&b=<2>'
+  }
+  const row = (label: string, value: string) =>
+    `<div class="rail-row">
+    <div class="rail-label">${label}</div>
+    <div class="rail-value">${value}</div>
+  </div>`
+  const label = (text: string) => `<div class="rail-label">${text}</div>`
+
+  function reportWith(chainVerified: boolean, captureRow: Partial<Capture> = {}): string {
+    const linkSourceByCaptureId = resolveLinkSources(
+      signedEntries([engineCaptureEntry(LINK)]),
+      chainVerified
+    )
+    return buildHtmlReport(reportData([capture(captureRow)], { linkSourceByCaptureId }), OPTIONS)
+  }
+
+  it('prints the source, its Content Hash and the link address from the entry', () => {
+    const html = reportWith(true)
+    expect(html).toContain(row('From a link in', 'source-capture-id'))
+    expect(html).toContain(row('Link source SHA-256', '5'.repeat(64)))
+    expect(html).toContain(row('Link address', 'http://example.com/page?a=1&amp;b=&lt;2&gt;'))
+  })
+
+  // A Capture link job renders in the background, so its entry carries both schema-6 sets.
+  it('prints the link rows and the capture engine fields from one entry carrying both', () => {
+    const entries = signedEntries([engineCaptureEntry({ ...engineFields(), ...LINK })])
+    const html = buildHtmlReport(
+      reportData([capture()], {
+        captureEngineByCaptureId: resolveCaptureEngineFacts(entries, true),
+        linkSourceByCaptureId: resolveLinkSources(entries, true)
+      }),
+      OPTIONS
+    )
+    expect(html).toContain(row('From a link in', 'source-capture-id'))
+    expect(html).toContain(row('Link address', 'http://example.com/page?a=1&amp;b=&lt;2&gt;'))
+    expect(html).toContain('Artifact inventory')
+    expect(html).toContain(ENGINE_HASHES.transactionRecord)
+    expect(html).toContain(ENGINE_HASHES.pdf)
+  })
+
+  it('prints the entry values over edited row values', () => {
+    const html = reportWith(true, {
+      linkedFromCaptureId: 'forged-source',
+      linkedFromContentHash: 'f'.repeat(64),
+      linkHref: 'http://forged.example/'
+    })
+    expect(html).toContain(row('Link address', 'http://example.com/page?a=1&amp;b=&lt;2&gt;'))
+    for (const forged of ['forged-source', 'f'.repeat(64), 'forged.example']) {
+      expect(html).not.toContain(forged)
+    }
+  })
+
+  it('reports the source as unverified over a chain that did not verify', () => {
+    const html = reportWith(false)
+    expect(html).toContain(row('From a link in', 'not reported: the manifest chain did not verify'))
+    expect(html).not.toContain(label('Link source SHA-256'))
+    expect(html).not.toContain('source-capture-id')
+  })
+
+  // The Shared Case walk keeps another member's entries only from a chain it accepted, so
+  // their link rows print as verified while the local chain holds no entry for the Capture.
+  it("prints an accepted member's link source from that member's entry", () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bb-report-link-'))
+    try {
+      writeFileSync(join(dir, 'manifest.jsonl'), buildSignedChain([]).join('\n'), 'utf-8')
+      const accepted = signedEntries([engineCaptureEntry(LINK)]) as ManifestEntry[]
+      const verification: SharedCaseVerifyResult = {
+        valid: true,
+        outcome: 'pass',
+        findings: [],
+        owner: {
+          valid: true,
+          trustedTimes: new Map(),
+          captureHashesByIndex: new Map(),
+          captureEntriesByIndex: new Map()
+        },
+        memberChains: new Map(),
+        members: [],
+        citations: new Map(),
+        exclusions: [],
+        lineage: [],
+        entries: new Map([
+          ['local', []],
+          ['member-accepted', accepted]
+        ]),
+        localInstallationId: 'local'
+      }
+      const linkSourceByCaptureId = resolveExportLinkSources(readManifestSnapshot(dir), {
+        chains: [],
+        verification
+      })
+      const html = buildHtmlReport(reportData([capture()], { linkSourceByCaptureId }), OPTIONS)
+
+      expect(linkSourceByCaptureId.get(ENGINE_CAPTURE_ID)?.chainVerified).toBe(true)
+      expect(html).toContain(row('From a link in', 'source-capture-id'))
+      expect(html).toContain(row('Link source SHA-256', '5'.repeat(64)))
+      expect(html).not.toContain('not reported: the manifest chain did not verify')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('prints none of the rows from the row alone, or for any other Capture', () => {
+    const rowOnly = buildHtmlReport(reportData([capture(LINK)]), OPTIONS)
+    const plain = buildHtmlReport(
+      reportData([capture()], {
+        linkSourceByCaptureId: resolveLinkSources(signedEntries([engineCaptureEntry()]), true)
+      }),
+      OPTIONS
+    )
+    for (const html of [rowOnly, plain]) {
+      for (const text of ['From a link in', 'Link source SHA-256', 'Link address']) {
+        expect(html).not.toContain(label(text))
+      }
+    }
   })
 })

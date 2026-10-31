@@ -48,6 +48,7 @@ import type {
   CaptureSource,
   ConsentSuppression,
   HashVerification,
+  LinkProvenance,
   TlsRefetchSkip
 } from '@shared/types'
 import type { BatchDeleteOutcome, BatchDeleteResult, DuplicateCaptureResult } from '@shared/ipc'
@@ -120,6 +121,9 @@ export interface IngestParams {
   // re-fetch opens a raw socket the proxy cannot carry, so it does not run, and
   // the entry says so (rule 3). For every method, extension included.
   tlsSkipped?: TlsRefetchSkip
+  // Passed only by a Capture link job, after the recapture queue read the hash from the
+  // source's verified entry (ADR-0040). The entry and the row then carry all three.
+  linkSource?: LinkSource
   // The capture engine's inventory and Scroll-to-load record (schema 6), passed
   // only by a background Recapture. The entry signs them as given and the row
   // mirrors them. When any capture engine field is given, ingest parses the whole
@@ -143,6 +147,15 @@ export interface IngestParams {
   // The id to store the Capture under, when the acquiring path already named it:
   // the Transaction Record's `warcinfo` carries the id. Otherwise ingest picks one.
   captureId?: string
+}
+
+// A link Capture's source as the ingest records it (ADR-0040). The entry signs `signed`,
+// whose `linkedFromCaptureId` is the id the source's own entry signs, as a `deletion` entry
+// names a Capture (#1815). The row keeps `rowId` instead, so the viewer opens the source and
+// an archive import remaps it; the two differ only after an import renamed the source's row.
+export interface LinkSource {
+  signed: LinkProvenance
+  rowId: string
 }
 
 export interface IngestResult {
@@ -445,6 +458,7 @@ export async function ingestMhtmlCapture(
         egressLabel: params.egress?.label,
         userAgent: params.egress ? params.userAgent : undefined,
         tlsSkipped: params.tlsSkipped,
+        ...params.linkSource?.signed,
         inventory: params.inventory,
         scrollToLoad: params.scrollToLoad,
         transactionRecordHash,
@@ -506,6 +520,8 @@ export async function ingestMhtmlCapture(
           method: params.method,
           supersedesCaptureId: params.supersedesCaptureId,
           consentSuppression: params.consentSuppression,
+          ...params.linkSource?.signed,
+          linkedFromCaptureId: params.linkSource?.rowId,
           inventory: params.inventory,
           scrollToLoad: params.scrollToLoad,
           transactionRecordHash,

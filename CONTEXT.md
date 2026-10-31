@@ -51,7 +51,7 @@ _Avoid_: backup, dump, case file.
 Clauses marked _Planned_ describe decisions in [`ADR-0034`](docs/adr/0034-the-app-acquires-and-the-extension-is-a-companion.md) and [`ADR-0035`](docs/adr/0035-one-transaction-record-per-capture.md) that no build implements yet. Until they ship, the extension acquires every operator-witnessed Capture itself.
 
 **Capture**:
-The primary artifacts taken from one observation of a single web page, stored on disk under its Case directory and indexed in the database: MHTML and, as available, a screenshot today, and for a `background` Capture a Transaction Record, unless recording it failed, and a PDF of the page, printed after everything else, unless the print failed, was over a size limit, or would have shown a page the window navigated to after the save. Legacy Captures may be HTML only. A `background` Capture's Manifest Entry carries an inventory: which artifacts the Capture holds and why any is absent, what the Transaction Record lacks, and the screenshot's size and whether it was scaled down, cut short, or trimmed. A `duplicate` of one carries its source's inventory and copies its Transaction Record and PDF. _Planned:_ Captures acquired by the other Capture Methods carry the inventory and a PDF too, and `launched` Captures a Transaction Record.
+The primary artifacts taken from one observation of a single web page, stored on disk under its Case directory and indexed in the database: MHTML and, as available, a screenshot today, and for a `background` Capture a Transaction Record, unless recording it failed, and a PDF of the page, printed after everything else, unless the print failed, was over a size limit, or would have shown a page the window navigated to after the save. Legacy Captures may be HTML only. A `background` Capture's Manifest Entry carries an inventory: which artifacts the Capture holds and why any is absent, what the Transaction Record lacks, the Image Source Pinning counts, and the screenshot's size and whether it was scaled down, cut short, or trimmed. A `duplicate` of one carries its source's inventory and copies its Transaction Record and PDF. _Planned:_ Captures acquired by the other Capture Methods carry the inventory and a PDF too, and `launched` Captures a Transaction Record.
 _Avoid_: page, snapshot, record.
 
 **Transaction Record**:
@@ -93,6 +93,10 @@ _Avoid_: copy, clone, second capture.
 **Consent Suppression**:
 The record that maintained consent/cookie-notice filter lists were active while a background Recapture rendered. Absent for operator-witnessed Captures and for renders where the filter engine was unavailable.
 _Avoid_: cookie blocking, banner removal.
+
+**Image Source Pinning**:
+The record that a background Recapture pointed each image it displayed from a set of alternatives (an `img` with `srcset`, not a `picture`'s) at the source it displayed, before the screenshot and the MHTML, narrowing the set of one displayed from a width or a density other than 1x to that candidate so it keeps its density, with how many images that covered and how many of those were still loading, or had failed to load, just before the save ([ADR-0055](docs/adr/0055-a-background-render-pins-image-sources.md)). The counts cover only images that had settled and displayed an image before the pin. An image still loading, one that failed to load, one shown from a `blob:` address, and any image in a frame or a shadow root are left as they are and not counted. A `duplicate` carries its source's. Absent for operator-witnessed Captures and for Captures with no inventory.
+_Avoid_: `srcset` rewrite, image fix.
 
 **Egress**:
 The network path Birdbrain's outbound traffic takes: Direct from the Operator's own connection, through a Proxy, or through Tor. Set once for the installation; while it is not Direct, nothing Birdbrain sends leaves directly, and a Capture that Birdbrain renders records which Egress it used and the Operator's label for it. It hides where the Operator is, not what browser is looking. A VPN on the Operator's machine or network leaves the Egress Direct: Birdbrain still sends directly and the VPN carries the traffic.
@@ -342,7 +346,7 @@ _Avoid_: risky change, core change, forensic change.
 - **Trusted Time** and **Integrity Status** are orthogonal: a byte-perfect **Capture** is integrity-verified whether or not it carries a trusted timestamp
 - A **Recapture** produces a new **Capture** that supersedes an existing one; both remain visible and neither is overwritten
 - A **Duplicate** is a new **Capture** that links to its source and shares its **Content Hash**; unlike a **Recapture** it observed nothing
-- A link **Capture** observed its destination afresh, so unlike a **Duplicate** it is a new sighting; _planned:_ it names the **Capture** whose stored page held the link (ADR-0040)
+- A link **Capture** observed its destination afresh, so unlike a **Duplicate** it is a new sighting; it names the **Capture** whose stored page held the link (ADR-0040)
 - A **TLS Cert Chain** and a **Wayback Ref** attach to a **Capture** as corroboration only, and bind nothing about the captured transaction
 - **Bound TLS Details** are part of the **Capture** and describe the captured transaction; they never substitute for the **TLS Cert Chain**, which stays the floor wherever it runs; _planned:_ it is skipped while the **Egress** is not Direct (#1695)
 - Creating or updating a **Selector** triggers the **Selector Lifecycle** to (re)compute **Persisted Matches** for the **Case**'s existing **Captures**, asynchronously

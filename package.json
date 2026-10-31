@@ -151,7 +151,7 @@
     "@modelcontextprotocol/server": "^2.4.0",
     "@number0/iroh": "1.2.0",
     "@peculiar/asn1-cms": "^2.11.0",
-    "@peculiar/asn1-schema": "^2.11.0",
+    "@peculiar/asn1-schema": "^2.11.1",
     "@peculiar/asn1-tsp": "^2.11.0",
     "@peculiar/asn1-x509": "^2.11.0",
     "@tanstack/react-query": "^5.104.5",

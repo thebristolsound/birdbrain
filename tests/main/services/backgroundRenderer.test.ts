@@ -1298,6 +1298,7 @@ describe('the Image Source Pinning scripts', () => {
   it.each([
     ['a URL holding a comma', ' /j,x.png 2x ,/k.png 3x', '/j,x.png', { x: 2 }],
     ['a URL ending in commas', '/l.png,, /m.png 2x', '/l.png', null],
+    ['a bare URL ending in a comma beside its own 2x', '/u.png, /u.png 2x', '/u.png', null],
     ['a width with a future height', '/n.png 400w 300h, /o.png 800w', '/n.png', { w: 400 }],
     ['a dropped height with no width', '/p.png 300h, /p.png 2x', '/p.png', { x: 2 }],
     ['a dropped zero width', '/q.png 0w, /q.png 3x', '/q.png', { x: 3 }],

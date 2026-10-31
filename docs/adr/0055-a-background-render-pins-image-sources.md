@@ -56,7 +56,8 @@ wrongly.
   and `sizes` removed. Amended on 2026-10-30: the pin runs before the screenshot (ruling 6), and
   `srcset` and `sizes` stay on the live page (ruling 7).
 - The save waits for each pinned image to finish loading, bounded by the render's existing time
-  budget, and never extends the render past its deadline.
+  budget, and never extends the render past its deadline. Amended on 2026-10-30: the wait comes
+  before the screenshot (ruling 6).
 - The Capture records Image Source Pinning as two always-written whole-number counts in the MHTML
   part of the signed inventory, following Consent Suppression: the images pinned, and the pinned
   images not loaded when the save ran.
@@ -125,7 +126,8 @@ candidate displayed at density `d` becomes `<url> 1000w` with `sizes` set to `10
 which gives the browser the same density and keeps `src` out of the set. An image displayed
 from a width candidate, whose density the page's `sizes` sets, keeps that candidate alone with
 the page's `sizes`. When the pin cannot tell which candidate displayed, because no candidate has
-the image's `currentSrc` or those that do differ in descriptor, it sets only `src` (ruling 10).
+the image's `currentSrc` or those that do differ in descriptor, it sets only `src`; ruling 10
+accepts this for the case where `src` is also one of the candidates.
 D4 of the plan states the parsing.
 
 The render carries out ruling 11 because collection stops after the screenshot and the count:

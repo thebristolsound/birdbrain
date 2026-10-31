@@ -205,7 +205,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/uuid": "^11.0.0",
-    "@vitejs/plugin-react": "^5.2.0",
+    "@vitejs/plugin-react": "^6.1.2",
     "@vitest/coverage-v8": "^5.0.5",
     "babel-plugin-react-compiler": "^1.0.0",
     "cross-env": "^10.1.0",

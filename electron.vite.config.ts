@@ -1,6 +1,7 @@
 import { resolve } from 'path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+import babel from '@rolldown/plugin-babel'
 import tailwindcss from '@tailwindcss/vite'
 import { noInlinedFonts } from './scripts/no-inlined-fonts'
 import { reactCompilerBabel } from './scripts/react-compiler'
@@ -85,7 +86,8 @@ export default defineConfig({
       assetsInlineLimit: 0
     },
     plugins: [
-      react({ babel: reactCompilerBabel(__dirname) }),
+      react(),
+      babel(reactCompilerBabel(__dirname)),
       tailwindcss(),
       strictProdCsp,
       noInlinedFonts

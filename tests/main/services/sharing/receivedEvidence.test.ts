@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { Readable } from 'stream'
 import sharp from 'sharp'
 import { closeDatabase, getDb } from '@main/services/db/core'
 import * as captureRepo from '@main/services/db/captureRepo'
@@ -28,7 +29,11 @@ import {
   readSharedCaseSnapshot
 } from '@main/services/manifest'
 import { defaultCaptureStore } from '@main/services/captureStore'
-import { createCaptureLifecycle, verifyCapture } from '@main/services/captureLifecycle'
+import {
+  createCaptureLifecycle,
+  ingestMhtmlCapture,
+  verifyCapture
+} from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createTimestampWorker } from '@main/services/timestampWorker'
 import { backfillCase, runExhibitBackfill } from '@main/services/exhibitBackfill'
@@ -249,6 +254,45 @@ describe('received evidence (#1811)', () => {
       expect(verification?.valid).toBe(true)
       expect(verification?.outcome).toBe('pass')
     })
+  })
+
+  // ADR-0040: a teammate's viewer shows "From a link in" from the received row.
+  it("carries a link Capture's source, its Content Hash and the link address", async () => {
+    await activate(A)
+    const source = await addCapture(CASE_ID, A, 1)
+    const linkProvenance = {
+      linkedFromCaptureId: source.captureId,
+      linkedFromContentHash: source.contentHash,
+      linkHref: 'http://example.com/alice/linked'
+    }
+    const { capture } = await ingestMhtmlCapture(
+      {
+        caseId: CASE_ID,
+        url: 'https://example.com/alice/linked',
+        title: 'Linked',
+        timestamp: TIME,
+        stream: Readable.from([
+          Buffer.from('<html><body>Linked page</body></html>')
+        ]) as unknown as ReadableStream<Uint8Array>,
+        textContent: '',
+        headers: {},
+        browserVersion: '',
+        userAgent: '',
+        httpStatus: 200,
+        method: 'background',
+        linkSource: { signed: linkProvenance, rowId: source.captureId },
+        ...by(A)
+      },
+      async () => null
+    )
+    const recorded = recordSource(CASE_ID, A)
+
+    await activate(B)
+    const result = await pull(CASE_ID, recorded)
+    expect(result.errors).toEqual([])
+    expect(result.capturesApplied).toBe(2)
+    expect(getCapture(capture.id)).toMatchObject(linkProvenance)
+    expect(getExhibit(capture.id)?.authorInstallationId).toBe(A.installationId)
   })
 
   it('writes no row while a file is missing or fails its hash, and writes it once it arrives', async () => {

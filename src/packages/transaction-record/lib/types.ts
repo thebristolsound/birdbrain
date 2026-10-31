@@ -19,6 +19,12 @@ export interface RecordedEvent {
 export interface ResponseBodyResult {
   body: string
   base64Encoded: boolean
+  /**
+   * The session the body was fetched on. When given, the body is kept only if it is the session
+   * that reported the request's last `Network.loadingFinished`, the one whose durable messages
+   * decide a text body.
+   */
+  sessionId?: string
 }
 
 /** What `Network.getRequestPostData` returned for a request id. */
@@ -30,16 +36,29 @@ export interface RequestPostDataResult {
 export interface CollectorInput {
   /** Every event in arrival order, from the page's session and each child session. */
   events: readonly RecordedEvent[]
-  /** Keyed by request id. A finished request missing here had no body returned. */
+  /**
+   * Keyed by request id. A finished request missing here had no body returned. A body returned as
+   * text is kept only when the session that reported the request's `Network.loadingFinished` is
+   * in `durableSessions`; a base64 body is kept from any session.
+   */
   responseBodies?: ReadonlyMap<string, ResponseBodyResult>
+  /**
+   * The sessions whose `Network.configureDurableMessages` answered, by session id, the page's own
+   * `''` included. On any other session the browser can return a text body decoded from the
+   * page's character set (docs/specs/2026-10-26-transaction-record-charset-spike.md), so such a
+   * body is not kept and its exchange is `body-omitted`. Absent, no session is durable.
+   */
+  durableSessions?: ReadonlySet<string>
   /** Keyed by request id. */
   requestPostData?: ReadonlyMap<string, RequestPostDataResult>
   /**
-   * The targets whose setup answered, by session id (plan D17, "The two counts"): the page's own
-   * session `''` when its `Target.setAutoAttach` answered, and each attached frame, dedicated
-   * worker or service worker whose `Network.enable` and `Target.setAutoAttach` both answered. A
-   * target not listed here, the page included, counts as unrecorded; so does an attached target of
-   * any other type, listed or not. Absent, every target counts as unrecorded.
+   * The targets whose setup answered, by session id (plan D17, "The two counts", with the
+   * charset spike's rulings of 2026-10-26): the page's own session `''` when its
+   * `Network.configureDurableMessages` and `Target.setAutoAttach` answered, and each attached
+   * frame, dedicated worker or service worker whose `Network.enable`,
+   * `Network.configureDurableMessages` and `Target.setAutoAttach` all answered. A target not
+   * listed here, the page included, counts as unrecorded; so does an attached target of any other
+   * type, listed or not. Absent, every target counts as unrecorded.
    */
   recordedSessions?: ReadonlySet<string>
 }
@@ -151,11 +170,20 @@ export interface AttachedToTarget {
 /**
  * Where an exchange ended. Each exchange has exactly one. When an exchange shows more than one
  * signal, the first that applies wins: `loadingFailed` (`cancelled` or `failed`), a cache signal
- * (`cached`), a redirect (`redirected`), `loadingFinished` (`complete` or `body-omitted`), and
- * otherwise `in-flight`.
+ * (`cached`), a redirect (`redirected`), `loadingFinished` after a response (`complete` or
+ * `body-omitted`), `loadingFinished` with no response (`finished-without-response`, which step
+ * 9's e2e run saw for a service worker's own main script; ruled 2026-10-26 to be its own count),
+ * and otherwise `in-flight`.
  */
 export type ExchangeState =
-  'complete' | 'redirected' | 'body-omitted' | 'cached' | 'cancelled' | 'failed' | 'in-flight'
+  | 'complete'
+  | 'redirected'
+  | 'body-omitted'
+  | 'cached'
+  | 'cancelled'
+  | 'failed'
+  | 'finished-without-response'
+  | 'in-flight'
 
 export interface BodyData {
   data: string
@@ -209,7 +237,8 @@ export interface Exchange {
 
 /**
  * The Transaction Record counts of the inventory (plan D4 and D17). Every exchange falls in exactly
- * one of `exchanges`, `cached`, `cancelled`, `failed`, and `inFlight`. `bodiesOmitted` is part of
+ * one of `exchanges`, `cached`, `cancelled`, `failed`, `finishedWithoutResponse`, and `inFlight`.
+ * `bodiesOmitted` is part of
  * `exchanges`, and `incompleteRequestBodies` counts request bodies whatever state their exchange
  * ended in.
  */
@@ -218,6 +247,8 @@ export interface TransactionRecordCounts {
   cached: number
   cancelled: number
   failed: number
+  /** A request whose `Network.loadingFinished` arrived with no response: a request record only. */
+  finishedWithoutResponse: number
   inFlight: number
   bodiesOmitted: number
   incompleteRequestBodies: number
@@ -229,6 +260,31 @@ export interface TransactionRecordCounts {
 export interface CollectedExchanges {
   exchanges: Exchange[]
   counts: TransactionRecordCounts
+  /**
+   * The last hop of the main frame's last document request: the response Bound TLS Details
+   * describe (plan D7). Absent when no main frame document request was recorded.
+   */
+  mainDocument?: Exchange
+}
+
+export interface WriterInput {
+  /** Written in this order. */
+  exchanges: readonly Exchange[]
+  captureId: string
+  birdbrainVersion: string
+  browserVersion: string
+  userAgent: string
+  /** The Egress the render went through. Only `direct` lets a record carry a remote address. */
+  egress: 'direct' | EgressKind
+  /** The `warcinfo` record's `WARC-Date`, as ISO 8601. */
+  date: string
+}
+
+export interface WrittenTransactionRecord {
+  /** The `.warc.gz` file: one gzip member per record. */
+  bytes: Uint8Array
+  /** The lower-case names of the headers whose values the record holds replaced, sorted. */
+  replacedHeaders: string[]
 }
 
 export interface WriterInput {

@@ -348,6 +348,14 @@ export interface Capture {
   // that wrote it — this column is remapped on archive import, so it is the
   // link that survives a case moving between installations.
   duplicateOfCaptureId?: string
+  // Set on a Capture made with Capture link (ADR-0040, migration v44), all three or none.
+  // On a Capture this installation wrote, `linkedFromCaptureId` is the source's row id,
+  // remapped on archive import as `duplicateOfCaptureId` is; the signed entry names the source
+  // by its entry's id instead (LinkSource in captureLifecycle.ts), and a received row copies
+  // that entry id (receivedEvidence.ts).
+  linkedFromCaptureId?: string
+  linkedFromContentHash?: string
+  linkHref?: string
   // Consent-overlay suppression active while the page rendered; mirrors the
   // value anchored in the manifest capture entry. undefined = none.
   consentSuppression?: ConsentSuppression
@@ -386,6 +394,11 @@ export interface Capture {
   // manifest and used as the retry-worker queue (#120).
   trustedTimeStatus?: TrustedTime
 }
+
+// The three link provenance fields as a link Capture's entry and row carry them.
+export type LinkProvenance = Required<
+  Pick<Capture, 'linkedFromCaptureId' | 'linkedFromContentHash' | 'linkHref'>
+>
 
 // --- Wayback Machine corroboration (#wayback) ---
 // Post-capture, corroboration-only lookup of archive.org's independent record
@@ -814,6 +827,19 @@ export const LOG_CODES = [
   // retries on the next delete in that Case and at the next launch.
   'captureLifecycle.delete_recovery_failed',
   'backgroundRenderer.trim_failed',
+  // The reset after Scroll-to-load failed. With a lifted scroll lock the render
+  // fails too; without one the capture goes on.
+  'backgroundRenderer.scroll_reset_failed',
+  // The Transaction Record of a background render failed or ran out of time
+  // (open question E of docs/plans/2026-10-10-capture-engine-first-slice.md).
+  // Logged by the Recapture queue once the Capture is stored; its inventory
+  // records the record absent as `failed`.
+  'backgroundRenderer.transaction_record_failed',
+  // The PDF of a background render failed, ran out of time, was over a size
+  // bound, or was refused because the page navigated after the save, which its
+  // error names (step 10 of the same plan). Logged once the Capture is stored;
+  // its inventory records the PDF absent as `failed`.
+  'backgroundRenderer.pdf_failed',
   'backgroundRenderer.consent_blocker_disable_failed',
   'backgroundRenderer.consent_blocker_enable_failed',
   'consentBlocker.filter_engine_failed',
@@ -1395,6 +1421,9 @@ export interface CaptureEvent {
   // exact capture being recaptured, not every capture that shares its URL —
   // recapture creates same-URL siblings, so URL alone is ambiguous.
   supersedesCaptureId?: string
+  // The source and link address of a Capture link job, on every event emitted while it runs, so
+  // the viewer's notice can tell its job from another of the same address (ADR-0040).
+  linkedFrom?: { captureId: string; linkHref: string }
 }
 
 export interface OperatorIdentity {

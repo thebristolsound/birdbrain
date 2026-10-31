@@ -162,6 +162,19 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
     for (const [column, value] of Object.entries(engineColumns)) {
       getDb().prepare(`UPDATE captures SET ${column} = ? WHERE id = ?`).run(value, cap2.id)
     }
+    // A link Capture whose source is cap1 (ADR-0040). Its source id must be remapped on the
+    // way in, as cap2's supersedes id is, and the other two fields copied as they are.
+    const cap3 = insertCapture({
+      caseId: c.id,
+      url: 'https://c.example',
+      title: 'C',
+      hash: 'h3',
+      timestamp: '2026-01-03T00:00:00Z',
+      method: 'background',
+      linkedFromCaptureId: cap1.id,
+      linkedFromContentHash: 'b'.repeat(64),
+      linkHref: 'http://c.example'
+    })
     setCaptureVerification(cap1.id, {
       status: 'verified',
       computedHash: 'h1',
@@ -305,6 +318,9 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
         supersedes_capture_id: r.supersedes_capture_id
           ? mapId(r.supersedes_capture_id as string)
           : null,
+        linked_from_capture_id: r.linked_from_capture_id
+          ? mapId(r.linked_from_capture_id as string)
+          : null,
         html_path: reroot(r.html_path),
         screenshot_path: reroot(r.screenshot_path),
         mhtml_path: reroot(r.mhtml_path),
@@ -321,6 +337,12 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
     expect(imported2.method).toBe('background') // non-default survived
     expect(imported2.consent_suppression).toBe('filter-list')
     expect(imported2).toMatchObject(engineColumns)
+    const imported3 = collectCapturesForCase(NEW_CASE).find((r) => r.id === mapId(cap3.id)) as Row
+    expect(imported3).toMatchObject({
+      linked_from_capture_id: mapId(cap1.id), // REMAPPED, not copied
+      linked_from_content_hash: 'b'.repeat(64),
+      link_href: 'http://c.example'
+    })
     // cap1 left the source verified and the export carried that result; the
     // import writes null, so the imported Capture reads unverified (#1523).
     const source1 = src.captures.find((r) => r.id === cap1.id) as Row
@@ -611,7 +633,7 @@ describe('case archive round-trip of the Transaction Record and PDF', () => {
     expect(zip.get(`files/${CAPTURE_ID}.warc.gz`)).toEqual(ENGINE_FILES.transactionRecord)
     expect(zip.get(`files/${CAPTURE_ID}.pdf`)).toEqual(ENGINE_FILES.pdf)
     const header = JSON.parse(zip.get('package.json')!.toString('utf-8'))
-    expect(header.schemaVersion).toBe(13)
+    expect(header.schemaVersion).toBe(14)
   })
 
   it('restores both files under the id the Capture keeps', async () => {

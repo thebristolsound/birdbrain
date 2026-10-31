@@ -25,11 +25,11 @@ the reason. Drafts get no label: the list already marks them. The first matching
 
 | Order | Condition | Label |
 |---|---|---|
-| 1 | A check the ruleset requires failed, `main` conflicts, the reviewer pre-pass failed, or a review asked for changes | `next: fix` |
+| 1 | A check the ruleset requires, other than merge-gate, failed; `main` conflicts; the reviewer pre-pass failed; or a review asked for changes | `next: fix` |
 | 2 | An outside pull request's required checks never started | `next: review` |
 | 3 | Required checks, the reviewer pre-pass, or a due scheduled review are still running | `next: wait` |
 | 4 | merge-gate wants the maintainer's sign-off at head | `next: approve` |
-| 5 | Nobody has reviewed it: an outside pull request with no approval at head, a failed scheduled review, or a maintainer pull request the scheduled review has not reached in 6 hours | `next: review` |
+| 5 | Nobody has reviewed it: an outside pull request with no sign-off at head, a failed scheduled review, or a maintainer pull request the scheduled review has not reached in 6 hours | `next: review` |
 | 6 | Everything is green and `merge` is absent | `next: merge` |
 | 7 | `merge` is on, but auto-merge is off, an older red merge-gate run remains, or GitHub reports the pull request blocked | `next: unstick` |
 | 8 | `merge` is on and auto-merge is armed | `next: merging` |
@@ -67,7 +67,9 @@ The PR review job keeps its state in `review:passed`, `review:changes`, `review:
 timeline for its one retry. The state moves into the verdict comment, which already records
 `Reviewed commit:`, before any of the four labels is deleted. Otherwise every maintainer pull
 request looks unreviewed and the job spends its cap re-reviewing them. Amends ADR-0046.
-`review:requested` and `review:skipped` stay, because the maintainer sets them.
+`review:requested` and `review:skipped` stay. The maintainer applies `review:requested` to ask for
+a review, and `review:skipped` takes a pull request out of the job's queue; the maintainer applies
+it, or the pre-gate does on a process-doc diff.
 
 ## Slice 3: prune the label set (proposal)
 
@@ -81,8 +83,11 @@ added through `gh` breaks its writer. Each deletion follows the code change that
 - `size:XS` to `size:XXL`: after `pr-size.yml` writes a single `large` label for 500 or more lines.
 - `javascript`, `github_actions`: after `.github/dependabot.yml` sets `labels: [dependencies]`.
 - `blocker`: merged into `severity:blocking`, with `.github/scripts/stale/run.sh` updated.
-- `help wanted`, `needs-decision`, `pr:needs-verification`, `via-agent`, `wayfinder:prototype`,
-  `invalid`, `question`: nothing writes them.
+- `help wanted`, `needs-decision`, `wayfinder:prototype`: no code writes them and no document says
+  to apply them.
+- `pr:needs-verification`, `via-agent`, `invalid`, `question`: no code writes them, but
+  `docs/agents/triage-labels.md` tells reviewers, sessions and triagers to apply them. Each stays
+  until that row is replaced.
 - `lens:*` and `wayfinder:*`: the maintainer has not ruled. `scripts/jev-lens/triage.mjs` adds the
   `lens:` labels through `gh`, so deleting them first breaks the triage lens.
 

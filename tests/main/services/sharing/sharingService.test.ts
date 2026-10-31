@@ -815,6 +815,8 @@ describe("logging a teammate's stream that failed", () => {
       'ConnectionLost(ApplicationClosed(ApplicationClose { error_code: 7, reason: b"" }))',
       'PEER_CLOSED_WITH_ERROR'
     ],
+    ['ConnectionLost(ConnectionClosed(...))', 'CONNECTION_CLOSED'],
+    ['ConnectionLost(VersionMismatch)', 'CONNECTION_LOST'],
     ['something new', 'TRANSPORT_FAILED']
   ] as const)('records %s at warn, since it is no ordinary disconnect', (message, code) => {
     const info = vi.spyOn(logger, 'info')

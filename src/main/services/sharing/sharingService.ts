@@ -185,19 +185,17 @@ function replayed(stream: ByteStream, chunks: Uint8Array[]): ByteStream {
   }
 }
 
-// How the network ends a teammate's stream in ordinary use: a connection or
-// stream closed, lost, timed out or reset. These are recorded without a
-// toast, since the teammate's side reports the sync session it was running
-// and the next round retries. A peer that closes with a nonzero code (this
-// app always closes with 0), an error the transport cannot name, and any
-// failure in this app's own code warn.
+// How the network ends a teammate's stream in ordinary use. These log at
+// info with no toast, since the teammate's side reports the sync session it
+// was running and the next round retries. Everything else warns: a peer that
+// closes with a nonzero code (this app always closes with 0), a peer's QUIC
+// stack aborting the connection, a connection lost any other way, an error the
+// transport cannot name, and a failure in this app's own code.
 const ORDINARY_DISCONNECTS: ReadonlySet<TransportFailure> = new Set<TransportFailure>([
   'PEER_CLOSED',
-  'CONNECTION_CLOSED',
   'TIMED_OUT',
   'LOCALLY_CLOSED',
   'CONNECTION_RESET',
-  'CONNECTION_LOST',
   'STREAM_STOPPED',
   'STREAM_RESET',
   'STREAM_CLOSED'

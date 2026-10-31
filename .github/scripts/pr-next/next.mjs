@@ -133,14 +133,11 @@ export function decideNext(f) {
   const ownPr = f.author === f.maintainer && !f.crossRepo && !f.labels.includes('agent-pr')
   if (ownPr && !reviewState && f.ageHours < REVIEW_DUE_HOURS)
     return answer('wait', 'the scheduled review has not reached it yet')
-  if (f.gate.evidence || f.gate.credential) {
-    if (f.gate.reasons.some((r) => r.includes('no sign-off at head'))) {
-      const what = f.gate.evidence ? 'evidence-affecting' : 'changes release-credential paths'
-      return answer('approve', `${what}; needs your sign-off at ${f.headSha.slice(0, 7)}`)
-    }
+  if ((f.gate.evidence || f.gate.credential) && !f.gate.signedOff) {
+    const what = f.gate.evidence ? 'evidence-affecting' : 'changes release-credential paths'
+    return answer('approve', `${what}; needs your sign-off at ${f.headSha.slice(0, 7)}`)
   }
-  const approvedAtHead = review?.state === 'APPROVED' && review.commit === f.headSha
-  if (!ownPr && !fromMachine && !approvedAtHead)
+  if (!ownPr && !fromMachine && !f.gate.signedOff)
     return answer('review', `opened by ${f.author}; nobody has approved it at head`)
   if (reviewState === 'review:failed')
     return answer('review', 'the scheduled review ended without a verdict')

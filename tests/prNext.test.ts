@@ -165,6 +165,26 @@ describe('decideNext', () => {
     expect(next({ ...outside, reviews: fresh })).toBe('next: merge')
   })
 
+  it('counts the approved label with its stamp as sign-off, as merge-gate does', () => {
+    const outside = { author: 'app/dependabot', labels: ['approved'] }
+    expect(next({ ...outside, approvalStamp: 'success' })).toBe('next: merge')
+    expect(next({ ...outside, approvalStamp: 'absent' })).toBe('next: review')
+    const merge = { labels: ['approved', 'merge'], approvalStamp: 'success', mergeState: 'CLEAN' }
+    expect(next({ ...outside, ...merge, autoMerge: true })).toBe('next: merging')
+    expect(next({ ...outside, ...merge, autoMerge: false })).toBe('next: unstick')
+  })
+
+  it('asks for sign-off when someone other than the maintainer changes a workflow', () => {
+    const files = ['.github/workflows/ci.yml']
+    expect(decideNext(facts({ author: 'app/dependabot', files }))).toEqual({
+      label: 'next: approve',
+      reason: 'changes release-credential paths; needs your sign-off at aaaaaaa'
+    })
+    const signed = { labels: ['approved'], approvalStamp: 'success' }
+    expect(next({ author: 'app/dependabot', files, ...signed })).toBe('next: merge')
+    expect(next({ files, labels: ['review:passed'] })).toBe('next: merge')
+  })
+
   it('separates a merge that is happening from one that is stuck', () => {
     const labels = ['review:skipped', 'merge']
     expect(next({ labels, autoMerge: true, mergeState: 'CLEAN' })).toBe('next: merging')

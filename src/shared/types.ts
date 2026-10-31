@@ -348,6 +348,14 @@ export interface Capture {
   // that wrote it — this column is remapped on archive import, so it is the
   // link that survives a case moving between installations.
   duplicateOfCaptureId?: string
+  // Set on a Capture made with Capture link (ADR-0040, migration v44), all three or none.
+  // On a Capture this installation wrote, `linkedFromCaptureId` is the source's row id,
+  // remapped on archive import as `duplicateOfCaptureId` is; the signed entry names the source
+  // by its entry's id instead (LinkSource in captureLifecycle.ts), and a received row copies
+  // that entry id (receivedEvidence.ts).
+  linkedFromCaptureId?: string
+  linkedFromContentHash?: string
+  linkHref?: string
   // Consent-overlay suppression active while the page rendered; mirrors the
   // value anchored in the manifest capture entry. undefined = none.
   consentSuppression?: ConsentSuppression
@@ -386,6 +394,11 @@ export interface Capture {
   // manifest and used as the retry-worker queue (#120).
   trustedTimeStatus?: TrustedTime
 }
+
+// The three link provenance fields as a link Capture's entry and row carry them.
+export type LinkProvenance = Required<
+  Pick<Capture, 'linkedFromCaptureId' | 'linkedFromContentHash' | 'linkHref'>
+>
 
 // --- Wayback Machine corroboration (#wayback) ---
 // Post-capture, corroboration-only lookup of archive.org's independent record
@@ -1396,6 +1409,9 @@ export interface CaptureEvent {
   // exact capture being recaptured, not every capture that shares its URL —
   // recapture creates same-URL siblings, so URL alone is ambiguous.
   supersedesCaptureId?: string
+  // The source and link address of a Capture link job, on every event emitted while it runs, so
+  // the viewer's notice can tell its job from another of the same address (ADR-0040).
+  linkedFrom?: { captureId: string; linkHref: string }
 }
 
 export interface OperatorIdentity {

@@ -1,5 +1,5 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { EnqueueResult } from '@shared/ipc'
+import type { EnqueueResult, LinkedFrom } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
 
 // The queue only renders inside the CaptureHealth popover, so the poll
@@ -31,11 +31,16 @@ export function testCaptureHttp(): Promise<{
 export function useRecaptureMutations(caseId: string) {
   const queryClient = useQueryClient()
   const enqueue = useMutation({
-    mutationFn: (params: { urls: string[]; supersedesCaptureId?: string }) =>
+    mutationFn: (params: {
+      urls: string[]
+      supersedesCaptureId?: string
+      linkedFrom?: LinkedFrom
+    }) =>
       window.birdbrain.recapture.enqueue({
         urls: params.urls,
         caseId,
-        supersedesCaptureId: params.supersedesCaptureId
+        supersedesCaptureId: params.supersedesCaptureId,
+        linkedFrom: params.linkedFrom
       }),
     meta: { action: 'queue recapture' }
   })

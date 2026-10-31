@@ -707,6 +707,23 @@ describe('report.html on a link Capture', () => {
     expect(html).toContain(row('Link address', 'http://example.com/page?a=1&amp;b=&lt;2&gt;'))
   })
 
+  // A Capture link job renders in the background, so its entry carries both schema-6 sets.
+  it('prints the link rows and the capture engine fields from one entry carrying both', () => {
+    const entries = signedEntries([engineCaptureEntry({ ...engineFields(), ...LINK })])
+    const html = buildHtmlReport(
+      reportData([capture()], {
+        captureEngineByCaptureId: resolveCaptureEngineFacts(entries, true),
+        linkSourceByCaptureId: resolveLinkSources(entries, true)
+      }),
+      OPTIONS
+    )
+    expect(html).toContain(row('From a link in', 'source-capture-id'))
+    expect(html).toContain(row('Link address', 'http://example.com/page?a=1&amp;b=&lt;2&gt;'))
+    expect(html).toContain('Artifact inventory')
+    expect(html).toContain(ENGINE_HASHES.transactionRecord)
+    expect(html).toContain(ENGINE_HASHES.pdf)
+  })
+
   it('prints the entry values over edited row values', () => {
     const html = reportWith(true, {
       linkedFromCaptureId: 'forged-source',

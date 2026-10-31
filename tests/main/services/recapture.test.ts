@@ -1021,6 +1021,38 @@ describe('Capture link jobs (ADR-0040)', () => {
     expect((await verifyCapture(linked.id)).status).toBe('verified')
   })
 
+  // The two schema-6 sets meet only on a link Capture, and the strict schema checks each.
+  it('signs the capture engine fields beside the link fields, and the row mirrors both', async () => {
+    const source = await sourceCapture()
+    svc.enqueueLink(linkPayload(source.id))
+    await svc.idle()
+
+    const linked = newCaptures[1].id
+    const entry = entryOf(linked)
+    const parsed = ManifestEntrySchema.safeParse(entry)
+    expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+    const provenance = {
+      linkedFromCaptureId: source.id,
+      linkedFromContentHash: source.hash,
+      linkHref: LINK
+    }
+    const engine = {
+      inventory: {
+        mhtml: IMAGE_SOURCE_PINNING,
+        transactionRecord: TRANSACTION_RECORD_PART,
+        screenshot: { present: true, ...SCREENSHOT_RECORD },
+        pdf: { present: true, afterCollection: true }
+      },
+      scrollToLoad: SCROLL_TO_LOAD,
+      transactionRecordHash: WARC_SHA256,
+      boundTls: BOUND_TLS,
+      pdfHash: PDF_SHA256
+    }
+    expect(entry).toMatchObject({ ...provenance, ...engine, schemaVersion: 6 })
+    expect(getCapture(linked)).toMatchObject({ ...provenance, ...engine })
+    await expect(verifyCapture(linked)).resolves.toMatchObject({ status: 'verified' })
+  })
+
   it('writes none of the fields on an ordinary job, or on a Recapture of a link Capture', async () => {
     const source = await sourceCapture()
     svc.enqueueLink(linkPayload(source.id))

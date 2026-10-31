@@ -1,6 +1,6 @@
 # Plan: receipt stamps on `merge` entries (#1515)
 
-**Status:** approved 2026-10-17
+**Status:** done, finished by [#1912](https://github.com/thebristolsound/birdbrain/pull/1912)
 
 Plan only. Nothing here is built. Issue #1515 is SC-4 in
 `docs/plans/2026-10-10-three-programme-agent-briefs.md:265`, and step 7 of the build order in the

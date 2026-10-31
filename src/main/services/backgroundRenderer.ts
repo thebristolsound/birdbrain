@@ -9,8 +9,9 @@ import { randomUUID } from 'crypto'
 import { getConsentBlocker } from '@main/services/consentBlocker'
 import { captureEgressOf, knownEgress, proxyConfigFor } from '@main/services/egress'
 import { RefusedAddressError, refusedAddressClass } from '@main/services/localAddressPolicy'
-import type { RenderPage, RenderedPage } from '@main/services/recapture'
-import type { ConsentSuppression, KnownEgress } from '@shared/types'
+import type { RenderPage, RenderedPage, ScreenshotRecord } from '@main/services/recapture'
+import type { ScrollToLoadRecord } from '@shared/schemas'
+import type { ConsentSuppression, KnownEgress, ScrollToLoadOutcome } from '@shared/types'
 import { logger } from '@main/services/logger'
 
 const VIEWPORT = { width: 1280, height: 900 }
@@ -129,10 +130,11 @@ async function waitForDocumentComplete(wc: WebContents, timeoutMs: number): Prom
   )
 }
 
-// Shared by the scroll-phase scripts below. canScroll probes actual movement —
-// a viewport scroll-locked by overflow: hidden clamps even programmatic
-// scrolling. pickRoot prefers the document, falling back to the largest
-// scrollable descendant (app-shell layouts scroll an inner container).
+// Shared by the scroll-phase scripts below. The probes test actual movement
+// rather than styles: in Chromium a document with overflow: hidden still moves
+// from script in standards mode, and a full-height one does not in quirks mode.
+// pickRoot prefers the document, falling back to the largest scrollable
+// descendant (app-shell layouts scroll an inner container).
 const SCROLL_HELPERS = `
   // scrollTo with behavior 'instant' so CSS scroll-behavior: smooth can't turn
   // programmatic scrolls into animations the probes would misread.
@@ -140,28 +142,42 @@ const SCROLL_HELPERS = `
     if (el.scrollTo) el.scrollTo({ top: y, behavior: 'instant' })
     else el.scrollTop = y
   }
-  const canScroll = (el) => {
+  const moves = (el, delta) => {
     if (!el || el.scrollHeight <= el.clientHeight + 2) return false
     const prev = el.scrollTop
-    setScrollTop(el, prev + 1)
+    if (prev + delta < 0) return false
+    setScrollTop(el, prev + delta)
     const moved = el.scrollTop !== prev
     setScrollTop(el, prev)
     return moved
   }
+  const canScroll = (el) => moves(el, 1)
+  const atEnd = (el) => !canScroll(el) && moves(el, -1)
   const doc = document.scrollingElement || document.documentElement || document.body
-  const pickRoot = () => {
+  // A root that can still move down wins: the document, else the inner one
+  // with the most overflow. With allowAtEnd, and only when no root can move
+  // down, it returns the root at its end with the most overflow, so the step
+  // loop ends on its stall detector at a real bottom rather than on "nothing
+  // to scroll".
+  const pickRoot = (allowAtEnd) => {
     if (canScroll(doc)) return doc
     let best = null
     let bestGain = 0
+    let end = allowAtEnd && atEnd(doc) ? doc : null
+    let endGain = end ? doc.scrollHeight - doc.clientHeight : 0
     const minHeight = Math.max((window.innerHeight || 0) / 2, 150)
     for (const el of document.querySelectorAll('body *')) {
       const gain = el.scrollHeight - el.clientHeight
-      if (gain > bestGain && el.clientHeight >= minHeight && canScroll(el)) {
+      if (el.clientHeight < minHeight) continue
+      if (gain > bestGain && canScroll(el)) {
         best = el
         bestGain = gain
+      } else if (allowAtEnd && gain > endGain && atEnd(el)) {
+        end = el
+        endGain = gain
       }
     }
-    return best
+    return best || end
   }
 `
 
@@ -169,9 +185,11 @@ const SCROLL_HELPERS = `
 // When nothing scrolls but content overflows the viewport, lift the lock for
 // the scroll phase ONLY. Returns the original inline overflow values
 // ([html, body]) for the restore script, or null when no lock was lifted.
+// A root at its end is not locked: a page loaded at a fragment near its
+// bottom starts there.
 const SCROLL_UNLOCK_SCRIPT = `(() => {
   ${SCROLL_HELPERS}
-  if (pickRoot()) return null
+  if (pickRoot(true)) return null
   if (!doc || doc.scrollHeight <= doc.clientHeight + 2) return null
   const prior = []
   for (const el of [document.documentElement, document.body]) {
@@ -184,9 +202,9 @@ const SCROLL_UNLOCK_SCRIPT = `(() => {
 // One scroll step: advance the root by one viewport (re-picked each step so a
 // layout change mid-phase can't strand the loop) and report position/height
 // for the main-process stall detector. null = nothing scrollable.
-const SCROLL_STEP_SCRIPT = `(() => {
+export const SCROLL_STEP_SCRIPT = `(() => {
   ${SCROLL_HELPERS}
-  const root = pickRoot()
+  const root = pickRoot(true)
   if (!root) return null
   const viewportHeight = Math.max(root.clientHeight || 0, window.innerHeight || 0, 1)
   const maxY = Math.max(0, root.scrollHeight - viewportHeight)
@@ -210,15 +228,34 @@ function scrollResetScript(priorOverflow: string[] | null): string {
   })()`
 }
 
+// A height the page reports goes into the signed entry, whose schema admits only
+// a non-negative integer. The step script runs in the page's world, where a
+// hostile page can redefine `scrollHeight`, so any other value is not recorded.
+function recordableHeight(height: unknown): number | undefined {
+  return typeof height === 'number' && Number.isSafeInteger(height) && height >= 0
+    ? height
+    : undefined
+}
+
 // Scrolls through the complete document (main-process-driven loop) to trigger
 // lazy-loaded/infinite-scroll content before the artifacts are captured. The
-// scroll lock lifted by SCROLL_UNLOCK_SCRIPT is always restored — before the
-// screenshot and MHTML are taken, so they reflect what the page actually set.
-async function scrollToLoadLazyContent(wc: WebContents, timeoutMs: number): Promise<void> {
-  if (timeoutMs <= 0) return
+// scroll lock lifted by SCROLL_UNLOCK_SCRIPT is restored before the screenshot
+// and MHTML are taken, so they reflect what the page actually set.
+// Returns where the loop ended (D5 of
+// docs/plans/2026-10-10-capture-engine-first-slice.md). A step that throws, or
+// a lifted lock that cannot be restored, fails the render, so no record says
+// the phase failed.
+export async function scrollToLoadLazyContent(
+  wc: WebContents,
+  timeoutMs: number
+): Promise<ScrollToLoadRecord> {
+  if (timeoutMs <= 0) return { requested: true, ran: false, scrollLockLifted: false }
   const deadlineAt = Date.now() + timeoutMs
 
   const priorOverflow = (await wc.executeJavaScript(SCROLL_UNLOCK_SCRIPT, true)) as string[] | null
+  let outcome: ScrollToLoadOutcome = 'time-budget'
+  let endHeight: number | undefined
+  let restoreFailed = false
 
   try {
     let stalls = 0
@@ -231,20 +268,33 @@ async function scrollToLoadLazyContent(wc: WebContents, timeoutMs: number): Prom
         height: number
         viewportHeight: number
       } | null
-      if (!state) break
-      if (state.height >= MAX_SCROLL_CONTENT_HEIGHT_PX) break
+      if (!state) {
+        outcome = 'nothing-to-scroll'
+        break
+      }
+      endHeight = recordableHeight(state.height)
+      if (state.height >= MAX_SCROLL_CONTENT_HEIGHT_PX) {
+        outcome = 'height-cap'
+        break
+      }
 
       // OSR composites continuously, so IntersectionObserver/rAF-driven lazy
       // loaders fire on their own between scroll steps — no forced frame needed.
       await sleep(SCROLL_PAUSE_MS)
 
       const atBottom = state.y + state.viewportHeight >= state.height - 2
-      const noHeightGrowth = state.height <= lastHeight
+      // A height that differs from the last step's, up or down, is either new
+      // content or a step that moved on to another root (a second pane), and
+      // either restarts the stall count.
+      const noHeightGrowth = state.height === lastHeight
       const noScrollProgress = state.y <= lastY + 1
 
       if ((atBottom && noHeightGrowth) || (noHeightGrowth && noScrollProgress)) {
         stalls += 1
-        if (stalls >= SCROLL_STALL_THRESHOLD) break
+        if (stalls >= SCROLL_STALL_THRESHOLD) {
+          outcome = 'stopped-growing'
+          break
+        }
       } else {
         stalls = 0
       }
@@ -253,16 +303,52 @@ async function scrollToLoadLazyContent(wc: WebContents, timeoutMs: number): Prom
       lastY = state.y
     }
   } finally {
-    // Fail-soft: this only restores scroll position and the lifted overflow
-    // lock. If the page navigated or the webContents was destroyed mid-teardown
-    // the reset throws, but the scroll phase is best-effort and must not fail an
-    // otherwise-complete capture.
-    await wc.executeJavaScript(scrollResetScript(priorOverflow), true).catch(() => {})
+    try {
+      await wc.executeJavaScript(scrollResetScript(priorOverflow), true)
+    } catch (err) {
+      restoreFailed = true
+      logger.error('backgroundRenderer', 'backgroundRenderer.scroll_reset_failed', undefined, err)
+    }
     await sleep(SCROLL_PAUSE_MS)
+  }
+
+  // A reset that only returns the scroll position to the top is cosmetic. One
+  // that leaves a lifted lock in place would have the screenshot and MHTML taken
+  // of a page the entry cannot describe (D5 has no field for it), so the render
+  // fails, as it does for a step that throws.
+  if (restoreFailed && priorOverflow !== null) {
+    throw new Error("Could not restore the page's scroll lock after Scroll-to-load")
+  }
+
+  return {
+    requested: true,
+    ran: true,
+    outcome,
+    ...(endHeight !== undefined ? { endHeight } : {}),
+    scrollLockLifted: priorOverflow !== null
   }
 }
 
-async function captureFullPageScreenshot(wc: WebContents): Promise<Buffer> {
+// The pixel dimensions a PNG states in its IHDR chunk, which the format puts
+// first, straight after the 8-byte signature.
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+function pngDimensions(png: Buffer): { width: number; height: number } {
+  if (
+    png.length < 24 ||
+    !png.subarray(0, 8).equals(PNG_SIGNATURE) ||
+    png.toString('ascii', 12, 16) !== 'IHDR'
+  ) {
+    throw new Error('The screenshot is not a PNG')
+  }
+  return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) }
+}
+
+// Returns the stored PNG with the D6 facts about it
+// (docs/plans/2026-10-10-capture-engine-first-slice.md).
+export async function captureFullPageScreenshot(
+  wc: WebContents
+): Promise<{ png: Buffer; record: ScreenshotRecord }> {
   const metrics = (await wc.debugger.sendCommand('Page.getLayoutMetrics')) as {
     cssContentSize?: { x: number; y: number; width: number; height: number }
   }
@@ -307,7 +393,20 @@ async function captureFullPageScreenshot(wc: WebContents): Promise<Buffer> {
     }
   })) as { data: string }
 
-  return trimTrailingBackground(Buffer.from(data, 'base64'))
+  const { png, trimmed } = await trimTrailingBackground(Buffer.from(data, 'base64'))
+  const stored = pngDimensions(png)
+  return {
+    png,
+    record: {
+      scaled: scale < 1,
+      truncated: height < fullHeight,
+      trimmed,
+      contentWidth: width,
+      contentHeight: fullHeight,
+      width: stored.width,
+      height: stored.height
+    }
+  }
 }
 
 // The screenshot clips to the full document height, but ad/embed-heavy and
@@ -320,16 +419,18 @@ async function captureFullPageScreenshot(wc: WebContents): Promise<Buffer> {
 // below the last row with content — is removed; interior gaps are preserved,
 // and a page that fills to its footer (or is all one colour) is left untouched.
 // Cosmetic-only and fail-soft: any error returns the original screenshot.
+// `trimmed` says whether the returned image is a crop of the input.
 const TRIM_TOLERANCE = 8
 const TRIM_PADDING_PX = 8
 
-export async function trimTrailingBackground(png: Buffer): Promise<Buffer> {
+export async function trimTrailingBackground(
+  png: Buffer
+): Promise<{ png: Buffer; trimmed: boolean }> {
+  const untouched = { png, trimmed: false }
   try {
     const { data, info } = await sharp(png).greyscale().raw().toBuffer({ resolveWithObject: true })
     const w = info.width
     const h = info.height
-    if (!w || !h) return png
-
     const bg = data[(h - 1) * w + (w >> 1)]
     // A row counts as content when more than this many pixels differ from the
     // background — high enough to ignore JPEG/anti-alias speckle, low enough to
@@ -350,17 +451,18 @@ export async function trimTrailingBackground(png: Buffer): Promise<Buffer> {
     }
 
     // Entirely background (blank capture) or nothing to trim: leave as-is.
-    if (lastContentRow < 0) return png
+    if (lastContentRow < 0) return untouched
     const cropHeight = Math.min(h, lastContentRow + 1 + TRIM_PADDING_PX)
-    if (cropHeight >= h) return png
+    if (cropHeight >= h) return untouched
 
-    return await sharp(png)
+    const cropped = await sharp(png)
       .extract({ left: 0, top: 0, width: w, height: cropHeight })
       .png()
       .toBuffer()
+    return { png: cropped, trimmed: true }
   } catch (err) {
     logger.error('backgroundRenderer', 'backgroundRenderer.trim_failed', undefined, err)
-    return png
+    return untouched
   }
 }
 
@@ -550,7 +652,7 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
       // Scroll through the complete document to trigger lazy-loaded/infinite-scroll
       // content before saving the MHTML. Unlike the original 30-viewport cap, this
       // runs until the page bottom is stable or the recapture budget is exhausted.
-      await scrollToLoadLazyContent(
+      const scrollToLoad = await scrollToLoadLazyContent(
         wc,
         clampPhaseMs(remainingMs(FINAL_ARTIFACT_RESERVE_MS), MAX_SCROLL_PHASE_MS)
       )
@@ -560,7 +662,7 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
       )
       await sleep(Math.min(FINAL_SETTLE_MS, remainingMs(FINAL_ARTIFACT_RESERVE_MS)))
 
-      const screenshot = await captureFullPageScreenshot(wc)
+      const { png: screenshot, record: screenshotRecord } = await captureFullPageScreenshot(wc)
 
       await wc.savePage(tmpPath, 'MHTML')
 
@@ -571,6 +673,8 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
       return {
         mhtmlStream: createReadStream(tmpPath) as unknown as AsyncIterable<Uint8Array>,
         screenshot,
+        screenshotRecord,
+        scrollToLoad,
         text,
         title: wc.getTitle(),
         finalUrl: wc.getURL(),

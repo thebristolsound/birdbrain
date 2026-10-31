@@ -6,8 +6,14 @@ import { getInstallationId } from '@main/services/installationId'
 import { RefusedAddressError, refusedAddressClass } from '@main/services/localAddressPolicy'
 import { getSettings } from '@main/services/settings'
 import { resolveToolVersion } from '@main/services/toolVersion'
+import type { CaptureInventory, ScrollToLoadRecord } from '@shared/schemas'
 import type { Capture, CaptureEvent, ConsentSuppression } from '@shared/types'
 import type { EnqueueResult, RecaptureQueueStatus } from '@shared/ipc'
+
+// What the renderer knows about the screenshot it took: the inventory's
+// screenshot part without `present` (D6 of
+// docs/plans/2026-10-10-capture-engine-first-slice.md).
+export type ScreenshotRecord = Omit<CaptureInventory['screenshot'], 'present'>
 
 export interface RenderedPage {
   // The live renderer hands over a Node ReadStream on its temp file, so the fd
@@ -16,6 +22,9 @@ export interface RenderedPage {
   // iterable, but any path that abandons the stream has to call it (#766).
   mhtmlStream: AsyncIterable<Uint8Array> & { destroy?: () => void }
   screenshot: Buffer
+  screenshotRecord: ScreenshotRecord
+  // How the Scroll-to-load phase ended (D5).
+  scrollToLoad: ScrollToLoadRecord
   text: string
   title: string
   finalUrl: string
@@ -90,6 +99,19 @@ export function looksLikeLoginWall(input: {
 // own text, so the comparison still happens and never throws.
 export function redirectedFinalUrl(requestedUrl: string, finalUrl: string): string | undefined {
   return canonicalizeUrl(finalUrl) === canonicalizeUrl(requestedUrl) ? undefined : finalUrl
+}
+
+// The inventory a background Capture signs (D4 of
+// docs/plans/2026-10-10-capture-engine-first-slice.md). This build pins no
+// image before the save (#1843 adds the pinning), so both MHTML counts are 0,
+// and it takes no Transaction Record or PDF, so both are `not-taken`.
+function backgroundInventory(screenshot: ScreenshotRecord): CaptureInventory {
+  return {
+    mhtml: { present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 },
+    transactionRecord: { present: false, reason: 'not-taken' },
+    screenshot: { present: true, ...screenshot },
+    pdf: { present: false, reason: 'not-taken' }
+  }
 }
 
 function canonicalizeUrl(raw: string): string {
@@ -211,7 +233,9 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         method: 'background',
         supersedesCaptureId: job.supersedesCaptureId,
         consentSuppression: rendered.consentSuppression,
-        egress: rendered.egress
+        egress: rendered.egress,
+        inventory: backgroundInventory(rendered.screenshotRecord),
+        scrollToLoad: rendered.scrollToLoad
       })
 
       const warning = looksLikeLoginWall({

@@ -810,6 +810,9 @@ export const LOG_CODES = [
   // retries on the next delete in that Case and at the next launch.
   'captureLifecycle.delete_recovery_failed',
   'backgroundRenderer.trim_failed',
+  // The reset after Scroll-to-load failed. With a lifted scroll lock the render
+  // fails too; without one the capture goes on.
+  'backgroundRenderer.scroll_reset_failed',
   'backgroundRenderer.consent_blocker_disable_failed',
   'backgroundRenderer.consent_blocker_enable_failed',
   'consentBlocker.filter_engine_failed',

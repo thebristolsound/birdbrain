@@ -51,7 +51,7 @@ _Avoid_: backup, dump, case file.
 Clauses marked _Planned_ describe decisions in [`ADR-0034`](docs/adr/0034-the-app-acquires-and-the-extension-is-a-companion.md) and [`ADR-0035`](docs/adr/0035-one-transaction-record-per-capture.md) that no build implements yet. Until they ship, the extension acquires every operator-witnessed Capture itself.
 
 **Capture**:
-The primary artifacts taken from one observation of a single web page, stored on disk under its Case directory and indexed in the database: MHTML and, as available, a screenshot today. Legacy Captures may be HTML only. _Planned:_ a Transaction Record and a PDF join the artifacts, and the Manifest Entry inventories which artifacts are present and why any is absent.
+The primary artifacts taken from one observation of a single web page, stored on disk under its Case directory and indexed in the database: MHTML and, as available, a screenshot today. Legacy Captures may be HTML only. A `background` Capture's Manifest Entry carries an inventory: which artifacts the Capture holds and why any is absent, and the screenshot's size and whether it was scaled down, cut short, or trimmed. A `duplicate` of one carries its source's inventory. _Planned:_ a Transaction Record and a PDF join the artifacts, and Captures acquired by the other Capture Methods carry the inventory too.
 _Avoid_: page, snapshot, record.
 
 **Transaction Record**:
@@ -99,7 +99,7 @@ The network path Birdbrain's outbound traffic takes: Direct from the Operator's 
 _Avoid_: route, VPN mode, anonymous mode.
 
 **Scroll-to-load**:
-An optional phase before a Capture's artifacts are taken in which the page is scrolled to trigger lazy-loaded content. _Planned:_ whether it was requested, whether it ran, and how it ended are recorded in the Manifest Entry, and a Scroll-to-load that fails never silently yields a static Capture. Today the background renderer already fails closed when a scroll step fails, and records nothing; the extension's scrolling capture does neither (#1667).
+An optional phase before a Capture's artifacts are taken in which the page is scrolled to trigger lazy-loaded content. A `background` Capture's Manifest Entry records that the phase was requested, whether it ran, how it ended, the last height it read of the document or inner panel it scrolled, and whether it lifted a scroll lock. A scroll step that throws, or a lifted scroll lock that cannot be restored, fails the Capture. _Planned:_ the extension's scrolling capture, which records nothing and keeps a static Capture when scrolling fails, gives way to the Companion, whose Captures record the phase the same way ([companion design](docs/specs/2026-10-17-capture-engine-companion-design.md)).
 _Avoid_: scrolling capture, scrolling mode, pre-scroll.
 
 **Bound TLS Details**:

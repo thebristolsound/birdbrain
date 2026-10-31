@@ -1,7 +1,17 @@
-import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
+import { describe, it, expect, vi, beforeEach, beforeAll, afterEach } from 'vitest'
 import { writeFileSync } from 'fs'
 import sharp from 'sharp'
-import { trimTrailingBackground, renderPageInHiddenWindow } from '@main/services/backgroundRenderer'
+import type { WebContents } from 'electron'
+import { runInNewContext } from 'vm'
+import {
+  SCROLL_STEP_SCRIPT,
+  captureFullPageScreenshot,
+  renderPageInHiddenWindow,
+  scrollToLoadLazyContent,
+  trimTrailingBackground
+} from '@main/services/backgroundRenderer'
+import { logger } from '@main/services/logger'
+import { ScrollToLoadRecordSchema } from '@shared/schemas'
 import { RefusedAddressError } from '@main/services/localAddressPolicy'
 import { EgressUnavailableError } from '@main/services/egress'
 import type { EgressSetting } from '@shared/types'
@@ -216,21 +226,45 @@ async function heightOf(png: Buffer): Promise<number> {
 describe('trimTrailingBackground', () => {
   it('crops the trailing background band below the last content row', async () => {
     const png = await pageWithTrailingBackground(400, 3000, 1000, WHITE, RED)
-    const out = await trimTrailingBackground(png)
+    const { png: out, trimmed } = await trimTrailingBackground(png)
     // Last content row (999) + 1 + 8px padding.
     expect(await heightOf(out)).toBe(1008)
+    expect(trimmed).toBe(true)
   })
 
   it('adapts to a non-white page background', async () => {
     const png = await pageWithTrailingBackground(400, 3000, 1000, DARK, WHITE)
-    const out = await trimTrailingBackground(png)
+    const { png: out, trimmed } = await trimTrailingBackground(png)
     expect(await heightOf(out)).toBe(1008)
+    expect(trimmed).toBe(true)
   })
 
-  it('leaves a page that fills to the bottom untouched', async () => {
-    const png = await pageWithTrailingBackground(400, 1000, 1000, WHITE, RED)
+  it('leaves a page whose content ends within the padding of its bottom edge untouched', async () => {
+    // Content to row 995 on a white page 1000 rows tall: the crop would keep
+    // 995 + 1 + 8 rows, no fewer than the image has, so nothing is cut.
+    const png = await pageWithTrailingBackground(400, 1000, 996, WHITE, RED)
     const out = await trimTrailingBackground(png)
-    expect(out).toBe(png)
+    expect(out).toEqual({ png, trimmed: false })
+    expect(out.png).toBe(png)
+  })
+
+  it('trims a page whose content ends one row above the padding', async () => {
+    // The boundary beside the case above: 991 + 1 + 8 = 1000 keeps every row,
+    // and content ending at row 990 crops to 999.
+    const untouched = await pageWithTrailingBackground(400, 1000, 992, WHITE, RED)
+    expect((await trimTrailingBackground(untouched)).trimmed).toBe(false)
+
+    const png = await pageWithTrailingBackground(400, 1000, 991, WHITE, RED)
+    const { png: out, trimmed } = await trimTrailingBackground(png)
+    expect(trimmed).toBe(true)
+    expect(await heightOf(out)).toBe(999)
+  })
+
+  it('trims a page whose only content is its first row', async () => {
+    const png = await pageWithTrailingBackground(400, 1000, 1, WHITE, RED)
+    const { png: out, trimmed } = await trimTrailingBackground(png)
+    expect(trimmed).toBe(true)
+    expect(await heightOf(out)).toBe(9)
   })
 
   it('leaves an all-background (blank) capture untouched', async () => {
@@ -240,7 +274,8 @@ describe('trimTrailingBackground', () => {
       .png()
       .toBuffer()
     const out = await trimTrailingBackground(png)
-    expect(out).toBe(png)
+    expect(out).toEqual({ png, trimmed: false })
+    expect(out.png).toBe(png)
   })
 
   it('preserves interior background gaps between content blocks', async () => {
@@ -265,14 +300,15 @@ describe('trimTrailingBackground', () => {
       .png()
       .toBuffer()
 
-    const out = await trimTrailingBackground(png)
+    const { png: out } = await trimTrailingBackground(png)
     expect(await heightOf(out)).toBe(2608)
   })
 
-  it('returns the original buffer on undecodable input (fail-soft)', async () => {
+  it('returns the original buffer, untrimmed, on undecodable input (fail-soft)', async () => {
     const junk = Buffer.from('not a png at all')
     const out = await trimTrailingBackground(junk)
-    expect(out).toBe(junk)
+    expect(out.png).toBe(junk)
+    expect(out.trimmed).toBe(false)
   })
 
   it('ignores sub-threshold speckle when deciding what counts as content', async () => {
@@ -297,8 +333,601 @@ describe('trimTrailingBackground', () => {
       .png()
       .toBuffer()
 
-    const out = await trimTrailingBackground(png)
+    const { png: out } = await trimTrailingBackground(png)
     expect(await heightOf(out)).toBe(508)
+  })
+})
+
+type StepState = { y: number; height: number; viewportHeight: number } | null
+
+// A WebContents that answers only the scroll phase's three scripts: the unlock
+// probe, one step per call, and the reset. `step` receives the 0-based call;
+// `resetFails` makes the reset reject.
+function scrollingContents(opts: {
+  unlock?: string[] | null
+  step: (call: number) => StepState
+  resetFails?: boolean
+}): {
+  wc: WebContents
+  scripts: string[]
+} {
+  const scripts: string[] = []
+  let call = 0
+  const wc = {
+    async executeJavaScript(script: string) {
+      scripts.push(script)
+      if (script.includes("style.overflow = 'visible'")) return opts.unlock ?? null
+      if (script.includes('root.scrollTop + viewportHeight')) return opts.step(call++)
+      if (opts.resetFails) throw new Error('page navigated away during the reset')
+      return undefined
+    }
+  }
+  return { wc: wc as unknown as WebContents, scripts }
+}
+
+async function scrollUnderFakeTime(wc: WebContents, timeoutMs: number) {
+  const pending = scrollToLoadLazyContent(wc, timeoutMs)
+  await vi.runAllTimersAsync()
+  const record = await pending
+  // Each record is what the entry signs, so each must pass the strict schema.
+  expect(ScrollToLoadRecordSchema.safeParse(record).success).toBe(true)
+  return record
+}
+
+// D5 of docs/plans/2026-10-10-capture-engine-first-slice.md: one test per row.
+describe('scrollToLoadLazyContent', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('records a phase that did not run when the budget is zero at the start', async () => {
+    const { wc, scripts } = scrollingContents({ step: () => null })
+
+    const record = await scrollUnderFakeTime(wc, 0)
+
+    expect(record).toEqual({ requested: true, ran: false, scrollLockLifted: false })
+    expect(scripts).toEqual([])
+  })
+
+  it('records nothing-to-scroll when the step script finds no scrollable root', async () => {
+    const { wc } = scrollingContents({ step: () => null })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record).toEqual({
+      requested: true,
+      ran: true,
+      outcome: 'nothing-to-scroll',
+      scrollLockLifted: false
+    })
+  })
+
+  it('records height-cap and the height when the page reaches the scroll cap', async () => {
+    const { wc } = scrollingContents({
+      step: () => ({ y: 0, height: 25_000, viewportHeight: 900 })
+    })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record).toEqual({
+      requested: true,
+      ran: true,
+      outcome: 'height-cap',
+      endHeight: 25_000,
+      scrollLockLifted: false
+    })
+  })
+
+  it('records stopped-growing and the last height once the page stops growing', async () => {
+    // A 3000px page scrolled one 900px viewport per step: at the bottom from
+    // the third step, then three steps without growth.
+    const { wc, scripts } = scrollingContents({
+      step: (call) => ({ y: Math.min(2100, (call + 1) * 900), height: 3000, viewportHeight: 900 })
+    })
+
+    const record = await scrollUnderFakeTime(wc, 60_000)
+
+    expect(record).toEqual({
+      requested: true,
+      ran: true,
+      outcome: 'stopped-growing',
+      endHeight: 3000,
+      scrollLockLifted: false
+    })
+    expect(scripts.filter((s) => s.includes('root.scrollTop + viewportHeight'))).toHaveLength(5)
+  })
+
+  it('records time-budget when a page keeps growing until the phase deadline', async () => {
+    const { wc } = scrollingContents({
+      step: (call) => ({ y: call * 900, height: 2000 + call * 1000, viewportHeight: 900 })
+    })
+
+    // Steps at 0, 500, 1000 and 1500 ms; the deadline stops a fifth.
+    const record = await scrollUnderFakeTime(wc, 1600)
+
+    expect(record).toEqual({
+      requested: true,
+      ran: true,
+      outcome: 'time-budget',
+      endHeight: 5000,
+      scrollLockLifted: false
+    })
+  })
+
+  it('records that it lifted a scroll lock, and restores the lock it lifted', async () => {
+    const { wc, scripts } = scrollingContents({
+      unlock: ['hidden', ''],
+      step: () => ({ y: 0, height: 25_000, viewportHeight: 900 })
+    })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record.scrollLockLifted).toBe(true)
+    expect(scripts.at(-1)).toContain('const prior = ["hidden",""]')
+  })
+
+  it('records an end height of 0 when the page reports 0 for its height', async () => {
+    const { wc } = scrollingContents({
+      step: (call) => (call === 0 ? { y: 0, height: 0, viewportHeight: 900 } : null)
+    })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record).toMatchObject({ outcome: 'nothing-to-scroll', endHeight: 0 })
+  })
+
+  it.each([
+    ['a fraction', 1500.5],
+    ['a negative number', -1],
+    ['text', '3000']
+  ])('records no end height when the page reports %s for its height', async (_name, height) => {
+    const { wc } = scrollingContents({
+      step: (call) =>
+        call === 0 ? ({ y: 0, height, viewportHeight: 900 } as unknown as StepState) : null
+    })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record).toEqual({
+      requested: true,
+      ran: true,
+      outcome: 'nothing-to-scroll',
+      scrollLockLifted: false
+    })
+  })
+
+  it('records no end height when the last height read is not recordable', async () => {
+    const heights = [3000, 1500.5]
+    const { wc } = scrollingContents({
+      step: (call) =>
+        call < heights.length ? { y: 0, height: heights[call], viewportHeight: 900 } : null
+    })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record).toEqual({
+      requested: true,
+      ran: true,
+      outcome: 'nothing-to-scroll',
+      scrollLockLifted: false
+    })
+  })
+
+  it('fails, rather than records, a scroll step that throws, and still restores the page', async () => {
+    const { wc, scripts } = scrollingContents({
+      step: () => {
+        throw new Error('page navigated away')
+      }
+    })
+
+    const pending = scrollToLoadLazyContent(wc, 10_000)
+    const settled = expect(pending).rejects.toThrow('page navigated away')
+    await vi.runAllTimersAsync()
+    await settled
+    expect(scripts.at(-1)).toContain('window.scrollTo(0, 0)')
+  })
+
+  it('fails, rather than records, a phase whose lifted scroll lock cannot be restored', async () => {
+    const { wc } = scrollingContents({
+      unlock: ['hidden', ''],
+      step: () => ({ y: 0, height: 25_000, viewportHeight: 900 }),
+      resetFails: true
+    })
+
+    const pending = scrollToLoadLazyContent(wc, 10_000)
+    const settled = expect(pending).rejects.toThrow(
+      "Could not restore the page's scroll lock after Scroll-to-load"
+    )
+    await vi.runAllTimersAsync()
+    await settled
+  })
+
+  it('keeps the step error when both a step and the restore fail', async () => {
+    const { wc } = scrollingContents({
+      unlock: ['hidden', ''],
+      step: () => {
+        throw new Error('page navigated away')
+      },
+      resetFails: true
+    })
+
+    const pending = scrollToLoadLazyContent(wc, 10_000)
+    const settled = expect(pending).rejects.toThrow(/^page navigated away$/)
+    await vi.runAllTimersAsync()
+    await settled
+  })
+
+  it('records the phase and logs a failed reset when no scroll lock was lifted', async () => {
+    const logged = vi.spyOn(logger, 'error').mockImplementation(() => 'log-id')
+    const { wc } = scrollingContents({
+      step: () => ({ y: 0, height: 25_000, viewportHeight: 900 }),
+      resetFails: true
+    })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record).toMatchObject({ outcome: 'height-cap', scrollLockLifted: false })
+    expect(logged).toHaveBeenCalledWith(
+      'backgroundRenderer',
+      'backgroundRenderer.scroll_reset_failed',
+      undefined,
+      expect.any(Error)
+    )
+    logged.mockRestore()
+  })
+
+  it('keeps scrolling past a bottom when the page grows before the stall count ends', async () => {
+    // A feed whose next chunk lands two steps after each bottom: 3000px, then
+    // 4000px, and so on, until the deadline.
+    const { wc } = scrollingContents({
+      step: (call) => {
+        const height = 3000 + Math.floor(call / 3) * 1000
+        return { y: height - 900, height, viewportHeight: 900 }
+      }
+    })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record).toMatchObject({ outcome: 'time-budget', endHeight: 9000 })
+  })
+
+  it.each([
+    ['falls at every step', (call: number) => 20_000 - call * 100],
+    ['moves down and up at every step', (call: number) => (call % 2 === 0 ? 3000 : 2900)]
+  ])('runs to the deadline at the bottom of a page whose height %s', async (_name, heightAt) => {
+    const { wc } = scrollingContents({
+      step: (call) => {
+        const height = heightAt(call)
+        return { y: height - 900, height, viewportHeight: 900 }
+      }
+    })
+
+    const record = await scrollUnderFakeTime(wc, 10_000)
+
+    expect(record).toMatchObject({ outcome: 'time-budget' })
+  })
+
+  it('restarts the stall count when a step moves on to a second pane', async () => {
+    // Pane A (6000px) at its end for two steps, then pane B (3000px) for two
+    // steps that each count as a stall on their own pane, then A again: no
+    // three stalls run together until A has three steps to itself.
+    const heights = [6000, 6000, 3000, 3000, 6000, 6000, 6000, 6000]
+    const { wc, scripts } = scrollingContents({
+      step: (call) => {
+        const height = heights[Math.min(call, heights.length - 1)]
+        return { y: height - 900, height, viewportHeight: 900 }
+      }
+    })
+
+    const record = await scrollUnderFakeTime(wc, 60_000)
+
+    expect(record).toMatchObject({ outcome: 'stopped-growing', endHeight: 6000 })
+    expect(scripts.filter((s) => s.includes('root.scrollTop + viewportHeight'))).toHaveLength(8)
+  })
+})
+
+// A scrollable box with the browser's clamping: scrollTop stays within
+// [0, scrollHeight - clientHeight]. With overflow: hidden it does not move,
+// which models a document that cannot move from script, as in a Chromium page
+// with no doctype. A standards-mode document with overflow: hidden still moves.
+class FakeScroller {
+  scrollTop = 0
+  style = { overflow: '' }
+  constructor(
+    readonly name: string,
+    public scrollHeight: number,
+    readonly clientHeight: number
+  ) {}
+  scrollTo({ top }: { top: number }) {
+    if (this.style.overflow === 'hidden') return
+    this.scrollTop = Math.max(0, Math.min(top, this.scrollHeight - this.clientHeight))
+  }
+}
+
+// Runs the step script against a document root and the inner boxes
+// `querySelectorAll('body *')` returns, in a 900px-tall window, and names the
+// box each step moved.
+function stepRunner(doc: FakeScroller, inner: FakeScroller[]) {
+  const context = {
+    document: {
+      scrollingElement: doc,
+      documentElement: doc,
+      body: {},
+      querySelectorAll: () => inner
+    },
+    window: { innerHeight: 900 }
+  }
+  return () => {
+    const before = [doc, ...inner].map((box) => box.scrollTop)
+    const state = runInNewContext(SCROLL_STEP_SCRIPT, context) as StepState
+    const moved = [doc, ...inner].filter((box, i) => box.scrollTop !== before[i])
+    return { state, moved: moved.map((box) => box.name) }
+  }
+}
+
+// Which root the step script scrolls, in the root choice the Electron runs in
+// the validation record exercise on real pages.
+describe('the Scroll-to-load step script', () => {
+  it('scrolls an inner panel once the document, overflowing by its margin, is at its end', () => {
+    // body{height:100vh} with the default 8px margin: the document overflows
+    // by 16px, and the content scrolls in <main>.
+    const doc = new FakeScroller('document', 916, 900)
+    const main = new FakeScroller('main', 10_001, 900)
+    const step = stepRunner(doc, [main])
+
+    expect(step().moved).toEqual(['document'])
+    const rest = Array.from({ length: 12 }, step)
+
+    expect(rest[0].moved).toEqual(['main'])
+    expect(main.scrollTop).toBe(9101)
+    // With every root at its end, the step reports the panel, not the
+    // document, so the stall detector reads the panel's height.
+    expect(rest.at(-1)).toEqual({
+      state: { y: 9101, height: 10_001, viewportHeight: 900 },
+      moved: []
+    })
+  })
+
+  it('scrolls both panes of a two-pane page, the larger first, and ends on the larger', () => {
+    const doc = new FakeScroller('document', 900, 900)
+    const nav = new FakeScroller('nav', 3000, 900)
+    const main = new FakeScroller('main', 6000, 900)
+    const step = stepRunner(doc, [nav, main])
+
+    const moved = Array.from({ length: 12 }, step)
+
+    expect(moved.map((s) => s.moved.join())).toEqual([
+      ...Array(6).fill('main'),
+      ...Array(3).fill('nav'),
+      '',
+      '',
+      ''
+    ])
+    expect(nav.scrollTop).toBe(2100)
+    expect(main.scrollTop).toBe(5100)
+    expect(moved.at(-1)!.state).toEqual({ y: 5100, height: 6000, viewportHeight: 900 })
+  })
+
+  it('reports a document at its end rather than nothing to scroll', () => {
+    const doc = new FakeScroller('document', 3000, 900)
+    doc.scrollTop = 2100
+
+    expect(stepRunner(doc, [])()).toEqual({
+      state: { y: 2100, height: 3000, viewportHeight: 900 },
+      moved: []
+    })
+  })
+
+  it('returns to an inner panel that grew after reaching its end', () => {
+    const doc = new FakeScroller('document', 916, 900)
+    const main = new FakeScroller('main', 2001, 900)
+    const step = stepRunner(doc, [main])
+    for (let i = 0; i < 4; i++) step()
+    expect(main.scrollTop).toBe(1101)
+
+    main.scrollHeight = 4001
+
+    expect(step().moved).toEqual(['main'])
+  })
+
+  it('finds nothing to scroll on a page that does not overflow', () => {
+    const doc = new FakeScroller('document', 900, 900)
+    const short = new FakeScroller('short', 900, 900)
+
+    expect(stepRunner(doc, [short])().state).toBeNull()
+  })
+})
+
+// A WebContents that runs every script of the phase, the unlock, the steps and
+// the reset, against a document root with no inner boxes, in a 900px-tall window.
+function pageContents(doc: FakeScroller, body: { style: { overflow: string } }): WebContents {
+  const context = {
+    document: { scrollingElement: doc, documentElement: doc, body, querySelectorAll: () => [] },
+    window: { innerHeight: 900, scrollTo: () => {} }
+  }
+  const wc = {
+    async executeJavaScript(script: string) {
+      return runInNewContext(script, context)
+    }
+  }
+  return wc as unknown as WebContents
+}
+
+// Whether the phase lifts a scroll lock, decided by the page's own scripts
+// rather than a canned unlock result.
+describe('the Scroll-to-load scroll lock', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('lifts no lock on a page that starts at its end', async () => {
+    // A page loaded at a fragment near its bottom.
+    const doc = new FakeScroller('document', 5000, 900)
+    doc.scrollTop = 4100
+    const body = { style: { overflow: '' } }
+
+    const record = await scrollUnderFakeTime(pageContents(doc, body), 60_000)
+
+    expect(record).toEqual({
+      requested: true,
+      ran: true,
+      outcome: 'stopped-growing',
+      endHeight: 5000,
+      scrollLockLifted: false
+    })
+    expect([doc.style.overflow, body.style.overflow]).toEqual(['', ''])
+  })
+
+  it.each([
+    ['at its top', 0],
+    ['after it scrolled itself to its end', 4100]
+  ])('lifts and restores the lock of a page locked %s', async (_name, startTop) => {
+    const doc = new FakeScroller('document', 5000, 900)
+    doc.scrollTop = startTop
+    doc.style.overflow = 'hidden'
+    const body = { style: { overflow: 'hidden' } }
+
+    const record = await scrollUnderFakeTime(pageContents(doc, body), 60_000)
+
+    expect(record).toEqual({
+      requested: true,
+      ran: true,
+      outcome: 'stopped-growing',
+      endHeight: 5000,
+      scrollLockLifted: true
+    })
+    expect([doc.style.overflow, body.style.overflow]).toEqual(['hidden', 'hidden'])
+  })
+})
+
+// A WebContents whose debugger reports `content` as the CSS content size and
+// returns `png` as the captured image.
+function screenshotContents(
+  content: { width: number; height: number },
+  png: Buffer
+): { wc: WebContents; clips: unknown[] } {
+  const clips: unknown[] = []
+  const wc = {
+    debugger: {
+      async sendCommand(cmd: string, params?: { clip?: unknown }) {
+        if (cmd === 'Page.getLayoutMetrics') return { cssContentSize: { x: 0, y: 0, ...content } }
+        clips.push(params?.clip)
+        return { data: png.toString('base64') }
+      }
+    }
+  }
+  return { wc: wc as unknown as WebContents, clips }
+}
+
+async function solid(width: number, height: number): Promise<Buffer> {
+  return sharp({ create: { width, height, channels: 3, background: RED } })
+    .png()
+    .toBuffer()
+}
+
+// D6 of docs/plans/2026-10-10-capture-engine-first-slice.md.
+describe('captureFullPageScreenshot', () => {
+  it('records a screenshot that was neither scaled, cut short, nor trimmed', async () => {
+    const image = await solid(1280, 3000)
+    const { wc } = screenshotContents({ width: 1280, height: 3000 }, image)
+
+    const { png, record } = await captureFullPageScreenshot(wc)
+
+    expect(png.equals(image)).toBe(true)
+    expect(record).toEqual({
+      scaled: false,
+      truncated: false,
+      trimmed: false,
+      contentWidth: 1280,
+      contentHeight: 3000,
+      width: 1280,
+      height: 3000
+    })
+  })
+
+  it('records a trim and the trimmed PNG dimensions', async () => {
+    const image = await pageWithTrailingBackground(400, 3000, 1000, WHITE, RED)
+    const { wc } = screenshotContents({ width: 400, height: 3000 }, image)
+
+    const { png, record } = await captureFullPageScreenshot(wc)
+
+    expect(await heightOf(png)).toBe(1008)
+    expect(record).toMatchObject({ trimmed: true, contentHeight: 3000, width: 400, height: 1008 })
+    expect(record).toMatchObject({ scaled: false, truncated: false })
+  })
+
+  it('records a scale below 1 for content wider than the texture ceiling', async () => {
+    const { wc, clips } = screenshotContents({ width: 20_000, height: 1000 }, await solid(16, 8))
+
+    const { record } = await captureFullPageScreenshot(wc)
+
+    expect(clips[0]).toMatchObject({ width: 20_000, height: 1000, scale: 16_384 / 20_000 })
+    expect(record).toEqual({
+      scaled: true,
+      truncated: false,
+      trimmed: false,
+      contentWidth: 20_000,
+      contentHeight: 1000,
+      width: 16,
+      height: 8
+    })
+  })
+
+  it('records a screenshot cut short of a page taller than the pixel budget', async () => {
+    const { wc, clips } = screenshotContents({ width: 1280, height: 40_000 }, await solid(16, 8))
+
+    const { record } = await captureFullPageScreenshot(wc)
+
+    expect(clips[0]).toMatchObject({ height: 16_384, scale: 1 })
+    expect(record).toMatchObject({
+      scaled: false,
+      truncated: true,
+      contentWidth: 1280,
+      contentHeight: 40_000
+    })
+  })
+
+  it('records no trim when the trim fails, and keeps the image it was given', async () => {
+    // A PNG signature and header with no image data: sharp cannot decode it,
+    // and its header still states its dimensions.
+    const headerOnly = (await solid(640, 480)).subarray(0, 33)
+    const { wc } = screenshotContents({ width: 640, height: 480 }, headerOnly)
+
+    const { png, record } = await captureFullPageScreenshot(wc)
+
+    expect(png.equals(headerOnly)).toBe(true)
+    expect(record).toMatchObject({ trimmed: false, width: 640, height: 480 })
+  })
+
+  it('fails the render on an image that is not a PNG', async () => {
+    const { wc } = screenshotContents({ width: 10, height: 10 }, Buffer.from('not a png at all'))
+
+    await expect(captureFullPageScreenshot(wc)).rejects.toThrow('The screenshot is not a PNG')
+  })
+
+  // Each check on its own: the rest of the image is a real PNG's.
+  it.each([
+    ['is cut off before the end of its header', (png: Buffer) => png.subarray(0, 23)],
+    [
+      'has a wrong signature byte',
+      (png: Buffer) => Buffer.concat([Buffer.from([0]), png.subarray(1)])
+    ],
+    [
+      'does not start with an IHDR chunk',
+      (png: Buffer) => Buffer.concat([png.subarray(0, 12), Buffer.from('IDAT'), png.subarray(16)])
+    ]
+  ])('fails the render on an image that %s', async (_name, damage) => {
+    const { wc } = screenshotContents({ width: 16, height: 8 }, damage(await solid(16, 8)))
+
+    await expect(captureFullPageScreenshot(wc)).rejects.toThrow('The screenshot is not a PNG')
   })
 })
 
@@ -341,6 +970,23 @@ describe('renderPageInHiddenWindow', () => {
     expect(result.httpStatus).toBe(200)
     expect(result.userAgent).toBe('MockAgent/1.0')
     expect(result.browserVersion).toContain('Chrome/')
+    // The fake's first scroll step reports a height at the cap.
+    expect(result.scrollToLoad).toEqual({
+      requested: true,
+      ran: true,
+      outcome: 'height-cap',
+      endHeight: 25000,
+      scrollLockLifted: false
+    })
+    expect(result.screenshotRecord).toEqual({
+      scaled: false,
+      truncated: false,
+      trimmed: false,
+      contentWidth: 100,
+      contentHeight: 100,
+      width: 100,
+      height: 100
+    })
     // Consent blocker was present, so it was enabled and its suppression recorded.
     expect(consentBlocker.enableBlockingInSession).toHaveBeenCalled()
     expect(result.consentSuppression).toBe('filter-list')

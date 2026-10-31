@@ -25,9 +25,11 @@ import {
   looksLikeLoginWall,
   redirectedFinalUrl,
   type RenderedPage,
-  type RenderPage
+  type RenderPage,
+  type ScreenshotRecord
 } from '@main/services/recapture'
 import { RefusedAddressError } from '@main/services/localAddressPolicy'
+import { ManifestEntrySchema, type ScrollToLoadRecord } from '@shared/schemas'
 import type { CaptureEvent, Capture } from '@shared/types'
 
 vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
@@ -35,12 +37,34 @@ vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
   return { ...actual, fetchCertChain: vi.fn(async () => null) }
 })
 
+// A 20000px page that stopped growing, its screenshot cut short at the 16384px
+// texture ceiling.
+const SCREENSHOT_RECORD: ScreenshotRecord = {
+  scaled: false,
+  truncated: true,
+  trimmed: false,
+  contentWidth: 1280,
+  contentHeight: 20000,
+  width: 1280,
+  height: 16384
+}
+
+const SCROLL_TO_LOAD: ScrollToLoadRecord = {
+  requested: true,
+  ran: true,
+  outcome: 'stopped-growing',
+  endHeight: 20000,
+  scrollLockLifted: true
+}
+
 function fakeRender(overrides: Partial<RenderedPage> = {}): RenderPage {
   return async (url) => ({
     mhtmlStream: (async function* () {
       yield Buffer.from(`mhtml-of-${url}`)
     })(),
     screenshot: Buffer.from('png-bytes'),
+    screenshotRecord: SCREENSHOT_RECORD,
+    scrollToLoad: SCROLL_TO_LOAD,
     text: 'page text',
     title: 'Page Title',
     finalUrl: url,
@@ -127,6 +151,88 @@ describe('recapture service', () => {
     // strict entry schema silently rejects unknown keys as chain-broken.
     const verification = await verifyCapture(newCaptures[0].id)
     expect(verification.status).toBe('verified')
+  })
+
+  // D4, D5 and D9 of docs/plans/2026-10-10-capture-engine-first-slice.md.
+  describe('the inventory and the Scroll-to-load record', () => {
+    const INVENTORY = {
+      mhtml: { present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 },
+      transactionRecord: { present: false, reason: 'not-taken' },
+      screenshot: { present: true, ...SCREENSHOT_RECORD },
+      pdf: { present: false, reason: 'not-taken' }
+    }
+
+    function captureEntries(): Array<Record<string, unknown>> {
+      return readFileSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line) as Record<string, unknown>)
+        .filter((entry) => entry.type === 'capture')
+    }
+
+    it('signs both in the entry, which the strict schema accepts, and mirrors both on the row', async () => {
+      const svc = makeService(fakeRender())
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+
+      const [entry] = captureEntries()
+      // `appendManifestEntry` signs without a schema check, so this is where a
+      // shape the verifier would refuse is caught.
+      const parsed = ManifestEntrySchema.safeParse(entry)
+      expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+      expect(entry).toMatchObject({
+        method: 'background',
+        inventory: INVENTORY,
+        scrollToLoad: SCROLL_TO_LOAD,
+        schemaVersion: 6
+      })
+      expect(entry).not.toHaveProperty('transactionRecordHash')
+      expect(entry).not.toHaveProperty('pdfHash')
+
+      const row = getCapture(newCaptures[0].id)!
+      expect(row.inventory).toEqual(INVENTORY)
+      expect(row.scrollToLoad).toEqual(SCROLL_TO_LOAD)
+      await expect(verifyCapture(row.id)).resolves.toMatchObject({ status: 'verified' })
+    })
+
+    it('signs a phase that did not run with no outcome and no height', async () => {
+      const notRun: ScrollToLoadRecord = { requested: true, ran: false, scrollLockLifted: false }
+      const svc = makeService(fakeRender({ scrollToLoad: notRun }))
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+
+      const [entry] = captureEntries()
+      expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
+      expect(entry.scrollToLoad).toEqual(notRun)
+      expect(getCapture(newCaptures[0].id)!.scrollToLoad).toEqual(notRun)
+    })
+
+    it("re-anchors both on a Duplicate's entry and mirrors them on its row", async () => {
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle })
+      const svc = createRecaptureService({
+        renderPage: fakeRender(),
+        captureLifecycle: lifecycle,
+        emitEvent: (e) => events.push(e),
+        emitNewCapture: (c) => newCaptures.push(c)
+      })
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+
+      const result = await lifecycle.duplicate(newCaptures[0].id)
+      if (result.status !== 'duplicated') throw new Error('expected a duplicate')
+
+      const [, copy] = captureEntries()
+      const parsed = ManifestEntrySchema.safeParse(copy)
+      expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+      expect(copy).toMatchObject({
+        method: 'duplicate',
+        inventory: INVENTORY,
+        scrollToLoad: SCROLL_TO_LOAD
+      })
+      const row = getCapture(result.capture.id)!
+      expect(row.inventory).toEqual(INVENTORY)
+      expect(row.scrollToLoad).toEqual(SCROLL_TO_LOAD)
+    })
   })
 
   it('signs the Egress the render went through, its label and the user agent (ADR-0032)', async () => {

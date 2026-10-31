@@ -383,11 +383,13 @@ inventory: {
 
 `scrollToLoad: { requested: true, ran: boolean, outcome?, endHeight?, scrollLockLifted: boolean }`.
 
-The background renderer always requests the phase. `endHeight` is the last document height the
-step script reported, in CSS pixels, and is absent when the loop read none. `scrollLockLifted` is
-true when `SCROLL_UNLOCK_SCRIPT` lifted a consent wall's lock: the lock is restored before the
-artifacts, but loosening it can change which lazy content loads. `outcome` maps to where
-`scrollToLoadLazyContent` ends today:
+The background renderer always requests the phase. `endHeight` is the last height the step
+script reported for the root it scrolled, the document or an inner panel, in CSS pixels, and is
+absent when the loop read none or the last height it read is not a non-negative safe integer
+(`Number.isSafeInteger`, so an integer above 2^53 - 1 is left out too).
+`scrollLockLifted` is true when `SCROLL_UNLOCK_SCRIPT` lifted a consent wall's lock: the lock is
+restored before the artifacts, but loosening it can change which lazy content loads. `outcome`
+maps to where `scrollToLoadLazyContent` ends today:
 
 | Record | Where the loop ends |
 | --- | --- |
@@ -1651,6 +1653,15 @@ folded in.
 - **2026-10-26.** Step 3 (#1925) takes Case Archive version 13, the next after 12 on `main`. It
   adds `transactionRecordHash` and `pdfHash` to `CAPTURE_ENTRY_HASH_FIELDS`, mapped to the new
   `warc.gz` and `pdf` file types, so a Shared Case member fetches and hash-checks both files.
+- **2026-10-26.** Step 6 (#1928) writes both MHTML pin counts as 0, which is true of a build that
+  pins no image; #1843 adds the pinning and the real counts. If the tag also waits for #1843, no
+  released build writes 0 for a page whose `srcset` images the MHTML dropped; that wait is the
+  maintainer's call; the review of #1996 recommends that step 6 not ship in a release without
+  #1843. Step 6's first end-to-end run found that the step script's scroll probe ended the phase
+  at the bottom of every page with `nothing-to-scroll`, so the stall detector D5 maps to
+  `stopped-growing` never ended it there. Step 6 changes the root choice so the stall detector
+  ends the phase at a real bottom, and records the change and its effect on acquisition in the
+  [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md).
 - **2026-10-26.** D4's Transaction Record part gains `finishedWithoutResponse`, on the
   maintainer's ruling during step 9's review (#1999) as the orchestrating session relayed it.
   Step 1 (#1904) adds it to schema 6; making the collector count it is left to step 9.

@@ -41,6 +41,7 @@ import { resolveToolVersion } from '@main/services/toolVersion'
 import { fetchCertChain as defaultFetchCertChain } from '@main/services/tlsCertChain'
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
 import type {
+  BoundTlsAbsence,
   Capture,
   CaptureEvent,
   CaptureMethod,
@@ -52,6 +53,7 @@ import type {
 import type { BatchDeleteOutcome, BatchDeleteResult, DuplicateCaptureResult } from '@shared/ipc'
 import { ManifestEntrySchema } from '@shared/schemas'
 import type {
+  BoundTls,
   CaptureInventory,
   CaptureUploadSource,
   ScreenshotStatus,
@@ -123,6 +125,16 @@ export interface IngestParams {
   // mirrors them; the schema refuses an `inventory` without a `screenshot`.
   inventory?: CaptureInventory
   scrollToLoad?: ScrollToLoadRecord
+  // The Transaction Record's `.warc.gz` bytes and Bound TLS Details or why they
+  // are absent (schema 6), passed only by a background Recapture. The entry signs
+  // the record's hash and the row mirrors all three; the schema refuses a hash
+  // the inventory does not mark present, and `boundTls` beside `boundTlsAbsent`.
+  transactionRecord?: Buffer
+  boundTls?: BoundTls
+  boundTlsAbsent?: BoundTlsAbsence
+  // The id to store the Capture under, when the acquiring path already named it:
+  // the Transaction Record's `warcinfo` carries the id. Otherwise ingest picks one.
+  captureId?: string
 }
 
 export interface IngestResult {
@@ -312,7 +324,7 @@ export async function ingestMhtmlCapture(
   fetchTlsCertChain: FetchCertChain = defaultFetchCertChain,
   store: CaptureStore = defaultCaptureStore
 ): Promise<IngestResult> {
-  const captureId = randomUUID()
+  const captureId = params.captureId ?? randomUUID()
   const {
     rel: mhtmlPath,
     hash,
@@ -332,6 +344,9 @@ export async function ingestMhtmlCapture(
     : undefined
   const textHash = params.textContent
     ? createHash('sha256').update(Buffer.from(params.textContent, 'utf-8')).digest('hex')
+    : undefined
+  const transactionRecordHash = params.transactionRecord
+    ? createHash('sha256').update(params.transactionRecord).digest('hex')
     : undefined
 
   // Anchor the captured response headers into the signed manifest body (#119),
@@ -406,6 +421,9 @@ export async function ingestMhtmlCapture(
         tlsSkipped: params.tlsSkipped,
         inventory: params.inventory,
         scrollToLoad: params.scrollToLoad,
+        transactionRecordHash,
+        boundTls: params.boundTls,
+        boundTlsAbsent: params.boundTlsAbsent,
         operatorId: params.operatorId,
         operatorName: params.operatorName,
         toolVersion: params.toolVersion
@@ -420,6 +438,10 @@ export async function ingestMhtmlCapture(
         let screenshotPath: string | undefined
         if (params.screenshot) {
           screenshotPath = store.writeScreenshot(params.caseId, captureId, params.screenshot).rel
+        }
+
+        if (params.transactionRecord) {
+          store.writeTransactionRecord(params.caseId, captureId, params.transactionRecord)
         }
 
         const capture = captureRepo.insertCapture({
@@ -455,6 +477,9 @@ export async function ingestMhtmlCapture(
           consentSuppression: params.consentSuppression,
           inventory: params.inventory,
           scrollToLoad: params.scrollToLoad,
+          transactionRecordHash,
+          boundTls: params.boundTls,
+          boundTlsAbsent: params.boundTlsAbsent,
           exhibitNumber
         })
         return { capture, contentHash: hash }
@@ -1719,6 +1744,9 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
                 consentSuppression: sourceEntry.consentSuppression,
                 inventory: sourceEntry.inventory,
                 scrollToLoad: sourceEntry.scrollToLoad,
+                // The row mirrors what the Duplicate's entry re-anchors (D11),
+                // so no Bound TLS Details.
+                transactionRecordHash: sourceEntry.transactionRecordHash,
                 exhibitNumber
               })
           )

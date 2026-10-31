@@ -30,6 +30,33 @@ prove and what they do not.
 - A background capture's signed manifest entry lists the files the capture holds and why any
   is missing. For the screenshot it records the page size, the image size, and whether the
   image was scaled down, cut short, or had trailing blank space trimmed.
+- A background capture also saves a Transaction Record: a WARC file of the requests and
+  responses the browser reported while it loaded the page, those of frames from other sites and
+  of the page's workers and service workers included, until the screenshot is taken. The signed
+  entry holds the file's SHA-256 hash and counts what the record lacks: responses from the cache,
+  failed, cancelled, and unfinished requests, requests the browser reported finished with no
+  response, and bodies it left out, such as one over 10 MB. If recording fails, for example
+  because the page made more requests than the record holds or uploaded about 11 MB at once,
+  Birdbrain still saves the capture, and its entry says the record is missing.
+- The Transaction Record replaces the values of the `Cookie`, `Set-Cookie`, `Authorization`, and
+  `Proxy-Authorization` headers with `[value replaced by Birdbrain]` and keeps the header names.
+  A token in a URL, in a request or response body, or in any other header stays in the record,
+  so an export of a signed-in page can still hold a reusable credential.
+- The record stores each body without its content encoding, and keeps the headers that described
+  the encoding as `x-orig-content-encoding`, `x-orig-transfer-encoding`, and
+  `x-orig-content-length`.
+- The record shows nothing for a resource the page used a second time without a new request, for
+  the requests of a shared worker, or for what runs below a frame or worker whose setup failed.
+  The hidden window loads a blank page first, so the page sees one more `history.length` entry
+  than a direct visit gives it, and can go back to that blank page.
+- For an HTTPS page, the signed entry records the TLS details the browser reported for the page
+  the capture shows: protocol, cipher, certificate subject, alternative names, issuer, and
+  validity. When the page navigates itself, they come from the last navigation that replaced it,
+  not from one the browser cancelled, such as a download or an empty answer. When the page then
+  moves to a page that no request loads, such as the blank page it can go back to or
+  `about:blank`, the entry records the details as absent. They are the browser's summary of the
+  connection and hold no certificate bytes, and they are kept apart from the certificate chain
+  Birdbrain fetches after the capture.
 - Recapture one page or a selection. The new capture links to the earlier one, which stays in
   the case.
 - Exclude URLs by substring, wildcard, or regular expression. Exclusions apply to all cases or
@@ -100,7 +127,8 @@ prove and what they do not.
 
 ## Integrity
 
-- Birdbrain hashes the MHTML, screenshot, and extracted text separately with SHA-256.
+- Birdbrain hashes the MHTML, screenshot, extracted text, and Transaction Record separately with
+  SHA-256.
 - Each case keeps an append-only, hash-chained manifest signed with an RSA-2048 key. The key is
   a file encrypted through the operating system's credential store when one is available. Without
   one, Birdbrain asks you to accept storing the key as plain text. Birdbrain decides this once,
@@ -115,9 +143,9 @@ prove and what they do not.
 
 - Export an evidence package as a full bundle or as a court exhibit without notes. Each preset
   can be adjusted, and an export can cover only selected captures.
-- An evidence package contains an HTML report, the captures and screenshots, the signed
-  manifest, the public key, the timestamp tokens and authority chain, `VERIFY.md`, and a
-  `verify.sh` script.
+- An evidence package contains an HTML report, the captures, their screenshots and Transaction
+  Records, the signed manifest, the public key, the timestamp tokens and authority chain,
+  `VERIFY.md`, and a `verify.sh` script.
 - Export a working copy for your own use. A working copy is not an evidence package: it has no
   certification, no signed manifest, no signing key and no verification material, and it cannot be
   verified.

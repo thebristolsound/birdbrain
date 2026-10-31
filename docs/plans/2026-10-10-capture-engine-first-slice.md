@@ -487,11 +487,12 @@ against a Chromium 152 response.
   length as `Content-Length` (spec open question 1, ruled 2026-10-10).
 - **Text bodies.** Ruled 2026-10-26, after the review of #1979 measured `Network.getResponseBody`
   returning a windows-1252 page as a decoded string: the writer stores a body the browser hands
-  over as text encoded in UTF-8, which can differ from the bytes the server sent. Each record that
-  holds such a body carries `x-birdbrain-decoded-text: utf-8`, the `warcinfo` record states the
-  limit, and the payload digest covers the stored UTF-8 bytes. Spike #1983 measures, before step 9,
-  whether the browser can hand over the served bytes instead. The spike's rulings of 2026-10-26
-  amend this; step 9's "Text bodies" item states the change.
+  over as text encoded in UTF-8. The charset spike (#1983) then measured that a session sent
+  `Network.configureDurableMessages` returns the served bytes, as text only when they are valid
+  UTF-8, and the maintainer's rulings of the same day adopted it (step 9, "Text bodies"). Step 9
+  keeps a text body only from such a session, so the writer's UTF-8 encoding of it is the served
+  bytes, and it removed the `x-birdbrain-decoded-text: utf-8` record marker and its `warcinfo`
+  sentence that #1979 added.
 - **Protocol.** Ruled 2026-10-26: request and status lines read `HTTP/1.0` when CDP reports
   `http/1.0` and `HTTP/1.1` otherwise, so WARC readers can parse them, and each request and response
   record carries `WARC-Protocol` with the protocol CDP reported, in lower case. browsertrix-crawler
@@ -738,7 +739,9 @@ first order stalls a frame in Electron.
 **The two counts.** A target is the page or one `Target.attachedToTarget` session, and each target
 collection saw is in exactly one count. `recordedTargets` is the page when its
 `Target.setAutoAttach` answered, plus each attached `iframe`, `worker`, or `service_worker` target
-whose `Network.enable` and `Target.setAutoAttach` both answered within the child setup bound.
+whose `Network.enable` and `Target.setAutoAttach` both answered within the child setup bound. Under
+the charset spike's rulings of 2026-10-26, each target's `Network.configureDurableMessages` must
+have answered too (step 9, "Text bodies").
 `unrecordedTargets` is every other target: the page when its `Target.setAutoAttach` failed or did
 not answer, each such attached target whose commands failed or did not answer, and each target of
 another type (item 5). The page counted there still has its own requests recorded; the count says
@@ -806,10 +809,9 @@ length as `Content-Length`, and keep the reported length as `x-orig-content-leng
 states the renaming in `warcinfo` (D8), and step 9 states it in `features.mdx`.
 
 **Ruled 2026-10-26:** a body the browser hands over as text is stored as that text encoded in
-UTF-8, which can differ from the bytes the server sent. The writer marks each record that holds
-one and states the limit in `warcinfo` (D8, "Text bodies"). Spike #1983 measures, before step 9,
-whether the browser can hand over the served bytes instead. The spike's rulings of 2026-10-26
-amend this; step 9's "Text bodies" item states the change.
+UTF-8. After spike #1983, step 9 keeps such a body only from a session whose
+`Network.configureDurableMessages` answered, so the stored bytes are the served bytes, and the
+record marker #1979 added is gone (D8, "Text bodies").
 
 The spec asks what browser-based archiving tools write, and to follow it if it is documented (spec,
 Open questions). This plan found no published statement, and the two Webrecorder recorders differ
@@ -1259,7 +1261,11 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   pull request removes the writer's `x-birdbrain-decoded-text` marker and its `warcinfo` sentence.
   The spike ran on Electron 44.9.1, so step 9 re-checks the experimental
   `Network.configureDurableMessages` on the Electron version `main` pins (45.0.0 since #1994)
-  before it relies on it.
+  before it relies on it. Done on 2026-10-29 after this branch took `main`: on Electron 45.0.0
+  with Chromium 156.0.8078.48, `e2e/recapture-transaction-record.spec.ts` passed all eight tests.
+  Its known-answer test counted five recorded targets, which needs the command to answer on each
+  session, and matched the windows-1252, Shift_JIS, byte-order-mark and mislabelled text bodies
+  to the served bytes (validation record, step 9, Environments).
 - **Time.** The render races one deadline and, when the deadline wins, rejects with "Recapture
   timed out" and stores nothing; `FINAL_ARTIFACT_RESERVE_MS` reserves 20 s for the screenshot,
   MHTML, and text only (`renderPageInHiddenWindow`). Two new phases need time at the end: the
@@ -1662,6 +1668,34 @@ folded in.
   `stopped-growing` never ended it there. Step 6 changes the root choice so the stall detector
   ends the phase at a real bottom, and records the change and its effect on acquisition in the
   [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md).
+- **2026-10-26.** The charset spike (#1983, PR #1988) found a way for the collector to keep a text
+  response's served bytes, and the maintainer ruled on its three questions the same day. Step 9's
+  Changes gain a "Text bodies" item with the rulings; the spike records them under "Rulings,
+  2026-10-26".
+- **2026-10-26.** Step 9 (#1929) is built as a draft that merges after the schema-6 release tag.
+  Its choices: the budget stays at 50,000,000 and 10,000,000 bytes (`src/shared/constants.ts`); the
+  page's setup commands wait 5 s each and a child's 2 s; the body fetches still out when
+  collection stops get 5 s and the writer 10 s, which raises the end reserve from 20 s to 35 s.
+  Collection stops before the screenshot. The render keeps `wc.loadURL` and the extra
+  `history.length` entry as a known limitation, and D15's script expects the passes one entry
+  apart. The session setup lives in
+  `src/main/services/transactionRecorder.ts`, beside the renderer, and the test certificate
+  allowance in `src/main/services/testCertificateAllowance.ts`; both join the assessment's
+  blocking tier. The hand-written WARC reader moved to the package's `lib/` behind a
+  `warcReader.ts` entry point, so the e2e spec reads records with it. The step's results, its
+  record sizes, and its one deviation are in the
+  [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md).
+- **2026-10-26.** The maintainer ruled on three points of step 9's review (#1999), as the
+  orchestrating session relayed them. A request that finished with no response gets its own
+  count, `finishedWithoutResponse` (below). The extra `history.length` entry from the blank first
+  page stays, recorded as a known limitation in the validation record and in `features.mdx`
+  beside the capability; this settles the second decision on #1823. The 120 s Recapture timeout
+  and the 35 s end reserve stay, and each record phase is cut to the time the render has left, so
+  an overrun records the Transaction Record `failed` and the Capture stores. The same fix round
+  bounds the events the recorder holds (25,000, or 25,000,000 bytes of their JSON, past which the
+  record is `failed`), reserves each request body before fetching it, parses the record's fields
+  with the strict schema before they reach the entry, and tells the Operator a record failed only
+  once the Capture is stored.
 - **2026-10-26.** D4's Transaction Record part gains `finishedWithoutResponse`, on the
   maintainer's ruling during step 9's review (#1999) as the orchestrating session relayed it.
   Step 1 (#1904) adds it to schema 6; making the collector count it is left to step 9.

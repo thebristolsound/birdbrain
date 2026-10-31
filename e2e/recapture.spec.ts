@@ -301,7 +301,7 @@ test.describe('Recapture (background capture)', () => {
     })
     expect(inventory.screenshot.contentWidth).toBeGreaterThan(0)
     expect(inventory.mhtml).toEqual({ present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 })
-    expect(inventory.transactionRecord).toEqual({ present: false, reason: 'not-taken' })
+    expect(inventory.transactionRecord).toMatchObject({ present: true, exchanges: 1 })
     expect(inventory.pdf).toEqual({ present: false, reason: 'not-taken' })
     expect(entry.schemaVersion).toBe(6)
 

@@ -17,7 +17,7 @@ import {
   ScrollToLoadRecordSchema,
   TlsCertChainResultSchema
 } from '@shared/schemas'
-import type { CaptureInventory, ScrollToLoadRecord } from '@shared/schemas'
+import type { BoundTls, CaptureInventory, ScrollToLoadRecord } from '@shared/schemas'
 import { getDb, type ImportCtx } from '@main/services/db/core'
 import { toFtsMatchQuery } from '@main/services/db/ftsQuery'
 import {
@@ -129,9 +129,13 @@ export interface InsertCaptureParams {
   supersedesCaptureId?: string
   duplicateOfCaptureId?: string
   consentSuppression?: ConsentSuppression
-  // Mirrors of the signed entry's capture engine fields, stored as JSON.
+  // Mirrors of the signed entry's capture engine fields: the objects as JSON,
+  // the hash and the absence reason as text.
   inventory?: CaptureInventory
   scrollToLoad?: ScrollToLoadRecord
+  transactionRecordHash?: string
+  boundTls?: BoundTls
+  boundTlsAbsent?: BoundTlsAbsence
   // The Exhibit Number the capture entry carries (X46), so the row and the
   // entry state one number. Not a `captures` column: it lands on `exhibits`.
   exhibitNumber?: number
@@ -244,7 +248,10 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
     consent_suppression: params.consentSuppression ?? null,
     duplicate_of_capture_id: params.duplicateOfCaptureId ?? null,
     inventory: params.inventory !== undefined ? JSON.stringify(params.inventory) : null,
-    scroll_to_load: params.scrollToLoad !== undefined ? JSON.stringify(params.scrollToLoad) : null
+    scroll_to_load: params.scrollToLoad !== undefined ? JSON.stringify(params.scrollToLoad) : null,
+    transaction_record_hash: params.transactionRecordHash ?? null,
+    bound_tls: params.boundTls !== undefined ? JSON.stringify(params.boundTls) : null,
+    bound_tls_absent: params.boundTlsAbsent ?? null
   }
 
   const run = d.transaction(() => {

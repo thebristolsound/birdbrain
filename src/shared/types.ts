@@ -813,6 +813,11 @@ export const LOG_CODES = [
   // The reset after Scroll-to-load failed. With a lifted scroll lock the render
   // fails too; without one the capture goes on.
   'backgroundRenderer.scroll_reset_failed',
+  // The Transaction Record of a background render failed or ran out of time
+  // (open question E of docs/plans/2026-10-10-capture-engine-first-slice.md).
+  // Logged by the Recapture queue once the Capture is stored; its inventory
+  // records the record absent as `failed`.
+  'backgroundRenderer.transaction_record_failed',
   'backgroundRenderer.consent_blocker_disable_failed',
   'backgroundRenderer.consent_blocker_enable_failed',
   'consentBlocker.filter_engine_failed',

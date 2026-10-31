@@ -1823,7 +1823,8 @@ const BOUND_TLS_ABSENCE_TEXT: Record<BoundTlsAbsence, string> = {
   'not-recorded': 'this capture has no Transaction Record',
   'not-https': 'the main document was not served over HTTPS',
   'from-cache': 'the response for the main document reported a cache hit',
-  'not-reported': 'the browser reported no security details on the response for the main document'
+  'not-reported':
+    'the browser reported no security details on the response for the main document, or the window ended on a page that response did not load'
 }
 
 function captureEngineBlocks(engine: CaptureEngineEntry | undefined): string {

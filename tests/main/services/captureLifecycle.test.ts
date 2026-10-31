@@ -31,12 +31,18 @@ import type { BatchDeleteOutcome } from '@shared/ipc'
 import type { Capture } from '@shared/types'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 import { appendFutureEntry } from '../../helpers/futureManifestEntry'
-import { ENGINE_HASHES } from '../../helpers/captureEnginePackage'
 import {
+  ENGINE_BOUND_TLS,
+  ENGINE_FILES,
+  ENGINE_HASHES,
+  ENGINE_INVENTORY
+} from '../../helpers/captureEnginePackage'
+import {
+  ENGINE_ENTRY_FIELDS,
   ENGINE_ENTRY_FIELDS_WITHOUT_FILES,
   seedEngineCapture
 } from '../../helpers/captureEngineCapture'
-import { ManifestEntrySchema } from '@shared/schemas'
+import { BoundTlsSchema, CaptureInventorySchema, ManifestEntrySchema } from '@shared/schemas'
 import {
   createCaptureLifecycle,
   BatchCrossCaseError,
@@ -281,6 +287,51 @@ describe('createCaptureLifecycle.ingest', () => {
     expect(row.inventory).toEqual(inventory)
     expect(row.scrollToLoad).toEqual(scrollToLoad)
     expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  // Step 9 of docs/plans/2026-10-10-capture-engine-first-slice.md.
+  it('stores the Transaction Record under the id it is given, signs its hash and Bound TLS Details, and mirrors them', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const inventory = CaptureInventorySchema.parse({
+      ...ENGINE_INVENTORY,
+      pdf: { present: false, reason: 'not-taken' }
+    })
+    const boundTls = BoundTlsSchema.parse(ENGINE_BOUND_TLS)
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), {
+        captureId: 'named-by-the-render',
+        screenshot: Buffer.from('PNG-screenshot-bytes'),
+        method: 'background',
+        inventory,
+        scrollToLoad: ENGINE_ENTRY_FIELDS.scrollToLoad,
+        transactionRecord: ENGINE_FILES.transactionRecord,
+        boundTls
+      })
+    )
+
+    expect(capture.id).toBe('named-by-the-render')
+    const lines = readFileSync(join(tempDir, 'captures', caseId, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    const parsed = ManifestEntrySchema.safeParse(captureEntry)
+    expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+    expect(captureEntry).toMatchObject({
+      captureId: 'named-by-the-render',
+      transactionRecordHash: ENGINE_HASHES.transactionRecord,
+      boundTls,
+      schemaVersion: 6
+    })
+    expect(
+      readFileSync(join(tempDir, 'captures', caseId, 'named-by-the-render.warc.gz')).equals(
+        ENGINE_FILES.transactionRecord
+      )
+    ).toBe(true)
+    const row = getCapture(capture.id)!
+    expect(row.transactionRecordHash).toBe(ENGINE_HASHES.transactionRecord)
+    expect(row.boundTls).toEqual(boundTls)
+    expect(row.boundTlsAbsent).toBeUndefined()
+    await expect(lifecycle.verify(capture.id)).resolves.toMatchObject({ status: 'verified' })
   })
 
   it('OMITS the inventory and Scroll-to-load record when given neither, below schema 6', async () => {

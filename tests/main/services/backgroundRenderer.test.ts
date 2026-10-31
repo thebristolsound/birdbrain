@@ -1246,6 +1246,21 @@ describe('the Image Source Pinning scripts', () => {
     })
   })
 
+  // A set with a width candidate takes no 1x candidate from `src`, so a `src` that is also one
+  // of the width candidates still names one candidate.
+  it('narrows an image whose src is also its displayed width candidate to that candidate', () => {
+    const img = new FakeImage(
+      { src: '/a-400.png', srcset: '/a-400.png 400w, /a-800.png 800w', sizes: '200px' },
+      `${ORIGIN}/a-400.png`
+    )
+    settleThenPin(pinWorld(() => [img]))
+    expect(Object.fromEntries(img.attributes)).toEqual({
+      src: `${ORIGIN}/a-400.png`,
+      srcset: `${ORIGIN}/a-400.png 400w`,
+      sizes: '200px'
+    })
+  })
+
   it('leaves the set of an image displayed from its src or a 1x candidate as it was', () => {
     const fromSrc = new FakeImage({ src: '/e.png', srcset: '/e-2x.png 2x' }, `${ORIGIN}/e.png`)
     const bare = new FakeImage({ srcset: '/bare.png, /bare-2x.png 2x' }, `${ORIGIN}/bare.png`)

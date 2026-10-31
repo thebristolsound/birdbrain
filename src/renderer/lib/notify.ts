@@ -129,7 +129,7 @@ const CODE_LABELS: Record<LogCode, string> = {
   'capture.extraction_failed': "Couldn't extract data from the page",
   'ipc.handler_threw': 'An internal request failed',
   'ipc.request_refused': 'The app turned down a request',
-  'ipc.request_threw': 'An internal request failed',
+  'ipc.request_threw': 'A request failed with an unexpected error',
   'query.failed': "Couldn't load data",
   'mutation.failed': 'Something went wrong. Please try again.',
   'react.render_error': 'This part of the app failed to render',

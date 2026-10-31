@@ -24,11 +24,11 @@ housekeeping slice, on `chore/1508-shared-cases-closeout`; its first commits wer
 | --- | --- | --- |
 | 1. Members UI entry points (#1514) | `feat/1514-members-entry-points` | merged as PR #1972 on 2026-10-27; #1514 closed |
 | 2. Docs (#1883) | `docs/1883-shared-cases-docs` | merged as PR #1973 on 2026-10-27; #1883 closed |
-| Sharing follow-ups (#2007, #2009 to #2011) | one branch per PR | merged on 2026-10-28 and 2026-10-29 (UTC): #2007 dropped the placeholder tabs from Case settings; #2009 to #2011 added the top bar's Share pill and palette row, the card's role line, Shared badge and Older Cases list, and the one-time Share card. The sync steps and notes below name these controls |
-| 3. Housekeeping (#1508 checklist, plan statuses, roadmap) | `chore/1508-shared-cases-closeout` | PR #1975, brought up to date with `main` on 2026-10-29; #1514 ticked on #1508; waits for the sync and the tag |
-| Version bump | `chore/release-1.0.1-beta.24` | PR opened 2026-10-27; the release run needs it on `main` first |
-| Close-out sync | maintainer | steps below; runs on the `v1.0.1-beta.24` build |
-| Release | maintainer | run `release.yml` from `main` after the bump merges; notes drafted below |
+| Sharing follow-ups (#2007, #2009 to #2011, #2014) | one branch per PR | merged from 2026-10-28 to 2026-10-30 (UTC): #2007 dropped the placeholder tabs from Case settings; #2009 to #2011 added the top bar's Share pill and palette row, the card's role line, Shared badge and Older Cases list, and the one-time Share card; #2014 marked sharing as early access in the pill's hover text and with a badge on the Members panel. The sync steps and notes below name these controls |
+| 3. Housekeeping (#1508 checklist, plan statuses, roadmap) | `chore/1508-shared-cases-closeout` | PR #1975, brought up to date with `main` on 2026-10-31; #1514 ticked on #1508; refers to #1508 without closing it, so the issue stays open for the sync |
+| Version bump | `chore/release-1.0.1-beta.24` | merged as PR #2006 on 2026-10-30 |
+| Close-out sync | maintainer | still owed; steps below, on the `v1.0.1-beta.24` build |
+| Release | maintainer | `v1.0.1-beta.24` published on 2026-10-30, with the notes below |
 
 ### Slice 1: entry points
 
@@ -49,11 +49,11 @@ housekeeping slice, on `chore/1508-shared-cases-closeout`; its first commits wer
   the audit baseline (#1968), unreachable rows (#1966), imported row collisions (#1967) and the
   members UI (#1972). The Shared Cases section of the briefs plan says the programme is done.
 - The roadmap's Current programme names the capture engine first slice, and a Done programmes
-  section records Shared Cases. That record states the sync, the tag and the closed #1508 as
-  facts, so the PR stays a draft until all three hold.
-- Before marking it ready: rebase on `main` after #1972 and #1973 merge, set the members UI
-  plan's S7 row (which arrives with #1972) to shipped, tick #1514 in the #1508 checklist, and
-  name the beta tag in the roadmap record.
+  section records Shared Cases. That record names the beta tag and says the close-out sync is
+  still owed, and #1508 stays open until the maintainer records the sync there.
+- Done after #1972 and #1973 merged: the branch was brought up to date with `main`, the members
+  UI plan's S7 row reads shipped, #1514 is ticked in the #1508 checklist, and the roadmap record
+  names the beta tag.
 
 ### Slice 2: docs
 
@@ -68,9 +68,8 @@ housekeeping slice, on `chore/1508-shared-cases-closeout`; its first commits wer
 
 ## Next command
 
-Maintainer: merge the version bump, run the release workflow from `main`, publish the draft
-release with the notes below, run the close-out sync on two networks, then merge #1975 and
-close #1508. The agent checks that the tag exists before #1975 leaves draft:
+Maintainer: run the close-out sync on two networks, record it on #1508, then close #1508.
+The version bump, the release and the tag are done; this check exited 0 on 2026-10-31:
 
 ```sh
 git ls-remote --exit-code --tags origin refs/tags/v1.0.1-beta.24
@@ -107,20 +106,20 @@ home broadband and a phone's mobile data), each Windows, Linux, or an Apple Sili
 Report back: the build version, both platforms, whether steps 6 to 10 matched, any relay
 banner, and the `verify.sh` summary line.
 
-## Release notes draft
+## Release notes
 
-To prepend to the beta release body (`gh release edit <tag> --notes-file`), before the mirror
-job copies the body, or on both repositories afterward.
+Published on 2026-10-30 as the Shared Cases section of the `v1.0.1-beta.24` release body:
 
 ```markdown
-## Shared Cases
+## Shared Cases (early access)
 
-You can now share a Case with teammates; it is designed for teams of two to five. Every
-member keeps a full copy, no server holds the Case, and each member's captures stay signed by
-their own installation. Open a Case and click **Share** in the top bar to invite someone; the
-command palette and the Case card's menu on the dashboard open the same screen, and a one-time
-card under the pill points it out. A teammate joins from
-**Start New Case → Join a shared Case**. Sharing is not available on Intel Macs.
+You can now share a Case with other people who run Birdbrain. Sharing is early access, and
+the **Share** button and the Members panel both say so. Every member keeps a full copy, no
+server holds the Case, and each member's captures stay signed by their own installation. Open
+a Case and click **Share** in the top bar to invite someone; the command palette and the Case
+card's menu on the dashboard open the same screen, and a one-time card under the button points
+it out. A teammate joins from **Start New Case → Join a shared Case**. Sharing is not available
+on Intel Macs.
 
 On the dashboard, each Case card says whether the Case is on this machine only or shared, and
 what you are to it. An Older Cases list below the three cards lists your other Cases that are

@@ -32,7 +32,7 @@ release tag.
 
 ## Done programmes
 
-- **Shared Cases**, done with the `v1.0.1-beta.24` release. The members screens became
+- **Shared Cases**, shipped in the `v1.0.1-beta.24` release. The members screens became
   reachable in [#1972](https://github.com/thebristolsound/birdbrain/pull/1972), after the two
   sync defects #1951 and #1955 merged
   ([#1966](https://github.com/thebristolsound/birdbrain/pull/1966),
@@ -42,8 +42,11 @@ release tag.
   from Case settings, and [#2009](https://github.com/thebristolsound/birdbrain/pull/2009) to
   [#2011](https://github.com/thebristolsound/birdbrain/pull/2011) gave every Case a Share pill
   in the top bar and a palette row, the dashboard a role line, a Shared badge and an Older Cases
-  list, and the pill a one-time Share card. The maintainer ran the close-out sync between two
-  networks, `v1.0.1-beta.24` carries it, and #1508 is closed. Nine Shared Cases plans read
+  list, and the pill a one-time Share card.
+  [#2014](https://github.com/thebristolsound/birdbrain/pull/2014) marked sharing as early
+  access in the Share pill's hover text and with a badge on the Members panel. The close-out
+  sync between two networks is still owed; the maintainer records it on #1508 and closes the
+  issue, which makes the programme Done under rule 2. Nine Shared Cases plans read
   `**Status:** done` with the PR that finished each; the close-out handoff
   (`2026-10-26-shared-cases-closeout-handoff.md`) keeps the sync steps, the release notes and
   two open questions.

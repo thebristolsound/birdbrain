@@ -3,7 +3,7 @@
 **Status:** active
 
 The handoff file for the run that finishes the Shared Cases programme under the delivery
-roadmap (`docs/plans/2026-10-23-delivery-roadmap.md`, whose "Done programmes" section records
+roadmap (`docs/plans/2026-10-23-delivery-roadmap.md`, whose "Shipped programmes" section records
 it). The roadmap defines Done: an Operator can reach Shared Cases in a packaged build, the docs
 are published, and the tracking issue (#1508) is closed. This file lands on `main` with the
 housekeeping slice, on `chore/1508-shared-cases-closeout`; its first commits were made on
@@ -47,8 +47,9 @@ housekeeping slice, on `chore/1508-shared-cases-closeout`; its first commits wer
 - Nine plans read `**Status:** done` with the PR that finished them: the members table (#1571),
   export (#1626), received entries (#1879), receipt stamps (#1912), invite and roster (#1913),
   the audit baseline (#1968), unreachable rows (#1966), imported row collisions (#1967) and the
-  members UI (#1972). The Shared Cases section of the briefs plan says the programme is done.
-- The roadmap's Current programme names the capture engine first slice, and a Done programmes
+  members UI (#1972). The Shared Cases section of the briefs plan says the programme shipped
+  and is Done once #1508 closes.
+- The roadmap's Current programme names the capture engine first slice, and a Shipped programmes
   section records Shared Cases. That record names the beta tag and says the close-out sync is
   still owed, and #1508 stays open until the maintainer records the sync there.
 - Done after #1972 and #1973 merged: the branch was brought up to date with `main`, the members

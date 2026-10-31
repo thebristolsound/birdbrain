@@ -28,9 +28,10 @@ Steps 1 to 6 and 8 to 10 of the capture engine first slice, in one manifest sche
 with slice 3's S2 rewritten around `src/shared/localAddress.ts`. It is done when the release is
 tagged and the viewer plan's three slices are done. The spec and plan were approved on #1803 and
 ADR-0040 was accepted at schema 6 on 2026-10-26; the gate the maintainer still owes is the
-release tag.
+release tag. It started before Shared Cases reached Done by the maintainer's choice: Shared Cases
+waits only on the maintainer's close-out sync, which no dispatch slot works.
 
-## Done programmes
+## Shipped programmes
 
 - **Shared Cases**, shipped in the `v1.0.1-beta.24` release. The members screens became
   reachable in [#1972](https://github.com/thebristolsound/birdbrain/pull/1972), after the two

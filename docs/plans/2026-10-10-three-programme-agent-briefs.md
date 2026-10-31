@@ -176,9 +176,10 @@ turn, and the four docs PRs need the maintainer's approval.
 
 ## Shared Cases briefs
 
-**Done.** The programme finished with [#1972](https://github.com/thebristolsound/birdbrain/pull/1972),
+**Shipped.** The last PRs were [#1972](https://github.com/thebristolsound/birdbrain/pull/1972),
 the entry points to the members screens, and [#1973](https://github.com/thebristolsound/birdbrain/pull/1973),
-its docs. The briefs below are kept as written.
+its docs; the programme is Done once the close-out sync is recorded on #1508 and the issue
+closes. The briefs below are kept as written.
 
 Steps 1 to 3 merged (PRs #1518, #1571, #1626). These briefs finish steps 4 to 7 and the defects
 that block a tester build. Nothing in `src/main/services/sharing/` exists yet.

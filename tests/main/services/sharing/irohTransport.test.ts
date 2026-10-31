@@ -276,6 +276,26 @@ describe('the Iroh transport over a stand-in binding (#1809)', () => {
     await listener.close()
   })
 
+  it('rejects a read on a lost connection with a TransportError that names why', async () => {
+    const listener = await start(1)
+    const dialer = await start(2)
+    const served: ByteStream[] = []
+    await listener.listen((stream) => {
+      served.push(stream)
+    })
+    const stream = await dialer.openStream(await dialer.dial(listener.ticket))
+    await stream.write(Buffer.from('x'))
+    await expect.poll(() => served.length).toBe(1)
+    const message =
+      'ConnectionLost(ApplicationClosed(ApplicationClose { error_code: 0, reason: b"" }))'
+    net.connections[0].lose(message)
+    const failure = await served[0].read().catch((err: unknown) => err)
+    expect(failure).toBeInstanceOf(TransportError)
+    expect(failure).toMatchObject({ code: 'PEER_CLOSED', message })
+    await dialer.close()
+    await listener.close()
+  })
+
   it('serves every stream a connection opens', async () => {
     const listener = await start(1)
     const dialer = await start(2)

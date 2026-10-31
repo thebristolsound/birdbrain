@@ -110,8 +110,12 @@ class FakeSend {
 
 class FakeRecv {
   private held: number[] = []
-  constructor(private readonly from: Queue<number[]>) {}
+  constructor(
+    private readonly from: Queue<number[]>,
+    private readonly connection: FakeConnection
+  ) {}
   async read(sizeLimit: number): Promise<number[]> {
+    if (this.connection.lostWith !== null) throw new Error(this.connection.lostWith)
     if (this.held.length === 0) this.held = (await this.from.next()) ?? []
     const piece = this.held.slice(0, sizeLimit)
     this.held = this.held.slice(sizeLimit)
@@ -133,6 +137,8 @@ class FakeConnection {
   readonly incomingStreams = new Queue<FakeBiStream>()
   peer!: FakeConnection
   closed = false
+  // The binding's text for why the connection was lost; set, every read on it rejects.
+  lostWith: string | null = null
   watchPaths = aborts('Connection.watchPaths')
   watchPathEvents = aborts('Connection.watchPathEvents')
 
@@ -146,8 +152,10 @@ class FakeConnection {
     if (this.closed) throw new Error('connection lost')
     const outbound = new Queue<number[]>()
     const inbound = new Queue<number[]>()
-    this.peer.incomingStreams.push(new FakeBiStream(new FakeSend(inbound), new FakeRecv(outbound)))
-    return new FakeBiStream(new FakeSend(outbound), new FakeRecv(inbound))
+    this.peer.incomingStreams.push(
+      new FakeBiStream(new FakeSend(inbound), new FakeRecv(outbound, this.peer))
+    )
+    return new FakeBiStream(new FakeSend(outbound), new FakeRecv(inbound, this))
   }
 
   async acceptBi(): Promise<FakeBiStream> {
@@ -161,6 +169,10 @@ class FakeConnection {
       side.closed = true
       side.incomingStreams.close()
     }
+  }
+
+  lose(message: string): void {
+    for (const side of [this, this.peer]) side.lostWith = message
   }
 }
 

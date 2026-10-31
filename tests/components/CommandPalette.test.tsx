@@ -162,6 +162,69 @@ describe('the sharing row', () => {
   })
 })
 
+// The rows under the Case list share its highlight: ArrowDown walks past the
+// last Case into them and Enter runs the highlighted one. Before, the arrow
+// keys stopped at the last Case and only a click or Tab reached an action.
+describe('the action rows', () => {
+  function highlighted(): string | null {
+    return document.querySelector('[role="dialog"] button.bg-accent-subtle')?.textContent ?? null
+  }
+
+  async function openWithCases() {
+    fakeBridge({
+      cases: { list: vi.fn(async () => [makeCase('a', 'Alpha'), makeCase('b', 'Bravo')]) },
+      captures: { countsByCase: vi.fn(async () => ({})) }
+    })
+    useAppStore.setState({ commandPaletteOpen: true })
+    render(<CommandPalette />, { wrapper: Wrapper })
+    await screen.findByText('Bravo')
+    return screen.getByPlaceholderText('Switch case...')
+  }
+
+  it('take the highlight after the last Case, and Enter runs the highlighted one', async () => {
+    const input = await openWithCases()
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(highlighted()).toContain('Bravo')
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(highlighted()).toBe('Create new case')
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(highlighted()).toBe('Join a shared Case…')
+
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(navigate).toHaveBeenCalledWith({ to: '/cases/new', search: { join: true } })
+    expect(useAppStore.getState().commandPaletteOpen).toBe(false)
+  })
+
+  it('stop at the last row, and ArrowUp climbs back into the Cases', async () => {
+    const input = await openWithCases()
+
+    for (let i = 0; i < 10; i++) fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(highlighted()).toBe('Report a problem')
+    for (let i = 0; i < 4; i++) fireEvent.keyDown(input, { key: 'ArrowUp' })
+    expect(highlighted()).toContain('Bravo')
+  })
+
+  it('highlight Create new case when nothing matches, so Enter still creates', async () => {
+    const input = await openWithCases()
+
+    fireEvent.change(input, { target: { value: 'zzz' } })
+    expect(screen.getByText(/No cases match/)).toBeTruthy()
+    expect(highlighted()).toBe('Create new case')
+
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(navigate).toHaveBeenCalledWith({ to: '/cases/new' })
+    expect(useAppStore.getState().commandPaletteOpen).toBe(false)
+  })
+
+  it('follow the pointer like the Cases do', async () => {
+    await openWithCases()
+
+    fireEvent.mouseEnter(screen.getByTestId('palette-replay-tour'))
+    expect(highlighted()).toBe('Replay walkthrough')
+  })
+})
+
 describe('the case result row', () => {
   // getByText matches the whole normalized text of the node, so '1 capture'
   // does not match a row reading '1 captures' — which is what pins #471.
@@ -182,5 +245,34 @@ describe('the case result row', () => {
     expect(await screen.findByText('1 capture')).toBeTruthy()
     expect(screen.getByText('2 captures')).toBeTruthy()
     expect(screen.getByText('0 captures')).toBeTruthy()
+  })
+
+  // The palette reads the clock once a minute, so a Case created since the
+  // last tick is newer than `now`. The age is the list view's ladder, which
+  // floors anything under a minute to "now" rather than printing "-1m".
+  it('reads "now" for a Case created after the clock last ticked', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-29T12:00:00.000Z'))
+    try {
+      fakeBridge({
+        cases: {
+          list: vi.fn(async () => [
+            { ...makeCase('fresh', 'Fresh'), createdAt: '2026-10-29T12:00:20.000Z' },
+            { ...makeCase('older', 'Older'), createdAt: '2026-10-29T11:55:00.000Z' }
+          ])
+        },
+        captures: { countsByCase: vi.fn(async () => ({})) }
+      })
+      useAppStore.setState({ commandPaletteOpen: true })
+      render(<CommandPalette />, { wrapper: Wrapper })
+
+      const fresh = (await screen.findByText('Fresh')).closest('button') as HTMLButtonElement
+      const older = screen.getByText('Older').closest('button') as HTMLButtonElement
+      expect(fresh.textContent).toContain('now')
+      expect(fresh.textContent).not.toContain('-1m')
+      expect(older.textContent).toContain('5m')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

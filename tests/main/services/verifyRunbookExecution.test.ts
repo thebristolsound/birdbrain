@@ -44,8 +44,13 @@ import {
   seedEngineCapture,
   type EngineEntryFields
 } from '../../helpers/captureEngineCapture'
-import { ENGINE_HASHES } from '../../helpers/captureEnginePackage'
+import {
+  ENGINE_HASHES,
+  ENGINE_INVENTORY,
+  ENGINE_SCROLL_TO_LOAD
+} from '../../helpers/captureEnginePackage'
 import { pdfPath, transactionRecordPath } from '../../../src/packages/evidence-package-layout/index'
+import { CaptureInventorySchema, ScrollToLoadRecordSchema } from '@shared/schemas'
 
 // #584: the shipped VERIFY.md is executed against a real evidence package, and
 // the verify.sh that ships beside it is run on that package and on deliberately
@@ -1053,6 +1058,82 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       for (const { path } of FILES) {
         expect(result.stdout).toContain(`${sha256(readFileSync(join(dir, path)))}  ${path}`)
       }
+    })
+
+    // Step 10: a PDF the ingest stored, as a background Recapture hands it over, exported
+    // through the real export path.
+    describe('a PDF the ingest stored (step 10)', () => {
+      const PDF = Buffer.from('%PDF-1.4 invented print of a background capture')
+      const printedPath = pdfPath(sha256(PDF))
+
+      const printedExport = async (name: string): Promise<{ dir: string; id: string }> => {
+        const page = '<html><body>Printed page</body></html>'
+        const { capture } = await ingestMhtmlCapture(
+          {
+            caseId,
+            url: 'http://example.com/printed',
+            title: 'Printed Page',
+            timestamp: '2026-04-05T12:05:00.000Z',
+            stream: Readable.from([Buffer.from(page)]) as unknown as ReadableStream<Uint8Array>,
+            textContent: page,
+            headers: {},
+            browserVersion: '',
+            userAgent: '',
+            httpStatus: 200,
+            operatorId: 'op',
+            operatorName: 'Test Operator',
+            toolVersion: '0.1.0',
+            screenshot: Buffer.from('invented screenshot bytes'),
+            method: 'background',
+            inventory: CaptureInventorySchema.parse({
+              ...ENGINE_INVENTORY,
+              transactionRecord: { present: false, reason: 'failed' }
+            }),
+            scrollToLoad: ScrollToLoadRecordSchema.parse(ENGINE_SCROLL_TO_LOAD),
+            boundTlsAbsent: 'not-recorded',
+            pdf: PDF
+          },
+          async () => null
+        )
+        return { dir: await exportPackage(name), id: capture.id }
+      }
+
+      const pdfRow = (dir: string, id: string) =>
+        verifyEvidencePackage(dir).checks.find((c) => c.name === `capture ${id} pdf`)
+
+      it.skipIf(!RUNS)('agree on it: PASS', async () => {
+        const { dir, id } = await printedExport('printed-present')
+        expect(readFileSync(join(dir, printedPath)).equals(PDF)).toBe(true)
+        const result = checkConformance(dir)
+        expect({ binary: result.binary, script: result.script }, result.scriptOutput).toEqual({
+          binary: 'pass',
+          script: 'pass'
+        })
+        expect(pdfRow(dir, id)?.status).toBe('pass')
+        expect(result.scriptOutput).toContain(
+          '0 Transaction Record(s) and 1 PDF(s) bound to the signed chain'
+        )
+      })
+
+      it.skipIf(!RUNS)('agree on a changed byte in it: FAIL', async () => {
+        const { dir, id } = await printedExport('printed-changed')
+        const bytes = readFileSync(join(dir, printedPath))
+        bytes[bytes.length - 1] ^= 0xff
+        writeFileSync(join(dir, printedPath), bytes)
+        reindex(dir, printedPath)
+        const result = checkConformance(dir)
+        expect(
+          { binary: result.binary, script: result.script, steps: result.scriptSteps },
+          result.scriptOutput
+        ).toEqual({ binary: 'fail', script: 'fail', steps: [5] })
+        expect(pdfRow(dir, id)).toMatchObject({
+          status: 'fail',
+          reason: `capture ${id}: PDF hash does not match manifest`
+        })
+        expect(result.scriptOutput).toContain(
+          `FAIL [step 5] capture ${id}: ${printedPath} does not match its own content address`
+        )
+      })
     })
   })
 

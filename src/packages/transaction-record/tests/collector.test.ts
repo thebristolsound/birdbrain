@@ -1,11 +1,25 @@
 import { describe, expect, it } from 'vitest'
 import { collectExchanges } from '../collector'
-import type { CollectedExchanges, Exchange, RecordedEvent } from '../collector'
+import type { CollectedExchanges, CollectorInput, Exchange, RecordedEvent } from '../collector'
 import { SPIKE_RUNS, inventedBodies, spikeStream } from './fixtures/streams'
+
+// Every session these tests name was sent `Network.configureDurableMessages`, unless a test says
+// otherwise, so a text body is kept from it.
+const everySession = ({ events }: CollectorInput): Set<string> =>
+  new Set([
+    '',
+    ...events.map(({ sessionId }) => sessionId),
+    ...events
+      .filter(({ method }) => method === 'Target.attachedToTarget')
+      .map(({ params }) => (params as { sessionId: string }).sessionId)
+  ])
+
+const collect = (input: CollectorInput): CollectedExchanges =>
+  collectExchanges({ durableSessions: everySession(input), ...input })
 
 const collectSpike = (name: string): CollectedExchanges => {
   const events = spikeStream(name)
-  return collectExchanges({ events, responseBodies: inventedBodies(events) })
+  return collect({ events, responseBodies: inventedBodies(events) })
 }
 
 const pathOf = ({ request }: Exchange): string => new URL(request.url).pathname
@@ -132,6 +146,7 @@ describe('collectExchanges on the step 0 streams', () => {
       cached: 0,
       cancelled: 0,
       failed: 0,
+      finishedWithoutResponse: 0,
       inFlight: 0,
       bodiesOmitted: 0,
       incompleteRequestBodies: 0,
@@ -142,7 +157,7 @@ describe('collectExchanges on the step 0 streams', () => {
   })
 
   it('omits a body the browser did not return, and counts the exchange', () => {
-    const { exchanges, counts } = collectExchanges({ events: spikeStream('q6-tls13') })
+    const { exchanges, counts } = collect({ events: spikeStream('q6-tls13') })
     expect(exchanges.every(({ state, complete }) => state === 'body-omitted' && !complete)).toBe(
       true
     )
@@ -160,14 +175,16 @@ describe('collectExchanges on the step 0 streams', () => {
     expect(document.response?.securityDetails).not.toHaveProperty('certificateId')
   })
 
-  it('puts every exchange in exactly one of the five state counts, for every stream', () => {
+  it('puts every exchange in exactly one of the six state counts, for every stream', () => {
     for (const name of SPIKE_RUNS) {
-      for (const result of [collectSpike(name), collectExchanges({ events: spikeStream(name) })]) {
+      for (const result of [collectSpike(name), collect({ events: spikeStream(name) })]) {
         const { exchanges, counts } = result
-        const { cached, cancelled, failed, inFlight, bodiesOmitted } = counts
-        expect(counts.exchanges + cached + cancelled + failed + inFlight, name).toBe(
-          exchanges.length
-        )
+        const { cached, cancelled, failed, finishedWithoutResponse, inFlight, bodiesOmitted } =
+          counts
+        expect(
+          counts.exchanges + cached + cancelled + failed + finishedWithoutResponse + inFlight,
+          name
+        ).toBe(exchanges.length)
         expect(bodiesOmitted, name).toBeLessThanOrEqual(counts.exchanges)
       }
     }
@@ -187,7 +204,7 @@ describe('collectExchanges on the step 0 streams', () => {
 })
 
 // The known answers for each step 0 stream with an invented body for every finished request:
-// all ten counts, so a change that moves any one of them fails here. The spike sent no
+// all eleven counts, so a change that moves any one of them fails here. The spike sent no
 // `Target.setAutoAttach`, so the page is the one target and counts as unrecorded (plan D17).
 const SPIKE_COUNTS: Record<string, Partial<Record<string, number>>> = {
   'q2-savepage': { exchanges: 10 },
@@ -205,12 +222,13 @@ describe('collectExchanges counts on every step 0 stream', () => {
     expect(Object.keys(SPIKE_COUNTS).sort()).toEqual([...SPIKE_RUNS].sort())
   })
 
-  it.each(Object.entries(SPIKE_COUNTS))('pins all ten counts for %s', (name, expected) => {
+  it.each(Object.entries(SPIKE_COUNTS))('pins all eleven counts for %s', (name, expected) => {
     expect(collectSpike(name).counts).toEqual({
       exchanges: 0,
       cached: 0,
       cancelled: 0,
       failed: 0,
+      finishedWithoutResponse: 0,
       inFlight: 0,
       bodiesOmitted: 0,
       incompleteRequestBodies: 0,
@@ -224,8 +242,8 @@ describe('collectExchanges counts on every step 0 stream', () => {
   it('counts the page as recorded on every stream once its session is listed', () => {
     for (const name of SPIKE_RUNS) {
       const events = spikeStream(name)
-      const raw = collectExchanges({ events, responseBodies: inventedBodies(events) })
-      const attached = collectExchanges({
+      const raw = collect({ events, responseBodies: inventedBodies(events) })
+      const attached = collect({
         events,
         responseBodies: inventedBodies(events),
         recordedSessions: new Set([''])
@@ -261,7 +279,7 @@ describe('Bound TLS Details in the collector', () => {
   it('converts the main document only, so a subresource cannot fail the collection', () => {
     const doc = 'https://example.test/'
     const image = 'https://cdn.example.test/a.png'
-    const { exchanges } = collectExchanges({
+    const { exchanges } = collect({
       events: [
         sent('doc', doc, { type: 'Document', frameId: 'main' }),
         received('doc', doc, { securityDetails: details() }),
@@ -280,7 +298,7 @@ describe('Bound TLS Details in the collector', () => {
   it('leaves a redirect hop of the main document unconverted, so it cannot fail the collection', () => {
     const start = 'https://example.test/start'
     const end = 'https://example.test/end'
-    const { exchanges } = collectExchanges({
+    const { exchanges } = collect({
       events: [
         sent('doc', start, { type: 'Document', frameId: 'main' }),
         sent('doc', end, {
@@ -306,7 +324,7 @@ describe('Bound TLS Details in the collector', () => {
   it('takes the main frame from the first document request on the page session', () => {
     const frame = 'https://frame.example/'
     const doc = 'https://example.test/'
-    const { exchanges } = collectExchanges({
+    const { exchanges } = collect({
       events: [
         sent('doc', doc, { type: 'Document', frameId: 'main' }),
         received('doc', doc, { securityDetails: details() }),
@@ -345,19 +363,17 @@ describe('collectExchanges output order', () => {
     for (const name of ['q2-savepage', 'q5-cache', 'q4-cross-port-redirect']) {
       const events = spikeStream(name)
       const responseBodies = inventedBodies(events)
-      const expected = collectExchanges({ events, responseBodies })
+      const expected = collect({ events, responseBodies })
       for (const seed of [1, 7, 42]) {
         const shuffled = interleave(events, seed)
         expect(shuffled).not.toEqual(events)
-        expect(collectExchanges({ events: shuffled, responseBodies }), `${name} ${seed}`).toEqual(
-          expected
-        )
+        expect(collect({ events: shuffled, responseBodies }), `${name} ${seed}`).toEqual(expected)
       }
     }
   })
 
   it('orders exchanges by start time, then request id, keeping each hop order', () => {
-    const { exchanges } = collectExchanges({
+    const { exchanges } = collect({
       events: [
         sent('b', 'http://127.0.0.1/b'),
         sent('a', 'http://127.0.0.1/a'),
@@ -418,7 +434,7 @@ describe('collectExchanges across sessions (plan D17)', () => {
   ])
 
   it('makes a frame document that starts on the page and ends on the frame one exchange', () => {
-    const { exchanges, counts } = collectExchanges({
+    const { exchanges, counts } = collect({
       events: frameSequence(frame),
       responseBodies: frameBodies,
       recordedSessions: new Set(['', 'frame-session'])
@@ -445,12 +461,12 @@ describe('collectExchanges across sessions (plan D17)', () => {
 
   it('counts a request on a child session like one on the page session', () => {
     const recordedSessions = new Set(['', 'frame-session'])
-    const onChild = collectExchanges({
+    const onChild = collect({
       events: frameSequence(frame),
       responseBodies: frameBodies,
       recordedSessions
     })
-    const onPage = collectExchanges({
+    const onPage = collect({
       events: frameSequence(page),
       responseBodies: frameBodies,
       recordedSessions
@@ -459,7 +475,7 @@ describe('collectExchanges across sessions (plan D17)', () => {
   })
 
   it('counts a frame whose Network.enable failed, and leaves its document in flight', () => {
-    const { exchanges, counts } = collectExchanges({
+    const { exchanges, counts } = collect({
       events: [
         page('Target.attachedToTarget', {
           sessionId: 'frame-session',
@@ -503,7 +519,7 @@ describe('collectExchanges across sessions (plan D17)', () => {
   })
 
   it('counts a service worker whose setup did not answer as unrecorded', () => {
-    const { counts } = collectExchanges({
+    const { counts } = collect({
       events: [
         page('Target.attachedToTarget', {
           sessionId: 'service-worker-session',
@@ -516,7 +532,7 @@ describe('collectExchanges across sessions (plan D17)', () => {
   })
 
   it('treats every target as unrecorded when no session is named as recorded', () => {
-    const { counts } = collectExchanges({
+    const { counts } = collect({
       events: [
         page('Target.attachedToTarget', {
           sessionId: 'frame-session',
@@ -531,7 +547,7 @@ describe('collectExchanges across sessions (plan D17)', () => {
     // The step 0 cross-site iframe run is this stream: no auto-attach, so the frame's document
     // started on the page's session and never finished there.
     const events = spikeStream('q4-cross-site-iframe')
-    const { exchanges, counts } = collectExchanges({
+    const { exchanges, counts } = collect({
       events,
       responseBodies: inventedBodies(events),
       recordedSessions: new Set()
@@ -548,7 +564,7 @@ describe('collectExchanges across sessions (plan D17)', () => {
   it('counts an attached target of another type as unrecorded, listed or not', () => {
     const attached = (sessionId: string, type: string) =>
       page('Target.attachedToTarget', { sessionId, targetInfo: { type } })
-    const { counts } = collectExchanges({
+    const { counts } = collect({
       events: [
         attached('shared-worker-session', 'shared_worker'),
         attached('browser-session', 'browser'),
@@ -564,14 +580,14 @@ describe('collectExchanges counts, one sequence each', () => {
   const url = 'http://127.0.0.1:43902/r'
 
   it('cancelled: loadingFailed with canceled true', () => {
-    const { exchanges, counts } = collectExchanges({ events: [sent('r', url), failed('r', true)] })
+    const { exchanges, counts } = collect({ events: [sent('r', url), failed('r', true)] })
     expect(exchanges[0]).toMatchObject({ state: 'cancelled', complete: false })
     expect(exchanges[0].failure).toEqual({ errorText: 'net::ERR_FAILED', canceled: true })
     expect(counts).toMatchObject({ exchanges: 0, cancelled: 1, failed: 0 })
   })
 
   it('failed: loadingFailed with canceled false, after the response arrived', () => {
-    const { exchanges, counts } = collectExchanges({
+    const { exchanges, counts } = collect({
       events: [sent('r', url), received('r', url), failed('r', false)],
       responseBodies: body('r')
     })
@@ -582,13 +598,13 @@ describe('collectExchanges counts, one sequence each', () => {
   })
 
   it('inFlight: neither loadingFinished nor loadingFailed arrived', () => {
-    const { exchanges, counts } = collectExchanges({ events: [sent('r', url), received('r', url)] })
+    const { exchanges, counts } = collect({ events: [sent('r', url), received('r', url)] })
     expect(exchanges[0]).toMatchObject({ state: 'in-flight', complete: false })
     expect(counts).toMatchObject({ exchanges: 0, inFlight: 1 })
   })
 
   it('cached: requestServedFromCache, even with no terminal event', () => {
-    const { exchanges, counts } = collectExchanges({
+    const { exchanges, counts } = collect({
       events: [sent('r', url), page('Network.requestServedFromCache', { requestId: 'r' })]
     })
     expect(exchanges[0]).toMatchObject({ state: 'cached', complete: false })
@@ -596,7 +612,7 @@ describe('collectExchanges counts, one sequence each', () => {
   })
 
   it('cached: a redirect hop answered from the disk cache', () => {
-    const { exchanges, counts } = collectExchanges({
+    const { exchanges, counts } = collect({
       events: [
         sent('r', url),
         sent('r', `${url}/next`, {
@@ -615,7 +631,7 @@ describe('collectExchanges counts, one sequence each', () => {
   })
 
   it('bodiesOmitted: a finished response with no body returned', () => {
-    const { exchanges, counts } = collectExchanges({
+    const { exchanges, counts } = collect({
       events: [sent('r', url), received('r', url), finished('r')]
     })
     expect(exchanges[0]).toMatchObject({ state: 'body-omitted', complete: false })
@@ -624,7 +640,7 @@ describe('collectExchanges counts, one sequence each', () => {
   })
 
   it('webSockets: Network.webSocketCreated, which starts no exchange', () => {
-    const { exchanges, counts } = collectExchanges({
+    const { exchanges, counts } = collect({
       events: [
         page('Network.webSocketCreated', { requestId: 'ws', url: 'ws://127.0.0.1:43902/socket' })
       ]
@@ -634,7 +650,7 @@ describe('collectExchanges counts, one sequence each', () => {
   })
 
   it('names one state when signals overlap: a failure, then a cache signal, wins', () => {
-    const { exchanges, counts } = collectExchanges({
+    const { exchanges, counts } = collect({
       events: [
         sent('a', url),
         page('Network.requestServedFromCache', { requestId: 'a' }),
@@ -657,14 +673,14 @@ describe('collectExchanges counts, one sequence each', () => {
   })
 
   it('applies an event that arrived before its requestWillBeSent to the first hop', () => {
-    const { exchanges } = collectExchanges({
+    const { exchanges } = collect({
       events: [page('Network.requestServedFromCache', { requestId: 'r' }), sent('r', url)]
     })
     expect(exchanges[0].state).toBe('cached')
   })
 
   it('keeps no exchange for events whose request never started', () => {
-    const { exchanges, counts } = collectExchanges({
+    const { exchanges, counts } = collect({
       events: [
         page('Network.requestWillBeSentExtraInfo', { requestId: 'r', headers: {} }),
         finished('r'),
@@ -677,7 +693,7 @@ describe('collectExchanges counts, one sequence each', () => {
   })
 
   it('starts a new exchange for a repeated requestWillBeSent with no redirect', () => {
-    const { exchanges } = collectExchanges({
+    const { exchanges } = collect({
       events: [sent('r', url), sent('r', url), received('r', url), finished('r')],
       responseBodies: body('r')
     })
@@ -719,7 +735,7 @@ describe('collectExchanges request bodies', () => {
     // Network.getRequestPostData omits the files of a multipart body; the declared length
     // still counts them.
     const declared = Buffer.byteLength(preamble + fileBytes + trailer, 'utf8')
-    const { exchanges, counts } = collectExchanges({
+    const { exchanges, counts } = collect({
       events: [
         post('m', { postDataEntries: [{ bytes: b64(preamble) }, {}, { bytes: b64(trailer) }] }),
         sentHeaders('m', { 'Content-Length': String(declared) }),
@@ -738,7 +754,7 @@ describe('collectExchanges request bodies', () => {
 
   it('keeps what the event carried of a multipart body, and counts it incomplete', () => {
     const declared = Buffer.byteLength(preamble + fileBytes + trailer, 'utf8')
-    const { exchanges, counts } = collectExchanges({
+    const { exchanges, counts } = collect({
       events: [
         post('m', { postDataEntries: [{ bytes: b64(preamble) }, {}, { bytes: b64(trailer) }] }),
         sentHeaders('m', { 'Content-Length': String(declared) }),
@@ -754,7 +770,7 @@ describe('collectExchanges request bodies', () => {
 
   it('holds a multipart body every part of which the event carried as complete', () => {
     const text = `${notePart}--${boundary}--\r\n`
-    const { exchanges, counts } = collectExchanges({
+    const { exchanges, counts } = collect({
       events: [
         post('m', {
           postDataEntries: [{ bytes: b64(text.slice(0, 10)) }, { bytes: b64(text.slice(10)) }]
@@ -773,7 +789,7 @@ describe('collectExchanges request bodies', () => {
 
   it('measures a fetched text body in UTF-8 bytes against the declared length', () => {
     const text = 'name=café'
-    const { exchanges } = collectExchanges({
+    const { exchanges } = collect({
       events: [
         post('p', { headers: {} }),
         sentHeaders('p', { 'Content-Length': String(Buffer.byteLength(text, 'utf8')) }),
@@ -786,7 +802,7 @@ describe('collectExchanges request bodies', () => {
   })
 
   it('measures a fetched base64 body in decoded bytes', () => {
-    const { exchanges } = collectExchanges({
+    const { exchanges } = collect({
       events: [post('p', {}), sentHeaders('p', { 'Content-Length': '3' }), ...completed('p')],
       responseBodies: body('p'),
       requestPostData: new Map([['p', { postData: b64('abc'), base64Encoded: true }]])
@@ -795,7 +811,7 @@ describe('collectExchanges request bodies', () => {
   })
 
   it('reads the deprecated postData string when the event has no entries', () => {
-    const { exchanges } = collectExchanges({
+    const { exchanges } = collect({
       events: [
         post('p', { postData: 'a=1', headers: { 'Content-Length': '3' } }),
         ...completed('p')
@@ -813,7 +829,7 @@ describe('collectExchanges request bodies', () => {
       { 'Content-Length': '99999999999999999999' }
     ]
     for (const headers of cases) {
-      const { exchanges, counts } = collectExchanges({
+      const { exchanges, counts } = collect({
         events: [post('p', { postData: 'a=1' }), sentHeaders('p', headers), ...completed('p')],
         responseBodies: body('p')
       })
@@ -823,7 +839,7 @@ describe('collectExchanges request bodies', () => {
   })
 
   it('holds nothing, and so nothing complete, when no body reached the collector', () => {
-    const { exchanges } = collectExchanges({
+    const { exchanges } = collect({
       events: [post('p', {}), sentHeaders('p', { 'Content-Length': '3' }), failed('p', false)]
     })
     expect(exchanges[0]).toMatchObject({
@@ -833,7 +849,7 @@ describe('collectExchanges request bodies', () => {
   })
 
   it('applies fetched post data to the last hop that reported a body', () => {
-    const { exchanges } = collectExchanges({
+    const { exchanges } = collect({
       events: [
         post('p', { postData: 'a=1', headers: { 'Content-Length': '3' } }),
         post(
@@ -848,5 +864,310 @@ describe('collectExchanges request bodies', () => {
     })
     expect(exchanges.map(({ requestBody }) => requestBody?.data)).toEqual(['a=1', 'b=2'])
     expect(exchanges.every(({ complete }) => complete)).toBe(true)
+  })
+})
+
+// The maintainer's rulings of 2026-10-26 on the charset spike
+// (docs/specs/2026-10-26-transaction-record-charset-spike.md, "Rulings, 2026-10-26").
+describe('collectExchanges text bodies and durable sessions', () => {
+  const url = 'http://127.0.0.1:8080/w1252'
+  const worker = on('worker-session')
+  const onWorker = [
+    page('Target.attachedToTarget', {
+      sessionId: 'worker-session',
+      targetInfo: { type: 'worker' }
+    }),
+    worker('Network.requestWillBeSent', {
+      requestId: 'w',
+      wallTime: WALL_TIME,
+      type: 'Fetch',
+      request: { url, method: 'GET', headers: {} }
+    }),
+    worker('Network.responseReceived', { requestId: 'w', response: response(url) }),
+    worker('Network.loadingFinished', { requestId: 'w' })
+  ]
+  const text = new Map([['w', { body: '<p>café</p>', base64Encoded: false }]])
+  const base64 = new Map([['w', { body: 'PHA+Y2Fm6TwvcD4=', base64Encoded: true }]])
+
+  it('keeps a text body from a session whose durable messages answered', () => {
+    const { exchanges, counts } = collectExchanges({
+      events: onWorker,
+      responseBodies: text,
+      durableSessions: new Set(['', 'worker-session'])
+    })
+    expect(exchanges[0]).toMatchObject({
+      state: 'complete',
+      responseBody: { data: '<p>café</p>', base64Encoded: false }
+    })
+    expect(counts.bodiesOmitted).toBe(0)
+  })
+
+  it('omits a text body from any other session, the page being durable or not', () => {
+    for (const durableSessions of [new Set(['']), new Set<string>(), undefined]) {
+      const { exchanges, counts } = collectExchanges({
+        events: onWorker,
+        responseBodies: text,
+        durableSessions
+      })
+      expect(exchanges[0].state).toBe('body-omitted')
+      expect(exchanges[0].responseBody).toBeUndefined()
+      expect(counts).toMatchObject({ exchanges: 1, bodiesOmitted: 1 })
+    }
+  })
+
+  it('judges a body by the session that reported its loadingFinished, not where it started', () => {
+    const startedOnPage = [
+      page('Network.requestWillBeSent', {
+        requestId: 'w',
+        wallTime: WALL_TIME,
+        type: 'Document',
+        request: { url, method: 'GET', headers: {} }
+      }),
+      ...onWorker.slice(2)
+    ]
+    const durablePageOnly = collectExchanges({
+      events: startedOnPage,
+      responseBodies: text,
+      durableSessions: new Set([''])
+    })
+    expect(durablePageOnly.exchanges[0].state).toBe('body-omitted')
+    const durableChild = collectExchanges({
+      events: startedOnPage,
+      responseBodies: text,
+      durableSessions: new Set(['worker-session'])
+    })
+    expect(durableChild.exchanges[0].state).toBe('complete')
+  })
+
+  it('keeps a base64 body from any session', () => {
+    const { exchanges } = collectExchanges({ events: onWorker, responseBodies: base64 })
+    expect(exchanges[0]).toMatchObject({
+      state: 'complete',
+      responseBody: { data: 'PHA+Y2Fm6TwvcD4=', base64Encoded: true }
+    })
+  })
+
+  it("records the page's copy of a response its service worker answered as body-omitted", () => {
+    // The durable store holds no body for that copy, so its fetch returned none (charset spike,
+    // Question 2, "Service workers").
+    const { exchanges, counts } = collectExchanges({
+      events: [sent('sw', url), received('sw', url, { fromServiceWorker: true }), finished('sw')],
+      durableSessions: new Set([''])
+    })
+    expect(exchanges[0].state).toBe('body-omitted')
+    expect(counts).toMatchObject({ exchanges: 1, bodiesOmitted: 1 })
+  })
+})
+
+describe('collectExchanges main document', () => {
+  const doc = (requestId: string, docUrl: string, frameId: string, wallTime: number) =>
+    page('Network.requestWillBeSent', {
+      requestId,
+      wallTime,
+      type: 'Document',
+      frameId,
+      request: { url: docUrl, method: 'GET', headers: {} }
+    })
+
+  it("names the last hop of the main frame's last document", () => {
+    const first = 'https://example.test/start'
+    const moved = 'https://example.test/moved'
+    const next = 'https://example.test/next'
+    const { mainDocument } = collect({
+      events: [
+        doc('a', first, 'main', WALL_TIME),
+        doc('a', moved, 'main', WALL_TIME + 1),
+        page('Network.requestWillBeSent', {
+          requestId: 'frame',
+          wallTime: WALL_TIME + 2,
+          type: 'Document',
+          frameId: 'child',
+          request: { url: 'https://other.test/', method: 'GET', headers: {} }
+        }),
+        doc('b', next, 'main', WALL_TIME + 3),
+        received('b', next),
+        finished('b')
+      ]
+    })
+    expect(mainDocument).toMatchObject({ requestId: 'b', hop: 0, state: 'body-omitted' })
+    expect(mainDocument?.request.url).toBe(next)
+  })
+
+  it('names the final hop of a redirected main document', () => {
+    const start = 'http://example.test/'
+    const end = 'https://example.test/'
+    const { mainDocument } = collect({
+      events: [
+        doc('a', start, 'main', WALL_TIME),
+        doc('a', end, 'main', WALL_TIME + 1),
+        received('a', end),
+        finished('a')
+      ],
+      responseBodies: body('a')
+    })
+    expect(mainDocument).toMatchObject({ requestId: 'a', hop: 1, state: 'complete' })
+  })
+
+  it('names none when no main frame document was recorded', () => {
+    const { mainDocument } = collect({ events: [sent('r', 'https://example.test/r')] })
+    expect(mainDocument).toBeUndefined()
+  })
+
+  // The review of #1999: a later navigation that never replaced the page supplied its Bound TLS
+  // Details. Each sequence below is one the validation record measured on Electron 45.
+  const shown = 'https://shown.example/'
+  const other = 'https://other.example/next'
+  const details = (subjectName: string) => ({
+    protocol: 'TLS 1.3',
+    keyExchange: '',
+    keyExchangeGroup: 'X25519',
+    cipher: 'AES_128_GCM',
+    certificateId: 7,
+    subjectName,
+    sanList: [subjectName],
+    issuer: 'Test CA',
+    validFrom: 1790000000,
+    validTo: 1800000000,
+    signedCertificateTimestampList: [],
+    certificateTransparencyCompliance: 'unknown',
+    encryptedClientHello: false
+  })
+  const shownPage = [
+    doc('a', shown, 'main', WALL_TIME),
+    received('a', shown, { securityDetails: details('shown.example') }),
+    finished('a')
+  ]
+  const mainOf = (...later: RecordedEvent[]): Exchange | undefined =>
+    collect({ events: [...shownPage, ...later], responseBodies: body('a') }).mainDocument
+
+  it('keeps the page when a later navigation was cancelled after its response, as a 204 is', () => {
+    const mainDocument = mainOf(
+      doc('b', other, 'main', WALL_TIME + 1),
+      received('b', other, { status: 204, securityDetails: details('other.example') }),
+      failed('b', true)
+    )
+    expect(mainDocument).toMatchObject({ requestId: 'a', state: 'complete' })
+    expect(mainDocument?.response?.securityDetails?.subjectName).toBe('shown.example')
+  })
+
+  it('keeps the page when a later navigation was cancelled before any response', () => {
+    expect(mainOf(doc('b', other, 'main', WALL_TIME + 1), failed('b', true))?.requestId).toBe('a')
+  })
+
+  it('keeps the page when a later navigation has neither a response nor a failure', () => {
+    expect(mainOf(doc('b', other, 'main', WALL_TIME + 1))?.requestId).toBe('a')
+  })
+
+  it('takes a later navigation still loading after its response, which the window shows', () => {
+    const mainDocument = mainOf(
+      doc('b', other, 'main', WALL_TIME + 1),
+      received('b', other, { securityDetails: details('other.example') })
+    )
+    expect(mainDocument).toMatchObject({ requestId: 'b', state: 'in-flight' })
+    expect(mainDocument?.response?.securityDetails?.subjectName).toBe('other.example')
+  })
+
+  it("takes a later navigation that failed, after its response or as the browser's error page", () => {
+    const afterResponse = mainOf(
+      doc('b', other, 'main', WALL_TIME + 1),
+      received('b', other, { securityDetails: details('other.example') }),
+      failed('b', false)
+    )
+    expect(afterResponse).toMatchObject({ requestId: 'b', state: 'failed' })
+    const errorPage = mainOf(doc('b', other, 'main', WALL_TIME + 1), failed('b', false))
+    expect(errorPage).toMatchObject({ requestId: 'b', state: 'failed' })
+    expect(errorPage?.response).toBeUndefined()
+  })
+
+  it('takes no later request of the main frame that is not a document, nor a frame document', () => {
+    const script = 'https://cdn.example/app.js'
+    const frame = 'https://frame.example/'
+    const mainDocument = mainOf(
+      sent('s', script, { type: 'Script', frameId: 'main', wallTime: WALL_TIME + 1 }),
+      received('s', script, { securityDetails: details('cdn.example') }),
+      finished('s'),
+      doc('f', frame, 'child', WALL_TIME + 2),
+      received('f', frame, { securityDetails: details('frame.example') }),
+      finished('f')
+    )
+    expect(mainDocument?.requestId).toBe('a')
+  })
+
+  it('names none when the document requests carried no frame id', () => {
+    const { mainDocument } = collect({
+      events: [
+        page('Network.requestWillBeSent', {
+          requestId: 'a',
+          wallTime: WALL_TIME,
+          type: 'Document',
+          request: { url: shown, method: 'GET', headers: {} }
+        }),
+        received('a', shown),
+        finished('a')
+      ]
+    })
+    expect(mainDocument).toBeUndefined()
+  })
+})
+
+describe('collectExchanges, a request finished with no response', () => {
+  it('counts it apart from in flight and writes no response for it', () => {
+    // What step 9's e2e run saw for a service worker's main script on its own session.
+    const script = 'http://127.0.0.1:8080/sw.js'
+    const { exchanges, counts } = collect({
+      events: [
+        sent('sw', script),
+        page('Network.dataReceived', { requestId: 'sw', dataLength: 328 }),
+        finished('sw')
+      ],
+      responseBodies: body('sw')
+    })
+    expect(exchanges[0]).toMatchObject({
+      state: 'finished-without-response',
+      complete: false
+    })
+    expect(exchanges[0].response).toBeUndefined()
+    expect(exchanges[0].responseBody).toBeUndefined()
+    expect(counts).toMatchObject({
+      exchanges: 0,
+      finishedWithoutResponse: 1,
+      inFlight: 0,
+      bodiesOmitted: 0
+    })
+  })
+})
+
+describe('collectExchanges, a body fetched on another session', () => {
+  const url = 'http://127.0.0.1:8080/twice'
+  const worker = on('worker-session')
+  const events = [
+    sent('r', url),
+    received('r', url),
+    finished('r'),
+    worker('Network.loadingFinished', { requestId: 'r' })
+  ]
+
+  it('keeps a body fetched on the session that finished the request last', () => {
+    const { exchanges } = collect({
+      events,
+      responseBodies: new Map([
+        ['r', { body: 'from the worker', base64Encoded: false, sessionId: 'worker-session' }]
+      ])
+    })
+    expect(exchanges[0]).toMatchObject({
+      state: 'complete',
+      responseBody: { data: 'from the worker' }
+    })
+  })
+
+  it('omits a body fetched on another session, whatever that session answered', () => {
+    const { exchanges, counts } = collect({
+      events,
+      responseBodies: new Map([
+        ['r', { body: 'from the page', base64Encoded: true, sessionId: '' }]
+      ])
+    })
+    expect(exchanges[0].state).toBe('body-omitted')
+    expect(counts.bodiesOmitted).toBe(1)
   })
 })

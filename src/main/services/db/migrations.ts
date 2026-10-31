@@ -1904,4 +1904,23 @@ export function runMigrations(db: Database.Database): void {
       db.pragma('user_version = 43')
     })()
   }
+
+  if (version < 44) {
+    db.transaction(() => {
+      // A link Capture's source (ADR-0040): the Capture whose stored page held the link, that
+      // Capture's Content Hash and the link's address, mirrored from the signed capture entry
+      // so the viewer and the report can show the relationship. The recapture queue reads the
+      // source's hash from its signed entry, never from this row.
+      //
+      // Skips a column already present, as v43 does, because a restored copy marked one
+      // version back runs this block again.
+      const present = new Set(
+        (db.pragma('table_info(captures)') as Array<{ name: string }>).map(({ name }) => name)
+      )
+      for (const column of ['linked_from_capture_id', 'linked_from_content_hash', 'link_href']) {
+        if (!present.has(column)) db.exec(`ALTER TABLE captures ADD COLUMN ${column} TEXT`)
+      }
+      db.pragma('user_version = 44')
+    })()
+  }
 }

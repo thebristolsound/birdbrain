@@ -331,11 +331,64 @@ inventory: {
 
 - **MHTML and the screenshot are always present.** A failed `savePage` or screenshot fails the
   render today, and this slice keeps that, so no build can write either as absent (D2's rule).
-- **The MHTML counts.** `pinnedImages` is the number of images the render pinned to their
-  displayed source before the save, and `pinnedImagesNotLoaded` the number of those not loaded
-  when the save ran (#1843, amended 2026-10-21). The schema requires both whenever `inventory` is
-  present. A fifth refine joins D2's four: `pinnedImagesNotLoaded` above `pinnedImages` fails the schema.
-  #1843 writes the counts; step 1 only teaches the verifier them.
+- **The MHTML counts.** `pinnedImages` is the number of images offered as sets that the page
+  displayed and the render pinned to their displayed source before the screenshot and the save,
+  and `pinnedImagesNotLoaded` the number of those still loading, or failed to load, just before
+  the save (#1843, amended 2026-10-21, 2026-10-26 and 2026-10-30). The counts cover
+  only images that had settled and displayed before the pin. The schema requires both whenever
+  `inventory` is present. A fifth refine joins D2's four: `pinnedImagesNotLoaded` above
+  `pinnedImages` fails the schema. #1843 writes the counts; step 1 only teaches the verifier them.
+  [ADR-0055](../adr/0055-a-background-render-pins-image-sources.md) states the rulings; the
+  render carries them out as follows.
+  - **Which images.** An image offered as a set is an `img` with `srcset`, or a `picture` with
+    `source` elements; the serializer saves the second correctly (triage of #1843), so only an
+    `img` with `srcset` whose parent is not a `picture` is considered. Only the page's own
+    document is searched, not its frames or shadow roots.
+  - **Order.** After the post-scroll settle, the render polls until no considered image is still
+    loading (`img.complete` false), for at most 5 s (`IMAGE_SET_SETTLE_MAX_MS`), and keeps the
+    images its last check found still loading. It then pins, waits for any pinned image that
+    started loading, takes the screenshot, and counts (ruled 2026-10-30: the screenshot makes the
+    browser drop its in-memory copy of each displayed image, so a pin after it loaded again each
+    one with no fresh copy in the HTTP cache). Collection stops after the count, so a request the
+    pin or the screenshot causes is in the Transaction Record, and just before `savePage`.
+  - **Pinned.** A considered image is pinned when it displayed: `complete`, with a natural width
+    and height above 0, and a non-empty `currentSrc` that is not a `blob:` address. Its `src`
+    becomes its `currentSrc`; its `srcset` and `sizes` stay on the live page, where the browser
+    chooses from them again, and the serializer drops both from the saved page. An image
+    displayed from a width candidate, or from a density other than 1x, first has its `srcset`
+    narrowed to that one candidate, so it keeps its density
+    ([ruling of 2026-10-30](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6535493015)).
+    The pin parses `srcset` as the HTML standard does, resolves each URL against the document,
+    adds `src` as a 1x candidate when no candidate has a width or a density of 1, and takes the
+    candidates whose URL is `currentSrc`. A width candidate is kept as `<url> <w>w` with the
+    page's `sizes`. A density candidate `d` is written as `<url> 1000w` with `sizes` set to
+    `1000 / d` pixels, because Chromium adds `src` to any set without a width descriptor as a 1x
+    candidate and shows it: narrowed to `<url> 2x`, a 2x-only image still showed at 1x
+    (validation record, 2026-10-30). When no candidate has that URL, or those that do differ in
+    descriptor, the image keeps its whole set and only `src` is set. An image still loading when
+    the settle wait ended, even one that finished before the pin, one whose load failed, and a
+    `blob:` image are left as they are.
+  - **Not loaded.** After the pin the render polls until no pinned image is still loading, for at
+    most 5 s (`PIN_LOAD_MAX_MS`). A pinned image counts as not loaded when, at the count after the
+    screenshot, it is not `complete` or has no natural size: still loading, or failed to load.
+    The ruling of 2026-10-26 names only the first; the second is counted too, so a loaded count
+    never stands for an image whose pinned source failed, which the maintainer accepted as built
+    on 2026-10-29 ([ruling 3](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6515710604)).
+  - **Time.** Both waits are bounded on the main process's clock and take their time from what is
+    left before the 40 s end reserve, never from it.
+  - **Trust.** The scripts run in an isolated world (`PIN_WORLD_ID`), which shares the page's DOM
+    but not its JavaScript, so the page cannot replace what they call, read what they keep
+    between calls, or change their counts. The counts are taken again over the DOM after the
+    screenshot: an image the page removed, or whose `src` it changed, since the pin is not
+    counted, and a page replaced since the pin fails the count.
+  - **Failure.** The MHTML part has no absent form, so a pin script that throws, or returns counts
+    the strict schema refuses, fails the render, as a Scroll-to-load step that throws does. The
+    renderer parses the part with that schema before it reaches the entry. An image still
+    loading when a wait ends is not a failure.
+  - **PDF.** The print reads the page's content height for `MAX_PDF_CONTENT_HEIGHT_PX` from the
+    screenshot record, taken after the pin. The live page keeps a narrowed set for each image
+    displayed from a width or a density other than 1x, so the print shows it at the size the
+    page displayed it.
 - **Reasons.** `not-taken` means this build does not take the file: step 6's build writes it for
   the Transaction Record and the PDF. `failed` means the engine tried and failed, or refused a PDF
   over step 10's size bounds, and the log carries the error. The list is closed, so a released
@@ -383,11 +436,13 @@ inventory: {
 
 `scrollToLoad: { requested: true, ran: boolean, outcome?, endHeight?, scrollLockLifted: boolean }`.
 
-The background renderer always requests the phase. `endHeight` is the last document height the
-step script reported, in CSS pixels, and is absent when the loop read none. `scrollLockLifted` is
-true when `SCROLL_UNLOCK_SCRIPT` lifted a consent wall's lock: the lock is restored before the
-artifacts, but loosening it can change which lazy content loads. `outcome` maps to where
-`scrollToLoadLazyContent` ends today:
+The background renderer always requests the phase. `endHeight` is the last height the step
+script reported for the root it scrolled, the document or an inner panel, in CSS pixels, and is
+absent when the loop read none or the last height it read is not a non-negative safe integer
+(`Number.isSafeInteger`, so an integer above 2^53 - 1 is left out too).
+`scrollLockLifted` is true when `SCROLL_UNLOCK_SCRIPT` lifted a consent wall's lock: the lock is
+restored before the artifacts, but loosening it can change which lazy content loads. `outcome`
+maps to where `scrollToLoadLazyContent` ends today:
 
 | Record | Where the loop ends |
 | --- | --- |
@@ -485,11 +540,12 @@ against a Chromium 152 response.
   length as `Content-Length` (spec open question 1, ruled 2026-10-10).
 - **Text bodies.** Ruled 2026-10-26, after the review of #1979 measured `Network.getResponseBody`
   returning a windows-1252 page as a decoded string: the writer stores a body the browser hands
-  over as text encoded in UTF-8, which can differ from the bytes the server sent. Each record that
-  holds such a body carries `x-birdbrain-decoded-text: utf-8`, the `warcinfo` record states the
-  limit, and the payload digest covers the stored UTF-8 bytes. Spike #1983 measures, before step 9,
-  whether the browser can hand over the served bytes instead. The spike's rulings of 2026-10-26
-  amend this; step 9's "Text bodies" item states the change.
+  over as text encoded in UTF-8. The charset spike (#1983) then measured that a session sent
+  `Network.configureDurableMessages` returns the served bytes, as text only when they are valid
+  UTF-8, and the maintainer's rulings of the same day adopted it (step 9, "Text bodies"). Step 9
+  keeps a text body only from such a session, so the writer's UTF-8 encoding of it is the served
+  bytes, and it removed the `x-birdbrain-decoded-text: utf-8` record marker and its `warcinfo`
+  sentence that #1979 added.
 - **Protocol.** Ruled 2026-10-26: request and status lines read `HTTP/1.0` when CDP reports
   `http/1.0` and `HTTP/1.1` otherwise, so WARC readers can parse them, and each request and response
   record carries `WARC-Protocol` with the protocol CDP reported, in lower case. browsertrix-crawler
@@ -736,7 +792,9 @@ first order stalls a frame in Electron.
 **The two counts.** A target is the page or one `Target.attachedToTarget` session, and each target
 collection saw is in exactly one count. `recordedTargets` is the page when its
 `Target.setAutoAttach` answered, plus each attached `iframe`, `worker`, or `service_worker` target
-whose `Network.enable` and `Target.setAutoAttach` both answered within the child setup bound.
+whose `Network.enable` and `Target.setAutoAttach` both answered within the child setup bound. Under
+the charset spike's rulings of 2026-10-26, each target's `Network.configureDurableMessages` must
+have answered too (step 9, "Text bodies").
 `unrecordedTargets` is every other target: the page when its `Target.setAutoAttach` failed or did
 not answer, each such attached target whose commands failed or did not answer, and each target of
 another type (item 5). The page counted there still has its own requests recorded; the count says
@@ -804,10 +862,9 @@ length as `Content-Length`, and keep the reported length as `x-orig-content-leng
 states the renaming in `warcinfo` (D8), and step 9 states it in `features.mdx`.
 
 **Ruled 2026-10-26:** a body the browser hands over as text is stored as that text encoded in
-UTF-8, which can differ from the bytes the server sent. The writer marks each record that holds
-one and states the limit in `warcinfo` (D8, "Text bodies"). Spike #1983 measures, before step 9,
-whether the browser can hand over the served bytes instead. The spike's rulings of 2026-10-26
-amend this; step 9's "Text bodies" item states the change.
+UTF-8. After spike #1983, step 9 keeps such a body only from a session whose
+`Network.configureDurableMessages` answered, so the stored bytes are the served bytes, and the
+record marker #1979 added is gone (D8, "Text bodies").
 
 The spec asks what browser-based archiving tools write, and to follow it if it is documented (spec,
 Open questions). This plan found no published statement, and the two Webrecorder recorders differ
@@ -1257,7 +1314,11 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   pull request removes the writer's `x-birdbrain-decoded-text` marker and its `warcinfo` sentence.
   The spike ran on Electron 44.9.1, so step 9 re-checks the experimental
   `Network.configureDurableMessages` on the Electron version `main` pins (45.0.0 since #1994)
-  before it relies on it.
+  before it relies on it. Done on 2026-10-29 after this branch took `main`: on Electron 45.0.0
+  with Chromium 156.0.8078.48, `e2e/recapture-transaction-record.spec.ts` passed all eight tests.
+  Its known-answer test counted five recorded targets, which needs the command to answer on each
+  session, and matched the windows-1252, Shift_JIS, byte-order-mark and mislabelled text bodies
+  to the served bytes (validation record, step 9, Environments).
 - **Time.** The render races one deadline and, when the deadline wins, rejects with "Recapture
   timed out" and stores nothing; `FINAL_ARTIFACT_RESERVE_MS` reserves 20 s for the screenshot,
   MHTML, and text only (`renderPageInHiddenWindow`). Two new phases need time at the end: the
@@ -1651,6 +1712,43 @@ folded in.
 - **2026-10-26.** Step 3 (#1925) takes Case Archive version 13, the next after 12 on `main`. It
   adds `transactionRecordHash` and `pdfHash` to `CAPTURE_ENTRY_HASH_FIELDS`, mapped to the new
   `warc.gz` and `pdf` file types, so a Shared Case member fetches and hash-checks both files.
+- **2026-10-26.** Step 6 (#1928) writes both MHTML pin counts as 0, which is true of a build that
+  pins no image; #1843 adds the pinning and the real counts. If the tag also waits for #1843, no
+  released build writes 0 for a page whose `srcset` images the MHTML dropped; that wait is the
+  maintainer's call; the review of #1996 recommends that step 6 not ship in a release without
+  #1843. Step 6's first end-to-end run found that the step script's scroll probe ended the phase
+  at the bottom of every page with `nothing-to-scroll`, so the stall detector D5 maps to
+  `stopped-growing` never ended it there. Step 6 changes the root choice so the stall detector
+  ends the phase at a real bottom, and records the change and its effect on acquisition in the
+  [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md).
+- **2026-10-26.** The charset spike (#1983, PR #1988) found a way for the collector to keep a text
+  response's served bytes, and the maintainer ruled on its three questions the same day. Step 9's
+  Changes gain a "Text bodies" item with the rulings; the spike records them under "Rulings,
+  2026-10-26".
+- **2026-10-26.** Step 9 (#1929) is built as a draft that merges after the schema-6 release tag.
+  Its choices: the budget stays at 50,000,000 and 10,000,000 bytes (`src/shared/constants.ts`); the
+  page's setup commands wait 5 s each and a child's 2 s; the body fetches still out when
+  collection stops get 5 s and the writer 10 s, which raises the end reserve from 20 s to 35 s.
+  Collection stops before the screenshot. The render keeps `wc.loadURL` and the extra
+  `history.length` entry as a known limitation, and D15's script expects the passes one entry
+  apart. The session setup lives in
+  `src/main/services/transactionRecorder.ts`, beside the renderer, and the test certificate
+  allowance in `src/main/services/testCertificateAllowance.ts`; both join the assessment's
+  blocking tier. The hand-written WARC reader moved to the package's `lib/` behind a
+  `warcReader.ts` entry point, so the e2e spec reads records with it. The step's results, its
+  record sizes, and its one deviation are in the
+  [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md).
+- **2026-10-26.** The maintainer ruled on three points of step 9's review (#1999), as the
+  orchestrating session relayed them. A request that finished with no response gets its own
+  count, `finishedWithoutResponse` (below). The extra `history.length` entry from the blank first
+  page stays, recorded as a known limitation in the validation record and in `features.mdx`
+  beside the capability; this settles the second decision on #1823. The 120 s Recapture timeout
+  and the 35 s end reserve stay, and each record phase is cut to the time the render has left, so
+  an overrun records the Transaction Record `failed` and the Capture stores. The same fix round
+  bounds the events the recorder holds (25,000, or 25,000,000 bytes of their JSON, past which the
+  record is `failed`), reserves each request body before fetching it, parses the record's fields
+  with the strict schema before they reach the entry, and tells the Operator a record failed only
+  once the Capture is stored.
 - **2026-10-26.** D4's Transaction Record part gains `finishedWithoutResponse`, on the
   maintainer's ruling during step 9's review (#1999) as the orchestrating session relayed it.
   Step 1 (#1904) adds it to schema 6; making the collector count it is left to step 9.
@@ -1658,3 +1756,71 @@ folded in.
   response's served bytes, and the maintainer ruled on its three questions the same day. Step 9's
   Changes gain a "Text bodies" item with the rulings; the spike records them under "Rulings,
   2026-10-26".
+- **2026-10-26.** Step 10 (#1930) is built as a draft that merges after the schema-6 release tag.
+  Its choices: the print runs last, after the Transaction Record's two end phases, with
+  `printToPDF({})`, under a 5 s bound cut to the time the render has left, which raises the end
+  reserve from 35 s to 40 s; `MAX_PDF_CONTENT_HEIGHT_PX` is 50,000 CSS pixels and `MAX_PDF_SIZE`
+  104,857,600 bytes (`src/shared/constants.ts`). Duplicate's row now mirrors `pdf_hash`. Of the
+  items under "Not verified for this plan": `pnpm install` on Node 20 accepts `pdfjs-dist`
+  5.6.205, and its text extraction does not work without the optional `@napi-rs/canvas`, which
+  pnpm installs by default. The measurements behind the values and the step's results are in the
+  [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md).
+- **2026-10-26.** The maintainer ruled on step 10 (#2000), as the orchestrating session relayed
+  it: the end reserve rises to 40 s for the print; the development-only packages pdf.js pulls in
+  (`@napi-rs/canvas` 0.1.100, its platform packages, and a stream helper) are accepted; and
+  GHSA-hq66-cqwq-w95j on `pdfjs-dist` 5.6.205 gets an audit exception until 2026-12-31, because
+  the fixed version needs Node 22.13. The review of #2000 found that a page navigating after the
+  save was printed, and its Capture stored, as the later page, a gap step 9 opened for the URL;
+  the fix round reads the URL, title, and status at the save and does not print a page that has
+  navigated since. It also counts the time left from the deadline timer and parses the whole
+  capture entry with the strict schema before signing it on the background ingest path.
+- **2026-10-26.** #1843 is built as a draft, stacked on step 10, that merges after the schema-6
+  release tag. The maintainer ruled the same day, as the orchestrating session relayed it, that
+  no release carries step 6 without #1843, because step 6's zeros read the same as a pinning
+  pass that ran and found nothing; the two ship in one release. #1843 pins the image sources
+  after the screenshot and writes the true MHTML counts (D4), with its wait taken from the time
+  left before the 40 s end reserve, and adds ADR-0055 and the Image Source Pinning glossary entry.
+  The brief's separate report row is not added, because step 5's artifact inventory already
+  states both counts. The browser behaviour behind the limits and the step's results are in the
+  [validation record](../specs/2026-10-26-capture-engine-first-slice-validation-assessment.md).
+- **2026-10-26.** The maintainer ruled twice on the review of #2002, as the orchestrating session
+  relayed it. Only an image that displayed is pinned, a failed one is left as it is, and the pin
+  runs while the network is recorded, so collection now stops after the pin instead of before the
+  screenshot. Before the pin, images offered as sets get time to settle, and any still loading
+  after it are left out of the counts. ADR-0055 now states the rulings of 2026-10-21 and
+  2026-10-26 and nothing else. The fix round also, on the orchestrating session's instructions,
+  reads the print's height bound when it prints, runs the pin scripts in an isolated world polled
+  on the main process's clock, recounts over the DOM, leaves `blob:` images alone, and keeps
+  step 5's report sentence, now stating what the counts cover, in place of the brief's separate
+  row. D4 states the result.
+- **2026-10-29.** The maintainer confirmed the two rulings of 2026-10-26 on #1843 and accepted
+  as built the counting of a pinned source that finished without an image, the `blob:` exclusion
+  and step 5's report sentence
+  ([comment](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6515710604)).
+  ADR-0055 links that comment. The pin now leaves out an image the settle wait's last check found
+  still loading, even one that finished during the screenshot, as ruling 2 states.
+- **2026-10-30.** The maintainer ruled that the pin runs before the full-page screenshot,
+  amending the order of 2026-10-21
+  ([comment](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6534767262)):
+  the previous fix round of #2002 found that the screenshot makes the browser drop its in-memory
+  copy of each displayed image, so a pin after it fetched each one again. The pin now sets `src`
+  and leaves `srcset` and `sizes` on the live page, the count follows the screenshot, and
+  collection stops after the count. The print's height bound reads the screenshot record again,
+  as step 10 built it, since the screenshot now follows the pin. D4 and ADR-0055 state the
+  result, and the validation record what each order measured.
+- **2026-10-30.** The maintainer confirmed that the pin leaves `srcset` and `sizes` on the live
+  page and sets only `src`, and ruled that an image displayed from a candidate whose density is
+  not 1x keeps it, by narrowing its set to that candidate
+  ([comment](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6535493015)).
+  Narrowed to `<url> 2x`, a 2x-only image still showed at 1x, so D4's "Pinned" item writes a
+  density candidate as one width candidate with a `sizes` that gives the same density, and
+  keeps a width candidate as it is with the page's `sizes`. The validation record has the
+  measurements.
+- **2026-10-30.** The maintainer confirmed the width form for a density candidate and the
+  narrowing of a width candidate to its own entry, and accepted for this release that an image
+  whose displayed candidate cannot be told apart is fetched again during the screenshot
+  ([comment](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6536090389)).
+  The maintainer also ruled that a navigation while the pin loads images or during the
+  screenshot fails the Capture, and nothing is stored
+  ([comment](https://github.com/thebristolsound/birdbrain/issues/1843#issuecomment-6537101827)),
+  as the render already did. ADR-0055 states the three as rulings 9, 10 and 11.

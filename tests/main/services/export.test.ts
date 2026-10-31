@@ -1415,6 +1415,99 @@ describe('export', () => {
     })
   })
 
+  async function ingestLinkCapture() {
+    const { capture: source, contentHash } = await ingest(caseId, '<html>source</html>')
+    const signed = {
+      linkedFromCaptureId: source.id,
+      linkedFromContentHash: contentHash,
+      linkHref: 'http://example.com/linked'
+    }
+    const { capture: linked } = await ingestMhtmlCapture({
+      caseId,
+      url: 'https://example.com/linked',
+      title: 'Linked',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      stream: Readable.from([
+        Buffer.from('<html>linked</html>')
+      ]) as unknown as ReadableStream<Uint8Array>,
+      textContent: '',
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      method: 'background',
+      linkSource: { signed, rowId: source.id }
+    })
+    return { linked, contentHash }
+  }
+
+  async function htmlReport(name: string): Promise<string> {
+    const outputPath = join(tempDir, name)
+    await generateReport(
+      caseId,
+      {
+        format: 'html',
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'evidence',
+        outputPath
+      },
+      captureLifecycle
+    )
+    return readFileSync(outputPath, 'utf-8')
+  }
+
+  // ADR-0040: the report's link rows come from the signed entry, so a Settings -> Database
+  // edit of the row's mirror columns does not reach report.html.
+  it("states a link Capture's source from its entry after the row was edited", async () => {
+    const { linked, contentHash } = await ingestLinkCapture()
+    updateRow(
+      'captures',
+      { id: linked.id },
+      { link_href: 'http://forged.example/', linked_from_content_hash: 'f'.repeat(64) }
+    )
+    expect(getCapture(linked.id)?.linkHref).toBe('http://forged.example/')
+
+    const report = await htmlReport('link-report.html')
+
+    expect(report).toContain('http://example.com/linked')
+    expect(report).toContain(contentHash)
+    expect(report).not.toContain('forged.example')
+    expect(report).not.toContain('f'.repeat(64))
+  })
+
+  it("quotes none of a link Capture's source in report.html when the local chain does not verify", async () => {
+    await ingestLinkCapture()
+    const manifestPath = join(tempDir, 'captures', caseId, 'manifest.jsonl')
+    const original = readFileSync(manifestPath, 'utf-8')
+    const tampered = original
+      .replace('"linkHref":"http://example.com/linked"', '"linkHref":"http://tampered.example/"')
+      .replace(
+        /"linkedFromContentHash":"[0-9a-f]{64}"/,
+        `"linkedFromContentHash":"${'e'.repeat(64)}"`
+      )
+    expect(tampered).toContain('tampered.example')
+    expect(tampered).toContain('e'.repeat(64))
+    writeFileSync(manifestPath, tampered, 'utf-8')
+
+    const report = await htmlReport('link-tampered-chain.html')
+
+    expect(report).toMatch(
+      /<div class="rail-label">From a link in<\/div>\s*<div class="rail-value">not reported: the manifest chain did not verify<\/div>/
+    )
+    expect(report).not.toContain('tampered.example')
+    expect(report).not.toContain('e'.repeat(64))
+    expect(report).not.toContain('Link source SHA-256')
+  })
+
   it('renders Trusted Time as a column orthogonal to integrity status', async () => {
     await ingest(caseId, '<html><body>Two axes</body></html>', 'https://example.com', 'Axes')
 

@@ -891,10 +891,19 @@ export interface EnqueueResult {
   rejected: Array<{ url: string; reason: string }>
 }
 
+// What Capture link names (ADR-0040): the viewed Capture and the link's address, exactly as
+// the menu read it. Never the Content Hash, which main reads from the source's signed entry.
+export interface LinkedFrom {
+  captureId: string
+  linkHref: string
+}
+
 export interface RecaptureEnqueuePayload {
   urls: string[]
   caseId: string
   supersedesCaptureId?: string
+  // Set by Capture link only. The queue then takes exactly one URL, equal to `linkHref`.
+  linkedFrom?: LinkedFrom
 }
 
 // Result of the capture-pipeline and HTTP self-tests. `error` carries the

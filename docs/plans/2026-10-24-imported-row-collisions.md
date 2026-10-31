@@ -1,6 +1,6 @@
 # Keep syncing after an imported row id collides
 
-**Status:** active
+**Status:** done, finished by [#1967](https://github.com/thebristolsound/birdbrain/pull/1967)
 
 This is the implementation handoff for #1955. An archive import can retain a note or tag id
 under the importing installation's local authorship. When its original writer later shares

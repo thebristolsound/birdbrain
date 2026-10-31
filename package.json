@@ -189,11 +189,13 @@
     "zustand": "^5.0.16"
   },
   "devDependencies": {
+    "@babel/core": "^7.29.7",
     "@commitlint/cli": "^21.2.4",
     "@commitlint/config-conventional": "^21.2.4",
     "@electron-toolkit/utils": "^4.0.0",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.64.1",
+    "@rolldown/plugin-babel": "^0.2.4",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-query-devtools": "^5.104.5",
     "@tanstack/router-devtools": "^1.167.2",
@@ -205,7 +207,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/uuid": "^11.0.0",
-    "@vitejs/plugin-react": "^5.2.0",
+    "@vitejs/plugin-react": "^6.1.2",
     "@vitest/coverage-v8": "^5.0.5",
     "babel-plugin-react-compiler": "^1.0.0",
     "cross-env": "^10.1.0",

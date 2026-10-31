@@ -85,7 +85,8 @@ export function latestChecks(rollup) {
     const result =
       c.status !== 'COMPLETED' ? 'pending' : PASSED.includes(c.conclusion) ? 'pass' : 'fail'
     const list = runs.get(c.name) ?? []
-    list.push({ at: c.startedAt ?? '', result })
+    // A queued run has no start time yet, and it is the newest run of its name.
+    list.push({ at: c.startedAt ?? '9999', result })
     runs.set(c.name, list)
   }
   const staleRed = []

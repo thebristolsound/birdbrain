@@ -86,6 +86,14 @@ describe('latestChecks', () => {
     ])
     expect(results.get('agent/pre-pass')).toBe('pending')
   })
+
+  it('reads a queued run with no start time as the newest run', () => {
+    const { results } = latestChecks([
+      run('test', 'FAILURE', '2026-10-30T07:00:00Z'),
+      { name: 'test', status: 'QUEUED', conclusion: null, startedAt: null }
+    ])
+    expect(results.get('test')).toBe('pending')
+  })
 })
 
 describe('decideNext', () => {

@@ -653,8 +653,8 @@ carries the record to people the Operator does not control (ADR-0036:32-35).
 
 The network layer cannot tell a password field from any other form field. The ruling: the engine
 records no request body in a `launched` or `launched-passive` Transaction Record, and the
-inventory lists each withheld body by request. The cost is that a search or form submission sent
-by `POST` loses its body.
+inventory counts the withheld bodies (ruled 2026-10-31; no request id or URL enters the
+Manifest). The cost is that a search or form submission sent by `POST` loses its body.
 
 The ruling needs an ADR before step 4, because withholding bodies changes what a Transaction
 Record holds: ADR-0035 gives the record the tab's navigation "from its first request to the
@@ -1069,16 +1069,19 @@ unchanged, and each learned by the verifier in a release before any build writes
 - the transport, only if the port fallback of decision D1 is built, because the ruling requires
   the signed record of a port-mode Capture to state it. Step 2's release does not carry this
   field; a later verifier release learns it before any build in port mode writes it;
-- the inventory reasons stage 2 adds: recording did not cover the page, served by a service worker,
-  restored from the back-forward cache, loaded speculatively, request body withheld, not taken for
-  a passive Capture, and tab not visible, plus a flag that the HTTP cache was disabled. CE-5
-  defines the inventory. If its reason list includes these, one verifier release covers both
-  slices; a released verifier cannot be recalled, and a strict schema rejects a reason it does not
-  know. Whether CE-5 carries them, and `launched`, is for CE-P to recommend.
+- the inventory values stage 2 adds, as ruled on 2026-10-31 (see
+  [Decisions and rulings](#decisions-and-rulings)): the absence reasons "recording did not cover
+  the page" and "restored from the back-forward cache" on the Transaction Record and "not taken
+  for a passive Capture" on the PDF; a count of the exchanges a service worker served and a count
+  of the request bodies the engine withheld; and a flag that the HTTP cache was disabled. The
+  rulings dropped "tab not visible" and "loaded speculatively", and made "served by a service
+  worker" and "request body withheld" counts rather than reasons. CE-5's inventory closed its
+  reasons at `not-taken` and `failed`, so these land at schema 7 (#1830); a released verifier
+  cannot be recalled, and a strict schema rejects a value it does not know.
 
-The Persona fields come from #1498, without `persona-window`. The Egress fields exist at schema 5
-(`schemas.ts:502-505`). Bound TLS Details, the WARC and PDF hashes, and the inventory come from
-CE-5.
+The Persona fields come from #1498, without `persona-window`, at schema 7 beside the values
+above (ruled 2026-10-31). The Egress fields exist at schema 5 (`schemas.ts:502-505`). Bound TLS
+Details, the WARC and PDF hashes, and the inventory come from CE-5.
 
 ## How each failure is recorded
 
@@ -1431,6 +1434,14 @@ verifier.
   fetches a pinned Chrome for Testing build for CI and checks its hash, with no new dependency.
   A person reruns the suite by hand against Edge, Brave, and branded Chrome when they update. The
   suite needs a pinned version because a pass names the version it ran on (E7).
+- **Schema 7.** Ruled 2026-10-31 for #1830: the Persona fields `personaId` and `personaLabel`
+  raise the manifest schema number like any other added field (ADR-0030, amended), and they and
+  the launched browser's values move `MANIFEST_SCHEMA_VERSION` from 6 to 7 in one change. Schema
+  7 carries no seed-source field. The inventory drops "tab not visible" and "loaded
+  speculatively". "Served by a service worker" is not an absence reason: the Transaction Record
+  counts the exchanges a service worker served. The request bodies a launched browser withholds
+  (ADR-0051) are a count on the signed entry, and no request id or URL enters the Manifest.
+  #1830 no longer waits on the probe issue #1828.
 
 ## Open questions
 

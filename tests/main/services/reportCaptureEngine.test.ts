@@ -351,6 +351,38 @@ describe('report.html capture engine fields', () => {
     )
   })
 
+  // A schema-7 Capture a newer Shared Case member synced can reach the report
+  // before any writer here takes one, so each schema-7 reason renders a
+  // sentence. The wording waits on the maintainer (#1830's review).
+  it.each([
+    [
+      'page-not-recorded',
+      'transactionRecord',
+      'Transaction Record',
+      'not taken: the network recording did not cover this page'
+    ],
+    [
+      'back-forward-cache',
+      'transactionRecord',
+      'Transaction Record',
+      'not taken: the browser restored this page from its back-forward cache, so no request loaded it'
+    ],
+    ['not-taken-passive', 'pdf', 'PDF', 'not taken: a capture taken without a click takes no PDF']
+  ])('states the schema-7 absence %s on the %s part', (reason, part, label, text) => {
+    const fields = engineFields({
+      inventory: { ...ENGINE_INVENTORY, [part]: { present: false, reason } },
+      ...(part === 'pdf'
+        ? { pdfHash: undefined }
+        : { transactionRecordHash: undefined, boundTls: undefined, boundTlsAbsent: 'not-recorded' })
+    })
+    const facts = resolveCaptureEngineFacts(signedEntries([engineCaptureEntry(fields, 7)]), true)
+    const html = buildHtmlReport(
+      reportData([capture()], { captureEngineByCaptureId: facts }),
+      OPTIONS
+    )
+    expect(html).toContain(`${label}:</strong> ${text}.`)
+  })
+
   it.each([
     ['not-https', 'the main document was not served over HTTPS'],
     ['from-cache', 'the response for the main document reported a cache hit'],

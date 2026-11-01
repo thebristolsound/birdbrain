@@ -1,0 +1,10 @@
+extends: existence
+message: "'%s' is banned. Birdbrain docs do not mention courts or admissibility, including in disclaimers. Describe what the mechanism shows and what it does not."
+link: https://github.com/thebristolsound/birdbrain/blob/main/docs/agents/writing-guide.md#claim-discipline
+level: error
+ignorecase: true
+tokens:
+  - courts?
+  - courtrooms?
+  - courthouses?
+  - (?:in)?admissib(?:le|ility)

@@ -21,18 +21,39 @@ wired into a capture, and no renderer code calls the sharing API. The cost is do
 4. **A plan closes with its programme.** When a programme is done, each plan it covers gets
    `**Status:** done` with the PR that finished it.
 
-## Current programme: Capture engine first slice
+## Current programme: Capture engine stage 2
 
-Steps 1 to 6 and 8 to 10 of the capture engine first slice, in one manifest schema release
-(schema 6) that also takes ADR-0040's link provenance fields; then MHTML viewer slices 2 and 3,
-with slice 3's S2 rewritten around `src/shared/localAddress.ts`. It is done when the release is
-tagged and the viewer plan's three slices are done. The spec and plan were approved on #1803 and
-ADR-0040 was accepted at schema 6 on 2026-10-26; the gate the maintainer still owes is the
-release tag. It started before Shared Cases reached Done by the maintainer's choice: Shared Cases
-waits only on the maintainer's close-out sync, which no dispatch slot works.
+The launched browser, passive capture (#600) and a profile per Persona (#1833), with Persona
+phases 2, 3, 5 and 6 rewritten around it; phase 4 moves to the stage 3 Companion pipe. It is done
+when passive capture and Personas ship and the Persona plan is done. It became current on
+2026-10-31, when the capture engine first slice shipped. Its gate cleared the same day: the
+maintainer ruled on #1498 that the Persona fields raise the manifest schema number, as every
+other field added to the `capture` entry does, and ADR-0030 is amended to say so.
 
 ## Shipped programmes
 
+- **Capture engine first slice**, shipped in the `v1.0.1-beta.25` release on 2026-10-31.
+  `v1.0.1-beta.24` carries the schema-6 verifier
+  ([#1978](https://github.com/thebristolsound/birdbrain/pull/1978),
+  [#1981](https://github.com/thebristolsound/birdbrain/pull/1981)) and the steps that carry the two
+  new files through the Case, packages and report
+  ([#1980](https://github.com/thebristolsound/birdbrain/pull/1980),
+  [#1982](https://github.com/thebristolsound/birdbrain/pull/1982),
+  [#1984](https://github.com/thebristolsound/birdbrain/pull/1984),
+  [#1985](https://github.com/thebristolsound/birdbrain/pull/1985)). `v1.0.1-beta.25` carries the
+  writers: Scroll-to-load and the screenshot record
+  ([#1996](https://github.com/thebristolsound/birdbrain/pull/1996)), the Transaction Record and
+  Bound TLS Details ([#1999](https://github.com/thebristolsound/birdbrain/pull/1999)), the PDF
+  ([#2000](https://github.com/thebristolsound/birdbrain/pull/2000)), image pinning
+  ([#2002](https://github.com/thebristolsound/birdbrain/pull/2002)) and the ADR-0040 link writer
+  ([#1997](https://github.com/thebristolsound/birdbrain/pull/1997)). The three MHTML viewer slices
+  finished in [#1709](https://github.com/thebristolsound/birdbrain/pull/1709),
+  [#1987](https://github.com/thebristolsound/birdbrain/pull/1987),
+  [#1997](https://github.com/thebristolsound/birdbrain/pull/1997) and
+  [#1998](https://github.com/thebristolsound/birdbrain/pull/1998), and `features.mdx` describes
+  them. Each of the four plans reads `**Status:** done`. Still open from the programme: whether
+  schema 6 refuses an unsorted or repeated `replacedHeaders` list, and #1816, which shows the new
+  fields in the app and waits on a human.
 - **Shared Cases**, shipped in the `v1.0.1-beta.24` release. The members screens became
   reachable in [#1972](https://github.com/thebristolsound/birdbrain/pull/1972), after the two
   sync defects #1951 and #1955 merged
@@ -69,7 +90,6 @@ Slot 2 works defects in this order, one at a time, beside whichever programme is
 
 | Order | Programme | Done when | Gate the maintainer owes |
 |---|---|---|---|
-| 3 | Capture engine stage 2: the launched browser, passive capture (#600) and a profile per Persona (#1833), with Persona phases 2, 3, 5 and 6 rewritten around it; phase 4 moves to the stage 3 Companion pipe | Passive capture and Personas ship, and the Persona plan is done | Answer the schema question on #1498 |
 | 4 | Case investigation engine | The Investigate section gets its navigation entry in a packaged build | An ADR choosing the local model and runtime; the evaluation bar (#1892, CI-B) |
 
 **Ruling, 2026-10-26.** The maintainer accepted ADR-0040 at schema 6 and moved #586's schema

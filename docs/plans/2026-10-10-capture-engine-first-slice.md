@@ -1,6 +1,6 @@
 # Capture engine, first slice: Transaction Record, inventory, Bound TLS Details, and PDF
 
-**Status:** active
+**Status:** done, finished by [#2002](https://github.com/thebristolsound/birdbrain/pull/2002) and released in `v1.0.1-beta.25`
 
 Plan only. Nothing here is built. It plans
 [the capture engine first-slice spec](../specs/2026-09-30-capture-engine-design.md) under

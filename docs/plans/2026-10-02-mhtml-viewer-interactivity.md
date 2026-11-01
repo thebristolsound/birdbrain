@@ -1,5 +1,7 @@
 # MHTML viewer interactivity, slice 1: link status, link menu, Links tab, capture a link
 
+**Status:** done, finished by [#1709](https://github.com/thebristolsound/birdbrain/pull/1709)
+
 Orchestrated plan. The maintainer asked on 2026-10-02 for a self-grilled plan, two adversarial plan
 reviews, then implementation, a PR, a review round, and a review request, without waiting for plan
 approval. Revision 2 applies the plan reviews (see "Plan review dispositions"). Revision 3 applies

@@ -1,6 +1,6 @@
 # Capture engine stage 2: the launched browser, Personas and passive capture
 
-**Status:** active, awaiting the maintainer's approval
+**Status:** active, approved by the maintainer on 2026-11-01
 
 Written 2026-10-31 against `origin/main` at 5684efd0 and PR #2029, from a readiness pass with one
 reader per step and two adversarial checks of the draft. This plan carries out the current
@@ -43,13 +43,14 @@ plan reads `**Status:** done`.
   out and that the launched browser blocks the password leak check as well as the save offer.
   Neither ruling has reached the spec or #1831, #1832 and #1833.
 - On 2026-10-31 the maintainer ruled that the Persona fields raise the schema number
-  ([comment on #1498][c1498]). The ADR-0030 amendment that records it is in PR #2029, which has not
-  merged, so ADR-0030 on `main` still says "no schema bump" until it does.
+  ([comment on #1498][c1498]). The ADR-0030 amendment that records it merged in #2029 on
+  2026-11-01.
 - CE-AR's check merged as #1841, and ADR-0052:166-167 records the at-rest condition as met. Its
   issue, #1824, stays open for two Settings questions (question 10).
 - #1726 (`localAddressPolicy.ts`), #1512 (MemoryTransport, so #600's two-peer test is now
   required) and #545 (the bot-detection probe) are closed.
-- The only open PR is #2029, which is docs only. None of the stage 2 issues carries `queued`.
+- Step 2 is open as #2031 and awaits the maintainer's review. None of the stage 2 issues carries
+  `queued`.
 - Some records are stale:
   - The spec's status line (:5) still reads "awaiting approval", though #1804 merged approved.
   - Three places still put the Persona fields under CE-5's number or say "no schema bump": spec
@@ -138,9 +139,10 @@ One PR adds:
 
 Each new value gets a refine that requires schema 7 and a stamp in `fieldMinReaderSchemaVersion`
 (`manifest.ts:1022-1052`). The step also moves the five ceiling assertions from 6 to 7 and adds a
-frozen-digest test. It merges after #2029, so that ADR-0030 on `main` agrees with it. After it
-merges, the maintainer tags a release carrying schema 7. That release gates the merges of steps 4,
-5 and 6 and of every Persona writer. Linux is enough for this step.
+frozen-digest test. It is open as #2031, built to the rulings above, and merges on the
+maintainer's review. After it merges, the maintainer tags a release carrying schema 7. That
+release gates the merges of steps 4, 5 and 6 and of every Persona writer. Linux is enough for
+this step.
 
 ### Step 3: launcher, profiles and Egress, with no Capture (#1831)
 
@@ -238,8 +240,8 @@ D18 holds only the CONTEXT.md part. Both issues are labelled ready-for-human, no
 
 | Gate | Blocks | Who clears it | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| Approve this plan | Code steps 3 to 6 | Maintainer | open | Spec :1533-1534; ADR-0016 |
-| Merge #2029 (ADR-0030 amendment, roadmap) | Step 2 merge | Maintainer | open | #2029 open |
+| Approve this plan | Code steps 3 to 6 | Maintainer | cleared 2026-11-01 | Status line above |
+| Review and merge #2031 (step 2) | The schema 7 release | Maintainer | open | #2031 open, `evidence-affecting` |
 | Designer revision before steps 3 and 4 (Q2) | Steps 3, 4 | Maintainer, then designer | open | Assessment :396-401; no newer bundle |
 | P3: may the engine enable `Page` (Q3) | Step 4, so step 6 | Maintainer | open | [c1828][c1828] item 3; probe :805-809 |
 | Fold the probe contradictions into the spec (Q4) | Step 4 | Maintainer | open | Probe :788-809, :858-864 |
@@ -262,9 +264,8 @@ also unmeasured, but no step waits on them.
 
 ## Work an agent can start now
 
-1. **Open the step 2 verifier PR** (#1830 with #1498's verifier half) as a draft, built to the
-   rulings of 2026-10-31. Without `queued` it runs in an interactive session. It merges after #2029
-   and on the maintainer's review.
+1. **Step 2 is open as #2031** (#1830 with #1498's verifier half), built to the rulings of
+   2026-10-31. Fix rounds from its review are the next agent work on it.
 2. **Build CE-4 (#1696).** Its only blocker, #1695, has merged, and it is not evidence-affecting.
 3. **Rewrite the Persona plan** (docs only): phases 2, 3, 5 and 6 as above, with phase 4 moved to
    stage 3; decision 9 replaced with the rule from the amended ADR-0030; "What exists" refreshed to

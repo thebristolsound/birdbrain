@@ -15,10 +15,11 @@ import {
 // launched method, the browser or passive rule fields, a stage-2 inventory
 // value, or the Persona fields (ADR-0023 X25, ADR-0030 as amended on
 // 2026-10-31). This file pins the read ceiling back to 6, the release before
-// this one, and hands it a chain whose second entry carries the value under
-// the stamp the writer gives it: the answer must be "verifier too old", never
-// a broken chain. Its own file because the mock is module-wide; the re-import
-// mirrors manifestSchema6TooOld.test.ts.
+// this one, and hands it a chain whose second entry carries the value stamped
+// 7 by hand, the stamp manifestSchema7.test.ts proves the writer gives it: the
+// answer must be "verifier too old", never a broken chain. Its own file
+// because the mock is module-wide; the re-import mirrors
+// manifestSchema6TooOld.test.ts.
 vi.mock('@shared/constants', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@shared/constants')>()
   return { ...actual, MANIFEST_SCHEMA_VERSION: 6 }

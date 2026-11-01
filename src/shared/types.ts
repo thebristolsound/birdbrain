@@ -93,9 +93,9 @@ export type CaptureMethod = (typeof CAPTURE_METHODS)[number]
 
 // The product family the capture engine launched (decision D12), signed beside
 // the product and version `Browser.getVersion` reports, because two products
-// can report the same product string. `chrome-for-testing` is the pinned build
-// the known-answer suite launches in CI (decision D23), kept apart from
-// branded `chrome`.
+// can send the same user agent (the spec's E7). `chrome-for-testing` is the
+// pinned build the known-answer suite launches in CI (decision D23), kept
+// apart from branded `chrome`.
 export const BROWSER_FAMILIES = [
   'chrome',
   'chrome-for-testing',

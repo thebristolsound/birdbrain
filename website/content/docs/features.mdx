@@ -124,6 +124,25 @@ prove and what they do not.
   bulk: tag, favourite, recapture, export, or delete.
 - View each capture as a screenshot, as the archived page with scripts turned off, as extracted
   text, or alongside Wayback Machine snapshots.
+- Right-click a link in a stored page's **Page** tab to copy its address or text, open the case's
+  captured copy of it, capture it, or look it up in the Wayback Machine. **Capture link** and
+  **Look up in Wayback** refuse local and private addresses, and the menu says why.
+- A left click on a link opens the case's captured copy of its destination, and **Back to** in the
+  viewer header returns to the page you came from. The stored page never loads the link. When the
+  case holds no capture of it, the viewer says **Not in this Case** and offers to capture it. In
+  the **Links** tab, a click or Enter on a row the case holds opens that capture the same way.
+- A capture made with **Capture link** records in its signed manifest entry the capture whose
+  stored page held the link, that capture's content hash, and the address the link named. Its
+  viewer shows **From a link in** with a link back to that capture.
+- **Look up in Wayback** asks the Internet Archive which snapshots it holds of a link's
+  destination. The **Links** tab shows the answer beside the link: how many different versions
+  the archive holds, and the snapshot closest to when the stored page was captured, which you can
+  open at archive.org, copy, or capture into the case. **Look up all in Wayback** checks up to 50
+  of the web links the tab's search and filter show, one every 2 seconds. A confirmation first
+  lists each address it sends, the addresses it refuses and why, and whether the requests go out
+  directly or through your proxy. You can cancel a batch, and it stops when the archive answers
+  that it is busy or unavailable. Each lookup sends the link's address to archive.org, and the
+  answers are not stored, signed, or exported.
 - Write notes in a rich-text editor. `@` links captures and notes, and `#` links selectors and
   tags.
 - Annotate screenshots with rectangles, arrows, highlights, redaction boxes, and numbered pins.

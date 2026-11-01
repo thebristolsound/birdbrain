@@ -26,10 +26,9 @@ wired into a capture, and no renderer code calls the sharing API. The cost is do
 The launched browser, passive capture (#600) and a profile per Persona (#1833), with Persona
 phases 2, 3, 5 and 6 rewritten around it; phase 4 moves to the stage 3 Companion pipe. It is done
 when passive capture and Personas ship and the Persona plan is done. It became current on
-2026-10-31, when the capture engine first slice shipped. No work on it starts until the
-maintainer answers the schema question on #1498: whether the Persona fields raise the manifest
-schema number, as every other field added to the `capture` entry does, which means amending the
-Persona ADR.
+2026-10-31, when the capture engine first slice shipped. Its gate cleared the same day: the
+maintainer ruled on #1498 that the Persona fields raise the manifest schema number, as every
+other field added to the `capture` entry does, and ADR-0030 is amended to say so.
 
 ## Shipped programmes
 

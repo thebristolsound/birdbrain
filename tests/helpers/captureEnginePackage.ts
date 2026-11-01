@@ -124,7 +124,8 @@ export function engineFields(overrides: Record<string, unknown> = {}): Record<st
 }
 
 export function engineCaptureEntry(
-  fields: Record<string, unknown> = engineFields()
+  fields: Record<string, unknown> = engineFields(),
+  schemaVersion = 6
 ): Record<string, unknown> {
   return {
     type: 'capture',
@@ -138,23 +139,37 @@ export function engineCaptureEntry(
     sizeBytes: ENGINE_FILES.page.length,
     ...fields,
     ...EGRESS_OPERATOR,
-    schemaVersion: 6
+    schemaVersion
   }
 }
 
 // A case-scoped package holding one capture entry with `fields` on it, sealed
 // with its export entry the way generateReport seals one, and every file the
-// entry can anchor at its content-addressed path.
+// entry can anchor at its content-addressed path. The index row's origin is
+// the entry's method, as the export writes it. `indexArtifacts` lists those
+// files in the index and seals that list, which verify.sh's step 1 needs.
 export function writeEnginePackage(
   dir: string,
-  fields: Record<string, unknown> = engineFields()
+  fields: Record<string, unknown> = engineFields(),
+  schemaVersion = 6,
+  { indexArtifacts = false }: { indexArtifacts?: boolean } = {}
 ): void {
+  const captureEntry = engineCaptureEntry(fields, schemaVersion)
+  const files: Array<[string, Buffer]> = [
+    [capturePagePath(ENGINE_CAPTURE_ID), ENGINE_FILES.page],
+    [screenshotPath(ENGINE_HASHES.screenshot), ENGINE_FILES.screenshot],
+    [transactionRecordPath(ENGINE_HASHES.transactionRecord), ENGINE_FILES.transactionRecord],
+    [pdfPath(ENGINE_HASHES.pdf), ENGINE_FILES.pdf]
+  ]
+  const artifacts = indexArtifacts
+    ? files.map(([path, bytes]) => ({ path, sha256: sha256(bytes), sizeBytes: bytes.length }))
+    : []
   const exportBody = {
     type: 'export',
     caseId: ENGINE_CASE_ID,
     timestamp: '2026-10-18T12:30:00.000Z',
     ...EGRESS_OPERATOR,
-    packageHash: packageHash([]),
+    packageHash: packageHash(artifacts),
     verificationResult: {
       overallValid: true,
       captureCount: 1,
@@ -164,18 +179,12 @@ export function writeEnginePackage(
     },
     schemaVersion: 2
   }
-  const lines = buildSignedChain([engineCaptureEntry(fields), exportBody])
+  const lines = buildSignedChain([captureEntry, exportBody])
   const exportLine = lines.pop()!
   const head = JSON.parse(lines[lines.length - 1]) as { index: number; entryHash: string }
   writeFileSync(join(dir, 'manifest.jsonl'), lines.join('\n') + '\n', 'utf-8')
   writeFileSync(join(dir, 'export-entry.json'), exportLine, 'utf-8')
   writeFileSync(join(dir, 'signing-public-key.pem'), getPublicKeyPem(), 'utf-8')
-  const files: Array<[string, Buffer]> = [
-    [capturePagePath(ENGINE_CAPTURE_ID), ENGINE_FILES.page],
-    [screenshotPath(ENGINE_HASHES.screenshot), ENGINE_FILES.screenshot],
-    [transactionRecordPath(ENGINE_HASHES.transactionRecord), ENGINE_FILES.transactionRecord],
-    [pdfPath(ENGINE_HASHES.pdf), ENGINE_FILES.pdf]
-  ]
   for (const [path, bytes] of files) {
     mkdirSync(dirname(join(dir, path)), { recursive: true })
     writeFileSync(join(dir, path), bytes)
@@ -204,7 +213,7 @@ export function writeEnginePackage(
         {
           id: ENGINE_CAPTURE_ID,
           kind: 'capture',
-          origin: 'background',
+          origin: captureEntry.method,
           exhibitNumber: 1,
           name: 'Page',
           contentHash: ENGINE_HASHES.page,
@@ -212,7 +221,7 @@ export function writeEnginePackage(
           derivedFiles: []
         }
       ],
-      artifacts: []
+      artifacts
     }),
     'utf-8'
   )

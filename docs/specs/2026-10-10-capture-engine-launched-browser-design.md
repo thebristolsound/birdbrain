@@ -489,7 +489,8 @@ false when the engine attached after that navigation began. Such a navigation yi
 no Transaction Record and no Bound TLS Details, and the inventory says recording did not cover the
 page.
 
-What the guarantee does not cover, each listed in the inventory when it affects a Capture:
+What the guarantee does not cover. The inventory records each when it affects a Capture, except
+as the schema 7 ruling below changes it:
 
 - a response served from the HTTP cache, or a resource reused inside one page, which leaves no
   event ([stage-1 probe](2026-10-02-capture-engine-probe-spike.md));
@@ -497,7 +498,8 @@ What the guarantee does not cover, each listed in the inventory when it affects 
   network request is on a target no tab owns (P9);
 - a page restored from the back-forward cache, which loads nothing (P10);
 - a page Chrome loaded speculatively before the Operator navigated to it, whose requests ran on
-  another target (P10).
+  another target (P10). The probe found pre-rendering off while the engine drives the browser and
+  a prefetch recorded as an ordinary exchange, so schema 7 has no reason for it.
 
 Whether a cross-site navigation keeps the tab's target and CDP session attached was not measured.
 The [TLS spike](2026-05-17-chrome-debugger-tls-spike.md) estimate of 70 to 85 percent coverage
@@ -1097,9 +1099,10 @@ Details, the WARC and PDF hashes, and the inventory come from CE-5.
 | The document request is missing from the recording | No Transaction Record, no Bound TLS Details | Inventory reason |
 | A new document commits while a Capture is being taken | Abandons the Capture | Capture activity feed and panel |
 | A body over budget, no longer held, or not fetched | Exchange kept without body | Inventory, as in the first slice |
-| A response from the cache, a service worker, the back-forward cache, or a speculative load | No exchange or a partial one | Inventory reason |
+| A response from the cache or the back-forward cache | No exchange or a partial one | Inventory reason |
+| A response a service worker served | Exchange kept, without the server address | Inventory count of such exchanges (schema 7 ruling) |
 | A credential header | Value replaced on arrival | Inventory lists the header names (ADR-0036) |
-| A request body | Withheld (decision D3) | Inventory lists the request |
+| A request body | Withheld (decision D3) | Inventory counts the withheld bodies (schema 7 ruling) |
 | An exclusion pattern or Selector check times out on a passive page | Skips the page, once `safeRegexTest` reports a timeout apart from no match | `skipped` event in the capture activity feed |
 | A tab in a private window | Refuses the Capture | Panel |
 | A tab crashes | Discards its recording | Panel |

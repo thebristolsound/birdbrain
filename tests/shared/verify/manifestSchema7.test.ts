@@ -88,6 +88,8 @@ function parse(body: Record<string, unknown>) {
   return ManifestEntrySchema.safeParse({ ...body, entryHash: 'f'.repeat(64) })
 }
 
+const PASSIVE_METHOD = { method: 'launched-passive' }
+
 function messages(body: Record<string, unknown>): string[] {
   return parse(body).error?.issues.map((issue) => issue.message) ?? []
 }
@@ -236,6 +238,15 @@ describe('manifest schema 7 — the schema', () => {
     }
   })
 
+  it('refuses a passive rule unless the method is launched-passive or duplicate', () => {
+    expect(parse({ ...PASSIVE_CAPTURE_BODY, method: 'duplicate' }).success).toBe(true)
+    for (const method of ['launched', 'extension', 'background', undefined]) {
+      expect(messages({ ...PASSIVE_CAPTURE_BODY, method }), String(method)).toEqual([
+        '`passiveRule` requires method `launched-passive` or `duplicate`'
+      ])
+    }
+  })
+
   it('accepts each schema-7 absence reason on the part a launched browser writes it for', () => {
     for (const reason of ['page-not-recorded', 'back-forward-cache']) {
       const body = withTransactionRecord(LAUNCHED_CAPTURE_BODY, { present: false, reason })
@@ -312,8 +323,11 @@ describe('manifest schema 7 — the schema', () => {
       ],
       ['browser product', { ...SCHEMA_2_CAPTURE_BODY, browserProduct: 'Chrome' }],
       ['browser family', { ...SCHEMA_2_CAPTURE_BODY, browserFamily: 'edge' }],
-      ['every-page', { ...SCHEMA_2_CAPTURE_BODY, passiveRule: 'every-page' }],
-      ['selector-match', { ...SCHEMA_2_CAPTURE_BODY, passiveRule: 'selector-match' }],
+      ['every-page', { ...SCHEMA_2_CAPTURE_BODY, ...PASSIVE_METHOD, passiveRule: 'every-page' }],
+      [
+        'selector-match',
+        { ...SCHEMA_2_CAPTURE_BODY, ...PASSIVE_METHOD, passiveRule: 'selector-match' }
+      ],
       ['page-not-recorded', recordAbsent('page-not-recorded')],
       ['back-forward-cache', recordAbsent('back-forward-cache')],
       ['not-taken-passive', pdfAbsent('not-taken-passive')],
@@ -493,7 +507,7 @@ describe('manifest schema 7 — the app verifier', () => {
       ['browser product and version', capture(omit(LAUNCHED_BROWSER_FIELDS, 'browserFamily'))],
       ['browser product', capture({ browserProduct: 'Chrome' })],
       ['browser family', capture({ browserFamily: 'brave' })],
-      ['passive rule', capture({ passiveRule: 'every-page' })],
+      ['passive rule', capture({ ...PASSIVE_METHOD, passiveRule: 'every-page' })],
       ['page-not-recorded', capture(recordAbsent('page-not-recorded'))],
       ['back-forward-cache', capture(recordAbsent('back-forward-cache'))],
       [

@@ -843,6 +843,18 @@ const ManifestCaptureEntrySchema = z
     message: '`browserVersion` requires `browserProduct`',
     path: ['browserVersion']
   })
+  // A passive rule on any other method contradicts itself (maintainer ruling,
+  // 2026-10-31); a Duplicate re-anchors its source's rule under its own method.
+  .refine(
+    (entry) =>
+      entry.passiveRule === undefined ||
+      entry.method === 'launched-passive' ||
+      entry.method === 'duplicate',
+    {
+      message: '`passiveRule` requires method `launched-passive` or `duplicate`',
+      path: ['passiveRule']
+    }
+  )
   .refine(personaFieldsNeedSchema7.check, personaFieldsNeedSchema7.issue)
   .refine(personaLabelNeedsId.check, personaLabelNeedsId.issue)
 

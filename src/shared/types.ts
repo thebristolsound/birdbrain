@@ -69,13 +69,48 @@ export interface CaseAutoCapturePolicy {
 
 export type CaptureFormat = 'html' | 'mhtml'
 
+// The Capture Methods of a browser Birdbrain launches (ADR-0034), schema 7
+// (docs/specs/2026-10-10-capture-engine-launched-browser-design.md, decisions
+// D5 and D12). 'launched' = taken by the Operator's click in that browser;
+// 'launched-passive' = taken there without a click, by the Capture Session's
+// passive rule (ADR-0037). The verifier learns both before anything writes
+// them; `companion` waits for stage 3, and `persona-window` stays withdrawn
+// (ADR-0034).
+export const LAUNCHED_CAPTURE_METHODS = ['launched', 'launched-passive'] as const
+
 // How the capture was produced (#recapture). 'extension' = operator-witnessed
 // via the Chrome extension; 'background' = silent hidden-window recapture;
 // 'duplicate' = a byte copy of another capture in the same case (#827), which
 // observed nothing itself and must never be read as a second sighting of the
-// page.
-export const CAPTURE_METHODS = ['extension', 'background', 'duplicate'] as const
+// page; the launched values above.
+export const CAPTURE_METHODS = [
+  'extension',
+  'background',
+  'duplicate',
+  ...LAUNCHED_CAPTURE_METHODS
+] as const
 export type CaptureMethod = (typeof CAPTURE_METHODS)[number]
+
+// The product family the capture engine launched (decision D12), signed beside
+// the product and version `Browser.getVersion` reports, because two products
+// can report the same product string. `chrome-for-testing` is the pinned build
+// the known-answer suite launches in CI (decision D23), kept apart from
+// branded `chrome`.
+export const BROWSER_FAMILIES = [
+  'chrome',
+  'chrome-for-testing',
+  'edge',
+  'brave',
+  'chromium'
+] as const
+export type BrowserFamily = (typeof BROWSER_FAMILIES)[number]
+
+// Which rule took a `launched-passive` Capture (decision D12, ADR-0037): every
+// page that loaded, or a page an Active Case Selector matched. Which Selectors
+// matched stays in `selector_matches`, off the signed entry, because a pattern
+// can reveal what the investigation is looking for.
+export const PASSIVE_CAPTURE_RULES = ['every-page', 'selector-match'] as const
+export type PassiveCaptureRule = (typeof PASSIVE_CAPTURE_RULES)[number]
 
 // How consent/cookie-notice overlays were neutralized during a background
 // recapture. 'filter-list' = maintained consent filter lists (EasyList Cookie +
@@ -102,11 +137,24 @@ export type TlsRefetchSkip = (typeof TLS_REFETCH_SKIPS)[number]
 // schema step, so a released verifier meets it under a newer stamp and reports
 // "verifier too old".
 
-// Why the inventory records the Transaction Record or the PDF as absent:
-// `not-taken`, this build does not take the file; `failed`, the engine tried
-// and failed.
+// Why the inventory records the Transaction Record or the PDF as absent, at
+// schema 6: `not-taken`, this build does not take the file; `failed`, the
+// engine tried and failed.
 export const INVENTORY_ABSENCE_REASONS = ['not-taken', 'failed'] as const
-export type InventoryAbsenceReason = (typeof INVENTORY_ABSENCE_REASONS)[number]
+
+// The schema-7 reasons, each on the one part a launched browser can write it
+// for. The Transaction Record: `page-not-recorded`, the recording did not
+// cover the page; `back-forward-cache`, the browser restored the page from its
+// back-forward cache, so no request loaded it. The PDF: `not-taken-passive`, a
+// passive Capture takes no PDF.
+export const TRANSACTION_RECORD_ABSENCE_REASONS = [
+  ...INVENTORY_ABSENCE_REASONS,
+  'page-not-recorded',
+  'back-forward-cache'
+] as const
+export const PDF_ABSENCE_REASONS = [...INVENTORY_ABSENCE_REASONS, 'not-taken-passive'] as const
+export type InventoryAbsenceReason =
+  (typeof TRANSACTION_RECORD_ABSENCE_REASONS)[number] | (typeof PDF_ABSENCE_REASONS)[number]
 
 // Where Scroll-to-load ended. There is no `failed` value; D5 gives the reason.
 export const SCROLL_TO_LOAD_OUTCOMES = [

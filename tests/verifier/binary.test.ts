@@ -31,6 +31,7 @@ import {
 import { seedEngineCapture } from '../helpers/captureEngineCapture'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import { LINK_FIELDS } from '../helpers/linkProvenance'
+import { launchedFields, passiveFields } from '../helpers/launchedBrowser'
 import { pdfPath, transactionRecordPath } from '../../src/packages/evidence-package-layout/index'
 import type { ExportOptions } from '@shared/types'
 
@@ -468,6 +469,35 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     expect(proc.stdout).toContain('[PASS] manifest chain')
     expect(proc.stdout).toContain('RESULT: PASS')
     rmSync(linkDir, { recursive: true, force: true })
+  })
+
+  // #1830 through the BUILT binary: a schema-7 capture entry carrying a
+  // launched method, the browser fields, the passive rule, the stage-2
+  // inventory values and the Persona fields verifies. The same fields run
+  // in-process in tests/shared/verify/manifestSchema7.test.ts.
+  it('exits 0 with a PASS report on launched and launched-passive capture entries', () => {
+    for (const fields of [
+      launchedFields(),
+      passiveFields('every-page'),
+      passiveFields('selector-match')
+    ]) {
+      const launchedDir = mkdtempSync(join(tmpdir(), 'bb-binlaunched-'))
+      writeEnginePackage(launchedDir, fields, 7)
+      const proc = spawnSync(binaryPath, [launchedDir], { encoding: 'utf-8' })
+      expect(proc.status, proc.stdout + proc.stderr).toBe(0)
+      expect(proc.stdout).toContain('[PASS] manifest chain')
+      expect(proc.stdout).toContain('RESULT: PASS')
+      rmSync(launchedDir, { recursive: true, force: true })
+    }
+  })
+
+  it('exits 1 with a FAIL report on a capture entry naming an unknown method at 7', () => {
+    const launchedDir = mkdtempSync(join(tmpdir(), 'bb-binlaunched-'))
+    writeEnginePackage(launchedDir, launchedFields({ method: 'persona-window' }), 7)
+    const proc = spawnSync(binaryPath, [launchedDir], { encoding: 'utf-8' })
+    expect(proc.status, proc.stdout + proc.stderr).toBe(1)
+    expect(proc.stdout).toContain('[FAIL] manifest chain')
+    rmSync(launchedDir, { recursive: true, force: true })
   })
 
   it('exits 1 with a FAIL report when the Transaction Record is missing', () => {

@@ -150,8 +150,10 @@ function messages(body: Record<string, unknown>): string[] {
 }
 
 describe('manifest schema 6 — frozen entry hashes', () => {
-  it('reads up to schema version 6', () => {
-    expect(MANIFEST_SCHEMA_VERSION).toBe(6)
+  it('reads up to schema version 7', () => {
+    // Bumped to 7 by the launched browser and Persona fields (#1830); the
+    // schema-6 answers below are unchanged by that bump.
+    expect(MANIFEST_SCHEMA_VERSION).toBe(7)
   })
 
   it('leaves the canonical hashes of capture entries without the fields unchanged', () => {

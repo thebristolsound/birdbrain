@@ -216,10 +216,11 @@ function twoMemberCase(member = memberChain()) {
 }
 
 describe('manifest schema 4 — the schema', () => {
-  it('reads up to schema version 6', () => {
-    // Bumped to 5 by the Egress fields (#1694) and to 6 by the capture engine's
-    // fields (#1904); the schema-4 answers below are unchanged by either bump.
-    expect(MANIFEST_SCHEMA_VERSION).toBe(6)
+  it('reads up to schema version 7', () => {
+    // Bumped to 5 by the Egress fields (#1694), to 6 by the capture engine's
+    // fields (#1904) and to 7 by the launched browser and Persona fields
+    // (#1830); the schema-4 answers below are unchanged by each bump.
+    expect(MANIFEST_SCHEMA_VERSION).toBe(7)
   })
 
   it('parses each new entry type, pinned at 4', () => {

@@ -100,7 +100,16 @@ export const IMPORT_ID_MAPS_DIRECTORY = 'import-id-maps'
 // on `capture` (docs/plans/2026-10-10-capture-engine-first-slice.md, D1):
 // `inventory`, `scrollToLoad`, `transactionRecordHash`, `boundTls`,
 // `boundTlsAbsent` and `pdfHash`, and the link provenance fields (ADR-0040):
-// `linkedFromCaptureId`, `linkedFromContentHash` and `linkHref`.
+// `linkedFromCaptureId`, `linkedFromContentHash` and `linkHref`. v7 adds the
+// launched browser's values on `capture`
+// (docs/specs/2026-10-10-capture-engine-launched-browser-design.md, "Manifest,
+// schema, and verifier"): the Capture Methods `launched` and
+// `launched-passive`, `browserProduct`, `browserVersion`, `browserFamily`,
+// `passiveRule`, the inventory reasons `page-not-recorded`,
+// `back-forward-cache` and `not-taken-passive`, and the Transaction Record
+// part's `servedByServiceWorker`, `requestBodiesWithheld` and
+// `httpCacheDisabled`; and the Persona fields `personaId` and `personaLabel`
+// on `capture` and `exhibit` (ADR-0030).
 //
 // A per-entry `schemaVersion` is the MINIMUM reader version that entry needs,
 // NOT this constant: appendManifestEntry stamps each entry from the per-type
@@ -108,7 +117,7 @@ export const IMPORT_ID_MAPS_DIRECTORY = 'import-id-maps'
 // shapes a schema-2 verifier can still read. That separation is what lets this
 // reader ship before anything writes a v3 entry — a distributed verifier must
 // never meet a version it cannot read before it has had the chance to update.
-export const MANIFEST_SCHEMA_VERSION = 6
+export const MANIFEST_SCHEMA_VERSION = 7
 
 // Default RFC 3161 trusted-timestamp authority (#120, decision D6/#112).
 // DigiCert's unauthenticated endpoint: no account/API key, and its root is

@@ -6,7 +6,13 @@ import { canonicalStringify } from '@shared/verify/canonicalJson'
 import { verifyEntrySignature } from '@shared/verify/signature'
 import { buildTrustedTimeIndexFromEntries } from '@shared/verify/trustedTime'
 import type { TrustedTimeResult } from '@shared/verify/trustedTime'
-import type { BoundTlsAbsence, EgressKind, TlsRefetchSkip } from '@shared/types'
+import type {
+  BoundTlsAbsence,
+  BrowserFamily,
+  EgressKind,
+  PassiveCaptureRule,
+  TlsRefetchSkip
+} from '@shared/types'
 
 // The digests a verified `capture` entry carries, keyed by manifest index
 // (#234). This is what a hash-verified claim rests on: `screenshotHash` /
@@ -14,9 +20,10 @@ import type { BoundTlsAbsence, EgressKind, TlsRefetchSkip } from '@shared/types'
 // is a cache maintained for convenience and carries no chain integrity of its
 // own (migrations.ts:369 — "the manifest remains the authority").
 //
-// The Egress fields (ADR-0032), the capture engine's fields (schema 6) and the
-// link provenance fields (ADR-0040) are carried on the same footing, each set
-// only when the verified entry carries it.
+// The Egress fields (ADR-0032), the capture engine's fields (schema 6), the
+// link provenance fields (ADR-0040), and the launched browser and Persona
+// fields (schema 7) are carried on the same footing, each set only when the
+// verified entry carries it.
 export interface CaptureChainEntry {
   contentHash: string
   screenshotHash?: string
@@ -34,6 +41,12 @@ export interface CaptureChainEntry {
   linkedFromCaptureId?: string
   linkedFromContentHash?: string
   linkHref?: string
+  browserProduct?: string
+  browserVersion?: string
+  browserFamily?: BrowserFamily
+  passiveRule?: PassiveCaptureRule
+  personaId?: string
+  personaLabel?: string
 }
 
 // The hash fields a `capture` entry anchors, one file each: the page archive,
@@ -454,6 +467,8 @@ export function verifyManifestChainText(
       const { inventory, scrollToLoad, transactionRecordHash, boundTls, boundTlsAbsent, pdfHash } =
         entry
       const { linkedFromCaptureId, linkedFromContentHash, linkHref } = entry
+      const { browserProduct, browserVersion, browserFamily, passiveRule } = entry
+      const { personaId, personaLabel } = entry
       captureEntriesByIndex.set(entry.index, {
         contentHash: entry.contentHash,
         screenshotHash: entry.screenshotHash,
@@ -470,7 +485,13 @@ export function verifyManifestChainText(
         ...(pdfHash !== undefined ? { pdfHash } : {}),
         ...(linkedFromCaptureId !== undefined ? { linkedFromCaptureId } : {}),
         ...(linkedFromContentHash !== undefined ? { linkedFromContentHash } : {}),
-        ...(linkHref !== undefined ? { linkHref } : {})
+        ...(linkHref !== undefined ? { linkHref } : {}),
+        ...(browserProduct !== undefined ? { browserProduct } : {}),
+        ...(browserVersion !== undefined ? { browserVersion } : {}),
+        ...(browserFamily !== undefined ? { browserFamily } : {}),
+        ...(passiveRule !== undefined ? { passiveRule } : {}),
+        ...(personaId !== undefined ? { personaId } : {}),
+        ...(personaLabel !== undefined ? { personaLabel } : {})
       })
     }
   }

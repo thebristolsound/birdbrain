@@ -81,6 +81,20 @@ The maintainer ruled on the shape of schema 7 in the session that wrote this pla
 7. #1830 no longer waits on #1828. The open P3 question changes how pages are read, not what the
    record holds, and the answers step 2 needs merged in #1842.
 
+The maintainer ruled the same day on six points the step 2 review raised:
+
+8. The browser family list keeps a fifth value, `chrome-for-testing`, beside `chrome`, `edge`,
+   `brave` and `chromium`, because D23 treats Chrome for Testing apart from branded Chrome.
+9. The report gains one sentence for each new absence reason in the step 2 PR, though #1830 said
+   the report stays unchanged: the reason-to-sentence map must be complete to typecheck.
+10. The verifier refuses a passive rule unless the method is `launched-passive` or `duplicate`.
+11. A passive Capture's missing Scroll-to-load is stated by leaving its record out; schema 7 adds
+    no Scroll-to-load absence reason.
+12. The verifier accepts the Persona fields on an exhibit entry whatever its origin; the writer
+    holds the three-origin rule of ADR-0030.
+13. The step 2 PR corrects the Transaction Record glossary entry to say the inventory counts
+    withheld request bodies.
+
 ## Order of work
 
 Every code step except CE-4 (#1696) and #1501 is evidence-affecting at the blocking tier, so the

@@ -66,7 +66,11 @@ interface AppState {
   // length of the exit animation, so the DOM cannot answer this (#686).
   openDialogCount: number
   panelCollapsedForced: boolean
+  // The selected capture's tab. Each capture keeps the tab it was left on in
+  // `viewerTabs` for the session, so moving between captures does not carry one
+  // capture's tab (the full-width Wayback tab above all) onto the next.
   activeViewerTab: CaptureViewerTab
+  viewerTabs: Record<string, CaptureViewerTab>
   // Which archive.org snapshot the Wayback compare shows on the right (#401).
   // It lives here because the panel that picks it is an aside of the captures
   // route while the pane that replays it is inside the viewer, and neither is
@@ -125,10 +129,15 @@ interface AppState {
   clearCaptureEvents: () => void
 }
 
-function selectedCaptureState(id: string | null, captureTrail: string[] = []) {
-  return ({ viewerHit }: AppState) => ({
+function selectedCaptureState(
+  id: string | null,
+  captureTrail: string[] = [],
+  unviewedTab: CaptureViewerTab = 'screenshot'
+) {
+  return ({ viewerHit, viewerTabs }: AppState) => ({
     selectedCaptureId: id,
     viewerHit: viewerHit?.exhibitId === id ? viewerHit : null,
+    activeViewerTab: (id && viewerTabs[id]) || unviewedTab,
     captureTrail
   })
 }
@@ -156,6 +165,7 @@ export const useAppStore = create<AppState>((set) => ({
   openDialogCount: 0,
   panelCollapsedForced: false,
   activeViewerTab: 'screenshot',
+  viewerTabs: {},
   waybackSelection: null,
   viewerHit: null,
   viewerHitOpening: 0,
@@ -172,7 +182,11 @@ export const useAppStore = create<AppState>((set) => ({
   // leave every later guard reading "no dialog" while one is up.
   unregisterOpenDialog: () => set((s) => ({ openDialogCount: Math.max(0, s.openDialogCount - 1) })),
   setPanelCollapsedForced: (forced) => set({ panelCollapsedForced: forced }),
-  setActiveViewerTab: (tab) => set({ activeViewerTab: tab }),
+  setActiveViewerTab: (tab) =>
+    set(({ selectedCaptureId, viewerTabs }) => ({
+      activeViewerTab: tab,
+      viewerTabs: selectedCaptureId ? { ...viewerTabs, [selectedCaptureId]: tab } : viewerTabs
+    })),
   setWaybackSelection: (selection) => set({ waybackSelection: selection }),
   setViewerHit: (hit) => set((s) => ({ viewerHit: hit, viewerHitOpening: s.viewerHitOpening + 1 })),
   setSelectedCaptureId: (id) => set(selectedCaptureState(id)),
@@ -186,7 +200,8 @@ export const useAppStore = create<AppState>((set) => ({
     set((s) => {
       const from = s.selectedCaptureId
       if (from === null || from === id) return {}
-      return selectedCaptureState(id, [...s.captureTrail, from])(s)
+      // A Capture with no tab of its own opens on the tab the link was clicked in.
+      return selectedCaptureState(id, [...s.captureTrail, from], s.activeViewerTab)(s)
     }),
 
   // Pops past Captures deleted since they were pushed. With none left alive the trail

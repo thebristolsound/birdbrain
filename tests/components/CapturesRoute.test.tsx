@@ -186,7 +186,7 @@ afterEach(() => {
   window.innerWidth = NARROW_WIDTH
   notifyError.mockReset()
   useAppStore.getState().setSelectedCaptureId(null)
-  useAppStore.getState().setActiveViewerTab('screenshot')
+  useAppStore.setState({ activeViewerTab: 'screenshot', viewerTabs: {} })
   useAppStore.getState().clearCaptureSelection()
 })
 

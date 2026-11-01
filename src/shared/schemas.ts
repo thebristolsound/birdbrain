@@ -835,16 +835,14 @@ const ManifestCaptureEntrySchema = z
     message: 'the launched browser values on a capture entry require schemaVersion 7',
     path: ['schemaVersion']
   })
-  // `Browser.getVersion` reports the product and its version in one string, and
-  // a version names nothing without its product. The family is the engine's
-  // own fact and stands apart.
-  .refine(
-    (entry) => (entry.browserProduct === undefined) === (entry.browserVersion === undefined),
-    {
-      message: '`browserProduct` and `browserVersion` must be present together',
-      path: ['browserProduct']
-    }
-  )
+  // A version names nothing without its product, the rule `egressLabel`
+  // follows. A product without a version does not contradict itself, so it is
+  // admitted (first-slice D2). The family is the engine's own fact and stands
+  // apart.
+  .refine((entry) => entry.browserVersion === undefined || entry.browserProduct !== undefined, {
+    message: '`browserVersion` requires `browserProduct`',
+    path: ['browserVersion']
+  })
   .refine(personaFieldsNeedSchema7.check, personaFieldsNeedSchema7.issue)
   .refine(personaLabelNeedsId.check, personaLabelNeedsId.issue)
 

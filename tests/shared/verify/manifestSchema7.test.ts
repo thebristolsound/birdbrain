@@ -211,12 +211,15 @@ describe('manifest schema 7 — the schema', () => {
     }
   })
 
-  it('refuses an empty product or version, and either without the other', () => {
+  it('refuses an empty product or version, and a version without its product', () => {
     expect(parse({ ...LAUNCHED_CAPTURE_BODY, browserProduct: '' }).success).toBe(false)
     expect(parse({ ...LAUNCHED_CAPTURE_BODY, browserVersion: '' }).success).toBe(false)
-    const message = '`browserProduct` and `browserVersion` must be present together'
-    expect(messages(omit(LAUNCHED_CAPTURE_BODY, 'browserProduct'))).toEqual([message])
-    expect(messages(omit(LAUNCHED_CAPTURE_BODY, 'browserVersion'))).toEqual([message])
+    expect(messages(omit(LAUNCHED_CAPTURE_BODY, 'browserProduct'))).toEqual([
+      '`browserVersion` requires `browserProduct`'
+    ])
+    // A product with no version does not contradict itself (first-slice D2):
+    // what Brave reports is still open question P.
+    expect(parse(omit(LAUNCHED_CAPTURE_BODY, 'browserVersion')).success).toBe(true)
     // The family is what the engine launched, a fact apart from what the
     // browser reported, so it stands without them.
     const familyOnly = omit(LAUNCHED_CAPTURE_BODY, 'browserProduct', 'browserVersion')
@@ -302,7 +305,12 @@ describe('manifest schema 7 — the schema', () => {
     const launched: Array<[string, Record<string, unknown>]> = [
       ['launched', { ...SCHEMA_2_CAPTURE_BODY, method: 'launched' }],
       ['launched-passive', { ...SCHEMA_2_CAPTURE_BODY, method: 'launched-passive' }],
-      ['browser product', { ...SCHEMA_2_CAPTURE_BODY, ...LAUNCHED_BROWSER_FIELDS }],
+      ['every browser field', { ...SCHEMA_2_CAPTURE_BODY, ...LAUNCHED_BROWSER_FIELDS }],
+      [
+        'browser product and version',
+        { ...SCHEMA_2_CAPTURE_BODY, ...omit(LAUNCHED_BROWSER_FIELDS, 'browserFamily') }
+      ],
+      ['browser product', { ...SCHEMA_2_CAPTURE_BODY, browserProduct: 'Chrome' }],
       ['browser family', { ...SCHEMA_2_CAPTURE_BODY, browserFamily: 'edge' }],
       ['every-page', { ...SCHEMA_2_CAPTURE_BODY, passiveRule: 'every-page' }],
       ['selector-match', { ...SCHEMA_2_CAPTURE_BODY, passiveRule: 'selector-match' }],
@@ -483,6 +491,7 @@ describe('manifest schema 7 — the app verifier', () => {
       ['launched', capture({ method: 'launched' })],
       ['launched-passive', capture({ method: 'launched-passive' })],
       ['browser product and version', capture(omit(LAUNCHED_BROWSER_FIELDS, 'browserFamily'))],
+      ['browser product', capture({ browserProduct: 'Chrome' })],
       ['browser family', capture({ browserFamily: 'brave' })],
       ['passive rule', capture({ passiveRule: 'every-page' })],
       ['page-not-recorded', capture(recordAbsent('page-not-recorded'))],

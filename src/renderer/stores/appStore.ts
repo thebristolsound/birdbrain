@@ -129,11 +129,15 @@ interface AppState {
   clearCaptureEvents: () => void
 }
 
-function selectedCaptureState(id: string | null, captureTrail: string[] = []) {
+function selectedCaptureState(
+  id: string | null,
+  captureTrail: string[] = [],
+  unviewedTab: CaptureViewerTab = 'screenshot'
+) {
   return ({ viewerHit, viewerTabs }: AppState) => ({
     selectedCaptureId: id,
     viewerHit: viewerHit?.exhibitId === id ? viewerHit : null,
-    activeViewerTab: (id && viewerTabs[id]) || 'screenshot',
+    activeViewerTab: (id && viewerTabs[id]) || unviewedTab,
     captureTrail
   })
 }
@@ -196,7 +200,8 @@ export const useAppStore = create<AppState>((set) => ({
     set((s) => {
       const from = s.selectedCaptureId
       if (from === null || from === id) return {}
-      return selectedCaptureState(id, [...s.captureTrail, from])(s)
+      // A Capture with no tab of its own opens on the tab the link was clicked in.
+      return selectedCaptureState(id, [...s.captureTrail, from], s.activeViewerTab)(s)
     }),
 
   // Pops past Captures deleted since they were pushed. With none left alive the trail

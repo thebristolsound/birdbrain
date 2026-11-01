@@ -98,6 +98,15 @@ describe('appStore', () => {
       expect(tab()).toBe('wayback')
     })
 
+    // #1735: a link clicked in the Page or Links tab opens its Capture on that tab.
+    it('opens a followed capture that has not been viewed on the tab the link was in', () => {
+      const { selectCapture, followCaptureLink, setActiveViewerTab } = useAppStore.getState()
+      selectCapture('cap-1')
+      setActiveViewerTab('page')
+      followCaptureLink('cap-2')
+      expect(tab()).toBe('page')
+    })
+
     it('keeps a tab chosen with nothing selected off every capture', () => {
       const { selectCapture, setSelectedCaptureId, setActiveViewerTab } = useAppStore.getState()
       setSelectedCaptureId(null)

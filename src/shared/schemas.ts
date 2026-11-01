@@ -849,7 +849,12 @@ const ManifestCaptureEntrySchema = z
 const SCHEMA_6_ABSENCE_REASONS: ReadonlySet<string> = new Set(INVENTORY_ABSENCE_REASONS)
 const LAUNCHED_METHODS: ReadonlySet<string> = new Set(LAUNCHED_CAPTURE_METHODS)
 
-function carriesLaunchedBrowserValue(entry: {
+// Whether a capture entry carries a schema-7 launched browser value: a launched
+// method, a browser or passive rule field, or a stage-2 inventory value (a
+// reason outside the schema-6 pair, or a schema-7 member of the present
+// Transaction Record part). The writer's stamp (fieldMinReaderSchemaVersion in
+// manifest.ts) reads the same predicate, so the two cannot drift apart.
+export function carriesLaunchedBrowserValue(entry: {
   method?: string
   browserProduct?: unknown
   browserVersion?: unknown

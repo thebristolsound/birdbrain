@@ -16,7 +16,7 @@ import {
 import { join } from 'path'
 import { createHash } from 'crypto'
 import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
-import { ManifestEntrySchema } from '@shared/schemas'
+import { carriesLaunchedBrowserValue, ManifestEntrySchema } from '@shared/schemas'
 import type {
   BoundTls,
   CaptureInventory,
@@ -47,7 +47,6 @@ import {
 } from '../../packages/evidence-package-layout/index'
 import { getInstallationId } from '@main/services/installationId'
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
-import { INVENTORY_ABSENCE_REASONS, LAUNCHED_CAPTURE_METHODS } from '@shared/types'
 import type {
   TrustedTime,
   ArchiveVerificationResult,
@@ -1047,24 +1046,8 @@ const TIMESTAMP_SUBJECT_MIN_READER = 4
 // one without it keeps the type's 3.
 const EXHIBIT_MEMBER_CODE_MIN_READER = 4
 
-const SCHEMA_6_ABSENCE_REASONS: ReadonlySet<string> = new Set(INVENTORY_ABSENCE_REASONS)
-const LAUNCHED_METHODS: ReadonlySet<string> = new Set(LAUNCHED_CAPTURE_METHODS)
-
 function carriesPersonaField(entry: { personaId?: string; personaLabel?: string }): boolean {
   return entry.personaId !== undefined || entry.personaLabel !== undefined
-}
-
-// A stage-2 inventory value: a reason outside the schema-6 pair, or one of the
-// Transaction Record part's schema-7 members.
-function carriesStage2InventoryValue(inventory: CaptureInventory | undefined): boolean {
-  if (inventory === undefined) return false
-  const { transactionRecord, pdf } = inventory
-  if (!pdf.present && !SCHEMA_6_ABSENCE_REASONS.has(pdf.reason)) return true
-  if (!transactionRecord.present) return !SCHEMA_6_ABSENCE_REASONS.has(transactionRecord.reason)
-  const { servedByServiceWorker, requestBodiesWithheld, httpCacheDisabled } = transactionRecord
-  return [servedByServiceWorker, requestBodiesWithheld, httpCacheDisabled].some(
-    (member) => member !== undefined
-  )
 }
 
 function fieldMinReaderSchemaVersion(entry: ManifestEntryInput): number {
@@ -1076,14 +1059,7 @@ function fieldMinReaderSchemaVersion(entry: ManifestEntryInput): number {
     return entry.memberCode !== undefined ? EXHIBIT_MEMBER_CODE_MIN_READER : 0
   }
   if (entry.type !== 'capture') return 0
-  const { method, browserProduct, browserVersion, browserFamily, passiveRule } = entry
-  if (
-    (method !== undefined && LAUNCHED_METHODS.has(method)) ||
-    [browserProduct, browserVersion, browserFamily, passiveRule].some((f) => f !== undefined) ||
-    carriesStage2InventoryValue(entry.inventory)
-  ) {
-    return LAUNCHED_BROWSER_MIN_READER
-  }
+  if (carriesLaunchedBrowserValue(entry)) return LAUNCHED_BROWSER_MIN_READER
   if (carriesPersonaField(entry)) return PERSONA_MIN_READER
   const { inventory, scrollToLoad, transactionRecordHash, boundTls, boundTlsAbsent, pdfHash } =
     entry

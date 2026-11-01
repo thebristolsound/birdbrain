@@ -28,7 +28,8 @@ phases 2, 3, 5 and 6 rewritten around it; phase 4 moves to the stage 3 Companion
 when passive capture and Personas ship and the Persona plan is done. It became current on
 2026-10-31, when the capture engine first slice shipped. Its gate cleared the same day: the
 maintainer ruled on #1498 that the Persona fields raise the manifest schema number, as every
-other field added to the `capture` entry does, and ADR-0030 is amended to say so.
+other field added to the `capture` entry does, and ADR-0030 is amended to say so. The
+[stage 2 plan](2026-10-31-capture-engine-stage-2.md) orders the work and lists the gates left.
 
 ## Shipped programmes
 

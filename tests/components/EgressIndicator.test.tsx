@@ -55,21 +55,31 @@ describe('EgressIndicator', () => {
     expect(pill.className).toContain('text-warning-fg')
   })
 
-  it('shows its words only from 2xl and on one line, with the full text in the title', async () => {
+  it('shows its words only from 2xl, on one capped line, with the full text in the title', async () => {
     renderWith({ kind: 'direct' }, false)
     const words = await screen.findByText('Direct · VPN not seen')
     // Shown below 2xl, the words move the case search off centre (e2e/topbar-layout.spec.ts).
     // A bare not-sr-only would show them at every width, and a later 2xl class could undo
-    // the one line.
+    // the one line or the cap.
     const classes = words.className.split(' ')
     expect(classes).toContain('sr-only')
     expect(classes.filter((c) => c.endsWith('not-sr-only'))).toEqual(['2xl:not-sr-only'])
     expect(classes.filter((c) => c.startsWith('2xl:')).sort()).toEqual([
+      '2xl:max-w-44',
       '2xl:not-sr-only',
-      '2xl:whitespace-nowrap'
+      '2xl:truncate'
     ])
     expect(screen.getByTestId('egress-indicator').getAttribute('title')).toBe(
       'Egress: Direct · VPN not seen'
+    )
+  })
+
+  it('keeps a long label whole in the text and the title, past the cap', async () => {
+    const label = 'Mullvad SOCKS5 relay over WireGuard, Stockholm se-sto-wg-socks5-001'.repeat(2)
+    renderWith({ kind: 'proxy', proxyUrl: 'socks5://127.0.0.1:1080', label }, true)
+    expect(await screen.findByText(`Proxy: ${label}`)).toBeDefined()
+    expect(screen.getByTestId('egress-indicator').getAttribute('title')).toBe(
+      `Egress: Proxy: ${label}`
     )
   })
 

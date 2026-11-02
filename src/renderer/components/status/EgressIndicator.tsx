@@ -48,10 +48,11 @@ export function EgressIndicator() {
       )}
     >
       <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
-      {/* Below 2xl the words would widen the top bar's right side past its half and move the
-          case search off centre (e2e/topbar-layout.spec.ts), so they stay in the name and
-          title. not-sr-only resets white-space, so nowrap has to come with it. */}
-      <span className="sr-only text-[11px] font-medium 2xl:not-sr-only 2xl:whitespace-nowrap">
+      {/* Shown below 2xl, the words move the case search off centre at 1400px
+          (e2e/topbar-layout.spec.ts). From 2xl a warning or a label still can, so the cap keeps
+          a long label from pushing the controls off the window; the title keeps the full text.
+          not-sr-only resets overflow and white-space, so truncate has to come with it. */}
+      <span className="sr-only text-[11px] font-medium 2xl:not-sr-only 2xl:max-w-44 2xl:truncate">
         {text}
       </span>
     </div>

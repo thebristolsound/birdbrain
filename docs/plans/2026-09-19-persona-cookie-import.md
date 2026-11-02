@@ -1,10 +1,10 @@
 # Persona management with cookie-file import
 
-**Status:** active. Phase 1 shipped as #1497. Phases 2, 3, 5 and 6 were rewritten on 2026-11-02
-around the launched browser, as `docs/plans/2026-10-31-capture-engine-stage-2.md` (called "the
-stage 2 plan" below) directs; phase 4 moved to stage 3, and phase 3b is superseded. The plan is
-done when phases 2, 3, 5 and 6 have merged; the stage 2 programme waits on that (stage 2 plan
-:21-22).
+**Status:** active. Phase 1 shipped in PR #1570, which closed #1497. Phases 2, 3, 5 and 6 were
+rewritten on 2026-11-02 around the launched browser, as
+`docs/plans/2026-10-31-capture-engine-stage-2.md` (called "the stage 2 plan" below) directs;
+phase 4 moved to stage 3, and phase 3b is superseded. The plan is done when phases 2, 3, 5 and 6
+have merged; the stage 2 programme waits on that (stage 2 plan :21-22).
 
 Map: #541. Sub-issues: #542 (domain model), #543 (export disclosure), #544 (mechanism), #545
 (bot-detection research), #546 (threat-model delta). The maintainer grilled and confirmed the
@@ -23,10 +23,12 @@ Persona a `launched` Capture in a browser Birdbrain started with that Persona's 
 Electron partition for background Captures, and withdrew `persona-window`
 (ADR-0034:71-78, :93-99, :119-121). The phases below follow the stage 2 plan's step 5 and its
 "Persona phases 6 and 4" (stage 2 plan :185-226). Decision 9 now states the rule of ADR-0030 as
-amended on 2026-10-31 (ADR-0030:33-36). Decisions 5 and 7 still read as confirmed on 2026-09-19:
-ADR-0034 amends decision 5's mechanism, and the stage 2 spec's Persona wording replaces decision
-7's two wordings (`docs/specs/2026-10-10-capture-engine-launched-browser-design.md:1024-1041`,
-called "the spec" below).
+amended on 2026-10-31 (ADR-0030:33-36). Decisions 5, 7 and 11 still read as confirmed on
+2026-09-19: ADR-0034 amends decision 5's mechanism; the stage 2 spec keeps decision 7's two
+wordings, drops ADR-0030's `persona-window` wording, and adds the `launched` and
+`launched-passive` wordings
+(`docs/specs/2026-10-10-capture-engine-launched-browser-design.md:1024-1041`, called "the spec"
+below); and decision 11's persona window is the one phase 3b retires.
 
 ## Goal
 
@@ -110,13 +112,13 @@ Recorded in ADR-0030 and the `CONTEXT.md` entry for **Persona** (phase 0, 2026-0
    optional on `capture` entries and on `exhibit` entries. The writer puts them on an `exhibit`
    entry only when its origin is `extension`, `background` or `extension-image`; the verifier
    accepts them whatever the origin (stage 2 plan :94-95). `derivation` entries carry nothing;
-   they inherit from the parent. An entry that carries either field stamps manifest schema 7, so a
-   verifier from an earlier release reports it as from a newer schema instead of as malformed
-   (stage 2 plan :69, :80-81). An entry without them keeps the number it stamps today, and
-   existing chain hashes are unchanged. The release that teaches the verifier the fields ships
-   before any build writes them (ADR-0023:54-57). Schema 7 carries no seed-source field; one
-   takes a later number once ADR-0052 is accepted and #543 decides disclosure (stage 2 plan
-   :78-79).
+   they inherit from the parent. An entry that carries either field stamps manifest schema 7
+   (stage 2 plan :69, :80-81), so a verifier from an earlier release reports it as from a newer
+   schema instead of as malformed (ADR-0030:97-98). An entry without them keeps the number it
+   stamps today, and existing chain hashes are unchanged. The release that teaches the verifier
+   the fields ships before any build writes them (ADR-0023:54-57). Schema 7 carries no
+   seed-source field; one takes a later number once ADR-0052 is accepted and #543 decides
+   disclosure (stage 2 plan :78-79).
 10. **No persona exists until the user creates one.** No first-run auto-creation; the empty
     state is one "Add persona" button.
 11. **The #545 probe gates phase 3 only.** Targets: Facebook, Instagram, X, LinkedIn, Telegram
@@ -155,7 +157,7 @@ evidence-affecting at the blocking tier, so the maintainer reviews and merges it
 | 2, verifier half | #1498 in #2031 | step 2 | the maintainer's review of #2031 |
 | 2, writer half | #1498 | step 5 | #2031 merged; DB 45 free in the migration lane |
 | 3, launched profile | #1833 | step 5 | #1831 and #2031 merged, the schema 7 release |
-| 3, background render | #1499 | step 5 | #1498's writer half, or a lifted block (question 7) |
+| 3, background render | #1499 | step 5 | #1498's writer half or a lifted block, and question 7 on the sign-in window |
 | 3b | #1505 | none | superseded |
 | 4 | #1500 | stage 3 | the Companion pipe |
 | 5 | #1501 | step 5 | #1499, or a ruling that drops that block |
@@ -257,9 +259,9 @@ Recapture and add-URL only (spec :97-98, ADR-0034:93-96).
   `persona` stamp from the same value in one call (decision 6). Capture detail shows "persona
   session used" (spec :1033).
 - #1499's body says it is blocked by #1498 and by #545; #545 closed on 2026-09-20. It starts when
-  #1498's writer half merges, unless the maintainer lifts that block for the plumbing. Whether it
-  keeps its own "Sign in as persona" window, or the cookie import becomes the only way to seed the
-  partition, is the stage 2 plan's question 7 (:304-305).
+  #1498's writer half merges, unless the maintainer lifts that block for the plumbing, and not
+  before question 7 settles whether it keeps its own "Sign in as persona" window or the cookie
+  import becomes the only way to seed the partition (stage 2 plan :196-198, :255, :304-305).
 - The unattended render against the four social platforms is still unmeasured; it gates this
   half only (ADR-0030:129-132).
 
@@ -292,7 +294,8 @@ describes an extension popup selector, the `extension` method and a block on #14
   #1501's scope describes. For a launched profile, they come from the import result, because S2
   forbids reading cookie values from the launched browser (spec :186-187).
 - Storing per-store counts on the `personas` row needs a migration (spec :818). #1833 and #1501
-  queue behind DB 45 in the migration lane (stage 2 plan :231-232).
+  may need that `personas` row migration, and if they do, they queue behind DB 45 in the
+  migration lane (stage 2 plan :231-232).
 - No cookie name or value crosses IPC. The phase is not evidence-affecting (stage 2 plan
   :101-103).
 - #1501's body says it is blocked by #1499, because the sign-in window is the re-seed action it

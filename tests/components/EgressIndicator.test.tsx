@@ -7,7 +7,7 @@ import type { EgressSetting } from '@shared/types'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { EgressIndicator, egressIndicatorText } from '@renderer/components/status/EgressIndicator'
 
-function renderWith(egress: EgressSetting | undefined, vpnSeen: boolean) {
+function renderWith(egress: EgressSetting | undefined, vpnSeen: boolean | undefined) {
   const vpnStatus = vi.fn(async () => ({ vpnSeen }))
   fakeBridge({
     settings: { get: vi.fn(async () => (egress ? { egress } : {})) },
@@ -96,6 +96,27 @@ describe('EgressIndicator', () => {
     )
     expect(await screen.findByText('Proxy: Lab')).toBeDefined()
     expect(vpnStatus).not.toHaveBeenCalled()
+  })
+
+  it('gives each Egress, and each VPN state while Direct, an icon of its own', async () => {
+    const proxy = { kind: 'proxy', proxyUrl: 'socks5://127.0.0.1:1080', label: '' } as const
+    const tor = { kind: 'tor', proxyUrl: 'socks5://127.0.0.1:9150', label: '' } as const
+    const states: Array<[EgressSetting, boolean | undefined, string]> = [
+      [{ kind: 'direct' }, undefined, 'Direct'],
+      [{ kind: 'direct' }, true, 'Direct · VPN seen'],
+      [{ kind: 'direct' }, false, 'Direct · VPN not seen'],
+      [proxy, undefined, 'Proxy'],
+      [tor, undefined, 'Tor'],
+      [{ kind: 'unavailable' }, undefined, 'Egress unknown · nothing sent']
+    ]
+    const icons = new Set<string | null | undefined>()
+    for (const [egress, vpnSeen, text] of states) {
+      renderWith(egress, vpnSeen)
+      await screen.findByText(text)
+      icons.add(screen.getByTestId('egress-indicator').querySelector('svg')?.getAttribute('class'))
+      cleanup()
+    }
+    expect(icons.size).toBe(states.length)
   })
 
   it('renders nothing until the settings load', () => {

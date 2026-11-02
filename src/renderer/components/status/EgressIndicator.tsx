@@ -1,5 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
-import { ShieldAlert, ShieldCheck } from 'lucide-react'
+import {
+  Layers,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  ShieldQuestionMark,
+  Waypoints,
+  type LucideIcon
+} from 'lucide-react'
 import { settingsQueryOptions } from '@renderer/lib/api/settings'
 import { vpnStatusQueryOptions } from '@renderer/lib/api/egress'
 import { cn } from '@renderer/lib/utils'
@@ -24,6 +32,17 @@ export function egressIndicatorText(egress: EgressSetting, vpnSeen: boolean | un
   }
 }
 
+// Below 2xl the words fold away, so each Egress, and each VPN state while Direct, keeps an
+// icon of its own there. A new Egress kind fails the typecheck here until it has one.
+const ICONS: Record<EgressSetting['kind'] | 'vpnSeen' | 'vpnNotSeen', LucideIcon> = {
+  direct: Shield,
+  vpnSeen: ShieldCheck,
+  vpnNotSeen: ShieldAlert,
+  proxy: Waypoints,
+  tor: Layers,
+  unavailable: ShieldQuestionMark
+}
+
 export function EgressIndicator() {
   const { data: settings } = useQuery(settingsQueryOptions)
   const egress = settings?.egress
@@ -34,7 +53,7 @@ export function EgressIndicator() {
   const vpnSeen = direct ? status?.vpnSeen : undefined
   const warning = vpnSeen === false || egress.kind === 'unavailable'
   const text = egressIndicatorText(egress, vpnSeen)
-  const Icon = warning ? ShieldAlert : ShieldCheck
+  const Icon = ICONS[vpnSeen === undefined ? egress.kind : vpnSeen ? 'vpnSeen' : 'vpnNotSeen']
 
   return (
     <div

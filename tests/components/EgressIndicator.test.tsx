@@ -55,6 +55,20 @@ describe('EgressIndicator', () => {
     expect(pill.className).toContain('text-warning-fg')
   })
 
+  it('keeps its words in the name and title, shown on one line only from 2xl', async () => {
+    renderWith({ kind: 'direct' }, false)
+    const words = await screen.findByText('Direct · VPN not seen')
+    // Shown below 2xl, the words move the case search off centre (e2e/topbar-layout.spec.ts).
+    const classes = words.className.split(' ')
+    expect(classes).toEqual(
+      expect.arrayContaining(['sr-only', '2xl:not-sr-only', '2xl:whitespace-nowrap'])
+    )
+    expect(classes.filter((c) => c.endsWith(':not-sr-only'))).toEqual(['2xl:not-sr-only'])
+    expect(screen.getByTestId('egress-indicator').getAttribute('title')).toBe(
+      'Egress: Direct · VPN not seen'
+    )
+  })
+
   it('shows a Direct Egress with a VPN seen without the warning', async () => {
     renderWith({ kind: 'direct' }, true)
     expect(await screen.findByText('Direct · VPN seen')).toBeDefined()

@@ -100,6 +100,16 @@ async function captureEntry(page: Page, caseId: string): Promise<Record<string, 
 
 const keys = (record: Record<string, unknown>): string[] => Object.keys(record).sort()
 
+// Every key at any depth, for a field this ticket might have added on the capture path, which
+// a comparison between two Captures from the same build would not see.
+function allKeys(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(allKeys)
+  if (typeof value !== 'object' || value === null) return []
+  return Object.entries(value).flatMap(([key, child]) => [key, ...allKeys(child)])
+}
+
+const VPN_FIELD = /vpn|network|tunnel/i
+
 test.describe('VPN warning', () => {
   let server: Server
   let baseUrl: string
@@ -158,9 +168,14 @@ test.describe('VPN warning', () => {
     await queuedWithoutWarning(page)
     await stored(page, `${baseUrl}/a1`)
 
-    // Rule 4: the warned Capture's row and Manifest Entry carry the same fields as the other.
-    expect(keys(await onlyCapture(page, caseA))).toEqual(keys(await onlyCapture(page, seenCase)))
-    expect(keys(await captureEntry(page, caseA))).toEqual(keys(await captureEntry(page, seenCase)))
+    // Rule 4: the warned Capture's row and Manifest Entry carry the same fields as the other,
+    // and neither names a VPN or a network.
+    const warnedRow = await onlyCapture(page, caseA)
+    const warnedEntry = await captureEntry(page, caseA)
+    expect(keys(warnedRow)).toEqual(keys(await onlyCapture(page, seenCase)))
+    expect(keys(warnedEntry)).toEqual(keys(await captureEntry(page, seenCase)))
+    expect(allKeys(warnedRow).filter((key) => VPN_FIELD.test(key))).toEqual([])
+    expect(allKeys(warnedEntry).filter((key) => VPN_FIELD.test(key))).toEqual([])
 
     // The second contact in the same Case does not warn.
     await submitUrl(page, `${baseUrl}/a2`)
@@ -173,6 +188,23 @@ test.describe('VPN warning', () => {
     await expect(warning).toBeVisible({ timeout: 10000 })
     await page.getByTestId('vpn-warning-mute').click()
     await queuedWithoutWarning(page)
+    await stored(page, `${baseUrl}/b1`)
+
+    // The muted network's hash stays in settings and out of the Case's Manifest.
+    const { storagePath, vpnWarningMutedNetworks: muted } = await page.evaluate(async () => {
+      const w = window as unknown as {
+        birdbrain: {
+          settings: {
+            get: () => Promise<{ storagePath: string; vpnWarningMutedNetworks: string[] }>
+          }
+        }
+      }
+      return w.birdbrain.settings.get()
+    })
+    expect(muted).toHaveLength(1)
+    expect(readFileSync(join(storagePath, caseB, 'manifest.jsonl'), 'utf-8')).not.toContain(
+      muted[0]
+    )
 
     // The muted network stays quiet in a new Case.
     const caseC = await createCase(page, 'VPN warning C')

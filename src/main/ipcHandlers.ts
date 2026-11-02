@@ -44,6 +44,7 @@ import type {
   SessionStateEvent,
   CaptureBatchPayload,
   VpnWarningAnswer,
+  VpnWarningOccasion,
   VpnWarningTarget
 } from '@shared/ipc'
 import * as dbAdmin from '@main/services/db/dbAdmin'
@@ -194,6 +195,10 @@ function validateIds(ids: unknown): string[] {
     throw new IpcFailure('Invalid id list', 'INVALID_BATCH_PAYLOAD')
   }
   return ids
+}
+
+function isVpnWarningOccasion(value: unknown): value is VpnWarningOccasion {
+  return value === 'site' || value === 'session'
 }
 
 function rememberRevealablePath(filePath: string): void {
@@ -1502,26 +1507,33 @@ export function registerIpcHandlers(deps: {
 
   // The VPN check (ADR-0032). Nothing it finds is written to a Manifest Entry or a row.
   handle(IPC_CHANNELS.EGRESS_VPN_STATUS, () => vpnWarning.status())
-  handle(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, (_, target: VpnWarningTarget) => {
-    if (target && 'captureId' in target && typeof target.captureId === 'string') {
-      const capture = captureRepo.getCapture(target.captureId)
-      if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
-      return vpnWarning.check(capture.caseId)
+  handle(
+    IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING,
+    (_, target: VpnWarningTarget, occasion: VpnWarningOccasion) => {
+      if (!isVpnWarningOccasion(occasion)) {
+        throw new IpcFailure('Invalid VPN warning occasion', 'INVALID_VPN_WARNING')
+      }
+      if (target && 'captureId' in target && typeof target.captureId === 'string') {
+        const capture = captureRepo.getCapture(target.captureId)
+        if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
+        return vpnWarning.check(capture.caseId, occasion)
+      }
+      if (target && 'caseId' in target && typeof target.caseId === 'string') {
+        return vpnWarning.check(target.caseId, occasion)
+      }
+      throw new IpcFailure('Invalid VPN warning target', 'INVALID_VPN_WARNING')
     }
-    if (target && 'caseId' in target && typeof target.caseId === 'string') {
-      return vpnWarning.check(target.caseId)
-    }
-    throw new IpcFailure('Invalid VPN warning target', 'INVALID_VPN_WARNING')
-  })
+  )
   handle(IPC_CHANNELS.EGRESS_ANSWER_VPN_WARNING, (_, answer: VpnWarningAnswer) => {
     const choice = answer?.choice
     if (
       typeof answer?.caseId !== 'string' ||
+      !isVpnWarningOccasion(answer.occasion) ||
       (choice !== 'continue' && choice !== 'mute-network')
     ) {
       throw new IpcFailure('Invalid VPN warning answer', 'INVALID_VPN_WARNING')
     }
-    vpnWarning.answer(answer.caseId, choice)
+    vpnWarning.answer(answer.caseId, answer.occasion, choice)
   })
 
   // Database Admin

@@ -204,8 +204,9 @@ test.describe('VPN warning', () => {
     expect(queue).toEqual({ pending: 0, activeUrl: null })
     expect(requested).not.toContain('/c2')
 
-    // Starting a Capture Session warns, and says the browser's route is not seen.
-    await createCase(page, 'VPN warning D')
+    // Starting a Capture Session warns, and says the browser's route is not seen, in a Case
+    // whose site warning was already answered (ADR-0032 rule 3).
+    await openCaptures(page, caseA)
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0].webContents.send('event:extensionConnection', {
         connected: true

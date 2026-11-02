@@ -64,7 +64,7 @@ describe('the VPN warning before a recapture', () => {
     fakeBridge({ recapture: { enqueueCaptures }, egress: { checkVpnWarning } })
 
     await expect(enqueueEventRecapture('case-a', 'cap-1')).resolves.toEqual(accepted)
-    expect(checkVpnWarning).toHaveBeenCalledWith({ caseId: 'case-a' })
+    expect(checkVpnWarning).toHaveBeenCalledWith({ caseId: 'case-a' }, 'site')
     expect(enqueueCaptures).toHaveBeenCalledWith({ caseId: 'case-a', captureIds: ['cap-1'] })
   })
 

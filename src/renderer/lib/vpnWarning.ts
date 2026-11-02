@@ -1,13 +1,9 @@
 import { create } from 'zustand'
-import type { VpnWarningTarget } from '@shared/ipc'
+import type { VpnWarningOccasion, VpnWarningTarget } from '@shared/ipc'
 
 // The warning before a Case's first contact with a site while the Egress is Direct and a VPN
 // is not seen (ADR-0032 rule 2). Main decides whether to warn; this asks the Operator through
 // the one VpnWarningDialog mounted at the root, and reports whether the contact may go ahead.
-
-// 'site' covers a Recapture, an added URL and a Wayback lookup; 'session' is the start of a
-// Capture Session, whose warning also says Birdbrain cannot see the browser's route.
-export type VpnWarningOccasion = 'site' | 'session'
 
 export type VpnWarningOutcome = 'continue' | 'mute-network' | 'set-up-proxy' | 'dismiss'
 
@@ -48,13 +44,13 @@ export class ContactStoppedError extends Error {
 let queue: Promise<unknown> = Promise.resolve()
 
 async function ask(target: VpnWarningTarget, occasion: VpnWarningOccasion): Promise<boolean> {
-  const { caseId, warn, canMute } = await window.birdbrain.egress.checkVpnWarning(target)
+  const { caseId, warn, canMute } = await window.birdbrain.egress.checkVpnWarning(target, occasion)
   if (!warn) return true
   const outcome = await new Promise<VpnWarningOutcome>((settle) => {
     useVpnWarningStore.setState({ open: true, request: { occasion, canMute }, settle })
   })
   if (outcome !== 'continue' && outcome !== 'mute-network') return false
-  await window.birdbrain.egress.answerVpnWarning({ caseId, choice: outcome })
+  await window.birdbrain.egress.answerVpnWarning({ caseId, occasion, choice: outcome })
   return true
 }
 

@@ -78,10 +78,13 @@ describe('SessionControls', () => {
 
 // A session's Captures contact sites, so its start passes the VPN warning (ADR-0032 rule 3).
 describe('SessionControls and the VPN warning', () => {
+  const checkVpnWarning = vi.fn(async () => ({ caseId: 'case-a', warn: true, canMute: true }))
+
   beforeEach(() => {
+    checkVpnWarning.mockClear()
     fakeBridge({
       egress: {
-        checkVpnWarning: vi.fn(async () => ({ caseId: 'case-a', warn: true, canMute: true })),
+        checkVpnWarning,
         answerVpnWarning: vi.fn(async () => undefined)
       }
     })
@@ -92,6 +95,8 @@ describe('SessionControls and the VPN warning', () => {
     fireEvent.click(screen.getByRole('switch', { name: 'Capture Session' }))
     await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
     expect(useVpnWarningStore.getState().request?.occasion).toBe('session')
+    // Main keeps the session warning apart from a site warning already given in the Case.
+    expect(checkVpnWarning).toHaveBeenCalledWith({ caseId: 'case-a' }, 'session')
     expect(session.start).not.toHaveBeenCalled()
 
     settleVpnWarning('continue')

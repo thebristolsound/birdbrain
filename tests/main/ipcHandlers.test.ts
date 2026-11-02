@@ -4159,30 +4159,46 @@ describe('ipcHandlers — the VPN warning (ADR-0032)', () => {
 
   it("checks a Case by its id, or by one of its Captures' ids", async () => {
     registerWithWarning()
-    expect(expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { caseId }))).toEqual({
+    expect(
+      expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { caseId }, 'site'))
+    ).toEqual({
       caseId,
       warn: true,
       canMute: true
     })
     expect(
-      expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { captureId }))
+      expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { captureId }, 'site'))
     ).toMatchObject({ caseId, warn: true })
   })
 
   it('refuses an unknown Capture and a malformed target or answer', async () => {
     registerWithWarning()
-    const missing = (await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, {
-      captureId: 'no-such-capture'
-    })) as { ok: boolean; code?: string }
+    const missing = (await invoke(
+      IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING,
+      { captureId: 'no-such-capture' },
+      'site'
+    )) as { ok: boolean; code?: string }
     expect(missing).toMatchObject({ ok: false, code: 'NOT_FOUND' })
-    for (const target of [null, {}, { caseId: 7 }]) {
-      const res = (await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, target)) as {
+    const checks: [unknown, unknown][] = [
+      [null, 'site'],
+      [{}, 'site'],
+      [{ caseId: 7 }, 'site'],
+      [{ caseId }, undefined],
+      [{ caseId }, 'browser']
+    ]
+    for (const [target, occasion] of checks) {
+      const res = (await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, target, occasion)) as {
         ok: boolean
         code?: string
       }
       expect(res).toMatchObject({ ok: false, code: 'INVALID_VPN_WARNING' })
     }
-    for (const answer of [null, { caseId, choice: 'set-up-proxy' }, { choice: 'continue' }]) {
+    for (const answer of [
+      null,
+      { caseId, occasion: 'site', choice: 'set-up-proxy' },
+      { occasion: 'site', choice: 'continue' },
+      { caseId, choice: 'continue' }
+    ]) {
       const res = (await invoke(IPC_CHANNELS.EGRESS_ANSWER_VPN_WARNING, answer)) as {
         ok: boolean
         code?: string
@@ -4191,19 +4207,30 @@ describe('ipcHandlers — the VPN warning (ADR-0032)', () => {
     }
   })
 
-  it('answers a warning once per Case, and mutes the network in settings', async () => {
+  it('answers a warning once per Case and occasion, and mutes the network in settings', async () => {
     registerWithWarning()
-    expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { caseId }))
-    expectOk(await invoke(IPC_CHANNELS.EGRESS_ANSWER_VPN_WARNING, { caseId, choice: 'continue' }))
-    expect(expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { caseId }))).toMatchObject(
-      { warn: false }
+    expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { caseId }, 'site'))
+    expectOk(
+      await invoke(IPC_CHANNELS.EGRESS_ANSWER_VPN_WARNING, {
+        caseId,
+        occasion: 'site',
+        choice: 'continue'
+      })
     )
+    expect(
+      expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { caseId }, 'site'))
+    ).toMatchObject({ warn: false })
+    // A Capture Session start in the same Case still warns (ADR-0032 rule 3).
+    expect(
+      expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { caseId }, 'session'))
+    ).toMatchObject({ caseId, warn: true })
 
     const other = caseRepo.createCase({ name: 'Other Case' }).id
-    expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { caseId: other }))
+    expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { caseId: other }, 'site'))
     expectOk(
       await invoke(IPC_CHANNELS.EGRESS_ANSWER_VPN_WARNING, {
         caseId: other,
+        occasion: 'site',
         choice: 'mute-network'
       })
     )
@@ -4233,11 +4260,15 @@ describe('ipcHandlers — the VPN warning (ADR-0032)', () => {
     const rowsBefore = getDb().prepare('SELECT * FROM captures ORDER BY id').all()
 
     await invoke(IPC_CHANNELS.EGRESS_VPN_STATUS)
-    expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { captureId }))
+    expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { captureId }, 'site'))
     expectOk(
-      await invoke(IPC_CHANNELS.EGRESS_ANSWER_VPN_WARNING, { caseId, choice: 'mute-network' })
+      await invoke(IPC_CHANNELS.EGRESS_ANSWER_VPN_WARNING, {
+        caseId,
+        occasion: 'site',
+        choice: 'mute-network'
+      })
     )
-    expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { caseId }))
+    expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { caseId }, 'site'))
 
     expect(readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')).toBe(manifestBefore)
     expect(getDb().prepare('SELECT * FROM captures ORDER BY id').all()).toEqual(rowsBefore)

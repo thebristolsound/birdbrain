@@ -140,6 +140,7 @@ import type {
   DbRebuildFtsResult,
   VpnStatus,
   VpnWarningTarget,
+  VpnWarningOccasion,
   VpnWarningCheck,
   VpnWarningAnswer
 } from '@shared/ipc'
@@ -371,7 +372,10 @@ export interface BirdbrainAPI {
   }
   egress: {
     vpnStatus(): Promise<VpnStatus>
-    checkVpnWarning(target: VpnWarningTarget): Promise<VpnWarningCheck>
+    checkVpnWarning(
+      target: VpnWarningTarget,
+      occasion: VpnWarningOccasion
+    ): Promise<VpnWarningCheck>
     answerVpnWarning(answer: VpnWarningAnswer): Promise<void>
   }
   db: {

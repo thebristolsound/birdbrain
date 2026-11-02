@@ -441,6 +441,11 @@ export interface VpnStatus {
 // main resolves the Case from it.
 export type VpnWarningTarget = { caseId: string } | { captureId: string }
 
+// 'site' covers a Recapture, an added URL and a Wayback lookup; 'session' is the start of a
+// Capture Session (ADR-0032 rule 3). Each is warned once per Case, so a site warning does
+// not stand in for the session warning's caveat about the browser's route.
+export type VpnWarningOccasion = 'site' | 'session'
+
 // `canMute` is false when Birdbrain could not read the router's hardware address,
 // so it has no network to stop warning on.
 export interface VpnWarningCheck {
@@ -453,6 +458,7 @@ export type VpnWarningChoice = 'continue' | 'mute-network'
 
 export interface VpnWarningAnswer {
   caseId: string
+  occasion: VpnWarningOccasion
   choice: VpnWarningChoice
 }
 
@@ -1284,7 +1290,10 @@ export interface IpcInvokeContract {
   'updates:install': { args: []; result: void }
 
   'egress:vpnStatus': { args: []; result: VpnStatus }
-  'egress:checkVpnWarning': { args: [target: VpnWarningTarget]; result: VpnWarningCheck }
+  'egress:checkVpnWarning': {
+    args: [target: VpnWarningTarget, occasion: VpnWarningOccasion]
+    result: VpnWarningCheck
+  }
   'egress:answerVpnWarning': { args: [answer: VpnWarningAnswer]; result: void }
 }
 

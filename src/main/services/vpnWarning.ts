@@ -6,11 +6,12 @@ import {
   type NetworkIdentity,
   type NetworkReading
 } from '@main/services/vpnDetection'
-import type { VpnStatus, VpnWarningCheck, VpnWarningChoice } from '@shared/ipc'
+import type { VpnStatus, VpnWarningCheck, VpnWarningChoice, VpnWarningOccasion } from '@shared/ipc'
 import type { EgressSetting } from '@shared/types'
 
 // ADR-0032 rule 2: while the Egress is Direct and a VPN is not seen, the first contact with a
-// site in each Case warns, and "stop warning on this network" ends that for the network. The
+// site in each Case warns, and "stop warning on this network" ends that for the network. Rule
+// 3: the first Capture Session start in each Case warns too, apart from the site warning. The
 // warned Cases are held for this run only; the muted networks are kept in settings. Nothing
 // here reaches a Manifest Entry or a capture row (rule 4).
 
@@ -40,9 +41,11 @@ const settingsDeps: VpnWarningDeps = {
 
 export interface VpnWarningService {
   status(): Promise<VpnStatus>
-  check(caseId: string): Promise<VpnWarningCheck>
-  answer(caseId: string, choice: VpnWarningChoice): void
+  check(caseId: string, occasion: VpnWarningOccasion): Promise<VpnWarningCheck>
+  answer(caseId: string, occasion: VpnWarningOccasion, choice: VpnWarningChoice): void
 }
+
+const warningKey = (caseId: string, occasion: VpnWarningOccasion): string => `${occasion}:${caseId}`
 
 export function createVpnWarningService(deps: VpnWarningDeps = settingsDeps): VpnWarningService {
   const warned = new Set<string>()
@@ -65,21 +68,23 @@ export function createVpnWarningService(deps: VpnWarningDeps = settingsDeps): Vp
       return { vpnSeen }
     },
 
-    async check(caseId) {
+    async check(caseId, occasion) {
       const quiet = { caseId, warn: false, canMute: false }
-      if (deps.egressKind() !== 'direct' || warned.has(caseId)) return quiet
+      const key = warningKey(caseId, occasion)
+      if (deps.egressKind() !== 'direct' || warned.has(key)) return quiet
       const { vpnSeen, network } = await read()
       if (vpnSeen) return quiet
       const hash = network ? networkHash(network) : null
       if (hash && deps.mutedNetworks().includes(hash)) return quiet
-      raisedOn.set(caseId, hash)
+      raisedOn.set(key, hash)
       return { caseId, warn: true, canMute: hash !== null }
     },
 
-    answer(caseId, choice) {
-      warned.add(caseId)
-      const hash = raisedOn.get(caseId)
-      raisedOn.delete(caseId)
+    answer(caseId, occasion, choice) {
+      const key = warningKey(caseId, occasion)
+      warned.add(key)
+      const hash = raisedOn.get(key)
+      raisedOn.delete(key)
       if (choice === 'mute-network' && hash) deps.muteNetwork(hash)
     }
   }

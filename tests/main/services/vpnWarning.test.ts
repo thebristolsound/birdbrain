@@ -50,62 +50,101 @@ describe('networkHash', () => {
 describe('the VPN warning', () => {
   it('warns on the first contact in a Case, not the second, and again in a new Case', async () => {
     const { service } = harness()
-    expect(await service.check('case-a')).toEqual({ caseId: 'case-a', warn: true, canMute: true })
-    service.answer('case-a', 'continue')
-    expect(await service.check('case-a')).toMatchObject({ warn: false })
-    expect(await service.check('case-b')).toMatchObject({ warn: true })
+    expect(await service.check('case-a', 'site')).toEqual({
+      caseId: 'case-a',
+      warn: true,
+      canMute: true
+    })
+    service.answer('case-a', 'site', 'continue')
+    expect(await service.check('case-a', 'site')).toMatchObject({ warn: false })
+    expect(await service.check('case-b', 'site')).toMatchObject({ warn: true })
+  })
+
+  // ADR-0032 rule 3: the session warning carries its own caveat, so a site warning in the
+  // Case does not use it up, nor the other way round.
+  it('warns on the first Capture Session start in a Case apart from its site warning', async () => {
+    const { service } = harness()
+    await service.check('case-a', 'site')
+    service.answer('case-a', 'site', 'continue')
+    expect(await service.check('case-a', 'session')).toEqual({
+      caseId: 'case-a',
+      warn: true,
+      canMute: true
+    })
+    service.answer('case-a', 'session', 'continue')
+    expect(await service.check('case-a', 'session')).toMatchObject({ warn: false })
+
+    await service.check('case-b', 'session')
+    service.answer('case-b', 'session', 'continue')
+    expect(await service.check('case-b', 'site')).toMatchObject({ warn: true })
+  })
+
+  it('mutes the network from a session warning for both occasions', async () => {
+    const { deps, service } = harness()
+    await service.check('case-a', 'session')
+    service.answer('case-a', 'session', 'mute-network')
+    expect(deps.muteNetwork).toHaveBeenCalledWith(networkHash(HOME))
+    expect(await service.check('case-a', 'site')).toMatchObject({ warn: false })
   })
 
   it('warns again in a Case whose warning was not answered', async () => {
     const { service } = harness()
-    expect(await service.check('case-a')).toMatchObject({ warn: true })
-    expect(await service.check('case-a')).toMatchObject({ warn: true })
+    expect(await service.check('case-a', 'site')).toMatchObject({ warn: true })
+    expect(await service.check('case-a', 'site')).toMatchObject({ warn: true })
   })
 
   it('stops warning on a muted network, and warns on a different one', async () => {
     const { state, deps, service } = harness()
-    await service.check('case-a')
-    service.answer('case-a', 'mute-network')
+    await service.check('case-a', 'site')
+    service.answer('case-a', 'site', 'mute-network')
     expect(deps.muteNetwork).toHaveBeenCalledWith(networkHash(HOME))
-    expect(await service.check('case-b')).toMatchObject({ warn: false })
+    expect(await service.check('case-b', 'site')).toMatchObject({ warn: false })
 
     state.reading = { vpnSeen: false, network: CAFE }
-    expect(await service.check('case-b')).toMatchObject({ warn: true, canMute: true })
+    expect(await service.check('case-b', 'site')).toMatchObject({ warn: true, canMute: true })
   })
 
   it('mutes the network the warning was raised on, even after a move', async () => {
     const { state, deps, service } = harness()
-    await service.check('case-a')
+    await service.check('case-a', 'site')
     state.reading = { vpnSeen: false, network: CAFE }
-    service.answer('case-a', 'mute-network')
+    service.answer('case-a', 'site', 'mute-network')
     expect(deps.muteNetwork).toHaveBeenCalledWith(networkHash(HOME))
   })
 
   it('cannot mute a network whose router address was not read', async () => {
     const { deps, service } = harness({ vpnSeen: false, network: null })
-    expect(await service.check('case-a')).toEqual({ caseId: 'case-a', warn: true, canMute: false })
-    service.answer('case-a', 'mute-network')
+    expect(await service.check('case-a', 'site')).toEqual({
+      caseId: 'case-a',
+      warn: true,
+      canMute: false
+    })
+    service.answer('case-a', 'site', 'mute-network')
     expect(deps.muteNetwork).not.toHaveBeenCalled()
-    expect(await service.check('case-a')).toMatchObject({ warn: false })
+    expect(await service.check('case-a', 'site')).toMatchObject({ warn: false })
   })
 
   it('does not warn while a VPN is seen', async () => {
     const { service } = harness({ vpnSeen: true, network: null })
-    expect(await service.check('case-a')).toEqual({ caseId: 'case-a', warn: false, canMute: false })
+    expect(await service.check('case-a', 'site')).toEqual({
+      caseId: 'case-a',
+      warn: false,
+      canMute: false
+    })
   })
 
   it('does not warn, or read the route, while the Egress is a Proxy or Tor', async () => {
     const { state, deps, service } = harness()
     for (const kind of ['proxy', 'tor'] as const) {
       state.egress = kind
-      expect(await service.check('case-a')).toMatchObject({ warn: false })
+      expect(await service.check('case-a', 'site')).toMatchObject({ warn: false })
     }
     expect(deps.detect).not.toHaveBeenCalled()
   })
 
   it('reports whether a VPN is seen, sharing one read between callers', async () => {
     const { deps, service } = harness({ vpnSeen: true, network: null })
-    const [status, check] = await Promise.all([service.status(), service.check('case-a')])
+    const [status, check] = await Promise.all([service.status(), service.check('case-a', 'site')])
     expect(status).toEqual({ vpnSeen: true })
     expect(check).toMatchObject({ warn: false })
     expect(deps.detect).toHaveBeenCalledTimes(1)
@@ -130,17 +169,17 @@ describe('the VPN warning on the installed settings', () => {
   it('keeps the muted network in settings, once, as its hash alone', async () => {
     const service = createVpnWarningService()
     // Two warnings open on one network, both answered with the mute.
-    await service.check('case-a')
-    await service.check('case-b')
-    service.answer('case-a', 'mute-network')
-    service.answer('case-b', 'mute-network')
+    await service.check('case-a', 'site')
+    await service.check('case-b', 'site')
+    service.answer('case-a', 'site', 'mute-network')
+    service.answer('case-b', 'site', 'mute-network')
     expect(getSettings().vpnWarningMutedNetworks).toEqual([networkHash(HOME)])
-    expect(await service.check('case-c')).toMatchObject({ warn: false })
+    expect(await service.check('case-c', 'site')).toMatchObject({ warn: false })
   })
 
   it('reads the Egress from settings', async () => {
     updateSettings({ egress: { kind: 'tor', proxyUrl: 'socks5://127.0.0.1:9150', label: '' } })
     const service = createVpnWarningService()
-    expect(await service.check('case-a')).toMatchObject({ warn: false })
+    expect(await service.check('case-a', 'site')).toMatchObject({ warn: false })
   })
 })

@@ -78,7 +78,7 @@ describe('waybackLinkLookupQueryOptions and the VPN warning', () => {
     fakeBridge({ wayback: { lookupLink }, egress: { checkVpnWarning } })
 
     const result = await runLinkLookup(new QueryClient(), 'none')
-    expect(checkVpnWarning).toHaveBeenCalledWith({ captureId: 'cap-1' })
+    expect(checkVpnWarning).toHaveBeenCalledWith({ captureId: 'cap-1' }, 'site')
     expect(lookupLink).toHaveBeenCalledWith({ captureId: 'cap-1', url: 'https://a.example/1' })
     expect(result.checkedAt).toBe('2026-10-17T10:00:00.000Z')
   })
@@ -125,7 +125,7 @@ describe('waybackLookupQueryOptions', () => {
     fakeBridge({ wayback: { lookup }, egress: { checkVpnWarning } })
 
     const result = await runLookup(new QueryClient(), 'continue')
-    expect(checkVpnWarning).toHaveBeenCalledWith({ captureId: 'cap-1' })
+    expect(checkVpnWarning).toHaveBeenCalledWith({ captureId: 'cap-1' }, 'site')
     expect(lookup).toHaveBeenCalledWith('cap-1')
     expect(result?.checkedAt).toBe('2026-10-17T10:00:00.000Z')
   })

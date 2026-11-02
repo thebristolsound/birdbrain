@@ -50,7 +50,12 @@ describe('confirmContact', () => {
       const pending = confirmContact({ captureId: 'cap-1' }, 'site')
       await answer(outcome)
       expect(await pending).toBe(true)
-      expect(answerVpnWarning).toHaveBeenCalledWith({ caseId: 'case-a', choice: outcome })
+      expect(checkVpnWarning).toHaveBeenCalledWith({ captureId: 'cap-1' }, 'site')
+      expect(answerVpnWarning).toHaveBeenCalledWith({
+        caseId: 'case-a',
+        occasion: 'site',
+        choice: outcome
+      })
     }
   )
 
@@ -70,8 +75,14 @@ describe('confirmContact', () => {
     const pending = confirmContact({ caseId: 'case-a' }, 'session')
     await vi.waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
     expect(useVpnWarningStore.getState().request).toEqual({ occasion: 'session', canMute: false })
+    expect(checkVpnWarning).toHaveBeenCalledWith({ caseId: 'case-a' }, 'session')
     settleVpnWarning('continue')
     await pending
+    expect(answerVpnWarning).toHaveBeenCalledWith({
+      caseId: 'case-a',
+      occasion: 'session',
+      choice: 'continue'
+    })
     // Kept for the exit animation.
     expect(useVpnWarningStore.getState()).toMatchObject({
       open: false,

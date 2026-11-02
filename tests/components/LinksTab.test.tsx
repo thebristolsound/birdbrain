@@ -909,7 +909,7 @@ describe('LinksTab Wayback batch', () => {
     fireEvent.click(within(dialog).getByTestId('wayback-batch-confirm'))
 
     await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
-    expect(checkVpnWarning).toHaveBeenCalledExactlyOnceWith({ captureId: 'cap1' })
+    expect(checkVpnWarning).toHaveBeenCalledExactlyOnceWith({ captureId: 'cap1' }, 'site')
     act(() => settleVpnWarning('dismiss'))
     await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(false))
     expect(lookupLinks).not.toHaveBeenCalled()

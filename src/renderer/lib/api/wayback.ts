@@ -2,7 +2,7 @@ import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query
 import type { PinWaybackSnapshotParams } from '@shared/ipc'
 import type { WaybackLookupResult } from '@shared/types'
 import { queryKeys } from '@renderer/lib/api/keys'
-import { confirmContact } from '@renderer/lib/vpnWarning'
+import { confirmContact, requireContact } from '@renderer/lib/vpnWarning'
 
 // `enabled: false` — the lookup is user-initiated (it discloses the URL to
 // archive.org). The Wayback panel triggers it with refetch() on button click,
@@ -23,11 +23,16 @@ export const waybackLookupQueryOptions = (captureId: string) =>
 
 // One link of a stored page (#1737), keyed by that page's Capture and the address. Also
 // user-initiated: the link menu fills the cache with fetchQuery, and the Links tab's cell
-// only reads it. The answer lives here and nowhere else, so a restart drops it.
+// only reads it. The answer lives here and nowhere else, so a restart drops it. It passes
+// the VPN warning first. A stop there rejects rather than resolving, because fetchQuery
+// would serve a resolved value for five minutes without asking the warning again.
 export const waybackLinkLookupQueryOptions = (captureId: string, url: string) =>
   queryOptions({
     queryKey: queryKeys.waybackLinkLookup(captureId, url),
-    queryFn: () => window.birdbrain.wayback.lookupLink({ captureId, url }),
+    queryFn: async () => {
+      await requireContact({ captureId }, 'site')
+      return window.birdbrain.wayback.lookupLink({ captureId, url })
+    },
     enabled: false,
     staleTime: 5 * 60 * 1000
   })

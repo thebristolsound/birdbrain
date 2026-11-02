@@ -11,6 +11,7 @@ import type { WaybackLinkProgressEvent } from '@shared/ipc'
 import { LinksTab } from '@renderer/components/captures/LinksTab'
 import { useAppStore } from '@renderer/stores/appStore'
 import { notify } from '@renderer/lib/notify'
+import { settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
 import { fakeBridge, quietVpnWarning } from '../renderer/fakeBridge'
 
 const capture: Capture = {
@@ -585,6 +586,25 @@ describe('LinksTab Wayback cell', () => {
     expect(success).not.toHaveBeenCalled()
   })
 
+  it('leaves the cell unchecked when stopped at the VPN warning, and shows no error', async () => {
+    useVpnWarningStore.setState({ open: false, request: null, settle: null })
+    const lookupLink = vi.fn()
+    renderWithLookup([link({ href: 'https://a.example/1', text: 'One' })], lookupLink)
+    window.birdbrain.egress.checkVpnWarning = vi.fn(async () => ({
+      caseId: 'case1',
+      warn: true,
+      canMute: true
+    }))
+    await lookUp('One')
+
+    await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
+    act(() => settleVpnWarning('dismiss'))
+    await waitFor(() =>
+      expect(screen.getByTestId('links-wayback').textContent).toBe('Wayback:Not checked')
+    )
+    expect(lookupLink).not.toHaveBeenCalled()
+  })
+
   it('offers Open at archive.org, Copy snapshot URL and Capture snapshot, and no pin', async () => {
     const writeText = vi.fn(async () => undefined)
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
@@ -760,7 +780,8 @@ describe('LinksTab Wayback batch', () => {
     links: CaptureLink[],
     {
       egress = DIRECT as EgressSetting,
-      outcome = { answered: 0, failed: 0, notChecked: 0, stopped: null } as unknown
+      outcome = { answered: 0, failed: 0, notChecked: 0, stopped: null } as unknown,
+      vpnWarning = quietVpnWarning() as Record<string, unknown>
     } = {}
   ) {
     let finish: (value: unknown) => void = () => {}
@@ -776,6 +797,7 @@ describe('LinksTab Wayback batch', () => {
       captures: { getLinks: vi.fn(async () => result(links)), list: vi.fn(async () => []) },
       wayback: { lookupLinks, cancelLookupLinks, lookupLink: vi.fn(async () => ANSWER) },
       settings: { get: vi.fn(async () => ({ egress })) },
+      egress: vpnWarning,
       onWaybackLinkProgress: vi.fn((callback: (event: WaybackLinkProgressEvent) => void) => {
         listeners.push(callback)
         return () => {}
@@ -864,11 +886,57 @@ describe('LinksTab Wayback batch', () => {
       )
     )
     fireEvent.click(within(dialog).getByTestId('wayback-batch-confirm'))
-    expect(lookupLinks).toHaveBeenCalledExactlyOnceWith({
-      captureId: 'cap1',
-      urls: ['https://b.example/2'],
-      egress: DIRECT
+    await waitFor(() =>
+      expect(lookupLinks).toHaveBeenCalledExactlyOnceWith({
+        captureId: 'cap1',
+        urls: ['https://b.example/2'],
+        egress: DIRECT
+      })
+    )
+  })
+
+  // ADR-0032 rule 2: a batch is a Wayback lookup, so it passes the VPN warning first.
+  it("passes the VPN warning for this Capture's Case, and sends nothing when stopped", async () => {
+    useVpnWarningStore.setState({ open: false, request: null, settle: null })
+    const checkVpnWarning = vi.fn(async () => ({ caseId: 'case1', warn: true, canMute: true }))
+    const { lookupLinks } = renderBatch(MIXED, { vpnWarning: { checkVpnWarning } })
+    const dialog = await openConfirmation()
+    await waitFor(() =>
+      expect(within(dialog).getByTestId('wayback-batch-confirm').hasAttribute('disabled')).toBe(
+        false
+      )
+    )
+    fireEvent.click(within(dialog).getByTestId('wayback-batch-confirm'))
+
+    await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
+    expect(checkVpnWarning).toHaveBeenCalledExactlyOnceWith({ captureId: 'cap1' })
+    act(() => settleVpnWarning('dismiss'))
+    await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(false))
+    expect(lookupLinks).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('wayback-batch-stop')).toBeNull()
+  })
+
+  it('starts nothing when the tab is left while the VPN warning is open', async () => {
+    useVpnWarningStore.setState({ open: false, request: null, settle: null })
+    const checkVpnWarning = vi.fn(async () => ({ caseId: 'case1', warn: true, canMute: true }))
+    const answerVpnWarning = vi.fn(async () => undefined)
+    const { lookupLinks, unmount } = renderBatch(MIXED, {
+      vpnWarning: { checkVpnWarning, answerVpnWarning }
     })
+    const dialog = await openConfirmation()
+    await waitFor(() =>
+      expect(within(dialog).getByTestId('wayback-batch-confirm').hasAttribute('disabled')).toBe(
+        false
+      )
+    )
+    fireEvent.click(within(dialog).getByTestId('wayback-batch-confirm'))
+    await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
+
+    unmount()
+    act(() => settleVpnWarning('continue'))
+    await waitFor(() => expect(answerVpnWarning).toHaveBeenCalled())
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(lookupLinks).not.toHaveBeenCalled()
   })
 
   it('says only the first 50 are checked above the cap', async () => {

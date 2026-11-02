@@ -1,11 +1,8 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
-import { fakeBridge } from '../fakeBridge'
-import {
-  waybackLinkLookupQueryOptions,
-  waybackLookupQueryOptions
-} from '@renderer/lib/api/wayback'
-import { settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
+import { fakeBridge, quietVpnWarning } from '../fakeBridge'
+import { waybackLinkLookupQueryOptions, waybackLookupQueryOptions } from '@renderer/lib/api/wayback'
+import { ContactStoppedError, settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -22,7 +19,7 @@ describe('waybackLinkLookupQueryOptions', () => {
       checkedAt: '2026-10-26T12:00:00.000Z',
       countIsMinimum: false
     }))
-    fakeBridge({ wayback: { lookupLink } })
+    fakeBridge({ wayback: { lookupLink }, egress: quietVpnWarning() })
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const options = waybackLinkLookupQueryOptions('cap1', 'https://a.example/1')
 
@@ -54,6 +51,58 @@ const lookup = vi.fn(async () => ({ ...SHOWN, checkedAt: '2026-10-17T10:00:00.00
 function warning(warn: boolean) {
   return vi.fn(async () => ({ caseId: 'case-a', warn, canMute: true }))
 }
+
+describe('waybackLinkLookupQueryOptions and the VPN warning', () => {
+  const LINK_SHOWN = { ...SHOWN, countIsMinimum: false }
+  const lookupLink = vi.fn(async () => ({ ...LINK_SHOWN, checkedAt: '2026-10-17T10:00:00.000Z' }))
+
+  beforeEach(() => {
+    lookupLink.mockClear()
+    useVpnWarningStore.setState({ open: false, request: null, settle: null })
+  })
+
+  const options = () => waybackLinkLookupQueryOptions('cap-1', 'https://a.example/1')
+
+  // The link menu's own call: fetchQuery with the options' five-minute staleTime.
+  async function runLinkLookup(client: QueryClient, outcome: 'continue' | 'dismiss' | 'none') {
+    const pending = client.fetchQuery(options())
+    if (outcome !== 'none') {
+      await vi.waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
+      settleVpnWarning(outcome)
+    }
+    return pending
+  }
+
+  it("passes the VPN warning for the Capture's Case before asking archive.org", async () => {
+    const checkVpnWarning = warning(false)
+    fakeBridge({ wayback: { lookupLink }, egress: { checkVpnWarning } })
+
+    const result = await runLinkLookup(new QueryClient(), 'none')
+    expect(checkVpnWarning).toHaveBeenCalledWith({ captureId: 'cap-1' })
+    expect(lookupLink).toHaveBeenCalledWith({ captureId: 'cap-1', url: 'https://a.example/1' })
+    expect(result.checkedAt).toBe('2026-10-17T10:00:00.000Z')
+  })
+
+  it('sends nothing when stopped, keeps the answer shown, and asks again next time', async () => {
+    const checkVpnWarning = warning(true)
+    fakeBridge({
+      wayback: { lookupLink },
+      egress: { checkVpnWarning, answerVpnWarning: vi.fn(async () => undefined) }
+    })
+    const client = new QueryClient()
+    client.setQueryData(options().queryKey, LINK_SHOWN, { updatedAt: 0 })
+
+    await expect(runLinkLookup(client, 'dismiss')).rejects.toBeInstanceOf(ContactStoppedError)
+    expect(lookupLink).not.toHaveBeenCalled()
+    expect(client.getQueryData(options().queryKey)).toEqual(LINK_SHOWN)
+
+    // A stop caches nothing new, so the next ask inside five minutes reaches the warning.
+    const result = await runLinkLookup(client, 'continue')
+    expect(checkVpnWarning).toHaveBeenCalledTimes(2)
+    expect(lookupLink).toHaveBeenCalledOnce()
+    expect(result.checkedAt).toBe('2026-10-17T10:00:00.000Z')
+  })
+})
 
 // Runs the lookup and answers the warning, if one comes up, with `outcome`.
 async function runLookup(client: QueryClient, outcome: 'continue' | 'dismiss') {

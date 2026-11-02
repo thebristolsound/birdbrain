@@ -11,6 +11,7 @@ import { MHTML_PARTITION } from '@shared/constants'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
 import { notify } from '@renderer/lib/notify'
 import { useAppStore } from '@renderer/stores/appStore'
+import { settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
 import type { CaptureEvent } from '@shared/types'
 import type { GuestMouseDownEvent, GuestMouseUpEvent } from '@shared/ipc'
 import { fakeBridge, quietVpnWarning } from '../renderer/fakeBridge'
@@ -379,7 +380,8 @@ describe('MhtmlViewer', () => {
             ]),
           openExternal
         },
-        wayback: { lookupLink }
+        wayback: { lookupLink },
+        egress: quietVpnWarning()
       })
       return openExternal
     }
@@ -419,6 +421,26 @@ describe('MhtmlViewer', () => {
       expect(opts?.action?.label).toBe('Open at archive.org')
       opts?.action?.onClick()
       expect(openExternal).toHaveBeenCalledWith(SNAPSHOT_URL)
+    })
+
+    it('sends nothing and toasts nothing when stopped at the VPN warning', async () => {
+      useVpnWarningStore.setState({ open: false, request: null, settle: null })
+      const lookupLink = vi.fn()
+      lookUpFrom(lookupLink)
+      window.birdbrain.egress.checkVpnWarning = vi.fn(async () => ({
+        caseId: 'case1',
+        warn: true,
+        canMute: true
+      }))
+      const error = vi.spyOn(notify, 'error')
+      await lookUp()
+
+      await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
+      act(() => settleVpnWarning('dismiss'))
+      await waitFor(() => expect(useVpnWarningStore.getState().settle).toBeNull())
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(lookupLink).not.toHaveBeenCalled()
+      expect(error).not.toHaveBeenCalled()
     })
 
     it('says so when archive.org has no successful snapshot', async () => {

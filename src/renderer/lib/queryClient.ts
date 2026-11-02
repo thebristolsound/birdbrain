@@ -40,6 +40,7 @@ export const queryClient = new QueryClient({
   }),
   queryCache: new QueryCache({
     onError: (error, query) => {
+      if (error instanceof ContactStoppedError) return
       // .catch, not bare void: if the main process is gone or the handler is
       // not registered yet, invoke() rejects. An unconsumed rejection here
       // turns one handled query failure into a second, renderer-level

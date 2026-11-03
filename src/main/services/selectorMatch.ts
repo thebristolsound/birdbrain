@@ -6,10 +6,11 @@ import {
 } from '@main/services/safeRegex'
 
 /**
- * Single source of truth for "does this Selector hit this text". Never throws:
- * the regex path delegates to safeRegexOutcome, which reports a timeout apart
- * from no match; the substring path is plain JS and cannot time out. Nothing
- * here touches the database, so code without one can apply the same rule.
+ * Whether a Selector hits a Capture's text, as the Selector repo decides it when
+ * it writes Persisted Matches. Never throws: the regex path delegates to
+ * safeRegexOutcome, which reports a timeout apart from no match; the substring
+ * path is plain JS and cannot time out. Nothing here touches the database, so
+ * code without one can apply the same rule.
  * `budgetMs` carries the contract `safeRegexTest` states.
  */
 export function selectorMatchOutcome(

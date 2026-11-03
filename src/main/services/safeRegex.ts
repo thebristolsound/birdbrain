@@ -1,9 +1,9 @@
 import { runInNewContext } from 'vm'
 
 /**
- * The budget a single pattern evaluation gets in production. Every call site
- * omits the argument below, so this number is what decides whether an ignore
- * rule is enforced or fails open on a pattern that backtracks past it.
+ * The budget a single pattern evaluation gets in production. No production call
+ * path passes a budget, so on a pattern that backtracks past this number an
+ * ignore rule fails open and a regex Selector records no match.
  */
 export const DEFAULT_REGEX_TIMEOUT_MS = 200
 

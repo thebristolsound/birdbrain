@@ -5,6 +5,11 @@ organize them into Cases, and connect what you find with searchable text, tags, 
 selectors. Export the saved material with a signed history and instructions for checking it
 without installing Birdbrain.
 
+[![Release](https://img.shields.io/github/v/release/thebristolsound/birdbrain?include_prereleases&label=release)](https://github.com/thebristolsound/birdbrain/releases)
+[![CI](https://github.com/thebristolsound/birdbrain/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/thebristolsound/birdbrain/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+![Status: beta](https://img.shields.io/badge/status-beta-yellow)
+
 The app stores your Cases on your machine. A companion Chrome extension sends captures to
 it over a local connection. You need no account, and Birdbrain collects no telemetry.
 

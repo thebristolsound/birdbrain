@@ -3,15 +3,15 @@
 **Date:** 2026-10-11
 
 **Status:** Complete for Chrome and Chrome for Testing on Linux. A measurement, not a decision.
-Chromium 154 was measured on a second Linux host on 2026-11-03, so far for P7 and P20 only. Edge
-and Brave, and every product on Windows and macOS, are not measured. The clicked-Capture step
+Chromium 154 was measured on a second Linux host on 2026-11-03, so far for P3, P7, and P20 only.
+Edge and Brave, and every product on Windows and macOS, are not measured. The clicked-Capture step
 (stage-2 step 4) stays blocked until P7 has Windows and macOS answers.
 
 Answers the P questions of the
 [stage-2 design spec](2026-10-10-capture-engine-launched-browser-design.md) (Open questions, line
 1422) by launching the browsers this host has, the way the design launches them, against fixture
 pages on loopback. Issue #1828 asked for it as step 1 of the stage-2 split, and every line number
-cited as "spec" points into that design spec.
+cited as "spec" points into that design spec as it stood when this report was added (#1842).
 
 ## Method
 
@@ -20,7 +20,7 @@ profile, drove it over `--remote-debugging-pipe` with a CDP client of its own, a
 page itself. Each configuration ran once per browser, in one batch on 2026-10-11, from a scratch
 copy of the script outside the repository; P12's configurations ran a second time, and P12 says
 why. Runs made while the script was written are not counted. The Chromium rows come from reruns on
-a [second host](#second-host).
+a [second host](#second-host), where `page-reads` (P3) ran five times.
 
 **Host.** The first host, which measured every row not marked otherwise: Ubuntu 24.04.4 LTS under
 WSL2, kernel `6.18.33.2-microsoft-standard-WSL2`, x86-64, 4 CPUs. No desktop session ran:
@@ -137,7 +137,8 @@ sets `BrowserThemeColor` and `BrowserColorScheme`, the other sets `DefaultBrowse
 
 **The browser's own traffic.** In the two `pipe` runs the proxy fixture refused Chromium's
 connections to `accounts.google.com`, `android.clients.google.com`, `clients2.google.com` (port
-80), `update.googleapis.com`, and `www.google.com`, each on port 443 unless named.
+80), `update.googleapis.com`, and `www.google.com`, each on port 443 unless named. Each of the five
+`page-reads` runs saw the same hosts and `optimizationguide-pa.googleapis.com` on port 443.
 
 **Rows not measured on the second host.** Google Chrome, Edge, and regular Brave are not installed
 there (P20). Chrome for Testing 149 is not either; Playwright's cache holds a different build,
@@ -201,13 +202,17 @@ Chrome for Testing shows an infobar (P19), so its viewport was 1,050 × 861 wher
 
 ### P3: `Page` and isolated-world reads
 
-**Nothing the page recorded changed with `Page.enable` or an isolated-world read, but the check
-that would show a debugger read nothing even with `Runtime.enable` on.** Each variant ran on a new
-tab after a warm-up load. The page recorded `navigator.webdriver` (`true` in every variant, as the
-pipe makes it), the keys of `window.chrome` (`loadTimes`, `csi`, `app`), `document.hasFocus()`
-(`true`), `document.visibilityState` (`visible`), the resource timing list (`/img.png`), and the
+**On Chromium 154, a check that fired on every reading with `Runtime.enable` on and on none without
+it did not fire for `Page.enable` or an isolated-world read, and nothing else the page recorded
+changed. On Chrome 150 and Chrome for Testing 149 nothing the page recorded changed either, but the
+only check run there read nothing even with `Runtime.enable` on.** Each variant ran on a new tab
+after a warm-up load. The page recorded `navigator.webdriver` (`true` in every variant, as the pipe
+makes it), the keys of `window.chrome` (`loadTimes`, `csi`, `app`), `document.hasFocus()` (`true`),
+`document.visibilityState` (`visible`), the resource timing list (`/img.png`), and the
 `Error.stack` getter count of the stage-1 probe, which logs an `Error` with a counting getter to
 `console.debug` at load and every 250 ms.
+
+On the first host, one run per browser:
 
 | Variant | What changed against the network-only tab |
 | --- | --- |
@@ -229,17 +234,72 @@ says "a viewport scroll-locked by overflow: hidden clamps even programmatic scro
 (`backgroundRenderer.ts:130-132`); in launched Chrome 150 and Chrome for Testing 149 it did not, for
 either inline style.
 
+**A check that detects `Runtime.enable`, on the second host.** There the fixture page also ran
+seven candidate checks at load and every 500 ms, and sent each reading to the fixture server with
+`navigator.sendBeacon`, so every variant reported the same way; the resource timing list leaves
+those requests out. Two control tabs joined the variants: `runtime-enable-late` sends
+`Runtime.enable` after the first read, where the other variants act, and `network-only-last` is a
+network-only tab opened after both `Runtime.enable` tabs. A candidate passed its control in a run
+when every reading with `Runtime.enable` on (the `runtime-enable` tab, and the late tab after the
+step) lay on one side of every reading without it (both network-only tabs, and the late tab before
+the step). On every tab, a reading that reached the server between the step's start and 200 ms
+after its end counts as during the step. On the late tab those readings join neither set; the other
+control tabs count every reading. `page-reads` ran five times, which gave 95 readings without
+`Runtime.enable` and 47 with it.
+
+| Candidate | Without `Runtime.enable` | With it | Passed its control |
+| --- | --- | --- | --- |
+| Calls to the page's own `Error.prepareStackTrace` for an `Error` passed to `console.debug` | 0 in every reading | 1 in every reading | 5 of 5 runs |
+| Median time of seven `console.debug` calls with a 1 MiB string | 4.0 to 23.2 ms | 9.0 to 48.4 ms | 4 of 5 runs. In run 4 a reading without it, 19.6 ms, exceeded the lowest with it, 11.1 ms |
+| The same with a one-character string | 0 to 0.4 ms | 0 to 0.6 ms | None |
+| Reads of a `message` getter on a logged `Error` whose `stack` is a plain string | 1 in every reading | 1 in every reading | None |
+| Traps called on a logged `Proxy` | 0 | 0 | None |
+| Traps called on a logged object whose prototype is a `Proxy` | 1 in every reading | 1 in every reading | None |
+| Getter calls on a row passed to `console.table` | 0 | 0 | None |
+| The stage-1 `Error.stack` getter count, kept as a reference | 0 in every tab | 0 in every tab | None |
+
+The timings drifted between runs: without `Runtime.enable` they spanned 4.0 to 6.3 ms in run 1 and
+10.8 to 23.2 ms in run 3. The `Error.prepareStackTrace` count is the check P3 keeps. Its readings
+per variant, over the five runs:
+
+| Variant | Readings with a call |
+| --- | --- |
+| Network-only (control) | 0 of 35 |
+| `Page.enable` before the load | 0 of 36 |
+| `Page.createIsolatedWorld` and `Runtime.evaluate` there | 0 of 35 |
+| Scroll-to-load scripts in an isolated world | 0 of 67, 30 of them during the scrolling |
+| The same scripts in the main world | 0 of 66, 30 during the scrolling |
+| `SCROLL_UNLOCK_SCRIPT` and the scroll scripts, `overflow: hidden` | 0 of 65, 30 during the scrolling |
+| The same, `overflow: clip` | 0 of 66, 30 during the scrolling |
+| `Runtime.enable` before the load (control) | 37 of 37 |
+| `Runtime.enable` after the first read (control) | 10 of 35: none of the 25 before the step, all 10 after it |
+| Network-only, the last tab (control) | 0 of 35 |
+
+In each of the five runs the other facts changed as in the first host's table, apart from the
+scroll counts. `Page.enable` and the isolated-world read changed nothing, and the `Page.enable`
+session received the same six events. The scroll scripts gave scroll events, the sentinel's
+`IntersectionObserver` firing `true` then `false`, and one request for the lazy image, which joined
+the resource timing list; the reset left `scrollY` at 0. They gave 6 scroll events in an isolated
+world in every run and 6 or 7 in the main world and on the lock fixtures, so the main world did not
+always record one more. The unlock script returned `null` on both lock fixtures. By the first
+read, the lock fixtures had recorded no `visualViewport` resize, where the other tabs had recorded
+one. `Runtime.enable` changed none of the listed facts. In one of the fifty tabs, the late
+`Runtime.enable` tab of run 4, the page recorded one `focus` event, before the step ran; no scroll
+tab recorded one.
+
 **A commit signal without the `Page` domain.** On the browser connection,
 `Target.targetInfoChanged` for the tab carried the new URL after the document's
 `Network.responseReceived` and before its `Network.loadingFinished`. It also fired for a
 `history.pushState`, which commits no document, and did not fire for a navigation answered with
-`204 No Content`, which commits nothing.
+`204 No Content`, which commits nothing. Chromium 154 gave the same events in the same order in each
+of the five runs.
 
 | Product and platform | Answer |
 | --- | --- |
-| Chrome 150, Linux | No change in the listed facts from `Page` or isolated-world reads; the `Error.stack` check failed its positive control; scrolling is visible to the page through scroll and intersection events and lazy loads |
+| Chrome 150, Linux | No change in the listed facts from `Page` or isolated-world reads; the `Error.stack` check failed its positive control, and the `Error.prepareStackTrace` check did not run on the first host; scrolling is visible to the page through scroll and intersection events and lazy loads |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
+| Chromium 154, Linux (second host) | No change in the listed facts from `Page` or isolated-world reads; the `Error.prepareStackTrace` check passed its control in all five runs and did not fire for either; scrolling is visible to the page as on Chrome 150 |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -821,9 +881,10 @@ decoded body, with the per-load frame token in `cid:frame-…@mhtml.blink` refer
 - Edge, Brave, Windows, macOS, Snap and Flatpak builds, or any other Chrome version, and Chromium
   outside the rows measured on the second host. The Chrome 150 here is a build old enough to show
   its own update bubble.
-- Anything beyond one run per configuration per browser (two for P12). Timings and costs are from
-  those runs, on two machines: the Chrome rows on a 4-CPU WSL2 host and the Chromium rows on an
-  18-CPU native one, so a timing from one does not compare with a timing from the other.
+- Anything beyond one run per configuration per browser (two for P12, five for P3 on Chromium).
+  Timings and costs are from those runs, on two machines: the Chrome rows on a 4-CPU WSL2 host and
+  the Chromium rows on an 18-CPU native one, so a timing from one does not compare with a timing
+  from the other.
 - The browser's own traffic while it considers itself online. Inside P13's namespace the page read
   `navigator.onLine` as `false`, and an offline browser may send less of its own traffic.
 - A desktop session. The GNOME rows of P16 set `XDG_CURRENT_DESKTOP` on a private bus; they are not
@@ -833,8 +894,10 @@ decoded body, with the per-load frame token in `cid:frame-…@mhtml.blink` refer
 - TLS, HTTP/2, HTTP/3, or QUIC. The fixtures speak plain HTTP/1.1 on loopback.
 - A pending browser update. P8's restart typed `chrome://restart`.
 - An hour of browsing. P12 loaded fifteen pages in under 20 seconds.
-- That no detector can tell the engine is attached. P3 covers the listed facts only, and its
-  `Error.stack` check failed its positive control.
+- That no detector can tell the engine is attached. P3 covers the listed facts and, on Chromium 154
+  only, one check that detects `Runtime.enable`. That check says nothing about a detector built for
+  another trace of `Page` or of an isolated world. On Chrome 150 and Chrome for Testing 149 the
+  only check was the `Error.stack` count, which failed its positive control.
 - Navigations the Operator starts from the browser itself: a typed address, a bookmark, session
   restore, or a link dragged to the tab strip. P4's Ctrl-click and middle-click were sent with
   `Input.dispatchMouseEvent`, not through the X server.
@@ -866,11 +929,18 @@ settled for Linux on the builds measured.
   first tab without an explicit attach (P7). A service worker attached twice under one `targetId`
   (P9), so "one CDP session per target, keyed by `targetId`" needs the engine to drop the second
   attach, or each of the worker's exchanges is recorded twice.
-- **The closed set of domains, `Page` only if P3 clears it** (lines 471-477): the listed facts did
-  not change with `Page.enable` or an isolated-world read (P3). The `Error.stack` check could not
-  tell, because it read zero with `Runtime.enable` on. Whether that clears `Page` is for the
-  maintainer; the Validation item "Page-visible effects" (lines 1198-1200) needs a check that
-  detects `Runtime.enable` before it can clear a domain.
+- **The closed set of domains, `Page` only if P3 clears it** (lines 471-477): measured, not
+  decided. On Chromium 154, a check that fired on every reading with `Runtime.enable` on and on none
+  without it did not fire for `Page.enable` or an isolated-world read, in five runs, and the listed
+  facts did not change (P3). On Chrome 150 and Chrome for Testing 149 the listed facts did not
+  change, and no check that detects `Runtime.enable` ran. Whether that clears `Page` is for the
+  maintainer.
+- **Validation, Page-visible effects** (lines 1198-1200): the item lists the `Error.stack` getter
+  count, which read zero with `Runtime.enable` on, on both hosts (P3), so it cannot show that a
+  domain is invisible to the page. On Chromium 154 a count of the page's own
+  `Error.prepareStackTrace` calls, for an `Error` passed to `console.debug`, passed that control in
+  every run. The item needs a check with a passing positive control, such as that one, before it
+  can clear a domain.
 - **Rollover's commit signal** (step 2, lines 528-534): settled. `Target.targetInfoChanged` on the
   browser connection marks a commit without the `Page` domain; it also fires for a same-document
   URL change, which the document request's absence tells apart (P3).
@@ -982,9 +1052,14 @@ commands from the repository root after `scripts/setup-worktree.sh`. Each config
 logs, to `<S>/out`, or to `PROBE_OUT`. The script runs Python 3 with Pillow and pypdf for
 screenshots, key presses, and PDF parsing, and needs `libX11` and `libXtst`.
 
-The script below is the version the second host ran. The first host's batch ran it without three
-additions that only the second host's runs read: the `chromium` entry in `EXES`, the
-`browserProcesses` field of `pipe`, and `brave-origin` in the names `discover` looks up.
+The script below is the version the second host's `page-reads` runs ran. The first host's batch
+ran it without the additions that only the second host's runs read. Three came first: the
+`chromium` entry in `EXES`, the `browserProcesses` field of `pipe`, and `brave-origin` in the names
+`discover` looks up. P3's detector candidates came after the second host's `pipe` and `discover`
+runs, which ran without them: the block of `/facts.html` that runs only on a page loaded with
+`?detect=`, the `/beacon` route and its `beacons` list, the filter that keeps `/beacon` out of the
+resource timing list, and, in `page-reads`, the `?detect=` address, the two control variants, the
+step times, and the `detector` and `detectors` fields.
 
 ```js
 // Throwaway probe for the stage-2 launched-browser probe spike (#1828).
@@ -1036,6 +1111,7 @@ const BUFFERS = { maxTotalBufferSize: 50e6, maxResourceBufferSize: 10e6 } // the
 
 // ---------- fixture servers: 127.0.0.1 (site A) and 127.0.0.2 (site B) ----------
 const serverLog = []
+const beacons = []
 let A, B
 const LOAD_SIZES = [2e3, 20e3, 200e3, 1e6]
 const loadBody = (url, size) => {
@@ -1052,6 +1128,31 @@ const lock = new URLSearchParams(location.search).get('lock'); if (lock) { docum
 const L = (window.__log = { stackRead: 0, scroll: 0, resize: 0, vvResize: 0, ro: 0, io: [], vis: [], focus: [], mutations: [], print: [], mq: [], pageshow: [], keys: [] })
 const probeErr = () => { const e = new Error('x'); Object.defineProperty(e, 'stack', { get() { L.stackRead++; return '' } }); console.debug(e) }
 probeErr(); setInterval(probeErr, 250)
+// P3's detector candidates run only on a page loaded with ?detect=<variant>, and beacon each reading.
+const detectTab = new URLSearchParams(location.search).get('detect')
+if (detectTab) {
+  const C = { prepareStackTrace: 0, messageGetter: 0, proxyTraps: 0, protoProxyTraps: 0, tableGetter: 0 }
+  Error.prepareStackTrace = (e, frames) => { if (e && e.p1828) C.prepareStackTrace++; return String(e) + frames.map((f) => '\\n    at ' + f).join('') }
+  const traps = (k) => new Proxy({}, Object.fromEntries(['get', 'has', 'ownKeys', 'getOwnPropertyDescriptor', 'getPrototypeOf'].map((t) => [t, (...a) => { C[k]++; return Reflect[t](...a) }])))
+  const BIG = 'x'.repeat(1 << 20)
+  const med = (xs) => xs.slice().sort((a, b) => a - b)[xs.length >> 1]
+  const time = (f) => { const t = performance.now(); f(); return performance.now() - t }
+  let seq = 0
+  const detect = () => {
+    const c0 = { ...C }
+    const big = [], small = []
+    for (let i = 0; i < 7; i++) { small.push(time(() => console.debug('s'))); big.push(time(() => console.debug(BIG))) }
+    const e1 = new Error('p'); e1.p1828 = true; console.debug(e1)
+    const e2 = new Error('q'); Object.defineProperty(e2, 'stack', { value: 'zzz' }); Object.defineProperty(e2, 'message', { get() { C.messageGetter++; return 'q' } }); console.debug(e2)
+    console.debug(traps('proxyTraps'))
+    console.debug(Object.create(traps('protoProxyTraps')))
+    console.table([{ get a() { C.tableGetter++; return 1 } }])
+    const r = { seq: seq++, bigStringMs: +med(big).toFixed(2), smallStringMs: +med(small).toFixed(2) }
+    for (const k in C) r[k] = C[k] - c0[k]
+    navigator.sendBeacon('/beacon?tab=' + detectTab, JSON.stringify(r))
+  }
+  detect(); setInterval(detect, 500)
+}
 addEventListener('scroll', () => L.scroll++, { passive: true })
 addEventListener('resize', () => L.resize++)
 if (window.visualViewport) visualViewport.addEventListener('resize', () => L.vvResize++)
@@ -1065,7 +1166,7 @@ matchMedia('print').addEventListener('change', (e) => L.mq.push('print:' + e.mat
 addEventListener('pageshow', (e) => L.pageshow.push(e.persisted))
 addEventListener('keydown', (e) => L.keys.push(e.key))
 window.__facts = () => ({ webdriver: navigator.webdriver, chromeKeys: Object.keys(window.chrome || {}), hasFocus: document.hasFocus(), visibility: document.visibilityState,
-  resources: performance.getEntriesByType('resource').map((r) => r.name.replace(location.origin, '')).sort(), scrollY: Math.round(scrollY), inner: [innerWidth, innerHeight], log: L })
+  resources: performance.getEntriesByType('resource').map((r) => r.name.replace(location.origin, '')).filter((n) => !n.startsWith('/beacon')).sort(), scrollY: Math.round(scrollY), inner: [innerWidth, innerHeight], log: L })
 </script></body></html>`,
   '/links.html': () => `<!doctype html><title>links</title>
 <a id="blank" target="_blank" href="/popup.html?via=blank">new tab</a> <a id="xs" href="${B}/xs-end.html?via=link">cross-site</a>`,
@@ -1146,6 +1247,7 @@ function route(req, res, host) {
   const cookieNames = (req.headers.cookie || '').split(/;\s*/).filter(Boolean).map((c) => c.split('=')[0])
   serverLog.push({ i: serverLog.length, t: now(), host, method: req.method, url: req.url, cookieNames, purpose: req.headers['sec-purpose'] })
   const send = (status, type, body, extra = {}) => res.writeHead(status, { 'content-type': type, ...extra }).end(body)
+  if (p === '/beacon') { let d = ''; req.on('data', (c) => { d += c }); req.on('end', () => { beacons.push({ t: now(), tab: u.searchParams.get('tab'), ...JSON.parse(d) }); res.writeHead(204).end() }); return }
   if (PAGES[p]) return send(200, 'text/html', PAGES[p]())
   if (SCRIPTS[p]) return send(200, 'text/javascript', SCRIPTS[p])
   if (p.endsWith('.png')) return send(200, 'image/png', PNG)
@@ -1591,7 +1693,8 @@ CONFIGS.pipe = async () => {
   return out
 }
 
-// P3: page-observable facts per engine variant, each on a fresh tab.
+// P3: page-observable facts per engine variant, each on a fresh tab. Two controls test the
+// detector candidates: Runtime.enable sent after the first read, and a network-only tab last.
 CONFIGS['page-reads'] = async () => {
   const b = await launch()
   const E = await engine(b.cdp)
@@ -1599,7 +1702,7 @@ CONFIGS['page-reads'] = async () => {
   await E.navigate(warm, A + '/facts.html?warm-up=1') // the first load of an origin also fetches /favicon.ico
   await sleep(3000)
   const out = { version: b.version, variants: {} }
-  const variants = ['network-only', 'page-enable', 'isolated-read', 'scroll-isolated', 'scroll-main', 'unlock-hidden-isolated', 'unlock-clip-isolated', 'runtime-enable']
+  const variants = ['network-only', 'page-enable', 'isolated-read', 'scroll-isolated', 'scroll-main', 'unlock-hidden-isolated', 'unlock-clip-isolated', 'runtime-enable', 'runtime-enable-late', 'network-only-last']
   for (const v of variants) {
     const s = await E.newTab()
     const r = { setup: [] }
@@ -1607,12 +1710,15 @@ CONFIGS['page-reads'] = async () => {
     if (v === 'runtime-enable') { await b.cdp.send('Runtime.enable', {}, s.sessionId); r.setup.push('Runtime.enable') }
     const fromEvent = E.events.length
     const logMark = serverLog.length
-    await E.navigate(s, A + '/facts.html' + (v.startsWith('unlock-') ? '?lock=' + v.split('-')[1] : ''))
+    await E.navigate(s, A + '/facts.html?detect=' + v + (v.startsWith('unlock-') ? '&lock=' + v.split('-')[1] : ''))
     await sleep(1500)
     const before = await E.evalMain(s, 'JSON.parse(JSON.stringify(window.__facts()))')
+    r.actAt = now()
+    if (v === 'runtime-enable-late') { await b.cdp.send('Runtime.enable', {}, s.sessionId); r.setup.push('Runtime.enable after the first read') }
     if (v === 'isolated-read') r.isolated = await E.evalIso(s, '({ visibility: document.visibilityState, hasFocus: document.hasFocus(), textLength: document.body.innerText.length })')
     if (v === 'scroll-isolated' || v.startsWith('unlock-')) r.scroll = await scrollOverCdp((x) => E.evalIso(s, x), v.startsWith('unlock-'))
     if (v === 'scroll-main') r.scroll = await scrollOverCdp((x) => E.evalMain(s, x), true)
+    r.actDoneAt = now()
     await sleep(1000)
     const after = await E.evalMain(s, 'JSON.parse(JSON.stringify(window.__facts()))')
     r.before = before
@@ -1622,7 +1728,18 @@ CONFIGS['page-reads'] = async () => {
     out.variants[v] = r
     await b.cdp.send('Target.closeTarget', { targetId: s.targetId })
     await sleep(300)
+    // A reading that reached the server within 200 ms of the step's end may have started during it.
+    r.detector = beacons.filter((x) => x.tab === v).map(({ tab, ...x }) => ({ ...x, phase: x.t <= r.actAt ? 'before' : x.t >= r.actDoneAt + 200 ? 'after' : 'during' }))
   }
+  // A candidate passes its control when every positive reading lies on one side of every negative one.
+  const vals = (v, k, ph) => out.variants[v].detector.filter((x) => !ph || x.phase === ph).map((x) => x[k])
+  const span = (xs) => (xs.length ? [Math.min(...xs), Math.max(...xs), xs.length] : null)
+  out.detectors = Object.fromEntries(['bigStringMs', 'smallStringMs', 'prepareStackTrace', 'messageGetter', 'proxyTraps', 'protoProxyTraps', 'tableGetter'].map((k) => {
+    const neg = [...vals('network-only', k), ...vals('network-only-last', k), ...vals('runtime-enable-late', k, 'before')]
+    const pos = [...vals('runtime-enable', k), ...vals('runtime-enable-late', k, 'after')]
+    const separates = pos.length > 0 && neg.length > 0 && (pos.every((x) => x > Math.max(...neg)) || pos.every((x) => x < Math.min(...neg)))
+    return [k, { controlSeparates: separates, negative: span(neg), positive: span(pos), byVariant: Object.fromEntries(variants.map((v) => [v, Object.fromEntries(['before', 'during', 'after'].map((ph) => [ph, span(vals(v, k, ph))]))])) }]
+  }))
   // A commit signal without the Page domain: Target.targetInfoChanged against the network events.
   const s = await E.newTab()
   const mark = E.events.length
@@ -2471,7 +2588,8 @@ echo done >> $S/batch.out
 
 The second host's reruns, as they ran on 2026-11-03, append to their own `batch.out` in the same
 form. `$S/xdg-empty` stays empty, and `$S/xdg-control/chromium-flags.conf` holds the control's one
-invented switch.
+invented switch. The batch ran in two parts with the same variables and `run` function: the three
+runs above the P3 comment, then, after the script gained P3's candidates, the P3 loop.
 
 ```shell
 #!/usr/bin/env bash
@@ -2500,6 +2618,24 @@ X="--probe-guard --probe-resume=pipeline"
 run "$N pipe $X --probe-browser=chromium"
 run "$BUS $H XDG_CONFIG_HOME=$S/xdg-control ELECTRON_RUN_AS_NODE=1 $XV $E $P pipe $X --probe-browser=chromium --probe-tag=launcher-control"
 run "$H XDG_CONFIG_HOME=$S/xdg-empty ELECTRON_RUN_AS_NODE=1 $E $P discover"
+
+# P3, five times, on the script with the detector candidates.
+for i in 1 2 3 4 5; do run "$N page-reads $X --probe-browser=chromium --probe-tag=run$i"; done
+```
+
+P3's figures come from the five result files, read with this command after the batch:
+
+```shell
+node -e '
+const runs = [1, 2, 3, 4, 5].map((i) => require(process.argv[1] + "/result-page-reads-chromium-pipeline-run" + i + ".json"))
+for (const k of Object.keys(runs[0].detectors)) console.log(k, JSON.stringify(runs.map((r) => [r.detectors[k].controlSeparates, r.detectors[k].negative, r.detectors[k].positive])))
+for (const v of Object.keys(runs[0].variants)) {
+  const xs = runs.flatMap((r) => r.variants[v].detector)
+  const per = (f) => runs.map((r) => f(r.variants[v])).join(" ")
+  console.log(v, ["before", "during", "after"].map((p) => p + " " + xs.filter((x) => x.phase === p && x.prepareStackTrace).length + "/" + xs.filter((x) => x.phase === p).length).join(", "),
+    "| stackRead", per((x) => x.after.log.stackRead), "| scroll", per((x) => x.after.log.scroll), "| lazy", per((x) => x.lazyRequests), "| vvResize", per((x) => x.before.log.vvResize + ">" + x.after.log.vvResize),
+    "| focus", per((x) => x.before.log.focus.length + ">" + x.after.log.focus.length), "| unlock", per((x) => JSON.stringify(x.scroll ? x.scroll.prior : "-")))
+}' "$S/out"
 ```
 
 The launcher readings under [Second host](#second-host) came from two commands that start no

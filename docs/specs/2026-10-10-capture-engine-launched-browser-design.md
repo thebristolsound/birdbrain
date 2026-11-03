@@ -468,15 +468,16 @@ Serves E1.
    attaches twice under one `targetId` (step 4).
 2. On every target it records (step 4), the engine sends `Network.enable` with the first slice's
    buffer limits, `Network.setCacheDisabled` (decision D6), `Target.setAutoAttach` on a page,
-   iframe, or dedicated worker session so the tab's frames and workers, and those they start,
-   attach the same way, and `Runtime.runIfWaitingForDebugger`, in that order without waiting
-   between them, then waits for every answer within a bound. The code of step 4 of the PR split
-   defines the bound as a constant, as the first slice's step 9 defines its child setup bound
+   iframe, dedicated worker, or service worker session so the tab's frames and workers, and those
+   they start, attach the same way, and `Runtime.runIfWaitingForDebugger`, in that order without
+   waiting between them, then waits for every answer within a bound. The code of step 4 of the PR
+   split defines the bound as a constant, as the first slice's step 9 defines its child setup bound
    ([first-slice plan](../plans/2026-10-10-capture-engine-first-slice.md), D17). Each setup
    command is sent before the resume. The first slice sends `Target.setAutoAttach` on the same
-   session types; the probe sent it on page and iframe sessions only, so a worker that a dedicated
-   worker starts was not measured. A target whose setup fails or does not answer within the bound
-   is unrecorded. A tab is unrecorded whichever setup command failed, as
+   session types (D17, The attach, items 2 and 3); the probe sent it on page and iframe sessions
+   only, so a target that a dedicated worker or a service worker starts was not measured. A
+   target whose setup fails or does not answer within the bound is unrecorded. A tab is
+   unrecorded whichever setup command failed, as
    [How each failure is recorded](#how-each-failure-is-recorded) says, where the first slice keeps
    the record of a page whose `Target.setAutoAttach` failed and counts the page in
    `unrecordedTargets`. A frame or worker counts in `unrecordedTargets`, as in the first slice. In
@@ -1525,9 +1526,9 @@ verifier.
     commands and then the resume without waiting, and waits for the answers within a bound; step
     3 says that in the awaited order, of the tabs a page opened, only those that kept their
     JavaScript opener answered. Step 2 also names the sessions that send `Target.setAutoAttach`
-    (page, iframe, and dedicated worker, as in the first slice) and makes a tab unrecorded
-    whichever setup command fails, as the failure table now says. The first slice's Electron order
-    is unchanged.
+    (page, iframe, dedicated worker, and service worker, as in the first slice; the probe sent it
+    on page and iframe sessions only) and makes a tab unrecorded whichever setup command fails, as
+    the failure table now says. The first slice's Electron order is unchanged.
   - Ctrl-click and middle-click tabs, a contradiction. Said: step 2 had a new tab or popup wait
     "before its first request"; the flag was false when the engine attached after the navigation
     began. Measured: those tabs and a `Target.createTarget` tab with a URL attached paused and

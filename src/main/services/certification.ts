@@ -125,11 +125,12 @@ export interface CertificationInput {
    * claim about what covers an unsigned capture has to be checked against
    * entrySignatureView in reportHtml.ts by hand.
    *
-   * Total over `captures` by construction — resolveEntrySignatures backfills
-   * every capture with 'no-entry' — so the lookup relies on that rather than
-   * defaulting an absent key to a status nothing resolved. A default would be
-   * unreachable today and would silently understate the unsigned share if the
-   * invariant ever broke; see #1110 for that failure on the trusted-time axis.
+   * Total over `captures` by construction: resolveEntrySignatures backfills a
+   * capture with no entry of its own from the entry under its chain name, else
+   * with 'no-entry'. The lookup relies on that rather than defaulting an absent
+   * key to a status nothing resolved. A default would be unreachable today and
+   * would silently understate the unsigned share if the invariant ever broke;
+   * see #1110 for that failure on the trusted-time axis.
    */
   entrySignatureByCaptureId: Map<string, EntrySignatureStatus>
   /**

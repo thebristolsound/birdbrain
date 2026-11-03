@@ -3,8 +3,8 @@ import { resolveEntrySignatures, resolveExhibitEntrySignatures } from '@main/ser
 import type { Capture, Exhibit } from '@shared/types'
 
 // #1472: a row an import renamed is looked up under the id its chain carries,
-// and the returned map stays keyed by row id for report.html and the
-// certification to read.
+// and the returned map has a key for every row id, which report.html and the
+// certification read.
 
 const TIME = '2026-09-30T10:00:00.000Z'
 const H = 'a'.repeat(64)

@@ -334,9 +334,10 @@ export function resolveExportTrustedTime(
  * one — the LAST entry wins, since that is the entry the package's own chain
  * position cites.
  *
- * Keyed by row id. A capture its own id names no entry for takes the status
- * of the entry under its chain name (`chainIdOf`, see resolveChainNames), so a
- * capture an import renamed reads its inherited entry (#1472).
+ * Every capture's row id is a key. A capture its own id names no entry for
+ * takes the status of the entry under its chain name (`chainIdOf`, see
+ * resolveChainNames), so a capture an import renamed reads its inherited entry
+ * (#1472).
  */
 export function resolveEntrySignatures(
   captures: Capture[],

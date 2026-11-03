@@ -146,7 +146,11 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
       method: 'background',
       supersedesCaptureId: cap1.id,
       consentSuppression: 'filter-list',
-      tlsCertChain: '{"status":"unavailable"}'
+      tlsCertChain: '{"status":"unavailable"}',
+      // A Persona (#1498) that neither database registers: the import copies both columns as
+      // they are, with no lookup.
+      personaId: 'persona-exporter',
+      personaLabel: 'Analyst sock A'
     })
     // Every capture engine mirror column set (#1907), so the deep comparison below fails if
     // the import drops one. No entry carries both `boundTls` and `boundTlsAbsent`, but the
@@ -337,6 +341,10 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
     expect(imported2.method).toBe('background') // non-default survived
     expect(imported2.consent_suppression).toBe('filter-list')
     expect(imported2).toMatchObject(engineColumns)
+    expect(imported2).toMatchObject({
+      persona_id: 'persona-exporter', // copied, not remapped
+      persona_label: 'Analyst sock A'
+    })
     const imported3 = collectCapturesForCase(NEW_CASE).find((r) => r.id === mapId(cap3.id)) as Row
     expect(imported3).toMatchObject({
       linked_from_capture_id: mapId(cap1.id), // REMAPPED, not copied
@@ -633,7 +641,7 @@ describe('case archive round-trip of the Transaction Record and PDF', () => {
     expect(zip.get(`files/${CAPTURE_ID}.warc.gz`)).toEqual(ENGINE_FILES.transactionRecord)
     expect(zip.get(`files/${CAPTURE_ID}.pdf`)).toEqual(ENGINE_FILES.pdf)
     const header = JSON.parse(zip.get('package.json')!.toString('utf-8'))
-    expect(header.schemaVersion).toBe(14)
+    expect(header.schemaVersion).toBe(15)
   })
 
   it('restores both files under the id the Capture keeps', async () => {

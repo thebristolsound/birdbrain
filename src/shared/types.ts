@@ -404,6 +404,9 @@ export interface Capture {
   linkedFromCaptureId?: string
   linkedFromContentHash?: string
   linkHref?: string
+  // The Persona mirrored from the signed entry (migration v45), its label frozen at acquisition.
+  personaId?: string
+  personaLabel?: string
   // Consent-overlay suppression active while the page rendered; mirrors the
   // value anchored in the manifest capture entry. undefined = none.
   consentSuppression?: ConsentSuppression

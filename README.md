@@ -111,9 +111,11 @@ Birdbrain does not encrypt the database or capture files at rest. Use operating-
 full-disk encryption if you need to protect them on disk.
 
 Captures travel from the extension to `127.0.0.1:19845` and stay in Case directories under
-the app's configured storage location. Birdbrain also makes outbound connections for
-capture and recapture, timestamp requests, certificate checks, consent-filter downloads,
-Internet Archive lookups, and release updates.
+the app's configured storage location. Background capture and recapture load the target site
+from your machine. After an HTTPS capture, Birdbrain also opens a separate TLS connection
+to the captured site to record its current certificate chain. Other outbound connections
+cover timestamp requests, consent-filter downloads, Internet Archive lookups, and release
+updates.
 
 Sharing sends Case data to teammates. Its transport connects through relays and directly to
 members, and bypasses Birdbrain's proxy and Tor settings. Relays see your public IP address;

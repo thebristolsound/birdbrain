@@ -8,8 +8,9 @@ import { initManifest, appendManifestEntry, verifyManifestChain } from '@main/se
 import { getPublicKeyPem } from '@main/services/signingKey'
 import { VERIFY_RECIPES } from '@main/services/verifyProcedure'
 import { verifyManifestChainText, canonicalStringify, ManifestEntrySchema } from '@shared/verify'
+import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
 import { MANIFEST_FILENAME } from '@shared/constants'
-import { buildSignedChain } from '../../helpers/egressPackage'
+import { buildSignedChain, writeEgressPackage } from '../../helpers/egressPackage'
 import { HAS_JQ } from '../../helpers/jq'
 
 // PR1 guard (#122): the app's verifyManifestChain(caseDir) is a thin fs
@@ -424,5 +425,43 @@ describe('verifyManifestChainText: an own __proto__ key added to a signed line (
       const raw: unknown = JSON.parse(line)
       expect(ManifestEntrySchema.parse(raw)).toStrictEqual(raw)
     }
+  })
+
+  // The two checkers #1674 names both delegate to the core; these pin that each
+  // reports the edit from the files it reads.
+  describe('through the app check and the package checker', () => {
+    let dir: string
+
+    beforeEach(() => {
+      dir = mkdtempSync(join(tmpdir(), 'birdbrain-1674-'))
+    })
+
+    afterEach(() => {
+      rmSync(dir, { recursive: true, force: true })
+    })
+
+    function addProtoKeyToFirstLine(path: string): void {
+      const [first, ...rest] = readFileSync(path, 'utf-8').split('\n')
+      writeFileSync(path, [addProtoKey(first, 'headers'), ...rest].join('\n'), 'utf-8')
+    }
+
+    it('reports the edit from a case folder', () => {
+      initManifest(dir)
+      appendManifestEntry(dir, { ...makeCaptureEntry(0), headers: { 'content-type': 'text/html' } })
+      addProtoKeyToFirstLine(join(dir, MANIFEST_FILENAME))
+      expect(verifyManifestChain(dir)).toMatchObject(HASH_MISMATCH)
+    })
+
+    it('fails the manifest chain row of an evidence package', () => {
+      writeEgressPackage(dir, { headers: { 'content-type': 'text/html' } })
+      addProtoKeyToFirstLine(join(dir, 'manifest.jsonl'))
+      const result = verifyEvidencePackage(dir)
+      expect(result.pass).toBe(false)
+      expect(result.checks.find(({ name }) => name === 'manifest chain')).toEqual({
+        name: 'manifest chain',
+        status: 'fail',
+        reason: 'Entry hash mismatch (at index 0)'
+      })
+    })
   })
 })

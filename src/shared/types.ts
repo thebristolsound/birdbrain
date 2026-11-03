@@ -105,6 +105,30 @@ export const BROWSER_FAMILIES = [
 ] as const
 export type BrowserFamily = (typeof BROWSER_FAMILIES)[number]
 
+// The launched browser as the Capture Session panel shows it (#1831). `closed` is a browser that
+// exited while its Capture Session runs on.
+export interface LaunchedBrowserSummary {
+  family: BrowserFamily
+  label: string
+  // The Active Case the launch pinned.
+  caseId: string
+  // The version `Browser.getVersion` reported; null until the browser is open.
+  version: string | null
+  // Extensions that appeared while the Egress is not Direct (D14), by ID: the engine has no name.
+  extensionWarnings: string[]
+}
+
+// What the Operator is told about how the last launched browser closed, when Birdbrain ended its
+// Capture Session or the browser would not exit.
+export interface LaunchedBrowserNotice {
+  code: string
+  message: string
+}
+
+export type LaunchedBrowserStatus =
+  | { state: 'none'; notice?: LaunchedBrowserNotice }
+  | { state: 'starting' | 'open' | 'closing' | 'closed'; browser: LaunchedBrowserSummary }
+
 // Which rule took a `launched-passive` Capture (decision D12, ADR-0037): every
 // page that loaded, or a page an Active Case Selector matched. Which Selectors
 // matched stays in `selector_matches`, off the signed entry, because a pattern
@@ -819,6 +843,7 @@ export const LOG_SOURCES = [
   'persona',
   'searchFields',
   'sharing',
+  'launchedBrowser',
   'renderer'
 ] as const
 export type LogSource = (typeof LOG_SOURCES)[number]
@@ -1043,7 +1068,18 @@ export const LOG_CODES = [
   // the next.
   'sharing.sync_off',
   'sharing.sync_start_failed',
-  'sharing.case_sync_failed'
+  'sharing.case_sync_failed',
+  // The launched browser (#1831): a launch that failed, with its error code; a Capture Session
+  // Birdbrain ended because a response bypassed the Egress proxy, or because the Egress
+  // changed; a browser that did not exit after the kill; a throwaway profile left on disk; a
+  // tab whose setup failed; and a launch version Settings could not save.
+  'launchedBrowser.launch_failed',
+  'launchedBrowser.egress_bypass',
+  'launchedBrowser.egress_changed',
+  'launchedBrowser.stop_failed',
+  'launchedBrowser.profile_remove_failed',
+  'launchedBrowser.target_setup_failed',
+  'launchedBrowser.version_save_failed'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 

@@ -439,13 +439,13 @@ done
 rm -f "$receipt"
 \`\`\`
 
-A \`timestamp\` entry of either kind whose \`tsaToken\` is present but is not a
-string, \`null\` included, is malformed. Both lists above skip it, and the binary
-rejects the chain that holds it, so it is a failure, not an entry with no token.
-\`${ROOT.verifyScript}\` performs this check and fails the package. To run it by
-hand, \`jq -r '${VERIFY_RECIPES.malformedTokenFilter} | .index' <chain>\` prints
-the index of each such entry; over \`${ROOT.manifest}\` and every member and
-lineage chain it must print nothing.
+A \`timestamp\` entry whose \`tsaToken\` is present but is not a string, \`null\`
+included, is malformed, whatever its \`subject\`. Both filters above skip it, and
+the binary rejects the chain that holds it, so it is a failure, not an entry with
+no token. \`${ROOT.verifyScript}\` performs this check and fails the package. To
+run it by hand, \`jq -r '${VERIFY_RECIPES.malformedTokenFilter} | .index' <chain>\`
+prints the index of each such entry. Run it over \`${ROOT.manifest}\` and every
+member and lineage chain: any index it prints is a failure.
 
 **6c. A strict-DER parser may refuse to read the token. That is an encoding
 deviation by the authority, not tampering.** RFC 3161 tokens are DER, and DER

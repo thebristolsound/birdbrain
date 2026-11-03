@@ -232,7 +232,9 @@ function render(): void {
       if (state.phase === 'ready' && !state.enabled) button.title = state.reason
       // Keep the page selection: a mousedown on the bar must not collapse it.
       button.addEventListener('mousedown', (e) => e.preventDefault())
-      button.addEventListener('click', () => {
+      // The page can reach this open shadow root; only browser-generated clicks may run an action.
+      button.addEventListener('click', (event) => {
+        if (!event.isTrusted) return
         const action = button.dataset.action as SelectionActionKind | undefined
         if (action) void runAction(action)
       })
@@ -357,6 +359,8 @@ async function runAction(action: SelectionActionKind): Promise<void> {
 }
 
 function onMouseUp(event: MouseEvent): void {
+  // Page script can select text and dispatch a mouseup; only browser-generated ones raise the bar.
+  if (!event.isTrusted) return
   // Clicks on the bar itself are handled by its own buttons.
   if (
     event

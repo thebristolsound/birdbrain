@@ -13,6 +13,7 @@ import {
 import { removeInjectedBirdbrainUi } from '../../extension/src/captureHygiene'
 import { SELECTION_BAR_ID, SELECTION_BAR_SELECTOR } from '../../extension/src/selectionBar'
 import type { SelectionActionResponse } from '@extension/messages'
+import { installTrustedInput, operatorClick, operatorMouseUp } from './trustedInput'
 
 type SendResponse = (response?: unknown) => void
 type Listener = (message: unknown, sender: unknown, sendResponse: SendResponse) => unknown
@@ -60,7 +61,7 @@ async function flushTimers(): Promise<void> {
 }
 
 async function mouseUp(): Promise<void> {
-  document.dispatchEvent(new MouseEvent('mouseup'))
+  operatorMouseUp()
   await flushTimers()
 }
 
@@ -80,7 +81,7 @@ function barMessage(): string {
 
 async function clickAction(action: string): Promise<void> {
   const button = bar()!.shadowRoot!.querySelector(`[data-action="${action}"]`) as HTMLButtonElement
-  button.click()
+  operatorClick(button)
   await flushTimers()
 }
 
@@ -120,6 +121,8 @@ beforeAll(async () => {
       y: 100,
       toJSON: () => ({})
     }) as DOMRect
+  // Before the import below: the bar registers its mouseup listener once, at import
+  installTrustedInput()
   // Side-effecting import: registers the message listener and the bar's
   // document listeners
   await import('../../extension/src/content')
@@ -245,6 +248,34 @@ describe('running an action', () => {
   })
 })
 
+// The page can select text, dispatch events and reach the bar's buttons; none
+// of that may stand in for the operator.
+describe('page script cannot act for the operator (#992)', () => {
+  it('cannot raise the bar with a synthesised mouseup', async () => {
+    selectParagraph()
+    document.dispatchEvent(new MouseEvent('mouseup'))
+    await flushTimers()
+
+    expect(bar()).toBeNull()
+    expect(sendMessageMock).not.toHaveBeenCalled()
+  })
+
+  it.each(['selector', 'tag', 'quote'])(
+    'cannot run %s by clicking a raised bar',
+    async (action) => {
+      selectParagraph()
+      await mouseUp()
+
+      bar()!.shadowRoot!.querySelector<HTMLButtonElement>(`[data-action="${action}"]`)!.click()
+      expect(bar()?.shadowRoot?.querySelector('.spinner')).toBeNull()
+      await flushTimers()
+
+      expect(actionRequests).toEqual([])
+      expect(barButtons().map((b) => b.dataset.action)).toEqual(['selector', 'tag', 'quote'])
+    }
+  )
+})
+
 describe('capture suppression round trip (#386)', () => {
   it('strip removes the bar, the latch blocks re-raising, release restores it', async () => {
     const baseline = document.documentElement.outerHTML
@@ -277,7 +308,7 @@ describe('capture suppression round trip (#386)', () => {
       resolveState = resolve
     })
     selectParagraph()
-    document.dispatchEvent(new MouseEvent('mouseup'))
+    operatorMouseUp()
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     // The bracket opens while the bar is still waiting for GET_STATE
@@ -423,7 +454,7 @@ describe("the bar is the page's guest, not its owner", () => {
     // worth investigating; a bubble-phase listener would never run there.
     document.querySelector('main')!.addEventListener('mouseup', (e) => e.stopPropagation())
     selectParagraph()
-    document.querySelector('p')!.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    operatorMouseUp(document.querySelector('p')!, { bubbles: true })
     await flushTimers()
 
     expect(barButtons().map((b) => b.dataset.action)).toEqual(['selector', 'tag', 'quote'])
@@ -441,7 +472,7 @@ describe('a slow service worker cannot strand the bar on stale text', () => {
     )
 
     selectParagraph()
-    document.dispatchEvent(new MouseEvent('mouseup'))
+    operatorMouseUp()
     await flushTimers()
     expect(bar()).toBeNull()
 
@@ -466,7 +497,7 @@ describe('a slow service worker cannot strand the bar on stale text', () => {
     )
 
     selectParagraph()
-    document.dispatchEvent(new MouseEvent('mouseup'))
+    operatorMouseUp()
     await flushTimers()
 
     // The operator moved on before the worker answered

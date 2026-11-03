@@ -2,8 +2,9 @@
 
 **Date:** 2026-10-11
 
-**Status:** Complete for Linux. A measurement, not a decision. Edge, Brave, and Chromium, and
-every product on Windows and macOS, are not measured on this host. The clicked-Capture step
+**Status:** Complete for Chrome and Chrome for Testing on Linux. A measurement, not a decision.
+Chromium 154 was measured on a second Linux host on 2026-11-03, so far for P7 and P20 only. Edge
+and Brave, and every product on Windows and macOS, are not measured. The clicked-Capture step
 (stage-2 step 4) stays blocked until P7 has Windows and macOS answers.
 
 Answers the P questions of the
@@ -18,12 +19,13 @@ A throwaway script, reproduced under [The probe](#the-probe), launched a browser
 profile, drove it over `--remote-debugging-pipe` with a CDP client of its own, and served every
 page itself. Each configuration ran once per browser, in one batch on 2026-10-11, from a scratch
 copy of the script outside the repository; P12's configurations ran a second time, and P12 says
-why. Runs made while the script was written are not counted.
+why. Runs made while the script was written are not counted. The Chromium rows come from reruns on
+a [second host](#second-host).
 
-**Host.** Ubuntu 24.04.4 LTS under WSL2, kernel `6.18.33.2-microsoft-standard-WSL2`, x86-64, 4
-CPUs. No desktop session ran: `DISPLAY`, `WAYLAND_DISPLAY`, `XDG_SESSION_TYPE`, and
-`XDG_CURRENT_DESKTOP` were unset. A D-Bus session bus ran with `gnome-keyring-daemon`, whose login
-keyring was locked.
+**Host.** The first host, which measured every row not marked otherwise: Ubuntu 24.04.4 LTS under
+WSL2, kernel `6.18.33.2-microsoft-standard-WSL2`, x86-64, 4 CPUs. No desktop session ran:
+`DISPLAY`, `WAYLAND_DISPLAY`, `XDG_SESSION_TYPE`, and `XDG_CURRENT_DESKTOP` were unset. A D-Bus
+session bus ran with `gnome-keyring-daemon`, whose login keyring was locked.
 
 **Display.** Every browser ran under `xvfb-run --auto-servernum`, which starts Xvfb 21.1.12 with a
 1280 × 1024 × 24 screen and no window manager. The script read the whole screen with Pillow 12.3.0
@@ -44,12 +46,13 @@ switch applies to Electron, not to the launched browser.
 | Chrome for Testing | `Chrome/149.0.7827.55` | `~/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome`, whose `--version` prints `Google Chrome for Testing 149.0.7827.55` | Vendor archive, downloaded before this work by Playwright 1.63.0 |
 | Microsoft Edge | Not measured on this host | None found (P20) | Not installed |
 | Brave | Not measured on this host | None found (P20) | Not installed |
-| Chromium | Not measured on this host | None found (P20) | Not installed as a package, a Snap, or a Flatpak |
+| Chromium, first host | Not measured on this host | None found (P20) | Not installed as a package, a Snap, or a Flatpak |
+| Chromium, second host | `Chrome/154.0.8037.97` | `/usr/bin/chromium`, Arch's launcher, which starts `/usr/lib/chromium/chromium` ([Second host](#second-host)) | Distribution package `chromium` `154.0.8037.97-1` |
 
 Chrome for Testing is not one of the four products. It is the kind of build that decision D23 pins
 for the CI suite, so each entry gives it a row of its own.
 
-**Rows not measured.** Edge, Brave, and Chromium are not installed on this host, and this run
+**Rows not measured.** Edge, Brave, and Chromium are not installed on the first host, and its run
 installed nothing: no system package and no downloaded archive. The record holds no attempt to
 install them, through the package manager or as an unbranded Chromium archive, so whether this host
 could have installed them is not known. The Windows and macOS rows are not measured because the host
@@ -95,6 +98,53 @@ P13) and the invented `*.egress-probe.test` names of P13's page.
 
 **Other tools.** pypdf 6.17.0 parsed the PDFs. The `node:sqlite` module of Electron's Node read
 copies of the cookie database.
+
+### Second host
+
+The Chromium rows were measured on 2026-11-03 on a second machine, with the script printed under
+[The probe](#the-probe) and the commands listed there.
+
+**Host.** Omarchy 4.0.6, built on Arch Linux, kernel `7.2.8-9-omarchy`, x86-64, 18 CPUs, not
+virtualized (`systemd-detect-virt` printed `none`). A Hyprland session ran on the machine's own
+display, and the probe did not use it.
+
+**Display and session.** Every probe run unset `WAYLAND_DISPLAY`, `XDG_SESSION_TYPE`, and
+`ELECTRON_OZONE_PLATFORM_HINT`. The session's Wayland socket was `wayland-1`, and the runtime
+directory held no `wayland-0` for a client's default to reach. Each launching run ran under
+`xvfb-run --auto-servernum -s '-screen 0 1280x1024x24'`, with Xvfb from `xorg-server-xvfb`
+21.1.25-2. Arch's `xvfb-run` defaults to a 640 × 480 screen, so the `-s` argument sets the first
+host's size. Each launching run also ran inside `dbus-run-session` with the probe's `bus.conf`, so the
+browser saw a private session bus with no service activation, not the desktop session's bus.
+
+**Script runtime.** Electron 45.1.0's Node 24.22.1 under `ELECTRON_RUN_AS_NODE=1`. Electron
+45.1.0's own Chromium is 156.0.8078.49.
+
+**Chromium.** Arch's `chromium` package, `154.0.8037.97-1`. `/usr/bin/chromium` is a launcher, not
+the browser. Its `--help` prints "Chromium launcher v8" and names the two files it reads switches
+from: `/etc/chromium-flags.conf`, absent on this host, and `$XDG_CONFIG_HOME/chromium-flags.conf`.
+On this host the second file holds six lines: two switches that select Wayland,
+`--password-store=gnome-libsecret`, an enabled feature, `--no-default-browser-check`, and
+`--load-extension` with three unpacked extensions. Every Chromium run but the control below set
+`XDG_CONFIG_HOME` to an empty scratch directory, under which `--help` detected no switches. In the
+`pipe` run the browser process's executable (`/proc/<pid>/exe`) was `/usr/lib/chromium/chromium`,
+and its command line held the probe's arguments and nothing else. A control run of `pipe` with a
+flags file holding one invented switch put that switch on the browser's command line, ahead of the
+probe's arguments.
+
+**Policies.** `/etc/chromium/policies/managed` holds two files from Omarchy's setup scripts: one
+sets `BrowserThemeColor` and `BrowserColorScheme`, the other sets `DefaultBrowserSettingEnabled` to
+`false`. Whether the launched browser applied them was not checked.
+
+**The browser's own traffic.** In the two `pipe` runs the proxy fixture refused Chromium's
+connections to `accounts.google.com`, `android.clients.google.com`, `clients2.google.com` (port
+80), `update.googleapis.com`, and `www.google.com`, each on port 443 unless named.
+
+**Rows not measured on the second host.** Google Chrome, Edge, and regular Brave are not installed
+there (P20). Chrome for Testing 149 is not either; Playwright's cache holds a different build,
+`chromium-1243`, which no run launched. Brave Origin is installed as `brave-origin-bin`
+`1:1.97.59-1` at `/usr/bin/brave-origin`. No run launched it, and whether a Brave Origin reading
+would count for the Brave rows is not decided. Neither `snap` nor `flatpak` is installed. The
+reruns installed no browser.
 
 ## Results
 
@@ -296,21 +346,24 @@ check needs no page of its own.
 
 ### P7: The pipe on each platform
 
-**The pipe works on Linux for both browsers, with no TCP listener and no `DevToolsActivePort`
-file.** `Browser.getVersion` answered over the pipe 176 ms after spawn on Chrome and 138 ms on Chrome
-for Testing. Auto-attach attached the existing `about:blank` tab without an explicit attach. The
-browser and its child processes held no listening TCP socket. They held one listening Unix socket,
-`SingletonSocket` in a `/tmp` directory, which the browser profile links to as `SingletonSocket`
-beside `SingletonLock` and `SingletonCookie`; the names match the process singleton the spec cites
-(lines 746-749), and a second launch on the same browser profile exits at once (P14).
-`navigator.webdriver` read `true`.
+**The pipe works on Linux on every browser measured, with no TCP listener and no
+`DevToolsActivePort` file.** `Browser.getVersion` answered over the pipe 176 ms after spawn on
+Chrome, 138 ms on Chrome for Testing, and 263 ms on Chromium 154 on the second host, where the
+launcher control run took 961 ms. On all three, auto-attach attached the existing `about:blank` tab
+without an explicit attach, `navigator.webdriver` read `true`, and the browser and its child
+processes held no listening TCP socket. They held one listening Unix socket, `SingletonSocket` in a
+`/tmp` directory (`/tmp/org.chromium.Chromium.<random>` on Chromium), which the browser profile
+links to as `SingletonSocket` beside `SingletonLock` and `SingletonCookie`. The names match the
+process singleton the spec cites (lines 746-749), and on the first host a second launch on the same
+browser profile exits at once (P14).
 
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux (distribution package) | Works: no TCP listener, no `DevToolsActivePort`, one Unix singleton socket |
 | Chrome for Testing 149, Linux (vendor archive) | Same as Chrome 150 |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
-| Snap or Flatpak build of any product, Linux | Not measured on this host: none installed, and `flatpak` is not installed |
+| Chromium 154, Linux (distribution package, second host) | Same as Chrome 150 |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
+| Snap or Flatpak build of any product, Linux | Not measured on either host: the first has no browser Snap, the second has no `snap`, and neither has `flatpak` |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -687,9 +740,9 @@ will suffer." On Chrome for Testing it appeared in place of the Chrome for Testi
 
 ### P20: Discovery
 
-**Only Google Chrome is installed at a known path, and Chrome for Testing reports itself as
-`Chrome`.** The `discover` configuration launched nothing. Of the Linux paths that `playwright-core`
-1.63.0 lists for Chrome and Edge channels (`lib/coreBundle.js:33222-33276`), only
+**On the first host only Google Chrome is installed at a known path, and Chrome for Testing reports
+itself as `Chrome`.** The `discover` configuration launched nothing. Of the Linux paths that
+`playwright-core` 1.63.0 lists for Chrome and Edge channels (`lib/coreBundle.js:33222-33276`), only
 `/opt/google/chrome/chrome` exists. On `PATH`, `google-chrome` and `google-chrome-stable` resolve to
 `/opt/google/chrome/google-chrome`; `microsoft-edge`, `microsoft-edge-stable`, `brave-browser`,
 `brave`, `chromium`, and `chromium-browser` are absent. `snap list` shows no browser, and `flatpak`
@@ -700,13 +753,23 @@ table names.
 ending `Chrome/149.0.0.0 Safari/537.36`, the same form as branded Chrome. Neither field tells the
 two apart; the `--version` output and the infobar do.
 
+**On the second host, `chromium` on `PATH` is a launcher that adds the Operator's own switches, and
+Chromium also reports itself as `Chrome`.** There `discover` found none of the Playwright paths and
+two names on `PATH`, `/usr/bin/chromium` and `/usr/bin/brave-origin`, neither of them a link;
+`snap` and `flatpak` are not installed. `/usr/bin/chromium` starts `/usr/lib/chromium/chromium`
+with the switches from the Operator's `chromium-flags.conf` ahead of the caller's arguments
+([Second host](#second-host)), so a launch through it does not run Birdbrain's argument list
+alone. Chromium 154 gave the product `Chrome/154.0.8037.97` and a user agent ending
+`Chrome/154.0.0.0 Safari/537.36`, the same form as branded Chrome.
+
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux | `/opt/google/chrome/chrome`, reached through `/usr/bin/google-chrome` |
 | Chrome for Testing 149, Linux | Playwright's cache only; product string `Chrome/149.0.7827.55` |
 | Edge, Linux | Not found at `/opt/microsoft/msedge/msedge` or on `PATH`; not measured on this host beyond that |
 | Brave, Linux | Not found on `PATH`; no installed package lists its location; product string not measured on this host |
-| Chromium, Linux | Not found on `PATH`, as a Snap, or as a Flatpak |
+| Chromium, Linux (first host) | Not found on `PATH`, as a Snap, or as a Flatpak |
+| Chromium 154, Linux (second host) | `/usr/bin/chromium`, Arch's launcher, which starts `/usr/lib/chromium/chromium` and adds the switches in `chromium-flags.conf`; product string `Chrome/154.0.8037.97`. No Snap or Flatpak: neither tool is installed |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux. `playwright-core` lists Windows paths ending `\Google\Chrome\Application\chrome.exe` and `\Microsoft\Edge\Application\msedge.exe` (`lib/coreBundle.js:33225`, :33253), read and not checked |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux. `playwright-core` lists Chrome and Edge under `/Applications` (`lib/coreBundle.js:33224`, :33252), read and not checked |
 
@@ -755,10 +818,12 @@ decoded body, with the per-load frame token in `cid:frame-…@mhtml.blink` refer
 
 ## What this does not show
 
-- Edge, Brave, Chromium, Windows, macOS, Snap and Flatpak builds, or any other Chrome version. The
-  Chrome 150 here is a build old enough to show its own update bubble.
-- Anything beyond one run per configuration per browser (two for P12), on one 4-CPU WSL2 host.
-  Timings and costs are from those runs.
+- Edge, Brave, Windows, macOS, Snap and Flatpak builds, or any other Chrome version, and Chromium
+  outside the rows measured on the second host. The Chrome 150 here is a build old enough to show
+  its own update bubble.
+- Anything beyond one run per configuration per browser (two for P12). Timings and costs are from
+  those runs, on two machines: the Chrome rows on a 4-CPU WSL2 host and the Chromium rows on an
+  18-CPU native one, so a timing from one does not compare with a timing from the other.
 - The browser's own traffic while it considers itself online. Inside P13's namespace the page read
   `navigator.onLine` as `false`, and an offline browser may send less of its own traffic.
 - A desktop session. The GNOME rows of P16 set `XDG_CURRENT_DESKTOP` on a private bus; they are not
@@ -890,6 +955,8 @@ settled for Linux on the builds measured.
   that differs from branded Chrome in those ways unless it passes `--disable-field-trial-config`,
   and whether that switch is on Chrome's unsupported-flag list was not checked. With that switch, a
   background-tab screenshot took 2,265 ms where branded Chrome took 18 ms, in one run (P2).
+  Chromium 154 reports `Chrome/154.0.8037.97`, so the product string does not tell Chromium from
+  branded Chrome either (P20).
 - **What a page can tell, banners** (lines 895-897): settled. No automation infobar appears (P19).
 - **The pipe on Windows and macOS** (decision D1, P7): not settled. Stage-2 step 4 stays blocked.
 - **The keyboard shortcut** (lines 907-911): works under X11 with no desktop (P17); Wayland and
@@ -899,7 +966,12 @@ settled for Linux on the builds measured.
   Whether that counts as a stall is the threshold D4 leaves open.
 - **The port fallback** (decision D1, option B of the CDP client): the global `WebSocket` exists in
   Electron's main process and drives a browser in port mode (P23).
-- **Discovery** (lines 294-300): settled for this host only (P20).
+- **Discovery** (lines 294-300): settled for the two hosts only (P20). Arch's `chromium` package
+  contradicts "Birdbrain owns the whole argument list" (spec, the paragraph after Identification):
+  its `chromium` on `PATH` is a launcher that puts the switches in the Operator's
+  `chromium-flags.conf` ahead of Birdbrain's. On the second host those would have added Wayland, a
+  password store, and three unpacked extensions (Method). The probe kept them out with an empty
+  `XDG_CONFIG_HOME`; a launch of `/usr/lib/chromium/chromium` itself was not tried.
 
 ## The probe
 
@@ -909,6 +981,10 @@ commands from the repository root after `scripts/setup-worktree.sh`. Each config
 `result-<configuration>-<browser>[-<options>].json`, and its screenshots, PDFs, MHTML files, and net
 logs, to `<S>/out`, or to `PROBE_OUT`. The script runs Python 3 with Pillow and pypdf for
 screenshots, key presses, and PDF parsing, and needs `libX11` and `libXtst`.
+
+The script below is the version the second host ran. The first host's batch ran it without three
+additions that only the second host's runs read: the `chromium` entry in `EXES`, the
+`browserProcesses` field of `pipe`, and `brave-origin` in the names `discover` looks up.
 
 ```js
 // Throwaway probe for the stage-2 launched-browser probe spike (#1828).
@@ -937,7 +1013,8 @@ const opt = (n, d) => {
 const has = (n) => ARGS.includes(`--probe-${n}`)
 const EXES = {
   chrome: '/usr/bin/google-chrome',
-  cft: path.join(os.homedir(), '.cache/ms-playwright/chromium-1228/chrome-linux64/chrome')
+  cft: path.join(os.homedir(), '.cache/ms-playwright/chromium-1228/chrome-linux64/chrome'),
+  chromium: '/usr/bin/chromium' // Arch's launcher, which starts /usr/lib/chromium/chromium
 }
 const BROWSER = opt('browser', 'chrome')
 const BTAG = BROWSER + (opt('tag', '') ? '-' + opt('tag', '') : '') // file name stem for screenshots, PDFs, and MHTML
@@ -1504,6 +1581,8 @@ CONFIGS.pipe = async () => {
   out.screenshot = xshot(`banners-${BTAG}`)
   const ps = procs(b.profile)
   out.processes = ps.map((p) => p.type)
+  // What reached the binary after any launcher: the executable and argv of each process without --type.
+  out.browserProcesses = ps.filter((p) => p.type === 'browser').map((p) => ({ exe: fs.readlinkSync(`/proc/${p.pid}/exe`), argv: fs.readFileSync(`/proc/${p.pid}/cmdline`, 'utf8').split('\0').filter(Boolean) }))
   out.sockets = listeners(ps.map((p) => p.pid))
   out.profileFiles = ['DevToolsActivePort', 'SingletonLock', 'SingletonSocket', 'SingletonCookie'].map((f) => [f, fs.existsSync(path.join(b.profile, f)) || (() => { try { fs.lstatSync(path.join(b.profile, f)); return 'symlink' } catch { return false } })()])
   out.sessions = E.sessionList()
@@ -2136,7 +2215,7 @@ CONFIGS.dnslog = async () => {
 CONFIGS.discover = async () => {
   // Linux paths from playwright-core 1.63.0 lib/coreBundle.js:33222-33256, then PATH names.
   const table = ['/opt/google/chrome/chrome', '/opt/google/chrome-beta/chrome', '/opt/google/chrome-unstable/chrome', '/opt/google/chrome-canary/chrome', '/opt/microsoft/msedge/msedge', '/opt/microsoft/msedge-beta/msedge', '/opt/microsoft/msedge-dev/msedge']
-  const names = ['google-chrome', 'google-chrome-stable', 'microsoft-edge', 'microsoft-edge-stable', 'brave-browser', 'brave', 'chromium', 'chromium-browser']
+  const names = ['google-chrome', 'google-chrome-stable', 'microsoft-edge', 'microsoft-edge-stable', 'brave-browser', 'brave', 'brave-origin', 'chromium', 'chromium-browser']
   const dirs = (process.env.PATH || '').split(':')
   const onPath = Object.fromEntries(names.map((n) => [n, (dirs.map((d) => path.join(d, n)).find((f) => fs.existsSync(f)) || null)]))
   const snap = spawnSync('snap', ['list'], { encoding: 'utf8' })
@@ -2388,4 +2467,45 @@ for b in chrome cft; do
   done
 done
 echo done >> $S/batch.out
+```
+
+The second host's reruns, as they ran on 2026-11-03, append to their own `batch.out` in the same
+form. `$S/xdg-empty` stays empty, and `$S/xdg-control/chromium-flags.conf` holds the control's one
+invented switch.
+
+```shell
+#!/usr/bin/env bash
+# Second-host reruns. Run from the repository root. S holds probe.mjs and bus.conf; results land
+# in $S/out. Each line of $S/batch.out is "exit <code> <command>".
+S=${S:?set S to the scratch directory}
+E=node_modules/.bin/electron
+P=$S/probe.mjs
+export PROBE_OUT=$S/out
+mkdir -p "$S/out" "$S/logs" "$S/xdg-empty" "$S/xdg-control"
+printf -- '--probe-launcher-marker\n' > "$S/xdg-control/chromium-flags.conf"
+run() {
+  bash -c "$1" > "$S/logs/$(echo "$1" | md5sum | cut -c1-10).log" 2>&1
+  echo "exit $? $1" | tee -a "$S/batch.out"
+  rm -rf /tmp/p1828-profile-*
+  df -h /tmp | tail -1
+}
+# The live Hyprland session is never used: no Wayland variables, Xvfb at the first host's screen
+# size, a private session bus with no service activation, and an empty launcher flags directory.
+H="env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE -u ELECTRON_OZONE_PLATFORM_HINT"
+BUS="dbus-run-session --config-file=$S/bus.conf --"
+XV="xvfb-run --auto-servernum -s '-screen 0 1280x1024x24'"
+N="$BUS $H XDG_CONFIG_HOME=$S/xdg-empty ELECTRON_RUN_AS_NODE=1 $XV $E $P"
+X="--probe-guard --probe-resume=pipeline"
+
+run "$N pipe $X --probe-browser=chromium"
+run "$BUS $H XDG_CONFIG_HOME=$S/xdg-control ELECTRON_RUN_AS_NODE=1 $XV $E $P pipe $X --probe-browser=chromium --probe-tag=launcher-control"
+run "$H XDG_CONFIG_HOME=$S/xdg-empty ELECTRON_RUN_AS_NODE=1 $E $P discover"
+```
+
+The launcher readings under [Second host](#second-host) came from two commands that start no
+browser, with the user's own configuration and with the empty directory:
+
+```shell
+/usr/bin/chromium --help
+XDG_CONFIG_HOME=$S/xdg-empty /usr/bin/chromium --help
 ```

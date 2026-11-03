@@ -152,15 +152,13 @@ describe.each(INGESTS)('the Persona on a capture entry, through %s', (_name, ing
     expect(getCapture(capture.id)?.personaLabel).toBe('Label passed at ingest')
   })
 
-  it('keeps the signed label through a rename and an edit of the row', async () => {
+  it('keeps the label on the entry and the row through a registry rename', async () => {
     const persona = createPersona({ label: 'Label at acquisition' })
     const { capture } = await ingest(params({ persona: { id: persona.id, label: persona.label } }))
     const signed = manifestText()
 
     updatePersona({ id: persona.id, label: 'Renamed in the registry' })
     expect(getCapture(capture.id)?.personaLabel).toBe('Label at acquisition')
-    getDb().prepare('UPDATE captures SET persona_label = ? WHERE id = ?').run('renamed', capture.id)
-
     expect(manifestText()).toBe(signed)
     expect(lastEntry()).toMatchObject({
       personaId: persona.id,

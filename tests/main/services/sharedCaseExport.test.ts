@@ -2206,6 +2206,8 @@ describe('Shared Case export, import and fork (#1511)', () => {
 
       const conformance = checkConformance(dir)
       expect(conformance).toMatchObject({ binary: 'fail', script: 'fail', scriptSteps: [6] })
+      // The findings differ by design: verify.sh's step 4a checks each entry's index,
+      // hash link and signature but not its other fields, so it fails only the entry.
       expect(findings(conformance.scriptOutput, 'FAIL')).toEqual([
         `FAIL [step 6] timestamp entry 1 of ${PEER_ID}: its tsaToken is present but is not a ` +
           'string, so the entry is malformed'

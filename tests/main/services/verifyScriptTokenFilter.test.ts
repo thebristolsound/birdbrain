@@ -100,6 +100,12 @@ describe('verify.sh malformed_token_filter', () => {
     expect(malformed([stamp('content'), stamp('entry'), tokenless])).toEqual([])
   })
 
+  // Only the timestamp entry schema has a tsaToken key, so the check, which
+  // names the entry as a timestamp entry, takes no other type.
+  it.skipIf(!HAS_JQ)('takes no entry of another type that carries a tsaToken', () => {
+    expect(malformed([JSON.stringify({ type: 'capture', tsaToken: 7 })])).toEqual([])
+  })
+
   it('gives the runbook reader the same command and says the script runs it', () => {
     const prose = VERIFY_RUNBOOK.replace(/\s+/g, ' ')
     expect(VERIFY_RUNBOOK).toContain(`jq -r '${MALFORMED_FILTER} | .index' <chain>`)

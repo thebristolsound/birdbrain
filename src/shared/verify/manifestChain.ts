@@ -143,10 +143,11 @@ export function detectUnsupportedEntry(raw: unknown, index: number): Unsupported
 // stack it exists to protect.
 //
 // This is a stack limit, not a schema rule. The deepest body any schema here
-// declares nests 3 levels (`export`.`verificationResult`), so a newer writer has
-// two orders of magnitude of headroom before this could reject a genuine entry,
-// and the bound sits an order of magnitude below the depth that overflows.
-const MAX_UNREADABLE_ENTRY_DEPTH = 256
+// declares nests 5 levels as `exceedsNestingDepth` counts them
+// (`capture`.`tls`.`chain[]`.`subjectAltNames`), so the bound is about fifty
+// times the deepest genuine entry, and an order of magnitude below the depth
+// that overflows.
+const MAX_ENTRY_DEPTH = 256
 
 function exceedsNestingDepth(value: unknown, limit: number): boolean {
   const stack: Array<{ node: unknown; depth: number }> = [{ node: value, depth: 1 }]
@@ -175,8 +176,8 @@ function exceedsNestingDepth(value: unknown, limit: number): boolean {
 // supplies could be the tamperer's own (the invariant stated at `tooNew`).
 //
 // One rejection precedes the four and is not a check on the chain: a body nested
-// past MAX_UNREADABLE_ENTRY_DEPTH is refused before it is canonicalized, for the
-// stack reason given above.
+// past MAX_ENTRY_DEPTH is refused before it is canonicalized, for the stack
+// reason given above.
 //
 // The signature is required with NO v1 grandfathering, unlike the readable path
 // below: an entry this build cannot read is never a legacy v1 entry — every v1
@@ -189,7 +190,7 @@ export function verifyUnreadableEntry(
   const { entryHash, signature, ...body } = raw
   if (body.index !== expected.index) return 'Index mismatch'
   if (body.prevHash !== expected.prevHash) return 'Chain link broken'
-  if (exceedsNestingDepth(body, MAX_UNREADABLE_ENTRY_DEPTH)) return 'Entry too deeply nested'
+  if (exceedsNestingDepth(body, MAX_ENTRY_DEPTH)) return 'Entry too deeply nested'
   const recomputed = createHash('sha256').update(canonicalStringify(body)).digest('hex')
   if (typeof entryHash !== 'string' || recomputed !== entryHash) return 'Entry hash mismatch'
   if (typeof signature !== 'string' || !verifyEntrySignature(entryHash, signature, publicKeyPem)) {
@@ -198,15 +199,13 @@ export function verifyUnreadableEntry(
   return undefined
 }
 
-// The hash check of a readable entry, over its line as written (why: the
-// LOAD-BEARING note in pass 2 of verifyManifestChainText). The spread copies an
-// own `__proto__` key as data, where assignment would set the prototype and
-// leave the key out of the hash.
+// The hash check of a readable entry, over the JSON.parse result of its line
+// (why: the LOAD-BEARING note in pass 2 of verifyManifestChainText).
 function lineHashFailure(raw: Record<string, unknown>, entryHash: string): string | undefined {
   const body: Record<string, unknown> = { ...raw }
   delete body.entryHash
   delete body.signature
-  if (exceedsNestingDepth(body, MAX_UNREADABLE_ENTRY_DEPTH)) return 'Entry too deeply nested'
+  if (exceedsNestingDepth(body, MAX_ENTRY_DEPTH)) return 'Entry too deeply nested'
   const recomputed = createHash('sha256').update(canonicalStringify(body)).digest('hex')
   return recomputed === entryHash ? undefined : 'Entry hash mismatch'
 }

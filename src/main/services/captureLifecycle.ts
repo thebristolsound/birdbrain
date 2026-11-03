@@ -49,6 +49,7 @@ import type {
   ConsentSuppression,
   HashVerification,
   LinkProvenance,
+  Persona,
   TlsRefetchSkip
 } from '@shared/types'
 import type { BatchDeleteOutcome, BatchDeleteResult, DuplicateCaptureResult } from '@shared/ipc'
@@ -124,6 +125,11 @@ export interface IngestParams {
   // Passed only by a Capture link job, after the recapture queue read the hash from the
   // source's verified entry (ADR-0040). The entry and the row then carry all three.
   linkSource?: LinkSource
+  // The Persona the page loaded under (ADR-0030), schema 7. The entry signs the id and label
+  // as passed and the row mirrors them. Ingest never looks the label up, so renaming the
+  // Persona later leaves this Capture's label as it was. A Persona also turns on the strict
+  // parse described below, which refuses an empty id or label.
+  persona?: Pick<Persona, 'id' | 'label'>
   // The capture engine's inventory and Scroll-to-load record (schema 6), passed
   // only by a background Recapture. The entry signs them as given and the row
   // mirrors them. When any capture engine field is given, ingest parses the whole
@@ -337,7 +343,8 @@ function wouldRefetchTls(url: string): boolean {
 
 // `appendManifestEntry` signs what it is given, and an entry the strict schema refuses breaks
 // the Case's chain for every reader. Run before signing on the ingest of a Capture that
-// carries the capture engine's fields (schema 6), it refuses such an entry instead.
+// carries the capture engine's fields (schema 6) or a Persona (schema 7), it refuses such an
+// entry instead.
 function strictCaptureEntry(entry: Readonly<Record<string, unknown>>): void {
   const parsed = ManifestEntrySchema.safeParse(entry)
   if (parsed.success) return
@@ -459,6 +466,8 @@ export async function ingestMhtmlCapture(
         userAgent: params.egress ? params.userAgent : undefined,
         tlsSkipped: params.tlsSkipped,
         ...params.linkSource?.signed,
+        personaId: params.persona?.id,
+        personaLabel: params.persona?.label,
         inventory: params.inventory,
         scrollToLoad: params.scrollToLoad,
         transactionRecordHash,
@@ -522,6 +531,8 @@ export async function ingestMhtmlCapture(
           consentSuppression: params.consentSuppression,
           ...params.linkSource?.signed,
           linkedFromCaptureId: params.linkSource?.rowId,
+          personaId: params.persona?.id,
+          personaLabel: params.persona?.label,
           inventory: params.inventory,
           scrollToLoad: params.scrollToLoad,
           transactionRecordHash,
@@ -532,7 +543,9 @@ export async function ingestMhtmlCapture(
         })
         return { capture, contentHash: hash }
       },
-      carriesCaptureEngineField(params) ? { check: strictCaptureEntry } : {}
+      carriesCaptureEngineField(params) || params.persona !== undefined
+        ? { check: strictCaptureEntry }
+        : {}
     )
   } catch (err) {
     // Best-effort cleanup: never let an unlink failure mask the ingest error.

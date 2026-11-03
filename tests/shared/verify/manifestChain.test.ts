@@ -7,7 +7,7 @@ import { tmpdir } from 'os'
 import { initManifest, appendManifestEntry, verifyManifestChain } from '@main/services/manifest'
 import { getPublicKeyPem } from '@main/services/signingKey'
 import { VERIFY_RECIPES } from '@main/services/verifyProcedure'
-import { verifyManifestChainText, canonicalStringify } from '@shared/verify'
+import { verifyManifestChainText, canonicalStringify, ManifestEntrySchema } from '@shared/verify'
 import { MANIFEST_FILENAME } from '@shared/constants'
 import { buildSignedChain } from '../../helpers/egressPackage'
 import { HAS_JQ } from '../../helpers/jq'
@@ -387,5 +387,42 @@ describe('verifyManifestChainText: an own __proto__ key added to a signed line (
 
   it('still verifies the same entries unedited', () => {
     expect(verify(buildSignedChain([CAPTURE_WITH_HEADERS, THUMBNAIL_DERIVATION])).valid).toBe(true)
+  })
+
+  // The rule at ManifestEntrySchema, held: a genuine line parses to exactly
+  // what it carries, so no field it omits gains a value the hash never covered.
+  // These lines omit `exhibitNumber`, `memberCode`, `derivationParameters`,
+  // `scope`, `captureIds` and `exportClass`.
+  it('parses genuine lines to exactly what they carry', () => {
+    const exhibitWithoutMemberCode = {
+      type: 'exhibit',
+      exhibitId: 'ex-1',
+      caseId: 'case-1',
+      kind: 'document',
+      origin: 'manual-upload',
+      name: 'witness-statement.pdf',
+      exhibitNumber: 7,
+      path: 'documents/ex-1.pdf',
+      contentHash: 'd'.repeat(64),
+      sizeBytes: 2048,
+      timestamp: '2026-06-01T12:05:00.000Z',
+      operatorId: 'op-1',
+      operatorName: 'Casey Operator',
+      toolVersion: '0.4.0',
+      schemaVersion: 3
+    }
+    const derivationWithoutParameters: Record<string, unknown> = { ...THUMBNAIL_DERIVATION }
+    delete derivationWithoutParameters.derivationParameters
+    const preScopeManifest = join(__dirname, 'fixtures', 'pre-scope-package', 'manifest.jsonl')
+    const lines = [
+      ...readFileSync(preScopeManifest, 'utf-8')
+        .split('\n')
+        .filter((line) => line.trim()),
+      ...buildSignedChain([exhibitWithoutMemberCode, derivationWithoutParameters])
+    ]
+    for (const line of lines) {
+      const raw: unknown = JSON.parse(line)
+      expect(ManifestEntrySchema.parse(raw)).toStrictEqual(raw)
+    }
   })
 })

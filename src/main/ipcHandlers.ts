@@ -1513,12 +1513,16 @@ export function registerIpcHandlers(deps: {
       if (!isVpnWarningOccasion(occasion)) {
         throw new IpcFailure('Invalid VPN warning occasion', 'INVALID_VPN_WARNING')
       }
-      if (target && 'captureId' in target && typeof target.captureId === 'string') {
+      // `in` throws a TypeError on a primitive, so one gets the typed refusal here instead.
+      if (typeof target !== 'object' || target === null) {
+        throw new IpcFailure('Invalid VPN warning target', 'INVALID_VPN_WARNING')
+      }
+      if ('captureId' in target && typeof target.captureId === 'string') {
         const capture = captureRepo.getCapture(target.captureId)
         if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
         return vpnWarning.check(capture.caseId, occasion)
       }
-      if (target && 'caseId' in target && typeof target.caseId === 'string') {
+      if ('caseId' in target && typeof target.caseId === 'string') {
         return vpnWarning.check(target.caseId, occasion)
       }
       throw new IpcFailure('Invalid VPN warning target', 'INVALID_VPN_WARNING')

@@ -4181,6 +4181,8 @@ describe('ipcHandlers — the VPN warning (ADR-0032)', () => {
     expect(missing).toMatchObject({ ok: false, code: 'NOT_FOUND' })
     const checks: [unknown, unknown][] = [
       [null, 'site'],
+      [caseId, 'site'],
+      [7, 'site'],
       [{}, 'site'],
       [{ caseId: 7 }, 'site'],
       [{ caseId }, undefined],

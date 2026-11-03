@@ -1,5 +1,7 @@
 # MHTML viewer interactivity, slice 2: click through the Case, and record where a link Capture came from
 
+**Status:** done, finished by [#1987](https://github.com/thebristolsound/birdbrain/pull/1987) (Part A) and [#1997](https://github.com/thebristolsound/birdbrain/pull/1997) (Part B)
+
 Plan only. Nothing here is built. Slice 1 is
 [the slice 1 plan](2026-10-02-mhtml-viewer-interactivity.md), merged as PR #1709. That plan names
 both parts of this slice: "Click-through inside the Case is slice 2" (its D3), and "Provenance is

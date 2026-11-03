@@ -30,6 +30,11 @@ serves this Persona alone. "Three mechanisms, one attribute" names both sources.
 beyond the browser session" now covers the temporary copy of the source browser's cookie
 database that a browser import reads.
 
+**Amended 2026-10-31 by the maintainer's ruling on #1498:** the Persona fields raise the
+manifest schema number, as every other field added to a `capture` entry does, so a verifier
+too old to read them says so instead of reporting a broken record. "Optional Manifest fields"
+and the considered options say so.
+
 Resolves #542 and #544 under map #541. Grilled and confirmed by the maintainer on 2026-09-19;
 the working plan is `docs/plans/2026-09-19-persona-cookie-import.md`.
 
@@ -86,12 +91,15 @@ database under the user-data folder, and it holds the values unencrypted: Electr
 system key nor `safeStorage` protects them. Turning the fuse on is #88. Settings shows the #414
 warning, which says the cookies are unencrypted, only when `safeStorage` reports no key.
 
-**Optional Manifest fields, no schema bump.** `personaId` and `personaLabel` are optional on
-`capture` entries and on `exhibit` entries whose origin is `extension`, `background` or
-`extension-image`. `derivation` entries carry nothing: a derivation is computed offline and
-inherits from its parent. Existing chain hashes are unchanged. The verifier is strict, so the
-release that teaches it the fields ships before any build writes them (the ADR-0023
-sequencing).
+**Optional Manifest fields, at the next schema number.** `personaId` and `personaLabel` are
+optional on `capture` entries and on `exhibit` entries whose origin is `extension`, `background`
+or `extension-image`. `derivation` entries carry nothing: a derivation is computed offline and
+inherits from its parent. An entry that carries either field stamps the manifest schema number
+that introduces them, the next one free when their verifier step merges, so a verifier from an
+earlier release reports the entry as from a newer schema instead of as malformed. An entry
+without them keeps the number it stamps today, and existing chain hashes are unchanged. The
+verifier is strict, so the release that teaches it the fields ships before any build writes them
+(the ADR-0023 sequencing).
 
 **The term is Persona everywhere**, domain model and UI, framed as a signed-in browser
 identity, yours or a pseudonym.
@@ -104,8 +112,10 @@ identity, yours or a pseudonym.
 - **Per-Case declaration.** Real value for a security-strict team, but it forces the registry
   to be per Case and duplicates every Persona across Cases. It can be layered on the per-install
   model later; starting with it cannot be undone as cheaply.
-- **Schema bump to 4.** Buys only a clearer error for stale verifiers; the strict-parse hazard
-  and the ship-verifier-first sequencing are identical either way.
+- **No schema bump.** Chosen on 2026-09-19 and reversed on 2026-10-31. The strict-parse hazard
+  and the ship-verifier-first sequencing are identical either way, but without a bump a stale
+  verifier reports a Persona entry as a broken record, where every other field added to a
+  `capture` entry gets the "newer schema" outcome.
 
 ## Consequences
 

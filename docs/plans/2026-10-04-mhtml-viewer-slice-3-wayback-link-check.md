@@ -1,5 +1,7 @@
 # MHTML viewer interactivity, slice 3: check a link's destination in the Wayback Machine
 
+**Status:** done, finished by [#1998](https://github.com/thebristolsound/birdbrain/pull/1998)
+
 PR #1990 implements the single-link lookup (S1, S2, S3 one link, S5, S6), and PR #1998,
 stacked on it, implements the batch (S3 many links, S4). Slice 1 is
 [the slice 1 plan](2026-10-02-mhtml-viewer-interactivity.md), merged as PR #1709; its D5 left

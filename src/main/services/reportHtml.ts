@@ -1860,7 +1860,11 @@ function renderExhibit(e: ExhibitView, total: number, packaged: boolean): string
 
 const INVENTORY_ABSENCE_TEXT: Record<InventoryAbsenceReason, string> = {
   'not-taken': 'not taken: the build that made this capture does not take this file',
-  failed: 'not stored: the capture engine attempted this file and stored none'
+  failed: 'not stored: the capture engine attempted this file and stored none',
+  'page-not-recorded': 'not taken: the network recording did not cover this page',
+  'back-forward-cache':
+    'not taken: the browser restored this page from its back-forward cache, so no request loaded it',
+  'not-taken-passive': 'not taken: a capture taken without a click takes no PDF'
 }
 
 const SCROLL_TO_LOAD_OUTCOME_TEXT: Record<ScrollToLoadOutcome, string> = {

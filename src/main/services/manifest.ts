@@ -16,7 +16,7 @@ import {
 import { join } from 'path'
 import { createHash } from 'crypto'
 import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
-import { ManifestEntrySchema } from '@shared/schemas'
+import { carriesLaunchedBrowserValue, ManifestEntrySchema } from '@shared/schemas'
 import type {
   BoundTls,
   CaptureInventory,
@@ -52,8 +52,10 @@ import type {
   ArchiveVerificationResult,
   CaptureMethod,
   BoundTlsAbsence,
+  BrowserFamily,
   ConsentSuppression,
   EgressKind,
+  PassiveCaptureRule,
   TlsRefetchSkip
 } from '@shared/types'
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
@@ -705,6 +707,17 @@ export type ManifestEntryInput =
       linkedFromCaptureId?: string
       linkedFromContentHash?: string
       linkHref?: string
+      // The launched browser's fields and the Persona fields, described at the
+      // capture entry schema in schemas.ts. Schema-7 fields, so an entry
+      // carrying any of them, a launched method, or a stage-2 inventory value
+      // is stamped 7 (LAUNCHED_BROWSER_MIN_READER, PERSONA_MIN_READER).
+      // Nothing writes them yet.
+      browserProduct?: string
+      browserVersion?: string
+      browserFamily?: BrowserFamily
+      passiveRule?: PassiveCaptureRule
+      personaId?: string
+      personaLabel?: string
       sizeBytes: number
       operatorId: string
       operatorName: string
@@ -817,6 +830,10 @@ export type ManifestEntryInput =
       // would be a citation collision. An entry carrying one is stamped 4
       // (EXHIBIT_MEMBER_CODE_MIN_READER).
       memberCode?: string
+      // The Persona fields (ADR-0030), schema 7: an entry carrying either is
+      // stamped 7 (PERSONA_MIN_READER). Nothing writes them yet.
+      personaId?: string
+      personaLabel?: string
       timestamp: string
       operatorId: string
       operatorName: string
@@ -951,8 +968,8 @@ export interface AppendResult {
 // verifier reporting a valid chain as broken is a false accusation, and nothing
 // can recall a distributed copy). So each type declares the oldest verifier
 // that can read it, and the v3 types (ADR-0023) stamp 3. A `capture` entry
-// stamps 3, 5 or 6 only when it carries a schema-3, schema-5 or schema-6 field
-// (fieldMinReaderSchemaVersion).
+// stamps 3, 5, 6 or 7 only when it carries a schema-3, schema-5, schema-6 or
+// schema-7 field or value (fieldMinReaderSchemaVersion).
 //
 // Typed as a total Record over the input union so adding an entry type without
 // deciding its minimum reader version is a compile error, not a silent 2. That
@@ -1009,6 +1026,16 @@ const CAPTURE_ENGINE_MIN_READER = 6
 // So are the link provenance fields (ADR-0040, "The fields need schema 6").
 const CAPTURE_LINK_PROVENANCE_MIN_READER = 6
 
+// The launched browser's values are schema 7: its two Capture Methods, its
+// fields, and the stage-2 inventory values. The method values are the first
+// values, rather than fields, this function reads: a schema-6 verifier's strict
+// method enum has neither.
+const LAUNCHED_BROWSER_MIN_READER = 7
+
+// The Persona fields are schema 7 on `capture` and `exhibit` entries alike
+// (ADR-0030, amended 2026-10-31).
+const PERSONA_MIN_READER = 7
+
 // A `timestamp` entry's `subject` is a schema-4 field (#1518): the schema
 // itself refuses one stamped lower, and a schema-3 verifier would read it as a
 // broken chain rather than "verifier too old".
@@ -1019,14 +1046,21 @@ const TIMESTAMP_SUBJECT_MIN_READER = 4
 // one without it keeps the type's 3.
 const EXHIBIT_MEMBER_CODE_MIN_READER = 4
 
+function carriesPersonaField(entry: { personaId?: string; personaLabel?: string }): boolean {
+  return entry.personaId !== undefined || entry.personaLabel !== undefined
+}
+
 function fieldMinReaderSchemaVersion(entry: ManifestEntryInput): number {
   if (entry.type === 'timestamp') {
     return entry.subject !== undefined ? TIMESTAMP_SUBJECT_MIN_READER : 0
   }
   if (entry.type === 'exhibit') {
+    if (carriesPersonaField(entry)) return PERSONA_MIN_READER
     return entry.memberCode !== undefined ? EXHIBIT_MEMBER_CODE_MIN_READER : 0
   }
   if (entry.type !== 'capture') return 0
+  if (carriesLaunchedBrowserValue(entry)) return LAUNCHED_BROWSER_MIN_READER
+  if (carriesPersonaField(entry)) return PERSONA_MIN_READER
   const { inventory, scrollToLoad, transactionRecordHash, boundTls, boundTlsAbsent, pdfHash } =
     entry
   const engineFields = [

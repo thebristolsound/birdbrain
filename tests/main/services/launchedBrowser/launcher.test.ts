@@ -400,9 +400,11 @@ describe('launchBrowser: refusing a browser', () => {
     })
     await settle()
     controller.abort()
+    // Before any await, for quitting: Electron does not await before-quit.
+    expect(browser.signals).toEqual(['SIGKILL'])
     const error = await launching.catch((err: unknown) => err)
     expect(codeOf(error)).toBe('BROWSER_LAUNCH_CANCELLED')
-    expect(browser.signals).toEqual(['SIGKILL'])
+    expect(new Set(browser.signals)).toEqual(new Set(['SIGKILL']))
     expect(existsSync(sessionDirOf(calls[0].args))).toBe(false)
   })
 

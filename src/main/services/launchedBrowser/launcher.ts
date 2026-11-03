@@ -215,7 +215,12 @@ export async function launchBrowser(
       return { ...exit, profileError }
     }
   })
-  const onAbort = (): void => failStart(cancelled())
+  // Killed now, not after the next await: quitting cancels a launch, and Electron does not await
+  // before-quit.
+  const onAbort = (): void => {
+    child.kill('SIGKILL')
+    failStart(cancelled())
+  }
   signal?.addEventListener('abort', onAbort, { once: true })
 
   // Kept until the start succeeds, to say why a browser did not open its connection.

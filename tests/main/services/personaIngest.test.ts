@@ -145,6 +145,13 @@ describe.each(INGESTS)('the Persona on a capture entry, through %s', (_name, ing
     })
   })
 
+  it('signs the label passed at ingest over the one the registry holds', async () => {
+    const { id } = createPersona({ label: 'Label in the registry' })
+    const { capture } = await ingest(params({ persona: { id, label: 'Label passed at ingest' } }))
+    expect(lastEntry()).toMatchObject({ personaId: id, personaLabel: 'Label passed at ingest' })
+    expect(getCapture(capture.id)?.personaLabel).toBe('Label passed at ingest')
+  })
+
   it('keeps the signed label through a rename and an edit of the row', async () => {
     const persona = createPersona({ label: 'Label at acquisition' })
     const { capture } = await ingest(params({ persona: { id: persona.id, label: persona.label } }))

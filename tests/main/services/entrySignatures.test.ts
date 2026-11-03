@@ -79,6 +79,15 @@ describe('resolveEntrySignatures (#1472)', () => {
     expect(statuses.get('new-capture')).toBe('no-entry')
   })
 
+  it("keeps a capture's own entry over the entry under its chain name", () => {
+    const statuses = resolveEntrySignatures(
+      [capture('a')],
+      [captureEntry('a', { schemaVersion: 1, signature: '' }), captureEntry('b')],
+      renamed({ a: 'b' })
+    )
+    expect(statuses.get('a')).toBe('unsigned-legacy')
+  })
+
   it('folds entries by their own ids under an identity chain name', () => {
     const statuses = resolveEntrySignatures(
       [capture('signed'), capture('legacy'), capture('unchained')],
@@ -112,6 +121,15 @@ describe('resolveExhibitEntrySignatures (#1472)', () => {
       renamed({ 'new-doc': 'old-doc' })
     )
     expect(statuses.get('new-doc')).toBe('no-entry')
+  })
+
+  it("keeps an exhibit's own entry over the entry under its chain name", () => {
+    const statuses = resolveExhibitEntrySignatures(
+      [exhibit('a')],
+      [exhibitEntry('a', { schemaVersion: 1, signature: '' }), exhibitEntry('b')],
+      renamed({ a: 'b' })
+    )
+    expect(statuses.get('a')).toBe('unsigned-legacy')
   })
 
   it('folds entries by their own ids under an identity chain name', () => {

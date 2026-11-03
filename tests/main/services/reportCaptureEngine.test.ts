@@ -31,6 +31,7 @@ import {
   engineCaptureEntry,
   engineFields
 } from '../../helpers/captureEnginePackage'
+import { LAUNCHED_TRANSACTION_RECORD } from '../../helpers/launchedBrowser'
 
 const OPTIONS: ExportOptions = {
   format: 'zip',
@@ -381,6 +382,154 @@ describe('report.html capture engine fields', () => {
       OPTIONS
     )
     expect(html).toContain(`${label}:</strong> ${text}.`)
+  })
+
+  describe('the schema-7 members of a present Transaction Record part', () => {
+    const SERVICE_WORKER_LABEL = 'Served by a service worker, recorded without the server address'
+    const WITHHELD_LABEL =
+      'Requests whose body the capture engine withheld; a Transaction Record from a launched browser holds no request body'
+    const CACHE_DISABLED =
+      '<p>The entry records that the capture engine disabled the HTTP cache on the recorded targets.</p>'
+    const row = (label: string, count: number): string =>
+      `<li>${label}: <span class="mono">${count}</span></li>`
+    const OLD_LABELS = [
+      'Exchanges recorded as a request and a response (each redirect hop counts)',
+      'Served from the cache, recorded as a request only',
+      'Cancelled, recorded as a request only',
+      'Failed, recorded as a request only',
+      'Still in flight when collection stopped, recorded as a request only',
+      'Finished with no response, recorded as a request only',
+      'Responses recorded without their body, which was over the size budget or which the browser did not return',
+      'Requests whose body the browser did not hand over in full',
+      'WebSocket connections opened, whose messages are not recorded',
+      'Targets recorded: the page, and the frames and workers whose setup answered',
+      'Targets not recorded, whose setup failed, did not answer, or was not attempted; requests made in or below one may be missing from the record'
+    ]
+
+    function reportAt(schemaVersion: number, transactionRecord: Record<string, unknown>): string {
+      const fields = engineFields({
+        method: schemaVersion >= 7 ? 'launched' : 'background',
+        inventory: { ...ENGINE_INVENTORY, transactionRecord }
+      })
+      const facts = resolveCaptureEngineFacts(
+        signedEntries([engineCaptureEntry(fields, schemaVersion)]),
+        true
+      )
+      expect(facts.size).toBe(1)
+      return buildHtmlReport(reportData([capture()], { captureEngineByCaptureId: facts }), OPTIONS)
+    }
+
+    function transactionRecordNote(html: string): string {
+      const notes = html
+        .split('<div class="note">')
+        .filter((block) => block.includes('<p class="note-title">Transaction Record</p>'))
+      expect(notes).toHaveLength(1)
+      return notes[0]
+    }
+
+    function countLabels(note: string): string[] {
+      return [...note.matchAll(/<li>(.*?): <span class="mono">\d+<\/span><\/li>/g)].map(
+        ([, label]) => label
+      )
+    }
+
+    it('states both counts, the disabled HTTP cache, and that a token in a response body stays', () => {
+      const note = transactionRecordNote(reportAt(7, LAUNCHED_TRANSACTION_RECORD))
+
+      expect(note).toContain(row(SERVICE_WORKER_LABEL, 15))
+      expect(note).toContain(row(WITHHELD_LABEL, 16))
+      expect(note).toContain(CACHE_DISABLED)
+      expect(note).toMatch(
+        /A token\s+in a URL, a response body, or any other header stays in the record\./
+      )
+      expect(note).not.toMatch(/in a URL, a body,/)
+      // Each new row sits beside the schema-6 row it qualifies.
+      expect(countLabels(note)).toEqual([
+        OLD_LABELS[0],
+        OLD_LABELS[1],
+        SERVICE_WORKER_LABEL,
+        ...OLD_LABELS.slice(2, 8),
+        WITHHELD_LABEL,
+        ...OLD_LABELS.slice(8)
+      ])
+    })
+
+    it('states a zero count it carries', () => {
+      const note = transactionRecordNote(
+        reportAt(7, {
+          ...ENGINE_INVENTORY.transactionRecord,
+          servedByServiceWorker: 0,
+          requestBodiesWithheld: 0
+        })
+      )
+      expect(note).toContain(row(SERVICE_WORKER_LABEL, 0))
+      expect(note).toContain(row(WITHHELD_LABEL, 0))
+    })
+
+    it('states the withheld bodies and a response body under an empty replaced-header list', () => {
+      const note = transactionRecordNote(
+        reportAt(7, {
+          ...ENGINE_INVENTORY.transactionRecord,
+          replacedHeaders: [],
+          requestBodiesWithheld: 3
+        })
+      )
+      expect(note).toContain(
+        'The entry names no header whose value was replaced. A token in a URL, a response body, or any header stays in the record.'
+      )
+      expect(note).toContain(row(WITHHELD_LABEL, 3))
+    })
+
+    it.each([
+      [
+        'servedByServiceWorker',
+        { servedByServiceWorker: 2 },
+        row(SERVICE_WORKER_LABEL, 2),
+        [WITHHELD_LABEL, CACHE_DISABLED]
+      ],
+      [
+        'requestBodiesWithheld',
+        { requestBodiesWithheld: 4 },
+        row(WITHHELD_LABEL, 4),
+        [SERVICE_WORKER_LABEL, CACHE_DISABLED]
+      ],
+      [
+        'httpCacheDisabled',
+        { httpCacheDisabled: true },
+        CACHE_DISABLED,
+        [SERVICE_WORKER_LABEL, WITHHELD_LABEL]
+      ]
+    ])('states %s alone and nothing for the other two', (_, member, shown, hidden) => {
+      const note = transactionRecordNote(
+        reportAt(7, { ...ENGINE_INVENTORY.transactionRecord, ...member })
+      )
+      expect(note).toContain(shown)
+      for (const text of hidden) expect(note).not.toContain(text)
+      const withheld = 'requestBodiesWithheld' in member
+      expect(note.includes('in a URL, a response body, or any other header')).toBe(withheld)
+      expect(note.includes('in a URL, a body, or any other header')).toBe(!withheld)
+    })
+
+    it('renders a record without them as before, at schema 6 and at schema 7', () => {
+      const at6 = transactionRecordNote(reportAt(6, ENGINE_INVENTORY.transactionRecord))
+      const at7 = transactionRecordNote(reportAt(7, ENGINE_INVENTORY.transactionRecord))
+
+      expect(at7).toBe(at6)
+      expect(countLabels(at6)).toEqual(OLD_LABELS)
+      expect(at6).toMatch(/<\/ul>\s*<p>Headers present with their values replaced:/)
+      expect(at6).toMatch(/A token\s+in a URL, a body, or any other header stays in the record\./)
+      expect(at6).not.toContain('response body')
+      expect(at6).not.toContain('service worker')
+      expect(at6).not.toContain('withheld')
+      expect(at6).not.toContain('HTTP cache')
+
+      const empty = transactionRecordNote(
+        reportAt(6, { ...ENGINE_INVENTORY.transactionRecord, replacedHeaders: [] })
+      )
+      expect(empty).toContain(
+        'The entry names no header whose value was replaced. A token in a URL, a body, or any header stays in the record.'
+      )
+    })
   })
 
   it.each([

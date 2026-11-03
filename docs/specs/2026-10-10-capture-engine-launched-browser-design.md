@@ -13,6 +13,14 @@ stated the browser cookie import ruling since 2026-10-10, link the ADR that reco
 seeding section also records that the at-rest assessment of 2026-10-11 made the partition's
 at-rest wording true.
 
+**Amended by the [launched-browser probe](2026-10-11-capture-engine-launched-browser-probe-spike.md)
+(stage 2 plan, open question 4):** [Attach before request](#attach-before-request) and the
+sections it feeds take four of the probe's findings. Two contradicted the design (the setup
+order, and tabs opened by Ctrl-click or middle-click), one adds a requirement (a service worker
+attaches twice), and one is a gap (a shared worker belongs to no tab). Merging the change that
+folded them in is the maintainer's ruling; "Probe findings on attach" under
+[Decisions and rulings](#decisions-and-rulings) gives each.
+
 **Decisions this rests on:**
 [ADR-0034](../adr/0034-the-app-acquires-and-the-extension-is-a-companion.md) (the app acquires,
 the extension is a Companion; this stage is the second step of its order of work),
@@ -456,22 +464,42 @@ Serves E1.
    `waitForDebuggerOnStart`, and `flatten` all true. The protocol description says auto-attach
    "attaches to all existing related targets as well", so the engine does not attach to existing
    targets by hand: the probe did both and received every exchange of the first tab twice. The
-   engine keeps one CDP session per target, keyed by `targetId`.
-2. For every page target it attaches to, the engine sends `Network.enable` with the first slice's
-   buffer limits and `Network.setCacheDisabled` (decision D6), then
-   `Target.setAutoAttach` on that CDP session so the tab's iframes and workers attach the same way,
-   and only when every command has answered, `Runtime.runIfWaitingForDebugger`. A new tab or popup
-   waits, before its first request, until the engine resumes it.
+   engine keys each CDP session by its `sessionId`, not by `targetId`, because a service worker
+   attaches twice under one `targetId` (step 4).
+2. On every target it records (step 4), the engine sends `Network.enable` with the first slice's
+   buffer limits, `Network.setCacheDisabled` (decision D6), `Target.setAutoAttach` on a page or
+   iframe session so the tab's iframes and workers attach the same way, and
+   `Runtime.runIfWaitingForDebugger`, in that order without waiting between them, then waits for
+   every answer within a bound that step 4 of the PR split sets. Each setup command is sent before
+   the resume. A target whose setup fails or does not answer within the bound is unrecorded: a tab
+   as [How each failure is recorded](#how-each-failure-is-recorded) says, and a frame or worker
+   counts in `unrecordedTargets`, as in the first slice. In the
+   [launched-browser probe](2026-10-11-capture-engine-launched-browser-probe-spike.md), waiting for
+   each answer before the resume left a tab opened by a plain `target=_blank` link or by
+   `window.open` with `noopener` paused until the script's 15-second timeout; sent together, the
+   `_blank` tab's commands answered within 17 ms, and every tab a page opened had its document
+   request recorded (P4). Every other probe configuration set up its paused targets in this order,
+   P5's frames and workers and P9's service worker included. It is the launched browser's order
+   only: in Electron it stalled a cross-site frame (first-slice plan, D17).
 3. The probe confirmed the pattern for one popup: a `window.open` from the page produced a target
    attached with `waitingForDebugger: true`, and its document request appeared on its own CDP
    session. An Electron window that had not navigated never answered `Network.enable`
    ([stage-1 probe](2026-10-02-capture-engine-probe-spike.md), Results); in launched Chrome the
-   paused popup did.
-4. The engine records only page targets whose URL is `http` or `https`, with their iframes and
-   dedicated workers. It resumes every other target without recording it, or leaves it out with
-   the `filter` parameter of `Target.setAutoAttach` (experimental). The probe saw Chrome's own
-   component extensions as `background_page` and `service_worker` targets with network traffic of
-   their own.
+   paused popup did. That holds only for a popup that keeps its JavaScript opener, a `window.open`
+   call or a link with `rel=opener`, which answered within 8 ms in the launched-browser probe (P4).
+4. The engine records only page targets whose URL is `http` or `https`, with their iframes,
+   dedicated workers, and service workers, as the first slice records `iframe`, `worker`, and
+   `service_worker` targets (`src/packages/transaction-record/lib/collect.ts:49-51`). A service
+   worker attaches twice under one `targetId`: on the browser connection and under the page's
+   session, and its own fetches arrived on both sessions under the same request ids (P9). The
+   engine records it from the session under the tab and resumes the browser-level session without
+   recording it. The probe set up and resumed both sessions; resuming one without setup, and a
+   service worker that controls several tabs, were not measured. A shared worker attaches on the
+   browser connection only (P5); the engine resumes it without recording it (see
+   [Tabs, windows, and browser contexts](#tabs-windows-and-browser-contexts)). It resumes every
+   other target without recording it, or leaves it out with the `filter` parameter of
+   `Target.setAutoAttach` (experimental). The probe saw Chrome's own component extensions as
+   `background_page` and `service_worker` targets with network traffic of their own.
 
 `flatten`, `filter`, the `Network.enable` buffer limits, and its `enableDurableMessages` parameter
 are marked experimental in `devtools-protocol` 0.0.1716261.
@@ -485,17 +513,28 @@ each recorded target, and `Page` only if the probe shows it changes nothing the 
 observable by the page is P3.
 
 **Each tab carries a "seen from the first request" flag** for its current navigation. The flag is
-false when the engine attached after that navigation began. Such a navigation yields a Capture with
-no Transaction Record and no Bound TLS Details, and the inventory says recording did not cover the
-page.
+false whenever the tab's recording lacks the committed document's request: when the engine
+attached after that navigation began, and when the tab attached paused yet its document request
+reached no CDP session. A tab opened by Ctrl-click or middle-click on a link, or by
+`Target.createTarget` with a URL, did the second: it answered its setup, its document request
+reached the fixture, and none of those tabs had an `openerId` (P4). The probe sent those clicks
+with `Input.dispatchMouseEvent`; a typed address, a bookmark, session restore, a link dragged to
+the tab strip, and clicks from a real mouse were not measured. Such a navigation yields a Capture
+with no Transaction Record and no Bound TLS Details, and the inventory says recording did not
+cover the page (`page-not-recorded`, a schema 7 reason).
 
-What the guarantee does not cover. The inventory records each when it affects a Capture, except
-as the schema 7 ruling below changes it:
+What the guarantee does not cover. The inventory records each when it affects a Capture, except a
+shared worker's requests and as the schema 7 ruling below changes it:
 
 - a response served from the HTTP cache, or a resource reused inside one page, which leaves no
   event ([stage-1 probe](2026-10-02-capture-engine-probe-spike.md));
 - a response a service worker served (`fromServiceWorker` on `Network.Response`); the worker's own
-  network request is on a target no tab owns (P9);
+  network request is recorded from its session under the tab (step 4 above, P9);
+- a shared worker's own requests. Its script request is on the page's session, but its fetches are
+  on a `shared_worker` session attached on the browser connection (P5), which the engine does not
+  record. Schema 7 has no reason or count for them, so the inventory does not account for them,
+  which departs from ADR-0035:46-48 as the first slice's shared-worker limit does (first-slice
+  plan, D17). A count would need schema 8 at the earliest;
 - a page restored from the back-forward cache, which loads nothing (P10);
 - a page Chrome loaded speculatively before the Operator navigated to it, whose requests ran on
   another target (P10). The probe found pre-rendering off while the engine drives the browser and
@@ -518,6 +557,11 @@ Serves E2, E5.
   engine shows such targets in the panel, never records them, and never captures them.
 - **Each tab keeps its own recording**, identified by `targetId`. A popup or a new tab gets its own;
   the opener is recorded in the `warcinfo` record.
+- **A shared worker belongs to no tab.** Its script request appears on the session of the page
+  that started it, and its own fetches on a `shared_worker` session attached on the browser
+  connection, not under any tab (P5). The engine resumes that session without recording it, so no
+  tab's recording holds the worker's fetches and no inventory counts them (What the guarantee
+  does not cover, under [Attach before request](#attach-before-request)).
 - **A tab's Persona is its browser's.** The engine stamps the Persona from the browser profile the
   process was launched with, never from a picker.
 - **Tabs whose URL is not `http` or `https`** (`chrome://`, `file://`, `devtools://`,
@@ -582,7 +626,8 @@ overlap (:34-35).
    same navigation overlaps this one, and each stays complete alone (ADR-0035:34-35).
 7. **The main document must be there.** If the recording lacks the document request of the committed
    page, the Capture carries no Transaction Record and no Bound TLS Details, and the inventory says
-   recording did not cover the page (E1).
+   recording did not cover the page (E1). The first page of a tab opened by Ctrl-click or
+   middle-click is such a page ([Attach before request](#attach-before-request)).
 
 **Cache.** A Persona's browser profile keeps its HTTP cache between Capture Sessions, unlike the
 fresh partition of the background renderer, and a cached main document carries no Bound TLS
@@ -1095,7 +1140,7 @@ Details, the WARC and PDF hashes, and the inventory come from CE-5.
 | The proxy fails during a Capture Session | Chrome fails the requests | The failed exchanges in the inventory; a Capture of the error page is what the browser showed |
 | A response arrives from an endpoint other than the proxy while the Egress is not Direct | Closes the browser and ends the Capture Session | Message to the Operator; diagnostic log without the URL |
 | The WebRTC check finds a candidate while the Egress is not Direct | Closes the browser before showing it | Message to the Operator |
-| `Network.enable` fails on a tab | Marks the tab unrecorded | A clicked Capture carries no Transaction Record and the inventory gives the reason; a passive Capture is skipped |
+| `Network.enable` fails on a tab | Marks the tab unrecorded; the tab has already resumed, because the resume is sent with the setup commands | A clicked Capture carries no Transaction Record and the inventory gives the reason; a passive Capture is skipped |
 | The document request is missing from the recording | No Transaction Record, no Bound TLS Details | Inventory reason |
 | A new document commits while a Capture is being taken | Abandons the Capture | Capture activity feed and panel |
 | A body over budget, no longer held, or not fetched | Exchange kept without body | Inventory, as in the first slice |
@@ -1180,8 +1225,13 @@ servers reached through CE-2's test-only loopback allowance:
   that is not the writer, and Bound TLS Details matching a TLS fixture's certificate.
 - **Attach before request.** For the first tab, a typed navigation, a `target=_blank` link, a
   `window.open` popup, a new tab, a redirect chain, a cross-site iframe, and a cross-site
-  navigation, every document request the fixture logged appears in its tab's record.
+  navigation, every document request the fixture logged appears in its tab's record. For a tab
+  opened by Ctrl-click on a link and one opened by middle-click, a Capture of the first page
+  carries no Transaction Record and no Bound TLS Details, and its inventory gives the reason
+  `page-not-recorded`.
 - **One CDP session per target.** The fixture's request count equals the record's exchange count.
+  On a page a service worker controls, which passes some requests through to the fixture, the
+  fixture's count equals the record's exchange count less `servedByServiceWorker`.
 - **The cut.** An endpoint that holds its response open is listed as in flight; a request started
   after the cut is absent; two Captures of one navigation overlap and each passes Package
   Verification alone; a Capture after a new navigation holds none of the previous navigation's
@@ -1445,6 +1495,37 @@ verifier.
   counts the exchanges a service worker served. The request bodies a launched browser withholds
   (ADR-0051) are a count on the signed entry, and no request id or URL enters the Manifest.
   #1830 no longer waits on the probe issue #1828.
+- **Probe findings on attach.** Stage 2 plan, open question 4. Merging the change that added this
+  entry is the maintainer's ruling on all four. Each gives what the design said, what the
+  launched-browser probe measured on Chrome 150 and Chrome for Testing 149 on Linux, and the change
+  made above. None adds a Manifest value.
+  - Setup order, a contradiction. Said: step 2 resumed a target only "when every command has
+    answered"; step 3 said that "in launched Chrome the paused popup did" answer. Measured: that
+    order left a `target=_blank` tab and a `noopener` tab paused until the script's 15-second
+    timeout; sent together, the commands answered within 17 ms and every tab a page opened had its
+    document request recorded (P4). Change: step 2 sends the setup commands and then the resume
+    without waiting, and waits for the answers within a bound; step 3 holds only for a popup that
+    keeps its JavaScript opener. The first slice's Electron order is unchanged.
+  - Ctrl-click and middle-click tabs, a contradiction. Said: step 2 had a new tab or popup wait
+    "before its first request"; the flag was false when the engine attached after the navigation
+    began. Measured: those tabs and a `Target.createTarget` tab with a URL attached paused and
+    answered their setup, and their document request reached no session (P4). Change: the flag is
+    false whenever the committed document's request is missing, so that first page's Capture gives
+    `page-not-recorded`, and Validation gains both cases.
+  - A service worker attaches twice, a requirement. Said: step 1 kept one CDP session per target
+    "keyed by `targetId`"; step 4 recorded no service worker; the worker's own request was "on a
+    target no tab owns" (P9). Measured: one `targetId` attached on the browser connection and under
+    the page, and the worker's own fetches arrived on both sessions under the same request ids
+    (P9). Change: sessions keyed by `sessionId`, the worker recorded from its session under the tab
+    as the first slice records it, and its browser-level session resumed unrecorded; Validation
+    gains a page the worker controls. Alternative: record neither session, as step 4 said, so the
+    record holds none of the worker's own fetches.
+  - Shared workers, a gap. Said: step 4 recorded pages with their frames and dedicated workers,
+    and the Tabs section gave a shared worker no owner. Measured: its script on the page's session
+    and its fetch on a `shared_worker` session attached on the browser connection (P5). Change:
+    resumed unrecorded and listed in What the guarantee does not cover. Schema 7 has no value for
+    it, so this departs from ADR-0035 as the first slice's D17 did; a count needs schema 8 at the
+    earliest.
 
 ## Open questions
 
@@ -1493,7 +1574,9 @@ a design question; the plan or the maintainer settles each.
   is being deprecated in favor of `Network.configureDurableMessages` (experimental), "due to the
   possibility of deadlocks when awaiting Network.enable before issuing
   Runtime.runIfWaitingForDebugger", which is the order
-  [Attach before request](#attach-before-request) uses, so the probe measures the command too.
+  [Attach before request](#attach-before-request) used before the probe, so the probe measures the
+  command too. The tabs that stalled in that order (P4) had `Network.enable` with the buffer limits
+  only, without `enableDurableMessages`.
 - **P13. Traffic around the proxy.** Whether all of the browser's own traffic (updates, Safe
   Browsing, sync) follows `--proxy-server`; QUIC, DNS prefetch, and preconnect under a proxy; and
   what CDP reports as the remote address through an HTTP proxy.

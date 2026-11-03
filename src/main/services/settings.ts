@@ -56,6 +56,8 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   onboardingChapters: {},
   isFreshInstall: false,
   demoCaseSeeded: false,
+  launchedBrowserExecutable: '',
+  launchedBrowserVersions: {},
   releaseChannel: 'stable',
   autoCheckForUpdates: true,
   egress: { kind: 'direct' },
@@ -275,14 +277,32 @@ function notifyChanges(before: BirdbrainSettings, after: BirdbrainSettings): voi
 }
 
 export function updateSettings(partial: Partial<BirdbrainSettings>): BirdbrainSettings {
-  const before = getSettings()
   const parsed = SettingsUpdateSchema.safeParse(partial)
   if (!parsed.success) {
     throw new InvalidSettingsError(
       `Invalid settings: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`
     )
   }
-  const supplied = suppliedKeysOnly(partial, parsed.data)
+  return writeSettings(suppliedKeysOnly(partial, parsed.data))
+}
+
+// The launched browser keys, which the settings edit above strips (SettingsUpdateSchema).
+export function setLaunchedBrowserExecutable(executablePath: string): BirdbrainSettings {
+  return writeSettings({ launchedBrowserExecutable: executablePath })
+}
+
+export function recordLaunchedBrowserVersion(
+  executablePath: string,
+  version: string
+): BirdbrainSettings {
+  const { launchedBrowserVersions } = getSettings()
+  return writeSettings({
+    launchedBrowserVersions: { ...launchedBrowserVersions, [executablePath]: version }
+  })
+}
+
+function writeSettings(supplied: Partial<BirdbrainSettings>): BirdbrainSettings {
+  const before = getSettings()
   // Refuse to overwrite a settings file this process cannot read (#1169 round-2
   // review). The merge below is built on getSettings(), which falls back to the
   // defaults plus tsaEnabled: false when the read throws, so writing it would

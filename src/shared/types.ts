@@ -602,6 +602,11 @@ export interface BirdbrainSettings {
   // the demo case brings a fresh one back next launch, and again after each
   // later deletion (#1301). The full statement is on `seedDemoCaseIfNeeded`.
   demoCaseSeeded: boolean
+  // The launched browser (#1831). The executable the Operator chose, '' for none, and the
+  // version `Browser.getVersion` reported at each executable's last launch, since discovery
+  // starts no browser to ask. Only the main process writes either: it spawns the executable.
+  launchedBrowserExecutable: string
+  launchedBrowserVersions: Record<string, string>
   // Update delivery. `releaseChannel` selects the GitHub release track;
   // `autoCheckForUpdates` gates the background check schedule (manual checks are
   // always available). First-run `releaseChannel` is derived from the installed

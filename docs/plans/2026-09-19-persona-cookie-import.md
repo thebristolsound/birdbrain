@@ -1,10 +1,11 @@
 # Persona management with cookie-file import
 
-**Status:** active. Phase 1 shipped in PR #1570, which closed #1497. Phases 2, 3, 5 and 6 were
+**Status:** active. Phase 1 shipped in PR #1570, which closed #1497. Phase 2's verifier half
+merged on 2026-11-02 in #2031 (6c488f05), which also closed #1830. Phases 2, 3, 5 and 6 were
 rewritten on 2026-11-02 around the launched browser, as
 `docs/plans/2026-10-31-capture-engine-stage-2.md` (called "the stage 2 plan" below) directs;
-phase 4 moved to stage 3, and phase 3b is superseded. The plan is done when phases 2, 3, 5 and 6
-have merged; the stage 2 programme waits on that (stage 2 plan :21-22).
+phase 4 moved to stage 3, and phase 3b is superseded. The plan is done when phase 2's writer half
+and phases 3, 5 and 6 have merged; the stage 2 programme waits on that (stage 2 plan :21-22).
 
 Map: #541. Sub-issues: #542 (domain model), #543 (export disclosure), #544 (mechanism), #545
 (bot-detection research), #546 (threat-model delta). The maintainer grilled and confirmed the
@@ -27,8 +28,14 @@ amended on 2026-10-31 (ADR-0030:33-36). Decisions 5, 7 and 11 still read as conf
 2026-09-19: ADR-0034 amends decision 5's mechanism; the stage 2 spec keeps decision 7's two
 wordings, drops ADR-0030's `persona-window` wording, and adds the `launched` and
 `launched-passive` wordings
-(`docs/specs/2026-10-10-capture-engine-launched-browser-design.md:1024-1041`, called "the spec"
+(`docs/specs/2026-10-10-capture-engine-launched-browser-design.md:1026-1043`, called "the spec"
 below); and decision 11's persona window is the one phase 3b retires.
+
+**Refreshed 2026-11-03 against `main` at f701cb56.** #2031 merged the verifier half of phase 2
+with the launched-browser fields at schema 7 and closed #1830, and #2043 landed the designer's
+2026-11-01 revision of the launched-browser mock. "What exists", the phase table, phase 2's two
+halves, and phase 3's wait list say so, and the spec citations follow the lines #2031 added to the
+spec.
 
 ## Goal
 
@@ -46,7 +53,7 @@ guarantees second.
 
 ## What exists
 
-Read from `origin/main` at 4af53029 on 2026-11-02.
+Read from `origin/main` at f701cb56 on 2026-11-03.
 
 - **Phase 0.** ADR-0030 and the `CONTEXT.md` entry for **Persona** (`CONTEXT.md:41`) record the
   decisions, and the #545 spike is `docs/specs/2026-09-19-persona-bot-detection-spike.md`. #542
@@ -64,18 +71,36 @@ Read from `origin/main` at 4af53029 on 2026-11-02.
   (:893). `RenderPage` is `(url, { timeoutMs, captureId, toolVersion })`
   (`src/main/services/recapture.ts:81-84`), with no partition. `src/main/webviewPolicy.ts` has no
   Persona partition entry.
-- **The Operator is stamped; the Persona is not.** The `capture` entry carries `operatorId` and
-  `operatorName` (`src/shared/schemas.ts:686-687`), and the capture row carries `operator_id`
-  (`src/main/services/db/captureRepo.ts:245`). Neither has a Persona field or column.
-- **Schema numbers.** `MANIFEST_SCHEMA_VERSION` is 6 (`src/shared/constants.ts:111`), and the
-  database is at 44 (`LATEST_SCHEMA_VERSION`, `src/main/services/db/core.ts:6`). The Capture
-  Methods are `extension`, `background` and `duplicate` (`src/shared/types.ts:77`).
+- **The verifier reads a Persona; no writer stamps one.** Since #2031, the `capture` entry
+  (`src/shared/schemas.ts:742-743`) and the `exhibit` entry (:1133-1134) accept optional
+  `personaId` and `personaLabel`. The verifier refuses an empty value (:643-644), either field on
+  an entry stamped below 7, and a `personaLabel` without a `personaId` (:648-658), and
+  `src/shared/verify/manifestChain.ts:471-494` passes both through. No writer sets them: the entry
+  inputs in `src/main/services/manifest.ts` still say "Nothing writes them yet" (:710-714,
+  :833-836). The `capture` entry carries `operatorId` and `operatorName` (`schemas.ts:745-746`),
+  and the capture row carries `operator_id` (`src/main/services/db/captureRepo.ts:245`) but no
+  Persona column.
+- **Schema numbers.** `MANIFEST_SCHEMA_VERSION` is 7 (`src/shared/constants.ts:120`), and the
+  database is still at 44 (`LATEST_SCHEMA_VERSION`, `src/main/services/db/core.ts:6`). The
+  Capture Methods are `extension`, `background`, `duplicate`, and the two launched methods
+  `launched` and `launched-passive` (`src/shared/types.ts:79`, :86-92). The verifier reads the
+  launched methods, and nothing writes them.
+- **No release carries schema 7.** The newest tag is `v1.0.1-beta.25` of 2026-10-31, and it does
+  not contain 6c488f05. The maintainer's tag of a release carrying schema 7 still gates every
+  Persona writer (stage 2 plan :140-144).
 - **Cookies at rest.** The partition's cookie values are stored unencrypted, because Electron's
   `EnableCookieEncryption` fuse is off in the build Birdbrain ships; turning it on is #88
   (ADR-0030:19-23). #1824 stays open for two Settings questions (stage 2 plan :48-49).
-- **Stage 2 in flight.** #2031 adds the Persona fields to the verifier at schema 7 with the
-  launched-browser fields, and is open for the maintainer's review. #1830, #1831, #1832 and #1833
-  are open; #1829, which recorded the seeding-launch exception, is closed (ADR-0034:15-18).
+- **Stage 2 in flight.** #2031 added the Persona fields to the verifier at schema 7 with the
+  launched-browser fields, merged on 2026-11-02 as 6c488f05, and closed #1830. #1831, #1832 and
+  #1833 are open; #1829, which recorded the seeding-launch exception, is closed (ADR-0034:15-18).
+- **The designer's revision.** #2043 (f701cb56) landed the 2026-11-01 revision of the
+  launched-browser mock (`docs/design-handoff/2026-11-01-launched-browser-revision/`) and its
+  assessment (`docs/specs/2026-11-02-launched-browser-revision-feasibility-assessment.md`). The
+  revision draws #1833's Persona picker (assessment :316), state 13, a browser left from an earlier
+  run with a Persona form and a no-Persona form, and state 15, deleting a Persona whose browser is
+  open (assessment :73, :75). On 2026-11-02 the maintainer ruled that #1831 builds from that
+  revision and goes to the designer for review once built (#2043's commit message).
 
 ## Decisions (confirmed 2026-09-19)
 
@@ -154,9 +179,9 @@ evidence-affecting at the blocking tier, so the maintainer reviews and merges it
 
 | Phase | Issues | Stage 2 step | Waits on |
 | --- | --- | --- | --- |
-| 2, verifier half | #1498 in #2031 | step 2 | the maintainer's review of #2031 |
-| 2, writer half | #1498 | step 5 | #2031 merged; DB 45 free in the migration lane |
-| 3, launched profile | #1833 | step 5 | #1831 and #2031 merged, the schema 7 release |
+| 2, verifier half | #1498 in #2031 | step 2 | nothing: merged on 2026-11-02 as 6c488f05 |
+| 2, writer half | #1498 | step 5 | DB 45 in the migration lane, which no open PR held on 2026-11-03 |
+| 3, launched profile | #1833 | step 5 | #1831 merged, the schema 7 release |
 | 3, background render | #1499 | step 5 | #1498's writer half or a lifted block, and question 7 on the sign-in window |
 | 3b | #1505 | none | superseded |
 | 4 | #1500 | stage 3 | the Companion pipe |
@@ -190,15 +215,20 @@ evidence-affecting at the blocking tier, so the maintainer reviews and merges it
 
 The stage 2 plan splits #1498 in two (stage 2 plan :187-191).
 
-**Verifier half, in stage 2 step 2 (#2031).**
+**Verifier half, stage 2 step 2: merged in #2031 (6c488f05, 2026-11-02).**
 
-- `personaId` and `personaLabel` on `capture` and `exhibit` entries, in the same PR as the
-  launched-browser fields, which moves `MANIFEST_SCHEMA_VERSION` from 6 to 7 (stage 2 plan :80-81).
-- Each field gets a refine that requires schema 7 and a stamp in `fieldMinReaderSchemaVersion`
-  (`src/main/services/manifest.ts:1022`), so an entry that carries one stamps 7 (decision 9).
-- `src/shared/verify` and the standalone verifier (`pnpm build:verifier`) accept the fields.
-- After it merges, the maintainer tags a release carrying schema 7. That release gates the merge
-  of every Persona writer (stage 2 plan :140-144).
+- #2031 added `personaId` and `personaLabel` to `capture` and `exhibit` entries
+  (`src/shared/schemas.ts:742-743`, :1133-1134) in the same PR as the launched-browser fields, and
+  moved `MANIFEST_SCHEMA_VERSION` from 6 to 7 (`src/shared/constants.ts:120`; stage 2 plan
+  :80-81). It closed #1830; #1498 stays open for the writer half.
+- Both fields share a refine that requires schema 7 (`schemas.ts:648-652`), and
+  `fieldMinReaderSchemaVersion` (`src/main/services/manifest.ts:1053`) stamps `PERSONA_MIN_READER`
+  (:1037), so an entry that carries one stamps 7 (decision 9). A second refine refuses a
+  `personaLabel` without a `personaId` (`schemas.ts:654-658`).
+- `src/shared/verify` (`manifestChain.ts:471-494`) and the standalone verifier
+  (`pnpm build:verifier`) accept the fields.
+- No release carries schema 7 yet. When the maintainer tags one, it ungates the merge of every
+  Persona writer (stage 2 plan :140-144).
 
 **Writer half.**
 
@@ -211,6 +241,8 @@ The stage 2 plan splits #1498 in two (stage 2 plan :187-191).
   plan :235-236).
 - It builds on #2031's merged schema. It may merge before the schema 7 release only while no
   caller passes a Persona. Its first callers are #1833 and #1499 (stage 2 plan :187-191).
+- It writes a `personaLabel` only beside a `personaId`, and never an empty one, because the
+  verifier refuses a label without an id and an empty value (`schemas.ts:643-644`, :654-658).
 - It adds no Capture Method. `persona-window` left #1498's scope on 2026-10-10 (spec :82-86).
 
 ### Phase 3: a Persona's two browser sessions
@@ -218,8 +250,8 @@ The stage 2 plan splits #1498 in two (stage 2 plan :187-191).
 ADR-0034 gives a Persona one browser session per engine: a launched-browser profile and an
 Electron partition, both seeded from the same cookie import (ADR-0034:93-96).
 
-**A launched-browser profile per Persona (#1833).** It waits on #1831, on #2031 merging, and on
-the schema 7 release (stage 2 plan :192-194).
+**A launched-browser profile per Persona (#1833).** It waits on #1831 and on the schema 7 release
+(stage 2 plan :192-194); its wait on the verifier ended when #2031 merged.
 
 - The Operator picks the Persona, default none, when starting the launched browser, and the choice
   holds for that browser's life (decision D21, spec :243-249). Each Capture taken in it carries
@@ -227,22 +259,22 @@ the schema 7 release (stage 2 plan :192-194).
   Whichever of #1832 and #1833 merges second wires the stamp into the launched route (#1833,
   "Order and lanes").
 - Each Persona has one browser profile per browser product, under
-  `<userData>/launched-browsers/persona-<personaId>/<product>/` (decision D8, spec :670-680).
+  `<userData>/launched-browsers/persona-<personaId>/<product>/` (decision D8, spec :672-682).
 - One import seeds the partition and each configured product's profile. A windowless seeding
   launch writes the cookies with `Storage.setCookies`, and the engine never reads a cookie value
-  back out of either store (decision D7, spec :735-742). That launch is the one exception to the
+  back out of either store (decision D7, spec :737-744). That launch is the one exception to the
   rule that a launched browser runs only inside a Capture Session (ADR-0034:15-18).
 - Deleting a Persona deletes its browser profiles after clearing the partition and before the soft
-  delete (spec :686-690).
-- Persona profiles turn off Chrome sync and password saving (decision D15, spec :697-703). Under
+  delete (spec :688-692).
+- Persona profiles turn off Chrome sync and password saving (decision D15, spec :699-705). Under
   the maintainer's ruling of 2026-10-17, the launched browser also blocks the password leak check
   (stage 2 plan :42-44).
 - Before adding a plaintext warning, the PR quotes the Linux key store measurement (decision D17,
-  spec :704-715). Whether the Persona screen warns about the fixed-key fallback, and whether
+  spec :706-717). Whether the Persona screen warns about the fixed-key fallback, and whether
   `src/main/services/persona/**` joins the blocking tier, are the stage 2 plan's question 8
   (:306-308).
 - It takes the migration lane only if it stores per-store counts on the `personas` row (spec
-  :818).
+  :820).
 
 **Background render through the partition (#1499).** The Electron partition serves background
 Recapture and add-URL only (spec :97-98, ADR-0034:93-96).
@@ -253,11 +285,11 @@ Recapture and add-URL only (spec :97-98, ADR-0034:93-96).
   no Node, denied permissions, and offscreen rendering stay as they are.
 - The session outlives the job, so the consent blocker and the network-idle tracker tear down on
   every exit path, the permission handler is set once per session, and the partition is created
-  with `cache: false` (#1499 scope; spec :590-591).
+  with `cache: false` (#1499 scope; spec :592-593).
 - `webviewPolicy.ts` gains a Persona partition entry that denies every guest load.
 - Recapture and add-URL take a Persona picker, default none, and pass the partition and the
   `persona` stamp from the same value in one call (decision 6). Capture detail shows "persona
-  session used" (spec :1033).
+  session used" (spec :1035).
 - #1499's body says it is blocked by #1498 and by #545; #545 closed on 2026-09-20. It starts when
   #1498's writer half merges, unless the maintainer lifts that block for the plumbing, and not
   before question 7 settles whether it keeps its own "Sign in as persona" window or the cookie
@@ -282,7 +314,7 @@ nobody has tried a launched Chrome against them (spec :253-258).
 
 #1500 becomes the declared Persona on a stage 3 `companion` Capture and leaves this plan (stage 2
 plan :224-226). ADR-0034 builds the Companion pipe after launched Chromium browsers
-(ADR-0034:101-103), and stage 3 sets the `companion` wording (spec :1040). #1500's body still
+(ADR-0034:101-103), and stage 3 sets the `companion` wording (spec :1042). #1500's body still
 describes an extension popup selector, the `extension` method and a block on #1498. Whether
 #1500 comes off ready-for-agent until stage 3 is the stage 2 plan's question 9 (:309-310).
 
@@ -293,7 +325,7 @@ describes an extension popup selector, the `extension` method and a block on #14
 - For the partition, the count and the expiry come from the partition's own cookie store, as
   #1501's scope describes. For a launched profile, they come from the import result, because S2
   forbids reading cookie values from the launched browser (spec :186-187).
-- Storing per-store counts on the `personas` row needs a migration (spec :818). #1833 and #1501
+- Storing per-store counts on the `personas` row needs a migration (spec :820). #1833 and #1501
   may need that `personas` row migration, and if they do, they queue behind DB 45 in the
   migration lane (stage 2 plan :231-232).
 - No cookie name or value crosses IPC. The phase is not evidence-affecting (stage 2 plan
@@ -306,16 +338,16 @@ describes an extension popup selector, the `extension` method and a block on #14
 - **#543** (export disclosure, wayfinder:grilling) takes the `launched` wording of decision D11
   and the seed-source question from ADR-0052 (stage 2 plan :219-220). The wording for Capture
   detail, `report.html`, `certification.html` and `VERIFY.md` is the spec's table (spec
-  :1031-1036); export wording stays with #543 (spec :1040).
+  :1033-1038); export wording stays with #543 (spec :1042).
 - **#546** takes the threat-model change, which ships with the code that makes it true (spec
-  :1534-1535). Beyond the original items (cross-persona linkage on disk, cookie theft at rest,
+  :1548-1549). Beyond the original items (cross-persona linkage on disk, cookie theft at rest,
   wrong-persona capture, and what is not guaranteed), it covers:
   - What two Personas share in the launched browser: the machine, the Egress, and the browser
-    build (spec :693-696).
+    build (spec :695-698).
   - The wrong-persona mitigation at launch: the picker defaults to none, one launched browser
     runs at a time, and the panel shows the Persona (spec :240-249; #1833 scope).
   - Unencrypted partition cookies (ADR-0030:19-23) and the launched profile's key store (spec
-    :704-715).
+    :706-717).
 - **The tester guide** has no issue yet (stage 2 plan :223). It leads with capturing a page you are
   signed in to in the launched browser, and puts the guarantees for pseudonymous work second.
 

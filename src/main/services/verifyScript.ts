@@ -1601,6 +1601,18 @@ while IFS=' ' read -r stamp_idx imprint encoded chain; do
   receipt_tokens=$((receipt_tokens + 1))
 done <"$tmp/receipt-tokens.txt"
 
+# A timestamp entry whose tsaToken is present and not a string is malformed, and
+# the Birdbrain verifier rejects the chain that holds it (#1725). The content
+# token walks above skip it, so it fails here, over the chains the receipt walk
+# reads, whatever the deletions or the selection.
+malformed_token_filter='${VERIFY_RECIPES.malformedTokenFilter}'
+jq -r '.chain as $c | .e | '"$malformed_token_filter"' | "\\(.index) \\($c)"' \\
+  "$tmp/receipt-chains.jsonl" >"$tmp/malformed-tokens.txt"
+while IFS=' ' read -r stamp_idx chain; do
+  [ -n "$stamp_idx" ] || continue
+  fail "timestamp entry $stamp_idx\${chain:+ of $chain}: its tsaToken is present but is not a string, so the entry is malformed"
+done <"$tmp/malformed-tokens.txt"
+
 # sha256 of every enclosed token file. A signed entry is matched to a file by
 # its bytes, because nothing signed the file's name.
 : >"$tmp/file-index.txt"

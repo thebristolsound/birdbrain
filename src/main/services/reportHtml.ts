@@ -1967,10 +1967,7 @@ function transactionRecordBlock(
   const counts: Array<[string, number]> = [
     ['Exchanges recorded as a request and a response (each redirect hop counts)', record.exchanges],
     ['Served from the cache, recorded as a request only', record.cached],
-    ...optionalCount(
-      'Served by a service worker, recorded without the server address',
-      servedByServiceWorker
-    ),
+    ...optionalCount('Served by a service worker', servedByServiceWorker),
     ['Cancelled, recorded as a request only', record.cancelled],
     ['Failed, recorded as a request only', record.failed],
     ['Still in flight when collection stopped, recorded as a request only', record.inFlight],

@@ -385,7 +385,7 @@ describe('report.html capture engine fields', () => {
   })
 
   describe('the schema-7 members of a present Transaction Record part', () => {
-    const SERVICE_WORKER_LABEL = 'Served by a service worker, recorded without the server address'
+    const SERVICE_WORKER_LABEL = 'Served by a service worker'
     const WITHHELD_LABEL =
       'Requests whose body the capture engine withheld; a Transaction Record from a launched browser holds no request body'
     const CACHE_DISABLED =

@@ -483,10 +483,11 @@ It is *notable* exclusions, not an exhaustive complement of the include list.
    the "interpretation" clause (what evidence a note points at, and note text in exported
    reports/archives).
 7. **Selector cluster (`src/main/services/selectorLifecycle.ts`,
-   `src/main/services/safeRegex.ts`).** Originally excluded as "matches never enter the evidence
-   package" — the challenge pass found that factually wrong (`src/main/services/caseArchive.ts`
-   exports and re-imports `selectors` and `selectorMatches`). Included on that basis; if selector
-   matches are ruled non-evidentiary despite riding in archives, drop both.
+   `src/main/services/safeRegex.ts`, `src/main/services/selectorMatch.ts`).** Originally excluded
+   as "matches never enter the evidence package" — the challenge pass found that factually wrong
+   (`src/main/services/caseArchive.ts` exports and re-imports `selectors` and `selectorMatches`).
+   Included on that basis; if selector matches are ruled non-evidentiary despite riding in
+   archives, drop all three.
 8. **Accepted glob false positives.** `src/main/services/db/**` sweeps in the read-only
    `src/main/services/db/diagnosticsRepo.ts`; `src/renderer/components/settings/db/**` sweeps in
    the generic `src/renderer/components/settings/db/ConfirmDialog.tsx`. Accepted: a per-file list

@@ -1,12 +1,13 @@
 # Capture engine stage-2 probe: launched Chromium browsers on Linux
 
-**Date:** 2026-10-11
+**Date:** 2026-10-11, updated 2026-11-03
 
-**Status:** Complete for Chrome and Chrome for Testing on Linux. A measurement, not a decision.
-Chromium 154 was measured on a second Linux host on 2026-11-03, for every entry but P17, which did
-not run there, and P16's host-as-is session. Edge and Brave, and every product on Windows and macOS,
-are not measured. The clicked-Capture step (stage-2 step 4) stays blocked until P7 has Windows and
-macOS answers.
+**Status:** A measurement, not a decision. Complete for Chrome 150 and Chrome for Testing 149 on
+one Linux host. Chromium 154 was measured on a second Linux host on 2026-11-03, for every entry but
+P17 and P16's host-as-is session, which did not run there. On Chromium 154, P3 has a check that
+detects `Runtime.enable` and passed its control; on the first host's two builds, P3's only check
+failed its control. Edge and Brave, and every product on Windows and macOS, are not measured. The
+clicked-Capture step (stage-2 step 4) stays blocked until P7 has Windows and macOS answers.
 
 Answers the P questions of the
 [stage-2 design spec](2026-10-10-capture-engine-launched-browser-design.md) (Open questions, line
@@ -1066,6 +1067,10 @@ On the second host the comparison ran against Electron 45.1.0's `wc.savePage`:
 - Edge, Brave, Windows, macOS, Snap and Flatpak builds, or any other Chrome version, and any other
   Chromium version. On the second host, neither `shortcut` (P17) nor P16's host-as-is runs ran.
   The Chrome 150 here is a build old enough to show its own update bubble.
+- Brave Origin. The second host has it installed, and no run launched it (Method).
+- Any Electron but two: 44.5.1 on the first host and 45.1.0 on the second, for the configurations
+  that need Electron's main process (Method). A difference between a Chrome row and the Chromium
+  row of one entry may come from the browser, the Electron version, or the host.
 - Anything beyond one run per configuration per browser (two for P12 on the first host; on
   Chromium, five for P3 and three for `pipe`). Timings and costs are from those runs, on two
   machines: the Chrome rows on a 4-CPU WSL2 host with Electron 44.5.1 and the Chromium rows on an
@@ -1179,9 +1184,9 @@ settled for Linux on the builds measured.
 - **Egress, remote endpoint and the browser's own traffic** (lines 853-872): settled for SOCKS5 and
   HTTP proxies on Linux, inside a namespace. No TCP connection and no DNS query went around either
   proxy, and the browser sent host names, not addresses, to both, on Chromium 154 too (P13). The
-  remote endpoint check
-  also works for an HTTP proxy, whose endpoint CDP reports. A service worker's response carries no
-  endpoint (P9), which the check's "is present" condition already skips.
+  remote endpoint check also works for an HTTP proxy, whose endpoint CDP reports. A service
+  worker's response carries no endpoint (P9), which the check's "is present" condition already
+  skips.
 - **Validation, Egress** (lines 1176-1181): contradicted. The wrapper as written does not start the
   browser: inside `unshare -rn` the process runs as root, and Chrome exits with "Running as root
   without --no-sandbox is not supported" (P13). The runs that worked added a nested `unshare -U
@@ -1255,22 +1260,26 @@ settled for Linux on the builds measured.
 ## The probe
 
 Throwaway; not part of the build. Save the script as `probe.mjs` in a scratch directory outside the
-repository, written `<S>` here (`/tmp/p1828` in the batch), beside the two files below, and run the
-commands from the repository root after `scripts/setup-worktree.sh`. Each configuration writes
+repository, written `<S>` here (`/tmp/p1828` in the first host's batch; the rerun's batch, as
+printed here, reads it from the environment), beside the two files below, and run the commands
+from the repository root after `scripts/setup-worktree.sh`. Each configuration writes
 `result-<configuration>-<browser>[-<options>].json`, and its screenshots, PDFs, MHTML files, and net
 logs, to `<S>/out`, or to `PROBE_OUT`. The script runs Python 3 with Pillow and pypdf for
 screenshots, key presses, and PDF parsing, and needs `libX11` and `libXtst`.
 
-The script below is the version the second host's last runs ran. The first host's batch ran it
-without the additions that only the second host's runs read. Three came first: the `chromium`
-entry in `EXES`, the `browserProcesses` field of `pipe`, and `brave-origin` in the names `discover`
-looks up. P3's detector candidates came after the second host's first `pipe` and `discover` runs,
-which ran without them: the block of `/facts.html` that runs only on a page loaded with
-`?detect=`, the `/beacon` route and its `beacons` list, the filter that keeps `/beacon` out of the
-resource timing list, and, in `page-reads`, the `?detect=` address, the two control variants, the
-step times, and the `detector` and `detectors` fields. The last addition came after the P3 runs and
-before the rest of the second host's batch: `mhtml-chromium.mhtml` in the files `mhtml-compare`
-reads.
+The script below is the version the rerun's third and fourth parts ran on the second host. The
+first host's batch ran the version this document printed when #1842 added it, which git history
+keeps. The script below adds three groups of lines to that version, and each part of the rerun ran
+with the groups added before it:
+
+1. Before the first part (two `pipe` runs and `discover`): the `chromium` entry in `EXES`, the
+   `browserProcesses` field of `pipe`, and `brave-origin` in the names `discover` looks up.
+2. Before the second part (the five `page-reads` runs): P3's detector candidates. That is the block
+   of `/facts.html` that runs only on a page loaded with `?detect=`, the `/beacon` route and its
+   `beacons` list, the filter that keeps `/beacon` out of the resource timing list, and, in
+   `page-reads`, the `?detect=` address, the two control variants, the step times, and the
+   `detector` and `detectors` fields.
+3. Before the third part: `mhtml-chromium.mhtml` in the files `mhtml-compare` reads.
 
 ```js
 // Throwaway probe for the stage-2 launched-browser probe spike (#1828).
@@ -2716,12 +2725,12 @@ main().catch((e) => { console.error('FATAL', e && e.stack || e); process.exit(1)
 nameserver 127.0.0.1
 ```
 
-The batch, as it ran. `batch.out` holds one `exit <code> <command>` line per run, for the pull
-request body. The P12 `bodies` commands ran a second time, unchanged, after the script
+The batch, as it ran on the first host. `batch.out` holds one `exit <code> <command>` line per run,
+for the pull request body. The P12 `bodies` commands ran a second time, unchanged, after the script
 began recording mismatch details (`fetched.mismatches`); P12 reports that second run. The script's
 last edit landed during P13's Direct run on Chrome: the five P13 runs after that one ran on the
-script below, and the earlier configurations on a copy without those lines, which only `bodies`
-uses.
+version #1842 printed, and the earlier configurations on a copy without those lines, which only
+`bodies` uses.
 
 ```shell
 #!/usr/bin/env bash
@@ -2797,11 +2806,13 @@ done
 echo done >> $S/batch.out
 ```
 
-The second host's reruns, as they ran on 2026-11-03, append to their own `batch.out` in the same
-form. `$S/xdg-empty` holds no `chromium-flags.conf`, and `$S/xdg-control/chromium-flags.conf`
-holds the control's one invented switch. The first two parts of the batch ran with the same
-variables and `run` function: the three runs above the P3 comment, then, after the script gained
-P3's candidates, the P3 loop.
+The rerun, as it ran on the second host on 2026-11-03. Its own `batch.out` holds one
+`exit <code> <command>` line for each of its 48 runs, and the `done` line the third part wrote
+before the fourth part ran. Every run exited 0 except the spec's Egress wrapper under P13, which
+exited 1, as on the first host. `$S/xdg-empty` holds no `chromium-flags.conf`, and
+`$S/xdg-control/chromium-flags.conf` holds the control's one invented switch. The first two parts
+of the batch ran with the same variables and `run` function: the three runs above the P3 comment,
+then, after the script gained P3's candidates, the P3 loop.
 
 ```shell
 #!/usr/bin/env bash

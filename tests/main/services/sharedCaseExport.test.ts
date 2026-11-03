@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, vi } from 'vitest'
+import { execFileSync } from 'child_process'
 import { createHash, createSign, generateKeyPairSync } from 'crypto'
 import {
   chmodSync,
@@ -45,6 +46,7 @@ import {
   resetInstallationId
 } from '@main/services/installationId'
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
+import { VERIFY_RECIPES } from '@main/services/verifyProcedure'
 import { readStoredZip } from '@main/services/zipRead'
 import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { canonicalStringify } from '@shared/verify'
@@ -2137,6 +2139,45 @@ describe('Shared Case export, import and fork (#1511)', () => {
         `chain-broken: chain of ${PEER_ID} (RP): Invalid JSON`,
         `merge-head-mismatch: ${merge}`
       ])
+    })
+
+    // #1725: a timestamp entry whose tsaToken is not a string breaks its member
+    // chain for the package verifier. verify.sh fails the entry in step 6 by
+    // index and chain, and VERIFY.md's by-hand command finds it in that file.
+    it("fails a member chain's timestamp entry whose tsaToken is not a string", async () => {
+      ownerReplica(undefined, (peer, doc) => {
+        const [row] = listExhibits(caseId).filter((e) => e.id === doc)
+        peer.append({
+          type: 'timestamp',
+          caseId,
+          captureContentHash: row.contentHash,
+          timestamp: TIME,
+          tsaToken: 7,
+          ...PEER,
+          schemaVersion: 3
+        })
+      })
+      const { dir } = await exportPackage()
+
+      const conformance = checkConformance(dir)
+      expect(conformance).toMatchObject({ binary: 'fail', script: 'fail', scriptSteps: [6] })
+      expect(findings(conformance.scriptOutput, 'FAIL')).toEqual([
+        `FAIL [step 6] timestamp entry 1 of ${PEER_ID}: its tsaToken is present but is not a ` +
+          'string, so the entry is malformed'
+      ])
+      const merge =
+        `merge entry 3 of ${localId} names installation ${PEER_ID}, whose chain ` +
+        'is not present or did not verify'
+      expect(sharedCaseFailures(dir)).toEqual([
+        `chain-broken: chain of ${PEER_ID} (RP): Invalid entry shape`,
+        `merge-head-mismatch: ${merge}`
+      ])
+      const byHand = execFileSync(
+        'jq',
+        ['-r', `${VERIFY_RECIPES.malformedTokenFilter} | .index`, peerChain],
+        { cwd: dir, encoding: 'utf-8' }
+      )
+      expect(byHand).toBe('1\n')
     })
 
     it('fails a manifest entry line that begins with a byte-order mark', async () => {

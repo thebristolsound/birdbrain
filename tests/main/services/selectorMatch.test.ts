@@ -45,6 +45,12 @@ describe('selectorMatchOutcome', () => {
     expect(selectorMatchOutcome(BACKTRACKING, MATCHING_TEXT, 1)).toBe('timeout')
     expect(selectorMatchOutcome(BACKTRACKING, MATCHING_TEXT, 30_000)).toBe('match')
   }, 60_000)
+
+  // node:vm rejects a budget of 0, so the answer is no-match only when the
+  // budget reaches the sandbox; the default would match. No timing involved.
+  it('forwards the budget to the regex evaluation', () => {
+    expect(selectorMatchOutcome(selector('hello', true), 'hello', 0)).toBe('no-match')
+  })
 })
 
 describe('selectorMatchesText', () => {
@@ -61,4 +67,8 @@ describe('selectorMatchesText', () => {
     expect(selectorMatchesText(BACKTRACKING, MATCHING_TEXT, 1)).toBe(false)
     expect(selectorMatchesText(BACKTRACKING, MATCHING_TEXT, 30_000)).toBe(true)
   }, 60_000)
+
+  it('forwards the budget to the matcher', () => {
+    expect(selectorMatchesText(selector('hello', true), 'hello', 0)).toBe(false)
+  })
 })

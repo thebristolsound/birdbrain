@@ -1954,12 +1954,20 @@ function inventoryBlock(
   </div>`
 }
 
+// A schema-7 member is stated only when the entry carries it, so a record written
+// without it renders as it did at schema 6.
+function optionalCount(label: string, value: number | undefined): Array<[string, number]> {
+  return value === undefined ? [] : [[label, value]]
+}
+
 function transactionRecordBlock(
   record: Extract<CaptureInventory['transactionRecord'], { present: true }>
 ): string {
+  const { servedByServiceWorker, requestBodiesWithheld, httpCacheDisabled } = record
   const counts: Array<[string, number]> = [
     ['Exchanges recorded as a request and a response (each redirect hop counts)', record.exchanges],
     ['Served from the cache, recorded as a request only', record.cached],
+    ...optionalCount('Served by a service worker', servedByServiceWorker),
     ['Cancelled, recorded as a request only', record.cancelled],
     ['Failed, recorded as a request only', record.failed],
     ['Still in flight when collection stopped, recorded as a request only', record.inFlight],
@@ -1969,6 +1977,10 @@ function transactionRecordBlock(
       record.bodiesOmitted
     ],
     ['Requests whose body the browser did not hand over in full', record.incompleteRequestBodies],
+    ...optionalCount(
+      'Requests whose body the capture engine withheld; a Transaction Record from a launched browser holds no request body',
+      requestBodiesWithheld
+    ),
     ['WebSocket connections opened, whose messages are not recorded', record.webSockets],
     [
       'Targets recorded: the page, and the frames and workers whose setup answered',
@@ -1979,13 +1991,19 @@ function transactionRecordBlock(
       record.unrecordedTargets
     ]
   ]
+  // ADR-0051: a launched browser's record holds no request body, and the count
+  // is how the entry says so; a `background` record keeps its request bodies.
+  const body = requestBodiesWithheld === undefined ? 'a body' : 'a response body'
   const replaced =
     record.replacedHeaders.length > 0
       ? `Headers present with their values replaced: ${record.replacedHeaders
           .map((name) => `<code>${esc(name)}</code>`)
           .join(', ')}. Each named header appears in the record, and its value does not. A token
-    in a URL, a body, or any other header stays in the record.`
-      : 'The entry names no header whose value was replaced. A token in a URL, a body, or any header stays in the record.'
+    in a URL, ${body}, or any other header stays in the record.`
+      : `The entry names no header whose value was replaced. A token in a URL, ${body}, or any header stays in the record.`
+  const cache = httpCacheDisabled
+    ? '<p>The entry records that the capture engine disabled the HTTP cache on the recorded targets.</p>'
+    : ''
   return `<div class="note">
     <p class="note-title">Transaction Record</p>
     <p>The Transaction Record is the browser's account of the network exchanges the capture engine
@@ -1997,7 +2015,7 @@ function transactionRecordBlock(
     neither the record nor these counts.</p>
     <ul>${counts
       .map(([label, value]) => `<li>${esc(label)}: <span class="mono">${value}</span></li>`)
-      .join('')}</ul>
+      .join('')}</ul>${cache}
     <p>${replaced}</p>
     <p>Size budget the record was kept under: ${esc(
       formatBytes(record.budget.totalBytes)

@@ -442,8 +442,9 @@ rm -f "$receipt"
 A \`timestamp\` entry whose \`tsaToken\` is present but is not a string, \`null\`
 included, is malformed, whatever its \`subject\`. Both filters above skip it, and
 the binary rejects the chain that holds it, so it is a failure, not an entry with
-no token. \`${ROOT.verifyScript}\` performs this check and fails the package. To
-run it by hand, \`jq -r '${VERIFY_RECIPES.malformedTokenFilter} | .index' <chain>\`
+no token. \`${ROOT.verifyScript}\` fails the package for such an entry in any chain
+it reads to its end. To run the check by hand,
+\`jq -r '${VERIFY_RECIPES.malformedTokenFilter} | .index' <chain>\`
 prints the index of each such entry. Run it over \`${ROOT.manifest}\` and every
 member and lineage chain: any index it prints is a failure.
 

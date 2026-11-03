@@ -101,8 +101,11 @@ describe('verify.sh malformed_token_filter', () => {
   })
 
   it('gives the runbook reader the same command and says the script runs it', () => {
+    const prose = VERIFY_RUNBOOK.replace(/\s+/g, ' ')
     expect(VERIFY_RUNBOOK).toContain(`jq -r '${MALFORMED_FILTER} | .index' <chain>`)
-    expect(VERIFY_RUNBOOK).toContain('`verify.sh` performs this check and fails the package')
-    expect(VERIFY_RUNBOOK).toContain('any index it prints is a failure')
+    expect(prose).toContain(
+      '`verify.sh` fails the package for such an entry in any chain it reads to its end'
+    )
+    expect(prose).toContain('any index it prints is a failure')
   })
 })

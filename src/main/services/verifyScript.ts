@@ -1578,7 +1578,7 @@ receipt_token_filter='${VERIFY_RECIPES.receiptTokenFilter}'
 jq -r '.chain as $c | .e | '"$receipt_token_filter"' | "\\(.index) \\(.captureContentHash) \\(.tsaToken) \\($c)"' \\
   "$tmp/receipt-chains.jsonl" >"$tmp/receipt-tokens.txt"
 jq -r '.chain as $c | .e
-  | select(.type == "timestamp" and .subject == "entry" and (.tsaToken | type) != "string")
+  | select(.type == "timestamp" and .subject == "entry" and (has("tsaToken") | not))
   | "\\(.index) \\(.captureContentHash) - \\($c)"' \\
   "$tmp/receipt-chains.jsonl" >>"$tmp/receipt-tokens.txt"
 
@@ -1602,8 +1602,8 @@ while IFS=' ' read -r stamp_idx imprint encoded chain; do
 done <"$tmp/receipt-tokens.txt"
 
 # A timestamp entry whose tsaToken is present and not a string is malformed, and
-# the Birdbrain verifier rejects the chain that holds it (#1725). The content
-# token walks above skip it, so it fails here, over the chains the receipt walk
+# the Birdbrain verifier rejects the chain that holds it (#1725). The token
+# walks above skip it, so it fails here, over the chains the receipt walk
 # reads, whatever the deletions or the selection.
 malformed_token_filter='${VERIFY_RECIPES.malformedTokenFilter}'
 jq -r '.chain as $c | .e | '"$malformed_token_filter"' | "\\(.index) \\($c)"' \\

@@ -1323,16 +1323,22 @@ describe('Shared Case export, import and fork (#1511)', () => {
     })
 
     // The Owner's replica with a receipt stamp at index 4, issued by `issuer`
-    // over its merge (index 3), or over `over` when given.
+    // over its merge (index 3), or over `over` when given. `malformed` gives
+    // the stamp a tsaToken that is not a string.
     function receiptReplica(
       issuer: () => LocalTsa,
-      { over, tokenless = false }: { over?: string; tokenless?: boolean } = {}
+      {
+        over,
+        tokenless = false,
+        malformed = false
+      }: { over?: string; tokenless?: boolean; malformed?: boolean } = {}
     ) {
       let receiptToken: Buffer = Buffer.alloc(0)
       const replica = ownerReplica((owner) => {
         const hash = over ?? owner.hashes[owner.hashes.length - 1]
         receiptToken = issuer().issueToken(hash)
-        owner.append(receiptStamp(hash, tokenless ? null : receiptToken, LOCAL()))
+        const stamp = receiptStamp(hash, tokenless || malformed ? null : receiptToken, LOCAL())
+        owner.append(malformed ? { ...stamp, tsaToken: 7 } : stamp)
       })
       return { ...replica, receiptToken }
     }
@@ -1480,6 +1486,45 @@ describe('Shared Case export, import and fork (#1511)', () => {
         'FAIL [step 6] merge entry 3: its receipt timestamp entry 4 carries no token'
       )
     })
+
+    // #1725: a receipt stamp whose tsaToken is not a string is malformed, so
+    // verify.sh fails it once as such, whether or not it names a merge.
+    const malformedReceipt =
+      'FAIL [step 6] timestamp entry 4: its tsaToken is present but is not a string, so the ' +
+      'entry is malformed'
+    const failLines = (output: string) =>
+      output
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith('FAIL ['))
+
+    it.skipIf(!RUNS)(
+      'fails a receipt stamp whose tsaToken is not a string and names no merge',
+      async () => {
+        receiptReplica(() => tsa!, { over: 'f'.repeat(64), malformed: true })
+        const { dir } = await exportPackage()
+
+        const conformance = checkConformance(dir)
+        expect(conformance).toMatchObject({ binary: 'fail', script: 'fail', scriptSteps: [6] })
+        expect(conformance.binaryFailures[0]).toEqual({
+          name: 'manifest chain',
+          reason: 'Invalid entry shape (at index 4)'
+        })
+        expect(failLines(conformance.scriptOutput)).toEqual([malformedReceipt])
+      }
+    )
+
+    it.skipIf(!RUNS)(
+      'fails a receipt stamp whose tsaToken is not a string and names its merge',
+      async () => {
+        receiptReplica(() => tsa!, { malformed: true })
+        const { dir } = await exportPackage()
+
+        const conformance = checkConformance(dir)
+        expect(conformance).toMatchObject({ binary: 'fail', script: 'fail', scriptSteps: [6] })
+        expect(failLines(conformance.scriptOutput)).toEqual([malformedReceipt])
+      }
+    )
 
     it.skipIf(!RUNS)(
       'counts the receipt among the tokens left unverified without an anchor',

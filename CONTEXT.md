@@ -63,12 +63,16 @@ The Hono HTTP server in the main process (port 19845) that the Chrome extension 
 _Avoid_: ingest server, capture API.
 
 **Active Case**:
-The one Case the extension is working in. Chosen by the Operator; required before a Capture Session can start and before the extension may attach a Tag or Note to a page.
+The one Case the Operator is working in, chosen in the app or from the extension. Required before a Capture Session can start and before the extension may attach a Tag or Note to a page. _Planned:_ a browser Birdbrain launched works in the Active Case of its Capture Session, and the Companion carries the Active Case into the Operator's everyday browser.
 _Avoid_: current case, selected case, open case.
 
 **Capture Session**:
 The state between the Operator starting and stopping work into the Active Case. While it runs, the Active Case's Selectors are matched against browsed pages. With passive capture withdrawn (ADR-0013), a running session captures nothing by itself. _Planned:_ in a browser Birdbrain launched, recording is on during a session, so every Capture taken during it carries a Transaction Record, and passive capture returns there only: the session captures every page that loads, or only the pages a Selector matches (ADR-0037). The everyday browser never captures without a click.
 _Avoid_: session (unqualified), auto-capture, recording mode.
+
+**Capture Scope**:
+_Planned._ The browsing a Capture Session may record and capture in: every tab and window of a browser Birdbrain launched, apart from its private windows, while the session runs, and never the Operator's everyday browser (ADR-0037). The engine enforces the boundary, so the Manifest Entry of a Capture taken inside it states the boundary as fact, not as the Operator's declaration.
+_Avoid_: designated window, capture window, scope (unqualified).
 
 **Capture Lifecycle**:
 Operations that mutate an MHTML Capture beyond its database row: admission of a request from any extension route (operator gate, Active Case resolution, exclusion, the manual dedup window, the screenshot cap, the session count, the activity events), ingestion (parse, hash, store, schedule selector matching), duplication, deletion (manifest entry + DB row + on-disk files, one at a time or as a batch), verification, and case-wide re-extraction. The forensic-bearing path. Legacy HTML Captures (pre-migration v11) appear in deletion and verification but have no manifest entry and no ingest path; new Captures are MHTML-only.

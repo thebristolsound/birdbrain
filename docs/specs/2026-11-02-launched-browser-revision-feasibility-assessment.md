@@ -20,8 +20,8 @@ Sources, with the short names this assessment cites them by. Line numbers are at
   `ENGINEERING_REVIEW.md`.
 - **Spec**: [Capture engine, stage 2: launched Chromium browsers](2026-10-10-capture-engine-launched-browser-design.md).
 - **Plan**: the [Case investigation engine plan](../plans/2026-10-10-case-investigation-engine.md).
-- **Stage-2 plan**: `docs/plans/2026-10-31-capture-engine-stage-2.md`, on the
-  `docs/capture-engine-stage-2` branch in PR #2033, not merged on 2026-11-02.
+- **Stage-2 plan**: `docs/plans/2026-10-31-capture-engine-stage-2.md`, merged to `main` in PR
+  #2033 as `4af53029` on 2026-11-02; its line numbers are at that commit.
 - **Electron**: the type definitions of Electron 45.1.0 (`electron.d.ts`), the version
   `package.json` pins.
 
@@ -231,7 +231,7 @@ the inventory lists; a service-worker response has no endpoint, and the inventor
 (:303). The lead-in files the service-worker clause under unrecorded exchanges, and ruling 3 says
 those exchanges are recorded and counted, not missing (Stage-2 plan :72-74). Only the cached half
 belongs under that lead-in. The Brief supplied the second half without the lead-in, so part of this
-is the Brief's. The string stays pending PR #2033.
+is the Brief's. Ruling 3 merged with PR #2033 on 2026-11-02, so the string follows its wording.
 
 ### 13. Browser left from an earlier run: Modify (S)
 
@@ -349,8 +349,8 @@ running" on its own.
   (:5967-5971), and `moveTop()` is not supported there (:6374). Whether the window comes to the
   front on a Wayland desktop is measured in the launcher step (#1831). The taskbar grouping waits
   on #648.
-- **Ruling 3.** PR #2033 is open on 2026-11-02; the chip tooltip follows the ruling's wording when
-  it merges (state 5).
+- **Ruling 3.** PR #2033 merged on 2026-11-02 as `4af53029`; the chip tooltip follows the
+  ruling's wording (state 5).
 - **A reload.** Unchanged: the launcher step measures whether a reload yields a page recorded from
   its first request, and the row carries no advice until then.
 - **The strip's Capture with no eligible tab.** Superseded by S3's first constraint.

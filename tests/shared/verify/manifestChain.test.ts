@@ -4,6 +4,7 @@ import { execFileSync } from 'child_process'
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { z } from 'zod'
 import { initManifest, appendManifestEntry, verifyManifestChain } from '@main/services/manifest'
 import { getPublicKeyPem } from '@main/services/signingKey'
 import { VERIFY_RECIPES } from '@main/services/verifyProcedure'
@@ -390,10 +391,9 @@ describe('verifyManifestChainText: an own __proto__ key added to a signed line (
     expect(verify(buildSignedChain([CAPTURE_WITH_HEADERS, THUMBNAIL_DERIVATION])).valid).toBe(true)
   })
 
-  // The rule at ManifestEntrySchema, held: a genuine line parses to exactly
-  // what it carries, so no field it omits gains a value the hash never covered.
+  // A genuine line parses to exactly what it carries, through zod's own parse.
   // These lines omit `exhibitNumber`, `memberCode`, `derivationParameters`,
-  // `scope`, `captureIds` and `exportClass`.
+  // `scope`, `captureIds` and `exportClass`; the walk below covers every field.
   it('parses genuine lines to exactly what they carry', () => {
     const exhibitWithoutMemberCode = {
       type: 'exhibit',
@@ -425,6 +425,38 @@ describe('verifyManifestChainText: an own __proto__ key added to a signed line (
       const raw: unknown = JSON.parse(line)
       expect(ManifestEntrySchema.parse(raw)).toStrictEqual(raw)
     }
+  })
+
+  // The rule at ManifestEntrySchema, held for every member type: the walk
+  // descends through the containers the schema uses and reports every other
+  // node whose type is not on the leaf list, so a `.default()` anywhere fails.
+  it('has no default anywhere in ManifestEntrySchema', () => {
+    const PASS_THROUGH_LEAVES = new Set(['string', 'number', 'boolean', 'literal', 'enum', 'never'])
+    const offending = (schema: z.core.$ZodType, path: string): string[] => {
+      if (schema instanceof z.ZodUnion) {
+        return schema.options.flatMap((option, i) => offending(option, `${path}|${i}`))
+      }
+      if (schema instanceof z.ZodObject) {
+        const { shape, catchall } = schema.def
+        return [
+          ...Object.entries<z.core.$ZodType>(shape).flatMap(([key, field]) =>
+            offending(field, `${path}.${key}`)
+          ),
+          ...(catchall ? offending(catchall, `${path}[*]`) : [])
+        ]
+      }
+      if (schema instanceof z.ZodOptional) return offending(schema.unwrap(), path)
+      if (schema instanceof z.ZodArray) return offending(schema.element, `${path}[]`)
+      if (schema instanceof z.ZodRecord) {
+        return [...offending(schema.keyType, `${path}{key}`), ...offending(schema.valueType, path)]
+      }
+      const { type } = schema._zod.def
+      return PASS_THROUGH_LEAVES.has(type) ? [] : [`${path}: ${type}`]
+    }
+    const found = ManifestEntrySchema.options.flatMap((member) =>
+      offending(member, member.shape.type.value)
+    )
+    expect(found).toEqual([])
   })
 
   // The two checkers #1674 names both delegate to the core; these pin that each

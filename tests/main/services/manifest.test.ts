@@ -893,14 +893,15 @@ describe('manifest schema v2 + grandfathering', () => {
     return entryHash
   }
 
-  it('reads up to MANIFEST_SCHEMA_VERSION 6', () => {
+  it('reads up to MANIFEST_SCHEMA_VERSION 7', () => {
     // Bumped to 3 by the Exhibit model (ADR-0023), to 4 by Shared Cases
-    // (#1509), to 5 by the Egress fields on `capture` (#1694) and to 6 by the
-    // capture engine's fields on `capture` (#1904): this build READS the
+    // (#1509), to 5 by the Egress fields on `capture` (#1694), to 6 by the
+    // capture engine's fields on `capture` (#1904) and to 7 by the launched
+    // browser and Persona fields (#1830): this build READS the
     // `exhibit`, `derivation`, `renumber`, `member-add`, `member-revoke`,
     // `merge` and `exclude` entry types. What it WRITES is a separate
     // question, pinned by MIN_READER_SCHEMA_VERSION below.
-    expect(MANIFEST_SCHEMA_VERSION).toBe(6)
+    expect(MANIFEST_SCHEMA_VERSION).toBe(7)
   })
 
   it('verifies a legacy v1 entry on chain + entryHash only (no signature)', () => {

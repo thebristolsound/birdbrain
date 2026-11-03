@@ -487,8 +487,8 @@ export interface FinishOptions {
   write?: (input: WriterInput) => Promise<WrittenTransactionRecord>
 }
 
-// The schema-6 shape of the inventory part, so a value the verifier refuses fails this record
-// rather than reaching the signed entry, where it would break the Case's chain.
+// The strict shape the verifier reads for the inventory part, so a value it refuses fails this
+// record rather than reaching the signed entry, where it would break the Case's chain.
 const TransactionRecordPartSchema = CaptureInventorySchema.shape.transactionRecord
 
 /**

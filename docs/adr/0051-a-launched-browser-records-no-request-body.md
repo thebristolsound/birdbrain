@@ -1,6 +1,6 @@
 # A launched browser's Transaction Record holds no request body
 
-**Status:** Accepted
+**Status:** Accepted, amended 2026-10-31 (the inventory counts withheld bodies)
 
 **Date:** 2026-10-11
 
@@ -14,6 +14,11 @@ Evidence Profile"). The source is the maintainer's ruling 39 of 2026-10-10, deci
 the spec gives the reasoning under
 [Credentials and passwords](../specs/2026-10-10-capture-engine-launched-browser-design.md#credentials-and-passwords).
 Nothing in this record is implemented: no launched browser exists yet.
+
+**Amended 2026-10-31 by the maintainer's rulings on the schema-7 verifier (#1830):** the inventory
+counts the request bodies the engine withheld, as a non-negative integer on the signed entry, and
+names no request: no request id or URL enters the Manifest. The inventory has no "request body
+withheld" reason. The Decision, "What this amends" and the Consequences say so.
 
 ## Context
 
@@ -39,9 +44,8 @@ remove the password and keep the rest of the body.
 ## Decision
 
 **No request body enters a launched browser's Transaction Record.** The engine records no request
-body in a `launched` or `launched-passive` Transaction Record. The Capture's inventory lists each
-withheld body by request, so the record never reads as complete beyond what the inventory
-supports.
+body in a `launched` or `launched-passive` Transaction Record. The Capture's inventory counts the
+withheld bodies, so the record never reads as complete beyond what the inventory supports.
 
 **`background` records keep request bodies.** The ruling names launched-browser records only. A
 `background` Transaction Record holds request bodies as ADR-0035 and the first slice have them.
@@ -50,7 +54,7 @@ supports.
 
 **ADR-0035.** A launched browser's record still covers the tab's navigation from its first request
 to the moment of Capture, but no request in it carries its body. The inventory that accounts for
-every exchange the record lacks also lists each request whose body the engine withheld.
+every exchange the record lacks also counts the request bodies the engine withheld.
 
 **ADR-0036.** In a launched browser's record the engine withholds every request body as well as
 the four header values. A token in a request body no longer stays in that record; a token in a
@@ -71,9 +75,9 @@ the Evidence Profile beside the header list.
 - The rule covers request bodies only. A password in a URL, for example from a sign-in form a site
   submits by `GET`, stays in the record, as ADR-0036 says of any token in a URL.
 - `background` and launched-browser records follow different rules. A reviewer reads which rule
-  applies from the Capture Method, and the inventory lists each withheld body.
-- The inventory gains the reason "request body withheld". Manifest Entry schemas are strict, so
-  the verifier learns the reason in a release before any build writes it (ADR-0035, Consequences;
-  the stage-2 spec, "Manifest, schema, and verifier").
+  applies from the Capture Method, and the inventory counts the withheld bodies.
+- The inventory gains a count of withheld request bodies, `requestBodiesWithheld` at schema 7.
+  Manifest Entry schemas are strict, so the verifier learns the count in a release before any
+  build writes it (ADR-0035, Consequences; the stage-2 spec, "Manifest, schema, and verifier").
 - The Transaction Record entry in `CONTEXT.md` states that a launched browser's record holds no
   request body.

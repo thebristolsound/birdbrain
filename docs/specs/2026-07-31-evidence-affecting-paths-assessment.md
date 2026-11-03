@@ -85,6 +85,14 @@ browser's exchanges a Transaction Record holds as complete and how the inventory
 package paths in it. It had been on neither list, although Package Verification, `verify.sh`,
 Evidence Package export, the Shared Case sync and Case Archive export and import all take paths
 from it.
+On 2026-11-03 `src/main/services/selectorMatch.ts` was added to the Capture lifecycle table at
+blocking tier, the same move as #400: the Selector matcher moved there out of the already-listed
+`src/main/services/db/**`, so that the Selector Lifecycle and the live check passive capture is to
+add (#600) can share one rule instead of each keeping a copy (launched-browser design, "Selector
+matching and passive capture"). It decides which Selectors a Capture's text matches, and so which
+Persisted Matches the Selector repo writes. The rename-detection-off rule catches the move itself
+and nothing after, so outside `db/**` a later edit touching only this file would otherwise match
+no entry.
 
 ### Known gap: carve-outs are caught by review, not by a check
 
@@ -282,6 +290,7 @@ independent of the Operator who holds it.
 | `src/main/services/db/**` | blocking | All evidentiary records: schema, repos, dbAdmin row edit/restore/purge |
 | `src/main/services/selectorLifecycle.ts` | blocking | Retro-matching writes `selector_matches` rows that ride in case archives |
 | `src/main/services/safeRegex.ts` | blocking | Regex evaluation deciding those persisted matches (follows the selector cluster call below) |
+| `src/main/services/selectorMatch.ts` | blocking | The Selector matcher: decides which Selectors a Capture's text matches, and so which persisted matches the Selector repo writes (follows the selector cluster call below). Added 2026-11-03 |
 
 ### Annotation, redaction, notes-to-evidence binding
 

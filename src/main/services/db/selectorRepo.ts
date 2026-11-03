@@ -2,7 +2,7 @@ import { v4 as uuid } from 'uuid'
 import type { Selector, ActiveCaseSelectors, SelectorMatchExportRow } from '@shared/types'
 import { isSelectorOrigin } from '@shared/types'
 import type { CreateSelectorParams, UpdateSelectorParams } from '@shared/ipc'
-import { safeRegexTest } from '@main/services/safeRegex'
+import { selectorMatchesText } from '@main/services/selectorMatch'
 import { getDb, type ImportCtx } from '@main/services/db/core'
 
 export function listSelectors(caseId: string): Selector[] {
@@ -138,16 +138,6 @@ export function listActiveSelectors(caseId?: string): ActiveCaseSelectors[] {
 }
 
 // --- Selector Matches ---
-
-// Single source of truth for "does this selector hit this text". Never throws:
-// the regex path delegates to safeRegexTest (which catches invalid patterns and
-// timeouts and returns false); the substring path is plain JS.
-function selectorMatchesText(selector: Selector, text: string): boolean {
-  if (selector.isRegex) {
-    return safeRegexTest(selector.pattern, 'gi', text)
-  }
-  return text.toLowerCase().includes(selector.pattern.toLowerCase())
-}
 
 /**
  * @internal - Used only by selectorLifecycle.runActiveSelectorsForCapture.

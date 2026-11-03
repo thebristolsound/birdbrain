@@ -48,7 +48,7 @@ _Avoid_: backup, dump, case file.
 
 ### Acquisition
 
-Clauses marked _Planned_ describe decisions in [`ADR-0034`](docs/adr/0034-the-app-acquires-and-the-extension-is-a-companion.md) and [`ADR-0035`](docs/adr/0035-one-transaction-record-per-capture.md) that no build implements yet. Until they ship, the extension acquires every operator-witnessed Capture itself.
+Clauses marked _Planned_ describe decisions in [`ADR-0034`](docs/adr/0034-the-app-acquires-and-the-extension-is-a-companion.md), [`ADR-0035`](docs/adr/0035-one-transaction-record-per-capture.md), and [`ADR-0037`](docs/adr/0037-passive-capture-returns-in-the-launched-browser.md) that no build implements yet. Until they ship, the extension acquires every operator-witnessed Capture itself.
 
 **Capture**:
 The primary artifacts taken from one observation of a single web page, stored on disk under its Case directory and indexed in the database: MHTML and, as available, a screenshot today, and for a `background` Capture a Transaction Record, unless recording it failed, and a PDF of the page, printed after everything else, unless the print failed, was over a size limit, or would have shown a page the window navigated to after the save. Legacy Captures may be HTML only. A `background` Capture's Manifest Entry carries an inventory: which artifacts the Capture holds and why any is absent, what the Transaction Record lacks, the Image Source Pinning counts, and the screenshot's size and whether it was scaled down, cut short, or trimmed. A `duplicate` of one carries its source's inventory and copies its Transaction Record and PDF. _Planned:_ Captures acquired by the other Capture Methods carry the inventory and a PDF too, and `launched` Captures a Transaction Record.
@@ -71,7 +71,7 @@ The state between the Operator starting and stopping work into the Active Case. 
 _Avoid_: session (unqualified), auto-capture, recording mode.
 
 **Capture Scope**:
-_Planned._ The browsing a Capture Session may record and capture in: every tab and window of a browser Birdbrain launched, apart from its private windows, while the session runs, and never the Operator's everyday browser (ADR-0037). The engine enforces the boundary, so the Manifest Entry of a Capture taken inside it states the boundary as fact, not as the Operator's declaration.
+_Planned._ The browsing a Capture Session may record and capture in: every tab and window in the default browser context of a browser Birdbrain launched, while the session runs, and never the Operator's everyday browser (ADR-0037). Any other browser context, such as a private window, has a cookie store of its own, so the engine never records or captures in it ([stage 2 design](docs/specs/2026-10-10-capture-engine-launched-browser-design.md#tabs-windows-and-browser-contexts)). The engine enforces the boundary, so the Manifest Entry of a Capture taken inside it states the boundary through its Capture Method, as one the engine enforced, never as the Operator's declaration. That statement is signed with the installation's key: it shows that software enforcing the boundary wrote the entry, and it does not constrain an Operator who holds that key ([`SECURITY.md`](SECURITY.md)).
 _Avoid_: designated window, capture window, scope (unqualified).
 
 **Capture Lifecycle**:
@@ -416,7 +416,7 @@ _Avoid_: risky change, core change, forensic change.
 
 - "source" is used for four unrelated things: `CaptureSource` (`auto`/`manual`/`selector`/`recapture`), a Note's `sourceUrl`, the extraction pipeline's `extractionSource`, and the overview's Sources block. Say "capture trigger" for `CaptureSource` and reserve "source" for the origin a Capture came from.
 
-- "auto-capture" names four unrelated things: the top-bar switch that starts and stops a **Capture Session** (#813), the Signals card and the `autoCaptureMode` setting that edit a Case's URL exclusion policy (#744), the Capture Server capturing a page before the extension attaches a **Tag** or **Note** to it, and the withdrawn passive capture whose return ADR-0037 scopes to a launched browser (#600). Say "Capture Session" for the switch, "exclusion policy" for the card, and "capture-then-attach" for the server path; "passive capture" and its vocabulary stay reserved to ADR-0013 and ADR-0037 until the restoration lands.
+- "auto-capture" names four unrelated things: the top-bar switch that starts and stops a **Capture Session** (#813), the Signals card and the `autoCaptureMode` setting that edit a Case's URL exclusion policy (#744), the Capture Server capturing a page before the extension attaches a **Tag** or **Note** to it, and the withdrawn passive capture whose return ADR-0037 scopes to a launched browser (#600). Say "Capture Session" for the switch, "exclusion policy" for the card, and "capture-then-attach" for the server path; outside text marked _Planned_, "passive capture" and its vocabulary stay reserved to ADR-0013 and ADR-0037 until the restoration lands.
 
 - "exclusion" names three unrelated things: the URL exclusion policy that stops the extension capturing a page, a Shared Case `exclude` entry that keeps an Exhibit out of exports, and an Exhibit **Withheld from analysis**. Name which one; never write "excluded" for the third.
 

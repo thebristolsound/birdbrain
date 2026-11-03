@@ -86,10 +86,11 @@ function parse(body: Record<string, unknown>) {
 }
 
 describe('manifest schema 5 — frozen entry hashes', () => {
-  it('reads up to schema version 6', () => {
-    // Bumped to 6 by the capture engine's fields (#1904); the schema-5 answers
-    // below are unchanged by that bump.
-    expect(MANIFEST_SCHEMA_VERSION).toBe(6)
+  it('reads up to schema version 7', () => {
+    // Bumped to 6 by the capture engine's fields (#1904) and to 7 by the
+    // launched browser and Persona fields (#1830); the schema-5 answers below
+    // are unchanged by either bump.
+    expect(MANIFEST_SCHEMA_VERSION).toBe(7)
   })
 
   it('leaves the canonical hash of a capture entry without the fields unchanged', () => {

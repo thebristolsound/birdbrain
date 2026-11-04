@@ -618,6 +618,10 @@ export interface BirdbrainSettings {
   // The relay Shared Case sync uses (#1809): a self-hosted relay's URL, or ''
   // for the default public relays. Set through `sharing:setRelayUrl`.
   sharingRelayUrl: string
+  // The networks the Operator stopped the VPN warning on (ADR-0032), each a SHA-256
+  // of the network name and the router's hardware address, so the file names no
+  // network. See `networkHash` in vpnWarning.ts.
+  vpnWarningMutedNetworks: string[]
 }
 
 // The Egress setting. A Proxy or Tor names a SOCKS5 or HTTP proxy that needs no
@@ -957,6 +961,9 @@ export const LOG_CODES = [
   // The Wayback replay partition refused the Egress proxy (ADR-0032). The pane then
   // refuses every request until the setting names a route the partition takes.
   'app.egress_apply_failed',
+  // The routing-table read behind the VPN indicator failed (ADR-0032). Logged once
+  // per run; until a read succeeds the indicator says a VPN was not seen.
+  'app.vpn_check_failed',
   // The at-rest key-protection gate (#414): recorded either way so the log
   // carries the same signal the Settings/Diagnostics indicator shows live.
   'signingKey.unprotected_key_acknowledged',

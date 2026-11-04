@@ -5,6 +5,7 @@ import { useRecaptureMutations } from '@renderer/lib/api/recapture'
 import { waybackLinkLookupQueryOptions } from '@renderer/lib/api/wayback'
 import { useAppStore } from '@renderer/stores/appStore'
 import { notify } from '@renderer/lib/notify'
+import { ContactStoppedError } from '@renderer/lib/vpnWarning'
 import { copyValue } from '@renderer/components/data/copy'
 import type { LinkMenuTarget } from '@renderer/components/contextmenu/entityMenu'
 import type { GuestLinkHit } from '@renderer/components/captures/guestLink'
@@ -120,8 +121,9 @@ export function useLinkMenuTarget(
                 })
               },
               (cause: unknown) => {
-                // The Links tab's cell shows the failure; the Page tab has only the toast.
-                if (toastWayback) {
+                // The Links tab's cell shows the failure; the Page tab has only the toast. A
+                // stop at the VPN warning sent nothing, so nothing failed.
+                if (toastWayback && !(cause instanceof ContactStoppedError)) {
                   notify.error(`Wayback lookup failed: ${messageOf(cause)}`, { cause })
                 }
               }

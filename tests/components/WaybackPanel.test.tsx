@@ -7,7 +7,7 @@ import type { ReactNode } from 'react'
 import { WaybackPanel } from '@renderer/components/captures/WaybackPanel'
 import { useAppStore } from '@renderer/stores/appStore'
 import type { Capture, WaybackSnapshot } from '@shared/types'
-import { fakeBridge } from '../renderer/fakeBridge'
+import { fakeBridge, quietVpnWarning } from '../renderer/fakeBridge'
 
 // Hoisted: the mock factory runs while the panel's import graph is still
 // loading, which is before a plain top-level const would be initialised.
@@ -89,7 +89,8 @@ beforeEach(() => {
   }
   fakeBridge({
     wayback,
-    captures: { openExternal: vi.fn().mockResolvedValue(undefined) }
+    captures: { openExternal: vi.fn().mockResolvedValue(undefined) },
+    egress: quietVpnWarning()
   })
   useAppStore.getState().setWaybackSelection(null)
 })
@@ -264,7 +265,7 @@ describe('WaybackPanel', () => {
     const openExternal = vi.fn(async () => {
       throw cause
     })
-    fakeBridge({ wayback, captures: { openExternal } })
+    fakeBridge({ wayback, captures: { openExternal }, egress: quietVpnWarning() })
     await renderWithResult()
 
     fireEvent.click(screen.getAllByLabelText('Open snapshot')[0])
@@ -328,7 +329,7 @@ it('copies and opens the snapshot archive URL from its context menu', async () =
   const writeText = vi.fn().mockResolvedValue(undefined)
   const openExternal = vi.fn().mockResolvedValue(undefined)
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
-  fakeBridge({ wayback, captures: { openExternal } })
+  fakeBridge({ wayback, captures: { openExternal }, egress: quietVpnWarning() })
   await renderWithResult()
   const row = screen.getAllByTestId('wayback-snapshot-row')[0]
   fireEvent.contextMenu(row)

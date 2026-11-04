@@ -1,0 +1,1 @@
+192.0.2.1 dev wg0 table 51820 src 10.64.0.2 uid 1000 \    cache 

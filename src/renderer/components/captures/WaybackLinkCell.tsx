@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import type { Capture, WaybackSnapshot } from '@shared/types'
 import { waybackLinkLookupQueryOptions } from '@renderer/lib/api/wayback'
+import { ContactStoppedError } from '@renderer/lib/vpnWarning'
 import {
   copySnapshotUrl,
   openSnapshot,
@@ -75,7 +76,8 @@ export function WaybackLinkCell({
     body = <span>Checking…</span>
   } else if (batchFailed) {
     body = <span className="text-danger-fg">{batchFailed.error}</span>
-  } else if (error) {
+  } else if (error && !(error instanceof ContactStoppedError)) {
+    // A stop at the VPN warning sent nothing, so the cell keeps what it showed before.
     body = <span className="text-danger-fg">{error.message}</span>
   } else if (!data) {
     body = <span>Not checked</span>

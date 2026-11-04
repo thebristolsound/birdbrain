@@ -3,6 +3,9 @@ vi.mock('@renderer/lib/notify', () => ({ notify: { error: vi.fn(), warn: vi.fn()
 
 import { MutationObserver, onlineManager } from '@tanstack/react-query'
 import { failureMessage, queryClient } from '@renderer/lib/queryClient'
+import { notify } from '@renderer/lib/notify'
+import { ContactStoppedError } from '@renderer/lib/vpnWarning'
+import { fakeBridge } from '../fakeBridge'
 
 describe('failureMessage', () => {
   it('uses the action from mutation meta', () => {
@@ -51,5 +54,56 @@ describe('shared client while the network is down (#1665)', () => {
 
     expect(result).toEqual({ title: 'Offline title' })
     expect(mutationFn).toHaveBeenCalledTimes(1)
+  })
+})
+
+// A contact the Operator stopped at the VPN warning sent nothing, so nothing failed.
+describe('a contact stopped at the VPN warning', () => {
+  afterEach(() => {
+    queryClient.clear()
+    vi.mocked(notify.error).mockClear()
+  })
+
+  it('does not toast a stopped mutation, and still toasts a failed one', async () => {
+    const stopped = new MutationObserver(queryClient, {
+      mutationFn: async () => {
+        throw new ContactStoppedError()
+      }
+    })
+    await stopped.mutate().catch(() => undefined)
+    expect(notify.error).not.toHaveBeenCalled()
+
+    const failed = new MutationObserver(queryClient, {
+      mutationFn: async () => {
+        throw new Error('disk full')
+      }
+    })
+    await failed.mutate().catch(() => undefined)
+    expect(notify.error).toHaveBeenCalledOnce()
+  })
+
+  it('does not log a stopped query as failed, and still logs a failed one', async () => {
+    const log = vi.fn(async () => undefined)
+    fakeBridge({ diagnostics: { log } })
+
+    await queryClient
+      .fetchQuery({
+        queryKey: ['wayback', 'stopped'],
+        queryFn: async () => {
+          throw new ContactStoppedError()
+        }
+      })
+      .catch(() => undefined)
+    expect(log).not.toHaveBeenCalled()
+
+    await queryClient
+      .fetchQuery({
+        queryKey: ['wayback', 'failed'],
+        queryFn: async () => {
+          throw new Error('offline')
+        }
+      })
+      .catch(() => undefined)
+    expect(log).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ code: 'query.failed' }))
   })
 })

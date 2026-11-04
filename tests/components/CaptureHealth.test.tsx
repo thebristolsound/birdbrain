@@ -7,7 +7,7 @@ import type { Capture, CaptureEvent } from '@shared/types'
 import { useAppStore } from '@renderer/stores/appStore'
 import { notify } from '@renderer/lib/notify'
 import { CaptureHealth } from '@renderer/components/status/CaptureHealth'
-import { fakeBridge } from '../renderer/fakeBridge'
+import { fakeBridge, quietVpnWarning } from '../renderer/fakeBridge'
 
 const navigate = vi.hoisted(() => vi.fn())
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
@@ -179,7 +179,8 @@ describe('pipeline event context menu', () => {
     })
     fakeBridge({
       captures: { get },
-      recapture: { enqueueCaptures, queueStatus: vi.fn(async () => ({ pending: 0, inFlight: 0 })) }
+      recapture: { enqueueCaptures, queueStatus: vi.fn(async () => ({ pending: 0, inFlight: 0 })) },
+      egress: quietVpnWarning()
     })
     useAppStore.setState({ captureEvents: [storedEvent] })
   })

@@ -4,7 +4,7 @@ import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { AddUrlsBox } from '@renderer/components/captures/AddUrlsBox'
-import { fakeBridge } from '../renderer/fakeBridge'
+import { fakeBridge, quietVpnWarning } from '../renderer/fakeBridge'
 
 let enqueue: ReturnType<typeof vi.fn>
 
@@ -24,7 +24,7 @@ function paste(value: string) {
 
 beforeEach(() => {
   enqueue = vi.fn(async ({ urls }: { urls: string[] }) => ({ accepted: urls.length, rejected: [] }))
-  fakeBridge({ recapture: { enqueue } })
+  fakeBridge({ recapture: { enqueue }, egress: quietVpnWarning() })
 })
 
 afterEach(() => {

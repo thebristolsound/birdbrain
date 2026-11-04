@@ -33,6 +33,7 @@ import {
   useVerifyCapture
 } from '@renderer/lib/queries'
 import { useAppStore } from '@renderer/stores/appStore'
+import { ContactStoppedError } from '@renderer/lib/vpnWarning'
 import { useFavorites } from '@renderer/hooks/useFavorites'
 import { useReduceMotion } from '@renderer/hooks/useReduceMotion'
 import { useTimeTick } from '@renderer/hooks/useTimeTick'
@@ -218,11 +219,14 @@ export function CaptureDetailsPanel({
             setRecaptureError({ captureId: capture.id, message: reason })
           }
         },
-        onError: (err) =>
+        onError: (err) => {
+          // Stopped at the VPN warning: nothing was sent, and nothing failed.
+          if (err instanceof ContactStoppedError) return
           setRecaptureError({
             captureId: capture.id,
             message: err instanceof Error ? err.message : 'Recapture failed'
           })
+        }
       }
     )
   }

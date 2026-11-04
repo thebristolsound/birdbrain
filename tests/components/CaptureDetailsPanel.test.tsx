@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { Mock } from 'vitest'
-import { act, render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { act, render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { Capture } from '@shared/types'
@@ -23,6 +23,7 @@ vi.mock('@renderer/components/notes/useNoteEditor', () => ({
 }))
 
 import { CaptureDetailsPanel } from '@renderer/components/captures/CaptureDetailsPanel'
+import { settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { stubMatchMedia } from './matchMediaStub'
 import { MAC_PLATFORM, restorePlatform, stubPlatform } from '../renderer/platformStub'
@@ -187,6 +188,35 @@ describe('CaptureDetailsPanel actions menu', () => {
 
     fireEvent.click(item)
     expect(onDuplicate).not.toHaveBeenCalled()
+  })
+})
+
+describe('CaptureDetailsPanel Recapture at the VPN warning', () => {
+  it('shows no Recapture error when the Operator stops at the warning', async () => {
+    useVpnWarningStore.setState({ open: false, request: null, settle: null })
+    const enqueue = vi.fn(async () => ({ accepted: 1, rejected: [] }))
+    window.birdbrain.recapture.enqueue = enqueue
+    window.birdbrain.egress.checkVpnWarning = vi.fn(async () => ({
+      caseId: 'case1',
+      warn: true,
+      canMute: true
+    }))
+    renderPanel()
+    const trigger = await screen.findByTestId('capture-details-actions-btn')
+    fireEvent.click(trigger)
+    fireEvent.click(screen.getByTestId('capture-details-recapture-btn'))
+    await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
+    act(() => settleVpnWarning('dismiss'))
+
+    // The item is enabled again once the stopped Recapture has settled.
+    fireEvent.click(trigger)
+    await waitFor(() =>
+      expect(
+        (screen.getByTestId('capture-details-recapture-btn') as HTMLButtonElement).disabled
+      ).toBe(false)
+    )
+    expect(enqueue).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('capture-details-recapture-error')).toBeNull()
   })
 })
 

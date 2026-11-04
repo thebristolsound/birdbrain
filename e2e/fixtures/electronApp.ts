@@ -59,7 +59,9 @@ export async function launchBirdbrain(
   return _electron.launch({
     args: ['.', ...launch.args],
     cwd: join(__dirname, '../..'),
-    env: { ...process.env, ...launch.env, ...env }
+    // The VPN check reads 'seen' unless a spec sets the switch itself, so a runner's own
+    // network never raises the VPN warning in a spec that is not about it.
+    env: { BIRDBRAIN_E2E_VPN: 'seen', ...process.env, ...launch.env, ...env }
   })
 }
 

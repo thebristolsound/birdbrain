@@ -22,7 +22,7 @@ vi.mock('@renderer/lib/notify', () => ({
 
 import { CaptureList } from '@renderer/components/captures/CaptureList'
 import { useAppStore } from '@renderer/stores/appStore'
-import { fakeBridge } from '../renderer/fakeBridge'
+import { fakeBridge, quietVpnWarning } from '../renderer/fakeBridge'
 
 function makeCapture(id: string, minutesAgo: number): Capture {
   const ts = new Date(Date.UTC(2026, 7, 1, 12, 0, 0) - minutesAgo * 60000).toISOString()
@@ -119,7 +119,8 @@ beforeEach(() => {
       duplicate
     },
     tags: { list: vi.fn(async () => TAGS), addToCaptures },
-    recapture: { enqueueCaptures }
+    recapture: { enqueueCaptures },
+    egress: quietVpnWarning()
   })
   useAppStore.setState({
     selectedCaptureId: null,

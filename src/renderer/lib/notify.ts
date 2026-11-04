@@ -123,6 +123,7 @@ const CODE_LABELS: Record<LogCode, string> = {
   'app.child_process_gone': 'A helper process stopped',
   'app.storage_init_failed': "Couldn't open the storage folder — using the default location",
   'app.egress_apply_failed': "Couldn't send the Wayback pane through the Egress",
+  'app.vpn_check_failed': "Couldn't read this computer's route to check for a VPN",
   'capture.failed': 'Capture failed',
   'capture.screenshot_dropped': 'Screenshot was skipped',
   'capture.server_started': 'Capture server started',

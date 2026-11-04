@@ -192,7 +192,7 @@ during the print.
 | Chrome 150, Linux | `Page.printToPDF` returns data in a windowed tab |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
 | Chromium 154, Linux (second host) | Same as Chrome 150 |
-| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -234,7 +234,7 @@ limit, and the script recorded it as a timeout. The page then held one more `res
 | Chrome 150, Linux | Window does not move; the page sees `resize`, `visualViewport` resize, and `ResizeObserver` events; a tab behind another can be captured |
 | Chrome for Testing 149, Linux | Same as Chrome 150, with a viewport 56 pixels shorter; with `--disable-field-trial-config`, the first background capture took 2,265 ms |
 | Chromium 154, Linux (second host) | In front, same as Chrome 150; behind another tab, the capture without `captureBeyondViewport` took 2,267 ms and the capture with it did not answer within 15 seconds |
-| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -337,7 +337,7 @@ of the five runs.
 | Chrome 150, Linux | No change in the listed facts from `Page` or isolated-world reads; the `Error.stack` check failed its positive control, and the `Error.prepareStackTrace` check did not run on the first host; scrolling is visible to the page through scroll and intersection events and lazy loads |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
 | Chromium 154, Linux (second host) | No change in the listed facts from `Page` or isolated-world reads; the `Error.prepareStackTrace` check passed its control in all five runs and did not fire for either; scrolling is visible to the page as on Chrome 150 |
-| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -392,7 +392,7 @@ tab's commands answered within 151 ms.
 | Chrome 150, Linux | Awaited setup stalls tabs opened with no JavaScript opener; tabs the browser opens with a URL lose their document request; cross-site navigation keeps the session; durable messages keep the previous document's bodies |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
 | Chromium 154, Linux (second host) | Same as Chrome 150 |
-| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -428,7 +428,7 @@ the same three.
 | Chrome 150, Linux | As in the table above |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
 | Chromium 154, Linux (second host) | Same as Chrome 150; auto-attach also attaches `browser_ui` and `background_page` targets, which the URL filter skips |
-| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -454,7 +454,7 @@ check needs no page of its own. On the second host, Chromium 154 gave the same t
 | Chrome 150, Linux | The policy switch holds; the `force` switch does not; `about:blank` gives the page's result |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
 | Chromium 154, Linux (second host) | Same as Chrome 150 |
-| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -477,7 +477,7 @@ profile exits at once (P14).
 | Chrome 150, Linux (distribution package) | Works: no TCP listener, no `DevToolsActivePort`, one Unix singleton socket |
 | Chrome for Testing 149, Linux (vendor archive) | Same as Chrome 150 |
 | Chromium 154, Linux (distribution package, second host) | Same as Chrome 150 |
-| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Snap or Flatpak build of any product, Linux | Not measured on either host: the first has no browser Snap, the second has no `snap`, and neither has `flatpak` |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
@@ -529,7 +529,7 @@ have exited on its own is not known. The restart gave the same answer as on Chro
 | Chrome 150, Linux | Exits within 0.6 s of the pipe closing, an upper bound; a restart exits and does not return |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
 | Chromium 154, Linux (second host) | Exits within 0.81 s of the clock starting in every row; one process naming the profile outlived the browser process after a normal exit and after a closed pipe; a restart exits and does not return |
-| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -560,7 +560,7 @@ fetches on both sessions.
 | Chrome 150, Linux | Worker-served responses on the page's session with their source and no endpoint; the worker's own requests on two sessions of one target |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
 | Chromium 154, Linux (second host) | Same as Chrome 150 |
-| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -588,7 +588,7 @@ speculation runs, including the `PrerenderingDisabledByDevTools` status.
 | Chrome 150, Linux | Back-forward restore: no network event, only `Target.targetInfoChanged`; prerender disabled under CDP; prefetches on the tab's session |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
 | Chromium 154, Linux (second host) | Same as Chrome 150 |
-| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -614,7 +614,7 @@ known.
 | Chrome 150, Linux | No inversion in 150 cross-session steps |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
 | Chromium 154, Linux (second host) | In 2 of 149 steps, the request arrived before the previous step's `loadingFinished`; no other inversion |
-| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -683,7 +683,7 @@ An hour of browsing was not measured; the per-megabyte figure is what this run s
 | Chrome 150, Linux | About 16 ms of main-process CPU per MB fetched; event-loop delay up to 140 ms; only a page larger than the buffer lost bodies at Capture time; no wrong body |
 | Chrome for Testing 149, Linux | The same costs; with either durable-message setting, one body of 9,000,000 bytes returned short and wrong without an error |
 | Chromium 154, Linux (second host) | 16 to 29 ms of Electron 45.1.0's main-process CPU per MB fetched; event-loop delay up to 236 ms; only a page larger than the buffer lost bodies at Capture time; no wrong body, durable messages included |
-| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -791,7 +791,7 @@ command under [The probe](#the-probe), which reads the raw net logs.
 | Chrome 150, Linux | Behind SOCKS5 or HTTP, no TCP connection and no DNS query went around the proxy; the IPv6 reachability check's UDP connects to `2001:4860:4860::8888` failed and sent nothing; the HTTP proxy's endpoint is the reported remote address |
 | Chrome for Testing 149, Linux | Same as Chrome 150, with fewer hosts of its own |
 | Chromium 154, Linux (second host) | Behind SOCKS5 or HTTP, the same as Chrome 150. Direct, the browser resolved through the operating system, whose `resolve` module answered from outside the namespace, and its connections to the public addresses failed |
-| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -826,7 +826,7 @@ answering, and the running browser opened no tab.
 | Chrome 150, Linux | Seeding launch works without a window; cookies reach disk; the session cookie is gone after a restart; a launch on a busy profile exits 0 at once |
 | Chrome for Testing 149, Linux | Same, except that the session cookie was still sent after the restart |
 | Chromium 154, Linux (second host) | Same as Chrome 150; the launch on a busy profile exited 0 after 452 ms |
-| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -856,7 +856,7 @@ bubble without it, and refused attempts to reach both hosts in each run.
 | Chrome 150, Linux | Kept; no save-password offer; the browser still tried to reach the leak-check host, and the proxy refused it |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
 | Chromium 154, Linux (second host) | Same as Chrome 150 |
-| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -911,7 +911,7 @@ kept out (Method).
 | Chrome 150, Linux | As in the table: `v10` on this host and with no Secret Service, `v11` with an unlocked keyring |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
 | Chromium 154, Linux (second host) | `v11` under `gnome-keyring`'s Secret Service, matching Electron 45.1.0's `safeStorage`; `v10` with no Secret Service, where Electron still names `gnome_libsecret`; the host as it is not run |
-| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -949,7 +949,7 @@ the same answers both ways.
 | Chrome 150, Linux | The engine's session survives DevTools opening |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
 | Chromium 154, Linux (second host) | Same as Chrome 150 |
-| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -978,7 +978,7 @@ Testing infobar. Chromium 154 showed the same infobar in all three of its P13 ru
 | Chrome 150, Linux | No automation infobar; an outdated-build bubble that takes the keyboard |
 | Chrome for Testing 149, Linux | No automation infobar; the Chrome for Testing infobar |
 | Chromium 154, Linux (second host) | No automation infobar and no other banner; the unsupported-flag infobar with `--log-net-log` |
-| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -1066,7 +1066,7 @@ On the second host the comparison ran against Electron 45.1.0's `wc.savePage`:
 | Chrome 150, Linux | Equal to `wc.savePage` in Electron 44.5.1 on this fixture |
 | Chrome for Testing 149, Linux | Differs by default; equal with `--disable-field-trial-config` |
 | Chromium 154, Linux (second host) | Equal to `wc.savePage` in Electron 45.1.0 on this fixture |
-| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, Edge is not installed and Brave Origin was not launched (Method) |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 

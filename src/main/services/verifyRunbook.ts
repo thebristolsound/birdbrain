@@ -101,7 +101,9 @@ The standalone verifier, \`birdbrain-verify\`, prints \`RESULT: VERIFIER TOO OLD
 and exits 3 when it meets an entry from a newer schema than it reads. That
 result is not a tamper finding and not a pass: the verifier makes no integrity
 claim about the package either way. Builds of the verifier that read schema 2 or
-below predate the result.
+below predate the result. They reject an entry from a newer schema as malformed
+and print \`RESULT: FAIL\`, so on a package that needs schema 3 or above, a FAIL
+from such a build does not show tampering.
 
 Re-run with a verifier that reads manifest schema ${requiredSchemaVersion} or above.
 \`birdbrain-verify\` is built from the Birdbrain source with

@@ -69,6 +69,11 @@ describe('buildVerifyRunbook', () => {
     expect(text).toContain('That result is not a tamper finding and not a pass')
     // The result shipped with the reader of schema 3, so older builds do not print it.
     expect(text).toContain('Builds of the verifier that read schema 2 or below predate the result.')
+    // ADR-0023: those builds fail the strict parse and report a broken chain.
+    expect(text).toContain(
+      'They reject an entry from a newer schema as malformed and print `RESULT: FAIL`, so on a ' +
+        'package that needs schema 3 or above, a FAIL from such a build does not show tampering.'
+    )
   })
 
   // A member on a newer build can write a member chain this package encloses,

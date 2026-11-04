@@ -4727,7 +4727,7 @@ describe('resolveRequiredReaderSchemaVersion', () => {
     ).toBe(newer)
   })
 
-  it('counts an entry with no schemaVersion as a v1 entry', () => {
+  it('adds nothing for an entry with no schemaVersion', () => {
     expect(resolveRequiredReaderSchemaVersion(local(undefined, undefined), unshared)).toBe(2)
   })
 

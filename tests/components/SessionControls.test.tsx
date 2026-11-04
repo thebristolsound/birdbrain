@@ -5,6 +5,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 
 vi.mock('@tanstack/react-query', () => ({
+  queryOptions: (options: unknown) => options,
   useQuery: () => ({ data: [{ id: 'case-a', name: 'Case A' }] })
 }))
 const route = vi.hoisted(() => ({ caseId: 'case-a' as string | undefined }))

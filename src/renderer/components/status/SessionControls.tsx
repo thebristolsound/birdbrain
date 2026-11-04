@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { launchedBrowserStatusQueryOptions } from '@renderer/lib/api/launchedBrowser'
 import { useParams } from '@tanstack/react-router'
 import { motion, AnimatePresence } from 'motion/react'
 import { useAppStore } from '@renderer/stores/appStore'
@@ -11,13 +12,21 @@ export function SessionControls() {
   const setSessionActive = useAppStore((s) => s.setSessionActive)
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
   const { data: cases = [] } = useQuery(casesQueryOptions)
+  const { data: launched } = useQuery(launchedBrowserStatusQueryOptions)
   const [toggling, setToggling] = useState(false)
   const { activateCase, start, stop } = useSessionMutations()
 
   const params = useParams({ strict: false })
   const activeCaseId = (params as { caseId?: string }).caseId ?? null
 
-  if (!connectedToExtension) return null
+  // Shown while the extension is connected or a launched browser is open (S2), and while the
+  // Capture Session a launched browser left behind on closing still runs.
+  const launchedSession =
+    launched?.state === 'starting' ||
+    launched?.state === 'open' ||
+    launched?.state === 'closing' ||
+    launched?.state === 'closed'
+  if (!connectedToExtension && !launchedSession) return null
 
   const activeCase = cases.find((c) => c.id === activeCaseId)
 

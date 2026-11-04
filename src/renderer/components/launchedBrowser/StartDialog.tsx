@@ -82,7 +82,7 @@ export function StartDialog() {
   const knownEgress: KnownEgress | null = egress && egress.kind !== 'unavailable' ? egress : null
   const operatorName = settings?.operatorName?.trim() ?? ''
 
-  // What refuses a launch before it starts, in the order the launch itself checks.
+  // A refusal known before the launch starts. A missing operator name shows in its own row.
   const blocked =
     busyRefusal(status) ??
     (browsers?.length === 0 ? NO_BROWSER_REFUSAL : null) ??

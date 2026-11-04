@@ -1926,10 +1926,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 45) {
     db.transaction(() => {
-      // The Persona a Capture was taken under (ADR-0030), mirrored from the signed entry's
-      // personaId and personaLabel with the label as it stood at acquisition. Checks read the
-      // signed entry, never this row. No foreign key to personas: an imported Capture can name
-      // a Persona registered on another installation.
+      // The Persona an ingest signed (ADR-0030), with the label as passed at acquisition. A
+      // Capture received into a Shared Case leaves both NULL (receivedEvidence.ts). Checks read
+      // the signed entry, never this row. No foreign key to personas: an imported Capture can
+      // name a Persona registered on another installation.
       //
       // Skips a column already present, as v43 does, because a restored copy marked one
       // version back runs this block again.

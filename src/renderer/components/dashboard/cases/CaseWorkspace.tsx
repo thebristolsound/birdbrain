@@ -10,6 +10,7 @@ import { useAppStore } from '@renderer/stores/appStore'
 import type { BirdbrainSettings } from '@shared/types'
 import { Skeleton } from '@renderer/components/ui'
 import { CaseActionBar } from '@renderer/components/layout/CaseActionBar'
+import { CaptureSessionDock } from '@renderer/components/launchedBrowser/CaptureSessionDock'
 
 export function CaseWorkspace() {
   const { caseId } = useParams({ from: '/cases/$caseId' })
@@ -19,6 +20,7 @@ export function CaseWorkspace() {
   const { activateCase } = useSessionMutations()
   const ensureSearchFields = useEnsureCaseSearchFieldsMutation()
   const { update } = useSettingsMutations()
+  const activeViewerTab = useAppStore((s) => s.activeViewerTab)
 
   useSelectorFilters(caseId)
   useTagFilters(caseId)
@@ -91,16 +93,20 @@ export function CaseWorkspace() {
   return (
     <div className="flex h-full flex-col">
       <CaseActionBar caseId={caseId} />
-      {/* Split workspaces own their scroll regions and fill the available height. */}
-      {isCaptures || isData || isSignals || isNotes || isInvestigate || isSettings ? (
-        <div className="flex-1 overflow-hidden">
-          <Outlet />
-        </div>
-      ) : (
-        <div className="flex-1 overflow-auto p-[var(--d-pad)]">
-          <Outlet />
-        </div>
-      )}
+      {/* The Wayback tab stays the viewer's tab with no Capture selected, so the rail does not
+          swap for the strip as a Capture is selected or cleared. */}
+      <CaptureSessionDock waybackTab={isCaptures && activeViewerTab === 'wayback'}>
+        {/* Split workspaces own their scroll regions and fill the available height. */}
+        {isCaptures || isData || isSignals || isNotes || isInvestigate || isSettings ? (
+          <div className="flex-1 overflow-hidden">
+            <Outlet />
+          </div>
+        ) : (
+          <div className="flex-1 overflow-auto p-[var(--d-pad)]">
+            <Outlet />
+          </div>
+        )}
+      </CaptureSessionDock>
     </div>
   )
 }

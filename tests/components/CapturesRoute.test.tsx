@@ -79,7 +79,7 @@ import { CapturesRoute } from '@renderer/routes/cases/$caseId/captures'
 import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { stubMatchMedia } from './matchMediaStub'
-import { stubResizeObserver } from './resizeObserverStub'
+import { stubResizeObserver, stubResizeObserverWithWidth } from './resizeObserverStub'
 import type { BatchDeleteResult } from '@shared/ipc'
 
 const capture: Capture = {
@@ -581,6 +581,32 @@ describe('CapturesRoute', () => {
       expect(screen.queryByTestId('capture-details-overlay')).toBeNull()
       // The rail it was expanded from is still there to re-open it with.
       expect(screen.getByTestId('capture-details-aside').className).toContain('w-10')
+    })
+  })
+
+  // #1831: the fold reads the screen's own width, so the Capture Session rail beside it folds
+  // the details panel where the window alone would not. Before the first measurement it reads
+  // the window less the 48-pixel side rail, which is what the tests above run on.
+  describe('the details fold beside the Capture Session rail', () => {
+    let reportWidth: (width: number) => void
+
+    beforeEach(() => {
+      reportWidth = stubResizeObserverWithWidth()
+    })
+
+    it('folds the details panel when the screen is narrower than 1,052 pixels', async () => {
+      renderRouteWide()
+      await screen.findByText('panel: open externally')
+      act(() => reportWidth(1_051))
+      expect(await screen.findByText(OPEN_CONTROL)).toBeDefined()
+      expect(screen.queryByText('panel: open externally')).toBeNull()
+    })
+
+    it('docks it again from 1,052 pixels, whatever the window measures', async () => {
+      renderRoute()
+      await screen.findByText(OPEN_CONTROL)
+      act(() => reportWidth(1_052))
+      expect(await screen.findByText('panel: open externally')).toBeDefined()
     })
   })
 })

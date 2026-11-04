@@ -140,6 +140,14 @@ export interface LaunchedBrowserOption {
   lastVersion: string | null
 }
 
+// A launched browser still running from before Birdbrain last quit (state 13), which Birdbrain
+// cannot reconnect to. `profile` is the browser profile it holds: a throwaway one, or the folder
+// of a Persona that has no row.
+export interface LaunchedBrowserLeftover {
+  label: string
+  profile: 'session' | 'persona'
+}
+
 // Which rule took a `launched-passive` Capture (decision D12, ADR-0037): every
 // page that loaded, or a page an Active Case Selector matched. Which Selectors
 // matched stays in `selector_matches`, off the signed entry, because a pattern
@@ -1083,14 +1091,19 @@ export const LOG_CODES = [
   // The launched browser (#1831): a launch that failed, with its error code; a Capture Session
   // Birdbrain ended because a response bypassed the Egress proxy, or because the Egress
   // changed; a browser that did not exit after the kill; a throwaway profile left on disk; a
-  // tab whose setup failed; and a launch version Settings could not save.
+  // tab whose setup failed; and a launch version Settings could not save. From the startup
+  // sweep: the leftover profiles it removed, one it could not read or remove, and a browser from
+  // an earlier run still running.
   'launchedBrowser.launch_failed',
   'launchedBrowser.egress_bypass',
   'launchedBrowser.egress_changed',
   'launchedBrowser.stop_failed',
   'launchedBrowser.profile_remove_failed',
   'launchedBrowser.target_setup_failed',
-  'launchedBrowser.version_save_failed'
+  'launchedBrowser.version_save_failed',
+  'launchedBrowser.profiles_swept',
+  'launchedBrowser.profile_sweep_failed',
+  'launchedBrowser.leftover_running'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 

@@ -251,7 +251,10 @@ const CODE_LABELS: Record<LogCode, string> = {
   'launchedBrowser.stop_failed': 'The launched browser did not exit after Birdbrain killed it',
   'launchedBrowser.profile_remove_failed': "Couldn't delete the launched browser's profile",
   'launchedBrowser.target_setup_failed': "Couldn't set up a tab in the launched browser",
-  'launchedBrowser.version_save_failed': "Couldn't save the launched browser's version"
+  'launchedBrowser.version_save_failed': "Couldn't save the launched browser's version",
+  'launchedBrowser.profiles_swept': 'Deleted leftover launched browser profiles',
+  'launchedBrowser.profile_sweep_failed': "Couldn't delete a leftover launched browser profile",
+  'launchedBrowser.leftover_running': 'A launched browser from an earlier run is still open'
 }
 
 export function labelForCode(code: LogCode): string {

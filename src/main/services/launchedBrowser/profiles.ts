@@ -2,8 +2,10 @@ import { mkdirSync, readdirSync, readlinkSync, rmSync } from 'fs'
 import { hostname as osHostname } from 'os'
 import { basename, dirname, join, resolve } from 'path'
 import { randomUUID as cryptoRandomUUID } from 'crypto'
-import type { BrowserFamily } from '@shared/types'
+import { BROWSER_FAMILIES, type BrowserFamily, type LaunchedBrowserLeftover } from '@shared/types'
 import * as personaRepo from '@main/services/db/personaRepo'
+import { logger, type Logger } from '@main/services/logger'
+import { BROWSER_FAMILY_LABELS } from '@main/services/launchedBrowser/discovery'
 
 // Launched browser profiles (spec, "Browser profiles per Persona"), one folder per Persona or
 // Capture Session holding one profile per browser family:
@@ -92,10 +94,15 @@ export function profileInUse(profileDir: string, deps: ProfileLockDeps = {}): bo
   return isAlive(pid)
 }
 
-function folderInUse(folder: string, deps: ProfileLockDeps): boolean {
-  return readdirSync(folder, { withFileTypes: true }).some(
-    (entry) => entry.isDirectory() && profileInUse(join(folder, entry.name), deps)
-  )
+// The product folders under `folder` whose profile a running browser holds.
+function heldProducts(folder: string, deps: ProfileLockDeps): string[] {
+  return readdirSync(folder, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && profileInUse(join(folder, entry.name), deps))
+    .map(({ name }) => name)
+}
+
+function removeFolder(path: string): void {
+  rmSync(path, { recursive: true, force: true })
 }
 
 export interface ProfileSweepDeps extends ProfileLockDeps {
@@ -122,7 +129,7 @@ export function sweepLaunchedBrowserProfiles(
 ): ProfileSweepResult {
   const {
     personaExists = (id: string) => personaRepo.getPersonaLabel(id) !== undefined,
-    remove = (path: string) => rmSync(path, { recursive: true, force: true })
+    remove = removeFolder
   } = deps
   const personaFoldersSwept = resolve(sessionDataPath) === resolve(userDataPath)
   const result: ProfileSweepResult = { removed: [], inUse: [], failed: [], personaFoldersSwept }
@@ -144,7 +151,7 @@ export function sweepLaunchedBrowserProfiles(
   for (const name of names.filter(leftover)) {
     const folder = join(root, name)
     try {
-      if (folderInUse(folder, deps)) {
+      if (heldProducts(folder, deps).length > 0) {
         result.inUse.push(name)
         continue
       }
@@ -155,4 +162,65 @@ export function sweepLaunchedBrowserProfiles(
     }
   }
   return result
+}
+
+function leftoverOf(folder: string, product: string): LaunchedBrowserLeftover {
+  const family = BROWSER_FAMILIES.find((name) => name === product)
+  return {
+    label: family ? BROWSER_FAMILY_LABELS[family] : product,
+    profile: folder.startsWith(SESSION_PREFIX) ? 'session' : 'persona'
+  }
+}
+
+export interface StartupSweepDeps extends ProfileSweepDeps {
+  log?: Pick<Logger, 'info' | 'warn'>
+}
+
+// Runs the sweep at startup and logs it. Returns the check behind the notice that asks the
+// Operator to close a browser left running from an earlier run (state 13): each call rechecks the
+// folders the sweep kept, removes one no browser holds any more, and names the browsers in the
+// rest. A browser launched since startup is never among them.
+export function sweepLaunchedBrowsersAtStartup(
+  userDataPath: string,
+  sessionDataPath: string,
+  deps: StartupSweepDeps = {}
+): () => LaunchedBrowserLeftover[] {
+  const { log = logger, remove = removeFolder } = deps
+  const { removed, inUse, failed } = sweepLaunchedBrowserProfiles(
+    userDataPath,
+    sessionDataPath,
+    deps
+  )
+  if (removed.length > 0) {
+    log.info('launchedBrowser', 'launchedBrowser.profiles_swept', { count: removed.length })
+  }
+  for (const { error } of failed) {
+    log.warn('launchedBrowser', 'launchedBrowser.profile_sweep_failed', undefined, error)
+  }
+  if (inUse.length > 0) {
+    log.warn('launchedBrowser', 'launchedBrowser.leftover_running', { count: inUse.length })
+  }
+
+  const root = launchedBrowsersRoot(sessionDataPath)
+  let kept = inUse
+  return () => {
+    const leftovers: LaunchedBrowserLeftover[] = []
+    kept = kept.filter((name) => {
+      const folder = join(root, name)
+      try {
+        const held = heldProducts(folder, deps)
+        if (held.length > 0) {
+          leftovers.push(...held.map((product) => leftoverOf(name, product)))
+          return true
+        }
+        remove(folder)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          log.warn('launchedBrowser', 'launchedBrowser.profile_sweep_failed', undefined, error)
+        }
+      }
+      return false
+    })
+    return leftovers
+  }
 }

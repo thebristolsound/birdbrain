@@ -19,7 +19,8 @@ import {
   processAlive,
   profileInUse,
   removeSessionProfile,
-  sweepLaunchedBrowserProfiles
+  sweepLaunchedBrowserProfiles,
+  sweepLaunchedBrowsersAtStartup
 } from '@main/services/launchedBrowser/profiles'
 
 const HOST = 'birdbrain-host'
@@ -214,5 +215,107 @@ describe('sweepLaunchedBrowserProfiles', () => {
     writeFileSync(root(), 'not a folder')
     const result = sweepLaunchedBrowserProfiles(userData, userData, lockDeps)
     expect(result).toMatchObject({ removed: [], failed: [{ name: 'launched-browsers' }] })
+  })
+})
+
+describe('sweepLaunchedBrowsersAtStartup', () => {
+  // Which pids on HOST are running browsers, changed by a test to close one.
+  let alive: Set<number>
+  const log = { info: vi.fn(), warn: vi.fn() }
+  const deps = () => ({
+    hostname: () => HOST,
+    isAlive: (pid: number) => alive.has(pid),
+    log
+  })
+
+  beforeEach(() => {
+    alive = new Set([LIVE_PID])
+    log.info.mockClear()
+    log.warn.mockClear()
+  })
+
+  it('removes the leftovers, logs what it did, and names each browser still running', () => {
+    profileFolder('session-old', 'chrome', `${HOST}-999`)
+    profileFolder('session-running', 'chrome', `${HOST}-${LIVE_PID}`)
+    profileFolder('persona-gone', 'edge', `${HOST}-${LIVE_PID}`)
+
+    const checkLeftovers = sweepLaunchedBrowsersAtStartup(userData, userData, deps())
+
+    expect(readdirSync(root()).sort()).toEqual(['persona-gone', 'session-running'])
+    expect(log.info).toHaveBeenCalledWith('launchedBrowser', 'launchedBrowser.profiles_swept', {
+      count: 1
+    })
+    expect(log.warn).toHaveBeenCalledWith('launchedBrowser', 'launchedBrowser.leftover_running', {
+      count: 2
+    })
+    expect(checkLeftovers()).toEqual([
+      { label: 'Microsoft Edge', profile: 'persona' },
+      { label: 'Google Chrome', profile: 'session' }
+    ])
+  })
+
+  it('logs nothing and names no browser when nothing was left', () => {
+    const checkLeftovers = sweepLaunchedBrowsersAtStartup(userData, userData, deps())
+    expect(checkLeftovers()).toEqual([])
+    expect(log.info).not.toHaveBeenCalled()
+    expect(log.warn).not.toHaveBeenCalled()
+  })
+
+  it('logs each folder it could not remove', () => {
+    profileFolder('session-a', 'chrome')
+    const failure = new Error('EBUSY')
+    const remove = () => {
+      throw failure
+    }
+    sweepLaunchedBrowsersAtStartup(userData, userData, { ...deps(), remove })
+    expect(log.warn).toHaveBeenCalledWith(
+      'launchedBrowser',
+      'launchedBrowser.profile_sweep_failed',
+      undefined,
+      failure
+    )
+  })
+
+  it('removes the folder of a browser that has closed since, and stops naming it', () => {
+    profileFolder('session-running', 'chrome', `${HOST}-${LIVE_PID}`)
+    const checkLeftovers = sweepLaunchedBrowsersAtStartup(userData, userData, deps())
+    expect(checkLeftovers()).toEqual([{ label: 'Google Chrome', profile: 'session' }])
+
+    alive.delete(LIVE_PID)
+    expect(checkLeftovers()).toEqual([])
+    expect(existsSync(join(root(), 'session-running'))).toBe(false)
+    expect(checkLeftovers()).toEqual([])
+  })
+
+  it('rechecks only the folders it kept at startup, never a browser launched since', () => {
+    profileFolder('session-old', 'chrome', `${HOST}-${LIVE_PID}`)
+    const checkLeftovers = sweepLaunchedBrowsersAtStartup(userData, userData, deps())
+    profileFolder('session-new', 'brave', `${HOST}-${LIVE_PID}`)
+    expect(checkLeftovers()).toEqual([{ label: 'Google Chrome', profile: 'session' }])
+  })
+
+  it('drops a kept folder that has gone, and logs one it cannot read', () => {
+    profileFolder('session-gone', 'chrome', `${HOST}-${LIVE_PID}`)
+    profileFolder('session-file', 'chrome', `${HOST}-${LIVE_PID}`)
+    const checkLeftovers = sweepLaunchedBrowsersAtStartup(userData, userData, deps())
+    rmSync(join(root(), 'session-gone'), { recursive: true })
+    rmSync(join(root(), 'session-file'), { recursive: true })
+    writeFileSync(join(root(), 'session-file'), 'not a folder')
+    log.warn.mockClear()
+
+    expect(checkLeftovers()).toEqual([])
+    expect(log.warn).toHaveBeenCalledTimes(1)
+    expect(log.warn).toHaveBeenCalledWith(
+      'launchedBrowser',
+      'launchedBrowser.profile_sweep_failed',
+      undefined,
+      expect.objectContaining({ code: 'ENOTDIR' })
+    )
+  })
+
+  it('names a product folder it does not know by its folder name', () => {
+    profileFolder('session-running', 'opera', `${HOST}-${LIVE_PID}`)
+    const checkLeftovers = sweepLaunchedBrowsersAtStartup(userData, userData, deps())
+    expect(checkLeftovers()).toEqual([{ label: 'opera', profile: 'session' }])
   })
 })

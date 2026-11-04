@@ -32,19 +32,19 @@ describe('safeRegexTest', () => {
   // exhibits catastrophic backtracking against an all-'a' string with no 'b'
   // suffix — each additional 'a' roughly doubles the work, so 32 'a's takes
   // well over 200ms to fail-match (typically multiple seconds) on any modern
-  // CPU. The vm timeout fires, runInNewContext throws, and safeRegexTest's
-  // catch block returns false. Asserts only the boolean — never elapsed time —
-  // to stay deterministic across CI hardware. If this test ever becomes flaky
-  // on a very fast runner, raise the string length further, do not shorten the
-  // timeout assertion.
+  // CPU. The vm timeout fires, runInNewContext throws, safeRegexOutcome's catch
+  // answers 'timeout', and safeRegexTest returns false. Asserts only the
+  // boolean — never elapsed time — to stay deterministic across CI hardware. If
+  // this test ever becomes flaky on a very fast runner, raise the string length
+  // further, do not shorten the timeout assertion.
   it('returns false when a catastrophic-backtracking pattern exceeds the timeout', () => {
     const pattern = '(a+)+b'
     const text = 'a'.repeat(32)
     expect(safeRegexTest(pattern, '', text)).toBe(false)
   })
 
-  // The production budget, pinned as a value rather than as a race: every call
-  // site omits the argument, so this constant is the one that decides whether an
+  // The production budget, pinned as a value rather than as a race: no production
+  // call path passes a budget, so this constant is the one that decides whether an
   // ignore rule is enforced or fails open. Changing it changes evidence-path
   // behaviour and should have to change this line too.
   it('defaults to a 200 ms budget', () => {

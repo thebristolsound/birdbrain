@@ -49,19 +49,14 @@ export function CaptureSessionWindow() {
           <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-danger-fg" />
         )}
         <span className="shrink-0 font-semibold text-text-primary">Birdbrain</span>
-        <span aria-hidden="true" className="text-text-faint">
-          ·
-        </span>
         {caseName && (
-          <>
-            <span className="min-w-0 truncate text-text-primary">{caseName}</span>
-            <span aria-hidden="true" className="text-text-faint">
-              ·
-            </span>
-          </>
+          <span aria-hidden="true" className="text-text-faint">
+            ·
+          </span>
         )}
-        <span className="shrink-0 text-text-primary">Capture Session</span>
-        <span className="flex-1" />
+        {/* The canvas adds "· Capture Session". Beside the window controls that left the Case no
+            room in 300 pixels (measured under X11), so the panel's header carries it. */}
+        <span className="min-w-0 flex-1 truncate text-text-primary">{caseName}</span>
         <Button
           variant="link"
           className="shrink-0 px-0 text-[11px] text-text-muted underline"

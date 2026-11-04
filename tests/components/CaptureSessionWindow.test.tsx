@@ -74,7 +74,9 @@ describe('the Capture Session pop-out window', () => {
     const bar = screen.getByRole('banner')
     expect(within(bar).getByText('Birdbrain')).toBeTruthy()
     expect(within(bar).getByText('Ferry Line')).toBeTruthy()
-    expect(within(bar).getByText('Capture Session')).toBeTruthy()
+    // Beside the window controls there is no room for it; the panel's header names it.
+    expect(within(bar).queryByText('Capture Session')).toBeNull()
+    expect(within(screen.getByRole('main')).getByText('Capture Session')).toBeTruthy()
   })
 
   it('keeps its bar clear of the native window controls', () => {

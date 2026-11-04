@@ -7,28 +7,32 @@ import { dockPanel, showPopOutWindow } from '@renderer/lib/api/launchedBrowser'
 export function PopOutStub({ onDone }: { onDone?: () => void }) {
   return (
     <div className="px-3 py-2.5 text-[11px] leading-[1.45]">
-      <div className="flex items-center gap-2 rounded border border-border bg-surface px-2.5 py-1.5">
-        <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-danger-fg" />
-        <span className="text-text-muted">Panel popped out</span>
-        <span className="flex-1" />
-        <Button
-          variant="outline"
-          onClick={() => {
-            onDone?.()
-            void showPopOutWindow()
-          }}
-        >
-          Show window
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => {
-            onDone?.()
-            void dockPanel()
-          }}
-        >
-          Dock
-        </Button>
+      {/* The buttons move under the label when one row does not fit. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded border border-border bg-surface px-2.5 py-1.5">
+        <span className="flex flex-1 items-center gap-2 whitespace-nowrap text-text-muted">
+          <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-danger-fg" />
+          Panel popped out
+        </span>
+        <span className="ml-auto flex gap-1.5 whitespace-nowrap">
+          <Button
+            variant="outline"
+            onClick={() => {
+              onDone?.()
+              void showPopOutWindow()
+            }}
+          >
+            Show window
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              onDone?.()
+              void dockPanel()
+            }}
+          >
+            Dock
+          </Button>
+        </span>
       </div>
     </div>
   )

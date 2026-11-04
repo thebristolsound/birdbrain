@@ -83,7 +83,7 @@ export function StopSessionDialog() {
               {error}
             </p>
           )}
-          <DialogFooter className="mt-2 gap-1.5">
+          <DialogFooter className="mt-2 gap-1.5 whitespace-nowrap">
             <Button variant="outline" disabled={stopping} onClick={close}>
               Keep running
             </Button>

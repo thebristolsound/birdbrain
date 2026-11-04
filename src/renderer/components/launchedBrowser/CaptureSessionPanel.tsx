@@ -53,7 +53,7 @@ const EYEBROW = 'font-display text-[10px] font-semibold uppercase tracking-[.06e
 
 // The Capture Session panel (S3), in the forms this step builds: the rail on Case screens, the
 // overlay its strip opens, the top bar's popover on the dashboard and in Settings, and the
-// pop-out's window, whose title bar names the panel and its Case.
+// pop-out's window, whose title bar names the Case.
 export function CaptureSessionPanel({ form, onDone, showOpenCase = false }: PanelProps) {
   const view = useCaptureSessionView()
   const { data: poppedOut = false } = useQuery(launchedBrowserPopOutQueryOptions)
@@ -90,7 +90,7 @@ function BrowserBody({
   const egress = settings?.egress
   // The Egress is fixed for the browser's life: a change ends its Capture Session first.
   const egressText = egress && egress.kind !== 'unavailable' ? egressName(egress) : null
-  // The pop-out's title bar names the panel and the Case.
+  // The pop-out's title bar names the Case.
   const inPopOut = form === 'window'
   const listsTabs = form === 'rail' || form === 'overlay'
   const pad = listsTabs ? 'px-3 py-2.5' : 'px-2.5 py-2'
@@ -113,7 +113,7 @@ function BrowserBody({
     return (
       <div className={cn('flex flex-col gap-1.5 text-[11px] leading-[1.45]', pad)}>
         <div className="flex items-center gap-1.5">
-          {!inPopOut && <PanelTitle />}
+          <PanelTitle />
           {sessionStartedAt !== null && <Elapsed since={sessionStartedAt} />}
         </div>
         <div className="flex items-center gap-1.5">
@@ -156,7 +156,7 @@ function BrowserBody({
     <div className="flex min-h-0 flex-1 flex-col text-[11px] leading-[1.45]">
       <div className={cn('flex flex-col gap-[3px] border-b border-border', pad)}>
         <div className="flex items-center gap-1.5">
-          {!inPopOut && <PanelTitle />}
+          <PanelTitle />
           {sessionStartedAt !== null && <Elapsed since={sessionStartedAt} />}
           <span className="flex-1" />
           {!inPopOut && (

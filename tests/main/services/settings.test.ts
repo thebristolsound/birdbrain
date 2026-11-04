@@ -17,7 +17,9 @@ import {
   getDefaultSettings,
   onThemeChange,
   onEgressChange,
-  InvalidSettingsError
+  InvalidSettingsError,
+  recordLaunchedBrowserVersion,
+  setLaunchedBrowserExecutable
 } from '@main/services/settings'
 import { DEFAULT_TSA_URL } from '@shared/constants'
 import { DEFAULT_UI_DENSITY, UI_DENSITIES, type UiDensity } from '@shared/types'
@@ -195,6 +197,116 @@ describe('settings', () => {
       updateSettings({ egress: tor })
       expect(listener).toHaveBeenCalledTimes(2)
     })
+  })
+
+  describe('the launched browser settings (#1831)', () => {
+    const chromePath = '/opt/google/chrome/chrome'
+    const chosenPath = '/home/op/chrome-linux64/chrome'
+
+    function stored(): Record<string, unknown> {
+      return JSON.parse(readFileSync(settingsFile, 'utf-8')) as Record<string, unknown>
+    }
+
+    it('defaults to no chosen executable and no versions, also for an older file', () => {
+      expect(getSettings()).toMatchObject({
+        launchedBrowserExecutable: '',
+        launchedBrowserVersions: {}
+      })
+      writeFileSync(settingsFile, JSON.stringify({ operatorName: 'Matt' }), 'utf-8')
+      expect(getSettings()).toMatchObject({
+        operatorName: 'Matt',
+        launchedBrowserExecutable: '',
+        launchedBrowserVersions: {}
+      })
+      expect(loggerWarn).not.toHaveBeenCalled()
+    })
+
+    it('stores the chosen executable and the version each browser reported last', () => {
+      setLaunchedBrowserExecutable(chosenPath)
+      recordLaunchedBrowserVersion(chromePath, '149.0.7827.55')
+      recordLaunchedBrowserVersion(chosenPath, '150.0.7871.181')
+      recordLaunchedBrowserVersion(chromePath, '151.0.7900.10')
+      const versions = { [chromePath]: '151.0.7900.10', [chosenPath]: '150.0.7871.181' }
+      expect(getSettings()).toMatchObject({
+        launchedBrowserExecutable: chosenPath,
+        launchedBrowserVersions: versions
+      })
+      expect(stored()).toMatchObject({
+        launchedBrowserExecutable: chosenPath,
+        launchedBrowserVersions: versions
+      })
+      setLaunchedBrowserExecutable('')
+      expect(getSettings().launchedBrowserExecutable).toBe('')
+    })
+
+    it('keeps both through an update that does not name them', () => {
+      setLaunchedBrowserExecutable(chosenPath)
+      recordLaunchedBrowserVersion(chromePath, '149.0.7827.55')
+      updateSettings({ operatorName: 'Matt' })
+      expect(getSettings()).toMatchObject({
+        operatorName: 'Matt',
+        launchedBrowserExecutable: chosenPath,
+        launchedBrowserVersions: { [chromePath]: '149.0.7827.55' }
+      })
+    })
+
+    it('reads stored values that do not parse as none, keeping every other setting', () => {
+      writeFileSync(
+        settingsFile,
+        JSON.stringify({
+          operatorName: 'Matt',
+          tsaEnabled: false,
+          launchedBrowserExecutable: 42,
+          launchedBrowserVersions: { [chromePath]: 149 }
+        }),
+        'utf-8'
+      )
+      expect(getSettings()).toMatchObject({
+        operatorName: 'Matt',
+        tsaEnabled: false,
+        launchedBrowserExecutable: '',
+        launchedBrowserVersions: {}
+      })
+      expect(loggerWarn).not.toHaveBeenCalled()
+    })
+
+    // Main spawns the chosen executable, so only a main-process caller may set it.
+    it('does not let a settings edit write either key', () => {
+      setLaunchedBrowserExecutable(chosenPath)
+      recordLaunchedBrowserVersion(chromePath, '149.0.7827.55')
+      updateSettings({
+        operatorName: 'Matt',
+        launchedBrowserExecutable: '/tmp/not-a-browser',
+        launchedBrowserVersions: { '/tmp/not-a-browser': '999.0.0.0' }
+      })
+      expect(getSettings()).toMatchObject({
+        operatorName: 'Matt',
+        launchedBrowserExecutable: chosenPath,
+        launchedBrowserVersions: { [chromePath]: '149.0.7827.55' }
+      })
+      expect(stored().launchedBrowserExecutable).toBe(chosenPath)
+    })
+
+    it.skipIf(process.getuid?.() === 0)(
+      'holds a launch version for the session when the file cannot be read',
+      () => {
+        updateSettings({ operatorName: 'Matt' })
+        chmodSync(settingsFile, 0o000)
+        try {
+          recordLaunchedBrowserVersion(chromePath, '149.0.7827.55')
+          expect(getSettings().launchedBrowserVersions).toEqual({ [chromePath]: '149.0.7827.55' })
+          expect(loggerWarn).toHaveBeenCalledWith(
+            'settings',
+            'settings.unreadable_write_refused',
+            undefined,
+            expect.anything()
+          )
+        } finally {
+          chmodSync(settingsFile, 0o600)
+        }
+        expect(stored().launchedBrowserVersions).toEqual({})
+      }
+    )
   })
 
   it('returns default settings when no file exists', () => {

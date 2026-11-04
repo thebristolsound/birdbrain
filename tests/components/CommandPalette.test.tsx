@@ -8,10 +8,11 @@ import { fakeBridge } from '../renderer/fakeBridge'
 import { stubMatchMedia } from './matchMediaStub'
 
 const navigate = vi.hoisted(() => vi.fn())
+const route = vi.hoisted(() => ({ caseId: undefined as string | undefined }))
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigate,
-  useParams: () => ({ caseId: undefined })
+  useParams: () => ({ caseId: route.caseId })
 }))
 
 import { CommandPalette } from '@renderer/components/layout/CommandPalette'
@@ -48,7 +49,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
-  useAppStore.setState({ commandPaletteOpen: false })
+  route.caseId = undefined
+  useAppStore.setState({ commandPaletteOpen: false, startDialogCaseId: null })
 })
 
 describe('the command palette panel', () => {
@@ -159,6 +161,59 @@ describe('the sharing row', () => {
     render(<CommandPalette />, { wrapper: Wrapper })
     expect(screen.getByTestId('palette-join-shared-case')).toBeTruthy()
     expect(screen.queryByTestId('palette-share-case')).toBeNull()
+  })
+})
+
+// Q8: Launch browser joins the action rows, for the Case on screen, as the sharing row does.
+describe('the launch browser row', () => {
+  it('is absent while no Case is open', () => {
+    useAppStore.setState({ commandPaletteOpen: true })
+    render(<CommandPalette />, { wrapper: Wrapper })
+    expect(screen.queryByTestId('palette-launch-browser')).toBeNull()
+  })
+
+  it('opens the start dialog for the open Case', async () => {
+    route.caseId = 'a'
+    fakeBridge({
+      cases: { list: vi.fn(async () => [makeCase('a', 'Alpha')]) },
+      captures: { countsByCase: vi.fn(async () => ({})) },
+      sharing: { isAvailable: vi.fn(async () => false) }
+    })
+    useAppStore.setState({ commandPaletteOpen: true })
+    render(<CommandPalette />, { wrapper: Wrapper })
+    const row = await screen.findByTestId('palette-launch-browser')
+    expect(row.textContent).toBe('Launch browser')
+    expect(
+      row.compareDocumentPosition(screen.getByTestId('palette-join-shared-case')) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+
+    fireEvent.click(row)
+    expect(useAppStore.getState().startDialogCaseId).toBe('a')
+    expect(useAppStore.getState().commandPaletteOpen).toBe(false)
+  })
+
+  // The start dialog records whatever holds focus as its opener, and the row unmounts with the
+  // palette, so the palette's own opener is handed over.
+  it("hands the palette's opener to the start dialog", () => {
+    route.caseId = 'a'
+    render(
+      <>
+        <button data-testid="opener">Notes</button>
+        <CommandPalette />
+      </>,
+      { wrapper: Wrapper }
+    )
+    const opener = screen.getByTestId('opener')
+    opener.focus()
+    act(() => useAppStore.setState({ commandPaletteOpen: true }))
+    let focusedAtOpen: Element | null = null
+    const unsubscribe = useAppStore.subscribe(({ startDialogCaseId }) => {
+      if (startDialogCaseId) focusedAtOpen = document.activeElement
+    })
+    fireEvent.click(screen.getByTestId('palette-launch-browser'))
+    unsubscribe()
+    expect(focusedAtOpen).toBe(opener)
   })
 })
 

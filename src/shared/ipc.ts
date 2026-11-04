@@ -34,6 +34,9 @@ import type {
   FieldHitCheck,
   FieldSearchResult,
   HashVerification,
+  LaunchedBrowserLeftover,
+  LaunchedBrowserOption,
+  LaunchedBrowserStatus,
   LogCode,
   LogContextKey,
   LogEntry,
@@ -173,6 +176,23 @@ export const IPC_CHANNELS = {
   SESSION_ACTIVATE_CASE: 'session:activateCase',
   SESSION_START: 'session:start',
   SESSION_STOP: 'session:stop',
+
+  // The launched browser (#1831). A launch takes an executable path, and main starts it only
+  // when `list` would list it. `chooseExecutable` opens the file dialog in main, so the
+  // Operator's pick never arrives as a path from the renderer.
+  LAUNCHED_BROWSER_LIST: 'launchedBrowser:list',
+  LAUNCHED_BROWSER_CHOOSE_EXECUTABLE: 'launchedBrowser:chooseExecutable',
+  LAUNCHED_BROWSER_STATUS: 'launchedBrowser:status',
+  LAUNCHED_BROWSER_LAUNCH: 'launchedBrowser:launch',
+  LAUNCHED_BROWSER_CANCEL_LAUNCH: 'launchedBrowser:cancelLaunch',
+  LAUNCHED_BROWSER_END_SESSION: 'launchedBrowser:endSession',
+  LAUNCHED_BROWSER_CHECK_LEFTOVERS: 'launchedBrowser:checkLeftovers',
+  // The Capture Session panel in a window of its own (`1g`). Main opens it only beside an open
+  // browser, and closes it when that browser closes or the main window does.
+  LAUNCHED_BROWSER_POP_OUT: 'launchedBrowser:popOut',
+  LAUNCHED_BROWSER_SHOW_POP_OUT: 'launchedBrowser:showPopOut',
+  LAUNCHED_BROWSER_DOCK: 'launchedBrowser:dock',
+  LAUNCHED_BROWSER_POP_OUT_STATE: 'launchedBrowser:popOutState',
 
   // Search
   SEARCH: 'search:query',
@@ -351,6 +371,8 @@ export const IPC_CHANNELS = {
   GUEST_MOUSE_UP: 'event:guestMouseUp',
   INVESTIGATION_PROGRESS: 'event:investigationProgress',
   WAYBACK_LINK_PROGRESS: 'event:waybackLinkProgress',
+  LAUNCHED_BROWSER_STATUS_CHANGED: 'event:launchedBrowserStatus',
+  LAUNCHED_BROWSER_POP_OUT_CHANGED: 'event:launchedBrowserPopOut',
 
   // Capture pipeline observability
   CAPTURE_ACTIVITY: 'event:captureActivity',
@@ -423,6 +445,11 @@ export interface SessionStateEvent {
   sessionActive: boolean
   activeCaseId: string | null
   captureCount: number
+}
+
+// Whether the Capture Session panel is in its own window (#1831), pushed when it pops out or docks.
+export interface LaunchedBrowserPopOutEvent {
+  poppedOut: boolean
 }
 
 // Extension reachability, pushed when the companion extension connects or drops.
@@ -1127,6 +1154,23 @@ export interface IpcInvokeContract {
   'session:start': { args: []; result: SessionStateEvent }
   'session:stop': { args: []; result: SessionStateEvent }
 
+  'launchedBrowser:list': { args: []; result: LaunchedBrowserOption[] }
+  // null when the Operator cancelled the file dialog.
+  'launchedBrowser:chooseExecutable': { args: []; result: LaunchedBrowserOption | null }
+  'launchedBrowser:status': { args: []; result: LaunchedBrowserStatus }
+  'launchedBrowser:launch': { args: [executablePath: string]; result: LaunchedBrowserStatus }
+  // Stops a launch that is still starting; the launch then fails as BROWSER_LAUNCH_CANCELLED.
+  'launchedBrowser:cancelLaunch': { args: []; result: LaunchedBrowserStatus }
+  // Ends the Capture Session, and settles once the browser has exited or Birdbrain has given up.
+  'launchedBrowser:endSession': { args: []; result: LaunchedBrowserStatus }
+  // Rechecks the browsers left running from an earlier run.
+  'launchedBrowser:checkLeftovers': { args: []; result: LaunchedBrowserLeftover[] }
+  // true once the panel is out; false while no launched browser is open.
+  'launchedBrowser:popOut': { args: []; result: boolean }
+  'launchedBrowser:showPopOut': { args: []; result: void }
+  'launchedBrowser:dock': { args: []; result: void }
+  'launchedBrowser:popOutState': { args: []; result: boolean }
+
   'search:query': { args: [caseId: string, query: string]; result: Capture[] }
 
   'settings:get': { args: []; result: BirdbrainSettings }
@@ -1332,6 +1376,8 @@ export interface IpcEventContract {
   'event:sharingJoinProgress': SharingJoinProgressEvent
   'event:investigationProgress': RunProgressEvent
   'event:waybackLinkProgress': WaybackLinkProgressEvent
+  'event:launchedBrowserStatus': LaunchedBrowserStatus
+  'event:launchedBrowserPopOut': LaunchedBrowserPopOutEvent
 }
 
 export type IpcEventChannel = keyof IpcEventContract

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'motion/react'
-import { Search, Plus, Clock, Compass, MessageSquareWarning, Users } from 'lucide-react'
+import { AppWindow, Search, Plus, Clock, Compass, MessageSquareWarning, Users } from 'lucide-react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { casesQueryOptions, captureCountsQueryOptions } from '@renderer/lib/queries'
 import { sharingAvailableQueryOptions } from '@renderer/lib/api/sharing'
@@ -20,6 +20,7 @@ function pluralCaptures(n: number): string {
 export function CommandPalette() {
   const open = useAppStore((s) => s.commandPaletteOpen)
   const setOpen = useAppStore((s) => s.setCommandPaletteOpen)
+  const openStartDialog = useAppStore((s) => s.openStartDialog)
   const now = useTimeTick(60_000)
   const navigate = useNavigate()
   const params = useParams({ strict: false }) as Record<string, string | undefined>
@@ -53,6 +54,14 @@ export function CommandPalette() {
   // palette. Escape stays with useCommandPalette, which owns the Ctrl+K toggle.
   const openerRef = useModalFocus(open, panelRef)
 
+  function launchBrowserFor(caseId: string) {
+    // The dialog records whatever holds focus as its opener, and the row is about to unmount:
+    // hand it the palette's.
+    openerRef.current?.focus()
+    setOpen(false)
+    openStartDialog(caseId)
+  }
+
   // The rows under the Case list, in display order. They share the list's
   // highlight, so ArrowDown walks past the last Case into them and Enter runs
   // the highlighted one; a click or Tab reaches them as before.
@@ -78,6 +87,18 @@ export function CommandPalette() {
               navigate({ to: '/cases/$caseId/settings', params: { caseId: shareRow.caseId } })
               setOpen(false)
             }
+          }
+        ]
+      : []),
+    // The start dialog launches into the open Case, so the row needs one, as sharing does.
+    ...(activeCaseId !== undefined
+      ? [
+          {
+            key: 'launch',
+            testId: 'palette-launch-browser',
+            icon: <AppWindow className="h-4 w-4 shrink-0 text-text-faint" />,
+            label: 'Launch browser',
+            run: () => launchBrowserFor(activeCaseId)
           }
         ]
       : []),

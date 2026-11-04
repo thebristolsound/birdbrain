@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { launchedBrowserStatusQueryOptions } from '@renderer/lib/api/launchedBrowser'
 import { useParams } from '@tanstack/react-router'
 import { motion, AnimatePresence } from 'motion/react'
 import { useAppStore } from '@renderer/stores/appStore'
@@ -12,13 +13,18 @@ export function SessionControls() {
   const setSessionActive = useAppStore((s) => s.setSessionActive)
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
   const { data: cases = [] } = useQuery(casesQueryOptions)
+  const { data: launched } = useQuery(launchedBrowserStatusQueryOptions)
   const [toggling, setToggling] = useState(false)
   const { activateCase, start, stop } = useSessionMutations()
+  const setStopConfirmOpen = useAppStore((s) => s.setStopConfirmOpen)
 
   const params = useParams({ strict: false })
   const activeCaseId = (params as { caseId?: string }).caseId ?? null
 
-  if (!connectedToExtension) return null
+  // Shown while the extension is connected or a launched browser is open (S2), and while the
+  // Capture Session a launched browser left running on closing still runs.
+  const launchedSession = launched?.state === 'open' || launched?.state === 'closed'
+  if (!connectedToExtension && !launchedSession) return null
 
   const activeCase = cases.find((c) => c.id === activeCaseId)
 
@@ -55,7 +61,12 @@ export function SessionControls() {
           role="switch"
           aria-checked={sessionActive}
           aria-label="Capture Session"
-          onClick={handleToggleSession}
+          // Stopping closes an open launched browser, so the switch asks first (`1i`).
+          onClick={
+            sessionActive && launched?.state === 'open'
+              ? () => setStopConfirmOpen(true)
+              : handleToggleSession
+          }
           disabled={toggling || (!sessionActive && !activeCaseId)}
           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50 ${
             sessionActive ? 'bg-accent' : 'bg-text-faint'

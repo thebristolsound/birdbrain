@@ -1705,6 +1705,10 @@ export const BirdbrainSettingsSchema = z.object({
   // between an install and a second copy either: this write can fail, and the
   // `is_demo` probe in the database is what holds when it does (#1301).
   demoCaseSeeded: z.boolean().optional().default(false),
+  // Lenient: a value that does not parse reads as none, rather than failing the whole file
+  // over to the defaults.
+  launchedBrowserExecutable: z.string().catch('').optional().default(''),
+  launchedBrowserVersions: z.record(z.string(), z.string()).catch({}).optional().default({}),
   releaseChannel: z.enum(['stable', 'beta']).optional().default('stable'),
   autoCheckForUpdates: z.boolean().optional().default(true),
   egress: StoredEgressSchema.optional().default({ kind: 'direct' }),
@@ -1719,8 +1723,12 @@ export const BirdbrainSettingsSchema = z.object({
 export const PartialBirdbrainSettingsSchema = BirdbrainSettingsSchema.partial()
 
 // Used on edit: the load schema with `tsaUrl` strict (see TsaUrlEditSchema), and an
-// Egress the Operator chose, never the unavailable marker.
-export const SettingsUpdateSchema = PartialBirdbrainSettingsSchema.extend({
+// Egress the Operator chose, never the unavailable marker. The launched browser keys are
+// stripped: main spawns the chosen executable, so only the main process sets them.
+export const SettingsUpdateSchema = PartialBirdbrainSettingsSchema.omit({
+  launchedBrowserExecutable: true,
+  launchedBrowserVersions: true
+}).extend({
   tsaUrl: TsaUrlEditSchema.optional().default(DEFAULT_TSA_URL),
   egress: EgressSettingSchema.optional(),
   sharingRelayUrl: RelayUrlEditSchema.optional()

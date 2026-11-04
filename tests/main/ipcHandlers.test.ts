@@ -13,7 +13,7 @@ import {
   writeFileSync
 } from 'fs'
 import { join } from 'path'
-import { egressFetch } from '@main/services/egress'
+import { EgressUnavailableError, egressFetch } from '@main/services/egress'
 import { EventEmitter } from 'events'
 import { readStoredZip } from '@main/services/zipRead'
 import { tmpdir } from 'os'
@@ -160,7 +160,7 @@ vi.mock('@main/services/db/dbRestore', async (importActual) => {
 import { IPC_CHANNELS } from '@shared/ipc'
 import { MAX_BATCH_CAPTURE_IDS } from '@shared/constants'
 import type { BatchCountResult, BatchDeleteResult, SelfTestResult } from '@shared/ipc'
-import { registerIpcHandlers } from '@main/ipcHandlers'
+import { registerIpcHandlers, type PopOutWindowControls } from '@main/ipcHandlers'
 import type {
   BugReportResult,
   Capture,
@@ -168,6 +168,9 @@ import type {
   FieldHitCheck,
   UnreviewedCaptures,
   FieldSearchResult,
+  LaunchedBrowserLeftover,
+  LaunchedBrowserOption,
+  LaunchedBrowserStatus,
   LogEntry,
   RecentActivityEvent,
   SessionRecord,
@@ -201,6 +204,10 @@ import { initServerToken } from '@main/services/serverToken'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSessionService, type SessionService } from '@main/services/session'
+import {
+  createLaunchedBrowserService,
+  type LaunchedBrowserService
+} from '@main/services/launchedBrowser/service'
 import { SharingService } from '@main/services/sharing/sharingService'
 import { irohBinding } from '@main/services/sharing/irohTransport'
 import { MemoryHub } from '@main/services/sharing/transport'
@@ -525,6 +532,280 @@ describe('ipcHandlers — session', () => {
   it('shares one service instance with the capture-server session state', async () => {
     expectOk(await invoke(IPC_CHANNELS.SESSION_ACTIVATE_CASE, caseId))
     expect(sessionService.snapshot().activeCaseId).toBe(caseId)
+  })
+})
+
+describe('ipcHandlers — launched browser (#1831)', () => {
+  // A browser program of the Chromium family that only this test's settings name: discovery
+  // finds whatever this host has installed, and these tests read only the chosen one.
+  let chosenPath = ''
+  const ELF = Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01])
+  const OPEN: LaunchedBrowserStatus = {
+    state: 'open',
+    browser: {
+      family: 'chromium',
+      label: 'Chromium',
+      caseId: 'case-1',
+      version: '154.0.8037.97',
+      extensionWarnings: [],
+      sessionStartedAt: 1_000,
+      tabs: []
+    }
+  }
+
+  function executable(name: string, bytes: Buffer = ELF): string {
+    const dir = join(userDataPath, 'apps')
+    mkdirSync(dir, { recursive: true })
+    const path = join(dir, name)
+    writeFileSync(path, bytes, { mode: 0o755 })
+    return path
+  }
+
+  function fakeService(overrides: Partial<LaunchedBrowserService> = {}): LaunchedBrowserService {
+    return {
+      status: vi.fn((): LaunchedBrowserStatus => ({ state: 'none' })),
+      launch: vi.fn(async () => OPEN),
+      endCaptureSession: vi.fn(async () => {}),
+      cancelLaunch: vi.fn(),
+      sessionEnded: vi.fn(),
+      killForQuit: vi.fn(),
+      dispose: vi.fn(),
+      ...overrides
+    }
+  }
+
+  function register(
+    launchedBrowser: LaunchedBrowserService,
+    checkLeftoverBrowsers?: () => LaunchedBrowserLeftover[],
+    popOut?: PopOutWindowControls
+  ): void {
+    const selectorLifecycle = createSelectorLifecycle({ emitRematched: vi.fn() })
+    registerIpcHandlers({
+      selectorLifecycle,
+      captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
+      recaptureService,
+      updaterService,
+      sessionService,
+      sharingService,
+      launchedBrowser,
+      checkLeftoverBrowsers,
+      popOut
+    })
+  }
+
+  function refusal(res: unknown): { ok: boolean; error?: string; code?: string } {
+    return res as { ok: boolean; error?: string; code?: string }
+  }
+
+  beforeEach(() => {
+    chosenPath = executable('chromium')
+  })
+
+  it('lists the chosen executable with the version its last launch reported', async () => {
+    settings.setLaunchedBrowserExecutable(chosenPath)
+    settings.recordLaunchedBrowserVersion(chosenPath, '154.0.8037.97')
+    const listed = expectOk<LaunchedBrowserOption[]>(
+      await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_LIST)
+    )
+    expect(listed).toContainEqual({
+      family: 'chromium',
+      label: 'Chromium',
+      executablePath: chosenPath,
+      chosen: true,
+      lastVersion: '154.0.8037.97'
+    })
+  })
+
+  it('stores the executable the Operator picks in the file dialog', async () => {
+    showOpenDialog.mockResolvedValueOnce({ canceled: true, filePaths: [] })
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_CHOOSE_EXECUTABLE))).toBeNull()
+    expect(settings.getSettings().launchedBrowserExecutable).toBe('')
+
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [chosenPath] })
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_CHOOSE_EXECUTABLE))).toEqual({
+      family: 'chromium',
+      label: 'Chromium',
+      executablePath: chosenPath,
+      chosen: true,
+      lastVersion: null
+    })
+    expect(settings.getSettings().launchedBrowserExecutable).toBe(chosenPath)
+  })
+
+  it('refuses a pick that is a script, not a program, or not a known browser', async () => {
+    settings.setLaunchedBrowserExecutable(chosenPath)
+    const picks: Array<[string, string]> = [
+      [executable('chromium-wrapper', Buffer.from('#!/bin/sh\nexec chromium "$@"\n')), 'script'],
+      [join(userDataPath, 'apps', 'missing', 'chromium'), 'not runnable'],
+      [executable('firefox'), 'unrecognized']
+    ]
+    const codes: Record<string, string> = {
+      script: 'EXECUTABLE_IS_SCRIPT',
+      'not runnable': 'EXECUTABLE_NOT_RUNNABLE',
+      unrecognized: 'EXECUTABLE_UNRECOGNIZED'
+    }
+    for (const [path, kind] of picks) {
+      showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [path] })
+      const res = refusal(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_CHOOSE_EXECUTABLE))
+      expect(res).toMatchObject({ ok: false, code: codes[kind] })
+      expect(res.error).toContain(path)
+    }
+    expect(settings.getSettings().launchedBrowserExecutable).toBe(chosenPath)
+  })
+
+  it('launches a listed browser and returns the status the service reports', async () => {
+    settings.setLaunchedBrowserExecutable(chosenPath)
+    const service = fakeService()
+    register(service)
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_LAUNCH, chosenPath))).toEqual(OPEN)
+    expect(service.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ family: 'chromium', label: 'Chromium', executablePath: chosenPath })
+    )
+  })
+
+  it('starts nothing for a path that no listed browser has', async () => {
+    const service = fakeService()
+    register(service)
+    // An executable on disk that Settings never chose, and values that are not a path at all.
+    for (const path of [chosenPath, '/bin/sh', 7, null]) {
+      const res = refusal(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_LAUNCH, path))
+      expect(res).toMatchObject({ ok: false, code: 'BROWSER_NOT_FOUND' })
+    }
+    expect(service.launch).not.toHaveBeenCalled()
+  })
+
+  it("passes on the service's refusal with its message and code", async () => {
+    settings.setLaunchedBrowserExecutable(chosenPath)
+    const coded = Object.assign(new Error('Chromium is still starting.'), {
+      code: 'BROWSER_ALREADY_RUNNING'
+    })
+    const launch = vi
+      .fn()
+      .mockRejectedValueOnce(coded)
+      .mockRejectedValueOnce(new EgressUnavailableError())
+    register(fakeService({ launch }))
+    expect(refusal(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_LAUNCH, chosenPath))).toEqual({
+      ok: false,
+      error: 'Chromium is still starting.',
+      code: 'BROWSER_ALREADY_RUNNING'
+    })
+    expect(refusal(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_LAUNCH, chosenPath))).toEqual({
+      ok: false,
+      error: new EgressUnavailableError().message,
+      code: 'EGRESS_UNAVAILABLE'
+    })
+  })
+
+  it('lets a failure with no code reach the renderer as an error', async () => {
+    settings.setLaunchedBrowserExecutable(chosenPath)
+    const defect = new TypeError('defect')
+    register(fakeService({ launch: vi.fn(async () => Promise.reject(defect)) }))
+    await expect(invoke(IPC_CHANNELS.LAUNCHED_BROWSER_LAUNCH, chosenPath)).rejects.toBe(defect)
+  })
+
+  it('refuses a launch with no operator name before any browser starts', async () => {
+    settings.setLaunchedBrowserExecutable(chosenPath)
+    settings.updateSettings({ operatorName: '' })
+    expectOk(await invoke(IPC_CHANNELS.SESSION_ACTIVATE_CASE, caseId))
+    const launch = vi.fn()
+    register(
+      createLaunchedBrowserService({
+        session: sessionService,
+        sessionDataPath: userDataPath,
+        launch,
+        subscribeEgressChange: () => () => {}
+      })
+    )
+    const res = refusal(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_LAUNCH, chosenPath))
+    expect(res).toMatchObject({ ok: false, code: 'NO_OPERATOR_NAME' })
+    expect(res.error).toContain('Operator name required')
+    expect(launch).not.toHaveBeenCalled()
+    expect(sessionService.snapshot().sessionActive).toBe(false)
+  })
+
+  it('reports the status, and ends the Capture Session once the browser has exited', async () => {
+    let exited = false
+    const service = fakeService({
+      status: vi.fn((): LaunchedBrowserStatus => (exited ? { state: 'none' } : OPEN)),
+      endCaptureSession: vi.fn(async () => {
+        exited = true
+      })
+    })
+    register(service)
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_STATUS))).toEqual(OPEN)
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_END_SESSION))).toEqual({
+      state: 'none'
+    })
+    expect(service.endCaptureSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancels a launch that is starting and returns the status', async () => {
+    const starting: LaunchedBrowserStatus = { ...OPEN, state: 'starting', step: 'browser' }
+    const service = fakeService({ status: vi.fn((): LaunchedBrowserStatus => starting) })
+    register(service)
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_CANCEL_LAUNCH))).toEqual(starting)
+    expect(service.cancelLaunch).toHaveBeenCalledTimes(1)
+    expect(service.endCaptureSession).not.toHaveBeenCalled()
+  })
+
+  function fakePopOut(): PopOutWindowControls & { out: boolean } {
+    const controls = {
+      out: false,
+      open: vi.fn(() => {
+        controls.out = true
+        return true
+      }),
+      show: vi.fn(),
+      dock: vi.fn(() => {
+        controls.out = false
+      }),
+      isOpen: vi.fn(() => controls.out)
+    }
+    return controls
+  }
+
+  it('pops the panel out only beside an open browser', async () => {
+    let status: LaunchedBrowserStatus = { state: 'none' }
+    const popOut = fakePopOut()
+    register(fakeService({ status: vi.fn(() => status) }), undefined, popOut)
+    for (const state of ['none', 'starting', 'closing', 'closed'] as const) {
+      status = state === 'none' ? { state } : ({ ...OPEN, state } as LaunchedBrowserStatus)
+      expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT))).toBe(false)
+    }
+    expect(popOut.open).not.toHaveBeenCalled()
+    status = OPEN
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT))).toBe(true)
+    expect(popOut.open).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows and docks the popped-out window, and says whether it is out', async () => {
+    const popOut = fakePopOut()
+    register(fakeService({ status: vi.fn(() => OPEN) }), undefined, popOut)
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT_STATE))).toBe(false)
+    expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT))
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT_STATE))).toBe(true)
+    expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_SHOW_POP_OUT))
+    expect(popOut.show).toHaveBeenCalledTimes(1)
+    expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_DOCK))
+    expect(popOut.dock).toHaveBeenCalledTimes(1)
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT_STATE))).toBe(false)
+  })
+
+  it('has no window to pop out into when registered without one', async () => {
+    register(fakeService({ status: vi.fn(() => OPEN) }))
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT))).toBe(false)
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT_STATE))).toBe(false)
+    expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_SHOW_POP_OUT))
+    expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_DOCK))
+  })
+
+  it('rechecks the browsers left from an earlier run, and has none by default', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_CHECK_LEFTOVERS))).toEqual([])
+    const leftovers: LaunchedBrowserLeftover[] = [{ label: 'Chromium', profile: 'session' }]
+    const check = vi.fn(() => leftovers)
+    register(fakeService(), check)
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_CHECK_LEFTOVERS))).toEqual(leftovers)
+    expect(check).toHaveBeenCalledTimes(1)
   })
 })
 

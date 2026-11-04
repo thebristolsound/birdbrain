@@ -3,6 +3,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { CaseWorkspace } from '@renderer/components/dashboard/cases/CaseWorkspace'
 import { fakeBridge } from '../renderer/fakeBridge'
+import { stubResizeObserver } from './resizeObserverStub'
 
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ caseId: 'case-1' }),
@@ -17,6 +18,8 @@ vi.mock('@tanstack/react-router', () => ({
 afterEach(cleanup)
 
 it('gives Notes the full-height shell so its list and editor scroll independently', async () => {
+  // The workspace measures its row for the Capture Session rail.
+  stubResizeObserver()
   fakeBridge({
     cases: {
       list: vi.fn(async () => [{ id: 'case-1' }]),

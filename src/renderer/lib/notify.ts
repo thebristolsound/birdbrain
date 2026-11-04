@@ -242,7 +242,22 @@ const CODE_LABELS: Record<LogCode, string> = {
   'sharing.connection_failed': "A teammate's connection failed before it started",
   'sharing.sync_off': 'Automatic sync is off: sharing is not available on this computer',
   'sharing.sync_start_failed': "Sharing didn't start; the next round tries again",
-  'sharing.case_sync_failed': "Couldn't sync a Shared Case; the next round tries again"
+  'sharing.case_sync_failed': "Couldn't sync a Shared Case; the next round tries again",
+  'launchedBrowser.launch_failed': "Couldn't launch the browser",
+  'launchedBrowser.egress_bypass':
+    'Ended the Capture Session: a response in the launched browser did not come through the ' +
+    'Egress proxy',
+  'launchedBrowser.target_unwatched':
+    'Ended the Capture Session: a tab in the launched browser could not be watched',
+  'launchedBrowser.egress_changed':
+    'Ended the Capture Session and closed the launched browser because the Egress changed',
+  'launchedBrowser.stop_failed': 'The launched browser did not exit after Birdbrain killed it',
+  'launchedBrowser.profile_remove_failed': "Couldn't delete the launched browser's profile",
+  'launchedBrowser.target_setup_failed': "Couldn't set up a tab in the launched browser",
+  'launchedBrowser.version_save_failed': "Couldn't save the launched browser's version",
+  'launchedBrowser.profiles_swept': 'Deleted leftover launched browser profiles',
+  'launchedBrowser.profile_sweep_failed': "Couldn't delete a leftover launched browser profile",
+  'launchedBrowser.leftover_running': 'A launched browser from an earlier run is still open'
 }
 
 export function labelForCode(code: LogCode): string {

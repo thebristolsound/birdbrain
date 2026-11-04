@@ -38,5 +38,11 @@ export {
   ContextMenuHeader,
   ContextMenuShortcut
 } from '@renderer/components/ui/context-menu'
+export {
+  Popover,
+  PopoverTrigger,
+  PopoverAnchor,
+  PopoverContent
+} from '@renderer/components/ui/popover'
 export { Skeleton } from '@renderer/components/ui/skeleton'
 export { AppToaster } from '@renderer/components/ui/toaster'

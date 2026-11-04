@@ -47,8 +47,17 @@ const settingsTabs: { id: SettingsTab; label: string; icon: typeof Camera }[] = 
   { id: 'about', label: 'About', icon: Info }
 ]
 
+// Where a link into Settings lands: both sections sit on the Operator tab.
+export type SettingsSection = 'egress' | 'operator'
+
+// What each section focuses once its tab is open; focusing also scrolls it into view.
+const SECTION_TARGETS: Record<SettingsSection, string> = {
+  egress: '[role="radiogroup"][aria-label="Egress"] input:checked',
+  operator: '#operator-name'
+}
+
 interface SettingsViewProps {
-  section?: 'egress'
+  section?: SettingsSection
   // Called once the section is open, so the route can drop it from the URL and a later
   // request for the same section is a change the view sees.
   onSectionShown?: () => void
@@ -57,40 +66,35 @@ interface SettingsViewProps {
 export function SettingsView({ section, onSectionShown }: SettingsViewProps = {}) {
   const { data: settings } = useQuery(settingsQueryOptions)
   const { update } = useSettingsMutations()
-  const [activeTab, setActiveTab] = useState<SettingsTab>(
-    section === 'egress' ? 'operator' : 'capture'
-  )
+  const [activeTab, setActiveTab] = useState<SettingsTab>(section ? 'operator' : 'capture')
   // A section asked for while the view is already open, as from the VPN warning over
   // Settings, moves the tab during render rather than in an effect a frame later.
   const [askedSection, setAskedSection] = useState(section)
   if (section !== askedSection) {
     setAskedSection(section)
-    if (section === 'egress') setActiveTab('operator')
+    if (section) setActiveTab('operator')
   }
 
   useEffect(() => {
     update.mutate({ lastActiveSection: 'settings' })
   }, [])
 
-  // Opened on the Egress setting: its radio group sits in the Operator tab and is found by
-  // its accessible name. Focusing the chosen radio also scrolls it into view. The group can
-  // render a frame after the tab, so it is looked for again each frame, for up to 30 frames.
+  // Opened on a section: its field sits in the Operator tab, which can render a frame after
+  // the tab, so it is looked for again each frame, for up to 30 frames.
   useEffect(() => {
-    if (section !== 'egress' || !settings) return
+    if (!section || !settings) return
     let frame = 0
     let tries = 0
-    const focusEgress = () => {
-      const radio = document.querySelector<HTMLInputElement>(
-        '[role="radiogroup"][aria-label="Egress"] input:checked'
-      )
-      if (!radio && tries++ < 30) {
-        frame = requestAnimationFrame(focusEgress)
+    const focusSection = () => {
+      const field = document.querySelector<HTMLElement>(SECTION_TARGETS[section])
+      if (!field && tries++ < 30) {
+        frame = requestAnimationFrame(focusSection)
         return
       }
-      radio?.focus()
+      field?.focus()
       onSectionShown?.()
     }
-    frame = requestAnimationFrame(focusEgress)
+    frame = requestAnimationFrame(focusSection)
     return () => cancelAnimationFrame(frame)
   }, [section, settings])
 

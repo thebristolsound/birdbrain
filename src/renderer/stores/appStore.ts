@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { CaptureEvent, FieldHit } from '@shared/types'
+import type { CaptureEvent, FieldHit, LaunchedBrowserNotice } from '@shared/types'
 
 // The viewer's tab lives in the store rather than in CaptureViewer because the
 // captures route has to know about it: the Wayback tab takes the full width,
@@ -17,6 +17,9 @@ export interface WaybackSelection {
 
 interface AppState {
   sessionActive: boolean
+  // The Active Case the last session event named, or null. Not the Case on screen: a Capture
+  // Session records into its Active Case wherever the Operator is looking.
+  activeCaseId: string | null
   connectedToExtension: boolean
   selectedCaptureId: string | null
   selectedCaptureIds: Set<string>
@@ -56,6 +59,14 @@ interface AppState {
     lastError?: { message: string; timestamp: string }
   }
   commandPaletteOpen: boolean
+  // The Case the launched browser's start dialog is open for, or null while it is closed.
+  startDialogCaseId: string | null
+  // The confirmation before a Capture Session with a launched browser open stops (`1i`), opened
+  // from the panel's Stop… and from the Capture Session switch.
+  stopConfirmOpen: boolean
+  // The notice of how the last launched browser closed that the Operator dismissed. Main keeps
+  // its notice until the next launch.
+  dismissedLaunchNotice: LaunchedBrowserNotice | null
   // The Share mark is on screen, so the top bar's pill wears its ring.
   shareMarkOpen: boolean
   // A tour chapter is running, so the Share mark stays off screen.
@@ -92,9 +103,14 @@ interface AppState {
   captureTrail: string[]
 
   setSessionActive: (active: boolean) => void
+  setActiveCaseId: (caseId: string | null) => void
   setConnectedToExtension: (connected: boolean) => void
   setCommandPaletteOpen: (open: boolean) => void
   toggleCommandPalette: () => void
+  openStartDialog: (caseId: string) => void
+  closeStartDialog: () => void
+  setStopConfirmOpen: (open: boolean) => void
+  dismissLaunchNotice: (notice: LaunchedBrowserNotice) => void
   setShareMarkOpen: (open: boolean) => void
   setTourRunning: (running: boolean) => void
   registerOpenDialog: () => void
@@ -150,6 +166,7 @@ function selectedCaptureState(
 
 export const useAppStore = create<AppState>((set) => ({
   sessionActive: false,
+  activeCaseId: null,
   connectedToExtension: false,
   selectedCaptureId: null,
   selectedCaptureIds: new Set(),
@@ -166,6 +183,9 @@ export const useAppStore = create<AppState>((set) => ({
   captureEvents: [],
   captureStats: { successCount: 0, failCount: 0, skipCount: 0 },
   commandPaletteOpen: false,
+  startDialogCaseId: null,
+  stopConfirmOpen: false,
+  dismissedLaunchNotice: null,
   shareMarkOpen: false,
   tourRunning: false,
   openDialogCount: 0,
@@ -178,9 +198,14 @@ export const useAppStore = create<AppState>((set) => ({
   captureTrail: [],
 
   setSessionActive: (active) => set({ sessionActive: active }),
+  setActiveCaseId: (caseId) => set({ activeCaseId: caseId }),
   setConnectedToExtension: (connected) => set({ connectedToExtension: connected }),
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   toggleCommandPalette: () => set((s) => ({ commandPaletteOpen: !s.commandPaletteOpen })),
+  openStartDialog: (caseId) => set({ startDialogCaseId: caseId }),
+  closeStartDialog: () => set({ startDialogCaseId: null }),
+  setStopConfirmOpen: (open) => set({ stopConfirmOpen: open }),
+  dismissLaunchNotice: (notice) => set({ dismissedLaunchNotice: notice }),
   setShareMarkOpen: (open) => set({ shareMarkOpen: open }),
   setTourRunning: (running) => set({ tourRunning: running }),
   registerOpenDialog: () => set((s) => ({ openDialogCount: s.openDialogCount + 1 })),

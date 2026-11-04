@@ -74,6 +74,8 @@ const settings = {
   onboardingChapters: {},
   isFreshInstall: false,
   demoCaseSeeded: false,
+  launchedBrowserExecutable: '',
+  launchedBrowserVersions: {},
   releaseChannel: 'stable',
   autoCheckForUpdates: false,
   egress: { kind: 'direct' },

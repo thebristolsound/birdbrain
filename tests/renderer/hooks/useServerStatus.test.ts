@@ -22,7 +22,7 @@ import { useServerStatus } from '@renderer/hooks/useServerStatus'
 import { useAppStore } from '@renderer/stores/appStore'
 import { queryClient } from '@renderer/lib/queryClient'
 import { queryKeys } from '@renderer/lib/queries'
-import type { Capture } from '@shared/types'
+import type { Capture, LaunchedBrowserStatus } from '@shared/types'
 import type { DeepLinkTarget, ExtensionAttachEvent } from '@shared/ipc'
 import { fakeBridge } from '../fakeBridge'
 
@@ -36,6 +36,8 @@ type Handlers = {
   selectorRematched?: (p: { caseId: string }) => void
   sharingChanged?: (p: { caseId: string }) => void
   deepLink?: (t: DeepLinkTarget) => void
+  launchedBrowser?: (s: LaunchedBrowserStatus) => void
+  popOut?: (e: { poppedOut: boolean }) => void
 }
 
 function installBirdbrain(handlers: Handlers, unsubs: Record<string, ReturnType<typeof vi.fn>>) {
@@ -52,7 +54,9 @@ function installBirdbrain(handlers: Handlers, unsubs: Record<string, ReturnType<
     onExtensionAttach: register('extensionAttach', 'extensionAttach'),
     onSelectorRematched: register('selectorRematched', 'selectorRematched'),
     onSharingChanged: register('sharingChanged', 'sharingChanged'),
-    onDeepLinkNavigate: register('deepLink', 'deepLink')
+    onDeepLinkNavigate: register('deepLink', 'deepLink'),
+    onLaunchedBrowserStatus: register('launchedBrowser', 'launchedBrowser'),
+    onLaunchedBrowserPopOut: register('popOut', 'popOut')
   })
 }
 
@@ -83,6 +87,7 @@ describe('useServerStatus', () => {
     // Reset shared store state used across assertions.
     useAppStore.getState().setConnectedToExtension(false)
     useAppStore.getState().setSessionActive(false)
+    useAppStore.getState().setActiveCaseId(null)
     queryClient.clear()
   })
 
@@ -127,6 +132,35 @@ describe('useServerStatus', () => {
       to: '/cases/$caseId',
       params: { caseId: 'case-9' }
     })
+  })
+
+  it('keeps the Active Case each session event names', () => {
+    renderHook(() => useServerStatus())
+    act(() => handlers.session?.({ sessionActive: false, activeCaseId: 'case-9' }))
+    expect(useAppStore.getState().activeCaseId).toBe('case-9')
+    act(() => handlers.session?.({ sessionActive: false, activeCaseId: null }))
+    expect(useAppStore.getState().activeCaseId).toBeNull()
+  })
+
+  // A stop still names its Case. Stopping from the dashboard or Settings must not pull the
+  // Operator into it (the revision assessment's build notes).
+  it('does not follow a stopped Capture Session into its Case', () => {
+    routerState.location.pathname = '/settings'
+    renderHook(() => useServerStatus())
+    act(() => handlers.session?.({ sessionActive: true, activeCaseId: 'case-9' }))
+    navigate.mockClear()
+    routerState.location.pathname = '/'
+    act(() => handlers.session?.({ sessionActive: false, activeCaseId: 'case-9' }))
+    expect(navigate).not.toHaveBeenCalled()
+    expect(useAppStore.getState().sessionActive).toBe(false)
+    expect(useAppStore.getState().activeCaseId).toBe('case-9')
+  })
+
+  // The extension's popup activates a Case with no Capture Session running.
+  it('still opens a Case the extension activates while no Capture Session runs', () => {
+    renderHook(() => useServerStatus())
+    act(() => handlers.session?.({ sessionActive: false, activeCaseId: 'case-3' }))
+    expect(navigate).toHaveBeenCalledWith({ to: '/cases/$caseId', params: { caseId: 'case-3' } })
   })
 
   it('does not navigate when already on that case', () => {
@@ -240,6 +274,43 @@ describe('useServerStatus', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.sharingSyncState('case-7') })
   })
 
+  it('writes each launched browser status into its query', () => {
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    renderHook(() => useServerStatus())
+    const browser = {
+      family: 'chrome' as const,
+      label: 'Google Chrome',
+      caseId: 'case-1',
+      version: null,
+      extensionWarnings: [],
+      sessionStartedAt: null,
+      tabs: []
+    }
+    act(() => handlers.launchedBrowser?.({ state: 'starting', browser, step: 'browser' }))
+    expect(queryClient.getQueryData(queryKeys.launchedBrowserStatus)).toEqual({
+      state: 'starting',
+      browser,
+      step: 'browser'
+    })
+    expect(invalidate).not.toHaveBeenCalled()
+    // An open browser has had its version saved, which the found-browsers list shows.
+    const open: LaunchedBrowserStatus = {
+      state: 'open',
+      browser: { ...browser, version: '149.0.7827.55' }
+    }
+    act(() => handlers.launchedBrowser?.(open))
+    expect(queryClient.getQueryData(queryKeys.launchedBrowserStatus)).toEqual(open)
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.launchedBrowsers })
+  })
+
+  it('writes whether the panel is popped out into its query', () => {
+    renderHook(() => useServerStatus())
+    act(() => handlers.popOut?.({ poppedOut: true }))
+    expect(queryClient.getQueryData(queryKeys.launchedBrowserPopOut)).toBe(true)
+    act(() => handlers.popOut?.({ poppedOut: false }))
+    expect(queryClient.getQueryData(queryKeys.launchedBrowserPopOut)).toBe(false)
+  })
+
   it('routes deep links to settings or dashboard', () => {
     renderHook(() => useServerStatus())
     act(() => handlers.deepLink?.('settings'))
@@ -254,6 +325,6 @@ describe('useServerStatus', () => {
     for (const fn of Object.values(unsubs)) {
       expect(fn).toHaveBeenCalledTimes(1)
     }
-    expect(Object.keys(unsubs)).toHaveLength(8)
+    expect(Object.keys(unsubs)).toHaveLength(10)
   })
 })

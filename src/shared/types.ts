@@ -105,6 +105,67 @@ export const BROWSER_FAMILIES = [
 ] as const
 export type BrowserFamily = (typeof BROWSER_FAMILIES)[number]
 
+// A tab in the launched browser, as the browser reports it: a page target and no frame, worker
+// or prerendered page.
+export interface LaunchedBrowserTab {
+  targetId: string
+  title: string
+  url: string
+}
+
+// The launched browser as the Capture Session panel shows it (#1831). `closed` is a browser that
+// exited while its Capture Session runs on.
+export interface LaunchedBrowserSummary {
+  family: BrowserFamily
+  label: string
+  // The Active Case the launch pinned.
+  caseId: string
+  // The version `Browser.getVersion` reported; null until the browser is open.
+  version: string | null
+  // Extensions that appeared while the Egress is not Direct (D14), by ID: the engine has no name.
+  extensionWarnings: string[]
+  // When the Capture Session the browser runs in started, from main's clock; null until the
+  // browser is open.
+  sessionStartedAt: number | null
+  // The browser's tabs in the order it opened them; empty once it has closed.
+  tabs: LaunchedBrowserTab[]
+}
+
+// What the Operator is told about how the last launched browser closed, when Birdbrain ended its
+// Capture Session or the browser would not exit.
+export interface LaunchedBrowserNotice {
+  code: string
+  message: string
+}
+
+// Where a launch has got to, for the start dialog's checklist: the proxy check (not Direct),
+// starting the browser until its first tab is found, and the checks on that tab (not Direct).
+export type LaunchedBrowserStep = 'proxy' | 'browser' | 'first-tab'
+
+export type LaunchedBrowserStatus =
+  | { state: 'none'; notice?: LaunchedBrowserNotice }
+  | { state: 'starting'; browser: LaunchedBrowserSummary; step: LaunchedBrowserStep }
+  | { state: 'open' | 'closing' | 'closed'; browser: LaunchedBrowserSummary }
+
+// A browser a launch can start, as Settings and the start dialog list it: one discovery found,
+// or the executable the Operator chose (`chosen`). Discovery starts no browser to ask its
+// version, so `lastVersion` is what `Browser.getVersion` reported at its last launch, or null.
+export interface LaunchedBrowserOption {
+  family: BrowserFamily
+  label: string
+  executablePath: string
+  chosen: boolean
+  lastVersion: string | null
+}
+
+// A launched browser still running from before Birdbrain last quit (state 13), which Birdbrain
+// cannot reconnect to. `profile` is the browser profile it holds: a throwaway one, or the folder
+// of a Persona that has no row.
+export interface LaunchedBrowserLeftover {
+  label: string
+  profile: 'session' | 'persona'
+}
+
 // Which rule took a `launched-passive` Capture (decision D12, ADR-0037): every
 // page that loaded, or a page an Active Case Selector matched. Which Selectors
 // matched stays in `selector_matches`, off the signed entry, because a pattern
@@ -606,6 +667,11 @@ export interface BirdbrainSettings {
   // the demo case brings a fresh one back next launch, and again after each
   // later deletion (#1301). The full statement is on `seedDemoCaseIfNeeded`.
   demoCaseSeeded: boolean
+  // The launched browser (#1831). The executable the Operator chose, '' for none, and the
+  // version `Browser.getVersion` reported at each executable's last launch, since discovery
+  // starts no browser to ask. Only the main process writes either: it spawns the executable.
+  launchedBrowserExecutable: string
+  launchedBrowserVersions: Record<string, string>
   // Update delivery. `releaseChannel` selects the GitHub release track;
   // `autoCheckForUpdates` gates the background check schedule (manual checks are
   // always available). First-run `releaseChannel` is derived from the installed
@@ -822,6 +888,7 @@ export const LOG_SOURCES = [
   'persona',
   'searchFields',
   'sharing',
+  'launchedBrowser',
   'renderer'
 ] as const
 export type LogSource = (typeof LOG_SOURCES)[number]
@@ -1049,7 +1116,25 @@ export const LOG_CODES = [
   // the next.
   'sharing.sync_off',
   'sharing.sync_start_failed',
-  'sharing.case_sync_failed'
+  'sharing.case_sync_failed',
+  // The launched browser (#1831): a launch that failed, with its error code; a Capture Session
+  // Birdbrain ended because a response bypassed the Egress proxy, because a tab stayed open
+  // after its setup failed and so sent no responses to check, or because the Egress changed; a
+  // browser that did not exit after the kill; a throwaway profile left on disk; a tab whose
+  // setup failed; and a launch version Settings could not save. From the startup sweep: the
+  // leftover profiles it removed, one it could not read or remove, and a browser from an earlier
+  // run still running.
+  'launchedBrowser.launch_failed',
+  'launchedBrowser.egress_bypass',
+  'launchedBrowser.target_unwatched',
+  'launchedBrowser.egress_changed',
+  'launchedBrowser.stop_failed',
+  'launchedBrowser.profile_remove_failed',
+  'launchedBrowser.target_setup_failed',
+  'launchedBrowser.version_save_failed',
+  'launchedBrowser.profiles_swept',
+  'launchedBrowser.profile_sweep_failed',
+  'launchedBrowser.leftover_running'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 

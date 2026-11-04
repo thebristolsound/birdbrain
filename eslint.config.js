@@ -31,6 +31,8 @@ export default tseslint.config(
       '.codex/',
       // sharp built for the test runner by scripts/build-test-sharp.mjs.
       '.cache/test-sharp/',
+      // The Chrome for Testing build from scripts/fetch-chrome-for-testing.mjs ships .js files.
+      '.cache/chrome-for-testing/',
       // The bundled seed step written by scripts/dev-seed/launch.mjs.
       '.cache/dev-seed/',
       'Python/',

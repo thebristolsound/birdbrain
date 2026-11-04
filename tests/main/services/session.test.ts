@@ -34,7 +34,8 @@ describe('sessionService — state', () => {
       activeCaseId: null,
       sessionActive: false,
       captureCount: 0,
-      extensionLastSeen: 0
+      extensionLastSeen: 0,
+      startedAt: null
     })
   })
 
@@ -117,7 +118,8 @@ describe('sessionService — state', () => {
       activeCaseId: null,
       sessionActive: false,
       captureCount: 0,
-      extensionLastSeen: 0
+      extensionLastSeen: 0,
+      startedAt: null
     })
   })
 
@@ -359,6 +361,149 @@ describe('sessionService — notification is optional', () => {
       service.start()
       service.touchExtension()
       service.stop()
+      service.deactivateCase()
     }).not.toThrow()
+  })
+})
+
+describe('sessionService — the end of a Capture Session (#1831)', () => {
+  function withEndHook() {
+    const order: string[] = []
+    const onSessionEnded = vi.fn(() => order.push('ended'))
+    const harness = setup({
+      emitSessionChange: (s) => order.push(`change:${s.sessionActive}`),
+      onSessionEnded
+    })
+    return { ...harness, onSessionEnded, order }
+  }
+
+  it('stop fires onSessionEnded once, after the change it notifies', () => {
+    const { service, onSessionEnded, order } = withEndHook()
+    service.activateCase('case-1')
+    service.start()
+    service.stop()
+    expect(onSessionEnded).toHaveBeenCalledTimes(1)
+    expect(order.slice(-2)).toEqual(['change:false', 'ended'])
+    service.stop()
+    expect(onSessionEnded).toHaveBeenCalledTimes(1)
+  })
+
+  it('deactivating the Case of a running Capture Session fires it', () => {
+    const { service, onSessionEnded } = withEndHook()
+    service.activateCase('case-1')
+    service.start()
+    service.deactivateCase()
+    expect(onSessionEnded).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not fire when nothing was running, nor on start or reset', () => {
+    const { service, onSessionEnded } = withEndHook()
+    service.activateCase('case-1')
+    service.stop()
+    service.deactivateCase()
+    service.activateCase('case-1')
+    service.start()
+    service.start()
+    service.reset()
+    expect(onSessionEnded).not.toHaveBeenCalled()
+  })
+})
+
+describe('sessionService — a pinned Active Case (#1831)', () => {
+  it('leaves another Case inactive while pinned, and notifies nothing', () => {
+    const { service, sessionChanges } = setup()
+    service.activateCase('case-1')
+    service.start()
+    service.pinActiveCase()
+    const before = sessionChanges.length
+    service.activateCase('case-2')
+    expect(service.snapshot()).toMatchObject({ activeCaseId: 'case-1', sessionActive: true })
+    expect(sessionChanges.length).toBe(before)
+  })
+
+  it('still answers an activation of the pinned Case as before', () => {
+    const { service, sessionChanges } = setup()
+    service.activateCase('case-1')
+    service.pinActiveCase()
+    service.activateCase('case-1')
+    expect(sessionChanges).toHaveLength(2)
+    expect(service.snapshot().activeCaseId).toBe('case-1')
+  })
+
+  it('lets another Case become active once unpinned', () => {
+    const { service } = setup()
+    service.activateCase('case-1')
+    service.pinActiveCase()
+    service.unpinActiveCase()
+    service.activateCase('case-2')
+    expect(service.snapshot().activeCaseId).toBe('case-2')
+  })
+
+  it('lifts when the Capture Session stops, and not on a stop with none running', () => {
+    const { service } = setup()
+    service.activateCase('case-1')
+    service.pinActiveCase()
+    service.stop()
+    service.activateCase('case-2')
+    expect(service.snapshot().activeCaseId).toBe('case-1')
+    service.start()
+    service.stop()
+    service.activateCase('case-2')
+    expect(service.snapshot().activeCaseId).toBe('case-2')
+  })
+
+  it('lifts when its Case is deactivated', () => {
+    const { service } = setup()
+    service.activateCase('case-1')
+    service.pinActiveCase()
+    service.deactivateCase()
+    service.activateCase('case-2')
+    expect(service.snapshot().activeCaseId).toBe('case-2')
+  })
+
+  it('lifts on reset', () => {
+    const { service } = setup()
+    service.activateCase('case-1')
+    service.pinActiveCase()
+    service.reset()
+    service.activateCase('case-2')
+    expect(service.snapshot().activeCaseId).toBe('case-2')
+  })
+})
+
+describe('sessionService — when a Capture Session started (#1831)', () => {
+  it('records the start, keeps it while the Capture Session runs, and clears it on stop', () => {
+    const { service, clock } = setup()
+    service.activateCase('case-1')
+    expect(service.snapshot().startedAt).toBeNull()
+    service.start()
+    const started = clock.now()
+    clock.advance(42_000)
+    service.countCapture()
+    service.activateCase('case-1')
+    expect(service.snapshot().startedAt).toBe(started)
+    service.stop()
+    expect(service.snapshot().startedAt).toBeNull()
+  })
+
+  it('restarts the clock when start is called again, as it zeroes the capture count', () => {
+    const { service, clock } = setup()
+    service.activateCase('case-1')
+    service.start()
+    clock.advance(5_000)
+    service.start()
+    expect(service.snapshot().startedAt).toBe(clock.now())
+  })
+
+  it('clears it when the Case is deactivated, and on reset', () => {
+    const { service } = setup()
+    service.activateCase('case-1')
+    service.start()
+    service.deactivateCase()
+    expect(service.snapshot().startedAt).toBeNull()
+    service.activateCase('case-1')
+    service.start()
+    service.reset()
+    expect(service.snapshot().startedAt).toBeNull()
   })
 })

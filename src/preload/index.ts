@@ -45,7 +45,8 @@ function bridge<C extends ContractedChannel>(
   return (...args) => unwrapIpc(ipcRenderer.invoke(channel, ...args), refusal)
 }
 
-// A sharing channel, whose refusals the Members screens tell apart by code.
+// A channel whose refusals the renderer tells apart by code: the sharing channels, which the
+// Members screens read, and a browser launch, which the start dialog reads.
 const refusable = <C extends ContractedChannel>(channel: C) => bridge(channel, 'object')
 
 // Builds a renderer-facing subscribe method for one event channel. The callback
@@ -195,6 +196,20 @@ const birdbrain = {
     activateCase: bridge(IPC_CHANNELS.SESSION_ACTIVATE_CASE),
     start: bridge(IPC_CHANNELS.SESSION_START),
     stop: bridge(IPC_CHANNELS.SESSION_STOP)
+  },
+
+  launchedBrowser: {
+    list: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_LIST),
+    chooseExecutable: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_CHOOSE_EXECUTABLE),
+    status: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_STATUS),
+    launch: refusable(IPC_CHANNELS.LAUNCHED_BROWSER_LAUNCH),
+    cancelLaunch: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_CANCEL_LAUNCH),
+    endSession: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_END_SESSION),
+    checkLeftovers: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_CHECK_LEFTOVERS),
+    popOut: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT),
+    showPopOut: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_SHOW_POP_OUT),
+    dock: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_DOCK),
+    popOutState: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT_STATE)
   },
 
   search: bridge(IPC_CHANNELS.SEARCH),
@@ -353,6 +368,10 @@ const birdbrain = {
   onInvestigationProgress: subscribe(IPC_CHANNELS.INVESTIGATION_PROGRESS),
 
   onWaybackLinkProgress: subscribe(IPC_CHANNELS.WAYBACK_LINK_PROGRESS),
+
+  onLaunchedBrowserStatus: subscribe(IPC_CHANNELS.LAUNCHED_BROWSER_STATUS_CHANGED),
+
+  onLaunchedBrowserPopOut: subscribe(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT_CHANGED),
 
   testPipeline: bridge(IPC_CHANNELS.CAPTURES_TEST_PIPELINE),
 

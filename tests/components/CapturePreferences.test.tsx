@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { BirdbrainSettings } from '@shared/types'
 import { CapturePreferences } from '@renderer/components/settings/CapturePreferences'
+import { fakeBridge } from '../renderer/fakeBridge'
 
 // Asserted, not annotated: CapturePreferences reads two fields off
 // BirdbrainSettings, and spelling out the other twenty here would be noise.
+// The launched browsers group on the same card reads its own list.
 function renderPanel(overrides: Partial<BirdbrainSettings> = {}) {
   const onUpdate = vi.fn(async () => {})
   const settings = {
@@ -13,7 +16,13 @@ function renderPanel(overrides: Partial<BirdbrainSettings> = {}) {
     ignoredUrlPatterns: [],
     ...overrides
   } as BirdbrainSettings
-  render(<CapturePreferences settings={settings} onUpdate={onUpdate} />)
+  fakeBridge({ launchedBrowser: { list: vi.fn(async () => []) } })
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={client}>
+      <CapturePreferences settings={settings} onUpdate={onUpdate} />
+    </QueryClientProvider>
+  )
   return { onUpdate }
 }
 
@@ -72,6 +81,16 @@ describe('CapturePreferences screenshots toggle', () => {
     expect(className).toContain('focus-visible:ring-offset-1')
     expect(className).toContain('focus-visible:ring-offset-card')
     expect(className).not.toContain('ring-accent/25')
+  })
+})
+
+describe('CapturePreferences launched browsers', () => {
+  afterEach(cleanup)
+
+  it('holds the launched browsers group', async () => {
+    renderPanel()
+    expect(screen.getByText('Launched browsers')).toBeDefined()
+    expect(await screen.findByText(/found no supported browser/)).toBeDefined()
   })
 })
 

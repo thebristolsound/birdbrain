@@ -4,6 +4,10 @@ import { queryClient } from '@renderer/lib/queryClient'
 import { queryKeys } from '@renderer/lib/queries'
 import { invalidateAfterTagApply } from '@renderer/lib/api/tags'
 import { invalidateNoteQueries } from '@renderer/lib/api/notes'
+import {
+  followLaunchedBrowserPopOut,
+  followLaunchedBrowserStatus
+} from '@renderer/lib/api/launchedBrowser'
 import { router } from '@renderer/router'
 import type { Capture } from '@shared/types'
 
@@ -14,7 +18,12 @@ export function useServerStatus() {
     })
 
     const unsubSession = window.birdbrain.onSessionStateChanged((state) => {
-      useAppStore.getState().setSessionActive(state.sessionActive)
+      const { sessionActive: wasActive, setSessionActive, setActiveCaseId } = useAppStore.getState()
+      setSessionActive(state.sessionActive)
+      setActiveCaseId(state.activeCaseId ?? null)
+      // A stop still names its Case. Following it would pull an Operator who stopped the
+      // Capture Session from the dashboard or Settings into that Case.
+      if (wasActive && !state.sessionActive) return
       if (state.activeCaseId) {
         // Only navigate if we're not already viewing this case (e.g. extension
         // started capturing to a case the user isn't currently looking at)
@@ -28,6 +37,9 @@ export function useServerStatus() {
         }
       }
     })
+
+    const unsubLaunchedBrowser = followLaunchedBrowserStatus(queryClient)
+    const unsubPopOut = followLaunchedBrowserPopOut(queryClient)
 
     const unsubCapture = window.birdbrain.onCaptureActivity((event) => {
       useAppStore.getState().addCaptureEvent(event)
@@ -109,6 +121,8 @@ export function useServerStatus() {
     return () => {
       unsubExtension()
       unsubSession()
+      unsubLaunchedBrowser()
+      unsubPopOut()
       unsubCapture()
       unsubNewCapture()
       unsubExtensionAttach()

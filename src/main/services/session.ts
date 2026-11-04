@@ -24,6 +24,9 @@ export interface SessionSnapshot {
   sessionActive: boolean
   captureCount: number
   extensionLastSeen: number
+  // When the running Capture Session started, from `now()`, or null while none runs. The
+  // launched browser's panel shows how long it has run.
+  startedAt: number | null
 }
 
 export interface SessionServiceDeps {
@@ -31,6 +34,10 @@ export interface SessionServiceDeps {
   emitSessionChange?: (state: SessionStateEvent) => void
   // Fired on the rising and falling edge of extension reachability only.
   emitExtensionConnection?: (connected: boolean) => void
+  // Fired once when a running Capture Session stops, after the change is notified: from
+  // stop(), or from deactivateCase() for a Case deleted while one ran. A launched browser
+  // closes from here, so every path that stops a session closes it.
+  onSessionEnded?: () => void
   // Injection seams for tests; both default to the constants above.
   extensionTimeoutMs?: number
   heartbeatPollMs?: number
@@ -43,6 +50,11 @@ export interface SessionService {
   deactivateCase: () => void
   start: () => void
   stop: () => void
+  // A launched browser pins the Active Case it launched into: while pinned, activating another
+  // Case leaves the Active Case as it is and notifies nothing. The pin lifts when the Capture
+  // Session stops or the Case is deactivated.
+  pinActiveCase: () => void
+  unpinActiveCase: () => void
   countCapture: () => void
   touchExtension: () => void
   // Falling-edge check. Called by the heartbeat monitor, and directly by tests.
@@ -57,6 +69,7 @@ export function createSessionService(deps: SessionServiceDeps = {}): SessionServ
   const {
     emitSessionChange,
     emitExtensionConnection,
+    onSessionEnded,
     extensionTimeoutMs = DEFAULT_EXTENSION_TIMEOUT_MS,
     heartbeatPollMs = DEFAULT_HEARTBEAT_POLL_MS,
     now = Date.now
@@ -66,17 +79,29 @@ export function createSessionService(deps: SessionServiceDeps = {}): SessionServ
   let sessionActive = false
   let captureCount = 0
   let extensionLastSeen = 0
+  let casePinned = false
+  let startedAt: number | null = null
   let heartbeatInterval: ReturnType<typeof setInterval> | null = null
 
   const snapshot = (): SessionSnapshot => ({
     activeCaseId,
     sessionActive,
     captureCount,
-    extensionLastSeen
+    extensionLastSeen,
+    startedAt
   })
 
   const notifyChange = (): void => {
     emitSessionChange?.({ sessionActive, activeCaseId, captureCount })
+  }
+
+  const endSession = (): void => {
+    const wasActive = sessionActive
+    sessionActive = false
+    startedAt = null
+    if (wasActive) casePinned = false
+    notifyChange()
+    if (wasActive) onSessionEnded?.()
   }
 
   // 0 is the never-seen sentinel, not a timestamp. Without the guard a clock
@@ -99,7 +124,10 @@ export function createSessionService(deps: SessionServiceDeps = {}): SessionServ
   return {
     snapshot,
 
+    // Opening a Case in the app calls this, so a pin refuses silently: reading another Case
+    // mid-session still works, and the Capture Session stays where it was.
     activateCase: (caseId) => {
+      if (casePinned && caseId !== activeCaseId) return
       activeCaseId = caseId
       notifyChange()
     },
@@ -111,19 +139,25 @@ export function createSessionService(deps: SessionServiceDeps = {}): SessionServ
     // offering to record into it, and `start()` would then be refused.
     deactivateCase: () => {
       activeCaseId = null
-      sessionActive = false
-      notifyChange()
+      casePinned = false
+      endSession()
     },
 
     start: () => {
       sessionActive = true
       captureCount = 0
+      startedAt = now()
       notifyChange()
     },
 
-    stop: () => {
-      sessionActive = false
-      notifyChange()
+    stop: endSession,
+
+    pinActiveCase: () => {
+      casePinned = true
+    },
+
+    unpinActiveCase: () => {
+      casePinned = false
     },
 
     // Deliberately silent: the pre-refactor code incremented the count without
@@ -160,6 +194,8 @@ export function createSessionService(deps: SessionServiceDeps = {}): SessionServ
       sessionActive = false
       captureCount = 0
       extensionLastSeen = 0
+      casePinned = false
+      startedAt = null
     }
   }
 }

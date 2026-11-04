@@ -8,6 +8,11 @@ import { caseQueryOptions } from '@renderer/lib/queries'
 import { accelerator } from '@renderer/lib/accelerator'
 import { SearchBar } from '@renderer/components/search/SearchBar'
 import { SessionControls } from '@renderer/components/status/SessionControls'
+import { CaptureSessionButton } from '@renderer/components/launchedBrowser/CaptureSessionButton'
+import {
+  launchedBrowserName,
+  launchedBrowserStatusQueryOptions
+} from '@renderer/lib/api/launchedBrowser'
 import { ConnectionStatus } from '@renderer/components/status/ConnectionStatus'
 import { CaptureHealth } from '@renderer/components/status/CaptureHealth'
 import { SharePill } from '@renderer/components/status/SharePill'
@@ -49,6 +54,7 @@ export function TopBar() {
     updateStatus?.state === 'available' || updateStatus?.state === 'downloaded'
 
   const isOnSettings = Boolean(matchRoute({ to: '/settings' }))
+  const isOnDashboard = Boolean(matchRoute({ to: '/' }))
   // The pattern also matches the wizard's literal `new` segment, which is not a case.
   const isOnWizard = Boolean(matchRoute({ to: '/cases/new' }))
   const caseMatch = isOnWizard ? false : matchRoute({ to: '/cases/$caseId', fuzzy: true })
@@ -95,6 +101,9 @@ export function TopBar() {
             <RecIndicator />
           </div>
         )}
+        {/* Settings has no rail, so the Capture Session panel opens from here (`2d`). Open ‹Case›
+            stays on the dashboard's. */}
+        <CaptureSessionButton showOpenCase={false} />
 
         <Button
           variant="ghost"
@@ -170,6 +179,9 @@ export function TopBar() {
       >
         {/* The case's session switch lives in CaseActionBar, under this bar. */}
         {sessionActive && <RecIndicator />}
+        {/* Case screens carry the Capture Session rail; the dashboard and the wizard have none
+            (`2c`). */}
+        {!activeCaseId && <CaptureSessionButton showOpenCase={isOnDashboard} />}
 
         {/* The Case's one sharing control: "Share" until a peer joins, then the sync state. */}
         {activeCase && (
@@ -218,7 +230,9 @@ export function TopBar() {
   )
 }
 
+// Names the launched browser while it is open (`2c`, `2d`).
 function RecIndicator() {
+  const { data: launched } = useQuery(launchedBrowserStatusQueryOptions)
   return (
     <div
       data-testid="topbar-rec"
@@ -226,6 +240,11 @@ function RecIndicator() {
     >
       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
       <span className="text-[10px] font-medium text-danger-fg">REC</span>
+      {launched?.state === 'open' && (
+        <span className="whitespace-nowrap text-[10px] text-text-secondary">
+          · {launchedBrowserName(launched.browser.label)}
+        </span>
+      )}
     </div>
   )
 }

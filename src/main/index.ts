@@ -52,7 +52,14 @@ import {
   webRtcPolicyFor,
   type RoutedSession
 } from '@main/services/egress'
-import { titleBarOptions, titleBarOverlay, windowBackgroundColor } from '@main/windowChrome'
+import {
+  popOutBackgroundColor,
+  popOutTitleBarOverlay,
+  popOutWindowOptions,
+  titleBarOptions,
+  titleBarOverlay,
+  windowBackgroundColor
+} from '@main/windowChrome'
 import { initInstallationId, getInstallationId } from '@main/services/installationId'
 import { initSigningKey, SigningKeyUnacknowledgedError } from '@main/services/signingKey'
 import { initServerToken } from '@main/services/serverToken'
@@ -76,6 +83,11 @@ import { runExhibitBackfill } from '@main/services/exhibitBackfill'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createRecaptureService } from '@main/services/recapture'
 import { createSessionService } from '@main/services/session'
+import {
+  createLaunchedBrowserService,
+  type LaunchedBrowserService
+} from '@main/services/launchedBrowser/service'
+import { sweepLaunchedBrowsersAtStartup } from '@main/services/launchedBrowser/profiles'
 import { createUpdaterService, type UpdaterService } from '@main/services/updater'
 import { renderPageInHiddenWindow } from '@main/services/backgroundRenderer'
 import { DEEP_LINK_SCHEME, parseDeepLink, findDeepLinkInArgv } from '@main/services/deepLink'
@@ -89,11 +101,21 @@ import {
 import { ident, tag } from '@main/services/logSafe'
 import { detectInstallFormat } from '@main/services/diagnostics'
 import { markCleanExit, startSession } from '@main/services/sessionLog'
-import { IPC_CHANNELS, type DeepLinkTarget, type SelectorRematchedEvent } from '@shared/ipc'
+import {
+  IPC_CHANNELS,
+  type DeepLinkTarget,
+  type IpcEventChannel,
+  type IpcEventContract,
+  type SelectorRematchedEvent
+} from '@shared/ipc'
 import type { EgressSetting } from '@shared/types'
 import { sendEvent } from '@main/ipcWrap'
 
 let mainWindow: BrowserWindow | null = null
+// Birdbrain's own windows, the ones that load its preload. The session, extension and launched
+// browser events go to each of them; the hidden windows a recapture or a PDF export renders in
+// get none.
+const appWindows = new Set<BrowserWindow>()
 
 // One listener per live window; the previous window's is dropped on recreate (macOS).
 let windowThemeWatcher: (() => void) | null = null
@@ -111,6 +133,19 @@ let sharingService: SharingService | null = null
 // When Shared Case sessions run (#1881); owns the sharing transport's
 // lifetime, so stopping it on quit closes the transport.
 let syncService: SyncService | null = null
+// The launched browser (#1831), killed on quit.
+let launchedBrowserService: LaunchedBrowserService | null = null
+// The Capture Session panel in a window of its own (`1g`), or null while it is docked.
+let popOutWindow: BrowserWindow | null = null
+
+function sendToAppWindows<C extends IpcEventChannel>(
+  channel: C,
+  payload: IpcEventContract[C]
+): void {
+  for (const win of appWindows) {
+    if (!win.isDestroyed()) sendEvent(win.webContents, channel, payload)
+  }
+}
 
 // Registered before whenReady so a failure during startup is still captured.
 // logger.* is a no-op until initLogger runs, which is safe by construction.
@@ -284,13 +319,19 @@ function createWindow(): BrowserWindow {
   })
 
   mainWindow = win
+  appWindows.add(win)
 
   // Not a bare ready-to-show handler: that event can never fire under Wayland on
   // Electron 38+, which strands the window hidden forever (#643).
   revealWhenReady(win)
 
   win.on('closed', () => {
-    if (mainWindow === win) mainWindow = null
+    appWindows.delete(win)
+    if (mainWindow === win) {
+      mainWindow = null
+      // Left open, the pop-out would keep 'window-all-closed' from firing.
+      dockPopOut()
+    }
   })
 
   // Recolour the native window controls when the renderer switches theme, so the
@@ -353,6 +394,76 @@ function createWindow(): BrowserWindow {
   }
 
   return win
+}
+
+function popOutIsOpen(): boolean {
+  return popOutWindow !== null && !popOutWindow.isDestroyed()
+}
+
+function announcePopOut(): void {
+  sendToAppWindows(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT_CHANGED, { poppedOut: popOutIsOpen() })
+}
+
+// The panel's window loads the main window's preload and the app's own page, so it holds the
+// same trust and the IPC handlers do not ask which window called them. It loads nothing else: it
+// opens no window, navigates nowhere, and has no webview tag.
+function openPopOut(): boolean {
+  if (popOutWindow && !popOutWindow.isDestroyed()) {
+    popOutWindow.show()
+    return true
+  }
+  const win = new BrowserWindow({
+    ...popOutWindowOptions(getSettings().theme),
+    ...(process.platform === 'linux' || process.platform === 'win32'
+      ? { icon: join(__dirname, '../../resources/icon.png') }
+      : {}),
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      webviewTag: false
+    }
+  })
+  popOutWindow = win
+  appWindows.add(win)
+  revealWhenReady(win)
+
+  // Its own listener, beside the main window's single slot.
+  const stopThemeWatch = onThemeChange((theme) => {
+    if (win.isDestroyed()) return
+    win.setBackgroundColor(popOutBackgroundColor(theme))
+    const overlay = popOutTitleBarOverlay(theme)
+    if (overlay) win.setTitleBarOverlay(overlay)
+  })
+  win.on('closed', () => {
+    stopThemeWatch()
+    appWindows.delete(win)
+    if (popOutWindow === win) popOutWindow = null
+    announcePopOut()
+  })
+
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  win.webContents.on('will-navigate', (event) => event.preventDefault())
+
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/pop-out.html`)
+  } else {
+    win.loadFile(join(__dirname, '../renderer/pop-out.html'))
+  }
+  announcePopOut()
+  return true
+}
+
+// show() alone. Electron documents that on Wayland focus() may show a notification or flash the
+// app icon and that moveTop() is not supported, so whether the window comes to the front is the
+// desktop's decision.
+function showPopOut(): void {
+  if (popOutWindow && !popOutWindow.isDestroyed()) popOutWindow.show()
+}
+
+function dockPopOut(): void {
+  if (popOutWindow && !popOutWindow.isDestroyed()) popOutWindow.close()
 }
 
 // Bring the existing window to the foreground (used when a deep link arrives).
@@ -537,6 +648,12 @@ if (!gotSingleInstanceLock) {
       await initDatabase(join(userDataPath, 'birdbrain.db'))
       // Before anything opens a persona session, so an orphan's folder can go.
       removeOrphanedPartitions(userDataPath)
+      // Before any launch, so every throwaway browser profile found is an earlier run's. One a
+      // browser still holds stays, and the check it returns backs state 13.
+      const checkLeftoverBrowsers = sweepLaunchedBrowsersAtStartup(
+        userDataPath,
+        app.getPath('sessionData')
+      )
       initSettings(userDataPath)
       initInstallationId(userDataPath)
       // Splitting this into a second entry is the cost of initialising the
@@ -613,14 +730,23 @@ if (!gotSingleInstanceLock) {
       // these callbacks so the service itself stays Electron-free.
       const sessionService = createSessionService({
         emitSessionChange: (payload) => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            sendEvent(mainWindow.webContents, IPC_CHANNELS.SESSION_STATE_CHANGED, payload)
-          }
+          sendToAppWindows(IPC_CHANNELS.SESSION_STATE_CHANGED, payload)
         },
         emitExtensionConnection: (connected) => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            sendEvent(mainWindow.webContents, IPC_CHANNELS.EXTENSION_CONNECTION, { connected })
-          }
+          sendToAppWindows(IPC_CHANNELS.EXTENSION_CONNECTION, { connected })
+        },
+        // A Capture Session that stops closes its launched browser (D20).
+        onSessionEnded: () => launchedBrowserService?.sessionEnded()
+      })
+
+      // One launched browser at a time, inside a Capture Session (#1831).
+      launchedBrowserService = createLaunchedBrowserService({
+        session: sessionService,
+        sessionDataPath: app.getPath('sessionData'),
+        emitStatus: (status) => {
+          sendToAppWindows(IPC_CHANNELS.LAUNCHED_BROWSER_STATUS_CHANGED, status)
+          // The panel pops out to sit beside the browser, so it docks once the browser has gone.
+          if (status.state !== 'open' && status.state !== 'closing') dockPopOut()
         }
       })
 
@@ -730,6 +856,9 @@ if (!gotSingleInstanceLock) {
         recaptureService,
         updaterService,
         sessionService,
+        launchedBrowser: launchedBrowserService,
+        checkLeftoverBrowsers,
+        popOut: { open: openPopOut, show: showPopOut, dock: dockPopOut, isOpen: popOutIsOpen },
         sharingService,
         enqueueExhibitTimestamp: (exhibitId) => timestampWorker.enqueueExhibit(exhibitId)
       })
@@ -871,6 +1000,10 @@ if (!gotSingleInstanceLock) {
     // stopCaptureServer()` may never run — which would leave session.lock in
     // place and make every ordinary quit look like a crash on next launch.
     markCleanExit(join(process.env.BIRDBRAIN_USER_DATA || app.getPath('userData'), 'logs'))
+    // Also before the first await, for the same reason: the launched browser is killed outright
+    // rather than asked to close.
+    launchedBrowserService?.killForQuit()
+    launchedBrowserService?.dispose()
     disposeLogger()
 
     stopExtensionConnectionCheck()

@@ -123,7 +123,9 @@ const ROOT_LEVEL_LEAVES = new Set([
   'onSharingChanged',
   'onSharingJoinProgress',
   'onInvestigationProgress',
-  'onWaybackLinkProgress'
+  'onWaybackLinkProgress',
+  'onLaunchedBrowserStatus',
+  'onLaunchedBrowserPopOut'
 ])
 
 // Method names that predate the action-segment convention, keyed by the channel
@@ -253,6 +255,27 @@ describe('preload refusals', () => {
       expect(rejection).not.toBeInstanceOf(Error)
       expect(rejection).toEqual({ message: 'Not a Birdbrain invite', code: 'invite-malformed' })
       expect(Object.getPrototypeOf(rejection)).toBe(Object.prototype)
+    } finally {
+      electronStub.result = { ok: true, data: null }
+    }
+  })
+
+  // The start dialog names a launch refusal by its code.
+  it('rejects a browser launch with a plain object that keeps the code', async () => {
+    electronStub.result = {
+      ok: false,
+      error: 'Chromium is still starting.',
+      code: 'BROWSER_ALREADY_RUNNING'
+    }
+    try {
+      const rejection = await leaf('launchedBrowser.launch')('/usr/bin/x').catch(
+        (err: unknown) => err
+      )
+      expect(rejection).not.toBeInstanceOf(Error)
+      expect(rejection).toEqual({
+        message: 'Chromium is still starting.',
+        code: 'BROWSER_ALREADY_RUNNING'
+      })
     } finally {
       electronStub.result = { ok: true, data: null }
     }

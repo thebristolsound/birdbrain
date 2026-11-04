@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { Camera } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
@@ -19,9 +19,11 @@ import { WaybackPanel } from '@renderer/components/captures/WaybackPanel'
 import {
   capturePanelIds,
   visibleCaptureColumns,
+  DETAILS_FOLD_ROOM_PX,
   DETAILS_PANEL,
   LIST_PANEL,
   PANEL_GROUP_ID,
+  SIDE_RAIL_PX,
   VIEWER_PANEL
 } from '@renderer/components/captures/captureColumns'
 import { useCaptureView } from '@renderer/components/captures/useCaptureView'
@@ -41,12 +43,10 @@ import {
   DialogFooter
 } from '@renderer/components/ui'
 import { useAppStore } from '@renderer/stores/appStore'
-import { useViewportWidth } from '@renderer/hooks/useViewportWidth'
+import { useViewWidth } from '@renderer/components/investigate/useViewWidth'
 import { openCaptureExternal } from '@renderer/lib/api/system'
 import { notify } from '@renderer/lib/notify'
 import type { BatchDeleteOutcome, BatchDeleteResult } from '@shared/ipc'
-
-const COLLAPSE_THRESHOLD = 1100
 
 // Prefix-commit result, stated without an atomicity claim (batch-ops brief):
 // committed entries, the single rolled-back failure and its stage, the ids
@@ -133,7 +133,9 @@ export function CapturesRoute() {
   const { remove: removeCapture, removeMany } = useCapturesMutations(caseId)
   const deselectCaptures = useAppStore((s) => s.deselectCaptures)
   const activeViewerTab = useAppStore((s) => s.activeViewerTab)
-  const viewportWidth = useViewportWidth()
+  // The screen's own width, which the Capture Session rail beside it takes from (#1831).
+  const rootRef = useRef<HTMLDivElement>(null)
+  const screenWidth = useViewWidth(rootRef, window.innerWidth - SIDE_RAIL_PX)
   const { view, setView } = useCaptureView()
   const { collapsed: listCollapsed, setCollapsed: setListCollapsed } = useListColumnCollapsed()
 
@@ -155,10 +157,10 @@ export function CapturesRoute() {
   // Wayback: it is a viewer tab now, and the overlay is dropped while it is up.
   const [forcedPanelOpen, setForcedPanelOpen] = useState(false)
 
-  // Sync forced flag from viewport width.
+  // Sync forced flag from the screen's width.
   useEffect(() => {
-    setPanelCollapsedForced(viewportWidth < COLLAPSE_THRESHOLD)
-  }, [viewportWidth, setPanelCollapsedForced])
+    setPanelCollapsedForced(screenWidth < DETAILS_FOLD_ROOM_PX)
+  }, [screenWidth, setPanelCollapsedForced])
 
   useEffect(() => {
     if (!panelCollapsedForced) setForcedPanelOpen(false)
@@ -303,7 +305,7 @@ export function CapturesRoute() {
   )
 
   return (
-    <div className="relative flex h-full flex-1 overflow-hidden">
+    <div ref={rootRef} className="relative flex h-full flex-1 overflow-hidden">
       {columns.list === 'rail' && (
         <ListColumnRail
           noun="capture"

@@ -213,6 +213,11 @@ import { irohBinding } from '@main/services/sharing/irohTransport'
 import { MemoryHub } from '@main/services/sharing/transport'
 import { addMember } from '@main/services/sharing/membership'
 import { listCaseMembers } from '@main/services/db/caseMemberRepo'
+import {
+  createVpnWarningService,
+  networkHash,
+  type VpnWarningService
+} from '@main/services/vpnWarning'
 import type { RecaptureService } from '@main/services/recapture'
 import type { UpdaterService } from '@main/services/updater'
 import {
@@ -4397,5 +4402,159 @@ describe('ipcHandlers — personas (#1497)', () => {
     expect(expectOk(await invoke(IPC_CHANNELS.PERSONAS_STORAGE_STATE))).toEqual({
       encryptionAvailable: false
     })
+  })
+})
+
+describe('ipcHandlers — the VPN warning (ADR-0032)', () => {
+  // The real service on stubbed detection: Egress Direct and a VPN not seen, on one network.
+  function registerWithWarning(): VpnWarningService {
+    const vpnWarning = createVpnWarningService({
+      detect: async () => ({
+        vpnSeen: false,
+        network: { name: 'Example Network', routerMac: '00:00:5e:00:53:02' }
+      }),
+      egressKind: () => 'direct',
+      mutedNetworks: () => settings.getSettings().vpnWarningMutedNetworks,
+      muteNetwork: (hash) => {
+        settings.updateSettings({ vpnWarningMutedNetworks: [hash] })
+      }
+    })
+    registerIpcHandlers({
+      selectorLifecycle: createSelectorLifecycle({ emitRematched: vi.fn() }),
+      captureLifecycle: createCaptureLifecycle({
+        selectorLifecycle: createSelectorLifecycle({ emitRematched: vi.fn() })
+      }),
+      recaptureService,
+      updaterService,
+      sessionService,
+      sharingService,
+      vpnWarning
+    })
+    return vpnWarning
+  }
+
+  it('reports whether a VPN is seen', async () => {
+    registerWithWarning()
+    expect(expectOk(await invoke(IPC_CHANNELS.EGRESS_VPN_STATUS))).toEqual({ vpnSeen: false })
+  })
+
+  it("checks a Case by its id, or by one of its Captures' ids", async () => {
+    registerWithWarning()
+    expect(
+      expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { caseId }, 'site'))
+    ).toEqual({
+      caseId,
+      warn: true,
+      canMute: true
+    })
+    expect(
+      expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { captureId }, 'site'))
+    ).toMatchObject({ caseId, warn: true })
+  })
+
+  it('refuses an unknown Capture and a malformed target or answer', async () => {
+    registerWithWarning()
+    const missing = (await invoke(
+      IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING,
+      { captureId: 'no-such-capture' },
+      'site'
+    )) as { ok: boolean; code?: string }
+    expect(missing).toMatchObject({ ok: false, code: 'NOT_FOUND' })
+    const checks: [unknown, unknown][] = [
+      [null, 'site'],
+      [caseId, 'site'],
+      [7, 'site'],
+      [{}, 'site'],
+      [{ caseId: 7 }, 'site'],
+      [{ caseId }, undefined],
+      [{ caseId }, 'browser']
+    ]
+    for (const [target, occasion] of checks) {
+      const res = (await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, target, occasion)) as {
+        ok: boolean
+        code?: string
+      }
+      expect(res).toMatchObject({ ok: false, code: 'INVALID_VPN_WARNING' })
+    }
+    for (const answer of [
+      null,
+      { caseId, occasion: 'site', choice: 'set-up-proxy' },
+      { occasion: 'site', choice: 'continue' },
+      { caseId, choice: 'continue' }
+    ]) {
+      const res = (await invoke(IPC_CHANNELS.EGRESS_ANSWER_VPN_WARNING, answer)) as {
+        ok: boolean
+        code?: string
+      }
+      expect(res).toMatchObject({ ok: false, code: 'INVALID_VPN_WARNING' })
+    }
+  })
+
+  it('answers a warning once per Case and occasion, and mutes the network in settings', async () => {
+    registerWithWarning()
+    expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { caseId }, 'site'))
+    expectOk(
+      await invoke(IPC_CHANNELS.EGRESS_ANSWER_VPN_WARNING, {
+        caseId,
+        occasion: 'site',
+        choice: 'continue'
+      })
+    )
+    expect(
+      expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { caseId }, 'site'))
+    ).toMatchObject({ warn: false })
+    // A Capture Session start in the same Case still warns (ADR-0032 rule 3).
+    expect(
+      expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { caseId }, 'session'))
+    ).toMatchObject({ caseId, warn: true })
+
+    const other = caseRepo.createCase({ name: 'Other Case' }).id
+    expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { caseId: other }, 'site'))
+    expectOk(
+      await invoke(IPC_CHANNELS.EGRESS_ANSWER_VPN_WARNING, {
+        caseId: other,
+        occasion: 'site',
+        choice: 'mute-network'
+      })
+    )
+    expect(settings.getSettings().vpnWarningMutedNetworks).toEqual([
+      networkHash({ name: 'Example Network', routerMac: '00:00:5e:00:53:02' })
+    ])
+  })
+
+  // Rule 4: whether a VPN was seen is not evidence. The warning's channels leave every
+  // Manifest Entry and every capture row exactly as they were.
+  it('changes no Manifest Entry and no capture row', async () => {
+    registerWithWarning()
+    const caseDir = join(storage.getStorageRoot(), caseId)
+    appendManifestEntry(caseDir, {
+      type: 'capture',
+      captureId,
+      caseId,
+      url: 'https://example.com',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      contentHash: 'a'.repeat(64),
+      sizeBytes: 2,
+      operatorId: 'op-1',
+      operatorName: 'Operator One',
+      toolVersion: '1.2.3'
+    })
+    const manifestBefore = readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+    const rowsBefore = getDb().prepare('SELECT * FROM captures ORDER BY id').all()
+
+    await invoke(IPC_CHANNELS.EGRESS_VPN_STATUS)
+    expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { captureId }, 'site'))
+    expectOk(
+      await invoke(IPC_CHANNELS.EGRESS_ANSWER_VPN_WARNING, {
+        caseId,
+        occasion: 'site',
+        choice: 'mute-network'
+      })
+    )
+    expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { caseId }, 'site'))
+
+    expect(readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')).toBe(manifestBefore)
+    expect(getDb().prepare('SELECT * FROM captures ORDER BY id').all()).toEqual(rowsBefore)
+    expect(settings.getSettings().vpnWarningMutedNetworks).toHaveLength(1)
   })
 })

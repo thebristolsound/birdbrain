@@ -44,7 +44,7 @@ import {
   useAnnotationsMutations,
   useSettingsMutations
 } from '@renderer/lib/queries'
-import { fakeBridge } from '../fakeBridge'
+import { fakeBridge, quietVpnWarning } from '../fakeBridge'
 
 // Build a fully-stubbed window.birdbrain whose every method records calls and
 // resolves to a sentinel value, so queryFns/mutationFns can be exercised.
@@ -79,6 +79,7 @@ function installBirdbrainMock() {
       setFavoriteMany: vi.fn().mockResolvedValue({ affected: 2 })
     },
     recapture: { enqueue: fn(), queueStatus: fn(), enqueueCaptures: fn() },
+    egress: quietVpnWarning(),
     search: fn(),
     tags: {
       list: fn(),

@@ -42,7 +42,10 @@ import type {
   RecaptureEnqueuePayload,
   SelfTestResult,
   SessionStateEvent,
-  CaptureBatchPayload
+  CaptureBatchPayload,
+  VpnWarningAnswer,
+  VpnWarningOccasion,
+  VpnWarningTarget
 } from '@shared/ipc'
 import * as dbAdmin from '@main/services/db/dbAdmin'
 import * as dbSnapshots from '@main/services/db/dbSnapshots'
@@ -96,6 +99,7 @@ import {
   runLinkBatch
 } from '@main/services/waybackLinkCheck'
 import { currentEgress, egressFetch } from '@main/services/egress'
+import { createVpnWarningService, type VpnWarningService } from '@main/services/vpnWarning'
 import { buildCsv } from '@main/services/csvEscape'
 import { getInstallationId } from '@main/services/installationId'
 import { getCaptureServerPort } from '@main/services/captureServer'
@@ -210,6 +214,10 @@ function validateIds(ids: unknown): string[] {
   return ids
 }
 
+function isVpnWarningOccasion(value: unknown): value is VpnWarningOccasion {
+  return value === 'site' || value === 'session'
+}
+
 function rememberRevealablePath(filePath: string): void {
   const resolved = resolve(filePath)
   // delete-then-add so re-exporting the same destination refreshes its recency.
@@ -277,6 +285,9 @@ export function registerIpcHandlers(deps: {
   // Hand-off for a freshly committed Exhibit to the trusted-timestamp worker
   // (X26). Optional so tests without a worker can register the handlers.
   enqueueExhibitTimestamp?: (exhibitId: string) => void
+  // The VPN check behind the indicator and the warning (ADR-0032). Optional so tests can
+  // pass a stub; the default reads this computer's routing table.
+  vpnWarning?: VpnWarningService
 }): void {
   const {
     selectorLifecycle,
@@ -286,6 +297,7 @@ export function registerIpcHandlers(deps: {
     sessionService,
     sharingService
   } = deps
+  const vpnWarning = deps.vpnWarning ?? createVpnWarningService()
   // Cases
   handle(IPC_CHANNELS.CASES_LIST, () => caseRepo.listCases())
   handle(IPC_CHANNELS.CASES_GET, (_, id: string) => caseRepo.getCase(id))
@@ -1619,6 +1631,41 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.UPDATES_CHECK, () => updaterService.check())
   handle(IPC_CHANNELS.UPDATES_DOWNLOAD, () => updaterService.download())
   handle(IPC_CHANNELS.UPDATES_INSTALL, () => updaterService.install())
+
+  // The VPN check (ADR-0032). Nothing it finds is written to a Manifest Entry or a row.
+  handle(IPC_CHANNELS.EGRESS_VPN_STATUS, () => vpnWarning.status())
+  handle(
+    IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING,
+    (_, target: VpnWarningTarget, occasion: VpnWarningOccasion) => {
+      if (!isVpnWarningOccasion(occasion)) {
+        throw new IpcFailure('Invalid VPN warning occasion', 'INVALID_VPN_WARNING')
+      }
+      // `in` throws a TypeError on a primitive, so one gets the typed refusal here instead.
+      if (typeof target !== 'object' || target === null) {
+        throw new IpcFailure('Invalid VPN warning target', 'INVALID_VPN_WARNING')
+      }
+      if ('captureId' in target && typeof target.captureId === 'string') {
+        const capture = captureRepo.getCapture(target.captureId)
+        if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
+        return vpnWarning.check(capture.caseId, occasion)
+      }
+      if ('caseId' in target && typeof target.caseId === 'string') {
+        return vpnWarning.check(target.caseId, occasion)
+      }
+      throw new IpcFailure('Invalid VPN warning target', 'INVALID_VPN_WARNING')
+    }
+  )
+  handle(IPC_CHANNELS.EGRESS_ANSWER_VPN_WARNING, (_, answer: VpnWarningAnswer) => {
+    const choice = answer?.choice
+    if (
+      typeof answer?.caseId !== 'string' ||
+      !isVpnWarningOccasion(answer.occasion) ||
+      (choice !== 'continue' && choice !== 'mute-network')
+    ) {
+      throw new IpcFailure('Invalid VPN warning answer', 'INVALID_VPN_WARNING')
+    }
+    vpnWarning.answer(answer.caseId, answer.occasion, choice)
+  })
 
   // Database Admin
   handle(IPC_CHANNELS.DB_STATS, () => {

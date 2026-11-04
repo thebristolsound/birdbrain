@@ -4,6 +4,7 @@ import type { WaybackLinkBatchResult } from '@shared/ipc'
 import type { KnownEgress } from '@shared/types'
 import { waybackLinkLookupQueryOptions } from '@renderer/lib/api/wayback'
 import { notify } from '@renderer/lib/notify'
+import { confirmContact } from '@renderer/lib/vpnWarning'
 
 /** A row's batch state while it has no answer in the cache to show instead. */
 export type BatchCellState = { state: 'checking' } | { state: 'failed'; error: string; at: number }
@@ -41,6 +42,8 @@ export function useWaybackLinkBatch(captureId: string): WaybackLinkBatch {
   const [outcome, setOutcome] = useState<WaybackLinkBatchResult | null>(null)
   const [startError, setStartError] = useState<string | null>(null)
   const runningRef = useRef(false)
+  // Moves on each time the tab is left or shows another Capture.
+  const shownRef = useRef(0)
 
   useEffect(
     () =>
@@ -68,6 +71,7 @@ export function useWaybackLinkBatch(captureId: string): WaybackLinkBatch {
 
   useEffect(
     () => () => {
+      shownRef.current += 1
       if (!runningRef.current) return
       window.birdbrain.wayback.cancelLookupLinks(captureId).catch((cause: unknown) => {
         notify.error('The Wayback batch could not be cancelled', { cause })
@@ -76,7 +80,7 @@ export function useWaybackLinkBatch(captureId: string): WaybackLinkBatch {
     [captureId]
   )
 
-  const start = useCallback(
+  const run = useCallback(
     (send: string[], egress: KnownEgress) => {
       runningRef.current = true
       setRunning(true)
@@ -96,6 +100,21 @@ export function useWaybackLinkBatch(captureId: string): WaybackLinkBatch {
         })
     },
     [captureId]
+  )
+
+  // A batch is a Wayback lookup, so it passes the VPN warning first (ADR-0032). A tab left
+  // while the warning was open has no Cancel control, so the batch does not start.
+  const start = useCallback(
+    (send: string[], egress: KnownEgress) => {
+      const asked = shownRef.current
+      confirmContact({ captureId }, 'site').then(
+        (go) => {
+          if (go && shownRef.current === asked) run(send, egress)
+        },
+        (cause: unknown) => setStartError(messageOf(cause))
+      )
+    },
+    [captureId, run]
   )
 
   const cancel = useCallback(() => {

@@ -1712,7 +1712,8 @@ export const BirdbrainSettingsSchema = z.object({
   releaseChannel: z.enum(['stable', 'beta']).optional().default('stable'),
   autoCheckForUpdates: z.boolean().optional().default(true),
   egress: StoredEgressSchema.optional().default({ kind: 'direct' }),
-  sharingRelayUrl: z.string().optional().default('')
+  sharingRelayUrl: z.string().optional().default(''),
+  vpnWarningMutedNetworks: z.array(z.string()).optional().default([])
 })
 
 // Used on load: user may have an older settings file missing newer keys, so

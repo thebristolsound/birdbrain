@@ -1,0 +1,33 @@
+{
+  "routes": [
+    { "DestinationPrefix": "198.51.100.7/32", "NextHop": "192.168.1.1", "RouteMetric": 0, "InterfaceIndex": 12 },
+    { "DestinationPrefix": "128.0.0.0/1", "NextHop": "10.8.0.5", "RouteMetric": 0, "InterfaceIndex": 22 },
+    { "DestinationPrefix": "10.8.0.0/24", "NextHop": "0.0.0.0", "RouteMetric": 256, "InterfaceIndex": 22 },
+    { "DestinationPrefix": "0.0.0.0/1", "NextHop": "10.8.0.5", "RouteMetric": 0, "InterfaceIndex": 22 },
+    { "DestinationPrefix": "0.0.0.0/0", "NextHop": "192.168.1.1", "RouteMetric": 0, "InterfaceIndex": 12 }
+  ],
+  "interfaces": [
+    { "InterfaceIndex": 12, "InterfaceMetric": 25, "ConnectionState": "Connected" },
+    { "InterfaceIndex": 22, "InterfaceMetric": 25, "ConnectionState": "Connected" }
+  ],
+  "adapters": [
+    {
+      "InterfaceIndex": 12,
+      "Name": "Ethernet",
+      "InterfaceDescription": "Realtek PCIe GbE Family Controller",
+      "InterfaceType": 6,
+      "NdisPhysicalMedium": 14
+    },
+    {
+      "InterfaceIndex": 22,
+      "Name": "Local Area Connection",
+      "InterfaceDescription": "TAP-Windows Adapter V9",
+      "InterfaceType": 6,
+      "NdisPhysicalMedium": 14
+    }
+  ],
+  "neighbors": [
+    { "IPAddress": "192.168.1.1", "InterfaceIndex": 12, "LinkLayerAddress": "00-00-5E-00-53-01" }
+  ],
+  "profiles": [{ "InterfaceIndex": 12, "Name": "Network 2" }]
+}

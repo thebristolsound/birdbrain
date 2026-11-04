@@ -307,6 +307,12 @@ const birdbrain = {
     install: bridge(IPC_CHANNELS.UPDATES_INSTALL)
   },
 
+  egress: {
+    vpnStatus: bridge(IPC_CHANNELS.EGRESS_VPN_STATUS),
+    checkVpnWarning: bridge(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING),
+    answerVpnWarning: bridge(IPC_CHANNELS.EGRESS_ANSWER_VPN_WARNING)
+  },
+
   db: {
     stats: bridge(IPC_CHANNELS.DB_STATS),
     tableRows: bridge(IPC_CHANNELS.DB_TABLE_ROWS),

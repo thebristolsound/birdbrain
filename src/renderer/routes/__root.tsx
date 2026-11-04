@@ -42,6 +42,7 @@ import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 import { subscribeToMainLog } from '@renderer/lib/mainLogBridge'
 import { ReportProblemDialog } from '@renderer/components/diagnostics/ReportProblemDialog'
 import { CrashRecoveryPrompt } from '@renderer/components/diagnostics/CrashRecoveryPrompt'
+import { VpnWarningDialog } from '@renderer/components/status/VpnWarningDialog'
 
 const TanStackRouterDevtools = import.meta.env.DEV
   ? lazy(() =>
@@ -151,6 +152,7 @@ const rootRoute = createRootRoute({
           <StopSessionDialog />
           <ShareCoachMark />
           <CrashRecoveryPrompt />
+          <VpnWarningDialog />
           <ReportProblemDialog
             open={reportOpen}
             onOpenChange={setReportOpen}
@@ -212,14 +214,23 @@ const indexRoute = createRoute({
   errorComponent: RouteErrorComponent
 })
 
-// Settings
+// Settings. `section=egress` opens on the Egress setting, which the VPN warning's
+// "Set up a proxy" choice links to.
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings',
+  validateSearch: (search: Record<string, unknown>): { section?: 'egress' } => ({
+    section: search.section === 'egress' ? 'egress' : undefined
+  }),
   component: function SettingsPage() {
+    const { section } = settingsRoute.useSearch()
+    const navigate = settingsRoute.useNavigate()
     return (
       <div className="h-full p-[var(--d-pad)]">
-        <SettingsView />
+        <SettingsView
+          section={section}
+          onSectionShown={() => void navigate({ search: {}, replace: true })}
+        />
       </div>
     )
   },

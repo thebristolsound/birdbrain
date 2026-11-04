@@ -5,6 +5,7 @@ import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from '@rende
 import { AddUrlsBox } from '@renderer/components/captures/AddUrlsBox'
 import { capturesQueryOptions, useRecaptureMutations } from '@renderer/lib/queries'
 import { useAppStore } from '@renderer/stores/appStore'
+import { ContactStoppedError } from '@renderer/lib/vpnWarning'
 
 interface CaptureMenuProps {
   caseId: string
@@ -76,7 +77,11 @@ export function CaptureMenu({ caseId }: CaptureMenuProps) {
       { urls: [selectedCapture.url], supersedesCaptureId: selectedCapture.id },
       {
         onSuccess: (result) => setRecaptureError(result.rejected[0]?.reason ?? null),
-        onError: (err) => setRecaptureError(err instanceof Error ? err.message : 'Recapture failed')
+        onError: (err) => {
+          // Stopped at the VPN warning: nothing was sent, and nothing failed.
+          if (err instanceof ContactStoppedError) return
+          setRecaptureError(err instanceof Error ? err.message : 'Recapture failed')
+        }
       }
     )
   }

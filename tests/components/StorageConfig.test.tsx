@@ -79,7 +79,8 @@ const settings = {
   releaseChannel: 'stable',
   autoCheckForUpdates: false,
   egress: { kind: 'direct' },
-  sharingRelayUrl: ''
+  sharingRelayUrl: '',
+  vpnWarningMutedNetworks: []
 } satisfies BirdbrainSettings
 
 let chooseStoragePath: ReturnType<typeof vi.fn>

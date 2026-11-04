@@ -22,7 +22,7 @@ vi.mock('@renderer/components/export/ExportDialog', () => ({
 }))
 
 import { CaptureSelectionBar } from '@renderer/components/captures/CaptureSelectionBar'
-import { fakeBridge } from '../renderer/fakeBridge'
+import { fakeBridge, quietVpnWarning } from '../renderer/fakeBridge'
 import { stubMatchMedia } from './matchMediaStub'
 
 const SELECTED = ['cap-1', 'cap-2']
@@ -67,7 +67,8 @@ beforeEach(() => {
       addToCaptures,
       countsForCaptures
     },
-    recapture: { enqueueCaptures }
+    recapture: { enqueueCaptures },
+    egress: quietVpnWarning()
   })
 })
 

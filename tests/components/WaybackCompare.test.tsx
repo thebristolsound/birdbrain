@@ -6,7 +6,7 @@ import type { ReactNode } from 'react'
 import type { Capture } from '@shared/types'
 import { LEGACY_HTML_PARTITION, WAYBACK_PARTITION } from '@shared/constants'
 import { useAppStore } from '@renderer/stores/appStore'
-import { fakeBridge } from '../renderer/fakeBridge'
+import { fakeBridge, quietVpnWarning } from '../renderer/fakeBridge'
 
 const notifyError = vi.hoisted(() => vi.fn())
 
@@ -82,7 +82,8 @@ beforeEach(() => {
   }
   fakeBridge({
     wayback,
-    captures: { openExternal, getHtmlUrl: vi.fn().mockResolvedValue(LEGACY_FILE_URL) }
+    captures: { openExternal, getHtmlUrl: vi.fn().mockResolvedValue(LEGACY_FILE_URL) },
+    egress: quietVpnWarning()
   })
   useAppStore.getState().setWaybackSelection(null)
 })

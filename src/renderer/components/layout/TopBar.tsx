@@ -20,6 +20,7 @@ import { MemberCodeChip } from '@renderer/components/sharing/MemberCodeChip'
 import { youAreLine } from '@renderer/components/sharing/memberModel'
 import { membersQueryOptions } from '@renderer/lib/api/sharing'
 import { ExportMenu } from '@renderer/components/export/ExportMenu'
+import { EgressIndicator } from '@renderer/components/status/EgressIndicator'
 import { useTheme } from '@renderer/hooks/useTheme'
 import { useUpdateStatus } from '@renderer/hooks/useUpdateStatus'
 import {
@@ -191,6 +192,7 @@ export function TopBar() {
             }
           />
         )}
+        <EgressIndicator />
         <ConnectionStatus />
         <CaptureHealth />
 

@@ -350,6 +350,12 @@ export const IPC_CHANNELS = {
   UPDATES_DOWNLOAD: 'updates:download',
   UPDATES_INSTALL: 'updates:install',
 
+  // The VPN check (ADR-0032): the top-bar indicator, and the warning before a
+  // Case's first contact with a site while the Egress is Direct.
+  EGRESS_VPN_STATUS: 'egress:vpnStatus',
+  EGRESS_CHECK_VPN_WARNING: 'egress:checkVpnWarning',
+  EGRESS_ANSWER_VPN_WARNING: 'egress:answerVpnWarning',
+
   // Events (main -> renderer)
   EXPORT_PROGRESS: 'event:exportProgress',
   NEW_CAPTURE: 'event:newCapture',
@@ -449,6 +455,38 @@ export interface LaunchedBrowserPopOutEvent {
 // Extension reachability, pushed when the companion extension connects or drops.
 export interface ExtensionConnectionEvent {
   connected: boolean
+}
+
+// Whether this computer's route to the internet runs through a tunnel adapter
+// (ADR-0032). Read from the routing table only; no Manifest Entry or capture row
+// records it.
+export interface VpnStatus {
+  vpnSeen: boolean
+}
+
+// The Case a contact belongs to. A Wayback lookup names only its Capture, and
+// main resolves the Case from it.
+export type VpnWarningTarget = { caseId: string } | { captureId: string }
+
+// 'site' covers a Recapture, an added URL and a Wayback lookup; 'session' is the start of a
+// Capture Session (ADR-0032 rule 3). Each is warned once per Case, so a site warning does
+// not stand in for the session warning's caveat about the browser's route.
+export type VpnWarningOccasion = 'site' | 'session'
+
+// `canMute` is false when Birdbrain could not read the router's hardware address,
+// so it has no network to stop warning on.
+export interface VpnWarningCheck {
+  caseId: string
+  warn: boolean
+  canMute: boolean
+}
+
+export type VpnWarningChoice = 'continue' | 'mute-network'
+
+export interface VpnWarningAnswer {
+  caseId: string
+  occasion: VpnWarningOccasion
+  choice: VpnWarningChoice
 }
 
 // A subframe of an evidence guest committed a second document (#1708). Chromium
@@ -1294,6 +1332,13 @@ export interface IpcInvokeContract {
   'updates:check': { args: []; result: UpdateStatus }
   'updates:download': { args: []; result: void }
   'updates:install': { args: []; result: void }
+
+  'egress:vpnStatus': { args: []; result: VpnStatus }
+  'egress:checkVpnWarning': {
+    args: [target: VpnWarningTarget, occasion: VpnWarningOccasion]
+    result: VpnWarningCheck
+  }
+  'egress:answerVpnWarning': { args: [answer: VpnWarningAnswer]; result: void }
 }
 
 export type ContractedChannel = keyof IpcInvokeContract

@@ -105,6 +105,7 @@ export const queryKeys = {
   exportPreflight: (caseId: string, captureIds?: string[]) =>
     ['export', 'preflight', caseId, captureIds ?? null] as const,
   recaptureQueue: ['recaptureQueue'] as const,
+  vpnStatus: ['egress', 'vpnStatus'] as const,
   diagnostics: ['diagnostics'] as const,
   unreconciledDeletions: ['diagnostics', 'unreconciledDeletions'] as const,
   dbStats: ['db', 'stats'] as const,

@@ -239,7 +239,7 @@ function RecIndicator() {
       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
       <span className="text-[10px] font-medium text-danger-fg">REC</span>
       {launched?.state === 'open' && (
-        <span className="text-[10px] text-text-secondary">
+        <span className="whitespace-nowrap text-[10px] text-text-secondary">
           · {launchedBrowserName(launched.browser.label)}
         </span>
       )}

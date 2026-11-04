@@ -109,19 +109,18 @@ export interface LaunchStepLine {
 const ROUTED_STEPS: readonly LaunchedBrowserStep[] = ['proxy', 'browser', 'first-tab']
 const DIRECT_STEPS: readonly LaunchedBrowserStep[] = ['browser']
 
-function stepText(
-  step: LaunchedBrowserStep,
-  progress: StepProgress,
-  egress: string,
-  label: string
-): string {
+function stepText(step: LaunchedBrowserStep, progress: StepProgress, egress: string): string {
   const texts: Record<LaunchedBrowserStep, Record<StepProgress, string>> = {
     proxy: {
       pending: `Reach ${egress}`,
       current: `Reaching ${egress}`,
       done: `${egress} is reachable`
     },
-    browser: { pending: `Start ${label}`, current: `Starting ${label}`, done: `${label} started` },
+    browser: {
+      pending: 'Start the browser',
+      current: 'Starting the browser',
+      done: 'Browser started'
+    },
     'first-tab': {
       pending: 'Check the connection on the first tab',
       current: 'Checking the connection on the first tab',
@@ -134,7 +133,6 @@ function stepText(
 // The checklist: the proxy and the first tab are checked only while the Egress is not Direct.
 export function launchSteps(
   egress: KnownEgress,
-  label: string,
   at: LaunchedBrowserStep | 'open'
 ): LaunchStepLine[] {
   const steps = egress.kind === 'direct' ? DIRECT_STEPS : ROUTED_STEPS
@@ -142,6 +140,6 @@ export function launchSteps(
   return steps.map((step, index) => {
     const progress: StepProgress =
       index < reached ? 'done' : index === reached ? 'current' : 'pending'
-    return { step, progress, text: stepText(step, progress, egressName(egress), label) }
+    return { step, progress, text: stepText(step, progress, egressName(egress)) }
   })
 }

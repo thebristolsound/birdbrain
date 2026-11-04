@@ -166,34 +166,34 @@ describe('the refusals shown before a launch', () => {
 // The checklist (`1e`): what is done, what runs now, and what is left.
 describe('launchSteps', () => {
   it('lists the proxy, the browser and the first tab for a routed Egress', () => {
-    expect(launchSteps(PROXY, 'Google Chrome', 'browser')).toEqual([
+    expect(launchSteps(PROXY, 'browser')).toEqual([
       { step: 'proxy', progress: 'done', text: 'Proxy · Harbor relay is reachable' },
-      { step: 'browser', progress: 'current', text: 'Starting Google Chrome' },
+      { step: 'browser', progress: 'current', text: 'Starting the browser' },
       { step: 'first-tab', progress: 'pending', text: 'Check the connection on the first tab' }
     ])
-    expect(launchSteps(PROXY, 'Google Chrome', 'proxy').map(({ text }) => text)).toEqual([
+    expect(launchSteps(PROXY, 'proxy').map(({ text }) => text)).toEqual([
       'Reaching Proxy · Harbor relay',
-      'Start Google Chrome',
+      'Start the browser',
       'Check the connection on the first tab'
     ])
-    expect(launchSteps(PROXY, 'Google Chrome', 'first-tab').map(({ text }) => text)).toEqual([
+    expect(launchSteps(PROXY, 'first-tab').map(({ text }) => text)).toEqual([
       'Proxy · Harbor relay is reachable',
-      'Google Chrome started',
+      'Browser started',
       'Checking the connection on the first tab'
     ])
   })
 
   it('marks every step done once the browser is open', () => {
-    expect(launchSteps(PROXY, 'Google Chrome', 'open')).toEqual([
+    expect(launchSteps(PROXY, 'open')).toEqual([
       { step: 'proxy', progress: 'done', text: 'Proxy · Harbor relay is reachable' },
-      { step: 'browser', progress: 'done', text: 'Google Chrome started' },
+      { step: 'browser', progress: 'done', text: 'Browser started' },
       { step: 'first-tab', progress: 'done', text: 'First tab checked' }
     ])
   })
 
   it('has only the browser to start while the Egress is Direct', () => {
-    expect(launchSteps(DIRECT, 'Brave', 'browser')).toEqual([
-      { step: 'browser', progress: 'current', text: 'Starting Brave' }
+    expect(launchSteps(DIRECT, 'browser')).toEqual([
+      { step: 'browser', progress: 'current', text: 'Starting the browser' }
     ])
   })
 })

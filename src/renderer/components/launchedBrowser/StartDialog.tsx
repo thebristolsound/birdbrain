@@ -13,6 +13,7 @@ import {
   launchedBrowsersQueryOptions
 } from '@renderer/lib/api/launchedBrowser'
 import { useAppStore } from '@renderer/stores/appStore'
+import { cn } from '@renderer/lib/utils'
 import { InfoTip } from '@renderer/components/launchedBrowser/InfoTip'
 import {
   NO_BROWSER_REFUSAL,
@@ -237,22 +238,25 @@ export function StartDialog() {
                 />
               )}
               <div className="mt-3 flex items-center gap-2 border-t border-border pt-2.5">
-                <span className="text-[11px] text-text-muted">
+                <span className="min-w-0 flex-1 text-[11px] text-text-muted">
                   {sessionActive
                     ? `Joins the running Capture Session in ${caseName}.`
                     : `Starts a Capture Session in ${caseName}.`}
                 </span>
-                <span className="flex-1" />
-                <Button variant="outline" onClick={dismiss}>
+                <Button variant="outline" className="shrink-0 whitespace-nowrap" onClick={dismiss}>
                   Cancel
                 </Button>
                 {settings && !operatorName && (
-                  <Button variant="outline" onClick={setOperatorName}>
+                  <Button
+                    variant="outline"
+                    className="shrink-0 whitespace-nowrap"
+                    onClick={setOperatorName}
+                  >
                     Set operator name
                   </Button>
                 )}
                 <Button
-                  className="font-semibold text-accent-foreground"
+                  className="shrink-0 whitespace-nowrap font-semibold text-accent-foreground"
                   disabled={!canLaunch}
                   onClick={() => void launch()}
                 >
@@ -267,9 +271,10 @@ export function StartDialog() {
   )
 }
 
-function optionText({ label, lastVersion, chosen, executablePath }: LaunchedBrowserOption): string {
-  const name = chosen ? `${label} · ${executablePath}` : label
-  return lastVersion ? `${name} ${lastVersion}` : name
+// The version shows under the choice, with what it is from. A chosen executable names its path,
+// which tells it from a found browser of the same product.
+function optionText({ label, chosen, executablePath }: LaunchedBrowserOption): string {
+  return chosen ? `${label} · ${executablePath}` : label
 }
 
 function EgressValue({ egress }: { egress: KnownEgress }) {
@@ -293,6 +298,9 @@ function EgressValue({ egress }: { egress: KnownEgress }) {
   )
 }
 
+// A refusal in the danger triple's left rule, as `1j` draws states 1 to 3. State 4 refuses
+// nothing that went wrong, so it is drawn without the rule. The canvas's state numbers label its
+// catalogue and are not shown.
 function RefusalCard({
   refusal: { state, title, detail },
   onShowPanel
@@ -303,15 +311,13 @@ function RefusalCard({
   return (
     <div
       role="status"
-      className="mt-3 flex items-center gap-2 rounded border border-l-[3px] border-border border-l-danger-fg bg-card px-2.5 py-[7px]"
+      className={cn(
+        'mt-3 flex items-center gap-2 rounded border border-border bg-card px-2.5 py-[7px]',
+        state !== 4 && 'border-l-[3px] border-l-danger-fg'
+      )}
     >
       <div className="min-w-0 flex-1">
-        <div className="font-semibold text-text-primary">
-          {state && (
-            <span className="font-mono text-[10px] font-normal text-text-faint">{state} · </span>
-          )}
-          {title}
-        </div>
+        <div className="font-semibold text-text-primary">{title}</div>
         <div className="text-text-muted">{detail}</div>
       </div>
       {onShowPanel && (
@@ -333,15 +339,15 @@ function LaunchChecklist({
 }: {
   browser: LaunchedBrowserOption
   egress: KnownEgress
-  at: Parameters<typeof launchSteps>[2] | undefined
+  at: Parameters<typeof launchSteps>[1] | undefined
   cancelling: boolean
   cancelError: string
   onCancel: () => void
 }) {
-  const lines = launchSteps(egress, browser.label, at ?? 'proxy')
+  const lines = launchSteps(egress, at ?? 'proxy')
   return (
     <div className="mt-3 flex flex-col gap-1.5">
-      <div className="font-semibold text-text-primary">Starting {browser.label}…</div>
+      <div className="font-semibold text-text-primary">Launching {browser.label}…</div>
       <ul aria-label="Launch checks" className="flex flex-col gap-1.5">
         {lines.map(({ step, progress, text }) => {
           const { mark, className } = STEP_MARKS[progress]

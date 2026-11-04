@@ -139,7 +139,7 @@ describe('StartDialog (S2)', () => {
     mount()
     open()
     const body = await dialog()
-    await within(body).findByRole('option', { name: 'Google Chrome 149.0.7827.55' })
+    await within(body).findByRole('option', { name: 'Google Chrome' })
     expect(within(body).getByRole('option', { name: 'Brave' })).toBeDefined()
     expect(body.textContent).toContain('Starts a Capture Session in Ferry Line.')
     await waitFor(() => expect(body.textContent).toContain('Proxy · Harbor relay'))
@@ -170,10 +170,20 @@ describe('StartDialog (S2)', () => {
   })
 
   it('shows the version from the last launch, or none', async () => {
-    mount()
+    const chosen: LaunchedBrowserOption = {
+      ...BRAVE,
+      executablePath: '/opt/brave-origin-bin/brave',
+      label: 'Brave Origin',
+      chosen: true
+    }
+    mount({ browsers: [CHROME, BRAVE, chosen] })
     open()
     const body = await dialog()
     expect(await within(body).findByText('from its last launch')).toBeDefined()
+    expect(within(body).getByText('149.0.7827.55')).toBeDefined()
+    expect(
+      within(body).getByRole('option', { name: 'Brave Origin · /opt/brave-origin-bin/brave' })
+    ).toBeDefined()
     fireEvent.change(within(body).getByRole('combobox', { name: 'Browser' }), {
       target: { value: BRAVE.executablePath }
     })
@@ -198,6 +208,7 @@ describe('StartDialog (S2)', () => {
     open()
     const body = await dialog()
     const card = await within(body).findByRole('status')
+    expect(card.className).toContain('border-l-danger-fg')
     expect(card.textContent).toContain('No supported browser found')
     expect(card.textContent).toContain('Choose one in Settings → Capture.')
     expect(launchButton('Launch').disabled).toBe(true)
@@ -210,6 +221,10 @@ describe('StartDialog (S2)', () => {
     const card = await within(body).findByRole('status')
     expect(card.textContent).toContain('A launched browser is already open')
     expect(card.textContent).toContain('Only one can be open at a time.')
+    // The canvas numbers its states for its catalogue; the app shows no number, and state 4
+    // refuses nothing that went wrong, so it has no danger rule.
+    expect(card.textContent).not.toMatch(/^\d/)
+    expect(card.className).not.toContain('border-l-danger-fg')
     expect(launchButton('Launch').disabled).toBe(true)
     fireEvent.click(within(card).getByRole('button', { name: 'Show panel' }))
     expect(navigate).toHaveBeenCalledWith({
@@ -259,7 +274,7 @@ describe('StartDialog (S2)', () => {
     await within(body).findByRole('option', { name: 'Brave' })
     fireEvent.click(launchButton('Launch'))
     const checks = await within(body).findByRole('list', { name: 'Launch checks' })
-    expect(body.textContent).toContain('Starting Google Chrome…')
+    expect(body.textContent).toContain('Launching Google Chrome…')
     expect(checks.textContent).toContain('Reaching Proxy · Harbor relay')
 
     act(() =>
@@ -277,7 +292,7 @@ describe('StartDialog (S2)', () => {
           .map((item) => item.textContent)
       ).toEqual([
         '✓Proxy · Harbor relay is reachable',
-        '✓Google Chrome started',
+        '✓Browser started',
         '◌Checking the connection on the first tab'
       ])
     )

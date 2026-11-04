@@ -640,7 +640,7 @@ describe('the Egress checks in a launch', () => {
   })
 
   // The popup's Network.enable fails while the browser still lists it, or lists only the first tab.
-  function popupUnwatched(open: string[]): FakeBrowserOptions['respond'] {
+  function popupUnwatched(open: string[]): (command: SentCommand) => FakeReply | undefined {
     return (command) => {
       const { method, sessionId } = command
       if (method === 'Network.enable' && sessionId === 'session-2') {

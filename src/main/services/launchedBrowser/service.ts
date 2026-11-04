@@ -3,6 +3,7 @@ import type {
   EgressSetting,
   LaunchedBrowserNotice,
   LaunchedBrowserStatus,
+  LaunchedBrowserStep,
   LaunchedBrowserSummary
 } from '@shared/types'
 import { logger, type Logger } from '@main/services/logger'
@@ -51,6 +52,9 @@ export interface LaunchedBrowserService {
   // Stops the Capture Session and settles once the launched browser has exited, or Birdbrain
   // has given up on it.
   endCaptureSession: () => Promise<void>
+  // Stops a launch that is still starting, which then fails as cancelled. A running Capture
+  // Session keeps running, and an open browser stays open.
+  cancelLaunch: () => void
   // The session service's onSessionEnded.
   sessionEnded: () => void
   // SIGKILL with nothing to await, for quitting: Electron does not await before-quit.
@@ -58,12 +62,13 @@ export interface LaunchedBrowserService {
   dispose: () => void
 }
 
-type AbortReason = 'session' | 'egress' | 'quit'
+type AbortReason = 'session' | 'egress' | 'quit' | 'cancel'
 
 interface Attempt {
   controller: AbortController
   abortReason: AbortReason | null
   summary: LaunchedBrowserSummary
+  step: LaunchedBrowserStep
   // Set once the launch resolves, until the process exits.
   browser: LaunchedBrowser | null
   closing: Promise<void> | null
@@ -114,7 +119,15 @@ export function createLaunchedBrowserService(
   }
 
   function show(attempt: Attempt, state: 'starting' | 'open' | 'closing'): void {
-    if (active === attempt) setStatus({ state, browser: attempt.summary })
+    if (active !== attempt) return
+    const { summary: browser, step } = attempt
+    setStatus(state === 'starting' ? { state, browser, step } : { state, browser })
+  }
+
+  function reach(attempt: Attempt, step: LaunchedBrowserStep): void {
+    if (attempt.step === step) return
+    attempt.step = step
+    if (current.state === 'starting') show(attempt, 'starting')
   }
 
   // The attempt gives up the slot and the pin. `closed` keeps its summary for the panel.
@@ -236,12 +249,22 @@ export function createLaunchedBrowserService(
     let launched: LaunchedBrowser
     try {
       guard = await prepareEgress(egress, label)
+      reach(attempt, 'browser')
+      const { checkFirstTab } = guard.hooks
+      const firstTab: LaunchHooks = checkFirstTab
+        ? {
+            checkFirstTab: (tab) => {
+              reach(attempt, 'first-tab')
+              return checkFirstTab(tab)
+            }
+          }
+        : {}
       launched = await launch({
         browser: found,
         egress: guard.egress,
         sessionDataPath,
         signal: attempt.controller.signal,
-        hooks: { ...guard.hooks, ...hooks }
+        hooks: { ...guard.hooks, ...hooks, ...firstTab }
       })
     } catch (error) {
       throw failed(attempt, error)
@@ -324,6 +347,7 @@ export function createLaunchedBrowserService(
         version: null,
         extensionWarnings: []
       },
+      step: egress.kind === 'direct' ? 'browser' : 'proxy',
       browser: null,
       closing: null,
       notice: undefined,
@@ -351,6 +375,10 @@ export function createLaunchedBrowserService(
       session.stop()
       sessionEnded()
       if (attempt) await (attempt.closing ?? attempt.settled)
+    },
+    cancelLaunch: () => {
+      const attempt = active
+      if (attempt && !attempt.browser) abort(attempt, 'cancel')
     },
     sessionEnded,
     killForQuit: () => {

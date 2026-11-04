@@ -125,9 +125,14 @@ export interface LaunchedBrowserNotice {
   message: string
 }
 
+// Where a launch has got to, for the start dialog's checklist: the proxy check (not Direct),
+// starting the browser until its first tab is found, and the checks on that tab (not Direct).
+export type LaunchedBrowserStep = 'proxy' | 'browser' | 'first-tab'
+
 export type LaunchedBrowserStatus =
   | { state: 'none'; notice?: LaunchedBrowserNotice }
-  | { state: 'starting' | 'open' | 'closing' | 'closed'; browser: LaunchedBrowserSummary }
+  | { state: 'starting'; browser: LaunchedBrowserSummary; step: LaunchedBrowserStep }
+  | { state: 'open' | 'closing' | 'closed'; browser: LaunchedBrowserSummary }
 
 // A browser a launch can start, as Settings and the start dialog list it: one discovery found,
 // or the executable the Operator chose (`chosen`). Discovery starts no browser to ask its

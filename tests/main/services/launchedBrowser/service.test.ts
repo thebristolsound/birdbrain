@@ -404,6 +404,150 @@ describe('a launch that fails', () => {
   })
 })
 
+// The start dialog's checklist (`1e`) reads these steps.
+describe('the steps of a launch', () => {
+  function steps(statuses: LaunchedBrowserStatus[]): string[] {
+    return statuses.map((status) =>
+      status.state === 'starting' ? `starting:${status.step}` : status.state
+    )
+  }
+
+  it('reaches the proxy, starts the browser, then checks its first tab', async () => {
+    const h = harness({ egress: PROXY })
+    h.session.activateCase('case-1')
+    await h.service.launch(CHROME)
+    expect(steps(h.statuses)).toEqual([
+      'starting:proxy',
+      'starting:browser',
+      'starting:first-tab',
+      'open'
+    ])
+    await h.service.endCaptureSession()
+  })
+
+  it('has only the browser to start while the Egress is Direct', async () => {
+    const h = harness()
+    h.session.activateCase('case-1')
+    await h.service.launch(CHROME)
+    expect(steps(h.statuses)).toEqual(['starting:browser', 'open'])
+    await h.service.endCaptureSession()
+  })
+
+  it('keeps the step when an extension warning changes the status', async () => {
+    const h = harness({
+      egress: PROXY,
+      browser: {
+        respond: webRtc(0, ({ method, sessionId }) => {
+          if (method === 'Target.setAutoAttach' && !sessionId) {
+            h.browser().event('Target.targetCreated', {
+              targetInfo: targetInfo(
+                'extension',
+                'service_worker',
+                `chrome-extension://${EXTENSION_ID}/background.js`
+              )
+            })
+          }
+          return undefined
+        })
+      }
+    })
+    h.session.activateCase('case-1')
+    await h.service.launch(CHROME)
+    const warned = h.statuses.find(
+      (status) => status.state === 'starting' && status.browser.extensionWarnings.length > 0
+    )
+    expect(warned).toMatchObject({ state: 'starting', step: 'browser' })
+    await h.service.endCaptureSession()
+  })
+})
+
+describe('cancelling a launch', () => {
+  it('kills a browser that is starting and starts no Capture Session', async () => {
+    const h = harness({
+      browser: {
+        respond: ({ method }) => {
+          if (method === 'Browser.getVersion') h.service.cancelLaunch()
+          return undefined
+        }
+      }
+    })
+    h.session.activateCase('case-1')
+    const error = await h.service.launch(CHROME).catch((err: unknown) => err)
+    expect(codeOf(error)).toBe('BROWSER_LAUNCH_CANCELLED')
+    expect((error as Error).message).toBe('The launch was cancelled.')
+    expect(h.browser().signals).toContain('SIGKILL')
+    expect(h.session.snapshot().sessionActive).toBe(false)
+    expect(h.service.status()).toEqual({ state: 'none' })
+    expect(sessionFolders()).toEqual([])
+    expect(h.log.warn).not.toHaveBeenCalled()
+  })
+
+  it('spawns nothing when the cancel comes during the proxy check', async () => {
+    const h = harness({
+      egress: PROXY,
+      egressChecks: {
+        connect: async () => {
+          h.service.cancelLaunch()
+        }
+      }
+    })
+    h.session.activateCase('case-1')
+    const error = await h.service.launch(CHROME).catch((err: unknown) => err)
+    expect(codeOf(error)).toBe('BROWSER_LAUNCH_CANCELLED')
+    expect(h.fakes.flatMap(({ calls }) => calls)).toEqual([])
+    expect(h.service.status()).toEqual({ state: 'none' })
+  })
+
+  // Unlike endCaptureSession, which a join would end with it.
+  it('leaves a running Capture Session running', async () => {
+    const h = harness({
+      browser: {
+        respond: ({ method }) => {
+          if (method === 'Browser.getVersion') h.service.cancelLaunch()
+          return undefined
+        }
+      }
+    })
+    h.session.activateCase('case-1')
+    h.session.start()
+    const error = await h.service.launch(CHROME).catch((err: unknown) => err)
+    expect(codeOf(error)).toBe('BROWSER_LAUNCH_CANCELLED')
+    expect(h.session.snapshot()).toMatchObject({ activeCaseId: 'case-1', sessionActive: true })
+    h.session.activateCase('case-2')
+    expect(h.session.snapshot().activeCaseId).toBe('case-2')
+  })
+
+  it('closes a browser whose cancel came as its held tabs resumed', async () => {
+    const popup = targetInfo('popup', 'page', '')
+    const h = harness({
+      browser: {
+        respond: ({ method, sessionId }) => {
+          if (method === 'Target.setAutoAttach' && !sessionId) h.browser().attach(popup)
+          if (method === 'Runtime.runIfWaitingForDebugger') h.service.cancelLaunch()
+          return undefined
+        }
+      }
+    })
+    h.session.activateCase('case-1')
+    const error = await h.service.launch(CHROME).catch((err: unknown) => err)
+    expect((error as Error).message).toBe('The launch was cancelled.')
+    expect(h.browser().methods()).toContain('Browser.close')
+    expect(h.browser().exited).toBe(true)
+    expect(h.session.snapshot().sessionActive).toBe(false)
+    expect(sessionFolders()).toEqual([])
+  })
+
+  it('leaves an open browser open', async () => {
+    const h = harness()
+    h.session.activateCase('case-1')
+    await h.service.launch(CHROME)
+    h.service.cancelLaunch()
+    expect(h.service.status().state).toBe('open')
+    expect(h.browser().exited).toBe(false)
+    await h.service.endCaptureSession()
+  })
+})
+
 describe('the Capture Session and the browser', () => {
   it.each([
     ['stopping the Capture Session', 'stop'],
@@ -575,7 +719,10 @@ describe('extensions while the Egress is not Direct (D14)', () => {
     h.session.activateCase('case-1')
     await h.service.launch(CHROME)
     h.browser().event('Target.targetCreated', extensionTarget)
-    await until(() => h.statuses.at(-1)?.state === 'open' && h.statuses.length > 2)
+    await until(() => {
+      const status = h.service.status()
+      return status.state === 'open' && status.browser.extensionWarnings.length > 0
+    })
     expect(h.service.status()).toMatchObject({
       state: 'open',
       browser: { extensionWarnings: [EXTENSION_ID] }

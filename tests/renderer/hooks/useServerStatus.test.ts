@@ -282,10 +282,11 @@ describe('useServerStatus', () => {
       version: null,
       extensionWarnings: []
     }
-    act(() => handlers.launchedBrowser?.({ state: 'starting', browser }))
+    act(() => handlers.launchedBrowser?.({ state: 'starting', browser, step: 'browser' }))
     expect(queryClient.getQueryData(queryKeys.launchedBrowserStatus)).toEqual({
       state: 'starting',
-      browser
+      browser,
+      step: 'browser'
     })
     expect(invalidate).not.toHaveBeenCalled()
     // An open browser has had its version saved, which the found-browsers list shows.

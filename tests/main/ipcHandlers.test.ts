@@ -559,6 +559,7 @@ describe('ipcHandlers — launched browser (#1831)', () => {
       status: vi.fn((): LaunchedBrowserStatus => ({ state: 'none' })),
       launch: vi.fn(async () => OPEN),
       endCaptureSession: vi.fn(async () => {}),
+      cancelLaunch: vi.fn(),
       sessionEnded: vi.fn(),
       killForQuit: vi.fn(),
       dispose: vi.fn(),

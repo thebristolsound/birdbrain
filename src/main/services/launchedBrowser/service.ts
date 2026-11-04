@@ -309,13 +309,29 @@ export function createLaunchedBrowserService(
       log.warn('launchedBrowser', 'launchedBrowser.version_save_failed', undefined, error)
     }
     guard.enforce(launched, (error) => {
-      log.warn('launchedBrowser', 'launchedBrowser.egress_bypass', undefined, error)
-      endSession(attempt, {
-        code: 'EGRESS_BYPASS',
-        message:
-          `A response in ${label} did not come through the Egress proxy, so Birdbrain ended ` +
-          'the Capture Session and closed the browser.'
-      })
+      const unwatched = (error as { code?: unknown }).code === 'EGRESS_UNWATCHED'
+      log.warn(
+        'launchedBrowser',
+        unwatched ? 'launchedBrowser.target_unwatched' : 'launchedBrowser.egress_bypass',
+        undefined,
+        error
+      )
+      endSession(
+        attempt,
+        unwatched
+          ? {
+              code: 'EGRESS_UNWATCHED',
+              message:
+                `Birdbrain could not watch the responses of a tab in ${label}, so it ended ` +
+                'the Capture Session and closed the browser.'
+            }
+          : {
+              code: 'EGRESS_BYPASS',
+              message:
+                `A response in ${label} did not come through the Egress proxy, so Birdbrain ` +
+                'ended the Capture Session and closed the browser.'
+            }
+      )
     })
     show(attempt, 'open')
     return current

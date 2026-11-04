@@ -639,6 +639,70 @@ describe('the Egress checks in a launch', () => {
     expect(browser.signals).toEqual(['SIGKILL'])
   })
 
+  // The popup's Network.enable fails while the browser still lists it, or lists only the first tab.
+  function popupUnwatched(open: string[]): FakeBrowserOptions['respond'] {
+    return (command) => {
+      const { method, sessionId } = command
+      if (method === 'Network.enable' && sessionId === 'session-2') {
+        return { error: { message: 'Not allowed' } }
+      }
+      if (method === 'Target.getTargets') {
+        return { result: { targetInfos: open.map((id) => targetInfo(id)) } }
+      }
+      return webRtcCount(0)(command)
+    }
+  }
+
+  it('closes the browser when a tab stays open after its setup failed, naming the failure', async () => {
+    const { browser, guard, launching } = await launchGuarded({
+      respond: popupUnwatched(['first-tab', 'popup'])
+    })
+    const launched = await launching
+    const onBypass = vi.fn()
+    guard.enforce(launched, onBypass)
+    browser.attach(targetInfo('popup', 'page', ''), { waiting: true })
+    await settle()
+    expect(onBypass).toHaveBeenCalledTimes(1)
+    const [error, closing] = onBypass.mock.calls[0] as [Error, Promise<unknown>]
+    expect(codeOf(error)).toBe('EGRESS_UNWATCHED')
+    expect(error.message).toBe(
+      'Birdbrain could not watch the responses of a tab in Google Chrome ' +
+        '(Network.enable failed: Not allowed), so it closed the browser.'
+    )
+    await expect(closing).resolves.toMatchObject({ code: 0 })
+  })
+
+  it('keeps the browser open when the tab that failed its setup has closed', async () => {
+    const { browser, guard, launching } = await launchGuarded({
+      respond: popupUnwatched(['first-tab'])
+    })
+    const launched = await launching
+    const onBypass = vi.fn()
+    guard.enforce(launched, onBypass)
+    browser.attach(targetInfo('popup', 'page', ''), { waiting: true })
+    await settle()
+    expect(onBypass).not.toHaveBeenCalled()
+    await launched.stop()
+  })
+
+  it('refuses the launch when a held tab fails its setup during the first-tab check', async () => {
+    const ref: { browser?: FakeBrowserProcess } = {}
+    const { browser, launching } = await launchGuarded({
+      respond: (command) => {
+        if (command.method === 'Page.createIsolatedWorld') {
+          ref.browser?.attach(targetInfo('popup', 'page', ''), { waiting: true })
+        }
+        // The check never answers, so only the unwatched tab can end it.
+        if (command.method === 'Runtime.evaluate') return 'silent'
+        return popupUnwatched(['first-tab', 'popup'])(command)
+      }
+    })
+    ref.browser = browser
+    const error = await launching.catch((err: unknown) => err)
+    expect(codeOf(error)).toBe('EGRESS_UNWATCHED')
+    expect(browser.signals).toEqual(['SIGKILL'])
+  })
+
   it('reports a bypass seen before enforce was called', async () => {
     const { browser, guard, launching } = await launchGuarded()
     const launched = await launching

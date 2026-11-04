@@ -289,8 +289,9 @@ Birdbrain makes these outbound connections:
   browser's own background connections, such as Chrome's to Google. Under Direct, all of it
   leaves from your connection. The browser follows the Egress setting and fails closed: under a
   proxy or Tor, Birdbrain does not start it when the proxy accepts no connection, and closes it
-  when a check finds its WebRTC or a page's response going around the proxy. Birdbrain controls
-  it through a pipe, not a debugging port, so no other program can connect to it and control it
+  when a check finds its WebRTC or a page's response going around the proxy, or when a tab stays
+  open whose responses Birdbrain could not watch. Birdbrain controls it through a pipe, not a
+  debugging port, so no other program can connect to it and control it
 
 [SECURITY.md](https://github.com/thebristolsound/birdbrain/blob/main/SECURITY.md) lists the
 fixed hosts. If you work through a VPN or Tor, route the whole machine through it.

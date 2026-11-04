@@ -65,6 +65,8 @@ export function noticeCard({ code, message }: LaunchedBrowserNotice): NoticeCard
   switch (code) {
     case 'EGRESS_BYPASS':
       return { title: 'Browser closed: traffic went around the proxy', detail: ENDED, tip: message }
+    case 'EGRESS_UNWATCHED':
+      return { title: 'Browser closed: a tab could not be watched', detail: ENDED, tip: message }
     case 'EGRESS_CHANGED':
       return { title: 'Browser closed: the Egress changed', detail: ENDED, tip: message }
     case 'BROWSER_DID_NOT_EXIT':

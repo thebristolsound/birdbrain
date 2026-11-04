@@ -92,6 +92,9 @@ export interface LaunchHooks {
   // A recorded target's session, before it is resumed, so its first response can be read.
   onRecordedSession?: (session: CdpSession, target: TargetInfo) => void
   onTargetSetupFailed?: (target: TargetInfo, error: Error) => void
+  // A recorded target still open after its Network or auto-attach setup failed: it browses, and
+  // its responses go unseen. Not called for a target the browser confirms has closed.
+  onTargetUnwatched?: (target: TargetInfo, error: Error) => void
   // An extension other than the browser's own components, while the Egress is not Direct.
   onExtensionWarning?: (extensionId: string) => void
   // The tab list, each time a tab opens, closes, or changes its title or URL.
@@ -307,8 +310,30 @@ export async function launchBrowser(
   })
   let firstTabTaken = false
 
+  function errorOf(error: unknown): Error {
+    return error instanceof Error ? error : new Error(String(error))
+  }
+
   function reportFailure(target: TargetInfo, error: unknown): void {
-    hooks.onTargetSetupFailed?.(target, error instanceof Error ? error : new Error(String(error)))
+    hooks.onTargetSetupFailed?.(target, errorOf(error))
+  }
+
+  // The setup is pipelined with the resume, so a target whose Network.enable or auto-attach
+  // failed may already be browsing with no response events. The browser's target list says
+  // whether it is still open; a list that cannot be read counts it as open (fail closed).
+  async function reportUnwatched(target: TargetInfo, error: unknown): Promise<void> {
+    reportFailure(target, error)
+    const { onTargetUnwatched } = hooks
+    if (!onTargetUnwatched) return
+    const code = (error as { code?: unknown } | null)?.code
+    if (code === 'CDP_SESSION_DETACHED' || code === 'CDP_DISCONNECTED') return
+    try {
+      const { targetInfos } = await client.send('Target.getTargets', {})
+      if (!targetInfos.some(({ targetId }) => targetId === target.targetId)) return
+    } catch (listError) {
+      if ((listError as { code?: unknown } | null)?.code === 'CDP_DISCONNECTED') return
+    }
+    onTargetUnwatched(target, errorOf(error))
   }
 
   function resume(
@@ -331,18 +356,18 @@ export async function launchBrowser(
     waiting: boolean,
     nested: boolean,
     isFirstTab: boolean
-  ): Promise<unknown> {
+  ): { watched: Promise<unknown>; resumed: Promise<unknown> } {
     hooks.onRecordedSession?.(session, target)
     if (nested) {
       session.on('Target.attachedToTarget', (params) => onAttached(params, true))
     }
     // Written together, so the resume never waits on an answer (probe P4).
-    const steps = [
+    const watched = Promise.all([
       session.send('Network.enable', NETWORK_LIMITS),
-      ...(nested ? [session.send('Target.setAutoAttach', AUTO_ATTACH)] : []),
-      resume(session, target, waiting, isFirstTab)
-    ]
-    return Promise.all(steps)
+      ...(nested ? [session.send('Target.setAutoAttach', AUTO_ATTACH)] : [])
+    ])
+    const resumed = resume(session, target, waiting, isFirstTab)
+    return { watched, resumed }
   }
 
   function onAttached(
@@ -360,12 +385,20 @@ export async function launchBrowser(
     }
     const isFirstTab = !underRecordedTarget && !firstTabTaken && url === START_URL
     if (isFirstTab) firstTabTaken = true
-    const ready = record(session, targetInfo, waitingForDebugger, type !== 'worker', isFirstTab)
+    const { watched, resumed } = record(
+      session,
+      targetInfo,
+      waitingForDebugger,
+      type !== 'worker',
+      isFirstTab
+    )
     if (isFirstTab) {
+      const ready = Promise.all([watched, resumed])
       ready.catch(() => {})
       resolveFirstTab({ tab: { targetId: targetInfo.targetId, session }, ready })
     } else {
-      ready.catch((error) => reportFailure(targetInfo, error))
+      watched.catch((error) => void reportUnwatched(targetInfo, error))
+      resumed.catch((error) => reportFailure(targetInfo, error))
     }
   }
 

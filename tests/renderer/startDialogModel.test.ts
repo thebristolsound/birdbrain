@@ -98,16 +98,18 @@ describe('refusalFor', () => {
     })
   })
 
-  it.each(['EGRESS_WEBRTC_CANDIDATE', 'EGRESS_WEBRTC_UNCHECKED', 'EGRESS_BYPASS'])(
-    'says a connection check closed the browser for %s',
-    (code) => {
-      const message = 'Google Chrome is not keeping WebRTC on the Egress proxy.'
-      expect(refusalFor(coded(message, code), 'Google Chrome', PROXY)).toEqual({
-        title: 'Browser closed by a connection check',
-        detail: message
-      })
-    }
-  )
+  it.each([
+    'EGRESS_WEBRTC_CANDIDATE',
+    'EGRESS_WEBRTC_UNCHECKED',
+    'EGRESS_BYPASS',
+    'EGRESS_UNWATCHED'
+  ])('says a connection check closed the browser for %s', (code) => {
+    const message = 'Google Chrome is not keeping WebRTC on the Egress proxy.'
+    expect(refusalFor(coded(message, code), 'Google Chrome', PROXY)).toEqual({
+      title: 'Browser closed by a connection check',
+      detail: message
+    })
+  })
 
   it('points an unreadable Egress at the Operator tab', () => {
     const error = coded('The Egress setting could not be read', 'EGRESS_UNAVAILABLE')

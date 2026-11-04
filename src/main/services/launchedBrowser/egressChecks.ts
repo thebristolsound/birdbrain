@@ -47,7 +47,7 @@ export interface EgressGuard {
   // The Egress the checks ran against, for the launch to use: it is fixed for the browser's life.
   egress: KnownEgress
   proxy: ProxyEndpoint | null
-  hooks: Pick<LaunchHooks, 'checkFirstTab' | 'onRecordedSession'>
+  hooks: Pick<LaunchHooks, 'checkFirstTab' | 'onRecordedSession' | 'onTargetUnwatched'>
   // After the launch: the first response from outside the proxy, including one that arrived
   // before this call, closes `browser` and then reports.
   enforce: (
@@ -286,6 +286,16 @@ export async function prepareEgressChecks(
       checkFirstTab: (tab) => Promise.race([checkWebRtc(tab, label, iceGatherMs), bypassed]),
       onRecordedSession: (session) => {
         session.on('Network.responseReceived', onResponse)
+      },
+      // A tab that stays open with no response events cannot be checked, so it fails closed.
+      onTargetUnwatched: (_target, error) => {
+        reportBypass(
+          codedError(
+            `Birdbrain could not watch the responses of a tab in ${label} ` +
+              `(${messageOf(error)}), so it closed the browser.`,
+            'EGRESS_UNWATCHED'
+          )
+        )
       }
     },
     enforce: (browser, onBypass) => {

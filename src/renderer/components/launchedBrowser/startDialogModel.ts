@@ -90,6 +90,7 @@ export function refusalFor(error: unknown, label: string, egress: KnownEgress): 
     case 'EGRESS_WEBRTC_CANDIDATE':
     case 'EGRESS_WEBRTC_UNCHECKED':
     case 'EGRESS_BYPASS':
+    case 'EGRESS_UNWATCHED':
       return { title: 'Browser closed by a connection check', detail: message }
     case 'EGRESS_UNAVAILABLE':
       return UNREADABLE_EGRESS_REFUSAL

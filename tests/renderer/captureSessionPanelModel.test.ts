@@ -72,6 +72,16 @@ describe('noticeCard', () => {
     })
   })
 
+  it('names a tab that could not be watched', () => {
+    expect(
+      noticeCard({ code: 'EGRESS_UNWATCHED', message: 'Birdbrain could not watch the responses…' })
+    ).toEqual({
+      title: 'Browser closed: a tab could not be watched',
+      detail: 'The Capture Session ended.',
+      tip: 'Birdbrain could not watch the responses…'
+    })
+  })
+
   it('names an Egress change', () => {
     expect(noticeCard({ code: 'EGRESS_CHANGED', message: 'The Egress changed, so…' })).toEqual({
       title: 'Browser closed: the Egress changed',

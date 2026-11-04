@@ -1111,13 +1111,15 @@ export const LOG_CODES = [
   'sharing.sync_start_failed',
   'sharing.case_sync_failed',
   // The launched browser (#1831): a launch that failed, with its error code; a Capture Session
-  // Birdbrain ended because a response bypassed the Egress proxy, or because the Egress
-  // changed; a browser that did not exit after the kill; a throwaway profile left on disk; a
-  // tab whose setup failed; and a launch version Settings could not save. From the startup
-  // sweep: the leftover profiles it removed, one it could not read or remove, and a browser from
-  // an earlier run still running.
+  // Birdbrain ended because a response bypassed the Egress proxy, because a tab stayed open
+  // after its setup failed and so sent no responses to check, or because the Egress changed; a
+  // browser that did not exit after the kill; a throwaway profile left on disk; a tab whose
+  // setup failed; and a launch version Settings could not save. From the startup sweep: the
+  // leftover profiles it removed, one it could not read or remove, and a browser from an earlier
+  // run still running.
   'launchedBrowser.launch_failed',
   'launchedBrowser.egress_bypass',
+  'launchedBrowser.target_unwatched',
   'launchedBrowser.egress_changed',
   'launchedBrowser.stop_failed',
   'launchedBrowser.profile_remove_failed',

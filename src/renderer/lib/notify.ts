@@ -246,6 +246,8 @@ const CODE_LABELS: Record<LogCode, string> = {
   'launchedBrowser.egress_bypass':
     'Ended the Capture Session: a response in the launched browser did not come through the ' +
     'Egress proxy',
+  'launchedBrowser.target_unwatched':
+    'Ended the Capture Session: a tab in the launched browser could not be watched',
   'launchedBrowser.egress_changed':
     'Ended the Capture Session and closed the launched browser because the Egress changed',
   'launchedBrowser.stop_failed': 'The launched browser did not exit after Birdbrain killed it',

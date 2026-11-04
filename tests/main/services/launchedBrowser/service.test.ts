@@ -837,6 +837,61 @@ describe('a tab whose setup fails', () => {
     expect(h.service.status().state).toBe('open')
     await h.service.endCaptureSession()
   })
+
+  // Under a proxy the popup's Network.enable fails; the browser lists `open` afterwards.
+  function unwatchedPopup(open: string[]) {
+    return harness({
+      egress: PROXY,
+      browser: {
+        respond: webRtc(0, ({ method, sessionId }) => {
+          if (method === 'Network.enable' && sessionId === 'session-2') {
+            return { error: { message: 'Not allowed' } }
+          }
+          if (method === 'Target.getTargets') {
+            return { result: { targetInfos: open.map((id) => targetInfo(id)) } }
+          }
+          return undefined
+        })
+      }
+    })
+  }
+
+  it('ends the Capture Session and closes the browser when the tab stays open under a proxy', async () => {
+    const h = unwatchedPopup(['first-tab', 'popup'])
+    h.session.activateCase('case-1')
+    await h.service.launch(CHROME)
+    h.browser().attach(targetInfo('popup', 'page', ''))
+    await until(() => h.service.status().state === 'none')
+    expect(h.session.snapshot().sessionActive).toBe(false)
+    expect(h.browser().exited).toBe(true)
+    expect(h.service.status()).toEqual({
+      state: 'none',
+      notice: {
+        code: 'EGRESS_UNWATCHED',
+        message:
+          'Birdbrain could not watch the responses of a tab in Google Chrome, so it ended the ' +
+          'Capture Session and closed the browser.'
+      }
+    })
+    expect(h.log.warn).toHaveBeenCalledWith(
+      'launchedBrowser',
+      'launchedBrowser.target_unwatched',
+      undefined,
+      expect.objectContaining({ code: 'EGRESS_UNWATCHED' })
+    )
+  })
+
+  it('keeps the browser open under a proxy when the tab had already closed', async () => {
+    const h = unwatchedPopup(['first-tab'])
+    h.session.activateCase('case-1')
+    await h.service.launch(CHROME)
+    h.browser().attach(targetInfo('popup', 'page', ''))
+    await until(() => h.log.warn.mock.calls.length > 0)
+    await settle()
+    expect(h.service.status().state).toBe('open')
+    expect(h.session.snapshot().sessionActive).toBe(true)
+    await h.service.endCaptureSession()
+  })
 })
 
 describe('quitting and a browser that will not close', () => {

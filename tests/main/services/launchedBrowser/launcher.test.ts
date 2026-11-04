@@ -523,6 +523,98 @@ describe('launchBrowser: attaching', () => {
     await settle()
     expect(failures).toEqual([['popup', 'Network.enable failed: Target closed']])
     expect(browser.methods()).toContain('Runtime.runIfWaitingForDebugger@session-2')
+    expect(browser.methods()).not.toContain('Target.getTargets')
+  })
+
+  // The browser's target list tells a tab that failed its setup and browses on from one that
+  // closed; a list that cannot be read counts the tab as open.
+  function listing(open: string[], fail?: Record<string, string>): FakeBrowserOptions['respond'] {
+    return ({ method, sessionId }) => {
+      const message = fail?.[sessionId ? `${method}@${sessionId}` : method]
+      if (message !== undefined) return { error: { message } }
+      if (method === 'Target.getTargets') {
+        return { result: { targetInfos: open.map((id) => targetInfo(id)) } }
+      }
+      return undefined
+    }
+  }
+
+  async function unwatchedAfter(respond: FakeBrowserOptions['respond']) {
+    const unwatched: Array<[string, string]> = []
+    const failures: string[] = []
+    const { browser } = await launched({
+      options: { respond },
+      hooks: {
+        onTargetSetupFailed: ({ targetId }: TargetInfo) => failures.push(targetId),
+        onTargetUnwatched: ({ targetId }: TargetInfo, error: Error) =>
+          unwatched.push([targetId, error.message])
+      }
+    })
+    return { browser, unwatched, failures }
+  }
+
+  it('reports a tab that stays open after its setup failed as unwatched', async () => {
+    const { browser, unwatched, failures } = await unwatchedAfter(
+      listing(['first-tab', 'popup'], { 'Network.enable@session-2': 'Not allowed' })
+    )
+    browser.attach(targetInfo('popup', 'page', ''))
+    await settle()
+    expect(unwatched).toEqual([['popup', 'Network.enable failed: Not allowed']])
+    expect(failures).toEqual(['popup'])
+    expect(browser.methods()).toContain('Runtime.runIfWaitingForDebugger@session-2')
+  })
+
+  it('reports a tab whose auto-attach failed as unwatched, since its frames go unseen', async () => {
+    const { browser, unwatched } = await unwatchedAfter(
+      listing(['first-tab', 'popup'], { 'Target.setAutoAttach@session-2': 'Not allowed' })
+    )
+    browser.attach(targetInfo('popup', 'page', ''))
+    await settle()
+    expect(unwatched).toEqual([['popup', 'Target.setAutoAttach failed: Not allowed']])
+  })
+
+  it('does not report a tab the browser no longer lists', async () => {
+    const { browser, unwatched, failures } = await unwatchedAfter(
+      listing(['first-tab'], { 'Network.enable@session-2': 'Target closed' })
+    )
+    browser.attach(targetInfo('popup', 'page', ''))
+    await settle()
+    expect(unwatched).toEqual([])
+    expect(failures).toEqual(['popup'])
+    expect(browser.methods()).toContain('Target.getTargets')
+  })
+
+  it('does not report a tab that detached before it answered, and asks for no list', async () => {
+    const { browser, unwatched, failures } = await unwatchedAfter(({ method, sessionId }) =>
+      method === 'Network.enable' && sessionId === 'session-2' ? 'silent' : undefined
+    )
+    browser.attach(targetInfo('popup', 'page', ''))
+    await settle()
+    browser.event('Target.detachedFromTarget', { sessionId: 'session-2', targetId: 'popup' })
+    await settle()
+    expect(failures).toEqual(['popup'])
+    expect(unwatched).toEqual([])
+    expect(browser.methods()).not.toContain('Target.getTargets')
+  })
+
+  it('counts a tab as open when the target list cannot be read', async () => {
+    const { browser, unwatched } = await unwatchedAfter(
+      listing([], { 'Network.enable@session-2': 'Not allowed', 'Target.getTargets': 'Busy' })
+    )
+    browser.attach(targetInfo('popup', 'page', ''))
+    await settle()
+    expect(unwatched).toEqual([['popup', 'Network.enable failed: Not allowed']])
+  })
+
+  it('reports a resume that fails as a setup failure only', async () => {
+    const { browser, unwatched, failures } = await unwatchedAfter(
+      listing(['first-tab', 'popup'], { 'Runtime.runIfWaitingForDebugger@session-2': 'Gone' })
+    )
+    browser.attach(targetInfo('popup', 'page', ''))
+    await settle()
+    expect(failures).toEqual(['popup'])
+    expect(unwatched).toEqual([])
+    expect(browser.methods()).not.toContain('Target.getTargets')
   })
   it('reports a target whose resume fails, recorded or not', async () => {
     const failures: Array<[string, string]> = []

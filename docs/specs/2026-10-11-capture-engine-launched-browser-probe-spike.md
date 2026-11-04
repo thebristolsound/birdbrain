@@ -243,8 +243,10 @@ limit, and the script recorded it as a timeout. The page then held one more `res
 **On Chromium 154, a check that fired on every reading with `Runtime.enable` on and on none without
 it did not fire for `Page.enable` or an isolated-world read, and nothing else the page recorded
 changed. On Chrome 150 and Chrome for Testing 149 nothing the page recorded changed either, but the
-only check run there read nothing even with `Runtime.enable` on.** Each variant ran on a new tab
-after a warm-up load. The page recorded `navigator.webdriver` (`true` in every variant, as the pipe
+only check run there read nothing even with `Runtime.enable` on.** The Chromium check's only
+positive controls send `Runtime.enable`, so its silence does not show that a page cannot detect
+`Page` or an isolated world (What this does not show). Each variant ran on a new tab after a warm-up
+load. The page recorded `navigator.webdriver` (`true` in every variant, as the pipe
 makes it), the keys of `window.chrome` (`loadTimes`, `csi`, `app`), `document.hasFocus()` (`true`),
 `document.visibilityState` (`visible`), the resource timing list (`/img.png`), and the
 `Error.stack` getter count of the stage-1 probe, which logs an `Error` with a counting getter to
@@ -1134,9 +1136,10 @@ settled for Linux on the builds measured.
 - **The closed set of domains, `Page` only if P3 clears it** (lines 471-477): measured, not
   decided. On Chromium 154, a check that fired on every reading with `Runtime.enable` on and on none
   without it did not fire for `Page.enable` or an isolated-world read, in five runs, and the listed
-  facts did not change (P3). On Chrome 150 and Chrome for Testing 149 the listed facts did not
-  change, and no check that detects `Runtime.enable` ran. Whether that clears `Page` is for the
-  maintainer.
+  facts did not change (P3). That check's only positive controls send `Runtime.enable`, so its
+  silence does not show that a page cannot detect `Page` or an isolated world (What this does not
+  show). On Chrome 150 and Chrome for Testing 149 the listed facts did not change, and no check that
+  detects `Runtime.enable` ran. Whether that clears `Page` is for the maintainer.
 - **Validation, Page-visible effects** (lines 1198-1200): the item lists the `Error.stack` getter
   count, which read zero with `Runtime.enable` on, on both hosts (P3), so it cannot show that a
   domain is invisible to the page. On Chromium 154 a count of the page's own

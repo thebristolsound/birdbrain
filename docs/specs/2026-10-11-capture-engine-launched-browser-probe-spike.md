@@ -153,7 +153,7 @@ sets `BrowserThemeColor` and `BrowserColorScheme`, the other sets `DefaultBrowse
 `false`. Whether the launched browser applied them was not checked; its screenshots show a dark blue
 toolbar, which this probe did not trace to the theme policy or to anything else.
 
-**The browser's own traffic.** In the two `pipe` runs the proxy fixture refused Chromium's
+**The browser's own traffic.** In the three `pipe` runs the proxy fixture refused Chromium's
 connections to `accounts.google.com`, `android.clients.google.com`, `clients2.google.com` (port
 80), `update.googleapis.com`, and `www.google.com`, each on port 443 unless named. Each of the five
 `page-reads` runs saw the same hosts and `optimizationguide-pa.googleapis.com` on port 443. Across

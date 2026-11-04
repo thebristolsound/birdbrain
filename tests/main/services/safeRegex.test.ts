@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { DEFAULT_REGEX_TIMEOUT_MS, safeRegexTest } from '@main/services/safeRegex'
+import { DEFAULT_REGEX_TIMEOUT_MS, safeRegexOutcome, safeRegexTest } from '@main/services/safeRegex'
+
+// The #330 pair, shared by both describes. Why neither budget below is a close
+// race is in the comment above safeRegexTest's explicit-budget test.
+const BACKTRACKING_PATTERN = '(a+)+b'
+const MATCHING_TEXT = `${'a'.repeat(23)}X/aaab`
 
 describe('safeRegexTest', () => {
   it('returns true for a simple matching pattern', () => {
@@ -27,19 +32,19 @@ describe('safeRegexTest', () => {
   // exhibits catastrophic backtracking against an all-'a' string with no 'b'
   // suffix — each additional 'a' roughly doubles the work, so 32 'a's takes
   // well over 200ms to fail-match (typically multiple seconds) on any modern
-  // CPU. The vm timeout fires, runInNewContext throws, and safeRegexTest's
-  // catch block returns false. Asserts only the boolean — never elapsed time —
-  // to stay deterministic across CI hardware. If this test ever becomes flaky
-  // on a very fast runner, raise the string length further, do not shorten the
-  // timeout assertion.
+  // CPU. The vm timeout fires, runInNewContext throws, safeRegexOutcome's catch
+  // answers 'timeout', and safeRegexTest returns false. Asserts only the
+  // boolean — never elapsed time — to stay deterministic across CI hardware. If
+  // this test ever becomes flaky on a very fast runner, raise the string length
+  // further, do not shorten the timeout assertion.
   it('returns false when a catastrophic-backtracking pattern exceeds the timeout', () => {
     const pattern = '(a+)+b'
     const text = 'a'.repeat(32)
     expect(safeRegexTest(pattern, '', text)).toBe(false)
   })
 
-  // The production budget, pinned as a value rather than as a race: every call
-  // site omits the argument, so this constant is the one that decides whether an
+  // The production budget, pinned as a value rather than as a race: no production
+  // call path passes a budget, so this constant is the one that decides whether an
   // ignore rule is enforced or fails open. Changing it changes evidence-path
   // behaviour and should have to change this line too.
   it('defaults to a 200 ms budget', () => {
@@ -55,11 +60,37 @@ describe('safeRegexTest', () => {
   // via `pnpm test`), so the sandbox would have to get ~100x faster before it
   // finished inside the 1 ms budget, and ~50x slower before it missed the 30 s
   // one. Elapsed time is never asserted.
-  const BACKTRACKING_PATTERN = '(a+)+b'
-  const MATCHING_TEXT = `${'a'.repeat(23)}X/aaab`
-
   it('honours an explicit budget: expiry answers false, room to finish answers true', () => {
     expect(safeRegexTest(BACKTRACKING_PATTERN, '', MATCHING_TEXT, 1)).toBe(false)
     expect(safeRegexTest(BACKTRACKING_PATTERN, '', MATCHING_TEXT, 30_000)).toBe(true)
+  }, 60_000)
+})
+
+describe('safeRegexOutcome', () => {
+  it('answers match for a matching pattern', () => {
+    expect(safeRegexOutcome('hello', '', 'hello world')).toBe('match')
+  })
+
+  it('answers no-match for a pattern that runs to completion without matching', () => {
+    expect(safeRegexOutcome('xyz', '', 'hello world')).toBe('no-match')
+  })
+
+  it('answers no-match for an invalid pattern', () => {
+    expect(safeRegexOutcome('(', '', 'whatever')).toBe('no-match')
+  })
+
+  it('answers no-match for an invalid flag string', () => {
+    expect(safeRegexOutcome('hello', 'zzz', 'hello world')).toBe('no-match')
+  })
+
+  // node:vm rejects a budget of 0 with its own coded error (ERR_OUT_OF_RANGE),
+  // which must not be read as a timeout.
+  it('answers no-match for a budget node:vm rejects', () => {
+    expect(safeRegexOutcome('hello', '', 'hello world', 0)).toBe('no-match')
+  })
+
+  it('answers timeout when the budget expires, and match with room to finish', () => {
+    expect(safeRegexOutcome(BACKTRACKING_PATTERN, '', MATCHING_TEXT, 1)).toBe('timeout')
+    expect(safeRegexOutcome(BACKTRACKING_PATTERN, '', MATCHING_TEXT, 30_000)).toBe('match')
   }, 60_000)
 })

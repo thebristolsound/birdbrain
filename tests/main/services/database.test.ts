@@ -47,6 +47,7 @@ import {
   getSelectorCoverage,
   createSelector,
   matchSelectorAgainstCaptures,
+  matchSelectorsForCapture,
   listActiveSelectors,
   listSelectors,
   bulkCreateSelectors,
@@ -883,6 +884,33 @@ describe('database', () => {
       const c = createCase({ name: 'Empty' })
       const cov = getSelectorCoverage(c.id)
       expect(cov).toEqual({ matched: 0, total: 0 })
+    })
+  })
+
+  // Both repo entry points at the production 200 ms budget, with the pattern and
+  // text of safeRegex.test.ts's timeout test: the evaluation outlives the budget,
+  // and the timeout writes no Persisted Match. Only row counts are asserted.
+  describe('selector matching when a regex times out', () => {
+    it('writes no selector_matches row for the timed-out Selector', () => {
+      const c = createCase({ name: 'Timeout Case' })
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://a.com',
+        title: 'A',
+        hash: 'timeout1',
+        timestamp: new Date().toISOString()
+      })
+      const text = 'a'.repeat(32)
+      const slow = createSelector({ caseId: c.id, pattern: '(a+)+b', isRegex: true })
+      // Shows matchSelectorsForCapture ran and writes rows for this Capture.
+      const control = createSelector({ caseId: c.id, pattern: 'aaa' })
+
+      matchSelectorAgainstCaptures(slow.id, [{ captureId: cap.id, text }])
+      expect(countOn('selector_matches', 'selector_id', slow.id)).toBe(0)
+
+      matchSelectorsForCapture(cap.id, c.id, text)
+      expect(countOn('selector_matches', 'selector_id', slow.id)).toBe(0)
+      expect(countOn('selector_matches', 'selector_id', control.id)).toBe(1)
     })
   })
 

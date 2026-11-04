@@ -7,9 +7,10 @@ one Linux host. Chromium 154 was measured on a second Linux host on 2026-11-03, 
 P17 and P16's host-as-is session, which did not run there. On Chromium 154, P3 has a check that
 detects `Runtime.enable` and passed its control; on the first host's two builds, P3's only check
 failed its control. Edge and Brave, and every product on Windows and macOS, are not measured on
-these two hosts. A maintainer run measured P7 on Windows on 2026-11-03, outside this document (P7).
-The clicked-Capture step (stage-2 step 4) still waits on P7 for a macOS answer and for the
-maintainer's ruling on the Windows run.
+these two hosts. P7 has Windows answers from a maintainer run on 2026-11-03: the pipe works on
+Chrome, Edge and Brave 156 on Windows 11 Pro 25H2, with no TCP listener and no `DevToolsActivePort`
+file (P7). P7's macOS row is still not measured. Whether the clicked-Capture step (stage-2 step 4)
+waits on a macOS answer is the maintainer's ruling.
 
 Answers the P questions of the
 [stage-2 design spec](2026-10-10-capture-engine-launched-browser-design.md) (Open questions, line
@@ -54,6 +55,9 @@ switch applies to Electron, not to the launched browser.
 | Brave | Not measured on this host | None found (P20) | Not installed |
 | Chromium, first host | Not measured on this host | None found (P20) | Not installed as a package, a Snap, or a Flatpak |
 | Chromium, second host | `Chrome/154.0.8037.97` | `/usr/bin/chromium`, Arch's launcher, which starts `/usr/lib/chromium/chromium` ([Second host](#second-host)) | Distribution package `chromium` `154.0.8037.97-1` |
+| Google Chrome, Windows host (P7 only) | `Chrome/156.0.8078.80` | `C:\Program Files\Google\Chrome\Application\chrome.exe` | Per-machine installer, under `Program Files` |
+| Microsoft Edge, Windows host (P7 only) | `Edg/156.0.4314.58` | `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe` | Per-machine installer, under `Program Files (x86)` |
+| Brave, Windows host (P7 only) | `Chrome/156.0.8078.80`; the file version of `brave.exe` is 156.1.98.63 | `C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe` | Per-machine installer, under `Program Files` |
 
 Chrome for Testing is not one of the four products. It is the kind of build that decision D23 pins
 for the CI suite, so each entry gives it a row of its own.
@@ -61,8 +65,9 @@ for the CI suite, so each entry gives it a row of its own.
 **Rows not measured.** Edge, Brave, and Chromium are not installed on the first host, and its run
 installed nothing: no system package and no downloaded archive. The record holds no attempt to
 install them, through the package manager or as an unbranded Chromium archive, so whether this host
-could have installed them is not known. The Windows and macOS rows are not measured because the host
-runs Linux. The probe launched nothing on the Windows side of this WSL2 machine: from WSL2 a Windows
+could have installed them is not known. The macOS rows, and every Windows row but P7's, are not
+measured because both hosts run Linux; P7's Windows rows come from a maintainer run on a Windows
+host (P7). The probe launched nothing on the Windows side of this WSL2 machine: from WSL2 a Windows
 browser starts through interop, so a reading would not show how the pipe behaves when Birdbrain
 itself runs on Windows.
 
@@ -482,18 +487,25 @@ profile exits at once (P14).
 | Chromium 154, Linux (distribution package, second host) | Same as Chrome 150 |
 | Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Snap or Flatpak build of any product, Linux | Not measured on either host: the first has no browser Snap, the second has no `snap`, and neither has `flatpak` |
-| Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
+| Chrome 156.0.8078.80, Windows 11 Pro 25H2 build 26200.9711 (per-machine installer) | Works: no TCP listener, no `DevToolsActivePort`, no Singleton files in the profile; control: `PARTIAL`, one loopback listener (`127.0.0.1:4846`) and the file |
+| Edge 156.0.4314.58, Windows 11 Pro 25H2 build 26200.9711 (per-machine installer) | Works: no TCP listener, no `DevToolsActivePort`, no Singleton files in the profile; control: `PARTIAL`, one loopback listener (`127.0.0.1:6853`) and the file |
+| Brave 156.1.98.63, Windows 11 Pro 25H2 build 26200.9711 (per-machine installer) | Works: no TCP listener, no `DevToolsActivePort`, no Singleton files in the profile; control: `PARTIAL`, one loopback listener (`127.0.0.1:13031`) and the file |
+| Chromium, Windows | Not measured on the Windows host: not installed |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
-A maintainer run on 2026-11-03 measured P7 on Windows 11 Pro 25H2 for Chrome 156.0.8078.80, Edge
-156.0.4314.58, and Brave 156.1.98.63, each with a control run, following the draft pipe runbook,
-and posted its rows in
+The maintainer measured the Windows rows on 2026-11-03 with the P7 runbook's script, run under
+Electron 45.1.0 with `ELECTRON_RUN_AS_NODE=1` from native PowerShell in a Windows checkout, with
+nothing under WSL2. `Browser.getVersion` answered over the pipe 283 ms after spawn on Chrome and
+Edge and 122 ms on Brave, auto-attach attached the existing `about:blank` tab, and
+`navigator.webdriver` read `true`. The six JSON results, a pipe run and a control run per browser,
+are in
 [a comment on issue #1828](https://github.com/thebristolsound/birdbrain/issues/1828#issuecomment-6615435372).
-This document does not fold them in, so the Windows row above gives only what these two hosts
-measured. A maintainer run on macOS, or a follow-up issue, fills the macOS row. The clicked-Capture
-step (stage-2 step 4) waits for the pipe measured on Windows and macOS, as the ruling on decision D1
-requires (spec, lines 405-409 and 1291-1294). That comment leaves to the maintainer whether its
-Windows run meets the Windows half.
+Each control run, the same arguments plus `--remote-debugging-port=0`, opened one loopback
+listener and wrote `DevToolsActivePort`, so the listener and file checks fire on that machine and
+the pipe runs' zeros count. A maintainer run on macOS, or a follow-up issue, fills the macOS row.
+The ruling on decision D1 asks for the pipe measured on Windows and macOS before the clicked-Capture
+step (spec, lines 405-409 and 1291-1294); whether stage-2 step 4 waits on the macOS answer is the
+maintainer's ruling.
 
 ### P8: When the pipe closes
 
@@ -1253,7 +1265,10 @@ settled for Linux on the builds measured.
   Chromium 154 reports `Chrome/154.0.8037.97`, so the product string does not tell Chromium from
   branded Chrome either (P20).
 - **What a page can tell, banners** (lines 895-897): settled. No automation infobar appears (P19).
-- **The pipe on Windows and macOS** (decision D1, P7): not settled. Stage-2 step 4 stays blocked.
+- **The pipe on Windows and macOS** (decision D1, P7): measured on Windows, where the pipe works on
+  Chrome, Edge and Brave 156 with no TCP listener and no `DevToolsActivePort` file, and the control
+  runs fired; not measured on macOS. Whether stage-2 step 4 waits on the macOS answer is the
+  maintainer's ruling.
 - **The keyboard shortcut** (lines 907-911): works under X11 with no desktop (P17); Wayland and
   desktop sessions are not measured.
 - **Where the CDP client runs** (decision D4): measured, not settled. Fetching every body moved the

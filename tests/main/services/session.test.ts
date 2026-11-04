@@ -34,7 +34,8 @@ describe('sessionService — state', () => {
       activeCaseId: null,
       sessionActive: false,
       captureCount: 0,
-      extensionLastSeen: 0
+      extensionLastSeen: 0,
+      startedAt: null
     })
   })
 
@@ -117,7 +118,8 @@ describe('sessionService — state', () => {
       activeCaseId: null,
       sessionActive: false,
       captureCount: 0,
-      extensionLastSeen: 0
+      extensionLastSeen: 0,
+      startedAt: null
     })
   })
 
@@ -466,5 +468,42 @@ describe('sessionService — a pinned Active Case (#1831)', () => {
     service.reset()
     service.activateCase('case-2')
     expect(service.snapshot().activeCaseId).toBe('case-2')
+  })
+})
+
+describe('sessionService — when a Capture Session started (#1831)', () => {
+  it('records the start, keeps it while the Capture Session runs, and clears it on stop', () => {
+    const { service, clock } = setup()
+    service.activateCase('case-1')
+    expect(service.snapshot().startedAt).toBeNull()
+    service.start()
+    const started = clock.now()
+    clock.advance(42_000)
+    service.countCapture()
+    service.activateCase('case-1')
+    expect(service.snapshot().startedAt).toBe(started)
+    service.stop()
+    expect(service.snapshot().startedAt).toBeNull()
+  })
+
+  it('restarts the clock when start is called again, as it zeroes the capture count', () => {
+    const { service, clock } = setup()
+    service.activateCase('case-1')
+    service.start()
+    clock.advance(5_000)
+    service.start()
+    expect(service.snapshot().startedAt).toBe(clock.now())
+  })
+
+  it('clears it when the Case is deactivated, and on reset', () => {
+    const { service } = setup()
+    service.activateCase('case-1')
+    service.start()
+    service.deactivateCase()
+    expect(service.snapshot().startedAt).toBeNull()
+    service.activateCase('case-1')
+    service.start()
+    service.reset()
+    expect(service.snapshot().startedAt).toBeNull()
   })
 })

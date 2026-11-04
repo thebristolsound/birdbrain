@@ -24,6 +24,9 @@ export interface SessionSnapshot {
   sessionActive: boolean
   captureCount: number
   extensionLastSeen: number
+  // When the running Capture Session started, from `now()`, or null while none runs. The
+  // launched browser's panel shows how long it has run.
+  startedAt: number | null
 }
 
 export interface SessionServiceDeps {
@@ -77,13 +80,15 @@ export function createSessionService(deps: SessionServiceDeps = {}): SessionServ
   let captureCount = 0
   let extensionLastSeen = 0
   let casePinned = false
+  let startedAt: number | null = null
   let heartbeatInterval: ReturnType<typeof setInterval> | null = null
 
   const snapshot = (): SessionSnapshot => ({
     activeCaseId,
     sessionActive,
     captureCount,
-    extensionLastSeen
+    extensionLastSeen,
+    startedAt
   })
 
   const notifyChange = (): void => {
@@ -93,6 +98,7 @@ export function createSessionService(deps: SessionServiceDeps = {}): SessionServ
   const endSession = (): void => {
     const wasActive = sessionActive
     sessionActive = false
+    startedAt = null
     if (wasActive) casePinned = false
     notifyChange()
     if (wasActive) onSessionEnded?.()
@@ -140,6 +146,7 @@ export function createSessionService(deps: SessionServiceDeps = {}): SessionServ
     start: () => {
       sessionActive = true
       captureCount = 0
+      startedAt = now()
       notifyChange()
     },
 
@@ -188,6 +195,7 @@ export function createSessionService(deps: SessionServiceDeps = {}): SessionServ
       captureCount = 0
       extensionLastSeen = 0
       casePinned = false
+      startedAt = null
     }
   }
 }

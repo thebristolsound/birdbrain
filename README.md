@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="src/renderer/assets/logo.png" alt="Birdbrain logo" width="128" height="128">
+</p>
+
 # Birdbrain
 
 Birdbrain is an open-source desktop app for web investigations. Save pages as you browse,

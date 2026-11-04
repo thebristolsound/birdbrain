@@ -9,6 +9,7 @@
 // timestamp-authenticity claim (binary-PASS != runbook-PASS).
 
 import { DIGICERT_TRUSTED_ROOT_G4_SHA256 } from '@main/services/tsaTrust'
+import { GITHUB_RELEASES_URL } from '@shared/constants'
 import { EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION } from '@shared/schemas'
 import { SHARED_CASE_ENTRY_TYPES, SHARED_CASE_SCHEMA_VERSION } from '@shared/verify'
 import {
@@ -45,7 +46,22 @@ function runbookHeading(number: VerifyStepNumber): string {
   return `## Step ${number} — ${verifyStep(number).runbookTitle}`
 }
 
-export const VERIFY_RUNBOOK = `# Verifying this evidence package by hand
+// What one package needs from its verifier (ADR-0023), stated so a recipient
+// holding an older verifier learns it from the runbook rather than from a run.
+export interface VerifyRunbookVersions {
+  // The highest `schemaVersion` among the entries the package encloses.
+  requiredSchemaVersion: number
+  // MANIFEST_SCHEMA_VERSION of the build that wrote the package.
+  readerSchemaVersion: number
+  appVersion: string
+}
+
+export function buildVerifyRunbook({
+  requiredSchemaVersion,
+  readerSchemaVersion,
+  appVersion
+}: VerifyRunbookVersions): string {
+  return `# Verifying this evidence package by hand
 
 This package can be re-verified by a third party **without running Birdbrain**,
 using only stock tools: \`sha256sum\`, \`openssl\`, and \`jq\`.
@@ -72,6 +88,28 @@ A package that encloses a signed selection reports the exhibits it deliberately
 leaves out as a single counted line. Run \`sh ${ROOT.verifyScript} -v\` to
 list them one by one.
 Read ${stepRef('6a')} before treating its PASS as proof of trusted time.
+
+## Manifest schema version
+
+This package needs a verifier that reads manifest schema ${requiredSchemaVersion}. That is
+the highest \`schemaVersion\` of any entry it encloses, in \`${ROOT.manifest}\`, in
+\`${ROOT.exportEntry}\` and in any member or lineage chain. Birdbrain
+${appVersion} wrote this package, and that build reads manifest schema up to
+${readerSchemaVersion}.
+
+The standalone verifier, \`birdbrain-verify\`, prints \`RESULT: VERIFIER TOO OLD\`
+and exits 3 when it meets an entry from a newer schema than it reads. That
+result is not a tamper finding and not a pass: the verifier makes no integrity
+claim about the package either way. Builds of the verifier that read schema 2 or
+below predate the result. They reject an entry from a newer schema as malformed
+and print \`RESULT: FAIL\`, so on a package that needs schema 3 or above, a FAIL
+from such a build does not show tampering.
+
+Re-run with a verifier that reads manifest schema ${requiredSchemaVersion} or above.
+\`birdbrain-verify\` is built from the Birdbrain source with
+\`pnpm build:verifier\`, and reads manifest schema up to the
+\`MANIFEST_SCHEMA_VERSION\` in that source's \`src/shared/constants.ts\`. Birdbrain
+releases are published, each with its source, at ${GITHUB_RELEASES_URL}.
 
 ## Trust model (read first)
 
@@ -575,3 +613,4 @@ The Exhibit stays in the package, its entry stays in its author's chain, and
 ${stepRef(1, 5)} still apply to it: an exclusion is listed, never applied by
 leaving the Exhibit out.
 `
+}

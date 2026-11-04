@@ -23,7 +23,7 @@ import {
   memberChainPath,
   parseChainPath
 } from '../../../src/packages/evidence-package-layout/index'
-import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
+import { buildVerifyRunbook } from '@main/services/verifyRunbook'
 import { HAS_JQ } from '../../helpers/jq'
 import { extractRunbookBlocks, runRunbookBlocks } from '../../helpers/runbookBlocks'
 
@@ -1778,6 +1778,14 @@ describe('verifySharedCase — a Case forked from a replica', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+
+  // The text these tests read is the same in every package; only the manifest
+  // schema section varies (verifyRunbook.test.ts).
+  const VERIFY_RUNBOOK = buildVerifyRunbook({
+    requiredSchemaVersion: MANIFEST_SCHEMA_VERSION,
+    readerSchemaVersion: MANIFEST_SCHEMA_VERSION,
+    appVersion: '0.0.0'
   })
 
   // The Shared Case blocks of the shipped VERIFY.md, run under bash over the

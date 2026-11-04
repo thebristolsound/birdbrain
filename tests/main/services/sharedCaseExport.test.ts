@@ -483,6 +483,33 @@ describe('Shared Case export, import and fork (#1511)', () => {
     expect(evidence.sharedCase.manifestSchemaVersion).toBe(4)
   })
 
+  // #1172: VERIFY.md states the schema every enclosed chain needs, and a member
+  // on a newer build can write above every line of the Owner's chain.
+  it("states in VERIFY.md the schema a member chain needs above the Owner's", async () => {
+    const newer = MANIFEST_SCHEMA_VERSION + 1
+    ownerReplica(undefined, (peer) =>
+      peer.append({
+        type: 'exhibit-review',
+        caseId,
+        timestamp: TIME,
+        ...PEER,
+        schemaVersion: newer
+      })
+    )
+    const { zip } = await exportPackage()
+
+    const ownerVersions = zip
+      .get('manifest.jsonl')!
+      .toString('utf-8')
+      .trim()
+      .split('\n')
+      .map((line) => (JSON.parse(line) as { schemaVersion: number }).schemaVersion)
+    expect(Math.max(...ownerVersions)).toBeLessThan(newer)
+    expect(zip.get('VERIFY.md')!.toString('utf-8').replace(/\s+/g, ' ')).toContain(
+      `This package needs a verifier that reads manifest schema ${newer}.`
+    )
+  })
+
   it('does not claim an excluded Exhibit a selection export leaves out is enclosed', async () => {
     const { ownDoc } = ownerReplica((owner, doc) => {
       owner.append({

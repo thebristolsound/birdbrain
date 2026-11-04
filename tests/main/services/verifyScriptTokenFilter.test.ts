@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { execFileSync } from 'child_process'
 import { VERIFY_SCRIPT } from '@main/services/verifyScript'
-import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
+import { buildVerifyRunbook } from '@main/services/verifyRunbook'
 import { VERIFY_RECIPES } from '@main/services/verifyProcedure'
+import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { HAS_JQ } from '../../helpers/jq'
 
 // Step 6 of the shipped verify.sh takes its work set from the signed manifest,
@@ -14,6 +15,14 @@ import { HAS_JQ } from '../../helpers/jq'
 // on the same package (#1518 review).
 
 const TOKEN_FILTER = VERIFY_RECIPES.signedTokenFilter
+
+// The text these tests read is the same in every package; only the manifest
+// schema section varies (verifyRunbook.test.ts).
+const VERIFY_RUNBOOK = buildVerifyRunbook({
+  requiredSchemaVersion: MANIFEST_SCHEMA_VERSION,
+  readerSchemaVersion: MANIFEST_SCHEMA_VERSION,
+  appVersion: '0.0.0'
+})
 
 const HASH = 'a'.repeat(64)
 const stamp = (subject?: string, tsaToken: unknown = `token-${subject ?? 'absent'}`): string =>

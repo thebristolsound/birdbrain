@@ -641,6 +641,10 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     expect(proc.stdout).toContain('RESULT: VERIFIER TOO OLD')
     expect(proc.stdout).toContain('supports up to schema version')
     expect(proc.stdout).not.toContain('RESULT: FAIL')
+    // The package's own VERIFY.md states this result and exit code (#1172).
+    expect(readFileSync(join(futureDir, 'VERIFY.md'), 'utf-8').replace(/\s+/g, ' ')).toContain(
+      'prints `RESULT: VERIFIER TOO OLD` and exits 3'
+    )
     rmSync(futureDir, { recursive: true, force: true })
   })
 

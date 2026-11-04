@@ -28,7 +28,7 @@ import { CaseSettingsRoute } from '@renderer/routes/cases/$caseId/settings'
 import { NotesOverview } from '@renderer/components/notes/NotesOverview'
 import { SignalsOverview } from '@renderer/components/signals/SignalsOverview'
 import { DataExplorer } from '@renderer/components/dashboard/cases/DataExplorer'
-import { SettingsView } from '@renderer/components/settings/SettingsView'
+import { SettingsView, type SettingsSection } from '@renderer/components/settings/SettingsView'
 import { useSessionRestore } from '@renderer/hooks/useSessionRestore'
 import { useCommandPalette } from '@renderer/hooks/useCommandPalette'
 import { CommandPalette } from '@renderer/components/layout/CommandPalette'
@@ -215,12 +215,14 @@ const indexRoute = createRoute({
 })
 
 // Settings. `section=egress` opens on the Egress setting, which the VPN warning's
-// "Set up a proxy" choice links to.
+// "Set up a proxy" choice links to; `section=operator` opens on the operator name, which the
+// launch start dialog's "Set operator name" links to.
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings',
-  validateSearch: (search: Record<string, unknown>): { section?: 'egress' } => ({
-    section: search.section === 'egress' ? 'egress' : undefined
+  validateSearch: (search: Record<string, unknown>): { section?: SettingsSection } => ({
+    section:
+      search.section === 'egress' || search.section === 'operator' ? search.section : undefined
   }),
   component: function SettingsPage() {
     const { section } = settingsRoute.useSearch()

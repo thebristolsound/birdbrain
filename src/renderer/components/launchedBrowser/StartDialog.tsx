@@ -6,6 +6,9 @@ import { Button, Dialog, DialogContent, DialogTitle } from '@renderer/components
 import { casesQueryOptions } from '@renderer/lib/api/cases'
 import { useSessionMutations } from '@renderer/lib/api/session'
 import { settingsQueryOptions } from '@renderer/lib/api/settings'
+import { vpnStatusQueryOptions } from '@renderer/lib/api/egress'
+import { confirmContact } from '@renderer/lib/vpnWarning'
+import { VPN_SESSION_CAVEAT } from '@renderer/components/status/VpnWarningDialog'
 import {
   cancelBrowserLaunch,
   launchBrowser,
@@ -82,6 +85,11 @@ export function StartDialog() {
   const egress = settings?.egress
   const knownEgress: KnownEgress | null = egress && egress.kind !== 'unavailable' ? egress : null
   const operatorName = settings?.operatorName?.trim() ?? ''
+  // The no-VPN line (`1b`), under a Direct Egress only: the indicator's words with the session
+  // warning's caveat, since Birdbrain sees this computer's route and not the browser's.
+  const direct = knownEgress?.kind === 'direct'
+  const { data: vpn } = useQuery({ ...vpnStatusQueryOptions, enabled: open && direct })
+  const noVpnSeen = direct && vpn?.vpnSeen === false
 
   // A refusal known before the launch starts. A missing operator name shows in its own row.
   const blocked =
@@ -98,6 +106,12 @@ export function StartDialog() {
     setRefusal(null)
     setLaunching({ browser, egress: knownEgress })
     try {
+      // A launch starts or joins a Capture Session, so it passes the VPN warning first
+      // (ADR-0032 rule 3), as the Capture Session switch does.
+      if (!(await confirmContact({ caseId }, 'session'))) {
+        setLaunching(null)
+        return
+      }
       await activateCase.mutateAsync(caseId)
       // A cancel while the Case was activating reached main before any launch it could stop.
       if (cancelled.current) {
@@ -137,9 +151,10 @@ export function StartDialog() {
     void navigate({ to: '/cases/$caseId/captures', params: { caseId: browserCaseId } })
   }
 
+  // Lands on the operator name in the Operator tab (`1b`'s Set operator name).
   function setOperatorName() {
     dismiss()
-    void navigate({ to: '/settings' })
+    void navigate({ to: '/settings', search: { section: 'operator' } })
   }
 
   return (
@@ -219,7 +234,11 @@ export function StartDialog() {
                   ) : (
                     <span className="text-danger-fg">Not readable</span>
                   )}
-                  {/* #1696's no-VPN line goes here, under a Direct Egress, once #2037 merges. */}
+                  {noVpnSeen && (
+                    <p data-testid="launch-no-vpn" className="mt-0.5 text-[11px] text-warning-fg">
+                      VPN not seen. {VPN_SESSION_CAVEAT}
+                    </p>
+                  )}
                 </dd>
                 <dt className="text-text-muted">Operator</dt>
                 <dd>

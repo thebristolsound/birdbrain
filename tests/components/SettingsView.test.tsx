@@ -75,6 +75,16 @@ describe('SettingsView on the Egress section', () => {
     expect(onSectionShown).toHaveBeenCalledOnce()
   })
 
+  // The launch start dialog's "Set operator name" opens Settings on the operator name.
+  it('opens the Operator tab and focuses the operator name, then reports it shown', async () => {
+    const onSectionShown = vi.fn()
+    renderView({ section: 'operator', onSectionShown })
+    const name = await screen.findByLabelText(/Operator Name/)
+    await waitFor(() => expect(document.activeElement).toBe(name))
+    expect(screen.getByRole('tab', { name: 'Operator', selected: true })).toBeDefined()
+    expect(onSectionShown).toHaveBeenCalledOnce()
+  })
+
   it('switches to the Operator tab when the section is asked for after it opened', async () => {
     const view = renderView()
     expect(await screen.findByRole('tab', { name: 'Capture', selected: true })).toBeDefined()

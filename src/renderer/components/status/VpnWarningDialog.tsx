@@ -11,6 +11,11 @@ import {
 } from '@renderer/components/ui'
 import { settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
 
+// The session warning's caveat, which the launch start dialog's no-VPN line repeats.
+export const VPN_SESSION_CAVEAT =
+  'Birdbrain sees this computer’s network path, not your browser’s. A VPN set up only in ' +
+  'your browser is not seen.'
+
 // The one VPN warning (ADR-0032 rules 2 and 3), mounted once at the root. It never blocks:
 // Continue always lets the contact go ahead.
 export function VpnWarningDialog() {
@@ -48,8 +53,7 @@ export function VpnWarningDialog() {
           </DialogDescription>
           {request?.occasion === 'session' && (
             <DialogDescription data-testid="vpn-warning-session">
-              Birdbrain sees this computer&rsquo;s network path, not your browser&rsquo;s. A VPN set
-              up only in your browser is not seen.
+              {VPN_SESSION_CAVEAT}
             </DialogDescription>
           )}
           {request && !request.canMute && (

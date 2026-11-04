@@ -11,7 +11,8 @@ import type {
 } from '@shared/types'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { useAppStore } from '@renderer/stores/appStore'
-import { fakeBridge } from '../renderer/fakeBridge'
+import { settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
+import { fakeBridge, quietVpnWarning } from '../renderer/fakeBridge'
 
 const navigate = vi.hoisted(() => vi.fn())
 
@@ -48,6 +49,10 @@ const PROXY: EgressSetting = {
   proxyUrl: 'socks5://127.0.0.1:1080',
   label: 'Harbor relay'
 }
+const DIRECT: EgressSetting = { kind: 'direct' }
+const NO_VPN_LINE =
+  'VPN not seen. Birdbrain sees this computer’s network path, not your browser’s. A VPN set up ' +
+  'only in your browser is not seen.'
 const SUMMARY: LaunchedBrowserSummary = {
   family: 'chrome',
   label: 'Google Chrome',
@@ -65,6 +70,9 @@ interface MountOptions {
   egress?: EgressSetting
   launch?: (executablePath: string) => Promise<LaunchedBrowserStatus>
   cancelLaunch?: () => Promise<LaunchedBrowserStatus>
+  vpnSeen?: boolean
+  // Main's answer to the VPN warning check; by default no warning is due.
+  warn?: boolean
 }
 
 function mount(options: MountOptions = {}) {
@@ -72,7 +80,9 @@ function mount(options: MountOptions = {}) {
     browsers = [CHROME, BRAVE],
     status = { state: 'none' },
     operatorName = 'A. Marsh',
-    egress = PROXY
+    egress = PROXY,
+    vpnSeen = true,
+    warn = false
   } = options
   const activateCase = vi.fn(async (caseId: string) => ({
     activeCaseId: caseId,
@@ -87,7 +97,12 @@ function mount(options: MountOptions = {}) {
       }))
   )
   const cancelLaunch = vi.fn(options.cancelLaunch ?? (async () => status))
+  const vpnStatus = vi.fn(async () => ({ vpnSeen }))
+  const checkVpnWarning = warn
+    ? vi.fn(async () => ({ caseId: 'case-1', warn: true, canMute: true }))
+    : quietVpnWarning().checkVpnWarning
   fakeBridge({
+    egress: { vpnStatus, checkVpnWarning, answerVpnWarning: vi.fn(async () => undefined) },
     cases: { list: vi.fn(async () => [FERRY]) },
     settings: { get: vi.fn(async () => ({ operatorName, egress })) },
     session: { activateCase },
@@ -104,7 +119,7 @@ function mount(options: MountOptions = {}) {
       <StartDialog />
     </QueryClientProvider>
   )
-  return { client, activateCase, launch, cancelLaunch }
+  return { client, activateCase, launch, cancelLaunch, vpnStatus, checkVpnWarning }
 }
 
 function open(caseId = 'case-1') {
@@ -122,6 +137,7 @@ function launchButton(name: RegExp | string = /^Launch/): HTMLButtonElement {
 beforeEach(() => {
   navigate.mockClear()
   useAppStore.setState({ startDialogCaseId: null, sessionActive: false })
+  useVpnWarningStore.setState({ open: false, request: null, settle: null })
 })
 
 afterEach(() => {
@@ -201,8 +217,66 @@ describe('StartDialog (S2)', () => {
     expect(body.textContent).toContain('Set your name before launching.')
     expect(launchButton('Launch').disabled).toBe(true)
     fireEvent.click(within(body).getByRole('button', { name: 'Set operator name' }))
-    expect(navigate).toHaveBeenCalledWith({ to: '/settings' })
+    expect(navigate).toHaveBeenCalledWith({ to: '/settings', search: { section: 'operator' } })
     expect(useAppStore.getState().startDialogCaseId).toBeNull()
+  })
+
+  // `1b`'s no-VPN line, in the words of the warning #2037 shipped (ADR-0032).
+  it('shows the no-VPN line under a Direct Egress when no VPN is seen', async () => {
+    mount({ egress: DIRECT, vpnSeen: false })
+    open()
+    const body = await dialog()
+    const line = await within(body).findByTestId('launch-no-vpn')
+    expect(line.textContent).toBe(NO_VPN_LINE)
+  })
+
+  it('shows no such line while a VPN is seen, and asks nothing under a proxy', async () => {
+    const seen = mount({ egress: DIRECT, vpnSeen: true })
+    open()
+    let body = await dialog()
+    await within(body).findByText('Direct')
+    await waitFor(() => expect(seen.vpnStatus).toHaveBeenCalled())
+    expect(within(body).queryByTestId('launch-no-vpn')).toBeNull()
+    cleanup()
+    useAppStore.setState({ startDialogCaseId: null })
+    const proxied = mount({ egress: PROXY, vpnSeen: false })
+    open()
+    body = await dialog()
+    await within(body).findByText('Harbor relay', { exact: false })
+    expect(within(body).queryByTestId('launch-no-vpn')).toBeNull()
+    expect(proxied.vpnStatus).not.toHaveBeenCalled()
+  })
+
+  it('passes the VPN warning as a session warning, and launches once continued', async () => {
+    const { activateCase, launch, checkVpnWarning } = mount({ egress: DIRECT, warn: true })
+    open()
+    const body = await dialog()
+    await within(body).findByRole('option', { name: 'Brave' })
+    fireEvent.click(launchButton('Launch'))
+    await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
+    expect(useVpnWarningStore.getState().request?.occasion).toBe('session')
+    expect(checkVpnWarning).toHaveBeenCalledWith({ caseId: 'case-1' }, 'session')
+    expect(activateCase).not.toHaveBeenCalled()
+    expect(launch).not.toHaveBeenCalled()
+    act(() => settleVpnWarning('continue'))
+    await waitFor(() => expect(launch).toHaveBeenCalledWith(CHROME.executablePath))
+    expect(activateCase).toHaveBeenCalledWith('case-1')
+  })
+
+  it('launches nothing when the Operator stops at the VPN warning, and offers it again', async () => {
+    const { activateCase, launch } = mount({ egress: DIRECT, warn: true })
+    open()
+    const body = await dialog()
+    await within(body).findByRole('option', { name: 'Brave' })
+    fireEvent.click(launchButton('Launch'))
+    await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
+    act(() => settleVpnWarning('dismiss'))
+    await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(false))
+    expect(activateCase).not.toHaveBeenCalled()
+    expect(launch).not.toHaveBeenCalled()
+    expect(useAppStore.getState().startDialogCaseId).toBe('case-1')
+    expect(within(body).queryByRole('list', { name: 'Launch checks' })).toBeNull()
+    expect(launchButton('Launch').disabled).toBe(false)
   })
 
   it('refuses with state 1 when Birdbrain found no browser', async () => {

@@ -1166,11 +1166,13 @@ settled for Linux on the builds measured.
   `Runtime.evaluate` in an isolated world and behave as in the main world; the page sees scroll
   events, intersection callbacks, and lazy loads (P3). The overflow unlock the step drops did
   nothing on either lock fixture.
-- **Capture sequence, screenshot** (step 5, lines 606-611): settled, with an observable cost.
-  `captureBeyondViewport` does not move the window, and the page receives `resize`,
-  `visualViewport` resize, and `ResizeObserver` callbacks (P2). Passive capture of a tab that is not
-  in front (lines 971-972) can take a screenshot (P2), on Chromium 154 only without
-  `captureBeyondViewport`: with it, the capture did not answer within 15 seconds.
+- **Capture sequence, screenshot** (step 5, lines 606-611): settled for Chrome 150 and Chrome for
+  Testing 149, with an observable cost. `captureBeyondViewport` does not move the window, and the
+  page receives `resize`, `visualViewport` resize, and `ResizeObserver` callbacks (P2). Passive
+  capture of a tab that is not in front (lines 971-972) can take a screenshot (P2). Not settled for
+  Chromium 154: in front it gave the same results as Chrome, but behind another tab the step's
+  `captureBeyondViewport` capture did not answer within 15 seconds, in one run, and only the capture
+  without it returned the page (P2).
 - **Capture sequence, MHTML** (step 6, lines 612-613): settled for Chrome 150 and Chromium 154.
   `Page.captureSnapshot` equals `wc.savePage` part for part on the fixture, Chromium 154's against
   Electron 45.1.0 (P24).

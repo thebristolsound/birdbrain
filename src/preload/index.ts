@@ -45,7 +45,8 @@ function bridge<C extends ContractedChannel>(
   return (...args) => unwrapIpc(ipcRenderer.invoke(channel, ...args), refusal)
 }
 
-// A sharing channel, whose refusals the Members screens tell apart by code.
+// A channel whose refusals the renderer tells apart by code: the sharing channels, which the
+// Members screens read, and a browser launch, which the start dialog reads.
 const refusable = <C extends ContractedChannel>(channel: C) => bridge(channel, 'object')
 
 // Builds a renderer-facing subscribe method for one event channel. The callback
@@ -201,7 +202,8 @@ const birdbrain = {
     list: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_LIST),
     chooseExecutable: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_CHOOSE_EXECUTABLE),
     status: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_STATUS),
-    launch: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_LAUNCH),
+    launch: refusable(IPC_CHANNELS.LAUNCHED_BROWSER_LAUNCH),
+    cancelLaunch: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_CANCEL_LAUNCH),
     endSession: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_END_SESSION),
     checkLeftovers: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_CHECK_LEFTOVERS)
   },

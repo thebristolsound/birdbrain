@@ -259,6 +259,27 @@ describe('preload refusals', () => {
     }
   })
 
+  // The start dialog names a launch refusal by its code.
+  it('rejects a browser launch with a plain object that keeps the code', async () => {
+    electronStub.result = {
+      ok: false,
+      error: 'Chromium is still starting.',
+      code: 'BROWSER_ALREADY_RUNNING'
+    }
+    try {
+      const rejection = await leaf('launchedBrowser.launch')('/usr/bin/x').catch(
+        (err: unknown) => err
+      )
+      expect(rejection).not.toBeInstanceOf(Error)
+      expect(rejection).toEqual({
+        message: 'Chromium is still starting.',
+        code: 'BROWSER_ALREADY_RUNNING'
+      })
+    } finally {
+      electronStub.result = { ok: true, data: null }
+    }
+  })
+
   it('rejects every other call with an Error', async () => {
     electronStub.result = refusal
     try {

@@ -481,6 +481,11 @@ export function registerIpcHandlers(deps: {
     }
   })
 
+  handle(IPC_CHANNELS.LAUNCHED_BROWSER_CANCEL_LAUNCH, () => {
+    launchedBrowser.cancelLaunch()
+    return launchedBrowser.status()
+  })
+
   handle(IPC_CHANNELS.LAUNCHED_BROWSER_END_SESSION, async () => {
     await launchedBrowser.endCaptureSession()
     return launchedBrowser.status()

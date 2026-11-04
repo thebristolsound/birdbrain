@@ -730,6 +730,15 @@ describe('ipcHandlers — launched browser (#1831)', () => {
     expect(service.endCaptureSession).toHaveBeenCalledTimes(1)
   })
 
+  it('cancels a launch that is starting and returns the status', async () => {
+    const starting: LaunchedBrowserStatus = { ...OPEN, state: 'starting', step: 'browser' }
+    const service = fakeService({ status: vi.fn((): LaunchedBrowserStatus => starting) })
+    register(service)
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_CANCEL_LAUNCH))).toEqual(starting)
+    expect(service.cancelLaunch).toHaveBeenCalledTimes(1)
+    expect(service.endCaptureSession).not.toHaveBeenCalled()
+  })
+
   it('rechecks the browsers left from an earlier run, and has none by default', async () => {
     expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_CHECK_LEFTOVERS))).toEqual([])
     const leftovers: LaunchedBrowserLeftover[] = [{ label: 'Chromium', profile: 'session' }]

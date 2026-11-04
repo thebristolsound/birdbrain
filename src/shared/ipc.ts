@@ -184,6 +184,7 @@ export const IPC_CHANNELS = {
   LAUNCHED_BROWSER_CHOOSE_EXECUTABLE: 'launchedBrowser:chooseExecutable',
   LAUNCHED_BROWSER_STATUS: 'launchedBrowser:status',
   LAUNCHED_BROWSER_LAUNCH: 'launchedBrowser:launch',
+  LAUNCHED_BROWSER_CANCEL_LAUNCH: 'launchedBrowser:cancelLaunch',
   LAUNCHED_BROWSER_END_SESSION: 'launchedBrowser:endSession',
   LAUNCHED_BROWSER_CHECK_LEFTOVERS: 'launchedBrowser:checkLeftovers',
 
@@ -1108,6 +1109,8 @@ export interface IpcInvokeContract {
   'launchedBrowser:chooseExecutable': { args: []; result: LaunchedBrowserOption | null }
   'launchedBrowser:status': { args: []; result: LaunchedBrowserStatus }
   'launchedBrowser:launch': { args: [executablePath: string]; result: LaunchedBrowserStatus }
+  // Stops a launch that is still starting; the launch then fails as BROWSER_LAUNCH_CANCELLED.
+  'launchedBrowser:cancelLaunch': { args: []; result: LaunchedBrowserStatus }
   // Ends the Capture Session, and settles once the browser has exited or Birdbrain has given up.
   'launchedBrowser:endSession': { args: []; result: LaunchedBrowserStatus }
   // Rechecks the browsers left running from an earlier run.

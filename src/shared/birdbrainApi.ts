@@ -289,6 +289,7 @@ export interface BirdbrainAPI {
     chooseExecutable(): Promise<LaunchedBrowserOption | null>
     status(): Promise<LaunchedBrowserStatus>
     launch(executablePath: string): Promise<LaunchedBrowserStatus>
+    cancelLaunch(): Promise<LaunchedBrowserStatus>
     endSession(): Promise<LaunchedBrowserStatus>
     checkLeftovers(): Promise<LaunchedBrowserLeftover[]>
   }

@@ -741,6 +741,49 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
     }
   })
 
+  // #1472: report.html and certification.html read each renamed row's entry
+  // signature under the id its chain carries, so the renamed Case's package
+  // states what the source Case's own package states.
+  it.skipIf(!RUNS)(
+    'states the inherited entry signatures of a Case an import renamed',
+    async () => {
+      let sourceCaseId = ''
+      const remapped = await remappedCase({
+        before: async (caseId) => {
+          sourceCaseId = caseId
+        }
+      })
+      const dir = await exportPackage(remapped.caseId, 'renamed-signatures')
+      const sourceDir = await exportPackage(sourceCaseId, 'source-signatures')
+
+      const report = readFileSync(join(dir, PACKAGE_ROOT_FILES.report), 'utf-8')
+      for (const exhibitId of [remapped.chainCaptureId, remapped.chainExhibitId]) {
+        const sections = report
+          .split('<section class="sheet exhibit">')
+          .slice(1)
+          .filter((section) => section.includes(exhibitId))
+        expect(sections, exhibitId).toHaveLength(1)
+        expect(sections[0], exhibitId).toMatch(
+          /Entry signature<\/div>\s*<div class="rail-value"><span class="strong">Present</
+        )
+      }
+
+      const entrySignatureProse = (packageDir: string): string => {
+        const certification = readFileSync(
+          join(packageDir, PACKAGE_ROOT_FILES.certification),
+          'utf-8'
+        ).replace(/\s+/g, ' ')
+        const prose = /<h2[^>]*>Entry signatures<\/h2>(.*?)<h2/.exec(certification)
+        expect(prose).not.toBeNull()
+        return prose![1]
+      }
+      expect(entrySignatureProse(dir)).toBe(entrySignatureProse(sourceDir))
+      expect(entrySignatureProse(dir)).toContain(
+        'A signature is present on the manifest entry for every exhibit in this export (2 of 2).'
+      )
+    }
+  )
+
   // #1815. The deleted Capture's page, screenshot and token leave the package,
   // so both verifiers pass only if the `deletion` entry names the Capture as
   // its signed `capture` entry does.

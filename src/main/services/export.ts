@@ -333,10 +333,16 @@ export function resolveExportTrustedTime(
  * Where a capture has more than one entry — a recapture supersedes an earlier
  * one — the LAST entry wins, since that is the entry the package's own chain
  * position cites.
+ *
+ * Every capture's row id is a key. A capture its own id names no entry for
+ * takes the status of the entry under its chain name (`chainIdOf`, see
+ * resolveChainNames), so a capture an import renamed reads its inherited entry
+ * (#1472).
  */
 export function resolveEntrySignatures(
   captures: Capture[],
-  entries: Record<string, unknown>[]
+  entries: Record<string, unknown>[],
+  chainIdOf: (id: string) => string
 ): Map<string, EntrySignatureStatus> {
   const byCaptureId = new Map<string, EntrySignatureStatus>()
 
@@ -352,7 +358,8 @@ export function resolveEntrySignatures(
   // Captures with no chain entry are stated as such rather than left absent, so
   // a missing key in the report can only mean a capture this export never saw.
   for (const capture of captures) {
-    if (!byCaptureId.has(capture.id)) byCaptureId.set(capture.id, 'no-entry')
+    if (byCaptureId.has(capture.id)) continue
+    byCaptureId.set(capture.id, byCaptureId.get(chainIdOf(capture.id)) ?? 'no-entry')
   }
 
   return byCaptureId
@@ -723,7 +730,7 @@ export async function generateReport(
   const trustedTime = resolveExportTrustedTime(captures, trustedTimeByHash)
   data.preflight = trustedTime.preflight
   data.trustedTimeByCaptureId = trustedTime.byCaptureId
-  data.entrySignatureByCaptureId = resolveEntrySignatures(captures, caseEntries)
+  data.entrySignatureByCaptureId = resolveEntrySignatures(captures, caseEntries, chainIdOf)
   data.captureEngineByCaptureId = resolveExportCaptureEngine(manifest, sharedCase)
   data.linkSourceByCaptureId = resolveExportLinkSources(manifest, sharedCase)
   data.fileExhibits = buildFileExhibitRecords(scope.fileExhibits, {
@@ -731,7 +738,7 @@ export async function generateReport(
     derivedVerifications,
     verifications: exhibitVerifications,
     trustedTimeByHash,
-    entrySignatures: resolveExhibitEntrySignatures(scope.fileExhibits, caseEntries),
+    entrySignatures: resolveExhibitEntrySignatures(scope.fileExhibits, caseEntries, chainIdOf),
     tokenPaths,
     chainNames,
     isPackage: options.format === 'zip',
@@ -923,12 +930,14 @@ function resolveScopedExhibits(
 /**
  * Per-entry signature status for committed Exhibits, read from the same
  * manifest snapshot `resolveEntrySignatures` reads for Captures and folded the
- * same way: the LAST `exhibit` entry for an id wins, and an Exhibit with no
- * entry is stated as `no-entry` rather than left absent.
+ * same way: the LAST `exhibit` entry for an id wins, an Exhibit its own id
+ * names no entry for is looked up under its chain name, and an Exhibit with no
+ * entry under either is stated as `no-entry` rather than left absent.
  */
 export function resolveExhibitEntrySignatures(
   exhibits: Exhibit[],
-  entries: Record<string, unknown>[]
+  entries: Record<string, unknown>[],
+  chainIdOf: (id: string) => string
 ): Map<string, EntrySignatureStatus> {
   const byExhibitId = new Map<string, EntrySignatureStatus>()
   for (const entry of entries) {
@@ -943,7 +952,8 @@ export function resolveExhibitEntrySignatures(
     )
   }
   for (const exhibit of exhibits) {
-    if (!byExhibitId.has(exhibit.id)) byExhibitId.set(exhibit.id, 'no-entry')
+    if (byExhibitId.has(exhibit.id)) continue
+    byExhibitId.set(exhibit.id, byExhibitId.get(chainIdOf(exhibit.id)) ?? 'no-entry')
   }
   return byExhibitId
 }

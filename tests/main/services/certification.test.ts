@@ -824,8 +824,9 @@ describe('certification', () => {
       expect(html).not.toMatch(/manifest\s+chain\s+linkage/)
     })
 
-    // AC5. resolveEntrySignatures backfills 'no-entry' for every capture, so a
-    // missing key is a broken invariant, not a legacy capture. Defaulting one
+    // AC5. resolveEntrySignatures backfills a capture with no entry of its own
+    // from the entry under its chain name, else with 'no-entry', so a missing
+    // key is a broken invariant, not a legacy capture. Defaulting one
     // would understate the unsigned share silently — the #1110 failure on the
     // trusted-time axis. Refusing is loud.
     it('refuses to certify a capture the signature resolution never saw', async () => {

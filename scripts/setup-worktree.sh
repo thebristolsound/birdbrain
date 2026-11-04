@@ -43,8 +43,15 @@ if [ ! -x node_modules/.bin/commitlint ]; then
 fi
 
 # The edit hook (.claude/hooks/vale-prose.sh) passes without Vale, so a missing binary is
-# an error here: it is the only point where the hook's absence is visible.
+# an error here: it is the only point where the hook's absence is visible. On an Actions
+# runner no workflow installs Vale, and seven review fires read the install log by hand
+# after this exit to learn the tree was usable, so there it is a warning.
 if ! command -v vale >/dev/null 2>&1; then
+  if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+    log "WARNING: vale missing; the prose hook cannot run. Dependencies installed; the tree is usable."
+    log "ready"
+    exit 0
+  fi
   log "ERROR: vale missing; the prose hook cannot run. Install mise (https://mise.jdx.dev) and re-run."
   exit 1
 fi

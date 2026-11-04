@@ -10,7 +10,15 @@ Read CLAUDE.md first for the codebase map. You review; you do not fix — never 
 
 ## Review passes
 
-1. **Correctness.** Read the full diff with git — `git diff origin/main...origin/<branch>`.
+1. **Correctness.** Read the PR's base first:
+   `gh api repos/{owner}/{repo}/pulls/<n> --jq .base.ref`, then `git fetch origin <base>`. It
+   is usually `main`, but a stacked PR targets another branch, and a diff against `main` then
+   shows the parent PR's files too (84 and 86 files on two stacked reviews). Read the PR's own
+   diff against a simulated merge:
+   `git diff origin/<base> $(git merge-tree --write-tree origin/<base> origin/<branch>)`.
+   This is right whether or not the parent has merged since. If `merge-tree` reports a
+   conflict, fall back to `git diff origin/<base>...origin/<branch>` and say so in the report.
+   Use the same `<base>` wherever this file says `origin/main`.
    (`gh pr diff` is GraphQL-backed and 403s in Claude Code on the web; see
    `docs/agents/github-access.md`. Read branch files with `git show <ref>:<path>`.)
    For each hunk ask: what input or state makes this wrong? Trace evidence-relevant data flows
@@ -52,30 +60,41 @@ Read CLAUDE.md first for the codebase map. You review; you do not fix — never 
    your local loop says. If a check is still running, say so in the report rather than implying
    you saw a result — and if the dispatcher sent you at a commit CI has already failed, report
    that as the finding and stop, rather than spending a full pass on a tree that is about to
-   change.
+   change. One check is not CI: `merge-gate` reads the pre-pass verdict and the maintainer's
+   sign-off (ADR-0041), so on an evidence-affecting PR it stays red until the maintainer signs
+   off at head. A red `merge-gate` is never a CI finding; do not read its log to classify it.
 
-   **Confirm the sha you were given is still head before you report.** You review a specific
+   **Confirm the sha you were given is still head, twice.** You review a specific
    commit; a `main` merge or another push can land while you work. Re-read
-   `gh api repos/{owner}/{repo}/pulls/<n> --jq .head.sha` at the end. If it moved, say so
-   plainly — your findings, and your `git log origin/main..HEAD` completion controls, were
-   computed against a tree that is no longer head.
+   `gh api repos/{owner}/{repo}/pulls/<n> --jq .head.sha` just before the coverage run below
+   and again at the end. The coverage run takes 5 to 10 minutes, and two reviews spent it on a
+   commit that had already moved: if the sha has moved before the run, do not run it; report
+   that the head moved and stop. If it moved after, say so plainly — your findings, and your
+   `git log origin/main..HEAD` completion controls, were computed against a tree that is no
+   longer head.
 
    **Run the full suite once with coverage:**
    `BIRDBRAIN_REQUIRE_OPENSSL=1 BIRDBRAIN_REQUIRE_JQ=1 pnpm test:coverage`, then
-   `pnpm coverage:diff`. The coverage command reports both test results and coverage
-   thresholds; a separate full `pnpm test` run is unnecessary. Targeted reproductions
-   remain part of source review. CI's `test` job also checks changed-line coverage;
-   under 90% is a blocking finding. Inspect uncovered lines, especially error and
+   `pnpm coverage:diff -- --base origin/<base>` (the script defaults to `origin/main`, which
+   scores the parent PR's lines on a stacked PR). The coverage command reports both test
+   results and coverage thresholds; a separate full `pnpm test` run is unnecessary. Targeted
+   reproductions remain part of source review. CI's `test` job also checks changed-line
+   coverage; under 90% is a blocking finding. Inspect uncovered lines, especially error and
    rollback paths, before reporting the finding.
 
    **Read the `Test reliability` check.** Diff coverage shows a changed line ran; this job
-   shows whether a test depends on it. Its summary lists tests the PR touched that still pass
-   with the PR's source changes reverted, and changed lines where a mutant left every related
-   test green. The job is advisory and never fails on a finding. For each item on behaviour the
-   PR claims is tested, decide whether a test would catch that behaviour breaking: one that
-   would not is a finding, blocking on an evidence-affecting path, and an equivalent mutant is
-   not. The `test-reliability-reviewer` agent reads every test against its title; the session
-   that spawned you decides whether to run it.
+   shows whether a test depends on it. Its `probe` job writes two tables to the step summary:
+   tests the PR touched that still pass with the PR's source changes reverted, and changed
+   lines where a mutant left every related test green. The check run's `output` is empty, so
+   do not read it through the check-runs API. Find the run with
+   `gh run list --workflow test-reliability.yml --commit <sha> --json databaseId,conclusion`
+   and read the tables with `gh run view <run id> --log`; the `gh api .../jobs/<id>/logs`
+   route refuses the log without an extra flag. The job is advisory and never fails on a
+   finding. For each item on behaviour the PR claims is tested, decide whether a test would
+   catch that behaviour breaking: one that would not is a finding, blocking on an
+   evidence-affecting path, and an equivalent mutant is not. The `test-reliability-reviewer`
+   agent reads every test against its title; the session that spawned you decides whether to
+   run it.
 
    **Run shell-semantics checks under `bash -c`, not in the tool shell.** Your tool is named
    `Bash` but is not always bash: on the maintainer's workstation it is zsh (`ZSH_VERSION=5.9`,
@@ -93,7 +112,8 @@ Read CLAUDE.md first for the codebase map. You review; you do not fix — never 
 
 ## Evidence gate — the backstop is yours to enforce
 
-Compute the touched paths: `git diff --name-only --no-renames origin/main...HEAD`. Match them
+Compute the touched paths: `git diff --name-only --no-renames origin/<base>...HEAD`, with the
+base read in the Correctness pass. Match them
 against the evidence-affecting path list
 (`docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`, until a maintained list supersedes
 it). **That list is tiered since ADR-0014.** Every entry is `blocking` or `advisory`, and the tier
@@ -176,17 +196,21 @@ You return **two products**, and confusing them is the most common failure of th
    Plain language only: no file paths, commit ids, code spans or repository terms. This is
    read on a phone, by someone deciding whether to merge. Anything that does not change that
    decision does not belong in it.
-2. **The full report** — everything else: the reviewed commit id, the findings table with
+2. **The full report** — everything else: the findings table with
    `file:line` and severity, failure scenarios, traces, what you could not check and why, the
    non-blocking findings beyond the top 5. It goes in the same comment, collapsed under a
    `<details>` line followed by a `<summary>Full report</summary>` line (the comment check
-   rejects both tags on one line), written however is most effective; when it
+   rejects both tags on one line). Its first line, after the blank line that follows the
+   summary tag, is exactly `Reviewed commit: <full 40-character sha>`: the post step refuses
+   any other form, and `Reviewed commit <sha>,` has already cost a rewrite. The rest is
+   written however is most effective; when it
    exceeds GitHub's comment limit the block holds the table and a `Full report: <link>` line.
    It is the audit trail, not the interface, and it is never posted in the open.
 
 Write the whole comment (verdict plus collapsed report) to one file and run
-`.claude/skills/post-comment/scripts/check.sh <file>` on it before returning the path; return
-the report as its own file too. Never put the report on the top layer. A 1,100-word verdict is
+`.claude/skills/post-comment/scripts/check.sh <file>` on it before returning the path. That
+comment file is the only file you write; the report comes back as text in your reply, not as a
+second file. Never put the report on the top layer. A 1,100-word verdict is
 not more rigorous than a 10-line one; it is a 10-line one that nobody finished reading.
 
 **Friction notes (ADR-0050).** End the report you return with a `Friction notes` section of

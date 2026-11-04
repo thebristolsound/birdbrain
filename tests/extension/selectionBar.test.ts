@@ -11,8 +11,14 @@ import {
   releaseCaptureUiSuppression
 } from '../../extension/src/captureSuppression'
 import { removeInjectedBirdbrainUi } from '../../extension/src/captureHygiene'
-import { SELECTION_BAR_ID, SELECTION_BAR_SELECTOR } from '../../extension/src/selectionBar'
+import {
+  SELECTION_BAR_ID,
+  SELECTION_BAR_MARKER,
+  SELECTION_BAR_MARKER_VALUE,
+  SELECTION_BAR_SELECTOR
+} from '../../extension/src/selectionBar'
 import type { SelectionActionResponse } from '@extension/messages'
+import { installTrustedInput, operatorClick, operatorMouseUp } from './trustedInput'
 
 type SendResponse = (response?: unknown) => void
 type Listener = (message: unknown, sender: unknown, sendResponse: SendResponse) => unknown
@@ -60,7 +66,7 @@ async function flushTimers(): Promise<void> {
 }
 
 async function mouseUp(): Promise<void> {
-  document.dispatchEvent(new MouseEvent('mouseup'))
+  operatorMouseUp()
   await flushTimers()
 }
 
@@ -70,17 +76,26 @@ function bar(): HTMLElement | null {
   return document.querySelector<HTMLElement>(SELECTION_BAR_SELECTOR)
 }
 
+// Every root attachShadow returns, recorded before content.ts loads: the bar's root is closed,
+// so host.shadowRoot cannot reach it.
+const shadowRoots = new WeakMap<Element, ShadowRoot>()
+
+function barRoot(): ShadowRoot | undefined {
+  const host = bar()
+  return host ? shadowRoots.get(host) : undefined
+}
+
 function barButtons(): HTMLButtonElement[] {
-  return Array.from(bar()?.shadowRoot?.querySelectorAll('button') ?? [])
+  return Array.from(barRoot()?.querySelectorAll('button') ?? [])
 }
 
 function barMessage(): string {
-  return bar()?.shadowRoot?.querySelector('.message')?.textContent ?? ''
+  return barRoot()?.querySelector('.message')?.textContent ?? ''
 }
 
 async function clickAction(action: string): Promise<void> {
-  const button = bar()!.shadowRoot!.querySelector(`[data-action="${action}"]`) as HTMLButtonElement
-  button.click()
+  const button = barRoot()!.querySelector(`[data-action="${action}"]`) as HTMLButtonElement
+  operatorClick(button)
   await flushTimers()
 }
 
@@ -120,6 +135,14 @@ beforeAll(async () => {
       y: 100,
       toJSON: () => ({})
     }) as DOMRect
+  // Before the import below: the bar registers its mouseup listener once, at import
+  installTrustedInput()
+  const attachShadow = Element.prototype.attachShadow
+  vi.spyOn(Element.prototype, 'attachShadow').mockImplementation(function (this: Element, init) {
+    const root = attachShadow.call(this, init)
+    shadowRoots.set(this, root)
+    return root
+  })
   // Side-effecting import: registers the message listener and the bar's
   // document listeners
   await import('../../extension/src/content')
@@ -219,7 +242,7 @@ describe('running an action', () => {
     const clicked = clickAction('tag')
 
     await Promise.resolve()
-    expect(bar()?.shadowRoot?.querySelector('.spinner')).not.toBeNull()
+    expect(barRoot()?.querySelector('.spinner')).not.toBeNull()
 
     resolveAction({ ok: true, detail: 'Tagged "evil-example-com"', captured: true })
     await clicked
@@ -241,8 +264,44 @@ describe('running an action', () => {
     await clickAction('quote')
 
     expect(barMessage()).toBe('Failed to capture page; nothing was attached')
-    expect(bar()?.shadowRoot?.querySelector('.status.error')).not.toBeNull()
+    expect(barRoot()?.querySelector('.status.error')).not.toBeNull()
   })
+})
+
+// The page can select text and dispatch events, and the click tests grant it a button the closed
+// root hides; none of that may stand in for the operator.
+describe('page script cannot act for the operator (#992)', () => {
+  it('cannot raise the bar with a synthesised mouseup', async () => {
+    selectParagraph()
+    document.dispatchEvent(new MouseEvent('mouseup'))
+    await flushTimers()
+
+    expect(bar()).toBeNull()
+    expect(sendMessageMock).not.toHaveBeenCalled()
+  })
+
+  it('gets no handle on the buttons from the host', async () => {
+    selectParagraph()
+    await mouseUp()
+
+    expect(barButtons()).toHaveLength(3)
+    expect(bar()!.shadowRoot).toBeNull()
+  })
+
+  it.each(['selector', 'tag', 'quote'])(
+    'cannot run %s by clicking a raised bar',
+    async (action) => {
+      selectParagraph()
+      await mouseUp()
+
+      barRoot()!.querySelector<HTMLButtonElement>(`[data-action="${action}"]`)!.click()
+      expect(barRoot()?.querySelector('.spinner')).toBeNull()
+      await flushTimers()
+
+      expect(actionRequests).toEqual([])
+      expect(barButtons().map((b) => b.dataset.action)).toEqual(['selector', 'tag', 'quote'])
+    }
+  )
 })
 
 describe('capture suppression round trip (#386)', () => {
@@ -277,7 +336,7 @@ describe('capture suppression round trip (#386)', () => {
       resolveState = resolve
     })
     selectParagraph()
-    document.dispatchEvent(new MouseEvent('mouseup'))
+    operatorMouseUp()
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     // The bracket opens while the bar is still waiting for GET_STATE
@@ -307,7 +366,7 @@ describe('capture suppression round trip (#386)', () => {
 
     // The failed capture's restore path releases the latch first...
     dispatch({ type: 'RELEASE_CAPTURE_UI' })
-    expect(bar()?.shadowRoot?.querySelector('.spinner')).not.toBeNull()
+    expect(barRoot()?.querySelector('.spinner')).not.toBeNull()
 
     // ...and the refusal then lands in the restored bar
     rejectAction({ ok: false, error: 'Capture failed' } satisfies SelectionActionResponse)
@@ -410,7 +469,7 @@ describe("the bar is the page's guest, not its owner", () => {
 
     expect(bar()).not.toBeNull()
     expect(bar()).not.toBe(decoy)
-    expect(decoy.shadowRoot).toBeNull()
+    expect(shadowRoots.has(decoy)).toBe(false)
 
     removeInjectedBirdbrainUi()
     expect(bar()).toBeNull()
@@ -418,12 +477,26 @@ describe("the bar is the page's guest, not its owner", () => {
     expect(decoy.textContent).toBe('Page-owned, not ours')
   })
 
+  it('does not render into a page-forged host carrying the marker', async () => {
+    // The marker is not ownership either: rendering into a forged host's open root would hand
+    // the page the buttons.
+    setPageHtml(
+      '<main><p>Report abuse to evil@example.com immediately.</p></main>' +
+        `<div ${SELECTION_BAR_MARKER}="${SELECTION_BAR_MARKER_VALUE}"></div>`
+    )
+    const pageRoot = bar()!.attachShadow({ mode: 'open' })
+    selectParagraph()
+    await mouseUp()
+
+    expect(pageRoot.querySelector('button')).toBeNull()
+  })
+
   it('raises the bar on a page that stops mouseup propagation', async () => {
     // Custom editors routinely swallow mouseup, and they are exactly the pages
     // worth investigating; a bubble-phase listener would never run there.
     document.querySelector('main')!.addEventListener('mouseup', (e) => e.stopPropagation())
     selectParagraph()
-    document.querySelector('p')!.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    operatorMouseUp(document.querySelector('p')!, { bubbles: true })
     await flushTimers()
 
     expect(barButtons().map((b) => b.dataset.action)).toEqual(['selector', 'tag', 'quote'])
@@ -441,7 +514,7 @@ describe('a slow service worker cannot strand the bar on stale text', () => {
     )
 
     selectParagraph()
-    document.dispatchEvent(new MouseEvent('mouseup'))
+    operatorMouseUp()
     await flushTimers()
     expect(bar()).toBeNull()
 
@@ -466,7 +539,7 @@ describe('a slow service worker cannot strand the bar on stale text', () => {
     )
 
     selectParagraph()
-    document.dispatchEvent(new MouseEvent('mouseup'))
+    operatorMouseUp()
     await flushTimers()
 
     // The operator moved on before the worker answered

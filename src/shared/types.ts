@@ -404,6 +404,10 @@ export interface Capture {
   linkedFromCaptureId?: string
   linkedFromContentHash?: string
   linkHref?: string
+  // The Persona an ingest signed (migration v45), with the label as passed at acquisition. A
+  // Capture received into a Shared Case does not mirror it (receivedEvidence.ts).
+  personaId?: string
+  personaLabel?: string
   // Consent-overlay suppression active while the page rendered; mirrors the
   // value anchored in the manifest capture entry. undefined = none.
   consentSuppression?: ConsentSuppression

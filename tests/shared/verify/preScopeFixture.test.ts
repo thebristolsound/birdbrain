@@ -19,8 +19,9 @@ import { EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION, ManifestEntrySchema } from '@shar
 // or EOL-mangled on checkout — .gitattributes marks the directory -text to
 // prevent the latter). If only the PASS assertions fail, a schema or verifier
 // change broke backward verification: the usual culprit is a new
-// ManifestExportEntrySchema key that is required or carries a .default(),
-// either of which breaks every legacy export entry (#398 intake ruling).
+// ManifestExportEntrySchema key that is required, which breaks every legacy
+// export entry (#398 intake ruling). A key with a .default() fails the Zod
+// parse test below instead.
 
 const FIXTURE_DIR = join(__dirname, 'fixtures', 'pre-scope-package')
 
@@ -52,11 +53,11 @@ describe('frozen pre-scope fixture package', () => {
     expect(entries.some((e) => e.type === 'deletion')).toBe(true)
   })
 
-  // The exact mechanism a bad schema change breaks legacy chains by: a
-  // REQUIRED new key fails safeParse ('Invalid entry shape'), and a key with a
-  // .default() is injected into the parsed output that manifestChain.ts
-  // destructures and re-hashes ('Entry hash mismatch'). Both are pinned here
-  // at the seam itself, against a frozen entry today's writer did not produce.
+  // The two ways a bad schema change breaks a legacy export entry: a REQUIRED
+  // new key fails safeParse ('Invalid entry shape'), and a key with a
+  // .default() is injected into the parsed output, which the export-entry.json
+  // check re-hashes. Both are pinned here at the seam itself, against a frozen
+  // entry today's writer did not produce.
   it('Zod-parses the frozen export entry without injecting scope keys, re-hashing to its entryHash', () => {
     const exportLine = readFileSync(join(FIXTURE_DIR, 'manifest.jsonl'), 'utf-8')
       .split('\n')

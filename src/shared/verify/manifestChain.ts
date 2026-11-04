@@ -131,10 +131,11 @@ export function detectUnsupportedEntry(raw: unknown, index: number): Unsupported
     : undefined
 }
 
-// `canonicalStringify` recurses once per nesting level, and `verifyUnreadableEntry`
-// below is the ONLY place it is handed a body the strict schema has never seen:
-// every other caller canonicalizes a `ManifestEntrySchema` value, whose shape
-// bounds its own depth. A line nesting a few thousand arrays — bytes anyone can
+// `canonicalStringify` recurses once per nesting level, and this module hands it
+// manifest lines as written: in `verifyUnreadableEntry` below a body the strict
+// schema has never seen, and in `lineHashFailure` one the schema bounds except
+// for the value of an own `__proto__` key inside a `z.record`, which zod skips
+// without reading. A line nesting a few thousand arrays — bytes anyone can
 // write, no signing key needed — would otherwise exhaust the stack and throw
 // before the hash and signature could reject it, turning a tamper verdict into
 // an exception: a generic error from the standalone verifier, an IpcFailure in
@@ -142,10 +143,11 @@ export function detectUnsupportedEntry(raw: unknown, index: number): Unsupported
 // stack it exists to protect.
 //
 // This is a stack limit, not a schema rule. The deepest body any schema here
-// declares nests 3 levels (`export`.`verificationResult`), so a newer writer has
-// two orders of magnitude of headroom before this could reject a genuine entry,
-// and the bound sits an order of magnitude below the depth that overflows.
-const MAX_UNREADABLE_ENTRY_DEPTH = 256
+// declares nests 5 levels as `exceedsNestingDepth` counts them
+// (`capture`.`tls`.`chain[]`.`subjectAltNames`), so the bound is about fifty
+// times the deepest genuine entry, and an order of magnitude below the depth
+// that overflows.
+const MAX_ENTRY_DEPTH = 256
 
 function exceedsNestingDepth(value: unknown, limit: number): boolean {
   const stack: Array<{ node: unknown; depth: number }> = [{ node: value, depth: 1 }]
@@ -174,8 +176,8 @@ function exceedsNestingDepth(value: unknown, limit: number): boolean {
 // supplies could be the tamperer's own (the invariant stated at `tooNew`).
 //
 // One rejection precedes the four and is not a check on the chain: a body nested
-// past MAX_UNREADABLE_ENTRY_DEPTH is refused before it is canonicalized, for the
-// stack reason given above.
+// past MAX_ENTRY_DEPTH is refused before it is canonicalized, for the stack
+// reason given above.
 //
 // The signature is required with NO v1 grandfathering, unlike the readable path
 // below: an entry this build cannot read is never a legacy v1 entry — every v1
@@ -188,13 +190,24 @@ export function verifyUnreadableEntry(
   const { entryHash, signature, ...body } = raw
   if (body.index !== expected.index) return 'Index mismatch'
   if (body.prevHash !== expected.prevHash) return 'Chain link broken'
-  if (exceedsNestingDepth(body, MAX_UNREADABLE_ENTRY_DEPTH)) return 'Entry too deeply nested'
+  if (exceedsNestingDepth(body, MAX_ENTRY_DEPTH)) return 'Entry too deeply nested'
   const recomputed = createHash('sha256').update(canonicalStringify(body)).digest('hex')
   if (typeof entryHash !== 'string' || recomputed !== entryHash) return 'Entry hash mismatch'
   if (typeof signature !== 'string' || !verifyEntrySignature(entryHash, signature, publicKeyPem)) {
     return 'Invalid signature'
   }
   return undefined
+}
+
+// The hash check of a readable entry, over the JSON.parse result of its line
+// (why: the LOAD-BEARING note in pass 2 of verifyManifestChainText).
+function lineHashFailure(raw: Record<string, unknown>, entryHash: string): string | undefined {
+  const body: Record<string, unknown> = { ...raw }
+  delete body.entryHash
+  delete body.signature
+  if (exceedsNestingDepth(body, MAX_ENTRY_DEPTH)) return 'Entry too deeply nested'
+  const recomputed = createHash('sha256').update(canonicalStringify(body)).digest('hex')
+  return recomputed === entryHash ? undefined : 'Entry hash mismatch'
 }
 
 export interface ChainVerifyResult {
@@ -272,6 +285,9 @@ export function verifyManifestChainText(
   // sourcePublicKeyPem — these are the segment boundaries multi-signer
   // chains switch verification keys at.
   const parsedEntries: ManifestEntry[] = []
+  // The JSON.parse result behind each parsed entry, at the same index: the
+  // entry hash is recomputed from this, not from the schema output.
+  const rawEntries: Array<Record<string, unknown>> = []
   const boundaries: Array<{ index: number; pem: string }> = []
   // The FIRST entry this build cannot read, kept with the raw object it came
   // from. Scanning STOPS at this entry. INVARIANT: nothing an unverified line
@@ -301,6 +317,8 @@ export function verifyManifestChainText(
       return broken(i, 'Invalid entry shape')
     }
     parsedEntries.push(schemaResult.data)
+    // The schema accepted it, so it is an object.
+    rawEntries.push(parsed as Record<string, unknown>)
     if (schemaResult.data.type === 'import') {
       boundaries.push({ index: i, pem: schemaResult.data.sourcePublicKeyPem })
     }
@@ -348,11 +366,8 @@ export function verifyManifestChainText(
       const entry = parsedEntries[i]
       if (entry.index !== i) return broken(i, 'Index mismatch')
       if (entry.prevHash !== prev) return broken(i, 'Chain link broken')
-      const body: Record<string, unknown> = { ...entry }
-      delete body.entryHash
-      delete body.signature
-      const recomputed = createHash('sha256').update(canonicalStringify(body)).digest('hex')
-      if (recomputed !== entry.entryHash) return broken(i, 'Entry hash mismatch')
+      const hashFailure = lineHashFailure(rawEntries[i], entry.entryHash)
+      if (hashFailure) return broken(i, hashFailure)
       if (sawSigned && entry.schemaVersion < 2) return broken(i, 'Schema version downgrade')
       if (entry.schemaVersion >= 2) sawSigned = true
       prev = entry.entryHash
@@ -413,13 +428,19 @@ export function verifyManifestChainText(
   const verifiedEntries: ManifestEntry[] = []
   for (let i = 0; i < parsedEntries.length; i++) {
     // `signature` (v2+) is computed over `entryHash` and, like `entryHash`
-    // itself, is EXCLUDED from the canonical body. Destructure both out before
-    // recomputing so a present-or-absent signature never affects the hash.
+    // itself, is EXCLUDED from the canonical body. `lineHashFailure` deletes
+    // both before recomputing so a present-or-absent signature never affects
+    // the hash.
     //
     // LOAD-BEARING: hash recomputation must continue to exclude both
     // `entryHash` and `signature`. That exclusion is what keeps legacy v1
     // hashes stable and ensures the v2 signature does not change the canonical
     // bytes being hashed.
+    //
+    // The hash covers the line as written, not this schema output: zod's
+    // z.record drops an own `__proto__` key, so a line edited to add one would
+    // rehash to its stored entryHash. The runbook's jq recipe hashes the line
+    // as written (#1674).
     const { entryHash, signature, ...body } = parsedEntries[i]
     if (body.index !== expectedIndex) {
       return broken(i, 'Index mismatch')
@@ -427,9 +448,9 @@ export function verifyManifestChainText(
     if (body.prevHash !== expectedPrev) {
       return broken(i, 'Chain link broken')
     }
-    const recomputed = createHash('sha256').update(canonicalStringify(body)).digest('hex')
-    if (recomputed !== entryHash) {
-      return broken(i, 'Entry hash mismatch')
+    const hashFailure = lineHashFailure(rawEntries[i], entryHash)
+    if (hashFailure) {
+      return broken(i, hashFailure)
     }
     // Downgrade guard (#X-1): once the chain contains a signed (v2+) entry, no
     // later entry may drop back to an unsigned schema version. Without this an

@@ -132,6 +132,9 @@ export interface InsertCaptureParams {
   linkedFromCaptureId?: string
   linkedFromContentHash?: string
   linkHref?: string
+  // The Persona the signed entry names (ADR-0030), the label as passed at ingest.
+  personaId?: string
+  personaLabel?: string
   consentSuppression?: ConsentSuppression
   // Mirrors of the signed entry's capture engine fields: the objects as JSON,
   // the hash and the absence reason as text.
@@ -197,7 +200,9 @@ export const CAPTURE_COLUMNS: ReadonlyArray<{ column: string; default: unknown }
   { column: 'bound_tls_absent', default: null },
   { column: 'linked_from_capture_id', default: null },
   { column: 'linked_from_content_hash', default: null },
-  { column: 'link_href', default: null }
+  { column: 'link_href', default: null },
+  { column: 'persona_id', default: null },
+  { column: 'persona_label', default: null }
 ]
 
 const ARTIFACT_PATH_COLUMNS = new Set(['html_path', 'screenshot_path', 'mhtml_path'])
@@ -258,6 +263,8 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
     linked_from_capture_id: params.linkedFromCaptureId ?? null,
     linked_from_content_hash: params.linkedFromContentHash ?? null,
     link_href: params.linkHref ?? null,
+    persona_id: params.personaId ?? null,
+    persona_label: params.personaLabel ?? null,
     inventory: params.inventory !== undefined ? JSON.stringify(params.inventory) : null,
     scroll_to_load: params.scrollToLoad !== undefined ? JSON.stringify(params.scrollToLoad) : null,
     transaction_record_hash: params.transactionRecordHash ?? null,
@@ -538,6 +545,8 @@ function rowToCapture(row: Record<string, unknown>): Capture {
     linkedFromCaptureId: (row.linked_from_capture_id as string) || undefined,
     linkedFromContentHash: (row.linked_from_content_hash as string) || undefined,
     linkHref: (row.link_href as string) || undefined,
+    personaId: (row.persona_id as string) || undefined,
+    personaLabel: (row.persona_label as string) || undefined,
     consentSuppression: (row.consent_suppression as ConsentSuppression) || undefined,
     mhtmlPath: (row.mhtml_path as string) || undefined,
     screenshotHash: (row.screenshot_hash as string) || undefined,

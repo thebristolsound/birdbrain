@@ -42,6 +42,9 @@ Spawn `birdbrain-reviewer` in the foreground (`run_in_background: false`) with t
   finding.
 - Auto-merge enabled by the maintainer's `merge` label is his merge request, not a finding.
 - Draft state is not a control, as on agent PRs.
+- `checks.sh` leaves `merge-gate` out of its CI read because it reads the pre-pass verdict and
+  the maintainer's sign-off, not CI (ADR-0041). On an evidence-affecting PR it stays red until
+  the maintainer signs off at head, so a red `merge-gate` is expected and is not a finding.
 - Every other pass, the evidence gate and the verify loop run as the agent file states.
 - Post nothing and label nothing. Return the full report.
 

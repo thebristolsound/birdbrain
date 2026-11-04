@@ -16,6 +16,7 @@ import {
 } from '../../extension/src/selectionBar'
 import type { ActiveCaseSelectors } from '@shared/types'
 import type { CaptureCardDetails, SelectorMatchInfo } from '@shared/schemas'
+import { installTrustedInput, operatorMouseUp } from './trustedInput'
 
 type SendResponse = (response?: unknown) => void
 type Listener = (message: unknown, sender: unknown, sendResponse: SendResponse) => unknown
@@ -87,7 +88,7 @@ async function raiseSelectionBar(): Promise<void> {
   const selection = window.getSelection()!
   selection.removeAllRanges()
   selection.addRange(range)
-  document.dispatchEvent(new MouseEvent('mouseup'))
+  operatorMouseUp()
   await new Promise((resolve) => setTimeout(resolve, 0))
   await new Promise((resolve) => setTimeout(resolve, 0))
   expect(document.querySelector(SELECTION_BAR_SELECTOR)).not.toBeNull()
@@ -142,6 +143,8 @@ beforeAll(async () => {
       y: 100,
       toJSON: () => ({})
     }) as DOMRect
+  // Before the import below: the bar registers its mouseup listener once, at import
+  installTrustedInput()
   // Side-effecting import: registers the content script's onMessage listener
   await import('../../extension/src/content')
 })

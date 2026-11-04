@@ -1812,7 +1812,9 @@ describe('export', () => {
         `Birdbrain ${resolveToolVersion()} wrote this package, and that build reads manifest ` +
           `schema up to ${MANIFEST_SCHEMA_VERSION}.`
       )
-      expect(runbook).toContain(`Birdbrain releases are published at ${GITHUB_RELEASES_URL}.`)
+      expect(runbook).toContain(
+        `Birdbrain releases are published, each with its source, at ${GITHUB_RELEASES_URL}.`
+      )
     })
 
     it('states 3 for a case whose capture entry carries an Exhibit Number', async () => {

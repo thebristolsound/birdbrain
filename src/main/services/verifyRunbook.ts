@@ -101,9 +101,13 @@ The standalone verifier, \`birdbrain-verify\`, prints \`RESULT: VERIFIER TOO OLD
 and exits 3 when it meets an entry from a newer schema than it reads. That
 result is not a tamper finding and not a pass: the verifier makes no integrity
 claim about the package either way. Builds of the verifier that read schema 2 or
-below predate the result. Re-run with a verifier from a Birdbrain release that
-reads manifest schema ${requiredSchemaVersion} or above. Birdbrain releases are published at
-${GITHUB_RELEASES_URL}.
+below predate the result.
+
+Re-run with a verifier that reads manifest schema ${requiredSchemaVersion} or above.
+\`birdbrain-verify\` is built from the Birdbrain source with
+\`pnpm build:verifier\`, and reads manifest schema up to the
+\`MANIFEST_SCHEMA_VERSION\` in that source's \`src/shared/constants.ts\`. Birdbrain
+releases are published, each with its source, at ${GITHUB_RELEASES_URL}.
 
 ## Trust model (read first)
 

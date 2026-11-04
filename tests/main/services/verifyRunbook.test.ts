@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { describe, expect, it } from 'vitest'
 import { buildVerifyRunbook } from '@main/services/verifyRunbook'
 import { GITHUB_RELEASES_URL, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
@@ -7,6 +9,8 @@ import { GITHUB_RELEASES_URL, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 // the paperwork rather than from the run (#1172).
 
 const SECTION = '## Manifest schema version'
+
+const ROOT = join(__dirname, '..', '..', '..')
 
 const render = (
   requiredSchemaVersion: number,
@@ -32,7 +36,29 @@ describe('buildVerifyRunbook', () => {
     expect(text).toContain(
       'Birdbrain 1.2.3-beta.4 wrote this package, and that build reads manifest schema up to 7.'
     )
-    expect(text).toContain(`Birdbrain releases are published at ${GITHUB_RELEASES_URL}.`)
+    expect(text).toContain(
+      `Birdbrain releases are published, each with its source, at ${GITHUB_RELEASES_URL}.`
+    )
+  })
+
+  // No release ships a verifier binary (#847), so the remedy names how one is
+  // built. The script and the file it names are read from this source tree.
+  it('names the build script and the constant that sets the schema a verifier reads', () => {
+    const text = prose(section(render(3)))
+    expect(text).toContain(
+      '`birdbrain-verify` is built from the Birdbrain source with `pnpm build:verifier`'
+    )
+    expect(text).toContain(
+      "reads manifest schema up to the `MANIFEST_SCHEMA_VERSION` in that source's " +
+        '`src/shared/constants.ts`.'
+    )
+    const { scripts } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf-8')) as {
+      scripts: Record<string, string>
+    }
+    expect(scripts['build:verifier']).toBeDefined()
+    expect(readFileSync(join(ROOT, 'src', 'shared', 'constants.ts'), 'utf-8')).toContain(
+      `export const MANIFEST_SCHEMA_VERSION = ${MANIFEST_SCHEMA_VERSION}\n`
+    )
   })
 
   it("names the standalone verifier's too-old result as no verdict", () => {
@@ -53,8 +79,7 @@ describe('buildVerifyRunbook', () => {
     const text = prose(section(render(8, 7, '1.2.3-beta.4')))
     expect(text).toContain('This package needs a verifier that reads manifest schema 8.')
     expect(text).toContain('that build reads manifest schema up to 7.')
-    expect(text).toContain('Re-run with a verifier from a Birdbrain release that reads manifest')
-    expect(text).toContain('schema 8 or above.')
+    expect(text).toContain('Re-run with a verifier that reads manifest schema 8 or above.')
     expect(text).not.toContain('1.2.3-beta.4 or later')
   })
 
@@ -67,7 +92,7 @@ describe('buildVerifyRunbook', () => {
     expect(rest(render(2, 7, '1.0.0'))).toBe(rest(render(9, 8, '2.0.0')))
   })
 
-  it('adds no command, so the section is prose a reader runs nothing from', () => {
+  it('holds no fenced block, so the blocks a reader runs are the same in every package', () => {
     expect(section(render(2))).not.toContain('```')
   })
 

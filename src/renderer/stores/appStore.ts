@@ -59,6 +59,8 @@ interface AppState {
     lastError?: { message: string; timestamp: string }
   }
   commandPaletteOpen: boolean
+  // The Case the launched browser's start dialog is open for, or null while it is closed.
+  startDialogCaseId: string | null
   // The Share mark is on screen, so the top bar's pill wears its ring.
   shareMarkOpen: boolean
   // A tour chapter is running, so the Share mark stays off screen.
@@ -95,6 +97,8 @@ interface AppState {
   setConnectedToExtension: (connected: boolean) => void
   setCommandPaletteOpen: (open: boolean) => void
   toggleCommandPalette: () => void
+  openStartDialog: (caseId: string) => void
+  closeStartDialog: () => void
   setShareMarkOpen: (open: boolean) => void
   setTourRunning: (running: boolean) => void
   registerOpenDialog: () => void
@@ -156,6 +160,7 @@ export const useAppStore = create<AppState>((set) => ({
   captureEvents: [],
   captureStats: { successCount: 0, failCount: 0, skipCount: 0 },
   commandPaletteOpen: false,
+  startDialogCaseId: null,
   shareMarkOpen: false,
   tourRunning: false,
   openDialogCount: 0,
@@ -171,6 +176,8 @@ export const useAppStore = create<AppState>((set) => ({
   setConnectedToExtension: (connected) => set({ connectedToExtension: connected }),
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   toggleCommandPalette: () => set((s) => ({ commandPaletteOpen: !s.commandPaletteOpen })),
+  openStartDialog: (caseId) => set({ startDialogCaseId: caseId }),
+  closeStartDialog: () => set({ startDialogCaseId: null }),
   setShareMarkOpen: (open) => set({ shareMarkOpen: open }),
   setTourRunning: (running) => set({ tourRunning: running }),
   registerOpenDialog: () => set((s) => ({ openDialogCount: s.openDialogCount + 1 })),

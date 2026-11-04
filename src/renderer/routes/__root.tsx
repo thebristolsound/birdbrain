@@ -35,6 +35,7 @@ import { CommandPalette } from '@renderer/components/layout/CommandPalette'
 import { OnboardingTour } from '@renderer/components/onboarding/OnboardingTour'
 import { ShareCoachMark } from '@renderer/components/onboarding/ShareCoachMark'
 import { LeftoverBrowserNotice } from '@renderer/components/launchedBrowser/LeftoverBrowserNotice'
+import { StartDialog } from '@renderer/components/launchedBrowser/StartDialog'
 import { AppToaster } from '@renderer/components/ui'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 import { subscribeToMainLog } from '@renderer/lib/mainLogBridge'
@@ -145,6 +146,7 @@ const rootRoute = createRootRoute({
           <CommandPalette />
           <OnboardingTour />
           <LeftoverBrowserNotice />
+          <StartDialog />
           <ShareCoachMark />
           <CrashRecoveryPrompt />
           <ReportProblemDialog

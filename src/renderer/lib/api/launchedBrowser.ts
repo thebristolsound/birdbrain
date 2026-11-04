@@ -1,6 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import type { LaunchedBrowserOption, LaunchedBrowserStatus } from '@shared/types'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { refusalError } from '@renderer/lib/api/sharing'
 
 // The launched browser (#1831). Main pushes each status change, and useServerStatus writes it
 // into this query, so the query fetches only to start from.
@@ -26,6 +27,21 @@ export const leftoverBrowsersQueryOptions = queryOptions({
 // Main opens the file dialog and checks the file; null when the Operator cancels.
 export function chooseBrowserExecutable(): Promise<LaunchedBrowserOption | null> {
   return window.birdbrain.launchedBrowser.chooseExecutable()
+}
+
+// Resolves once the browser is open and its Capture Session runs. A refusal rejects with an
+// Error that keeps main's code, for the start dialog's cards.
+export async function launchBrowser(executablePath: string): Promise<LaunchedBrowserStatus> {
+  try {
+    return await window.birdbrain.launchedBrowser.launch(executablePath)
+  } catch (err) {
+    throw refusalError(err)
+  }
+}
+
+// The launch then fails as BROWSER_LAUNCH_CANCELLED.
+export function cancelBrowserLaunch(): Promise<LaunchedBrowserStatus> {
+  return window.birdbrain.launchedBrowser.cancelLaunch()
 }
 
 // Settles once the launched browser has exited, or Birdbrain has given up on it.

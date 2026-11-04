@@ -28,8 +28,9 @@ import {
   type PanelView
 } from '@renderer/components/launchedBrowser/captureSessionPanelModel'
 
-// The rail and its overlay list the tabs; the top bar's popover counts them (`2d`).
-export type PanelForm = 'rail' | 'overlay' | 'popover'
+// The rail and its overlay list the tabs; the top bar's popover and the pop-out's window count
+// them (`2d`, `1g`).
+export type PanelForm = 'rail' | 'overlay' | 'popover' | 'window'
 
 interface PanelProps {
   form: PanelForm
@@ -48,7 +49,8 @@ export function useCaptureSessionView(): PanelView {
 const EYEBROW = 'font-display text-[10px] font-semibold uppercase tracking-[.06em] text-text-faint'
 
 // The Capture Session panel (S3), in the forms this step builds: the rail on Case screens, the
-// overlay its strip opens, and the top bar's popover on the dashboard and in Settings.
+// overlay its strip opens, the top bar's popover on the dashboard and in Settings, and the
+// pop-out's window, whose title bar names the panel and its Case.
 export function CaptureSessionPanel({ form, onDone, showOpenCase = false }: PanelProps) {
   const view = useCaptureSessionView()
   if (view.kind === 'none') return null
@@ -67,7 +69,6 @@ function BrowserBody({
   onDone?: () => void
   showOpenCase: boolean
 }) {
-  const navigate = useNavigate()
   const openStartDialog = useAppStore((s) => s.openStartDialog)
   const setStopConfirmOpen = useAppStore((s) => s.setStopConfirmOpen)
   const { data: cases = [] } = useQuery(casesQueryOptions)
@@ -81,22 +82,12 @@ function BrowserBody({
   const egress = settings?.egress
   // The Egress is fixed for the browser's life: a change ends its Capture Session first.
   const egressText = egress && egress.kind !== 'unavailable' ? egressName(egress) : null
-  const popover = form === 'popover'
-  const pad = popover ? 'px-2.5 py-2' : 'px-3 py-2.5'
-
-  function openCase() {
-    onDone?.()
-    void navigate({ to: '/cases/$caseId', params: { caseId } })
-  }
-
+  // The pop-out's title bar names the panel and the Case.
+  const inPopOut = form === 'window'
+  const listsTabs = form === 'rail' || form === 'overlay'
+  const pad = listsTabs ? 'px-3 py-2.5' : 'px-2.5 py-2'
   const openCaseLink = showOpenCase && (
-    <Button
-      variant="link"
-      className="h-auto self-start px-0 text-[11px] text-text-muted underline"
-      onClick={openCase}
-    >
-      Open {caseName}
-    </Button>
+    <OpenCaseLink caseId={caseId} caseName={caseName} onDone={onDone} />
   )
 
   if (kind === 'closed') {
@@ -114,7 +105,7 @@ function BrowserBody({
     return (
       <div className={cn('flex flex-col gap-1.5 text-[11px] leading-[1.45]', pad)}>
         <div className="flex items-center gap-1.5">
-          <PanelTitle />
+          {!inPopOut && <PanelTitle />}
           {sessionStartedAt !== null && <Elapsed since={sessionStartedAt} />}
         </div>
         <div className="flex items-center gap-1.5">
@@ -127,15 +118,18 @@ function BrowserBody({
           <InfoTip text="Launching again joins this Capture Session." />
         </div>
         <div className="flex flex-wrap gap-1.5">
-          <Button
-            variant="outline"
-            onClick={() => {
-              onDone?.()
-              openStartDialog(caseId)
-            }}
-          >
-            Launch again…
-          </Button>
+          {/* The start dialog is the main window's. */}
+          {!inPopOut && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                onDone?.()
+                openStartDialog(caseId)
+              }}
+            >
+              Launch again…
+            </Button>
+          )}
           <Button variant="outline" disabled={stopping} onClick={() => void stopSession()}>
             Stop Capture Session
           </Button>
@@ -154,7 +148,7 @@ function BrowserBody({
     <div className="flex min-h-0 flex-1 flex-col text-[11px] leading-[1.45]">
       <div className={cn('flex flex-col gap-[3px] border-b border-border', pad)}>
         <div className="flex items-center gap-1.5">
-          <PanelTitle />
+          {!inPopOut && <PanelTitle />}
           {sessionStartedAt !== null && <Elapsed since={sessionStartedAt} />}
           <span className="flex-1" />
           <Button
@@ -179,7 +173,7 @@ function BrowserBody({
             </>
           )}
         </div>
-        <div className="text-text-muted">Into {caseName}</div>
+        {!inPopOut && <div className="text-text-muted">Into {caseName}</div>}
         {kind === 'closing' && <div className="text-text-muted">Closing {name}…</div>}
       </div>
       {extensionWarnings.length > 0 && (
@@ -187,15 +181,40 @@ function BrowserBody({
           <ExtensionWarning count={extensionWarnings.length} egress={egressText} />
         </div>
       )}
-      {popover ? (
+      {listsTabs ? (
+        <TabList tabs={tabs} />
+      ) : (
         <div className={cn('flex flex-col gap-1.5', pad)}>
           <span className="text-text-muted">{tabCount(tabs.length)}</span>
           {openCaseLink}
         </div>
-      ) : (
-        <TabList tabs={tabs} />
       )}
     </div>
+  )
+}
+
+// "Open ‹Case›", which only the dashboard's popover offers.
+function OpenCaseLink({
+  caseId,
+  caseName,
+  onDone
+}: {
+  caseId: string
+  caseName: string
+  onDone?: () => void
+}) {
+  const navigate = useNavigate()
+  return (
+    <Button
+      variant="link"
+      className="h-auto self-start px-0 text-[11px] text-text-muted underline"
+      onClick={() => {
+        onDone?.()
+        void navigate({ to: '/cases/$caseId', params: { caseId } })
+      }}
+    >
+      Open {caseName}
+    </Button>
   )
 }
 

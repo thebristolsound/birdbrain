@@ -6,6 +6,7 @@ import {
   formatElapsed,
   noticeCard,
   panelView,
+  popOutTitle,
   railFits,
   tabCount,
   tabTitle
@@ -125,5 +126,16 @@ describe('the panel’s words', () => {
   it('counts the extensions a warning names', () => {
     expect(extensionWarningTitle(1)).toBe('An extension was added.')
     expect(extensionWarningTitle(2)).toBe('2 extensions were added.')
+  })
+})
+
+describe('popOutTitle', () => {
+  // The pop-out's title, which the window list and screen readers show (`1g`).
+  it('names Birdbrain, the Case and the Capture Session', () => {
+    expect(popOutTitle('Ferry Line')).toBe('Birdbrain · Ferry Line · Capture Session')
+  })
+
+  it('leaves the Case out until its name is known', () => {
+    expect(popOutTitle('')).toBe('Birdbrain · Capture Session')
   })
 })

@@ -86,6 +86,11 @@ export function formatElapsed(ms: number): string {
   return hours > 0 ? `${hours}:${rest}` : rest
 }
 
+// The pop-out's title, the one the desktop's window list shows (`1g`).
+export function popOutTitle(caseName: string): string {
+  return caseName ? `Birdbrain · ${caseName} · Capture Session` : 'Birdbrain · Capture Session'
+}
+
 export function tabCount(count: number): string {
   if (count === 0) return 'No tabs open'
   return count === 1 ? '1 tab' : `${count} tabs`

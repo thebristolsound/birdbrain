@@ -1,4 +1,4 @@
-import { queryOptions } from '@tanstack/react-query'
+import { queryOptions, type QueryClient } from '@tanstack/react-query'
 import type { LaunchedBrowserOption, LaunchedBrowserStatus } from '@shared/types'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { refusalError } from '@renderer/lib/api/sharing'
@@ -9,6 +9,17 @@ export const launchedBrowserStatusQueryOptions = queryOptions({
   queryKey: queryKeys.launchedBrowserStatus,
   queryFn: () => window.birdbrain.launchedBrowser.status()
 })
+
+// Main pushes each status change to every Birdbrain window, so the query is kept from the event,
+// not refetched. An open browser has had its version saved, which the found-browsers list shows.
+export function followLaunchedBrowserStatus(client: QueryClient): () => void {
+  return window.birdbrain.onLaunchedBrowserStatus((status) => {
+    client.setQueryData(queryKeys.launchedBrowserStatus, status)
+    if (status.state === 'open') {
+      void client.invalidateQueries({ queryKey: queryKeys.launchedBrowsers })
+    }
+  })
+}
 
 // Discovery asks the file system and starts no browser.
 export const launchedBrowsersQueryOptions = queryOptions({
@@ -47,6 +58,11 @@ export function cancelBrowserLaunch(): Promise<LaunchedBrowserStatus> {
 // Settles once the launched browser has exited, or Birdbrain has given up on it.
 export function endLaunchedBrowserSession(): Promise<LaunchedBrowserStatus> {
   return window.birdbrain.launchedBrowser.endSession()
+}
+
+// Closes the pop-out; the panel returns to the main window.
+export function dockPanel(): Promise<void> {
+  return window.birdbrain.launchedBrowser.dock()
 }
 
 // How Birdbrain names the browser it launched, apart from the Operator's own (S4).

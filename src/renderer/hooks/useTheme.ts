@@ -42,6 +42,18 @@ export async function reconcilePersistedTheme(queryClient: QueryClient): Promise
   queryClient.setQueryData(queryKeys.settings, await window.birdbrain.settings.update({ theme }))
 }
 
+// The Capture Session pop-out is a second page on the main window's origin and shares its
+// localStorage, so a toggle there reaches the pop-out as a storage event. Returns a function that
+// stops listening.
+export function followStoredTheme(win: Window = window): () => void {
+  const onStorage = ({ key, newValue }: StorageEvent): void => {
+    if (key !== 'theme') return
+    applyTheme(newValue === 'dark' || newValue === 'light' ? newValue : DEFAULT_THEME)
+  }
+  win.addEventListener('storage', onStorage)
+  return () => win.removeEventListener('storage', onStorage)
+}
+
 function prefersReducedMotion(): boolean {
   if (document.documentElement.classList.contains('reduce-motion')) return true
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches

@@ -4,6 +4,7 @@ import { queryClient } from '@renderer/lib/queryClient'
 import { queryKeys } from '@renderer/lib/queries'
 import { invalidateAfterTagApply } from '@renderer/lib/api/tags'
 import { invalidateNoteQueries } from '@renderer/lib/api/notes'
+import { followLaunchedBrowserStatus } from '@renderer/lib/api/launchedBrowser'
 import { router } from '@renderer/router'
 import type { Capture } from '@shared/types'
 
@@ -34,14 +35,7 @@ export function useServerStatus() {
       }
     })
 
-    // Main pushes every change, so the query is kept from the event, not refetched. An open
-    // browser has had its version saved, which the found-browsers list shows.
-    const unsubLaunchedBrowser = window.birdbrain.onLaunchedBrowserStatus((status) => {
-      queryClient.setQueryData(queryKeys.launchedBrowserStatus, status)
-      if (status.state === 'open') {
-        queryClient.invalidateQueries({ queryKey: queryKeys.launchedBrowsers })
-      }
-    })
+    const unsubLaunchedBrowser = followLaunchedBrowserStatus(queryClient)
 
     const unsubCapture = window.birdbrain.onCaptureActivity((event) => {
       useAppStore.getState().addCaptureEvent(event)

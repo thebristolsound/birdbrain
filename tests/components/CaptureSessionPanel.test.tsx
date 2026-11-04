@@ -190,9 +190,31 @@ describe('the popover form', () => {
   })
 })
 
-describe('state 10: the browser closed while its Capture Session runs', () => {
-  const CLOSED: LaunchedBrowserStatus = { state: 'closed', browser: { ...SUMMARY, tabs: [] } }
+const CLOSED: LaunchedBrowserStatus = { state: 'closed', browser: { ...SUMMARY, tabs: [] } }
 
+describe('the window form, in the pop-out', () => {
+  it('counts the tabs and leaves the Case and the panel title to its title bar', async () => {
+    mount({ form: 'window' })
+    expect(await screen.findByText('Proxy · Harbor relay')).toBeTruthy()
+    expect(screen.getByText('Launched Google Chrome')).toBeTruthy()
+    expect(screen.getByText('2 tabs')).toBeTruthy()
+    expect(screen.getByRole('timer').textContent).toBe('00:42')
+    expect(screen.getByRole('button', { name: 'Stop…' })).toBeTruthy()
+    expect(screen.queryByRole('list', { name: 'Tabs' })).toBeNull()
+    expect(screen.queryByText('Capture Session')).toBeNull()
+    expect(screen.queryByText('Into Ferry Line')).toBeNull()
+  })
+
+  it('offers no Launch again…, since the start dialog is the main window’s', async () => {
+    mount({ form: 'window', status: CLOSED })
+    expect(await screen.findByText('Launched Google Chrome closed.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Stop Capture Session' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Launch again…' })).toBeNull()
+    expect(screen.queryByText('Capture Session')).toBeNull()
+  })
+})
+
+describe('state 10: the browser closed while its Capture Session runs', () => {
   it('says the Capture Session keeps running', async () => {
     mount({ status: CLOSED })
     expect(await screen.findByText('Launched Google Chrome closed.')).toBeTruthy()

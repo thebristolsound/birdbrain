@@ -7,6 +7,7 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   useTheme,
+  followStoredTheme,
   reconcilePersistedTheme,
   THEME_FADE_CLASS,
   THEME_FADE_MS
@@ -163,5 +164,42 @@ describe('theme-init.js', () => {
     localStorage.setItem('theme', 'light')
     new Function(script)()
     expect(root.classList.contains('dark')).toBe(false)
+  })
+})
+
+// The Capture Session pop-out is a second page on the same origin, so it shares the main window's
+// localStorage and hears the main window's toggle as a storage event.
+describe('followStoredTheme', () => {
+  function stored(key: string, newValue: string | null) {
+    window.dispatchEvent(new StorageEvent('storage', { key, newValue }))
+  }
+
+  beforeEach(() => {
+    root.className = 'dark'
+  })
+
+  it('takes the theme another window stores', () => {
+    const stop = followStoredTheme()
+    stored('theme', 'light')
+    expect(root.classList.contains('dark')).toBe(false)
+    stored('theme', 'dark')
+    expect(root.classList.contains('dark')).toBe(true)
+    stop()
+  })
+
+  it('reads a cleared theme as the first-run theme and ignores other keys', () => {
+    const stop = followStoredTheme()
+    stored('theme', 'light')
+    stored('density', 'dark')
+    expect(root.classList.contains('dark')).toBe(false)
+    stored('theme', null)
+    expect(root.classList.contains('dark')).toBe(true)
+    stop()
+  })
+
+  it('stops following once stopped', () => {
+    followStoredTheme()()
+    stored('theme', 'light')
+    expect(root.classList.contains('dark')).toBe(true)
   })
 })

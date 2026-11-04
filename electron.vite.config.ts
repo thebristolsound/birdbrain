@@ -83,7 +83,14 @@ export default defineConfig({
       // subset as a data: URI, which `font-src 'self'` then blocked (#512). The
       // app loads from the local filesystem, so the extra request costs
       // nothing measurable and the CSP stays as strict as it was.
-      assetsInlineLimit: 0
+      assetsInlineLimit: 0,
+      // The main window's page, and the Capture Session pop-out's (#1831).
+      rollupOptions: {
+        input: {
+          index: resolve('src/renderer/index.html'),
+          popOut: resolve('src/renderer/pop-out.html')
+        }
+      }
     },
     plugins: [
       react(),

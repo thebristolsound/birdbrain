@@ -17,9 +17,9 @@ import {
 import { useAppStore } from '@renderer/stores/appStore'
 import { InfoTip } from '@renderer/components/launchedBrowser/InfoTip'
 
-// The stop confirmation (`1i`), mounted once at the root: the panel's Stop… and the Capture
-// Session switch open it while a launched browser is open. It asks only then, because only then
-// does stopping close a browser.
+// The stop confirmation (`1i`), mounted once at the root of each window: the panel's Stop… and
+// the Capture Session switch open it while a launched browser is open. It asks only then, because
+// only then does stopping close a browser.
 export function StopSessionDialog() {
   const requested = useAppStore((s) => s.stopConfirmOpen)
   const setOpen = useAppStore((s) => s.setStopConfirmOpen)
@@ -63,7 +63,11 @@ export function StopSessionDialog() {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
       {open && (
-        <DialogContent onClose={close} className="max-w-sm rounded-md p-3 text-xs">
+        // Narrower than the 300-pixel pop-out, which asks this question too.
+        <DialogContent
+          onClose={close}
+          className="w-[calc(100%-1rem)] max-w-sm rounded-md p-3 text-xs"
+        >
           <div className="flex items-center gap-1.5">
             <DialogTitle>Stop the Capture Session?</DialogTitle>
             <InfoTip

@@ -10,21 +10,7 @@ import {
   type CdpCommandMap,
   type CdpMethod
 } from '@main/services/launchedBrowser/commands'
-
-// Commands the engine must never send: the cookie readers, the automation override (spec,
-// "The CDP client"), durable messages (2026-10-17 ruling) and the domain enables the spec
-// rules out ("Attach before request").
-const NEVER_SENT = [
-  'Storage.getCookies',
-  'Network.getCookies',
-  'Network.getAllCookies',
-  'Emulation.setAutomationOverride',
-  'Network.configureDurableMessages',
-  'Runtime.enable',
-  'Log.enable',
-  'Performance.enable',
-  'Debugger.enable'
-]
+import { NEVER_SENT } from '../../../helpers/launchedBrowserSuite'
 
 const NUL = Buffer.from([0])
 

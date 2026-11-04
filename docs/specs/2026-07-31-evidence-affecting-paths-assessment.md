@@ -85,6 +85,14 @@ browser's exchanges a Transaction Record holds as complete and how the inventory
 package paths in it. It had been on neither list, although Package Verification, `verify.sh`,
 Evidence Package export, the Shared Case sync and Case Archive export and import all take paths
 from it.
+On 2026-11-03 `src/main/services/selectorMatch.ts` was added to the Capture lifecycle table at
+blocking tier, the same move as #400: the Selector matcher moved there out of the already-listed
+`src/main/services/db/**`, so that the Selector Lifecycle and the live check passive capture is to
+add (#600) can share one rule instead of each keeping a copy (launched-browser design, "Selector
+matching and passive capture"). It decides which Selectors a Capture's text matches, and so which
+Persisted Matches the Selector repo writes. The rename-detection-off rule catches the move itself
+and nothing after, so outside `db/**` a later edit touching only this file would otherwise match
+no entry.
 `src/main/services/launchedBrowser/**` was added to Acquisition at blocking tier on 2026-11-03
 for #1831, step 3 of the launched-browser design's stage 2. It is a new acquisition path rather
 than a carve-out: it decides which browser starts, with which switches and browser profile, and
@@ -292,6 +300,7 @@ independent of the Operator who holds it.
 | `src/main/services/db/**` | blocking | All evidentiary records: schema, repos, dbAdmin row edit/restore/purge |
 | `src/main/services/selectorLifecycle.ts` | blocking | Retro-matching writes `selector_matches` rows that ride in case archives |
 | `src/main/services/safeRegex.ts` | blocking | Regex evaluation deciding those persisted matches (follows the selector cluster call below) |
+| `src/main/services/selectorMatch.ts` | blocking | The Selector matcher: decides which Selectors a Capture's text matches, and so which persisted matches the Selector repo writes (follows the selector cluster call below). Added 2026-11-03 |
 
 ### Annotation, redaction, notes-to-evidence binding
 
@@ -484,10 +493,11 @@ It is *notable* exclusions, not an exhaustive complement of the include list.
    the "interpretation" clause (what evidence a note points at, and note text in exported
    reports/archives).
 7. **Selector cluster (`src/main/services/selectorLifecycle.ts`,
-   `src/main/services/safeRegex.ts`).** Originally excluded as "matches never enter the evidence
-   package" — the challenge pass found that factually wrong (`src/main/services/caseArchive.ts`
-   exports and re-imports `selectors` and `selectorMatches`). Included on that basis; if selector
-   matches are ruled non-evidentiary despite riding in archives, drop both.
+   `src/main/services/safeRegex.ts`, `src/main/services/selectorMatch.ts`).** Originally excluded
+   as "matches never enter the evidence package" — the challenge pass found that factually wrong
+   (`src/main/services/caseArchive.ts` exports and re-imports `selectors` and `selectorMatches`).
+   Included on that basis; if selector matches are ruled non-evidentiary despite riding in
+   archives, drop all three.
 8. **Accepted glob false positives.** `src/main/services/db/**` sweeps in the read-only
    `src/main/services/db/diagnosticsRepo.ts`; `src/renderer/components/settings/db/**` sweeps in
    the generic `src/renderer/components/settings/db/ConfirmDialog.tsx`. Accepted: a per-file list

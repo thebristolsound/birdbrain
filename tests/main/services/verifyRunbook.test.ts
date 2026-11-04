@@ -1,0 +1,110 @@
+import { readFileSync } from 'fs'
+import { join } from 'path'
+import { describe, expect, it } from 'vitest'
+import { buildVerifyRunbook } from '@main/services/verifyRunbook'
+import { GITHUB_RELEASES_URL, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
+
+// ADR-0023: the package names the manifest schema version it needs and where a
+// current verifier is, so a recipient holding an old verifier learns it from
+// the paperwork rather than from the run (#1172).
+
+const SECTION = '## Manifest schema version'
+
+const ROOT = join(__dirname, '..', '..', '..')
+
+const render = (
+  requiredSchemaVersion: number,
+  readerSchemaVersion = MANIFEST_SCHEMA_VERSION,
+  appVersion = '1.2.3-beta.4'
+): string => buildVerifyRunbook({ requiredSchemaVersion, readerSchemaVersion, appVersion })
+
+// The runbook wraps prose at any space, so the assertions read it collapsed.
+const prose = (text: string): string => text.replace(/\s+/g, ' ')
+
+// The text from the section's heading to the next heading.
+const section = (runbook: string): string => {
+  const start = runbook.indexOf(`\n${SECTION}\n`)
+  expect(start).toBeGreaterThan(-1)
+  const end = runbook.indexOf('\n## ', start + SECTION.length + 1)
+  return runbook.slice(start, end)
+}
+
+describe('buildVerifyRunbook', () => {
+  it("states the schema needed, the writing build's reader and the releases page", () => {
+    const text = prose(section(render(2, 7, '1.2.3-beta.4')))
+    expect(text).toContain('This package needs a verifier that reads manifest schema 2.')
+    expect(text).toContain(
+      'Birdbrain 1.2.3-beta.4 wrote this package, and that build reads manifest schema up to 7.'
+    )
+    expect(text).toContain(
+      `Birdbrain releases are published, each with its source, at ${GITHUB_RELEASES_URL}.`
+    )
+  })
+
+  // No release ships a verifier binary (#847), so the remedy names how one is
+  // built. The script and the file it names are read from this source tree.
+  it('names the build script and the constant that sets the schema a verifier reads', () => {
+    const text = prose(section(render(3)))
+    expect(text).toContain(
+      '`birdbrain-verify` is built from the Birdbrain source with `pnpm build:verifier`'
+    )
+    expect(text).toContain(
+      "reads manifest schema up to the `MANIFEST_SCHEMA_VERSION` in that source's " +
+        '`src/shared/constants.ts`.'
+    )
+    const { scripts } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf-8')) as {
+      scripts: Record<string, string>
+    }
+    expect(scripts['build:verifier']).toBeDefined()
+    expect(readFileSync(join(ROOT, 'src', 'shared', 'constants.ts'), 'utf-8')).toContain(
+      `export const MANIFEST_SCHEMA_VERSION = ${MANIFEST_SCHEMA_VERSION}\n`
+    )
+  })
+
+  it("names the standalone verifier's too-old result as no verdict", () => {
+    const text = prose(section(render(3)))
+    expect(text).toContain(
+      'The standalone verifier, `birdbrain-verify`, prints `RESULT: VERIFIER TOO OLD` and exits 3'
+    )
+    expect(text).toContain('That result is not a tamper finding and not a pass')
+    // The result shipped with the reader of schema 3, so older builds do not print it.
+    expect(text).toContain('Builds of the verifier that read schema 2 or below predate the result.')
+    // ADR-0023: those builds fail the strict parse and report a broken chain.
+    expect(text).toContain(
+      'They reject an entry from a newer schema as malformed and print `RESULT: FAIL`, so on a ' +
+        'package that needs schema 3 or above, a FAIL from such a build does not show tampering.'
+    )
+  })
+
+  // A member on a newer build can write a member chain this package encloses,
+  // so the version a package needs can exceed what the build that wrote it
+  // reads. The remedy names the version the package needs, never the writing
+  // build, so it stays true then.
+  it('keys the remedy to the schema the package needs, above what the writing build reads', () => {
+    const text = prose(section(render(8, 7, '1.2.3-beta.4')))
+    expect(text).toContain('This package needs a verifier that reads manifest schema 8.')
+    expect(text).toContain('that build reads manifest schema up to 7.')
+    expect(text).toContain('Re-run with a verifier that reads manifest schema 8 or above.')
+    expect(text).not.toContain('1.2.3-beta.4 or later')
+  })
+
+  it('states the versions before the trust model, and only there', () => {
+    const runbook = render(2)
+    expect(runbook.indexOf(`\n${SECTION}\n`)).toBeLessThan(runbook.indexOf('\n## Trust model'))
+    // Every other line is the same for every package, so a test that reads the
+    // rest of the runbook can render it with any versions.
+    const rest = (text: string): string => text.replace(section(text), '')
+    expect(rest(render(2, 7, '1.0.0'))).toBe(rest(render(9, 8, '2.0.0')))
+  })
+
+  it('holds no fenced block, so the blocks a reader runs are the same in every package', () => {
+    expect(section(render(2))).not.toContain('```')
+  })
+
+  it('keeps the trust model rule that an entry at schema 2 or above is signed', () => {
+    expect(prose(render(3))).toContain(
+      'Entries with `schemaVersion` 2 or above additionally carry an RSA `signature` ' +
+        'over that hash.'
+    )
+  })
+})

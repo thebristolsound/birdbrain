@@ -693,8 +693,7 @@ const ManifestCaptureEntrySchema = z
     // bytes (X18, X46). Optional because entries written before X46 carry
     // none: their Captures are numbered by the one-time `renumber` entry.
     // Schema 3 is amended in place rather than bumped, so this is a schema-3
-    // field, and never `.default()`: an injected value would change the
-    // re-hashed body.
+    // field, and never `.default()` (ManifestEntrySchema says why).
     exhibitNumber: z.number().int().positive().optional(),
     // The Egress the render was sent through (ADR-0032, #1694), schema-5
     // fields. Each is OMITTED when absent, never '' or null, so every entry
@@ -1021,8 +1020,9 @@ const ManifestExportEntrySchema = z
     // entries keep identical canonical bodies and chain hashes. Both MUST stay
     // `.optional()` with NO `.default()`: a required key makes every legacy
     // export entry fail this .strict() schema ('Invalid entry shape'), and a
-    // default is injected into the parsed output manifestChain re-hashes,
-    // breaking every legacy export entry ('Entry hash mismatch').
+    // default reaches readers unhashed (ManifestEntrySchema says why) and
+    // breaks every export-entry.json without the key, whose check re-hashes
+    // the parsed output ('export-entry.json entry hash mismatch').
     scope: z.literal('selection').optional(),
     captureIds: z.array(z.string()).optional(),
     // Export class (#399, ADR-0010). Present-means-working-copy: an evidence
@@ -1127,7 +1127,7 @@ const ManifestExhibitEntrySchema = z
     // OMITTED means "the chain's own writer", whose code the Owner's
     // `member-add` for that writer carries — which keeps every schema-3 entry
     // valid and gives a single-member Case the same rule as a shared one. Never
-    // `.default()`: an injected value would change the re-hashed body.
+    // `.default()` (ManifestEntrySchema says why).
     memberCode: memberCodeField.optional(),
     // The Persona fields (schema 7), described at the capture entry above.
     personaId: personaIdField.optional(),
@@ -1193,7 +1193,7 @@ const ManifestDerivationEntrySchema = z
     derivationToolVersion: z.string(),
     // OMITTED on entries written before #1319, which recorded none. Schema 3
     // is amended in place rather than bumped, as X46 amended `capture`, and
-    // never `.default()`: an injected value would change the re-hashed body.
+    // never `.default()` (ManifestEntrySchema says why).
     derivationParameters: DerivationParametersSchema.optional(),
     outputHash: z.string(),
     outputPath: z.string(),
@@ -1351,6 +1351,10 @@ const ManifestExcludeEntrySchema = z
   })
   .strict()
 
+// No field of a member schema may carry a `.default()`. Readers use this
+// schema's output as the entry, but the chain walk hashes the line as written
+// (#1674), so an injected value would reach them without the signed hash
+// covering it.
 export const ManifestEntrySchema = z.discriminatedUnion('type', [
   ManifestCaptureEntrySchema,
   ManifestDeletionEntrySchema,

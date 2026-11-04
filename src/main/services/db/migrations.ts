@@ -1923,4 +1923,23 @@ export function runMigrations(db: Database.Database): void {
       db.pragma('user_version = 44')
     })()
   }
+
+  if (version < 45) {
+    db.transaction(() => {
+      // The Persona an ingest signed (ADR-0030), with the label as passed at acquisition. A
+      // Capture received into a Shared Case leaves both NULL (receivedEvidence.ts). Checks read
+      // the signed entry, never this row. No foreign key to personas: an imported Capture can
+      // name a Persona registered on another installation.
+      //
+      // Skips a column already present, as v43 does, because a restored copy marked one
+      // version back runs this block again.
+      const present = new Set(
+        (db.pragma('table_info(captures)') as Array<{ name: string }>).map(({ name }) => name)
+      )
+      for (const column of ['persona_id', 'persona_label']) {
+        if (!present.has(column)) db.exec(`ALTER TABLE captures ADD COLUMN ${column} TEXT`)
+      }
+      db.pragma('user_version = 45')
+    })()
+  }
 }

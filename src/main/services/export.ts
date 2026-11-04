@@ -24,7 +24,9 @@ import {
   appendManifestEntry,
   createArtifactAccumulator,
   initManifest,
+  MIN_READER_SCHEMA_VERSION,
   packageHash as computePackageHash,
+  readEntries,
   readManifestSnapshot,
   readSharedCaseSnapshot,
   rollbackManifestEntry
@@ -76,9 +78,10 @@ import type {
   PackagedArtifacts,
   ReportData
 } from '@main/services/reportHtml'
-import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
+import { buildVerifyRunbook } from '@main/services/verifyRunbook'
 import { VERIFY_SCRIPT } from '@main/services/verifyScript'
 import { EVIDENCE_INDEX_SCHEMA_VERSION, WORKING_COPY_MARKER_FILENAME } from '@shared/schemas'
+import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { extractNoteMentions } from '@shared/noteDoc'
 import type {
   Capture,
@@ -333,10 +336,16 @@ export function resolveExportTrustedTime(
  * Where a capture has more than one entry — a recapture supersedes an earlier
  * one — the LAST entry wins, since that is the entry the package's own chain
  * position cites.
+ *
+ * Every capture's row id is a key. A capture its own id names no entry for
+ * takes the status of the entry under its chain name (`chainIdOf`, see
+ * resolveChainNames), so a capture an import renamed reads its inherited entry
+ * (#1472).
  */
 export function resolveEntrySignatures(
   captures: Capture[],
-  entries: Record<string, unknown>[]
+  entries: Record<string, unknown>[],
+  chainIdOf: (id: string) => string
 ): Map<string, EntrySignatureStatus> {
   const byCaptureId = new Map<string, EntrySignatureStatus>()
 
@@ -352,10 +361,36 @@ export function resolveEntrySignatures(
   // Captures with no chain entry are stated as such rather than left absent, so
   // a missing key in the report can only mean a capture this export never saw.
   for (const capture of captures) {
-    if (!byCaptureId.has(capture.id)) byCaptureId.set(capture.id, 'no-entry')
+    if (byCaptureId.has(capture.id)) continue
+    byCaptureId.set(capture.id, byCaptureId.get(chainIdOf(capture.id)) ?? 'no-entry')
   }
 
   return byCaptureId
+}
+
+/**
+ * The manifest schema a verifier must read to verify the package (ADR-0023):
+ * the highest `schemaVersion` among the entries it encloses. Every member and
+ * lineage chain is read from the bytes the package ships, not from the entries
+ * the Shared Case walk accepted: the package ships every line, accepted or not.
+ * A value that is not a whole number names no version. The floor is the export
+ * entry's stamp: `export-entry.json` is appended after the package is sealed,
+ * so its line cannot be read here.
+ */
+export function resolveRequiredReaderSchemaVersion(
+  manifest: ManifestSnapshot,
+  sharedCase: SharedCaseSnapshot
+): number {
+  const chains = sharedCase.chains.map(({ jsonl }) => readEntries(jsonl.toString('utf-8')))
+  return [manifest.entries, ...chains]
+    .flat()
+    .reduce<number>(
+      (required, { schemaVersion }) =>
+        typeof schemaVersion === 'number' && Number.isInteger(schemaVersion)
+          ? Math.max(required, schemaVersion)
+          : required,
+      MIN_READER_SCHEMA_VERSION.export
+    )
 }
 
 /**
@@ -723,7 +758,7 @@ export async function generateReport(
   const trustedTime = resolveExportTrustedTime(captures, trustedTimeByHash)
   data.preflight = trustedTime.preflight
   data.trustedTimeByCaptureId = trustedTime.byCaptureId
-  data.entrySignatureByCaptureId = resolveEntrySignatures(captures, caseEntries)
+  data.entrySignatureByCaptureId = resolveEntrySignatures(captures, caseEntries, chainIdOf)
   data.captureEngineByCaptureId = resolveExportCaptureEngine(manifest, sharedCase)
   data.linkSourceByCaptureId = resolveExportLinkSources(manifest, sharedCase)
   data.fileExhibits = buildFileExhibitRecords(scope.fileExhibits, {
@@ -731,7 +766,7 @@ export async function generateReport(
     derivedVerifications,
     verifications: exhibitVerifications,
     trustedTimeByHash,
-    entrySignatures: resolveExhibitEntrySignatures(scope.fileExhibits, caseEntries),
+    entrySignatures: resolveExhibitEntrySignatures(scope.fileExhibits, caseEntries, chainIdOf),
     tokenPaths,
     chainNames,
     isPackage: options.format === 'zip',
@@ -923,12 +958,14 @@ function resolveScopedExhibits(
 /**
  * Per-entry signature status for committed Exhibits, read from the same
  * manifest snapshot `resolveEntrySignatures` reads for Captures and folded the
- * same way: the LAST `exhibit` entry for an id wins, and an Exhibit with no
- * entry is stated as `no-entry` rather than left absent.
+ * same way: the LAST `exhibit` entry for an id wins, an Exhibit its own id
+ * names no entry for is looked up under its chain name, and an Exhibit with no
+ * entry under either is stated as `no-entry` rather than left absent.
  */
 export function resolveExhibitEntrySignatures(
   exhibits: Exhibit[],
-  entries: Record<string, unknown>[]
+  entries: Record<string, unknown>[],
+  chainIdOf: (id: string) => string
 ): Map<string, EntrySignatureStatus> {
   const byExhibitId = new Map<string, EntrySignatureStatus>()
   for (const entry of entries) {
@@ -943,7 +980,8 @@ export function resolveExhibitEntrySignatures(
     )
   }
   for (const exhibit of exhibits) {
-    if (!byExhibitId.has(exhibit.id)) byExhibitId.set(exhibit.id, 'no-entry')
+    if (byExhibitId.has(exhibit.id)) continue
+    byExhibitId.set(exhibit.id, byExhibitId.get(chainIdOf(exhibit.id)) ?? 'no-entry')
   }
   return byExhibitId
 }
@@ -1517,7 +1555,15 @@ function buildEvidenceZip(
     )
   )
   add(PACKAGE_ROOT_FILES.signingPublicKey, publicKeyPem)
-  add(PACKAGE_ROOT_FILES.verifyRunbook, VERIFY_RUNBOOK)
+  add(
+    PACKAGE_ROOT_FILES.verifyRunbook,
+    buildVerifyRunbook({
+      requiredSchemaVersion: resolveRequiredReaderSchemaVersion(manifest, sharedCase),
+      readerSchemaVersion: MANIFEST_SCHEMA_VERSION,
+      // The version report.html names, so the two documents cannot disagree.
+      appVersion: data.toolVersion
+    })
+  )
   // The runbook's executable form (#584). Written through add() like every other
   // packaged document, so it lands in artifacts[] and in packageHash: a script
   // that verifies the package is worth no more than the package's own account of

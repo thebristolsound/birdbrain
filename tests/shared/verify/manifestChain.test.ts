@@ -1,12 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createHash } from 'crypto'
+import { execFileSync } from 'child_process'
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { z } from 'zod'
 import { initManifest, appendManifestEntry, verifyManifestChain } from '@main/services/manifest'
 import { getPublicKeyPem } from '@main/services/signingKey'
-import { verifyManifestChainText, canonicalStringify } from '@shared/verify'
+import { VERIFY_RECIPES } from '@main/services/verifyProcedure'
+import { verifyManifestChainText, canonicalStringify, ManifestEntrySchema } from '@shared/verify'
+import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
 import { MANIFEST_FILENAME } from '@shared/constants'
+import { buildSignedChain, writeEgressPackage } from '../../helpers/egressPackage'
+import { HAS_JQ } from '../../helpers/jq'
 
 // PR1 guard (#122): the app's verifyManifestChain(caseDir) is a thin fs
 // wrapper over the shared core's verifyManifestChainText. These tests pin the
@@ -262,5 +268,232 @@ describe('verifyManifestChain (app) vs verifyManifestChainText (core)', () => {
     expect(result.valid).toBe(false)
     expect(result.brokenAt).toBe(1)
     expect(result.reason).toBe('Schema version downgrade')
+  })
+})
+
+// zod's z.record skips an own `__proto__` key without validating it, so the
+// schema output of a signed line edited to add one inside `headers` or
+// `derivationParameters` is the body that was signed. verify.sh hashes the line
+// as written and reports the edit; the core must report it too (#1674).
+describe('verifyManifestChainText: an own __proto__ key added to a signed line (#1674)', () => {
+  const CAPTURE_WITH_HEADERS = {
+    ...makeCaptureEntry(0),
+    headers: { 'content-type': 'text/html' },
+    schemaVersion: 2
+  }
+  // A thumbnail's derivation entry, the shape manifestSchema3.test.ts freezes.
+  const THUMBNAIL_DERIVATION = {
+    type: 'derivation',
+    caseId: 'case-1',
+    parentExhibitId: 'cap-0',
+    parentContentHash: 'a'.repeat(64),
+    derivation: 'thumbnail',
+    derivationToolVersion: '0.4.0',
+    derivationParameters: {
+      scaledWidth: 160,
+      scaledHeight: 33,
+      outputWidth: 160,
+      outputHeight: 120,
+      paddedRows: 87,
+      padMethod: 'copy',
+      jpegQuality: 75,
+      sharpVersion: '0.35.4',
+      libvipsVersion: '8.18.6'
+    },
+    outputHash: 'e'.repeat(64),
+    outputPath: 'case-1/cap-0_thumb.jpg',
+    timestamp: '2026-06-01T12:06:00.000Z',
+    operatorId: 'op-1',
+    operatorName: 'Casey Operator',
+    toolVersion: '0.4.0',
+    schemaVersion: 3
+  }
+  // A type this build has never heard of, so the chain takes the
+  // verifier-too-old path, whose phase A hashes the entries before it.
+  const FUTURE_ENTRY = {
+    type: 'annotation-burn',
+    caseId: 'case-1',
+    timestamp: '2026-06-01T12:10:00.000Z',
+    operatorId: 'op-1',
+    operatorName: 'Casey Operator',
+    toolVersion: '0.4.0',
+    schemaVersion: 3
+  }
+  const HASH_MISMATCH = { valid: false, brokenAt: 0, reason: 'Entry hash mismatch' }
+
+  const verify = (lines: string[]) =>
+    verifyManifestChainText(lines.join('\n') + '\n', { publicKeyPem: getPublicKeyPem() })
+
+  // Edits the JSON text after signing: `__proto__` in an object literal sets
+  // the prototype, so the key would never reach the signed line.
+  function addProtoKey(line: string, field: string, value = '{"note":"x"}'): string {
+    const edited = line.replace(`"${field}":{`, `"${field}":{"__proto__":${value},`)
+    expect(edited).not.toBe(line)
+    return edited
+  }
+
+  it('reports a capture entry whose headers gained the key as an entry hash mismatch', () => {
+    const [line] = buildSignedChain([CAPTURE_WITH_HEADERS])
+    const edited = addProtoKey(line, 'headers')
+    const { headers } = JSON.parse(edited) as { headers: object }
+    expect(Object.hasOwn(headers, '__proto__')).toBe(true)
+    expect(verify([edited])).toMatchObject(HASH_MISMATCH)
+  })
+
+  it('reports a derivation entry whose parameters gained the key as an entry hash mismatch', () => {
+    const [line] = buildSignedChain([THUMBNAIL_DERIVATION])
+    const edited = addProtoKey(line, 'derivationParameters')
+    const { derivationParameters } = JSON.parse(edited) as { derivationParameters: object }
+    expect(Object.hasOwn(derivationParameters, '__proto__')).toBe(true)
+    expect(verify([edited])).toMatchObject(HASH_MISMATCH)
+  })
+
+  it('reports the edited entry as broken, not the verifier as too old, before a newer entry', () => {
+    const lines = buildSignedChain([CAPTURE_WITH_HEADERS, FUTURE_ENTRY])
+    expect(verify(lines).unsupported?.index).toBe(1)
+    const result = verify([addProtoKey(lines[0], 'headers'), lines[1]])
+    expect(result).toMatchObject(HASH_MISMATCH)
+    expect(result.unsupported).toBeUndefined()
+  })
+
+  // The runbook's recipe as verify.sh runs it, on the edited line.
+  it.skipIf(!HAS_JQ)('agrees with the Verify Runbook jq recipe on the edited line', () => {
+    const [line] = buildSignedChain([CAPTURE_WITH_HEADERS])
+    const edited = addProtoKey(line, 'headers')
+    const body: Record<string, unknown> = { ...(JSON.parse(edited) as Record<string, unknown>) }
+    const storedHash = body.entryHash
+    delete body.entryHash
+    delete body.signature
+    const viaJq = execFileSync('/bin/sh', ['-c', VERIFY_RECIPES.canonicalEntryBody], {
+      input: edited,
+      encoding: 'utf-8'
+    })
+    expect(viaJq).toContain('"__proto__":{"note":"x"}')
+    expect(viaJq).toBe(canonicalStringify(body))
+    expect(createHash('sha256').update(viaJq).digest('hex')).not.toBe(storedHash)
+    expect(verify([edited])).toMatchObject(HASH_MISMATCH)
+  })
+
+  // zod never looks inside the key it skips, so its value is the one part of a
+  // schema-valid line whose depth no schema bounds. 20000 sits past the depth
+  // that overflows canonicalStringify, the figure manifestSchema3.test.ts uses.
+  it('refuses the key nested past the depth limit with a verdict, not a stack overflow', () => {
+    const [line] = buildSignedChain([CAPTURE_WITH_HEADERS])
+    const nested = '['.repeat(20000) + '0' + ']'.repeat(20000)
+    expect(verify([addProtoKey(line, 'headers', nested)])).toMatchObject({
+      valid: false,
+      brokenAt: 0,
+      reason: 'Entry too deeply nested'
+    })
+  })
+
+  it('still verifies the same entries unedited', () => {
+    expect(verify(buildSignedChain([CAPTURE_WITH_HEADERS, THUMBNAIL_DERIVATION])).valid).toBe(true)
+  })
+
+  // A genuine line parses to exactly what it carries, through zod's own parse.
+  // These lines omit `exhibitNumber`, `memberCode`, `derivationParameters`,
+  // `scope`, `captureIds` and `exportClass`; the walk below covers every field.
+  it('parses genuine lines to exactly what they carry', () => {
+    const exhibitWithoutMemberCode = {
+      type: 'exhibit',
+      exhibitId: 'ex-1',
+      caseId: 'case-1',
+      kind: 'document',
+      origin: 'manual-upload',
+      name: 'witness-statement.pdf',
+      exhibitNumber: 7,
+      path: 'documents/ex-1.pdf',
+      contentHash: 'd'.repeat(64),
+      sizeBytes: 2048,
+      timestamp: '2026-06-01T12:05:00.000Z',
+      operatorId: 'op-1',
+      operatorName: 'Casey Operator',
+      toolVersion: '0.4.0',
+      schemaVersion: 3
+    }
+    const derivationWithoutParameters: Record<string, unknown> = { ...THUMBNAIL_DERIVATION }
+    delete derivationWithoutParameters.derivationParameters
+    const preScopeManifest = join(__dirname, 'fixtures', 'pre-scope-package', 'manifest.jsonl')
+    const lines = [
+      ...readFileSync(preScopeManifest, 'utf-8')
+        .split('\n')
+        .filter((line) => line.trim()),
+      ...buildSignedChain([exhibitWithoutMemberCode, derivationWithoutParameters])
+    ]
+    for (const line of lines) {
+      const raw: unknown = JSON.parse(line)
+      expect(ManifestEntrySchema.parse(raw)).toStrictEqual(raw)
+    }
+  })
+
+  // The rule at ManifestEntrySchema, held for every member type: the walk
+  // descends through the containers the schema uses and reports every other
+  // node whose type is not on the leaf list, so a `.default()` anywhere fails.
+  it('has no default anywhere in ManifestEntrySchema', () => {
+    const PASS_THROUGH_LEAVES = new Set(['string', 'number', 'boolean', 'literal', 'enum', 'never'])
+    const offending = (schema: z.core.$ZodType, path: string): string[] => {
+      if (schema instanceof z.ZodUnion) {
+        return schema.options.flatMap((option, i) => offending(option, `${path}|${i}`))
+      }
+      if (schema instanceof z.ZodObject) {
+        const { shape, catchall } = schema.def
+        return [
+          ...Object.entries<z.core.$ZodType>(shape).flatMap(([key, field]) =>
+            offending(field, `${path}.${key}`)
+          ),
+          ...(catchall ? offending(catchall, `${path}[*]`) : [])
+        ]
+      }
+      if (schema instanceof z.ZodOptional) return offending(schema.unwrap(), path)
+      if (schema instanceof z.ZodArray) return offending(schema.element, `${path}[]`)
+      if (schema instanceof z.ZodRecord) {
+        return [...offending(schema.keyType, `${path}{key}`), ...offending(schema.valueType, path)]
+      }
+      const { type } = schema._zod.def
+      return PASS_THROUGH_LEAVES.has(type) ? [] : [`${path}: ${type}`]
+    }
+    const found = ManifestEntrySchema.options.flatMap((member) =>
+      offending(member, member.shape.type.value)
+    )
+    expect(found).toEqual([])
+  })
+
+  // The two checkers #1674 names both delegate to the core; these pin that each
+  // reports the edit from the files it reads.
+  describe('through the app check and the package checker', () => {
+    let dir: string
+
+    beforeEach(() => {
+      dir = mkdtempSync(join(tmpdir(), 'birdbrain-1674-'))
+    })
+
+    afterEach(() => {
+      rmSync(dir, { recursive: true, force: true })
+    })
+
+    function addProtoKeyToFirstLine(path: string): void {
+      const [first, ...rest] = readFileSync(path, 'utf-8').split('\n')
+      writeFileSync(path, [addProtoKey(first, 'headers'), ...rest].join('\n'), 'utf-8')
+    }
+
+    it('reports the edit from a case folder', () => {
+      initManifest(dir)
+      appendManifestEntry(dir, { ...makeCaptureEntry(0), headers: { 'content-type': 'text/html' } })
+      addProtoKeyToFirstLine(join(dir, MANIFEST_FILENAME))
+      expect(verifyManifestChain(dir)).toMatchObject(HASH_MISMATCH)
+    })
+
+    it('fails the manifest chain row of an evidence package', () => {
+      writeEgressPackage(dir, { headers: { 'content-type': 'text/html' } })
+      addProtoKeyToFirstLine(join(dir, 'manifest.jsonl'))
+      const result = verifyEvidencePackage(dir)
+      expect(result.pass).toBe(false)
+      expect(result.checks.find(({ name }) => name === 'manifest chain')).toEqual({
+        name: 'manifest chain',
+        status: 'fail',
+        reason: 'Entry hash mismatch (at index 0)'
+      })
+    })
   })
 })

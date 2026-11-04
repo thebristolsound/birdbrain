@@ -13,6 +13,8 @@ The includes are fail-closed by construction: the node project takes everything 
 
 A type-level assertion in `tests/` is now live, so `expectTypeOf` is available for a known-answer test rather than only a runtime probe. Note that the mutation-option objects under `src/renderer/lib/api/` are plain literals rather than React Query's `UseMutationOptions`, so their `onSuccess`/`onSettled` callbacks are typed with only the parameters they declare — a test that simulates React Query's four-argument call will not compile.
 
+**A single-file run drops console output from passing tests.** Vitest 5 detects an agent session (`isAgent` from `std-env`) and picks its `minimal` reporter, which sets `silent` to `passed-only`, so a `console.log` in a test that passes prints nothing under `pnpm test <path>` while `process.stdout.write` still does. Three review runs lost a probe to this. Pass `--silent=false` to see the output: `pnpm test <path> --silent=false`.
+
 **`tests/components/**/*.test.tsx` run in the jsdom Vitest project**, not the Electron node one; the node project's `tests/**/*.test.ts` include glob does not match `.test.tsx`. A `// @vitest-environment jsdom` directive in a component test is therefore valid and may be kept for clarity — it is not an invalid override of the Electron environment.
 
 ## sharp under Electron on Linux

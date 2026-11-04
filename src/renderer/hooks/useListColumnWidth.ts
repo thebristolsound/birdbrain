@@ -1,5 +1,10 @@
 import { useCallback, useLayoutEffect, useRef } from 'react'
-import { usePanelCallbackRef, type Layout, type LayoutChangedMeta } from 'react-resizable-panels'
+import {
+  usePanelCallbackRef,
+  type Layout,
+  type LayoutChangedMeta,
+  type PanelImperativeHandle
+} from 'react-resizable-panels'
 import { LIST_COLUMN_SIZE } from '@renderer/components/layout/listColumnSize'
 
 export const LIST_COLUMN_WIDTH_STORAGE_KEY = 'listColumnWidth'
@@ -19,12 +24,23 @@ export function readStoredListWidth(): number {
  * screen, so the width is kept here in pixels and applied whenever the list panel mounts.
  */
 export function useListColumnWidth(panelId: string) {
-  const [panel, panelRef] = usePanelCallbackRef()
+  const [panel, setPanel] = usePanelCallbackRef()
+  // The handle as of this commit. The state copy lags a render, so it can arrive in the
+  // render that removed its panel again (a deep link into another case shows the list
+  // for one render), and resizing a panel the Group no longer holds throws.
+  const mountedPanel = useRef<PanelImperativeHandle | null>(null)
+  const panelRef = useCallback(
+    (handle: PanelImperativeHandle | null) => {
+      mountedPanel.current = handle
+      setPanel(handle)
+    },
+    [setPanel]
+  )
   // The list's share of the group after the last layout change of any kind.
   const lastShare = useRef<number | undefined>(undefined)
 
   useLayoutEffect(() => {
-    panel?.resize(readStoredListWidth())
+    if (panel && panel === mountedPanel.current) panel.resize(readStoredListWidth())
   }, [panel])
 
   // Only a drag that moved the list is saved. A window too narrow for the stored width

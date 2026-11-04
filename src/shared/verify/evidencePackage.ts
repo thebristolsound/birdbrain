@@ -302,6 +302,10 @@ function validateExportEntry(
     return { reason: `export-entry.json is a '${result.data.type}' entry, not an export entry` }
   }
   const entry = result.data
+  // This hashes the schema output, where the chain walk hashes the line as
+  // written (#1674). The two agree because every object in the export schema
+  // is .strict() and none is a z.record, so the parse drops no key the line
+  // carries.
   const { entryHash, signature, ...body } = entry
   const recomputed = createHash('sha256').update(canonicalStringify(body)).digest('hex')
   if (recomputed !== entryHash) {

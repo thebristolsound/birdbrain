@@ -123,7 +123,8 @@ const ROOT_LEVEL_LEAVES = new Set([
   'onSharingChanged',
   'onSharingJoinProgress',
   'onInvestigationProgress',
-  'onWaybackLinkProgress'
+  'onWaybackLinkProgress',
+  'onLaunchedBrowserStatus'
 ])
 
 // Method names that predate the action-segment convention, keyed by the channel

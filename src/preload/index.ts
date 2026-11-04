@@ -197,6 +197,15 @@ const birdbrain = {
     stop: bridge(IPC_CHANNELS.SESSION_STOP)
   },
 
+  launchedBrowser: {
+    list: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_LIST),
+    chooseExecutable: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_CHOOSE_EXECUTABLE),
+    status: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_STATUS),
+    launch: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_LAUNCH),
+    endSession: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_END_SESSION),
+    checkLeftovers: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_CHECK_LEFTOVERS)
+  },
+
   search: bridge(IPC_CHANNELS.SEARCH),
 
   settings: {
@@ -347,6 +356,8 @@ const birdbrain = {
   onInvestigationProgress: subscribe(IPC_CHANNELS.INVESTIGATION_PROGRESS),
 
   onWaybackLinkProgress: subscribe(IPC_CHANNELS.WAYBACK_LINK_PROGRESS),
+
+  onLaunchedBrowserStatus: subscribe(IPC_CHANNELS.LAUNCHED_BROWSER_STATUS_CHANGED),
 
   testPipeline: bridge(IPC_CHANNELS.CAPTURES_TEST_PIPELINE),
 

@@ -24,6 +24,7 @@ const NAMESPACES = [
   'annotations',
   'extension',
   'session',
+  'launchedBrowser',
   'settings',
   'export',
   'shell',
@@ -57,7 +58,8 @@ const EVENTS = [
   'onSharingChanged',
   'onSharingJoinProgress',
   'onInvestigationProgress',
-  'onWaybackLinkProgress'
+  'onWaybackLinkProgress',
+  'onLaunchedBrowserStatus'
 ] as const satisfies readonly EventKey[]
 
 const TOP_LEVEL = ['search', 'testPipeline', 'testHttp'] as const satisfies readonly TopLevelKey[]

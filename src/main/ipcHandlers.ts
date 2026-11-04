@@ -108,6 +108,16 @@ import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import type { RecaptureService } from '@main/services/recapture'
 import type { UpdaterService } from '@main/services/updater'
 import type { SessionService } from '@main/services/session'
+import { EgressUnavailableError } from '@main/services/egress'
+import {
+  checkChosenExecutable,
+  listLaunchableBrowsers,
+  type ChosenExecutableCheck
+} from '@main/services/launchedBrowser/discovery'
+import {
+  createLaunchedBrowserService,
+  type LaunchedBrowserService
+} from '@main/services/launchedBrowser/service'
 import { handle, IpcFailure, sendEvent } from '@main/ipcWrap'
 import { diagnosticsService } from '@main/services/diagnostics'
 import { scanUnreconciledDeletions } from '@main/services/deletionReconciliation'
@@ -117,7 +127,14 @@ import { takeUncleanSession } from '@main/services/sessionLog'
 import { buildBugReport, bugReportFilename } from '@main/services/bugReport'
 import { ValidatedError, context, errorName, ident, isLogCode } from '@main/services/logSafe'
 import type { LogContext, LogValue } from '@main/services/logSafe'
-import type { BirdbrainSettings, Capture, ExportOptions, ArchiveInspectReport } from '@shared/types'
+import type {
+  BirdbrainSettings,
+  Capture,
+  ExportOptions,
+  ArchiveInspectReport,
+  LaunchedBrowserLeftover,
+  LaunchedBrowserOption
+} from '@shared/types'
 
 // Self-test fetches must fail fast when the capture server is down. Without an
 // explicit timeout they inherit undici's 10s default, which on platforms whose
@@ -205,12 +222,38 @@ function rememberRevealablePath(filePath: string): void {
   }
 }
 
+// The refusal codes for an executable the Operator picks that a launch would not start.
+const CHOSEN_EXECUTABLE_REFUSALS: Readonly<
+  Record<Extract<ChosenExecutableCheck, { ok: false }>['code'], string>
+> = {
+  'not-executable': 'EXECUTABLE_NOT_RUNNABLE',
+  script: 'EXECUTABLE_IS_SCRIPT',
+  unrecognized: 'EXECUTABLE_UNRECOGNIZED'
+}
+
+// A launch failure that carries a code reaches the renderer as a refusal with its message. A
+// throw with no code is a defect, and stays one.
+function launchRefusal(err: unknown): unknown {
+  if (err instanceof EgressUnavailableError) {
+    return new IpcFailure(err.message, 'EGRESS_UNAVAILABLE')
+  }
+  const { code, message } = (err ?? {}) as { code?: unknown; message?: unknown }
+  return typeof code === 'string' && typeof message === 'string'
+    ? new IpcFailure(message, code)
+    : err
+}
+
 export function registerIpcHandlers(deps: {
   selectorLifecycle: SelectorLifecycle
   captureLifecycle: CaptureLifecycle
   recaptureService: RecaptureService
   updaterService: UpdaterService
   sessionService: SessionService
+  // The launched browser (#1831). Optional so tests can register the handlers without one. The
+  // app passes the one wired to the session service's end hook; one made here is not wired to it.
+  launchedBrowser?: LaunchedBrowserService
+  // The startup sweep's check for browsers left running from an earlier run.
+  checkLeftoverBrowsers?: () => LaunchedBrowserLeftover[]
   sharingService: SharingService
   // Hand-off for a freshly committed Exhibit to the trusted-timestamp worker
   // (X26). Optional so tests without a worker can register the handlers.
@@ -392,6 +435,58 @@ export function registerIpcHandlers(deps: {
     sessionService.stop()
     return sessionSnapshot()
   })
+
+  // The launched browser (#1831)
+  const launchedBrowser =
+    deps.launchedBrowser ??
+    createLaunchedBrowserService({
+      session: sessionService,
+      sessionDataPath: app.getPath('sessionData')
+    })
+  const { checkLeftoverBrowsers = () => [] } = deps
+  const launchableBrowsers = (): LaunchedBrowserOption[] => {
+    const { launchedBrowserExecutable, launchedBrowserVersions } = settings.getSettings()
+    return listLaunchableBrowsers(launchedBrowserExecutable, launchedBrowserVersions)
+  }
+
+  handle(IPC_CHANNELS.LAUNCHED_BROWSER_LIST, () => launchableBrowsers())
+
+  handle(IPC_CHANNELS.LAUNCHED_BROWSER_CHOOSE_EXECUTABLE, async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Choose a browser',
+      properties: ['openFile']
+    })
+    if (canceled || filePaths.length === 0) return null
+    const check = checkChosenExecutable(filePaths[0])
+    if (!check.ok) throw new IpcFailure(check.message, CHOSEN_EXECUTABLE_REFUSALS[check.code])
+    const { executablePath } = check.browser
+    settings.setLaunchedBrowserExecutable(executablePath)
+    return launchableBrowsers().find((browser) => browser.executablePath === executablePath) ?? null
+  })
+
+  handle(IPC_CHANNELS.LAUNCHED_BROWSER_STATUS, () => launchedBrowser.status())
+
+  handle(IPC_CHANNELS.LAUNCHED_BROWSER_LAUNCH, async (_, executablePath: string) => {
+    const browser = launchableBrowsers().find((found) => found.executablePath === executablePath)
+    if (!browser) {
+      throw new IpcFailure(
+        'Birdbrain no longer finds that browser. Choose it again in Settings.',
+        'BROWSER_NOT_FOUND'
+      )
+    }
+    try {
+      return await launchedBrowser.launch(browser)
+    } catch (err) {
+      throw launchRefusal(err)
+    }
+  })
+
+  handle(IPC_CHANNELS.LAUNCHED_BROWSER_END_SESSION, async () => {
+    await launchedBrowser.endCaptureSession()
+    return launchedBrowser.status()
+  })
+
+  handle(IPC_CHANNELS.LAUNCHED_BROWSER_CHECK_LEFTOVERS, () => checkLeftoverBrowsers())
 
   // Captures
   handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => captureRepo.listCaptures(caseId))

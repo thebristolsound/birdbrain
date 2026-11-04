@@ -34,6 +34,9 @@ import type {
   FieldHitCheck,
   FieldSearchResult,
   HashVerification,
+  LaunchedBrowserLeftover,
+  LaunchedBrowserOption,
+  LaunchedBrowserStatus,
   LogCode,
   LogContextKey,
   LogEntry,
@@ -173,6 +176,16 @@ export const IPC_CHANNELS = {
   SESSION_ACTIVATE_CASE: 'session:activateCase',
   SESSION_START: 'session:start',
   SESSION_STOP: 'session:stop',
+
+  // The launched browser (#1831). A launch takes an executable path, and main starts it only
+  // when `list` would list it. `chooseExecutable` opens the file dialog in main, so the
+  // Operator's pick never arrives as a path from the renderer.
+  LAUNCHED_BROWSER_LIST: 'launchedBrowser:list',
+  LAUNCHED_BROWSER_CHOOSE_EXECUTABLE: 'launchedBrowser:chooseExecutable',
+  LAUNCHED_BROWSER_STATUS: 'launchedBrowser:status',
+  LAUNCHED_BROWSER_LAUNCH: 'launchedBrowser:launch',
+  LAUNCHED_BROWSER_END_SESSION: 'launchedBrowser:endSession',
+  LAUNCHED_BROWSER_CHECK_LEFTOVERS: 'launchedBrowser:checkLeftovers',
 
   // Search
   SEARCH: 'search:query',
@@ -345,6 +358,7 @@ export const IPC_CHANNELS = {
   GUEST_MOUSE_UP: 'event:guestMouseUp',
   INVESTIGATION_PROGRESS: 'event:investigationProgress',
   WAYBACK_LINK_PROGRESS: 'event:waybackLinkProgress',
+  LAUNCHED_BROWSER_STATUS_CHANGED: 'event:launchedBrowserStatus',
 
   // Capture pipeline observability
   CAPTURE_ACTIVITY: 'event:captureActivity',
@@ -1089,6 +1103,16 @@ export interface IpcInvokeContract {
   'session:start': { args: []; result: SessionStateEvent }
   'session:stop': { args: []; result: SessionStateEvent }
 
+  'launchedBrowser:list': { args: []; result: LaunchedBrowserOption[] }
+  // null when the Operator cancelled the file dialog.
+  'launchedBrowser:chooseExecutable': { args: []; result: LaunchedBrowserOption | null }
+  'launchedBrowser:status': { args: []; result: LaunchedBrowserStatus }
+  'launchedBrowser:launch': { args: [executablePath: string]; result: LaunchedBrowserStatus }
+  // Ends the Capture Session, and settles once the browser has exited or Birdbrain has given up.
+  'launchedBrowser:endSession': { args: []; result: LaunchedBrowserStatus }
+  // Rechecks the browsers left running from an earlier run.
+  'launchedBrowser:checkLeftovers': { args: []; result: LaunchedBrowserLeftover[] }
+
   'search:query': { args: [caseId: string, query: string]; result: Capture[] }
 
   'settings:get': { args: []; result: BirdbrainSettings }
@@ -1287,6 +1311,7 @@ export interface IpcEventContract {
   'event:sharingJoinProgress': SharingJoinProgressEvent
   'event:investigationProgress': RunProgressEvent
   'event:waybackLinkProgress': WaybackLinkProgressEvent
+  'event:launchedBrowserStatus': LaunchedBrowserStatus
 }
 
 export type IpcEventChannel = keyof IpcEventContract

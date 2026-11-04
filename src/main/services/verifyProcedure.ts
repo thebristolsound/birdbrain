@@ -90,5 +90,9 @@ export const VERIFY_RECIPES = {
   // A receipt stamp (#1515): an `entry` stamp binds a merge entry's Entry
   // Hash. Its token has no enclosed file; the signed line is the only copy.
   receiptTokenFilter:
-    'select(.type == "timestamp" and .subject == "entry" and (.tsaToken | type) == "string")'
+    'select(.type == "timestamp" and .subject == "entry" and (.tsaToken | type) == "string")',
+  // A stamp of either subject whose tsaToken is present and not a string (#1725).
+  // The entry schema rejects it, null included, so has() and not a null test.
+  malformedTokenFilter:
+    'select(.type == "timestamp" and has("tsaToken") and (.tsaToken | type) != "string")'
 }

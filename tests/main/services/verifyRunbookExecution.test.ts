@@ -468,6 +468,50 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       })
     ).capture
 
+  /**
+   * Appends a second timestamp entry over the capture's content hash through the
+   * real append path, so the chain stays genuinely signed and only the entry's
+   * own token is under test. Returns the entry's index.
+   */
+  const appendStamp = (tsaToken?: string): number =>
+    appendManifestEntry(join(tempDir, 'captures', caseId), {
+      type: 'timestamp',
+      caseId,
+      captureContentHash: contentHash,
+      timestamp: '2026-04-05T12:04:00.000Z',
+      ...(tsaToken === undefined ? {} : { tsaToken }),
+      operatorId: 'op',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    }).index
+
+  /**
+   * A row for a timestamp entry whose tsaToken is `value`, present and not a
+   * string, appended before `scope` shapes the export.
+   */
+  const malformedTokenRow = (
+    slug: string,
+    name: string,
+    value: unknown,
+    scope: () => Promise<{ captureIds?: string[] } | void> = async () => {}
+  ): ConformanceRow => {
+    let index = -1
+    return {
+      name,
+      build: async () => {
+        index = appendStamp(value as string)
+        return exportPackage(`malformed-token-${slug}`, (await scope()) ?? {})
+      },
+      binary: 'fail',
+      script: 'fail',
+      steps: [6],
+      says: () => [
+        `FAIL [step 6] timestamp entry ${index}: its tsaToken is present but is not a string`
+      ],
+      binaryFails: { name: 'manifest chain', reason: 'Invalid entry shape' }
+    }
+  }
+
   const CONFORMANCE: ConformanceRow[] = [
     {
       name: 'the good package',
@@ -799,6 +843,47 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       script: 'pass',
       steps: [],
       says: ['outside the signed export selection'],
+      saysNot: ['FAIL']
+    },
+    // #1725. Package Verification rejects a timestamp entry whose tsaToken is
+    // present and not a string, null included, as a malformed entry. The
+    // script once skipped it as carrying no token and passed the package.
+    malformedTokenRow('number', 'a signed timestamp entry whose tsaToken is a number', 7),
+    malformedTokenRow('null', 'a signed timestamp entry whose tsaToken is null', null),
+    // The malformed entry fails its chain whatever the scope, so neither a
+    // deletion nor a selection that leaves the capture's token expected absent
+    // excuses it.
+    malformedTokenRow(
+      'deleted',
+      'a tsaToken that is a number, on a capture deleted before the export',
+      7,
+      async () => {
+        await captureLifecycle.delete(captureId)
+      }
+    ),
+    malformedTokenRow(
+      'selection',
+      'a tsaToken that is a number, on a capture outside the export selection',
+      7,
+      async () => {
+        const other = await ingestDuplicate(
+          'https://example.com/other',
+          '<html><body>second, unselected capture</body></html>',
+          '2026-04-05T12:05:00.000Z'
+        )
+        return { captureIds: [other.id] }
+      }
+    ),
+    {
+      // A stamp with no token at all makes no trusted-time claim, as before.
+      name: 'a signed timestamp entry with no tsaToken',
+      build: () => {
+        appendStamp()
+        return exportPackage('tokenless-stamp')
+      },
+      binary: 'pass',
+      script: 'pass',
+      steps: [],
       saysNot: ['FAIL']
     },
     {

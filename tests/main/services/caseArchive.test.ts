@@ -272,8 +272,9 @@ describe('caseArchive export', () => {
   // drops the six columns and leaves a remapped Capture's Transaction Record
   // under the source id.
   // 14 since link Capture provenance (ADR-0040): a pre-14 build drops the three columns.
-  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 14 since link Capture provenance travels', () => {
-    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(14)
+  // 15 since the Persona columns (#1498): a pre-15 build drops persona_id and persona_label.
+  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 15 since the Persona columns travel', () => {
+    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(15)
   })
 
   it('exports a .birdbrain archive with header, data, manifest, and files', async () => {

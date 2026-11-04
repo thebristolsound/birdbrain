@@ -17,6 +17,9 @@ export interface WaybackSelection {
 
 interface AppState {
   sessionActive: boolean
+  // The Active Case the last session event named, or null. Not the Case on screen: a Capture
+  // Session records into its Active Case wherever the Operator is looking.
+  activeCaseId: string | null
   connectedToExtension: boolean
   selectedCaptureId: string | null
   selectedCaptureIds: Set<string>
@@ -88,6 +91,7 @@ interface AppState {
   captureTrail: string[]
 
   setSessionActive: (active: boolean) => void
+  setActiveCaseId: (caseId: string | null) => void
   setConnectedToExtension: (connected: boolean) => void
   setCommandPaletteOpen: (open: boolean) => void
   toggleCommandPalette: () => void
@@ -135,6 +139,7 @@ function selectedCaptureState(id: string | null, captureTrail: string[] = []) {
 
 export const useAppStore = create<AppState>((set) => ({
   sessionActive: false,
+  activeCaseId: null,
   connectedToExtension: false,
   selectedCaptureId: null,
   selectedCaptureIds: new Set(),
@@ -162,6 +167,7 @@ export const useAppStore = create<AppState>((set) => ({
   captureTrail: [],
 
   setSessionActive: (active) => set({ sessionActive: active }),
+  setActiveCaseId: (caseId) => set({ activeCaseId: caseId }),
   setConnectedToExtension: (connected) => set({ connectedToExtension: connected }),
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   toggleCommandPalette: () => set((s) => ({ commandPaletteOpen: !s.commandPaletteOpen })),

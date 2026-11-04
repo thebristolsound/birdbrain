@@ -83,6 +83,7 @@ describe('useServerStatus', () => {
     // Reset shared store state used across assertions.
     useAppStore.getState().setConnectedToExtension(false)
     useAppStore.getState().setSessionActive(false)
+    useAppStore.getState().setActiveCaseId(null)
     queryClient.clear()
   })
 
@@ -127,6 +128,35 @@ describe('useServerStatus', () => {
       to: '/cases/$caseId',
       params: { caseId: 'case-9' }
     })
+  })
+
+  it('keeps the Active Case each session event names', () => {
+    renderHook(() => useServerStatus())
+    act(() => handlers.session?.({ sessionActive: false, activeCaseId: 'case-9' }))
+    expect(useAppStore.getState().activeCaseId).toBe('case-9')
+    act(() => handlers.session?.({ sessionActive: false, activeCaseId: null }))
+    expect(useAppStore.getState().activeCaseId).toBeNull()
+  })
+
+  // A stop still names its Case. Stopping from the dashboard or Settings must not pull the
+  // Operator into it (the revision assessment's build notes).
+  it('does not follow a stopped Capture Session into its Case', () => {
+    routerState.location.pathname = '/settings'
+    renderHook(() => useServerStatus())
+    act(() => handlers.session?.({ sessionActive: true, activeCaseId: 'case-9' }))
+    navigate.mockClear()
+    routerState.location.pathname = '/'
+    act(() => handlers.session?.({ sessionActive: false, activeCaseId: 'case-9' }))
+    expect(navigate).not.toHaveBeenCalled()
+    expect(useAppStore.getState().sessionActive).toBe(false)
+    expect(useAppStore.getState().activeCaseId).toBe('case-9')
+  })
+
+  // The extension's popup activates a Case with no Capture Session running.
+  it('still opens a Case the extension activates while no Capture Session runs', () => {
+    renderHook(() => useServerStatus())
+    act(() => handlers.session?.({ sessionActive: false, activeCaseId: 'case-3' }))
+    expect(navigate).toHaveBeenCalledWith({ to: '/cases/$caseId', params: { caseId: 'case-3' } })
   })
 
   it('does not navigate when already on that case', () => {

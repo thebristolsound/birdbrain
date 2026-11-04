@@ -14,7 +14,12 @@ export function useServerStatus() {
     })
 
     const unsubSession = window.birdbrain.onSessionStateChanged((state) => {
-      useAppStore.getState().setSessionActive(state.sessionActive)
+      const { sessionActive: wasActive, setSessionActive, setActiveCaseId } = useAppStore.getState()
+      setSessionActive(state.sessionActive)
+      setActiveCaseId(state.activeCaseId ?? null)
+      // A stop still names its Case. Following it would pull an Operator who stopped the
+      // Capture Session from the dashboard or Settings into that Case.
+      if (wasActive && !state.sessionActive) return
       if (state.activeCaseId) {
         // Only navigate if we're not already viewing this case (e.g. extension
         // started capturing to a case the user isn't currently looking at)

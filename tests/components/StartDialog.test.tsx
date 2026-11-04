@@ -326,6 +326,28 @@ describe('StartDialog (S2)', () => {
     await waitFor(() => expect(useAppStore.getState().startDialogCaseId).toBeNull())
   })
 
+  it('launches nothing when cancelled while the Case is still being activated', async () => {
+    let activated: () => void = () => {}
+    const { activateCase, launch, cancelLaunch } = mount()
+    activateCase.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          activated = () =>
+            resolve({ activeCaseId: 'case-1', sessionActive: false, captureCount: 0 })
+        })
+    )
+    open()
+    const body = await dialog()
+    await within(body).findByRole('option', { name: 'Brave' })
+    fireEvent.click(launchButton('Launch'))
+    fireEvent.click(await within(body).findByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(cancelLaunch).toHaveBeenCalledOnce())
+    expect(activateCase).toHaveBeenCalledOnce()
+    act(() => activated())
+    await waitFor(() => expect(useAppStore.getState().startDialogCaseId).toBeNull())
+    expect(launch).not.toHaveBeenCalled()
+  })
+
   it('shows a refusal from main as a card, and can launch again', async () => {
     const message =
       'The Egress proxy socks5://127.0.0.1:1080 did not accept a connection (connect ' +

@@ -99,6 +99,11 @@ export function StartDialog() {
     setLaunching({ browser, egress: knownEgress })
     try {
       await activateCase.mutateAsync(caseId)
+      // A cancel while the Case was activating reached main before any launch it could stop.
+      if (cancelled.current) {
+        dismiss()
+        return
+      }
       await launchBrowser(browser.executablePath)
       dismiss()
     } catch (error) {

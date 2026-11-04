@@ -79,6 +79,12 @@ export interface CdpCommandMap {
     params: { discover: boolean; filter?: TargetFilterEntry[] }
     result: NoResult
   }
+  // The panel's tab list: the browser reports a title only with a navigation, before the page
+  // sets one, so the list is read again.
+  'Target.getTargets': {
+    params: { filter?: TargetFilterEntry[] }
+    result: { targetInfos: TargetInfo[] }
+  }
   // `flatten` is fixed to true: the client routes sessions by `sessionId` and has no
   // `Target.sendMessageToTarget` path.
   'Target.setAutoAttach': {
@@ -123,6 +129,7 @@ export const LAUNCHED_BROWSER_COMMANDS = [
   'Browser.close',
   'Browser.setPermission',
   'Target.setDiscoverTargets',
+  'Target.getTargets',
   'Target.setAutoAttach',
   'Runtime.runIfWaitingForDebugger',
   'Network.enable',

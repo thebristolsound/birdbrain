@@ -6,13 +6,14 @@ import {
   TRANSACTION_RECORD_RESOURCE_BYTES,
   TRANSACTION_RECORD_TOTAL_BYTES
 } from '@shared/constants'
-import type { KnownEgress } from '@shared/types'
+import type { KnownEgress, LaunchedBrowserTab } from '@shared/types'
 import type { CdpSession } from '@main/services/launchedBrowser/cdpClient'
 import type { TargetInfo } from '@main/services/launchedBrowser/commands'
 import { buildLaunchArgs } from '@main/services/launchedBrowser/launchArgs'
 import {
   COMPONENT_EXTENSION_IDS,
   LAUNCHER_TIMEOUTS,
+  TAB_TEXT_LIMIT,
   launchBrowser,
   type LaunchHooks,
   type LauncherDeps
@@ -58,9 +59,11 @@ interface Setup {
 
 function start({ options, egress = DIRECT, hooks, deps, signal }: Setup = {}) {
   const fake = fakeBrowser(options)
+  // The tab refresh is a timer; a test that wants it asks for it, so no other test's command
+  // list depends on how long it ran.
   const launching = launchBrowser(
     { browser: CHROME, egress, sessionDataPath: sessionData, signal, hooks },
-    { spawn: fake.spawn, ...deps }
+    { spawn: fake.spawn, ...deps, timeouts: { tabRefreshMs: 3_600_000, ...deps?.timeouts } }
   )
   // Asserted later; marked handled so an early rejection is not reported before then.
   launching.catch(() => {})
@@ -608,6 +611,167 @@ describe('launchBrowser: extension targets (D14)', () => {
     })
     await settle()
     expect(warned).toEqual([])
+  })
+})
+
+describe('launchBrowser: the tab list', () => {
+  function titled(targetId: string, title: string, url: string, type = 'page'): TargetInfo {
+    return { ...targetInfo(targetId, type, url), title }
+  }
+
+  function tabLists(hooks: { onTabsChanged?: (tabs: LaunchedBrowserTab[]) => void } = {}) {
+    const lists: LaunchedBrowserTab[][] = []
+    return {
+      lists,
+      hooks: { ...hooks, onTabsChanged: (tabs: LaunchedBrowserTab[]) => lists.push(tabs) }
+    }
+  }
+
+  it('reports each tab with its title and URL, in the order the browser opened them', async () => {
+    const { lists, hooks } = tabLists()
+    const { browser } = await launched({ hooks })
+    browser.event('Target.targetCreated', { targetInfo: titled('first-tab', '', 'about:blank') })
+    browser.event('Target.targetCreated', {
+      targetInfo: titled('p2', 'Harbor notices', 'https://ferry.test/notices')
+    })
+    browser.event('Target.targetInfoChanged', {
+      targetInfo: titled('first-tab', 'Tuesday sailings', 'https://ferry.test/tue')
+    })
+    await settle()
+    expect(lists.at(-1)).toEqual([
+      { targetId: 'first-tab', title: 'Tuesday sailings', url: 'https://ferry.test/tue' },
+      { targetId: 'p2', title: 'Harbor notices', url: 'https://ferry.test/notices' }
+    ])
+  })
+
+  it('reports tabs under a proxy Egress too', async () => {
+    const { lists, hooks } = tabLists()
+    const { browser } = await launched({ egress: TOR, hooks })
+    browser.event('Target.targetCreated', { targetInfo: titled('first-tab', '', 'about:blank') })
+    await settle()
+    expect(lists.at(-1)).toEqual([{ targetId: 'first-tab', title: '', url: 'about:blank' }])
+  })
+
+  it('drops a tab once its target is destroyed', async () => {
+    const { lists, hooks } = tabLists()
+    const { browser } = await launched({ hooks })
+    browser.event('Target.targetCreated', { targetInfo: titled('first-tab', '', 'about:blank') })
+    browser.event('Target.targetCreated', { targetInfo: titled('p2', 'B', 'https://b.test/') })
+    browser.event('Target.targetDestroyed', { targetId: 'first-tab' })
+    browser.event('Target.targetDestroyed', { targetId: 'never-a-tab' })
+    await settle()
+    expect(lists.at(-1)).toEqual([{ targetId: 'p2', title: 'B', url: 'https://b.test/' }])
+    expect(lists).toHaveLength(3)
+  })
+
+  it('leaves out frames, workers, extension pages and prerendered pages', async () => {
+    const { lists, hooks } = tabLists()
+    const { browser } = await launched({ hooks })
+    browser.event('Target.targetCreated', {
+      targetInfo: titled('f', 'F', 'https://f.test/', 'iframe')
+    })
+    browser.event('Target.targetCreated', {
+      targetInfo: titled('w', 'W', 'https://f.test/w.js', 'worker')
+    })
+    browser.event('Target.targetCreated', {
+      targetInfo: titled('s', 'S', 'https://f.test/sw.js', 'service_worker')
+    })
+    browser.event('Target.targetCreated', {
+      targetInfo: titled(
+        'b',
+        'B',
+        `chrome-extension://${INSTALLED_EXTENSION}/bg.html`,
+        'background_page'
+      )
+    })
+    browser.event('Target.targetCreated', {
+      targetInfo: { ...titled('r', 'R', 'https://f.test/next'), subtype: 'prerender' }
+    })
+    await settle()
+    expect(lists).toEqual([])
+  })
+
+  it('reports nothing for a change that leaves the title and URL as they were', async () => {
+    const { lists, hooks } = tabLists()
+    const { browser } = await launched({ hooks })
+    browser.event('Target.targetCreated', { targetInfo: titled('first-tab', '', 'about:blank') })
+    browser.event('Target.targetInfoChanged', {
+      targetInfo: { ...titled('first-tab', '', 'about:blank'), attached: false }
+    })
+    await settle()
+    expect(lists).toHaveLength(1)
+  })
+
+  it("leaves out the browser's own pages for its toolbar", async () => {
+    const { lists, hooks } = tabLists()
+    const { browser } = await launched({ hooks })
+    browser.event('Target.targetCreated', {
+      targetInfo: titled('o', 'Omnibox Popup', 'chrome://omnibox-popup.top-chrome/')
+    })
+    browser.event('Target.targetCreated', {
+      targetInfo: titled('n', 'New Tab', 'chrome://newtab/')
+    })
+    await settle()
+    expect(lists).toEqual([[{ targetId: 'n', title: 'New Tab', url: 'chrome://newtab/' }]])
+  })
+
+  it('reads the tabs again on a timer, for the titles a page sets after it loads', async () => {
+    const { lists, hooks } = tabLists()
+    const listed: TargetInfo[] = [
+      titled('first-tab', 'Tuesday sailings', 'https://ferry.test/tue'),
+      titled('p3', 'Port timetable', 'https://ferry.test/port'),
+      titled('o', 'Omnibox Popup', 'chrome://omnibox-popup.top-chrome/'),
+      titled('w', 'Worker', 'https://ferry.test/w.js', 'service_worker')
+    ]
+    const { browser, launched: handle } = await launched({
+      hooks,
+      deps: { timeouts: { tabRefreshMs: 5 } },
+      options: {
+        respond: ({ method }) =>
+          method === 'Target.getTargets' ? { result: { targetInfos: listed } } : undefined
+      }
+    })
+    browser.event('Target.targetCreated', {
+      targetInfo: titled('p2', 'ferry.test/notices', 'https://ferry.test/notices')
+    })
+    browser.event('Target.targetCreated', {
+      targetInfo: titled('first-tab', 'ferry.test/tue', 'https://ferry.test/tue')
+    })
+    await vi.waitFor(() =>
+      expect(lists.at(-1)).toEqual([
+        { targetId: 'first-tab', title: 'Tuesday sailings', url: 'https://ferry.test/tue' },
+        { targetId: 'p3', title: 'Port timetable', url: 'https://ferry.test/port' }
+      ])
+    )
+    const reported = lists.length
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(lists).toHaveLength(reported)
+    await handle.stop()
+    const asked = browser.methods().filter((m) => m === 'Target.getTargets').length
+    expect(asked).toBeGreaterThan(1)
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(browser.methods().filter((m) => m === 'Target.getTargets')).toHaveLength(asked)
+  })
+
+  it('does not read the tabs before the launch has passed its checks', async () => {
+    const { browser } = start({ deps: { timeouts: { tabRefreshMs: 1 } } })
+    await settle()
+    expect(browser.methods()).not.toContain('Target.getTargets')
+    browser.kill('SIGKILL')
+  })
+
+  it('cuts a title or URL past the limit the panel shows', async () => {
+    const { lists, hooks } = tabLists()
+    const { browser } = await launched({ hooks })
+    const long = 'x'.repeat(TAB_TEXT_LIMIT + 500)
+    browser.event('Target.targetCreated', {
+      targetInfo: titled('first-tab', long, `data:text/html,${long}`)
+    })
+    await settle()
+    const [tab] = lists.at(-1) ?? []
+    expect(tab.title).toHaveLength(TAB_TEXT_LIMIT)
+    expect(tab.url).toHaveLength(TAB_TEXT_LIMIT)
+    expect(tab.url.startsWith('data:text/html,x')).toBe(true)
   })
 })
 

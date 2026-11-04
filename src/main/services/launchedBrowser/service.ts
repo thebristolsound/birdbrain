@@ -164,7 +164,9 @@ export function createLaunchedBrowserService(
     }
     attempt.browser = null
     // Closed by the Operator, or gone on its own: its Capture Session runs on.
-    if (!attempt.closing) release(attempt, { state: 'closed', browser: attempt.summary })
+    if (!attempt.closing) {
+      release(attempt, { state: 'closed', browser: { ...attempt.summary, tabs: [] } })
+    }
   }
 
   // Settles with the error a stop failed with, once logged, or undefined.
@@ -242,6 +244,10 @@ export function createLaunchedBrowserService(
       },
       onTargetSetupFailed: (_target, error) => {
         log.warn('launchedBrowser', 'launchedBrowser.target_setup_failed', undefined, error)
+      },
+      onTabsChanged: (tabs) => {
+        attempt.summary = { ...attempt.summary, tabs }
+        if (current.state === 'starting' || current.state === 'open') show(attempt, current.state)
       }
     }
 
@@ -292,7 +298,11 @@ export function createLaunchedBrowserService(
 
     if (!session.snapshot().sessionActive) session.start()
     const { version } = launched.identity
-    attempt.summary = { ...attempt.summary, version }
+    attempt.summary = {
+      ...attempt.summary,
+      version,
+      sessionStartedAt: session.snapshot().startedAt
+    }
     try {
       saveVersion(found.executablePath, version)
     } catch (error) {
@@ -345,7 +355,9 @@ export function createLaunchedBrowserService(
         label: found.label,
         caseId,
         version: null,
-        extensionWarnings: []
+        extensionWarnings: [],
+        sessionStartedAt: null,
+        tabs: []
       },
       step: egress.kind === 'direct' ? 'browser' : 'proxy',
       browser: null,

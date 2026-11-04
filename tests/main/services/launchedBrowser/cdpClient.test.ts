@@ -109,6 +109,7 @@ describe('LAUNCHED_BROWSER_COMMANDS', () => {
       'Page.createIsolatedWorld',
       'Runtime.evaluate',
       'Runtime.runIfWaitingForDebugger',
+      'Target.getTargets',
       'Target.setAutoAttach',
       'Target.setDiscoverTargets'
     ])

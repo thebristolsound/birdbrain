@@ -19,7 +19,9 @@ const BROWSER = {
   label: 'Google Chrome',
   caseId: 'case-1',
   version: null,
-  extensionWarnings: []
+  extensionWarnings: [],
+  sessionStartedAt: null,
+  tabs: []
 }
 
 function coded(message: string, code: string): Error {

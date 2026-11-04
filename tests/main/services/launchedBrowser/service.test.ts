@@ -83,6 +83,7 @@ interface HarnessOptions {
   launcher?: Omit<LauncherDeps, 'spawn'>
   egressChecks?: EgressCheckDeps
   saveVersion?: (executablePath: string, version: string) => void
+  now?: () => number
 }
 
 function harness(options: HarnessOptions = {}) {
@@ -94,7 +95,10 @@ function harness(options: HarnessOptions = {}) {
   const egressListeners = new Set<() => void>()
   const fakes: ReturnType<typeof fakeBrowser>[] = []
   const ref: { service?: LaunchedBrowserService } = {}
-  const session = createSessionService({ onSessionEnded: () => ref.service?.sessionEnded() })
+  const session = createSessionService({
+    onSessionEnded: () => ref.service?.sessionEnded(),
+    now: options.now
+  })
   const browserOptions = options.browser ?? (egress.kind === 'direct' ? {} : { respond: webRtc(0) })
   const service = createLaunchedBrowserService({
     session,
@@ -164,9 +168,12 @@ describe('launching a browser', () => {
         label: 'Google Chrome',
         caseId: 'case-1',
         version: '149.0.7827.55',
-        extensionWarnings: []
+        extensionWarnings: [],
+        sessionStartedAt: h.session.snapshot().startedAt,
+        tabs: []
       }
     }
+    expect(open.browser.sessionStartedAt).toEqual(expect.any(Number))
     expect(status).toEqual(open)
     expect(h.service.status()).toEqual(open)
     expect(h.statuses.map(({ state }) => state)).toEqual(['starting', 'open'])
@@ -738,6 +745,71 @@ describe('extensions while the Egress is not Direct (D14)', () => {
     h.browser().event('Target.targetCreated', extensionTarget)
     await settle()
     expect(h.service.status()).toMatchObject({ browser: { extensionWarnings: [] } })
+    await h.service.endCaptureSession()
+  })
+})
+
+describe('what the panel shows of the browser', () => {
+  function page(targetId: string, title: string, url: string) {
+    return { targetInfo: { ...targetInfo(targetId, 'page', url), title } }
+  }
+
+  it('carries the tab list in the status, and each change goes out', async () => {
+    const h = harness()
+    h.session.activateCase('case-1')
+    await h.service.launch(CHROME)
+    const before = h.statuses.length
+    h.browser().event('Target.targetCreated', page('first-tab', '', 'about:blank'))
+    h.browser().event('Target.targetCreated', page('t2', 'Harbor notices', 'https://ferry.test/'))
+    await until(() => h.statuses.length === before + 2)
+    expect(h.service.status()).toMatchObject({
+      state: 'open',
+      browser: {
+        tabs: [
+          { targetId: 'first-tab', title: '', url: 'about:blank' },
+          { targetId: 't2', title: 'Harbor notices', url: 'https://ferry.test/' }
+        ]
+      }
+    })
+    expect(h.statuses.at(-1)).toEqual(h.service.status())
+    await h.service.endCaptureSession()
+  })
+
+  it('empties the tab list once the browser has closed on its own', async () => {
+    const h = harness()
+    h.session.activateCase('case-1')
+    await h.service.launch(CHROME)
+    h.browser().event('Target.targetCreated', page('first-tab', '', 'about:blank'))
+    await until(() => {
+      const status = h.service.status()
+      return status.state === 'open' && status.browser.tabs.length === 1
+    })
+    h.browser().exit(0)
+    await until(() => h.service.status().state === 'closed')
+    expect(h.service.status()).toMatchObject({ state: 'closed', browser: { tabs: [] } })
+    h.session.stop()
+  })
+
+  it('gives the start of the Capture Session the browser joined, not of the launch', async () => {
+    let clock = 1_000
+    const h = harness({ now: () => clock })
+    h.session.activateCase('case-1')
+    h.session.start()
+    clock = 61_000
+    await h.service.launch(CHROME)
+    expect(h.service.status()).toMatchObject({ browser: { sessionStartedAt: 1_000 } })
+    await h.service.endCaptureSession()
+  })
+
+  it('gives the start of the Capture Session a launch started', async () => {
+    let clock = 5_000
+    const h = harness({ now: () => clock })
+    h.session.activateCase('case-1')
+    const starting = h.service.launch(CHROME)
+    expect(h.service.status()).toMatchObject({ browser: { sessionStartedAt: null } })
+    clock = 7_000
+    await starting
+    expect(h.service.status()).toMatchObject({ browser: { sessionStartedAt: 7_000 } })
     await h.service.endCaptureSession()
   })
 })

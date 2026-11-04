@@ -105,6 +105,14 @@ export const BROWSER_FAMILIES = [
 ] as const
 export type BrowserFamily = (typeof BROWSER_FAMILIES)[number]
 
+// A tab in the launched browser, as the browser reports it: a page target and no frame, worker
+// or prerendered page.
+export interface LaunchedBrowserTab {
+  targetId: string
+  title: string
+  url: string
+}
+
 // The launched browser as the Capture Session panel shows it (#1831). `closed` is a browser that
 // exited while its Capture Session runs on.
 export interface LaunchedBrowserSummary {
@@ -116,6 +124,11 @@ export interface LaunchedBrowserSummary {
   version: string | null
   // Extensions that appeared while the Egress is not Direct (D14), by ID: the engine has no name.
   extensionWarnings: string[]
+  // When the Capture Session the browser runs in started, from main's clock; null until the
+  // browser is open.
+  sessionStartedAt: number | null
+  // The browser's tabs in the order it opened them; empty once it has closed.
+  tabs: LaunchedBrowserTab[]
 }
 
 // What the Operator is told about how the last launched browser closed, when Birdbrain ended its

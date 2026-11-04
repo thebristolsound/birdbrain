@@ -20,7 +20,9 @@ const BROWSER = {
   label: 'Google Chrome',
   caseId: 'case-1',
   version: '149.0.7827.55',
-  extensionWarnings: []
+  extensionWarnings: [],
+  sessionStartedAt: null,
+  tabs: []
 }
 
 function mount(status: LaunchedBrowserStatus) {

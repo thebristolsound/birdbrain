@@ -53,7 +53,9 @@ const SUMMARY: LaunchedBrowserSummary = {
   label: 'Google Chrome',
   caseId: 'case-1',
   version: null,
-  extensionWarnings: []
+  extensionWarnings: [],
+  sessionStartedAt: null,
+  tabs: []
 }
 
 interface MountOptions {

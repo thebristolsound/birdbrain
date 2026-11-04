@@ -4,7 +4,7 @@ import {
   TRANSACTION_RECORD_RESOURCE_BYTES,
   TRANSACTION_RECORD_TOTAL_BYTES
 } from '@shared/constants'
-import type { BrowserFamily, KnownEgress } from '@shared/types'
+import type { BrowserFamily, KnownEgress, LaunchedBrowserTab } from '@shared/types'
 import {
   createCdpClient,
   DEFAULT_COMMAND_TIMEOUT_MS,
@@ -39,12 +39,19 @@ export const LAUNCHER_TIMEOUTS = {
   firstTabMs: 120_000,
   // After Browser.close, or after the browser closes its end of the pipe, before the kill.
   closeMs: 5_000,
-  killMs: 5_000
+  killMs: 5_000,
+  // Chrome for Testing 149 and Chromium 154 send no Target.targetInfoChanged when a page sets its
+  // title, so once the browser is open the tab list is read again this often.
+  tabRefreshMs: 2_000
 }
 
 // Extensions the browser builds in, measured in a fresh profile: Chrome for Testing 149 and
 // Chromium 154 start this one. Any other extension target warns (D14).
 export const COMPONENT_EXTENSION_IDS: readonly string[] = ['nkeimhogjdpnpccoofpliimaahmaaome']
+
+// The panel shows one line of each; a page sets its own title and a data: URL can run to megabytes,
+// and each change goes to every Birdbrain window.
+export const TAB_TEXT_LIMIT = 2_048
 
 const STDERR_TAIL_BYTES = 4_096
 const AUTO_ATTACH = { autoAttach: true, waitForDebuggerOnStart: true, flatten: true } as const
@@ -53,6 +60,8 @@ const NETWORK_LIMITS = {
   maxResourceBufferSize: TRANSACTION_RECORD_RESOURCE_BYTES
 }
 const EXTENSION_URL = /^chrome-extension:\/\/([a-p]{32})\//
+// The browser's own toolbar pages, such as Chromium 154's omnibox popup, which it reports as pages.
+const TOOLBAR_URL = /^chrome:\/\/[^/]+\.top-chrome\//
 const COMPONENTS: ReadonlySet<string> = new Set(COMPONENT_EXTENSION_IDS)
 
 export interface BrowserChild {
@@ -85,6 +94,8 @@ export interface LaunchHooks {
   onTargetSetupFailed?: (target: TargetInfo, error: Error) => void
   // An extension other than the browser's own components, while the Egress is not Direct.
   onExtensionWarning?: (extensionId: string) => void
+  // The tab list, each time a tab opens, closes, or changes its title or URL.
+  onTabsChanged?: (tabs: LaunchedBrowserTab[]) => void
 }
 
 export interface LaunchRequest {
@@ -366,7 +377,42 @@ export async function launchBrowser(
     hooks.onExtensionWarning?.(id)
   }
 
+  let tabs = new Map<string, LaunchedBrowserTab>()
+  function reportTabs(): void {
+    hooks.onTabsChanged?.([...tabs.values()])
+  }
+  function trackTab({ targetInfo }: { targetInfo: TargetInfo }): void {
+    const tab = tabOf(targetInfo)
+    if (!tab || sameTab(tabs.get(tab.targetId), tab)) return
+    tabs.set(tab.targetId, tab)
+    reportTabs()
+  }
+  // The browser's whole list: known tabs keep their place, and new ones go after them.
+  function syncTabs(targetInfos: readonly TargetInfo[]): void {
+    const listed = new Map<string, LaunchedBrowserTab>()
+    for (const info of targetInfos) {
+      const tab = tabOf(info)
+      if (tab) listed.set(tab.targetId, tab)
+    }
+    const next = new Map<string, LaunchedBrowserTab>()
+    for (const id of tabs.keys()) {
+      const tab = listed.get(id)
+      if (tab) next.set(id, tab)
+    }
+    for (const [id, tab] of listed) if (!next.has(id)) next.set(id, tab)
+    const before = [...tabs.values()]
+    const after = [...next.values()]
+    if (before.length === after.length && before.every((tab, i) => sameTab(tab, after[i]))) return
+    tabs = next
+    reportTabs()
+  }
+
   client.on('Target.attachedToTarget', (params) => onAttached(params, false))
+  client.on('Target.targetCreated', trackTab)
+  client.on('Target.targetInfoChanged', trackTab)
+  client.on('Target.targetDestroyed', ({ targetId }) => {
+    if (tabs.delete(targetId)) reportTabs()
+  })
   if (egress.kind !== 'direct') {
     client.on('Target.targetCreated', watchExtension)
     client.on('Target.targetInfoChanged', watchExtension)
@@ -432,6 +478,21 @@ export async function launchBrowser(
       .catch((error) => reportFailure(target, error))
   }
 
+  let refreshing = false
+  const refresh = setInterval(() => {
+    if (refreshing) return
+    refreshing = true
+    client
+      .send('Target.getTargets', {})
+      .then(({ targetInfos }) => syncTabs(targetInfos))
+      .catch(() => {})
+      .finally(() => {
+        refreshing = false
+      })
+  }, timeouts.tabRefreshMs)
+  refresh.unref?.()
+  void client.disconnected.then(() => clearInterval(refresh))
+
   let stopping: Promise<BrowserExit> | null = null
   async function stopOnce(): Promise<BrowserExit> {
     if (state.exit === null) {
@@ -465,6 +526,16 @@ export async function launchBrowser(
       child.kill('SIGKILL')
     }
   }
+}
+
+// A tab the panel lists: a page target, not one prerendered and not the browser's toolbar.
+function tabOf({ targetId, type, subtype, title, url }: TargetInfo): LaunchedBrowserTab | null {
+  if (type !== 'page' || subtype !== undefined || TOOLBAR_URL.test(url)) return null
+  return { targetId, title: title.slice(0, TAB_TEXT_LIMIT), url: url.slice(0, TAB_TEXT_LIMIT) }
+}
+
+function sameTab(a: LaunchedBrowserTab | undefined, b: LaunchedBrowserTab): boolean {
+  return a?.targetId === b.targetId && a.title === b.title && a.url === b.url
 }
 
 const START_ERROR_CODES: ReadonlySet<unknown> = new Set([

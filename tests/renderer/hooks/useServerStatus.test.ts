@@ -280,7 +280,9 @@ describe('useServerStatus', () => {
       label: 'Google Chrome',
       caseId: 'case-1',
       version: null,
-      extensionWarnings: []
+      extensionWarnings: [],
+      sessionStartedAt: null,
+      tabs: []
     }
     act(() => handlers.launchedBrowser?.({ state: 'starting', browser, step: 'browser' }))
     expect(queryClient.getQueryData(queryKeys.launchedBrowserStatus)).toEqual({

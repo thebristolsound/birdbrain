@@ -542,7 +542,9 @@ describe('ipcHandlers — launched browser (#1831)', () => {
       label: 'Chromium',
       caseId: 'case-1',
       version: '154.0.8037.97',
-      extensionWarnings: []
+      extensionWarnings: [],
+      sessionStartedAt: 1_000,
+      tabs: []
     }
   }
 

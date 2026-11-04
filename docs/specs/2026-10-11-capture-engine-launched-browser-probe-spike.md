@@ -13,7 +13,7 @@ maintainer's ruling on the Windows run.
 
 Answers the P questions of the
 [stage-2 design spec](2026-10-10-capture-engine-launched-browser-design.md) (Open questions, line
-1422) by launching the browsers this host has, the way the design launches them, against fixture
+1422) by launching the browsers each host has, the way the design launches them, against fixture
 pages on loopback. Issue #1828 asked for it as step 1 of the stage-2 split, and every line number
 cited as "spec" points into that design spec as it stood when this report was added (#1842).
 

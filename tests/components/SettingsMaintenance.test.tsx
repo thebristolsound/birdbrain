@@ -407,7 +407,7 @@ it('binds nested tab orientation to its own root', () => {
 // ADR-0032. Direct saves at once; a Proxy or Tor saves only an address that
 // parses, so a half-typed or refused one never becomes the route.
 describe('Egress setting', () => {
-  function mountEgress(egress?: object) {
+  function mountEgress(egress?: object, launchedBrowser?: Record<string, unknown>) {
     const update = vi.fn(async (partial: object) => ({
       tsaUrl: DEFAULT_TSA_URL,
       egress,
@@ -423,7 +423,8 @@ describe('Egress setting', () => {
         }),
         get: vi.fn().mockResolvedValue({ tsaUrl: DEFAULT_TSA_URL, egress }),
         update
-      }
+      },
+      ...(launchedBrowser && { launchedBrowser })
     })
     mount(<OperatorConfig />)
     return update
@@ -526,6 +527,156 @@ describe('Egress setting', () => {
       client.setQueryData(['settings'], { tsaUrl: DEFAULT_TSA_URL, egress: tor })
     })
     await waitFor(() => expect(torRadio).toHaveProperty('checked', true))
+  })
+
+  // State 14: the browser keeps the Egress it launched with, so a change waits for the Operator.
+  describe('while a launched browser is open', () => {
+    const tor = { kind: 'tor', proxyUrl: 'socks5://127.0.0.1:9150', label: '' }
+    const browser = {
+      family: 'chrome',
+      label: 'Google Chrome',
+      caseId: 'case-1',
+      version: '149.0.7827.55',
+      extensionWarnings: []
+    }
+
+    function mountOpen(endSession = vi.fn(async () => ({ state: 'none' }))) {
+      const update = mountEgress(tor, {
+        status: vi.fn(async () => ({ state: 'open', browser })),
+        endSession
+      })
+      return { update, endSession }
+    }
+
+    async function chooseDirect() {
+      const group = await screen.findByRole('radiogroup', { name: 'Egress' })
+      await waitFor(() =>
+        expect(within(group).getByRole('radio', { name: /Tor/ })).toHaveProperty('checked', true)
+      )
+      // The status query has to have answered before the choice, as it has in the app.
+      await waitFor(() => expect(window.birdbrain.launchedBrowser.status).toHaveBeenCalled())
+      await act(async () => {})
+      fireEvent.click(within(group).getByRole('radio', { name: /Direct/ }))
+      return group
+    }
+
+    it('asks first, naming the browser it closes', async () => {
+      const { update, endSession } = mountOpen()
+      await chooseDirect()
+      const dialog = await screen.findByRole('dialog')
+      expect(within(dialog).getByText('Change the Egress to Direct?')).toBeDefined()
+      expect(
+        within(dialog).getByText('This ends the Capture Session and closes Launched Google Chrome.')
+      ).toBeDefined()
+      expect(update).not.toHaveBeenCalled()
+      expect(endSession).not.toHaveBeenCalled()
+    })
+
+    it('leaves the setting and the browser as they were on Cancel', async () => {
+      const { update, endSession } = mountOpen()
+      const group = await chooseDirect()
+      fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      expect(within(group).getByRole('radio', { name: /Tor/ })).toHaveProperty('checked', true)
+      expect(update).not.toHaveBeenCalled()
+      expect(endSession).not.toHaveBeenCalled()
+    })
+
+    it('keeps the Egress when the confirmation is dismissed by Escape or a click outside', async () => {
+      const { update, endSession } = mountOpen()
+      const group = await chooseDirect()
+      await screen.findByRole('dialog')
+      fireEvent.keyDown(window, { key: 'Escape' })
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      fireEvent.click(within(group).getByRole('radio', { name: /Direct/ }))
+      await screen.findByRole('dialog')
+      fireEvent.click(document.querySelector('.fixed.inset-0.bg-black\\/50')!)
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      expect(within(group).getByRole('radio', { name: /Tor/ })).toHaveProperty('checked', true)
+      expect(update).not.toHaveBeenCalled()
+      expect(endSession).not.toHaveBeenCalled()
+    })
+
+    it('ends the Capture Session before the new Egress is saved', async () => {
+      const order: string[] = []
+      const endSession = vi.fn(async () => {
+        order.push('endSession')
+        return { state: 'none' }
+      })
+      const { update } = mountOpen(endSession)
+      update.mockImplementation(async (partial: object) => {
+        order.push('update')
+        return { tsaUrl: DEFAULT_TSA_URL, egress: tor, ...partial }
+      })
+      await chooseDirect()
+      fireEvent.click(await screen.findByRole('button', { name: 'End and change' }))
+      await waitFor(() => expect(update).toHaveBeenCalledWith({ egress: { kind: 'direct' } }))
+      expect(order).toEqual(['endSession', 'update'])
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    })
+
+    it('keeps the saved Egress when the browser would not exit', async () => {
+      const { update } = mountOpen(
+        vi.fn(async () => ({
+          state: 'none',
+          notice: {
+            code: 'BROWSER_DID_NOT_EXIT',
+            message: 'Google Chrome did not exit after Birdbrain killed it.'
+          }
+        }))
+      )
+      const group = await chooseDirect()
+      fireEvent.click(await screen.findByRole('button', { name: 'End and change' }))
+      expect((await screen.findByRole('alert')).textContent).toBe(
+        'Google Chrome did not exit after Birdbrain killed it. The saved Egress has not changed.'
+      )
+      expect(update).not.toHaveBeenCalled()
+      expect(within(group).getByRole('radio', { name: /Tor/ })).toHaveProperty('checked', true)
+    })
+
+    it('keeps the saved Egress when the Capture Session could not be ended', async () => {
+      const { update } = mountOpen(vi.fn(async () => Promise.reject(new Error('gone'))))
+      await chooseDirect()
+      fireEvent.click(await screen.findByRole('button', { name: 'End and change' }))
+      expect((await screen.findByRole('alert')).textContent).toBe(
+        'The Capture Session could not be ended. The saved Egress has not changed.'
+      )
+      expect(update).not.toHaveBeenCalled()
+    })
+
+    it('asks about a new address on the same kind of Egress', async () => {
+      const proxy = { kind: 'proxy', proxyUrl: 'socks5://127.0.0.1:1080', label: 'Lab' }
+      const update = mountEgress(proxy, {
+        status: vi.fn(async () => ({ state: 'open', browser }))
+      })
+      const address = await screen.findByLabelText('Proxy address')
+      await waitFor(() => expect(address).toHaveProperty('value', proxy.proxyUrl))
+      await waitFor(() => expect(window.birdbrain.launchedBrowser.status).toHaveBeenCalled())
+      await act(async () => {})
+      // An unchanged address is no change, and saves as before.
+      fireEvent.blur(address)
+      await waitFor(() => expect(update).toHaveBeenCalledWith({ egress: proxy }))
+      expect(screen.queryByRole('dialog')).toBeNull()
+      fireEvent.change(address, { target: { value: 'socks5://127.0.0.1:1081' } })
+      fireEvent.blur(address)
+      const dialog = await screen.findByRole('dialog')
+      expect(within(dialog).getByText('Change the Egress?')).toBeDefined()
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+      await waitFor(() => expect(address).toHaveProperty('value', proxy.proxyUrl))
+      expect(update).toHaveBeenCalledOnce()
+    })
+
+    it('does not ask once the browser has closed', async () => {
+      const update = mountEgress(tor, {
+        status: vi.fn(async () => ({ state: 'closed', browser }))
+      })
+      const group = await screen.findByRole('radiogroup', { name: 'Egress' })
+      await waitFor(() => expect(window.birdbrain.launchedBrowser.status).toHaveBeenCalled())
+      await act(async () => {})
+      fireEvent.click(within(group).getByRole('radio', { name: /Direct/ }))
+      await waitFor(() => expect(update).toHaveBeenCalledWith({ egress: { kind: 'direct' } }))
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
   })
 
   it('shows a stored proxy with its address and label', async () => {

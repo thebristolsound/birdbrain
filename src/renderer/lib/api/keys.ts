@@ -42,6 +42,7 @@ export const queryKeys = {
   personas: ['persona'] as const,
   personaStorageState: ['persona', 'storageState'] as const,
   // The launched browser (#1831).
+  launchedBrowserStatus: ['launchedBrowser', 'status'] as const,
   launchedBrowsers: ['launchedBrowser', 'list'] as const,
   leftoverBrowsers: ['launchedBrowser', 'leftovers'] as const,
   selectors: (caseId: string) => ['selectors', caseId] as const,

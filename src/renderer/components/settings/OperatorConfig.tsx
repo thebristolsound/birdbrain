@@ -5,8 +5,24 @@ import {
   settingsQueryOptions,
   useSettingsMutations
 } from '@renderer/lib/queries'
-import { Card, CardContent, Input, Label } from '@renderer/components/ui'
+import {
+  Button,
+  Card,
+  CardContent,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+  Input,
+  Label
+} from '@renderer/components/ui'
 import { cn } from '@renderer/lib/utils'
+import {
+  endLaunchedBrowserSession,
+  launchedBrowserName,
+  launchedBrowserStatusQueryOptions
+} from '@renderer/lib/api/launchedBrowser'
 import { DEFAULT_TSA_URL, TOR_PROXY_PRESETS } from '@shared/constants'
 import { parseProxyUrl, parseTsaUrl } from '@shared/schemas'
 import type { EgressKind, EgressSetting, KnownEgress } from '@shared/types'
@@ -260,12 +276,24 @@ const EGRESS_CHOICES: Array<[KnownEgress['kind'], string, string]> = [
   ]
 ]
 
+// Saving the Egress it already is tells main's Egress listeners nothing, so it closes no
+// launched browser and needs no confirmation.
+function sameEgress(stored: EgressSetting, next: KnownEgress): boolean {
+  if (stored.kind === 'direct' || stored.kind === 'unavailable' || next.kind === 'direct') {
+    return stored.kind === next.kind
+  }
+  return (
+    stored.kind === next.kind && stored.proxyUrl === next.proxyUrl && stored.label === next.label
+  )
+}
+
 // The Egress (ADR-0032). Direct saves at once; a Proxy or Tor saves once its
 // address parses, on blur or on a preset, so a half-typed address is never the
 // route. Main refuses the same addresses this does. An Egress the settings file no
 // longer shows checks no choice until the Operator makes one.
 function EgressSettings({ stored }: { stored: EgressSetting }) {
   const { update } = useSettingsMutations()
+  const { data: browserStatus } = useQuery(launchedBrowserStatusQueryOptions)
   const routed = stored.kind === 'proxy' || stored.kind === 'tor' ? stored : null
   const [kind, setKind] = useState<KnownEgress['kind'] | null>(
     stored.kind === 'unavailable' ? null : stored.kind
@@ -274,6 +302,10 @@ function EgressSettings({ stored }: { stored: EgressSetting }) {
   const [label, setLabel] = useState(routed?.label ?? '')
   const [error, setError] = useState('')
   const [note, setNote] = useState('')
+  // A change waiting on the Operator (state 14). A launched browser keeps the Egress it launched
+  // with, so the change ends its Capture Session and closes it first.
+  const [pending, setPending] = useState<{ egress: KnownEgress; browser: string } | null>(null)
+  const [ending, setEnding] = useState(false)
   // The choice follows the saved Egress whenever that changes, so a file that
   // stops or starts reading again shows what is in effect. A Proxy chosen with no
   // address yet changes nothing saved, so it stays checked.
@@ -293,13 +325,52 @@ function EgressSettings({ stored }: { stored: EgressSetting }) {
     setLabel(stored.label)
   }, [stored])
 
-  async function save(next: KnownEgress) {
+  function showStored() {
+    setKind(stored.kind === 'unavailable' ? null : stored.kind)
+    setProxyUrl(routed?.proxyUrl ?? '')
+    setLabel(routed?.label ?? '')
+  }
+
+  async function write(next: KnownEgress) {
     try {
       await update.mutateAsync({ egress: next })
       setError('')
       setNote('')
     } catch {
       setError('The Egress could not be saved. The saved Egress has not changed.')
+    }
+  }
+
+  async function save(next: KnownEgress) {
+    if (browserStatus?.state === 'open' && !sameEgress(stored, next)) {
+      setPending({ egress: next, browser: launchedBrowserName(browserStatus.browser.label) })
+      return
+    }
+    await write(next)
+  }
+
+  function keepEgress() {
+    setPending(null)
+    showStored()
+  }
+
+  async function endAndChange(next: KnownEgress) {
+    setEnding(true)
+    try {
+      const after = await endLaunchedBrowserSession()
+      const notice = after.state === 'none' ? after.notice : undefined
+      if (notice?.code === 'BROWSER_DID_NOT_EXIT') {
+        setError(`${notice.message} The saved Egress has not changed.`)
+        showStored()
+      } else {
+        await write(next)
+      }
+    } catch {
+      setError('The Capture Session could not be ended. The saved Egress has not changed.')
+      showStored()
+    } finally {
+      setEnding(false)
+      setPending(null)
     }
   }
 
@@ -433,6 +504,37 @@ function EgressSettings({ stored }: { stored: EgressSetting }) {
         </p>
       )}
       {note && !error && <p className="mt-1 text-[11px] text-text-muted">{note}</p>}
+      <Dialog open={pending !== null} onOpenChange={(open) => !open && !ending && keepEgress()}>
+        {pending && (
+          <DialogContent onClose={() => !ending && keepEgress()} className="max-w-sm">
+            <DialogTitle>
+              {pending.egress.kind === stored.kind
+                ? 'Change the Egress?'
+                : `Change the Egress to ${egressName(pending.egress.kind)}?`}
+            </DialogTitle>
+            <DialogDescription className="mt-1 text-xs">
+              This ends the Capture Session and closes {pending.browser}.
+            </DialogDescription>
+            <DialogFooter className="mt-4 gap-1.5">
+              <Button variant="outline" disabled={ending} onClick={keepEgress}>
+                Cancel
+              </Button>
+              <Button
+                className="text-accent-foreground"
+                disabled={ending}
+                onClick={() => void endAndChange(pending.egress)}
+              >
+                {ending ? 'Ending…' : 'End and change'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
     </div>
   )
+}
+
+function egressName(kind: KnownEgress['kind']): string {
+  const choice = EGRESS_CHOICES.find(([value]) => value === kind)
+  return choice ? choice[1] : kind
 }

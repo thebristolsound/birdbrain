@@ -22,7 +22,7 @@ import { useServerStatus } from '@renderer/hooks/useServerStatus'
 import { useAppStore } from '@renderer/stores/appStore'
 import { queryClient } from '@renderer/lib/queryClient'
 import { queryKeys } from '@renderer/lib/queries'
-import type { Capture } from '@shared/types'
+import type { Capture, LaunchedBrowserStatus } from '@shared/types'
 import type { DeepLinkTarget, ExtensionAttachEvent } from '@shared/ipc'
 import { fakeBridge } from '../fakeBridge'
 
@@ -36,6 +36,7 @@ type Handlers = {
   selectorRematched?: (p: { caseId: string }) => void
   sharingChanged?: (p: { caseId: string }) => void
   deepLink?: (t: DeepLinkTarget) => void
+  launchedBrowser?: (s: LaunchedBrowserStatus) => void
 }
 
 function installBirdbrain(handlers: Handlers, unsubs: Record<string, ReturnType<typeof vi.fn>>) {
@@ -52,7 +53,8 @@ function installBirdbrain(handlers: Handlers, unsubs: Record<string, ReturnType<
     onExtensionAttach: register('extensionAttach', 'extensionAttach'),
     onSelectorRematched: register('selectorRematched', 'selectorRematched'),
     onSharingChanged: register('sharingChanged', 'sharingChanged'),
-    onDeepLinkNavigate: register('deepLink', 'deepLink')
+    onDeepLinkNavigate: register('deepLink', 'deepLink'),
+    onLaunchedBrowserStatus: register('launchedBrowser', 'launchedBrowser')
   })
 }
 
@@ -270,6 +272,32 @@ describe('useServerStatus', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.sharingSyncState('case-7') })
   })
 
+  it('writes each launched browser status into its query', () => {
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    renderHook(() => useServerStatus())
+    const browser = {
+      family: 'chrome' as const,
+      label: 'Google Chrome',
+      caseId: 'case-1',
+      version: null,
+      extensionWarnings: []
+    }
+    act(() => handlers.launchedBrowser?.({ state: 'starting', browser }))
+    expect(queryClient.getQueryData(queryKeys.launchedBrowserStatus)).toEqual({
+      state: 'starting',
+      browser
+    })
+    expect(invalidate).not.toHaveBeenCalled()
+    // An open browser has had its version saved, which the found-browsers list shows.
+    const open: LaunchedBrowserStatus = {
+      state: 'open',
+      browser: { ...browser, version: '149.0.7827.55' }
+    }
+    act(() => handlers.launchedBrowser?.(open))
+    expect(queryClient.getQueryData(queryKeys.launchedBrowserStatus)).toEqual(open)
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.launchedBrowsers })
+  })
+
   it('routes deep links to settings or dashboard', () => {
     renderHook(() => useServerStatus())
     act(() => handlers.deepLink?.('settings'))
@@ -284,6 +312,6 @@ describe('useServerStatus', () => {
     for (const fn of Object.values(unsubs)) {
       expect(fn).toHaveBeenCalledTimes(1)
     }
-    expect(Object.keys(unsubs)).toHaveLength(8)
+    expect(Object.keys(unsubs)).toHaveLength(9)
   })
 })

@@ -23,7 +23,8 @@ import { listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
 import { seedUnanchoredDerivedFile } from '../../helpers/mixedKindCase'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
-import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
+import { buildVerifyRunbook } from '@main/services/verifyRunbook'
+import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { canonicalStringify } from '@shared/verify'
 import { PACKAGE_ROOT_FILES } from '../../../src/packages/evidence-package-layout/index'
 import { HAS_OPENSSL } from '../../helpers/openssl'
@@ -340,7 +341,10 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
   }
 
   it.skipIf(!RUNS)('executes every shell block of the generated runbook', () => {
-    const blocks = extractRunbookBlocks(VERIFY_RUNBOOK)
+    // The VERIFY.md this package ships, so the blocks run are the bytes it encloses.
+    const blocks = extractRunbookBlocks(
+      entries.get(PACKAGE_ROOT_FILES.verifyRunbook)!.toString('utf-8')
+    )
     // A runbook that stopped carrying executable steps would otherwise pass by
     // having nothing to run, which is the failure this file exists to close.
     expect(blocks.length).toBeGreaterThanOrEqual(8)
@@ -1043,7 +1047,8 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
 
     it.skipIf(!RUNS)("runs the runbook's step 5 commands over both files", async () => {
       const dir = await engineExport('engine-runbook')
-      const step5 = extractRunbookBlocks(VERIFY_RUNBOOK).find(
+      const runbook = readFileSync(join(dir, PACKAGE_ROOT_FILES.verifyRunbook), 'utf-8')
+      const step5 = extractRunbookBlocks(runbook).find(
         ({ section, code }) => section.startsWith('Step 5') && code.includes('.pdfHash')
       )!
       const pickEntry = {
@@ -1254,6 +1259,14 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
 })
 
 describe('runbook block extraction', () => {
+  // The blocks are the same in every package; only the manifest schema section
+  // varies, and it holds none (verifyRunbook.test.ts).
+  const VERIFY_RUNBOOK = buildVerifyRunbook({
+    requiredSchemaVersion: MANIFEST_SCHEMA_VERSION,
+    readerSchemaVersion: MANIFEST_SCHEMA_VERSION,
+    appVersion: '0.0.0'
+  })
+
   it('tags each block with the step it sits under and reports its placeholders', () => {
     const blocks = extractRunbookBlocks(VERIFY_RUNBOOK)
     expect(blocks.length).toBeGreaterThanOrEqual(8)

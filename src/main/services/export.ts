@@ -24,7 +24,9 @@ import {
   appendManifestEntry,
   createArtifactAccumulator,
   initManifest,
+  MIN_READER_SCHEMA_VERSION,
   packageHash as computePackageHash,
+  readEntries,
   readManifestSnapshot,
   readSharedCaseSnapshot,
   rollbackManifestEntry
@@ -76,9 +78,10 @@ import type {
   PackagedArtifacts,
   ReportData
 } from '@main/services/reportHtml'
-import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
+import { buildVerifyRunbook } from '@main/services/verifyRunbook'
 import { VERIFY_SCRIPT } from '@main/services/verifyScript'
 import { EVIDENCE_INDEX_SCHEMA_VERSION, WORKING_COPY_MARKER_FILENAME } from '@shared/schemas'
+import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { extractNoteMentions } from '@shared/noteDoc'
 import type {
   Capture,
@@ -356,6 +359,31 @@ export function resolveEntrySignatures(
   }
 
   return byCaptureId
+}
+
+/**
+ * The manifest schema a verifier must read to verify the package (ADR-0023):
+ * the highest `schemaVersion` among the entries it encloses. Every member and
+ * lineage chain is read from the bytes the package ships, not from the entries
+ * the Shared Case walk accepted: the package ships every line, accepted or not.
+ * A value that is not a whole number names no version. The floor is the export
+ * entry's stamp: `export-entry.json` is appended after the package is sealed,
+ * so its line cannot be read here.
+ */
+export function resolveRequiredReaderSchemaVersion(
+  manifest: ManifestSnapshot,
+  sharedCase: SharedCaseSnapshot
+): number {
+  const chains = sharedCase.chains.map(({ jsonl }) => readEntries(jsonl.toString('utf-8')))
+  return [manifest.entries, ...chains]
+    .flat()
+    .reduce<number>(
+      (required, { schemaVersion }) =>
+        typeof schemaVersion === 'number' && Number.isInteger(schemaVersion)
+          ? Math.max(required, schemaVersion)
+          : required,
+      MIN_READER_SCHEMA_VERSION.export
+    )
 }
 
 /**
@@ -1517,7 +1545,15 @@ function buildEvidenceZip(
     )
   )
   add(PACKAGE_ROOT_FILES.signingPublicKey, publicKeyPem)
-  add(PACKAGE_ROOT_FILES.verifyRunbook, VERIFY_RUNBOOK)
+  add(
+    PACKAGE_ROOT_FILES.verifyRunbook,
+    buildVerifyRunbook({
+      requiredSchemaVersion: resolveRequiredReaderSchemaVersion(manifest, sharedCase),
+      readerSchemaVersion: MANIFEST_SCHEMA_VERSION,
+      // The version report.html names, so the two documents cannot disagree.
+      appVersion: data.toolVersion
+    })
+  )
   // The runbook's executable form (#584). Written through add() like every other
   // packaged document, so it lands in artifacts[] and in packageHash: a script
   // that verifies the package is worth no more than the package's own account of

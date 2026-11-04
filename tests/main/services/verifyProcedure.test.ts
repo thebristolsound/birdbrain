@@ -12,9 +12,18 @@ import {
   verifyStep
 } from '@main/services/verifyProcedure'
 import { VERIFY_SCRIPT } from '@main/services/verifyScript'
-import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
+import { buildVerifyRunbook } from '@main/services/verifyRunbook'
+import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 
 const ROOT = join(__dirname, '..', '..', '..')
+
+// The text these tests read is the same in every package; only the manifest
+// schema section varies (verifyRunbook.test.ts).
+const VERIFY_RUNBOOK = buildVerifyRunbook({
+  requiredSchemaVersion: MANIFEST_SCHEMA_VERSION,
+  readerSchemaVersion: MANIFEST_SCHEMA_VERSION,
+  appVersion: '0.0.0'
+})
 
 // The text these files ship cites steps only through the helpers. Comments
 // come out through the compiler, so only real TypeScript comments are exempt:

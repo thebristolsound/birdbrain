@@ -37,7 +37,10 @@ import {
   appendManifestEntry,
   getManifestHead,
   initManifest,
-  verifyManifestChain
+  verifyManifestChain,
+  type ChainFileSnapshot,
+  type ManifestSnapshot,
+  type SharedCaseSnapshot
 } from '@main/services/manifest'
 import { canonicalStringify, parseTimestampToken } from '@shared/verify'
 import { TRUSTED_TIME_LABELS, TRUSTED_TIME_UNNAMED_TSA } from '@shared/trustedTimeDisclosure'
@@ -49,8 +52,11 @@ import {
   generateReport,
   getExportPreflight,
   buildNotesMarkdown,
-  noteTravelsWithSelection
+  noteTravelsWithSelection,
+  resolveRequiredReaderSchemaVersion
 } from '@main/services/export'
+import { resolveToolVersion } from '@main/services/toolVersion'
+import { GITHUB_RELEASES_URL, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { createNote } from '@main/services/db/noteRepo'
 import { saveAnnotations, upsertPin, deletePin } from '@main/services/annotations'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
@@ -84,6 +90,8 @@ import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive
 import {
   PDF_PACKAGE_DIRECTORY,
   TRANSACTION_RECORD_PACKAGE_DIRECTORY,
+  lineageChainPath,
+  memberChainPath,
   pdfPath,
   transactionRecordPath
 } from '../../../src/packages/evidence-package-layout/index'
@@ -1725,6 +1733,108 @@ describe('export', () => {
       expect(found[0]).toBe('index 0 capture — unsigned')
     }
   )
+
+  // ADR-0023: VERIFY.md names the manifest schema a verifier must read to
+  // verify the package, worked out from the entries the package encloses.
+  describe('the manifest schema version VERIFY.md states (#1172)', () => {
+    const exportRunbook = async (
+      name: string
+    ): Promise<{ runbook: string; entries: Map<string, Buffer> }> => {
+      const outputPath = join(tempDir, `${name}.zip`)
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
+          exportClass: 'evidence',
+          outputPath
+        },
+        captureLifecycle
+      )
+      const entries = readStoredZipEntries(outputPath)
+      // The runbook wraps prose at any space, so it is read collapsed.
+      const runbook = entries.get('VERIFY.md')!.toString('utf-8').replace(/\s+/g, ' ')
+      return { runbook, entries }
+    }
+
+    // Every schemaVersion the package encloses, its chain's and its export entry's.
+    const enclosedSchemaVersions = (entries: Map<string, Buffer>): number[] =>
+      [
+        ...entries.get('manifest.jsonl')!.toString('utf-8').split('\n').filter(Boolean),
+        entries.get('export-entry.json')!.toString('utf-8')
+      ].map((line) => (JSON.parse(line) as { schemaVersion: number }).schemaVersion)
+
+    const statedRequired = (runbook: string): number | undefined => {
+      const match = /This package needs a verifier that reads manifest schema (\d+)\./.exec(runbook)
+      return match ? Number(match[1]) : undefined
+    }
+
+    it('states 2, the writing build and the releases page for schema-2 entries', async () => {
+      const bytes = Buffer.from('schema two bytes')
+      const capture = insertCapture({
+        caseId,
+        url: 'https://example.com/two',
+        title: 'Schema two',
+        hash: sha256Hex(bytes),
+        timestamp: '2026-04-05T12:00:00.000Z'
+      })
+      await defaultCaptureStore.writeMhtmlStream(
+        caseId,
+        capture.id,
+        Readable.from([bytes]) as unknown as ReadableStream<Uint8Array>
+      )
+      // No exhibitNumber: every capture ingested today carries one, which
+      // stamps its entry 3.
+      appendManifestEntry(join(tempDir, 'captures', caseId), {
+        type: 'capture',
+        captureId: capture.id,
+        caseId,
+        url: 'https://example.com/two',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        contentHash: capture.hash,
+        sizeBytes: bytes.length,
+        operatorId: 'op',
+        operatorName: 'Test Operator',
+        toolVersion: '0.1.0'
+      })
+
+      const { runbook, entries } = await exportRunbook('schema-two')
+
+      expect(enclosedSchemaVersions(entries)).toEqual([2, 2])
+      expect(statedRequired(runbook)).toBe(2)
+      expect(runbook).toContain(
+        `Birdbrain ${resolveToolVersion()} wrote this package, and that build reads manifest ` +
+          `schema up to ${MANIFEST_SCHEMA_VERSION}.`
+      )
+      expect(runbook).toContain(`Birdbrain releases are published at ${GITHUB_RELEASES_URL}.`)
+    })
+
+    it('states 3 for a case whose capture entry carries an Exhibit Number', async () => {
+      await ingest(caseId, '<html><body>Numbered</body></html>')
+
+      const { runbook, entries } = await exportRunbook('schema-three')
+
+      expect(Math.max(...enclosedSchemaVersions(entries))).toBe(3)
+      expect(statedRequired(runbook)).toBe(3)
+    })
+
+    // The export entry ships beside the chain and is stamped 2, so a chain of
+    // older entries still needs a verifier that reads it.
+    it('states 2, the export entry, for a chain of one unsigned v1 entry', async () => {
+      await seedLegacyGenesisCapture(caseId, join(tempDir, 'captures', caseId))
+
+      const { runbook, entries } = await exportRunbook('schema-one')
+
+      expect(enclosedSchemaVersions(entries)).toEqual([1, 2])
+      expect(statedRequired(runbook)).toBe(2)
+    })
+  })
 
   // A capture the chain never recorded has no signature to report and must not
   // borrow the signed wording by defaulting.
@@ -4558,5 +4668,78 @@ describe('export', () => {
       expect(marker.contents.derivedFileCount).toBe(1)
       expect(marker.exhibits.map((e) => e.kind).sort()).toEqual(['attachment', 'document', 'image'])
     })
+  })
+})
+
+// The manifest schema a verifier must read for a package (ADR-0023, #1172),
+// worked out from the chain bytes the package encloses.
+describe('resolveRequiredReaderSchemaVersion', () => {
+  const jsonl = (versions: unknown[]): string =>
+    versions
+      .map((schemaVersion) =>
+        JSON.stringify(
+          schemaVersion === undefined ? { type: 'capture' } : { type: 'capture', schemaVersion }
+        )
+      )
+      .join('\n') + '\n'
+  const local = (...versions: unknown[]): ManifestSnapshot => {
+    const text = jsonl(versions)
+    return { jsonl: Buffer.from(text), entries: manifest.readEntries(text), head: null }
+  }
+  const chain = (path: string, ...versions: unknown[]): ChainFileSnapshot => ({
+    path,
+    installationId: 'member-installation',
+    jsonl: Buffer.from(jsonl(versions))
+  })
+  const unshared: SharedCaseSnapshot = { chains: [] }
+
+  it('gives 2 for a chain whose entries are all schema 2', () => {
+    expect(resolveRequiredReaderSchemaVersion(local(2, 2, 2), unshared)).toBe(2)
+  })
+
+  // The export entry ships beside the chain stamped 2, and is appended after
+  // the package is sealed, so its line cannot be read here.
+  it('gives 2, the export entry, for a schema-1 genesis entry with nothing above it', () => {
+    expect(resolveRequiredReaderSchemaVersion(local(1), unshared)).toBe(2)
+    expect(resolveRequiredReaderSchemaVersion(local(), unshared)).toBe(2)
+  })
+
+  it('gives 3 for a chain holding a schema-3 entry', () => {
+    expect(resolveRequiredReaderSchemaVersion(local(1, 2, 3, 2), unshared)).toBe(3)
+  })
+
+  it('reads every member and lineage chain, above what this build reads included', () => {
+    expect(
+      resolveRequiredReaderSchemaVersion(local(2, 3), {
+        chains: [chain(memberChainPath('member-installation'), 2, 4)]
+      })
+    ).toBe(4)
+    const newer = MANIFEST_SCHEMA_VERSION + 1
+    expect(
+      resolveRequiredReaderSchemaVersion(local(2, 3), {
+        chains: [
+          chain(memberChainPath('member-installation'), 2),
+          chain(lineageChainPath('source-case', 'member-installation'), 2, newer)
+        ]
+      })
+    ).toBe(newer)
+  })
+
+  it('counts an entry with no schemaVersion as a v1 entry', () => {
+    expect(resolveRequiredReaderSchemaVersion(local(undefined, undefined), unshared)).toBe(2)
+  })
+
+  it('ignores a schemaVersion that is not a whole number', () => {
+    expect(
+      resolveRequiredReaderSchemaVersion(local(2, 3.5, '9', null, [9], { v: 9 }), unshared)
+    ).toBe(2)
+  })
+
+  it('reads an unparseable member chain line as no entry', () => {
+    const garbled: ChainFileSnapshot = {
+      ...chain(memberChainPath('member-installation'), 3),
+      jsonl: Buffer.from(`not json\n${jsonl([3])}`)
+    }
+    expect(resolveRequiredReaderSchemaVersion(local(2), { chains: [garbled] })).toBe(3)
   })
 })

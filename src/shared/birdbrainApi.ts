@@ -135,6 +135,7 @@ import type {
   RecaptureQueueStatus,
   RendererLogPayload,
   SessionStateEvent,
+  LaunchedBrowserPopOutEvent,
   CaptureBatchPayload,
   BatchDeleteResult,
   BatchCountResult,
@@ -292,6 +293,10 @@ export interface BirdbrainAPI {
     cancelLaunch(): Promise<LaunchedBrowserStatus>
     endSession(): Promise<LaunchedBrowserStatus>
     checkLeftovers(): Promise<LaunchedBrowserLeftover[]>
+    popOut(): Promise<boolean>
+    showPopOut(): Promise<void>
+    dock(): Promise<void>
+    popOutState(): Promise<boolean>
   }
   search(caseId: string, query: string): Promise<Capture[]>
   settings: {
@@ -420,6 +425,7 @@ export interface BirdbrainAPI {
   onInvestigationProgress(callback: (event: RunProgressEvent) => void): () => void
   onWaybackLinkProgress(callback: (event: WaybackLinkProgressEvent) => void): () => void
   onLaunchedBrowserStatus(callback: (status: LaunchedBrowserStatus) => void): () => void
+  onLaunchedBrowserPopOut(callback: (event: LaunchedBrowserPopOutEvent) => void): () => void
   testPipeline(): Promise<{ success: boolean; durationMs: number; error?: string }>
   testHttp(): Promise<{ success: boolean; durationMs: number; error?: string }>
   extractedData: {

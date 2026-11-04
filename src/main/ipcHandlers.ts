@@ -231,6 +231,23 @@ const CHOSEN_EXECUTABLE_REFUSALS: Readonly<
   unrecognized: 'EXECUTABLE_UNRECOGNIZED'
 }
 
+// The Capture Session panel's own window (`1g`), which index.ts creates and closes.
+export interface PopOutWindowControls {
+  // Opens the window, or shows it when it is already open; true once it is out.
+  open(): boolean
+  // show() alone: whether the window comes in front of the browser is the desktop's decision.
+  show(): void
+  dock(): void
+  isOpen(): boolean
+}
+
+const NO_POP_OUT: PopOutWindowControls = {
+  open: () => false,
+  show: () => {},
+  dock: () => {},
+  isOpen: () => false
+}
+
 // A launch failure that carries a code reaches the renderer as a refusal with its message. A
 // throw with no code is a defect, and stays one.
 function launchRefusal(err: unknown): unknown {
@@ -254,6 +271,8 @@ export function registerIpcHandlers(deps: {
   launchedBrowser?: LaunchedBrowserService
   // The startup sweep's check for browsers left running from an earlier run.
   checkLeftoverBrowsers?: () => LaunchedBrowserLeftover[]
+  // Optional for the same reason; with none, the panel does not pop out.
+  popOut?: PopOutWindowControls
   sharingService: SharingService
   // Hand-off for a freshly committed Exhibit to the trusted-timestamp worker
   // (X26). Optional so tests without a worker can register the handlers.
@@ -443,7 +462,7 @@ export function registerIpcHandlers(deps: {
       session: sessionService,
       sessionDataPath: app.getPath('sessionData')
     })
-  const { checkLeftoverBrowsers = () => [] } = deps
+  const { checkLeftoverBrowsers = () => [], popOut = NO_POP_OUT } = deps
   const launchableBrowsers = (): LaunchedBrowserOption[] => {
     const { launchedBrowserExecutable, launchedBrowserVersions } = settings.getSettings()
     return listLaunchableBrowsers(launchedBrowserExecutable, launchedBrowserVersions)
@@ -492,6 +511,14 @@ export function registerIpcHandlers(deps: {
   })
 
   handle(IPC_CHANNELS.LAUNCHED_BROWSER_CHECK_LEFTOVERS, () => checkLeftoverBrowsers())
+
+  // The panel pops out beside an open browser only: a closing one is about to take it back.
+  handle(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT, () =>
+    launchedBrowser.status().state === 'open' ? popOut.open() : false
+  )
+  handle(IPC_CHANNELS.LAUNCHED_BROWSER_SHOW_POP_OUT, () => popOut.show())
+  handle(IPC_CHANNELS.LAUNCHED_BROWSER_DOCK, () => popOut.dock())
+  handle(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT_STATE, () => popOut.isOpen())
 
   // Captures
   handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => captureRepo.listCaptures(caseId))

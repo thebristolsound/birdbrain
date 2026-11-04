@@ -59,7 +59,8 @@ const EVENTS = [
   'onSharingJoinProgress',
   'onInvestigationProgress',
   'onWaybackLinkProgress',
-  'onLaunchedBrowserStatus'
+  'onLaunchedBrowserStatus',
+  'onLaunchedBrowserPopOut'
 ] as const satisfies readonly EventKey[]
 
 const TOP_LEVEL = ['search', 'testPipeline', 'testHttp'] as const satisfies readonly TopLevelKey[]

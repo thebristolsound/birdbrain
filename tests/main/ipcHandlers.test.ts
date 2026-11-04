@@ -160,7 +160,7 @@ vi.mock('@main/services/db/dbRestore', async (importActual) => {
 import { IPC_CHANNELS } from '@shared/ipc'
 import { MAX_BATCH_CAPTURE_IDS } from '@shared/constants'
 import type { BatchCountResult, BatchDeleteResult, SelfTestResult } from '@shared/ipc'
-import { registerIpcHandlers } from '@main/ipcHandlers'
+import { registerIpcHandlers, type PopOutWindowControls } from '@main/ipcHandlers'
 import type {
   BugReportResult,
   Capture,
@@ -571,7 +571,8 @@ describe('ipcHandlers — launched browser (#1831)', () => {
 
   function register(
     launchedBrowser: LaunchedBrowserService,
-    checkLeftoverBrowsers?: () => LaunchedBrowserLeftover[]
+    checkLeftoverBrowsers?: () => LaunchedBrowserLeftover[],
+    popOut?: PopOutWindowControls
   ): void {
     const selectorLifecycle = createSelectorLifecycle({ emitRematched: vi.fn() })
     registerIpcHandlers({
@@ -582,7 +583,8 @@ describe('ipcHandlers — launched browser (#1831)', () => {
       sessionService,
       sharingService,
       launchedBrowser,
-      checkLeftoverBrowsers
+      checkLeftoverBrowsers,
+      popOut
     })
   }
 
@@ -739,6 +741,57 @@ describe('ipcHandlers — launched browser (#1831)', () => {
     expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_CANCEL_LAUNCH))).toEqual(starting)
     expect(service.cancelLaunch).toHaveBeenCalledTimes(1)
     expect(service.endCaptureSession).not.toHaveBeenCalled()
+  })
+
+  function fakePopOut(): PopOutWindowControls & { out: boolean } {
+    const controls = {
+      out: false,
+      open: vi.fn(() => {
+        controls.out = true
+        return true
+      }),
+      show: vi.fn(),
+      dock: vi.fn(() => {
+        controls.out = false
+      }),
+      isOpen: vi.fn(() => controls.out)
+    }
+    return controls
+  }
+
+  it('pops the panel out only beside an open browser', async () => {
+    let status: LaunchedBrowserStatus = { state: 'none' }
+    const popOut = fakePopOut()
+    register(fakeService({ status: vi.fn(() => status) }), undefined, popOut)
+    for (const state of ['none', 'starting', 'closing', 'closed'] as const) {
+      status = state === 'none' ? { state } : ({ ...OPEN, state } as LaunchedBrowserStatus)
+      expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT))).toBe(false)
+    }
+    expect(popOut.open).not.toHaveBeenCalled()
+    status = OPEN
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT))).toBe(true)
+    expect(popOut.open).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows and docks the popped-out window, and says whether it is out', async () => {
+    const popOut = fakePopOut()
+    register(fakeService({ status: vi.fn(() => OPEN) }), undefined, popOut)
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT_STATE))).toBe(false)
+    expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT))
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT_STATE))).toBe(true)
+    expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_SHOW_POP_OUT))
+    expect(popOut.show).toHaveBeenCalledTimes(1)
+    expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_DOCK))
+    expect(popOut.dock).toHaveBeenCalledTimes(1)
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT_STATE))).toBe(false)
+  })
+
+  it('has no window to pop out into when registered without one', async () => {
+    register(fakeService({ status: vi.fn(() => OPEN) }))
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT))).toBe(false)
+    expect(expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT_STATE))).toBe(false)
+    expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_SHOW_POP_OUT))
+    expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_DOCK))
   })
 
   it('rechecks the browsers left from an earlier run, and has none by default', async () => {

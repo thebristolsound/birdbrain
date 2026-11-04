@@ -205,7 +205,11 @@ const birdbrain = {
     launch: refusable(IPC_CHANNELS.LAUNCHED_BROWSER_LAUNCH),
     cancelLaunch: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_CANCEL_LAUNCH),
     endSession: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_END_SESSION),
-    checkLeftovers: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_CHECK_LEFTOVERS)
+    checkLeftovers: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_CHECK_LEFTOVERS),
+    popOut: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT),
+    showPopOut: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_SHOW_POP_OUT),
+    dock: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_DOCK),
+    popOutState: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT_STATE)
   },
 
   search: bridge(IPC_CHANNELS.SEARCH),
@@ -360,6 +364,8 @@ const birdbrain = {
   onWaybackLinkProgress: subscribe(IPC_CHANNELS.WAYBACK_LINK_PROGRESS),
 
   onLaunchedBrowserStatus: subscribe(IPC_CHANNELS.LAUNCHED_BROWSER_STATUS_CHANGED),
+
+  onLaunchedBrowserPopOut: subscribe(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT_CHANGED),
 
   testPipeline: bridge(IPC_CHANNELS.CAPTURES_TEST_PIPELINE),
 

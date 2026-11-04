@@ -52,7 +52,14 @@ import {
   webRtcPolicyFor,
   type RoutedSession
 } from '@main/services/egress'
-import { titleBarOptions, titleBarOverlay, windowBackgroundColor } from '@main/windowChrome'
+import {
+  popOutBackgroundColor,
+  popOutTitleBarOverlay,
+  popOutWindowOptions,
+  titleBarOptions,
+  titleBarOverlay,
+  windowBackgroundColor
+} from '@main/windowChrome'
 import { initInstallationId, getInstallationId } from '@main/services/installationId'
 import { initSigningKey, SigningKeyUnacknowledgedError } from '@main/services/signingKey'
 import { initServerToken } from '@main/services/serverToken'
@@ -128,6 +135,8 @@ let sharingService: SharingService | null = null
 let syncService: SyncService | null = null
 // The launched browser (#1831), killed on quit.
 let launchedBrowserService: LaunchedBrowserService | null = null
+// The Capture Session panel in a window of its own (`1g`), or null while it is docked.
+let popOutWindow: BrowserWindow | null = null
 
 function sendToAppWindows<C extends IpcEventChannel>(
   channel: C,
@@ -318,7 +327,11 @@ function createWindow(): BrowserWindow {
 
   win.on('closed', () => {
     appWindows.delete(win)
-    if (mainWindow === win) mainWindow = null
+    if (mainWindow === win) {
+      mainWindow = null
+      // Left open, the pop-out would keep 'window-all-closed' from firing.
+      dockPopOut()
+    }
   })
 
   // Recolour the native window controls when the renderer switches theme, so the
@@ -381,6 +394,76 @@ function createWindow(): BrowserWindow {
   }
 
   return win
+}
+
+function popOutIsOpen(): boolean {
+  return popOutWindow !== null && !popOutWindow.isDestroyed()
+}
+
+function announcePopOut(): void {
+  sendToAppWindows(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT_CHANGED, { poppedOut: popOutIsOpen() })
+}
+
+// The panel's window loads the main window's preload and the app's own page, so it holds the
+// same trust and the IPC handlers do not ask which window called them. It loads nothing else: it
+// opens no window, navigates nowhere, and has no webview tag.
+function openPopOut(): boolean {
+  if (popOutWindow && !popOutWindow.isDestroyed()) {
+    popOutWindow.show()
+    return true
+  }
+  const win = new BrowserWindow({
+    ...popOutWindowOptions(getSettings().theme),
+    ...(process.platform === 'linux' || process.platform === 'win32'
+      ? { icon: join(__dirname, '../../resources/icon.png') }
+      : {}),
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      webviewTag: false
+    }
+  })
+  popOutWindow = win
+  appWindows.add(win)
+  revealWhenReady(win)
+
+  // Its own listener, beside the main window's single slot.
+  const stopThemeWatch = onThemeChange((theme) => {
+    if (win.isDestroyed()) return
+    win.setBackgroundColor(popOutBackgroundColor(theme))
+    const overlay = popOutTitleBarOverlay(theme)
+    if (overlay) win.setTitleBarOverlay(overlay)
+  })
+  win.on('closed', () => {
+    stopThemeWatch()
+    appWindows.delete(win)
+    if (popOutWindow === win) popOutWindow = null
+    announcePopOut()
+  })
+
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  win.webContents.on('will-navigate', (event) => event.preventDefault())
+
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/pop-out.html`)
+  } else {
+    win.loadFile(join(__dirname, '../renderer/pop-out.html'))
+  }
+  announcePopOut()
+  return true
+}
+
+// show() alone. Electron documents that on Wayland focus() may show a notification or flash the
+// app icon and that moveTop() is not supported, so whether the window comes to the front is the
+// desktop's decision.
+function showPopOut(): void {
+  if (popOutWindow && !popOutWindow.isDestroyed()) popOutWindow.show()
+}
+
+function dockPopOut(): void {
+  if (popOutWindow && !popOutWindow.isDestroyed()) popOutWindow.close()
 }
 
 // Bring the existing window to the foreground (used when a deep link arrives).
@@ -662,6 +745,8 @@ if (!gotSingleInstanceLock) {
         sessionDataPath: app.getPath('sessionData'),
         emitStatus: (status) => {
           sendToAppWindows(IPC_CHANNELS.LAUNCHED_BROWSER_STATUS_CHANGED, status)
+          // The panel pops out to sit beside the browser, so it docks once the browser has gone.
+          if (status.state !== 'open' && status.state !== 'closing') dockPopOut()
         }
       })
 
@@ -773,6 +858,7 @@ if (!gotSingleInstanceLock) {
         sessionService,
         launchedBrowser: launchedBrowserService,
         checkLeftoverBrowsers,
+        popOut: { open: openPopOut, show: showPopOut, dock: dockPopOut, isOpen: popOutIsOpen },
         sharingService,
         enqueueExhibitTimestamp: (exhibitId) => timestampWorker.enqueueExhibit(exhibitId)
       })

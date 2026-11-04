@@ -187,6 +187,12 @@ export const IPC_CHANNELS = {
   LAUNCHED_BROWSER_CANCEL_LAUNCH: 'launchedBrowser:cancelLaunch',
   LAUNCHED_BROWSER_END_SESSION: 'launchedBrowser:endSession',
   LAUNCHED_BROWSER_CHECK_LEFTOVERS: 'launchedBrowser:checkLeftovers',
+  // The Capture Session panel in a window of its own (`1g`). Main opens it only beside an open
+  // browser, and closes it when that browser closes or the main window does.
+  LAUNCHED_BROWSER_POP_OUT: 'launchedBrowser:popOut',
+  LAUNCHED_BROWSER_SHOW_POP_OUT: 'launchedBrowser:showPopOut',
+  LAUNCHED_BROWSER_DOCK: 'launchedBrowser:dock',
+  LAUNCHED_BROWSER_POP_OUT_STATE: 'launchedBrowser:popOutState',
 
   // Search
   SEARCH: 'search:query',
@@ -360,6 +366,7 @@ export const IPC_CHANNELS = {
   INVESTIGATION_PROGRESS: 'event:investigationProgress',
   WAYBACK_LINK_PROGRESS: 'event:waybackLinkProgress',
   LAUNCHED_BROWSER_STATUS_CHANGED: 'event:launchedBrowserStatus',
+  LAUNCHED_BROWSER_POP_OUT_CHANGED: 'event:launchedBrowserPopOut',
 
   // Capture pipeline observability
   CAPTURE_ACTIVITY: 'event:captureActivity',
@@ -432,6 +439,11 @@ export interface SessionStateEvent {
   sessionActive: boolean
   activeCaseId: string | null
   captureCount: number
+}
+
+// Whether the Capture Session panel is in its own window (#1831), pushed when it pops out or docks.
+export interface LaunchedBrowserPopOutEvent {
+  poppedOut: boolean
 }
 
 // Extension reachability, pushed when the companion extension connects or drops.
@@ -1115,6 +1127,11 @@ export interface IpcInvokeContract {
   'launchedBrowser:endSession': { args: []; result: LaunchedBrowserStatus }
   // Rechecks the browsers left running from an earlier run.
   'launchedBrowser:checkLeftovers': { args: []; result: LaunchedBrowserLeftover[] }
+  // true once the panel is out; false while no launched browser is open.
+  'launchedBrowser:popOut': { args: []; result: boolean }
+  'launchedBrowser:showPopOut': { args: []; result: void }
+  'launchedBrowser:dock': { args: []; result: void }
+  'launchedBrowser:popOutState': { args: []; result: boolean }
 
   'search:query': { args: [caseId: string, query: string]; result: Capture[] }
 
@@ -1315,6 +1332,7 @@ export interface IpcEventContract {
   'event:investigationProgress': RunProgressEvent
   'event:waybackLinkProgress': WaybackLinkProgressEvent
   'event:launchedBrowserStatus': LaunchedBrowserStatus
+  'event:launchedBrowserPopOut': LaunchedBrowserPopOutEvent
 }
 
 export type IpcEventChannel = keyof IpcEventContract

@@ -1,16 +1,18 @@
 import { runInNewContext } from 'vm'
 
 /**
- * The budget a single pattern evaluation gets in production. Every call site
- * omits the argument below, so this number is what decides whether an ignore
- * rule is enforced or fails open on a pattern that backtracks past it.
+ * The budget a single pattern evaluation gets in production. No production call
+ * path passes a budget, so on a pattern that backtracks past this number an
+ * ignore rule fails open and a regex Selector records no match.
  */
 export const DEFAULT_REGEX_TIMEOUT_MS = 200
 
+export type SafeRegexOutcome = 'match' | 'no-match' | 'timeout'
+
 /**
  * Evaluates `pattern` against `text` in a vm sandbox under a wall-clock budget,
- * answering false for anything that throws: an unparseable pattern, invalid
- * flags, or the budget expiring mid-backtrack.
+ * answering true only for a match. `safeRegexOutcome` below runs the evaluation
+ * and reports a timeout apart from no match; this form answers false for both.
  *
  * `budgetMs` exists for the tests that pin the budget-expiry answer (#330).
  * Pinning it at the production 200 ms means finding an input the sandbox cannot
@@ -29,13 +31,30 @@ export function safeRegexTest(
   text: string,
   budgetMs: number = DEFAULT_REGEX_TIMEOUT_MS
 ): boolean {
+  return safeRegexOutcome(pattern, flags, text, budgetMs) === 'match'
+}
+
+/**
+ * Answers 'timeout' only when the budget expires mid-evaluation, and 'no-match'
+ * for anything else that throws: an unparseable pattern, invalid flags, or a
+ * budget node:vm rejects. `budgetMs` carries the contract `safeRegexTest` states.
+ */
+export function safeRegexOutcome(
+  pattern: string,
+  flags: string,
+  text: string,
+  budgetMs: number = DEFAULT_REGEX_TIMEOUT_MS
+): SafeRegexOutcome {
   try {
-    return runInNewContext(
+    const matched = runInNewContext(
       'new RegExp(pattern, flags).test(text)',
       { pattern, flags, text },
       { timeout: budgetMs }
     ) as boolean
-  } catch {
-    return false
+    return matched ? 'match' : 'no-match'
+  } catch (err) {
+    // The timeout error fails `instanceof Error` in this realm, so read its code.
+    const code = (err as { code?: unknown } | null)?.code
+    return code === 'ERR_SCRIPT_EXECUTION_TIMEOUT' ? 'timeout' : 'no-match'
   }
 }

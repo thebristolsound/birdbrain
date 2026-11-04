@@ -83,7 +83,7 @@ export function classifySelection(raw: string): ClassifiedSelection {
       value: authority.slice(authority.lastIndexOf('@') + 1),
       kind: 'domain',
       // A Selector is a case-insensitive substring test over a capture's
-      // extracted text (selectorRepo.selectorMatchesText), never over its URL,
+      // extracted text (selectorMatch.selectorMatchOutcome), never over its URL,
       // so this cannot promise to match every URL on the host.
       note: 'Path stripped — watches for this host anywhere in a page.'
     }

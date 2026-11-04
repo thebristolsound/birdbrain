@@ -43,15 +43,22 @@ afterEach(() => {
 })
 
 describe('the Capture Session switch and a launched browser', () => {
-  it('stays hidden with no extension and no launched browser', () => {
-    mount({ state: 'none' })
-    expect(screen.queryByRole('switch', { name: 'Capture Session' })).toBeNull()
-  })
+  // Starting or closing takes a moment, and a run of the built app showed the switch flash up
+  // off for it while a launch started its Capture Session.
+  it.each([
+    ['none', { state: 'none' }],
+    ['starting', { state: 'starting', browser: BROWSER, step: 'browser' }],
+    ['closing', { state: 'closing', browser: BROWSER }]
+  ] satisfies Array<[string, LaunchedBrowserStatus]>)(
+    'stays hidden with no extension while the launched browser is %s',
+    (_, status) => {
+      mount(status)
+      expect(screen.queryByRole('switch', { name: 'Capture Session' })).toBeNull()
+    }
+  )
 
   it.each([
     ['open', { state: 'open', browser: BROWSER }],
-    ['starting', { state: 'starting', browser: BROWSER, step: 'browser' }],
-    ['closing', { state: 'closing', browser: BROWSER }],
     // The browser closed, and the Capture Session it started runs on until stopped.
     ['closed', { state: 'closed', browser: BROWSER }]
   ] satisfies Array<[string, LaunchedBrowserStatus]>)(

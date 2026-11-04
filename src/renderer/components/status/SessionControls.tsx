@@ -20,12 +20,8 @@ export function SessionControls() {
   const activeCaseId = (params as { caseId?: string }).caseId ?? null
 
   // Shown while the extension is connected or a launched browser is open (S2), and while the
-  // Capture Session a launched browser left behind on closing still runs.
-  const launchedSession =
-    launched?.state === 'starting' ||
-    launched?.state === 'open' ||
-    launched?.state === 'closing' ||
-    launched?.state === 'closed'
+  // Capture Session a launched browser left running on closing still runs.
+  const launchedSession = launched?.state === 'open' || launched?.state === 'closed'
   if (!connectedToExtension && !launchedSession) return null
 
   const activeCase = cases.find((c) => c.id === activeCaseId)

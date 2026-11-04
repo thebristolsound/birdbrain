@@ -58,3 +58,60 @@ describe('verify.sh signed_token_filter', () => {
     expect(VERIFY_RUNBOOK).toContain(`jq -r '${TOKEN_FILTER} | `)
   })
 })
+
+// The filter above skips a stamp whose tsaToken is present but not a string,
+// and Package Verification rejects that entry's whole chain as malformed, so
+// verify.sh has to fail it rather than report no trusted-time claim (#1725).
+// The schema rejects JSON null as well, so a null token counts as present.
+describe('verify.sh malformed_token_filter', () => {
+  const MALFORMED_FILTER = VERIFY_RECIPES.malformedTokenFilter
+
+  const malformed = (lines: string[]): string[] =>
+    execFileSync('jq', ['-c', `${MALFORMED_FILTER} | .tsaToken`], {
+      input: lines.join('\n') + '\n',
+      encoding: 'utf-8'
+    })
+      .split('\n')
+      .filter((line) => line.length > 0)
+
+  it('is defined once in the script, under its own name', () => {
+    expect(VERIFY_SCRIPT).toContain(`malformed_token_filter='${MALFORMED_FILTER}'\n`)
+    expect(VERIFY_SCRIPT.split(MALFORMED_FILTER).length - 1).toBe(1)
+    expect(VERIFY_SCRIPT.split('$malformed_token_filter').length - 1).toBe(1)
+  })
+
+  it.skipIf(!HAS_JQ)('takes a content stamp whose tsaToken is any non-string value', () => {
+    expect(
+      malformed([
+        stamp('content', 7),
+        stamp('content', null),
+        stamp('content', {}),
+        stamp(undefined, true)
+      ])
+    ).toEqual(['7', 'null', '{}', 'true'])
+  })
+
+  it.skipIf(!HAS_JQ)('takes an entry stamp whose tsaToken is not a string', () => {
+    expect(malformed([stamp('entry', 7)])).toEqual(['7'])
+  })
+
+  it.skipIf(!HAS_JQ)('takes no stamp with a string tsaToken or none at all', () => {
+    const tokenless = JSON.stringify({ type: 'timestamp', captureContentHash: HASH })
+    expect(malformed([stamp('content'), stamp('entry'), tokenless])).toEqual([])
+  })
+
+  // Only the timestamp entry schema has a tsaToken key, so the check, which
+  // names the entry as a timestamp entry, takes no other type.
+  it.skipIf(!HAS_JQ)('takes no entry of another type that carries a tsaToken', () => {
+    expect(malformed([JSON.stringify({ type: 'capture', tsaToken: 7 })])).toEqual([])
+  })
+
+  it('gives the runbook reader the same command and says the script runs it', () => {
+    const prose = VERIFY_RUNBOOK.replace(/\s+/g, ' ')
+    expect(VERIFY_RUNBOOK).toContain(`jq -r '${MALFORMED_FILTER} | .index' <chain>`)
+    expect(prose).toContain(
+      '`verify.sh` fails the package for such an entry in any chain it reads to its end'
+    )
+    expect(prose).toContain('any index it prints is a failure')
+  })
+})

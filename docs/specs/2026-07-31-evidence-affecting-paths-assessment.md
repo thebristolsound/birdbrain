@@ -85,6 +85,15 @@ browser's exchanges a Transaction Record holds as complete and how the inventory
 package paths in it. It had been on neither list, although Package Verification, `verify.sh`,
 Evidence Package export, the Shared Case sync and Case Archive export and import all take paths
 from it.
+`src/main/services/launchedBrowser/**` was added to Acquisition at blocking tier on 2026-11-03
+for #1831, step 3 of the launched-browser design's stage 2. It is a new acquisition path rather
+than a carve-out: it decides which browser starts, with which switches and browser profile, and
+whether its traffic can leave around the Egress. That code also holds the constant list of commands
+the engine may send the browser, and couples the browser to the Capture Session. The entry is a
+directory glob, so the files the clicked-Capture step (#1832) and the Persona browser profiles
+step (#1833) add to the same folder match it from their first commit; "Known gap" below explains
+why a new file that no entry names is otherwise missed. The step's edits to
+`src/main/services/session.ts` and `src/main/index.ts` already match their own blocking rows.
 
 ### Known gap: carve-outs are caught by review, not by a check
 
@@ -238,6 +247,7 @@ that caused it was to record the carved-out file as an exclusion (#515), which i
 | `src/packages/transaction-record/**` | blocking | Turns the browser's network events into the exchanges a Transaction Record holds and the inventory counts of what it lacks, and a main document's `securityDetails` into Bound TLS Details |
 | `src/main/services/transactionRecorder.ts` | blocking | Sets up each debugger session of a background render, decides which events and bodies reach the Transaction Record and under what budget, and whether the record is present or `failed` (#1929). Added 2026-10-26 |
 | `src/main/services/testCertificateAllowance.ts` | blocking | Holds the test-only switch that makes a render accept one TLS leaf, which a packaged build ignores (#1929). Added 2026-10-26 |
+| `src/main/services/launchedBrowser/**` | blocking | Starts the browser the Operator browses in and drives it (#1831): which executable runs, with which switches and browser profile, which commands the engine may send it, and the Egress checks that refuse to start it or close it when its traffic could leave around the proxy. Added 2026-11-03 |
 
 ### Integrity core (hash, manifest, signing, trusted time, verification)
 

@@ -37,6 +37,7 @@ type Handlers = {
   sharingChanged?: (p: { caseId: string }) => void
   deepLink?: (t: DeepLinkTarget) => void
   launchedBrowser?: (s: LaunchedBrowserStatus) => void
+  popOut?: (e: { poppedOut: boolean }) => void
 }
 
 function installBirdbrain(handlers: Handlers, unsubs: Record<string, ReturnType<typeof vi.fn>>) {
@@ -54,7 +55,8 @@ function installBirdbrain(handlers: Handlers, unsubs: Record<string, ReturnType<
     onSelectorRematched: register('selectorRematched', 'selectorRematched'),
     onSharingChanged: register('sharingChanged', 'sharingChanged'),
     onDeepLinkNavigate: register('deepLink', 'deepLink'),
-    onLaunchedBrowserStatus: register('launchedBrowser', 'launchedBrowser')
+    onLaunchedBrowserStatus: register('launchedBrowser', 'launchedBrowser'),
+    onLaunchedBrowserPopOut: register('popOut', 'popOut')
   })
 }
 
@@ -301,6 +303,14 @@ describe('useServerStatus', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.launchedBrowsers })
   })
 
+  it('writes whether the panel is popped out into its query', () => {
+    renderHook(() => useServerStatus())
+    act(() => handlers.popOut?.({ poppedOut: true }))
+    expect(queryClient.getQueryData(queryKeys.launchedBrowserPopOut)).toBe(true)
+    act(() => handlers.popOut?.({ poppedOut: false }))
+    expect(queryClient.getQueryData(queryKeys.launchedBrowserPopOut)).toBe(false)
+  })
+
   it('routes deep links to settings or dashboard', () => {
     renderHook(() => useServerStatus())
     act(() => handlers.deepLink?.('settings'))
@@ -315,6 +325,6 @@ describe('useServerStatus', () => {
     for (const fn of Object.values(unsubs)) {
       expect(fn).toHaveBeenCalledTimes(1)
     }
-    expect(Object.keys(unsubs)).toHaveLength(9)
+    expect(Object.keys(unsubs)).toHaveLength(10)
   })
 })

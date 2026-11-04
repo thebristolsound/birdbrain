@@ -21,6 +21,18 @@ export function followLaunchedBrowserStatus(client: QueryClient): () => void {
   })
 }
 
+// Whether the panel is in its own window (`1g`). Main pushes each change, as it does the status.
+export const launchedBrowserPopOutQueryOptions = queryOptions({
+  queryKey: queryKeys.launchedBrowserPopOut,
+  queryFn: () => window.birdbrain.launchedBrowser.popOutState()
+})
+
+export function followLaunchedBrowserPopOut(client: QueryClient): () => void {
+  return window.birdbrain.onLaunchedBrowserPopOut(({ poppedOut }) => {
+    client.setQueryData(queryKeys.launchedBrowserPopOut, poppedOut)
+  })
+}
+
 // Discovery asks the file system and starts no browser.
 export const launchedBrowsersQueryOptions = queryOptions({
   queryKey: queryKeys.launchedBrowsers,
@@ -58,6 +70,17 @@ export function cancelBrowserLaunch(): Promise<LaunchedBrowserStatus> {
 // Settles once the launched browser has exited, or Birdbrain has given up on it.
 export function endLaunchedBrowserSession(): Promise<LaunchedBrowserStatus> {
   return window.birdbrain.launchedBrowser.endSession()
+}
+
+// Opens the panel in a window of its own, or shows the open one. Main refuses, with false, unless
+// the launched browser is open.
+export function popOutPanel(): Promise<boolean> {
+  return window.birdbrain.launchedBrowser.popOut()
+}
+
+// Calls show() on the pop-out; whether it comes in front of the browser is the desktop's decision.
+export function showPopOutWindow(): Promise<void> {
+  return window.birdbrain.launchedBrowser.showPopOut()
 }
 
 // Closes the pop-out; the panel returns to the main window.

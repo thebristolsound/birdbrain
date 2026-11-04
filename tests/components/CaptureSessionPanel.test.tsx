@@ -56,15 +56,26 @@ interface MountOptions {
   showOpenCase?: boolean
   egress?: EgressSetting
   endSession?: () => Promise<LaunchedBrowserStatus>
+  poppedOut?: boolean
 }
 
 function mount(options: MountOptions = {}) {
   const { status = OPEN, form = 'rail', showOpenCase = false, egress = PROXY } = options
   const endSession = vi.fn(options.endSession ?? (async () => ({ state: 'none' as const })))
+  const popOut = vi.fn(async () => true)
+  const showPopOut = vi.fn(async () => {})
+  const dock = vi.fn(async () => {})
   fakeBridge({
     cases: { list: vi.fn(async () => [FERRY]) },
     settings: { get: vi.fn(async () => ({ operatorName: 'A. Marsh', egress })) },
-    launchedBrowser: { status: vi.fn(async () => status), endSession }
+    launchedBrowser: {
+      status: vi.fn(async () => status),
+      endSession,
+      popOutState: vi.fn(async () => options.poppedOut ?? false),
+      popOut,
+      showPopOut,
+      dock
+    }
   })
   const onDone = vi.fn()
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -73,7 +84,7 @@ function mount(options: MountOptions = {}) {
       <CaptureSessionPanel form={form} showOpenCase={showOpenCase} onDone={onDone} />
     </QueryClientProvider>
   )
-  return { client, endSession, onDone }
+  return { client, endSession, onDone, popOut, showPopOut, dock }
 }
 
 beforeEach(() => {
@@ -171,6 +182,56 @@ describe('the Capture Session panel while the browser is open', () => {
     mount({ status: { state: 'open', browser: { ...SUMMARY, sessionStartedAt: null } } })
     await screen.findByText('Launched Google Chrome')
     expect(screen.queryByRole('timer')).toBeNull()
+  })
+})
+
+describe('popping the panel out (`1g`)', () => {
+  it.each(['rail', 'overlay', 'popover'] as const)(
+    'pops out from the %s header, letting its own form close first',
+    async (form) => {
+      const { onDone, popOut } = mount({ form })
+      fireEvent.click(await screen.findByRole('button', { name: 'Pop out' }))
+      await waitFor(() => expect(popOut).toHaveBeenCalledTimes(1))
+      expect(onDone).toHaveBeenCalledTimes(1)
+    }
+  )
+
+  it('holds Pop out while the browser closes', async () => {
+    mount({ status: { state: 'closing', browser: SUMMARY } })
+    const button = (await screen.findByRole('button', { name: 'Pop out' })) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+  })
+
+  it.each(['rail', 'overlay', 'popover'] as const)(
+    'leaves the stub in the %s while the panel is out',
+    async (form) => {
+      mount({ form, poppedOut: true })
+      expect(await screen.findByText('Panel popped out')).toBeTruthy()
+      expect(screen.queryByText('Launched Google Chrome')).toBeNull()
+      expect(screen.queryByRole('list', { name: 'Tabs' })).toBeNull()
+    }
+  )
+
+  it('shows the window and docks it from the stub', async () => {
+    const { showPopOut, dock, onDone } = mount({ poppedOut: true })
+    fireEvent.click(await screen.findByRole('button', { name: 'Show window' }))
+    await waitFor(() => expect(showPopOut).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByRole('button', { name: 'Dock' }))
+    await waitFor(() => expect(dock).toHaveBeenCalledTimes(1))
+    expect(onDone).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows the closed browser rather than the stub', async () => {
+    mount({ status: CLOSED, poppedOut: true })
+    expect(await screen.findByText('Launched Google Chrome closed.')).toBeTruthy()
+    expect(screen.queryByText('Panel popped out')).toBeNull()
+  })
+
+  it('is not offered in the pop-out itself', async () => {
+    mount({ form: 'window', poppedOut: true })
+    expect(await screen.findByText('Launched Google Chrome')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Pop out' })).toBeNull()
+    expect(screen.queryByText('Panel popped out')).toBeNull()
   })
 })
 

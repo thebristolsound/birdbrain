@@ -4,7 +4,10 @@ import { queryClient } from '@renderer/lib/queryClient'
 import { queryKeys } from '@renderer/lib/queries'
 import { invalidateAfterTagApply } from '@renderer/lib/api/tags'
 import { invalidateNoteQueries } from '@renderer/lib/api/notes'
-import { followLaunchedBrowserStatus } from '@renderer/lib/api/launchedBrowser'
+import {
+  followLaunchedBrowserPopOut,
+  followLaunchedBrowserStatus
+} from '@renderer/lib/api/launchedBrowser'
 import { router } from '@renderer/router'
 import type { Capture } from '@shared/types'
 
@@ -36,6 +39,7 @@ export function useServerStatus() {
     })
 
     const unsubLaunchedBrowser = followLaunchedBrowserStatus(queryClient)
+    const unsubPopOut = followLaunchedBrowserPopOut(queryClient)
 
     const unsubCapture = window.birdbrain.onCaptureActivity((event) => {
       useAppStore.getState().addCaptureEvent(event)
@@ -118,6 +122,7 @@ export function useServerStatus() {
       unsubExtension()
       unsubSession()
       unsubLaunchedBrowser()
+      unsubPopOut()
       unsubCapture()
       unsubNewCapture()
       unsubExtensionAttach()

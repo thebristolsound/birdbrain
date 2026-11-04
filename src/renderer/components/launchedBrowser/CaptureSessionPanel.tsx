@@ -12,11 +12,14 @@ import { settingsQueryOptions } from '@renderer/lib/api/settings'
 import {
   endLaunchedBrowserSession,
   launchedBrowserName,
-  launchedBrowserStatusQueryOptions
+  launchedBrowserPopOutQueryOptions,
+  launchedBrowserStatusQueryOptions,
+  popOutPanel
 } from '@renderer/lib/api/launchedBrowser'
 import { useAppStore } from '@renderer/stores/appStore'
 import { cn } from '@renderer/lib/utils'
 import { InfoTip } from '@renderer/components/launchedBrowser/InfoTip'
+import { PopOutStub } from '@renderer/components/launchedBrowser/PopOutStub'
 import { egressName } from '@renderer/components/launchedBrowser/startDialogModel'
 import {
   extensionWarningTitle,
@@ -53,8 +56,13 @@ const EYEBROW = 'font-display text-[10px] font-semibold uppercase tracking-[.06e
 // pop-out's window, whose title bar names the panel and its Case.
 export function CaptureSessionPanel({ form, onDone, showOpenCase = false }: PanelProps) {
   const view = useCaptureSessionView()
+  const { data: poppedOut = false } = useQuery(launchedBrowserPopOutQueryOptions)
   if (view.kind === 'none') return null
   if (view.kind === 'notice') return <NoticeBody notice={view.notice} />
+  // Main docks the panel once the browser has closed; until that event lands, state 10 shows here.
+  if (poppedOut && form !== 'window' && view.kind !== 'closed') {
+    return <PopOutStub onDone={onDone} />
+  }
   return <BrowserBody view={view} form={form} onDone={onDone} showOpenCase={showOpenCase} />
 }
 
@@ -151,6 +159,19 @@ function BrowserBody({
           {!inPopOut && <PanelTitle />}
           {sessionStartedAt !== null && <Elapsed since={sessionStartedAt} />}
           <span className="flex-1" />
+          {!inPopOut && (
+            <Button
+              variant="link"
+              disabled={kind === 'closing'}
+              className="px-0 text-[11px] text-text-muted underline"
+              onClick={() => {
+                onDone?.()
+                void popOutPanel()
+              }}
+            >
+              Pop out
+            </Button>
+          )}
           <Button
             variant="outline"
             disabled={kind === 'closing'}

@@ -14,6 +14,7 @@ import { CaseSettingsRoute } from '@renderer/routes/cases/$caseId/settings'
 import { CaseWorkspace } from '@renderer/components/dashboard/cases/CaseWorkspace'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { CASE_ID, members, settings, snapshot, sync } from './sharingFixtures'
+import { stubResizeObserver } from './resizeObserverStub'
 
 const SLOW = { timeout: 5000 }
 
@@ -48,6 +49,8 @@ describe('the Case settings route', () => {
 
 describe('the Case settings route in the Case workspace', () => {
   beforeEach(() => {
+    // The workspace measures its row for the Capture Session rail.
+    stubResizeObserver()
     const caseRow = {
       id: CASE_ID,
       name: 'Harbour inquiry',

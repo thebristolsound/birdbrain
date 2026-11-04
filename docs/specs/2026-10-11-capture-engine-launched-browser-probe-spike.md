@@ -304,7 +304,7 @@ per variant, over the five runs:
 | --- | --- |
 | Network-only (control) | 0 of 35 |
 | `Page.enable` before the load | 0 of 36 |
-| `Page.createIsolatedWorld` and `Runtime.evaluate` there | 0 of 35 |
+| `Page.createIsolatedWorld` and `Runtime.evaluate` there | 0 of the 10 after the step, which created the isolated world; the tab's other 25 readings came before it |
 | Scroll-to-load scripts in an isolated world | 0 of 67, 30 of them during the scrolling |
 | The same scripts in the main world | 0 of 66, 30 during the scrolling |
 | `SCROLL_UNLOCK_SCRIPT` and the scroll scripts, `overflow: hidden` | 0 of 65, 30 during the scrolling |

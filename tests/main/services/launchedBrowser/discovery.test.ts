@@ -5,6 +5,7 @@ import {
   checkChosenExecutable,
   discoverBrowsers,
   INSTALL_LOCATIONS,
+  listLaunchableBrowsers,
   type DiscoveryFs
 } from '@main/services/launchedBrowser/discovery'
 import { BROWSER_FAMILIES } from '@shared/types'
@@ -288,12 +289,61 @@ describe('checkChosenExecutable', () => {
   })
 })
 
+describe('listLaunchableBrowsers', () => {
+  const linux = (fs: DiscoveryFs) => ({ platform: 'linux' as const, env: {}, fs })
+
+  it('lists what discovery found, then the chosen executable, each with its last launch', () => {
+    const fs = fakeFs(['/usr/lib/chromium/chromium', '/home/op/apps/brave'])
+    const versions = { '/usr/lib/chromium/chromium': '154.0.8037.97' }
+    expect(listLaunchableBrowsers('/home/op/apps/brave', versions, linux(fs))).toEqual([
+      {
+        family: 'chromium',
+        label: 'Chromium',
+        executablePath: '/usr/lib/chromium/chromium',
+        chosen: false,
+        lastVersion: '154.0.8037.97'
+      },
+      {
+        family: 'brave',
+        label: 'Brave',
+        executablePath: '/home/op/apps/brave',
+        chosen: true,
+        lastVersion: null
+      }
+    ])
+  })
+
+  it('marks a found browser as the chosen one rather than listing it twice', () => {
+    const fs = fakeFs(['/opt/google/chrome/chrome'])
+    expect(listLaunchableBrowsers('/opt/google/chrome/chrome', {}, linux(fs))).toEqual([
+      {
+        family: 'chrome',
+        label: 'Google Chrome',
+        executablePath: '/opt/google/chrome/chrome',
+        chosen: true,
+        lastVersion: null
+      }
+    ])
+  })
+
+  it('leaves out a chosen executable that no longer passes its checks', () => {
+    const fs = fakeFs({ '/usr/lib/chromium/chromium': ELF, '/home/op/apps/chromium': SCRIPT })
+    const listed = (chosen: string) =>
+      listLaunchableBrowsers(chosen, {}, linux(fs)).map(({ executablePath }) => executablePath)
+    expect(listed('/home/op/apps/chromium')).toEqual(['/usr/lib/chromium/chromium'])
+    expect(listed('/home/op/gone/chromium')).toEqual(['/usr/lib/chromium/chromium'])
+    expect(listed('')).toEqual(['/usr/lib/chromium/chromium'])
+  })
+})
+
 describe('discovery starts no process', () => {
   it('records no call through child_process with the real file system', () => {
     spawned.length = 0
     discoverBrowsers()
     checkChosenExecutable(process.execPath)
     checkChosenExecutable('/nonexistent/chrome')
+    listLaunchableBrowsers(process.execPath, {})
+    listLaunchableBrowsers('/nonexistent/chrome', {})
     expect(spawned).toEqual([])
   })
 })

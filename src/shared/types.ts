@@ -129,6 +129,17 @@ export type LaunchedBrowserStatus =
   | { state: 'none'; notice?: LaunchedBrowserNotice }
   | { state: 'starting' | 'open' | 'closing' | 'closed'; browser: LaunchedBrowserSummary }
 
+// A browser a launch can start, as Settings and the start dialog list it: one discovery found,
+// or the executable the Operator chose (`chosen`). Discovery starts no browser to ask its
+// version, so `lastVersion` is what `Browser.getVersion` reported at its last launch, or null.
+export interface LaunchedBrowserOption {
+  family: BrowserFamily
+  label: string
+  executablePath: string
+  chosen: boolean
+  lastVersion: string | null
+}
+
 // Which rule took a `launched-passive` Capture (decision D12, ADR-0037): every
 // page that loaded, or a page an Active Case Selector matched. Which Selectors
 // matched stays in `selector_matches`, off the signed entry, because a pattern

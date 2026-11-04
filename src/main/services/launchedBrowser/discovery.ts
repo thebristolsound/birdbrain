@@ -1,6 +1,6 @@
 import { accessSync, closeSync, constants, openSync, readSync, statSync } from 'fs'
 import { win32 } from 'path'
-import type { BrowserFamily } from '@shared/types'
+import type { BrowserFamily, LaunchedBrowserOption } from '@shared/types'
 
 // Finding the browsers a launch can start (spec, "Browser discovery and launch"). Discovery
 // only asks the file system whether a path holds an executable: it starts no browser, so a
@@ -237,4 +237,27 @@ export function checkChosenExecutable(
       chosen: true
     }
   }
+}
+
+// What Settings and the start dialog list, and so the only executables a launch may start: every
+// browser discovery found, and the one the Operator chose while it still passes its checks.
+export function listLaunchableBrowsers(
+  chosenPath: string,
+  versions: Readonly<Record<string, string>>,
+  options: DiscoveryOptions = {}
+): LaunchedBrowserOption[] {
+  const found = discoverBrowsers(options)
+  const check = chosenPath ? checkChosenExecutable(chosenPath, options) : null
+  const chosen = check?.ok ? check.browser : null
+  const listed =
+    chosen && !found.some(({ executablePath }) => executablePath === chosenPath)
+      ? [...found, chosen]
+      : found
+  return listed.map((browser) => ({
+    ...browser,
+    chosen: browser.executablePath === chosen?.executablePath,
+    lastVersion: Object.hasOwn(versions, browser.executablePath)
+      ? versions[browser.executablePath]
+      : null
+  }))
 }

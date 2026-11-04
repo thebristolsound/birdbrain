@@ -1,16 +1,23 @@
 # Capture engine stage-2 probe: launched Chromium browsers on Linux
 
-**Date:** 2026-10-11
+**Date:** 2026-10-11, updated 2026-11-03
 
-**Status:** Complete for Linux. A measurement, not a decision. Edge, Brave, and Chromium, and
-every product on Windows and macOS, are not measured on this host. The clicked-Capture step
-(stage-2 step 4) stays blocked until P7 has Windows and macOS answers.
+**Status:** A measurement, not a decision. Complete for Chrome 150 and Chrome for Testing 149 on
+one Linux host. Chromium 154 was measured on a second Linux host on 2026-11-03, for every entry but
+P17 and P16's host-as-is session, which did not run there. On Chromium 154, P3 has a check that
+detects `Runtime.enable` and passed its control; on the first host's two builds, P3's only check
+failed its control. Edge and Brave, and every product on Windows and macOS, are not measured on
+these two hosts. P7 has Windows answers from a maintainer run on 2026-11-03: the pipe works on
+Chrome, Edge and Brave 156 on Windows 11 Pro 25H2, with no TCP listener and no `DevToolsActivePort`
+file (P7). P7's macOS row is still not measured. Whether the clicked-Capture step (stage-2 step 4)
+waits on a macOS answer is the maintainer's ruling.
 
 Answers the P questions of the
 [stage-2 design spec](2026-10-10-capture-engine-launched-browser-design.md) (Open questions, line
-1422) by launching the browsers this host has, the way the design launches them, against fixture
-pages on loopback. Issue #1828 asked for it as step 1 of the stage-2 split, and every line number
-cited as "spec" points into that design spec.
+1422) by launching the browsers it measured on each host, the way the design launches them,
+against fixture pages on loopback. Issue #1828 asked for it as step 1 of the stage-2 split, and
+every line number cited as "spec" points into that design spec as it stood when this report was
+added (#1842).
 
 ## Method
 
@@ -18,12 +25,14 @@ A throwaway script, reproduced under [The probe](#the-probe), launched a browser
 profile, drove it over `--remote-debugging-pipe` with a CDP client of its own, and served every
 page itself. Each configuration ran once per browser, in one batch on 2026-10-11, from a scratch
 copy of the script outside the repository; P12's configurations ran a second time, and P12 says
-why. Runs made while the script was written are not counted.
+why. Runs made while the script was written are not counted. The Chromium rows come from reruns on
+a [second host](#second-host), where `page-reads` (P3) ran five times, `pipe` three times, and every
+other configuration once, apart from `shortcut` and P16's host-as-is runs, which did not run.
 
-**Host.** Ubuntu 24.04.4 LTS under WSL2, kernel `6.18.33.2-microsoft-standard-WSL2`, x86-64, 4
-CPUs. No desktop session ran: `DISPLAY`, `WAYLAND_DISPLAY`, `XDG_SESSION_TYPE`, and
-`XDG_CURRENT_DESKTOP` were unset. A D-Bus session bus ran with `gnome-keyring-daemon`, whose login
-keyring was locked.
+**Host.** The first host, which measured every row not marked otherwise: Ubuntu 24.04.4 LTS under
+WSL2, kernel `6.18.33.2-microsoft-standard-WSL2`, x86-64, 4 CPUs. No desktop session ran:
+`DISPLAY`, `WAYLAND_DISPLAY`, `XDG_SESSION_TYPE`, and `XDG_CURRENT_DESKTOP` were unset. A D-Bus
+session bus ran with `gnome-keyring-daemon`, whose login keyring was locked.
 
 **Display.** Every browser ran under `xvfb-run --auto-servernum`, which starts Xvfb 21.1.12 with a
 1280 × 1024 × 24 screen and no window manager. The script read the whole screen with Pillow 12.3.0
@@ -44,16 +53,21 @@ switch applies to Electron, not to the launched browser.
 | Chrome for Testing | `Chrome/149.0.7827.55` | `~/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome`, whose `--version` prints `Google Chrome for Testing 149.0.7827.55` | Vendor archive, downloaded before this work by Playwright 1.63.0 |
 | Microsoft Edge | Not measured on this host | None found (P20) | Not installed |
 | Brave | Not measured on this host | None found (P20) | Not installed |
-| Chromium | Not measured on this host | None found (P20) | Not installed as a package, a Snap, or a Flatpak |
+| Chromium, first host | Not measured on this host | None found (P20) | Not installed as a package, a Snap, or a Flatpak |
+| Chromium, second host | `Chrome/154.0.8037.97` | `/usr/bin/chromium`, Arch's launcher, which starts `/usr/lib/chromium/chromium` ([Second host](#second-host)) | Distribution package `chromium` `154.0.8037.97-1` |
+| Google Chrome, Windows host (P7 only) | `Chrome/156.0.8078.80` | `C:\Program Files\Google\Chrome\Application\chrome.exe` | Per-machine installer, under `Program Files` |
+| Microsoft Edge, Windows host (P7 only) | `Edg/156.0.4314.58` | `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe` | Per-machine installer, under `Program Files (x86)` |
+| Brave, Windows host (P7 only) | `Chrome/156.0.8078.80`; the file version of `brave.exe` is 156.1.98.63 | `C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe` | Per-machine installer, under `Program Files` |
 
 Chrome for Testing is not one of the four products. It is the kind of build that decision D23 pins
 for the CI suite, so each entry gives it a row of its own.
 
-**Rows not measured.** Edge, Brave, and Chromium are not installed on this host, and this run
+**Rows not measured.** Edge, Brave, and Chromium are not installed on the first host, and its run
 installed nothing: no system package and no downloaded archive. The record holds no attempt to
 install them, through the package manager or as an unbranded Chromium archive, so whether this host
-could have installed them is not known. The Windows and macOS rows are not measured because the host
-runs Linux. The probe launched nothing on the Windows side of this WSL2 machine: from WSL2 a Windows
+could have installed them is not known. The macOS rows, and every Windows row but P7's, are not
+measured because both hosts run Linux; P7's Windows rows come from a maintainer run on a Windows
+host (P7). The probe launched nothing on the Windows side of this WSL2 machine: from WSL2 a Windows
 browser starts through interop, so a reading would not show how the pipe behaves when Birdbrain
 itself runs on Windows.
 
@@ -96,6 +110,72 @@ P13) and the invented `*.egress-probe.test` names of P13's page.
 **Other tools.** pypdf 6.17.0 parsed the PDFs. The `node:sqlite` module of Electron's Node read
 copies of the cookie database.
 
+### Second host
+
+The Chromium rows were measured on 2026-11-03 on a second machine, with the script printed under
+[The probe](#the-probe) and the commands listed there.
+
+**Host.** Omarchy 4.0.6, built on Arch Linux, kernel `7.2.8-9-omarchy`, x86-64, 18 CPUs, not
+virtualized (`systemd-detect-virt` printed `none`). A Hyprland session ran on the machine's own
+display, and the probe did not use it.
+
+**Display and session.** Every probe run but P13's DNS listener, which opens no window, unset
+`WAYLAND_DISPLAY`, `XDG_SESSION_TYPE`, and `ELECTRON_OZONE_PLATFORM_HINT`. The session's Wayland
+socket was `wayland-1`, and the runtime directory held no `wayland-0` for a client's default to
+reach. Each launching run ran under `xvfb-run --auto-servernum -s '-screen 0 1280x1024x24'`, with
+Xvfb from `xorg-server-xvfb` 21.1.25-2. Arch's `xvfb-run` defaults to a 640 × 480 screen, so the
+`-s` argument sets the first host's size. Each launching run also ran inside `dbus-run-session` with
+the probe's `bus.conf`, so the browser saw a private session bus with no service activation, not the
+desktop session's bus.
+
+**Script runtime.** Electron 45.1.0's Node 24.22.1 under `ELECTRON_RUN_AS_NODE=1`. Electron
+45.1.0's own Chromium is 156.0.8078.49. The configurations that need Electron's main process ran
+there with `--no-sandbox`, as on the first host.
+
+**Other tools.** In every run after the P3 runs, the script's `python3` was Python 3.11.17 from an
+environment already on the host that held Pillow 12.3.0 and pypdf 6.16.2; the reruns installed
+nothing. The two earlier `pipe` runs had no Pillow, so their screenshots failed, and P19 reads a
+third `pipe` run.
+
+**Chromium.** Arch's `chromium` package, `154.0.8037.97-1`. `/usr/bin/chromium` is a launcher, not
+the browser. Its `--help` prints "Chromium launcher v8" and names the two files it reads switches
+from: `/etc/chromium-flags.conf`, absent on this host, and `$XDG_CONFIG_HOME/chromium-flags.conf`.
+On this host the second file holds six lines: two switches that select Wayland,
+`--password-store=gnome-libsecret`, an enabled feature, `--no-default-browser-check`, and
+`--load-extension` with three unpacked extensions. Every Chromium run but the control below set
+`XDG_CONFIG_HOME` to a scratch directory with no `chromium-flags.conf`, under which `--help`
+detected no switches. The browser still wrote there: after the runs, both scratch directories held
+a `chromium/Crash Reports` directory, outside the `--user-data-dir` the probe passed. Electron's
+main-process runs kept their own user data in the same directory, under `Electron/`, where the
+`electron-mhtml` run left a 451,982-byte spell-check dictionary, `en-US-10-2.bdic`. Electron's own
+files hold no `.bdic`, and where that run's window got it was not checked. In the
+`pipe` run the browser process's executable (`/proc/<pid>/exe`) was `/usr/lib/chromium/chromium`,
+and its command line held the probe's arguments and nothing else. A control run of `pipe` with a
+flags file holding one invented switch put that switch on the browser's command line, ahead of the
+probe's arguments.
+
+**Policies.** `/etc/chromium/policies/managed` holds two files from Omarchy's setup scripts: one
+sets `BrowserThemeColor` and `BrowserColorScheme`, the other sets `DefaultBrowserSettingEnabled` to
+`false`. Whether the launched browser applied them was not checked; its screenshots show a dark blue
+toolbar, which this probe did not trace to the theme policy or to anything else.
+
+**The browser's own traffic.** In the three `pipe` runs the proxy fixture refused Chromium's
+connections to `accounts.google.com`, `android.clients.google.com`, `clients2.google.com` (port
+80), `update.googleapis.com`, and `www.google.com`, each on port 443 unless named. Each of the five
+`page-reads` runs saw the same hosts and `optimizationguide-pa.googleapis.com` on port 443. Across
+every second-host run behind the fixture, it also refused `content-autofill.googleapis.com` and
+`passwordsleakcheck-pa.googleapis.com` in the two `prefs` runs, and `safebrowsing.googleapis.com`
+and `update.googleapis.com` on port 80 in the awaited `newtabs` run. P13 lists what its runs saw.
+
+**Rows not measured on the second host.** Google Chrome, Edge, and regular Brave are not installed
+there (P20). Chrome for Testing 149 is not either; Playwright's cache holds a different build,
+`chromium-1243`, which no run launched. Brave Origin is installed as `brave-origin-bin`
+`1:1.97.59-1` at `/usr/bin/brave-origin`. No run launched it, and whether a Brave Origin reading
+would count for the Brave rows is not decided. Neither `snap` nor `flatpak` is installed. The
+reruns installed no browser. They did not run `shortcut` (P17), which sends key presses, or P16's
+host-as-is runs, in which the browser and Electron would use the desktop session's bus and could
+reach the Operator's own login keyring.
+
 ## Results
 
 Each entry gives the measured answer, then a row for each product on each platform. Chrome for
@@ -103,17 +183,22 @@ Testing 149 has a row of its own.
 
 ### P1: PDF in a windowed browser
 
-**`Page.printToPDF` returned a PDF from a tab in a visible window on both browsers.** The fixture
-page printed to 16,903 bytes that pypdf read as seven Letter-size pages, with the page's heading
-and text on page 1 and one image object. As in the stage-1 probe, the page received `beforeprint`
-and `afterprint`, its print media query changed, and the print-only image was requested during the
-print.
+**`Page.printToPDF` returned a PDF from a tab in a visible window on every browser measured.** The
+fixture page printed to 16,903 bytes that pypdf read as seven Letter-size pages, with the page's
+heading and text on page 1 and one image object. As in the stage-1 probe, the page received
+`beforeprint` and `afterprint`, its print media query changed, and the print-only image was
+requested during the print.
+
+On the second host, Chromium 154 printed the page to 17,017 bytes, which pypdf read the same way.
+The page received the same events, and the fixture served the print-only image and the lazy image
+during the print.
 
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux | `Page.printToPDF` returns data in a windowed tab |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
+| Chromium 154, Linux (second host) | Same as Chrome 150 |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -141,23 +226,39 @@ run.
 Chrome for Testing shows an infobar (P19), so its viewport was 1,050 × 861 where Chrome's was 1,050
 × 917.
 
+**On Chromium 154, a tab behind another was captured without `captureBeyondViewport` and not with
+it.** In front, Chromium gave the same results as Chrome: a 1,035 × 5,372 image, the same window
+bounds, `innerWidth`, and `innerHeight` before and after, a 1,050 × 917 viewport, two `resize`
+events, two `visualViewport` resize events, two `ResizeObserver` callbacks, and no other change.
+Behind another tab, the page read `hidden`. The capture without `captureBeyondViewport` returned the
+page's content after 2,267 ms. The capture with it did not answer within the script's 15-second
+limit, and the script recorded it as a timeout. The page then held one more `resize` and
+`visualViewport` resize than after the front capture, as on Chrome.
+
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux | Window does not move; the page sees `resize`, `visualViewport` resize, and `ResizeObserver` events; a tab behind another can be captured |
 | Chrome for Testing 149, Linux | Same as Chrome 150, with a viewport 56 pixels shorter; with `--disable-field-trial-config`, the first background capture took 2,265 ms |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
+| Chromium 154, Linux (second host) | In front, same as Chrome 150; behind another tab, the capture without `captureBeyondViewport` took 2,267 ms and the capture with it did not answer within 15 seconds |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
 ### P3: `Page` and isolated-world reads
 
-**Nothing the page recorded changed with `Page.enable` or an isolated-world read, but the check
-that would show a debugger read nothing even with `Runtime.enable` on.** Each variant ran on a new
-tab after a warm-up load. The page recorded `navigator.webdriver` (`true` in every variant, as the
-pipe makes it), the keys of `window.chrome` (`loadTimes`, `csi`, `app`), `document.hasFocus()`
-(`true`), `document.visibilityState` (`visible`), the resource timing list (`/img.png`), and the
+**On Chromium 154, a check that fired on every reading with `Runtime.enable` on and on none without
+it did not fire for `Page.enable` or an isolated-world read, and nothing else the page recorded
+changed. On Chrome 150 and Chrome for Testing 149 nothing the page recorded changed either, but the
+only check run there read nothing even with `Runtime.enable` on.** The Chromium check's only
+positive controls send `Runtime.enable`, so its silence does not show that a page cannot detect
+`Page` or an isolated world (What this does not show). Each variant ran on a new tab after a warm-up
+load. The page recorded `navigator.webdriver` (`true` in every variant, as the pipe
+makes it), the keys of `window.chrome` (`loadTimes`, `csi`, `app`), `document.hasFocus()` (`true`),
+`document.visibilityState` (`visible`), the resource timing list (`/img.png`), and the
 `Error.stack` getter count of the stage-1 probe, which logs an `Error` with a counting getter to
 `console.debug` at load and every 250 ms.
+
+On the first host, one run per browser:
 
 | Variant | What changed against the network-only tab |
 | --- | --- |
@@ -179,17 +280,72 @@ says "a viewport scroll-locked by overflow: hidden clamps even programmatic scro
 (`backgroundRenderer.ts:130-132`); in launched Chrome 150 and Chrome for Testing 149 it did not, for
 either inline style.
 
+**A check that detects `Runtime.enable`, on the second host.** There the fixture page also ran
+seven candidate checks at load and every 500 ms, and sent each reading to the fixture server with
+`navigator.sendBeacon`, so every variant reported the same way; the resource timing list leaves
+those requests out. Two control tabs joined the variants: `runtime-enable-late` sends
+`Runtime.enable` after the first read, where the other variants act, and `network-only-last` is a
+network-only tab opened after both `Runtime.enable` tabs. A candidate passed its control in a run
+when every reading with `Runtime.enable` on (the `runtime-enable` tab, and the late tab after the
+step) lay on one side of every reading without it (both network-only tabs, and the late tab before
+the step). On every tab, a reading that reached the server between the step's start and 200 ms
+after its end counts as during the step. On the late tab those readings join neither set; the other
+control tabs count every reading. `page-reads` ran five times, which gave 95 readings without
+`Runtime.enable` and 47 with it.
+
+| Candidate | Without `Runtime.enable` | With it | Passed its control |
+| --- | --- | --- | --- |
+| Calls to the page's own `Error.prepareStackTrace` for an `Error` passed to `console.debug` | 0 in every reading | 1 in every reading | 5 of 5 runs |
+| Median time of seven `console.debug` calls with a 1 MiB string | 4.0 to 23.2 ms | 9.0 to 48.4 ms | 4 of 5 runs. In run 4 a reading without it, 19.6 ms, exceeded the lowest with it, 11.1 ms |
+| The same with a one-character string | 0 to 0.4 ms | 0 to 0.6 ms | None |
+| Reads of a `message` getter on a logged `Error` whose `stack` is a plain string | 1 in every reading | 1 in every reading | None |
+| Traps called on a logged `Proxy` | 0 | 0 | None |
+| Traps called on a logged object whose prototype is a `Proxy` | 1 in every reading | 1 in every reading | None |
+| Getter calls on a row passed to `console.table` | 0 | 0 | None |
+| The stage-1 `Error.stack` getter count, kept as a reference | 0 in every tab | 0 in every tab | None |
+
+The timings drifted between runs: without `Runtime.enable` they spanned 4.0 to 6.3 ms in run 1 and
+10.8 to 23.2 ms in run 3. The `Error.prepareStackTrace` count is the check P3 keeps. Its readings
+per variant, over the five runs:
+
+| Variant | Readings with a call |
+| --- | --- |
+| Network-only (control) | 0 of 35 |
+| `Page.enable` before the load | 0 of 36 |
+| `Page.createIsolatedWorld` and `Runtime.evaluate` there | 0 of the 10 after the step, which created the isolated world; the tab's other 25 readings came before it |
+| Scroll-to-load scripts in an isolated world | 0 of 67, 30 of them during the scrolling |
+| The same scripts in the main world | 0 of 66, 30 during the scrolling |
+| `SCROLL_UNLOCK_SCRIPT` and the scroll scripts, `overflow: hidden` | 0 of 65, 30 during the scrolling |
+| The same, `overflow: clip` | 0 of 66, 30 during the scrolling |
+| `Runtime.enable` before the load (control) | 37 of 37 |
+| `Runtime.enable` after the first read (control) | 10 of 35: none of the 25 before the step, all 10 after it |
+| Network-only, the last tab (control) | 0 of 35 |
+
+In each of the five runs the other facts changed as in the first host's table, apart from the
+scroll counts. `Page.enable` and the isolated-world read changed nothing, and the `Page.enable`
+session received the same six events. The scroll scripts gave scroll events, the sentinel's
+`IntersectionObserver` firing `true` then `false`, and one request for the lazy image, which joined
+the resource timing list; the reset left `scrollY` at 0. They gave 6 scroll events in an isolated
+world in every run and 6 or 7 in the main world and on the lock fixtures, so the main world did not
+always record one more. The unlock script returned `null` on both lock fixtures. By the first
+read, the lock fixtures had recorded no `visualViewport` resize, where the other tabs had recorded
+one. `Runtime.enable` changed none of the listed facts. In one of the fifty tabs, the late
+`Runtime.enable` tab of run 4, the page recorded one `focus` event, before the step ran; no scroll
+tab recorded one.
+
 **A commit signal without the `Page` domain.** On the browser connection,
 `Target.targetInfoChanged` for the tab carried the new URL after the document's
 `Network.responseReceived` and before its `Network.loadingFinished`. It also fired for a
 `history.pushState`, which commits no document, and did not fire for a navigation answered with
-`204 No Content`, which commits nothing.
+`204 No Content`, which commits nothing. Chromium 154 gave the same events in the same order in each
+of the five runs.
 
 | Product and platform | Answer |
 | --- | --- |
-| Chrome 150, Linux | No change in the listed facts from `Page` or isolated-world reads; the `Error.stack` check failed its positive control; scrolling is visible to the page through scroll and intersection events and lazy loads |
+| Chrome 150, Linux | No change in the listed facts from `Page` or isolated-world reads; the `Error.stack` check failed its positive control, and the `Error.prepareStackTrace` check did not run on the first host; scrolling is visible to the page through scroll and intersection events and lazy loads |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
+| Chromium 154, Linux (second host) | No change in the listed facts from `Page` or isolated-world reads; the `Error.prepareStackTrace` check passed its control in all five runs and did not fire for either; scrolling is visible to the page as on Chrome 150 |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -233,11 +389,18 @@ asked for the previous page's document and a 200,000-byte text body:
 | With `enableDurableMessages: true` | Both returned | Both returned |
 | With `Network.configureDurableMessages` sent after `Network.enable` | Both returned | Both returned |
 
+On the second host, Chromium 154 gave the same answers in every row of both tables, in the three
+`popups` runs, and for the cross-site navigation. In the awaited order, `Network.enable` did not
+answer within 15 seconds for the `target=_blank` link or for `window.open` with `noopener`, and
+answered within 9 ms for the `rel=opener` link and `window.open`. In the pipelined order, every new
+tab's commands answered within 151 ms.
+
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux | Awaited setup stalls tabs opened with no JavaScript opener; tabs the browser opens with a URL lose their document request; cross-site navigation keeps the session; durable messages keep the previous document's bodies |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
+| Chromium 154, Linux (second host) | Same as Chrome 150 |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -261,18 +424,26 @@ each fetched one text file.
 
 Every request the fixture logged appeared on a session.
 
+On the second host, Chromium 154 reported every request on the same session as in the table, and
+every request the fixture logged appeared on a session. Its auto-attach also attached, on the
+browser connection, two targets of type `browser_ui` with `chrome://omnibox-popup.top-chrome/` URLs
+and one of type `background_page` for `chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/`, an
+extension no run installed. The script's URL filter left them unrecorded. The `pipe` run attached
+the same three.
+
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux | As in the table above |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
+| Chromium 154, Linux (second host) | Same as Chrome 150; auto-attach also attaches `browser_ui` and `background_page` targets, which the URL filter skips |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
 ### P6: WebRTC
 
-**`--webrtc-ip-handling-policy=disable_non_proxied_udp` holds on both browsers, and
-`--force-webrtc-ip-handling-policy` has no effect on either.** With the SOCKS5 fixture as proxy,
+**`--webrtc-ip-handling-policy=disable_non_proxied_udp` holds on every browser measured, and
+`--force-webrtc-ip-handling-policy` has no effect on any.** With the SOCKS5 fixture as proxy,
 the script gathered ICE candidates with no ICE servers three ways: from an isolated world on the
 first tab's `about:blank` before any navigation, from the main world of a loaded `http` page (the
 spec probe's method), and from an isolated world on that page.
@@ -284,39 +455,57 @@ spec probe's method), and from an isolated world on that page.
 | `--force-webrtc-ip-handling-policy=disable_non_proxied_udp` only | One UDP host candidate with an mDNS name | The same | The same |
 
 The isolated world on `about:blank` gave the same result as the loaded page in every case, so the
-check needs no page of its own.
+check needs no page of its own. On the second host, Chromium 154 gave the same three rows.
 
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux | The policy switch holds; the `force` switch does not; `about:blank` gives the page's result |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
+| Chromium 154, Linux (second host) | Same as Chrome 150 |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
 ### P7: The pipe on each platform
 
-**The pipe works on Linux for both browsers, with no TCP listener and no `DevToolsActivePort`
-file.** `Browser.getVersion` answered over the pipe 176 ms after spawn on Chrome and 138 ms on Chrome
-for Testing. Auto-attach attached the existing `about:blank` tab without an explicit attach. The
-browser and its child processes held no listening TCP socket. They held one listening Unix socket,
-`SingletonSocket` in a `/tmp` directory, which the browser profile links to as `SingletonSocket`
-beside `SingletonLock` and `SingletonCookie`; the names match the process singleton the spec cites
-(lines 746-749), and a second launch on the same browser profile exits at once (P14).
-`navigator.webdriver` read `true`.
+**The pipe works on Linux on every browser measured, with no TCP listener and no
+`DevToolsActivePort` file.** `Browser.getVersion` answered over the pipe 176 ms after spawn on
+Chrome, 138 ms on Chrome for Testing, and 263 ms on Chromium 154 on the second host, where the
+launcher control run took 961 ms and the third `pipe` run, made for P19, 211 ms. On all three
+browsers, auto-attach attached the existing `about:blank` tab without an explicit attach,
+`navigator.webdriver` read `true`, and the browser and its child processes held no listening TCP
+socket. They held one listening Unix socket, `SingletonSocket` in a `/tmp` directory
+(`/tmp/org.chromium.Chromium.<random>` on Chromium), which the browser profile links to as
+`SingletonSocket` beside `SingletonLock` and `SingletonCookie`. The names match the process
+singleton the spec cites (lines 746-749), and on the first host a second launch on the same browser
+profile exits at once (P14).
 
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux (distribution package) | Works: no TCP listener, no `DevToolsActivePort`, one Unix singleton socket |
 | Chrome for Testing 149, Linux (vendor archive) | Same as Chrome 150 |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
-| Snap or Flatpak build of any product, Linux | Not measured on this host: none installed, and `flatpak` is not installed |
-| Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
+| Chromium 154, Linux (distribution package, second host) | Same as Chrome 150 |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
+| Snap or Flatpak build of any product, Linux | Not measured on either host: the first has no browser Snap, the second has no `snap`, and neither has `flatpak` |
+| Chrome 156.0.8078.80, Windows 11 Pro 25H2 build 26200.9711 (per-machine installer) | Works: no TCP listener, no `DevToolsActivePort`, no Singleton files in the profile; control: `PARTIAL`, one loopback listener (`127.0.0.1:4846`) and the file |
+| Edge 156.0.4314.58, Windows 11 Pro 25H2 build 26200.9711 (per-machine installer) | Works: no TCP listener, no `DevToolsActivePort`, no Singleton files in the profile; control: `PARTIAL`, one loopback listener (`127.0.0.1:6853`) and the file |
+| Brave 156.1.98.63, Windows 11 Pro 25H2 build 26200.9711 (per-machine installer) | Works: no TCP listener, no `DevToolsActivePort`, no Singleton files in the profile; control: `PARTIAL`, one loopback listener (`127.0.0.1:13031`) and the file |
+| Chromium, Windows | Not measured on the Windows host: not installed |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
-A maintainer run on Windows and macOS, or a follow-up issue, fills the Windows and macOS rows. The
-clicked-Capture step (stage-2 step 4) waits for them, as the ruling on decision D1 requires (spec,
-lines 405-409 and 1291-1294).
+The maintainer measured the Windows rows on 2026-11-03 with the P7 runbook's script, run under
+Electron 45.1.0 with `ELECTRON_RUN_AS_NODE=1` from native PowerShell in a Windows checkout, with
+nothing under WSL2. `Browser.getVersion` answered over the pipe 283 ms after spawn on Chrome and
+Edge and 122 ms on Brave, auto-attach attached the existing `about:blank` tab, and
+`navigator.webdriver` read `true`. The six JSON results, a pipe run and a control run per browser,
+are in
+[a comment on issue #1828](https://github.com/thebristolsound/birdbrain/issues/1828#issuecomment-6615435372).
+Each control run, the same arguments plus `--remote-debugging-port=0`, opened one loopback
+listener and wrote `DevToolsActivePort`, so the listener and file checks fire on that machine and
+the pipe runs' zeros count. A maintainer run on macOS, or a follow-up issue, fills the macOS row.
+The ruling on decision D1 asks for the pipe measured on Windows and macOS before the clicked-Capture
+step (spec, lines 405-409 and 1291-1294); whether stage-2 step 4 waits on the macOS answer is the
+maintainer's ruling.
 
 ### P8: When the pipe closes
 
@@ -336,18 +525,26 @@ The rows are not comparable. In the last two the helper acts 1,500 ms after it w
 waits, not measured: the result files also record when the helper exited (`holderExitedAfterMs`),
 and this document does not report that value. About 600 ms stands as an upper bound.
 
-No process naming the browser profile was left in any case. For a restart, the script typed
-`chrome://restart` into the address bar through the X Test extension. The browser exited with code 0,
-and the pipe closed within the 400 ms the script waits after the last key. No process naming the
-browser profile appeared in the six seconds after, by a 25 ms poll, none ran 12 seconds later, and
-the screen was empty. Whether "Relaunch to update" takes the same path as `chrome://restart` was not
-checked.
+On the first host, no process naming the browser profile was left in any case. For a restart, the
+script typed `chrome://restart` into the address bar through the X Test extension. The browser
+exited with code 0, and the pipe closed within the 400 ms the script waits after the last key. No
+process naming the browser profile appeared in the six seconds after, by a 25 ms poll, none ran 12
+seconds later, and the screen was empty. Whether "Relaunch to update" takes the same path as
+`chrome://restart` was not checked.
+
+On the second host, Chromium 154 exited 603 ms after the kill, and 719 ms and 810 ms after the clock
+started in the other two rows. In the second row the result also records the helper's exit, 496 ms
+after the clock started, so the browser exited between about 120 and 225 ms after the helper did.
+In the second and third rows, one process naming the browser profile was still running when the
+script checked, just after the browser process had gone. The script killed it, so whether it would
+have exited on its own is not known. The restart gave the same answer as on Chrome.
 
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux | Exits within 0.6 s of the pipe closing, an upper bound; a restart exits and does not return |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
+| Chromium 154, Linux (second host) | Exits within 0.81 s of the clock starting in every row; one process naming the profile outlived the browser process after a normal exit and after a closed pipe; a restart exits and does not return |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -369,11 +566,16 @@ the fixture's address and port, appeared on both sessions under the same request
 worker's install-time fetch for Cache Storage and its script appeared on its sessions only. Every
 request the fixture logged appeared on some session.
 
+On the second host, Chromium 154 gave the same answers: the same sources, the same missing
+endpoints, every body returned, and the worker attached twice under one `targetId` with its own
+fetches on both sessions.
+
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux | Worker-served responses on the page's session with their source and no endpoint; the worker's own requests on two sessions of one target |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
+| Chromium 154, Linux (second host) | Same as Chrome 150 |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -393,28 +595,41 @@ gave a `Document` request on the tab's session whose response had `fromPrefetchC
 fixture's address, with no new request at the fixture; the prerendered page's own fetch went to the
 fixture after the click.
 
+On the second host, Chromium 154 gave the same answers in all four back-forward runs and in both
+speculation runs, including the `PrerenderingDisabledByDevTools` status.
+
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux | Back-forward restore: no network event, only `Target.targetInfoChanged`; prerender disabled under CDP; prefetches on the tab's session |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
+| Chromium 154, Linux (second host) | Same as Chrome 150 |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
 ### P11: Message order
 
-**The stream kept causal order across a tab's sessions in 150 steps.** A page, a cross-site iframe
-on its own session, and a dedicated worker on its own session fetched in a strict chain: each fetch
-began only after the previous one, in another context, had finished. The fixture saw the 150
-requests in chain order. On the browser connection, every step's `Network.requestWillBeSent`
-arrived after the previous step's `requestWillBeSent`, `responseReceived`, and `loadingFinished`,
-on both browsers. One run per browser does not show the order is guaranteed.
+**On Chrome 150 and Chrome for Testing 149 the stream kept causal order across a tab's sessions in
+150 steps. On Chromium 154, two steps' requests arrived before the previous step's
+`loadingFinished`.** A page, a cross-site iframe on its own session, and a dedicated worker on its
+own session fetched in a strict chain: each fetch began only after the previous one, in another
+context, had finished. The fixture saw the 150 requests in chain order. On the browser connection,
+every step's `Network.requestWillBeSent` arrived after the previous step's `requestWillBeSent`,
+`responseReceived`, and `loadingFinished`, on both browsers of the first host. One run per browser
+does not show the order is guaranteed.
+
+On the second host, Chromium 154's fixture also saw the requests in chain order, and no step's
+`requestWillBeSent` arrived before the previous step's `requestWillBeSent` or `responseReceived`.
+In 2 of the 149 steps that follow another, it arrived before the previous step's `loadingFinished`.
+The result file counts those steps and does not name them, so which contexts they joined is not
+known.
 
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux | No inversion in 150 cross-session steps |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
+| Chromium 154, Linux (second host) | In 2 of 149 steps, the request arrived before the previous step's `loadingFinished`; no other inversion |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -456,13 +671,34 @@ Testing's `enableDurableMessages` mode and none elsewhere; the second run wrote 
 names, so no output of the first survives to show it. No wrong body appeared without durable
 messages.
 
+On the second host, the six configurations ran once each, in Electron 45.1.0's main process
+against Chromium 154:
+
+| Mode (Chromium 154, second host) | Browsing | Main-process CPU | Event-loop delay, 99th percentile and maximum | Bodies returned | Not returned |
+| --- | --- | --- | --- | --- | --- |
+| `Network` events only, no body fetched | 12.3 s | 1.22 s | 12 and 56 ms | none asked | none asked |
+| Every body at `loadingFinished` | 15.6 s | 7.96 s | 134 and 194 ms | 599 | 1: `Request content was evicted from inspector cache` |
+| Each page's bodies after it loads, as a Capture would, cross-site | 18.3 s | 5.00 s | 53 and 117 ms | 596 | 4 on page 14, evicted |
+| The same, same-site | 20.4 s | 6.55 s | 49 and 236 ms | 595 | 4 on page 14, evicted |
+| The same, cross-site, `enableDurableMessages` | 16.5 s | 4.84 s | 49 and 117 ms | 596 | 4 on page 14, evicted |
+| The same, cross-site, `Network.configureDurableMessages` | 16.4 s | 4.71 s | 50 and 108 ms | 596 | 4 on page 14: `No data found for resource with given identifier` |
+
+The pipe carried 2.7 MB without bodies and 222 to 241 MB with them. Against the events-only run,
+fetching added 3.5 to 6.7 seconds of CPU for 216 to 234 MB, 16 to 29 ms per MB: the most for every
+body at `loadingFinished`, the least for the cross-site Capture-time modes. At Capture time, pages
+0 to 13 lost no body, and after the fifteenth page only page 14's six bodies were returned, in
+every Capture-time mode. Every body Chromium returned equalled its payload, in the durable-message
+modes too. The command that reads these figures from the result files is under
+[The probe](#the-probe).
+
 An hour of browsing was not measured; the per-megabyte figure is what this run supports.
 
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux | About 16 ms of main-process CPU per MB fetched; event-loop delay up to 140 ms; only a page larger than the buffer lost bodies at Capture time; no wrong body |
 | Chrome for Testing 149, Linux | The same costs; with either durable-message setting, one body of 9,000,000 bytes returned short and wrong without an error |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
+| Chromium 154, Linux (second host) | 16 to 29 ms of Electron 45.1.0's main-process CPU per MB fetched; event-loop delay up to 236 ms; only a page larger than the buffer lost bodies at Capture time; no wrong body, durable messages included |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -520,19 +756,57 @@ Through the HTTP proxy, CDP reported the proxy's own address and port as `remote
 `remotePort` for the fixture page and for the `403` the proxy returned for the refused image. Through
 SOCKS5 it reported the proxy's endpoint for the fixture page, as the spec's probe found.
 
-Every host outside loopback the P13 runs saw, in the net logs, the DNS listener, or the proxy logs:
-`android.clients.google.com`, `clients2.google.com`, `update.googleapis.com`, and `www.google.com`
-from both browsers; `optimizationguide-pa.googleapis.com`,
+Every host outside loopback the first host's P13 runs saw, in the net logs, the DNS listener, or
+the proxy logs: `android.clients.google.com`, `clients2.google.com`, `update.googleapis.com`, and
+`www.google.com` from both browsers; `optimizationguide-pa.googleapis.com`,
 `safebrowsingohttpgateway.googleapis.com`, and, in the Direct run only, `safebrowsing.googleapis.com`
 from Chrome; the address `2001:4860:4860::8888`; and the page's invented `dns-prefetch`,
 `preconnect`, `img`, `tls`, and `fetch` hosts under `egress-probe.test`. The anchor's host was never
 looked up or requested. Method lists the hosts the other configurations' proxy refused.
 
+**On the second host, Chromium 154's lookups in the Direct run left the namespace.** The spec's
+wrapper, run with `--probe-browser=chromium`, exited with code 1 after the same `Running as root
+without --no-sandbox is not supported` line. Before each of the three runs under the nested user
+namespace, a lookup from Node's own resolver reached the DNS listener and failed with `ENOTFOUND`,
+the listener's answer (`dnscheck.cjs`, under [The probe](#the-probe)), so the bind mount and the
+listener worked. In those runs each renderer's `Seccomp` field read 2 and the page read
+`navigator.onLine` as `false`:
+
+| Run, Chromium 154, second host | TCP connections attempted (net log) | DNS queries at the listener | UDP connects attempted (net log) | Asked of the proxy |
+| --- | --- | --- | --- | --- |
+| Direct | The fixture page, and 87 attempts at 32 public IPv4 addresses on ports 443 and 80, each failing with `os_error` 101, `ENETUNREACH` | A and AAAA records for the page's five invented hosts; none for the browser's own hosts | `[2001:4860:4860::8888]:443`, 8 times, each failing with `net_error` -109 and sending nothing | No proxy |
+| SOCKS5 | The proxy only | None but the check's | The same, 9 times | Every host the browser and the page named, by name, except the `dns-prefetch` host and the anchor's |
+| HTTP | The proxy only | None but the check's | The same, 8 times | Every host the browser and the page named except the `dns-prefetch`, `preconnect`, and anchor hosts, as `CONNECT` for `https` and absolute URLs for `http` |
+
+In the Direct run, all 14 of the browser's resolver jobs ran as `HOST_RESOLVER_SYSTEM_TASK`, the
+operating system's resolver, and the net log has no UDP socket to the listener. That resolver
+answered with public addresses for the browser's own hosts and failed for the page's invented ones,
+whose queries reached the listener. Every public address the browser tried was in one of its
+answers. The host's `/etc/nsswitch.conf` reads `hosts: mymachines mdns_minimal [NOTFOUND=return]
+resolve files myhostname dns`. Inside the same kind of namespace, with only `lo` and the same bind
+mount, `getent -s hosts:resolve ahosts www.google.com` returned eight addresses and `getent -s
+hosts:files` found none: the NSS `resolve` module, which asks the host's `systemd-resolved`,
+answered from a namespace with no network. So the browser's own host names were looked up outside
+the namespace, and the browser received real addresses for them. The SOCKS5 and HTTP runs logged no
+resolver job. Each run logged as many IPv6 reachability checks not answered from its cache as UDP
+connects, as on the first host.
+
+Through the HTTP proxy, CDP again reported the proxy's address and port for the fixture page and for
+the refused image, and through SOCKS5 the proxy's endpoint for the fixture page. Every host outside
+loopback the second host's P13 runs saw, in the net logs, the DNS listener, or the proxy logs:
+`android.clients.google.com`, `clients2.google.com`, `optimizationguide-pa.googleapis.com`,
+`update.googleapis.com`, and `www.google.com` in all three runs; `safebrowsing.googleapis.com` in
+the SOCKS5 run only; the address `2001:4860:4860::8888`; the 32 IPv4 addresses of the Direct run;
+the page's invented hosts under `egress-probe.test`; and `listener-check.egress-probe.test`, the
+check's own lookup. The anchor's host was never looked up or requested. The figures come from the
+command under [The probe](#the-probe), which reads the raw net logs.
+
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux | Behind SOCKS5 or HTTP, no TCP connection and no DNS query went around the proxy; the IPv6 reachability check's UDP connects to `2001:4860:4860::8888` failed and sent nothing; the HTTP proxy's endpoint is the reported remote address |
 | Chrome for Testing 149, Linux | Same as Chrome 150, with fewer hosts of its own |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
+| Chromium 154, Linux (second host) | Behind SOCKS5 or HTTP, the same as Chrome 150. Direct, the browser resolved through the operating system, whose `resolve` module answered from outside the namespace, and its connections to the public addresses failed |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -555,11 +829,19 @@ windowed browser ran, another `--no-startup-window` launch on the same browser p
 code 0 after 36 ms on Chrome and 47 ms on Chrome for Testing. Its pipe never answered
 `Browser.getVersion`, and the running browser opened no tab.
 
+On the second host, Chromium 154 gave Chrome's answers. The seeding launch answered in 919 ms, had
+no page target, drew nothing, and was running three seconds later; its one target was the
+`background_page` of P5. `Browser.close` ended it with code 0 in 146 ms, and all three cookies were
+on disk. After the restart the fixture received `fixture_persist` and `fixture_lax`, not
+`fixture_session`. The second launch on the busy profile exited with code 0 after 452 ms without
+answering, and the running browser opened no tab.
+
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux | Seeding launch works without a window; cookies reach disk; the session cookie is gone after a restart; a launch on a busy profile exits 0 at once |
 | Chrome for Testing 149, Linux | Same, except that the session cookie was still sent after the restart |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
+| Chromium 154, Linux (second host) | Same as Chrome 150; the launch on a busy profile exited 0 after 452 ms |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -580,11 +862,16 @@ which refused them, so no request reached Google. The written preference did not
 attempt. The proxy log the script writes keeps no timestamps, so it does not show whether the
 attempts came before or after the sign-in.
 
+On the second host, Chromium 154 gave the same answers in both runs: `false` with
+`user_controlled` and no bubble with the written file, `true` with `default` and the filled-in
+bubble without it, and refused attempts to reach both hosts in each run.
+
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux | Kept; no save-password offer; the browser still tried to reach the leak-check host, and the proxy refused it |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
+| Chromium 154, Linux (second host) | Same as Chrome 150 |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -617,11 +904,29 @@ reached the host's own keyring. The runs on the host as it is did: the browser a
 Secret Service to unlock the locked login keyring and got a failure. Whether a prompt was shown is
 not known.
 
+On the second host, Chromium 154 and Electron 45.1.0 ran the two GNOME setups, each in a run of its
+own with a new key store directory. `DESKTOP_SESSION` was `omarchy` in the browser runs, inherited
+from the host.
+
+| Session, second host | Chromium 154 | Electron 45.1.0 `safeStorage` | Match |
+| --- | --- | --- | --- |
+| The host as it is: the Hyprland session's bus and its login keyring | Not run: on that bus the browser could reach the Operator's own login keyring | Not run, for the same reason | Not measured |
+| `XDG_CURRENT_DESKTOP=GNOME`, a private bus, a new unlocked `gnome-keyring` | Key provider ready (`InitStatus` 0); cookie prefix `v11` | `gnome_libsecret`; available; prefix `v11` | Yes |
+| `XDG_CURRENT_DESKTOP=GNOME`, a private bus with no Secret Service | Key provider found no service (`InitStatus` 6); cookie prefix `v10` | `gnome_libsecret`; encryption not available | No, as on the first host |
+
+So the key store behind Chromium's `v11` cookie was the Secret Service of `gnome-keyring`, and
+`isEncryptionAvailable()` was again true exactly when the browser wrote `v11`. Chromium also logged
+`OSCrypt.SecretPortalKeyProvider.InitStatus` 1 in both runs and kept a `portal` entry under
+`os_crypt` in `Local State`; this probe did not look up what that status means. The Operator's
+`chromium-flags.conf` on the second host adds `--password-store=gnome-libsecret`, which the runs
+kept out (Method).
+
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux | As in the table: `v10` on this host and with no Secret Service, `v11` with an unlocked keyring |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
+| Chromium 154, Linux (second host) | `v11` under `gnome-keyring`'s Secret Service, matching Electron 45.1.0's `safeStorage`; `v10` with no Secret Service, where Electron still names `gnome_libsecret`; the host as it is not run |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -636,7 +941,8 @@ launched browser, so its rows are per platform and Linux desktop session.
 
 | Platform and session | Answer |
 | --- | --- |
-| Linux, X11 under Xvfb, no window manager or desktop | Registered and fired once; the page did not receive the shortcut's key |
+| Linux, X11 under Xvfb, no window manager or desktop | Registered and fired once; the page did not receive the shortcut's key (first host) |
+| Linux, Hyprland on Wayland | Not measured: the second host runs one, but a reading means sending key presses into that live desktop session, which the reruns did not do; they did not run `shortcut` |
 | Linux, GNOME on Wayland | Not measured on this host: no desktop session |
 | Linux, GNOME on X11 | Not measured on this host: no desktop session |
 | Linux, KDE Plasma on Wayland or X11 | Not measured on this host: no desktop session |
@@ -650,13 +956,15 @@ opened DevTools on the tab twice, with `Target.openDevTools` and with F12 throug
 extension. Each time DevTools opened docked in the window, and its front end appeared as a target
 of type `other` with a `devtools://` URL, auto-attached on the browser connection. The engine's
 session on the tab received no `Target.detachedFromTarget`, the next navigation's document request
-appeared on it, and `Runtime.evaluate` still answered there.
+appeared on it, and `Runtime.evaluate` still answered there. On the second host, Chromium 154 gave
+the same answers both ways.
 
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux | The engine's session survives DevTools opening |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
+| Chromium 154, Linux (second host) | Same as Chrome 150 |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
@@ -672,24 +980,28 @@ configuration.** Screenshots of the whole display after the first navigation sho
 - Chrome for Testing 149: the infobar "Chrome for Testing v149.0.7827.55 is only for automated
   testing. For regular browsing, use a standard version of Chrome", with **Download Chrome**. It
   sits above the page and shortened the viewport by 56 pixels (P2).
+- Chromium 154, on the second host, in the third `pipe` run: no infobar and no bubble. In P2's run
+  its viewport was 1,050 × 917, the same as Chrome's.
 
 The P13 runs, which pass `--log-net-log`, showed Chrome's unsupported-flag infobar on both
-browsers: "You are using an unsupported command-line flag: --log-net-log=… Stability and security
-will suffer." On Chrome for Testing it appeared in place of the Chrome for Testing infobar.
+browsers of the first host: "You are using an unsupported command-line flag: --log-net-log=…
+Stability and security will suffer." On Chrome for Testing it appeared in place of the Chrome for
+Testing infobar. Chromium 154 showed the same infobar in all three of its P13 runs.
 
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux | No automation infobar; an outdated-build bubble that takes the keyboard |
 | Chrome for Testing 149, Linux | No automation infobar; the Chrome for Testing infobar |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
+| Chromium 154, Linux (second host) | No automation infobar and no other banner; the unsupported-flag infobar with `--log-net-log` |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
 ### P20: Discovery
 
-**Only Google Chrome is installed at a known path, and Chrome for Testing reports itself as
-`Chrome`.** The `discover` configuration launched nothing. Of the Linux paths that `playwright-core`
-1.63.0 lists for Chrome and Edge channels (`lib/coreBundle.js:33222-33276`), only
+**On the first host only Google Chrome is installed at a known path, and Chrome for Testing reports
+itself as `Chrome`.** The `discover` configuration launched nothing. Of the Linux paths that
+`playwright-core` 1.63.0 lists for Chrome and Edge channels (`lib/coreBundle.js:33222-33276`), only
 `/opt/google/chrome/chrome` exists. On `PATH`, `google-chrome` and `google-chrome-stable` resolve to
 `/opt/google/chrome/google-chrome`; `microsoft-edge`, `microsoft-edge-stable`, `brave-browser`,
 `brave`, `chromium`, and `chromium-browser` are absent. `snap list` shows no browser, and `flatpak`
@@ -700,13 +1012,23 @@ table names.
 ending `Chrome/149.0.0.0 Safari/537.36`, the same form as branded Chrome. Neither field tells the
 two apart; the `--version` output and the infobar do.
 
+**On the second host, `chromium` on `PATH` is a launcher that adds the Operator's own switches, and
+Chromium also reports itself as `Chrome`.** There `discover` found none of the Playwright paths and
+two names on `PATH`, `/usr/bin/chromium` and `/usr/bin/brave-origin`, neither of them a link;
+`snap` and `flatpak` are not installed. `/usr/bin/chromium` starts `/usr/lib/chromium/chromium`
+with the switches from the Operator's `chromium-flags.conf` ahead of the caller's arguments
+([Second host](#second-host)), so a launch through it does not run Birdbrain's argument list
+alone. Chromium 154 gave the product `Chrome/154.0.8037.97` and a user agent ending
+`Chrome/154.0.0.0 Safari/537.36`, the same form as branded Chrome.
+
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux | `/opt/google/chrome/chrome`, reached through `/usr/bin/google-chrome` |
 | Chrome for Testing 149, Linux | Playwright's cache only; product string `Chrome/149.0.7827.55` |
 | Edge, Linux | Not found at `/opt/microsoft/msedge/msedge` or on `PATH`; not measured on this host beyond that |
 | Brave, Linux | Not found on `PATH`; no installed package lists its location; product string not measured on this host |
-| Chromium, Linux | Not found on `PATH`, as a Snap, or as a Flatpak |
+| Chromium, Linux (first host) | Not found on `PATH`, as a Snap, or as a Flatpak |
+| Chromium 154, Linux (second host) | `/usr/bin/chromium`, Arch's launcher, which starts `/usr/lib/chromium/chromium` and adds the switches in `chromium-flags.conf`; product string `Chrome/154.0.8037.97`. No Snap or Flatpak: neither tool is installed |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux. `playwright-core` lists Windows paths ending `\Google\Chrome\Application\chrome.exe` and `\Microsoft\Edge\Application\msedge.exe` (`lib/coreBundle.js:33225`, :33253), read and not checked |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux. `playwright-core` lists Chrome and Edge under `/Applications` (`lib/coreBundle.js:33224`, :33252), read and not checked |
 
@@ -717,18 +1039,20 @@ In Electron 44.5.1's main process, `typeof WebSocket` was `function`. The `elect
 configuration launched each browser with `--remote-debugging-port=9335`, read
 `/json/version`, connected with that global `WebSocket`, and received `Browser.getVersion`. The same
 configuration under `ELECTRON_RUN_AS_NODE` gave the same answers. P23 concerns Electron, so its
-rows are per platform.
+rows are per platform. On the second host, Electron 45.1.0's main process gave the same answers
+against Chromium 154, as did the run under `ELECTRON_RUN_AS_NODE`.
 
 | Platform | Answer |
 | --- | --- |
-| Linux | Global `WebSocket` present in the main process; it connected to Chrome 150 and Chrome for Testing 149 in port mode |
+| Linux | Global `WebSocket` present in the main process; Electron 44.5.1's connected to Chrome 150 and Chrome for Testing 149 in port mode, and Electron 45.1.0's to Chromium 154 on the second host |
 | Windows | Not measured on this host: the host runs Linux |
 | macOS | Not measured on this host: the host runs Linux |
 
 ### P24: MHTML equivalence
 
-**`Page.captureSnapshot` in launched Chrome 150 matched `wc.savePage` part for part on the
-fixture, and Chrome for Testing did not, because of its field-trial testing configuration.** The
+**`Page.captureSnapshot` in launched Chrome 150 and Chromium 154 matched `wc.savePage` part for
+part on the fixture, and Chrome for Testing did not, because of its field-trial testing
+configuration.** The
 `electron-mhtml` configuration loaded the fixture page in a window configured like
 `renderPageInHiddenWindow` (`backgroundRenderer.ts:385-397`, without the consent filter) and saved
 it with `wc.savePage(path, 'MHTML')`, as the renderer does at `backgroundRenderer.ts:519`, and with
@@ -745,31 +1069,50 @@ decoded body, with the per-load frame token in `cid:frame-…@mhtml.blink` refer
 | Chrome for Testing 149 `Page.captureSnapshot` | Three extra `text/javascript` parts (`cid:js-…`), a `<script>` added to each HTML part, and a re-serialized stylesheet |
 | Chrome for Testing 149 with `--disable-field-trial-config` | The same as `wc.savePage` |
 
+On the second host the comparison ran against Electron 45.1.0's `wc.savePage`:
+
+| Compared with Electron 45.1.0's `wc.savePage`, second host | Result |
+| --- | --- |
+| Electron 45.1.0's `Page.captureSnapshot` | Same header names, the same seven parts, every digest equal |
+| Chromium 154 `Page.captureSnapshot` | The same |
+
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux | Equal to `wc.savePage` in Electron 44.5.1 on this fixture |
 | Chrome for Testing 149, Linux | Differs by default; equal with `--disable-field-trial-config` |
-| Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
+| Chromium 154, Linux (second host) | Equal to `wc.savePage` in Electron 45.1.0 on this fixture |
+| Edge, Brave, Linux | Not measured: neither is installed on the first host; on the second, neither Edge nor regular Brave is installed, and Brave Origin was not launched (Method) |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
 ## What this does not show
 
-- Edge, Brave, Chromium, Windows, macOS, Snap and Flatpak builds, or any other Chrome version. The
-  Chrome 150 here is a build old enough to show its own update bubble.
-- Anything beyond one run per configuration per browser (two for P12), on one 4-CPU WSL2 host.
-  Timings and costs are from those runs.
+- Edge, Brave, Windows, macOS, Snap and Flatpak builds, or any other Chrome version, and any other
+  Chromium version. On the second host, neither `shortcut` (P17) nor P16's host-as-is runs ran.
+  The Chrome 150 here is a build old enough to show its own update bubble.
+- Brave Origin. The second host has it installed, and no run launched it (Method).
+- Any Electron but two: 44.5.1 on the first host and 45.1.0 on the second, for the configurations
+  that need Electron's main process (Method). A difference between a Chrome row and the Chromium
+  row of one entry may come from the browser, the Electron version, or the host.
+- Anything beyond one run per configuration per browser (two for P12 on the first host; on
+  Chromium, five for P3 and three for `pipe`). Timings and costs are from those runs, on two
+  machines: the Chrome rows on a 4-CPU WSL2 host with Electron 44.5.1 and the Chromium rows on an
+  18-CPU native one with Electron 45.1.0, so a timing or cost from one does not compare with one
+  from the other.
 - The browser's own traffic while it considers itself online. Inside P13's namespace the page read
   `navigator.onLine` as `false`, and an offline browser may send less of its own traffic.
 - A desktop session. The GNOME rows of P16 set `XDG_CURRENT_DESKTOP` on a private bus; they are not
-  a GNOME session, and no KWallet ran. P17 ran on Xvfb with no window manager.
+  a GNOME session, and no KWallet ran. P17 ran on Xvfb with no window manager. The second host's
+  Hyprland session ran beside the probe, and no run used it.
 - A launch with the Egress Direct outside a namespace. Every configuration except P13 ran with the
   proxy fixture as the browser's proxy, so the browser's own traffic would not reach the internet.
 - TLS, HTTP/2, HTTP/3, or QUIC. The fixtures speak plain HTTP/1.1 on loopback.
 - A pending browser update. P8's restart typed `chrome://restart`.
 - An hour of browsing. P12 loaded fifteen pages in under 20 seconds.
-- That no detector can tell the engine is attached. P3 covers the listed facts only, and its
-  `Error.stack` check failed its positive control.
+- That no detector can tell the engine is attached. P3 covers the listed facts and, on Chromium 154
+  only, one check that detects `Runtime.enable`. That check says nothing about a detector built for
+  another trace of `Page` or of an isolated world. On Chrome 150 and Chrome for Testing 149 the
+  only check was the `Error.stack` count, which failed its positive control.
 - Navigations the Operator starts from the browser itself: a typed address, a bookmark, session
   restore, or a link dragged to the tab strip. P4's Ctrl-click and middle-click were sent with
   `Input.dispatchMouseEvent`, not through the X server.
@@ -800,37 +1143,55 @@ settled for Linux on the builds measured.
 - **Attach before request, step 1** (lines 446-451): settled. Auto-attach attached the existing
   first tab without an explicit attach (P7). A service worker attached twice under one `targetId`
   (P9), so "one CDP session per target, keyed by `targetId`" needs the engine to drop the second
-  attach, or each of the worker's exchanges is recorded twice.
-- **The closed set of domains, `Page` only if P3 clears it** (lines 471-477): the listed facts did
-  not change with `Page.enable` or an isolated-world read (P3). The `Error.stack` check could not
-  tell, because it read zero with `Runtime.enable` on. Whether that clears `Page` is for the
-  maintainer; the Validation item "Page-visible effects" (lines 1198-1200) needs a check that
-  detects `Runtime.enable` before it can clear a domain.
+  attach, or each of the worker's exchanges is recorded twice. On Chromium 154, auto-attach also
+  attached two `browser_ui` targets and an extension's `background_page` target, none of type
+  `page` (P5).
+- **The closed set of domains, `Page` only if P3 clears it** (lines 471-477): measured, not
+  decided. On Chromium 154, a check that fired on every reading with `Runtime.enable` on and on none
+  without it did not fire for `Page.enable` or an isolated-world read, in five runs, and the listed
+  facts did not change (P3). That check's only positive controls send `Runtime.enable`, so its
+  silence does not show that a page cannot detect `Page` or an isolated world (What this does not
+  show). On Chrome 150 and Chrome for Testing 149 the listed facts did not change, and no check that
+  detects `Runtime.enable` ran. Whether that clears `Page` is for the maintainer.
+- **Validation, Page-visible effects** (lines 1198-1200): the item lists the `Error.stack` getter
+  count, which read zero with `Runtime.enable` on, on both hosts (P3), so it cannot show that a
+  domain is invisible to the page. On Chromium 154 a count of the page's own
+  `Error.prepareStackTrace` calls, for an `Error` passed to `console.debug`, passed that control in
+  every run. The item needs a check with a passing positive control, such as that one, before it
+  can clear a domain.
 - **Rollover's commit signal** (step 2, lines 528-534): settled. `Target.targetInfoChanged` on the
   browser connection marks a commit without the `Page` domain; it also fires for a same-document
   URL change, which the document request's absence tells apart (P3).
-- **The cut** (step 5, lines 563-569): no inversion across a tab's sessions in 150 causal steps
-  (P11). It does not prove the order is kept.
-- **Bodies** (step 3, lines 535-540) and the rejected alternative of fetching at Capture time
-  (lines 1222-1226): measured, not settled. Fetching every body at `loadingFinished` cost about 16
-  ms of main-process CPU per MB and raised the 99th-percentile event-loop delay from 11 ms to 64-82
-  ms (P12). Without durable messages, any navigation, same-site too, drops the previous document's
-  bodies (P4), so a fetch at Capture time reaches only the current navigation, which is what a
-  Capture holds; only a page larger than the buffer lost bodies that way. Durable messages kept one
-  navigation's bodies in P4 and none across fifteen pages in P12, and on Chrome for Testing they
-  returned a wrong body without an error. The probe caught that only because each payload was
-  known; a running engine has no payload to compare with, which weighs against turning durable
-  messages on.
+- **The cut** (step 5, lines 563-569): the cut places an exchange by its `requestWillBeSent`, and on
+  every browser measured no step's `requestWillBeSent` arrived before the previous step's, across a
+  tab's sessions in 150 causal steps (P11). On Chromium 154, two steps' requests arrived before the
+  previous step's `loadingFinished`, so an exchange the page had already finished can still be
+  unfinished in the stream at the cut. One run per browser does not prove the order is kept.
+- **Bodies** (step 3, lines 535-540) and the rejected alternative of fetching at Capture time (lines
+  1222-1226): measured, not settled. On the first host, fetching every body at `loadingFinished`
+  cost about 16 ms of main-process CPU per MB and raised the 99th-percentile event-loop delay from
+  11 ms to 64-82 ms; on the second, with Electron 45.1.0 and Chromium 154, it cost 29 ms per MB and
+  raised it from 12 ms to 134 ms (P12). Without durable messages, any navigation, same-site too,
+  drops the previous document's bodies (P4), so a fetch at Capture time reaches only the current
+  navigation, which is what a Capture holds; only a page larger than the buffer lost bodies that
+  way. Durable messages kept one navigation's bodies in P4 and none across fifteen pages in P12, and
+  on Chrome for Testing they returned a wrong body without an error; Chromium 154 returned none. The
+  probe caught that only because each payload was known; a running engine has no payload to compare
+  with, which weighs against turning durable messages on.
 - **Capture sequence, Scroll-to-load** (step 2, lines 593-601): settled. The scroll scripts run over
   `Runtime.evaluate` in an isolated world and behave as in the main world; the page sees scroll
   events, intersection callbacks, and lazy loads (P3). The overflow unlock the step drops did
   nothing on either lock fixture.
-- **Capture sequence, screenshot** (step 5, lines 606-611): settled, with an observable cost.
-  `captureBeyondViewport` does not move the window, and the page receives `resize`,
-  `visualViewport` resize, and `ResizeObserver` callbacks (P2). Passive capture of a tab that is not
-  in front (lines 971-972) can take a screenshot (P2).
-- **Capture sequence, MHTML** (step 6, lines 612-613): settled for Chrome 150. `Page.captureSnapshot`
-  equals `wc.savePage` part for part on the fixture (P24).
+- **Capture sequence, screenshot** (step 5, lines 606-611): settled for Chrome 150 and Chrome for
+  Testing 149, with an observable cost. `captureBeyondViewport` does not move the window, and the
+  page receives `resize`, `visualViewport` resize, and `ResizeObserver` callbacks (P2). Passive
+  capture of a tab that is not in front (lines 971-972) can take a screenshot (P2). Not settled for
+  Chromium 154: in front it gave the same results as Chrome, but behind another tab the step's
+  `captureBeyondViewport` capture did not answer within 15 seconds, in one run, and only the capture
+  without it returned the page (P2).
+- **Capture sequence, MHTML** (step 6, lines 612-613): settled for Chrome 150 and Chromium 154.
+  `Page.captureSnapshot` equals `wc.savePage` part for part on the fixture, Chromium 154's against
+  Electron 45.1.0 (P24).
 - **Capture sequence, PDF** (step 9, lines 617-620): settled. `Page.printToPDF` works in a windowed
   tab (P1).
 - **Tabs, windows, and browser contexts** (lines 499-516): a cross-site navigation keeps the tab's
@@ -842,15 +1203,16 @@ settled for Linux on the builds measured.
   disables prerendering, so a speculative load never ran on another target; a prefetch appears on
   the tab's own session, and the navigation it serves is a `Document` exchange with
   `fromPrefetchCache` true (P10). A service worker's response has no remote endpoint (P9).
-- **Egress, switches and WebRTC check** (lines 829-852): settled.
-  `--webrtc-ip-handling-policy` holds and `--force-webrtc-ip-handling-policy` does nothing in either
-  browser, and an isolated world on `about:blank` gives the loaded page's result, so the check
-  needs no page of its own (P6).
+- **Egress, switches and WebRTC check** (lines 829-852): settled. `--webrtc-ip-handling-policy`
+  holds and `--force-webrtc-ip-handling-policy` does nothing in any browser measured, and an
+  isolated world on `about:blank` gives the loaded page's result, so the check needs no page of its
+  own (P6).
 - **Egress, remote endpoint and the browser's own traffic** (lines 853-872): settled for SOCKS5 and
   HTTP proxies on Linux, inside a namespace. No TCP connection and no DNS query went around either
-  proxy, and the browser sent host names, not addresses, to both (P13). The remote endpoint check
-  also works for an HTTP proxy, whose endpoint CDP reports. A service worker's response carries no
-  endpoint (P9), which the check's "is present" condition already skips.
+  proxy, and the browser sent host names, not addresses, to both, on Chromium 154 too (P13). The
+  remote endpoint check also works for an HTTP proxy, whose endpoint CDP reports. A service
+  worker's response carries no endpoint (P9), which the check's "is present" condition already
+  skips.
 - **Validation, Egress** (lines 1176-1181): contradicted. The wrapper as written does not start the
   browser: inside `unshare -rn` the process runs as root, and Chrome exits with "Running as root
   without --no-sandbox is not supported" (P13). The runs that worked added a nested `unshare -U
@@ -858,7 +1220,12 @@ settled for Linux on the builds measured.
   listener; with both the browser started with the renderer sandbox on. The nested user namespace
   alone was not tried. The item's "no socket to any address but the proxy" would fail on the IPv6
   reachability check's UDP sockets to `2001:4860:4860::8888`, which failed to connect and sent
-  nothing; the item needs to say whether it counts sockets or bytes sent.
+  nothing; the item needs to say whether it counts sockets or bytes sent. Chromium 154 refused the
+  wrapper the same way. On the second host a Direct run in the namespace looked up the browser's own
+  hosts through the operating system's resolver, whose `resolve` module answered from outside the
+  namespace, and the net log shows those lookups as resolver tasks, not sockets (P13). Under the
+  proxies no lookup ran, but a check that counts only sockets would not see one; the item needs to
+  say whether a resolver job counts.
 - **Validation, Connection** (lines 1182-1184): contradicted as worded. With the pipe the browser
   opens no TCP listener and writes no `DevToolsActivePort`, but it listens on its Unix singleton
   socket (P7). The item needs to say which sockets it means.
@@ -871,18 +1238,23 @@ settled for Linux on the builds measured.
   is, the launched browser asks the Secret Service for a key, fails on the locked keyring, and
   stores cookies under the `v10` prefix that comes without an operating-system key. Electron's
   `getSelectedStorageBackend()` does not predict the browser's choice; `isEncryptionAvailable()`
-  agreed with it in all three sessions.
+  agreed with it in all three sessions. On the second host, Chromium 154 and Electron 45.1.0 agreed
+  the same way in the two private-bus sessions; the host as it is was not run there.
 - **Cookie seeding** (decision D7, lines 727-734 and 745-749): settled. `--no-startup-window` opens
   the pipe without a window, and `Browser.close` writes `Storage.setCookies` cookies, session
   cookies included, to disk (P14). A seeding launch on a browser profile in use exits with code 0
-  within 50 ms and never answers, so the engine has to check the profile's lock before launch or
-  read a pipe that closes without answering as a browser profile in use. The session-cookie limit
-  the Persona screen
-  states (line 807) held on Chrome and not on Chrome for Testing.
-- **Ending the Capture Session and the failure table** (lines 281-286, 1090-1091): settled. The
-  browser exits within 0.6 s, an upper bound, when the pipe closes, in each of the three ways the
-  probe closed it, so "a browser left running after Birdbrain exits" did not occur. A restart from
-  inside the browser ends it without a relaunch, which is the "browser exits" row (P8).
+  within 50 ms on the first host's browsers, and after 452 ms on Chromium 154, and never answers, so
+  the engine has to check the profile's lock before launch or read a pipe that closes without
+  answering as a browser profile in use. The session-cookie limit the Persona screen states (line
+  807) held on Chrome and Chromium and not on Chrome for Testing.
+- **Ending the Capture Session and the failure table** (lines 281-286, 1090-1091): settled for
+  Chrome 150 and Chrome for Testing 149. The browser exits within 0.6 s, an upper bound, when the
+  pipe closes, in each of the three ways the probe closed it, so "a browser left running after
+  Birdbrain exits" did not occur. A restart from inside the browser ends it without a relaunch,
+  which is the "browser exits" row (P8). Not settled for Chromium 154: its browser process exited
+  each way, but after a normal exit and after a closed pipe another process naming the profile was
+  still running when the script checked, and the script killed it before it could show whether it
+  would stay (P8). The restart ended it as on Chrome.
 - **Identification** (lines 302-306) and **decision D23**: Chrome for Testing reports
   `Chrome/149.0.7827.55`, so the product string cannot tell it from branded Chrome (P20). By default
   it applies its field-trial testing configuration, which changed its MHTML (P24), and it shows an
@@ -890,25 +1262,53 @@ settled for Linux on the builds measured.
   that differs from branded Chrome in those ways unless it passes `--disable-field-trial-config`,
   and whether that switch is on Chrome's unsupported-flag list was not checked. With that switch, a
   background-tab screenshot took 2,265 ms where branded Chrome took 18 ms, in one run (P2).
+  Chromium 154 reports `Chrome/154.0.8037.97`, so the product string does not tell Chromium from
+  branded Chrome either (P20).
 - **What a page can tell, banners** (lines 895-897): settled. No automation infobar appears (P19).
-- **The pipe on Windows and macOS** (decision D1, P7): not settled. Stage-2 step 4 stays blocked.
+- **The pipe on Windows and macOS** (decision D1, P7): measured on Windows, where the pipe works on
+  Chrome, Edge and Brave 156 with no TCP listener and no `DevToolsActivePort` file, and the control
+  runs fired; not measured on macOS. Whether stage-2 step 4 waits on the macOS answer is the
+  maintainer's ruling.
 - **The keyboard shortcut** (lines 907-911): works under X11 with no desktop (P17); Wayland and
   desktop sessions are not measured.
 - **Where the CDP client runs** (decision D4): measured, not settled. Fetching every body moved the
-  main process's 99th-percentile event-loop delay to 64-82 ms and its maximum to 93-140 ms (P12).
+  main process's 99th-percentile event-loop delay to 64-82 ms and its maximum to 93-140 ms on the
+  first host, and to 134 ms and 194 ms with Electron 45.1.0 and Chromium 154 on the second (P12).
   Whether that counts as a stall is the threshold D4 leaves open.
 - **The port fallback** (decision D1, option B of the CDP client): the global `WebSocket` exists in
   Electron's main process and drives a browser in port mode (P23).
-- **Discovery** (lines 294-300): settled for this host only (P20).
+- **Discovery** (lines 294-300): settled for the two hosts only (P20). Arch's `chromium` package
+  contradicts "Birdbrain owns the whole argument list" (spec, the paragraph after Identification):
+  its `chromium` on `PATH` is a launcher that puts the switches in the Operator's
+  `chromium-flags.conf` ahead of Birdbrain's. On the second host those would have added Wayland, a
+  password store, and three unpacked extensions (Method). The probe kept them out with an
+  `XDG_CONFIG_HOME` holding no `chromium-flags.conf`; a launch of `/usr/lib/chromium/chromium`
+  itself was not tried. The browser still wrote its crash-report directory under
+  `XDG_CONFIG_HOME`, outside the browser profile (Method).
 
 ## The probe
 
 Throwaway; not part of the build. Save the script as `probe.mjs` in a scratch directory outside the
-repository, written `<S>` here (`/tmp/p1828` in the batch), beside the two files below, and run the
-commands from the repository root after `scripts/setup-worktree.sh`. Each configuration writes
+repository, written `<S>` here (`/tmp/p1828` in the first host's batch; the rerun's batch, as
+printed here, reads it from the environment), beside the two files below, and run the commands
+from the repository root after `scripts/setup-worktree.sh`. Each configuration writes
 `result-<configuration>-<browser>[-<options>].json`, and its screenshots, PDFs, MHTML files, and net
 logs, to `<S>/out`, or to `PROBE_OUT`. The script runs Python 3 with Pillow and pypdf for
 screenshots, key presses, and PDF parsing, and needs `libX11` and `libXtst`.
+
+The script below is the version the rerun's third and fourth parts ran on the second host. The
+first host's batch ran the version this document printed when #1842 added it, which git history
+keeps. The script below adds three groups of lines to that version, and each part of the rerun ran
+with the groups added before it:
+
+1. Before the first part (two `pipe` runs and `discover`): the `chromium` entry in `EXES`, the
+   `browserProcesses` field of `pipe`, and `brave-origin` in the names `discover` looks up.
+2. Before the second part (the five `page-reads` runs): P3's detector candidates. That is the block
+   of `/facts.html` that runs only on a page loaded with `?detect=`, the `/beacon` route and its
+   `beacons` list, the filter that keeps `/beacon` out of the resource timing list, and, in
+   `page-reads`, the `?detect=` address, the two control variants, the step times, and the
+   `detector` and `detectors` fields.
+3. Before the third part: `mhtml-chromium.mhtml` in the files `mhtml-compare` reads.
 
 ```js
 // Throwaway probe for the stage-2 launched-browser probe spike (#1828).
@@ -937,7 +1337,8 @@ const opt = (n, d) => {
 const has = (n) => ARGS.includes(`--probe-${n}`)
 const EXES = {
   chrome: '/usr/bin/google-chrome',
-  cft: path.join(os.homedir(), '.cache/ms-playwright/chromium-1228/chrome-linux64/chrome')
+  cft: path.join(os.homedir(), '.cache/ms-playwright/chromium-1228/chrome-linux64/chrome'),
+  chromium: '/usr/bin/chromium' // Arch's launcher, which starts /usr/lib/chromium/chromium
 }
 const BROWSER = opt('browser', 'chrome')
 const BTAG = BROWSER + (opt('tag', '') ? '-' + opt('tag', '') : '') // file name stem for screenshots, PDFs, and MHTML
@@ -959,6 +1360,7 @@ const BUFFERS = { maxTotalBufferSize: 50e6, maxResourceBufferSize: 10e6 } // the
 
 // ---------- fixture servers: 127.0.0.1 (site A) and 127.0.0.2 (site B) ----------
 const serverLog = []
+const beacons = []
 let A, B
 const LOAD_SIZES = [2e3, 20e3, 200e3, 1e6]
 const loadBody = (url, size) => {
@@ -975,6 +1377,31 @@ const lock = new URLSearchParams(location.search).get('lock'); if (lock) { docum
 const L = (window.__log = { stackRead: 0, scroll: 0, resize: 0, vvResize: 0, ro: 0, io: [], vis: [], focus: [], mutations: [], print: [], mq: [], pageshow: [], keys: [] })
 const probeErr = () => { const e = new Error('x'); Object.defineProperty(e, 'stack', { get() { L.stackRead++; return '' } }); console.debug(e) }
 probeErr(); setInterval(probeErr, 250)
+// P3's detector candidates run only on a page loaded with ?detect=<variant>, and beacon each reading.
+const detectTab = new URLSearchParams(location.search).get('detect')
+if (detectTab) {
+  const C = { prepareStackTrace: 0, messageGetter: 0, proxyTraps: 0, protoProxyTraps: 0, tableGetter: 0 }
+  Error.prepareStackTrace = (e, frames) => { if (e && e.p1828) C.prepareStackTrace++; return String(e) + frames.map((f) => '\\n    at ' + f).join('') }
+  const traps = (k) => new Proxy({}, Object.fromEntries(['get', 'has', 'ownKeys', 'getOwnPropertyDescriptor', 'getPrototypeOf'].map((t) => [t, (...a) => { C[k]++; return Reflect[t](...a) }])))
+  const BIG = 'x'.repeat(1 << 20)
+  const med = (xs) => xs.slice().sort((a, b) => a - b)[xs.length >> 1]
+  const time = (f) => { const t = performance.now(); f(); return performance.now() - t }
+  let seq = 0
+  const detect = () => {
+    const c0 = { ...C }
+    const big = [], small = []
+    for (let i = 0; i < 7; i++) { small.push(time(() => console.debug('s'))); big.push(time(() => console.debug(BIG))) }
+    const e1 = new Error('p'); e1.p1828 = true; console.debug(e1)
+    const e2 = new Error('q'); Object.defineProperty(e2, 'stack', { value: 'zzz' }); Object.defineProperty(e2, 'message', { get() { C.messageGetter++; return 'q' } }); console.debug(e2)
+    console.debug(traps('proxyTraps'))
+    console.debug(Object.create(traps('protoProxyTraps')))
+    console.table([{ get a() { C.tableGetter++; return 1 } }])
+    const r = { seq: seq++, bigStringMs: +med(big).toFixed(2), smallStringMs: +med(small).toFixed(2) }
+    for (const k in C) r[k] = C[k] - c0[k]
+    navigator.sendBeacon('/beacon?tab=' + detectTab, JSON.stringify(r))
+  }
+  detect(); setInterval(detect, 500)
+}
 addEventListener('scroll', () => L.scroll++, { passive: true })
 addEventListener('resize', () => L.resize++)
 if (window.visualViewport) visualViewport.addEventListener('resize', () => L.vvResize++)
@@ -988,7 +1415,7 @@ matchMedia('print').addEventListener('change', (e) => L.mq.push('print:' + e.mat
 addEventListener('pageshow', (e) => L.pageshow.push(e.persisted))
 addEventListener('keydown', (e) => L.keys.push(e.key))
 window.__facts = () => ({ webdriver: navigator.webdriver, chromeKeys: Object.keys(window.chrome || {}), hasFocus: document.hasFocus(), visibility: document.visibilityState,
-  resources: performance.getEntriesByType('resource').map((r) => r.name.replace(location.origin, '')).sort(), scrollY: Math.round(scrollY), inner: [innerWidth, innerHeight], log: L })
+  resources: performance.getEntriesByType('resource').map((r) => r.name.replace(location.origin, '')).filter((n) => !n.startsWith('/beacon')).sort(), scrollY: Math.round(scrollY), inner: [innerWidth, innerHeight], log: L })
 </script></body></html>`,
   '/links.html': () => `<!doctype html><title>links</title>
 <a id="blank" target="_blank" href="/popup.html?via=blank">new tab</a> <a id="xs" href="${B}/xs-end.html?via=link">cross-site</a>`,
@@ -1069,6 +1496,7 @@ function route(req, res, host) {
   const cookieNames = (req.headers.cookie || '').split(/;\s*/).filter(Boolean).map((c) => c.split('=')[0])
   serverLog.push({ i: serverLog.length, t: now(), host, method: req.method, url: req.url, cookieNames, purpose: req.headers['sec-purpose'] })
   const send = (status, type, body, extra = {}) => res.writeHead(status, { 'content-type': type, ...extra }).end(body)
+  if (p === '/beacon') { let d = ''; req.on('data', (c) => { d += c }); req.on('end', () => { beacons.push({ t: now(), tab: u.searchParams.get('tab'), ...JSON.parse(d) }); res.writeHead(204).end() }); return }
   if (PAGES[p]) return send(200, 'text/html', PAGES[p]())
   if (SCRIPTS[p]) return send(200, 'text/javascript', SCRIPTS[p])
   if (p.endsWith('.png')) return send(200, 'image/png', PNG)
@@ -1504,6 +1932,8 @@ CONFIGS.pipe = async () => {
   out.screenshot = xshot(`banners-${BTAG}`)
   const ps = procs(b.profile)
   out.processes = ps.map((p) => p.type)
+  // What reached the binary after any launcher: the executable and argv of each process without --type.
+  out.browserProcesses = ps.filter((p) => p.type === 'browser').map((p) => ({ exe: fs.readlinkSync(`/proc/${p.pid}/exe`), argv: fs.readFileSync(`/proc/${p.pid}/cmdline`, 'utf8').split('\0').filter(Boolean) }))
   out.sockets = listeners(ps.map((p) => p.pid))
   out.profileFiles = ['DevToolsActivePort', 'SingletonLock', 'SingletonSocket', 'SingletonCookie'].map((f) => [f, fs.existsSync(path.join(b.profile, f)) || (() => { try { fs.lstatSync(path.join(b.profile, f)); return 'symlink' } catch { return false } })()])
   out.sessions = E.sessionList()
@@ -1512,7 +1942,8 @@ CONFIGS.pipe = async () => {
   return out
 }
 
-// P3: page-observable facts per engine variant, each on a fresh tab.
+// P3: page-observable facts per engine variant, each on a fresh tab. Two controls test the
+// detector candidates: Runtime.enable sent after the first read, and a network-only tab last.
 CONFIGS['page-reads'] = async () => {
   const b = await launch()
   const E = await engine(b.cdp)
@@ -1520,7 +1951,7 @@ CONFIGS['page-reads'] = async () => {
   await E.navigate(warm, A + '/facts.html?warm-up=1') // the first load of an origin also fetches /favicon.ico
   await sleep(3000)
   const out = { version: b.version, variants: {} }
-  const variants = ['network-only', 'page-enable', 'isolated-read', 'scroll-isolated', 'scroll-main', 'unlock-hidden-isolated', 'unlock-clip-isolated', 'runtime-enable']
+  const variants = ['network-only', 'page-enable', 'isolated-read', 'scroll-isolated', 'scroll-main', 'unlock-hidden-isolated', 'unlock-clip-isolated', 'runtime-enable', 'runtime-enable-late', 'network-only-last']
   for (const v of variants) {
     const s = await E.newTab()
     const r = { setup: [] }
@@ -1528,12 +1959,15 @@ CONFIGS['page-reads'] = async () => {
     if (v === 'runtime-enable') { await b.cdp.send('Runtime.enable', {}, s.sessionId); r.setup.push('Runtime.enable') }
     const fromEvent = E.events.length
     const logMark = serverLog.length
-    await E.navigate(s, A + '/facts.html' + (v.startsWith('unlock-') ? '?lock=' + v.split('-')[1] : ''))
+    await E.navigate(s, A + '/facts.html?detect=' + v + (v.startsWith('unlock-') ? '&lock=' + v.split('-')[1] : ''))
     await sleep(1500)
     const before = await E.evalMain(s, 'JSON.parse(JSON.stringify(window.__facts()))')
+    r.actAt = now()
+    if (v === 'runtime-enable-late') { await b.cdp.send('Runtime.enable', {}, s.sessionId); r.setup.push('Runtime.enable after the first read') }
     if (v === 'isolated-read') r.isolated = await E.evalIso(s, '({ visibility: document.visibilityState, hasFocus: document.hasFocus(), textLength: document.body.innerText.length })')
     if (v === 'scroll-isolated' || v.startsWith('unlock-')) r.scroll = await scrollOverCdp((x) => E.evalIso(s, x), v.startsWith('unlock-'))
     if (v === 'scroll-main') r.scroll = await scrollOverCdp((x) => E.evalMain(s, x), true)
+    r.actDoneAt = now()
     await sleep(1000)
     const after = await E.evalMain(s, 'JSON.parse(JSON.stringify(window.__facts()))')
     r.before = before
@@ -1543,7 +1977,18 @@ CONFIGS['page-reads'] = async () => {
     out.variants[v] = r
     await b.cdp.send('Target.closeTarget', { targetId: s.targetId })
     await sleep(300)
+    // A reading that reached the server within 200 ms of the step's end may have started during it.
+    r.detector = beacons.filter((x) => x.tab === v).map(({ tab, ...x }) => ({ ...x, phase: x.t <= r.actAt ? 'before' : x.t >= r.actDoneAt + 200 ? 'after' : 'during' }))
   }
+  // A candidate passes its control when every positive reading lies on one side of every negative one.
+  const vals = (v, k, ph) => out.variants[v].detector.filter((x) => !ph || x.phase === ph).map((x) => x[k])
+  const span = (xs) => (xs.length ? [Math.min(...xs), Math.max(...xs), xs.length] : null)
+  out.detectors = Object.fromEntries(['bigStringMs', 'smallStringMs', 'prepareStackTrace', 'messageGetter', 'proxyTraps', 'protoProxyTraps', 'tableGetter'].map((k) => {
+    const neg = [...vals('network-only', k), ...vals('network-only-last', k), ...vals('runtime-enable-late', k, 'before')]
+    const pos = [...vals('runtime-enable', k), ...vals('runtime-enable-late', k, 'after')]
+    const separates = pos.length > 0 && neg.length > 0 && (pos.every((x) => x > Math.max(...neg)) || pos.every((x) => x < Math.min(...neg)))
+    return [k, { controlSeparates: separates, negative: span(neg), positive: span(pos), byVariant: Object.fromEntries(variants.map((v) => [v, Object.fromEntries(['before', 'during', 'after'].map((ph) => [ph, span(vals(v, k, ph))]))])) }]
+  }))
   // A commit signal without the Page domain: Target.targetInfoChanged against the network events.
   const s = await E.newTab()
   const mark = E.events.length
@@ -2136,7 +2581,7 @@ CONFIGS.dnslog = async () => {
 CONFIGS.discover = async () => {
   // Linux paths from playwright-core 1.63.0 lib/coreBundle.js:33222-33256, then PATH names.
   const table = ['/opt/google/chrome/chrome', '/opt/google/chrome-beta/chrome', '/opt/google/chrome-unstable/chrome', '/opt/google/chrome-canary/chrome', '/opt/microsoft/msedge/msedge', '/opt/microsoft/msedge-beta/msedge', '/opt/microsoft/msedge-dev/msedge']
-  const names = ['google-chrome', 'google-chrome-stable', 'microsoft-edge', 'microsoft-edge-stable', 'brave-browser', 'brave', 'chromium', 'chromium-browser']
+  const names = ['google-chrome', 'google-chrome-stable', 'microsoft-edge', 'microsoft-edge-stable', 'brave-browser', 'brave', 'brave-origin', 'chromium', 'chromium-browser']
   const dirs = (process.env.PATH || '').split(':')
   const onPath = Object.fromEntries(names.map((n) => [n, (dirs.map((d) => path.join(d, n)).find((f) => fs.existsSync(f)) || null)]))
   const snap = spawnSync('snap', ['list'], { encoding: 'utf8' })
@@ -2246,7 +2691,7 @@ CONFIGS['mhtml-compare'] = async () => {
     })
     return { headerNames: head.split(/\r?\n/).map((l) => l.split(':')[0]).filter((x) => /^[A-Za-z-]+$/.test(x)), parts }
   }
-  const files = ['mhtml-electron-savePage.mhtml', 'mhtml-electron-cdp.mhtml', 'mhtml-chrome.mhtml', 'mhtml-cft.mhtml', 'mhtml-cft-nofieldtrial.mhtml'].filter((f) => fs.existsSync(path.join(OUT, f)))
+  const files = ['mhtml-electron-savePage.mhtml', 'mhtml-electron-cdp.mhtml', 'mhtml-chrome.mhtml', 'mhtml-cft.mhtml', 'mhtml-cft-nofieldtrial.mhtml', 'mhtml-chromium.mhtml'].filter((f) => fs.existsSync(path.join(OUT, f)))
   const parsed = Object.fromEntries(files.map((f) => [f, parse(path.join(OUT, f))]))
   const ref = parsed[files[0]]
   const cmp = {}
@@ -2309,12 +2754,12 @@ main().catch((e) => { console.error('FATAL', e && e.stack || e); process.exit(1)
 nameserver 127.0.0.1
 ```
 
-The batch, as it ran. `batch.out` holds one `exit <code> <command>` line per run, for the pull
-request body. The P12 `bodies` commands ran a second time, unchanged, after the script
+The batch, as it ran on the first host. `batch.out` holds one `exit <code> <command>` line per run,
+for the pull request body. The P12 `bodies` commands ran a second time, unchanged, after the script
 began recording mismatch details (`fetched.mismatches`); P12 reports that second run. The script's
 last edit landed during P13's Direct run on Chrome: the five P13 runs after that one ran on the
-script below, and the earlier configurations on a copy without those lines, which only `bodies`
-uses.
+version #1842 printed, and the earlier configurations on a copy without those lines, which only
+`bodies` uses.
 
 ```shell
 #!/usr/bin/env bash
@@ -2388,4 +2833,272 @@ for b in chrome cft; do
   done
 done
 echo done >> $S/batch.out
+```
+
+The rerun, as it ran on the second host on 2026-11-03. Its own `batch.out` holds one
+`exit <code> <command>` line for each of its 48 runs, and the `done` line the third part wrote
+before the fourth part ran. Every run exited 0 except the spec's Egress wrapper under P13, which
+exited 1, as on the first host. `$S/xdg-empty` holds no `chromium-flags.conf`, and
+`$S/xdg-control/chromium-flags.conf` holds the control's one invented switch. The first two parts
+of the batch ran with the same variables and `run` function: the three runs above the P3 comment,
+then, after the script gained P3's candidates, the P3 loop.
+
+```shell
+#!/usr/bin/env bash
+# Second-host reruns. Run from the repository root. S holds probe.mjs and bus.conf; results land
+# in $S/out. Each line of $S/batch.out is "exit <code> <command>".
+S=${S:?set S to the scratch directory}
+E=node_modules/.bin/electron
+P=$S/probe.mjs
+export PROBE_OUT=$S/out
+mkdir -p "$S/out" "$S/logs" "$S/xdg-empty" "$S/xdg-control"
+printf -- '--probe-launcher-marker\n' > "$S/xdg-control/chromium-flags.conf"
+run() {
+  bash -c "$1" > "$S/logs/$(echo "$1" | md5sum | cut -c1-10).log" 2>&1
+  echo "exit $? $1" | tee -a "$S/batch.out"
+  rm -rf /tmp/p1828-profile-*
+  df -h /tmp | tail -1
+}
+# The live Hyprland session is never used: no Wayland variables, Xvfb at the first host's screen
+# size, a private session bus with no service activation, and an empty launcher flags directory.
+H="env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE -u ELECTRON_OZONE_PLATFORM_HINT"
+BUS="dbus-run-session --config-file=$S/bus.conf --"
+XV="xvfb-run --auto-servernum -s '-screen 0 1280x1024x24'"
+N="$BUS $H XDG_CONFIG_HOME=$S/xdg-empty ELECTRON_RUN_AS_NODE=1 $XV $E $P"
+X="--probe-guard --probe-resume=pipeline"
+
+run "$N pipe $X --probe-browser=chromium"
+run "$BUS $H XDG_CONFIG_HOME=$S/xdg-control ELECTRON_RUN_AS_NODE=1 $XV $E $P pipe $X --probe-browser=chromium --probe-tag=launcher-control"
+run "$H XDG_CONFIG_HOME=$S/xdg-empty ELECTRON_RUN_AS_NODE=1 $E $P discover"
+
+# P3, five times, on the script with the detector candidates.
+for i in 1 2 3 4 5; do run "$N page-reads $X --probe-browser=chromium --probe-tag=run$i"; done
+```
+
+P3's figures come from the five result files, read with this command after the batch:
+
+```shell
+node -e '
+const runs = [1, 2, 3, 4, 5].map((i) => require(process.argv[1] + "/result-page-reads-chromium-pipeline-run" + i + ".json"))
+for (const k of Object.keys(runs[0].detectors)) console.log(k, JSON.stringify(runs.map((r) => [r.detectors[k].controlSeparates, r.detectors[k].negative, r.detectors[k].positive])))
+for (const v of Object.keys(runs[0].variants)) {
+  const xs = runs.flatMap((r) => r.variants[v].detector)
+  const per = (f) => runs.map((r) => f(r.variants[v])).join(" ")
+  console.log(v, ["before", "during", "after"].map((p) => p + " " + xs.filter((x) => x.phase === p && x.prepareStackTrace).length + "/" + xs.filter((x) => x.phase === p).length).join(", "),
+    "| stackRead", per((x) => x.after.log.stackRead), "| scroll", per((x) => x.after.log.scroll), "| lazy", per((x) => x.lazyRequests), "| vvResize", per((x) => x.before.log.vvResize + ">" + x.after.log.vvResize),
+    "| focus", per((x) => x.before.log.focus.length + ">" + x.after.log.focus.length), "| unlock", per((x) => JSON.stringify(x.scroll ? x.scroll.prior : "-")))
+}' "$S/out"
+```
+
+The launcher readings under [Second host](#second-host) came from two commands that start no
+browser, with the user's own configuration and with the scratch directory:
+
+```shell
+/usr/bin/chromium --help
+XDG_CONFIG_HOME=$S/xdg-empty /usr/bin/chromium --help
+```
+
+The third part of the batch ran after the script gained `mhtml-chromium.mhtml`, with variables of
+its own. `XV` quotes the screen size with double quotes so that it survives the `sh -c` of the P16
+and P13 commands. `run` also kills any browser still running on a probe profile, which never
+happened, and removes every `/tmp/p1828-*` directory. `$S/pybin/python3` is a two-line shell script
+that runs the existing Python environment named under [Second host](#second-host). The file below
+is the batch as it ran, with the scratch path replaced by `${S:?...}`.
+
+```shell
+#!/usr/bin/env bash
+# Second-host reruns, slice 3: Chromium 154's remaining configurations, P16 on private buses, P24,
+# and P13. Run from the repository root. Each line of $S/batch.out is "exit <code> <command>".
+S=${S:?set S to the scratch directory}
+E=node_modules/.bin/electron
+P=$S/probe.mjs
+U=$(id -u); G=$(id -g)
+export PROBE_OUT=$S/out
+# python3 runs an existing Python 3.11 environment that already holds Pillow and pypdf.
+export PATH=$S/pybin:$PATH
+mkdir -p "$S/out" "$S/logs" "$S/xdg-empty"
+run() {
+  bash -c "$1" > "$S/logs/$(echo "$1" | md5sum | cut -c1-10).log" 2>&1
+  echo "exit $? $1" | tee -a "$S/batch.out"
+  pkill -KILL -f -- '^/usr/lib/chromium/chromium .*--user-data-dir=/tmp/p1828-' && echo "killed a leftover probe browser"
+  rm -rf /tmp/p1828-*
+  df -h /tmp | tail -1
+}
+# As before: no Wayland variables, Xvfb at the first host's screen size, a private session bus with
+# no service activation, and a launcher flags directory with no chromium-flags.conf.
+H="env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE -u ELECTRON_OZONE_PLATFORM_HINT"
+BUS="dbus-run-session --config-file=$S/bus.conf --"
+XV='xvfb-run --auto-servernum -s "-screen 0 1280x1024x24"'
+L="$H XDG_CONFIG_HOME=$S/xdg-empty"
+N="$BUS $L ELECTRON_RUN_AS_NODE=1 $XV $E $P"
+M="$BUS $L $XV $E --no-sandbox $P"
+X="--probe-guard --probe-resume=pipeline"
+b=chromium
+
+run "PROBE_PORT_A=18281 PROBE_PORT_B=18282 $N artifacts $X --probe-browser=$b"
+for d in none enable configure; do run "$N popups $X --probe-browser=$b --probe-variant=$d"; done
+for r in await pipeline; do run "$N newtabs --probe-guard --probe-browser=$b --probe-variant=$r --probe-timeout=280000"; done
+run "$N frames $X --probe-browser=$b"
+run "$N sw $X --probe-browser=$b"
+run "$N bfcache $X --probe-browser=$b"
+run "$N speculation $X --probe-browser=$b"
+run "$N speculation $X --probe-browser=$b --probe-variant=diag"
+run "$N order $X --probe-browser=$b"
+run "$N p8 $X --probe-browser=$b"
+run "$N seed $X --probe-browser=$b"
+for v in prewritten control; do run "$N prefs $X --probe-browser=$b --probe-variant=$v"; done
+for v in none policy force; do run "$N webrtc $X --probe-browser=$b --probe-variant=$v"; done
+for v in cdp keyboard; do run "$N devtools $X --probe-browser=$b --probe-variant=$v"; done
+run "$M bodies $X --probe-browser=$b --probe-mode=none --probe-timeout=580000"
+run "$M bodies $X --probe-browser=$b --probe-mode=eager --probe-timeout=580000"
+run "$M bodies $X --probe-browser=$b --probe-mode=capture --probe-sites=same --probe-timeout=580000"
+run "$M bodies $X --probe-browser=$b --probe-mode=capture --probe-sites=cross --probe-timeout=580000"
+for d in enable configure; do run "$M bodies $X --probe-browser=$b --probe-mode=capture --probe-sites=cross --probe-durable=$d --probe-timeout=580000"; done
+run "$N electron-ws $X --probe-browser=$b"
+run "$M electron-ws $X --probe-browser=$b"
+run "PROBE_PORT_A=18281 PROBE_PORT_B=18282 $M electron-mhtml"
+run "$H ELECTRON_RUN_AS_NODE=1 $E $P mhtml-compare"
+
+# P16: two GNOME sessions on a private bus with no service activation. The host-as-is runs are not
+# made here: on this host they would reach the desktop session's bus and its login keyring.
+ISO="export XDG_DATA_HOME=$S/kr/data XDG_RUNTIME_DIR=$S/kr/run XDG_CURRENT_DESKTOP=GNOME;"
+KR="printf fixture-keyring-pass | gnome-keyring-daemon --unlock --components=secrets >/dev/null;"
+FRESH="rm -rf $S/kr && mkdir -p $S/kr/data $S/kr/run && chmod 700 $S/kr/run"
+N1="$L ELECTRON_RUN_AS_NODE=1 $XV $E $P"
+M1="$L $XV $E --no-sandbox $P"
+run "$FRESH && $BUS sh -c '$ISO $KR $N1 keystore $X --probe-browser=$b --probe-tag=gnome-keyring'"
+run "$FRESH && $BUS sh -c '$ISO $N1 keystore $X --probe-browser=$b --probe-tag=gnome-no-secret-service'"
+run "$FRESH && $BUS sh -c '$ISO $KR $M1 safestorage --probe-tag=gnome-keyring'"
+run "$FRESH && $BUS sh -c '$ISO $M1 safestorage --probe-tag=gnome-no-secret-service'"
+
+# P13: the spec's Egress wrapper as written, then the nested user namespace with the DNS listener,
+# which first answers one lookup from Node's resolver ($S/dnscheck.cjs).
+run "unshare -rn sh -c 'ip link set lo up && $N egress --probe-variant=socks --probe-tag=spec-wrapper --probe-browser=$b'"
+for v in direct socks http; do
+  run "unshare -rnm sh -c 'ip link set lo up && mount --bind $S/resolv.conf /etc/resolv.conf && { ELECTRON_RUN_AS_NODE=1 $E $P dnslog --probe-browser=$b --probe-tag=$v --probe-duration=170000 & } && sleep 1 && ELECTRON_RUN_AS_NODE=1 $E $S/dnscheck.cjs && unshare -U --map-user=$U --map-group=$G env $N egress --probe-browser=$b --probe-variant=$v && wait'"
+done
+echo done >> "$S/batch.out"
+```
+
+`dnscheck.cjs`, beside the script, which each P13 run calls inside the namespace before the
+browser starts:
+
+```js
+// P13: one lookup through Node's own resolver, which reads /etc/resolv.conf, to show the listener answers.
+const { Resolver } = require('node:dns').promises
+new Resolver().resolve4('listener-check.egress-probe.test').then((a) => console.log('answered', a), (e) => console.log('failed', e.code))
+```
+
+A fourth part, after the third, was one more `pipe` run with the third part's variables, for P19's
+screenshot:
+
+```shell
+run "$N pipe $X --probe-browser=chromium --probe-tag=banners"
+```
+
+P12's second-host figures come from `p12-figures.cjs`, run as `node "$S/p12-figures.cjs" "$S/out"
+chromium`:
+
+```js
+// P12 figures from the six `bodies` result files. Usage: node p12-figures.cjs <out directory> <browser>
+const [dir, browser] = process.argv.slice(2)
+const modes = ['none', 'eager', 'capture-same', 'capture-cross', 'capture-enable-cross', 'capture-configure-cross']
+const cpu = (r) => r.cpuMs.user + r.cpuMs.system
+let base
+for (const m of modes) {
+  const r = require(`${dir}/result-bodies-main-${browser}-${m}-pipeline.json`)
+  const { browsingMs, eventLoopDelayMs: d, pipe, fetched, perPage, retainedAtEnd } = r
+  base = base || r
+  const added = cpu(r) - cpu(base)
+  console.log(m, JSON.stringify({
+    browsingS: +(browsingMs / 1000).toFixed(1), cpuS: +(cpu(r) / 1000).toFixed(2),
+    delayP99Ms: Math.round(d.p99), delayMaxMs: Math.round(d.max), pipeMB: +(pipe.bytes / 1e6).toFixed(1),
+    returned: fetched.ok, notReturned: fetched.failed, errors: fetched.errors, wrongBodies: fetched.mismatches,
+    bodyMB: +(fetched.bytes / 1e6).toFixed(1), addedCpuS: +(added / 1000).toFixed(2),
+    addedMsPerMB: fetched.bytes ? +(added / (fetched.bytes / 1e6)).toFixed(1) : null,
+    pagesShort: perPage.filter((p) => p.fetched < p.finished), retainedAtEnd
+  }))
+}
+```
+
+P13's second-host figures come from `p13-figures.cjs`, run as `node "$S/p13-figures.cjs" "$S/out"
+chromium`, which reads the raw net logs:
+
+```js
+// P13 figures the script's summarizeNetLog does not keep: per net log, every connect attempt with
+// its address and error, every resolver job with the task that answered it and its outcome,
+// every address a UDP socket sent bytes to, and the IPv6 reachability checks not answered from
+// cache. Usage: node p13-figures.cjs <out directory> <browser>
+const fs = require('node:fs')
+const path = require('node:path')
+const [dir, browser] = process.argv.slice(2)
+for (const v of ['direct', 'socks', 'http']) {
+  let text = fs.readFileSync(path.join(dir, `netlog-${v}-${browser}.json`), 'utf8').trim()
+  let log
+  try { log = JSON.parse(text) } catch { log = JSON.parse(text.replace(/,\s*$/, '') + ']}') }
+  const names = Object.fromEntries(Object.entries(log.constants.logEventTypes).map(([k, n]) => [n, k]))
+  const { PHASE_BEGIN: begin, PHASE_END: end } = log.constants.logEventPhase
+  const open = new Map()
+  const connects = {}
+  const jobHost = new Map()
+  const jobs = {}
+  const taskCounts = { HOST_RESOLVER_MANAGER_JOB: 0 }
+  const udpBySource = new Map()
+  const udpSentTo = new Set()
+  let uncachedIpv6Checks = 0
+  const resolved = new Set()
+  const tried = new Set()
+  for (const e of log.events) {
+    const n = names[e.type]
+    const p = e.params || {}
+    const id = e.source.id
+    if (n === 'HOST_RESOLVER_MANAGER_JOB' && e.phase === begin) { jobHost.set(id, p.host); taskCounts[n]++ }
+    if (n === 'HOST_RESOLVER_MANAGER_IPV6_REACHABILITY_CHECK' && !p.cached) uncachedIpv6Checks++
+    if (/^HOST_RESOLVER_.*TASK$/.test(n) && e.phase === end && jobHost.has(id)) {
+      const k = `${jobHost.get(id)} ${n}`
+      taskCounts[n] = (taskCounts[n] || 0) + 1
+      jobs[k] = p.net_error ? `net_error ${p.net_error}` : `${(p.address_list || []).length} addresses`
+      for (const a of p.address_list || []) resolved.add(a.replace(/:0$/, ''))
+    }
+    if (n === 'UDP_CONNECT' && e.phase === begin) udpBySource.set(id, p.address)
+    if (n === 'TCP_CONNECT_ATTEMPT' && e.phase === begin && !/^127\./.test(p.address)) tried.add(p.address)
+    if (n === 'UDP_BYTES_SENT' && udpBySource.has(id)) udpSentTo.add(udpBySource.get(id))
+    if ((n === 'UDP_CONNECT' || n === 'TCP_CONNECT_ATTEMPT') && e.phase === begin) open.set(n + id, `${n} ${p.address}`)
+    if ((n === 'UDP_CONNECT' || n === 'TCP_CONNECT_ATTEMPT') && e.phase === end && open.has(n + id)) {
+      const k = `${open.get(n + id)} ${p.net_error ? `net_error ${p.net_error}` : p.os_error ? `os_error ${p.os_error}` : 'no error'}`
+      connects[k] = (connects[k] || 0) + 1
+      open.delete(n + id)
+    }
+  }
+  for (const k of open.values()) connects[`${k} no end`] = (connects[`${k} no end`] || 0) + 1
+  const triedIps = new Set([...tried].map((a) => a.replace(/:\d+$/, '')))
+  const outsideLoopback = { pairs: tried.size, ips: triedIps.size, allResolved: [...triedIps].every((a) => resolved.has(a)) }
+  console.log(JSON.stringify({ variant: v, connects, outsideLoopback, udpSentTo: [...udpSentTo], uncachedIpv6Checks, taskCounts, jobs }, null, 1))
+}
+```
+
+The resolver check under P13 ran these two commands after the batch, the second to count distinct
+addresses:
+
+```shell
+unshare -rnm sh -c "ip link set lo up && mount --bind $S/resolv.conf /etc/resolv.conf && ip -brief address && cat /etc/resolv.conf && getent -s hosts:files ahosts www.google.com; echo \"files exit \$?\"; getent -s hosts:resolve ahosts www.google.com | wc -l; getent -s hosts:resolve ahosts www.google.com >/dev/null; echo \"resolve exit \$?\""
+unshare -rnm sh -c "ip link set lo up && mount --bind $S/resolv.conf /etc/resolv.conf && getent -s hosts:resolve ahosts www.google.com | awk '{print \$1}' | sort -u | wc -l"
+```
+
+The first printed `lo` alone, `nameserver 127.0.0.1`, `files exit 2`, 24 lines, and `resolve exit
+0`; the second printed 8. The scratch directories' contents under [Second host](#second-host) came
+from:
+
+```shell
+find "$S/xdg-empty" "$S/xdg-control" -maxdepth 3
+```
+
+The second host's refused hosts under [Second host](#second-host) came from every result file's
+`guardProxyLog`:
+
+```shell
+cd "$S/out" && node -e '
+const fs = require("fs"); const all = new Map()
+for (const f of fs.readdirSync(".").filter((f) => f.startsWith("result-") && f.endsWith(".json"))) { const r = JSON.parse(fs.readFileSync(f, "utf8")); for (const l of r.guardProxyLog || []) { if (!/refused$/.test(l)) continue; const hp = l.replace(/ refused$/, ""); if (!all.has(hp)) all.set(hp, new Set()); all.get(hp).add(f.replace(/^result-|\.json$/g, "")) } }
+for (const [k, v] of [...all].sort()) console.log(k, v.size, [...v].slice(0, 3).join(","))'
 ```

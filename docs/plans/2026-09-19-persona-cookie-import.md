@@ -32,7 +32,7 @@ wordings, drops ADR-0030's `persona-window` wording, and adds the `launched` and
 (`docs/specs/2026-10-10-capture-engine-launched-browser-design.md:1083-1100`, called "the spec"
 below); and decision 11's persona window is the one phase 3b retires.
 
-**Refreshed 2026-11-03 against `main` at bf3710a0.** #2031 merged the verifier half of phase 2
+**Refreshed 2026-11-04 against `main` at 43ad0830.** #2031 merged the verifier half of phase 2
 with the launched-browser fields at schema 7 and closed #1830; #2051 merged the writer half with
 DB migration 45, after which #1498 was reopened for exhibit ingest; #2043 landed the designer's
 2026-11-01 revision of the launched-browser mock; and #2046 folded the probe's attach findings into
@@ -55,7 +55,7 @@ guarantees second.
 
 ## What exists
 
-Read from `origin/main` at bf3710a0 on 2026-11-03.
+Read from `origin/main` at 43ad0830 on 2026-11-04.
 
 - **Phase 0.** ADR-0030 and the `CONTEXT.md` entry for **Persona** (`CONTEXT.md:41`) record the
   decisions, and the #545 spike is `docs/specs/2026-09-19-persona-bot-detection-spike.md`. #542

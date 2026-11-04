@@ -6,8 +6,10 @@
 one Linux host. Chromium 154 was measured on a second Linux host on 2026-11-03, for every entry but
 P17 and P16's host-as-is session, which did not run there. On Chromium 154, P3 has a check that
 detects `Runtime.enable` and passed its control; on the first host's two builds, P3's only check
-failed its control. Edge and Brave, and every product on Windows and macOS, are not measured. The
-clicked-Capture step (stage-2 step 4) stays blocked until P7 has Windows and macOS answers.
+failed its control. Edge and Brave, and every product on Windows and macOS, are not measured on
+these two hosts. A maintainer run measured P7 on Windows on 2026-11-03, outside this document (P7).
+The clicked-Capture step (stage-2 step 4) still waits on P7 for a macOS answer and for the
+maintainer's ruling on the Windows run.
 
 Answers the P questions of the
 [stage-2 design spec](2026-10-10-capture-engine-launched-browser-design.md) (Open questions, line
@@ -480,9 +482,15 @@ profile exits at once (P14).
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
 
-A maintainer run on Windows and macOS, or a follow-up issue, fills the Windows and macOS rows. The
-clicked-Capture step (stage-2 step 4) waits for them, as the ruling on decision D1 requires (spec,
-lines 405-409 and 1291-1294).
+A maintainer run on 2026-11-03 measured P7 on Windows 11 Pro 25H2 for Chrome 156.0.8078.80, Edge
+156.0.4314.58, and Brave 156.1.98.63, each with a control run, following the draft pipe runbook,
+and posted its rows in
+[a comment on issue #1828](https://github.com/thebristolsound/birdbrain/issues/1828#issuecomment-6615435372).
+This document does not fold them in, so the Windows row above gives only what these two hosts
+measured. A maintainer run on macOS, or a follow-up issue, fills the macOS row. The clicked-Capture
+step (stage-2 step 4) waits for the pipe measured on Windows and macOS, as the ruling on decision D1
+requires (spec, lines 405-409 and 1291-1294). That comment leaves to the maintainer whether its
+Windows run meets the Windows half.
 
 ### P8: When the pipe closes
 

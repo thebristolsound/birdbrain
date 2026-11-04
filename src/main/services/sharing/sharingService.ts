@@ -52,9 +52,11 @@ import {
 } from '@main/services/sharing/syncState'
 import {
   PeerUnreachableError,
+  TransportError,
   type ByteStream,
   type Connection,
-  type Transport
+  type Transport,
+  type TransportFailure
 } from '@main/services/sharing/transport'
 
 // The sharing service (#1810): one per process, behind the `sharing:*`
@@ -183,6 +185,30 @@ function replayed(stream: ByteStream, chunks: Uint8Array[]): ByteStream {
   }
 }
 
+// How the network ends a teammate's stream in ordinary use. These log at
+// info with no toast, since the teammate's side reports the sync session it
+// was running and the next round retries. Everything else warns: a peer that
+// closes with a nonzero code (this app always closes with 0), a peer's QUIC
+// stack aborting the connection, a connection lost any other way, an error the
+// transport cannot name, and a failure in this app's own code.
+const ORDINARY_DISCONNECTS: ReadonlySet<TransportFailure> = new Set<TransportFailure>([
+  'PEER_CLOSED',
+  'TIMED_OUT',
+  'LOCALLY_CLOSED',
+  'CONNECTION_RESET',
+  'STREAM_STOPPED',
+  'STREAM_RESET',
+  'STREAM_CLOSED'
+])
+
+export function logStreamFailure(err: unknown): void {
+  if (err instanceof TransportError && ORDINARY_DISCONNECTS.has(err.code)) {
+    logger.info('sharing', 'sharing.stream_failed', undefined, err)
+  } else {
+    logger.warn('sharing', 'sharing.stream_failed', undefined, err)
+  }
+}
+
 // Hands an incoming stream to the handler its first message names: `join`
 // to the join server, `hello` to the sync session. Anything else, a stream
 // that ends before its first frame, a first frame that is not a message, and
@@ -293,9 +319,7 @@ export class SharingService {
             ticketNodeId: (ticket) => transport.nodeIdOf(ticket),
             rememberTicket: rememberPeerTicket
           })
-      }).catch((err: unknown) => {
-        logger.warn('sharing', 'sharing.stream_failed', undefined, err)
-      })
+      }).catch(logStreamFailure)
     })
     return { transport, joins }
   }

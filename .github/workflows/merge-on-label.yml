@@ -241,13 +241,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
-          LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
           set -euo pipefail
+          # Match whole names: a word match on the joined names reads `next: merge` as `merge`.
           for label in approved merge; do
-            case " $LABELS " in
-              *" $label "*) gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --remove-label "$label" >/dev/null && echo "removed $label" ;;
-            esac
+            if jq -e --arg l "$label" 'index($l)' <<< "$LABELS" > /dev/null; then
+              gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --remove-label "$label" >/dev/null && echo "removed $label"
+            fi
           done
           auto="$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json autoMergeRequest --jq '.autoMergeRequest != null')"
           if [ "$auto" = "true" ]; then

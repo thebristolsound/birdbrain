@@ -150,6 +150,10 @@ export function CaptureViewer() {
   const duplicateOf = capture.duplicateOfCaptureId
     ? captures.find((c) => c.id === capture.duplicateOfCaptureId)
     : undefined
+  // A link Capture's source (ADR-0040), shown only while the Case still holds it.
+  const linkedFrom = capture.linkedFromCaptureId
+    ? captures.find((c) => c.id === capture.linkedFromCaptureId)
+    : undefined
   // Back names the Capture it returns to, which skips any deleted since it was pushed.
   const liveIds = new Set(captures.map(({ id }) => id))
   const backId = captureTrail.filter((id) => liveIds.has(id)).at(-1)
@@ -213,6 +217,15 @@ export function CaptureViewer() {
               onClick={() => useAppStore.getState().setSelectedCaptureId(duplicateOf.id)}
             >
               ← Duplicate of {new Date(duplicateOf.timestamp).toLocaleString()}
+            </button>
+          )}
+          {linkedFrom && (
+            <button
+              data-testid="linked-from-source"
+              className="min-w-0 truncate text-xs text-accent underline underline-offset-2"
+              onClick={() => useAppStore.getState().setSelectedCaptureId(linkedFrom.id)}
+            >
+              ← From a link in {linkedFrom.title || linkedFrom.url}
             </button>
           )}
           {supersededOriginal && (

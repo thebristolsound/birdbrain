@@ -101,6 +101,15 @@ import type {
   CaseArchiveCounts
 } from '@shared/types'
 
+// 15 since the Persona columns (#1498, schema v45): data.json's captures carry
+// `persona_id` and `persona_label`, copied as they are. A Birdbrain from before
+// them drops both columns without an error, so the imported row no longer
+// mirrors the Persona its signed entry names. The gate refuses instead.
+// 14 since link Capture provenance (ADR-0040, schema v44): data.json's
+// captures carry `linked_from_capture_id`, `linked_from_content_hash` and
+// `link_href`, and the import remaps `linked_from_capture_id`. A Birdbrain from
+// before them drops the three columns without an error, so a link Capture
+// loses the source the viewer and report show. The gate refuses instead.
 // 13 since the capture engine's columns and files (#1907 and #1925, schema
 // v43): data.json's captures carry `transaction_record_hash`, `pdf_hash`,
 // `inventory`, `scroll_to_load`, `bound_tls` and `bound_tls_absent`, and the
@@ -183,7 +192,7 @@ import type {
 // anchor_json, which a pre-v27 import would silently drop. Bump this whenever a
 // Case Archive gains data an older release would silently discard or reject
 // opaquely.
-export const CASE_ARCHIVE_SCHEMA_VERSION = 13
+export const CASE_ARCHIVE_SCHEMA_VERSION = 15
 
 export interface CaseArchiveData {
   case: Record<string, unknown>

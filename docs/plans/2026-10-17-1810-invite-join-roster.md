@@ -1,6 +1,6 @@
 # Plan: invite, join and roster writers (#1810)
 
-**Status:** approved 2026-10-17
+**Status:** done, finished by [#1913](https://github.com/thebristolsound/birdbrain/pull/1913)
 
 The maintainer approved this plan on 2026-10-17 and took the recommended answer to every question
 in section 11; the PR that closes #1810 builds it. Issue #1810 is SC-6 in

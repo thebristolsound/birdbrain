@@ -314,6 +314,13 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
         expect('boundTls' in entry).toBe(false)
         expect('boundTlsAbsent' in entry).toBe(false)
         expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
+        // The row mirrors the hashes the entry re-anchors (step 10 fills `pdf_hash`).
+        expect(getCapture(id)).toMatchObject({
+          inventory: ENGINE_INVENTORY,
+          scrollToLoad: ENGINE_SCROLL_TO_LOAD,
+          transactionRecordHash: ENGINE_HASHES.transactionRecord,
+          pdfHash: ENGINE_HASHES.pdf
+        })
         expect(verifyManifestChain(caseDir).valid).toBe(true)
         await expect(lifecycle.verify(id)).resolves.toMatchObject({ status: 'verified' })
       }

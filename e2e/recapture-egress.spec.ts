@@ -156,7 +156,9 @@ test.describe('Recapture through the Egress', () => {
       method: 'background',
       egressKind: 'proxy',
       egressLabel: 'E2E SOCKS',
-      schemaVersion: 5
+      // A background entry also carries the capture engine's inventory, a
+      // schema-6 field.
+      schemaVersion: 6
     })
     expect(String(entry.userAgent)).toContain('Electron/')
     // The record names the kind and the label, never where the proxy is.

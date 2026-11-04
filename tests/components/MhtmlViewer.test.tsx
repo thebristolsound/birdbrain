@@ -11,6 +11,7 @@ import { MHTML_PARTITION } from '@shared/constants'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
 import { notify } from '@renderer/lib/notify'
 import { useAppStore } from '@renderer/stores/appStore'
+import type { CaptureEvent } from '@shared/types'
 import type { GuestMouseDownEvent, GuestMouseUpEvent } from '@shared/ipc'
 import { fakeBridge } from '../renderer/fakeBridge'
 
@@ -215,15 +216,148 @@ describe('MhtmlViewer', () => {
 
     await waitFor(() => expect(warn).toHaveBeenCalled())
     expect(enqueue).toHaveBeenCalledTimes(2)
-    expect(enqueue).toHaveBeenCalledWith({
-      urls: ['https://a.example/one'],
-      caseId: 'case1',
-      supersedesCaptureId: undefined
-    })
+    // The job names the viewed Capture and the address as the menu read it (ADR-0040).
+    expect(enqueue.mock.calls[0]).toStrictEqual([
+      {
+        urls: ['https://a.example/one'],
+        caseId: 'case1',
+        supersedesCaptureId: undefined,
+        linkedFrom: { captureId: 'cap1', linkHref: 'https://a.example/one' }
+      }
+    ])
     expect(success).toHaveBeenCalledWith('Link capture queued', {
-      description: 'https://a.example/one'
+      description: 'https://a.example/one. Its source is checked before the link renders.'
     })
     expect(warn).toHaveBeenCalledWith('Link not captured: excluded by case policy')
+    expect(warn).toHaveBeenCalledTimes(1)
+  })
+
+  // ADR-0040: the source is checked when the job runs, after the queued notice, so a
+  // refusal then is raised as a notice of its own, not only as a Capture Health row.
+  it('raises a notice when the queued job is refused, and none for another job or a stored one', async () => {
+    const listeners: Array<(event: CaptureEvent) => void> = []
+    const onCaptureActivity = vi.fn((callback: (event: CaptureEvent) => void) => {
+      listeners.push(callback)
+      return () => {
+        listeners.splice(listeners.indexOf(callback), 1)
+      }
+    })
+    const emit = (event: Partial<CaptureEvent>) =>
+      act(() => {
+        for (const listener of [...listeners]) {
+          listener({ source: 'recapture', timestamp: '', type: 'skipped', url: '', ...event })
+        }
+      })
+    const enqueue = vi.fn().mockResolvedValue({ accepted: 1, rejected: [] })
+    fakeBridge({
+      captures: {
+        getMhtmlUrl: vi.fn().mockResolvedValue(FILE_URL),
+        list: vi.fn().mockResolvedValue([])
+      },
+      recapture: { enqueue },
+      onCaptureActivity
+    })
+    const warn = vi.spyOn(notify, 'warn')
+    renderViewer()
+    const guest = await screen.findByTestId('mhtml-viewer')
+    const captureLink = async (url: string) => {
+      guestContextMenu(guest, { linkURL: url, linkText: 'link' })
+      fireEvent.click(await screen.findByTestId('context-menu-item-link-capture'))
+      await waitFor(() =>
+        expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ urls: [url] }))
+      )
+    }
+
+    const one = 'https://a.example/one'
+    const job = (linkHref: string) => ({ linkedFrom: { captureId: 'cap1', linkHref } })
+    await captureLink(one)
+    emit({ type: 'received', url: one, ...job(one) })
+    emit({ url: 'https://a.example/other', skipReason: 'Link source not found', ...job('other') })
+    // Another job for the same address: a Recapture, a link from another stored page, or a
+    // Capture by another route.
+    emit({ type: 'failed', url: one, error: 'Recapture timed out' })
+    emit({
+      url: one,
+      skipReason: 'Link source not found',
+      linkedFrom: { captureId: 'cap2', linkHref: one }
+    })
+    emit({ source: 'auto', url: one, skipReason: 'Blacklisted: a.example', ...job(one) })
+    expect(warn).not.toHaveBeenCalled()
+    emit({ url: one, skipReason: 'Link source does not verify (tampered)', ...job(one) })
+    expect(warn).toHaveBeenCalledWith('Link not captured: Link source does not verify (tampered)')
+    expect(listeners).toHaveLength(0)
+
+    // A redirect into an excluded address: the skip names the final address, not the link.
+    await captureLink('https://a.example/two')
+    emit({
+      url: 'https://blocked.example/landing',
+      skipReason: 'Blacklisted: blocked.example',
+      ...job('https://a.example/two')
+    })
+    expect(warn).toHaveBeenCalledWith('Link not captured: Blacklisted: blocked.example')
+    expect(listeners).toHaveLength(0)
+
+    await captureLink('https://a.example/three')
+    emit({ type: 'stored', url: 'https://a.example/three', ...job('https://a.example/three') })
+    expect(warn).toHaveBeenCalledTimes(2)
+    expect(listeners).toHaveLength(0)
+  })
+
+  // A source with no manifest entry is refused before the job's first await, so the refusal
+  // can reach the viewer before the queue's reply does.
+  it('raises no queued notice after a refusal that beat the reply, and stops listening on an error', async () => {
+    const listeners: Array<(event: CaptureEvent) => void> = []
+    const onCaptureActivity = vi.fn((callback: (event: CaptureEvent) => void) => {
+      listeners.push(callback)
+      return () => {
+        listeners.splice(listeners.indexOf(callback), 1)
+      }
+    })
+    let reply: (value: { accepted: number; rejected: [] }) => void = () => {}
+    const enqueue = vi
+      .fn()
+      .mockReturnValueOnce(new Promise((resolve) => (reply = resolve)))
+      .mockRejectedValueOnce(new Error('queue unavailable'))
+    fakeBridge({
+      captures: {
+        getMhtmlUrl: vi.fn().mockResolvedValue(FILE_URL),
+        list: vi.fn().mockResolvedValue([])
+      },
+      recapture: { enqueue },
+      onCaptureActivity
+    })
+    const success = vi.spyOn(notify, 'success')
+    const warn = vi.spyOn(notify, 'warn')
+    renderViewer()
+    const guest = await screen.findByTestId('mhtml-viewer')
+    const url = 'https://a.example/one'
+    const captureLink = async () => {
+      guestContextMenu(guest, { linkURL: url, linkText: 'one' })
+      fireEvent.click(await screen.findByTestId('context-menu-item-link-capture'))
+    }
+
+    await captureLink()
+    await waitFor(() => expect(enqueue).toHaveBeenCalledTimes(1))
+    act(() => {
+      for (const listener of [...listeners]) {
+        listener({
+          type: 'skipped',
+          source: 'recapture',
+          url,
+          timestamp: '',
+          skipReason: 'Link source has no manifest entry',
+          linkedFrom: { captureId: 'cap1', linkHref: url }
+        })
+      }
+    })
+    await act(async () => reply({ accepted: 1, rejected: [] }))
+    expect(warn).toHaveBeenCalledWith('Link not captured: Link source has no manifest entry')
+    expect(success).not.toHaveBeenCalled()
+
+    await captureLink()
+    await waitFor(() => expect(enqueue).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(listeners).toHaveLength(0))
+    expect(warn).toHaveBeenCalledTimes(1)
   })
 
   // #1737, plan S6: the Page tab has no cell, so its answer is a toast.
@@ -533,7 +667,8 @@ describe('MhtmlViewer', () => {
       expect(enqueue).toHaveBeenCalledWith({
         urls: ['https://elsewhere.example/page'],
         caseId: 'case1',
-        supersedesCaptureId: undefined
+        supersedesCaptureId: undefined,
+        linkedFrom: { captureId: 'cap1', linkHref: 'https://elsewhere.example/page' }
       })
     )
     expect(useAppStore.getState().selectedCaptureId).toBe('cap1')

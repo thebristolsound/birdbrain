@@ -11,11 +11,15 @@ import {
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { once } from 'events'
+import { createHash } from 'crypto'
 import { MANIFEST_FILENAME } from '@shared/constants'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
-import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase, setAutoCapturePolicy } from '@main/services/db/caseRepo'
-import { getCapture } from '@main/services/db/captureRepo'
+import { getCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
+import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
+import { defaultCaptureStore } from '@main/services/captureStore'
+import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { createCaptureLifecycle, verifyCapture } from '@main/services/captureLifecycle'
@@ -25,15 +29,114 @@ import {
   looksLikeLoginWall,
   redirectedFinalUrl,
   type RenderedPage,
-  type RenderPage
+  type RenderPage,
+  type ScreenshotRecord
 } from '@main/services/recapture'
 import { RefusedAddressError } from '@main/services/localAddressPolicy'
+import { getExhibit } from '@main/services/db/exhibitRepo'
+import { resetSigningKey } from '@main/services/signingKey'
+import { resetSyncStateMemory } from '@main/services/sharing/syncState'
+import { logger } from '@main/services/logger'
+import { ManifestEntrySchema, type BoundTls, type ScrollToLoadRecord } from '@shared/schemas'
 import type { CaptureEvent, Capture } from '@shared/types'
+import {
+  activate,
+  addCapture,
+  appendOwnChainLine,
+  createPeer,
+  memberAddBody,
+  pull,
+  recordSource,
+  seedSharedCase,
+  type Peer
+} from '../../helpers/syncPeers'
 
 vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@main/services/tlsCertChain')>()
   return { ...actual, fetchCertChain: vi.fn(async () => null) }
 })
+
+// A 20000px page that stopped growing, its screenshot cut short at the 16384px
+// texture ceiling.
+const SCREENSHOT_RECORD: ScreenshotRecord = {
+  scaled: false,
+  truncated: true,
+  trimmed: false,
+  contentWidth: 1280,
+  contentHeight: 20000,
+  width: 1280,
+  height: 16384
+}
+
+// Distinct counts, so a part signed as 0 or with the two swapped shows.
+const IMAGE_SOURCE_PINNING: RenderedPage['imageSourcePinning'] = {
+  present: true,
+  pinnedImages: 3,
+  pinnedImagesNotLoaded: 1
+}
+
+const SCROLL_TO_LOAD: ScrollToLoadRecord = {
+  requested: true,
+  ran: true,
+  outcome: 'stopped-growing',
+  endHeight: 20000,
+  scrollLockLifted: true
+}
+
+// Step 9: invented record bytes, its inventory part, and the main document's
+// Bound TLS Details. The store and the hash take the bytes as they are.
+const WARC_GZ = Buffer.from('invented transaction record bytes')
+const WARC_SHA256 = createHash('sha256').update(WARC_GZ).digest('hex')
+const TRANSACTION_RECORD_PART = {
+  present: true as const,
+  exchanges: 4,
+  cached: 1,
+  cancelled: 1,
+  failed: 0,
+  inFlight: 1,
+  finishedWithoutResponse: 1,
+  bodiesOmitted: 1,
+  incompleteRequestBodies: 0,
+  webSockets: 0,
+  recordedTargets: 2,
+  unrecordedTargets: 1,
+  replacedHeaders: ['cookie' as const, 'set-cookie' as const],
+  budget: { totalBytes: 50_000_000, resourceBytes: 10_000_000 }
+}
+const BOUND_TLS: BoundTls = {
+  protocol: 'TLS 1.3',
+  keyExchange: '',
+  keyExchangeGroup: 'X25519',
+  cipher: 'AES_128_GCM',
+  subjectName: 'example.com',
+  sanList: ['example.com'],
+  issuer: 'Invented CA',
+  validFrom: '2026-01-01T00:00:00.000Z',
+  validTo: '2027-01-01T00:00:00.000Z',
+  signedCertificateTimestampList: [],
+  certificateTransparencyCompliance: 'unknown',
+  encryptedClientHello: false
+}
+const RECORDED: RenderedPage['transactionRecord'] = {
+  present: true,
+  warcGz: WARC_GZ,
+  inventory: TRANSACTION_RECORD_PART,
+  boundTls: BOUND_TLS
+}
+
+// Step 10: invented PDF bytes, which the store and the hash take as they are.
+const PDF = Buffer.from('%PDF-1.4 invented print of the page')
+const PDF_SHA256 = createHash('sha256').update(PDF).digest('hex')
+const PRINTED: RenderedPage['pdf'] = {
+  present: true,
+  bytes: PDF,
+  inventory: { present: true, afterCollection: true }
+}
+const PRINT_FAILED: RenderedPage['pdf'] = {
+  present: false,
+  reason: 'failed',
+  error: new Error('The print did not settle within 5000ms')
+}
 
 function fakeRender(overrides: Partial<RenderedPage> = {}): RenderPage {
   return async (url) => ({
@@ -41,12 +144,17 @@ function fakeRender(overrides: Partial<RenderedPage> = {}): RenderPage {
       yield Buffer.from(`mhtml-of-${url}`)
     })(),
     screenshot: Buffer.from('png-bytes'),
+    screenshotRecord: SCREENSHOT_RECORD,
+    scrollToLoad: SCROLL_TO_LOAD,
+    imageSourcePinning: IMAGE_SOURCE_PINNING,
     text: 'page text',
     title: 'Page Title',
     finalUrl: url,
     httpStatus: 200,
     userAgent: 'HiddenWindow UA',
     browserVersion: 'Chrome/130',
+    transactionRecord: RECORDED,
+    pdf: PRINTED,
     cleanup: async () => {},
     ...overrides
   })
@@ -129,6 +237,346 @@ describe('recapture service', () => {
     expect(verification.status).toBe('verified')
   })
 
+  // D4, D5 and D9 of docs/plans/2026-10-10-capture-engine-first-slice.md.
+  describe('the inventory and the Scroll-to-load record', () => {
+    const INVENTORY = {
+      mhtml: IMAGE_SOURCE_PINNING,
+      transactionRecord: TRANSACTION_RECORD_PART,
+      screenshot: { present: true, ...SCREENSHOT_RECORD },
+      pdf: { present: true, afterCollection: true }
+    }
+
+    function captureEntries(): Array<Record<string, unknown>> {
+      return readFileSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line) as Record<string, unknown>)
+        .filter((entry) => entry.type === 'capture')
+    }
+
+    it('signs both in the entry, which the strict schema accepts, and mirrors both on the row', async () => {
+      const svc = makeService(fakeRender())
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+
+      const [entry] = captureEntries()
+      // `appendManifestEntry` signs without a schema check, so this is where a
+      // shape the verifier would refuse is caught.
+      const parsed = ManifestEntrySchema.safeParse(entry)
+      expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+      expect(entry).toMatchObject({
+        method: 'background',
+        inventory: INVENTORY,
+        scrollToLoad: SCROLL_TO_LOAD,
+        schemaVersion: 6
+      })
+
+      const row = getCapture(newCaptures[0].id)!
+      expect(row.inventory).toEqual(INVENTORY)
+      expect(row.scrollToLoad).toEqual(SCROLL_TO_LOAD)
+      await expect(verifyCapture(row.id)).resolves.toMatchObject({ status: 'verified' })
+    })
+
+    // Step 9 of docs/plans/2026-10-10-capture-engine-first-slice.md.
+    it('stores the Transaction Record and signs its hash and Bound TLS Details', async () => {
+      const seen: string[] = []
+      const svc = makeService(async (url, opts) => {
+        seen.push(opts.captureId)
+        return fakeRender()(url, opts)
+      })
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+
+      const [entry] = captureEntries()
+      const parsed = ManifestEntrySchema.safeParse(entry)
+      expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+      expect(entry).toMatchObject({
+        transactionRecordHash: WARC_SHA256,
+        boundTls: BOUND_TLS,
+        inventory: { transactionRecord: TRANSACTION_RECORD_PART }
+      })
+      expect(entry).not.toHaveProperty('boundTlsAbsent')
+      // The record's `warcinfo` names the id the render was given, so the Capture keeps it.
+      expect(entry.captureId).toBe(seen[0])
+      expect(newCaptures[0].id).toBe(seen[0])
+      const file = join(getStorageRoot(), caseId, `${seen[0]}.warc.gz`)
+      expect(readFileSync(file).equals(WARC_GZ)).toBe(true)
+
+      const row = getCapture(seen[0])!
+      expect(row.transactionRecordHash).toBe(WARC_SHA256)
+      expect(row.boundTls).toEqual(BOUND_TLS)
+      expect(row.boundTlsAbsent).toBeUndefined()
+      await expect(verifyCapture(row.id)).resolves.toMatchObject({ status: 'verified' })
+
+      // A changed byte in the stored record fails verification.
+      writeFileSync(file, Buffer.from('invented transaction record byteS'))
+      await expect(verifyCapture(row.id)).resolves.toMatchObject({ status: 'tampered' })
+    })
+
+    it('signs why Bound TLS Details are absent beside a present record', async () => {
+      const svc = makeService(
+        fakeRender({
+          transactionRecord: {
+            present: true,
+            warcGz: WARC_GZ,
+            inventory: TRANSACTION_RECORD_PART,
+            boundTlsAbsent: 'not-https'
+          }
+        })
+      )
+      svc.enqueue([{ url: 'http://example.com/page', caseId }])
+      await svc.idle()
+
+      const [entry] = captureEntries()
+      expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
+      expect(entry.boundTlsAbsent).toBe('not-https')
+      expect(entry).not.toHaveProperty('boundTls')
+      expect(getCapture(newCaptures[0].id)!.boundTlsAbsent).toBe('not-https')
+    })
+
+    it('stores the Capture with the record absent as failed and Bound TLS Details not-recorded', async () => {
+      const svc = makeService(
+        fakeRender({
+          transactionRecord: {
+            present: false,
+            reason: 'failed',
+            error: new Error('The body fetches did not settle within 5000ms')
+          }
+        })
+      )
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+
+      expect(events.map(({ type }) => type)).toEqual(['received', 'stored'])
+      const [entry] = captureEntries()
+      const parsed = ManifestEntrySchema.safeParse(entry)
+      expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+      expect(entry).toMatchObject({
+        inventory: { transactionRecord: { present: false, reason: 'failed' } },
+        boundTlsAbsent: 'not-recorded'
+      })
+      expect(entry).not.toHaveProperty('transactionRecordHash')
+      expect(entry).not.toHaveProperty('boundTls')
+      const row = getCapture(newCaptures[0].id)!
+      expect(row.transactionRecordHash).toBeUndefined()
+      expect(row.boundTlsAbsent).toBe('not-recorded')
+      expect(existsSync(join(getStorageRoot(), caseId, `${row.id}.warc.gz`))).toBe(false)
+      await expect(verifyCapture(row.id)).resolves.toMatchObject({ status: 'verified' })
+    })
+
+    // Step 10 of docs/plans/2026-10-10-capture-engine-first-slice.md.
+    it('stores the PDF under the Capture id, signs its hash and part, and mirrors the hash', async () => {
+      const svc = makeService(fakeRender())
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+
+      const [entry] = captureEntries()
+      const parsed = ManifestEntrySchema.safeParse(entry)
+      expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+      expect(entry).toMatchObject({
+        pdfHash: PDF_SHA256,
+        inventory: { pdf: { present: true, afterCollection: true } }
+      })
+      const row = getCapture(newCaptures[0].id)!
+      expect(row.pdfHash).toBe(PDF_SHA256)
+      const file = join(getStorageRoot(), caseId, `${row.id}.pdf`)
+      expect(readFileSync(file).equals(PDF)).toBe(true)
+      await expect(verifyCapture(row.id)).resolves.toMatchObject({ status: 'verified' })
+
+      writeFileSync(file, Buffer.from('%PDF-1.4 invented print of the pagE'))
+      await expect(verifyCapture(row.id)).resolves.toMatchObject({ status: 'tampered' })
+    })
+
+    it('stores the Capture with the PDF absent as failed, and no PDF file', async () => {
+      const svc = makeService(fakeRender({ pdf: PRINT_FAILED }))
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+
+      expect(events.map(({ type }) => type)).toEqual(['received', 'stored'])
+      const [entry] = captureEntries()
+      const parsed = ManifestEntrySchema.safeParse(entry)
+      expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+      expect(entry).toMatchObject({
+        inventory: { pdf: { present: false, reason: 'failed' } },
+        transactionRecordHash: WARC_SHA256
+      })
+      expect(entry).not.toHaveProperty('pdfHash')
+      const row = getCapture(newCaptures[0].id)!
+      expect(row.pdfHash).toBeUndefined()
+      expect(existsSync(join(getStorageRoot(), caseId, `${row.id}.pdf`))).toBe(false)
+      await expect(verifyCapture(row.id)).resolves.toMatchObject({ status: 'verified' })
+    })
+
+    describe('the notice that the PDF failed', () => {
+      const notices = (spy: { mock: { calls: unknown[][] } }) =>
+        spy.mock.calls.filter(([, code]) => code === 'backgroundRenderer.pdf_failed')
+
+      afterEach(() => {
+        vi.restoreAllMocks()
+      })
+
+      it('is logged once the Capture is stored, with the error', async () => {
+        const spy = vi.spyOn(logger, 'error')
+        let storedWhenLogged = false
+        spy.mockImplementation((_source, code) => {
+          if (code === 'backgroundRenderer.pdf_failed') {
+            storedWhenLogged = readFileSync(
+              join(getStorageRoot(), caseId, MANIFEST_FILENAME),
+              'utf-8'
+            ).includes('"type":"capture"')
+          }
+          return ''
+        })
+        const svc = makeService(fakeRender({ pdf: PRINT_FAILED }))
+        svc.enqueue([{ url: 'https://example.com/page', caseId }])
+        await svc.idle()
+        expect(notices(spy)).toEqual([
+          ['backgroundRenderer', 'backgroundRenderer.pdf_failed', undefined, PRINT_FAILED.error]
+        ])
+        expect(storedWhenLogged).toBe(true)
+      })
+
+      it('is not logged for a printed PDF, or when the ingest fails', async () => {
+        const spy = vi.spyOn(logger, 'error')
+        const printed = makeService(fakeRender())
+        printed.enqueue([{ url: 'https://example.com/page', caseId }])
+        await printed.idle()
+
+        const failing = createCaptureLifecycle({ selectorLifecycle })
+        const svc = createRecaptureService({
+          renderPage: fakeRender({ pdf: PRINT_FAILED }),
+          captureLifecycle: { ...failing, ingest: () => Promise.reject(new Error('disk full')) },
+          emitEvent: (e) => events.push(e),
+          emitNewCapture: (c) => newCaptures.push(c)
+        })
+        svc.enqueue([{ url: 'https://example.com/other', caseId }])
+        await svc.idle()
+        expect(events.map(({ type }) => type)).toEqual(['received', 'stored', 'received', 'failed'])
+        expect(notices(spy)).toEqual([])
+      })
+    })
+
+    // Finding 4 of the review of #1999: the Operator hears of a stored Capture only once it is.
+    describe('the notice that the record failed', () => {
+      const FAILED: RenderedPage['transactionRecord'] = {
+        present: false,
+        reason: 'failed',
+        error: new Error('The body fetches did not settle within 5000ms')
+      }
+      const notices = (spy: { mock: { calls: unknown[][] } }) =>
+        spy.mock.calls.filter(([, code]) => code === 'backgroundRenderer.transaction_record_failed')
+
+      afterEach(() => {
+        vi.restoreAllMocks()
+      })
+
+      it('is logged once the Capture is stored, with the error', async () => {
+        const spy = vi.spyOn(logger, 'error')
+        let storedWhenLogged = false
+        spy.mockImplementation((_source, code) => {
+          if (code === 'backgroundRenderer.transaction_record_failed') {
+            storedWhenLogged = readFileSync(
+              join(getStorageRoot(), caseId, MANIFEST_FILENAME),
+              'utf-8'
+            ).includes('"type":"capture"')
+          }
+          return ''
+        })
+        const svc = makeService(fakeRender({ transactionRecord: FAILED }))
+        svc.enqueue([{ url: 'https://example.com/page', caseId }])
+        await svc.idle()
+        expect(notices(spy)).toEqual([
+          [
+            'backgroundRenderer',
+            'backgroundRenderer.transaction_record_failed',
+            undefined,
+            FAILED.error
+          ]
+        ])
+        expect(storedWhenLogged).toBe(true)
+      })
+
+      it('is not logged when the job then refuses the final URL', async () => {
+        const spy = vi.spyOn(logger, 'error')
+        const svc = makeService(
+          fakeRender({ transactionRecord: FAILED, finalUrl: 'http://192.168.1.1/' })
+        )
+        svc.enqueue([{ url: 'https://example.com/page', caseId }])
+        await svc.idle()
+        expect(events.map(({ type }) => type)).toEqual(['received', 'skipped'])
+        expect(notices(spy)).toEqual([])
+      })
+
+      it('is not logged when the ingest fails', async () => {
+        const spy = vi.spyOn(logger, 'error')
+        const failing = createCaptureLifecycle({ selectorLifecycle })
+        const svc = createRecaptureService({
+          renderPage: fakeRender({ transactionRecord: FAILED }),
+          captureLifecycle: {
+            ...failing,
+            ingest: () => Promise.reject(new Error('disk full'))
+          },
+          emitEvent: (e) => events.push(e),
+          emitNewCapture: (c) => newCaptures.push(c)
+        })
+        svc.enqueue([{ url: 'https://example.com/page', caseId }])
+        await svc.idle()
+        expect(events.map(({ type }) => type)).toEqual(['received', 'failed'])
+        expect(notices(spy)).toEqual([])
+      })
+    })
+
+    it('signs a phase that did not run with no outcome and no height', async () => {
+      const notRun: ScrollToLoadRecord = { requested: true, ran: false, scrollLockLifted: false }
+      const svc = makeService(fakeRender({ scrollToLoad: notRun }))
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+
+      const [entry] = captureEntries()
+      expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
+      expect(entry.scrollToLoad).toEqual(notRun)
+      expect(getCapture(newCaptures[0].id)!.scrollToLoad).toEqual(notRun)
+    })
+
+    it("re-anchors both on a Duplicate's entry and mirrors them on its row", async () => {
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle })
+      const svc = createRecaptureService({
+        renderPage: fakeRender(),
+        captureLifecycle: lifecycle,
+        emitEvent: (e) => events.push(e),
+        emitNewCapture: (c) => newCaptures.push(c)
+      })
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+
+      const result = await lifecycle.duplicate(newCaptures[0].id)
+      if (result.status !== 'duplicated') throw new Error('expected a duplicate')
+
+      const [, copy] = captureEntries()
+      const parsed = ManifestEntrySchema.safeParse(copy)
+      expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+      expect(copy).toMatchObject({
+        method: 'duplicate',
+        inventory: INVENTORY,
+        scrollToLoad: SCROLL_TO_LOAD,
+        transactionRecordHash: WARC_SHA256,
+        pdfHash: PDF_SHA256
+      })
+      // D11: a Duplicate writes no Bound TLS Details, and its row mirrors its entry.
+      expect(copy).not.toHaveProperty('boundTls')
+      expect(copy).not.toHaveProperty('boundTlsAbsent')
+      const row = getCapture(result.capture.id)!
+      expect(row.inventory).toEqual(INVENTORY)
+      expect(row.scrollToLoad).toEqual(SCROLL_TO_LOAD)
+      expect(row.transactionRecordHash).toBe(WARC_SHA256)
+      expect(row.pdfHash).toBe(PDF_SHA256)
+      expect(readFileSync(join(getStorageRoot(), caseId, `${row.id}.pdf`)).equals(PDF)).toBe(true)
+      expect(row.boundTls).toBeUndefined()
+      expect(row.boundTlsAbsent).toBeUndefined()
+      await expect(verifyCapture(row.id)).resolves.toMatchObject({ status: 'verified' })
+    })
+  })
+
   it('signs the Egress the render went through, its label and the user agent (ADR-0032)', async () => {
     const svc = makeService(fakeRender({ egress: { kind: 'tor', label: 'Tor Browser' } }))
     svc.enqueue([{ url: 'https://example.com/page', caseId }])
@@ -200,11 +648,11 @@ describe('recapture service', () => {
   it('runs jobs serially in FIFO order', async () => {
     const order: string[] = []
     const gate: Array<() => void> = []
-    const render: RenderPage = async (url) => {
+    const render: RenderPage = async (url, opts) => {
       order.push(`start:${url}`)
       await new Promise<void>((resolve) => gate.push(resolve))
       order.push(`end:${url}`)
-      return fakeRender()(url, { timeoutMs: 0 })
+      return fakeRender()(url, opts)
     }
     const svc = makeService(render)
     svc.enqueue([
@@ -486,5 +934,440 @@ describe('redirectedFinalUrl (#797)', () => {
   it('compares unparseable input as text rather than throwing', () => {
     expect(redirectedFinalUrl('not a url', 'not a url')).toBeUndefined()
     expect(redirectedFinalUrl('not a url', 'https://example.com/')).toBe('https://example.com/')
+  })
+})
+
+// Capture link (ADR-0040): the job names the Capture whose stored page held the link and the
+// link's address; the queue checks both and signs the source's Content Hash from its entry.
+describe('Capture link jobs (ADR-0040)', () => {
+  const LINK = 'http://example.com/linked'
+  const LANDED = 'https://example.com/linked'
+  let tempDir: string
+  let caseId: string
+  let events: CaptureEvent[]
+  let newCaptures: Capture[]
+  let captureLifecycle: ReturnType<typeof createCaptureLifecycle>
+  let svc: ReturnType<typeof createRecaptureService>
+
+  beforeEach(async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-link-capture-'))
+    initStorage(join(tempDir, 'captures'))
+    await initDatabase(':memory:')
+    initSettings(tempDir)
+    resetInstallationId()
+    initInstallationId(tempDir)
+    updateSettings({ operatorName: 'Op' })
+    caseId = createCase({ name: 'Link source' }).id
+    ensureCaseDir(caseId)
+    events = []
+    newCaptures = []
+    captureLifecycle = createCaptureLifecycle({
+      selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle
+    })
+    // The link redirects from http to https, the case where `url` alone loses the address.
+    svc = createRecaptureService({
+      renderPage: (url, opts) => fakeRender(url === LINK ? { finalUrl: LANDED } : {})(url, opts),
+      captureLifecycle,
+      emitEvent: (e) => events.push(e),
+      emitNewCapture: (c) => newCaptures.push(c),
+      timeoutMs: 45_000
+    })
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  const entries = (): Array<Record<string, unknown>> =>
+    readFileSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+  const entryOf = (id: string) => entries().find((e) => e.captureId === id)!
+
+  async function sourceCapture(url = 'https://example.com/source'): Promise<Capture> {
+    svc.enqueue([{ url, caseId }])
+    await svc.idle()
+    return getCapture(newCaptures[newCaptures.length - 1].id)!
+  }
+
+  function linkPayload(captureId: string, urls: string[] = [LINK]) {
+    return { urls, caseId, linkedFrom: { captureId, linkHref: LINK } }
+  }
+
+  // A refused job writes nothing: no Capture, no manifest line.
+  async function expectNothingWritten(before: number, captures: number): Promise<void> {
+    await svc.idle()
+    expect(newCaptures).toHaveLength(captures)
+    expect(entries()).toHaveLength(before)
+  }
+
+  it('signs the source, its Content Hash from the entry, and the link address', async () => {
+    const source = await sourceCapture()
+    expect(svc.enqueueLink(linkPayload(source.id))).toEqual({ accepted: 1, rejected: [] })
+    await svc.idle()
+
+    const linked = getCapture(newCaptures[1].id)!
+    expect(linked.url).toBe(LANDED)
+    const provenance = {
+      linkedFromCaptureId: source.id,
+      linkedFromContentHash: entryOf(source.id).contentHash,
+      linkHref: LINK
+    }
+    expect(provenance.linkedFromContentHash).toBe(source.hash)
+    expect(linked).toMatchObject({ method: 'background', ...provenance })
+    expect(entryOf(linked.id)).toMatchObject({ ...provenance, schemaVersion: 6 })
+    expect((await verifyCapture(linked.id)).status).toBe('verified')
+  })
+
+  // The two schema-6 sets meet only on a link Capture, and the strict schema checks each.
+  it('signs the capture engine fields beside the link fields, and the row mirrors both', async () => {
+    const source = await sourceCapture()
+    svc.enqueueLink(linkPayload(source.id))
+    await svc.idle()
+
+    const linked = newCaptures[1].id
+    const entry = entryOf(linked)
+    const parsed = ManifestEntrySchema.safeParse(entry)
+    expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+    const provenance = {
+      linkedFromCaptureId: source.id,
+      linkedFromContentHash: source.hash,
+      linkHref: LINK
+    }
+    const engine = {
+      inventory: {
+        mhtml: IMAGE_SOURCE_PINNING,
+        transactionRecord: TRANSACTION_RECORD_PART,
+        screenshot: { present: true, ...SCREENSHOT_RECORD },
+        pdf: { present: true, afterCollection: true }
+      },
+      scrollToLoad: SCROLL_TO_LOAD,
+      transactionRecordHash: WARC_SHA256,
+      boundTls: BOUND_TLS,
+      pdfHash: PDF_SHA256
+    }
+    expect(entry).toMatchObject({ ...provenance, ...engine, schemaVersion: 6 })
+    expect(getCapture(linked)).toMatchObject({ ...provenance, ...engine })
+    await expect(verifyCapture(linked)).resolves.toMatchObject({ status: 'verified' })
+  })
+
+  it('writes none of the fields on an ordinary job, or on a Recapture of a link Capture', async () => {
+    const source = await sourceCapture()
+    svc.enqueueLink(linkPayload(source.id))
+    await svc.idle()
+    const linkedId = newCaptures[1].id
+    svc.enqueue([{ url: LINK, caseId, supersedesCaptureId: linkedId }])
+    await svc.idle()
+    const recaptureId = newCaptures[2].id
+
+    for (const id of [source.id, recaptureId]) {
+      const { linkedFromCaptureId, linkedFromContentHash, linkHref } = getCapture(id)!
+      expect([linkedFromCaptureId, linkedFromContentHash, linkHref]).toEqual([
+        undefined,
+        undefined,
+        undefined
+      ])
+      const entry = entryOf(id)
+      const fields = ['linkedFromCaptureId', 'linkedFromContentHash', 'linkHref']
+      expect(fields.filter((field) => field in entry)).toEqual([])
+    }
+    expect(getCapture(recaptureId)!.supersedesCaptureId).toBe(linkedId)
+  })
+
+  // `linkHref` is the address before canonicalization, so the check is exact: a spelling
+  // that canonicalizes to the same address is still another string than the one signed.
+  it.each([
+    ['no address', []],
+    ['two addresses', [LINK, 'http://example.com/other']],
+    ['another address', ['http://example.com/other']],
+    ['a canonical spelling of the address', ['http://example.com/linked/']]
+  ])('refuses a payload whose urls hold %s', async (_label, urls) => {
+    const source = await sourceCapture()
+    const before = entries().length
+    expect(svc.enqueueLink(linkPayload(source.id, urls))).toEqual({
+      accepted: 0,
+      rejected: [{ url: LINK, reason: 'Capture link takes exactly the link address' }]
+    })
+    await expectNothingWritten(before, 1)
+  })
+
+  it('refuses a payload with no source id, or one that also supersedes a Capture', async () => {
+    const source = await sourceCapture()
+    const before = entries().length
+    expect(
+      svc.enqueueLink({ urls: [LINK], caseId, linkedFrom: { captureId: '', linkHref: LINK } })
+    ).toEqual({ accepted: 0, rejected: [{ url: LINK, reason: 'Invalid link source' }] })
+    expect(svc.enqueueLink({ urls: [LINK], caseId })).toEqual({
+      accepted: 0,
+      rejected: [{ url: '', reason: 'Invalid link source' }]
+    })
+    expect(svc.enqueueLink({ ...linkPayload(source.id), supersedesCaptureId: source.id })).toEqual({
+      accepted: 0,
+      rejected: [{ url: LINK, reason: 'A link capture supersedes nothing' }]
+    })
+    await expectNothingWritten(before, 1)
+  })
+
+  it('refuses a source in another Case, or one deleted', async () => {
+    const source = await sourceCapture()
+    const otherCase = createCase({ name: 'Other' }).id
+    ensureCaseDir(otherCase)
+    expect(svc.enqueueLink({ ...linkPayload(source.id), caseId: otherCase }).rejected).toEqual([
+      { url: LINK, reason: 'Link source is in another case' }
+    ])
+    expect(await captureLifecycle.delete(source.id)).toBe(true)
+    const before = entries().length
+    expect(svc.enqueueLink(linkPayload(source.id)).rejected).toEqual([
+      { url: LINK, reason: 'Link source not found' }
+    ])
+    await expectNothingWritten(before, 1)
+  })
+
+  // The payload checks run again when the job does, for a job that reached the queue by
+  // another route or whose source went away after it was queued.
+  it.each([
+    ['a different address', 'other', 'Link address differs from the queued address'],
+    ['a deleted source', 'deleted', 'Link source not found'],
+    ['a source in another Case', 'elsewhere', 'Link source is in another case']
+  ])('skips a queued job naming %s, before it renders', async (_label, kind, reason) => {
+    const source = await sourceCapture()
+    let job = { url: LINK, caseId, linkedFrom: { captureId: source.id, linkHref: LINK } }
+    if (kind === 'other') job = { ...job, url: 'http://example.com/other' }
+    if (kind === 'deleted') await captureLifecycle.delete(source.id)
+    if (kind === 'elsewhere') {
+      job = { ...job, caseId: createCase({ name: 'Other' }).id }
+      ensureCaseDir(job.caseId)
+    }
+    const before = entries().length
+    expect(svc.enqueue([job]).accepted).toBe(1)
+    await expectNothingWritten(before, 1)
+    expect(events.at(-1)).toMatchObject({ type: 'skipped', url: job.url, skipReason: reason })
+  })
+
+  // The exclusion skip names the final address, so only `linkedFrom` ties it to the job.
+  it('names the job on each of its events, and on no other job', async () => {
+    const source = await sourceCapture()
+    expect(events.some((e) => 'linkedFrom' in e)).toBe(false)
+    setAutoCapturePolicy(caseId, {
+      exclusions: ['/^https:\\/\\/example\\.com\\/linked$/'],
+      mode: 'stack'
+    })
+    const [before, written] = [events.length, entries().length]
+    expect(svc.enqueueLink(linkPayload(source.id)).accepted).toBe(1)
+    await expectNothingWritten(written, 1)
+
+    const linkedFrom = { captureId: source.id, linkHref: LINK }
+    expect(events.slice(before)).toMatchObject([
+      { type: 'received', url: LINK, linkedFrom },
+      { type: 'skipped', url: LANDED, linkedFrom }
+    ])
+  })
+
+  it('skips a source whose stored page no longer verifies', async () => {
+    const source = await sourceCapture()
+    writeFileSync(defaultCaptureStore.resolveAbsolute(source.mhtmlPath!), 'altered bytes')
+    const before = entries().length
+    expect(svc.enqueueLink(linkPayload(source.id)).accepted).toBe(1)
+    await expectNothingWritten(before, 1)
+    expect(events.at(-1)).toMatchObject({
+      type: 'skipped',
+      skipReason: 'Link source does not verify (tampered)'
+    })
+  })
+
+  // The page still matches its entry, so only the verdict refuses it: a check that compared
+  // the hash alone would sign a source whose screenshot no longer verifies.
+  it('skips a source whose screenshot no longer verifies, though its page does', async () => {
+    const source = await sourceCapture()
+    writeFileSync(defaultCaptureStore.resolveAbsolute(source.screenshotPath!), 'altered png')
+    const before = entries().length
+    expect(svc.enqueueLink(linkPayload(source.id)).accepted).toBe(1)
+    await expectNothingWritten(before, 1)
+    expect(events.at(-1)).toMatchObject({
+      type: 'skipped',
+      skipReason: 'Link source does not verify (tampered)'
+    })
+  })
+
+  // Maintainer ruling, 2026-10-26: the entry names the source by the id the source's own
+  // entry signs, as a deletion entry does (#1815). An import into the installation that
+  // already holds the row renames it, and the row keeps that new id for the viewer.
+  it('names a source an archive import renamed by the id its own entry signs', async () => {
+    const source = await sourceCapture()
+    const archivePath = join(tempDir, 'source.bbcase')
+    await exportCaseArchive(caseId, archivePath)
+    const { newCaseId } = await importCaseArchive(archivePath)
+    const [renamed] = listCaptures(newCaseId)
+    expect(renamed.id).not.toBe(source.id)
+
+    const payload = {
+      urls: [LINK],
+      caseId: newCaseId,
+      linkedFrom: { captureId: renamed.id, linkHref: LINK }
+    }
+    expect(svc.enqueueLink(payload)).toEqual({ accepted: 1, rejected: [] })
+    await svc.idle()
+
+    const linked = getCapture(newCaptures[1].id)!
+    expect(linked.linkedFromCaptureId).toBe(renamed.id)
+    const entry = readFileSync(join(getStorageRoot(), newCaseId, MANIFEST_FILENAME), 'utf-8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .find((e) => e.captureId === linked.id)
+    expect(entry).toMatchObject({
+      linkedFromCaptureId: source.id,
+      linkedFromContentHash: source.hash,
+      linkHref: LINK
+    })
+    expect((await verifyCapture(linked.id)).status).toBe('verified')
+  })
+
+  it('skips a source whose row points at another Capture’s entry', async () => {
+    const source = await sourceCapture()
+    const other = await sourceCapture('https://example.com/other-source')
+    getDb()
+      .prepare('UPDATE captures SET manifest_index = ? WHERE id = ?')
+      .run(other.manifestIndex, source.id)
+    const before = entries().length
+    expect(svc.enqueueLink(linkPayload(source.id)).accepted).toBe(1)
+    await expectNothingWritten(before, 2)
+    expect(events.at(-1)).toMatchObject({
+      type: 'skipped',
+      skipReason: 'Link source has no verified manifest entry'
+    })
+  })
+
+  it('skips a source with no manifest entry', async () => {
+    const legacy = insertCapture({
+      caseId,
+      url: 'https://example.com/legacy',
+      title: 'Legacy',
+      hash: 'a'.repeat(64),
+      timestamp: '2026-01-01T00:00:00.000Z'
+    })
+    expect(svc.enqueueLink(linkPayload(legacy.id)).accepted).toBe(1)
+    await svc.idle()
+    expect(newCaptures).toHaveLength(0)
+    expect(events.at(-1)).toMatchObject({
+      type: 'skipped',
+      skipReason: 'Link source has no manifest entry'
+    })
+  })
+
+  // The manifest writer runs no schema check, and the strict schema refuses a
+  // `linkedFromContentHash` that is not lower-case SHA-256 hex. A signed capture entry's own
+  // `contentHash` can be any string, so the queue refuses such a source rather than sign it.
+  it('skips a source whose signed Content Hash is not lower-case SHA-256 hex', async () => {
+    const contentHash = 'A'.repeat(64)
+    const caseDir = join(getStorageRoot(), caseId)
+    initManifest(caseDir)
+    const id = 'upper-case-source'
+    const { index } = appendManifestEntry(caseDir, {
+      type: 'capture',
+      captureId: id,
+      caseId,
+      url: 'https://example.com/upper',
+      timestamp: '2026-01-01T00:00:00.000Z',
+      contentHash,
+      sizeBytes: 1,
+      operatorId: 'op',
+      operatorName: 'Op',
+      toolVersion: '0.4.0'
+    })
+    insertCapture({
+      id,
+      caseId,
+      url: 'https://example.com/upper',
+      title: 'Upper',
+      hash: contentHash,
+      timestamp: '2026-01-01T00:00:00.000Z',
+      format: 'mhtml',
+      manifestIndex: index
+    })
+    const before = entries().length
+    expect(svc.enqueueLink(linkPayload(id)).accepted).toBe(1)
+    await expectNothingWritten(before, 0)
+    expect(events.at(-1)).toMatchObject({
+      type: 'skipped',
+      skipReason: 'Link source Content Hash is not lower-case SHA-256 hex'
+    })
+  })
+})
+
+// A Shared Case member can link from a teammate's received Capture: its signed entry is on
+// the author's chain, not the receiver's, and the writer reads it from there (ADR-0040).
+describe("Capture link from a teammate's Capture (ADR-0040)", () => {
+  const CASE_ID = '0196f7a2-aaaa-bbbb-cccc-000000001995'
+  const LINK = 'http://example.com/alice/linked'
+  let root: string
+  let A: Peer
+  let B: Peer
+
+  beforeEach(async () => {
+    root = mkdtempSync(join(tmpdir(), 'birdbrain-link-teammate-'))
+    A = await createPeer(root, 'alice', 'Alice Owner', 'AL')
+    B = await createPeer(root, 'bob', 'Bob Member', 'BO')
+    for (const peer of [A, B]) {
+      await activate(peer)
+      seedSharedCase(CASE_ID, A, [B])
+    }
+    await activate(A)
+    appendOwnChainLine(CASE_ID, memberAddBody(CASE_ID, A, 'owner', A))
+    appendOwnChainLine(CASE_ID, memberAddBody(CASE_ID, B, 'member', A))
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    resetInstallationId()
+    resetSigningKey()
+    resetSyncStateMemory()
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it("signs the author's entry for the source, and the Capture verifies", async () => {
+    const source = await addCapture(CASE_ID, A, 1)
+    const recorded = recordSource(CASE_ID, A)
+    await activate(B)
+    const result = await pull(CASE_ID, recorded)
+    expect(result.errors).toEqual([])
+    expect(getExhibit(source.captureId)?.authorInstallationId).toBe(A.installationId)
+
+    const newCaptures: Capture[] = []
+    const events: CaptureEvent[] = []
+    const svc = createRecaptureService({
+      renderPage: fakeRender(),
+      captureLifecycle: createCaptureLifecycle({
+        selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle
+      }),
+      emitEvent: (e) => events.push(e),
+      emitNewCapture: (c) => newCaptures.push(c),
+      timeoutMs: 45_000
+    })
+    const linkedFrom = { captureId: source.captureId, linkHref: LINK }
+    expect(svc.enqueueLink({ urls: [LINK], caseId: CASE_ID, linkedFrom })).toEqual({
+      accepted: 1,
+      rejected: []
+    })
+    await svc.idle()
+
+    expect(events.filter(({ type }) => type === 'skipped')).toEqual([])
+    expect(newCaptures).toHaveLength(1)
+    const provenance = {
+      linkedFromCaptureId: source.captureId,
+      linkedFromContentHash: source.contentHash,
+      linkHref: LINK
+    }
+    const linked = getCapture(newCaptures[0].id)!
+    expect(linked).toMatchObject(provenance)
+    const entry = readFileSync(join(getStorageRoot(), CASE_ID, MANIFEST_FILENAME), 'utf-8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .find((e) => e.captureId === linked.id)
+    expect(entry).toMatchObject({ ...provenance, schemaVersion: 6 })
+    expect((await verifyCapture(linked.id)).status).toBe('verified')
   })
 })

@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { DEFAULT_TSA_URL, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import {
   BOUND_TLS_ABSENCES,
+  BROWSER_FAMILIES,
   CAPTURE_METHODS,
   CERTIFICATE_TRANSPARENCY_COMPLIANCES,
   CONSENT_SUPPRESSIONS,
@@ -9,8 +10,12 @@ import {
   DEFAULT_UI_DENSITY,
   EGRESS_KINDS,
   INVENTORY_ABSENCE_REASONS,
+  LAUNCHED_CAPTURE_METHODS,
+  PASSIVE_CAPTURE_RULES,
+  PDF_ABSENCE_REASONS,
   SCROLL_TO_LOAD_OUTCOMES,
   TLS_REFETCH_SKIPS,
+  TRANSACTION_RECORD_ABSENCE_REASONS,
   UI_DENSITIES
 } from '@shared/types'
 import type {
@@ -404,9 +409,11 @@ export function formatExtensionAttachError(err: z.core.$ZodError): string {
 // (see #118). v3 adds the `exhibit`, `derivation` and `renumber` entry types
 // (ADR-0023) and generalizes `deletion` and `timestamp` to any Exhibit;
 // `capture` entries gain only an optional `exhibitNumber` (X46). v5 adds the
-// optional Egress fields on `capture` (ADR-0032), and v6 the capture engine's
-// optional fields and the link provenance fields (ADR-0040) on `capture`
-// (below). Mixed-version chains are normal — never retro-sign legacy entries.
+// optional Egress fields on `capture` (ADR-0032), v6 the capture engine's
+// optional fields and the link provenance fields (ADR-0040) on `capture`, and
+// v7 the launched browser's values on `capture` and the Persona fields on
+// `capture` and `exhibit` (ADR-0030) (below). Mixed-version chains are normal —
+// never retro-sign legacy entries.
 
 // Bounded integer: rejects negatives, floats, NaN, and unknown-future versions
 // (e.g. a v4 entry parsed by a v3 verifier). Auto-tightens on every version bump.
@@ -481,12 +488,23 @@ const nonNegativeIntField = z.number().int().nonnegative()
 const sha256HexField = z.string().regex(/^[0-9a-f]{64}$/)
 const isoTimeField = z.iso.datetime()
 
-const InventoryAbsentSchema = z
-  .object({ present: z.literal(false), reason: z.enum(INVENTORY_ABSENCE_REASONS) })
+// Each absent part admits the schema-6 reasons and the schema-7 reasons a
+// launched browser can write for that part (types.ts).
+const TransactionRecordAbsentSchema = z
+  .object({ present: z.literal(false), reason: z.enum(TRANSACTION_RECORD_ABSENCE_REASONS) })
   .strict()
 
+const PdfAbsentSchema = z
+  .object({ present: z.literal(false), reason: z.enum(PDF_ABSENCE_REASONS) })
+  .strict()
+
+// The present Transaction Record part. Its last three members are schema 7 and
+// optional, so every part written at 6 keeps its shape: the exchanges a
+// service worker served, the requests whose body a launched browser withheld
+// (ADR-0051), and that the HTTP cache was disabled on the recorded targets
+// (decision D6). The flag admits only `true`, the one value a writer sets.
 const TransactionRecordInventorySchema = z.discriminatedUnion('present', [
-  InventoryAbsentSchema,
+  TransactionRecordAbsentSchema,
   z
     .object({
       present: z.literal(true),
@@ -504,15 +522,20 @@ const TransactionRecordInventorySchema = z.discriminatedUnion('present', [
       replacedHeaders: z.array(z.enum(CREDENTIAL_HEADER_NAMES)),
       budget: z
         .object({ totalBytes: nonNegativeIntField, resourceBytes: nonNegativeIntField })
-        .strict()
+        .strict(),
+      servedByServiceWorker: nonNegativeIntField.optional(),
+      requestBodiesWithheld: nonNegativeIntField.optional(),
+      httpCacheDisabled: z.literal(true).optional()
     })
     .strict()
 ])
 
-// The images the render pinned to their displayed source before the save, and
-// how many of those had not loaded when it ran (#1843). A pinned image counts
-// in both or only the first, so a second count above the first contradicts
-// itself.
+// The images offered as sets that the page displayed and the render pinned to
+// their displayed source before the screenshot and the save, and how many of
+// those were still loading, or had failed to load, just before the save
+// (#1843, ADR-0055). Images still loading or failed before the pin are in
+// neither. A pinned image counts in both or only the first, so a second count
+// above the first contradicts itself.
 const MhtmlInventorySchema = z
   .object({
     present: z.literal(true),
@@ -543,7 +566,7 @@ export const CaptureInventorySchema = z
       })
       .strict(),
     pdf: z.discriminatedUnion('present', [
-      InventoryAbsentSchema,
+      PdfAbsentSchema,
       z.object({ present: z.literal(true), afterCollection: z.literal(true) }).strict()
     ])
   })
@@ -609,6 +632,31 @@ export const BoundTlsSchema = z
 
 export type BoundTls = z.infer<typeof BoundTlsSchema>
 
+// The Persona fields (#1498, ADR-0030 as amended on 2026-10-31), schema 7, on
+// `capture` and `exhibit` entries: the Persona whose session or browser profile
+// Birdbrain used, and its label frozen at acquisition. Both are non-empty: the
+// id is a row id, and a label is refused empty when a Persona is created or
+// renamed. A label names a Persona, so a label without an id contradicts
+// itself, the rule `egressLabel` follows; the exhibit's `origin` is not
+// checked against them, because a verifier's vocabulary must not decide
+// whether a chain verifies.
+const personaIdField = z.string().min(1)
+const personaLabelField = z.string().min(1)
+
+type PersonaFields = { personaId?: unknown; personaLabel?: unknown; schemaVersion: number }
+
+const personaFieldsNeedSchema7 = {
+  check: (entry: PersonaFields): boolean =>
+    (entry.personaId === undefined && entry.personaLabel === undefined) || entry.schemaVersion >= 7,
+  issue: { message: 'the Persona fields require schemaVersion 7', path: ['schemaVersion'] }
+}
+
+const personaLabelNeedsId = {
+  check: (entry: PersonaFields): boolean =>
+    entry.personaLabel === undefined || entry.personaId !== undefined,
+  issue: { message: '`personaLabel` requires `personaId`', path: ['personaLabel'] }
+}
+
 const ManifestCaptureEntrySchema = z
   .object({
     type: z.literal('capture'),
@@ -645,8 +693,7 @@ const ManifestCaptureEntrySchema = z
     // bytes (X18, X46). Optional because entries written before X46 carry
     // none: their Captures are numbered by the one-time `renumber` entry.
     // Schema 3 is amended in place rather than bumped, so this is a schema-3
-    // field, and never `.default()`: an injected value would change the
-    // re-hashed body.
+    // field, and never `.default()` (ManifestEntrySchema says why).
     exhibitNumber: z.number().int().positive().optional(),
     // The Egress the render was sent through (ADR-0032, #1694), schema-5
     // fields. Each is OMITTED when absent, never '' or null, so every entry
@@ -680,6 +727,19 @@ const ManifestCaptureEntrySchema = z
     linkedFromCaptureId: z.string().min(1).optional(),
     linkedFromContentHash: sha256HexField.optional(),
     linkHref: z.string().min(1).optional(),
+    // The launched browser's fields (schema 7, decision D12 of
+    // docs/specs/2026-10-10-capture-engine-launched-browser-design.md):
+    // `browserProduct` and `browserVersion` are the two halves of the
+    // `product` string `Browser.getVersion` reports, and `browserFamily` the
+    // product the engine launched. `passiveRule` is which rule took a
+    // `launched-passive` Capture; no Selector id, name or pattern goes on the
+    // entry. OMITTED when absent, so an entry without them keeps its body.
+    browserProduct: z.string().min(1).optional(),
+    browserVersion: z.string().min(1).optional(),
+    browserFamily: z.enum(BROWSER_FAMILIES).optional(),
+    passiveRule: z.enum(PASSIVE_CAPTURE_RULES).optional(),
+    personaId: personaIdField.optional(),
+    personaLabel: personaLabelField.optional(),
     sizeBytes: z.number(),
     operatorId: z.string(),
     operatorName: z.string(),
@@ -765,6 +825,68 @@ const ManifestCaptureEntrySchema = z
       '`linkedFromCaptureId`, `linkedFromContentHash` and `linkHref` must be present together',
     path: ['linkedFromCaptureId']
   })
+  // The same version rule for the launched browser's values, the two Capture
+  // Methods and the stage-2 inventory values included: a schema-6 reader's
+  // strict capture shape has none of them. No refine ties a value to a
+  // Capture Method, as for the capture engine's fields, because a Duplicate
+  // re-anchors its source's facts under its own method.
+  .refine((entry) => !carriesLaunchedBrowserValue(entry) || entry.schemaVersion >= 7, {
+    message: 'the launched browser values on a capture entry require schemaVersion 7',
+    path: ['schemaVersion']
+  })
+  // A version names nothing without its product, the rule `egressLabel`
+  // follows. A product without a version does not contradict itself, so it is
+  // admitted (first-slice D2). The family is the engine's own fact and stands
+  // apart.
+  .refine((entry) => entry.browserVersion === undefined || entry.browserProduct !== undefined, {
+    message: '`browserVersion` requires `browserProduct`',
+    path: ['browserVersion']
+  })
+  // A passive rule on any other method contradicts itself (maintainer ruling,
+  // 2026-10-31); a Duplicate re-anchors its source's rule under its own method.
+  .refine(
+    (entry) =>
+      entry.passiveRule === undefined ||
+      entry.method === 'launched-passive' ||
+      entry.method === 'duplicate',
+    {
+      message: '`passiveRule` requires method `launched-passive` or `duplicate`',
+      path: ['passiveRule']
+    }
+  )
+  .refine(personaFieldsNeedSchema7.check, personaFieldsNeedSchema7.issue)
+  .refine(personaLabelNeedsId.check, personaLabelNeedsId.issue)
+
+const SCHEMA_6_ABSENCE_REASONS: ReadonlySet<string> = new Set(INVENTORY_ABSENCE_REASONS)
+const LAUNCHED_METHODS: ReadonlySet<string> = new Set(LAUNCHED_CAPTURE_METHODS)
+
+// Whether a capture entry carries a schema-7 launched browser value: a launched
+// method, a browser or passive rule field, or a stage-2 inventory value (a
+// reason outside the schema-6 pair, or a schema-7 member of the present
+// Transaction Record part). The writer's stamp (fieldMinReaderSchemaVersion in
+// manifest.ts) reads the same predicate, so the two cannot drift apart.
+export function carriesLaunchedBrowserValue(entry: {
+  method?: string
+  browserProduct?: unknown
+  browserVersion?: unknown
+  browserFamily?: unknown
+  passiveRule?: unknown
+  inventory?: CaptureInventory
+}): boolean {
+  const { method, browserProduct, browserVersion, browserFamily, passiveRule, inventory } = entry
+  if (method !== undefined && LAUNCHED_METHODS.has(method)) return true
+  if ([browserProduct, browserVersion, browserFamily, passiveRule].some((f) => f !== undefined)) {
+    return true
+  }
+  if (inventory === undefined) return false
+  const { transactionRecord, pdf } = inventory
+  if (!pdf.present && !SCHEMA_6_ABSENCE_REASONS.has(pdf.reason)) return true
+  if (!transactionRecord.present) return !SCHEMA_6_ABSENCE_REASONS.has(transactionRecord.reason)
+  const { servedByServiceWorker, requestBodiesWithheld, httpCacheDisabled } = transactionRecord
+  return [servedByServiceWorker, requestBodiesWithheld, httpCacheDisabled].some(
+    (member) => member !== undefined
+  )
+}
 
 function linkProvenanceFieldCount(entry: {
   linkedFromCaptureId?: unknown
@@ -898,8 +1020,9 @@ const ManifestExportEntrySchema = z
     // entries keep identical canonical bodies and chain hashes. Both MUST stay
     // `.optional()` with NO `.default()`: a required key makes every legacy
     // export entry fail this .strict() schema ('Invalid entry shape'), and a
-    // default is injected into the parsed output manifestChain re-hashes,
-    // breaking every legacy export entry ('Entry hash mismatch').
+    // default reaches readers unhashed (ManifestEntrySchema says why) and
+    // breaks every export-entry.json without the key, whose check re-hashes
+    // the parsed output ('export-entry.json entry hash mismatch').
     scope: z.literal('selection').optional(),
     captureIds: z.array(z.string()).optional(),
     // Export class (#399, ADR-0010). Present-means-working-copy: an evidence
@@ -1004,8 +1127,11 @@ const ManifestExhibitEntrySchema = z
     // OMITTED means "the chain's own writer", whose code the Owner's
     // `member-add` for that writer carries — which keeps every schema-3 entry
     // valid and gives a single-member Case the same rule as a shared one. Never
-    // `.default()`: an injected value would change the re-hashed body.
+    // `.default()` (ManifestEntrySchema says why).
     memberCode: memberCodeField.optional(),
+    // The Persona fields (schema 7), described at the capture entry above.
+    personaId: personaIdField.optional(),
+    personaLabel: personaLabelField.optional(),
     // Storage-root-relative path of the stored bytes (`{caseId}/...`), the
     // same form `derivation.outputPath` and the `exhibits` row record.
     path: z.string(),
@@ -1028,6 +1154,8 @@ const ManifestExhibitEntrySchema = z
     message: '`memberCode` requires schemaVersion 4',
     path: ['schemaVersion']
   })
+  .refine(personaFieldsNeedSchema7.check, personaFieldsNeedSchema7.issue)
+  .refine(personaLabelNeedsId.check, personaLabelNeedsId.issue)
 
 // The parameters that determined a derivation's output bytes (#1319); a
 // thumbnail's are `ThumbnailParameters` in thumbnails.ts. One flat map for
@@ -1065,7 +1193,7 @@ const ManifestDerivationEntrySchema = z
     derivationToolVersion: z.string(),
     // OMITTED on entries written before #1319, which recorded none. Schema 3
     // is amended in place rather than bumped, as X46 amended `capture`, and
-    // never `.default()`: an injected value would change the re-hashed body.
+    // never `.default()` (ManifestEntrySchema says why).
     derivationParameters: DerivationParametersSchema.optional(),
     outputHash: z.string(),
     outputPath: z.string(),
@@ -1223,6 +1351,10 @@ const ManifestExcludeEntrySchema = z
   })
   .strict()
 
+// No field of a member schema may carry a `.default()`. Readers use this
+// schema's output as the entry, but the chain walk hashes the line as written
+// (#1674), so an injected value would reach them without the signed hash
+// covering it.
 export const ManifestEntrySchema = z.discriminatedUnion('type', [
   ManifestCaptureEntrySchema,
   ManifestDeletionEntrySchema,

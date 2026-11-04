@@ -301,6 +301,7 @@ beforeEach(async () => {
   const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
   recaptureService = {
     enqueue: vi.fn(() => ({ accepted: 1, rejected: [] })),
+    enqueueLink: vi.fn(() => ({ accepted: 1, rejected: [] })),
     status: vi.fn(() => ({ pending: 0, activeUrl: null })),
     idle: vi.fn()
   }
@@ -3682,6 +3683,19 @@ describe('ipcHandlers — recapture', () => {
       { url: 'https://a.com/', caseId: 'case-1', supersedesCaptureId: 'cap-9' },
       { url: 'https://b.com/', caseId: 'case-1', supersedesCaptureId: 'cap-9' }
     ])
+  })
+
+  // ADR-0040: a payload naming a link source goes to the link route whole, so the queue
+  // sees `urls` as sent and checks it against the link address itself.
+  it('recapture:enqueue hands a Capture link payload to the link route', async () => {
+    const payload = {
+      urls: ['https://a.com/page'],
+      caseId: 'case-1',
+      linkedFrom: { captureId: 'cap-1', linkHref: 'https://a.com/page' }
+    }
+    await invoke(IPC_CHANNELS.RECAPTURE_ENQUEUE, payload)
+    expect(recaptureService.enqueueLink).toHaveBeenCalledWith(payload)
+    expect(recaptureService.enqueue).not.toHaveBeenCalled()
   })
 
   it('recapture:enqueue rejects malformed payloads without reaching the service', async () => {

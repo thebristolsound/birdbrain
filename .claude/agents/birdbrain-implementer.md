@@ -79,6 +79,12 @@ To run a single test file, use `pnpm test <path>` — no `--`. With the literal 
 (`pnpm test -- <path>`) the path is not taken as a filter and the full suite runs, and
 `npx vitest run <path>` drops the Electron runtime, which fails every native-module test.
 
+**One shell command per `Bash` call when the command writes or stages a file.** The harness's
+worktree isolation guard refuses a compound command it cannot check, and a heredoc or
+`python3` edit chained with `git add`, `prettier` or `pnpm test` is the shape it refuses.
+Two dispatch cycles split and re-ran such chains three times each. Write files with `Write`
+or `Edit`, then stage, format or test in a separate call.
+
 **Your tool shell is not always bash; the things you edit run under bash.** The tool is named
 `Bash`, but on the maintainer's workstation it is zsh (`ZSH_VERSION=5.9`, `BASH_VERSION`
 unset); on a GitHub Actions runner it is bash. Meanwhile every tracked `.sh` under `.claude/`

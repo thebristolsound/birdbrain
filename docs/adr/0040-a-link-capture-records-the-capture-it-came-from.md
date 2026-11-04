@@ -5,10 +5,8 @@
 **Date:** 2026-10-04, accepted 2026-10-26
 
 The maintainer ruled on the questions this record settles on 2026-10-04 and accepted it on
-2026-10-26, amended to schema 6 (see "The fields need schema 6"). No build writes the fields
-yet. The verifier learns them under #1976, and the writer is planned in
-[the slice 2 plan](../plans/2026-10-04-mhtml-viewer-slice-2-click-through-and-provenance.md),
-Part B.
+2026-10-26, amended to schema 6 (see "The fields need schema 6"). The verifier reads the fields
+from #1981 and Capture link writes them from #1995.
 
 ## Context
 
@@ -37,7 +35,10 @@ another member's chain anchors, where the new entry's own chain cannot resolve t
 optional fields, written only by a Capture link job and omitted from every other entry, so every
 existing canonical body and chain hash is unchanged:
 
-- `linkedFromCaptureId`: the id of the Capture whose stored page held the link.
+- `linkedFromCaptureId`: the id of the Capture whose stored page held the link, as that
+  Capture's own `capture` entry signs it. After an archive import renames the source's row, this
+  is the entry's id and not the row's, the id a `deletion` entry names a Capture by (#1815).
+  The maintainer ruled this on 2026-10-26.
 - `linkedFromContentHash`: that Capture's Content Hash, so the reference binds the source's bytes
   even when the source is anchored in another member's chain.
 - `linkHref`: the link's address as the viewer read it from the stored page, which is the

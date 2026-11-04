@@ -758,7 +758,8 @@ payload digest over the stored bytes. It would then key on the session's answer,
   Chromium update can change or remove it. Step 9's e2e with a non-UTF-8 fixture is where such a
   change would fail (plan, D17, "Risks", for the same exposure of `flatten`). `main` moved to
   Electron 45.0.0 (#1994) after these runs; step 9 re-checks the command there (plan, step 9,
-  "Text bodies").
+  "Text bodies"). Step 9 ran it on 2026-10-29: its end-to-end spec passed on Electron 45.0.0,
+  every session's command answered, and the four text known answers matched the served bytes.
 - No cross-process navigation, which is what the protocol says the store survives, and no
   back-forward cache.
 - No response a service worker synthesizes itself, such as `new Response(...)`. The fixture's worker

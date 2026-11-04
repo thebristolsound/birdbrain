@@ -212,7 +212,7 @@ const settingsRoute = createRoute({
   path: '/settings',
   component: function SettingsPage() {
     return (
-      <div className="p-[var(--d-pad)]">
+      <div className="h-full p-[var(--d-pad)]">
         <SettingsView />
       </div>
     )

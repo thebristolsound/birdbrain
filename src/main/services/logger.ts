@@ -2,7 +2,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSy
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { BrowserWindow } from 'electron'
-import { sendEvent } from '@main/ipcWrap'
+import { logIpcFailuresTo, sendEvent } from '@main/ipcWrap'
 import { IPC_CHANNELS } from '@shared/ipc'
 import type { LogCode, LogEntry, LogLevel, LogSource } from '@shared/types'
 import { isValidatedError, sanitizeError, type LogContext } from '@main/services/logSafe'
@@ -162,6 +162,7 @@ export function initLogger(userDataPath: string, sessionId: string): void {
       }
     }
   })
+  logIpcFailuresTo(logger)
 }
 
 export function setMainWindow(win: BrowserWindow): void {

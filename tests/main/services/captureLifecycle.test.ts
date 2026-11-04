@@ -31,8 +31,18 @@ import type { BatchDeleteOutcome } from '@shared/ipc'
 import type { Capture } from '@shared/types'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 import { appendFutureEntry } from '../../helpers/futureManifestEntry'
-import { ENGINE_HASHES } from '../../helpers/captureEnginePackage'
-import { seedEngineCapture } from '../../helpers/captureEngineCapture'
+import {
+  ENGINE_BOUND_TLS,
+  ENGINE_FILES,
+  ENGINE_HASHES,
+  ENGINE_INVENTORY
+} from '../../helpers/captureEnginePackage'
+import {
+  ENGINE_ENTRY_FIELDS,
+  ENGINE_ENTRY_FIELDS_WITHOUT_FILES,
+  seedEngineCapture
+} from '../../helpers/captureEngineCapture'
+import { BoundTlsSchema, CaptureInventorySchema, ManifestEntrySchema } from '@shared/schemas'
 import {
   createCaptureLifecycle,
   BatchCrossCaseError,
@@ -253,6 +263,178 @@ describe('createCaptureLifecycle.ingest', () => {
     expect('headers' in captureEntry).toBe(false)
     expect(capture.id).toBeTruthy()
     expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  it('signs the inventory and Scroll-to-load record it is given, at schema 6, and mirrors both', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { inventory, scrollToLoad } = ENGINE_ENTRY_FIELDS_WITHOUT_FILES
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), {
+        screenshot: Buffer.from('PNG-screenshot-bytes'),
+        method: 'background',
+        inventory,
+        scrollToLoad
+      })
+    )
+
+    const lines = readFileSync(join(tempDir, 'captures', caseId, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    expect(captureEntry).toMatchObject({ inventory, scrollToLoad, schemaVersion: 6 })
+    expect(ManifestEntrySchema.safeParse(captureEntry).success).toBe(true)
+    const row = getCapture(capture.id)!
+    expect(row.inventory).toEqual(inventory)
+    expect(row.scrollToLoad).toEqual(scrollToLoad)
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  // Step 9 of docs/plans/2026-10-10-capture-engine-first-slice.md.
+  it('stores the Transaction Record under the id it is given, signs its hash and Bound TLS Details, and mirrors them', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const inventory = CaptureInventorySchema.parse({
+      ...ENGINE_INVENTORY,
+      pdf: { present: false, reason: 'not-taken' }
+    })
+    const boundTls = BoundTlsSchema.parse(ENGINE_BOUND_TLS)
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), {
+        captureId: 'named-by-the-render',
+        screenshot: Buffer.from('PNG-screenshot-bytes'),
+        method: 'background',
+        inventory,
+        scrollToLoad: ENGINE_ENTRY_FIELDS.scrollToLoad,
+        transactionRecord: ENGINE_FILES.transactionRecord,
+        boundTls
+      })
+    )
+
+    expect(capture.id).toBe('named-by-the-render')
+    const lines = readFileSync(join(tempDir, 'captures', caseId, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    const parsed = ManifestEntrySchema.safeParse(captureEntry)
+    expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+    expect(captureEntry).toMatchObject({
+      captureId: 'named-by-the-render',
+      transactionRecordHash: ENGINE_HASHES.transactionRecord,
+      boundTls,
+      schemaVersion: 6
+    })
+    expect(
+      readFileSync(join(tempDir, 'captures', caseId, 'named-by-the-render.warc.gz')).equals(
+        ENGINE_FILES.transactionRecord
+      )
+    ).toBe(true)
+    const row = getCapture(capture.id)!
+    expect(row.transactionRecordHash).toBe(ENGINE_HASHES.transactionRecord)
+    expect(row.boundTls).toEqual(boundTls)
+    expect(row.boundTlsAbsent).toBeUndefined()
+    await expect(lifecycle.verify(capture.id)).resolves.toMatchObject({ status: 'verified' })
+  })
+
+  // Step 10 of docs/plans/2026-10-10-capture-engine-first-slice.md.
+  it('stores the PDF under the Capture id, signs its hash, and mirrors it', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const inventory = CaptureInventorySchema.parse({
+      ...ENGINE_INVENTORY,
+      transactionRecord: { present: false, reason: 'failed' }
+    })
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), {
+        captureId: 'printed-by-the-render',
+        screenshot: Buffer.from('PNG-screenshot-bytes'),
+        method: 'background',
+        inventory,
+        scrollToLoad: ENGINE_ENTRY_FIELDS.scrollToLoad,
+        boundTlsAbsent: 'not-recorded',
+        pdf: ENGINE_FILES.pdf
+      })
+    )
+
+    const lines = readFileSync(join(tempDir, 'captures', caseId, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    const parsed = ManifestEntrySchema.safeParse(captureEntry)
+    expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+    expect(captureEntry).toMatchObject({
+      captureId: 'printed-by-the-render',
+      pdfHash: ENGINE_HASHES.pdf,
+      inventory: { pdf: { present: true, afterCollection: true } },
+      schemaVersion: 6
+    })
+    expect(captureEntry).not.toHaveProperty('transactionRecordHash')
+    expect(
+      readFileSync(join(tempDir, 'captures', caseId, 'printed-by-the-render.pdf')).equals(
+        ENGINE_FILES.pdf
+      )
+    ).toBe(true)
+    expect(getCapture(capture.id)!.pdfHash).toBe(ENGINE_HASHES.pdf)
+    await expect(lifecycle.verify(capture.id)).resolves.toMatchObject({ status: 'verified' })
+  })
+
+  // Finding 6 of the review of #2000: ingest signed what it was given, so a pair the strict
+  // schema refuses reached the chain and broke it.
+  it('refuses, and writes nothing, an entry the strict schema refuses, before signing it', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const manifestPath = join(tempDir, 'captures', caseId, 'manifest.jsonl')
+    const before = existsSync(manifestPath) ? readFileSync(manifestPath, 'utf-8') : ''
+    // A PDF the inventory says is absent: `pdfHash` without `inventory.pdf.present`.
+    const inventory = CaptureInventorySchema.parse({
+      ...ENGINE_INVENTORY,
+      transactionRecord: { present: false, reason: 'failed' },
+      pdf: { present: false, reason: 'failed' }
+    })
+    await expect(
+      lifecycle.ingest(
+        buildIngestParams(caseId, Buffer.from('mhtml-body'), {
+          captureId: 'mismatched',
+          screenshot: Buffer.from('PNG-screenshot-bytes'),
+          method: 'background',
+          inventory,
+          scrollToLoad: ENGINE_ENTRY_FIELDS.scrollToLoad,
+          boundTlsAbsent: 'not-recorded',
+          pdf: ENGINE_FILES.pdf
+        })
+      )
+    ).rejects.toThrow(/The capture entry fails the strict schema, so it was not signed: pdfHash/)
+    expect(existsSync(manifestPath) ? readFileSync(manifestPath, 'utf-8') : '').toBe(before)
+    expect(getCapture('mismatched')).toBeUndefined()
+    for (const type of ['mhtml', 'png', 'pdf', 'txt']) {
+      expect(existsSync(join(tempDir, 'captures', caseId, `mismatched.${type}`)), type).toBe(false)
+    }
+  })
+
+  it('writes no PDF file and signs no hash when given no PDF', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), { captureId: 'not-printed' })
+    )
+    expect(existsSync(join(tempDir, 'captures', caseId, 'not-printed.pdf'))).toBe(false)
+    expect(getCapture(capture.id)!.pdfHash).toBeUndefined()
+    const lines = readFileSync(join(tempDir, 'captures', caseId, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    expect(JSON.parse(lines[lines.length - 1])).not.toHaveProperty('pdfHash')
+  })
+
+  it('OMITS the inventory and Scroll-to-load record when given neither, below schema 6', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+
+    const lines = readFileSync(join(tempDir, 'captures', caseId, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    expect('inventory' in captureEntry).toBe(false)
+    expect('scrollToLoad' in captureEntry).toBe(false)
+    expect(captureEntry.schemaVersion).toBeLessThan(6)
+    const row = getDb()
+      .prepare('SELECT inventory, scroll_to_load FROM captures WHERE id = ?')
+      .get(capture.id)
+    expect(row).toEqual({ inventory: null, scroll_to_load: null })
   })
 
   it('anchors the HTTP status in the manifest body and mirrors it on the row (#797)', async () => {

@@ -15,14 +15,15 @@ Investigators, activists, and researchers. Assume:
 - **Mixed technical depth.** A researcher who has never opened a terminal and a developer packaging a Linux build read the same site. Name the audience at the top of a page rather than writing for an average of the two.
 - **No obligation to trust us.** Birdbrain is beta software from a solo maintainer. Readers are right to check.
 
-Write in the register [`README.md`](../../README.md) already uses: plain, specific, limitation-forward. It says the tool has not been tested in court and tells people not to rely on it as their only copy. Match that.
+Write in the register [`README.md`](../../README.md) already uses: plain, specific, limitation-forward. It says the tool is beta software with one maintainer and tells people not to rely on it as their only copy. Match that.
 
 ## Claim discipline
 
 This is the part that matters most, and it comes from the assurance baseline in [`CONTEXT.md`](../../CONTEXT.md) and [ADR-0004](../adr/0004-adopt-osint-assurance-baseline.md).
 
 - **State what a mechanism proves, and what it does not.** A verified hash chain with signed (v2+) entries shows that nobody edited the manifest *without the installation's signing key* — legacy all-v1 manifests predate signing, so their entries verify without one (`src/shared/verify/manifestChain.ts`). It does not constrain the Operator, who holds that key and can mint an internally consistent chain — `SECURITY.md` says so outright. It does not show the page was genuine. And the RFC 3161 token anchors a capture's content hash, not the manifest head, so it dates the content rather than proving the chain around it is intact. Write both halves.
-- **No unqualified assurance words.** "Court-admissible", "tamper-proof", "forensically sound", "compliant", "verified" — none of these stand alone. Name the standard and its version, or describe the concrete property instead.
+- **No court or admissibility language.** Do not mention courts, courtrooms or admissibility, including in disclaimers such as "no court has tested this". Say what the mechanism shows and what it does not. The `Birdbrain.Court` Vale rule enforces this.
+- **No unqualified assurance words.** "Tamper-proof", "forensically sound", "compliant", "verified" — none of these stand alone. Name the standard and its version, or describe the concrete property instead.
 - **Document limitations next to the capability, not in a footnote.** `SECURITY.md` pre-declares unsigned artifacts, the `unsafe-inline` CSP, and the `safeStorage` plaintext fallback. Follow that pattern.
 - **Do not describe unshipped behaviour in the present tense.** A spec describes a design; reference docs describe what the code does today. If a page documents something behind a flag or unmerged, say so.
 - **Cite the source of a factual claim** — a file path, an ADR, a spec — when the reader would otherwise have to take your word for it.

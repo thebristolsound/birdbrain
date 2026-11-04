@@ -49,6 +49,9 @@ type BarState =
 
 let state: BarState = { phase: 'hidden' }
 let hideTimeout: ReturnType<typeof setTimeout> | null = null
+// The root is closed, so page script reading host.shadowRoot gets null, and so would render().
+// Keyed by host because a strip removes the host and the next render creates a new one.
+const barRoots = new WeakMap<HTMLElement, ShadowRoot>()
 
 // Colors match toast.ts's palette rather than the mock's CSS variables: the
 // app's theme tokens do not exist on arbitrary pages.
@@ -213,13 +216,14 @@ function render(): void {
     host = document.createElement('div')
     host.id = SELECTION_BAR_ID
     host.setAttribute(SELECTION_BAR_MARKER, SELECTION_BAR_MARKER_VALUE)
-    host.attachShadow({ mode: 'open' })
+    barRoots.set(host, host.attachShadow({ mode: 'closed' }))
     document.body.appendChild(host)
   }
+  // A marker host whose root this script did not attach is not ours: render nothing into it.
+  const shadow = barRoots.get(host)
+  if (!shadow) return
   host.style.cssText = `position:absolute;left:${state.x}px;top:${state.y}px;z-index:2147483647;`
 
-  const shadow = host.shadowRoot
-  if (!shadow) return
   shadow.innerHTML = `<style>${BAR_STYLES}</style>${barMarkup(state)}`
 
   // Operator-facing strings go in via textContent: `message` comes back from
@@ -232,7 +236,9 @@ function render(): void {
       if (state.phase === 'ready' && !state.enabled) button.title = state.reason
       // Keep the page selection: a mousedown on the bar must not collapse it.
       button.addEventListener('mousedown', (e) => e.preventDefault())
-      button.addEventListener('click', () => {
+      // Only browser-generated clicks may run an action; a page script's click() arrives untrusted.
+      button.addEventListener('click', (event) => {
+        if (!event.isTrusted) return
         const action = button.dataset.action as SelectionActionKind | undefined
         if (action) void runAction(action)
       })
@@ -357,6 +363,8 @@ async function runAction(action: SelectionActionKind): Promise<void> {
 }
 
 function onMouseUp(event: MouseEvent): void {
+  // Page script can select text and dispatch a mouseup; only browser-generated ones raise the bar.
+  if (!event.isTrusted) return
   // Clicks on the bar itself are handled by its own buttons.
   if (
     event

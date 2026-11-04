@@ -6,9 +6,11 @@ import { SharingError } from '@main/services/sharing/errors'
 import { loadOrCreateNodeKey, type KeyCipher } from '@main/services/sharing/nodeKey'
 import {
   PeerUnreachableError,
+  TransportError,
   type ByteStream,
   type Connection,
-  type Transport
+  type Transport,
+  type TransportFailure
 } from '@main/services/sharing/transport'
 
 // The transport over Iroh (#1809): QUIC between installations, through n0's
@@ -82,19 +84,48 @@ export function setRelayUrl(value: string): void {
   updateSettings({ sharingRelayUrl: url })
 }
 
+// The binding rejects with the QUIC error's Rust debug text and the code
+// GenericFailure, which the log cannot use. These are the shapes it prints;
+// a peer closing its connection normally reads as the first.
+const TRANSPORT_FAILURES: ReadonlyArray<[RegExp, TransportFailure]> = [
+  [/^ConnectionLost\(ApplicationClosed\(ApplicationClose \{ error_code: 0,/, 'PEER_CLOSED'],
+  [/^ConnectionLost\(ApplicationClosed\(/, 'PEER_CLOSED_WITH_ERROR'],
+  [/^ConnectionLost\(ConnectionClosed\(/, 'CONNECTION_CLOSED'],
+  [/^ConnectionLost\(TimedOut\)/, 'TIMED_OUT'],
+  [/^ConnectionLost\(LocallyClosed\)/, 'LOCALLY_CLOSED'],
+  [/^ConnectionLost\(Reset\)/, 'CONNECTION_RESET'],
+  [/^ConnectionLost\(/, 'CONNECTION_LOST'],
+  [/^Stopped\(/, 'STREAM_STOPPED'],
+  [/^Reset\(/, 'STREAM_RESET'],
+  [/^ClosedStream\b/, 'STREAM_CLOSED']
+]
+
+export function transportFailure(message: string): TransportFailure {
+  return TRANSPORT_FAILURES.find(([shape]) => shape.test(message))?.[1] ?? 'TRANSPORT_FAILED'
+}
+
+function asTransportError(err: unknown): unknown {
+  if (!(err instanceof Error)) return err
+  return new TransportError(err.message, transportFailure(err.message))
+}
+
 class IrohStream implements ByteStream {
   private ended = false
 
   constructor(private readonly bi: IrohModule.BiStream) {}
 
   async write(chunk: Uint8Array): Promise<void> {
-    await this.bi.send.writeAll(Array.from(chunk))
+    await this.bi.send.writeAll(Array.from(chunk)).catch((err: unknown) => {
+      throw asTransportError(err)
+    })
   }
 
   async read(): Promise<Uint8Array | null> {
     if (this.ended) return null
     // The binding reads the end of the stream as an empty piece.
-    const piece = await this.bi.recv.read(READ_BYTES)
+    const piece = await this.bi.recv.read(READ_BYTES).catch((err: unknown) => {
+      throw asTransportError(err)
+    })
     if (piece.length === 0) {
       this.ended = true
       return null

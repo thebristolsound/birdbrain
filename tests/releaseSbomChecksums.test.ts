@@ -487,7 +487,7 @@ describe('release.yml write access', () => {
 
   // The jobs that can write, or hold a token that can, run only GitHub's tools and the
   // release scripts.
-  it.each(['publish', 'bridge'])('runs no install, build or project script in %s', (name) => {
+  it.each(['publish'])('runs no install, build or project script in %s', (name) => {
     const job = jobBlock(RELEASE_YML, name)
     expect(job).not.toMatch(/\bpnpm\b|\bnpm\b|\bnode\b|\bnpx\b/)
     for (const [, script] of job.matchAll(/bash (\S+)/g)) {
@@ -503,10 +503,9 @@ describe('release.yml write access', () => {
     )
   })
 
-  it('reads the bridge token only in the bridge job', () => {
-    const bridge = jobBlock(RELEASE_YML, 'bridge')
-    expect([...RELEASE_YML.matchAll(/secrets\.RELEASES_REPO_TOKEN/g)]).toHaveLength(1)
-    expect(bridge).toContain('GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}')
-    expect(bridge).toContain('thebristolsound/birdbrain-releases "$TAG" main')
+  // The bridge job copied one release to the old feed and was removed after it (ADR-0047).
+  it('publishes nowhere but this repository', () => {
+    expect(RELEASE_YML).not.toContain('RELEASES_REPO_TOKEN')
+    expect(RELEASE_YML).not.toContain('birdbrain-releases')
   })
 })

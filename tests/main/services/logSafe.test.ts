@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { LogContext, LogValue } from '@main/services/logSafe'
-import { code, context, ident, sanitizeError, sanitizeText, tag } from '@main/services/logSafe'
+import {
+  channel,
+  code,
+  context,
+  ident,
+  sanitizeError,
+  sanitizeText,
+  tag
+} from '@main/services/logSafe'
 
 // logSafe decides dev-vs-packaged from `app.isPackaged`, reached through a
 // defensive require('electron') so the module still loads outside an Electron
@@ -47,6 +55,16 @@ describe('code', () => {
 
   it('rejects lowercase prose', () => {
     expect(() => code('no such file')).toThrow()
+  })
+})
+
+describe('channel', () => {
+  it('accepts an IPC channel name', () => {
+    expect(channel('notes:update')).toBe('notes:update')
+  })
+
+  it('rejects prose', () => {
+    expect(() => channel('Operation Blackbird:notes')).toThrow()
   })
 })
 
@@ -409,6 +427,26 @@ describe('sanitizeError', () => {
     expect(out.stack).not.toContain('matt')
     expect(out.stack).not.toContain('boom')
     expect(out.stack).toContain(String.raw`src\main\services\bar.ts`)
+  })
+
+  it('keeps the frames of an install path that contains a space', () => {
+    const homeDir = String.raw`C:\Users\Jane Doe`
+    const appRoot = String.raw`${homeDir}\AppData\Local\Programs\birdbrain\resources\app.asar`
+    const err = new Error('boom')
+    err.stack = [
+      'Error: boom',
+      String.raw`    at IrohStream.read (${appRoot}\out\main\index.js:120:7)`,
+      String.raw`    at Object.emit (${homeDir}\AppData\Local\Programs\birdbrain\resources\electron.asar\browser\init.js:2:3)`,
+      '    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)',
+      String.raw`    at Operation Blackbird (${appRoot}\out\main\index.js:1:2)`
+    ].join('\n')
+    const out = sanitizeError(err, appRoot, homeDir)
+    const lines = (out.stack ?? '').split('\n')
+    expect(lines).toHaveLength(3)
+    expect(lines[0]).toContain(String.raw`at IrohStream.read (out\main\index.js:120:7)`)
+    expect(lines[1]).toContain('at Object.emit (‹path›)')
+    expect(out.stack).not.toContain('Jane')
+    expect(out.stack).not.toContain('Blackbird')
   })
 
   it('caps the stack at 20 frames', () => {

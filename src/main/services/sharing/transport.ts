@@ -43,6 +43,34 @@ export class PeerUnreachableError extends Error {
   }
 }
 
+// Why the network ended a stream, in the log's code form. The Iroh transport
+// names these from the binding's errors (irohTransport.ts).
+export type TransportFailure =
+  | 'PEER_CLOSED'
+  | 'PEER_CLOSED_WITH_ERROR'
+  | 'CONNECTION_CLOSED'
+  | 'TIMED_OUT'
+  | 'LOCALLY_CLOSED'
+  | 'CONNECTION_RESET'
+  | 'CONNECTION_LOST'
+  | 'STREAM_STOPPED'
+  | 'STREAM_RESET'
+  | 'STREAM_CLOSED'
+  | 'TRANSPORT_FAILED'
+
+// A stream read or write the network refused. The message is the binding's
+// own text, which a failed sync session's detail still shows; the log keeps
+// only the name and `code`.
+export class TransportError extends Error {
+  constructor(
+    message: string,
+    readonly code: TransportFailure
+  ) {
+    super(message)
+    this.name = 'TransportError'
+  }
+}
+
 const MEMORY_TICKET_PREFIX = 'mem:'
 
 // One direction of an in-process stream: a queue the writer fills and the

@@ -9,8 +9,27 @@ import { randomUUID } from 'crypto'
 import { getConsentBlocker } from '@main/services/consentBlocker'
 import { captureEgressOf, knownEgress, proxyConfigFor } from '@main/services/egress'
 import { RefusedAddressError, refusedAddressClass } from '@main/services/localAddressPolicy'
-import type { RenderPage, RenderedPage } from '@main/services/recapture'
-import type { ConsentSuppression, KnownEgress } from '@shared/types'
+import { testCertificateAllowance } from '@main/services/testCertificateAllowance'
+import {
+  createTransactionRecorder,
+  finishTransactionRecord
+} from '@main/services/transactionRecorder'
+import type {
+  TransactionRecordOutcome,
+  TransactionRecorder
+} from '@main/services/transactionRecorder'
+import type {
+  ImageSourcePinning,
+  PdfOutcome,
+  PresentPdf,
+  RenderPage,
+  RenderedPage,
+  ScreenshotRecord
+} from '@main/services/recapture'
+import { CaptureInventorySchema } from '@shared/schemas'
+import type { ScrollToLoadRecord } from '@shared/schemas'
+import { MAX_PDF_CONTENT_HEIGHT_PX, MAX_PDF_SIZE } from '@shared/constants'
+import type { ConsentSuppression, KnownEgress, ScrollToLoadOutcome } from '@shared/types'
 import { logger } from '@main/services/logger'
 
 const VIEWPORT = { width: 1280, height: 900 }
@@ -21,10 +40,34 @@ const SCROLL_PAUSE_MS = 500
 const SCROLL_STALL_THRESHOLD = 3
 const MAX_SCROLL_PHASE_MS = 75_000
 const FINAL_SETTLE_MS = 500
-// Reserved for screenshot + MHTML + text extraction. Sized for the worst case
-// the scroll cap below allows — a page at the full screenshot pixel budget —
-// so the artifact phase can't be starved into the outer deadline.
-const FINAL_ARTIFACT_RESERVE_MS = 20_000
+// Image Source Pinning's two waits, each taken from the time left before the end
+// reserve below and never from it (ruled 2026-10-26): for images offered as sets
+// to settle before the pin, and for the pinned images to load what the pin set.
+const IMAGE_SET_SETTLE_MAX_MS = 5_000
+const PIN_LOAD_MAX_MS = 5_000
+const PIN_POLL_MS = 50
+// For screenshot + MHTML + text extraction. Sized for the worst case the scroll
+// cap below allows — a page at the full screenshot pixel budget — so the
+// artifact phase can't be starved into the outer deadline.
+const ARTIFACT_PHASE_MS = 20_000
+// The Transaction Record's two end phases, each under its own bound (step 9 of
+// docs/plans/2026-10-10-capture-engine-first-slice.md, "Time"): the body
+// fetches still out when collection stops, and the writer. Each is also cut to
+// the time the render has left, less END_MARGIN_MS for handing the page
+// back, so a phase that runs out records the Transaction Record absent as
+// `failed` and the Capture stores, and the render never runs past its deadline
+// for it (ruled 2026-10-26).
+const BODY_COLLECT_TIMEOUT_MS = 5_000
+const RECORD_WRITE_TIMEOUT_MS = 10_000
+// The print, the render's last phase (step 10), under its own bound and cut to
+// the time left by the same rule, so a print that runs out records the PDF
+// absent as `failed` and the Capture stores.
+const PRINT_TIMEOUT_MS = 5_000
+const END_MARGIN_MS = 1_000
+// Reserved at the end of the render, so the phases before it can't starve the
+// artifacts, the Transaction Record and the PDF into the outer deadline.
+const FINAL_ARTIFACT_RESERVE_MS =
+  ARTIFACT_PHASE_MS + BODY_COLLECT_TIMEOUT_MS + RECORD_WRITE_TIMEOUT_MS + PRINT_TIMEOUT_MS
 // Chromium's max texture dimension; captures beyond it fail or OOM.
 const MAX_CAPTURE_DIMENSION_PX = 16_384
 const MAX_CAPTURE_PIXELS = 32_000_000
@@ -48,10 +91,11 @@ function clampPhaseMs(remainingMs: number, maxMs: number): number {
 }
 
 // Tracks in-flight requests via Electron's session webRequest API rather than the
-// CDP Network domain. Enabling CDP event domains (Page/Network.enable) from
-// webContents.debugger evicts any other CDP client attached to the same target —
-// which breaks Playwright's own debugger session in E2E (and is fragile in general).
-// webRequest carries the same request start/finish signal with no such conflict.
+// CDP Network domain. #180 added it on the reading that enabling a CDP event
+// domain from webContents.debugger evicts Playwright's own session in E2E; the
+// renderer spike (docs/specs/2026-10-11-capture-engine-renderer-spike.md,
+// question 1) found both Recapture specs passing with Network enabled, and the
+// Transaction Record now enables it. Idle tracking stays here, apart from it.
 function createNetworkIdleTracker(session: Session): NetworkIdleTracker {
   const pending = new Set<number>()
   let lastActivityAt = Date.now()
@@ -129,10 +173,11 @@ async function waitForDocumentComplete(wc: WebContents, timeoutMs: number): Prom
   )
 }
 
-// Shared by the scroll-phase scripts below. canScroll probes actual movement —
-// a viewport scroll-locked by overflow: hidden clamps even programmatic
-// scrolling. pickRoot prefers the document, falling back to the largest
-// scrollable descendant (app-shell layouts scroll an inner container).
+// Shared by the scroll-phase scripts below. The probes test actual movement
+// rather than styles: in Chromium a document with overflow: hidden still moves
+// from script in standards mode, and a full-height one does not in quirks mode.
+// pickRoot prefers the document, falling back to the largest scrollable
+// descendant (app-shell layouts scroll an inner container).
 const SCROLL_HELPERS = `
   // scrollTo with behavior 'instant' so CSS scroll-behavior: smooth can't turn
   // programmatic scrolls into animations the probes would misread.
@@ -140,28 +185,42 @@ const SCROLL_HELPERS = `
     if (el.scrollTo) el.scrollTo({ top: y, behavior: 'instant' })
     else el.scrollTop = y
   }
-  const canScroll = (el) => {
+  const moves = (el, delta) => {
     if (!el || el.scrollHeight <= el.clientHeight + 2) return false
     const prev = el.scrollTop
-    setScrollTop(el, prev + 1)
+    if (prev + delta < 0) return false
+    setScrollTop(el, prev + delta)
     const moved = el.scrollTop !== prev
     setScrollTop(el, prev)
     return moved
   }
+  const canScroll = (el) => moves(el, 1)
+  const atEnd = (el) => !canScroll(el) && moves(el, -1)
   const doc = document.scrollingElement || document.documentElement || document.body
-  const pickRoot = () => {
+  // A root that can still move down wins: the document, else the inner one
+  // with the most overflow. With allowAtEnd, and only when no root can move
+  // down, it returns the root at its end with the most overflow, so the step
+  // loop ends on its stall detector at a real bottom rather than on "nothing
+  // to scroll".
+  const pickRoot = (allowAtEnd) => {
     if (canScroll(doc)) return doc
     let best = null
     let bestGain = 0
+    let end = allowAtEnd && atEnd(doc) ? doc : null
+    let endGain = end ? doc.scrollHeight - doc.clientHeight : 0
     const minHeight = Math.max((window.innerHeight || 0) / 2, 150)
     for (const el of document.querySelectorAll('body *')) {
       const gain = el.scrollHeight - el.clientHeight
-      if (gain > bestGain && el.clientHeight >= minHeight && canScroll(el)) {
+      if (el.clientHeight < minHeight) continue
+      if (gain > bestGain && canScroll(el)) {
         best = el
         bestGain = gain
+      } else if (allowAtEnd && gain > endGain && atEnd(el)) {
+        end = el
+        endGain = gain
       }
     }
-    return best
+    return best || end
   }
 `
 
@@ -169,9 +228,11 @@ const SCROLL_HELPERS = `
 // When nothing scrolls but content overflows the viewport, lift the lock for
 // the scroll phase ONLY. Returns the original inline overflow values
 // ([html, body]) for the restore script, or null when no lock was lifted.
+// A root at its end is not locked: a page loaded at a fragment near its
+// bottom starts there.
 const SCROLL_UNLOCK_SCRIPT = `(() => {
   ${SCROLL_HELPERS}
-  if (pickRoot()) return null
+  if (pickRoot(true)) return null
   if (!doc || doc.scrollHeight <= doc.clientHeight + 2) return null
   const prior = []
   for (const el of [document.documentElement, document.body]) {
@@ -184,9 +245,9 @@ const SCROLL_UNLOCK_SCRIPT = `(() => {
 // One scroll step: advance the root by one viewport (re-picked each step so a
 // layout change mid-phase can't strand the loop) and report position/height
 // for the main-process stall detector. null = nothing scrollable.
-const SCROLL_STEP_SCRIPT = `(() => {
+export const SCROLL_STEP_SCRIPT = `(() => {
   ${SCROLL_HELPERS}
-  const root = pickRoot()
+  const root = pickRoot(true)
   if (!root) return null
   const viewportHeight = Math.max(root.clientHeight || 0, window.innerHeight || 0, 1)
   const maxY = Math.max(0, root.scrollHeight - viewportHeight)
@@ -210,15 +271,34 @@ function scrollResetScript(priorOverflow: string[] | null): string {
   })()`
 }
 
+// A height the page reports goes into the signed entry, whose schema admits only
+// a non-negative integer. The step script runs in the page's world, where a
+// hostile page can redefine `scrollHeight`, so any other value is not recorded.
+function recordableHeight(height: unknown): number | undefined {
+  return typeof height === 'number' && Number.isSafeInteger(height) && height >= 0
+    ? height
+    : undefined
+}
+
 // Scrolls through the complete document (main-process-driven loop) to trigger
 // lazy-loaded/infinite-scroll content before the artifacts are captured. The
-// scroll lock lifted by SCROLL_UNLOCK_SCRIPT is always restored — before the
-// screenshot and MHTML are taken, so they reflect what the page actually set.
-async function scrollToLoadLazyContent(wc: WebContents, timeoutMs: number): Promise<void> {
-  if (timeoutMs <= 0) return
+// scroll lock lifted by SCROLL_UNLOCK_SCRIPT is restored before the screenshot
+// and MHTML are taken, so they reflect what the page actually set.
+// Returns where the loop ended (D5 of
+// docs/plans/2026-10-10-capture-engine-first-slice.md). A step that throws, or
+// a lifted lock that cannot be restored, fails the render, so no record says
+// the phase failed.
+export async function scrollToLoadLazyContent(
+  wc: WebContents,
+  timeoutMs: number
+): Promise<ScrollToLoadRecord> {
+  if (timeoutMs <= 0) return { requested: true, ran: false, scrollLockLifted: false }
   const deadlineAt = Date.now() + timeoutMs
 
   const priorOverflow = (await wc.executeJavaScript(SCROLL_UNLOCK_SCRIPT, true)) as string[] | null
+  let outcome: ScrollToLoadOutcome = 'time-budget'
+  let endHeight: number | undefined
+  let restoreFailed = false
 
   try {
     let stalls = 0
@@ -231,20 +311,33 @@ async function scrollToLoadLazyContent(wc: WebContents, timeoutMs: number): Prom
         height: number
         viewportHeight: number
       } | null
-      if (!state) break
-      if (state.height >= MAX_SCROLL_CONTENT_HEIGHT_PX) break
+      if (!state) {
+        outcome = 'nothing-to-scroll'
+        break
+      }
+      endHeight = recordableHeight(state.height)
+      if (state.height >= MAX_SCROLL_CONTENT_HEIGHT_PX) {
+        outcome = 'height-cap'
+        break
+      }
 
       // OSR composites continuously, so IntersectionObserver/rAF-driven lazy
       // loaders fire on their own between scroll steps — no forced frame needed.
       await sleep(SCROLL_PAUSE_MS)
 
       const atBottom = state.y + state.viewportHeight >= state.height - 2
-      const noHeightGrowth = state.height <= lastHeight
+      // A height that differs from the last step's, up or down, is either new
+      // content or a step that moved on to another root (a second pane), and
+      // either restarts the stall count.
+      const noHeightGrowth = state.height === lastHeight
       const noScrollProgress = state.y <= lastY + 1
 
       if ((atBottom && noHeightGrowth) || (noHeightGrowth && noScrollProgress)) {
         stalls += 1
-        if (stalls >= SCROLL_STALL_THRESHOLD) break
+        if (stalls >= SCROLL_STALL_THRESHOLD) {
+          outcome = 'stopped-growing'
+          break
+        }
       } else {
         stalls = 0
       }
@@ -253,16 +346,52 @@ async function scrollToLoadLazyContent(wc: WebContents, timeoutMs: number): Prom
       lastY = state.y
     }
   } finally {
-    // Fail-soft: this only restores scroll position and the lifted overflow
-    // lock. If the page navigated or the webContents was destroyed mid-teardown
-    // the reset throws, but the scroll phase is best-effort and must not fail an
-    // otherwise-complete capture.
-    await wc.executeJavaScript(scrollResetScript(priorOverflow), true).catch(() => {})
+    try {
+      await wc.executeJavaScript(scrollResetScript(priorOverflow), true)
+    } catch (err) {
+      restoreFailed = true
+      logger.error('backgroundRenderer', 'backgroundRenderer.scroll_reset_failed', undefined, err)
+    }
     await sleep(SCROLL_PAUSE_MS)
+  }
+
+  // A reset that only returns the scroll position to the top is cosmetic. One
+  // that leaves a lifted lock in place would have the screenshot and MHTML taken
+  // of a page the entry cannot describe (D5 has no field for it), so the render
+  // fails, as it does for a step that throws.
+  if (restoreFailed && priorOverflow !== null) {
+    throw new Error("Could not restore the page's scroll lock after Scroll-to-load")
+  }
+
+  return {
+    requested: true,
+    ran: true,
+    outcome,
+    ...(endHeight !== undefined ? { endHeight } : {}),
+    scrollLockLifted: priorOverflow !== null
   }
 }
 
-async function captureFullPageScreenshot(wc: WebContents): Promise<Buffer> {
+// The pixel dimensions a PNG states in its IHDR chunk, which the format puts
+// first, straight after the 8-byte signature.
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+function pngDimensions(png: Buffer): { width: number; height: number } {
+  if (
+    png.length < 24 ||
+    !png.subarray(0, 8).equals(PNG_SIGNATURE) ||
+    png.toString('ascii', 12, 16) !== 'IHDR'
+  ) {
+    throw new Error('The screenshot is not a PNG')
+  }
+  return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) }
+}
+
+// Returns the stored PNG with the D6 facts about it
+// (docs/plans/2026-10-10-capture-engine-first-slice.md).
+export async function captureFullPageScreenshot(
+  wc: WebContents
+): Promise<{ png: Buffer; record: ScreenshotRecord }> {
   const metrics = (await wc.debugger.sendCommand('Page.getLayoutMetrics')) as {
     cssContentSize?: { x: number; y: number; width: number; height: number }
   }
@@ -307,7 +436,20 @@ async function captureFullPageScreenshot(wc: WebContents): Promise<Buffer> {
     }
   })) as { data: string }
 
-  return trimTrailingBackground(Buffer.from(data, 'base64'))
+  const { png, trimmed } = await trimTrailingBackground(Buffer.from(data, 'base64'))
+  const stored = pngDimensions(png)
+  return {
+    png,
+    record: {
+      scaled: scale < 1,
+      truncated: height < fullHeight,
+      trimmed,
+      contentWidth: width,
+      contentHeight: fullHeight,
+      width: stored.width,
+      height: stored.height
+    }
+  }
 }
 
 // The screenshot clips to the full document height, but ad/embed-heavy and
@@ -320,16 +462,18 @@ async function captureFullPageScreenshot(wc: WebContents): Promise<Buffer> {
 // below the last row with content — is removed; interior gaps are preserved,
 // and a page that fills to its footer (or is all one colour) is left untouched.
 // Cosmetic-only and fail-soft: any error returns the original screenshot.
+// `trimmed` says whether the returned image is a crop of the input.
 const TRIM_TOLERANCE = 8
 const TRIM_PADDING_PX = 8
 
-export async function trimTrailingBackground(png: Buffer): Promise<Buffer> {
+export async function trimTrailingBackground(
+  png: Buffer
+): Promise<{ png: Buffer; trimmed: boolean }> {
+  const untouched = { png, trimmed: false }
   try {
     const { data, info } = await sharp(png).greyscale().raw().toBuffer({ resolveWithObject: true })
     const w = info.width
     const h = info.height
-    if (!w || !h) return png
-
     const bg = data[(h - 1) * w + (w >> 1)]
     // A row counts as content when more than this many pixels differ from the
     // background — high enough to ignore JPEG/anti-alias speckle, low enough to
@@ -350,17 +494,359 @@ export async function trimTrailingBackground(png: Buffer): Promise<Buffer> {
     }
 
     // Entirely background (blank capture) or nothing to trim: leave as-is.
-    if (lastContentRow < 0) return png
+    if (lastContentRow < 0) return untouched
     const cropHeight = Math.min(h, lastContentRow + 1 + TRIM_PADDING_PX)
-    if (cropHeight >= h) return png
+    if (cropHeight >= h) return untouched
 
-    return await sharp(png)
+    const cropped = await sharp(png)
       .extract({ left: 0, top: 0, width: w, height: cropHeight })
       .png()
       .toBuffer()
+    return { png: cropped, trimmed: true }
   } catch (err) {
     logger.error('backgroundRenderer', 'backgroundRenderer.trim_failed', undefined, err)
-    return png
+    return untouched
+  }
+}
+
+// Image Source Pinning (ADR-0055, D4 of
+// docs/plans/2026-10-10-capture-engine-first-slice.md). The MHTML serializer
+// drops `srcset` and `sizes` from every <img> and keeps `src`, so an image the
+// page displayed from a set of sources has its `src` set to the one it displayed,
+// before the screenshot and the save. The scripts run in an isolated world: the
+// page shares its DOM but not its JavaScript, so it cannot replace what they call
+// or reach what they keep between calls. The main process keeps the clock and
+// polls them.
+export const PIN_WORLD_ID = 1843
+
+// The images offered as sets that pinning considers: each <img> with `srcset`
+// in the document, except a <picture>'s, whose sources the serializer keeps.
+const IMAGE_SET_HELPERS = `
+  const imageSets = () => Array.from(document.querySelectorAll('img[srcset]')).filter(
+    (img) => !(img.parentElement && img.parentElement.localName === 'picture')
+  )
+  const shown = (img) => img.complete && img.naturalWidth > 0 && img.naturalHeight > 0
+`
+
+// How many images offered as sets are still loading. Each call keeps those
+// images, so the last call of the settle wait holds the ones still loading when
+// it ended, which the pin leaves out even if they finish before it runs
+// (ruled 2026-10-26).
+export const IMAGE_SETS_LOADING_SCRIPT = `(() => {
+  ${IMAGE_SET_HELPERS}
+  const loading = imageSets().filter((img) => !img.complete)
+  globalThis.birdbrainUnsettled = new WeakSet(loading)
+  return loading.length
+})()`
+
+// The candidates of an image's `srcset`, parsed as the HTML standard's "parse a
+// srcset attribute" does, each URL resolved against the document. A candidate
+// with an invalid descriptor is dropped, as the browser drops it. `src` joins as
+// a 1x candidate when no candidate has a width or a density of 1, as the
+// standard's "update the source set" adds it.
+const SRCSET_HELPERS = `
+  const DENSITY_WIDTH = 1000
+  const WS = /[\\t\\n\\f\\r ]/
+  const INTEGER = /^\\d+$/
+  const FLOAT = /^-?(\\d+(\\.\\d+)?|\\.\\d+)([eE][+-]?\\d+)?$/
+  const descriptorsOf = (tokens) => {
+    let w
+    let x
+    let h
+    for (const token of tokens) {
+      const value = token.slice(0, -1)
+      const kind = token.slice(-1)
+      if (kind === 'w' && w === undefined && x === undefined && INTEGER.test(value)) {
+        w = Number(value)
+        if (w === 0) return null
+      } else if (kind === 'x' && w === undefined && x === undefined && h === undefined) {
+        if (!FLOAT.test(value) || Number(value) < 0) return null
+        x = Number(value)
+      } else if (kind === 'h' && h === undefined && x === undefined && INTEGER.test(value)) {
+        h = Number(value)
+        if (h === 0) return null
+      } else {
+        return null
+      }
+    }
+    if (h !== undefined && w === undefined) return null
+    return w !== undefined ? { w } : { x: x === undefined ? 1 : x }
+  }
+  const parseSrcset = (input) => {
+    const candidates = []
+    let pos = 0
+    for (;;) {
+      while (pos < input.length && (WS.test(input[pos]) || input[pos] === ',')) pos++
+      if (pos >= input.length) return candidates
+      const start = pos
+      while (pos < input.length && !WS.test(input[pos])) pos++
+      let url = input.slice(start, pos)
+      const tokens = []
+      if (/,$/.test(url)) {
+        url = url.replace(/,+$/, '')
+      } else {
+        while (pos < input.length && WS.test(input[pos])) pos++
+        let current = ''
+        let state = 'in'
+        for (;;) {
+          const c = input[pos]
+          if (state === 'in') {
+            if (c === undefined) {
+              if (current) tokens.push(current)
+              break
+            } else if (WS.test(c)) {
+              if (current) tokens.push(current)
+              current = ''
+              state = 'after'
+            } else if (c === ',') {
+              pos++
+              if (current) tokens.push(current)
+              break
+            } else {
+              current += c
+              if (c === '(') state = 'paren'
+            }
+          } else if (state === 'paren') {
+            if (c === undefined) {
+              tokens.push(current)
+              break
+            }
+            current += c
+            if (c === ')') state = 'in'
+          } else if (c === undefined) {
+            break
+          } else if (!WS.test(c)) {
+            state = 'in'
+            pos--
+          }
+          pos++
+        }
+      }
+      const descriptor = descriptorsOf(tokens)
+      let resolved
+      try {
+        resolved = new URL(url, document.baseURI).href
+      } catch {
+        resolved = undefined
+      }
+      if (descriptor && resolved !== undefined) candidates.push({ url: resolved, ...descriptor })
+    }
+  }
+  const sourceSetOf = (img) => {
+    const set = parseSrcset(img.getAttribute('srcset') || '')
+    const src = img.getAttribute('src')
+    if (src && !set.some((c) => c.w !== undefined || c.x === 1)) {
+      try {
+        set.push({ url: new URL(src, document.baseURI).href, x: 1 })
+      } catch {}
+    }
+    return set
+  }
+  // The candidate the image displayed: the one whose URL is its currentSrc, or
+  // undefined when none is, or when candidates with that URL differ in descriptor.
+  const displayedCandidate = (img, src) => {
+    const matches = sourceSetOf(img).filter((c) => c.url === src)
+    const [first] = matches
+    if (!first) return undefined
+    return matches.every((c) => c.w === first.w && c.x === first.x) ? first : undefined
+  }
+`
+
+// Pins each image offered as a set that the page displayed (loaded, with a
+// natural size) by setting its `src` to its `currentSrc`, before the screenshot
+// (ruled 2026-10-30). `srcset` and `sizes` stay, so the browser chooses from the
+// set again and keeps the copy it displayed, except for an image displayed from a
+// candidate whose density is not 1x, which would then be shown from `src` at 1x
+// or loaded again: its set is narrowed to the one candidate it displayed, keeping
+// its density (ruled 2026-10-30, #1843). A width candidate keeps its width and
+// the page's `sizes`. A density candidate is written as a width with a `sizes`
+// that gives the same density, because the browser adds `src` to a set with no
+// width descriptor as a 1x candidate and shows that one (measured 2026-10-30).
+// An image whose displayed candidate cannot be told apart keeps its whole set. An
+// image still loading when the settle wait ended, or that failed to load, is left
+// as it is, and so is one shown from a `blob:` address (ruled 2026-10-29).
+export const PIN_IMAGE_SOURCES_SCRIPT = `(() => {
+  ${IMAGE_SET_HELPERS}
+  ${SRCSET_HELPERS}
+  const unsettled = globalThis.birdbrainUnsettled
+  if (!unsettled) {
+    throw new Error('The settle wait left no record: the page was replaced before the pin')
+  }
+  const pinned = []
+  for (const img of imageSets()) {
+    const src = img.currentSrc
+    if (!src || src.startsWith('blob:') || unsettled.has(img) || !shown(img)) continue
+    const displayed = displayedCandidate(img, src)
+    if (displayed && displayed.w !== undefined) {
+      img.srcset = src + ' ' + displayed.w + 'w'
+    } else if (displayed && displayed.x > 0 && displayed.x !== 1) {
+      img.srcset = src + ' ' + DENSITY_WIDTH + 'w'
+      img.sizes = DENSITY_WIDTH / displayed.x + 'px'
+    }
+    img.src = src
+    pinned.push({ img, src })
+  }
+  globalThis.birdbrainPinned = pinned
+  return pinned.length
+})()`
+
+const PINNED_HELPERS = `
+  const pinned = globalThis.birdbrainPinned
+  if (!pinned) throw new Error('The pinned images are gone: the page was replaced since the pin')
+`
+
+// How many pinned images are loading, which they do only if the browser chose
+// another source from the set when the pin set `src`.
+export const PINNED_LOADING_SCRIPT = `(() => {
+  ${PINNED_HELPERS}
+  return pinned.filter(({ img }) => !img.complete).length
+})()`
+
+// The counts, taken after the screenshot over the DOM as it is then: an image the
+// page removed or pointed elsewhere since the pin is not counted as pinned, and
+// a pinned image counts as not loaded unless it holds an image with a natural size.
+export const PINNED_COUNTS_SCRIPT = `(() => {
+  ${IMAGE_SET_HELPERS}
+  ${PINNED_HELPERS}
+  const held = pinned.filter(({ img, src }) => img.isConnected && img.getAttribute('src') === src)
+  return {
+    pinnedImages: held.length,
+    pinnedImagesNotLoaded: held.filter(({ img }) => !shown(img)).length
+  }
+})()`
+
+function inPinWorld(wc: WebContents, code: string): Promise<unknown> {
+  return wc.executeJavaScriptInIsolatedWorld(PIN_WORLD_ID, [{ code }])
+}
+
+// Polls `code` until it reports 0, or until `waitMs` has passed on the main
+// process's clock.
+async function untilNoneLeft(wc: WebContents, code: string, waitMs: number): Promise<void> {
+  const deadlineAt = Date.now() + waitMs
+  while ((await inPinWorld(wc, code)) !== 0 && Date.now() < deadlineAt) {
+    await sleep(Math.min(PIN_POLL_MS, deadlineAt - Date.now()))
+  }
+}
+
+// Gives the images offered as sets up to `waitMs` to finish loading, or fail,
+// before the pin, which leaves out any still loading after it.
+export function settleImageSets(wc: WebContents, waitMs: number): Promise<void> {
+  return untilNoneLeft(wc, IMAGE_SETS_LOADING_SCRIPT, waitMs)
+}
+
+// Pins the image sources, and waits up to `waitMs` for any pinned image that
+// started loading. A script that throws fails the render, as a Scroll-to-load
+// step that throws does.
+export async function pinImageSources(wc: WebContents, waitMs: number): Promise<void> {
+  await inPinWorld(wc, PIN_IMAGE_SOURCES_SCRIPT)
+  await untilNoneLeft(wc, PINNED_LOADING_SCRIPT, waitMs)
+}
+
+const MhtmlPartSchema = CaptureInventorySchema.shape.mhtml
+
+// Counts the pinned images and returns the inventory's MHTML part, parsed with
+// the strict schema. That part has no failed form (D4), so a script that throws,
+// or counts the schema refuses, fails the render. A pinned image still loading
+// is counted, not a failure.
+export async function countPinnedImages(wc: WebContents): Promise<ImageSourcePinning> {
+  const counts = (await inPinWorld(wc, PINNED_COUNTS_SCRIPT)) as {
+    pinnedImages?: unknown
+    pinnedImagesNotLoaded?: unknown
+  } | null
+  const parsed = MhtmlPartSchema.safeParse({
+    present: true,
+    pinnedImages: counts?.pinnedImages,
+    pinnedImagesNotLoaded: counts?.pinnedImagesNotLoaded
+  })
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map(({ message }) => message).join('; ')
+    throw new Error(`Image Source Pinning returned counts the schema refuses: ${issues}`)
+  }
+  return parsed.data
+}
+
+// The schema-6 shape of the inventory's PDF part, parsed before it reaches the
+// signed entry, as the Transaction Record's part is.
+const PdfPartSchema = CaptureInventorySchema.shape.pdf
+
+class PrintTimeout extends Error {
+  constructor(ms: number) {
+    super(`The print did not settle within ${ms}ms`)
+    this.name = 'PrintTimeout'
+  }
+}
+
+// The page as the render saved it, which the stored Capture describes.
+interface SavedPage {
+  url: string
+  title: string
+  httpStatus: number
+  // Main-frame navigations committed by the save.
+  navigations: number
+  // The last of them, so Bound TLS Details follow the saved page, not a later one;
+  // undefined when a navigation committed after collection stopped, a same-address
+  // reload included, since no recorded request loaded the saved page (ruling of
+  // 2026-10-30 on #2000).
+  committedUrl: string | undefined
+}
+
+// Prints the page to PDF (step 10 of
+// docs/plans/2026-10-10-capture-engine-first-slice.md). The caller runs it last,
+// after collection stopped and the other files were taken, so what the page
+// fetches for printing stays out of the Transaction Record (spec, PDF). Never
+// throws: a page that navigated after the save, or is taller than
+// MAX_PDF_CONTENT_HEIGHT_PX, is not printed, and that, a print that fails or
+// outlasts `boundMs`, a page the window reports navigated while it printed, and
+// a PDF over MAX_PDF_SIZE each record the PDF absent as `failed`, with an error
+// that names the cause.
+async function printPageToPdf(
+  wc: WebContents,
+  {
+    saved,
+    navigations,
+    contentHeight,
+    boundMs
+  }: { saved: SavedPage; navigations: () => number; contentHeight: number; boundMs: number }
+): Promise<PdfOutcome> {
+  try {
+    // A print shows whatever the window holds, so a page that left the saved
+    // document, or changed its address in place, would be printed as another page.
+    // Checked again after the print, for a navigation the window reports only then
+    // (review of #2000).
+    const navigatedTo = (): string | null => {
+      const url = wc.getURL()
+      return url !== saved.url || navigations() !== saved.navigations ? url : null
+    }
+    const before = navigatedTo()
+    if (before !== null) {
+      throw new Error(`The page navigated after it was saved, to ${before}, so it was not printed`)
+    }
+    if (contentHeight > MAX_PDF_CONTENT_HEIGHT_PX) {
+      throw new Error(
+        `The page is ${contentHeight} CSS pixels tall, over MAX_PDF_CONTENT_HEIGHT_PX ` +
+          `(${MAX_PDF_CONTENT_HEIGHT_PX}), so it was not printed`
+      )
+    }
+    if (boundMs <= 0) throw new Error('The Recapture timeout left no time for the print')
+    let timer: NodeJS.Timeout | undefined
+    const bound = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new PrintTimeout(boundMs)), boundMs)
+    })
+    // Electron's defaults, the options the probe printed with.
+    const bytes = await Promise.race([wc.printToPDF({}), bound]).finally(() => clearTimeout(timer))
+    const during = navigatedTo()
+    if (during !== null) {
+      throw new Error(`The page navigated while it printed, to ${during}, so the PDF was discarded`)
+    }
+    if (bytes.length > MAX_PDF_SIZE) {
+      throw new Error(
+        `The PDF is ${bytes.length} bytes, over MAX_PDF_SIZE (${MAX_PDF_SIZE}), so it was discarded`
+      )
+    }
+    const inventory = PdfPartSchema.parse({ present: true, afterCollection: true }) as PresentPdf
+    return { present: true, bytes, inventory }
+  } catch (error) {
+    return { present: false, reason: 'failed', error }
   }
 }
 
@@ -381,7 +867,10 @@ function proxyFailure(err: unknown, egress: KnownEgress): Error | null {
 // so: sandboxed, isolated, no node, every permission denied, popups denied,
 // window destroyed in finally. The only preload is the consent blocker's
 // isolated cosmetic-filter bridge (see below).
-export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) => {
+export const renderPageInHiddenWindow: RenderPage = async (
+  url,
+  { timeoutMs, captureId, toolVersion }
+) => {
   // An Egress that could not be read sends nothing, so no window is made (ADR-0032).
   const egress = knownEgress()
 
@@ -410,6 +899,11 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
 
   const tmpPath = join(app.getPath('temp'), `birdbrain-recapture-${randomUUID()}.mhtml`)
 
+  // The time left counts from the moment the deadline timer starts, so setup before the
+  // first load, such as a slow `setProxy`, cannot let a phase settle after the deadline.
+  const startedAt = Date.now()
+  const remainingMs = (reserveMs = 0) =>
+    Math.max(0, timeoutMs - (Date.now() - startedAt) - reserveMs)
   let deadlineTimer: NodeJS.Timeout | undefined
   const deadline = new Promise<never>((_, reject) => {
     deadlineTimer = setTimeout(
@@ -441,6 +935,7 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
   const session = wc.session
   let networkTracker: NetworkIdleTracker | undefined
   let blocker: ElectronBlocker | null = null
+  let recorder: TransactionRecorder | undefined
 
   // Step-level idempotent teardown — NOT a single once-guard. Both the inner
   // finally and the outer timeout path invoke this, and the blocker may only be
@@ -468,6 +963,8 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
       // Session already torn down with the window — listeners went with it.
     }
     networkTracker = undefined
+    recorder?.dispose()
+    recorder = undefined
     try {
       if (wc.debugger.isAttached()) wc.debugger.detach()
     } catch {
@@ -491,23 +988,38 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
     wc.session.setPermissionCheckHandler(() => false)
     wc.setWindowOpenHandler(() => ({ action: 'deny' }))
     wc.setAudioMuted(true)
-
-    const startedAt = Date.now()
-    const remainingMs = (reserveMs = 0) =>
-      Math.max(0, timeoutMs - (Date.now() - startedAt) - reserveMs)
+    // Test-only: a build that reads the switch accepts the e2e fixture's TLS
+    // leaf. A packaged build installs nothing here.
+    const certificateAllowance = testCertificateAllowance()
+    if (certificateAllowance) session.setCertificateVerifyProc(certificateAllowance)
 
     wc.on('will-redirect', checkHop)
     wc.on('will-navigate', checkHop)
 
     let httpStatus = 0
-    wc.on('did-navigate', (_event, _navUrl, httpResponseCode) => {
+    let navigations = 0
+    // Bound TLS Details are signed only for the page this names (`boundTlsOf`).
+    let committedUrl = ''
+    wc.on('did-navigate', (_event, navUrl, httpResponseCode) => {
       httpStatus = httpResponseCode
+      navigations += 1
+      committedUrl = navUrl
     })
 
-    // The debugger is attached for the whole render but no CDP event domains are
-    // enabled — only the one-shot getLayoutMetrics/captureScreenshot commands use
-    // it. Network-idle is tracked out-of-band via the session's webRequest API.
+    // The debugger is attached for the whole render, and its Network domain
+    // records the Transaction Record. Network idle is still tracked on the
+    // session's webRequest API.
     wc.debugger.attach('1.3')
+
+    // `Network.enable` gets no answer on a window that has not navigated, so a
+    // blank page loads first (probe spike). The page then reads one more
+    // `history.length` entry than a direct load gives it, a known limitation
+    // (renderer spike, question 7), and can go back to the blank page, which
+    // `boundTlsOf` then signs no details for.
+    recorder = createTransactionRecorder(wc.debugger)
+    const activeRecorder = recorder
+    await wc.loadURL('about:blank')
+    const recording = await activeRecorder.start()
 
     // Neutralize consent/cookie-notice overlays before the page loads: the fresh
     // session guarantees every consent wall fires, and walls scroll-lock the page
@@ -550,7 +1062,7 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
       // Scroll through the complete document to trigger lazy-loaded/infinite-scroll
       // content before saving the MHTML. Unlike the original 30-viewport cap, this
       // runs until the page bottom is stable or the recapture budget is exhausted.
-      await scrollToLoadLazyContent(
+      const scrollToLoad = await scrollToLoadLazyContent(
         wc,
         clampPhaseMs(remainingMs(FINAL_ARTIFACT_RESERVE_MS), MAX_SCROLL_PHASE_MS)
       )
@@ -559,25 +1071,90 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
         clampPhaseMs(remainingMs(FINAL_ARTIFACT_RESERVE_MS), POST_SCROLL_NETWORK_IDLE_MAX_MS)
       )
       await sleep(Math.min(FINAL_SETTLE_MS, remainingMs(FINAL_ARTIFACT_RESERVE_MS)))
+      await settleImageSets(
+        wc,
+        clampPhaseMs(remainingMs(FINAL_ARTIFACT_RESERVE_MS), IMAGE_SET_SETTLE_MAX_MS)
+      )
 
-      const screenshot = await captureFullPageScreenshot(wc)
+      // Before the screenshot: once it has run, the browser no longer holds in memory
+      // the images it displayed, so a pin after it would load again each one with no
+      // fresh copy in the HTTP cache (ruled 2026-10-30).
+      await pinImageSources(
+        wc,
+        clampPhaseMs(remainingMs(FINAL_ARTIFACT_RESERVE_MS), PIN_LOAD_MAX_MS)
+      )
 
+      const { png: screenshot, record: screenshotRecord } = await captureFullPageScreenshot(wc)
+      const imageSourcePinning = await countPinnedImages(wc)
+
+      // Collection stops after the pin, so a request the pin makes is in the
+      // Transaction Record (ruled 2026-10-26), and after the screenshot, which can
+      // load a pinned image again, and just before the save, during which the
+      // renderer spike saw no request and no event.
+      activeRecorder.stop()
+      const navigationsAtStop = navigations
+      const recordedAt = new Date().toISOString()
       await wc.savePage(tmpPath, 'MHTML')
+      // The Capture is stored under the page the save took, read before anything else
+      // awaits: a page can navigate itself during the steps that follow (review of #2000).
+      const saved: SavedPage = {
+        url: wc.getURL(),
+        title: wc.getTitle(),
+        httpStatus,
+        navigations,
+        committedUrl: navigations === navigationsAtStop ? committedUrl : undefined
+      }
 
       const text = (await wc.executeJavaScript(
         'document.body ? document.body.innerText : ""'
       )) as string
 
+      const userAgent = wc.getUserAgent()
+      const browserVersion = `Chrome/${process.versions.chrome}`
+      const transactionRecord: TransactionRecordOutcome = recording
+        ? await finishTransactionRecord(activeRecorder, {
+            collectMs: BODY_COLLECT_TIMEOUT_MS,
+            writeMs: RECORD_WRITE_TIMEOUT_MS,
+            timeLeftMs: () => remainingMs(END_MARGIN_MS),
+            committedUrl: saved.committedUrl,
+            writer: {
+              captureId,
+              birdbrainVersion: toolVersion,
+              browserVersion,
+              userAgent,
+              egress: egress.kind,
+              date: recordedAt
+            }
+          })
+        : {
+            present: false,
+            reason: 'failed',
+            error: new Error('Network.enable failed or did not answer on the page')
+          }
+
+      // Last, under its own bound cut to the time left (PRINT_TIMEOUT_MS).
+      const pdf = await printPageToPdf(wc, {
+        saved,
+        navigations: () => navigations,
+        contentHeight: screenshotRecord.contentHeight,
+        boundMs: Math.min(PRINT_TIMEOUT_MS, remainingMs(END_MARGIN_MS))
+      })
+
       return {
         mhtmlStream: createReadStream(tmpPath) as unknown as AsyncIterable<Uint8Array>,
         screenshot,
+        screenshotRecord,
+        scrollToLoad,
+        imageSourcePinning,
         text,
-        title: wc.getTitle(),
-        finalUrl: wc.getURL(),
-        httpStatus,
-        userAgent: wc.getUserAgent(),
-        browserVersion: `Chrome/${process.versions.chrome}`,
+        title: saved.title,
+        finalUrl: saved.url,
+        httpStatus: saved.httpStatus,
+        userAgent,
+        browserVersion,
         consentSuppression,
+        transactionRecord,
+        pdf,
         egress: captureEgressOf(egress),
         cleanup: async () => {
           if (!win.isDestroyed()) win.destroy()

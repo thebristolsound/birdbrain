@@ -69,13 +69,48 @@ export interface CaseAutoCapturePolicy {
 
 export type CaptureFormat = 'html' | 'mhtml'
 
+// The Capture Methods of a browser Birdbrain launches (ADR-0034), schema 7
+// (docs/specs/2026-10-10-capture-engine-launched-browser-design.md, decisions
+// D5 and D12). 'launched' = taken by the Operator's click in that browser;
+// 'launched-passive' = taken there without a click, by the Capture Session's
+// passive rule (ADR-0037). The verifier learns both before anything writes
+// them; `companion` waits for stage 3, and `persona-window` stays withdrawn
+// (ADR-0034).
+export const LAUNCHED_CAPTURE_METHODS = ['launched', 'launched-passive'] as const
+
 // How the capture was produced (#recapture). 'extension' = operator-witnessed
 // via the Chrome extension; 'background' = silent hidden-window recapture;
 // 'duplicate' = a byte copy of another capture in the same case (#827), which
 // observed nothing itself and must never be read as a second sighting of the
-// page.
-export const CAPTURE_METHODS = ['extension', 'background', 'duplicate'] as const
+// page; the launched values above.
+export const CAPTURE_METHODS = [
+  'extension',
+  'background',
+  'duplicate',
+  ...LAUNCHED_CAPTURE_METHODS
+] as const
 export type CaptureMethod = (typeof CAPTURE_METHODS)[number]
+
+// The product family the capture engine launched (decision D12), signed beside
+// the product and version `Browser.getVersion` reports, because two products
+// can send the same user agent (the spec's E7). `chrome-for-testing` is the
+// pinned build the known-answer suite launches in CI (decision D23), kept
+// apart from branded `chrome`.
+export const BROWSER_FAMILIES = [
+  'chrome',
+  'chrome-for-testing',
+  'edge',
+  'brave',
+  'chromium'
+] as const
+export type BrowserFamily = (typeof BROWSER_FAMILIES)[number]
+
+// Which rule took a `launched-passive` Capture (decision D12, ADR-0037): every
+// page that loaded, or a page an Active Case Selector matched. Which Selectors
+// matched stays in `selector_matches`, off the signed entry, because a pattern
+// can reveal what the investigation is looking for.
+export const PASSIVE_CAPTURE_RULES = ['every-page', 'selector-match'] as const
+export type PassiveCaptureRule = (typeof PASSIVE_CAPTURE_RULES)[number]
 
 // How consent/cookie-notice overlays were neutralized during a background
 // recapture. 'filter-list' = maintained consent filter lists (EasyList Cookie +
@@ -102,11 +137,24 @@ export type TlsRefetchSkip = (typeof TLS_REFETCH_SKIPS)[number]
 // schema step, so a released verifier meets it under a newer stamp and reports
 // "verifier too old".
 
-// Why the inventory records the Transaction Record or the PDF as absent:
-// `not-taken`, this build does not take the file; `failed`, the engine tried
-// and failed.
+// Why the inventory records the Transaction Record or the PDF as absent, at
+// schema 6: `not-taken`, this build does not take the file; `failed`, the
+// engine tried and failed.
 export const INVENTORY_ABSENCE_REASONS = ['not-taken', 'failed'] as const
-export type InventoryAbsenceReason = (typeof INVENTORY_ABSENCE_REASONS)[number]
+
+// The schema-7 reasons, each on the one part a launched browser can write it
+// for. The Transaction Record: `page-not-recorded`, the recording did not
+// cover the page; `back-forward-cache`, the browser restored the page from its
+// back-forward cache, so no request loaded it. The PDF: `not-taken-passive`, a
+// passive Capture takes no PDF.
+export const TRANSACTION_RECORD_ABSENCE_REASONS = [
+  ...INVENTORY_ABSENCE_REASONS,
+  'page-not-recorded',
+  'back-forward-cache'
+] as const
+export const PDF_ABSENCE_REASONS = [...INVENTORY_ABSENCE_REASONS, 'not-taken-passive'] as const
+export type InventoryAbsenceReason =
+  (typeof TRANSACTION_RECORD_ABSENCE_REASONS)[number] | (typeof PDF_ABSENCE_REASONS)[number]
 
 // Where Scroll-to-load ended. There is no `failed` value; D5 gives the reason.
 export const SCROLL_TO_LOAD_OUTCOMES = [
@@ -348,6 +396,18 @@ export interface Capture {
   // that wrote it — this column is remapped on archive import, so it is the
   // link that survives a case moving between installations.
   duplicateOfCaptureId?: string
+  // Set on a Capture made with Capture link (ADR-0040, migration v44), all three or none.
+  // On a Capture this installation wrote, `linkedFromCaptureId` is the source's row id,
+  // remapped on archive import as `duplicateOfCaptureId` is; the signed entry names the source
+  // by its entry's id instead (LinkSource in captureLifecycle.ts), and a received row copies
+  // that entry id (receivedEvidence.ts).
+  linkedFromCaptureId?: string
+  linkedFromContentHash?: string
+  linkHref?: string
+  // The Persona an ingest signed (migration v45), with the label as passed at acquisition. A
+  // Capture received into a Shared Case does not mirror it (receivedEvidence.ts).
+  personaId?: string
+  personaLabel?: string
   // Consent-overlay suppression active while the page rendered; mirrors the
   // value anchored in the manifest capture entry. undefined = none.
   consentSuppression?: ConsentSuppression
@@ -386,6 +446,11 @@ export interface Capture {
   // manifest and used as the retry-worker queue (#120).
   trustedTimeStatus?: TrustedTime
 }
+
+// The three link provenance fields as a link Capture's entry and row carry them.
+export type LinkProvenance = Required<
+  Pick<Capture, 'linkedFromCaptureId' | 'linkedFromContentHash' | 'linkHref'>
+>
 
 // --- Wayback Machine corroboration (#wayback) ---
 // Post-capture, corroboration-only lookup of archive.org's independent record
@@ -778,6 +843,10 @@ export const LOG_CODES = [
   'mutation.failed',
   'react.render_error',
   // --- appended: real call sites with no pinned-code fit ---
+  // Every failed request through handle() (ipcWrap.ts): refused is an
+  // { ok: false } answer, threw is a defect that rejects in the renderer.
+  'ipc.request_refused',
+  'ipc.request_threw',
   'captureServer.selector_create_failed',
   'captureServer.tag_apply_failed',
   'captureServer.note_create_failed',
@@ -810,6 +879,19 @@ export const LOG_CODES = [
   // retries on the next delete in that Case and at the next launch.
   'captureLifecycle.delete_recovery_failed',
   'backgroundRenderer.trim_failed',
+  // The reset after Scroll-to-load failed. With a lifted scroll lock the render
+  // fails too; without one the capture goes on.
+  'backgroundRenderer.scroll_reset_failed',
+  // The Transaction Record of a background render failed or ran out of time
+  // (open question E of docs/plans/2026-10-10-capture-engine-first-slice.md).
+  // Logged by the Recapture queue once the Capture is stored; its inventory
+  // records the record absent as `failed`.
+  'backgroundRenderer.transaction_record_failed',
+  // The PDF of a background render failed, ran out of time, was over a size
+  // bound, or was refused because the page navigated after the save, which its
+  // error names (step 10 of the same plan). Logged once the Capture is stored;
+  // its inventory records the PDF absent as `failed`.
+  'backgroundRenderer.pdf_failed',
   'backgroundRenderer.consent_blocker_disable_failed',
   'backgroundRenderer.consent_blocker_enable_failed',
   'consentBlocker.filter_engine_failed',
@@ -943,7 +1025,8 @@ export const LOG_CODES = [
   // holds the error.
   'searchFields.unreviewed_failed',
   // Shared Case sharing (#1810): an incoming stream whose handler threw on
-  // this installation (the peer saw the stream close), and a joiner's first
+  // this installation (the peer saw the stream close; info for an ordinary
+  // disconnect, warn otherwise), and a joiner's first
   // session that failed after the Case was adopted (Sync now retries it).
   'sharing.stream_failed',
   'sharing.first_session_failed',
@@ -1028,7 +1111,14 @@ export const ERROR_NAMES = [
   // Without this the durable app.startup_failed entry for a bind failure reads
   // 'UnknownError', which is the one field distinguishing it from any other
   // fatal boot error in a log an operator has sent in (#513).
-  'CaptureServerBindError'
+  'CaptureServerBindError',
+  // Shared Cases (#1810). TransportError carries why the network ended a
+  // stream in its code (irohTransport.ts); the others name a refusal.
+  'TransportError',
+  'SharingError',
+  'ProtocolError',
+  'PeerByeError',
+  'PeerUnreachableError'
 ] as const
 
 export interface LoggedError {
@@ -1383,6 +1473,9 @@ export interface CaptureEvent {
   // exact capture being recaptured, not every capture that shares its URL —
   // recapture creates same-URL siblings, so URL alone is ambiguous.
   supersedesCaptureId?: string
+  // The source and link address of a Capture link job, on every event emitted while it runs, so
+  // the viewer's notice can tell its job from another of the same address (ADR-0040).
+  linkedFrom?: { captureId: string; linkHref: string }
 }
 
 export interface OperatorIdentity {

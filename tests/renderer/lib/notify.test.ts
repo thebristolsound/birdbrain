@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fakeBridge } from '../fakeBridge'
+import { LOG_CODES } from '@shared/types'
 
 const toastFns = {
   error: vi.fn(),
@@ -99,5 +100,15 @@ describe('notify', () => {
     window.addEventListener('birdbrain:report', dispatched)
     second[1].action.onClick()
     expect(dispatched.mock.calls[0][0].detail).toEqual({ correlationId: 'cid-1' })
+  })
+})
+
+describe('labelForCode', () => {
+  // The Log tab shows the label and not the code, so two codes sharing one read as one.
+  it('gives every log code its own label', async () => {
+    const { labelForCode } = await import('@renderer/lib/notify')
+    const labels = LOG_CODES.map((code) => labelForCode(code))
+    const repeated = labels.filter((label, i) => labels.indexOf(label) !== i)
+    expect(repeated).toEqual([])
   })
 })

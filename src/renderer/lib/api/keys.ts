@@ -41,6 +41,8 @@ export const queryKeys = {
   tagsForNote: (noteId: string) => ['tags', 'note', noteId] as const,
   personas: ['persona'] as const,
   personaStorageState: ['persona', 'storageState'] as const,
+  // The launched browser (#1831).
+  launchedBrowsers: ['launchedBrowser', 'list'] as const,
   selectors: (caseId: string) => ['selectors', caseId] as const,
   selectorMatchCounts: (caseId: string) => ['selectors', 'matchCounts', caseId] as const,
   selectorCoverage: (caseId: string) => ['selectors', 'coverage', caseId] as const,

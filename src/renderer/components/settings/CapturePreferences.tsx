@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Check } from 'lucide-react'
 import type { BirdbrainSettings } from '@shared/types'
 import { Card, CardContent, Input, Button, Label } from '@renderer/components/ui'
+import { FoundBrowsers } from '@renderer/components/launchedBrowser/FoundBrowsers'
 
 interface CapturePreferencesProps {
   settings: BirdbrainSettings
@@ -104,6 +105,8 @@ export function CapturePreferences({ settings, onUpdate }: CapturePreferencesPro
               matches update the extension badge and nothing is captured. The stored setting
               and its schema are left untouched, so restoring the control is a revert rather
               than a migration. See #570; #571 tracks whether auto-capture returns at all. */}
+
+          <FoundBrowsers />
         </div>
       </CardContent>
     </Card>

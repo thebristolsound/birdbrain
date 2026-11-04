@@ -223,6 +223,7 @@ export const QUERY_DOMAINS = [
   'extractedData',
   'identity',
   'investigation',
+  'launchedBrowser',
   'manifest',
   'notes',
   'persona',

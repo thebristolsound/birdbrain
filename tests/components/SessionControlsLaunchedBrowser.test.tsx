@@ -2,7 +2,7 @@
 // When the Capture Session switch shows (the revision assessment, S2: "while the extension is
 // connected or a launched browser is open").
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { LaunchedBrowserStatus } from '@shared/types'
 import { queryKeys } from '@renderer/lib/api/keys'
@@ -26,8 +26,14 @@ const BROWSER = {
 }
 
 function mount(status: LaunchedBrowserStatus) {
+  const stop = vi.fn(async () => ({
+    sessionActive: false,
+    activeCaseId: 'case-1',
+    captureCount: 0
+  }))
   fakeBridge({
     cases: { list: vi.fn(async () => []) },
+    session: { stop },
     launchedBrowser: { status: vi.fn(async () => status) }
   })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -37,11 +43,16 @@ function mount(status: LaunchedBrowserStatus) {
       <SessionControls />
     </QueryClientProvider>
   )
+  return { stop }
 }
 
 afterEach(() => {
   cleanup()
-  useAppStore.setState({ connectedToExtension: false, sessionActive: false })
+  useAppStore.setState({
+    connectedToExtension: false,
+    sessionActive: false,
+    stopConfirmOpen: false
+  })
 })
 
 describe('the Capture Session switch and a launched browser', () => {
@@ -76,5 +87,25 @@ describe('the Capture Session switch and a launched browser', () => {
     useAppStore.setState({ connectedToExtension: true })
     mount({ state: 'none' })
     expect(screen.getByRole('switch', { name: 'Capture Session' })).toBeDefined()
+  })
+})
+
+// `1i`: turning the switch off opens the stop confirmation while a launched browser is open,
+// since stopping then closes it.
+describe('turning the switch off', () => {
+  it('asks first while a launched browser is open', () => {
+    useAppStore.setState({ sessionActive: true })
+    const { stop } = mount({ state: 'open', browser: BROWSER })
+    fireEvent.click(screen.getByRole('switch', { name: 'Capture Session' }))
+    expect(useAppStore.getState().stopConfirmOpen).toBe(true)
+    expect(stop).not.toHaveBeenCalled()
+  })
+
+  it('stops at once once the browser has closed, as there is none to close', async () => {
+    useAppStore.setState({ sessionActive: true })
+    const { stop } = mount({ state: 'closed', browser: BROWSER })
+    fireEvent.click(screen.getByRole('switch', { name: 'Capture Session' }))
+    await waitFor(() => expect(stop).toHaveBeenCalledTimes(1))
+    expect(useAppStore.getState().stopConfirmOpen).toBe(false)
   })
 })

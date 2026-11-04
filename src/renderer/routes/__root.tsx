@@ -36,6 +36,7 @@ import { OnboardingTour } from '@renderer/components/onboarding/OnboardingTour'
 import { ShareCoachMark } from '@renderer/components/onboarding/ShareCoachMark'
 import { LeftoverBrowserNotice } from '@renderer/components/launchedBrowser/LeftoverBrowserNotice'
 import { StartDialog } from '@renderer/components/launchedBrowser/StartDialog'
+import { StopSessionDialog } from '@renderer/components/launchedBrowser/StopSessionDialog'
 import { AppToaster } from '@renderer/components/ui'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 import { subscribeToMainLog } from '@renderer/lib/mainLogBridge'
@@ -147,6 +148,7 @@ const rootRoute = createRootRoute({
           <OnboardingTour />
           <LeftoverBrowserNotice />
           <StartDialog />
+          <StopSessionDialog />
           <ShareCoachMark />
           <CrashRecoveryPrompt />
           <ReportProblemDialog

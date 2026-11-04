@@ -15,6 +15,7 @@ export function SessionControls() {
   const { data: launched } = useQuery(launchedBrowserStatusQueryOptions)
   const [toggling, setToggling] = useState(false)
   const { activateCase, start, stop } = useSessionMutations()
+  const setStopConfirmOpen = useAppStore((s) => s.setStopConfirmOpen)
 
   const params = useParams({ strict: false })
   const activeCaseId = (params as { caseId?: string }).caseId ?? null
@@ -57,7 +58,12 @@ export function SessionControls() {
           role="switch"
           aria-checked={sessionActive}
           aria-label="Capture Session"
-          onClick={handleToggleSession}
+          // Stopping closes an open launched browser, so the switch asks first (`1i`).
+          onClick={
+            sessionActive && launched?.state === 'open'
+              ? () => setStopConfirmOpen(true)
+              : handleToggleSession
+          }
           disabled={toggling || (!sessionActive && !activeCaseId)}
           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50 ${
             sessionActive ? 'bg-accent' : 'bg-text-faint'

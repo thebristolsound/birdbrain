@@ -99,12 +99,37 @@ describe('appStore', () => {
     })
 
     // #1735: a link clicked in the Page or Links tab opens its Capture on that tab.
-    it('opens a followed capture that has not been viewed on the tab the link was in', () => {
+    it.each(['page', 'links'] as const)(
+      'opens a followed capture that has not been viewed on the %s tab the link was in',
+      (source) => {
+        const { selectCapture, followCaptureLink, setActiveViewerTab } = useAppStore.getState()
+        selectCapture('cap-1')
+        setActiveViewerTab(source)
+        followCaptureLink('cap-2')
+        expect(useAppStore.getState().selectedCaptureId).toBe('cap-2')
+        expect(tab()).toBe(source)
+      }
+    )
+
+    it('returns to a capture opened from a link on the tab it opened on, with Back', () => {
       const { selectCapture, followCaptureLink, setActiveViewerTab } = useAppStore.getState()
       selectCapture('cap-1')
-      setActiveViewerTab('page')
+      setActiveViewerTab('links')
       followCaptureLink('cap-2')
-      expect(tab()).toBe('page')
+      followCaptureLink('cap-3')
+      useAppStore.getState().goBackInTrail(new Set(['cap-1', 'cap-2', 'cap-3']))
+      expect(useAppStore.getState().selectedCaptureId).toBe('cap-2')
+      expect(tab()).toBe('links')
+    })
+
+    it('reopens a capture opened from a link on the tab it opened on, from the list', () => {
+      const { selectCapture, followCaptureLink, setActiveViewerTab } = useAppStore.getState()
+      selectCapture('cap-1')
+      setActiveViewerTab('links')
+      followCaptureLink('cap-2')
+      selectCapture('cap-1')
+      selectCapture('cap-2')
+      expect(tab()).toBe('links')
     })
 
     it('keeps a tab chosen with nothing selected off every capture', () => {

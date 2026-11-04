@@ -134,12 +134,18 @@ function selectedCaptureState(
   captureTrail: string[] = [],
   unviewedTab: CaptureViewerTab = 'screenshot'
 ) {
-  return ({ viewerHit, viewerTabs }: AppState) => ({
-    selectedCaptureId: id,
-    viewerHit: viewerHit?.exhibitId === id ? viewerHit : null,
-    activeViewerTab: (id && viewerTabs[id]) || unviewedTab,
-    captureTrail
-  })
+  return ({ viewerHit, viewerTabs }: AppState) => {
+    const activeViewerTab = (id && viewerTabs[id]) || unviewedTab
+    return {
+      selectedCaptureId: id,
+      viewerHit: viewerHit?.exhibitId === id ? viewerHit : null,
+      activeViewerTab,
+      // Recorded on open, not only on a tab click, so Back and a reselect return a
+      // capture opened from a link to the tab it opened on.
+      viewerTabs: id && !viewerTabs[id] ? { ...viewerTabs, [id]: activeViewerTab } : viewerTabs,
+      captureTrail
+    }
+  }
 }
 
 export const useAppStore = create<AppState>((set) => ({

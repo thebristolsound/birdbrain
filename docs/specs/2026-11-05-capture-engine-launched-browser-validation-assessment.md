@@ -160,6 +160,9 @@ overstate the record.
 - A shared worker's requests and a page restored from the back-forward cache are as the spec
   describes (its "What the guarantee does not cover").
 - The pinned build and the two installed builds ran one pass each for this record.
+- A service worker is recorded from its session under every tab it attaches to. One worker that
+  controls two tabs could put its fetches for one tab into the other tab's record. The design
+  leaves this unmeasured, and this run did not produce it.
 
 ## Acceptance decision
 

@@ -53,6 +53,10 @@ import {
 import { pdfPath, transactionRecordPath } from '../../../src/packages/evidence-package-layout/index'
 import { CaptureInventorySchema, ScrollToLoadRecordSchema } from '@shared/schemas'
 
+// 60 s, not the 15 s in vitest.config.ts: this suite crosses 15 s when several agent
+// sessions share the cores, and a timeout here turns a local preflight into a false fail.
+vi.setConfig({ testTimeout: 60_000 })
+
 // #584: the shipped VERIFY.md is executed against a real evidence package, and
 // the verify.sh that ships beside it is run on that package and on deliberately
 // corrupted copies of it.

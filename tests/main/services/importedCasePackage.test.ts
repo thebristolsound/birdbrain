@@ -60,6 +60,10 @@ import { extractRunbookBlocks, runRunbookBlocks } from '../../helpers/runbookBlo
 import { runVerifyScript } from '../../helpers/verifyScript'
 import { downgradeToVersion10, downgradeToVersion11 } from '../../helpers/archiveDerivedFiles'
 
+// 60 s, not the 15 s in vitest.config.ts: this suite crosses 15 s when several agent
+// sessions share the cores, and a timeout here turns a local preflight into a false fail.
+vi.setConfig({ testTimeout: 60_000 })
+
 // #1657: a Case that arrived through an import carries entries another
 // installation signed, before its `import` entry. Its Evidence Package must
 // pass the verify.sh it ships with and the package verifier, and its

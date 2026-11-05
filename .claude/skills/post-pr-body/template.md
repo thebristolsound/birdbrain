@@ -40,8 +40,9 @@ If Yes, keep this collapsed subsection and fill every field; otherwise delete it
 
 <!-- Paste .preflight/verification.md verbatim below, marker line included, generated at the
 head sha under review. It already wraps the step list in a <details> block under a plain
-summary line. Nothing above this line exceeds 40 top-layer lines; collapsed lines and these
-comments do not count. -->
+summary line. For a PR nobody preflighted locally (dependabot, a human author), paste what
+scripts/verification-from-ci.sh <n> prints instead. Nothing above this line exceeds 40
+top-layer lines; collapsed lines and these comments do not count. -->
 ## Verification
 
 <!-- An agent-written description ends with this line, uncommented and last:

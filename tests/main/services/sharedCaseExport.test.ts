@@ -65,6 +65,10 @@ import { extractRunbookBlocks, runRunbookBlocks } from '../../helpers/runbookBlo
 import { runVerifyScript } from '../../helpers/verifyScript'
 import { checkConformance } from '../../helpers/verifyConformance'
 
+// 60 s, not the 15 s in vitest.config.ts: this suite crosses 15 s when several agent
+// sessions share the cores, and a timeout here turns a local preflight into a false fail.
+vi.setConfig({ testTimeout: 60_000 })
+
 // Shared Cases, step 3 (#1511): the writers. The three acceptance criteria are
 // frozen here, each end to end through the app's own export and import and
 // the standalone package verifier:

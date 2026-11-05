@@ -532,7 +532,8 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.LAUNCHED_BROWSER_DOCK, () => popOut.dock())
   handle(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT_STATE, () => popOut.isOpen())
 
-  // A clicked Capture (#1832). The panel names the tab before the click; main checks it again.
+  // A clicked Capture (#1832). The panel names the tab before the click; main checks the tab's
+  // refusals again and captures the page the tab holds when the Capture starts.
   handle(
     IPC_CHANNELS.LAUNCHED_BROWSER_CAPTURE,
     async (_, targetId: string, request: { scrollToLoad?: unknown }) => {

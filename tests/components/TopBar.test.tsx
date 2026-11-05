@@ -179,20 +179,13 @@ describe('the breadcrumb chip', () => {
   })
 })
 
-// Design review of 2026-11-04: at 1,200 pixels the Case name had shortened to "F.".
+// Design review of 2026-11-04: at 1,200 pixels the Case name had shortened to "F.". jsdom has no
+// layout, so e2e/topbar-layout.spec.ts measures the name against the search at each width.
 describe('the breadcrumb case name', () => {
-  it('keeps about eight characters before the search gives up width, then hides below 1,000', async () => {
+  it("shows the open Case's name", async () => {
     renderAt('/cases/case1/overview')
     const name = await screen.findByTestId('topbar-case-name-text')
     await waitFor(() => expect(name.textContent).toBe('Operation Kestrel'))
-    expect(name.className).toContain('truncate')
-    expect(name.className).toContain('min-w-16')
-    expect(name.className).toContain('max-[1000px]:hidden')
-    const track = screen.getByTestId('topbar-case-name').parentElement!.className
-    expect(track).toContain('grid-cols-[max-content_max-content_minmax(6rem,max-content)]')
-    expect(track).toContain(
-      'max-[1000px]:grid-cols-[max-content_max-content_minmax(2rem,max-content)]'
-    )
   })
 
   it('carries the full name in the tooltip for when it is hidden', async () => {

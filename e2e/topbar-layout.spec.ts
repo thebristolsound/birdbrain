@@ -54,7 +54,8 @@ test.describe('Top bar layout', () => {
       await expect(controls.getByRole('button', { name: /Export/ })).toBeVisible()
       await expect(controls.getByRole('switch', { name: 'Capture Session' })).toHaveCount(0)
 
-      for (const width of [1400, 1100, 1000, 900]) {
+      // 1,200 is the width where the design review of 2026-11-04 saw the name cut to "F.".
+      for (const width of [1400, 1200, 1100, 1000, 900]) {
         await electronApp.windows()[0].setViewportSize({ width, height: 800 })
         await expect(async () => {
           const searchBox = (await search.boundingBox())!

@@ -3,7 +3,11 @@ import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type { LaunchedBrowserStatus } from '@shared/types'
-import type { LaunchedAdmissionRequest } from '@main/services/captureLifecycle'
+import type {
+  AdmissionOutcome,
+  AdmissionRefusal,
+  LaunchedAdmissionRequest
+} from '@main/services/captureLifecycle'
 import { createSessionService } from '@main/services/session'
 import type {
   TabCaptureArtifacts,
@@ -73,6 +77,8 @@ function artifacts(url: string): TabCaptureArtifacts {
 }
 
 interface Options {
+  screen?: () => AdmissionRefusal | null
+  admit?: (request: LaunchedAdmissionRequest) => Promise<AdmissionOutcome>
   platform?: NodeJS.Platform
   registers?: boolean
   browser?: FakeBrowserOptions
@@ -111,10 +117,11 @@ function harness(options: Options = {}) {
     emitPickTab,
     captures: {
       sink: {
-        screenLaunched: () => null,
+        screenLaunched: options.screen ?? (() => null),
         abandonedLaunched: vi.fn(),
         admit: async (request) => {
           admitted.push(request)
+          if (options.admit) return options.admit(request)
           return {
             ok: true,
             capture: { id: 'capture-1', exhibitNumber: 12 } as never,
@@ -303,6 +310,88 @@ describe('clicked Captures in the launched browser', () => {
       targetId: 'first-tab'
     })
     expect(h.admitted).toEqual([])
+  })
+})
+
+describe('why a clicked Capture stored nothing', () => {
+  const progressOf = (status: LaunchedBrowserStatus) =>
+    status.state === 'open' ? status.browser.capture : undefined
+
+  it('names the exclusion pattern that refused the page, before anything is taken', async () => {
+    const h = harness({ screen: () => ({ kind: 'excluded', pattern: 'a.test' }) })
+    await h.open()
+    await h.loadFirstTab()
+    expect(progressOf(await h.service.capture('first-tab', { scrollToLoad: false }))).toEqual({
+      state: 'refused',
+      targetId: 'first-tab',
+      message: 'This Case excludes the page (a.test), so nothing was captured.'
+    })
+    expect(h.capture).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [{ kind: 'operator_name_required' } as const, /Operator name required/],
+    [{ kind: 'case_not_found' } as const, /no longer exists/],
+    [{ kind: 'case_archived' } as const, /archived/],
+    [
+      { kind: 'failed', error: new Error('disk full') } as const,
+      /could not be stored: Error: disk full/
+    ],
+    [{ kind: 'duplicate' } as const, /was refused/]
+  ])('says why admission refused it (%o)', async (refusal, message) => {
+    const h = harness({ admit: async () => ({ ok: false, refusal }) })
+    await h.open()
+    await h.loadFirstTab()
+    expect(progressOf(await h.service.capture('first-tab', { scrollToLoad: false }))).toMatchObject(
+      {
+        state: 'refused',
+        message: expect.stringMatching(message)
+      }
+    )
+  })
+
+  it('reports an artifact that failed, and the tab that has closed', async () => {
+    const h = harness({ capture: async () => Promise.reject(new Error('screenshot failed')) })
+    await h.open()
+    await h.loadFirstTab()
+    expect(progressOf(await h.service.capture('first-tab', { scrollToLoad: false }))).toEqual({
+      state: 'failed',
+      targetId: 'first-tab',
+      message: 'screenshot failed'
+    })
+    h.browser().event('Target.targetDestroyed', { targetId: 'first-tab' })
+    await settle()
+    expect(progressOf(await h.service.capture('first-tab', { scrollToLoad: false }))).toMatchObject(
+      {
+        state: 'refused',
+        message: 'That tab has closed.'
+      }
+    )
+  })
+
+  it('logs a Transaction Record or PDF that failed while the Capture stored', async () => {
+    const part = new Error('print failed')
+    const h = harness({
+      capture: async (input) => ({ ...artifacts(`https://a.test/${input.tabId}`), errors: [part] })
+    })
+    await h.open()
+    await h.loadFirstTab()
+    expect(progressOf(await h.service.capture('first-tab', { scrollToLoad: false }))).toMatchObject(
+      {
+        state: 'captured'
+      }
+    )
+  })
+
+  it('records the frames of a tab in the tab’s recording', async () => {
+    const h = harness()
+    await h.open()
+    h.browser().attach(targetInfo('frame', 'iframe', 'https://b.test/'), {
+      parentSessionId: 'session-1'
+    })
+    await settle()
+    await h.loadFirstTab()
+    expect(h.tabs()[0]).toMatchObject({ firstRequest: true })
   })
 })
 

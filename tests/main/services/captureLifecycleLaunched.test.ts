@@ -200,6 +200,16 @@ describe('Capture Lifecycle: the launched route', () => {
     expect(outcome.ok).toBe(true)
   })
 
+  it('refuses as failed, with a failed event, an entry the strict schema would refuse', async () => {
+    const lifecycle = buildLifecycle()
+    const outcome = await lifecycle.admit(
+      launchedRequest(caseId, { transactionRecord: Buffer.from('a record the inventory omits') })
+    )
+    expect(outcome).toMatchObject({ ok: false, refusal: { kind: 'failed' } })
+    expect(events.at(-1)).toMatchObject({ type: 'failed', source: 'launched' })
+    expect(listCaptures(caseId)).toEqual([])
+  })
+
   it('reports an abandoned Capture on the activity feed and stores nothing', () => {
     buildLifecycle().abandonedLaunched('https://example.com/launched')
     expect(events).toEqual([

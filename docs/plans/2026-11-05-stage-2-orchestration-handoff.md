@@ -31,17 +31,17 @@ started it and apart from the fifteen rulings:
 | --- | --- | --- |
 | 1 | Rulings docs PR, rulings posted on their issues, ruling 9 labels | done: #2066 |
 | 2 | Schema 7 beta release | done: v1.0.1-beta.26 (#2067) |
-| 3 | #1832, taken over from its build thread | #2068, fix round 1 |
-| 4 | #1831 follow-up part A: five Change verdicts outside #2068's files | building |
+| 3 | #1832, taken over from its build thread | #2068, review round 3 |
+| 4 | #1831 follow-up part A: five Change verdicts outside #2068's files | #2069 approved; merge waits on the maintainer's answer on the Capture Session button |
 | 4b | #1831 follow-up part B: the start dialog and panel verdicts, the empty Egress label | waits on #2068 merging |
-| 4c | #1831 hand checks (ruling 13), then the CI job PR (ruling 14) | Windows half running; P17 waits on #2068 |
+| 4c | #1831 hand checks (ruling 13), then the CI job PR (ruling 14) | Windows half done (Edge refused, #2070); P17 and the pop-out wait on #2068 |
 | 5 | Duplicate rows (ruling 4 and the browser fields #2068 found) and received Persona rows (ruling 5) | after #1832 on `captureLifecycle.ts`, before #600 |
 | 6 | #1833 (rulings 6 and 7) | waits on the release and slice 5 |
 | 7 | #1499 (ruling 8), then #1501 | waits on the release and slice 5 |
 | 8 | #1824 remainder (ruling 10) | not started |
 | 9 | #600 with #599 | waits on #1832 merging |
 | 10 | #543 draft, #546, tester guide issue, close #1498 | not started |
-| 11 | #1828 (ruling 15) | Windows rows running with 4c |
+| 11 | #1828 (ruling 15) | done: #2072, follow-up #2071 |
 | 12 | Close-out under roadmap rules 2 and 4 | last |
 
 ## Log
@@ -83,7 +83,15 @@ started it and apart from the fifteen rulings:
   unpinned claims. A delegated fix round is working in the builder's worktree.
 - **Windows thread.** One thread on the Windows machine runs the branded Chrome, Edge and Brave
   launches for #1831 and the #1828 Windows rows, and pushes `docs/1828-windows-probe-rows`.
-- **Next command.** Read the fix round's result, then rerun both reviewers at its head.
+- **Windows run.** Chrome 156 and Brave 156 launched and stopped cleanly through the engine;
+  Edge 156 is refused because it reports `Edg/`, filed as #2070 with the `__COMPAT_LAYER`
+  relaunch. The results are on #1831. The probe rows merged in #2072, which closed #1828, and
+  #2071 holds the rows left over.
+- **#2069 (part A).** Three review rounds; approved at 3ab31d05. It keeps the old Capture Session
+  button when no session runs, which waits on the maintainer.
+- **#2068.** Fix round 2 at 849272b3 answered both round 2 reports; round 3 reviews are running.
+- **Next command.** Read #2068's round 3 reviews; after the maintainer's answer, merge #2069 with
+  `.claude/skills/merge-pr/scripts/merge.sh 2069 --admin`.
 
 ## Open questions
 

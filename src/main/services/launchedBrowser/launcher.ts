@@ -97,7 +97,7 @@ export interface LaunchHooks {
   // A recorded target's session, before it is resumed, so its first response can be read.
   // `recording.tabId` is the page target the session belongs to, its own id for a page, and
   // `recording.setup` settles once every setup command has answered, or rejects with the first
-  // that failed.
+  // that failed. `recording.firstTab` marks the first tab, which opens in the default context.
   onRecordedSession?: (session: CdpSession, target: TargetInfo, recording: RecordedSession) => void
   onTargetSetupFailed?: (target: TargetInfo, error: Error) => void
   // A recorded target still open after its Network or auto-attach setup failed: it browses, and
@@ -112,6 +112,7 @@ export interface LaunchHooks {
 export interface RecordedSession {
   tabId: string
   setup: Promise<unknown>
+  firstTab: boolean
 }
 
 export interface LaunchRequest {
@@ -385,7 +386,7 @@ export async function launchBrowser(
       settleSetup = resolve
     })
     setup.catch(() => {})
-    hooks.onRecordedSession?.(session, target, { tabId, setup })
+    hooks.onRecordedSession?.(session, target, { tabId, setup, firstTab: isFirstTab })
     if (attaches) {
       session.on('Target.attachedToTarget', (params) => onAttached(params, tabId))
     }

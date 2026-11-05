@@ -57,7 +57,9 @@ export interface LaunchedCapturesDeps {
 }
 
 interface TabState {
-  recording: TabRecording
+  // Null for a tab the engine does not record: one outside the default browser context, one whose
+  // context the browser did not name, and every tab when it did not name the first tab's.
+  recording: TabRecording | null
   session: CdpSession
   browserContextId: string | undefined
   openerId: string | undefined
@@ -128,6 +130,11 @@ export function createLaunchedCaptures(deps: LaunchedCapturesDeps): LaunchedCapt
   let identity: BrowserIdentity | null = null
   let launchedEgress: KnownEgress | null = null
   let defaultContextId: string | undefined
+  let firstTabSeen = false
+  // Pages attached before the first tab, held unrecorded until the default context is known. The
+  // launcher holds them paused until its checks pass, so they have loaded nothing yet.
+  const unclassified: Array<{ session: CdpSession; target: TargetInfo; setup: Promise<unknown> }> =
+    []
   let progress: LaunchedCaptureProgress | undefined
   let running = false
   const unsubscribes: Array<() => void> = []
@@ -138,30 +145,40 @@ export function createLaunchedCaptures(deps: LaunchedCapturesDeps): LaunchedCapt
     return next
   }
 
+  // Spec, "Tabs, windows, and browser contexts": a tab in another context is never recorded.
+  function addTab(session: CdpSession, target: TargetInfo, setup: Promise<unknown>): void {
+    const { targetId, browserContextId, openerId } = target
+    const inDefault =
+      firstTabSeen && defaultContextId !== undefined && browserContextId === defaultContextId
+    const recording = inDefault ? createTabRecording({ tabId: targetId, onChange }) : null
+    tabs.set(targetId, { recording, session, browserContextId, openerId })
+    recording?.addSession(session, 'page', setup)
+  }
+
   function onRecordedSession(
     session: CdpSession,
     target: TargetInfo,
-    { tabId, setup }: RecordedSession
+    { tabId, setup, firstTab }: RecordedSession
   ): void {
     if (target.type === 'page' && target.targetId === tabId) {
-      const recording = createTabRecording({ tabId, onChange })
-      tabs.set(tabId, {
-        recording,
-        session,
-        browserContextId: target.browserContextId,
-        openerId: target.openerId
-      })
-      recording.addSession(session, 'page', setup)
+      if (firstTab) {
+        firstTabSeen = true
+        defaultContextId = target.browserContextId
+        addTab(session, target, setup)
+        for (const held of unclassified.splice(0)) addTab(held.session, held.target, held.setup)
+        return
+      }
+      if (!firstTabSeen) unclassified.push({ session, target, setup })
+      addTab(session, target, setup)
       return
     }
-    tabs.get(tabId)?.recording.addSession(session, target.type, setup)
+    tabs.get(tabId)?.recording?.addSession(session, target.type, setup)
   }
 
   function refusalOf(targetId: string): LaunchedTabRefusal | undefined {
     const tab = tabs.get(targetId)
     if (!tab) return undefined
-    if (defaultContextId !== undefined && tab.browserContextId !== defaultContextId)
-      return 'private'
+    if (!tab.recording) return 'private'
     if (tab.recording.isCrashed()) return 'crashed'
     if (!isHttp(tab.recording.committedUrl())) return 'not-http'
     return undefined
@@ -174,7 +191,7 @@ export function createLaunchedCaptures(deps: LaunchedCapturesDeps): LaunchedCapt
       const refusal = refusalOf(tab.targetId)
       return {
         ...tab,
-        firstRequest: state.recording.fromFirstRequest(),
+        firstRequest: state.recording?.fromFirstRequest() ?? false,
         ...(refusal ? { refusal } : {})
       }
     })
@@ -196,8 +213,12 @@ export function createLaunchedCaptures(deps: LaunchedCapturesDeps): LaunchedCapt
       })
     }
     const refusal = refusalOf(targetId)
-    if (refusal)
-      return setProgress({ state: 'refused', targetId, message: REFUSAL_MESSAGES[refusal] })
+    if (refusal || !tab.recording)
+      return setProgress({
+        state: 'refused',
+        targetId,
+        message: REFUSAL_MESSAGES[refusal ?? 'private']
+      })
     const caseId = deps.activeCaseId()
     if (!caseId) {
       return setProgress({ state: 'refused', targetId, message: 'No Active Case.' })
@@ -312,18 +333,18 @@ export function createLaunchedCaptures(deps: LaunchedCapturesDeps): LaunchedCapt
       launchedEgress = egress
     },
     onRecordedSession,
-    attach: (connected, browserIdentity, firstTab) => {
+    // The default context comes from the first tab's session, before the launch resolves.
+    attach: (connected, browserIdentity) => {
       client = connected
       identity = browserIdentity
-      defaultContextId = firstTab.browserContextId
       unsubscribes.push(
         connected.on('Target.targetCrashed', ({ targetId }) =>
-          tabs.get(targetId)?.recording.crashed()
+          tabs.get(targetId)?.recording?.crashed()
         ),
         connected.on('Target.targetDestroyed', ({ targetId }) => {
           const tab = tabs.get(targetId)
           if (!tab) return
-          tab.recording.discard()
+          tab.recording?.discard()
           tabs.delete(targetId)
         })
       )
@@ -338,7 +359,7 @@ export function createLaunchedCaptures(deps: LaunchedCapturesDeps): LaunchedCapt
     },
     dispose: () => {
       for (const unsubscribe of unsubscribes.splice(0)) unsubscribe()
-      for (const { recording } of tabs.values()) recording.discard()
+      for (const { recording } of tabs.values()) recording?.discard()
       tabs.clear()
     }
   }

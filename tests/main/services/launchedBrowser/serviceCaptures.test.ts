@@ -246,16 +246,42 @@ describe('clicked Captures in the launched browser', () => {
     expect(h.capture).not.toHaveBeenCalled()
   })
 
-  it('lists a tab in a private window with the reason and never captures it', async () => {
-    const h = harness()
+  // A finished exchange on a session: a recorded tab fetches its body, an unrecorded one does not.
+  const finishOn = (h: ReturnType<typeof harness>, sessionId: string, requestId: string) => {
+    const url = 'https://a.test/x'
+    h.browser().event(
+      'Network.requestWillBeSent',
+      { requestId, loaderId: requestId, type: 'Other', wallTime: 2, request: { url } },
+      sessionId
+    )
+    h.browser().event('Network.responseReceived', { requestId, response: { url } }, sessionId)
+    h.browser().event('Network.loadingFinished', { requestId }, sessionId)
+  }
+  const respond: FakeBrowserOptions['respond'] = ({ method }) =>
+    method === 'Network.getResponseBody'
+      ? { result: { body: Buffer.from('x').toString('base64'), base64Encoded: true } }
+      : undefined
+  const bodyFetches = (h: ReturnType<typeof harness>): string[] =>
+    h
+      .browser()
+      .methods()
+      .filter((method) => method.startsWith('Network.getResponseBody'))
+
+  it('lists a tab in a private window with the reason, and never records or captures it', async () => {
+    const h = harness({ browser: { respond } })
     await h.open()
+    await h.loadFirstTab()
     const priv = {
       ...targetInfo('private-tab', 'page', 'https://a.test/'),
       browserContextId: 'other'
     }
-    h.browser().attach(priv)
+    const privateSession = h.browser().attach(priv)
     h.browser().event('Target.targetCreated', { targetInfo: priv })
     await settle()
+    finishOn(h, privateSession, 'P1')
+    finishOn(h, 'session-1', 'R1')
+    await settle()
+    expect(bodyFetches(h)).toEqual(['Network.getResponseBody@session-1'])
     expect(h.tabs().find(({ targetId }) => targetId === 'private-tab')).toMatchObject({
       refusal: 'private'
     })
@@ -264,6 +290,35 @@ describe('clicked Captures in the launched browser', () => {
       state: 'refused',
       message: expect.stringMatching(/private window/)
     })
+    expect(h.capture).not.toHaveBeenCalled()
+  })
+
+  it("records and captures no tab when the browser does not name the first tab's context", async () => {
+    const h = harness({ browser: { initialTargets: [targetInfo('first-tab')], respond } })
+    await h.open()
+    await h.loadFirstTab()
+    finishOn(h, 'session-1', 'R1')
+    await settle()
+    expect(bodyFetches(h)).toEqual([])
+    expect(h.tabs()[0]).toMatchObject({ targetId: 'first-tab', refusal: 'private' })
+    await h.service.capture('first-tab', { scrollToLoad: false })
+    expect(h.capture).not.toHaveBeenCalled()
+  })
+
+  it('records and captures no tab whose own context the browser does not name', async () => {
+    const h = harness({ browser: { respond } })
+    await h.open()
+    const unnamed = targetInfo('unnamed-tab', 'page', 'https://a.test/')
+    const unnamedSession = h.browser().attach(unnamed)
+    h.browser().event('Target.targetCreated', { targetInfo: unnamed })
+    await settle()
+    finishOn(h, unnamedSession, 'U1')
+    await settle()
+    expect(bodyFetches(h)).toEqual([])
+    expect(h.tabs().find(({ targetId }) => targetId === 'unnamed-tab')).toMatchObject({
+      refusal: 'private'
+    })
+    await h.service.capture('unnamed-tab', { scrollToLoad: false })
     expect(h.capture).not.toHaveBeenCalled()
   })
 

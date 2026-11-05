@@ -191,8 +191,9 @@ export type AdmissionRoute = CaptureUploadSource | 'attach'
 // A clicked Capture in the browser Birdbrain launched (#1832). It is not a wire
 // source: the capture server's schema is unchanged, and only the launched
 // browser's engine builds one. The engine names the Capture Session's Active
-// Case at the moment of the trigger, and the URL is the committed document's,
-// which the exclusion policy is checked against. Every artifact arrives taken,
+// Case at the moment of the trigger, and the URL is the page's address at the
+// cut, moved by any same-document navigation, which the exclusion policy is
+// checked against. Every artifact arrives taken,
 // so admission reads nothing more from the page.
 export interface LaunchedAdmissionRequest {
   route: 'launched'

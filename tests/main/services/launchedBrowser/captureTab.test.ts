@@ -24,6 +24,7 @@ type Reply = (params: Record<string, unknown>) => unknown
 interface FakePage extends CdpSession {
   emit: (method: string, params: unknown) => void
   sent: string[]
+  params: Array<{ method: string; params: Record<string, unknown> }>
   replies: Map<string, Reply>
 }
 
@@ -36,6 +37,7 @@ const PNG = await sharp({
 function fakePage(): FakePage {
   const handlers = new Map<string, Set<(params: unknown) => void>>()
   const sent: string[] = []
+  const params: FakePage['params'] = []
   const replies = new Map<string, Reply>([
     ['Page.createIsolatedWorld', () => ({ executionContextId: 7 })],
     [
@@ -62,12 +64,14 @@ function fakePage(): FakePage {
   const page = {
     sessionId: 'page-session',
     sent,
+    params,
     replies,
-    send: async (method: string, params: Record<string, unknown>) => {
+    send: async (method: string, commandParams: Record<string, unknown>) => {
       sent.push(method)
+      params.push({ method, params: commandParams })
       const reply = replies.get(method)
       if (!reply) throw new Error(`${method} has no reply`)
-      return reply(params)
+      return reply(commandParams)
     },
     on: (event: string, handler: (params: unknown) => void) => {
       const set = handlers.get(event) ?? new Set()
@@ -177,6 +181,19 @@ describe('captureTab', () => {
     expect(artifacts.url).toBe('http://a.test/private/x')
     // Bound TLS still reads the document that loaded, which matched its request.
     expect(artifacts.boundTlsAbsent).toBe('not-https')
+  })
+
+  it("runs every page read in the isolated world, never the page's own", async () => {
+    const { page, input } = setUp()
+    loadDocument(page)
+    await captureTab(input({ scrollToLoad: true }))
+    const reads = page.params.filter(({ method }) => method === 'Runtime.evaluate')
+    // The visibility check, the scroll steps and reset, and the text and title read.
+    expect(reads.length).toBeGreaterThan(2)
+    for (const { params } of reads) expect(params.contextId).toBe(7)
+    expect(page.params.find(({ method }) => method === 'Page.createIsolatedWorld')?.params).toEqual(
+      { frameId: TAB, worldName: 'birdbrain-capture' }
+    )
   })
 
   it('carries no record for a page its recording lacks the document request of', async () => {

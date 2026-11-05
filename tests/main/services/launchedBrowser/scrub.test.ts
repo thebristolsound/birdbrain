@@ -121,6 +121,22 @@ describe('scrubNetworkEvent', () => {
     expect(scrubbed.request).not.toHaveProperty('hasPostData')
   })
 
+  // The browser can announce a body in any one of three ways; each alone counts it.
+  it.each([
+    ['hasPostData', { hasPostData: true }],
+    ['postData', { postData: 'a=1' }],
+    ['postDataEntries', { postDataEntries: [{ bytes: 'YT0x' }] }]
+  ])('counts a body announced by %s alone', (_, body) => {
+    const { params, bodyWithheld } = scrubNetworkEvent('Network.requestWillBeSent', {
+      requestId: '1',
+      request: { url: 'https://example.com/', method: 'POST', headers: {}, ...body }
+    })
+    expect(bodyWithheld).toBe(true)
+    for (const field of ['hasPostData', 'postData', 'postDataEntries']) {
+      expect(params.request).not.toHaveProperty(field)
+    }
+  })
+
   it('withholds nothing from a request that had no body', () => {
     const { bodyWithheld } = scrubNetworkEvent('Network.requestWillBeSent', {
       requestId: '1',

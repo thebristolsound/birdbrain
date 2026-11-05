@@ -91,6 +91,7 @@ function harness(options: Options = {}) {
   const register = vi.fn(() => options.registers ?? true)
   const unregister = vi.fn()
   const emitPickTab = vi.fn()
+  const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
   const capture = vi.fn(
     options.capture ?? (async (input) => artifacts(`https://a.test/${input.tabId}`))
   )
@@ -111,7 +112,7 @@ function harness(options: Options = {}) {
       prepareEgressChecks(setting, label, { connect: async () => {} }),
     subscribeEgressChange: () => () => {},
     emitStatus: (status) => statuses.push(status),
-    log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    log,
     platform: options.platform ?? 'linux',
     shortcut: { register, unregister },
     emitPickTab,
@@ -179,6 +180,7 @@ function harness(options: Options = {}) {
     unregister,
     emitPickTab,
     capture,
+    log,
     browser,
     loadFirstTab,
     open,
@@ -456,6 +458,12 @@ describe('why a clicked Capture stored nothing', () => {
       {
         state: 'captured'
       }
+    )
+    expect(h.log.warn).toHaveBeenCalledWith(
+      'launchedBrowser',
+      'launchedBrowser.capture_part_failed',
+      undefined,
+      part
     )
   })
 

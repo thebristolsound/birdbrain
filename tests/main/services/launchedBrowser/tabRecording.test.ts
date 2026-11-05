@@ -211,6 +211,26 @@ describe('tab recording', () => {
     expect(counts).toMatchObject({ recordedTargets: 2, unrecordedTargets: 0 })
   })
 
+  it("counts a response a service worker served on the page's own session only", async () => {
+    const { recording, page } = setUp()
+    const worker = fakeSession('worker-session')
+    recording.addSession(worker, 'worker', Promise.resolve())
+    document(page, 'D1', 'https://a.test/')
+    const served = (session: FakeSession, requestId: string, url: string) => {
+      sent(session, requestId, url)
+      session.emit('Network.responseReceived', {
+        requestId,
+        response: { url, status: 200, headers: {}, mimeType: 'text/plain', fromServiceWorker: true }
+      })
+      session.emit('Network.loadingFinished', { requestId })
+    }
+    served(page, 'S1', 'https://a.test/offline.json')
+    served(worker, 'S2', 'https://a.test/from-worker.json')
+    await settle()
+    const collected = await recording.cut().collect(1_000)
+    expect(collected.servedByServiceWorker).toBe(1)
+  })
+
   it('counts a target whose setup failed as unrecorded', async () => {
     const { recording, page } = setUp()
     const failed = Promise.reject(new Error('Network.setCacheDisabled failed'))

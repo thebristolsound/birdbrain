@@ -86,7 +86,9 @@ test.describe('Top bar layout', () => {
         } else {
           await expect(nameText).toBeHidden()
         }
-        await expect(caseName).toHaveAttribute('title', new RegExp(`^${name} · `))
+        await expect
+          .poll(async () => (await caseName.getAttribute('title'))?.startsWith(`${name} · `))
+          .toBe(true)
 
         // Every control on the right stays inside the window, and nothing scrolls sideways.
         for (const button of await controls.getByRole('button').all()) {

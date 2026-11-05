@@ -251,7 +251,8 @@ export function createTabRecording({
     const { requestId } = (raw ?? {}) as { requestId?: string }
     nav.lastActivityAt = now()
     if (method === 'Network.dataReceived') {
-      if (requestId === undefined) return
+      // An overflowed navigation fetches no body, so its byte counts would only grow.
+      if (requestId === undefined || nav.overflow) return
       const { dataLength } = raw as { dataLength?: number }
       nav.dataLengths.set(requestId, (nav.dataLengths.get(requestId) ?? 0) + (dataLength ?? 0))
       return

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import type { LaunchedBrowserStatus } from '@shared/types'
+import type { EgressSetting, LaunchedBrowserStatus } from '@shared/types'
 import type {
   AdmissionOutcome,
   AdmissionRefusal,
@@ -77,6 +77,7 @@ function artifacts(url: string): TabCaptureArtifacts {
 }
 
 interface Options {
+  egress?: EgressSetting
   screen?: (caseId: string, url: string) => AdmissionRefusal | null
   admit?: (request: LaunchedAdmissionRequest) => Promise<AdmissionOutcome>
   platform?: NodeJS.Platform
@@ -102,7 +103,7 @@ function harness(options: Options = {}) {
   const service = createLaunchedBrowserService({
     session,
     sessionDataPath: sessionData,
-    readSettings: () => ({ operatorName: 'Matt', egress: { kind: 'direct' } }),
+    readSettings: () => ({ operatorName: 'Matt', egress: options.egress ?? { kind: 'direct' } }),
     saveVersion: () => {},
     launch: (request) => {
       const fake = fakeBrowser({ initialTargets: [FIRST], ...options.browser })
@@ -392,6 +393,42 @@ describe('clicked Captures in the launched browser', () => {
     })
     expect(h.abandonedLaunched).toHaveBeenCalledWith('https://a.test/')
     expect(h.admitted).toEqual([])
+  })
+})
+
+describe('the Egress checks with Captures on', () => {
+  const PROXY: EgressSetting = {
+    kind: 'proxy',
+    proxyUrl: 'socks5://10.0.0.2:1080',
+    label: 'Office'
+  }
+  const responseFrom = (remoteIPAddress: string) => ({
+    requestId: 'r1',
+    loaderId: 'l1',
+    timestamp: 1,
+    type: 'Document',
+    response: { url: 'https://a.test/', status: 200, remoteIPAddress, remotePort: 443 }
+  })
+
+  it('closes the browser on a response from outside the proxy, as the app runs it', async () => {
+    // The WebRTC check at launch finds no peer connection.
+    const h = harness({
+      egress: PROXY,
+      browser: {
+        respond: ({ method }) => {
+          if (method === 'Page.createIsolatedWorld') return { result: { executionContextId: 7 } }
+          if (method === 'Runtime.evaluate') {
+            return { result: { result: { type: 'number', value: 0 } } }
+          }
+          return undefined
+        }
+      }
+    })
+    await h.open()
+    h.browser().event('Network.responseReceived', responseFrom('198.51.100.1'), 'session-1')
+    await vi.waitFor(() => expect(h.service.status().state).toBe('none'))
+    expect(h.service.status()).toMatchObject({ notice: { code: 'EGRESS_BYPASS' } })
+    expect(h.browser().exited).toBe(true)
   })
 })
 

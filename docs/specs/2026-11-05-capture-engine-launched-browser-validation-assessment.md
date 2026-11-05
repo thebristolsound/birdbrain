@@ -77,9 +77,20 @@ items passed on each of the three pairings.
 | Abandoned Capture | A page that loads another during the artifact commands stores nothing and reports a failed event | As expected |
 | Package Verification | An exported package verifies in the app and under the standalone verifier, and a changed byte in its Transaction Record fails both | As expected |
 
+Four items were added after review, and ran on the pinned Chrome for Testing build only. All 21
+items passed there; Chromium and Brave Origin were not rerun. The live suite's sink now passes the
+committed URL to the exclusion check along with the address at the cut, which unit tests cover.
+
+| Item | Expected | Observed on Chrome for Testing 149 |
+| --- | --- | --- |
+| Failed and cancelled exchanges | A request the server drops and one the page aborts are each recorded with no response | `failed: 1`, `cancelled: 1` |
+| Over the per-resource budget | A 10,000,001-byte response is recorded without its body and counted | An empty payload; `bodiesOmitted` at least 1 |
+| Back-forward cache restore | **Back** to a page the browser kept in memory is captured with no Transaction Record | `{ present: false, reason: 'back-forward-cache' }` in the signed entry |
+| A new tab | A blank tab opened with `noopener`, then a typed navigation, records every request the fixture logged once | Equal sets and counts. The command list has no `Target.createTarget`, so the suite does not open a tab as Ctrl+T does |
+
 The unit suites cover what the browsers above could not be driven to do with the engine's
 command list: a tab whose document request reached no session (`page-not-recorded`, the case of
-a Ctrl-click or middle-click tab, probe P4), a back-forward cache restore, a crashed tab, a tab
+a Ctrl-click or middle-click tab, probe P4), a crashed tab, a tab
 in a private window, the synthetic-event test with a marker in every credential field the spec
 lists, the shortcut's choice over injected tab states, and the macOS gate.
 

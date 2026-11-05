@@ -119,11 +119,12 @@ prove and what they do not.
   Egress while it is not Direct. Scroll to load is off unless you turn it on for that capture, and
   it scrolls the page you are looking at.
 - Birdbrain records each tab of the launched browser from before its first request, with the
-  browser's HTTP cache turned off for the whole Capture Session, so no page comes from an earlier
-  visit. The panel marks each tab "from first request" or "not from first request". A page that
-  began loading before recording started, or the first page of a tab you opened with Ctrl-click
-  or a middle click, gets no Transaction Record, and its signed entry says the recording did not
-  cover the page.
+  browser's HTTP cache turned off for the whole Capture Session, so no request is answered from
+  that cache. The panel marks a tab "not from first request" when recording missed the start of
+  its page, and "from first request" otherwise. Three kinds of page get no Transaction Record,
+  and the signed entry says why: a page that began loading before recording started, the first
+  page of a tab you opened with Ctrl-click or a middle click, and a page that **Back** or
+  **Forward** restored from the browser's memory without loading it again.
 - The launched browser's Transaction Record holds no request body, so a sign-in form or search
   you submit leaves no password or query text in it; the signed entry counts the bodies it left
   out. The values of the `Cookie`, `Set-Cookie`, `Authorization`, and `Proxy-Authorization`

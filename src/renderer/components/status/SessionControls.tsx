@@ -31,10 +31,11 @@ export function SessionControls() {
   if (!connectedToExtension && !launchedSession) return null
 
   // The label after the switch names the Capture Session's Active Case, the Case Captures go into,
-  // which need not be the Case on screen: a launched browser pins the Case it started in. It shows
-  // on Case screens only, as before.
-  const intoCaseId = launchedSession ? launched.browser.caseId : sessionCaseId
-  const intoCase = activeCaseId ? cases.find((c) => c.id === intoCaseId) : undefined
+  // which need not be the Case on screen: while a launched browser is open it pins the Case, and
+  // main refuses another Case's activation without an update. Once the browser closes the pin
+  // lifts and opening a Case moves the Active Case, so the browser's own Case is not used. It
+  // shows on Case screens only, as before.
+  const intoCase = activeCaseId ? cases.find((c) => c.id === sessionCaseId) : undefined
   // Then the source (`1i`). As on the REC pill, a closed browser is no longer named.
   const source =
     launched?.state === 'open'

@@ -135,7 +135,7 @@ describe('the source line after the switch', () => {
   }
 
   it('appends the launched browser to the Active Case', async () => {
-    useAppStore.setState({ sessionActive: true })
+    useAppStore.setState({ sessionActive: true, activeCaseId: 'case-1' })
     mount({ state: 'open', browser: BROWSER })
     expect(await line()).toEqual({
       text: 'Ferry Line · Launched Google Chrome',
@@ -144,7 +144,11 @@ describe('the source line after the switch', () => {
   })
 
   it('names the extension as well while it is connected', async () => {
-    useAppStore.setState({ sessionActive: true, connectedToExtension: true })
+    useAppStore.setState({
+      sessionActive: true,
+      connectedToExtension: true,
+      activeCaseId: 'case-1'
+    })
     mount({ state: 'open', browser: BROWSER })
     expect((await line()).text).toBe('Ferry Line · Launched Google Chrome, and the extension')
   })
@@ -186,5 +190,16 @@ describe('the source line after the switch', () => {
     })
     mount({ state: 'none' })
     expect((await line()).text).toBe('Ferry Line')
+  })
+  // Closing the browser lifts its pin, so opening another Case moves the Active Case with it.
+  it('follows the Active Case once the launched browser has closed, not the Case it started in', async () => {
+    route.caseId = 'case-2'
+    useAppStore.setState({
+      sessionActive: true,
+      connectedToExtension: true,
+      activeCaseId: 'case-2'
+    })
+    mount({ state: 'closed', browser: BROWSER })
+    expect(await line()).toEqual({ text: 'Harbor Desk', title: 'Harbor Desk' })
   })
 })

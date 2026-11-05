@@ -12,6 +12,11 @@ const PIPELINE = 'birdbrain-agent'
 const MAINTAINER = 'thebristolsound'
 const CODEX = 'chatgpt-codex-connector[bot]'
 const sha = (c: string) => c.repeat(40)
+// The review job exports TARGET_PR and PR, so a reviewer running this suite inside it would
+// hand them to every script run here.
+const inheritedEnv = { ...process.env }
+delete inheritedEnv.TARGET_PR
+delete inheritedEnv.PR
 
 // The stub of tests/dispatchPregate.test.ts, plus `--input`: answers `gh api` from
 // fixtures.json by endpoint, fails on any endpoint it has no answer for, and logs every write.
@@ -193,7 +198,7 @@ const run = (
   const result = spawnSync('bash', [SCRIPT, mode], {
     encoding: 'utf8',
     env: {
-      ...process.env,
+      ...inheritedEnv,
       PATH: `${dir}:${process.env.PATH}`,
       GH_STUB_DIR: dir,
       GITHUB_REPOSITORY: REPO,
@@ -389,7 +394,12 @@ describe.skipIf(!HAS_JQ)('pr-review pregate.sh', () => {
     writeFileSync(join(dir, 'fixtures.json'), '{}')
     const result = spawnSync('bash', [SCRIPT, 'review'], {
       encoding: 'utf8',
-      env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, GH_STUB_DIR: dir, LOGIN: PIPELINE }
+      env: {
+        ...inheritedEnv,
+        PATH: `${dir}:${process.env.PATH}`,
+        GH_STUB_DIR: dir,
+        LOGIN: PIPELINE
+      }
     })
     expect(result.status).not.toBe(0)
   })
@@ -429,7 +439,7 @@ const post = ({
     cwd: dir,
     encoding: 'utf8',
     env: {
-      ...process.env,
+      ...inheritedEnv,
       PATH: `${dir}:${process.env.PATH}`,
       GH_STUB_DIR: dir,
       GITHUB_REPOSITORY: REPO,

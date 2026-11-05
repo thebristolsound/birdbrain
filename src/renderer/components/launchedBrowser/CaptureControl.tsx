@@ -49,6 +49,8 @@ export function CaptureControl({ browser, pad }: { browser: LaunchedBrowserSumma
     setError('')
     try {
       await captureLaunchedTab(tab.targetId, scrollToLoad)
+      // The choice is per Capture (spec, "Scroll-to-load"), so the next one starts with it off.
+      setScrollToLoad(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }

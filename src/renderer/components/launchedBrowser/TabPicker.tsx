@@ -37,6 +37,7 @@ export function TabPicker({ inPopOut }: { inPopOut: boolean }) {
   const setOpen = useAppStore((s) => s.setTabPickerOpen)
   const setTarget = useAppStore((s) => s.setCaptureTargetId)
   const scrollToLoad = useAppStore((s) => s.scrollToLoadNext)
+  const setScrollToLoad = useAppStore((s) => s.setScrollToLoadNext)
   const { data: status } = useQuery(launchedBrowserStatusQueryOptions)
   const { data: poppedOut = false } = useQuery(launchedBrowserPopOutQueryOptions)
   const [highlighted, setHighlighted] = useState(0)
@@ -69,6 +70,7 @@ export function TabPicker({ inPopOut }: { inPopOut: boolean }) {
     setOpen(false)
     try {
       await captureLaunchedTab(tab.targetId, scrollToLoad)
+      setScrollToLoad(false)
     } catch (err) {
       // Main refused before anything was taken (no browser open, or this platform): say why here.
       setError(err instanceof Error ? err.message : String(err))

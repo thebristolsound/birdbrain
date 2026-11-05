@@ -97,17 +97,24 @@ afterEach(() => cleanup())
 describe('the Capture control', () => {
   it('names the tab it will take before the click, and takes it with Scroll-to-load off', async () => {
     const { capture } = mount(summary())
+    expect(useAppStore.getInitialState().scrollToLoadNext).toBe(false)
     expect(await screen.findByText('Capture will take')).toBeTruthy()
     const button = screen.getByRole('button', { name: 'Capture Harbor notices' })
     fireEvent.click(button)
     await waitFor(() => expect(capture).toHaveBeenCalledWith('t1', { scrollToLoad: false }))
   })
 
-  it('passes the Operator’s Scroll-to-load choice for the Capture', async () => {
+  it('passes the Operator’s Scroll-to-load choice for that Capture only', async () => {
     const { capture } = mount(summary())
-    fireEvent.click(await screen.findByRole('checkbox', { name: 'Scroll to load' }))
+    const box = (await screen.findByRole('checkbox', {
+      name: 'Scroll to load'
+    })) as HTMLInputElement
+    fireEvent.click(box)
     fireEvent.click(screen.getByRole('button', { name: 'Capture Harbor notices' }))
     await waitFor(() => expect(capture).toHaveBeenCalledWith('t1', { scrollToLoad: true }))
+    await waitFor(() => expect(box.checked).toBe(false))
+    fireEvent.click(screen.getByRole('button', { name: 'Capture Harbor notices' }))
+    await waitFor(() => expect(capture).toHaveBeenLastCalledWith('t1', { scrollToLoad: false }))
   })
 
   it('takes no tab while two could be taken and none is picked, until a row is picked', async () => {
@@ -228,6 +235,16 @@ describe('the tab picker', () => {
     fireEvent.keyDown(dialog, { key: 'Enter' })
     await waitFor(() => expect(capture).toHaveBeenCalledWith('t2', { scrollToLoad: false }))
     expect(capture).toHaveBeenCalledTimes(1)
+  })
+
+  it('takes the Scroll-to-load choice for the picked Capture, then turns it off', async () => {
+    const { capture, pickTab } = mount(summary({ tabs: [NOTICES, TIMETABLE] }), { picker: true })
+    await screen.findByText('Capture will take')
+    act(() => useAppStore.setState({ scrollToLoadNext: true }))
+    pickTab()
+    fireEvent.keyDown(await screen.findByRole('dialog'), { key: 'Enter' })
+    await waitFor(() => expect(capture).toHaveBeenCalledWith('t1', { scrollToLoad: true }))
+    await waitFor(() => expect(useAppStore.getState().scrollToLoadNext).toBe(false))
   })
 
   it('captures nothing when the Operator cancels', async () => {

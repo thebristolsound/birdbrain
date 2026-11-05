@@ -84,6 +84,15 @@ updates:
       # Drop this entry when the repository moves to Node 22.
       - dependency-name: 'dependency-cruiser'
         versions: ['>=18']
+      # @babel/core 8 removed AssignmentPattern from the LVal alias, and
+      # babel-plugin-react-compiler 1.0.0 (still the newest release) checks a destructured
+      # default prop against it, so under Babel 8 the compiler silently skips every such
+      # component: #2040 landed it and 35 more renderer files lost memoisation, with the
+      # build green (react/react#36868). Babel 8 also declares engines.node ^22.18||>=24.11
+      # against the Node 20 that .nvmrc pins. Drop this entry when a plugin release carries
+      # react/react#36956 and the repository is on Node 22.
+      - dependency-name: '@babel/core'
+        versions: ['>=8']
       # pdfjs-dist from 5.7 declares engines.node >=22.13.0 || >=24, outside the Node 20
       # that .nvmrc pins; 5.6.205 is the exact-pinned test reader the maintainer ruled
       # on 2026-10-10 (docs/plans/2026-10-10-capture-engine-first-slice.md, "Rulings,

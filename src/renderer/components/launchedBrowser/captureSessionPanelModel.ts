@@ -2,7 +2,9 @@ import type {
   LaunchedBrowserNotice,
   LaunchedBrowserStatus,
   LaunchedBrowserSummary,
-  LaunchedBrowserTab
+  LaunchedBrowserTab,
+  LaunchedCaptureProgress,
+  LaunchedCaptureShortcut
 } from '@shared/types'
 import {
   LIST_PANEL,
@@ -11,9 +13,9 @@ import {
 } from '@renderer/components/captures/captureColumns'
 import { WAYBACK_PANEL_WIDTH_PX } from '@renderer/components/captures/waybackPanelModel'
 
-// What the Capture Session panel (S3: `1f`, `2a`, `2c`, `2d`) shows, and where it docks. The
-// capture target, the Capture control and the per-tab "from first request" chip are the
-// clicked-Capture step's (#1832).
+// What the Capture Session panel (S3: `1f`, `2a`, `2c`, `2d`) shows, and where it docks, with the
+// clicked-Capture step's capture target, Capture control and per-tab "from first request" chip
+// (#1832).
 
 export const PANEL_WIDTH_PX = 320
 
@@ -105,4 +107,112 @@ export function tabTitle({ title, url }: LaunchedBrowserTab): string {
 // The engine knows an extension by ID only, so the warning names none (state 9).
 export function extensionWarningTitle(count: number): string {
   return count === 1 ? 'An extension was added.' : `${count} extensions were added.`
+}
+
+// The tabs a clicked Capture can take (#1832): every tab the engine records whose page it may
+// capture.
+export function capturableTabs(tabs: readonly LaunchedBrowserTab[]): LaunchedBrowserTab[] {
+  return tabs.filter((tab) => tab.firstRequest !== undefined && tab.refusal === undefined)
+}
+
+// The tab the panel's Capture control takes: the one the Operator picked while it can still be
+// captured, otherwise the only capturable tab. With several and no pick, none: the control names
+// its tab before the click, so it never guesses.
+export function captureTarget(
+  tabs: readonly LaunchedBrowserTab[],
+  pickedId: string | null
+): LaunchedBrowserTab | null {
+  const capturable = capturableTabs(tabs)
+  const picked = capturable.find(({ targetId }) => targetId === pickedId)
+  if (picked) return picked
+  return capturable.length === 1 ? capturable[0] : null
+}
+
+export interface TabStatus {
+  label: string
+  tip?: string
+  tone: 'chip' | 'muted' | 'danger'
+}
+
+// Names no cause (feasibility assessment, question 9) and carries no reload advice (`1f`).
+const NOT_FROM_FIRST_REQUEST =
+  'Birdbrain did not record this page from its first request, so a Capture of it has no ' +
+  'Transaction Record.'
+
+// Only the cached half sits under the lead-in; a service worker's response is recorded and
+// counted (stage-2 ruling 3, assessment state 5).
+const FROM_FIRST_REQUEST =
+  'This does not mean every exchange was recorded: a cached response can leave a gap, which the ' +
+  'inventory lists. A response a service worker served is recorded without its endpoint, and the ' +
+  'inventory counts those.'
+
+// The tab row's status (`1k`, states 5, 6 and 8).
+export function tabStatus(tab: LaunchedBrowserTab): TabStatus | null {
+  switch (tab.refusal) {
+    case 'private':
+      return {
+        label: "can't capture · private",
+        tip: 'A private window keeps its own cookies, so Birdbrain never records or captures it.',
+        tone: 'muted'
+      }
+    case 'not-http':
+      return { label: 'never captured', tone: 'muted' }
+    case 'crashed':
+      return {
+        label: 'tab crashed',
+        tip: 'Reload it in the browser, then capture.',
+        tone: 'danger'
+      }
+  }
+  if (tab.firstRequest === undefined) return null
+  return tab.firstRequest
+    ? { label: 'from first request', tip: FROM_FIRST_REQUEST, tone: 'chip' }
+    : { label: 'not from first request', tip: NOT_FROM_FIRST_REQUEST, tone: 'muted' }
+}
+
+export interface ProgressLine {
+  kind: 'capturing' | 'captured' | 'abandoned' | 'refused'
+  text: string
+  detail?: string
+}
+
+// The line under the Capture control (`1l`, state 7).
+export function progressLine(
+  progress: LaunchedCaptureProgress | undefined,
+  tabs: readonly LaunchedBrowserTab[]
+): ProgressLine | null {
+  if (!progress) return null
+  switch (progress.state) {
+    case 'capturing': {
+      const tab = tabs.find(({ targetId }) => targetId === progress.targetId)
+      return { kind: 'capturing', text: `Capturing ${tab ? tabTitle(tab) : progress.title}…` }
+    }
+    case 'captured':
+      return { kind: 'captured', text: `${progress.citation} · Captured` }
+    case 'abandoned':
+      return {
+        kind: 'abandoned',
+        text: 'Capture abandoned',
+        detail: 'The page changed mid-capture; try again.'
+      }
+    case 'refused':
+    case 'failed':
+      return { kind: 'refused', text: 'Not captured', detail: progress.message }
+  }
+}
+
+// An Electron accelerator with this platform's primary modifier (`modifierLabel`).
+export function acceleratorLabel(accelerator: string, modifier: string): string {
+  return accelerator
+    .split('+')
+    .map((key) => (key === 'CommandOrControl' ? modifier : key))
+    .join('+')
+}
+
+// The shortcut line (`1r`). Birdbrain cannot tell whether a desktop delivers the shortcut, so the
+// line never says it works: it offers it to try, or says the desktop refused it.
+export function shortcutLine({ state }: LaunchedCaptureShortcut): string {
+  return state === 'failed'
+    ? 'This desktop refused the shortcut. Use the Capture button.'
+    : 'Try the shortcut while the browser has focus, or use the Capture button.'
 }

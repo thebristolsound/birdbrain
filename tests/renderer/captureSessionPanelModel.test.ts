@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import type { LaunchedBrowserNotice, LaunchedBrowserSummary } from '@shared/types'
+import type {
+  LaunchedBrowserNotice,
+  LaunchedBrowserSummary,
+  LaunchedBrowserTab
+} from '@shared/types'
 import {
   PANEL_WIDTH_PX,
+  acceleratorLabel,
+  captureTarget,
   extensionWarningTitle,
   formatElapsed,
   noticeCard,
@@ -147,5 +153,44 @@ describe('popOutTitle', () => {
 
   it('leaves the Case out until its name is known', () => {
     expect(popOutTitle('')).toBe('Birdbrain · Capture Session')
+  })
+})
+
+describe('captureTarget (#1832)', () => {
+  const tab = (targetId: string, extra: Partial<LaunchedBrowserTab> = {}): LaunchedBrowserTab => ({
+    targetId,
+    title: targetId,
+    url: `https://a.test/${targetId}`,
+    firstRequest: true,
+    ...extra
+  })
+
+  it('takes the only tab that can be captured when none is picked', () => {
+    expect(
+      captureTarget(
+        [tab('a'), tab('b', { refusal: 'private' }), tab('c', { refusal: 'not-http' })],
+        null
+      )?.targetId
+    ).toBe('a')
+  })
+
+  it('takes no tab when several can be captured and none is picked', () => {
+    expect(captureTarget([tab('a'), tab('b')], null)).toBeNull()
+  })
+
+  it('takes the picked tab while it can still be captured', () => {
+    expect(captureTarget([tab('a'), tab('b')], 'b')?.targetId).toBe('b')
+    expect(captureTarget([tab('a'), tab('b', { refusal: 'crashed' })], 'b')?.targetId).toBe('a')
+  })
+
+  it('takes no tab the engine does not record yet', () => {
+    expect(captureTarget([tab('a', { firstRequest: undefined })], null)).toBeNull()
+  })
+})
+
+describe('acceleratorLabel', () => {
+  it('writes the primary modifier the platform names', () => {
+    expect(acceleratorLabel('CommandOrControl+Shift+F9', 'Ctrl')).toBe('Ctrl+Shift+F9')
+    expect(acceleratorLabel('CommandOrControl+Shift+F9', '⌘')).toBe('⌘+Shift+F9')
   })
 })

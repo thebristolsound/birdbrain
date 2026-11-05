@@ -88,8 +88,9 @@ export interface LaunchedBrowserService {
   sessionEnded: () => void
   // SIGKILL with nothing to await, for quitting: Electron does not await before-quit.
   killForQuit: () => void
-  // A clicked Capture of one tab (#1832). Resolves with the progress the panel shows; never
-  // rejects.
+  // A clicked Capture of one tab (#1832). Resolves with the status that holds the progress the
+  // panel shows, whatever became of the Capture; rejects only when no browser is open or the
+  // platform offers no launched Capture.
   capture: (targetId: string, request: CaptureRequest) => Promise<LaunchedBrowserStatus>
   // What the capture shortcut does: capture the one tab that is visible and focused, or ask for
   // the tab picker.

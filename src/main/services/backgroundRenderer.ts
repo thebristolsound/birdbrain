@@ -33,12 +33,12 @@ import type { ConsentSuppression, KnownEgress, ScrollToLoadOutcome } from '@shar
 import { logger } from '@main/services/logger'
 
 const VIEWPORT = { width: 1280, height: 900 }
-const NETWORK_IDLE_MS = 1200
-const INITIAL_NETWORK_IDLE_MAX_MS = 10_000
+export const NETWORK_IDLE_MS = 1200
+export const INITIAL_NETWORK_IDLE_MAX_MS = 10_000
 const POST_SCROLL_NETWORK_IDLE_MAX_MS = 15_000
 const SCROLL_PAUSE_MS = 500
 const SCROLL_STALL_THRESHOLD = 3
-const MAX_SCROLL_PHASE_MS = 75_000
+export const MAX_SCROLL_PHASE_MS = 75_000
 const FINAL_SETTLE_MS = 500
 // Image Source Pinning's two waits, each taken from the time left before the end
 // reserve below and never from it (ruled 2026-10-26): for images offered as sets
@@ -292,10 +292,24 @@ export async function scrollToLoadLazyContent(
   wc: WebContents,
   timeoutMs: number
 ): Promise<ScrollToLoadRecord> {
+  return scrollToLoadWith((script) => wc.executeJavaScript(script, true), timeoutMs, {
+    unlock: true
+  })
+}
+
+// The same loop for any way of running a script in the page. A launched browser runs the scripts
+// over CDP in an isolated world and passes `unlock: false`: the overflow unlock is a style edit the
+// page can observe, and the Operator is present to dismiss a consent wall (spec, "The Capture
+// sequence", step 2).
+export async function scrollToLoadWith(
+  evaluate: (script: string) => Promise<unknown>,
+  timeoutMs: number,
+  { unlock }: { unlock: boolean }
+): Promise<ScrollToLoadRecord> {
   if (timeoutMs <= 0) return { requested: true, ran: false, scrollLockLifted: false }
   const deadlineAt = Date.now() + timeoutMs
 
-  const priorOverflow = (await wc.executeJavaScript(SCROLL_UNLOCK_SCRIPT, true)) as string[] | null
+  const priorOverflow = unlock ? ((await evaluate(SCROLL_UNLOCK_SCRIPT)) as string[] | null) : null
   let outcome: ScrollToLoadOutcome = 'time-budget'
   let endHeight: number | undefined
   let restoreFailed = false
@@ -306,7 +320,7 @@ export async function scrollToLoadLazyContent(
     let lastY = -1
 
     while (Date.now() < deadlineAt) {
-      const state = (await wc.executeJavaScript(SCROLL_STEP_SCRIPT, true)) as {
+      const state = (await evaluate(SCROLL_STEP_SCRIPT)) as {
         y: number
         height: number
         viewportHeight: number
@@ -347,7 +361,7 @@ export async function scrollToLoadLazyContent(
     }
   } finally {
     try {
-      await wc.executeJavaScript(scrollResetScript(priorOverflow), true)
+      await evaluate(scrollResetScript(priorOverflow))
     } catch (err) {
       restoreFailed = true
       logger.error('backgroundRenderer', 'backgroundRenderer.scroll_reset_failed', undefined, err)
@@ -392,7 +406,19 @@ function pngDimensions(png: Buffer): { width: number; height: number } {
 export async function captureFullPageScreenshot(
   wc: WebContents
 ): Promise<{ png: Buffer; record: ScreenshotRecord }> {
-  const metrics = (await wc.debugger.sendCommand('Page.getLayoutMetrics')) as {
+  return fullPageScreenshotWith(
+    (method, params) => wc.debugger.sendCommand(method, params),
+    VIEWPORT
+  )
+}
+
+// The same screenshot for any way of sending the two `Page` commands. A launched browser sends
+// them over its own CDP session, with its own fallback viewport.
+export async function fullPageScreenshotWith(
+  send: (method: string, params?: object) => Promise<unknown>,
+  fallbackViewport: { width: number; height: number }
+): Promise<{ png: Buffer; record: ScreenshotRecord }> {
+  const metrics = (await send('Page.getLayoutMetrics')) as {
     cssContentSize?: { x: number; y: number; width: number; height: number }
   }
 
@@ -401,7 +427,7 @@ export async function captureFullPageScreenshot(
   // pages, so on the rare page that omits cssContentSize fall back to the known
   // viewport bounds. Capturing with no clip at all would bypass the MAX_CAPTURE_*
   // caps below and risk exceeding GPU texture limits on a large page.
-  const contentSize = metrics.cssContentSize ?? { x: 0, y: 0, ...VIEWPORT }
+  const contentSize = metrics.cssContentSize ?? { x: 0, y: 0, ...fallbackViewport }
 
   // getLayoutMetrics can omit dimensions on some pages; coalesce so a missing
   // field yields a valid 1px clip rather than NaN (which fails captureScreenshot).
@@ -423,7 +449,7 @@ export async function captureFullPageScreenshot(
   // in the pre-OSR hidden window (never composited) — with OSR compositing
   // continuously it completes in ~1s even at the MAX_CAPTURE_* caps, so no
   // stitched-strip fallback is needed.
-  const { data } = (await wc.debugger.sendCommand('Page.captureScreenshot', {
+  const { data } = (await send('Page.captureScreenshot', {
     format: 'png',
     fromSurface: true,
     captureBeyondViewport: true,

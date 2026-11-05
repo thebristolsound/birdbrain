@@ -8,7 +8,7 @@
 // but the one entry the `about:blank` load adds (renderer spike, question 7).
 // The 90 s fresh-window case of the probe spike does not run.
 //
-// Run from the repository root on Node 20, with a display:
+// Run from the repository root on Node 24, with a display:
 //
 //   xvfb-run --auto-servernum node scripts/capture-probe/run.mjs
 //

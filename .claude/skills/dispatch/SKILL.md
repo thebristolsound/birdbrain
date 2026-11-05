@@ -89,14 +89,14 @@ agh() { GH_TOKEN="$BIRDBRAIN_AGENT_GH_TOKEN" gh "$@"; }
   identity whatever credential is offered (#960), so a web cycle fails the identity check and
   stops here. Scheduled fires run on GitHub Actions instead.
 
-`.claude/hooks/session-start.sh` installs `gh` and pins Node 20, but **only on the web** — it
+`.claude/hooks/session-start.sh` installs `gh` and pins Node 24, but **only on the web** — it
 exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
 
-- **On the web**, if `gh` is missing or `node` reports v22, the hook did not run and everything
+- **On the web**, if `gh` is missing or `node` reports anything but v24, the hook did not run and everything
   below is unreliable.
-- **Locally**, nothing pins Node for a non-interactive shell: `.mise.toml` pins 20 but mise
-  does not auto-activate, so `node -v` commonly reports 24, which silently breaks Electron.
-  Check it, and if it is not 20.x, instruct the implementer to prefix every verification
+- **Locally**, nothing pins Node for a non-interactive shell: `.mise.toml` pins 24 but mise
+  does not auto-activate, so `node -v` commonly reports mise's global default instead.
+  Check it, and if it is not 24.x, instruct the implementer to prefix every verification
   command with `mise exec --` (`mise exec -- pnpm lint`, and so on).
 
 ## Session rules

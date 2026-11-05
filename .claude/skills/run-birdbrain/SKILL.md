@@ -10,7 +10,7 @@ repository root.
 
 ## Prerequisites
 
-Node 20 (`.mise.toml` pins it; `node --version` should print `v20.x`) and `Xvfb`. On Arch:
+Node 24 (`.mise.toml` pins it; `node --version` should print `v24.x`) and `Xvfb`. On Arch:
 
 ```bash
 sudo pacman -S --needed xorg-server-xvfb

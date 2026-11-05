@@ -212,6 +212,25 @@ describe('tab recording', () => {
     expect(counts).toMatchObject({ recordedTargets: 2, unrecordedTargets: 0 })
   })
 
+  it('fetches no body whose received bytes exceed the per-resource budget', async () => {
+    const budget = { totalBytes: 1_000, resourceBytes: 100, maxEvents: 100, maxEventBytes: 100_000 }
+    const recording = createTabRecording({ tabId: TAB, budget })
+    const page = fakeSession('page-session')
+    recording.addSession(page, 'page', Promise.resolve())
+    document(page, 'D1', 'https://a.test/')
+    sent(page, 'BIG', 'https://a.test/big.bin')
+    page.emit('Network.dataReceived', { requestId: 'BIG', dataLength: 60 })
+    page.emit('Network.dataReceived', { requestId: 'BIG', dataLength: 41 })
+    finished(page, 'BIG', 'https://a.test/big.bin')
+    sent(page, 'FITS', 'https://a.test/fits.bin')
+    page.emit('Network.dataReceived', { requestId: 'FITS', dataLength: 100 })
+    finished(page, 'FITS', 'https://a.test/fits.bin')
+    await settle()
+    expect(page.sent).toEqual(['Network.getResponseBody:D1', 'Network.getResponseBody:FITS'])
+    const { exchanges } = await recording.cut().collect(1_000)
+    expect(exchanges.find(({ requestId }) => requestId === 'BIG')?.responseBody).toBeUndefined()
+  })
+
   const servedResponse = (session: FakeSession, requestId: string, url: string) => {
     session.emit('Network.responseReceived', {
       requestId,

@@ -108,6 +108,8 @@ const COOKIE = 'COOKIE-MARKER-77ab'
 const AUTHORIZATION = 'AUTH-MARKER-e93f'
 const BINARY = Buffer.from(Array.from({ length: 4096 }, (_, i) => (i * 7 + 3) % 256))
 const GZ_PAYLOAD = Buffer.from(Array.from({ length: 8192 }, (_, i) => (i * 13 + 1) % 256))
+// One byte over the engine's per-resource budget (TRANSACTION_RECORD_RESOURCE_BYTES).
+const OVER_BUDGET = Buffer.alloc(10_000_001, 0x61)
 const GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64')
 
 // Longer than the engine's own network quiet, so nothing the page started is still to come.
@@ -188,6 +190,15 @@ const PAGES: Record<string, string> = {
   '/cache-a': html('<title>Cache A</title><img src="/cacheable.gif">'),
   '/cache-b': html('<title>Cache B</title><img src="/cacheable.gif">'),
   '/holding': html("<title>Holding</title><script>fetch('/hold')</script>"),
+  // One request the server drops without answering, and one the page aborts while the server
+  // holds it.
+  '/failing': html(
+    "<title>Failing</title><script>fetch('/reset').catch(() => {})\n" +
+      "const aborter = new AbortController(); fetch('/hold-abort', { signal: aborter.signal })" +
+      '.catch(() => {}); setTimeout(() => aborter.abort(), 300)</script>'
+  ),
+  '/over-budget': html("<title>Over budget</title><script>fetch('/big.bin')</script>"),
+  '/opened-new-tab': html('<title>Opened in a new tab</title><img src="/pixel.gif">'),
   // The first slice's page-visible facts (spec, Validation, "Page-visible effects"), with the check
   // P3 kept: the page's own `Error.prepareStackTrace` runs for an Error passed to `console.debug`
   // only while `Runtime.enable` is on (probe, P3, Chromium 154). The page reports them every 250 ms.
@@ -272,7 +283,15 @@ async function startFixture(tls: LocalhostCert): Promise<Fixture> {
         response.end(GIF)
         return
       case '/hold':
+      case '/hold-abort':
         held.push(response)
+        return
+      case '/reset':
+        request.socket.destroy()
+        return
+      case '/big.bin':
+        response.writeHead(200, { 'content-type': 'application/octet-stream' })
+        response.end(OVER_BUDGET)
         return
       default:
         response.writeHead(204)
@@ -384,6 +403,8 @@ describe.skipIf(skipReason !== null)(
     const warnings: string[] = []
 
     const tabId = (): string => browser.firstTab.targetId
+    // Each recorded page's session, by target id, for driving a tab the suite did not launch with.
+    const sessions = new Map<string, Parameters<LaunchedCaptures['onRecordedSession']>[0]>()
 
     // `path` is on the fixture's first site unless it names an origin.
     async function navigate(path: string, settled: string = path): Promise<void> {
@@ -459,7 +480,8 @@ describe.skipIf(skipReason !== null)(
       fixture = await startFixture(tlsCert)
       captures = createLaunchedCaptures({
         sink: {
-          screenLaunched: (id, url) => lifecycle.screenLaunched(id, url),
+          screenLaunched: (id, url, committedUrl) =>
+            lifecycle.screenLaunched(id, url, committedUrl),
           abandonedLaunched: (url) => lifecycle.abandonedLaunched(url),
           admit: (request) => {
             admitted.push(request)
@@ -483,7 +505,12 @@ describe.skipIf(skipReason !== null)(
           browser: SUITE_BROWSER,
           egress: { kind: 'direct' },
           sessionDataPath: join(root, 'sessionData'),
-          hooks: { onRecordedSession: answeringStartupPage(captures.onRecordedSession) }
+          hooks: {
+            onRecordedSession: answeringStartupPage((session, target, recorded) => {
+              sessions.set(target.targetId, session)
+              captures.onRecordedSession(session, target, recorded)
+            })
+          }
         },
         {
           spawn: suiteSpawn,
@@ -660,6 +687,36 @@ describe.skipIf(skipReason !== null)(
       expect(lastAdmitted().inventory.transactionRecord).toMatchObject({ inFlight: 1 })
     }, 60_000)
 
+    it('records a failed and a cancelled exchange, each counted in the inventory', async () => {
+      await navigate('/failing', '/hold-abort')
+      expect(await capture()).toMatchObject({ state: 'captured' })
+      const request = lastAdmitted()
+      expect(request.inventory.transactionRecord).toMatchObject({ failed: 1, cancelled: 1 })
+      const records = readWarc(request.transactionRecord!)
+      expect(requestRecords(records).map(pathOf)).toEqual(
+        expect.arrayContaining(['/failing', '/reset', '/hold-abort'])
+      )
+      const responded = records.filter((r) => r.warc('WARC-Type') === 'response').map(pathOf)
+      expect(responded).not.toContain('/reset')
+      expect(responded).not.toContain('/hold-abort')
+    }, 60_000)
+
+    it('records a response over the per-resource budget without its body, and counts it', async () => {
+      await navigate('/over-budget', '/big.bin')
+      const baseline = await capture()
+      expect(baseline).toMatchObject({ state: 'captured' })
+      const request = lastAdmitted()
+      const records = readWarc(request.transactionRecord!)
+      expect(requestRecords(records).map(pathOf)).toContain('/big.bin')
+      const big = records.find(
+        (r) => r.warc('WARC-Type') === 'response' && pathOf(r) === '/big.bin'
+      )
+      expect(big?.http?.statusLine).toMatch(/ 200 /)
+      expect(big?.http?.payload.length).toBe(0)
+      const { bodiesOmitted } = request.inventory.transactionRecord as { bodiesOmitted: number }
+      expect(bodiesOmitted).toBeGreaterThanOrEqual(1)
+    }, 60_000)
+
     it('takes two overlapping Captures of one navigation, each with its own record', async () => {
       await navigate('/other', '/other.gif')
       const first = await capture()
@@ -761,6 +818,28 @@ describe.skipIf(skipReason !== null)(
       }
     }, 60_000)
 
+    it('captures a page Back restored from the back-forward cache with no Transaction Record', async () => {
+      await navigate('/cache-a', '/cacheable.gif')
+      await navigate('/page2')
+      await browser.firstTab.session.send('Runtime.evaluate', { expression: 'history.back()' })
+      await waitFor(
+        () =>
+          captures.decorate([{ targetId: tabId(), title: '', url: '' }])[0].firstRequest === false,
+        'the restored page to commit'
+      )
+      const progress = await capture()
+      expect(progress).toMatchObject({ state: 'captured' })
+      const request = lastAdmitted()
+      expect(request.title).toBe('Cache A')
+      expect(request.inventory.transactionRecord).toEqual({
+        present: false,
+        reason: 'back-forward-cache'
+      })
+      expect(signedEntryOf(progress).inventory).toMatchObject({
+        transactionRecord: { present: false, reason: 'back-forward-cache' }
+      })
+    }, 60_000)
+
     it('abandons a Capture when a new page commits before every artifact is taken', async () => {
       await navigate('/navigate-on-resize')
       const stored = admitted.length
@@ -816,7 +895,8 @@ describe.skipIf(skipReason !== null)(
       const proxy: Socks5Fixture = await startSocks5Fixture()
       const proxied = createLaunchedCaptures({
         sink: {
-          screenLaunched: (id, url) => lifecycle.screenLaunched(id, url),
+          screenLaunched: (id, url, committedUrl) =>
+            lifecycle.screenLaunched(id, url, committedUrl),
           abandonedLaunched: (url) => lifecycle.abandonedLaunched(url),
           admit: (request) => {
             admitted.push(request)
@@ -923,6 +1003,49 @@ describe.skipIf(skipReason !== null)(
         message: expect.stringMatching(/Bring it to the front/)
       })
       expect(admitted).toHaveLength(stored)
+    }, 60_000)
+
+    // The engine's command list has no Target.createTarget, so the suite cannot open a tab as
+    // Ctrl+T does. The nearest it can drive is a `noopener` tab, which starts blank with no opener
+    // the page can reach, and then a typed navigation in it.
+    it('records a new tab from its first request, every request the fixture logged once', async () => {
+      const known = new Set(sessions.keys())
+      await browser.firstTab.session.send('Runtime.evaluate', {
+        expression: "window.open('about:blank', '_blank', 'noopener')",
+        userGesture: true
+      } as never)
+      const targetId = await waitFor(
+        () => [...sessions.keys()].find((id) => !known.has(id)),
+        'the new tab to attach'
+      )
+      const session = sessions.get(targetId)!
+      const before = fixture.requests.length
+      await session.send('Runtime.evaluate', {
+        expression: `location.href = ${JSON.stringify(`${fixture.origin}/opened-new-tab`)}`
+      })
+      await waitFor(
+        () => captures.decorate([{ targetId, title: '', url: '' }])[0].firstRequest === true,
+        'the new tab to commit'
+      )
+      await waitFor(
+        () => fixture.requests.slice(before).some(({ path }) => path === '/pixel.gif'),
+        'the new tab to load its image'
+      )
+      await new Promise((resolve) => setTimeout(resolve, QUIET_MS))
+      const cutAt = fixture.requests.length
+      expect(await captures.capture(targetId, { scrollToLoad: false })).toMatchObject({
+        state: 'captured'
+      })
+      const records = readWarc(lastAdmitted().transactionRecord!)
+      const recorded = requestRecords(records).map(pathOf)
+      expect(recorded[0]).toBe('/opened-new-tab')
+      expect([...recorded].sort()).toEqual(
+        fixture.requests
+          .slice(before, cutAt)
+          .map(({ path }) => path)
+          .sort()
+      )
+      expect(records[0].block.toString('utf8')).toContain(`tab-target-id: ${targetId}`)
     }, 60_000)
   }
 )

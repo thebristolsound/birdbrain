@@ -272,6 +272,18 @@ describe('clicked Captures in the launched browser', () => {
       .methods()
       .filter((method) => method.startsWith('Network.getResponseBody'))
 
+  it.each(['file:///etc/hosts', 'chrome://settings/', 'data:text/html,x'])(
+    'refuses a tab that committed %s, and takes nothing from it',
+    async (url) => {
+      const h = harness()
+      await h.open()
+      await h.loadFirstTab(url)
+      expect(h.tabs()[0]).toMatchObject({ targetId: 'first-tab', refusal: 'not-http' })
+      await h.service.capture('first-tab', { scrollToLoad: false })
+      expect(h.capture).not.toHaveBeenCalled()
+    }
+  )
+
   it('lists a tab in a private window with the reason, and never records or captures it', async () => {
     const h = harness({ browser: { respond } })
     await h.open()

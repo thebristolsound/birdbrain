@@ -619,6 +619,20 @@ describe('the capture shortcut', () => {
     expect(h.capture).not.toHaveBeenCalled()
     expect(h.emitPickTab).toHaveBeenCalledTimes(1)
   })
+
+  it('counts a tab whose focus cannot be read as not in front, and opens the tab picker', async () => {
+    const h = harness({
+      browser: {
+        respond: ({ method }) =>
+          method === 'Page.createIsolatedWorld' ? { error: { message: 'no frame' } } : undefined
+      }
+    })
+    await h.open()
+    await h.loadFirstTab()
+    await expect(h.service.shortcutPressed()).resolves.toBeUndefined()
+    expect(h.capture).not.toHaveBeenCalled()
+    expect(h.emitPickTab).toHaveBeenCalledTimes(1)
+  })
 })
 
 // The maintainer's ruling of 2026-11-05 on P7.

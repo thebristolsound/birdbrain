@@ -89,6 +89,20 @@ const PROCEED_WITH_ORIGIN =
   ' const button = leo && leo.shadowRoot && leo.shadowRoot.querySelector("button");' +
   ' if (button || leo) (button || leo).click() })()'
 
+// Brave Origin opens its first tab only once its startup page is answered; the suite answers it as
+// the Operator would, from the page's own main world.
+function answeringStartupPage(
+  onRecordedSession: LaunchedCaptures['onRecordedSession']
+): LaunchedCaptures['onRecordedSession'] {
+  return (session, target, recorded) => {
+    onRecordedSession(session, target, recorded)
+    if (!target.url.startsWith(BRAVE_ORIGIN_STARTUP)) return
+    setTimeout(() => {
+      session.send('Runtime.evaluate', { expression: PROCEED_WITH_ORIGIN }).catch(() => {})
+    }, 3_000)
+  }
+}
+
 const PASSWORD = 'PASSWORD-MARKER-5c1d'
 const COOKIE = 'COOKIE-MARKER-77ab'
 const AUTHORIZATION = 'AUTH-MARKER-e93f'
@@ -458,20 +472,7 @@ describe.skipIf(skipReason !== null)(
           browser: SUITE_BROWSER,
           egress: { kind: 'direct' },
           sessionDataPath: join(root, 'sessionData'),
-          hooks: {
-            onRecordedSession: (session, target, recorded) => {
-              captures.onRecordedSession(session, target, recorded)
-              // Brave Origin opens its first tab only once its startup page is answered; the
-              // suite answers it as the Operator would, from the page's own main world.
-              if (target.url.startsWith(BRAVE_ORIGIN_STARTUP)) {
-                setTimeout(() => {
-                  session
-                    .send('Runtime.evaluate', { expression: PROCEED_WITH_ORIGIN })
-                    .catch(() => {})
-                }, 3_000)
-              }
-            }
-          }
+          hooks: { onRecordedSession: answeringStartupPage(captures.onRecordedSession) }
         },
         {
           spawn: suiteSpawn,
@@ -808,7 +809,7 @@ describe.skipIf(skipReason !== null)(
           browser: SUITE_BROWSER,
           egress,
           sessionDataPath: join(root, 'sessionData'),
-          hooks: { onRecordedSession: proxied.onRecordedSession }
+          hooks: { onRecordedSession: answeringStartupPage(proxied.onRecordedSession) }
         },
         { spawn: suiteSpawn, buildArgs: buildSuiteLaunchArgs }
       )

@@ -856,9 +856,31 @@ describe('launchBrowser: the tab list', () => {
   })
 
   it('does not read the tabs before the launch has passed its checks', async () => {
-    const { browser } = start({ deps: { timeouts: { tabRefreshMs: 1 } } })
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    let pass: () => void = () => {}
+    let checking: () => void = () => {}
+    const reached = new Promise<void>((resolve) => {
+      checking = resolve
+    })
+    const checkFirstTab = (): Promise<void> => {
+      checking()
+      return new Promise((resolve) => {
+        pass = resolve
+      })
+    }
+    const { browser, launching } = start({
+      hooks: { checkFirstTab },
+      deps: { timeouts: { tabRefreshMs: 1 } }
+    })
+    await reached
+    vi.advanceTimersByTime(50)
     await settle()
     expect(browser.methods()).not.toContain('Target.getTargets')
+    pass()
+    await launching
+    vi.advanceTimersByTime(1)
+    await settle()
+    expect(browser.methods()).toContain('Target.getTargets')
     browser.kill('SIGKILL')
   })
 

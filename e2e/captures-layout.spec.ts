@@ -127,4 +127,53 @@ test.describe('Captures three-column layout', () => {
     await expect(page.getByTestId('notes-list-panel')).toBeVisible()
     expect(Math.abs((await widthOf(page, 'notes-list-panel')) - listBeforeReload)).toBeLessThan(2)
   })
+
+  // Design review of 2026-11-04: beside the docked rail the viewer title had shortened to "C.".
+  test('shortens the viewer title to about eight characters, then hides it', async ({
+    electronApp,
+    page
+  }) => {
+    test.setTimeout(120000)
+
+    await page.evaluate(() => {
+      window.location.hash = '/cases/new?blank=true'
+    })
+    await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
+    await page.fill('[data-testid="case-name-input"]', 'Viewer title E2E')
+    await page.click('[data-testid="case-create-btn"]')
+    await page.waitForURL(/#\/cases\/.+\/overview/, { timeout: 10000 })
+    const caseId = page.url().match(/cases\/([^/]+)/)![1]
+    await seedCapture(page, caseId, await serverToken(page), {
+      slug: 'long-title',
+      title: 'Example evidence page with a long title about subject accounts',
+      text: 'long title',
+      mhtml: '<html><body>long title</body></html>'
+    })
+
+    await electronApp.windows()[0].setViewportSize({ width: 1350, height: 900 })
+    await page.evaluate((id) => {
+      window.location.hash = `/cases/${id}/captures`
+    }, caseId)
+    await expect(page.getByTestId('capture-item')).toHaveCount(1, { timeout: 15000 })
+    await page.getByTestId('capture-item').first().click()
+
+    // Widening the list narrows the viewer until the title has no room left.
+    const title = page.getByTestId('capture-viewer-title')
+    const seen = { shortened: false, hidden: false }
+    for (let step = 0; step < 14; step++) {
+      const { shown, width, cut } = await title.evaluate((el) => ({
+        shown: getComputedStyle(el).display !== 'none',
+        width: el.getBoundingClientRect().width,
+        cut: el.scrollWidth > el.clientWidth
+      }))
+      if (shown) {
+        expect(width).toBeGreaterThanOrEqual(64)
+        if (cut) seen.shortened = true
+      } else {
+        seen.hidden = true
+      }
+      await dragSeparator(page, 0, 20)
+    }
+    expect(seen).toEqual({ shortened: true, hidden: true })
+  })
 })

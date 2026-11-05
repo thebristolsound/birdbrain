@@ -302,6 +302,7 @@ export interface BirdbrainAPI {
     showPopOut(): Promise<void>
     dock(): Promise<void>
     popOutState(): Promise<boolean>
+    capture(targetId: string, request: { scrollToLoad: boolean }): Promise<LaunchedBrowserStatus>
   }
   search(caseId: string, query: string): Promise<Capture[]>
   settings: {
@@ -439,6 +440,8 @@ export interface BirdbrainAPI {
   onWaybackLinkProgress(callback: (event: WaybackLinkProgressEvent) => void): () => void
   onLaunchedBrowserStatus(callback: (status: LaunchedBrowserStatus) => void): () => void
   onLaunchedBrowserPopOut(callback: (event: LaunchedBrowserPopOutEvent) => void): () => void
+  // The capture shortcut found more than one tab it could take, or none.
+  onLaunchedBrowserPickTab(callback: () => void): () => void
   testPipeline(): Promise<{ success: boolean; durationMs: number; error?: string }>
   testHttp(): Promise<{ success: boolean; durationMs: number; error?: string }>
   extractedData: {

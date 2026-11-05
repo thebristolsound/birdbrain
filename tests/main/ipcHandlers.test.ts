@@ -569,6 +569,8 @@ describe('ipcHandlers — launched browser (#1831)', () => {
       cancelLaunch: vi.fn(),
       sessionEnded: vi.fn(),
       killForQuit: vi.fn(),
+      capture: vi.fn(async () => OPEN),
+      shortcutPressed: vi.fn(async () => {}),
       dispose: vi.fn(),
       ...overrides
     }

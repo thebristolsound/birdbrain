@@ -532,6 +532,23 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.LAUNCHED_BROWSER_DOCK, () => popOut.dock())
   handle(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT_STATE, () => popOut.isOpen())
 
+  // A clicked Capture (#1832). The panel names the tab before the click; main checks it again.
+  handle(
+    IPC_CHANNELS.LAUNCHED_BROWSER_CAPTURE,
+    async (_, targetId: string, request: { scrollToLoad?: unknown }) => {
+      if (typeof targetId !== 'string' || targetId === '') {
+        throw new IpcFailure('No tab was named.', 'BAD_REQUEST')
+      }
+      try {
+        return await launchedBrowser.capture(targetId, {
+          scrollToLoad: request?.scrollToLoad === true
+        })
+      } catch (err) {
+        throw launchRefusal(err)
+      }
+    }
+  )
+
   // Captures
   handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => captureRepo.listCaptures(caseId))
   handle(IPC_CHANNELS.CAPTURES_GET, (_, id: string) => captureRepo.getCapture(id))

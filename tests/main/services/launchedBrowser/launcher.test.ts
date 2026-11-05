@@ -125,6 +125,8 @@ describe('launchBrowser: starting', () => {
       'Target.setDiscoverTargets',
       'Target.setAutoAttach',
       'Network.enable@session-1',
+      'Network.setCacheDisabled@session-1',
+      'Page.enable@session-1',
       'Target.setAutoAttach@session-1'
     ])
     const { commands } = browser
@@ -139,6 +141,9 @@ describe('launchBrowser: starting', () => {
     expect(paramsOf(commands, 'Network.enable@session-1')).toEqual({
       maxTotalBufferSize: TRANSACTION_RECORD_TOTAL_BYTES,
       maxResourceBufferSize: TRANSACTION_RECORD_RESOURCE_BYTES
+    })
+    expect(paramsOf(commands, 'Network.setCacheDisabled@session-1')).toEqual({
+      cacheDisabled: true
     })
     expect(handle.identity).toEqual({
       family: 'chrome',
@@ -448,6 +453,8 @@ describe('launchBrowser: attaching', () => {
     for (const sessionId of ['session-2', 'session-3']) {
       expect(browser.methods().filter((m) => m.endsWith(`@${sessionId}`))).toEqual([
         `Network.enable@${sessionId}`,
+        `Network.setCacheDisabled@${sessionId}`,
+        `Page.enable@${sessionId}`,
         `Target.setAutoAttach@${sessionId}`,
         `Runtime.runIfWaitingForDebugger@${sessionId}`
       ])
@@ -468,14 +475,14 @@ describe('launchBrowser: attaching', () => {
       waiting: false
     })
     await settle()
-    expect(browser.methods().slice(6)).toEqual([
+    expect(browser.methods().slice(8)).toEqual([
       'Runtime.runIfWaitingForDebugger@session-2',
       'Runtime.runIfWaitingForDebugger@session-3'
     ])
     expect(recorded).toEqual(['first-tab'])
   })
 
-  it("records a recorded page's iframes and dedicated workers on their own sessions", async () => {
+  it("records a recorded page's iframes, dedicated workers and service workers on their own sessions", async () => {
     const recorded: string[] = []
     const { browser } = await launched({
       hooks: { onRecordedSession: (_, { targetId }) => recorded.push(targetId) }
@@ -491,18 +498,21 @@ describe('launchBrowser: attaching', () => {
     })
     browser.attach(targetInfo('nested', 'iframe', 'https://c.test/'), { parentSessionId: frame })
     await settle()
-    expect(browser.methods().slice(6)).toEqual([
-      'Network.enable@session-2',
-      'Target.setAutoAttach@session-2',
-      'Runtime.runIfWaitingForDebugger@session-2',
-      'Network.enable@session-3',
-      'Runtime.runIfWaitingForDebugger@session-3',
-      'Runtime.runIfWaitingForDebugger@session-4',
-      'Network.enable@session-5',
-      'Target.setAutoAttach@session-5',
-      'Runtime.runIfWaitingForDebugger@session-5'
+    // Spec, "Attach before request", step 2: each recorded session gets the same setup, with
+    // auto-attach on frames and workers too, and `Page.enable` on the page only.
+    const setupOf = (sessionId: string): string[] => [
+      `Network.enable@${sessionId}`,
+      `Network.setCacheDisabled@${sessionId}`,
+      `Target.setAutoAttach@${sessionId}`,
+      `Runtime.runIfWaitingForDebugger@${sessionId}`
+    ]
+    expect(browser.methods().slice(8)).toEqual([
+      ...setupOf('session-2'),
+      ...setupOf('session-3'),
+      ...setupOf('session-4'),
+      ...setupOf('session-5')
     ])
-    expect(recorded).toEqual(['first-tab', 'frame', 'worker', 'nested'])
+    expect(recorded).toEqual(['first-tab', 'frame', 'worker', 'sw', 'nested'])
   })
 
   it('reports a target whose setup fails and still resumes it', async () => {

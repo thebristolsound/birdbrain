@@ -188,8 +188,8 @@ describe.skipIf(skipReason !== null)(
           const { checkFirstTab } = hooks
           const tapped: LaunchHooks = {
             ...hooks,
-            onRecordedSession: (cdpSession, targetInfo) => {
-              hooks.onRecordedSession?.(cdpSession, targetInfo)
+            onRecordedSession: (cdpSession, targetInfo, recording) => {
+              hooks.onRecordedSession?.(cdpSession, targetInfo, recording)
               cdpSession.on('Network.responseReceived', ({ response }) => responses.push(response))
             },
             ...(checkFirstTab && {

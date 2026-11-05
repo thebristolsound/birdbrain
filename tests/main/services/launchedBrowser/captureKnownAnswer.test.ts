@@ -427,6 +427,17 @@ describe.skipIf(skipReason !== null)(
       return request
     }
 
+    // What the Case's manifest signed for a stored Capture, not what the engine sent.
+    function signedEntryOf(progress: LaunchedCaptureProgress): Record<string, unknown> {
+      const { captureId } = progress as { captureId: string }
+      const jsonl = readFileSync(join(root, 'captures', caseId, MANIFEST_FILENAME), 'utf8')
+      const entry = readEntries(jsonl).find(
+        (e) => e.type === 'capture' && e.captureId === captureId
+      )
+      if (!entry) throw new Error(`no capture entry for ${captureId}`)
+      return entry
+    }
+
     beforeAll(async () => {
       root = mkdtempSync(join(tmpdir(), 'birdbrain-launched-capture-'))
       initStorage(join(root, 'captures'))
@@ -522,6 +533,7 @@ describe.skipIf(skipReason !== null)(
         servedByServiceWorker: 0
       })
       expect(request.boundTlsAbsent).toBe('not-https')
+      expect(signedEntryOf(progress).boundTlsAbsent).toBe('not-https')
       expect(request.browser).toEqual({
         product: browser.identity.product,
         version: browser.identity.version,
@@ -577,6 +589,10 @@ describe.skipIf(skipReason !== null)(
       const stored = readFileSync(join(root, 'captures', row!.mhtmlPath!))
       expect(stored.equals(mhtml)).toBe(true)
       expect(entry).toMatchObject({ contentHash: sha256(mhtml) })
+      // The entry signs the page text the engine read.
+      const { textContent } = lastAdmitted()
+      expect(textContent.length).toBeGreaterThan(0)
+      expect(entry).toMatchObject({ textHash: sha256(Buffer.from(textContent, 'utf-8')) })
     }, 60_000)
 
     it('records each hop of a redirect chain as its own exchange', async () => {
@@ -706,9 +722,11 @@ describe.skipIf(skipReason !== null)(
 
     it("signs Bound TLS Details that match the TLS fixture's certificate", async () => {
       await navigate(`${fixture.secureOrigin}/secure`)
-      expect(await capture()).toMatchObject({ state: 'captured' })
-      const { boundTls, boundTlsAbsent } = lastAdmitted()
-      expect(boundTlsAbsent).toBeUndefined()
+      const progress = await capture()
+      expect(progress).toMatchObject({ state: 'captured' })
+      const entry = signedEntryOf(progress)
+      expect(entry).not.toHaveProperty('boundTlsAbsent')
+      const boundTls = entry.boundTls as { sanList?: string[] } | undefined
       const certificate = new X509Certificate(tlsCert.cert)
       expect(boundTls).toMatchObject({
         subjectName: 'localhost',
@@ -724,7 +742,10 @@ describe.skipIf(skipReason !== null)(
       await waitFor(() => fixture.facts.length > 0, 'the first facts')
       const before = fixture.facts.at(-1)!
       const reported = fixture.facts.length
-      expect(await capture(true)).toMatchObject({ state: 'captured' })
+      const progress = await capture(true)
+      expect(progress).toMatchObject({ state: 'captured' })
+      expect(signedEntryOf(progress).scrollToLoad).toEqual(lastAdmitted().scrollToLoad)
+      expect(signedEntryOf(progress).scrollToLoad).toMatchObject({ requested: true, ran: true })
       await waitFor(() => fixture.facts.length > reported + 2, 'facts after the Capture')
       const after = fixture.facts.slice(reported)
       // The values each pairing records in the validation record, where a hand run asks for them.

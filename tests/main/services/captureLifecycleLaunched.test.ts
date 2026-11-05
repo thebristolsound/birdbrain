@@ -19,6 +19,8 @@ import { ManifestEntrySchema } from '@shared/schemas'
 import { safeRegexOutcome } from '@main/services/safeRegex'
 import { MANIFEST_FILENAME, MANUAL_DEDUPE_WINDOW_MS } from '@shared/constants'
 import type { CaptureEvent } from '@shared/types'
+import type { BoundTls, ScrollToLoadRecord } from '@shared/schemas'
+import { ENGINE_BOUND_TLS, ENGINE_SCROLL_TO_LOAD } from '../../helpers/captureEnginePackage'
 
 // A 1 ms budget for every pattern in this file, so a pattern that backtracks runs out of it on any
 // machine, as tests/shared/urlPatterns.test.ts injects its budget. Production keeps 200 ms.
@@ -153,6 +155,29 @@ describe('Capture Lifecycle: the launched route', () => {
     const sha256 = createHash('sha256').update(request.mhtml).digest('hex')
     expect(outcome.contentHash).toBe(sha256)
     expect(entries().find((e) => e.type === 'capture')).toMatchObject({ contentHash: sha256 })
+  })
+
+  it('signs the Bound TLS Details, the Scroll-to-load record and the page text it was given', async () => {
+    const request = launchedRequest(caseId, {
+      boundTls: ENGINE_BOUND_TLS as BoundTls,
+      boundTlsAbsent: undefined,
+      scrollToLoad: ENGINE_SCROLL_TO_LOAD as ScrollToLoadRecord
+    })
+    expect((await buildLifecycle().admit(request)).ok).toBe(true)
+    const entry = entries().find((e) => e.type === 'capture')
+    expect(entry?.boundTls).toEqual(ENGINE_BOUND_TLS)
+    expect(entry).not.toHaveProperty('boundTlsAbsent')
+    expect(entry?.scrollToLoad).toEqual(ENGINE_SCROLL_TO_LOAD)
+    expect(entry?.textHash).toBe(
+      createHash('sha256').update(Buffer.from('launched text', 'utf-8')).digest('hex')
+    )
+  })
+
+  it('signs why the entry carries no Bound TLS Details', async () => {
+    expect((await buildLifecycle().admit(launchedRequest(caseId))).ok).toBe(true)
+    const entry = entries().find((e) => e.type === 'capture')
+    expect(entry?.boundTlsAbsent).toBe('not-recorded')
+    expect(entry).not.toHaveProperty('boundTls')
   })
 
   it('signs the Egress fields while the Egress is not Direct and skips the TLS re-fetch', async () => {

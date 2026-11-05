@@ -1,4 +1,4 @@
-# Capture engine stage-2 probe: launched Chromium browsers on Linux
+# Capture engine stage-2 probe: launched Chromium browsers on Linux and Windows
 
 **Date:** 2026-10-11, updated 2026-11-05
 
@@ -11,7 +11,9 @@ maintainer run on 2026-11-03 found that the pipe works on Chrome, Edge and Brave
 listener and no `DevToolsActivePort` file (P7). On 2026-11-05 that Windows host measured every
 other entry it could for those three browsers ([Windows host](#windows-host)); P13 and P17, and the
 parts of P8 and P18 that send key presses, did not run there. No macOS row is measured. On
-2026-11-05 the maintainer ruled that clicked Captures do not wait for a macOS run (#1828).
+2026-11-05 the maintainer ruled that clicked Captures do not wait for a macOS run, and that
+Birdbrain does not offer the launched browser on macOS until a macOS run and the reference tests
+pass there (ruling 2 in `docs/plans/2026-10-31-capture-engine-stage-2.md`).
 
 Answers the P questions of the
 [stage-2 design spec](2026-10-10-capture-engine-launched-browser-design.md) (Open questions, line
@@ -622,8 +624,9 @@ Each control run, the same arguments plus `--remote-debugging-port=0`, opened on
 listener and wrote `DevToolsActivePort`, so the listener and file checks fire on that machine and
 the pipe runs' zeros count. A maintainer run on macOS, or a follow-up issue, fills the macOS row.
 The ruling on decision D1 asks for the pipe measured on Windows and macOS before the clicked-Capture
-step (spec, lines 405-409 and 1291-1294); whether stage-2 step 4 waits on the macOS answer is the
-maintainer's ruling.
+step (spec, lines 405-409 and 1291-1294). On 2026-11-05 the maintainer ruled that stage-2 step 4
+does not wait on the macOS answer, and that the launched browser is not offered on macOS until it
+passes (ruling 2 in `docs/plans/2026-10-31-capture-engine-stage-2.md`).
 
 ### P8: When the pipe closes
 
@@ -1258,8 +1261,10 @@ On the Windows host, `discover` checked the Windows rows of Birdbrain's own inst
 `PROGRAMFILES`, and `PROGRAMFILES(X86)`. Chrome and Brave were under `C:\Program Files` and Edge
 under `C:\Program Files (x86)`; nothing was under `LOCALAPPDATA`, and Brave Origin and Chromium were
 absent. The `App Paths` keys under `HKLM` named the same three files, `HKCU` had none, and none of
-`chrome.exe`, `msedge.exe`, or `brave.exe` was on `PATH`. Birdbrain's `discoverBrowsers` found the
-same three. Chrome and Brave gave the product `Chrome/156.0.8078.80`; Edge gave
+`chrome.exe`, `msedge.exe`, or `brave.exe` was on `PATH`. In a separate run the same day for #1831,
+not part of this probe, Birdbrain's `discoverBrowsers` found the same three
+([comment on #1831](https://github.com/thebristolsound/birdbrain/issues/1831#issuecomment-6660582734)).
+Chrome and Brave gave the product `Chrome/156.0.8078.80`; Edge gave
 `Edg/156.0.4314.58` and a user agent ending `Edg/156.0.0.0`, where the other two end
 `Safari/537.36`.
 
@@ -1443,10 +1448,11 @@ settled for Linux on the builds measured.
 - **Capture sequence, screenshot** (step 5, lines 606-611): settled for Chrome 150 and Chrome for
   Testing 149, with an observable cost. `captureBeyondViewport` does not move the window, and the
   page receives `resize`, `visualViewport` resize, and `ResizeObserver` callbacks (P2). Passive
-  capture of a tab that is not in front (lines 971-972) can take a screenshot (P2). Not settled for
-  Chromium 154: in front it gave the same results as Chrome, but behind another tab the step's
-  `captureBeyondViewport` capture did not answer within 15 seconds, in one run, and only the capture
-  without it returned the page (P2).
+  capture of a tab that is not in front (lines 971-972) can take a screenshot on Chrome 150 (P2).
+  Not settled for Chromium 154, Chrome 156 or Edge 156: in front they gave the same results as
+  Chrome 150, but behind another tab the step's `captureBeyondViewport` capture did not answer
+  within 15 seconds, in one run each, and only the capture without it returned the page; Brave 156
+  answered both (P2).
 - **Capture sequence, MHTML** (step 6, lines 612-613): settled for Chrome 150 and Chromium 154.
   `Page.captureSnapshot` equals `wc.savePage` part for part on the fixture, Chromium 154's against
   Electron 45.1.0 (P24).
@@ -1521,18 +1527,23 @@ settled for Linux on the builds measured.
   and whether that switch is on Chrome's unsupported-flag list was not checked. With that switch, a
   background-tab screenshot took 2,265 ms where branded Chrome took 18 ms, in one run (P2).
   Chromium 154 reports `Chrome/154.0.8037.97`, so the product string does not tell Chromium from
-  branded Chrome either (P20).
+  branded Chrome either (P20). Brave 156 reports `Chrome/156.0.8078.80`, while Edge 156 reports
+  `Edg/156.0.4314.58`, a product the engine's identification refuses (#2070).
 - **What a page can tell, banners** (lines 895-897): settled. No automation infobar appears (P19).
 - **The pipe on Windows and macOS** (decision D1, P7): measured on Windows, where the pipe works on
   Chrome, Edge and Brave 156 with no TCP listener and no `DevToolsActivePort` file, and the control
-  runs fired; not measured on macOS. Whether stage-2 step 4 waits on the macOS answer is the
-  maintainer's ruling.
+  runs fired; not measured on macOS. Edge relaunches itself without the pipe when `__COMPAT_LAYER`
+  is set in its environment (#2070). The maintainer ruled on 2026-11-05 that stage-2 step 4 does
+  not wait on the macOS answer, and that the launched browser is not offered on macOS until it
+  passes (ruling 2 in `docs/plans/2026-10-31-capture-engine-stage-2.md`).
 - **The keyboard shortcut** (lines 907-911): works under X11 with no desktop (P17); Wayland and
   desktop sessions are not measured.
 - **Where the CDP client runs** (decision D4): measured, not settled. Fetching every body moved the
   main process's 99th-percentile event-loop delay to 64-82 ms and its maximum to 93-140 ms on the
   first host, and to 134 ms and 194 ms with Electron 45.1.0 and Chromium 154 on the second (P12).
-  Whether that counts as a stall is the threshold D4 leaves open.
+  On the Windows host, with Electron 45.2.1, fetching every body at `loadingFinished` gave one delay
+  of 845 to 945 ms on each of Chrome, Edge and Brave 156, in one run each (P12). Whether that counts
+  as a stall is the threshold D4 leaves open.
 - **The port fallback** (decision D1, option B of the CDP client): the global `WebSocket` exists in
   Electron's main process and drives a browser in port mode (P23).
 - **Discovery** (lines 294-300): settled for the two hosts only (P20). Arch's `chromium` package

@@ -29,18 +29,19 @@ started it and apart from the fifteen rulings:
 
 | Order | Slice | State |
 | --- | --- | --- |
-| 1 | Rulings docs PR, rulings posted on their issues, ruling 9 labels | in flight |
-| 2 | Schema 7 beta release | next |
-| 3 | #1832, taken over from its build thread | building |
-| 4 | #1831 follow-up: the designer's 12 Change verdicts and the empty Egress label | waits on #1832's PR |
-| 4a | #1831 hand checks (ruling 13), then the CI job PR (ruling 14) | waits on slice 4 |
-| 5 | Duplicate and received Persona rows (rulings 4 and 5) | after #1832 on `captureLifecycle.ts`, before #600 |
+| 1 | Rulings docs PR, rulings posted on their issues, ruling 9 labels | done: #2066 |
+| 2 | Schema 7 beta release | done: v1.0.1-beta.26 (#2067) |
+| 3 | #1832, taken over from its build thread | #2068, fix round 1 |
+| 4 | #1831 follow-up part A: five Change verdicts outside #2068's files | building |
+| 4b | #1831 follow-up part B: the start dialog and panel verdicts, the empty Egress label | waits on #2068 merging |
+| 4c | #1831 hand checks (ruling 13), then the CI job PR (ruling 14) | Windows half running; P17 waits on #2068 |
+| 5 | Duplicate rows (ruling 4 and the browser fields #2068 found) and received Persona rows (ruling 5) | after #1832 on `captureLifecycle.ts`, before #600 |
 | 6 | #1833 (rulings 6 and 7) | waits on the release and slice 5 |
 | 7 | #1499 (ruling 8), then #1501 | waits on the release and slice 5 |
 | 8 | #1824 remainder (ruling 10) | not started |
 | 9 | #600 with #599 | waits on #1832 merging |
 | 10 | #543 draft, #546, tester guide issue, close #1498 | not started |
-| 11 | #1828 (ruling 15) | not started |
+| 11 | #1828 (ruling 15) | Windows rows running with 4c |
 | 12 | Close-out under roadmap rules 2 and 4 | last |
 
 ## Log
@@ -69,7 +70,20 @@ started it and apart from the fifteen rulings:
   scratch tree. Its first preflight failed on one timing test in the launcher suite under load
   (`launcher.test.ts:851`, a 1 ms tab refresh); the file passed alone three times, and the
   preflight is running again.
-- **Next command.** `gh pr list --search 1832 --state open` to pick up #1832's PR for takeover.
+- **Shipped, later the same day.** #2066 (the rulings in both plans) merged as a28b83a8 after
+  three review rounds, and #1498 closed. The bump #2067 merged as f08fe66b and release run
+  42010872538 published `v1.0.1-beta.26` as a prerelease with the Windows, Linux and macOS files,
+  so the schema 7 gate on #1832, #1833 and #1499 is met.
+- **#2068 (#1832).** The orchestrating session took it over at ca50e6e8, added the macOS launch
+  gate (95e984f5) and its docs wording (05f20d7e), and ran a green preflight at 05f20d7e. The
+  reviewer asked for changes: the launcher timing test is red in CI, the signed address goes
+  stale on pages that change address without reloading, signed target counts overstate, the
+  report misdescribes pinning and omitted text bodies, private-window tabs are recorded in
+  memory, and no test catches an empty stored archive. The test-reliability review added four
+  unpinned claims. A delegated fix round is working in the builder's worktree.
+- **Windows thread.** One thread on the Windows machine runs the branded Chrome, Edge and Brave
+  launches for #1831 and the #1828 Windows rows, and pushes `docs/1828-windows-probe-rows`.
+- **Next command.** Read the fix round's result, then rerun both reviewers at its head.
 
 ## Open questions
 

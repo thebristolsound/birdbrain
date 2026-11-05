@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'fs'
+import { createHash } from 'crypto'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
@@ -138,6 +139,20 @@ describe('Capture Lifecycle: the launched route', () => {
       'received:launched',
       'stored:launched'
     ])
+  })
+
+  it('stores the page archive the browser returned, and signs its hash', async () => {
+    const request = launchedRequest(caseId)
+    const outcome = await buildLifecycle().admit(request)
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    const { mhtmlPath } = getCapture(outcome.capture.id) ?? {}
+    expect(mhtmlPath).toBeDefined()
+    const stored = readFileSync(join(tempDir, 'captures', mhtmlPath!))
+    expect(stored.equals(request.mhtml)).toBe(true)
+    const sha256 = createHash('sha256').update(request.mhtml).digest('hex')
+    expect(outcome.contentHash).toBe(sha256)
+    expect(entries().find((e) => e.type === 'capture')).toMatchObject({ contentHash: sha256 })
   })
 
   it('signs the Egress fields while the Egress is not Direct and skips the TLS re-fetch', async () => {

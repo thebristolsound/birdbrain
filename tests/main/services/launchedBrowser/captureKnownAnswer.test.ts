@@ -571,6 +571,12 @@ describe.skipIf(skipReason !== null)(
         schemaVersion: 7
       })
       expect(entry).not.toHaveProperty('egressKind')
+      // The stored page archive is the one the browser returned, and the entry signs its hash.
+      const { mhtml } = lastAdmitted()
+      expect(mhtml.length).toBeGreaterThan(0)
+      const stored = readFileSync(join(root, 'captures', row!.mhtmlPath!))
+      expect(stored.equals(mhtml)).toBe(true)
+      expect(entry).toMatchObject({ contentHash: sha256(mhtml) })
     }, 60_000)
 
     it('records each hop of a redirect chain as its own exchange', async () => {

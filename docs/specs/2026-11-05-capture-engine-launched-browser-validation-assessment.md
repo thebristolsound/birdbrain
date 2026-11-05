@@ -24,8 +24,8 @@ screenshot, MHTML, the page text, the Transaction Record, and the PDF, in that o
 gains a launched route that signs `method: 'launched'`, `browserProduct`, `browserVersion`, and
 `browserFamily`, with the schema 7 inventory values `servedByServiceWorker`,
 `requestBodiesWithheld`, and `httpCacheDisabled`. The `captures` row keeps the version in
-`browser_version`. No launched Capture is offered on macOS (maintainer ruling of 2026-11-05 on
-P7).
+`browser_version`. On macOS Birdbrain neither launches the browser nor takes a launched Capture
+(maintainer ruling of 2026-11-05 on P7).
 
 ## Environments
 

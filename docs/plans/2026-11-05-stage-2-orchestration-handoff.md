@@ -10,7 +10,8 @@ open questions, and it is updated after every completed slice. The maintainer's 
 
 ## Authority
 
-The maintainer granted the orchestrating session the following on 2026-11-05:
+The maintainer granted the orchestrating session the following on 2026-11-05, in the message that
+started it and apart from the fifteen rulings:
 
 - **Merges.** The session merges a PR that is not evidence-affecting with
   `.claude/skills/merge-pr/scripts/merge.sh <n>` after CI is green and the reviewer approves. An
@@ -33,7 +34,7 @@ The maintainer granted the orchestrating session the following on 2026-11-05:
 | 3 | #1832, taken over from its build thread | building |
 | 4 | #1831 follow-up: the designer's 12 Change verdicts and the empty Egress label | waits on #1832's PR |
 | 4a | #1831 hand checks (ruling 13), then the CI job PR (ruling 14) | waits on slice 4 |
-| 5 | Duplicate and received Persona rows (rulings 4 and 5) | waits on `captureLifecycle.ts` |
+| 5 | Duplicate and received Persona rows (rulings 4 and 5) | after #1832 on `captureLifecycle.ts`, before #600 |
 | 6 | #1833 (rulings 6 and 7) | waits on the release and slice 5 |
 | 7 | #1499 (ruling 8), then #1501 | waits on the release and slice 5 |
 | 8 | #1824 remainder (ruling 10) | not started |

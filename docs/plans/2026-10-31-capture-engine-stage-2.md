@@ -163,7 +163,7 @@ tagged release whose verifier reads a field ships before any writer of that fiel
 
 ### Step 1: the probe (#1828, docs only)
 
-The Linux answers the code steps need are already merged in #1842. #1828 stays open for P3 and for
+The Linux answers the code steps need are already merged in #1842. #1828 stayed open for P3 and for
 the browsers and platforms nobody has measured. Whether step 1's done criterion (spec :1266-1271)
 is met is not settled: the probe lists Edge, Brave and Chromium as "not installed" rather than "not
 measurable" (:52-56), and this host has `/usr/bin/chromium` 154 and Brave Origin 155.
@@ -200,8 +200,8 @@ One PR adds:
 Each new value gets a refine that requires schema 7 and a stamp in `fieldMinReaderSchemaVersion`
 (`manifest.ts:1022-1052`). The step also moves the five ceiling assertions from 6 to 7 and adds a
 frozen-digest test. It merged as #2031 (6c488f05) on 2026-11-02. The next tag after it is the
-release carrying schema 7, which the maintainer delegated to the orchestrating session on
-2026-11-05. That release gates the merges of steps 4, 5 and 6 and of every Persona writer.
+release carrying schema 7, which the maintainer delegated to the orchestrating session in a
+message on 2026-11-05, apart from the rulings; it gates steps 4 to 6 and every Persona writer.
 
 ### Step 3: launcher, profiles and Egress, with no Capture (#1831)
 
@@ -287,9 +287,10 @@ review.
   2026-10-26), and nothing else holds a number.
 - **Migration lane.** #2051 took DB 45. #1833 and #1501 may need a `personas` row migration, which
   takes DB 46.
-- **`settings.ts`.** #1696 and #1831 have merged (#2037, #2056).
+- **`settings.ts`.** #1696 and #1831's code have merged (#2037, #2056).
 - **`manifest.ts`, `schemas.ts`, `src/shared/verify/**` and `src/verifier/**`.** Step 2 only.
-- **`captureLifecycle.ts`.** #1498's writer half merged in #2051; #1832, then #600, hold it next.
+- **`captureLifecycle.ts`.** #1498's writer half merged in #2051; #1832, then the Duplicate and
+  received-row change, then #600, hold it next.
   Every earlier holder in the briefs plan's order has merged, CI-4 as #1855.
 - **`selectorRepo.ts` and `safeRegex.ts`.** Done in #2052.
 

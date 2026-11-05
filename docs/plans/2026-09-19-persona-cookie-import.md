@@ -113,7 +113,7 @@ Read from `origin/main` at 43ad0830 on 2026-11-04.
 - **No release carries schema 7.** The newest tag is `v1.0.1-beta.25` of 2026-10-31, and it
   contains neither 6c488f05 nor 45071a74. The maintainer's tag of a release carrying schema 7
   still gates the merge of the first caller that passes a Persona (stage 2 plan :200-204,
-  :189-191).
+  :245-248).
 - **Cookies at rest.** The partition's cookie values are stored unencrypted, because Electron's
   `EnableCookieEncryption` fuse is off in the build Birdbrain ships; turning it on is #88
   (ADR-0030:19-23). #1824 stays open for two Settings questions (stage 2 plan :48-49).
@@ -276,7 +276,7 @@ The stage 2 plan splits #1498 in two (stage 2 plan :245-248).
   `captureLifecycle.ts` passes from #2051 to #1832, then to #600 (stage 2 plan :292-294).
 - It merged before the schema 7 release because no caller passes a Persona: the ingest callers at
   `recapture.ts:352` and `captureLifecycle.ts:1469` pass none. Its first callers are #1833 and
-  #1499 (stage 2 plan :245-248).
+  #1499 (stage 2 plan :249-256).
 - #2051's description left two cases open. `duplicate()` (`captureLifecycle.ts:1618`) names
   neither Persona field, so a Duplicate of a Persona Capture signs no Persona. A Capture received
   into a Shared Case leaves both columns NULL (`migrations.ts:1929-1930`;
@@ -387,9 +387,9 @@ the maintainer ruled that #1500 comes off ready-for-agent until stage 3 (stage 2
 - Storing per-store counts on the `personas` row needs a migration (spec :877). #1833 and #1501
   may need that `personas` row migration; #2051 took DB 45, so `pnpm db:migration:new` scaffolds
   it as 46, and it takes the migration lane, which holds one migration PR at a time (stage 2 plan
-  :231-232).
+  :288-289).
 - No cookie name or value crosses IPC. The phase is not evidence-affecting (stage 2 plan
-  :101-103).
+  :157-159).
 - #1501's body says it is blocked by #1499, because the sign-in window was the re-seed action it
   pointed at. Since the ruling of 2026-11-05 dropped that window, the re-seed action is a cookie
   import (stage 2 ruling 8).

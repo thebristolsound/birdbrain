@@ -137,6 +137,22 @@ describe('tab recording', () => {
     expect(await urls(recording)).toEqual(['https://a.test/', 'https://a.test/download'])
   })
 
+  it('moves the page address on a same-document navigation and keeps the committed document', () => {
+    const { recording, page } = setUp()
+    document(page, 'D1', 'https://a.test/home')
+    page.emit('Page.navigatedWithinDocument', { frameId: 'child', url: 'https://c.test/x' })
+    page.emit('Page.navigatedWithinDocument', { frameId: TAB, url: 'https://a.test/private/x' })
+    expect(recording.navigationId()).toBe(1)
+    expect(recording.committedUrl()).toBe('https://a.test/home')
+    expect(recording.pageUrl()).toBe('https://a.test/private/x')
+    expect(recording.cut()).toMatchObject({
+      committedUrl: 'https://a.test/home',
+      pageUrl: 'https://a.test/private/x'
+    })
+    document(page, 'D2', 'https://a.test/next')
+    expect(recording.pageUrl()).toBe('https://a.test/next')
+  })
+
   it('commits a page with no recorded document request as not recorded', async () => {
     const { recording, page } = setUp()
     // A tab opened by Ctrl-click: its document request reached no session (probe P4).

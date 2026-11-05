@@ -202,7 +202,7 @@ export function createLaunchedCaptures(deps: LaunchedCapturesDeps): LaunchedCapt
     if (!caseId) {
       return setProgress({ state: 'refused', targetId, message: 'No Active Case.' })
     }
-    const url = tab.recording.committedUrl() ?? ''
+    const url = tab.recording.pageUrl() ?? ''
     const screened = sink.screenLaunched(caseId, url)
     if (screened) {
       return setProgress({ state: 'refused', targetId, message: refusalMessage(screened) })

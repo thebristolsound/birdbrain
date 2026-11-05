@@ -77,7 +77,7 @@ function artifacts(url: string): TabCaptureArtifacts {
 }
 
 interface Options {
-  screen?: () => AdmissionRefusal | null
+  screen?: (caseId: string, url: string) => AdmissionRefusal | null
   admit?: (request: LaunchedAdmissionRequest) => Promise<AdmissionOutcome>
   platform?: NodeJS.Platform
   registers?: boolean
@@ -212,6 +212,27 @@ describe('clicked Captures in the launched browser', () => {
       captureId: 'capture-1',
       citation: 'NK-12'
     })
+  })
+
+  it('screens the address a same-document navigation moved the tab to', async () => {
+    const screened: string[] = []
+    const h = harness({
+      screen: (_caseId, url) => {
+        screened.push(url)
+        return { kind: 'excluded', pattern: 'a.test/private/*' }
+      }
+    })
+    await h.open()
+    await h.loadFirstTab('https://a.test/home')
+    h.browser().event(
+      'Page.navigatedWithinDocument',
+      { frameId: 'first-tab', url: 'https://a.test/private/x' },
+      'session-1'
+    )
+    await settle()
+    await h.service.capture('first-tab', { scrollToLoad: false })
+    expect(screened).toEqual(['https://a.test/private/x'])
+    expect(h.capture).not.toHaveBeenCalled()
   })
 
   it('refuses a tab whose address is not http or https, and takes nothing from it', async () => {

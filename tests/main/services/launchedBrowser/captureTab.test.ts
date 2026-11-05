@@ -169,6 +169,16 @@ describe('captureTab', () => {
     ])
   })
 
+  it('signs the address a same-document navigation moved the page to', async () => {
+    const { page, input } = setUp()
+    loadDocument(page, 'http://a.test/home')
+    page.emit('Page.navigatedWithinDocument', { frameId: TAB, url: 'http://a.test/private/x' })
+    const artifacts = await captureTab(input())
+    expect(artifacts.url).toBe('http://a.test/private/x')
+    // Bound TLS still reads the document that loaded, which matched its request.
+    expect(artifacts.boundTlsAbsent).toBe('not-https')
+  })
+
   it('carries no record for a page its recording lacks the document request of', async () => {
     const { page, input } = setUp()
     page.emit('Page.frameNavigated', {

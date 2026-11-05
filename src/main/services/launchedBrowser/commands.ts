@@ -224,6 +224,8 @@ interface TypedEvents {
   'Target.targetCrashed': { targetId: string; status: string; errorCode: number }
   // `type` is `BackForwardCacheRestore` for a page the back-forward cache restored.
   'Page.frameNavigated': { frame: FrameInfo; type?: string }
+  // A same-document navigation (the history API, a fragment change), with the frame's new URL.
+  'Page.navigatedWithinDocument': { frameId: string; url: string }
 }
 
 // The `Network` events a tab's recording reads (spec, "From a session-long recording", step 4).

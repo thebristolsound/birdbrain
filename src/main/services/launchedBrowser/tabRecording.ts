@@ -21,10 +21,10 @@ import { scrubNetworkEvent } from '@main/services/launchedBrowser/scrub'
 // One tab's recording in a launched browser (spec, "From a session-long recording to one
 // Transaction Record per Capture"). It holds the tab's current navigation only: it opens at a
 // main-frame document request, a main-frame commit rolls it over, a same-document navigation does
-// not, and a navigation that never commits leaves it in place. Every event is scrubbed of
-// credential values and request bodies before it is held (scrub.ts). Bodies are fetched at
-// `Network.loadingFinished` from the session that reported the exchange, under the first slice's
-// budget, and held in memory only. A Capture freezes the cut, the point in the message stream
+// not but moves the page's address, and a navigation that never commits leaves it in place. Every
+// event is scrubbed of credential values and request bodies before it is held (scrub.ts). Bodies
+// are fetched at `Network.loadingFinished` from the session that reported the exchange, under the
+// first slice's budget, and held in memory only. A Capture freezes the cut, the point in the message stream
 // where its first artifact command goes out, and collects the exchanges that began before it.
 
 export interface RecordingBudget {
@@ -55,6 +55,8 @@ interface Navigation {
   id: number
   // The committed document's URL, fragment included; undefined before the first commit.
   committedUrl: string | undefined
+  // The page's address: the committed URL, moved by each same-document navigation since.
+  pageUrl: string | undefined
   // False when the recording lacks the committed document's request.
   fromFirstRequest: boolean
   unrecorded: UnrecordedReason | undefined
@@ -85,6 +87,7 @@ interface Child {
 export interface CutRecording {
   navigationId: number
   committedUrl: string | undefined
+  pageUrl: string | undefined
   fromFirstRequest: boolean
   unrecorded: UnrecordedReason | undefined
   /**
@@ -108,6 +111,8 @@ export interface TabRecording {
   committed: (frame: FrameInfo, type: string | undefined) => void
   navigationId: () => number
   committedUrl: () => string | undefined
+  /** The address of the page the tab holds, which a same-document navigation moves. */
+  pageUrl: () => string | undefined
   fromFirstRequest: () => boolean
   /** Requests started and not yet ended, and when the last network event arrived. */
   activity: () => { open: number; lastActivityAt: number }
@@ -132,6 +137,7 @@ function emptyNavigation(id: number, at: number): Navigation {
   return {
     id,
     committedUrl: undefined,
+    pageUrl: undefined,
     fromFirstRequest: false,
     unrecorded: undefined,
     log: [],
@@ -311,7 +317,12 @@ export function createTabRecording({
     }
     if (isPage) {
       unsubscribes.push(
-        session.on('Page.frameNavigated', ({ frame, type: kind }) => committed(frame, kind))
+        session.on('Page.frameNavigated', ({ frame, type: kind }) => committed(frame, kind)),
+        session.on('Page.navigatedWithinDocument', ({ frameId, url }) => {
+          if (!discarded && frameId === tabId && current.committedUrl !== undefined) {
+            current.pageUrl = url
+          }
+        })
       )
     }
   }
@@ -324,6 +335,7 @@ export function createTabRecording({
     candidates.clear()
     const next = emptyNavigation(previous.id + 1, now())
     next.committedUrl = url
+    next.pageUrl = url
     if (type === 'BackForwardCacheRestore') {
       next.unrecorded = 'back-forward-cache'
     } else if (candidate && candidate.navigation === previous && !previous.overflow) {
@@ -405,10 +417,11 @@ export function createTabRecording({
   function cut(): CutRecording {
     const nav = current
     const cutIndex = nav.log.length
-    const { id, committedUrl, fromFirstRequest, unrecorded } = nav
+    const { id, committedUrl, pageUrl, fromFirstRequest, unrecorded } = nav
     return {
       navigationId: id,
       committedUrl,
+      pageUrl,
       fromFirstRequest,
       unrecorded,
       collect: async (ms) => {
@@ -450,6 +463,7 @@ export function createTabRecording({
     committed,
     navigationId: () => current.id,
     committedUrl: () => current.committedUrl,
+    pageUrl: () => current.pageUrl,
     fromFirstRequest: () => current.fromFirstRequest,
     activity: () => ({ open: current.open.size, lastActivityAt: current.lastActivityAt }),
     cut,

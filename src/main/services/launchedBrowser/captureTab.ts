@@ -283,7 +283,7 @@ export async function captureTab(input: TabCaptureInput): Promise<TabCaptureArti
   const errors = [record.error, pdf.error].filter((error) => error !== undefined)
   return {
     capturedAt: recordedAt,
-    url: cut.committedUrl ?? '',
+    url: cut.pageUrl ?? '',
     title,
     httpStatus: record.httpStatus,
     mhtml: Buffer.from(mhtmlText, 'utf8'),

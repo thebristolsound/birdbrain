@@ -140,8 +140,9 @@ describe('tab recording', () => {
   it('moves the page address on a same-document navigation and keeps the committed document', () => {
     const { recording, page } = setUp()
     document(page, 'D1', 'https://a.test/home')
-    page.emit('Page.navigatedWithinDocument', { frameId: 'child', url: 'https://c.test/x' })
     page.emit('Page.navigatedWithinDocument', { frameId: TAB, url: 'https://a.test/private/x' })
+    // A frame's own change, after the page's, leaves the page's address alone.
+    page.emit('Page.navigatedWithinDocument', { frameId: 'child', url: 'https://c.test/x' })
     expect(recording.navigationId()).toBe(1)
     expect(recording.committedUrl()).toBe('https://a.test/home')
     expect(recording.pageUrl()).toBe('https://a.test/private/x')
@@ -211,6 +212,14 @@ describe('tab recording', () => {
     expect(counts).toMatchObject({ recordedTargets: 2, unrecordedTargets: 0 })
   })
 
+  const servedResponse = (session: FakeSession, requestId: string, url: string) => {
+    session.emit('Network.responseReceived', {
+      requestId,
+      response: { url, status: 200, headers: {}, mimeType: 'text/plain', fromServiceWorker: true }
+    })
+    session.emit('Network.loadingFinished', { requestId })
+  }
+
   it("counts a response a service worker served on the page's own session only", async () => {
     const { recording, page } = setUp()
     const worker = fakeSession('worker-session')
@@ -218,17 +227,36 @@ describe('tab recording', () => {
     document(page, 'D1', 'https://a.test/')
     const served = (session: FakeSession, requestId: string, url: string) => {
       sent(session, requestId, url)
-      session.emit('Network.responseReceived', {
-        requestId,
-        response: { url, status: 200, headers: {}, mimeType: 'text/plain', fromServiceWorker: true }
-      })
-      session.emit('Network.loadingFinished', { requestId })
+      servedResponse(session, requestId, url)
     }
     served(page, 'S1', 'https://a.test/offline.json')
+    served(page, 'S3', 'https://a.test/offline.css')
     served(worker, 'S2', 'https://a.test/from-worker.json')
     await settle()
     const collected = await recording.cut().collect(1_000)
+    expect(collected.servedByServiceWorker).toBe(2)
+  })
+
+  it('counts the document a service worker served before its commit', async () => {
+    const { recording, page } = setUp()
+    sent(page, 'D1', 'https://a.test/', { type: 'Document', loaderId: 'D1' })
+    servedResponse(page, 'D1', 'https://a.test/')
+    committed(page, 'D1', 'https://a.test/')
+    await settle()
+    const collected = await recording.cut().collect(1_000)
     expect(collected.servedByServiceWorker).toBe(1)
+  })
+
+  it('counts a page whose own setup failed as not recorded', async () => {
+    const recording = createTabRecording({ tabId: TAB })
+    const page = fakeSession('page-session')
+    const failed = Promise.reject(new Error('Target.setAutoAttach failed'))
+    failed.catch(() => {})
+    recording.addSession(page, 'page', failed)
+    document(page, 'D1', 'https://a.test/')
+    await settle()
+    const { counts } = await recording.cut().collect(1_000)
+    expect(counts).toMatchObject({ recordedTargets: 0, unrecordedTargets: 1 })
   })
 
   it('counts a target whose setup failed as unrecorded', async () => {

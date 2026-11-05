@@ -161,7 +161,11 @@ describe('the breadcrumb chip', () => {
     expect(chip.dataset.hue).toBe('accent')
     const switcher = screen.getByTestId('topbar-case-name')
     expect(switcher.contains(chip)).toBe(true)
-    expect(switcher.title).toMatch(/^Switch case \(.+\) · You are AR in this Case$/)
+    expect(switcher.title).toMatch(
+      /^Operation Kestrel · Switch case \(.+\) · You are AR in this Case$/
+    )
+    // The chip widens the name's track, so the name still keeps about eight characters.
+    expect(switcher.parentElement!.className).toContain('minmax(7.5rem,max-content)')
   })
 
   it('shows no chip and the plain tooltip on a Case nobody has shared', async () => {
@@ -169,7 +173,33 @@ describe('the breadcrumb chip', () => {
     renderAt('/cases/case1/overview')
     await waitFor(() => expect(screen.getByTestId('share-pill').dataset.state).toBe('share'))
     expect(screen.queryByTestId('topbar-member-code')).toBeNull()
-    expect(screen.getByTestId('topbar-case-name').title).toMatch(/^Switch case \(.+\)$/)
+    expect(screen.getByTestId('topbar-case-name').title).toMatch(
+      /^Operation Kestrel · Switch case \(.+\)$/
+    )
+  })
+})
+
+// Design review of 2026-11-04: at 1,200 pixels the Case name had shortened to "F.".
+describe('the breadcrumb case name', () => {
+  it('keeps about eight characters before the search gives up width, then hides below 1,000', async () => {
+    renderAt('/cases/case1/overview')
+    const name = await screen.findByTestId('topbar-case-name-text')
+    await waitFor(() => expect(name.textContent).toBe('Operation Kestrel'))
+    expect(name.className).toContain('truncate')
+    expect(name.className).toContain('min-w-16')
+    expect(name.className).toContain('max-[1000px]:hidden')
+    const track = screen.getByTestId('topbar-case-name').parentElement!.className
+    expect(track).toContain('grid-cols-[max-content_max-content_minmax(6rem,max-content)]')
+    expect(track).toContain(
+      'max-[1000px]:grid-cols-[max-content_max-content_minmax(2rem,max-content)]'
+    )
+  })
+
+  it('carries the full name in the tooltip for when it is hidden', async () => {
+    renderAt('/cases/case1/overview')
+    await waitFor(() =>
+      expect(screen.getByTestId('topbar-case-name').title).toMatch(/^Operation Kestrel · /)
+    )
   })
 })
 
@@ -209,9 +239,9 @@ describe('the REC indicator', () => {
   })
 })
 
-// 2c and 2d: the dashboard and Settings have no rail, so the top bar carries the panel as a
-// popover while a launched browser is open, beside what the bar already shows.
-describe('the Capture Session button', () => {
+// 2c and 2d, revised 2026-11-04: the dashboard and Settings have no rail, so the REC pill opens
+// the panel as a popover while a launched browser is open; there is no separate button.
+describe('the REC pill as the Capture Session trigger', () => {
   const OPEN: LaunchedBrowserStatus = {
     state: 'open',
     browser: {
@@ -241,9 +271,15 @@ describe('the Capture Session button', () => {
     useAppStore.setState({ sessionActive: true })
   })
 
+  async function findTrigger() {
+    await screen.findByText('· Launched Google Chrome')
+    const pill = screen.getByTestId('topbar-rec')
+    await waitFor(() => expect(pill.tagName).toBe('BUTTON'))
+    return screen.getByTestId('topbar-rec')
+  }
+
   async function openPopover() {
-    const button = await screen.findByTestId('topbar-capture-session')
-    fireEvent.click(button)
+    fireEvent.click(await findTrigger())
     return screen.findByRole('dialog', { name: 'Capture Session' })
   }
 
@@ -260,37 +296,47 @@ describe('the Capture Session button', () => {
     expect(navigate).toHaveBeenCalledWith({ to: '/cases/$caseId', params: { caseId: 'case1' } })
   })
 
-  it('marks itself selected while its popover is open', async () => {
+  it('reads "REC · Launched Google Chrome" with a chevron, and no Capture Session button', async () => {
     bridgeWith(OPEN)
     renderAt('/')
-    const button = await screen.findByTestId('topbar-capture-session')
-    expect(button.className).not.toContain('bg-accent-subtle')
-    fireEvent.click(button)
-    await screen.findByRole('dialog', { name: 'Capture Session' })
-    expect(button.className).toContain('bg-accent-subtle')
+    const trigger = await findTrigger()
+    expect(trigger.textContent).toBe('REC· Launched Google Chrome')
+    expect(trigger.querySelector('svg')).toBeTruthy()
+    expect(screen.queryByTestId('topbar-capture-session')).toBeNull()
   })
 
-  it('opens it in Settings beside the switch, REC and the theme toggle, with no Open Case', async () => {
+  it('takes the accent outline while its popover is open', async () => {
+    bridgeWith(OPEN)
+    renderAt('/')
+    const trigger = await findTrigger()
+    expect(trigger.className).not.toContain('outline-accent')
+    fireEvent.click(trigger)
+    await screen.findByRole('dialog', { name: 'Capture Session' })
+    expect(trigger.className).toContain('outline-accent')
+  })
+
+  it('opens it in Settings beside the switch and the theme toggle, with no Open Case', async () => {
     bridgeWith(OPEN)
     renderAt('/settings')
     const popover = await openPopover()
     expect(popover.textContent).toContain('Launched Google Chrome')
     expect(screen.getByTestId('session-controls')).toBeTruthy()
-    expect(screen.getByTestId('topbar-rec')).toBeTruthy()
     expect(screen.getByTitle('Toggle theme')).toBeTruthy()
+    expect(screen.queryByTestId('topbar-capture-session')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Open Operation Kestrel' })).toBeNull()
   })
 
-  it('shows on the new-Case wizard, which has no rail', async () => {
+  it('opens it on the new-Case wizard, which has no rail', async () => {
     bridgeWith(OPEN)
     renderAt('/cases/new')
-    expect(await screen.findByTestId('topbar-capture-session')).toBeTruthy()
+    expect(await openPopover()).toBeTruthy()
   })
 
   it('leaves Case screens to the rail', async () => {
     bridgeWith(OPEN)
     renderAt('/cases/case1/captures')
     await screen.findByText('· Launched Google Chrome')
+    expect(screen.getByTestId('topbar-rec').tagName).toBe('DIV')
     expect(screen.queryByTestId('topbar-capture-session')).toBeNull()
   })
 
@@ -301,29 +347,39 @@ describe('the Capture Session button', () => {
     act(() => {
       client.setQueryData(['launchedBrowser', 'status'], { state: 'none' })
     })
-    await waitFor(() => expect(screen.queryByTestId('topbar-capture-session')).toBeNull())
+    await waitFor(() => expect(screen.getByTestId('topbar-rec').tagName).toBe('DIV'))
     act(() => {
       client.setQueryData(['launchedBrowser', 'status'], OPEN)
     })
-    expect(await screen.findByTestId('topbar-capture-session')).toBeTruthy()
+    expect(await findTrigger()).toBeTruthy()
     expect(screen.queryByRole('dialog', { name: 'Capture Session' })).toBeNull()
   })
 
-  it('does not show with no launched browser', async () => {
+  it('is a plain pill with no launched browser', async () => {
     bridgeWith({ state: 'none' })
     renderAt('/')
     await waitFor(() => expect(screen.getByTitle('Toggle theme')).toBeTruthy())
+    expect(screen.getByTestId('topbar-rec').tagName).toBe('DIV')
     expect(screen.queryByTestId('topbar-capture-session')).toBeNull()
   })
 
-  it('names the launched browser beside REC while it is open, and not once it has closed', async () => {
-    bridgeWith(OPEN)
-    renderAt('/')
-    expect(await screen.findByText('· Launched Google Chrome')).toBeTruthy()
-    cleanup()
+  it('names the launched browser while it is open, and not once it has closed', async () => {
     bridgeWith({ state: 'closed', browser: { ...OPEN.browser, tabs: [] } })
     renderAt('/')
-    await screen.findByTestId('topbar-capture-session')
+    await waitFor(() => expect(screen.getByTestId('topbar-rec').tagName).toBe('BUTTON'))
     expect(screen.getByTestId('topbar-rec').textContent).toBe('REC')
+  })
+
+  it('leaves a notice to the Capture Session button once no session runs', async () => {
+    useAppStore.setState({ sessionActive: false, dismissedLaunchNotice: null })
+    bridgeWith({
+      state: 'none',
+      notice: { code: 'EGRESS_BYPASS', message: 'A response did not come through…' }
+    })
+    renderAt('/')
+    fireEvent.click(await screen.findByTestId('topbar-capture-session'))
+    const popover = await screen.findByRole('dialog', { name: 'Capture Session' })
+    expect(popover.textContent).toContain('The Capture Session ended.')
+    expect(screen.queryByTestId('topbar-rec')).toBeNull()
   })
 })

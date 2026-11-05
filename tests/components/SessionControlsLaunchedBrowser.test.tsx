@@ -25,6 +25,15 @@ const BROWSER = {
   tabs: []
 }
 
+const FERRY = {
+  id: 'case-1',
+  name: 'Ferry Line',
+  isDemo: false,
+  createdAt: '2026-11-01T10:00:00.000Z',
+  updatedAt: '2026-11-01T10:00:00.000Z',
+  archived: false
+}
+
 function mount(status: LaunchedBrowserStatus) {
   const stop = vi.fn(async () => ({
     sessionActive: false,
@@ -32,7 +41,7 @@ function mount(status: LaunchedBrowserStatus) {
     captureCount: 0
   }))
   fakeBridge({
-    cases: { list: vi.fn(async () => []) },
+    cases: { list: vi.fn(async () => [FERRY]) },
     session: { stop },
     launchedBrowser: { status: vi.fn(async () => status) }
   })
@@ -107,5 +116,38 @@ describe('turning the switch off', () => {
     fireEvent.click(screen.getByRole('switch', { name: 'Capture Session' }))
     await waitFor(() => expect(stop).toHaveBeenCalledTimes(1))
     expect(useAppStore.getState().stopConfirmOpen).toBe(false)
+  })
+})
+
+// 1i, design review of 2026-11-04: the label after the switch keeps the Active Case and names the
+// source after it, since the breadcrumb already shows the Case.
+describe('the source line after the switch', () => {
+  async function line() {
+    const el = await screen.findByTestId('session-source-line')
+    return { text: el.textContent, title: el.getAttribute('title') }
+  }
+
+  it('appends the launched browser to the Active Case', async () => {
+    useAppStore.setState({ sessionActive: true })
+    mount({ state: 'open', browser: BROWSER })
+    expect(await line()).toEqual({
+      text: 'Ferry Line · Launched Google Chrome',
+      title: 'Ferry Line · Launched Google Chrome'
+    })
+  })
+
+  it('names the extension as well while it is connected', async () => {
+    useAppStore.setState({ sessionActive: true, connectedToExtension: true })
+    mount({ state: 'open', browser: BROWSER })
+    expect((await line()).text).toBe('Ferry Line · Launched Google Chrome, and the extension')
+  })
+
+  it('keeps the Case alone for the extension, and once the browser has closed', async () => {
+    useAppStore.setState({ sessionActive: true, connectedToExtension: true })
+    mount({ state: 'none' })
+    expect(await line()).toEqual({ text: 'Ferry Line', title: 'Ferry Line' })
+    cleanup()
+    mount({ state: 'closed', browser: BROWSER })
+    expect((await line()).text).toBe('Ferry Line')
   })
 })

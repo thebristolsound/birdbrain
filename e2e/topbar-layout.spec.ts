@@ -72,6 +72,17 @@ test.describe('Top bar layout', () => {
           expect(overlapWidth(searchBox, rightBox)).toBeLessThanOrEqual(0)
         }).toPass({ timeout: 5000 })
 
+        // The case name shortens to about eight characters before the search gives up width, and
+        // hides below 1,000 pixels with the full name in the tooltip; never one letter.
+        const nameText = caseName.getByTestId('topbar-case-name-text')
+        if (width >= 1000) {
+          const { width: nameWidth } = (await nameText.boundingBox())!
+          expect(nameWidth).toBeGreaterThanOrEqual(64)
+        } else {
+          await expect(nameText).toBeHidden()
+        }
+        await expect(caseName).toHaveAttribute('title', new RegExp(`^${name} · `))
+
         // Every control on the right stays inside the window, and nothing scrolls sideways.
         for (const button of await controls.getByRole('button').all()) {
           const { x, width: w } = (await button.boundingBox())!

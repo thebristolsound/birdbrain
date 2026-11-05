@@ -12,7 +12,10 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => vi.fn()
 }))
 
-import { CaptureSessionDock } from '@renderer/components/launchedBrowser/CaptureSessionDock'
+import {
+  CaptureSessionDock,
+  useCaptureSessionRailDocked
+} from '@renderer/components/launchedBrowser/CaptureSessionDock'
 
 const FERRY: Case = {
   id: 'case-1',
@@ -36,33 +39,47 @@ const SUMMARY: LaunchedBrowserSummary = {
   ]
 }
 const OPEN: LaunchedBrowserStatus = { state: 'open', browser: SUMMARY }
-// The room beside the side rail the folded Captures screen and the rail need, and with the
-// Wayback slide-out.
-const FITS = 647 + 320
-const FITS_WAYBACK = 836 + 320
+// The room beside the side rail the rail needs beside the Captures screen with its details panel
+// folded and the viewer kept at 480 pixels (list 240, separator 7, viewer 480, details strip 40),
+// and beside the Wayback tab (viewer 480, slide-out 436, details strip 40).
+const FITS = 240 + 7 + 480 + 40 + 320
+const FITS_WAYBACK = 480 + 436 + 40 + 320
 const INNER_WIDTH = window.innerWidth
 
 let reportWidth: (width: number) => void
 
+// The screen inside the dock, saying whether it reads the rail as docked.
+function Screen() {
+  return <div data-testid="screen">{useCaptureSessionRailDocked() ? 'docked' : 'free'}</div>
+}
+
 function mount({
   status = OPEN,
-  waybackTab = false
-}: { status?: LaunchedBrowserStatus; waybackTab?: boolean } = {}) {
+  waybackTab = false,
+  poppedOut = false
+}: { status?: LaunchedBrowserStatus; waybackTab?: boolean; poppedOut?: boolean } = {}) {
+  const showPopOut = vi.fn(async () => {})
+  const dock = vi.fn(async () => {})
   fakeBridge({
     cases: { list: vi.fn(async () => [FERRY]) },
     settings: { get: vi.fn(async () => ({ egress: { kind: 'direct' } })) },
-    launchedBrowser: { status: vi.fn(async () => status) }
+    launchedBrowser: {
+      status: vi.fn(async () => status),
+      popOutState: vi.fn(async () => poppedOut),
+      showPopOut,
+      dock
+    }
   })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const tree = (wayback: boolean) => (
     <QueryClientProvider client={client}>
       <CaptureSessionDock waybackTab={wayback}>
-        <div data-testid="screen">Captures</div>
+        <Screen />
       </CaptureSessionDock>
     </QueryClientProvider>
   )
   const { rerender } = render(tree(waybackTab))
-  return { client, rerender: (wayback: boolean) => rerender(tree(wayback)) }
+  return { client, showPopOut, dock, rerender: (wayback: boolean) => rerender(tree(wayback)) }
 }
 
 function report(width: number) {
@@ -188,5 +205,77 @@ describe('CaptureSessionDock', () => {
     window.innerWidth = 48 + FITS - 1
     mount()
     expect(await screen.findByTestId('capture-session-strip')).toBeTruthy()
+  })
+  // Design review of 2026-11-04, answer 1: the viewer keeps 480 pixels beside the docked rail.
+  it('leaves room for a 480-pixel viewer beside the folded Captures screen', async () => {
+    mount()
+    report(240 + 7 + 360 + 40 + 320)
+    expect(await screen.findByTestId('capture-session-strip')).toBeTruthy()
+    report(FITS)
+    expect(await screen.findByTestId('capture-session-rail')).toBeTruthy()
+  })
+
+  it('tells the screen inside it whether the rail is docked', async () => {
+    mount()
+    report(FITS)
+    await screen.findByTestId('capture-session-rail')
+    expect(screen.getByTestId('screen').textContent).toBe('docked')
+    report(FITS - 1)
+    await screen.findByTestId('capture-session-strip')
+    expect(screen.getByTestId('screen').textContent).toBe('free')
+  })
+
+  it('tells the screen the rail is not docked while no launched browser is open', async () => {
+    const { client } = mount({ status: { state: 'none' } })
+    await act(() => client.refetchQueries({ queryKey: queryKeys.launchedBrowserStatus }))
+    report(FITS)
+    expect(screen.getByTestId('screen').textContent).toBe('free')
+  })
+
+  // 1g, answer 2: the main window keeps the strip's 40 pixels while the panel is popped out.
+  describe('while the panel is popped out', () => {
+    it('keeps a 40-pixel strip in place of the rail, and the screen takes the width', async () => {
+      mount({ poppedOut: true })
+      report(FITS + 400)
+      const strip = await screen.findByTestId('capture-session-popped-out')
+      expect(strip.className).toContain('w-10')
+      expect(within(strip).getByTitle('REC · Launched Google Chrome')).toBeTruthy()
+      expect(screen.queryByTestId('capture-session-rail')).toBeNull()
+      expect(screen.queryByText('Panel popped out')).toBeNull()
+      expect(screen.getByTestId('screen').textContent).toBe('free')
+    })
+
+    it('shows the window and docks the panel from glyphs with tooltips', async () => {
+      const { showPopOut, dock } = mount({ poppedOut: true })
+      report(FITS)
+      const show = await screen.findByRole('button', { name: 'Show window' })
+      expect(show.getAttribute('title')).toBe('Show window')
+      fireEvent.click(show)
+      await vi.waitFor(() => expect(showPopOut).toHaveBeenCalledTimes(1))
+      const dockButton = screen.getByRole('button', { name: 'Dock' })
+      expect(dockButton.getAttribute('title')).toBe('Dock')
+      fireEvent.click(dockButton)
+      await vi.waitFor(() => expect(dock).toHaveBeenCalledTimes(1))
+    })
+
+    it('stands in for the narrow strip too, with no overlay to expand', async () => {
+      mount({ poppedOut: true })
+      report(FITS - 1)
+      await screen.findByTestId('capture-session-popped-out')
+      expect(screen.queryByRole('button', { name: 'Expand the Capture Session panel' })).toBeNull()
+      expect(screen.queryByTestId('capture-session-strip')).toBeNull()
+    })
+
+    it('gives the rail back once the browser has closed, as the panel does', async () => {
+      const { client } = mount({
+        status: { state: 'closed', browser: { ...SUMMARY, tabs: [] } },
+        poppedOut: true
+      })
+      report(FITS)
+      await act(() => client.refetchQueries({ queryKey: queryKeys.launchedBrowserPopOut }))
+      expect(client.getQueryData(queryKeys.launchedBrowserPopOut)).toBe(true)
+      expect(await screen.findByTestId('capture-session-rail')).toBeTruthy()
+      expect(screen.queryByTestId('capture-session-popped-out')).toBeNull()
+    })
   })
 })

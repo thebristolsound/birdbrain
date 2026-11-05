@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { launchedBrowserStatusQueryOptions } from '@renderer/lib/api/launchedBrowser'
+import {
+  launchedBrowserName,
+  launchedBrowserStatusQueryOptions
+} from '@renderer/lib/api/launchedBrowser'
 import { useParams } from '@tanstack/react-router'
 import { motion, AnimatePresence } from 'motion/react'
 import { useAppStore } from '@renderer/stores/appStore'
@@ -27,6 +30,12 @@ export function SessionControls() {
   if (!connectedToExtension && !launchedSession) return null
 
   const activeCase = cases.find((c) => c.id === activeCaseId)
+  // The label names the source after the Active Case (`1i`): the Case is already in the breadcrumb,
+  // the browser is not. As on the REC pill, a closed browser is no longer named.
+  const source =
+    launched?.state === 'open'
+      ? `${launchedBrowserName(launched.browser.label)}${connectedToExtension ? ', and the extension' : ''}`
+      : null
 
   const handleToggleSession = async () => {
     if (toggling) return
@@ -82,14 +91,16 @@ export function SessionControls() {
       <AnimatePresence>
         {sessionActive && activeCase && (
           <motion.span
-            title={activeCase.name}
-            className="hidden max-w-[140px] truncate text-xs text-text-muted lg:inline"
+            data-testid="session-source-line"
+            title={source ? `${activeCase.name} · ${source}` : activeCase.name}
+            className="hidden min-w-0 text-xs text-text-muted lg:inline-flex"
             initial={presets.fadeIn.initial}
             animate={presets.fadeIn.animate}
             exit={presets.fadeIn.exit}
             transition={presets.fadeIn.transition}
           >
-            {activeCase.name}
+            <span className="max-w-[140px] truncate">{activeCase.name}</span>
+            {source && <span className="whitespace-pre"> · {source}</span>}
           </motion.span>
         )}
       </AnimatePresence>

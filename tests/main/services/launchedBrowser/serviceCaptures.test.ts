@@ -538,6 +538,27 @@ describe('why a clicked Capture stored nothing', () => {
     )
   })
 
+  it('logs no stored Capture with a failed part when admission refuses it', async () => {
+    const h = harness({
+      capture: async (input) => ({
+        ...artifacts(`https://a.test/${input.tabId}`),
+        errors: [new Error('print failed')]
+      }),
+      admit: async () => ({ ok: false, refusal: { kind: 'excluded', pattern: 'a.test' } })
+    })
+    await h.open()
+    await h.loadFirstTab()
+    expect(progressOf(await h.service.capture('first-tab', { scrollToLoad: false }))).toMatchObject(
+      { state: 'refused' }
+    )
+    expect(h.log.warn).not.toHaveBeenCalledWith(
+      'launchedBrowser',
+      'launchedBrowser.capture_part_failed',
+      undefined,
+      expect.anything()
+    )
+  })
+
   it('records the frames of a tab in the tab’s recording', async () => {
     const h = harness()
     await h.open()

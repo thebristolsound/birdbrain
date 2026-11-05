@@ -258,9 +258,6 @@ export function createLaunchedCaptures(deps: LaunchedCapturesDeps): LaunchedCapt
           }
         }
       })
-      for (const error of artifacts.errors) {
-        log.warn('launchedBrowser', 'launchedBrowser.capture_part_failed', undefined, error)
-      }
       const egress = captureEgressOf(launchedEgress)
       const outcome = await sink.admit({
         route: 'launched',
@@ -286,6 +283,10 @@ export function createLaunchedCaptures(deps: LaunchedCapturesDeps): LaunchedCapt
       })
       if (!outcome.ok) {
         return setProgress({ state: 'refused', targetId, message: refusalMessage(outcome.refusal) })
+      }
+      // Logged once admission stored the Capture, which is what the log's label says.
+      for (const error of artifacts.errors) {
+        log.warn('launchedBrowser', 'launchedBrowser.capture_part_failed', undefined, error)
       }
       const { capture } = outcome
       return setProgress({

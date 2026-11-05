@@ -179,6 +179,7 @@ describe('captureTab', () => {
     page.emit('Page.navigatedWithinDocument', { frameId: TAB, url: 'http://a.test/private/x' })
     const artifacts = await captureTab(input())
     expect(artifacts.url).toBe('http://a.test/private/x')
+    expect(artifacts.committedUrl).toBe('http://a.test/home')
     // Bound TLS still reads the document that loaded, which matched its request.
     expect(artifacts.boundTlsAbsent).toBe('not-https')
   })

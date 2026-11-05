@@ -81,6 +81,8 @@ export interface TabCaptureArtifacts {
   // The cut, as ISO 8601: the moment of Capture the record runs up to.
   capturedAt: string
   url: string
+  // The URL the page's document committed at, which exclusion screens alongside `url`.
+  committedUrl?: string
   title: string
   httpStatus: number
   mhtml: Buffer
@@ -284,6 +286,7 @@ export async function captureTab(input: TabCaptureInput): Promise<TabCaptureArti
   return {
     capturedAt: recordedAt,
     url: cut.pageUrl ?? '',
+    ...(cut.committedUrl ? { committedUrl: cut.committedUrl } : {}),
     title,
     httpStatus: record.httpStatus,
     mhtml: Buffer.from(mhtmlText, 'utf8'),

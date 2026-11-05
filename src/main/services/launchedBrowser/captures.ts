@@ -36,7 +36,7 @@ import type { TabFocusState } from '@main/services/launchedBrowser/tabPicking'
 
 // What the engine needs of the Capture Lifecycle.
 export interface LaunchedCaptureSink {
-  screenLaunched: (caseId: string, url: string) => AdmissionRefusal | null
+  screenLaunched: (caseId: string, url: string, committedUrl?: string) => AdmissionRefusal | null
   admit: (request: LaunchedAdmissionRequest) => Promise<AdmissionOutcome>
   // The activity feed's event for a Capture the engine abandoned.
   abandonedLaunched: (url: string) => void
@@ -224,7 +224,7 @@ export function createLaunchedCaptures(deps: LaunchedCapturesDeps): LaunchedCapt
       return setProgress({ state: 'refused', targetId, message: 'No Active Case.' })
     }
     const url = tab.recording.pageUrl() ?? ''
-    const screened = sink.screenLaunched(caseId, url)
+    const screened = sink.screenLaunched(caseId, url, tab.recording.committedUrl())
     if (screened) {
       return setProgress({ state: 'refused', targetId, message: refusalMessage(screened) })
     }
@@ -266,6 +266,7 @@ export function createLaunchedCaptures(deps: LaunchedCapturesDeps): LaunchedCapt
         route: 'launched',
         caseId,
         url: artifacts.url,
+        ...(artifacts.committedUrl ? { committedUrl: artifacts.committedUrl } : {}),
         title: artifacts.title,
         timestamp: artifacts.capturedAt,
         captureId,

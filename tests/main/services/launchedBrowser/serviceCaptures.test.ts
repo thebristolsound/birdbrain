@@ -78,7 +78,7 @@ function artifacts(url: string): TabCaptureArtifacts {
 
 interface Options {
   egress?: EgressSetting
-  screen?: (caseId: string, url: string) => AdmissionRefusal | null
+  screen?: (caseId: string, url: string, committedUrl?: string) => AdmissionRefusal | null
   admit?: (request: LaunchedAdmissionRequest) => Promise<AdmissionOutcome>
   platform?: NodeJS.Platform
   registers?: boolean
@@ -220,10 +220,10 @@ describe('clicked Captures in the launched browser', () => {
   })
 
   it('screens the address a same-document navigation moved the tab to', async () => {
-    const screened: string[] = []
+    const screened: [string, string | undefined][] = []
     const h = harness({
-      screen: (_caseId, url) => {
-        screened.push(url)
+      screen: (_caseId, url, committedUrl) => {
+        screened.push([url, committedUrl])
         return { kind: 'excluded', pattern: 'a.test/private/*' }
       }
     })
@@ -236,8 +236,26 @@ describe('clicked Captures in the launched browser', () => {
     )
     await settle()
     await h.service.capture('first-tab', { scrollToLoad: false })
-    expect(screened).toEqual(['https://a.test/private/x'])
+    expect(screened).toEqual([['https://a.test/private/x', 'https://a.test/home']])
     expect(h.capture).not.toHaveBeenCalled()
+  })
+
+  it('hands admission the committed URL the capture read, so exclusion screens it too', async () => {
+    const h = harness({
+      capture: async () => ({
+        ...artifacts('https://a.test/settings'),
+        committedUrl: 'https://a.test/inbox'
+      })
+    })
+    await h.open()
+    await h.loadFirstTab()
+    await h.service.capture('first-tab', { scrollToLoad: false })
+    expect(h.admitted).toEqual([
+      expect.objectContaining({
+        url: 'https://a.test/settings',
+        committedUrl: 'https://a.test/inbox'
+      })
+    ])
   })
 
   it('refuses a tab whose address is not http or https, and takes nothing from it', async () => {

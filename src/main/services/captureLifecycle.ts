@@ -192,13 +192,17 @@ export type AdmissionRoute = CaptureUploadSource | 'attach'
 // source: the capture server's schema is unchanged, and only the launched
 // browser's engine builds one. The engine names the Capture Session's Active
 // Case at the moment of the trigger, and the URL is the page's address at the
-// cut, moved by any same-document navigation, which the exclusion policy is
-// checked against. Every artifact arrives taken,
-// so admission reads nothing more from the page.
+// cut, moved by any same-document navigation. The exclusion policy is checked
+// against both that address and the committed URL the page loaded from, and a
+// match on either refuses. Every artifact arrives taken, so admission reads
+// nothing more from the page.
 export interface LaunchedAdmissionRequest {
   route: 'launched'
   caseId: string
   url: string
+  // The URL the page's document committed at; absent or equal to `url` when no
+  // same-document navigation moved the address.
+  committedUrl?: string
   title: string
   timestamp: string
   captureId: string
@@ -305,9 +309,10 @@ export interface CaptureLifecycle {
   admit: (request: AdmissionRequest | LaunchedAdmissionRequest) => Promise<AdmissionOutcome>
   // The launched route's checks before the engine takes anything from the page
   // (spec, "The Capture sequence", step 1): the operator gate, the case, and
-  // the exclusion policy on the committed URL, with the activity event admit
-  // would emit. Null when a Capture of the URL would be admitted.
-  screenLaunched: (caseId: string, url: string) => AdmissionRefusal | null
+  // the exclusion policy on the committed URL and the current address, with
+  // the activity event admit would emit. Null when a Capture of the page would
+  // be admitted.
+  screenLaunched: (caseId: string, url: string, committedUrl?: string) => AdmissionRefusal | null
   // A launched Capture the engine abandoned because a new document committed
   // before every artifact was taken: nothing is stored, and the activity feed
   // says so.
@@ -1438,11 +1443,14 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
   }
 
   // The operator gate, the case, and the exclusion policy, with the activity
-  // event each refusal emits. Every route runs them in this order.
+  // event each refusal emits. Every route runs them in this order. The launched
+  // route passes the committed URL too, so a page loaded from an excluded
+  // address is refused after a same-document navigation moves it elsewhere.
   function screenAdmission(
     source: CaptureSource,
     url: string,
-    caseRequest: Pick<AdmissionRequest, 'route' | 'caseId'>
+    caseRequest: Pick<AdmissionRequest, 'route' | 'caseId'>,
+    committedUrl?: string
   ): { caseId: string; operatorName: string } | { refusal: AdmissionRefusal } {
     const now = (): string => new Date().toISOString()
     const operatorName = trimmedOperatorName()
@@ -1465,12 +1473,14 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     // (ruled 2026-08-21). An operator who excludes a URL from a case means
     // it, and a rule that permits the one route that currently works would
     // be worse than no rule.
-    const blocked = matchCaseExclusion(url, caseId)
-    if (blocked) {
+    const screened = committedUrl && committedUrl !== url ? [committedUrl, url] : [url]
+    for (const address of screened) {
+      const blocked = matchCaseExclusion(address, caseId)
+      if (!blocked) continue
       emitCaptureEvent({
         type: 'skipped',
         source,
-        url,
+        url: address,
         timestamp: now(),
         skipReason: blockedSkipReason(blocked)
       })
@@ -1492,7 +1502,12 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     const startTime = Date.now()
     try {
       // The engine names the case, as every route but 'auto' does.
-      const screened = screenAdmission(source, url, { route: 'manual', caseId: request.caseId })
+      const screened = screenAdmission(
+        source,
+        url,
+        { route: 'manual', caseId: request.caseId },
+        request.committedUrl
+      )
       if ('refusal' in screened) return { ok: false, refusal: screened.refusal }
       const { caseId, operatorName } = screened
 
@@ -1559,8 +1574,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
       })
     },
 
-    screenLaunched(caseId, url) {
-      const screened = screenAdmission('launched', url, { route: 'manual', caseId })
+    screenLaunched(caseId, url, committedUrl) {
+      const screened = screenAdmission('launched', url, { route: 'manual', caseId }, committedUrl)
       return 'refusal' in screened ? screened.refusal : null
     },
 

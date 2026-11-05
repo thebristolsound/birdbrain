@@ -226,6 +226,23 @@ describe('Capture Lifecycle: the launched route', () => {
     expect(readdirSync(caseDir()).sort()).toEqual([MANIFEST_FILENAME].sort())
   })
 
+  it('refuses a page loaded from an excluded address after a same-document navigation moved it', async () => {
+    updateSettings({ ignoredUrlPatterns: ['example.com/inbox'] })
+    const lifecycle = buildLifecycle()
+    const committedUrl = 'https://example.com/inbox'
+    const url = 'https://example.com/settings'
+    const refusal = { kind: 'excluded', pattern: 'example.com/inbox' }
+    expect(lifecycle.screenLaunched(caseId, url)).toBeNull()
+    expect(lifecycle.screenLaunched(caseId, url, committedUrl)).toEqual(refusal)
+    const outcome = await lifecycle.admit(launchedRequest(caseId, { url, committedUrl }))
+    expect(outcome).toEqual({ ok: false, refusal })
+    expect(events.map(({ type, url: address }) => `${type}:${address}`)).toEqual([
+      `skipped:${committedUrl}`,
+      `skipped:${committedUrl}`
+    ])
+    expect(listCaptures(caseId)).toEqual([])
+  })
+
   // Ruling 49 (D13): a clicked Capture whose exclusion pattern times out is admitted, as today.
   it('admits a clicked Capture whose exclusion pattern runs out of its budget', async () => {
     const url = `https://example.com/${'a'.repeat(23)}/x/aaab`

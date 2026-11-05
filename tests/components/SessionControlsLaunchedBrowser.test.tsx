@@ -9,8 +9,11 @@ import { queryKeys } from '@renderer/lib/api/keys'
 import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
 
+// The Case on screen.
+const route = vi.hoisted(() => ({ caseId: 'case-1' }))
+
 vi.mock('@tanstack/react-router', () => ({
-  useParams: () => ({ caseId: 'case-1' })
+  useParams: () => ({ caseId: route.caseId })
 }))
 
 import { SessionControls } from '@renderer/components/status/SessionControls'
@@ -34,6 +37,8 @@ const FERRY = {
   archived: false
 }
 
+const HARBOR = { ...FERRY, id: 'case-2', name: 'Harbor Desk' }
+
 function mount(status: LaunchedBrowserStatus) {
   const stop = vi.fn(async () => ({
     sessionActive: false,
@@ -41,7 +46,7 @@ function mount(status: LaunchedBrowserStatus) {
     captureCount: 0
   }))
   fakeBridge({
-    cases: { list: vi.fn(async () => [FERRY]) },
+    cases: { list: vi.fn(async () => [FERRY, HARBOR]) },
     session: { stop },
     launchedBrowser: { status: vi.fn(async () => status) }
   })
@@ -57,10 +62,12 @@ function mount(status: LaunchedBrowserStatus) {
 
 afterEach(() => {
   cleanup()
+  route.caseId = 'case-1'
   useAppStore.setState({
     connectedToExtension: false,
     sessionActive: false,
-    stopConfirmOpen: false
+    stopConfirmOpen: false,
+    activeCaseId: null
   })
 })
 
@@ -119,8 +126,8 @@ describe('turning the switch off', () => {
   })
 })
 
-// 1i, design review of 2026-11-04: the label after the switch keeps the Active Case and names the
-// source after it, since the breadcrumb already shows the Case.
+// 1i, design review of 2026-11-04: the label after the switch keeps the Active Case, the Case
+// Captures go into, and names the source after it.
 describe('the source line after the switch', () => {
   async function line() {
     const el = await screen.findByTestId('session-source-line')
@@ -143,11 +150,41 @@ describe('the source line after the switch', () => {
   })
 
   it('keeps the Case alone for the extension, and once the browser has closed', async () => {
-    useAppStore.setState({ sessionActive: true, connectedToExtension: true })
+    useAppStore.setState({
+      sessionActive: true,
+      connectedToExtension: true,
+      activeCaseId: 'case-1'
+    })
     mount({ state: 'none' })
     expect(await line()).toEqual({ text: 'Ferry Line', title: 'Ferry Line' })
     cleanup()
     mount({ state: 'closed', browser: BROWSER })
+    expect((await line()).text).toBe('Ferry Line')
+  })
+  // A launched browser pins the Case it started in, so opening another Case to read it does not
+  // move where Captures go.
+  it('names the Case the launched browser records into, not the Case on screen', async () => {
+    route.caseId = 'case-2'
+    useAppStore.setState({
+      sessionActive: true,
+      connectedToExtension: true,
+      activeCaseId: 'case-1'
+    })
+    mount({ state: 'open', browser: BROWSER })
+    expect(await line()).toEqual({
+      text: 'Ferry Line · Launched Google Chrome, and the extension',
+      title: 'Ferry Line · Launched Google Chrome, and the extension'
+    })
+  })
+
+  it("names the extension's Active Case, not the Case on screen", async () => {
+    route.caseId = 'case-2'
+    useAppStore.setState({
+      sessionActive: true,
+      connectedToExtension: true,
+      activeCaseId: 'case-1'
+    })
+    mount({ state: 'none' })
     expect((await line()).text).toBe('Ferry Line')
   })
 })

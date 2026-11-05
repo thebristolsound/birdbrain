@@ -76,8 +76,12 @@ test.describe('Top bar layout', () => {
         // hides below 1,000 pixels with the full name in the tooltip; never one letter.
         const nameText = caseName.getByTestId('topbar-case-name-text')
         if (width >= 1000) {
-          const { width: nameWidth } = (await nameText.boundingBox())!
-          expect(nameWidth).toBeGreaterThanOrEqual(64)
+          // The text keeps its 64 pixels inside its own slot, clear of the search.
+          const nameBox = (await nameText.boundingBox())!
+          const slotBox = (await caseName.boundingBox())!
+          expect(nameBox.width).toBeGreaterThanOrEqual(64)
+          expect(nameBox.x + nameBox.width).toBeLessThanOrEqual(slotBox.x + slotBox.width + 1)
+          expect(overlapWidth((await search.boundingBox())!, nameBox)).toBeLessThanOrEqual(0)
         } else {
           await expect(nameText).toBeHidden()
         }

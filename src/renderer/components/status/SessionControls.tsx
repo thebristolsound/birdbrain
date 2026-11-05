@@ -15,6 +15,7 @@ export function SessionControls() {
   const sessionActive = useAppStore((s) => s.sessionActive)
   const setSessionActive = useAppStore((s) => s.setSessionActive)
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
+  const sessionCaseId = useAppStore((s) => s.activeCaseId)
   const { data: cases = [] } = useQuery(casesQueryOptions)
   const { data: launched } = useQuery(launchedBrowserStatusQueryOptions)
   const [toggling, setToggling] = useState(false)
@@ -29,9 +30,12 @@ export function SessionControls() {
   const launchedSession = launched?.state === 'open' || launched?.state === 'closed'
   if (!connectedToExtension && !launchedSession) return null
 
-  const activeCase = cases.find((c) => c.id === activeCaseId)
-  // The label names the source after the Active Case (`1i`): the Case is already in the breadcrumb,
-  // the browser is not. As on the REC pill, a closed browser is no longer named.
+  // The label after the switch names the Capture Session's Active Case, the Case Captures go into,
+  // which need not be the Case on screen: a launched browser pins the Case it started in. It shows
+  // on Case screens only, as before.
+  const intoCaseId = launchedSession ? launched.browser.caseId : sessionCaseId
+  const intoCase = activeCaseId ? cases.find((c) => c.id === intoCaseId) : undefined
+  // Then the source (`1i`). As on the REC pill, a closed browser is no longer named.
   const source =
     launched?.state === 'open'
       ? `${launchedBrowserName(launched.browser.label)}${connectedToExtension ? ', and the extension' : ''}`
@@ -89,17 +93,17 @@ export function SessionControls() {
         </button>
       </label>
       <AnimatePresence>
-        {sessionActive && activeCase && (
+        {sessionActive && intoCase && (
           <motion.span
             data-testid="session-source-line"
-            title={source ? `${activeCase.name} · ${source}` : activeCase.name}
+            title={source ? `${intoCase.name} · ${source}` : intoCase.name}
             className="hidden min-w-0 text-xs text-text-muted lg:inline-flex"
             initial={presets.fadeIn.initial}
             animate={presets.fadeIn.animate}
             exit={presets.fadeIn.exit}
             transition={presets.fadeIn.transition}
           >
-            <span className="max-w-[140px] truncate">{activeCase.name}</span>
+            <span className="max-w-[140px] truncate">{intoCase.name}</span>
             {source && <span className="whitespace-pre"> · {source}</span>}
           </motion.span>
         )}

@@ -323,7 +323,9 @@ describe('the REC pill as the Capture Session trigger', () => {
     expect(screen.getByTestId('session-controls')).toBeTruthy()
     expect(screen.getByTitle('Toggle theme')).toBeTruthy()
     expect(screen.queryByTestId('topbar-capture-session')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Open Operation Kestrel' })).toBeNull()
+    // The Open link names the Case once the Case list has loaded, so wait for the list first.
+    await waitFor(() => expect(popover.textContent).toContain('Into Operation Kestrel'))
+    expect(screen.queryByRole('button', { name: /^Open\b/ })).toBeNull()
   })
 
   it('opens it on the new-Case wizard, which has no rail', async () => {
@@ -381,5 +383,19 @@ describe('the REC pill as the Capture Session trigger', () => {
     const popover = await screen.findByRole('dialog', { name: 'Capture Session' })
     expect(popover.textContent).toContain('The Capture Session ended.')
     expect(screen.queryByTestId('topbar-rec')).toBeNull()
+  })
+
+  it('leaves a notice to the Capture Session button in Settings once no session runs', async () => {
+    useAppStore.setState({ sessionActive: false, dismissedLaunchNotice: null })
+    bridgeWith({
+      state: 'none',
+      notice: { code: 'EGRESS_BYPASS', message: 'A response did not come through…' }
+    })
+    renderAt('/settings')
+    fireEvent.click(await screen.findByTestId('topbar-capture-session'))
+    const popover = await screen.findByRole('dialog', { name: 'Capture Session' })
+    expect(popover.textContent).toContain('The Capture Session ended.')
+    expect(screen.queryByTestId('topbar-rec')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Open\b/ })).toBeNull()
   })
 })

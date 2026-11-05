@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { createHash } from 'crypto'
-import { createLocalhostCert, type LocalhostCert } from '../../../helpers/tlsFixtures'
+import { spawnSync } from 'child_process'
+import { createHash, X509Certificate } from 'crypto'
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -12,12 +13,13 @@ import {
 } from 'fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http'
 import { createServer as createHttpsServer } from 'https'
-import { X509Certificate } from 'crypto'
 import type { Socket } from 'net'
 import { tmpdir } from 'os'
-import { dirname, join } from 'path'
+import { dirname, join, resolve } from 'path'
 import { gzipSync, inflateRawSync } from 'zlib'
 import { readWarc, type WarcRecord } from '../../../../src/packages/transaction-record/warcReader'
+import { createLocalhostCert, type LocalhostCert } from '../../../helpers/tlsFixtures'
+import { startSocks5Fixture, type Socks5Fixture } from '../../../helpers/socks5Fixture'
 import type { BrowserFamily, LaunchedCaptureProgress } from '@shared/types'
 import type { ExportOptions } from '@shared/types'
 import { closeDatabase, initDatabase } from '@main/services/db/core'
@@ -102,6 +104,17 @@ const spkiHash = (pem: string): string =>
   createHash('sha256')
     .update(new X509Certificate(pem).publicKey.export({ type: 'spki', format: 'der' }))
     .digest('base64')
+
+const VERIFIER = resolve(
+  __dirname,
+  '..',
+  '..',
+  '..',
+  '..',
+  'dist',
+  'verifier',
+  process.platform === 'win32' ? 'birdbrain-verify.exe' : 'birdbrain-verify'
+)
 
 const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
 
@@ -754,13 +767,93 @@ describe.skipIf(skipReason !== null)(
       expect(result.pass, JSON.stringify(result.checks.filter((c) => c.status !== 'pass'))).toBe(
         true
       )
+      // The standalone verifier, where `pnpm build:verifier` has built it.
+      const standalone = (): ReturnType<typeof spawnSync> | null =>
+        existsSync(VERIFIER) ? spawnSync(VERIFIER, [dir], { encoding: 'utf-8' }) : null
+      const passed = standalone()
+      if (passed) expect(passed.status, `${passed.stdout}${passed.stderr}`).toBe(0)
       const record = [...entries.keys()].find((name) => name.endsWith('.warc.gz'))
       if (!record) throw new Error('no Transaction Record in the package')
       const bytes = readFileSync(join(dir, record))
       bytes[bytes.length - 1] ^= 0xff
       writeFileSync(join(dir, record), bytes)
       expect(verifyEvidencePackage(dir).pass).toBe(false)
+      const failed = standalone()
+      if (failed) expect(failed.status).toBe(1)
     }, 120_000)
+
+    // A second browser, through the SOCKS5 fixture: the entry carries the Egress fields, and
+    // neither the record nor the inventory holds the proxy's address or any WARC-IP-Address.
+    it('signs the Egress fields through the SOCKS5 fixture and records no proxy address', async () => {
+      const proxy: Socks5Fixture = await startSocks5Fixture()
+      const proxied = createLaunchedCaptures({
+        sink: {
+          screenLaunched: (id, url) => lifecycle.screenLaunched(id, url),
+          abandonedLaunched: (url) => lifecycle.abandonedLaunched(url),
+          admit: (request) => {
+            admitted.push(request)
+            return lifecycle.admit(request)
+          }
+        },
+        activeCaseId: () => caseId,
+        birdbrainVersion: 'known-answer',
+        citationOf: (id) => getCapture(id)?.exhibitCitation ?? '',
+        onChange: () => {},
+        log: { warn: (_source, code) => code }
+      })
+      const egress = { kind: 'proxy' as const, proxyUrl: proxy.url, label: 'SOCKS5 fixture' }
+      proxied.setEgress(egress)
+      const second = await launchBrowser(
+        {
+          browser: SUITE_BROWSER,
+          egress,
+          sessionDataPath: join(root, 'sessionData'),
+          hooks: { onRecordedSession: proxied.onRecordedSession }
+        },
+        { spawn: suiteSpawn, buildArgs: buildSuiteLaunchArgs }
+      )
+      try {
+        proxied.attach(second.client, second.identity, second.firstTab)
+        const tab = second.firstTab.targetId
+        await second.firstTab.session.send('Runtime.evaluate', {
+          expression: `location.href = ${JSON.stringify(`${fixture.origin}/page2`)}`
+        })
+        await waitFor(
+          () => proxied.decorate([{ targetId: tab, title: '', url: '' }])[0].firstRequest,
+          'the proxied page to commit'
+        )
+        await new Promise((resolve) => setTimeout(resolve, QUIET_MS))
+        expect(await proxied.capture(tab, { scrollToLoad: false })).toMatchObject({
+          state: 'captured'
+        })
+        const request = lastAdmitted()
+        expect(request.egress).toEqual({ kind: 'proxy', label: 'SOCKS5 fixture' })
+        const { port } = proxy
+        const records = readWarc(request.transactionRecord!)
+        expect(records.some((record) => record.warc('WARC-IP-Address') !== undefined)).toBe(false)
+        for (const text of [
+          inflatedRecord(request.transactionRecord!),
+          JSON.stringify(request.inventory)
+        ]) {
+          expect(text).not.toContain(proxy.url)
+          expect(text).not.toContain(`:${port}`)
+        }
+        const jsonl = readFileSync(join(root, 'captures', caseId, MANIFEST_FILENAME), 'utf8')
+        const entry = readEntries(jsonl).find(
+          (e) => e.type === 'capture' && e.captureId === request.captureId
+        )
+        expect(entry).toMatchObject({
+          egressKind: 'proxy',
+          egressLabel: 'SOCKS5 fixture',
+          userAgent: second.identity.userAgent
+        })
+        expect(JSON.stringify(entry)).not.toContain(`:${port}`)
+      } finally {
+        proxied.dispose()
+        await second.stop()
+        await proxy.close()
+      }
+    }, 90_000)
 
     // Last, because the tabs it opens put the first tab behind them.
     it('gives a target=_blank tab and a window.open popup their own records, naming the opener', async () => {

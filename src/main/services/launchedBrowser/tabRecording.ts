@@ -84,6 +84,11 @@ interface Child {
   setupAnswered: boolean
 }
 
+interface AttachedChild {
+  sessionId: string
+  type: string
+}
+
 export interface CutRecording {
   navigationId: number
   committedUrl: string | undefined
@@ -184,7 +189,9 @@ export function createTabRecording({
   let crashedNow = false
   let pageSessionId: string | undefined
   let pageSetupAnswered = false
+  // Every child session the tab has had, for its setup; `attached` holds the ones still attached.
   const children = new Map<string, Child>()
+  const attached = new Set<string>()
   // Main-frame document requests not yet committed, by loader id: where each began in `log`.
   const candidates = new Map<string, { navigation: Navigation; start: number }>()
   let discarded = false
@@ -289,6 +296,7 @@ export function createTabRecording({
     } else if (RECORDED_CHILD_TYPES.has(type)) {
       const child: Child = { type, setupAnswered: false }
       children.set(session.sessionId, child)
+      attached.add(session.sessionId)
       // The collector counts each child from the attach event in the stream (plan D17).
       hold(current, {
         sessionId: PAGE,
@@ -315,6 +323,10 @@ export function createTabRecording({
         )
       )
     }
+    // A child's detach arrives on the session it attached under.
+    unsubscribes.push(
+      session.on('Target.detachedFromTarget', ({ sessionId }) => void attached.delete(sessionId))
+    )
     if (isPage) {
       unsubscribes.push(
         session.on('Page.frameNavigated', ({ frame, type: kind }) => committed(frame, kind)),
@@ -383,14 +395,6 @@ export function createTabRecording({
     } else {
       next.unrecorded = 'page-not-recorded'
     }
-    // The children still attached belong to the new document too.
-    for (const [sessionId, { type: childType }] of children) {
-      hold(next, {
-        sessionId: PAGE,
-        method: 'Target.attachedToTarget',
-        params: { sessionId, targetInfo: { type: childType } }
-      })
-    }
     current = next
     crashedNow = false
     onChange?.()
@@ -418,6 +422,12 @@ export function createTabRecording({
     const nav = current
     const cutIndex = nav.log.length
     const { id, committedUrl, pageUrl, fromFirstRequest, unrecorded } = nav
+    // The children attached at the cut, with those that attached during this navigation and have
+    // gone (their attach events are in the log), are the ones recorded for this page.
+    const attachedAtCut: AttachedChild[] = [...attached].map((sessionId) => ({
+      sessionId,
+      type: children.get(sessionId)?.type ?? ''
+    }))
     return {
       navigationId: id,
       committedUrl,
@@ -434,6 +444,13 @@ export function createTabRecording({
           const { requestId } = (event.params ?? {}) as { requestId?: string }
           return requestId === undefined ? index < cutIndex : began(requestId)
         })
+        for (const { sessionId, type } of attachedAtCut) {
+          events.push({
+            sessionId: PAGE,
+            method: 'Target.attachedToTarget',
+            params: { sessionId, targetInfo: { type } }
+          })
+        }
         const responseBodies = new Map<string, ResponseBodyResult>()
         for (const [requestId, key] of nav.lastFinished) {
           if (!began(requestId)) continue
@@ -482,6 +499,7 @@ export function createTabRecording({
       overflowed(current)
       candidates.clear()
       children.clear()
+      attached.clear()
     }
   }
 }

@@ -222,6 +222,47 @@ describe('tab recording', () => {
     expect(counts).toMatchObject({ recordedTargets: 1, unrecordedTargets: 1 })
   })
 
+  it('signs no frame of the previous page on a page that has none', async () => {
+    const { recording, page } = setUp()
+    document(page, 'D1', 'https://news.test/')
+    for (const id of ['ad-1', 'ad-2', 'ad-3']) {
+      recording.addSession(fakeSession(id), 'iframe', Promise.resolve())
+    }
+    await settle()
+    expect((await recording.cut().collect(1_000)).counts).toMatchObject({
+      recordedTargets: 4,
+      unrecordedTargets: 0
+    })
+    // The browser may report the old frames gone before the article commits or after it.
+    page.emit('Target.detachedFromTarget', { sessionId: 'ad-1' })
+    document(page, 'D2', 'https://news.test/article')
+    page.emit('Target.detachedFromTarget', { sessionId: 'ad-2' })
+    page.emit('Target.detachedFromTarget', { sessionId: 'ad-3' })
+    await settle()
+    expect((await recording.cut().collect(1_000)).counts).toMatchObject({
+      recordedTargets: 1,
+      unrecordedTargets: 0
+    })
+  })
+
+  it('counts a frame that came and went during the page, and a worker still attached from before', async () => {
+    const { recording, page } = setUp()
+    recording.addSession(fakeSession('sw'), 'service_worker', Promise.resolve())
+    const failed = Promise.reject(new Error('Network.enable failed'))
+    failed.catch(() => {})
+    recording.addSession(fakeSession('broken'), 'iframe', failed)
+    document(page, 'D1', 'https://a.test/')
+    page.emit('Target.detachedFromTarget', { sessionId: 'broken' })
+    const frame = fakeSession('brief')
+    recording.addSession(frame, 'iframe', Promise.resolve())
+    page.emit('Target.detachedFromTarget', { sessionId: 'brief' })
+    await settle()
+    expect((await recording.cut().collect(1_000)).counts).toMatchObject({
+      recordedTargets: 3,
+      unrecordedTargets: 0
+    })
+  })
+
   it('withholds every request body, replaces credential values, and counts the withheld bodies', async () => {
     const { recording, page } = setUp()
     document(page, 'D1', 'https://a.test/signed-in', 'password=SECRET')

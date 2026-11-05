@@ -92,6 +92,7 @@ function harness(options: Options = {}) {
   const unregister = vi.fn()
   const emitPickTab = vi.fn()
   const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+  const abandonedLaunched = vi.fn()
   const capture = vi.fn(
     options.capture ?? (async (input) => artifacts(`https://a.test/${input.tabId}`))
   )
@@ -119,7 +120,7 @@ function harness(options: Options = {}) {
     captures: {
       sink: {
         screenLaunched: options.screen ?? (() => null),
-        abandonedLaunched: vi.fn(),
+        abandonedLaunched,
         admit: async (request) => {
           admitted.push(request)
           if (options.admit) return options.admit(request)
@@ -181,6 +182,7 @@ function harness(options: Options = {}) {
     emitPickTab,
     capture,
     log,
+    abandonedLaunched,
     browser,
     loadFirstTab,
     open,
@@ -353,6 +355,7 @@ describe('clicked Captures in the launched browser', () => {
     await h.loadFirstTab()
     const first = h.service.capture('first-tab', { scrollToLoad: false })
     await settle()
+    expect(h.service.status()).toMatchObject({ browser: { capture: { state: 'capturing' } } })
     const second = await h.service.capture('first-tab', { scrollToLoad: false })
     expect(second.state === 'open' && second.browser.capture).toMatchObject({
       state: 'refused',
@@ -387,6 +390,7 @@ describe('clicked Captures in the launched browser', () => {
       state: 'abandoned',
       targetId: 'first-tab'
     })
+    expect(h.abandonedLaunched).toHaveBeenCalledWith('https://a.test/')
     expect(h.admitted).toEqual([])
   })
 })

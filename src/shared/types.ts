@@ -171,8 +171,10 @@ export interface LaunchedBrowserNotice {
 // starting the browser until its first tab is found, and the checks on that tab (not Direct).
 export type LaunchedBrowserStep = 'proxy' | 'browser' | 'first-tab'
 
+// `launchUnavailable` says why this platform offers no launch: macOS waits for a run there and
+// the known-answer validation (maintainer ruling, 2026-11-05).
 export type LaunchedBrowserStatus =
-  | { state: 'none'; notice?: LaunchedBrowserNotice }
+  | { state: 'none'; notice?: LaunchedBrowserNotice; launchUnavailable?: string }
   | { state: 'starting'; browser: LaunchedBrowserSummary; step: LaunchedBrowserStep }
   | { state: 'open' | 'closing' | 'closed'; browser: LaunchedBrowserSummary }
 

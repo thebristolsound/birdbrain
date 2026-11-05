@@ -69,11 +69,10 @@ export interface LaunchedBrowserServiceDeps {
 // registered this accelerator under X11 (P17).
 export const CAPTURE_SHORTCUT = 'CommandOrControl+Shift+F9'
 
-// The maintainer's ruling of 2026-11-05 on P7: no launched Capture on macOS until a macOS run of
-// the pipe and the known-answer validation pass there.
-export const MACOS_CAPTURE_UNAVAILABLE =
-  'Captures in a launched browser are not available on macOS yet: Birdbrain has not been ' +
-  'validated with a launched browser there.'
+// The maintainer's ruling of 2026-11-05 on P7: no launched browser, and so no launched Capture,
+// on macOS until a macOS run and the known-answer validation pass there.
+export const MACOS_UNAVAILABLE =
+  'The launched browser is not available on macOS yet: Birdbrain has not validated it there.'
 
 export interface LaunchedBrowserService {
   status: () => LaunchedBrowserStatus
@@ -90,7 +89,7 @@ export interface LaunchedBrowserService {
   killForQuit: () => void
   // A clicked Capture of one tab (#1832). Resolves with the status that holds the progress the
   // panel shows, whatever became of the Capture; rejects only when no browser is open or the
-  // platform offers no launched Capture.
+  // platform offers no launched browser.
   capture: (targetId: string, request: CaptureRequest) => Promise<LaunchedBrowserStatus>
   // What the capture shortcut does: capture the one tab that is visible and focused, or ask for
   // the tab picker.
@@ -150,9 +149,12 @@ export function createLaunchedBrowserService(
     shortcut,
     emitPickTab
   } = deps
-  const captureUnavailable = platform === 'darwin' ? MACOS_CAPTURE_UNAVAILABLE : undefined
+  const unavailable = platform === 'darwin' ? MACOS_UNAVAILABLE : undefined
 
-  let current: LaunchedBrowserStatus = { state: 'none' }
+  // Where no launch starts, the status never leaves this one.
+  let current: LaunchedBrowserStatus = unavailable
+    ? { state: 'none', launchUnavailable: unavailable }
+    : { state: 'none' }
   let active: Attempt | null = null
 
   function setStatus(next: LaunchedBrowserStatus): void {
@@ -168,8 +170,8 @@ export function createLaunchedBrowserService(
       ...summary,
       tabs: captures ? captures.decorate(summary.tabs) : summary.tabs,
       ...(progress ? { capture: progress } : {}),
-      ...(captureUnavailable ? { captureUnavailable } : {}),
-      ...(captures && !captureUnavailable && summary.version !== null
+      ...(unavailable ? { captureUnavailable: unavailable } : {}),
+      ...(captures && !unavailable && summary.version !== null
         ? {
             shortcut: {
               accelerator: CAPTURE_SHORTCUT,
@@ -402,7 +404,7 @@ export function createLaunchedBrowserService(
     }
     if (attempt.captures) {
       attempt.captures.attach(launched.client, launched.identity, launched.firstTab)
-      if (!captureUnavailable && shortcut) {
+      if (!unavailable && shortcut) {
         let registered = false
         try {
           registered = shortcut.register(CAPTURE_SHORTCUT, () => void shortcutPressed())
@@ -442,6 +444,7 @@ export function createLaunchedBrowserService(
   }
 
   async function launchOne(found: LaunchableBrowser): Promise<LaunchedBrowserStatus> {
+    if (unavailable) throw codedError(unavailable, 'LAUNCHED_BROWSER_UNAVAILABLE')
     if (current.state === 'starting' || current.state === 'open' || current.state === 'closing') {
       throw codedError(
         `Birdbrain runs one launched browser at a time, and ${current.browser.label} is ` +
@@ -504,8 +507,8 @@ export function createLaunchedBrowserService(
     request: CaptureRequest
   ): Promise<LaunchedBrowserStatus> {
     const attempt = active
-    if (captureUnavailable) {
-      throw codedError(captureUnavailable, 'LAUNCHED_CAPTURE_UNAVAILABLE')
+    if (unavailable) {
+      throw codedError(unavailable, 'LAUNCHED_CAPTURE_UNAVAILABLE')
     }
     if (!attempt || current.state !== 'open' || !attempt.captures) {
       throw codedError('No launched browser is open.', 'BROWSER_NOT_OPEN')
@@ -516,7 +519,7 @@ export function createLaunchedBrowserService(
 
   async function shortcutPressed(): Promise<void> {
     const attempt = active
-    if (!attempt?.captures || current.state !== 'open' || captureUnavailable) return
+    if (!attempt?.captures || current.state !== 'open' || unavailable) return
     const choice = pickShortcutTab(await attempt.captures.focusStates())
     if ('pick' in choice) {
       emitPickTab?.()

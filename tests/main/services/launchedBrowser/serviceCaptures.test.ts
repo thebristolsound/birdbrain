@@ -18,7 +18,7 @@ import { launchBrowser } from '@main/services/launchedBrowser/launcher'
 import {
   CAPTURE_SHORTCUT,
   createLaunchedBrowserService,
-  MACOS_CAPTURE_UNAVAILABLE
+  MACOS_UNAVAILABLE
 } from '@main/services/launchedBrowser/service'
 import {
   fakeBrowser,
@@ -447,18 +447,25 @@ describe('the capture shortcut', () => {
 
 // The maintainer's ruling of 2026-11-05 on P7.
 describe('on macOS', () => {
-  it('offers no launched Capture and registers no shortcut', async () => {
+  it('refuses the launch before anything starts, and the status says why', async () => {
     const h = harness({ platform: 'darwin' })
-    await h.open()
-    await h.loadFirstTab()
-    const status = h.service.status()
-    expect(status.state === 'open' && status.browser.captureUnavailable).toBe(
-      MACOS_CAPTURE_UNAVAILABLE
-    )
-    expect(status.state === 'open' && status.browser.shortcut).toBeUndefined()
-    expect(h.register).not.toHaveBeenCalled()
+    const none = { state: 'none', launchUnavailable: MACOS_UNAVAILABLE }
+    expect(h.service.status()).toEqual(none)
+    await expect(h.open()).rejects.toMatchObject({
+      code: 'LAUNCHED_BROWSER_UNAVAILABLE',
+      message: MACOS_UNAVAILABLE
+    })
+    expect(h.browser).toThrow('no browser was spawned')
+    expect(h.statuses).toEqual([])
+    expect(h.service.status()).toEqual(none)
+  })
+
+  it('refuses a Capture with the same reason, and the shortcut captures nothing', async () => {
+    const h = harness({ platform: 'darwin' })
+    await expect(h.open()).rejects.toThrow(MACOS_UNAVAILABLE)
     await expect(h.service.capture('first-tab', { scrollToLoad: false })).rejects.toMatchObject({
-      code: 'LAUNCHED_CAPTURE_UNAVAILABLE'
+      code: 'LAUNCHED_CAPTURE_UNAVAILABLE',
+      message: MACOS_UNAVAILABLE
     })
     await h.service.shortcutPressed()
     expect(h.capture).not.toHaveBeenCalled()

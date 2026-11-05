@@ -10,7 +10,7 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
 
 // The Case on screen.
-const route = vi.hoisted(() => ({ caseId: 'case-1' }))
+const route = vi.hoisted(() => ({ caseId: 'case-1' as string | undefined }))
 
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ caseId: route.caseId })
@@ -57,7 +57,7 @@ function mount(status: LaunchedBrowserStatus) {
       <SessionControls />
     </QueryClientProvider>
   )
-  return { stop }
+  return { stop, client }
 }
 
 afterEach(() => {
@@ -167,14 +167,16 @@ describe('the source line after the switch', () => {
   })
   // A launched browser pins the Case it started in, so opening another Case to read it does not
   // move where Captures go.
-  it('names the Case the launched browser records into, not the Case on screen', async () => {
+  // The browser's own Case and the Case on screen are both Harbor Desk here, so only the session's
+  // Active Case gives "Ferry Line".
+  it('names the Active Case main announces, not the Case on screen or the browser’s', async () => {
     route.caseId = 'case-2'
     useAppStore.setState({
       sessionActive: true,
       connectedToExtension: true,
       activeCaseId: 'case-1'
     })
-    mount({ state: 'open', browser: BROWSER })
+    mount({ state: 'open', browser: { ...BROWSER, caseId: 'case-2' } })
     expect(await line()).toEqual({
       text: 'Ferry Line · Launched Google Chrome, and the extension',
       title: 'Ferry Line · Launched Google Chrome, and the extension'
@@ -201,5 +203,19 @@ describe('the source line after the switch', () => {
     })
     mount({ state: 'closed', browser: BROWSER })
     expect(await line()).toEqual({ text: 'Harbor Desk', title: 'Harbor Desk' })
+  })
+  // Settings has the switch and the REC pill beside it; the label shows on Case screens only.
+  it('shows no label off a Case screen while a session runs', async () => {
+    route.caseId = undefined
+    useAppStore.setState({
+      sessionActive: true,
+      connectedToExtension: true,
+      activeCaseId: 'case-1'
+    })
+    const { client } = mount({ state: 'open', browser: BROWSER })
+    expect(screen.getByRole('switch', { name: 'Capture Session' })).toBeTruthy()
+    // Wait for the Case list, which the label needs, before saying it is absent.
+    await waitFor(() => expect(client.getQueryData(queryKeys.cases)).toHaveLength(2))
+    expect(screen.queryByTestId('session-source-line')).toBeNull()
   })
 })

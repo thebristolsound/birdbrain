@@ -8,8 +8,10 @@ import {
 } from '@renderer/components/launchedBrowser/CaptureSessionPanel'
 
 // The top bar's Capture Session button on screens with no rail (`2c`, `2d`): the dashboard,
-// Settings and the new-Case wizard. It opens the panel as a 300-pixel popover under it. The outline
-// takes the accent only while the popover is open, a selected state (C1).
+// Settings and the new-Case wizard. While a Capture Session runs the REC pill opens the panel
+// instead (TopBar), so the button shows only with none running, for a notice the panel still
+// holds. It opens the panel as a 300-pixel popover under it. The outline takes the accent only
+// while the popover is open, a selected state (C1).
 export function CaptureSessionButton({ showOpenCase }: { showOpenCase: boolean }) {
   const view = useCaptureSessionView()
   const [open, setOpen] = useState(false)

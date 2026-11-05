@@ -54,7 +54,8 @@ test.describe('Top bar layout', () => {
       await expect(controls.getByRole('button', { name: /Export/ })).toBeVisible()
       await expect(controls.getByRole('switch', { name: 'Capture Session' })).toHaveCount(0)
 
-      for (const width of [1400, 1100, 1000, 900]) {
+      // 1,200 is the width where the design review of 2026-11-04 saw the name cut to "F.".
+      for (const width of [1400, 1200, 1100, 1000, 900]) {
         await electronApp.windows()[0].setViewportSize({ width, height: 800 })
         await expect(async () => {
           const searchBox = (await search.boundingBox())!
@@ -71,6 +72,21 @@ test.describe('Top bar layout', () => {
           expect(overlapWidth(searchBox, leftBox)).toBeLessThanOrEqual(0)
           expect(overlapWidth(searchBox, rightBox)).toBeLessThanOrEqual(0)
         }).toPass({ timeout: 5000 })
+
+        // The case name shortens to about eight characters before the search gives up width, and
+        // hides below 1,000 pixels with the full name in the tooltip; never one letter.
+        const nameText = caseName.getByTestId('topbar-case-name-text')
+        if (width >= 1000) {
+          // The text keeps its 64 pixels inside its own slot, clear of the search.
+          const nameBox = (await nameText.boundingBox())!
+          const slotBox = (await caseName.boundingBox())!
+          expect(nameBox.width).toBeGreaterThanOrEqual(64)
+          expect(nameBox.x + nameBox.width).toBeLessThanOrEqual(slotBox.x + slotBox.width + 1)
+          expect(overlapWidth((await search.boundingBox())!, nameBox)).toBeLessThanOrEqual(0)
+        } else {
+          await expect(nameText).toBeHidden()
+        }
+        await expect(caseName).toHaveAttribute('title', new RegExp(`^${name} · `))
 
         // Every control on the right stays inside the window, and nothing scrolls sideways.
         for (const button of await controls.getByRole('button').all()) {

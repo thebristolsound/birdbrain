@@ -59,6 +59,15 @@ The maintainer granted the orchestrating session the following on 2026-11-05:
   `drafts/2026-11-04-launcher-build-design-review` is on GitHub only; the teardown and merge
   skills delete local branches, and a hook blocks deleting a remote branch by hand, so it is
   still there.
+- **Rulings posted.** Each ruling is on its issues (#1828, #1832, #1831, #1498, #1833, #1499,
+  #1501, #600, #599, #1500, #1824, #543), and #1500 came off ready-for-agent. #600 and #599 get
+  ready-for-agent when #1832 merges.
+- **Rulings PR.** #2066 holds this branch. Its first review asked for the step text and the
+  Persona plan's line references to match the rulings; the second round fixes both.
+- **Release.** The bump to `1.0.1-beta.26` is committed on `chore/release-1.0.1-beta.26` in a
+  scratch tree. Its first preflight failed on one timing test in the launcher suite under load
+  (`launcher.test.ts:851`, a 1 ms tab refresh); the file passed alone three times, and the
+  preflight is running again.
 - **Next command.** `gh pr list --search 1832 --state open` to pick up #1832's PR for takeover.
 
 ## Open questions

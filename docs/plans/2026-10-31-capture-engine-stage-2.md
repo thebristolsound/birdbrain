@@ -112,7 +112,8 @@ on 2026-11-04. #1831 stays open for the designer's review and its hand-run state
    offer the launched browser on macOS until a macOS run and the known-answer validation pass
    there.
 3. **The no-VPN warning in the start dialog.** The session warning folds into the start dialog, as
-   the designer drew it in `1c` (`docs/design-handoff/2026-11-04-launcher-build-review/DESIGN_REVIEW.md:31`).
+   the designer drew it in `1c`
+   (`docs/design-handoff/2026-11-04-launcher-build-review/DESIGN_REVIEW.md:31`).
    A "Set up a proxy" link and a "Stop warning on this network" checkbox go under the no-VPN line,
    and **Launch** acts as Continue. The separate warning dialog stays for Recapture, add-URL and
    Wayback. #2065's description records the same ruling.
@@ -176,6 +177,10 @@ The agent work left in this step:
   desktop.
 - Draft a follow-up issue for the remaining rows.
 
+Since 2026-11-05: #2053 measured the Chromium 154 rows and built a P3 control that works, and
+ruling 1 of 2026-11-05 settled P3 on it. Ruling 13 allows the P17 Hyprland check with key
+injection, and ruling 15 closes #1828 after one more Windows pass and a follow-up issue.
+
 No document states the browser floor version (spec :311-312). The oldest build the probe passed
 on is Chrome for Testing 149.0.7827.55 (probe :43-44).
 
@@ -194,23 +199,19 @@ One PR adds:
 
 Each new value gets a refine that requires schema 7 and a stamp in `fieldMinReaderSchemaVersion`
 (`manifest.ts:1022-1052`). The step also moves the five ceiling assertions from 6 to 7 and adds a
-frozen-digest test. It is open as #2031, built to the rulings above, and merges on the
-maintainer's review. After it merges, the maintainer tags a release carrying schema 7. That
-release gates the merges of steps 4, 5 and 6 and of every Persona writer. Linux is enough for
-this step.
+frozen-digest test. It merged as #2031 (6c488f05) on 2026-11-02. The next tag after it is the
+release carrying schema 7, which the maintainer delegated to the orchestrating session on
+2026-11-05. That release gates the merges of steps 4, 5 and 6 and of every Persona writer.
 
 ### Step 3: launcher, profiles and Egress, with no Capture (#1831)
 
-Its prerequisites are on main: CE-10, CE-3, the Linux probe, the mock and the D rulings it relies
-on. Its body names #1828 as its last open blocker. Three things hold it back:
+Its code merged in #2056 on 2026-11-04, built from the designer's 2026-11-01 revision, after CE-4
+(#1696) merged in #2037. #1831 stays open for what #2056 did not deliver:
 
-- It has no `queued` label.
-- Its body still says "Blocked by #1828"; step 3 reads only network events, so the open P3
-  question does not bear on it (question 1).
-- The maintainer has not decided whether it waits for the designer's revision (question 2).
-
-CE-4 (#1696, the no-VPN warning) merges first: #1831's body says it "merges after #1696", and the
-start dialog shows CE-4's warning. CE-4 is not evidence-affecting.
+- The designer's review of the build, which merged in #2065. Its Change verdicts, ruling 3 of
+  2026-11-05 among them, go in a follow-up change.
+- The hand-run statements, which agents take under ruling 13.
+- The CI job for the known-answer suite, which goes in its own PR under ruling 14.
 
 The scope includes the D23 Chrome for Testing download script (no such script exists under
 `scripts/`) and a SOCKS5 fixture proxy. The probe contradicts three of #1831's validation criteria
@@ -220,38 +221,39 @@ manual runs against them need another machine or a sudo install.
 
 ### Step 4: clicked launched Captures (#1832)
 
-This step builds inside step 3's module, so it cannot start until #1831 merges. It can merge only
-after the schema 7 release (spec :1288-1290). ADR-0051, the D3 ADR it needs, is accepted. Two gates
-block it outright:
+This step builds inside step 3's module, which merged in #2056. It can merge only after the schema
+7 release (spec :1288-1290). ADR-0051, the D3 ADR it needs, is accepted. Its two hard gates are
+ruled:
 
-- P7 on Windows and macOS (probe :297-326, :894). This Linux-only host cannot measure it.
-- P3 (spec :479-485, :904). Step 4 is the first step that enables `Page`.
+- P7 passed on Windows on 2026-11-03, and ruling 2 of 2026-11-05 lets step 4 go without a macOS
+  run; Birdbrain does not offer the launched browser on macOS until one passes.
+- P3 is settled by ruling 1 of 2026-11-05: step 4 may enable `Page`.
 
-The probe also contradicts parts of the step 4 design (probe :788-809, :858-864):
+#2046 folded the probe's contradictions of the step 4 design into the spec (probe :788-809,
+:858-864):
 
 - Setup commands must be sent with the resume.
 - Tabs opened by Ctrl-click or middle-click miss their first request.
 - The service worker attaches twice.
 - Shared workers belong to no tab.
 
-The spec gates step 4 on the feasibility pass only (:1304-1306), so whether the designer's revision
-also blocks it is the maintainer's call (question 2).
+The spec gates step 4 on the feasibility pass only (:1304-1306), and the designer's revision
+landed in #2043.
 
 ### Step 5: a profile per Persona (#1833) and Persona phases 2, 3 and 5
 
-- **#1498 (phase 2) splits in two.** Its verifier half goes into step 2. The writer half carries
-  DB migration 45, `captureRepo` and the `persona` ingest parameter, and needs the migration lane
-  and its turn on `captureLifecycle.ts`. It is built on step 2's merged schema, and it can merge
-  before the schema 7 release only while no caller passes a Persona. Its first callers are #1833
-  and #1499.
-- **#1833 waits** on #1831, on #1830 merging, and on the schema 7 release; its other blocker,
-  #1829, is closed. It can merge before #1832 and leave the stamp wiring to it (#1833, "Order and
-  lanes"). It adds the leak-check block from the 2026-10-17 ruling.
+- **#1498 (phase 2) split in two.** Its verifier half merged in step 2 (#2031), and its writer
+  half, with DB migration 45, merged in #2051. Rulings 4, 5 and 11 of 2026-11-05 give the
+  Duplicate and received-row cases their own change, which merges before any caller passes a
+  Persona, and close #1498.
+- **#1833 waits** on the schema 7 release and on that change; #1831's code, #1830 and #1829 are
+  done. It can merge before #1832 and leave the stamp wiring to it (#1833, "Order and lanes"). It
+  adds the leak-check block from the 2026-10-17 ruling, and rulings 6 and 7 of 2026-11-05 settle
+  its warning line and its tier.
 - **#1499 (phase 3)** keeps the Electron partition for background Recapture and add-URL only (spec
-  :97-98, ADR-0034:93-96). Its body says it is blocked by #1498 and by #545; #545 is closed. It does
-  not start until #1498's writer half merges or the maintainer lifts that block for the plumbing,
-  and until question 7 settles whether it keeps its own sign-in window. Its anchors are stale:
-  `RenderPage` is now at `recapture.ts:81`.
+  :97-98, ADR-0034:93-96). #545 is closed and #1498's writer half has merged. Ruling 8 of
+  2026-11-05 drops its sign-in window, so the cookie import is the only way to seed the partition.
+  Its anchors are stale: `RenderPage` is now at `recapture.ts:81`.
 - **#1501 (phase 5)** counts cookies per store and is not evidence-affecting. Its body says it is
   blocked by #1499. For a launched profile, the count and the expiry come from the import result,
   because S2 (spec :186-187) forbids reading cookie values from the launched browser.
@@ -261,35 +263,35 @@ also blocks it is the maintainer's call (question 2).
 ### Step 6: passive capture (#600 with #599)
 
 Passive capture waits for step 4 (spec :1326) and for the schema 7 release (D5). The ADR-0037
-amendment is already merged. Three changes are still needed:
-
-- Move `selectorMatchesText` out of `selectorRepo.ts:145` into a shared module.
-- Make `safeRegex.ts:26-41` report a timeout separately from no match.
-- Add a blocking row for the new module to the evidence-affecting paths assessment (:281-284).
-
-D18 holds only the CONTEXT.md part. Both issues are labelled ready-for-human, not ready-for-agent.
+amendment is already merged. #2052 moved the Selector matcher into a shared module, made the safe
+regex report a timeout apart from no match, and added the module to the evidence-affecting paths
+at the blocking tier. #2045 added the D18 glossary entries. Under ruling 9 of 2026-11-05 both
+issues move to ready-for-agent once #1832 merges, and are built with the maintainer's evidence
+review.
 
 ### Persona phases 6 and 4
 
 - **#543** (export disclosure, in wayfinder:grilling) takes the `launched` wording (D11) and the
-  seed-source question from ADR-0052.
+  seed-source question from ADR-0052. Under ruling 12 of 2026-11-05 an agent drafts it and waits
+  for the maintainer's yes before building.
 - **#546** takes the threat-model change, which ships with the code that makes it true (spec
   :1534-1535).
 - **The tester guide** has no issue yet.
 - **#1500 (phase 4)** becomes the declared Persona on a stage 3 `companion` Capture and leaves this
-  programme. Its body says it is blocked by #1498.
+  programme. Its body says it is blocked by #1498. Ruling 9 of 2026-11-05 took it off
+  ready-for-agent until stage 3.
 
 ## Lanes and hot files
 
-- **Manifest schema lane.** Schema 7 is free: #586 waits on design approval (roadmap ruling of
-  2026-10-26), and nothing else holds a number. #1830 and #1498's verifier half share 7 in one PR.
-- **Migration lane.** No open PR touches `db/migrations.ts` or `db/core.ts`. #1498's writer half
-  takes DB 45. #1833 and #1501 may need a `personas` row migration and queue behind it.
-- **`settings.ts`.** #1696 first, then #1831.
+- **Manifest schema lane.** #2031 took schema 7. #586 waits on design approval (roadmap ruling of
+  2026-10-26), and nothing else holds a number.
+- **Migration lane.** #2051 took DB 45. #1833 and #1501 may need a `personas` row migration, which
+  takes DB 46.
+- **`settings.ts`.** #1696 and #1831 have merged (#2037, #2056).
 - **`manifest.ts`, `schemas.ts`, `src/shared/verify/**` and `src/verifier/**`.** Step 2 only.
-- **`captureLifecycle.ts`.** #1498's writer half, then #1832, then #600. Every earlier holder in the
-  briefs plan's order has merged, CI-4 as #1855.
-- **`selectorRepo.ts` and `safeRegex.ts`.** Step 6, or a separate refactor if question 6 says so.
+- **`captureLifecycle.ts`.** #1498's writer half merged in #2051; #1832, then #600, hold it next.
+  Every earlier holder in the briefs plan's order has merged, CI-4 as #1855.
+- **`selectorRepo.ts` and `safeRegex.ts`.** Done in #2052.
 
 ## Gates the maintainer owes
 
@@ -323,22 +325,8 @@ but no step waits on them.
 
 ## Work an agent can start now
 
-1. **Step 2 is open as #2031** (#1830 with #1498's verifier half), built to the rulings of
-   2026-10-31. Fix rounds from its review are the next agent work on it.
-2. **Build CE-4 (#1696).** Its only blocker, #1695, has merged, and it is not evidence-affecting.
-3. **Rewrite the Persona plan** (docs only): phases 2, 3, 5 and 6 as above, with phase 4 moved to
-   stage 3; decision 9 replaced with the rule from the amended ADR-0030; "What exists" refreshed to
-   schema 6 and DB 44; phase 3b (#1505) marked superseded; a `**Status:**` line.
-4. **Extend the probe on this host** (#1828, docs only). Measure the Chromium 154 rows and build a
-   P3 control that detects `Runtime.enable`. Keep `PROBE_OUT` under
-   `~/worktrees/birdbrain/scratch/`.
-5. **Draft without filing** a P7 runbook for Windows and macOS and a follow-up issue for the
-   leftover rows (#1828).
-6. **Draft without posting** refreshed bodies for #1830, #1831, #1832, #1833, #1498, #1499, #1501,
-   #1500, #600 and #599. The drafts fix stale anchors, record CE-5 as shipped, move the Persona
-   fields to schema 7, and add the rulings of 2026-10-17 and 2026-10-31.
-7. **Draft the D18 glossary text** (#600): a Capture Scope entry, and an Active Case entry that no
-   longer names only the extension.
+Since 2026-11-05 an orchestrating session runs the remaining work; its slices, the next command
+and the open questions are in `docs/plans/2026-11-05-stage-2-orchestration-handoff.md`.
 
 ## Open questions
 

@@ -24,7 +24,7 @@ files stay as the fallback. The Firefox, Chrome `Cookies`, and whole-browser-pro
 Persona a `launched` Capture in a browser Birdbrain started with that Persona's profile, kept the
 Electron partition for background Captures, and withdrew `persona-window`
 (ADR-0034:71-78, :93-99, :119-121). The phases below follow the stage 2 plan's step 5 and its
-"Persona phases 6 and 4" (stage 2 plan :185-226). Decision 9 now states the rule of ADR-0030 as
+"Persona phases 6 and 4" (stage 2 plan :243-283). Decision 9 now states the rule of ADR-0030 as
 amended on 2026-10-31 (ADR-0030:33-36). Decisions 5, 7 and 11 still read as confirmed on
 2026-09-19: ADR-0034 amends decision 5's mechanism; the stage 2 spec keeps decision 7's two
 wordings, drops ADR-0030's `persona-window` wording, and adds the `launched` and
@@ -112,7 +112,7 @@ Read from `origin/main` at 43ad0830 on 2026-11-04.
   and nothing writes them.
 - **No release carries schema 7.** The newest tag is `v1.0.1-beta.25` of 2026-10-31, and it
   contains neither 6c488f05 nor 45071a74. The maintainer's tag of a release carrying schema 7
-  still gates the merge of the first caller that passes a Persona (stage 2 plan :140-144,
+  still gates the merge of the first caller that passes a Persona (stage 2 plan :200-204,
   :189-191).
 - **Cookies at rest.** The partition's cookie values are stored unencrypted, because Electron's
   `EnableCookieEncryption` fuse is off in the build Birdbrain ships; turning it on is #88
@@ -148,8 +148,8 @@ Recorded in ADR-0030 and the `CONTEXT.md` entry for **Persona** (phase 0, 2026-0
    because clearing the cookies is the security action.
 5. **Mechanism is both, Electron partition primary.** A `persist:persona-<id>` partition is
    seeded by cookie-file import and used by Recapture and add URL. The sandboxed login window
-   was dropped on 2026-11-05 (stage 2 ruling 8). Extension captures carry a declared label only; the app cannot verify which Chrome
-   profile the tab was in.
+   was dropped on 2026-11-05 (stage 2 ruling 8). Extension captures carry a declared label
+   only; the app cannot verify which Chrome profile the tab was in.
 6. **Per-job persona choice, no app-wide state.** Recapture and add-URL each carry a picker
    defaulting to none. The partition and the stamp are set from the same value in one call.
 7. **Two wordings for the stamp.** `background` captures say persona session used;
@@ -204,14 +204,14 @@ value) are counted and reported, never silently dropped.
 
 Each phase is one or more PRs cut from `main`. Every code PR in phases 2 and 3 is
 evidence-affecting at the blocking tier, so the maintainer reviews and merges it (ADR-0005; stage
-2 plan :101-103). Phases 1 and 5 are not evidence-affecting.
+2 plan :157-159). Phases 1 and 5 are not evidence-affecting.
 
 | Phase | Issues | Stage 2 step | Waits on |
 | --- | --- | --- | --- |
 | 2, verifier half | #1498 in #2031 | step 2 | nothing: merged on 2026-11-02 as 6c488f05 |
 | 2, writer half | #1498 in #2051 | step 5 | nothing: merged on 2026-11-03 as 45071a74 |
 | 2, exhibit ingest | none: #1498 closes | none | an acceptance criterion of the first change that adds an exhibit writer for the `extension`, `background` or `extension-image` origin |
-| 2, Duplicate and received rows | not yet filed | step 5 | nothing: ruled on 2026-11-05; merges before any caller passes a Persona |
+| 2, Duplicate and received rows | not yet filed | step 5 | its turn on `captureLifecycle.ts` after #1832; merges before any caller passes a Persona |
 | 3, launched profile | #1833 | step 5 | the schema 7 release, and the Duplicate and received-row change |
 | 3, background render | #1499 | step 5 | the schema 7 release, and the Duplicate and received-row change |
 | 3b | #1505 | none | superseded |
@@ -244,7 +244,7 @@ evidence-affecting at the blocking tier, so the maintainer reviews and merges it
 
 ### Phase 2: provenance (#1498, in two halves)
 
-The stage 2 plan splits #1498 in two (stage 2 plan :187-191).
+The stage 2 plan splits #1498 in two (stage 2 plan :245-248).
 
 **Verifier half, stage 2 step 2: merged in #2031 (6c488f05, 2026-11-02).**
 
@@ -259,7 +259,7 @@ The stage 2 plan splits #1498 in two (stage 2 plan :187-191).
 - `src/shared/verify` (`manifestChain.ts:492`, :514-515) and the standalone verifier
   (`pnpm build:verifier`) accept the fields.
 - No release carries schema 7 yet. When the maintainer tags one, it ungates the merge of the
-  first caller that passes a Persona (stage 2 plan :140-144, :189-191).
+  first caller that passes a Persona (stage 2 plan :200-204, :245-248).
 
 **Writer half, stage 2 step 5: merged in #2051 (45071a74, 2026-11-03).**
 
@@ -273,10 +273,10 @@ The stage 2 plan splits #1498 in two (stage 2 plan :187-191).
   :534-535). A Persona turns on the strict pre-sign parse (:546), so an empty id or label is
   refused before anything is signed. `withCaptureEntry` omits each field when absent
   (`manifest.ts:1329-1330`), so an entry without a Persona keeps its body and its stamp.
-  `captureLifecycle.ts` passes from #2051 to #1832, then to #600 (stage 2 plan :235-236).
+  `captureLifecycle.ts` passes from #2051 to #1832, then to #600 (stage 2 plan :292-294).
 - It merged before the schema 7 release because no caller passes a Persona: the ingest callers at
   `recapture.ts:352` and `captureLifecycle.ts:1469` pass none. Its first callers are #1833 and
-  #1499 (stage 2 plan :187-191).
+  #1499 (stage 2 plan :245-248).
 - #2051's description left two cases open. `duplicate()` (`captureLifecycle.ts:1618`) names
   neither Persona field, so a Duplicate of a Persona Capture signs no Persona. A Capture received
   into a Shared Case leaves both columns NULL (`migrations.ts:1929-1930`;
@@ -305,10 +305,10 @@ The stage 2 plan splits #1498 in two (stage 2 plan :187-191).
 ADR-0034 gives a Persona one browser session per engine: a launched-browser profile and an
 Electron partition, both seeded from the same cookie import (ADR-0034:93-96).
 
-**A launched-browser profile per Persona (#1833).** It waits on #1831 and on the schema 7 release
-(stage 2 plan :192-194) and, as a first caller passing a Persona, on the change that carries the
-Duplicate and received-row rulings of 2026-11-05; its wait on the verifier ended when #2031 merged,
-the writer it calls merged in #2051, and #1831's code merged in #2056.
+**A launched-browser profile per Persona (#1833).** It waits on the schema 7 release (stage 2 plan
+:249-252) and, as a first caller passing a Persona, on the change that carries the Duplicate and
+received-row rulings of 2026-11-05. Its waits on #1831's code, on the verifier and on the writer it
+calls ended when #2056, #2031 and #2051 merged.
 
 - The Operator picks the Persona, default none, when starting the launched browser, and the choice
   holds for that browser's life (decision D21, spec :251-257). Each Capture taken in it carries
@@ -352,13 +352,13 @@ Recapture and add-URL only (spec :105-106, ADR-0034:93-96).
   exhibit ingest, which #1499 does not touch. On 2026-11-05 the maintainer dropped its "Sign in as
   persona" window: the cookie import is the only way to seed the partition (stage 2 ruling 8). It
   merges only after the change that carries the Duplicate and received-row rulings and after the
-  schema 7 release (stage 2 plan :189-191).
+  schema 7 release (stage 2 plan :200-204).
 - The unattended render against the four social platforms is still unmeasured; it gates this
   half only (ADR-0030:129-132).
 
 **Orphan sweep.** #1628 reports that the sign-in cleanup deletes sessions a later restore brings
 back. It sits in the sweep that #1831 and #1833 extend, and it is labelled ready-for-human (stage 2
-plan :203-204).
+plan :260-261).
 
 ### Phase 3b: superseded (#1505)
 
@@ -372,7 +372,7 @@ nobody has tried a launched Chrome against them (spec :261-266).
 ### Phase 4: moved to stage 3 (#1500)
 
 #1500 becomes the declared Persona on a stage 3 `companion` Capture and leaves this plan (stage 2
-plan :224-226). ADR-0034 builds the Companion pipe after launched Chromium browsers
+plan :280-282). ADR-0034 builds the Companion pipe after launched Chromium browsers
 (ADR-0034:101-103), and stage 3 sets the `companion` wording (spec :1099). #1500's body still
 describes an extension popup selector, the `extension` method and a block on #1498. On 2026-11-05
 the maintainer ruled that #1500 comes off ready-for-agent until stage 3 (stage 2 ruling 9).
@@ -380,7 +380,7 @@ the maintainer ruled that #1500 comes off ready-for-agent until stage 3 (stage 2
 ### Phase 5: cookie count and expiry (#1501)
 
 - Each Persona shows a cookie count and the earliest expiry for each store, so the user knows when
-  to re-seed (stage 2 plan :200-202).
+  to re-seed (stage 2 plan :257-259).
 - For the partition, the count and the expiry come from the partition's own cookie store, as
   #1501's scope describes. For a launched profile, they come from the import result, because S2
   forbids reading cookie values from the launched browser (spec :194-195).
@@ -397,7 +397,7 @@ the maintainer ruled that #1500 comes off ready-for-agent until stage 3 (stage 2
 ### Phase 6: disclosure, threat model, and tester guide
 
 - **#543** (export disclosure, wayfinder:grilling) takes the `launched` wording of decision D11
-  and the seed-source question from ADR-0052 (stage 2 plan :219-220). The wording for Capture
+  and the seed-source question from ADR-0052 (stage 2 plan :274-276). The wording for Capture
   detail, `report.html`, `certification.html` and `VERIFY.md` is the spec's table (spec
   :1090-1095); export wording stays with #543 (spec :1099).
 - **#546** takes the threat-model change, which ships with the code that makes it true (spec
@@ -409,7 +409,7 @@ the maintainer ruled that #1500 comes off ready-for-agent until stage 3 (stage 2
     runs at a time, and the panel shows the Persona (spec :248-257; #1833 scope).
   - Unencrypted partition cookies (ADR-0030:19-23) and the launched profile's key store (spec
     :763-774).
-- **The tester guide** has no issue yet (stage 2 plan :223). It leads with capturing a page you are
+- **The tester guide** has no issue yet (stage 2 plan :279). It leads with capturing a page you are
   signed in to in the launched browser, and puts the guarantees for pseudonymous work second.
 
 ## Out of scope

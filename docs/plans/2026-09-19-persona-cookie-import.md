@@ -39,10 +39,28 @@ DB migration 45, after which #1498 was reopened for exhibit ingest; #2043 landed
 the spec, which moved its lines. "What exists", the phase table, phase 2's three parts, and phase
 3's wait lists say so, and every spec citation points at the spec on that `main`.
 
+**Rulings, 2026-11-05.** The maintainer ruled on six points this plan left open; the stage 2 plan's
+"Rulings, 2026-11-05" section holds the full list.
+
+- A Duplicate of a Persona Capture carries the source's Persona id and label, on its signed entry
+  and on its row (stage 2 ruling 4).
+- A Persona Capture received into a Shared Case fills both `persona_id` and `persona_label` on the
+  receiver's row from the signed entry (stage 2 ruling 5).
+- When a launch reports that a launched profile fell back to Chromium's fixed-key store on this
+  machine (probe P16), the Persona's row in Settings shows one warning line. Nothing shows
+  otherwise (stage 2 ruling 6).
+- `src/main/services/persona/**` stays advisory and does not join the blocking tier (stage 2
+  ruling 7).
+- #1499 drops its "Sign in as persona" window: the cookie import is the only way to seed a
+  Persona's in-app session, and #1501's re-seed action points at the import (stage 2 ruling 8).
+- #1498 closes. The rule that puts a Persona on an `exhibit` entry becomes an acceptance criterion
+  of whichever future change first adds an exhibit writer for the `extension`, `background` or
+  `extension-image` origin (stage 2 ruling 11).
+
 ## Goal
 
 A user registers a persona, seeds it with a cookie file exported from the browser where that
-identity is signed in or by signing in through a Birdbrain window, and runs background captures
+identity is signed in, and runs background captures
 (Recapture, add URL) through a session that carries that login. Every resulting Capture and
 Manifest Entry states which persona was present. Passwords are never stored. No anti-detection
 work. Under ADR-0034 the Operator also browses as a Persona in a browser Birdbrain launched with
@@ -129,8 +147,8 @@ Recorded in ADR-0030 and the `CONTEXT.md` entry for **Persona** (phase 0, 2026-0
    pickers; the row stays so historic Captures keep their label. Deletion is always available
    because clearing the cookies is the security action.
 5. **Mechanism is both, Electron partition primary.** A `persist:persona-<id>` partition is
-   seeded by cookie-file import or by a sandboxed login window, and used by Recapture and add
-   URL. Extension captures carry a declared label only; the app cannot verify which Chrome
+   seeded by cookie-file import and used by Recapture and add URL. The sandboxed login window
+   was dropped on 2026-11-05 (stage 2 ruling 8). Extension captures carry a declared label only; the app cannot verify which Chrome
    profile the tab was in.
 6. **Per-job persona choice, no app-wide state.** Recapture and add-URL each carry a picker
    defaulting to none. The partition and the stamp are set from the same value in one call.
@@ -192,12 +210,13 @@ evidence-affecting at the blocking tier, so the maintainer reviews and merges it
 | --- | --- | --- | --- |
 | 2, verifier half | #1498 in #2031 | step 2 | nothing: merged on 2026-11-02 as 6c488f05 |
 | 2, writer half | #1498 in #2051 | step 5 | nothing: merged on 2026-11-03 as 45071a74 |
-| 2, exhibit ingest | #1498, reopened | step 5 | the first change that adds an exhibit writer for the `extension`, `background` or `extension-image` origin |
-| 3, launched profile | #1833 | step 5 | #1831 merged, the schema 7 release, and the Duplicate and Shared Case rulings |
-| 3, background render | #1499 | step 5 | question 7 on the sign-in window, and the Duplicate and Shared Case rulings |
+| 2, exhibit ingest | none: #1498 closes | none | an acceptance criterion of the first change that adds an exhibit writer for the `extension`, `background` or `extension-image` origin |
+| 2, Duplicate and received rows | not yet filed | step 5 | nothing: ruled on 2026-11-05; merges before any caller passes a Persona |
+| 3, launched profile | #1833 | step 5 | the schema 7 release, and the Duplicate and received-row change |
+| 3, background render | #1499 | step 5 | the schema 7 release, and the Duplicate and received-row change |
 | 3b | #1505 | none | superseded |
 | 4 | #1500 | stage 3 | the Companion pipe |
-| 5 | #1501 | step 5 | #1499, or a ruling that drops that block |
+| 5 | #1501 | step 5 | #1499 |
 | 6 | #543, #546, tester guide | none | the code each statement describes |
 
 ### Phase 0: decisions and probe (no product code)
@@ -258,15 +277,17 @@ The stage 2 plan splits #1498 in two (stage 2 plan :187-191).
 - It merged before the schema 7 release because no caller passes a Persona: the ingest callers at
   `recapture.ts:352` and `captureLifecycle.ts:1469` pass none. Its first callers are #1833 and
   #1499 (stage 2 plan :187-191).
-- Two cases are undecided, from #2051's description. `duplicate()` (`captureLifecycle.ts:1618`)
-  names neither Persona field, so a Duplicate of a Persona Capture signs no Persona. A Capture
-  received into a Shared Case leaves both columns NULL (`migrations.ts:1929-1930`;
+- #2051's description left two cases open. `duplicate()` (`captureLifecycle.ts:1618`) names
+  neither Persona field, so a Duplicate of a Persona Capture signs no Persona. A Capture received
+  into a Shared Case leaves both columns NULL (`migrations.ts:1929-1930`;
   `sharing/receivedEvidence.ts` names neither column) although its signed entry carries the
-  Persona. The maintainer decides both before the first caller passes a Persona (#1498, the
-  reopening comment of 2026-11-03).
+  Persona. The maintainer ruled on both on 2026-11-05: a Duplicate carries the source's Persona id
+  and label on its signed entry and its row, and a received Capture fills both columns from its
+  signed entry (stage 2 rulings 4 and 5). The change that does so merges before the first caller
+  passes a Persona.
 - It adds no Capture Method. `persona-window` left #1498's scope on 2026-10-10 (spec :90-94).
 
-**Exhibit ingest, stage 2 step 5: open (#1498, reopened 2026-11-03).**
+**Exhibit ingest: a criterion for a later change (#1498 closes under the ruling of 2026-11-05).**
 
 - #1498's scope gives exhibit ingest for the `extension`, `background` and `extension-image`
   origins the same `persona` parameter, and decision 9 puts the fields on an `exhibit` entry for
@@ -275,6 +296,9 @@ The stage 2 plan splits #1498 in two (stage 2 plan :187-191).
   `MANUAL_UPLOAD_ORIGIN` (:38, :162), so the rule falls to the first change that adds an exhibit
   writer for one of those origins (#2051's description). The `exhibit` entry input still says
   "Nothing writes them yet" (`manifest.ts:833-834`).
+- On 2026-11-05 the maintainer ruled that #1498 closes and that this rule becomes an acceptance
+  criterion of whichever future change first adds an exhibit writer for the `extension`,
+  `background` or `extension-image` origin (stage 2 ruling 11).
 
 ### Phase 3: a Persona's two browser sessions
 
@@ -282,9 +306,9 @@ ADR-0034 gives a Persona one browser session per engine: a launched-browser prof
 Electron partition, both seeded from the same cookie import (ADR-0034:93-96).
 
 **A launched-browser profile per Persona (#1833).** It waits on #1831 and on the schema 7 release
-(stage 2 plan :192-194) and, as a first caller passing a Persona, on the Duplicate and Shared Case
-rulings above; its wait on the verifier ended when #2031 merged, and the writer it calls merged in
-#2051.
+(stage 2 plan :192-194) and, as a first caller passing a Persona, on the change that carries the
+Duplicate and received-row rulings of 2026-11-05; its wait on the verifier ended when #2031 merged,
+the writer it calls merged in #2051, and #1831's code merged in #2056.
 
 - The Operator picks the Persona, default none, when starting the launched browser, and the choice
   holds for that browser's life (decision D21, spec :251-257). Each Capture taken in it carries
@@ -303,9 +327,9 @@ rulings above; its wait on the verifier ended when #2031 merged, and the writer 
   the maintainer's ruling of 2026-10-17, the launched browser also blocks the password leak check
   (stage 2 plan :42-44).
 - Before adding a plaintext warning, the PR quotes the Linux key store measurement (decision D17,
-  spec :763-774). Whether the Persona screen warns about the fixed-key fallback, and whether
-  `src/main/services/persona/**` joins the blocking tier, are the stage 2 plan's question 8
-  (:306-308).
+  spec :763-774). When a launch reports the fixed-key fallback on this machine, the Persona's row
+  in Settings shows one warning line, and nothing shows otherwise; `src/main/services/persona/**`
+  stays advisory (stage 2 rulings 6 and 7 of 2026-11-05).
 - It takes the migration lane only if it stores per-store counts on the `personas` row (spec
   :877).
 
@@ -325,10 +349,10 @@ Recapture and add-URL only (spec :105-106, ADR-0034:93-96).
   session used" (spec :1092).
 - #1499's body says it is blocked by #1498 and by #545. #545 closed on 2026-09-20, and the writer
   #1499 calls, `captureLifecycle.ingest` with a `persona`, merged in #2051; #1498 is open only for
-  exhibit ingest, which #1499 does not touch. It starts once question 7 settles whether it keeps
-  its own "Sign in as persona" window or the cookie import becomes the only way to seed the
-  partition (stage 2 plan :196-198, :255, :304-305), and it merges only after the Duplicate and
-  Shared Case rulings above and the schema 7 release (stage 2 plan :189-191).
+  exhibit ingest, which #1499 does not touch. On 2026-11-05 the maintainer dropped its "Sign in as
+  persona" window: the cookie import is the only way to seed the partition (stage 2 ruling 8). It
+  merges only after the change that carries the Duplicate and received-row rulings and after the
+  schema 7 release (stage 2 plan :189-191).
 - The unattended render against the four social platforms is still unmeasured; it gates this
   half only (ADR-0030:129-132).
 
@@ -350,8 +374,8 @@ nobody has tried a launched Chrome against them (spec :261-266).
 #1500 becomes the declared Persona on a stage 3 `companion` Capture and leaves this plan (stage 2
 plan :224-226). ADR-0034 builds the Companion pipe after launched Chromium browsers
 (ADR-0034:101-103), and stage 3 sets the `companion` wording (spec :1099). #1500's body still
-describes an extension popup selector, the `extension` method and a block on #1498. Whether
-#1500 comes off ready-for-agent until stage 3 is the stage 2 plan's question 9 (:309-310).
+describes an extension popup selector, the `extension` method and a block on #1498. On 2026-11-05
+the maintainer ruled that #1500 comes off ready-for-agent until stage 3 (stage 2 ruling 9).
 
 ### Phase 5: cookie count and expiry (#1501)
 
@@ -366,8 +390,9 @@ describes an extension popup selector, the `extension` method and a block on #14
   :231-232).
 - No cookie name or value crosses IPC. The phase is not evidence-affecting (stage 2 plan
   :101-103).
-- #1501's body says it is blocked by #1499, because the sign-in window is the re-seed action it
-  points at. If question 7 removes that window, the re-seed action becomes a cookie import.
+- #1501's body says it is blocked by #1499, because the sign-in window was the re-seed action it
+  pointed at. Since the ruling of 2026-11-05 dropped that window, the re-seed action is a cookie
+  import (stage 2 ruling 8).
 
 ### Phase 6: disclosure, threat model, and tester guide
 

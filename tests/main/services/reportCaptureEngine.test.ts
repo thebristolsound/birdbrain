@@ -31,7 +31,7 @@ import {
   engineCaptureEntry,
   engineFields
 } from '../../helpers/captureEnginePackage'
-import { LAUNCHED_TRANSACTION_RECORD } from '../../helpers/launchedBrowser'
+import { LAUNCHED_INVENTORY, LAUNCHED_TRANSACTION_RECORD } from '../../helpers/launchedBrowser'
 
 const OPTIONS: ExportOptions = {
   format: 'zip',
@@ -132,6 +132,9 @@ function addedText(withFacts: string, without: string): string {
 }
 
 const SCT = ENGINE_BOUND_TLS.signedCertificateTimestampList[0]
+
+const LAUNCHED_BODIES_LABEL =
+  'Responses recorded without their body: every body the launched browser returned as text, which the capture engine does not keep (rulings of 2026-10-17 and 2026-10-26 on durable messages and character sets), and any body over the size budget or not returned by the browser'
 
 describe('resolveCaptureEngineFacts', () => {
   it('reads the six fields from a signed schema-6 capture entry, keyed by its capture id', () => {
@@ -405,6 +408,8 @@ describe('report.html capture engine fields', () => {
       'Targets recorded: the page, and the frames and workers whose setup answered',
       'Targets not recorded, whose setup failed, did not answer, or was not attempted; requests made in or below one may be missing from the record'
     ]
+    // reportAt signs a schema-7 entry as `launched`, whose record keeps no text body.
+    const LAUNCHED_LABELS = OLD_LABELS.map((label, i) => (i === 6 ? LAUNCHED_BODIES_LABEL : label))
 
     function reportAt(schemaVersion: number, transactionRecord: Record<string, unknown>): string {
       const fields = engineFields({
@@ -445,12 +450,12 @@ describe('report.html capture engine fields', () => {
       expect(note).not.toMatch(/in a URL, a body,/)
       // Each new row sits beside the schema-6 row it qualifies.
       expect(countLabels(note)).toEqual([
-        OLD_LABELS[0],
-        OLD_LABELS[1],
+        LAUNCHED_LABELS[0],
+        LAUNCHED_LABELS[1],
         SERVICE_WORKER_LABEL,
-        ...OLD_LABELS.slice(2, 8),
+        ...LAUNCHED_LABELS.slice(2, 8),
         WITHHELD_LABEL,
-        ...OLD_LABELS.slice(8)
+        ...LAUNCHED_LABELS.slice(8)
       ])
     })
 
@@ -514,7 +519,7 @@ describe('report.html capture engine fields', () => {
       const at6 = transactionRecordNote(reportAt(6, ENGINE_INVENTORY.transactionRecord))
       const at7 = transactionRecordNote(reportAt(7, ENGINE_INVENTORY.transactionRecord))
 
-      expect(at7).toBe(at6)
+      expect(at7).toBe(at6.replace(OLD_LABELS[6], LAUNCHED_BODIES_LABEL))
       expect(countLabels(at6)).toEqual(OLD_LABELS)
       expect(at6).toMatch(/<\/ul>\s*<p>Headers present with their values replaced:/)
       expect(at6).toMatch(/A token\s+in a URL, a body, or any other header stays in the record\./)
@@ -980,5 +985,62 @@ describe('report.html on a link Capture', () => {
         expect(html).not.toContain(label(text))
       }
     }
+  })
+})
+
+describe('report.html for a Capture taken in a launched browser', () => {
+  const SOURCE_ID = 'source-capture-id'
+  const LAUNCHED = engineFields({
+    method: 'launched',
+    inventory: {
+      ...LAUNCHED_INVENTORY,
+      mhtml: { present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 }
+    }
+  })
+  const BACKGROUND_BODIES =
+    'Responses recorded without their body, which was over the size budget or which the browser did not return'
+
+  function launchedFacts(entries: Record<string, unknown>[]) {
+    return resolveCaptureEngineFacts(signedEntries(entries), true)
+  }
+
+  function render(facts: Map<string, CaptureEngineEntry>): string {
+    return buildHtmlReport(reportData([capture()], { captureEngineByCaptureId: facts }), OPTIONS)
+  }
+
+  it('says no image was pinned, and that the engine kept no text body', () => {
+    const facts = launchedFacts([engineCaptureEntry(LAUNCHED, 7)])
+    expect(facts.get(ENGINE_CAPTURE_ID)?.facts.launchedBrowser).toBe(true)
+    const html = render(facts)
+
+    expect(html).toMatch(
+      /Page archive \(MHTML\):<\/strong> taken\. No Image Source Pinning runs for a capture\s+taken in a browser Birdbrain launched, so no image was pinned before the screenshot or the\s+save; the entry's two pinning counts, 0 and 0, are not the result of a pin\./
+    )
+    expect(html).not.toContain('offered as a set of sources and pinned')
+    expect(html).toContain(`<li>${LAUNCHED_BODIES_LABEL}: <span class="mono">5</span></li>`)
+    expect(html).not.toContain(BACKGROUND_BODIES)
+  })
+
+  it("reads a Duplicate's browser from the entry it copies", () => {
+    const duplicate = engineCaptureEntry(
+      { ...LAUNCHED, method: 'duplicate', duplicateOfCaptureId: SOURCE_ID },
+      7
+    )
+    const ofLaunched = launchedFacts([
+      engineCaptureEntry({ ...LAUNCHED, captureId: SOURCE_ID }, 7),
+      duplicate
+    ])
+    expect(ofLaunched.get(ENGINE_CAPTURE_ID)?.facts.launchedBrowser).toBe(true)
+    expect(render(ofLaunched)).toContain(LAUNCHED_BODIES_LABEL)
+
+    const ofBackground = launchedFacts([
+      engineCaptureEntry({ ...LAUNCHED, method: 'background', captureId: SOURCE_ID }, 7),
+      duplicate
+    ])
+    expect(ofBackground.get(ENGINE_CAPTURE_ID)?.facts.launchedBrowser).toBeUndefined()
+    expect(render(ofBackground)).toContain(BACKGROUND_BODIES)
+
+    // A source missing from the chain names no browser.
+    expect(launchedFacts([duplicate]).get(ENGINE_CAPTURE_ID)?.facts.launchedBrowser).toBeUndefined()
   })
 })

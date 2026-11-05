@@ -156,7 +156,11 @@ export function tabStatus(tab: LaunchedBrowserTab): TabStatus | null {
         tone: 'muted'
       }
     case 'not-http':
-      return { label: 'never captured', tone: 'muted' }
+      return {
+        label: 'never captured',
+        tip: 'Birdbrain captures http and https pages only.',
+        tone: 'muted'
+      }
     case 'crashed':
       return {
         label: 'tab crashed',

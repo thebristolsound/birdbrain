@@ -205,6 +205,9 @@ describe('the tab rows', () => {
     expect(within(rows[1]).getByText('not from first request')).toBeTruthy()
     expect(within(rows[2]).getByText("can't capture · private")).toBeTruthy()
     expect(within(rows[3]).getByText('never captured')).toBeTruthy()
+    expect(
+      within(rows[3]).getByRole('img', { name: 'Birdbrain captures http and https pages only.' })
+    ).toBeTruthy()
     expect(within(rows[4]).getByText('tab crashed')).toBeTruthy()
     expect(within(rows[4]).getByText('Reload it in the browser, then capture.')).toBeTruthy()
     // Only the two recorded http tabs can be picked.

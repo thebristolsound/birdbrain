@@ -19,6 +19,7 @@ import type { FirstTab, RecordedSession } from '@main/services/launchedBrowser/l
 import {
   CaptureAbandoned,
   captureTab,
+  TabNotInFront,
   type TabCaptureArtifacts,
   type TabCaptureInput
 } from '@main/services/launchedBrowser/captureTab'
@@ -275,6 +276,9 @@ export function createLaunchedCaptures(deps: LaunchedCapturesDeps): LaunchedCapt
       if (error instanceof CaptureAbandoned) {
         sink.abandonedLaunched(url)
         return setProgress({ state: 'abandoned', targetId })
+      }
+      if (error instanceof TabNotInFront) {
+        return setProgress({ state: 'refused', targetId, message: error.message })
       }
       log.warn('launchedBrowser', 'launchedBrowser.capture_failed', undefined, error)
       const message = error instanceof Error ? error.message : String(error)

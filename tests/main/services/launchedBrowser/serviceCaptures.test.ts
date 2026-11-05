@@ -278,6 +278,20 @@ describe('clicked Captures in the launched browser', () => {
     expect(h.admitted).toHaveLength(1)
   })
 
+  it('refuses a tab behind another in its window, storing nothing', async () => {
+    const { TabNotInFront } = await import('@main/services/launchedBrowser/captureTab')
+    const h = harness({ capture: async () => Promise.reject(new TabNotInFront()) })
+    await h.open()
+    await h.loadFirstTab()
+    const status = await h.service.capture('first-tab', { scrollToLoad: false })
+    expect(status.state === 'open' && status.browser.capture).toEqual({
+      state: 'refused',
+      targetId: 'first-tab',
+      message: 'This tab is behind another in its window. Bring it to the front, then capture.'
+    })
+    expect(h.admitted).toEqual([])
+  })
+
   it('shows an abandoned Capture and reports it, storing nothing', async () => {
     const { CaptureAbandoned } = await import('@main/services/launchedBrowser/captureTab')
     const h = harness({ capture: async () => Promise.reject(new CaptureAbandoned()) })

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createHash } from 'crypto'
+import { createLocalhostCert, type LocalhostCert } from '../../../helpers/tlsFixtures'
 import {
   mkdirSync,
   mkdtempSync,
@@ -10,12 +11,14 @@ import {
   writeFileSync
 } from 'fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http'
+import { createServer as createHttpsServer } from 'https'
+import { X509Certificate } from 'crypto'
 import type { Socket } from 'net'
 import { tmpdir } from 'os'
 import { dirname, join } from 'path'
 import { gzipSync, inflateRawSync } from 'zlib'
 import { readWarc, type WarcRecord } from '../../../../src/packages/transaction-record/warcReader'
-import type { LaunchedCaptureProgress } from '@shared/types'
+import type { BrowserFamily, LaunchedCaptureProgress } from '@shared/types'
 import type { ExportOptions } from '@shared/types'
 import { closeDatabase, initDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
@@ -44,8 +47,10 @@ import {
   PINNED_BROWSER,
   PINNED_VERSION,
   realBrowserSkipReason,
-  suiteSpawn
+  suiteSpawn,
+  withSwitches
 } from '../../../helpers/launchedBrowserSuite'
+import { HAS_OPENSSL } from '../../../helpers/openssl'
 
 // The known answers of a clicked Capture in a launched browser (#1832; spec, "Validation"),
 // against the pinned Chrome for Testing build under xvfb-run. The engine records the first tab
@@ -53,7 +58,34 @@ import {
 // and every Capture goes through the real Capture Lifecycle into a Case, as a click in the panel
 // does. Without the build, or outside xvfb-run, the suite reports itself skipped and says why.
 
-const skipReason = realBrowserSkipReason()
+// D23's hand reruns: BIRDBRAIN_SUITE_BROWSER names another executable, and
+// BIRDBRAIN_SUITE_BROWSER_FAMILY its product family, so the same suite runs against an installed
+// browser. Without them it runs the pinned build.
+const OTHER_BROWSER = process.env.BIRDBRAIN_SUITE_BROWSER
+const SUITE_BROWSER = {
+  family: (OTHER_BROWSER
+    ? (process.env.BIRDBRAIN_SUITE_BROWSER_FAMILY ?? 'chromium')
+    : 'chrome-for-testing') as BrowserFamily,
+  label: OTHER_BROWSER ? 'Browser under test' : 'Google Chrome for Testing',
+  executablePath: OTHER_BROWSER ?? PINNED_BROWSER ?? ''
+}
+const pinnedSkip = realBrowserSkipReason()
+// A run against another browser does not need the pinned build.
+const skipReason = !HAS_OPENSSL
+  ? 'no openssl to make the TLS fixture'
+  : OTHER_BROWSER && pinnedSkip?.startsWith('no pinned')
+    ? null
+    : pinnedSkip
+
+const BRAVE_ORIGIN_STARTUP = 'chrome://brave-origin-startup/'
+// Its "Proceed with Origin for free" button, inside the page's shadow roots.
+const PROCEED_WITH_ORIGIN =
+  '(() => { const walk = (root) => [...root.querySelectorAll("*")].flatMap((el) =>' +
+  ' [el, ...(el.shadowRoot ? walk(el.shadowRoot) : [])]);' +
+  ' const leo = walk(document).find((el) => el.tagName === "LEO-BUTTON" &&' +
+  ' /Proceed with Origin for free/.test(el.textContent || ""));' +
+  ' const button = leo && leo.shadowRoot && leo.shadowRoot.querySelector("button");' +
+  ' if (button || leo) (button || leo).click() })()'
 
 const PASSWORD = 'PASSWORD-MARKER-5c1d'
 const COOKIE = 'COOKIE-MARKER-77ab'
@@ -65,12 +97,31 @@ const GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA
 // Longer than the engine's own network quiet, so nothing the page started is still to come.
 const QUIET_MS = 2_000
 
+// Chromium's form for --ignore-certificate-errors-spki-list: base64 of the SPKI's SHA-256.
+const spkiHash = (pem: string): string =>
+  createHash('sha256')
+    .update(new X509Certificate(pem).publicKey.export({ type: 'spki', format: 'der' }))
+    .digest('base64')
+
 const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
+
+interface PageFacts {
+  webdriver: boolean
+  chrome: string[]
+  prepared: number
+  resources: number
+  focused: boolean
+  visibility: string
+}
 
 interface Fixture {
   origin: string
+  crossSite: string
+  secureOrigin: string
   // Each request's method and path, in arrival order.
   requests: Array<{ method: string; path: string }>
+  // What the page-visible facts page reported, in arrival order.
+  facts: PageFacts[]
   close: () => Promise<void>
 }
 
@@ -83,6 +134,20 @@ const PAGES: Record<string, string> = {
       "<script>fetch('/data.bin'); fetch('/gz.bin')</script>"
   ),
   '/page2': html('<title>Second page</title><p>After the redirects</p>'),
+  '/opener': html(
+    '<title>Opener</title><a id="blank" target="_blank" href="/opened-by-link">link</a>' +
+      '<p>Opens tabs</p>'
+  ),
+  '/opened-by-link': html('<title>Opened by link</title><img src="/pixel.gif">'),
+  '/opened-by-script': html('<title>Opened by script</title><img src="/other.gif">'),
+  '/framed': html(
+    '<title>Framed</title><p>Holds a frame from another site</p>' +
+      '<iframe id="frame" src="about:blank"></iframe>' +
+      "<script>document.getElementById('frame').src = location.href.replace('127.0.0.1', " +
+      "'localhost').replace('/framed', '/frame')</script>"
+  ),
+  '/frame': html("<title>Frame</title><script>fetch('/frame-data.bin')</script>"),
+  '/secure': html('<title>Secure page</title><p>Served over TLS</p>'),
   '/other': html('<title>Other page</title><p>Another navigation</p><img src="/other.gif">'),
   '/login': html(
     '<title>Sign in</title><form method="post" action="/signed-in">' +
@@ -96,6 +161,20 @@ const PAGES: Record<string, string> = {
   '/cache-a': html('<title>Cache A</title><img src="/cacheable.gif">'),
   '/cache-b': html('<title>Cache B</title><img src="/cacheable.gif">'),
   '/holding': html("<title>Holding</title><script>fetch('/hold')</script>"),
+  // The first slice's page-visible facts (spec, Validation, "Page-visible effects"), with the check
+  // P3 kept: the page's own `Error.prepareStackTrace` runs for an Error passed to `console.debug`
+  // only while `Runtime.enable` is on (probe, P3, Chromium 154). The page reports them every 250 ms.
+  '/visible': html(
+    '<title>Page-visible facts</title><p>Facts</p><img src="/pixel.gif">' +
+      '<script>let prepared = 0\n' +
+      'Error.prepareStackTrace = (error, frames) => { prepared++; return String(error) }\n' +
+      'const report = () => { console.debug(new Error("probe")); const facts = {' +
+      ' webdriver: navigator.webdriver, chrome: Object.keys(window.chrome || {}).sort(),' +
+      ' prepared, resources: performance.getEntriesByType("resource").length,' +
+      ' focused: document.hasFocus(), visibility: document.visibilityState };' +
+      " navigator.sendBeacon('/facts', JSON.stringify(facts)) }\n" +
+      'report(); setInterval(report, 250)</script>'
+  ),
   // The full-page screenshot resizes the page's viewport (probe P2), so this page loads another
   // during the artifact commands.
   '/navigate-on-resize': html(
@@ -104,13 +183,22 @@ const PAGES: Record<string, string> = {
   )
 }
 
-async function startFixture(): Promise<Fixture> {
+async function startFixture(tls: LocalhostCert): Promise<Fixture> {
   const requests: Fixture['requests'] = []
+  const facts: PageFacts[] = []
   const sockets = new Set<Socket>()
   const held: ServerResponse[] = []
   const handler = (request: IncomingMessage, response: ServerResponse): void => {
     const path = (request.url ?? '/').split('?')[0]
     requests.push({ method: request.method ?? 'GET', path })
+    if (path === '/facts') {
+      const chunks: Buffer[] = []
+      request.on('data', (chunk: Buffer) => chunks.push(chunk))
+      request.on('end', () => facts.push(JSON.parse(Buffer.concat(chunks).toString('utf8'))))
+      response.writeHead(204)
+      response.end()
+      return
+    }
     // Drain any body; the fixture never reads it.
     request.resume()
     const page = PAGES[path]
@@ -134,6 +222,7 @@ async function startFixture(): Promise<Fixture> {
         response.writeHead(200, { 'content-type': 'text/css' })
         response.end('@media print { body { background-image: url(/print.gif) } }')
         return
+      case '/frame-data.bin':
       case '/data.bin':
         response.writeHead(200, { 'content-type': 'application/octet-stream' })
         response.end(BINARY)
@@ -164,33 +253,46 @@ async function startFixture(): Promise<Fixture> {
     }
   }
   const server: Server = createServer(handler)
-  server.on('connection', (socket) => {
-    sockets.add(socket)
-    socket.on('close', () => sockets.delete(socket))
-  })
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()))
-  const address = server.address()
-  if (address === null || typeof address === 'string') throw new Error('no TCP address')
+  const secure = createHttpsServer({ key: tls.key, cert: tls.cert }, handler)
+  for (const listening of [server, secure]) {
+    listening.on('connection', (socket: Socket) => {
+      sockets.add(socket)
+      socket.on('close', () => sockets.delete(socket))
+    })
+  }
+  const portOf = async (listening: Server): Promise<number> => {
+    await new Promise<void>((resolve) => listening.listen(0, '127.0.0.1', () => resolve()))
+    const address = listening.address()
+    if (address === null || typeof address === 'string') throw new Error('no TCP address')
+    return address.port
+  }
+  const port = await portOf(server)
+  const securePort = await portOf(secure)
   return {
-    origin: `http://127.0.0.1:${address.port}`,
+    origin: `http://127.0.0.1:${port}`,
+    // Another site, for cross-site frames and navigations, on the same server.
+    crossSite: `http://localhost:${port}`,
+    secureOrigin: `https://localhost:${securePort}`,
     requests,
+    facts,
     close: () =>
       new Promise((resolve) => {
         for (const response of held) response.destroy()
         for (const socket of sockets) socket.destroy()
+        secure.close()
         server.close(() => resolve())
       })
   }
 }
 
 async function waitFor<T>(
-  read: () => T | null | undefined | false,
+  read: () => T | null | undefined | false | Promise<T | null | undefined | false>,
   what: string,
   timeoutMs = 15_000
 ): Promise<T> {
   const deadline = Date.now() + timeoutMs
   for (;;) {
-    const value = read()
+    const value = await read()
     if (value) return value
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`)
     await new Promise((resolve) => setTimeout(resolve, 50))
@@ -240,12 +342,13 @@ function readStoredZipEntries(path: string): Map<string, Buffer> {
 }
 
 describe.skipIf(skipReason !== null)(
-  `clicked launched Captures, Chrome for Testing ${PINNED_VERSION}` +
+  `clicked launched Captures, ${OTHER_BROWSER ?? `Chrome for Testing ${PINNED_VERSION}`}` +
     (skipReason ? ` (skipped: ${skipReason})` : ''),
   () => {
     let root: string
     let caseId: string
     let fixture: Fixture
+    let tlsCert: LocalhostCert
     let lifecycle: CaptureLifecycle
     let browser: LaunchedBrowser
     let captures: LaunchedCaptures
@@ -255,11 +358,14 @@ describe.skipIf(skipReason !== null)(
 
     const tabId = (): string => browser.firstTab.targetId
 
+    // `path` is on the fixture's first site unless it names an origin.
     async function navigate(path: string, settled: string = path): Promise<void> {
       const before = fixture.requests.length
+      const url = path.startsWith('http') ? path : `${fixture.origin}${path}`
       await browser.firstTab.session.send('Runtime.evaluate', {
-        expression: `location.href = ${JSON.stringify(`${fixture.origin}${path}`)}`
+        expression: `location.href = ${JSON.stringify(url)}`
       })
+      settled = settled.startsWith('http') ? new URL(settled).pathname : settled
       await waitFor(
         () => fixture.requests.slice(before).some((request) => request.path === settled),
         `${settled} to be requested`
@@ -271,11 +377,13 @@ describe.skipIf(skipReason !== null)(
           captures.decorate([{ targetId: tabId(), title: '', url: '' }])[0].refusal === undefined,
         `${path} to commit`
       )
-      let seen = fixture.requests.length
+      // The facts page reports every 250 ms; those reports do not count.
+      const loads = (): number => fixture.requests.filter(({ path: p }) => p !== '/facts').length
+      let seen = loads()
       let quietSince = Date.now()
       await waitFor(() => {
-        if (fixture.requests.length !== seen) {
-          seen = fixture.requests.length
+        if (loads() !== seen) {
+          seen = loads()
           quietSince = Date.now()
         }
         return Date.now() - quietSince >= QUIET_MS
@@ -309,7 +417,8 @@ describe.skipIf(skipReason !== null)(
         fetchTlsCertChain: async () => null,
         emitCaptureEvent: (event) => events.push(event)
       })
-      fixture = await startFixture()
+      tlsCert = createLocalhostCert()
+      fixture = await startFixture(tlsCert)
       captures = createLaunchedCaptures({
         sink: {
           screenLaunched: (id, url) => lifecycle.screenLaunched(id, url),
@@ -333,16 +442,31 @@ describe.skipIf(skipReason !== null)(
       captures.setEgress({ kind: 'direct' })
       browser = await launchBrowser(
         {
-          browser: {
-            family: 'chrome-for-testing',
-            label: 'Google Chrome for Testing',
-            executablePath: PINNED_BROWSER ?? ''
-          },
+          browser: SUITE_BROWSER,
           egress: { kind: 'direct' },
           sessionDataPath: join(root, 'sessionData'),
-          hooks: { onRecordedSession: captures.onRecordedSession }
+          hooks: {
+            onRecordedSession: (session, target, recorded) => {
+              captures.onRecordedSession(session, target, recorded)
+              // Brave Origin opens its first tab only once its startup page is answered; the
+              // suite answers it as the Operator would, from the page's own main world.
+              if (target.url.startsWith(BRAVE_ORIGIN_STARTUP)) {
+                setTimeout(() => {
+                  session
+                    .send('Runtime.evaluate', { expression: PROCEED_WITH_ORIGIN })
+                    .catch(() => {})
+                }, 3_000)
+              }
+            }
+          }
         },
-        { spawn: suiteSpawn, buildArgs: buildSuiteLaunchArgs }
+        {
+          spawn: suiteSpawn,
+          // The suite's own launch accepts the TLS fixture's certificate and no other.
+          buildArgs: withSwitches(buildSuiteLaunchArgs, [
+            `--ignore-certificate-errors-spki-list=${spkiHash(tlsCert.cert)}`
+          ])
+        }
       )
       captures.attach(browser.client, browser.identity, browser.firstTab)
     }, 60_000)
@@ -386,9 +510,10 @@ describe.skipIf(skipReason !== null)(
       expect(request.boundTlsAbsent).toBe('not-https')
       expect(request.browser).toEqual({
         product: browser.identity.product,
-        version: PINNED_VERSION,
-        family: 'chrome-for-testing'
+        version: browser.identity.version,
+        family: SUITE_BROWSER.family
       })
+      if (!OTHER_BROWSER) expect(browser.identity.version).toBe(PINNED_VERSION)
       const records = readWarc(transactionRecord!)
       const recorded = requestRecords(records).map(pathOf)
       // Every request the fixture logged before the cut is in the record, once: the fixture's
@@ -419,7 +544,7 @@ describe.skipIf(skipReason !== null)(
       const { captureId } = progress as { captureId: string }
       const row = getCapture(captureId)
       expect(row?.method).toBe('launched')
-      expect(row?.browserVersion).toBe(PINNED_VERSION)
+      expect(row?.browserVersion).toBe(browser.identity.version)
       const jsonl = readFileSync(join(root, 'captures', caseId, MANIFEST_FILENAME), 'utf8')
       const entry = readEntries(jsonl).find(
         (e) => e.type === 'capture' && e.captureId === captureId
@@ -427,8 +552,8 @@ describe.skipIf(skipReason !== null)(
       expect(entry).toMatchObject({
         method: 'launched',
         browserProduct: browser.identity.product,
-        browserVersion: PINNED_VERSION,
-        browserFamily: 'chrome-for-testing',
+        browserVersion: browser.identity.version,
+        browserFamily: SUITE_BROWSER.family,
         schemaVersion: 7
       })
       expect(entry).not.toHaveProperty('egressKind')
@@ -529,6 +654,72 @@ describe.skipIf(skipReason !== null)(
       )
     }, 60_000)
 
+    it('records a cross-site frame on its own session, every request the fixture logged once', async () => {
+      const before = fixture.requests.length
+      await navigate('/framed', '/frame-data.bin')
+      const cutAt = fixture.requests.length
+      expect(await capture()).toMatchObject({ state: 'captured' })
+      const request = lastAdmitted()
+      const recorded = requestRecords(readWarc(request.transactionRecord!)).map(pathOf)
+      expect(recorded).toEqual(expect.arrayContaining(['/framed', '/frame', '/frame-data.bin']))
+      expect([...recorded].sort()).toEqual(
+        fixture.requests
+          .slice(before, cutAt)
+          .map(({ path }) => path)
+          .sort()
+      )
+      expect(request.inventory.transactionRecord).toMatchObject({ unrecordedTargets: 0 })
+      const { recordedTargets } = request.inventory.transactionRecord as { recordedTargets: number }
+      expect(recordedTargets).toBeGreaterThanOrEqual(2)
+    }, 60_000)
+
+    it('records a cross-site navigation from its first request', async () => {
+      await navigate(`${fixture.crossSite}/page2`)
+      expect(captures.decorate([{ targetId: tabId(), title: '', url: '' }])[0]).toMatchObject({
+        firstRequest: true
+      })
+      expect(await capture()).toMatchObject({ state: 'captured' })
+      const request = lastAdmitted()
+      expect(request.url).toBe(`${fixture.crossSite}/page2`)
+      expect(requestRecords(readWarc(request.transactionRecord!)).map(pathOf)[0]).toBe('/page2')
+    }, 60_000)
+
+    it("signs Bound TLS Details that match the TLS fixture's certificate", async () => {
+      await navigate(`${fixture.secureOrigin}/secure`)
+      expect(await capture()).toMatchObject({ state: 'captured' })
+      const { boundTls, boundTlsAbsent } = lastAdmitted()
+      expect(boundTlsAbsent).toBeUndefined()
+      const certificate = new X509Certificate(tlsCert.cert)
+      expect(boundTls).toMatchObject({
+        subjectName: 'localhost',
+        issuer: 'localhost',
+        validFrom: new Date(certificate.validFrom).toISOString(),
+        validTo: new Date(certificate.validTo).toISOString()
+      })
+      expect(boundTls?.sanList).toEqual(expect.arrayContaining(['localhost', '127.0.0.1']))
+    }, 60_000)
+
+    it('changes none of the page-visible facts while it records and captures with Scroll-to-load', async () => {
+      await navigate('/visible', '/pixel.gif')
+      await waitFor(() => fixture.facts.length > 0, 'the first facts')
+      const before = fixture.facts.at(-1)!
+      const reported = fixture.facts.length
+      expect(await capture(true)).toMatchObject({ state: 'captured' })
+      await waitFor(() => fixture.facts.length > reported + 2, 'facts after the Capture')
+      const after = fixture.facts.slice(reported)
+      // The values each pairing records in the validation record, where a hand run asks for them.
+      const report = process.env.BIRDBRAIN_SUITE_REPORT
+      if (report) {
+        const line = { browser: browser.identity, before, after: after.at(-1) }
+        writeFileSync(report, `${JSON.stringify(line)}\n`, { flag: 'a' })
+      }
+      for (const reading of [before, ...after]) {
+        expect(reading.prepared).toBe(0)
+        expect(reading.webdriver).toBe(true)
+        expect(reading.chrome).toEqual(before.chrome)
+      }
+    }, 60_000)
+
     it('abandons a Capture when a new page commits before every artifact is taken', async () => {
       await navigate('/navigate-on-resize')
       const stored = admitted.length
@@ -570,5 +761,47 @@ describe.skipIf(skipReason !== null)(
       writeFileSync(join(dir, record), bytes)
       expect(verifyEvidencePackage(dir).pass).toBe(false)
     }, 120_000)
+
+    // Last, because the tabs it opens put the first tab behind them.
+    it('gives a target=_blank tab and a window.open popup their own records, naming the opener', async () => {
+      await navigate('/opener')
+      const opened = async (path: string): Promise<string> => {
+        const { targetInfos } = await browser.client.send('Target.getTargets', {})
+        return targetInfos.find(({ type, url }) => type === 'page' && url.endsWith(path))
+          ?.targetId as string
+      }
+      // Each opens in front, so each is captured before the next opens. A gesture each, as a
+      // click would give, so the popup blocker lets both open.
+      for (const [expression, path] of [
+        ["document.getElementById('blank').click()", '/opened-by-link'],
+        ["window.open('/opened-by-script', 'popup')", '/opened-by-script']
+      ]) {
+        await browser.firstTab.session.send('Runtime.evaluate', {
+          expression,
+          userGesture: true
+        } as never)
+        let targetId = ''
+        await waitFor(async () => (targetId = await opened(path)), `${path} to open`)
+        await waitFor(
+          () => captures.decorate([{ targetId, title: '', url: '' }])[0].firstRequest === true,
+          `${path} to commit`
+        )
+        expect(await captures.capture(targetId, { scrollToLoad: false })).toMatchObject({
+          state: 'captured'
+        })
+        const records = readWarc(lastAdmitted().transactionRecord!)
+        expect(requestRecords(records).map(pathOf)[0]).toBe(path)
+        const info = records[0].block.toString('utf8')
+        expect(info).toContain(`tab-target-id: ${targetId}`)
+        expect(info).toContain(`tab-opener-target-id: ${tabId()}`)
+      }
+      // The first tab is now behind the popups: its Capture is refused before anything is taken.
+      const stored = admitted.length
+      expect(await capture()).toMatchObject({
+        state: 'refused',
+        message: expect.stringMatching(/Bring it to the front/)
+      })
+      expect(admitted).toHaveLength(stored)
+    }, 60_000)
   }
 )

@@ -51,6 +51,18 @@ export class CaptureAbandoned extends Error {
   }
 }
 
+// A tab behind another in its window (`document.visibilityState` is `hidden`). The full-page
+// screenshot of such a tab did not answer on Chromium 154 in the probe (P2), nor on Chrome for
+// Testing 149 in this step's suite, so the Capture is refused before anything is taken. Whether
+// the engine should bring the tab to the front instead is a question for the maintainer.
+export class TabNotInFront extends Error {
+  readonly code = 'TAB_NOT_IN_FRONT'
+  constructor() {
+    super('This tab is behind another in its window. Bring it to the front, then capture.')
+    this.name = 'TabNotInFront'
+  }
+}
+
 export interface TabCaptureInput {
   session: CdpSession
   recording: TabRecording
@@ -190,9 +202,10 @@ async function recordOf(
 }
 
 /**
- * Takes one clicked Capture of the tab. Throws `CaptureAbandoned` when a new document committed
- * before every artifact was taken; any other throw means an artifact the Capture cannot do
- * without (the screenshot, MHTML, the text) failed.
+ * Takes one clicked Capture of the tab. Throws `TabNotInFront`, before anything is taken, for a
+ * tab behind another; `CaptureAbandoned` when a new document committed before every artifact was
+ * taken; any other throw means an artifact the Capture cannot do without (the screenshot, MHTML,
+ * the text) failed.
  */
 export async function captureTab(input: TabCaptureInput): Promise<TabCaptureArtifacts> {
   const { session, recording, tabId } = input
@@ -234,6 +247,8 @@ export async function captureTab(input: TabCaptureInput): Promise<TabCaptureArti
     }
     return result.value
   }
+
+  if ((await evaluate('document.visibilityState')) === 'hidden') throw new TabNotInFront()
 
   const scrollToLoad = input.scrollToLoad
     ? await scrollToLoadWith(evaluate, timings.scrollMaxMs, { unlock: false })

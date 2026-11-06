@@ -16,6 +16,17 @@ repository must follow it. The dispatch step copies this section into the squash
 
 </details>
 
+<!-- When the change alters what a user sees, keep this block and attach a before and after
+screenshot per screen through GitHub's file attachment; otherwise delete it.
+<details>
+<summary>Screenshots, before and after</summary>
+
+- Before, <screen>: ![before](https://github.com/user-attachments/assets/<id>)
+- After, <screen>: ![after](https://github.com/user-attachments/assets/<id>)
+
+</details>
+-->
+
 ## Evidence-affecting
 
 No

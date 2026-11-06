@@ -56,11 +56,45 @@ Five sections in a fixed order, a hard cap, and one closing line:
    wants the line last when present.
 
 Everything above `## Verification` fits in 40 top-layer lines; collapsed lines do not count.
-The body has no other `##` sections: no acceptance-criteria walkthroughs, no reviewer notes, no
-visual evidence unless the UI changed (then one image link inside the Changes block). Fenced
+The body has no other `##` sections: no acceptance-criteria walkthroughs and no reviewer notes.
+Visual evidence appears only as the screenshots block below. Fenced
 blocks appear only inside a `<details>` block. Claims name only actions you took and states
 you observed after taking them; a label another actor applies or a check CI will run is named
 as a handoff, never asserted.
+
+## Screenshots for visual changes
+
+A PR that changes what a user sees carries before and after screenshots. That covers the
+desktop app's renderer, the extension's popup and pages, and docs site pages, including copy,
+layout, theme and state changes. A change with no visual effect carries none.
+
+1. Take the before shot from a build of `origin/main`, ideally before editing, and the after
+   shot from the head under review. Use the same route, window size, theme and seed data, so
+   the pair differs only by the change. For the app, the `run-birdbrain` skill's `size` and
+   `ss` commands take both.
+2. Upload each PNG with GitHub's file attachment on the pull request: drop or paste it into the
+   description editor, or use its "Paste, drop, or click to add files" control. GitHub returns
+   a `https://github.com/user-attachments/assets/<id>` link. Never commit the images, and never
+   link a local path or another image host.
+3. Put the links in a second `<details>` block inside `## Changes`, after the file groups, one
+   bullet per image:
+
+   ```markdown
+   <details>
+   <summary>Screenshots, before and after</summary>
+
+   - Before, capture viewer: ![before](https://github.com/user-attachments/assets/<id>)
+   - After, capture viewer: ![after](https://github.com/user-attachments/assets/<id>)
+
+   </details>
+   ```
+
+   A change that touches several screens gives one before and after pair per screen.
+
+The attachment upload has no API, so it needs a browser signed in to GitHub. A session without
+one, a dispatched implementer included, returns the PNG paths with its handoff and names the
+upload as the opener's step. The reviewer treats a visual change with no before and after pair
+as a blocking finding.
 
 ## How to open a PR
 

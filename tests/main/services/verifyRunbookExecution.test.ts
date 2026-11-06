@@ -191,10 +191,14 @@ const pickCapture = (id: string): RunbookBlock => ({
  * Runs blocks under plain `sh` with no errexit and no pipefail, options an interactive
  * shell starts without, so the status is the block's own and not the harness's options.
  */
-function runPlain(blocks: RunbookBlock[], cwd: string): { status: number; stdout: string } {
+function runPlain(
+  blocks: RunbookBlock[],
+  cwd: string,
+  shell: 'sh' | 'bash' = 'sh'
+): { status: number; stdout: string } {
   const code = blocks.map((block) => block.code).join('\n')
   try {
-    const stdout = execFileSync('sh', ['-c', code], {
+    const stdout = execFileSync(shell, ['-c', code], {
       cwd,
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe']
@@ -1155,6 +1159,32 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       for (const out of [harness.stdout, plain.stdout]) {
         expect(out).toContain('content OK')
         expect(out).not.toMatch(/screenshot/i)
+      }
+    })
+
+    // Pasted into a fresh shell without step 2, the block has no hash to compare, and an
+    // empty want equals the empty got of a page it could not name.
+    it.skipIf(!RUNS)('exit non-zero when $line holds no expected hash', () => {
+      const noHash: RunbookBlock = {
+        ...pickCapture(captureId),
+        code: `line=$(jq -c 'select(.type == "capture" and .captureId == "${captureId}") | del(.contentHash)' manifest.jsonl)\n`
+      }
+      for (const blocks of [
+        [step5Block(packageDir, CONTENT_BLOCK)],
+        [noHash, step5Block(packageDir, CONTENT_BLOCK)]
+      ]) {
+        const harness = runRunbookBlocks(blocks, { cwd: packageDir })
+        expect(harness.ok, harness.stdout).toBe(false)
+        // Under nounset an unset $line aborts the block before it prints a verdict.
+        if (blocks.length > 1) {
+          expect(harness.stdout).toContain('CONTENT MISMATCH: no expected hash')
+        }
+        for (const shell of ['sh', 'bash'] as const) {
+          const plain = runPlain(blocks, packageDir, shell)
+          expect(plain.status, `${shell}: ${plain.stdout}`).not.toBe(0)
+          expect(plain.stdout).toContain('CONTENT MISMATCH: no expected hash')
+          expect(plain.stdout).not.toContain('content OK')
+        }
       }
     })
 

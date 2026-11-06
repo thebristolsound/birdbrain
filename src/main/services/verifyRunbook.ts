@@ -314,9 +314,13 @@ Trust model before reading it as one.
 # Content:
 failed=0
 id=$(echo "$line" | jq -r '.captureId')
-want=$(echo "$line" | jq -r '.contentHash')
-got=$(sha256sum "${capturePagePath('$id')}" | cut -d' ' -f1)
-[ "$want" = "$got" ] && echo "content OK" || { echo "CONTENT MISMATCH"; failed=1; }
+want=$(echo "$line" | jq -r '.contentHash // empty')
+if [ -z "$want" ]; then
+  echo "CONTENT MISMATCH: no expected hash"; failed=1
+else
+  got=$(sha256sum "${capturePagePath('$id')}" | cut -d' ' -f1)
+  [ "$want" = "$got" ] && echo "content OK" || { echo "CONTENT MISMATCH"; failed=1; }
+fi
 
 # Screenshot (if the entry has screenshotHash; the file is named by that hash):
 shot=$(echo "$line" | jq -r '.screenshotHash // empty')
@@ -342,7 +346,9 @@ fi
 \`\`\`
 
 Each block in this step prints a line for every file it checks, and exits
-non-zero if any of them differs from its signed hash.
+non-zero if any of them differs from its signed hash. The content block also
+exits non-zero when \`$line\` holds no \`contentHash\`, as in a shell where
+${stepRef(2)} did not set it.
 
 An entry with no \`screenshotHash\`, \`transactionRecordHash\` or \`pdfHash\`
 anchors no such file, so there is nothing to check for it, and Birdbrain

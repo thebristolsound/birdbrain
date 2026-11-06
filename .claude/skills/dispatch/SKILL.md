@@ -653,12 +653,15 @@ token so one identity authors every agent PR (ADR-0027). (On the web it is also 
 `docs/agents/github-access.md`.) The implementer pushes its branch — over the git credential
 the checkout carries: the maintainer's SSH login in a local session, the machine account over
 HTTPS on the Actions host (ADR-0026) — and returns the PR
-title, head sha, a path to the PR body it wrote, and the labels it determined are required.
+title, head sha, a path to the PR body it wrote, any screenshot paths, and the labels it
+determined are required.
 **You** open the **draft** PR against `main` and apply the labels via the write path:
 
 - Locally: `agh pr create --draft --base main --head <branch> --title <title> --body-file
-  <path> --label agent-authored --label agent-pr` — **through `agh`, never bare `gh`**, and
-  **apply the labels in the create call, not afterwards.** The `pre-pass-gate` workflow reads
+  <path> --label agent-authored --label agent-pr`, plus `--attach <png>` for each screenshot
+  path the implementer returned (`post-pr-body`, "Screenshots for visual changes"). Run it
+  **through `agh`, never bare `gh`**, and **apply the labels in the create call, not
+  afterwards.** The `pre-pass-gate` workflow reads
   labels on the `opened` event; a PR opened unlabelled seeds `agent/pre-pass=success` and
   would then have to be upgraded to `pending`, which is a write that can race the
   dispatcher's own verdict on the same sha.

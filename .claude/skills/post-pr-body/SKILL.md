@@ -72,29 +72,33 @@ layout, theme and state changes. A change with no visual effect carries none.
    shot from the head under review. Use the same route, window size, theme and seed data, so
    the pair differs only by the change. For the app, the `run-birdbrain` skill's `size` and
    `ss` commands take both.
-2. Upload each PNG with GitHub's file attachment on the pull request: drop or paste it into the
-   description editor, or use its "Paste, drop, or click to add files" control. GitHub returns
-   a `https://github.com/user-attachments/assets/<id>` link. Never commit the images, and never
-   link a local path or another image host.
-3. Put the links in a second `<details>` block inside `## Changes`, after the file groups, one
-   bullet per image:
+2. In the body file, reference each PNG by its local path in a second `<details>` block inside
+   `## Changes`, after the file groups, one bullet per image:
 
    ```markdown
    <details>
    <summary>Screenshots, before and after</summary>
 
-   - Before, capture viewer: ![before](https://github.com/user-attachments/assets/<id>)
-   - After, capture viewer: ![after](https://github.com/user-attachments/assets/<id>)
+   - Before, capture viewer: ![before](/tmp/birdbrain-shots/viewer-before.png)
+   - After, capture viewer: ![after](/tmp/birdbrain-shots/viewer-after.png)
 
    </details>
    ```
 
    A change that touches several screens gives one before and after pair per screen.
+3. Upload them with GitHub's file attachment by passing each path to `--attach` on the command
+   that writes the body (`gh pr create` or `gh pr edit`, GitHub CLI 2.99 or later):
+   `--body-file <file> --attach /tmp/birdbrain-shots/viewer-before.png --attach ...`. GitHub
+   CLI uploads each file and rewrites its local path in the body to a
+   `https://github.com/user-attachments/assets/<id>` link. Write each path exactly as it
+   appears in the body. An attached file the body does not reference is appended to the end
+   of the body, after the attribution line, so attach only files the body names.
 
-The attachment upload has no API, so it needs a browser signed in to GitHub. A session without
-one, a dispatched implementer included, returns the PNG paths with its handoff and names the
-upload as the opener's step. The reviewer treats a visual change with no before and after pair
-as a blocking finding.
+Never commit the images, and never link another image host. Read the body back after the write
+and confirm every image link is a `user-attachments` URL; a local path left in it means the
+upload did not run. A dispatched implementer returns the PNG paths with its handoff, and the
+dispatcher passes them to `--attach`. The reviewer treats a visual change with no before and
+after pair as a blocking finding.
 
 ## How to open a PR
 

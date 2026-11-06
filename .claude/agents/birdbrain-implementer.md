@@ -217,9 +217,10 @@ Evidence-affecting PRs are never merged without human review. Do not weaken that
   `docs/agents/github-access.md` for what does work (`gh api` REST for reads).
 
   So: push the branch, write the complete PR body to a file, and return the branch name, PR
-  title, head sha, body path, and the labels above. The dispatcher opens the draft PR against
-  `main` and applies them. Because you are not the actor who opens or labels it, your body
-  must not claim you did either: name the handoff explicitly, per rule 4 of the evidence gate.
+  title, head sha, body path, any screenshot paths, and the labels above. The dispatcher
+  opens the draft PR against `main` and applies them. Because you are not the actor who opens
+  or labels it, your body must not claim you did either: name the handoff explicitly, per
+  rule 4 of the evidence gate.
 
   **Told explicitly that you are running ad hoc, with no dispatcher above you: open the
   draft PR yourself and apply the labels yourself.** Nothing else is going to, and an
@@ -253,10 +254,10 @@ Evidence-affecting PRs are never merged without human review. Do not weaken that
 
   **A change to anything a user sees needs before and after screenshots.** Take the before
   shot from an `origin/main` build before you edit, and the after shot at head, with the same
-  route, window size, theme and seed data (the `run-birdbrain` skill). The images go into the
-  body through GitHub's file attachment, as the `post-pr-body` skill's "Screenshots for visual
-  changes" states. You have no signed-in browser, so return the PNG paths with the handoff and
-  name the upload as the opener's step.
+  route, window size, theme and seed data (the `run-birdbrain` skill). Reference each PNG by
+  its absolute path in the body, as the `post-pr-body` skill's "Screenshots for visual changes"
+  states, and return the paths with the handoff. The dispatcher uploads them with `--attach`
+  when it opens the PR. When you open the PR yourself, pass them to `--attach` yourself.
 
   Run that skill's `scripts/check.sh` on the body file before handing it over; the hook runs
   it again on `gh pr create`. The Summary is what the dispatcher copies into the squash-merge

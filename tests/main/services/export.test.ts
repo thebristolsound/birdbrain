@@ -2419,6 +2419,49 @@ describe('export', () => {
     expect(html).toContain('I make no statement about')
   })
 
+  it('scopes the signed statement to what the verification run recomputed (#1107)', async () => {
+    await ingest(caseId, '<html>signed scope</html>')
+    const statementOf = async (auditTrail: boolean): Promise<string> => {
+      const outputPath = join(tempDir, `statement-${auditTrail}.html`)
+      await generateReport(
+        caseId,
+        {
+          format: 'html',
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail,
+            notes: false,
+            annotations: 'none'
+          },
+          exportClass: 'evidence',
+          outputPath
+        },
+        captureLifecycle
+      )
+      const [, section] = readFileSync(outputPath, 'utf-8').match(
+        /<h2>Operator statement<\/h2>([\s\S]*?)<\/section>/
+      )!
+      return section.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ')
+    }
+
+    // The cover's trusted-time tally is read from a manifest snapshot taken after
+    // the run, so the sentence the operator signs must not claim it.
+    const verified = await statementOf(true)
+    expect(verified).toContain(
+      'the digests and integrity results reproduced here are those produced by the tool at the ' +
+        'verification run recorded under “Chain of custody”.'
+    )
+    expect(verified).not.toMatch(/counts|trusted/i)
+
+    expect(await statementOf(false)).toContain(
+      'I have not altered the captures, the manifest or the packaged artefacts. No verification ' +
+        'was run for this export, so the digests reproduced here are those recorded for each ' +
+        'capture rather than values recomputed from the stored bytes at the time of export, and ' +
+        'I make no statement about whether the stored bytes still match them.'
+    )
+  })
+
   it('qualifies the attestation statement rather than claiming it for every capture', async () => {
     await ingest(caseId, '<html>scope</html>')
     const outputPath = join(tempDir, 'scope.html')

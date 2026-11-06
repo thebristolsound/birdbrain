@@ -50,7 +50,7 @@ Windows and macOS were not run. Branded Chrome and Microsoft Edge are not instal
 The suite is `tests/main/services/launchedBrowser/captureKnownAnswer.test.ts`. It runs the pinned
 build by default; `BIRDBRAIN_SUITE_BROWSER` and `BIRDBRAIN_SUITE_BROWSER_FAMILY` run it against
 an installed browser. Every Capture goes through the real Capture Lifecycle into a Case. All 17
-items passed on each of the three pairings.
+tests, covering the 22 items below, passed on each of the three pairings.
 
 | Item | Expected | Observed on all three pairings |
 | --- | --- | --- |
@@ -77,8 +77,8 @@ items passed on each of the three pairings.
 | Abandoned Capture | A page that loads another during the artifact commands stores nothing and reports a failed event | As expected |
 | Package Verification | An exported package verifies in the app and under the standalone verifier, and a changed byte in its Transaction Record fails both | As expected |
 
-Four items were added after review, and ran on the pinned Chrome for Testing build only. All 21
-items passed there; Chromium and Brave Origin were not rerun. The live suite's sink now passes the
+Four items were added after review, each its own test, and ran on the pinned Chrome for Testing
+build only. All 21 tests passed there; Chromium and Brave Origin were not rerun. The live suite's sink now passes the
 committed URL to the exclusion check along with the address at the cut, which unit tests cover.
 
 | Item | Expected | Observed on Chrome for Testing 149 |

@@ -161,14 +161,23 @@ test.describe('Captures three-column layout', () => {
     const title = page.getByTestId('capture-viewer-title')
     const seen = { shortened: false, hidden: false }
     for (let step = 0; step < 14; step++) {
-      const { shown, width, cut } = await title.evaluate((el) => ({
-        shown: getComputedStyle(el).display !== 'none',
-        width: el.getBoundingClientRect().width,
-        cut: el.scrollWidth > el.clientWidth
-      }))
+      const { shown, width, cut, textOverflow, whiteSpace } = await title.evaluate((el) => {
+        const { display, textOverflow, whiteSpace } = getComputedStyle(el)
+        return {
+          shown: display !== 'none',
+          width: el.getBoundingClientRect().width,
+          cut: el.scrollWidth > el.clientWidth,
+          textOverflow,
+          whiteSpace
+        }
+      })
       if (shown) {
         expect(width).toBeGreaterThanOrEqual(64)
-        if (cut) seen.shortened = true
+        if (cut) {
+          expect(textOverflow).toBe('ellipsis')
+          expect(whiteSpace).toBe('nowrap')
+          seen.shortened = true
+        }
       } else {
         seen.hidden = true
       }

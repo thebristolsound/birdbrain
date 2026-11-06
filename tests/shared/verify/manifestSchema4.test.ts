@@ -1874,6 +1874,22 @@ describe('verifySharedCase — a Case forked from a replica', () => {
     expect(out).toContain(`head MISMATCH: ${MEMBER_ID} #1`)
   })
 
+  // A loop that kept only its last head's result would pass the one-head case above.
+  it.skipIf(!HAS_JQ)('fails when the head read first was edited and a later one matches', () => {
+    const { member, reshared, ownerHead, third } = resharedFixture()
+    const edited = member.jsonl.replace(member.hashes[1], 'f'.repeat(64))
+    const out = runbookOver(
+      {
+        'manifest.jsonl': third.jsonl,
+        [memberChainPath(MEMBER_ID)]: reshared.jsonl,
+        [lineageChainPath(CASE_ID, MEMBER_ID)]: edited
+      },
+      { fails: true }
+    )
+    const heads = out.split('\n').filter((l) => l.startsWith('head '))
+    expect(heads).toEqual([`head MISMATCH: ${MEMBER_ID} #1`, `head OK: ${MEMBER_ID} #${ownerHead}`])
+  })
+
   it('reads the lineage directory by the Package Layout’s names only', () => {
     expect(parseChainPath(memberChainPath(MEMBER_ID))).toEqual({ installationId: MEMBER_ID })
     expect(parseChainPath(lineageChainPath(CASE_ID, MEMBER_ID))).toEqual({

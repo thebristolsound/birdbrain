@@ -21,6 +21,7 @@
   "src/renderer/components/onboarding/useTourEngine.ts",
   "src/renderer/components/selectors/useForegroundMatchPreview.ts",
   "src/renderer/components/settings/DiagnosticsPanel.tsx",
+  "src/renderer/components/settings/NetworkConfig.tsx",
   "src/renderer/components/settings/SettingsView.tsx",
   "src/renderer/components/signals/BulkImportDrawer.tsx",
   "src/renderer/components/signals/SignalDetailRail.tsx",

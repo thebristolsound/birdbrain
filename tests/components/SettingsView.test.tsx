@@ -66,7 +66,7 @@ describe('SettingsView on the Egress section', () => {
     })
   })
 
-  it('opens the Operator tab and focuses the chosen Egress, then reports it shown', async () => {
+  it('opens the Network tab and focuses the chosen Egress, then reports it shown', async () => {
     const onSectionShown = vi.fn()
     renderView({ section: 'egress', onSectionShown })
     const group = await screen.findByRole('radiogroup', { name: 'Egress' })
@@ -82,13 +82,14 @@ describe('SettingsView on the Egress section', () => {
     const name = await screen.findByLabelText(/Operator Name/)
     await waitFor(() => expect(document.activeElement).toBe(name))
     expect(screen.getByRole('tab', { name: 'Operator', selected: true })).toBeDefined()
+    expect(screen.queryByRole('radiogroup', { name: 'Egress' })).toBeNull()
     expect(onSectionShown).toHaveBeenCalledOnce()
   })
 
-  it('switches to the Operator tab when the section is asked for after it opened', async () => {
+  it('switches to the tab of a section asked for after it opened', async () => {
     const view = renderView()
     expect(await screen.findByRole('tab', { name: 'Capture', selected: true })).toBeDefined()
     view.rerender(<SettingsView section="egress" />)
-    expect(await screen.findByRole('tab', { name: 'Operator', selected: true })).toBeDefined()
+    expect(await screen.findByRole('tab', { name: 'Network', selected: true })).toBeDefined()
   })
 })

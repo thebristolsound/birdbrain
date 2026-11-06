@@ -6,6 +6,7 @@ import { CapturePreferences } from '@renderer/components/settings/CapturePrefere
 import { StorageConfig } from '@renderer/components/settings/StorageConfig'
 import { AppearanceConfig } from '@renderer/components/settings/AppearanceConfig'
 import { OperatorConfig } from '@renderer/components/settings/OperatorConfig'
+import { NetworkConfig } from '@renderer/components/settings/NetworkConfig'
 import { PersonasSection } from '@renderer/components/settings/PersonasSection'
 import { UpdatesConfig } from '@renderer/components/settings/UpdatesConfig'
 import { About } from '@renderer/components/settings/About'
@@ -16,6 +17,7 @@ import {
   Palette,
   Info,
   UserCircle,
+  Network,
   Users,
   Database,
   RefreshCw,
@@ -29,6 +31,7 @@ type SettingsTab =
   | 'storage'
   | 'appearance'
   | 'operator'
+  | 'network'
   | 'personas'
   | 'database'
   | 'updates'
@@ -40,6 +43,7 @@ const settingsTabs: { id: SettingsTab; label: string; icon: typeof Camera }[] = 
   { id: 'storage', label: 'Storage', icon: HardDrive },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'operator', label: 'Operator', icon: UserCircle },
+  { id: 'network', label: 'Network', icon: Network },
   { id: 'personas', label: 'Personas', icon: Users },
   { id: 'database', label: 'Database', icon: Database },
   { id: 'updates', label: 'Updates', icon: RefreshCw },
@@ -47,8 +51,13 @@ const settingsTabs: { id: SettingsTab; label: string; icon: typeof Camera }[] = 
   { id: 'about', label: 'About', icon: Info }
 ]
 
-// Where a link into Settings lands: both sections sit on the Operator tab.
+// Where a link into Settings lands, and the tab each section sits on.
 export type SettingsSection = 'egress' | 'operator'
+
+const SECTION_TABS: Record<SettingsSection, SettingsTab> = {
+  egress: 'network',
+  operator: 'operator'
+}
 
 // What each section focuses once its tab is open; focusing also scrolls it into view.
 const SECTION_TARGETS: Record<SettingsSection, string> = {
@@ -66,20 +75,22 @@ interface SettingsViewProps {
 export function SettingsView({ section, onSectionShown }: SettingsViewProps = {}) {
   const { data: settings } = useQuery(settingsQueryOptions)
   const { update } = useSettingsMutations()
-  const [activeTab, setActiveTab] = useState<SettingsTab>(section ? 'operator' : 'capture')
+  const [activeTab, setActiveTab] = useState<SettingsTab>(
+    section ? SECTION_TABS[section] : 'capture'
+  )
   // A section asked for while the view is already open, as from the VPN warning over
   // Settings, moves the tab during render rather than in an effect a frame later.
   const [askedSection, setAskedSection] = useState(section)
   if (section !== askedSection) {
     setAskedSection(section)
-    if (section) setActiveTab('operator')
+    if (section) setActiveTab(SECTION_TABS[section])
   }
 
   useEffect(() => {
     update.mutate({ lastActiveSection: 'settings' })
   }, [])
 
-  // Opened on a section: its field sits in the Operator tab, which can render a frame after
+  // Opened on a section: its field sits in a tab that can render a frame after
   // the tab, so it is looked for again each frame, for up to 30 frames.
   useEffect(() => {
     if (!section || !settings) return
@@ -138,6 +149,9 @@ export function SettingsView({ section, onSectionShown }: SettingsViewProps = {}
         </TabsContent>
         <TabsContent value="operator" className="mt-0">
           <OperatorConfig />
+        </TabsContent>
+        <TabsContent value="network" className="mt-0">
+          <NetworkConfig />
         </TabsContent>
         <TabsContent value="personas" className="mt-0">
           <PersonasSection />

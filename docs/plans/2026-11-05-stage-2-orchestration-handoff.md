@@ -31,15 +31,15 @@ started it and apart from the fifteen rulings:
 | --- | --- | --- |
 | 1 | Rulings docs PR, rulings posted on their issues, ruling 9 labels | done: #2066 |
 | 2 | Schema 7 beta release | done: v1.0.1-beta.26 (#2067) |
-| 3 | #1832, taken over from its build thread | #2068, review round 3 |
-| 4 | #1831 follow-up part A: five Change verdicts outside #2068's files | #2069 approved; merge waits on the maintainer's answer on the Capture Session button |
-| 4b | #1831 follow-up part B: the start dialog and panel verdicts, the empty Egress label | waits on #2068 merging |
-| 4c | #1831 hand checks (ruling 13), then the CI job PR (ruling 14) | Windows half done (Edge refused, #2070); P17 and the pop-out wait on #2068 |
-| 5 | Duplicate rows (ruling 4 and the browser fields #2068 found) and received Persona rows (ruling 5) | after #1832 on `captureLifecycle.ts`, before #600 |
+| 3 | #1832, taken over from its build thread | done: #2068 (4ef1e05b); #1832 reopened for four maintainer questions |
+| 4 | #1831 follow-up part A: five Change verdicts outside #2068's files | done: #2069 (c2d8b395), follow-up #2077 |
+| 4b | #1831 follow-up part B: the start dialog and panel verdicts, the empty Egress label | waits on #2087 (the Network tab move), which changes the same proxy link and VPN warning spec |
+| 4c | #1831 hand checks (ruling 13), then the CI job PR (ruling 14) | Windows half done (Edge refused, #2070); P17 and the pop-out wait on an unlocked desktop |
+| 5 | Duplicate rows (ruling 4 and the browser fields #2068 found) and received Persona rows (ruling 5) | next: no issue yet; holds `captureLifecycle.ts` before #600 |
 | 6 | #1833 (rulings 6 and 7) | waits on the release and slice 5 |
 | 7 | #1499 (ruling 8), then #1501 | waits on the release and slice 5 |
 | 8 | #1824 remainder (ruling 10) | not started |
-| 9 | #600 with #599 | waits on #1832 merging |
+| 9 | #600 with #599 | ready-for-agent since 2026-11-06 (ruling 9); waits on slice 5 for `captureLifecycle.ts` |
 | 10 | #543 draft, #546, tester guide issue, close #1498 | not started |
 | 11 | #1828 (ruling 15) | done: #2072, follow-up #2071 |
 | 12 | Close-out under roadmap rules 2 and 4 | last |
@@ -92,6 +92,17 @@ started it and apart from the fifteen rulings:
 - **#2068.** Fix round 2 at 849272b3 answered both round 2 reports; round 3 reviews are running.
 - **Next command.** Read #2068's round 3 reviews; after the maintainer's answer, merge #2069 with
   `.claude/skills/merge-pr/scripts/merge.sh 2069 --admin`.
+
+### 2026-11-06
+
+- **Shipped.** #2068 merged as 4ef1e05b at the maintainer's approval. #1832 was reopened for the
+  four questions #2068 left open (text bodies, a hidden tab, zero pinning counts, the duplicate
+  window). #2077 merged. The dispatcher's #2079 closed #1453.
+- **Labels.** #600 and #599 moved from ready-for-human to ready-for-agent under ruling 9.
+- **Overlap.** #2087 moves the Egress setting to a Network tab and repoints the no-VPN warning's
+  "Set up a proxy" link, so part B (slice 4b) waits for it.
+- **Next command.** Brief and start slice 5 (Duplicate and received Persona rows) in its own
+  worktree.
 
 ## Open questions
 

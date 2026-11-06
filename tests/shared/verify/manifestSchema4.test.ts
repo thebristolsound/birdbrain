@@ -1805,14 +1805,20 @@ describe('verifySharedCase — a Case forked from a replica', () => {
       )
       expect(blocks).toHaveLength(2)
       const run = runRunbookBlocks(blocks, { cwd: dir })
-      const plain = spawnSync('sh', ['-c', blocks.map((b) => b.code).join('\n')], { cwd: dir })
+      // One plain shell per block, so each status is that block's own.
+      const [roster, heads] = blocks.map((b) =>
+        spawnSync('sh', ['-c', b.code], { cwd: dir, encoding: 'utf-8' })
+      )
+      for (const plain of [roster, heads]) expect(plain.error).toBeUndefined()
+      expect(roster.status, roster.stderr).toBe(0)
       if (fails) {
         // The second block is the head check; the roster above it still passes.
         expect(run.failedBlock).toBe(`block ${blocks[1].ordinal} (${blocks[1].section})`)
-        expect(plain.status).not.toBe(0)
+        expect(heads.status).toBeGreaterThan(0)
+        expect(heads.stdout).toContain('head MISMATCH')
       } else {
         expect([run.failedBlock, run.stderr]).toEqual([null, ''])
-        expect(plain.status).toBe(0)
+        expect(heads.status, heads.stderr).toBe(0)
       }
       return run.stdout
     } finally {

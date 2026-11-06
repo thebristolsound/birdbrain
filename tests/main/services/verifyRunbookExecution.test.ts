@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, vi } from 'vitest'
+import { execFileSync } from 'child_process'
 import { createHash, createSign, generateKeyPairSync } from 'crypto'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
@@ -30,7 +31,11 @@ import { PACKAGE_ROOT_FILES } from '../../../src/packages/evidence-package-layou
 import { HAS_OPENSSL } from '../../helpers/openssl'
 import { HAS_JQ, jqIsRequired } from '../../helpers/jq'
 import { createLocalTsa, type LocalTsa } from '../../helpers/localTsa'
-import { extractRunbookBlocks, runRunbookBlocks } from '../../helpers/runbookBlocks'
+import {
+  extractRunbookBlocks,
+  runRunbookBlocks,
+  type RunbookBlock
+} from '../../helpers/runbookBlocks'
 import { runVerifyScript } from '../../helpers/verifyScript'
 import {
   checkConformance,
@@ -50,7 +55,11 @@ import {
   ENGINE_INVENTORY,
   ENGINE_SCROLL_TO_LOAD
 } from '../../helpers/captureEnginePackage'
-import { pdfPath, transactionRecordPath } from '../../../src/packages/evidence-package-layout/index'
+import {
+  pdfPath,
+  screenshotPath,
+  transactionRecordPath
+} from '../../../src/packages/evidence-package-layout/index'
 import { CaptureInventorySchema, ScrollToLoadRecordSchema } from '@shared/schemas'
 
 // 60 s, not the 15 s in vitest.config.ts: this suite crosses 15 s when several agent
@@ -153,6 +162,48 @@ function bindingsFor(dir: string, entries: Map<string, Buffer>): Array<Record<st
     bindings.push({ '<contentHash>': entry.captureContentHash, '<token>': token })
   }
   return bindings
+}
+
+// Text that picks out each step 5 block of the shipped runbook, and only it.
+const CONTENT_BLOCK = '.screenshotHash'
+const EXHIBIT_BLOCK = `select(.type == "exhibit")'`
+const DERIVED_BLOCK = `select(.type == "derivation")'`
+
+/** The step 5 block of the runbook `dir` encloses that carries `marker`. */
+function step5Block(dir: string, marker: string): RunbookBlock {
+  const runbook = readFileSync(join(dir, PACKAGE_ROOT_FILES.verifyRunbook), 'utf-8')
+  const matches = extractRunbookBlocks(runbook).filter(
+    ({ section, code }) => section.startsWith('Step 5') && code.includes(marker)
+  )
+  expect(matches, marker).toHaveLength(1)
+  return matches[0]
+}
+
+/** Sets `$line` to one capture's entry, as the runbook's step 2 sets it to the first line. */
+const pickCapture = (id: string): RunbookBlock => ({
+  section: 'test setup',
+  ordinal: 0,
+  code: `line=$(jq -c 'select(.type == "capture" and .captureId == "${id}")' manifest.jsonl)\n`,
+  placeholders: []
+})
+
+/**
+ * Runs blocks under plain `sh` with no errexit and no pipefail, the shell a reader
+ * pastes into, so the status is the block's own and not the harness's options.
+ */
+function runPlain(blocks: RunbookBlock[], cwd: string): { status: number; stdout: string } {
+  const code = blocks.map((block) => block.code).join('\n')
+  try {
+    const stdout = execFileSync('sh', ['-c', code], {
+      cwd,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    return { status: 0, stdout }
+  } catch (error) {
+    const spawned = error as { status?: number; stdout?: string }
+    return { status: spawned.status ?? 1, stdout: spawned.stdout ?? '' }
+  }
 }
 
 describe('the shipped runbook and verify.sh, executed against a real evidence package', () => {
@@ -1022,6 +1073,91 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     }
   })
 
+  // #1453: each of these blocks once printed its MISMATCH line and exited 0, so
+  // only verify.sh could fail the package. Each case runs the runbook's own
+  // block, under the harness and under a plain shell, which has no pipefail to
+  // carry a failure out of a loop.
+  describe("the runbook's step 5 blocks on a tampered package", () => {
+    const screenshotOf = (dir: string): string => {
+      const capture = readFileSync(join(dir, 'manifest.jsonl'), 'utf-8')
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as { type: string; screenshotHash?: string })
+        .find((line) => line.type === 'capture')!
+      return screenshotPath(capture.screenshotHash!)
+    }
+
+    const TAMPERED = [
+      {
+        name: 'a substituted page',
+        marker: CONTENT_BLOCK,
+        path: () => join('pages', `${captureId}.mhtml`),
+        mismatch: () => 'CONTENT MISMATCH',
+        // The block goes on to the screenshot after the page fails.
+        alsoSays: () => 'screenshot OK'
+      },
+      {
+        name: 'a changed screenshot',
+        marker: CONTENT_BLOCK,
+        path: () => screenshotOf(packageDir),
+        mismatch: () => 'SCREENSHOT MISMATCH',
+        alsoSays: () => 'content OK'
+      },
+      {
+        name: 'a substituted exhibit',
+        marker: EXHIBIT_BLOCK,
+        path: () => join('attachments', `${exhibitId}.zip`),
+        mismatch: () => `EXHIBIT ${exhibitNumber} MISMATCH`
+      },
+      {
+        name: 'a substituted derived file',
+        marker: DERIVED_BLOCK,
+        path: () => `pages/${captureId}_thumb.jpg`,
+        mismatch: () => `DERIVED FILE MISMATCH: pages/${captureId}_thumb.jpg`
+      }
+    ]
+
+    it.skipIf(!RUNS)('pass the good package under a plain shell', () => {
+      const result = runPlain(
+        [
+          pickCapture(captureId),
+          ...[CONTENT_BLOCK, EXHIBIT_BLOCK, DERIVED_BLOCK].map((m) => step5Block(packageDir, m))
+        ],
+        packageDir
+      )
+      expect(result.status, result.stdout).toBe(0)
+      for (const text of [
+        'content OK',
+        'screenshot OK',
+        `exhibit ${exhibitNumber} OK`,
+        `derived pages/${captureId}_thumb.jpg OK`
+      ]) {
+        expect(result.stdout).toContain(text)
+      }
+    })
+
+    for (const row of TAMPERED) {
+      it.skipIf(!RUNS)(`exit non-zero on ${row.name}`, () => {
+        const dir = corruptedCopy(`runbook-${row.name.replace(/\W/g, '-')}`)
+        const path = join(dir, row.path())
+        const bytes = readFileSync(path)
+        bytes[0] ^= 0xff
+        writeFileSync(path, bytes)
+        const blocks = [pickCapture(captureId), step5Block(dir, row.marker)]
+
+        const harness = runRunbookBlocks(blocks, { cwd: dir })
+        expect(harness.ok, harness.stdout).toBe(false)
+        expect(harness.failedBlock).toMatch(/\(Step 5/)
+        expect(harness.stdout).toContain(row.mismatch())
+
+        const plain = runPlain(blocks, dir)
+        expect(plain.status, plain.stdout).not.toBe(0)
+        expect(plain.stdout).toContain(row.mismatch())
+        if (row.alsoSays) expect(plain.stdout).toContain(row.alsoSays())
+      })
+    }
+  })
+
   // Step 4 of docs/plans/2026-10-10-capture-engine-first-slice.md: the two
   // verifiers agree on each file present, absent, changed and missing, in a
   // package the export path wrote from a Capture built by hand. A changed or
@@ -1136,23 +1272,36 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
 
     it.skipIf(!RUNS)("runs the runbook's step 5 commands over both files", async () => {
       const dir = await engineExport('engine-runbook')
-      const runbook = readFileSync(join(dir, PACKAGE_ROOT_FILES.verifyRunbook), 'utf-8')
-      const step5 = extractRunbookBlocks(runbook).find(
-        ({ section, code }) => section.startsWith('Step 5') && code.includes('.pdfHash')
-      )!
-      const pickEntry = {
-        section: 'test setup',
-        ordinal: 0,
-        code: `line=$(jq -c 'select(.type == "capture" and .captureId == "${ENGINE_ID}")' manifest.jsonl)\n`,
-        placeholders: []
-      }
-      const result = runRunbookBlocks([pickEntry, step5], { cwd: dir })
+      const step5 = step5Block(dir, CONTENT_BLOCK)
+      const result = runRunbookBlocks([pickCapture(ENGINE_ID), step5], { cwd: dir })
       expect(result.ok, `${result.stdout}\n${result.stderr}`).toBe(true)
       expect(result.stdout).toContain('content OK')
-      for (const { path } of FILES) {
-        expect(result.stdout).toContain(`${sha256(readFileSync(join(dir, path)))}  ${path}`)
-      }
+      for (const { check } of FILES) expect(result.stdout).toContain(`${check} OK`)
+      expect(runPlain([pickCapture(ENGINE_ID), step5], dir).status).toBe(0)
     })
+
+    // #1453: these lines once printed a hash beside a "must equal" comment and
+    // compared nothing, so the block passed whatever the file held.
+    for (const { label, check, path } of FILES) {
+      it.skipIf(!RUNS)(`fails the runbook's step 5 block on a changed ${label}`, async () => {
+        const dir = await engineExport(`engine-runbook-${check.replace(/\W/g, '-')}`)
+        const bytes = readFileSync(join(dir, path))
+        bytes[0] ^= 0xff
+        writeFileSync(join(dir, path), bytes)
+        const step5 = step5Block(dir, CONTENT_BLOCK)
+        const mismatch = `${check.toUpperCase()} MISMATCH`
+
+        const result = runRunbookBlocks([pickCapture(ENGINE_ID), step5], { cwd: dir })
+        expect(result.ok, result.stdout).toBe(false)
+        expect(result.failedBlock).toMatch(/\(Step 5/)
+        expect(result.stdout).toContain(mismatch)
+        expect(result.stdout).toContain('content OK')
+
+        const plain = runPlain([pickCapture(ENGINE_ID), step5], dir)
+        expect(plain.status, plain.stdout).not.toBe(0)
+        expect(plain.stdout).toContain(mismatch)
+      })
+    }
 
     // Step 10: a PDF the ingest stored, as a background Recapture hands it over, exported
     // through the real export path.

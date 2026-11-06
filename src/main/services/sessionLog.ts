@@ -168,7 +168,7 @@ export function markCleanExit(logDir: string): void {
   try {
     rmSync(lockPath(logDir), { force: true })
   } catch {
-    // A lock we cannot remove makes the next launch report a false crash —
+    // A lock we cannot remove makes the next launch record a false unclean exit —
     // annoying, but not a reason to throw out of before-quit and block exit.
   }
 }
@@ -189,9 +189,7 @@ export function markCrashed(logDir: string): void {
 export function takeUncleanSession(logDir: string): SessionRecord | null {
   const records = readSessions(logDir)
   const unclean = records
-    .filter(
-      (r) => !r.cleanExit && r.crashed && !r.acknowledged && r.sessionId !== currentSessionId
-    )
+    .filter((r) => !r.cleanExit && r.crashed && !r.acknowledged && r.sessionId !== currentSessionId)
     .pop()
   if (!unclean) return null
 

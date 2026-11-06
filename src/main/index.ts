@@ -4,6 +4,7 @@ import {
   app,
   BrowserWindow,
   dialog,
+  globalShortcut,
   safeStorage,
   shell,
   session as electronSession,
@@ -27,6 +28,8 @@ import {
   stopExtensionConnectionCheck
 } from '@main/services/captureServer'
 import { registerIpcHandlers } from '@main/ipcHandlers'
+import { resolveToolVersion } from '@main/services/toolVersion'
+import { getCapture } from '@main/services/db/captureRepo'
 import { resolveWindowSize, MIN_WINDOW_SIZE } from '@main/windowSize'
 import { CAPTURE_SERVER_PORT_OVERRIDE, resolveCaptureServerPort } from '@main/captureServerPort'
 import { revealWhenReady } from '@main/windowReveal'
@@ -746,17 +749,6 @@ if (!gotSingleInstanceLock) {
         onSessionEnded: () => launchedBrowserService?.sessionEnded()
       })
 
-      // One launched browser at a time, inside a Capture Session (#1831).
-      launchedBrowserService = createLaunchedBrowserService({
-        session: sessionService,
-        sessionDataPath: app.getPath('sessionData'),
-        emitStatus: (status) => {
-          sendToAppWindows(IPC_CHANNELS.LAUNCHED_BROWSER_STATUS_CHANGED, status)
-          // The panel pops out to sit beside the browser, so it docks once the browser has gone.
-          if (status.state !== 'open' && status.state !== 'closing') dockPopOut()
-        }
-      })
-
       // The Capture Lifecycle admits every extension route into a case, so it
       // holds the session (Active Case, capture count) and broadcasts capture
       // activity to the (lazily created) main window the way the recapture
@@ -781,6 +773,30 @@ if (!gotSingleInstanceLock) {
       // Put back or purge the files of any capture delete a crash interrupted
       // (#1786). Not awaited: a delete that runs first recovers its own Case.
       void captureLifecycle.recoverPendingDeletes()
+
+      // One launched browser at a time, inside a Capture Session (#1831). Its clicked Captures
+      // go through the Capture Lifecycle's launched route (#1832).
+      launchedBrowserService = createLaunchedBrowserService({
+        session: sessionService,
+        sessionDataPath: app.getPath('sessionData'),
+        emitStatus: (status) => {
+          sendToAppWindows(IPC_CHANNELS.LAUNCHED_BROWSER_STATUS_CHANGED, status)
+          // The panel pops out to sit beside the browser, so it docks once the browser has gone.
+          if (status.state !== 'open' && status.state !== 'closing') dockPopOut()
+        },
+        captures: {
+          sink: captureLifecycle,
+          birdbrainVersion: resolveToolVersion(),
+          citationOf: (captureId, exhibitNumber) =>
+            getCapture(captureId)?.exhibitCitation ??
+            (exhibitNumber !== undefined ? String(exhibitNumber) : '')
+        },
+        shortcut: {
+          register: (accelerator, onPress) => globalShortcut.register(accelerator, onPress),
+          unregister: (accelerator) => globalShortcut.unregister(accelerator)
+        },
+        emitPickTab: () => sendToAppWindows(IPC_CHANNELS.LAUNCHED_BROWSER_PICK_TAB, null)
+      })
 
       // Background recapture queue (#recapture). Renders pages in a hidden window
       // and reuses the capture pipeline's observability events.

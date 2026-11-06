@@ -48,6 +48,14 @@ export function busyRefusal(status: LaunchedBrowserStatus | undefined): LaunchRe
   return { state: 4, title: BUSY_TITLES[status.state], detail: ONE_AT_A_TIME }
 }
 
+// Before a launch, on a platform where main offers none. Main's message says why.
+export function unavailableRefusal(
+  status: LaunchedBrowserStatus | undefined
+): LaunchRefusal | null {
+  if (status?.state !== 'none' || !status.launchUnavailable) return null
+  return { title: 'Launch not available', detail: status.launchUnavailable }
+}
+
 export const UNREADABLE_EGRESS_REFUSAL: LaunchRefusal = {
   title: 'Birdbrain could not read the Egress setting',
   detail: 'The browser was not started. Choose an Egress in Settings → Operator.'

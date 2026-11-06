@@ -768,3 +768,15 @@ describe('the test reader', () => {
     )
   })
 })
+
+describe('writeTransactionRecord extra warcinfo fields (#1832)', () => {
+  it('writes each extra field after the standard ones, and none in place of one', async () => {
+    const { records } = await writeAndRead([], {
+      warcinfo: { transport: 'pipe', software: 'not Birdbrain' }
+    })
+    const info = records[0].block.toString('utf8')
+    expect(info).toMatch(/^transport: pipe\r?$/m)
+    expect(info).not.toContain('not Birdbrain')
+    expect(info.indexOf('transport:')).toBeGreaterThan(info.indexOf('http-message-lines:'))
+  })
+})

@@ -107,6 +107,36 @@ prove and what they do not.
   MiB, printing fails or runs out of time, or the page navigates again after it is saved, even to
   the same address, Birdbrain still saves the capture, and its entry says the PDF is missing. The
   capture keeps the address and title of the page it saved.
+- In a browser you start from a Case with **Launch browser**, capture a tab with **Capture** in
+  the Capture Session panel, which names the tab's title and address before you click, or with
+  the shortcut Ctrl+Shift+F9 while the browser has focus. When the shortcut finds more than one
+  tab in front, or none, Birdbrain asks which tab to capture. Your desktop may not pass the
+  shortcut to Birdbrain; the **Capture** button works either way. The launched browser and its
+  captures are not available on macOS yet.
+- A capture in the launched browser saves the MHTML, a full-page screenshot at the width of the
+  browser window, the page text, a Transaction Record, and a PDF, printed last. Birdbrain draws
+  nothing into the page. Its signed entry names the browser product, version, and family, and the
+  Egress while it is not Direct. Scroll to load is off unless you turn it on for that capture, and
+  it scrolls the page you are looking at. When the shortcut captures the tab in front without
+  asking, it does not scroll the page, even with Scroll to load turned on.
+- Birdbrain records each tab of the launched browser from before its first request, with the
+  browser's HTTP cache turned off for the whole Capture Session, so no request is answered from
+  that cache. The panel marks a tab "not from first request" when recording missed the start of
+  its page, and "from first request" otherwise. Three kinds of page get no Transaction Record,
+  and the signed entry says why: a page that began loading before recording started, the first
+  page of a tab you opened with Ctrl-click or a middle click, and a page that **Back** or
+  **Forward** restored from the browser's memory without loading it again.
+- The launched browser's Transaction Record holds no request body, so a password a sign-in form
+  sends in its body is not in it; the signed entry counts the bodies it left out. The values of
+  the `Cookie`, `Set-Cookie`, `Authorization`, and `Proxy-Authorization` headers are replaced
+  before Birdbrain holds them. The record keeps each request's address, so a search sent in the
+  address, and a token in an address or in any other header, stays in it. A response body the browser returns as text,
+  such as an HTML page or a script, is left out of this record and counted with the bodies it
+  omitted.
+- If a new page loads in the tab while Birdbrain is capturing it, Birdbrain abandons the capture,
+  stores nothing, and says so in the panel and in the capture activity feed. A tab in a private
+  window, or at an address that is not `http` or `https`, cannot be captured, and the panel says
+  why.
 - Recapture one page or a selection. The new capture links to the earlier one, which stays in
   the case.
 - Exclude URLs by substring, wildcard, or regular expression. Exclusions apply to all cases or

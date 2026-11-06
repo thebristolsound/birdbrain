@@ -64,6 +64,12 @@ interface AppState {
   // The confirmation before a Capture Session with a launched browser open stops (`1i`), opened
   // from the panel's Stop… and from the Capture Session switch.
   stopConfirmOpen: boolean
+  // Clicked Captures (#1832): the tab the Operator picked as the capture target, whether the next
+  // Capture runs Scroll-to-load (off by default, per Capture), and the tab picker the shortcut
+  // and Choose tab… open.
+  captureTargetId: string | null
+  scrollToLoadNext: boolean
+  tabPickerOpen: boolean
   // The notice of how the last launched browser closed that the Operator dismissed. Main keeps
   // its notice until the next launch.
   dismissedLaunchNotice: LaunchedBrowserNotice | null
@@ -110,6 +116,9 @@ interface AppState {
   openStartDialog: (caseId: string) => void
   closeStartDialog: () => void
   setStopConfirmOpen: (open: boolean) => void
+  setCaptureTargetId: (targetId: string | null) => void
+  setScrollToLoadNext: (on: boolean) => void
+  setTabPickerOpen: (open: boolean) => void
   dismissLaunchNotice: (notice: LaunchedBrowserNotice) => void
   setShareMarkOpen: (open: boolean) => void
   setTourRunning: (running: boolean) => void
@@ -185,6 +194,9 @@ export const useAppStore = create<AppState>((set) => ({
   commandPaletteOpen: false,
   startDialogCaseId: null,
   stopConfirmOpen: false,
+  captureTargetId: null,
+  scrollToLoadNext: false,
+  tabPickerOpen: false,
   dismissedLaunchNotice: null,
   shareMarkOpen: false,
   tourRunning: false,
@@ -205,6 +217,9 @@ export const useAppStore = create<AppState>((set) => ({
   openStartDialog: (caseId) => set({ startDialogCaseId: caseId }),
   closeStartDialog: () => set({ startDialogCaseId: null }),
   setStopConfirmOpen: (open) => set({ stopConfirmOpen: open }),
+  setCaptureTargetId: (targetId) => set({ captureTargetId: targetId }),
+  setScrollToLoadNext: (on) => set({ scrollToLoadNext: on }),
+  setTabPickerOpen: (open) => set({ tabPickerOpen: open }),
   dismissLaunchNotice: (notice) => set({ dismissedLaunchNotice: notice }),
   setShareMarkOpen: (open) => set({ shareMarkOpen: open }),
   setTourRunning: (running) => set({ tourRunning: running }),

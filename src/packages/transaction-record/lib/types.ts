@@ -278,6 +278,12 @@ export interface WriterInput {
   egress: 'direct' | EgressKind
   /** The `warcinfo` record's `WARC-Date`, as ISO 8601. */
   date: string
+  /**
+   * More `warcinfo` fields, written after the standard ones, which they cannot replace. A launched
+   * browser names its transport, the disabled HTTP cache, the withheld request bodies and the
+   * tab's opener here (stage-2 spec, :577-581 and :898).
+   */
+  warcinfo?: Readonly<Record<string, string>>
 }
 
 export interface WrittenTransactionRecord {

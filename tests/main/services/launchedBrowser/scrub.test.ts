@@ -145,6 +145,17 @@ describe('scrubNetworkEvent', () => {
     expect(bodyWithheld).toBe(false)
   })
 
+  // What the user guide says stays: a search sent in the address, and a token in an address or in
+  // a header outside the four.
+  it('keeps the request address, its query included, and every other header', () => {
+    const url = `https://example.com/search?q=${MARK}&token=${MARK}`
+    const { params } = scrubNetworkEvent('Network.requestWillBeSent', {
+      requestId: '1',
+      request: { url, method: 'GET', headers: { 'X-Api-Key': MARK } }
+    })
+    expect(params.request).toMatchObject({ url, headers: { 'X-Api-Key': MARK } })
+  })
+
   it('does not change the event it was given', () => {
     const [method, params] = EVENTS[3]
     const before = JSON.stringify(params)

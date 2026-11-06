@@ -1,7 +1,5 @@
 # Diagnostic Logging & Tester Bug Reports Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Give Birdbrain a durable structural-only log, full crash capture, a global notification layer, and a one-click local bug-report bundle a tester can drag into chat.
 
 **Architecture:** A single logger in the main process is the only sink that writes to disk. Renderer failures reach it over IPC; a `notify` layer in the renderer subscribes to the same events and raises toasts. Log and notify are two independent switches on one boundary, so an error is durable and visible by construction. Investigation data is kept out of the log by branded types that make passing a raw string a compile error.

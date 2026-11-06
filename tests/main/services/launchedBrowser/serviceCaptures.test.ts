@@ -602,6 +602,16 @@ describe('the capture shortcut', () => {
     expect(status.state === 'open' && status.browser.shortcut).toMatchObject({ state: 'failed' })
   })
 
+  it('says so when registering the shortcut throws', async () => {
+    const h = harness()
+    h.register.mockImplementationOnce(() => {
+      throw new Error('accelerator taken')
+    })
+    await h.open()
+    const status = h.service.status()
+    expect(status.state === 'open' && status.browser.shortcut).toMatchObject({ state: 'failed' })
+  })
+
   it('captures the one visible, focused tab, without Scroll-to-load', async () => {
     const h = harness({ browser: { respond: focus(true, true) } })
     await h.open()

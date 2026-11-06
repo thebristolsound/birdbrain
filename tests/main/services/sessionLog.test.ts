@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   takeUncleanSession,
   markCleanExit,
+  markCrashed,
   readSessions,
   startSession,
   currentSession
@@ -36,11 +37,32 @@ describe('sessionLog', () => {
     expect(takeUncleanSession(dir)).toBeNull()
   })
 
-  it('reports the previous session as unclean when the lock survived', () => {
+  it('records an outside kill as unclean without offering the crash prompt', () => {
     const first = startSession(dir, INFO)
-    // No markCleanExit — simulates a crash or power loss.
+    // No markCleanExit and no markCrashed: End task, kill -9 or power loss.
     startSession(dir, INFO)
-    expect(takeUncleanSession(dir)?.sessionId).toBe(first.sessionId)
+    expect(readSessions(dir).find((r) => r.sessionId === first.sessionId)).toMatchObject({
+      cleanExit: false,
+      endedAt: null
+    })
+    expect(takeUncleanSession(dir)).toBeNull()
+  })
+
+  it('offers the crash prompt for a session that recorded its own fatal error', () => {
+    const first = startSession(dir, INFO)
+    markCrashed(dir)
+    startSession(dir, INFO)
+    expect(takeUncleanSession(dir)).toMatchObject({
+      sessionId: first.sessionId,
+      cleanExit: false,
+      crashed: true
+    })
+  })
+
+  it('keeps the lock when a session is marked crashed', () => {
+    startSession(dir, INFO)
+    markCrashed(dir)
+    expect(existsSync(join(dir, 'session.lock'))).toBe(true)
   })
 
   it('never reports the current session as unclean', () => {
@@ -50,6 +72,7 @@ describe('sessionLog', () => {
 
   it('offers a given crash exactly once', () => {
     startSession(dir, INFO)
+    markCrashed(dir)
     startSession(dir, INFO)
     expect(takeUncleanSession(dir)).not.toBeNull()
     // Without take-once semantics this crash would re-prompt on every launch
@@ -80,7 +103,8 @@ describe('sessionLog', () => {
     startSession(dir, INFO)
     const ghost = readSessions(dir).find((r) => r.sessionId === 'ghost-session')
     expect(ghost).toMatchObject({ cleanExit: false, version: 'unknown' })
-    expect(takeUncleanSession(dir)?.sessionId).toBe('ghost-session')
+    // Nothing says the ghost session crashed, so it is history, not a prompt.
+    expect(takeUncleanSession(dir)).toBeNull()
   })
 
   it('returns a usable session when the log directory cannot be written', () => {
@@ -115,8 +139,11 @@ describe('sessionLog', () => {
     })
   })
 
-  it('surfaces a partially written record as an unclean session', () => {
-    writeFileSync(join(dir, 'sessions.json'), JSON.stringify([{ sessionId: 'truncated-abc' }]))
+  it('surfaces a partially written crashed record', () => {
+    writeFileSync(
+      join(dir, 'sessions.json'),
+      JSON.stringify([{ sessionId: 'truncated-abc', crashed: true }])
+    )
     expect(takeUncleanSession(dir)?.sessionId).toBe('truncated-abc')
   })
 })

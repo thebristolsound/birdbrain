@@ -330,8 +330,8 @@ other file. It contains:
   **Report this** on an error message, that error's log entry ID
 - your installation identifier
 - a record of your last 20 app launches: a random ID for each, when it started and ended,
-  whether it closed cleanly, whether its crash prompt was shown, and the version, platform and
-  install format it ran
+  whether it closed cleanly, whether it stopped on a fatal error, whether its crash prompt was
+  shown, and the version, platform and install format it ran
 - a snapshot of the app's state: the Birdbrain, Electron, Chrome and Node versions, your
   operating system, processor type and install format, how long the app has been running, each
   app process's type, ID, CPU and memory use, how far the app is lagging now and at worst in the
@@ -347,9 +347,12 @@ Birdbrain writes the same installation identifier into the manifest entry of eve
 take, so attaching the bundle to a public issue links that issue to the evidence packages you
 export.
 
-If Birdbrain closed unexpectedly last time (a crash, a forced quit, a power loss),
-it will offer to create a report automatically the next time you open it. Click
-**Create a report** on that prompt to file it the same way.
+If Birdbrain stopped on a fatal error last time, it will offer to create a report
+automatically the next time you open it. Click **Create a report** on that prompt
+to file it the same way. Ending Birdbrain from Task Manager, force-quitting it,
+or losing power does not raise the prompt, because nothing tells Birdbrain why it
+stopped. The record of your last 20 launches still shows those as not closing
+cleanly.
 
 You can also open **Settings → Diagnostics → Log** any time to see recent log
 entries in the app itself, filterable by level, with a button to reveal the raw

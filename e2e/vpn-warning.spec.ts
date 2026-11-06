@@ -220,7 +220,7 @@ test.describe('VPN warning', () => {
     await expect(warning).toBeVisible({ timeout: 10000 })
     await page.getByTestId('vpn-warning-proxy').click()
     await page.waitForURL(/#\/settings$/, { timeout: 10000 })
-    await expect(page.getByRole('tab', { name: 'Operator' })).toHaveAttribute(
+    await expect(page.getByRole('tab', { name: 'Network' })).toHaveAttribute(
       'aria-selected',
       'true'
     )
@@ -257,7 +257,7 @@ test.describe('VPN warning', () => {
     await page.evaluate(() => {
       window.location.hash = '/settings'
     })
-    await page.getByRole('tab', { name: 'Operator' }).click()
+    await page.getByRole('tab', { name: 'Network' }).click()
     await page.locator('input[name="egressKind"][value="proxy"]').check()
     await page.fill('#egress-proxy', 'socks5://127.0.0.1:9')
     await page.press('#egress-proxy', 'Tab')

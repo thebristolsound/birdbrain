@@ -6,6 +6,7 @@ import type { ReactNode } from 'react'
 import { DatabaseAdmin } from '@renderer/components/settings/DatabaseAdmin'
 import { DbMaintenance } from '@renderer/components/settings/db/DbMaintenance'
 import { OperatorConfig } from '@renderer/components/settings/OperatorConfig'
+import { NetworkConfig } from '@renderer/components/settings/NetworkConfig'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
 import { DEFAULT_TSA_URL } from '@shared/constants'
 import { fakeBridge } from '../renderer/fakeBridge'
@@ -426,7 +427,7 @@ describe('Egress setting', () => {
       },
       ...(launchedBrowser && { launchedBrowser })
     })
-    mount(<OperatorConfig />)
+    mount(<NetworkConfig />)
     return update
   }
 
@@ -509,7 +510,7 @@ describe('Egress setting', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={client}>
-        <OperatorConfig />
+        <NetworkConfig />
       </QueryClientProvider>
     )
     const group = await screen.findByRole('radiogroup', { name: 'Egress' })

@@ -4,11 +4,9 @@
 # run-on-worktree-create script; safe to re-run by hand at any time.
 #
 # Why not plain `pnpm install`: t3code launches scripts from a shell that has not
-# run mise's prompt hook, so the repo's Node 20 pin loses to whatever Node the
-# parent shell had (see CLAUDE.md, "Run everything on Node 20"). Under Node 24
-# Electron's postinstall exits 0 with a broken node_modules/electron/dist, so the
-# failure only surfaces on the first `pnpm test`. This script pins Node first and
-# refuses to continue on the wrong major.
+# run mise's prompt hook, so the repo's Node 24 pin loses to whatever Node the
+# parent shell had (see CLAUDE.md, "Run everything on Node 24"). This script pins
+# Node first and refuses to continue on the wrong major.
 
 set -euo pipefail
 
@@ -23,8 +21,8 @@ if command -v mise >/dev/null 2>&1; then
 fi
 
 node_major="$(node --version | sed -E 's/^v([0-9]+).*/\1/')"
-if [ "$node_major" != "20" ]; then
-  log "ERROR: node $(node --version) on PATH; this repo pins Node 20 (.nvmrc, .mise.toml)."
+if [ "$node_major" != "24" ]; then
+  log "ERROR: node $(node --version) on PATH; this repo pins Node 24 (.nvmrc, .mise.toml)."
   log "       Install it with 'mise install' and re-run."
   exit 1
 fi

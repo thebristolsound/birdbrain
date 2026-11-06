@@ -12,7 +12,7 @@ pnpm design-system          # writes design-system/dist/project/ and reports
 pnpm design-system --check  # the same, exits 1 on any finding (CI runs this)
 ```
 
-Node 20, no dependencies. The output folder is ignored by git.
+Node 24, no dependencies. The output folder is ignored by git.
 
 ## What it reads
 

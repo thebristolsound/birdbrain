@@ -28,7 +28,7 @@ fi
 prompt="/pr-review ${PR} ${SHA}
 You are running unattended from GitHub Actions run ${RUN_URL:-<unknown>} (ADR-0046).
 GH_TOKEN is a read-only token: every gh read works and every write fails, by design.
-Node 20 and pnpm are already on PATH, and project dependencies are installed.
+Node 24 and pnpm are already on PATH, and project dependencies are installed.
 Copy the reviewer's full report to .dispatch/reports/pr-${PR}-${SHA:0:8}.md, which is uploaded as the pr-review-run artifact of this run. When the report is too large for the comment, the link reads: ${RUN_URL:-<unknown>} (artifact pr-review-run, reports/pr-${PR}-${SHA:0:8}.md).
 This process exits when your turn ends. Run the reviewer in the foreground with run_in_background: false, and start no background shells or monitors."
 printf '%s\n' "$prompt" > .dispatch/prompt.txt

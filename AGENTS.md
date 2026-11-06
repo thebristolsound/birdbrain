@@ -151,6 +151,12 @@ PR also needs the maintainer's approving review or `approved` label at head (ADR
 merges, the dispatcher's included, go through `.claude/skills/merge-pr/scripts/merge.sh <n>`
 (ADR-0022).
 
+**Work that changes what a user sees ships with screenshots.** Every PR whose change shows on
+screen in the app, the extension's pages, or a docs site page attaches before and after images
+to its description through GitHub's file attachment; a change with no visual effect, such as a
+refactor that renders the same, carries none. "Screenshots for visual changes" in
+`.claude/skills/post-pr-body/SKILL.md` gives the capture and upload steps.
+
 ### Worktrees
 
 Close a worktree you finished, or sweep stale ones, with the `teardown` skill; never

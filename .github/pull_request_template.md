@@ -16,6 +16,19 @@ repository must follow it. The dispatch step copies this section into the squash
 
 </details>
 
+<!-- When the change shows on screen, keep the block below with a before and after screenshot
+per screen, referenced by local path and uploaded after the PR opens ("Screenshots for visual
+changes" in the post-pr-body skill). Delete these instruction lines and the closing marker
+after the block, or GitHub shows no images. Otherwise delete everything down to that marker.
+<details>
+<summary>Screenshots, before and after</summary>
+
+- Before, <screen>: ![before](/path/to/before.png)
+- After, <screen>: ![after](/path/to/after.png)
+
+</details>
+-->
+
 ## Evidence-affecting
 
 No

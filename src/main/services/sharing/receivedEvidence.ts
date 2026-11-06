@@ -275,6 +275,8 @@ export async function applyReceivedEvidence(
         linkedFromCaptureId: entry.linkedFromCaptureId,
         linkedFromContentHash: entry.linkedFromContentHash,
         linkHref: entry.linkHref,
+        personaId: entry.personaId,
+        personaLabel: entry.personaLabel,
         consentSuppression: entry.consentSuppression,
         exhibitNumber: n,
         author: { installationId: author, memberCode },

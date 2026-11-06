@@ -62,6 +62,47 @@ const [CHAIN_PREFIX, CHAIN_SUFFIX] = memberChainPath('\u0000').split('\u0000')
 
 const jqStrings = (values: Iterable<string>): string => JSON.stringify([...values])
 
+// Whether one raw chain line, read with jq -R, spells every token outside its
+// strings as true, false, null or a number in the JSON grammar, and holds one
+// value. It walks code points rather than parsing, so jq's own reader, which
+// accepts 01, +1, .5, nan and Infinity, plays no part. Strings collapse to a
+// lone quote mark first, so text such as "01" or "NaN" inside one is never read.
+const JQ_STRICT_LINE = String.raw`def digit: . >= 48 and . <= 57;
+def json_space: . == 32 or . == 9 or . == 10 or . == 13;
+def separator: json_space or . == 34 or . == 44 or . == 58 or . == 91 or . == 93
+  or . == 123 or . == 125;
+def number_state($c):
+  if . == "start" and $c == 45 then "sign"
+  elif (. == "start" or . == "sign") and $c == 48 then "zero"
+  elif (. == "start" or . == "sign" or . == "int") and ($c | digit) then "int"
+  elif (. == "zero" or . == "int") and $c == 46 then "point"
+  elif (. == "point" or . == "fraction") and ($c | digit) then "fraction"
+  elif (. == "zero" or . == "int" or . == "fraction") and ($c == 101 or $c == 69) then "e"
+  elif . == "e" and ($c == 43 or $c == 45) then "exponent sign"
+  elif (. == "e" or . == "exponent sign" or . == "exponent") and ($c | digit) then "exponent"
+  else "bad" end;
+def json_literal: implode as $t | $t == "true" or $t == "false" or $t == "null"
+  or (reduce .[] as $c ("start"; number_state($c))
+    | . == "zero" or . == "int" or . == "fraction" or . == "exponent");
+[foreach explode[] as $c ({quoted: false, escaped: false, bare: null};
+    if .quoted then .bare = null
+      | if .escaped then .escaped = false
+        elif $c == 92 then .escaped = true
+        elif $c == 34 then .quoted = false
+        else . end
+    else .bare = $c | .quoted = ($c == 34) end;
+    .bare | numbers)] as $bare
+| ($bare | map(if separator then 32 else . end) | implode | split(" ")
+    | all(.[] | select(length > 0); explode | json_literal))
+  and (reduce $bare[] as $c ({depth: 0, literal: false, values: 0};
+      ($c | separator | not) as $literal
+      | if .depth == 0 and ($c == 34 or $c == 91 or $c == 123
+          or ($literal and (.literal | not))) then .values += 1 else . end
+      | if $c == 91 or $c == 123 then .depth += 1
+        elif $c == 93 or $c == 125 then .depth -= 1 else . end
+      | .literal = $literal)
+    | .values == 1)`
+
 // The jq programs step 4a runs. Each is the sh-quotable form of one rule in
 // src/shared/verify/sharedCase.ts, named after the function it mirrors; none
 // holds a single quote, so each sits inside one in the script.
@@ -394,7 +435,8 @@ check_chain() {
   cc_at=0
   while IFS= read -r cc_line || [ -n "$cc_line" ]; do
     blank_line "$cc_line" && continue
-    if bom_led "$cc_line" || ! printf '%s' "$cc_line" | jq empty >/dev/null 2>&1; then
+    if bom_led "$cc_line" || ! printf '%s' "$cc_line" | jq empty >/dev/null 2>&1 ||
+      loose_json "$cc_line"; then
       fail "$cc_name: entry $cc_at: Invalid JSON"
       return 1
     fi
@@ -841,7 +883,8 @@ export const VERIFY_SCRIPT = `#!/bin/sh
 # member in its Case Owner's chain carries; that every merge entry names an
 # entry of the chain it names with that entry's entryHash; and that each
 # member's exhibits that are active and in scope match the chain their author
-# signed. A line that begins with a byte-order mark, or that holds a NUL byte,
+# signed. A line that begins with a byte-order mark, that holds a NUL byte, or
+# that holds a value spelled outside the JSON grammar or more than one value,
 # fails as Invalid JSON, as it does in the Birdbrain verifier, in ${ROOT.manifest}
 # and in every member chain. Every read of a member chain after its check takes
 # the lines that check verified, every whole-file read of ${ROOT.manifest} after
@@ -1013,6 +1056,16 @@ nul_filter='${JQ_TEXT} first([inputs | select(nonblank)] | to_entries[]
   | select(.value | explode | any(.[]; . == 0)) | .key)'
 nul_line() {
   jq -Rrn "$nul_filter" "$1"
+}
+
+# Whether line $1 holds a value spelled outside the JSON grammar, or more than
+# one value. jq reads 01 as 1, nan as null and {}{} as two values, so a
+# per-line read accepts the line and recomputes the entryHash from its own
+# reading, but the JSON.parse the Birdbrain verifier reads each line with
+# rejects it. The check reads the line as text, not through jq's number reader.
+strict_filter='${JQ_STRICT_LINE}'
+loose_json() {
+  [ "$(printf '%s' "$1" | jq -Rr "$strict_filter")" != true ]
 }
 
 # A whole-file read that jq did not finish: the entries after the point it
@@ -1193,8 +1246,11 @@ manifest_nul=$(nul_line "$MANIFEST_FILE")
   fail "entry at position $manifest_nul: Invalid JSON, it holds a NUL byte"
 while IFS= read -r line || [ -n "$line" ]; do
   [ -n "$line" ] || continue
-  bom_led "$line" &&
+  if bom_led "$line"; then
     fail "entry at position $expect: Invalid JSON, it begins with a byte-order mark"
+  elif loose_json "$line"; then
+    fail "entry at position $expect: Invalid JSON, it holds a value spelled outside the JSON grammar, or more than one value"
+  fi
   idx=$(field "$line" '.index')
   [ "$idx" = "$expect" ] ||
     fail "entry at position $expect declares index $idx, so the chain is not contiguous"

@@ -4270,7 +4270,7 @@ describe('ipcHandlers — diagnostics logging', () => {
     expect(result).toBeNull()
   })
 
-  it('diagnostics:lastSession surfaces an unclean prior session recorded in the log dir', async () => {
+  it('diagnostics:lastSession surfaces a crashed prior session recorded in the log dir', async () => {
     // The log dir is created lazily on first flush, not by initLogger itself —
     // write and flush an entry first so it exists to hold sessions.json.
     await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'info', code: 'query.failed' })
@@ -4283,7 +4283,8 @@ describe('ipcHandlers — diagnostics logging', () => {
       version: '1.0.0',
       platform: 'win32',
       installFormat: 'nsis',
-      cleanExit: false
+      cleanExit: false,
+      crashed: true
     }
     writeFileSync(join(getLogDir(), 'sessions.json'), JSON.stringify([record]))
 

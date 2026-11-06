@@ -186,10 +186,12 @@ export function CaptureViewer() {
         >
           <ArrowLeft className="h-3.5 w-3.5" />
         </Button>
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+        {/* The title shortens to about eight characters and then hides, never to one letter
+            (design review of 2026-11-04); the links beside it give way first. */}
+        <div className="@container/title flex min-w-0 flex-1 items-center gap-2">
           <span
             data-testid="capture-viewer-title"
-            className="truncate text-sm font-medium text-text-primary"
+            className="hidden min-w-16 truncate text-sm font-medium text-text-primary @min-[4rem]/title:block"
           >
             {capture.title || hostname}
           </span>

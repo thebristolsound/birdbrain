@@ -1,9 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { spawnSync } from 'child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 import { HAS_JQ } from './helpers/jq'
+
+// 60 s, not the 15 s in vitest.config.ts: this suite crosses 15 s when several agent
+// sessions share the cores, and a timeout here turns a local preflight into a false fail.
+vi.setConfig({ testTimeout: 60_000 })
 
 const SCRIPT = resolve(__dirname, '..', '.github', 'scripts', 'dispatch', 'pregate.sh')
 const REPO = 'o/r'

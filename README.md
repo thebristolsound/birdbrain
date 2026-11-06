@@ -133,8 +133,7 @@ its files, but its URL, time, and hashes remain in the Manifest.
 
 ## Run from source
 
-Use Node.js 20 and pnpm 10.28.2, as pinned in the repository. Newer Node.js majors can leave
-Electron incompletely installed even when dependency installation appears to succeed.
+Use Node.js 24 and pnpm 10.28.2, as pinned in the repository.
 
 ```bash
 git clone https://github.com/thebristolsound/birdbrain.git

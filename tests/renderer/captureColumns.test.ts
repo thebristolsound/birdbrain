@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   capturePanelIds,
+  captureSessionRailFits,
+  detailsFoldRoomPx,
+  viewerMinPx,
   visibleCaptureColumns,
   DETAILS_PANEL,
   LIST_PANEL,
@@ -133,5 +136,37 @@ describe('panel bounds', () => {
     expect(DETAILS_PANEL).toMatchObject({ defaultSize: 400, minSize: 320, maxSize: 680 })
     expect(VIEWER_PANEL.minSize).toBe(360)
     expect(RAIL_WIDTH_PX).toBe(40)
+  })
+})
+
+// Design review of 2026-11-04, answer 1: while the Capture Session rail is docked the viewer keeps
+// at least 480 pixels. The window figures add the 48-pixel side rail and, for the fold, the
+// 320-pixel Capture Session rail.
+describe('beside the Capture Session rail', () => {
+  const SIDE = 48
+  const RAIL = 320
+
+  it('keeps the viewer at 480 while the rail is docked, and at its own 360 otherwise', () => {
+    expect(viewerMinPx(true)).toBe(480)
+    expect(viewerMinPx(false)).toBe(360)
+  })
+
+  it('folds the details panel below a 1,054-pixel screen, a 1,422-pixel window', () => {
+    expect(detailsFoldRoomPx(true)).toBe(240 + 7 + 480 + 7 + 320)
+    expect(detailsFoldRoomPx(true) + RAIL + SIDE).toBe(1_422)
+  })
+
+  it('keeps the window rule with no rail docked', () => {
+    expect(detailsFoldRoomPx(false)).toBe(1_052)
+  })
+
+  it('docks the rail from a 1,135-pixel window on the Captures tab', () => {
+    expect(captureSessionRailFits(1_135 - SIDE, false)).toBe(true)
+    expect(captureSessionRailFits(1_134 - SIDE, false)).toBe(false)
+  })
+
+  it('docks the rail from a 1,324-pixel window on the Wayback tab', () => {
+    expect(captureSessionRailFits(1_324 - SIDE, true)).toBe(true)
+    expect(captureSessionRailFits(1_323 - SIDE, true)).toBe(false)
   })
 })

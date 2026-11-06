@@ -704,3 +704,13 @@ describe('CaptureViewer exact check', () => {
     })
   })
 })
+
+// Design review of 2026-11-04: beside the docked rail the title had shortened to "C.". jsdom has
+// no layout, so e2e/captures-layout.spec.ts measures the title as the viewer narrows.
+describe('CaptureViewer title', () => {
+  it('shows the Capture title', async () => {
+    renderViewer()
+    const title = await screen.findByTestId('capture-viewer-title')
+    expect(title.textContent).toBe('Example evidence page')
+  })
+})

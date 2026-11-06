@@ -33,6 +33,9 @@ esac
 # The tree roots are variables so the tests can place fixture trees without touching real ones.
 t3_root="${TEARDOWN_T3_ROOT:-$HOME/.t3/worktrees}"
 tmp_root="${TEARDOWN_TMP_ROOT:-/tmp}"
+# Where the creation rule (SKILL.md) puts scratch trees: on disk, because /tmp on the
+# maintainer's machine is a shared tmpfs. Trees under /tmp from before that rule still count.
+scratch_root="${TEARDOWN_SCRATCH_ROOT:-$HOME/worktrees/birdbrain/scratch}"
 artefact_paths=".preflight .health coverage test-results playwright-report out dist extension/dist .serena/cache"
 
 say() { [ "$count" -eq 1 ] || echo "teardown: $*"; }
@@ -110,6 +113,7 @@ age_days() {
 }
 
 under() { case "$1/" in "$2"/*) return 0 ;; *) return 1 ;; esac; }
+under_scratch() { under "$1" "$tmp_root" || under "$1" "$scratch_root"; }
 tip_merged() { case ",$2," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 
 # Echoes "<apply|report> <lane> <detail>" for one tree. Apply lanes are the only ones any
@@ -130,8 +134,16 @@ classify_tree() {
   state="$(tree_state "$path")"
   case "$state" in clean|serena) ;; *) echo "report ${state%% *} ${state#* }"; return ;; esac
   if [ "$br" = "-" ]; then
-    if under "$path" "$tmp_root" && [ -n "$(git -C "$main_wt" for-each-ref --count=1 --contains "$head" refs/heads refs/remotes)" ]; then
-      echo "apply detached-tmp -"
+    if under_scratch "$path" && [ -n "$(git -C "$main_wt" for-each-ref --count=1 --contains "$head" refs/heads refs/remotes)" ]; then
+      echo "apply detached-scratch -"
+    elif [ -n "$own_pid" ] && [ "$(lock_pid "$lock")" = "$own_pid" ]; then
+      # The session that locked a clean scratch tree is closing it: nothing uncommitted is
+      # lost, and its commits stay in the shared object store whether or not a ref holds them.
+      echo "apply detached-own -"
+    elif [ "$lock" != "-" ] && under_scratch "$path"; then
+      # Same for a scratch tree whose locking session is gone (the lock pid is dead, or
+      # close got this far): a preflight tree left at a squash-merged head, say.
+      echo "apply detached-dead-lock -"
     else
       echo "report detached -"
     fi

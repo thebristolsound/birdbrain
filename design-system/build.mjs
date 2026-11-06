@@ -8,7 +8,7 @@
 // Reads: src/renderer/styles/globals.css (every custom property), the font files, the logo
 // records and the hand-maintained notes, type styles and prose in this folder. Writes the
 // file tree the artifact type expects under dist/project/. Publishing is a separate step; see
-// README.md beside this file. No dependencies beyond Node 20.
+// README.md beside this file. No dependencies beyond Node 24.
 
 import { execSync } from 'node:child_process'
 import { createHash } from 'node:crypto'

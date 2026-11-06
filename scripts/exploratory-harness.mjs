@@ -297,7 +297,7 @@ async function serve(args) {
       }
       try {
         // Inside the try: an aborted upload rejects this loop, and an async listener that
-        // rejects is an unhandled rejection, which Node 20 turns into a process exit — killing
+        // rejects is an unhandled rejection, which Node 24 turns into a process exit — killing
         // the session and leaking the temp profile before shutdown() can remove it.
         let body = ''
         for await (const chunk of req) body += chunk

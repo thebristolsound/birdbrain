@@ -88,9 +88,8 @@ updates:
       # babel-plugin-react-compiler 1.0.0 (still the newest release) checks a destructured
       # default prop against it, so under Babel 8 the compiler silently skips every such
       # component: #2040 landed it and 35 more renderer files lost memoisation, with the
-      # build green (react/react#36868). Babel 8 also declares engines.node ^22.18||>=24.11
-      # against the Node 20 that .nvmrc pins. Drop this entry when a plugin release carries
-      # react/react#36956 and the repository is on Node 22.
+      # build green (react/react#36868). Drop this entry when a plugin release carries
+      # react/react#36956.
       - dependency-name: '@babel/core'
         versions: ['>=8']
       # pdfjs-dist from 5.7 declares engines.node >=22.13.0 || >=24, outside the Node 20

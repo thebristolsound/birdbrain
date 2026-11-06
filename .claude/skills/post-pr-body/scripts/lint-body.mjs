@@ -21,7 +21,9 @@ const IMPACT_FIELDS = [
   'Backward verification',
   'Known-answer test'
 ]
-const PREFLIGHT_MARKER = /^<!-- preflight v\d+ sha=[0-9a-f]{40} status=\w+ -->$/
+// `source=ci` marks a block verification-from-ci.sh composed from the required checks at head
+// (a dependabot or human PR nobody preflighted locally) instead of a `pnpm preflight` run.
+const PREFLIGHT_MARKER = /^<!-- preflight v\d+ sha=[0-9a-f]{40} status=\w+( source=\w+)? -->$/
 // The footer a cloud-proxy session appends after the body it was given (ADR-0022).
 const PLATFORM_FOOTER = /^_?Generated (with|by) \[Claude Code\]\([^)]*\)_?$/
 const FORBIDDEN = [

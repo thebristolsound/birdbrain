@@ -58,7 +58,7 @@ export function unavailableRefusal(
 
 export const UNREADABLE_EGRESS_REFUSAL: LaunchRefusal = {
   title: 'Birdbrain could not read the Egress setting',
-  detail: 'The browser was not started. Choose an Egress in Settings → Operator.'
+  detail: 'The browser was not started. Choose an Egress in Settings → Network.'
 }
 
 function codeOf(error: unknown): string | undefined {
@@ -91,7 +91,7 @@ export function refusalFor(error: unknown, label: string, egress: KnownEgress): 
       return {
         state: 3,
         title: `Can't reach ${egressName(egress)}`,
-        detail: `${message} Check the proxy in Settings → Operator.`
+        detail: `${message} Check the proxy in Settings → Network.`
       }
     case 'BROWSER_ALREADY_RUNNING':
       return { state: 4, title: BUSY_TITLES.open, detail: ONE_AT_A_TIME }

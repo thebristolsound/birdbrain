@@ -306,7 +306,7 @@ function optionText({ label, chosen, executablePath }: LaunchedBrowserOption): s
 function EgressValue({ egress }: { egress: KnownEgress }) {
   const routed = egress.kind !== 'direct'
   const tip =
-    'Change it in Settings → Operator before launching.' +
+    'Change it in Settings → Network before launching.' +
     (routed ? ' The Egress hides where you are, not which browser is looking.' : '')
   return (
     <>

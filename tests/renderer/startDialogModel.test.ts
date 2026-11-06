@@ -60,7 +60,7 @@ describe('refusalFor', () => {
       expect(refusalFor(coded(message, code), 'Google Chrome', PROXY)).toEqual({
         state: 3,
         title: "Can't reach Proxy · Harbor relay",
-        detail: `${message} Check the proxy in Settings → Operator.`
+        detail: `${message} Check the proxy in Settings → Network.`
       })
     }
   )
@@ -111,11 +111,11 @@ describe('refusalFor', () => {
     })
   })
 
-  it('points an unreadable Egress at the Operator tab', () => {
+  it('points an unreadable Egress at the Network tab', () => {
     const error = coded('The Egress setting could not be read', 'EGRESS_UNAVAILABLE')
     expect(refusalFor(error, 'Google Chrome', DIRECT)).toEqual({
       title: 'Birdbrain could not read the Egress setting',
-      detail: 'The browser was not started. Choose an Egress in Settings → Operator.'
+      detail: 'The browser was not started. Choose an Egress in Settings → Network.'
     })
   })
 

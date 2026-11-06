@@ -190,6 +190,15 @@ const responseRecord = (
 // its `request` record alone.
 const WITH_RESPONSE = new Set<Exchange['state']>(['complete', 'redirected', 'body-omitted'])
 
+// The standard `warcinfo` fields, then each extra one under a name they do not use.
+const withExtraFields = (
+  extra: Readonly<Record<string, string>> | undefined,
+  standard: Record<string, string>
+): Record<string, string> => ({
+  ...standard,
+  ...Object.fromEntries(Object.entries(extra ?? {}).filter(([name]) => !(name in standard)))
+})
+
 /**
  * Writes the exchanges of one render as a Transaction Record: a `.warc.gz` with one gzip member
  * per record, and the lower-case names of the headers whose values it replaced, sorted and unique.
@@ -205,7 +214,7 @@ export const writeTransactionRecord = async (
     await serialize(
       WARCRecord.createWARCInfo(
         { date: input.date, warcVersion: WARC_1_1 },
-        {
+        withExtraFields(input.warcinfo, {
           software: `Birdbrain ${input.birdbrainVersion}`,
           format: 'WARC File Format 1.1',
           browser: input.browserVersion,
@@ -214,7 +223,7 @@ export const writeTransactionRecord = async (
           'decoded-bodies': DECODED_BODIES,
           'credential-headers': CREDENTIALS,
           'http-message-lines': MESSAGE_LINES
-        }
+        })
       )
     )
   ]

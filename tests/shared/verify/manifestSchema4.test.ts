@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { spawnSync } from 'child_process'
 import { createHash, createSign, generateKeyPairSync } from 'crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
@@ -1789,8 +1790,10 @@ describe('verifySharedCase — a Case forked from a replica', () => {
   })
 
   // The Shared Case blocks of the shipped VERIFY.md, run under bash over the
-  // chain files `files` names, the way a reader runs them in a package.
-  function runbookOver(files: Record<string, string>): string {
+  // chain files `files` names, the way a reader runs them in a package. With
+  // `fails`, the head check must exit non-zero (#1453), under the harness and
+  // under a plain shell, which has no pipefail to carry it out of the loop.
+  function runbookOver(files: Record<string, string>, { fails = false } = {}): string {
     const dir = mkdtempSync(join(tmpdir(), 'bb-fork-runbook-'))
     try {
       for (const [path, jsonl] of Object.entries(files)) {
@@ -1802,7 +1805,21 @@ describe('verifySharedCase — a Case forked from a replica', () => {
       )
       expect(blocks).toHaveLength(2)
       const run = runRunbookBlocks(blocks, { cwd: dir })
-      expect([run.failedBlock, run.stderr]).toEqual([null, ''])
+      // One plain shell per block, so each status is that block's own.
+      const [roster, heads] = blocks.map((b) =>
+        spawnSync('sh', ['-c', b.code], { cwd: dir, encoding: 'utf-8' })
+      )
+      for (const plain of [roster, heads]) expect(plain.error).toBeUndefined()
+      expect(roster.status, roster.stderr).toBe(0)
+      if (fails) {
+        // The second block is the head check; the roster above it still passes.
+        expect(run.failedBlock).toBe(`block ${blocks[1].ordinal} (${blocks[1].section})`)
+        expect(heads.status).toBeGreaterThan(0)
+        expect(heads.stdout).toContain('head MISMATCH')
+      } else {
+        expect([run.failedBlock, run.stderr]).toEqual([null, ''])
+        expect(heads.status, heads.stderr).toBe(0)
+      }
       return run.stdout
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -1847,11 +1864,30 @@ describe('verifySharedCase — a Case forked from a replica', () => {
   it.skipIf(!HAS_JQ)('still reports a history merge whose lineage head was edited', () => {
     const { fork, member } = forkFixture()
     const edited = member.jsonl.replace(member.hashes[1], 'f'.repeat(64))
-    const out = runbookOver({
-      'manifest.jsonl': fork.jsonl,
-      [lineageChainPath(CASE_ID, MEMBER_ID)]: edited
-    })
+    const out = runbookOver(
+      {
+        'manifest.jsonl': fork.jsonl,
+        [lineageChainPath(CASE_ID, MEMBER_ID)]: edited
+      },
+      { fails: true }
+    )
     expect(out).toContain(`head MISMATCH: ${MEMBER_ID} #1`)
+  })
+
+  // A loop that kept only its last head's result would pass the one-head case above.
+  it.skipIf(!HAS_JQ)('fails when the head read first was edited and a later one matches', () => {
+    const { member, reshared, ownerHead, third } = resharedFixture()
+    const edited = member.jsonl.replace(member.hashes[1], 'f'.repeat(64))
+    const out = runbookOver(
+      {
+        'manifest.jsonl': third.jsonl,
+        [memberChainPath(MEMBER_ID)]: reshared.jsonl,
+        [lineageChainPath(CASE_ID, MEMBER_ID)]: edited
+      },
+      { fails: true }
+    )
+    const heads = out.split('\n').filter((l) => l.startsWith('head '))
+    expect(heads).toEqual([`head MISMATCH: ${MEMBER_ID} #1`, `head OK: ${MEMBER_ID} #${ownerHead}`])
   })
 
   it('reads the lineage directory by the Package Layout’s names only', () => {

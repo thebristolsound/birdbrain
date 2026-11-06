@@ -92,3 +92,22 @@ export function dockPanel(): Promise<void> {
 export function launchedBrowserName(label: string): string {
   return `Launched ${label}`
 }
+
+// A clicked Capture of one tab (#1832). Main pushes its progress with the status, and the
+// resolved status carries the result; a refusal (no browser open, or macOS) rejects with main's
+// code.
+export async function captureLaunchedTab(
+  targetId: string,
+  scrollToLoad: boolean
+): Promise<LaunchedBrowserStatus> {
+  try {
+    return await window.birdbrain.launchedBrowser.capture(targetId, { scrollToLoad })
+  } catch (err) {
+    throw refusalError(err)
+  }
+}
+
+// The capture shortcut found more than one tab it could take, or none.
+export function followLaunchedBrowserPickTab(open: () => void): () => void {
+  return window.birdbrain.onLaunchedBrowserPickTab(open)
+}

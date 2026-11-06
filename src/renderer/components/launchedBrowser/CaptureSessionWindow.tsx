@@ -13,6 +13,7 @@ import {
 } from '@renderer/lib/windowControls'
 import { CaptureSessionPanel } from '@renderer/components/launchedBrowser/CaptureSessionPanel'
 import { StopSessionDialog } from '@renderer/components/launchedBrowser/StopSessionDialog'
+import { TabPicker } from '@renderer/components/launchedBrowser/TabPicker'
 import { popOutTitle } from '@renderer/components/launchedBrowser/captureSessionPanelModel'
 
 // The OS title bar is hidden (src/main/windowChrome.ts), so this bar keeps clear of the native
@@ -69,6 +70,7 @@ export function CaptureSessionWindow() {
         <CaptureSessionPanel form="window" />
       </main>
       <StopSessionDialog />
+      <TabPicker inPopOut={true} />
     </div>
   )
 }

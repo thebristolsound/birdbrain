@@ -63,6 +63,9 @@ const EXTENSION_URL = /^chrome-extension:\/\/([a-p]{32})\//
 // The browser's own toolbar pages, such as Chromium 154's omnibox popup, which it reports as pages.
 const TOOLBAR_URL = /^chrome:\/\/[^/]+\.top-chrome\//
 const COMPONENTS: ReadonlySet<string> = new Set(COMPONENT_EXTENSION_IDS)
+// The targets recorded under a tab, as the first slice records them (spec, "Attach before
+// request", step 4).
+const RECORDED_UNDER_TAB: ReadonlySet<string> = new Set(['iframe', 'worker', 'service_worker'])
 
 export interface BrowserChild {
   readonly pid?: number
@@ -84,13 +87,18 @@ export type SpawnBrowser = (
 export interface FirstTab {
   targetId: string
   session: CdpSession
+  // The default browser context: the first tab opens in it.
+  browserContextId?: string
 }
 
 export interface LaunchHooks {
   // The Egress checks on the first tab. A throw refuses the launch and kills the browser.
   checkFirstTab?: (tab: FirstTab) => Promise<void>
   // A recorded target's session, before it is resumed, so its first response can be read.
-  onRecordedSession?: (session: CdpSession, target: TargetInfo) => void
+  // `recording.tabId` is the page target the session belongs to, its own id for a page, and
+  // `recording.setup` settles once every setup command has answered, or rejects with the first
+  // that failed. `recording.firstTab` marks the first tab, which opens in the default context.
+  onRecordedSession?: (session: CdpSession, target: TargetInfo, recording: RecordedSession) => void
   onTargetSetupFailed?: (target: TargetInfo, error: Error) => void
   // A recorded target still open after its Network or auto-attach setup failed: it browses, and
   // its responses go unseen. Not called for a target the browser confirms has closed.
@@ -99,6 +107,12 @@ export interface LaunchHooks {
   onExtensionWarning?: (extensionId: string) => void
   // The tab list, each time a tab opens, closes, or changes its title or URL.
   onTabsChanged?: (tabs: LaunchedBrowserTab[]) => void
+}
+
+export interface RecordedSession {
+  tabId: string
+  setup: Promise<unknown>
+  firstTab: boolean
 }
 
 export interface LaunchRequest {
@@ -350,52 +364,73 @@ export async function launchBrowser(
     return session.send('Runtime.runIfWaitingForDebugger', {})
   }
 
+  // The setup of a recorded target, in the spec's order ("Attach before request", step 2):
+  // `Network.enable`, `Network.setCacheDisabled` (D6), `Page.enable` on a page (the commit
+  // signal), `Target.setAutoAttach`, then the resume, all written together so the resume never
+  // waits on an answer (probe P4). `watched` covers what the Egress checks need, the response
+  // events of the target and of the frames it starts; `setup` covers every command, which the
+  // recording needs.
   function record(
     session: CdpSession,
     target: TargetInfo,
     waiting: boolean,
-    nested: boolean,
+    tabId: string,
     isFirstTab: boolean
   ): { watched: Promise<unknown>; resumed: Promise<unknown> } {
-    hooks.onRecordedSession?.(session, target)
-    if (nested) {
-      session.on('Target.attachedToTarget', (params) => onAttached(params, true))
+    const { type } = target
+    const watchesFrames = type === 'page' || type === 'iframe'
+    const attaches = watchesFrames || type === 'worker' || type === 'service_worker'
+    // The hook subscribes before the first command is written.
+    let settleSetup: (commands: Promise<unknown>) => void = () => {}
+    const setup = new Promise<unknown>((resolve) => {
+      settleSetup = resolve
+    })
+    setup.catch(() => {})
+    hooks.onRecordedSession?.(session, target, { tabId, setup, firstTab: isFirstTab })
+    if (attaches) {
+      session.on('Target.attachedToTarget', (params) => onAttached(params, tabId))
     }
-    // Written together, so the resume never waits on an answer (probe P4).
-    const watched = Promise.all([
-      session.send('Network.enable', NETWORK_LIMITS),
-      ...(nested ? [session.send('Target.setAutoAttach', AUTO_ATTACH)] : [])
-    ])
+    const enabled = session.send('Network.enable', NETWORK_LIMITS)
+    const cacheDisabled = session.send('Network.setCacheDisabled', { cacheDisabled: true })
+    const pageEnabled = type === 'page' ? session.send('Page.enable', {}) : Promise.resolve()
+    const autoAttached = attaches
+      ? session.send('Target.setAutoAttach', AUTO_ATTACH)
+      : Promise.resolve()
+    settleSetup(Promise.all([enabled, cacheDisabled, pageEnabled, autoAttached]))
+    const watched = Promise.all([enabled, ...(watchesFrames ? [autoAttached] : [])])
     const resumed = resume(session, target, waiting, isFirstTab)
     return { watched, resumed }
   }
 
+  // `ownerTab` is the page a nested session attached under, null on the browser connection. A
+  // service worker attaches on both; only its session under the page is recorded (probe P9).
   function onAttached(
     { sessionId, targetInfo, waitingForDebugger }: CdpEventMap['Target.attachedToTarget'],
-    underRecordedTarget: boolean
+    ownerTab: string | null
   ): void {
     const session = client.session(sessionId)
     const { type, url } = targetInfo
-    const recorded = underRecordedTarget ? type === 'iframe' || type === 'worker' : type === 'page'
+    const recorded = ownerTab !== null ? RECORDED_UNDER_TAB.has(type) : type === 'page'
     if (!recorded) {
       resume(session, targetInfo, waitingForDebugger, false).catch((error) =>
         reportFailure(targetInfo, error)
       )
       return
     }
-    const isFirstTab = !underRecordedTarget && !firstTabTaken && url === START_URL
+    const isFirstTab = ownerTab === null && !firstTabTaken && url === START_URL
     if (isFirstTab) firstTabTaken = true
     const { watched, resumed } = record(
       session,
       targetInfo,
       waitingForDebugger,
-      type !== 'worker',
+      ownerTab ?? targetInfo.targetId,
       isFirstTab
     )
     if (isFirstTab) {
       const ready = Promise.all([watched, resumed])
       ready.catch(() => {})
-      resolveFirstTab({ tab: { targetId: targetInfo.targetId, session }, ready })
+      const { targetId, browserContextId } = targetInfo
+      resolveFirstTab({ tab: { targetId, session, browserContextId }, ready })
     } else {
       watched.catch((error) => void reportUnwatched(targetInfo, error))
       resumed.catch((error) => reportFailure(targetInfo, error))
@@ -440,7 +475,7 @@ export async function launchBrowser(
     reportTabs()
   }
 
-  client.on('Target.attachedToTarget', (params) => onAttached(params, false))
+  client.on('Target.attachedToTarget', (params) => onAttached(params, null))
   client.on('Target.targetCreated', trackTab)
   client.on('Target.targetInfoChanged', trackTab)
   client.on('Target.targetDestroyed', ({ targetId }) => {

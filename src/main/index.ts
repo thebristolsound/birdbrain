@@ -100,7 +100,7 @@ import {
 } from '@main/services/logger'
 import { ident, tag } from '@main/services/logSafe'
 import { detectInstallFormat } from '@main/services/diagnostics'
-import { markCleanExit, startSession } from '@main/services/sessionLog'
+import { markCleanExit, markCrashed, startSession } from '@main/services/sessionLog'
 import {
   IPC_CHANNELS,
   type DeepLinkTarget,
@@ -147,11 +147,18 @@ function sendToAppWindows<C extends IpcEventChannel>(
   }
 }
 
+function sessionLogDir(): string {
+  return join(process.env.BIRDBRAIN_USER_DATA || app.getPath('userData'), 'logs')
+}
+
 // Registered before whenReady so a failure during startup is still captured.
 // logger.* is a no-op until initLogger runs, which is safe by construction.
 process.on('uncaughtException', (err) => {
   logger.error('app', 'app.uncaught_exception', undefined, err)
   flushSync()
+  // The leftover lock alone no longer raises the prompt (End task leaves one
+  // too), so the crash has to say so itself.
+  markCrashed(sessionLogDir())
   dialog.showErrorBox(
     'Birdbrain encountered a fatal error',
     'The app must close. A diagnostic log has been saved — you can attach it to a bug report from Settings → Diagnostics after restarting.'
@@ -983,8 +990,9 @@ if (!gotSingleInstanceLock) {
           'A diagnostic log has been saved. You can attach it to a bug report — see the logs folder in your Birdbrain data directory.'
         )
       }
-      // Same reasoning as the uncaughtException handler above: exit, not quit,
-      // so before-quit does not clear the lock on a startup crash.
+      // Same reasoning as the uncaughtException handler above: mark the crash,
+      // then exit, not quit, so before-quit does not clear the lock.
+      markCrashed(sessionLogDir())
       app.exit(1)
     })
 
@@ -998,8 +1006,8 @@ if (!gotSingleInstanceLock) {
     // markCleanExit MUST run first and synchronously. Electron does not await
     // an async before-quit listener, so anything sequenced after `await
     // stopCaptureServer()` may never run — which would leave session.lock in
-    // place and make every ordinary quit look like a crash on next launch.
-    markCleanExit(join(process.env.BIRDBRAIN_USER_DATA || app.getPath('userData'), 'logs'))
+    // place and record every ordinary quit as unclean on next launch.
+    markCleanExit(sessionLogDir())
     // Also before the first await, for the same reason: the launched browser is killed outright
     // rather than asked to close.
     launchedBrowserService?.killForQuit()

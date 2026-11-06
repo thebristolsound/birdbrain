@@ -61,7 +61,7 @@ fi
 context="You are running unattended from GitHub Actions run ${RUN_URL:-<unknown>} (ADR-0026).
 The environment probe reads LOCAL here: nothing sits between gh and GitHub.
 GH_TOKEN and the checkout's git credential are both the machine account, so bare gh and agh are the same identity, and the implementer pushes as the machine account over HTTPS.
-Node 20 and pnpm are already on PATH; no mise prefix is needed.
+Node 24 and pnpm are already on PATH; no mise prefix is needed.
 The machine token carries repo scope and not gist scope, so a pre-pass 'Full report:' link cannot be a gist here. Copy each reviewer full report to .dispatch/reports/pr-<number>-<short sha>.md, which is uploaded as the dispatch-run artifact of this run, and make the link read: ${RUN_URL:-<unknown>} (artifact dispatch-run, reports/pr-<number>-<short sha>.md). The runner filesystem is gone once the job ends, so a bare path is not a link.
 This process exits when your turn ends, and anything left running in the background dies with it. Run every subagent (Agent tool) call in the foreground with run_in_background: false, start no background shells or monitors, and wait for CI with bash .github/scripts/dispatch/checks.sh --wait 540 <pr>, repeated while it exits 124 (the Bash tool caps a command at ten minutes). End your turn only with the section 5 report, and start it with a heading line containing 'Dispatch cycle report': this runner treats a result without one as an unfinished cycle."
 

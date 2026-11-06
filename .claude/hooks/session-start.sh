@@ -3,7 +3,7 @@
 # SessionStart hook.
 #
 # Remote (Claude Code on the web, CLAUDE_CODE_REMOTE=true): brings a fresh container up
-# to the state the agent contracts already assume — Node 20 on PATH, the `gh` CLI,
+# to the state the agent contracts already assume — Node 24 on PATH, the `gh` CLI,
 # and dependencies installed so `pnpm test` and `pnpm lint` run without
 # per-session improvisation.
 #
@@ -167,22 +167,21 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 1. Node 20
+# 1. Node 24
 # ---------------------------------------------------------------------------
-# The repo pins Node 20 (.nvmrc, .mise.toml, CI's node-version-file). engines.node
-# is only a floor (>=20.19.0), so a newer Node satisfies it and still breaks things:
-# under Node 24 Electron's postinstall silently fails to extract its binary, leaving
-# node_modules/electron/dist broken while install exits 0.
+# The repo pins Node 24 (.nvmrc, .mise.toml, CI's node-version-file), the same major
+# Electron bundles for the test runner. engines.node is only a floor, so check the
+# major here rather than trusting whatever Node the image put first on PATH.
 #
-# The remote image ships Node 20 at /opt/node20 but puts /opt/node22 earlier on PATH,
-# so `node` resolves to 22 by default. Prepending is usually all that is needed.
+# The remote image has shipped several Nodes under /opt (node20, node22) with one
+# earlier on PATH than the pin. Prepending is usually all that is needed.
 # pnpm's shebang is `#!/usr/bin/env node`, so it follows PATH and runs under whichever
 # Node wins here — no separate pnpm install is required.
 
-find_node20() {
+find_node24() {
   local candidate
-  for candidate in /opt/node20/bin "$HOME"/.nvm/versions/node/v20.*/bin; do
-    if [ -x "$candidate/node" ] && [[ "$("$candidate/node" --version 2>/dev/null)" == v20.* ]]; then
+  for candidate in /opt/node24/bin "$HOME"/.nvm/versions/node/v24.*/bin; do
+    if [ -x "$candidate/node" ] && [[ "$("$candidate/node" --version 2>/dev/null)" == v24.* ]]; then
       echo "$candidate"
       return 0
     fi
@@ -190,21 +189,21 @@ find_node20() {
   return 1
 }
 
-if ! NODE20_BIN="$(find_node20)"; then
-  log "Node 20 not present in the image; downloading from nodejs.org"
-  NODE20_VERSION="$(curl -fsSL --max-time 60 https://nodejs.org/dist/latest-v20.x/ \
-    | grep -oE 'node-v20\.[0-9]+\.[0-9]+-linux-x64\.tar\.xz' | head -1 | sed -E 's/node-(v[0-9.]+)-.*/\1/')"
+if ! NODE24_BIN="$(find_node24)"; then
+  log "Node 24 not present in the image; downloading from nodejs.org"
+  NODE24_VERSION="$(curl -fsSL --max-time 60 https://nodejs.org/dist/latest-v24.x/ \
+    | grep -oE 'node-v24\.[0-9]+\.[0-9]+-linux-x64\.tar\.xz' | head -1 | sed -E 's/node-(v[0-9.]+)-.*/\1/')"
   curl -fsSL --max-time 300 \
-    "https://nodejs.org/dist/${NODE20_VERSION}/node-${NODE20_VERSION}-linux-x64.tar.xz" \
-    -o /tmp/node20.tar.xz
-  mkdir -p /opt/node20
-  tar -xJf /tmp/node20.tar.xz -C /opt/node20 --strip-components=1
-  rm -f /tmp/node20.tar.xz
-  NODE20_BIN=/opt/node20/bin
+    "https://nodejs.org/dist/${NODE24_VERSION}/node-${NODE24_VERSION}-linux-x64.tar.xz" \
+    -o /tmp/node24.tar.xz
+  mkdir -p /opt/node24
+  tar -xJf /tmp/node24.tar.xz -C /opt/node24 --strip-components=1
+  rm -f /tmp/node24.tar.xz
+  NODE24_BIN=/opt/node24/bin
 fi
 
-export PATH="$NODE20_BIN:$PATH"
-persist_env "export PATH=\"$NODE20_BIN:\$PATH\""
+export PATH="$NODE24_BIN:$PATH"
+persist_env "export PATH=\"$NODE24_BIN:\$PATH\""
 log "node $(node --version), pnpm $(pnpm --version 2>/dev/null || echo 'missing')"
 
 # ---------------------------------------------------------------------------
@@ -307,7 +306,7 @@ pnpm install
 if [ ! -x node_modules/electron/dist/electron ]; then
   log "FATAL: node_modules/electron/dist/electron is missing after install."
   log "       pnpm test runs vitest through Electron, so its results would be meaningless."
-  log "       Check 'node --version' is 20.x, then re-run 'pnpm install'."
+  log "       Check 'node --version' is 24.x, then re-run 'pnpm install'."
   exit 1
 fi
 log "electron binary present"

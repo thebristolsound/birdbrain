@@ -83,10 +83,16 @@ test.describe('Top bar layout', () => {
           expect(nameBox.width).toBeGreaterThanOrEqual(64)
           expect(nameBox.x + nameBox.width).toBeLessThanOrEqual(slotBox.x + slotBox.width + 1)
           expect(overlapWidth((await search.boundingBox())!, nameBox)).toBeLessThanOrEqual(0)
+          // The long name stays on one line and is cut short; a wrapped name would not overflow.
+          if (name === NAMES[1]) {
+            expect(await nameText.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true)
+          }
         } else {
           await expect(nameText).toBeHidden()
         }
-        await expect(caseName).toHaveAttribute('title', new RegExp(`^${name} · `))
+        await expect
+          .poll(async () => (await caseName.getAttribute('title'))?.startsWith(`${name} · `))
+          .toBe(true)
 
         // Every control on the right stays inside the window, and nothing scrolls sideways.
         for (const button of await controls.getByRole('button').all()) {

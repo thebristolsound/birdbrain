@@ -9,7 +9,7 @@ apply them; interactive sessions read this page when they open or label an agent
 Unattended/background agent jobs working a `ready-for-agent` issue in this repo are opted out
 of the global wait-for-confirmation rules: do not pause for mid-task approval and do not wait
 for the user to confirm completion. Instead, commit and verify the work with `pnpm preflight`
-(it refuses a dirty tree and a non-20.x Node, runs lint, typecheck, unit tests, build, the
+(it refuses a dirty tree and a non-24.x Node, runs lint, typecheck, unit tests, build, the
 extension build when `extension/` changed, coverage thresholds and diff coverage, and writes a
 sha-stamped block to `.preflight/verification.md`), then finish by opening a **draft PR** with
 the standard attribution line. Exception: if a dispatcher

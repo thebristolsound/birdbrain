@@ -1241,6 +1241,9 @@ export interface SessionRecord {
   platform: string
   installFormat: string
   cleanExit: boolean
+  // Set when Birdbrain recorded its own fatal error on the way out. Only these sessions raise the
+  // crash prompt: an unclean exit without it is an outside kill (End task, kill -9, shutdown).
+  crashed?: boolean
   // Set once the crash prompt has been shown, so it is offered exactly once.
   acknowledged?: boolean
 }

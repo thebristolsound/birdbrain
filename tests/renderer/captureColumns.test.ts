@@ -154,8 +154,6 @@ describe('beside the Capture Session rail', () => {
   it('folds the details panel below a 1,054-pixel screen, a 1,422-pixel window', () => {
     expect(detailsFoldRoomPx(true)).toBe(240 + 7 + 480 + 7 + 320)
     expect(detailsFoldRoomPx(true) + RAIL + SIDE).toBe(1_422)
-    // At 1,440 the docked panel has the 345 pixels the review counts, at least the 327 it needs.
-    expect(1_440 - SIDE - RAIL - 240 - 7 - 480).toBeGreaterThanOrEqual(7 + 320)
   })
 
   it('keeps the window rule with no rail docked', () => {

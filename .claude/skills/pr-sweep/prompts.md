@@ -9,7 +9,7 @@ Session constraints: the maintainer is present and will merge on approve, includ
 evidence-affecting PRs; still apply the evidence gate and claim discipline in full. The
 machine has 4 cores and several agents run at once. Work in a scratch worktree made by the
 teardown skill's creation rule and close it with its teardown.sh when done; never touch
-<other worktrees holding this branch>. Node 20 via
+<other worktrees holding this branch>. Node 24 via
 `mise exec --`. Post nothing to GitHub: return files and text, the coordinator posts them.
 ```
 

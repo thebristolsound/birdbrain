@@ -65,8 +65,10 @@ const jqStrings = (values: Iterable<string>): string => JSON.stringify([...value
 // Whether one raw chain line, read with jq -R, spells every token outside its
 // strings as true, false, null or a number in the JSON grammar, and holds one
 // value. It walks code points rather than parsing, so jq's own reader, which
-// accepts 01, +1, .5, nan and Infinity, plays no part. Strings collapse to a
+// accepts 01, +1, .5, NaN and Infinity, plays no part. Strings collapse to a
 // lone quote mark first, so text such as "01" or "NaN" inside one is never read.
+// A raw control character in a string stays behind as a NUL, which no token
+// spells: JSON.parse rejects it there, and jq 1.6 accepts U+001F.
 const JQ_STRICT_LINE = String.raw`def digit: . >= 48 and . <= 57;
 def json_space: . == 32 or . == 9 or . == 10 or . == 13;
 def separator: json_space or . == 34 or . == 44 or . == 58 or . == 91 or . == 93
@@ -85,7 +87,7 @@ def json_literal: implode as $t | $t == "true" or $t == "false" or $t == "null"
   or (reduce .[] as $c ("start"; number_state($c))
     | . == "zero" or . == "int" or . == "fraction" or . == "exponent");
 [foreach explode[] as $c ({quoted: false, escaped: false, bare: null};
-    if .quoted then .bare = null
+    if .quoted then .bare = (if $c < 32 then 0 else null end)
       | if .escaped then .escaped = false
         elif $c == 92 then .escaped = true
         elif $c == 34 then .quoted = false
@@ -1059,10 +1061,11 @@ nul_line() {
 }
 
 # Whether line $1 holds a value spelled outside the JSON grammar, or more than
-# one value. jq reads 01 as 1, nan as null and {}{} as two values, so a
-# per-line read accepts the line and recomputes the entryHash from its own
-# reading, but the JSON.parse the Birdbrain verifier reads each line with
-# rejects it. The check reads the line as text, not through jq's number reader.
+# one value. jq reads 01 as 1, NaN as null and {}{} as two values, and jq 1.6
+# reads a raw U+001F inside a string, so a per-line read accepts the line and
+# recomputes the entryHash from its own reading, but the JSON.parse the
+# Birdbrain verifier reads each line with rejects it. The check reads the line
+# as text, not through jq's number reader.
 strict_filter='${JQ_STRICT_LINE}'
 loose_json() {
   [ "$(printf '%s' "$1" | jq -Rr "$strict_filter")" != true ]

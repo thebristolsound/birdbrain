@@ -22,8 +22,15 @@ const parses = (line: string): boolean => {
 }
 
 // Lines JSON.parse rejects: a number spelled outside the JSON grammar, nan or
-// Infinity in any case, or a second value on the line.
+// Infinity in any case, a second value on the line, or a raw control character
+// in a string, which jq 1.6 reads as the escaped one for U+001F.
 const LOOSE = [
+  '{"index":1,"operatorName":"a\u001fb"}',
+  '{"a":"\u001e"}',
+  '{"a":"x\ty"}',
+  '{"a":"x\u0001y"}',
+  '{"a":"x\\\u001fy"}',
+  '"\u001f"',
   '{"index":01}',
   '{"index":00}',
   '{"index":-01}',
@@ -48,6 +55,8 @@ const LOOSE = [
 // Lines JSON.parse accepts, the spellings above among them as text in strings.
 const STRICT = [
   '{"index":1}',
+  '{"index":1,"operatorName":"a\\u001fb"}',
+  '{"a":\t1,\t"b":2}',
   '{"a":1}\r',
   ' {"a":1} ',
   '{"a":"01 +1 .5 NaN Infinity -nan 1.e5 {}{}"}',

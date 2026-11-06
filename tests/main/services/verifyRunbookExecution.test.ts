@@ -188,8 +188,8 @@ const pickCapture = (id: string): RunbookBlock => ({
 })
 
 /**
- * Runs blocks under plain `sh` with no errexit and no pipefail, the shell a reader
- * pastes into, so the status is the block's own and not the harness's options.
+ * Runs blocks under plain `sh` with no errexit and no pipefail, options an interactive
+ * shell starts without, so the status is the block's own and not the harness's options.
  */
 function runPlain(blocks: RunbookBlock[], cwd: string): { status: number; stdout: string } {
   const code = blocks.map((block) => block.code).join('\n')
@@ -1090,6 +1090,7 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     const TAMPERED = [
       {
         name: 'a substituted page',
+        file: 'page',
         marker: CONTENT_BLOCK,
         path: () => join('pages', `${captureId}.mhtml`),
         mismatch: () => 'CONTENT MISMATCH',
@@ -1098,6 +1099,7 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       },
       {
         name: 'a changed screenshot',
+        file: 'screenshot',
         marker: CONTENT_BLOCK,
         path: () => screenshotOf(packageDir),
         mismatch: () => 'SCREENSHOT MISMATCH',
@@ -1105,12 +1107,14 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       },
       {
         name: 'a substituted exhibit',
+        file: 'exhibit',
         marker: EXHIBIT_BLOCK,
         path: () => join('attachments', `${exhibitId}.zip`),
         mismatch: () => `EXHIBIT ${exhibitNumber} MISMATCH`
       },
       {
         name: 'a substituted derived file',
+        file: 'derived file',
         marker: DERIVED_BLOCK,
         path: () => `pages/${captureId}_thumb.jpg`,
         mismatch: () => `DERIVED FILE MISMATCH: pages/${captureId}_thumb.jpg`
@@ -1118,21 +1122,39 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     ]
 
     it.skipIf(!RUNS)('pass the good package under a plain shell', () => {
-      const result = runPlain(
-        [
-          pickCapture(captureId),
-          ...[CONTENT_BLOCK, EXHIBIT_BLOCK, DERIVED_BLOCK].map((m) => step5Block(packageDir, m))
-        ],
-        packageDir
-      )
-      expect(result.status, result.stdout).toBe(0)
-      for (const text of [
-        'content OK',
-        'screenshot OK',
-        `exhibit ${exhibitNumber} OK`,
-        `derived pages/${captureId}_thumb.jpg OK`
-      ]) {
-        expect(result.stdout).toContain(text)
+      const GOOD = [
+        { marker: CONTENT_BLOCK, says: ['content OK', 'screenshot OK'] },
+        { marker: EXHIBIT_BLOCK, says: [`exhibit ${exhibitNumber} OK`] },
+        { marker: DERIVED_BLOCK, says: [`derived pages/${captureId}_thumb.jpg OK`] }
+      ]
+      // One shell per block, so each status is that block's own.
+      for (const { marker, says } of GOOD) {
+        const result = runPlain(
+          [pickCapture(captureId), step5Block(packageDir, marker)],
+          packageDir
+        )
+        expect(result.status, result.stdout).toBe(0)
+        expect(result.stdout).not.toContain('MISMATCH')
+        for (const text of says) expect(result.stdout).toContain(text)
+      }
+    })
+
+    it.skipIf(!RUNS)('pass a capture entry with no screenshot hash', () => {
+      // The block reads only $line, so dropping the field from it is an entry
+      // that anchors no screenshot.
+      const noShot: RunbookBlock = {
+        ...pickCapture(captureId),
+        code: `line=$(jq -c 'select(.type == "capture" and .captureId == "${captureId}") | del(.screenshotHash)' manifest.jsonl)\n`
+      }
+      const blocks = [noShot, step5Block(packageDir, CONTENT_BLOCK)]
+
+      const harness = runRunbookBlocks(blocks, { cwd: packageDir })
+      expect(harness.ok, `${harness.stdout}\n${harness.stderr}`).toBe(true)
+      const plain = runPlain(blocks, packageDir)
+      expect(plain.status, plain.stdout).toBe(0)
+      for (const out of [harness.stdout, plain.stdout]) {
+        expect(out).toContain('content OK')
+        expect(out).not.toMatch(/screenshot/i)
       }
     })
 
@@ -1149,6 +1171,23 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
         expect(harness.ok, harness.stdout).toBe(false)
         expect(harness.failedBlock).toMatch(/\(Step 5/)
         expect(harness.stdout).toContain(row.mismatch())
+
+        const plain = runPlain(blocks, dir)
+        expect(plain.status, plain.stdout).not.toBe(0)
+        expect(plain.stdout).toContain(row.mismatch())
+        if (row.alsoSays) expect(plain.stdout).toContain(row.alsoSays())
+      })
+
+      it.skipIf(!RUNS)(`exit non-zero on a deleted ${row.file}`, () => {
+        const dir = corruptedCopy(`runbook-deleted-${row.file.replace(/ /g, '-')}`)
+        rmSync(join(dir, row.path()))
+        const blocks = [pickCapture(captureId), step5Block(dir, row.marker)]
+
+        // Under errexit and pipefail the failed hash aborts the block before it
+        // prints a verdict, so only the failure is pinned here.
+        const harness = runRunbookBlocks(blocks, { cwd: dir })
+        expect(harness.ok, harness.stdout).toBe(false)
+        expect(harness.failedBlock).toMatch(/\(Step 5/)
 
         const plain = runPlain(blocks, dir)
         expect(plain.status, plain.stdout).not.toBe(0)

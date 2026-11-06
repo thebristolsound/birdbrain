@@ -64,41 +64,70 @@ as a handoff, never asserted.
 
 ## Screenshots for visual changes
 
-A PR that changes what a user sees carries before and after screenshots. That covers the
+A PR whose change shows on screen carries before and after screenshots. That covers the
 desktop app's renderer, the extension's popup and pages, and docs site pages, including copy,
 layout, theme and state changes. A change with no visual effect carries none.
 
-1. Take the before shot from a build of `origin/main`, ideally before editing, and the after
-   shot from the head under review. Use the same route, window size, theme and seed data, so
-   the pair differs only by the change. For the app, the `run-birdbrain` skill's `size` and
-   `ss` commands take both.
-2. In the body file, reference each PNG by its local path in a second `<details>` block inside
-   `## Changes`, after the file groups, one bullet per image:
+1. **Capture.** Take the before shot from a build of `origin/main`, ideally before editing,
+   and the after shot at the head under review. Use the same route, window size, theme and
+   seed data, so the pair differs only by the change. Save both in a folder of your own,
+   `/tmp/birdbrain-shots/<branch>/`, not the shared `/tmp/birdbrain-shots/`, so agents
+   running at once cannot overwrite each other's files before the upload.
+   - The app: the `run-birdbrain` skill's `size` and `ss` commands, with
+     `SCREENSHOT_DIR=/tmp/birdbrain-shots/<branch>` set when the driver starts.
+   - A docs site page: headless Chromium,
+     `chromium --headless --window-size=1440,900 --screenshot=<png> <url>`, against
+     `https://docs.birdbrain.cc` for the before shot (Mintlify deploys `main`) and against
+     the local preview `pnpm dlx mint dev` serves for the after shot.
+   - The extension's popup and pages: no tool in this repository captures them. Use the
+     handoff line from step 4 in place of each image.
+2. **Reference.** In the body file, reference each PNG by its absolute path in a second
+   `<details>` block inside `## Changes`, after the file groups, one bullet per image and one
+   before and after pair per changed screen:
 
    ```markdown
    <details>
    <summary>Screenshots, before and after</summary>
 
-   - Before, capture viewer: ![before](/tmp/birdbrain-shots/viewer-before.png)
-   - After, capture viewer: ![after](/tmp/birdbrain-shots/viewer-after.png)
+   - Before, capture viewer: ![before](/tmp/birdbrain-shots/fix-viewer/viewer-before.png)
+   - After, capture viewer: ![after](/tmp/birdbrain-shots/fix-viewer/viewer-after.png)
 
    </details>
    ```
 
-   A change that touches several screens gives one before and after pair per screen.
-3. Upload them with GitHub's file attachment by passing each path to `--attach` on the command
-   that writes the body (`gh pr create` or `gh pr edit`, GitHub CLI 2.99 or later):
-   `--body-file <file> --attach /tmp/birdbrain-shots/viewer-before.png --attach ...`. GitHub
-   CLI uploads each file and rewrites its local path in the body to a
-   `https://github.com/user-attachments/assets/<id>` link. Write each path exactly as it
-   appears in the body. An attached file the body does not reference is appended to the end
-   of the body, after the attribution line, so attach only files the body names.
+3. **Upload.** One route serves opening a PR and every later update, under the maintainer's
+   `gh` and the dispatcher's `agh` alike. It avoids `gh pr edit`, which fails under the
+   machine token (the `dispatch` skill, "GitHub access"). The PR must exist first.
+   1. Post the pair as a PR comment:
+      `gh pr comment <n> --body-file <comment> --attach <png> --attach <png>` (GitHub CLI 2.99
+      or later). The comment file holds the step 2 bullets inside its own `<details>` block,
+      under a `Taken at <head sha>.` line, and passes the `post-comment` check first. GitHub
+      CLI uploads each file and rewrites every reference to its absolute path as a
+      `https://github.com/user-attachments/assets/<id>` link. It prints the comment's URL.
+      When some uploads fail it posts the comment with the rest and exits non-zero; when all
+      fail it posts nothing.
+   2. Read the comment back: the id ends its URL (`#issuecomment-<id>`), and
+      `gh api repos/thebristolsound/birdbrain/issues/comments/<id> --jq .body` returns the
+      links. A file whose local path is still in the comment did not upload.
+   3. Put each link in the body file in place of its local path, then write the body over
+      REST, as the `dispatch` skill's "GitHub access" states:
+      `jq -n --rawfile body <file> '{body: $body}' > <json>`, then
+      `gh api -X PATCH repos/thebristolsound/birdbrain/pulls/<n> --input <json>`. Read the
+      body back and confirm every image link is a `user-attachments` URL.
 
-Never commit the images, and never link another image host. Read the body back after the write
-and confirm every image link is a `user-attachments` URL; a local path left in it means the
-upload did not run. A dispatched implementer returns the PNG paths with its handoff, and the
-dispatcher passes them to `--attach`. The reviewer treats a visual change with no before and
-after pair as a blocking finding.
+   A fix round that changes a screen again takes a new after shot at the new head and runs
+   step 3 for it; the before shot stays.
+4. **When a shot cannot be supplied.** No upload under the machine token is on record yet, so
+   whether GitHub accepts one from it is unverified. A file that did not upload, or a screen
+   no tool here captures, gets a handoff line in place of its image, for example
+   `- After, capture viewer: not uploaded, handed to the maintainer` (or `not captured`). The
+   author names the handoff in its report, and the maintainer takes and uploads that shot by
+   the route in step 3 under his own `gh`.
+
+Never commit the images, and never link another image host. A dispatched implementer returns
+the PNG paths with its handoff, and the dispatcher runs step 3 with `agh`. The reviewer's
+"Screenshots" control (`birdbrain-reviewer`) reports a missing or stale pair as a `gate`
+finding and a step 4 handoff line as `advisory`.
 
 ## How to open a PR
 

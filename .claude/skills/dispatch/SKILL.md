@@ -658,10 +658,9 @@ determined are required.
 **You** open the **draft** PR against `main` and apply the labels via the write path:
 
 - Locally: `agh pr create --draft --base main --head <branch> --title <title> --body-file
-  <path> --label agent-authored --label agent-pr`, plus `--attach <png>` for each screenshot
-  path the implementer returned (`post-pr-body`, "Screenshots for visual changes"). Run it
-  **through `agh`, never bare `gh`**, and **apply the labels in the create call, not
-  afterwards.** The `pre-pass-gate` workflow reads
+  <path> --label agent-authored --label agent-pr`. Run it **through `agh`, never bare `gh`**,
+  and **apply the labels in the create call, not afterwards.** Never pass `--attach` to it:
+  screenshots go up after the PR exists, by the route below. The `pre-pass-gate` workflow reads
   labels on the `opened` event; a PR opened unlabelled seeds `agent/pre-pass=success` and
   would then have to be upgraded to `pending`, which is a write that can race the
   dispatcher's own verdict on the same sha.
@@ -696,6 +695,12 @@ PR holding an unreleased slot is recoverable, an unlabelled PR with the slot alr
 is the wave 1 failure. **Then release the claim**: remove `agent-wip` from the issue — the
 `agent-pr` label on the PR is the slot marker from here on. A claim that outlives its
 PR-open is the leftover state section 1 has to clean up.
+
+**Screenshots go up once the PR exists.** When the implementer returned screenshot paths, run
+step 3 of `post-pr-body`'s "Screenshots for visual changes" through `agh` (`agh pr comment`
+with `--attach`, then the REST body write). A file that does not upload gets that section's
+step 4 handoff line in the body, and your report names the maintainer as the one to supply it.
+A fix round that returns new paths gets the same steps.
 
 `agent-authored` goes on every agent PR — it records that an agent wrote the diff, and both
 `pre-pass-gate.yml` and `ci.yml`'s draft exemption key on it (#561). `agent-pr` goes on every

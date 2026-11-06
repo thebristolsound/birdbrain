@@ -1158,6 +1158,92 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       }
     })
 
+    // A loop that kept only its last file's result would pass every one-file case above,
+    // so this package encloses two of each and damages only the one read first.
+    it.skipIf(!RUNS)(
+      'exit non-zero when an earlier file differs and a later one matches',
+      async () => {
+        const screenshot = await sharp({
+          create: { width: 24, height: 24, channels: 4, background: { r: 9, g: 9, b: 9, alpha: 1 } }
+        })
+          .png()
+          .toBuffer()
+        const payload = '<html><body>Second capture</body></html>'
+        const { capture: second } = await ingestMhtmlCapture({
+          caseId,
+          url: 'https://example.com/second',
+          title: 'Second Page',
+          timestamp: '2026-04-05T12:02:00.000Z',
+          stream: Readable.from([Buffer.from(payload)]) as unknown as ReadableStream<Uint8Array>,
+          textContent: payload,
+          headers: {},
+          browserVersion: '',
+          userAgent: '',
+          httpStatus: 200,
+          extensionVersion: '',
+          operatorId: 'op',
+          operatorName: 'Test Operator',
+          toolVersion: '0.1.0',
+          screenshot
+        })
+        const attachment = join(tempDir, 'uploads', 'second.zip')
+        writeFileSync(attachment, Buffer.from('PK\u0003\u0004 second attachment payload'))
+        const [staged] = await uploadToStaging(caseId, [attachment])
+        await commitStagedFiles(caseId, [staged.id])
+        await backfillCase(caseId, { toolVersion: '0.1.0' })
+        const dir = await exportPackage('runbook-two-of-each')
+
+        const lines = readFileSync(join(dir, 'manifest.jsonl'), 'utf-8')
+          .split('\n')
+          .filter(Boolean)
+          .map((line) => JSON.parse(line) as Record<string, unknown>)
+        const exhibits = lines
+          .filter((line) => line.type === 'exhibit')
+          .map((line) => ({
+            number: line.exhibitNumber as number,
+            rel: (line.path as string).split('/').slice(1).join('/')
+          }))
+        const derived = lines
+          .filter((line) => line.type === 'derivation')
+          .map((line) => `pages/${(line.outputPath as string).split('/').pop()}`)
+        expect(exhibits).toHaveLength(2)
+        expect(exhibits[0].rel).toBe(`attachments/${exhibitId}.zip`)
+        expect(derived).toEqual([`pages/${captureId}_thumb.jpg`, `pages/${second.id}_thumb.jpg`])
+
+        for (const path of [exhibits[0].rel, derived[0]]) {
+          const bytes = readFileSync(join(dir, path))
+          bytes[0] ^= 0xff
+          writeFileSync(join(dir, path), bytes)
+        }
+
+        const CASES = [
+          {
+            marker: EXHIBIT_BLOCK,
+            mismatch: `EXHIBIT ${exhibits[0].number} MISMATCH`,
+            ok: `exhibit ${exhibits[1].number} OK`
+          },
+          {
+            marker: DERIVED_BLOCK,
+            mismatch: `DERIVED FILE MISMATCH: ${derived[0]}`,
+            ok: `derived ${derived[1]} OK`
+          }
+        ]
+        for (const { marker, mismatch, ok } of CASES) {
+          const blocks = [step5Block(dir, marker)]
+          const harness = runRunbookBlocks(blocks, { cwd: dir })
+          expect(harness.ok, harness.stdout).toBe(false)
+          expect(harness.failedBlock).toMatch(/\(Step 5/)
+
+          const plain = runPlain(blocks, dir)
+          expect(plain.status, plain.stdout).not.toBe(0)
+          for (const out of [harness.stdout, plain.stdout]) {
+            expect(out).toContain(mismatch)
+            expect(out).toContain(ok)
+          }
+        }
+      }
+    )
+
     for (const row of TAMPERED) {
       it.skipIf(!RUNS)(`exit non-zero on ${row.name}`, () => {
         const dir = corruptedCopy(`runbook-${row.name.replace(/\W/g, '-')}`)

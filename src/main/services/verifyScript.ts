@@ -1249,9 +1249,10 @@ manifest_nul=$(nul_line "$MANIFEST_FILE")
   fail "entry at position $manifest_nul: Invalid JSON, it holds a NUL byte"
 while IFS= read -r line || [ -n "$line" ]; do
   [ -n "$line" ] || continue
+  # A line of JSON whitespace holds no value to misspell; its index fails below.
   if bom_led "$line"; then
     fail "entry at position $expect: Invalid JSON, it begins with a byte-order mark"
-  elif loose_json "$line"; then
+  elif [ -n "$(printf '%s' "$line" | tr -d ' \\t\\r')" ] && loose_json "$line"; then
     fail "entry at position $expect: Invalid JSON, it holds a value spelled outside the JSON grammar, or more than one value"
   fi
   idx=$(field "$line" '.index')

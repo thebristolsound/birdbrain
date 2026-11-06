@@ -829,6 +829,22 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     // Every field read of this line yields two values, so steps 2 and 3 fail too.
     looseJsonRow('a second value after the first', (line) => `${line}{"b":2}`, [2, 3, 4]),
     {
+      // A line of JSON whitespace holds no value, so step 4 fails it on its
+      // index and never names its spelling. Inserting it also changes the
+      // index the signed export entry hashes.
+      name: 'a line of spaces and a tab between two entries',
+      build: () => respelledCopy('spaces', (line) => `${line}\n \t `),
+      binary: 'fail',
+      script: 'fail',
+      steps: [2, 3, 4],
+      says: ['FAIL [step 4] entry at position 2 declares index , so the chain is not contiguous'],
+      saysNot: ['Invalid JSON'],
+      binaryFails: {
+        name: 'package hash',
+        reason: 'does not match the packageHash in the signed export entry'
+      }
+    },
+    {
       // The same spellings inside a string are text to both verifiers.
       name: 'an entry whose strings hold 01, +1, .5, NaN and Infinity as text',
       build: async () => {

@@ -30,6 +30,26 @@ import {
 // Clicked Captures through the launched-browser service (#1832): the tab flags, the refusals,
 // the shortcut and the macOS gate, on the fake browser with the Capture sequence stood in for.
 
+// The real engine, counting its releases: once the browser's pipe closes, a held recording has
+// no other trace a test can read.
+const released = vi.hoisted(() => ({ count: 0 }))
+vi.mock('@main/services/launchedBrowser/captures', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@main/services/launchedBrowser/captures')>()
+  return {
+    ...actual,
+    createLaunchedCaptures: (...args: Parameters<typeof actual.createLaunchedCaptures>) => {
+      const captures = actual.createLaunchedCaptures(...args)
+      return {
+        ...captures,
+        dispose: () => {
+          released.count += 1
+          captures.dispose()
+        }
+      }
+    }
+  }
+})
+
 const CHROME = {
   family: 'chrome' as const,
   label: 'Google Chrome',
@@ -643,6 +663,28 @@ describe('the capture shortcut', () => {
     await expect(h.service.shortcutPressed()).resolves.toBeUndefined()
     expect(h.capture).not.toHaveBeenCalled()
     expect(h.emitPickTab).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('releasing the recordings', () => {
+  it('lets them go when the Operator closes the browser', async () => {
+    const h = harness()
+    await h.open()
+    await h.loadFirstTab()
+    const before = released.count
+    h.browser().exit(0)
+    await settle()
+    expect(h.service.status()).toMatchObject({ state: 'closed' })
+    expect(released.count).toBe(before + 1)
+  })
+
+  it('lets them go when the Capture Session ends', async () => {
+    const h = harness()
+    await h.open()
+    await h.loadFirstTab()
+    const before = released.count
+    await h.service.endCaptureSession()
+    expect(released.count).toBe(before + 1)
   })
 })
 

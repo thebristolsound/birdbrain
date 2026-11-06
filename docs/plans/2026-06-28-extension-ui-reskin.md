@@ -1,7 +1,5 @@
 # Extension UI Reskin Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Reskin the Chrome extension's popup and injected capture toast to the OpenRouter flat theme, and make the popup follow the desktop app's light/dark preference.
 
 **Architecture:** Surface the app's `theme` over the existing `/api/status` call; rewrite the popup's self-contained Tailwind v4 token set to mirror the app's semantic tokens (light defaults + `html.dark` overrides) with effects stripped; swap the popup markup onto those tokens and apply the theme class; restyle the shadow-DOM toast to the flat dark card idiom. Bundle Inter locally (no network fonts).

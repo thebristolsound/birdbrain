@@ -1,7 +1,5 @@
 # Capture Detail Polish Round 2 Implementation Plan
 
-> **For agentic workers:** Use superpowers:subagent-driven-development to execute task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Fix three smoke nits surfaced after PR2 #100 merge — duplicate breadcrumb arrows, capture-list typography hierarchy, and lack of click-to-delete shape UX on the annotation canvas.
 
 **Architecture:** Three small targeted fixes plus a final smoke/gates pass. No new components, no refactors. Each task touches 1–3 files.

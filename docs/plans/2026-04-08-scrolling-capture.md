@@ -1,7 +1,5 @@
 # Scrolling Full-Page Screenshot Capture Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Replace the 20,000px height-capped full-page capture with a byte-budget-based system, restructure the context menu into a "Birdbrain" submenu, and add a scrolling capture mode that pre-scrolls infinite-scroll pages before stitching.
 
 **Architecture:** The content script's `captureFullPage()` is refactored to stop based on a raw byte budget (100 MB) instead of a pixel height cap. A new `captureFullPageScrolling()` function adds a scroll-to-load phase (with 120s time limit and stall detection) before the stitch phase. The background script restructures the context menu into a parent "Birdbrain" menu with two children and adds a new orchestrator for the scrolling capture path. The server-side screenshot size limit is raised to 100 MB.

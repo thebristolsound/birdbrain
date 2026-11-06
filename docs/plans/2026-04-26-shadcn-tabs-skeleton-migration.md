@@ -1,7 +1,5 @@
 # shadcn Tabs + Skeleton Migration — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Add shadcn's `Tabs` and `Skeleton` primitives at shadcn defaults and migrate two surfaces that benefit measurably: SettingsView's hand-rolled nav (gains Radix keyboard/ARIA) and three loading-state placeholders (replace `"Loading..."` text with skeleton blocks).
 
 **Architecture:** Coexist-only. The existing customized `ui/*` layer (Button/Card/Badge/Input/Textarea/Label/Dialog/ScrollArea — styled with Birdbrain tokens like `bg-accent`, `neu-card`) is **not** modified. New primitives are added at shadcn defaults via the official CLI. The token bridge already in `globals.css` makes shadcn-default class names (`bg-card`, `text-muted-foreground`) render in the Birdbrain look.

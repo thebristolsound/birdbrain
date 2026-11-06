@@ -1,7 +1,5 @@
 # Settings Enforcement Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Make all Capture & Storage settings actually work — remove 2 dead settings (`captureHtml`, `maxStorageMb`) and wire up 2 ignored settings (`dedupeWindowSeconds`, `storagePath`).
 
 **Architecture:** Four independent changes touching the settings type, the capture server, the Chrome extension, the main process startup, and the settings UI. Each task is self-contained and can be committed independently.

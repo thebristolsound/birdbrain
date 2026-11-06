@@ -72,6 +72,7 @@ describe('SettingsView on the Egress section', () => {
     const group = await screen.findByRole('radiogroup', { name: 'Egress' })
     const direct = group.querySelector<HTMLInputElement>('input[value="direct"]')!
     await waitFor(() => expect(document.activeElement).toBe(direct))
+    expect(screen.getByRole('tab', { name: 'Network', selected: true })).toBeDefined()
     expect(onSectionShown).toHaveBeenCalledOnce()
   })
 

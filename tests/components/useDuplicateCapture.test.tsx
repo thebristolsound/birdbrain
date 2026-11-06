@@ -127,5 +127,18 @@ describe('duplicateRefusalMessage', () => {
     expect(
       duplicateRefusalMessage({ status: 'rejected', reason: 'not_verified', detail: 'tampered' })
     ).toMatch(/currently verifies/)
+    // Main refuses with this detail only after the capture verified, so the
+    // message must not read as a failed verification. A hand-edited row ends
+    // here as well as a renamed import, so it names neither cause.
+    const mismatch = duplicateRefusalMessage({
+      status: 'rejected',
+      reason: 'not_verified',
+      detail: 'entry-mismatch'
+    })
+    expect(mismatch).toBe(
+      'This capture cannot be duplicated because it cannot be matched to its manifest entry; ' +
+        'its verification is not affected'
+    )
+    expect(mismatch).not.toMatch(/currently verifies|import/i)
   })
 })

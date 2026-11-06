@@ -602,12 +602,13 @@ describe('the capture shortcut', () => {
     expect(status.state === 'open' && status.browser.shortcut).toMatchObject({ state: 'failed' })
   })
 
-  it('captures the one visible, focused tab', async () => {
+  it('captures the one visible, focused tab, without Scroll-to-load', async () => {
     const h = harness({ browser: { respond: focus(true, true) } })
     await h.open()
     await h.loadFirstTab()
     await h.service.shortcutPressed()
     expect(h.capture).toHaveBeenCalledTimes(1)
+    expect(h.capture).toHaveBeenCalledWith(expect.objectContaining({ scrollToLoad: false }))
     expect(h.emitPickTab).not.toHaveBeenCalled()
   })
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Button,
@@ -24,9 +24,10 @@ import {
 // The tab picker (#1832, `1r`), mounted once at the root of each window. The capture shortcut
 // opens it when more than one tab could be captured, or none, and the panel's Choose tab… opens
 // it too. It captures nothing until the Operator picks: numbered rows with the URL, the first
-// highlighted, Enter takes the highlighted row and Escape closes. While the panel is popped out,
-// the pop-out's picker answers the shortcut and the main window's stays shut. It decides which
-// tab a Capture takes, so it is on the evidence-affecting paths list.
+// focused and highlighted each time it opens. The highlight follows focus and the pointer; Enter
+// takes the highlighted row, Enter on any other button presses that button, and Escape closes.
+// While the panel is popped out, the pop-out's picker answers the shortcut and the main window's
+// stays shut. It decides which tab a Capture takes, so it is on the evidence-affecting paths list.
 
 const PICKER_TIP =
   'Birdbrain found more than one tab the shortcut could take, or none in front, so it captures ' +
@@ -42,6 +43,7 @@ export function TabPicker({ inPopOut }: { inPopOut: boolean }) {
   const { data: poppedOut = false } = useQuery(launchedBrowserPopOutQueryOptions)
   const [highlighted, setHighlighted] = useState(0)
   const [error, setError] = useState('')
+  const rows = useRef<Array<HTMLButtonElement | null>>([])
 
   useEffect(
     () =>
@@ -57,6 +59,13 @@ export function TabPicker({ inPopOut }: { inPopOut: boolean }) {
   const browser = status?.state === 'open' ? status.browser : null
   const tabs = browser ? capturableTabs(browser.tabs) : []
   const shown = open && browser !== null && !browser.captureUnavailable
+
+  function move(step: number) {
+    if (tabs.length === 0) return
+    const next = Math.min(tabs.length - 1, Math.max(0, highlighted + step))
+    setHighlighted(next)
+    rows.current[next]?.focus()
+  }
 
   function close() {
     setError('')
@@ -85,12 +94,15 @@ export function TabPicker({ inPopOut }: { inPopOut: boolean }) {
           onClose={close}
           className="w-[calc(100%-1rem)] max-w-sm rounded-md p-3 text-xs"
           onKeyDown={(event) => {
-            if (event.key === 'ArrowDown') setHighlighted((i) => Math.min(tabs.length - 1, i + 1))
-            if (event.key === 'ArrowUp') setHighlighted((i) => Math.max(0, i - 1))
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              void pick(highlighted)
-            }
+            if (event.key === 'ArrowDown') move(1)
+            if (event.key === 'ArrowUp') move(-1)
+            if (event.key !== 'Enter') return
+            const { target } = event
+            const button = target instanceof HTMLElement ? target.closest('button') : null
+            // A button that is not a row, Cancel among them, answers its own Enter.
+            if (button && !button.hasAttribute('data-tab-row')) return
+            event.preventDefault()
+            void pick(highlighted)
           }}
         >
           <div className="flex items-center gap-1.5">
@@ -106,9 +118,17 @@ export function TabPicker({ inPopOut }: { inPopOut: boolean }) {
             {tabs.map((tab, index) => (
               <li key={tab.targetId}>
                 <button
+                  ref={(node) => {
+                    rows.current[index] = node
+                  }}
                   type="button"
+                  data-tab-row=""
+                  // The content mounts on every open, Choose tab… included, so this also puts
+                  // the highlight back on the first row.
+                  autoFocus={index === 0}
                   title={tab.url}
                   aria-current={index === highlighted ? 'true' : undefined}
+                  onFocus={() => setHighlighted(index)}
                   onMouseEnter={() => setHighlighted(index)}
                   onClick={() => void pick(index)}
                   className={cn(

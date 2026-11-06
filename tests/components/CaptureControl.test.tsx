@@ -250,6 +250,59 @@ describe('the tab picker', () => {
     await waitFor(() => expect(useAppStore.getState().scrollToLoadNext).toBe(false))
   })
 
+  it('opens with the first row focused, so Enter takes the row it shows highlighted', async () => {
+    const { pickTab } = mount(summary({ tabs: [NOTICES, TIMETABLE] }), { picker: true })
+    await screen.findByText('Capture will take')
+    pickTab()
+    const rows = within(await screen.findByRole('dialog')).getAllByRole('button', {
+      name: /^\d · /
+    })
+    expect(document.activeElement).toBe(rows[0])
+    expect(rows[0].getAttribute('aria-current')).toBe('true')
+  })
+
+  it('takes the row the Operator moved to with the Tab key, not the highlighted one', async () => {
+    const { capture, pickTab } = mount(summary({ tabs: [NOTICES, TIMETABLE] }), { picker: true })
+    await screen.findByText('Capture will take')
+    pickTab()
+    const rows = within(await screen.findByRole('dialog')).getAllByRole('button', {
+      name: /^\d · /
+    })
+    act(() => rows[1].focus())
+    expect(rows[1].getAttribute('aria-current')).toBe('true')
+    fireEvent.keyDown(rows[1], { key: 'Enter' })
+    await waitFor(() => expect(capture).toHaveBeenCalledWith('t2', { scrollToLoad: false }))
+    expect(capture).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves Enter on Cancel to Cancel, and captures nothing', async () => {
+    const { capture, pickTab } = mount(summary({ tabs: [NOTICES, TIMETABLE] }), { picker: true })
+    await screen.findByText('Capture will take')
+    pickTab()
+    const cancel = within(await screen.findByRole('dialog')).getByRole('button', {
+      name: 'Cancel'
+    })
+    act(() => cancel.focus())
+    const enter = fireEvent.keyDown(cancel, { key: 'Enter' })
+    // Not prevented, so the browser goes on to press the focused button.
+    expect(enter).toBe(true)
+    await act(async () => {})
+    expect(capture).not.toHaveBeenCalled()
+  })
+
+  it('opens from Choose tab… on the first row, whatever was highlighted before', async () => {
+    const { capture, pickTab } = mount(summary({ tabs: [NOTICES, TIMETABLE] }), { picker: true })
+    await screen.findByText('Capture will take')
+    pickTab()
+    const first = await screen.findByRole('dialog')
+    fireEvent.keyDown(first, { key: 'ArrowDown' })
+    fireEvent.click(within(first).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: 'Choose tab…' }))
+    fireEvent.keyDown(await screen.findByRole('dialog'), { key: 'Enter' })
+    await waitFor(() => expect(capture).toHaveBeenCalledWith('t1', { scrollToLoad: false }))
+  })
+
   it('captures nothing when the Operator cancels', async () => {
     const { capture, pickTab } = mount(summary({ tabs: [NOTICES, TIMETABLE] }), { picker: true })
     await screen.findByText('Capture will take')

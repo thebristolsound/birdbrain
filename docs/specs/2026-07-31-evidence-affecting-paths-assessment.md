@@ -102,6 +102,16 @@ directory glob, so the files the clicked-Capture step (#1832) and the Persona br
 step (#1833) add to the same folder match it from their first commit; "Known gap" below explains
 why a new file that no entry names is otherwise missed. The step's edits to
 `src/main/services/session.ts` and `src/main/index.ts` already match their own blocking rows.
+On 2026-11-05 the clicked-Capture step (#1832) added five files under that glob, each matched by
+its row from the first commit: `tabRecording.ts` decides which of a tab's exchanges a Capture's
+Transaction Record holds and when a page counts as recorded from its first request, `scrub.ts`
+replaces credential values and removes request bodies before anything is held, `captureTab.ts`
+runs the Capture sequence and the cut, `captures.ts` refuses the tabs a Capture may not take and
+hands the rest to admission, and `tabPicking.ts` decides which tab the shortcut captures. The
+same step added three renderer files to Acquisition at blocking tier, by the precedent of
+`extension/src/popup/PopupApp.tsx`, which routes the extension's Captures: the panel's Capture
+control (`CaptureControl.tsx`), the tab picker (`TabPicker.tsx`), and the panel model whose
+`captureTarget` decides which tab the control names and takes (`captureSessionPanelModel.ts`).
 
 ### Known gap: carve-outs are caught by review, not by a check
 
@@ -255,7 +265,10 @@ that caused it was to record the carved-out file as an exclusion (#515), which i
 | `src/packages/transaction-record/**` | blocking | Turns the browser's network events into the exchanges a Transaction Record holds and the inventory counts of what it lacks, and a main document's `securityDetails` into Bound TLS Details |
 | `src/main/services/transactionRecorder.ts` | blocking | Sets up each debugger session of a background render, decides which events and bodies reach the Transaction Record and under what budget, and whether the record is present or `failed` (#1929). Added 2026-10-26 |
 | `src/main/services/testCertificateAllowance.ts` | blocking | Holds the test-only switch that makes a render accept one TLS leaf, which a packaged build ignores (#1929). Added 2026-10-26 |
-| `src/main/services/launchedBrowser/**` | blocking | Starts the browser the Operator browses in and drives it (#1831): which executable runs, with which switches and browser profile, which commands the engine may send it, and the Egress checks that refuse to start it or close it when its traffic could leave around the proxy. Added 2026-11-03 |
+| `src/main/services/launchedBrowser/**` | blocking | Starts the browser the Operator browses in and drives it (#1831): which executable runs, with which switches and browser profile, which commands the engine may send it, and the Egress checks that refuse to start it or close it when its traffic could leave around the proxy. Since #1832 it also records each tab, removes credential values and request bodies, takes clicked Captures and picks the shortcut's tab. Added 2026-11-03, amended 2026-11-05 |
+| `src/renderer/components/launchedBrowser/CaptureControl.tsx` | blocking | Names the tab a clicked Capture in the launched browser takes and sends it, with the Operator's Scroll-to-load choice (#1832). Added 2026-11-05 |
+| `src/renderer/components/launchedBrowser/TabPicker.tsx` | blocking | Picks the tab a Capture takes when the shortcut cannot tell which tab is meant (#1832). Added 2026-11-05 |
+| `src/renderer/components/launchedBrowser/captureSessionPanelModel.ts` | blocking | `captureTarget` decides which tab the Capture control names and takes, and the tab flags say whether a Capture of it carries a Transaction Record (#1832). Added 2026-11-05 |
 
 ### Integrity core (hash, manifest, signing, trusted time, verification)
 

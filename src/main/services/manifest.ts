@@ -711,7 +711,7 @@ export type ManifestEntryInput =
       // capture entry schema in schemas.ts. Schema-7 fields, so an entry
       // carrying any of them, a launched method, or a stage-2 inventory value
       // is stamped 7 (LAUNCHED_BROWSER_MIN_READER, PERSONA_MIN_READER).
-      // Nothing writes the launched browser's fields yet.
+      // A clicked `launched` Capture writes the browser fields (#1832).
       browserProduct?: string
       browserVersion?: string
       browserFamily?: BrowserFamily
@@ -1264,6 +1264,11 @@ export interface CaptureEntryContext {
   // one keeps its canonical body.
   personaId?: string
   personaLabel?: string
+  // The launched browser that took a `launched` Capture (decision D12), schema 7; omitted when
+  // absent, so every other entry keeps its canonical body.
+  browserProduct?: string
+  browserVersion?: string
+  browserFamily?: BrowserFamily
   sizeBytes: number
   operatorId: string
   operatorName: string
@@ -1328,6 +1333,9 @@ export async function withCaptureEntry<T>(
       ...(ctx.linkHref !== undefined ? { linkHref: ctx.linkHref } : {}),
       ...(ctx.personaId !== undefined ? { personaId: ctx.personaId } : {}),
       ...(ctx.personaLabel !== undefined ? { personaLabel: ctx.personaLabel } : {}),
+      ...(ctx.browserProduct !== undefined ? { browserProduct: ctx.browserProduct } : {}),
+      ...(ctx.browserVersion !== undefined ? { browserVersion: ctx.browserVersion } : {}),
+      ...(ctx.browserFamily !== undefined ? { browserFamily: ctx.browserFamily } : {}),
       sizeBytes: ctx.sizeBytes,
       operatorId: ctx.operatorId,
       operatorName: ctx.operatorName,

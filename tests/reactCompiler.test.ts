@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
+// @ts-expect-error - Babel 7 ships no type declarations, and #2062 pins @babel/core to 7
 import { transformSync } from '@babel/core'
 import { describe, expect, it } from 'vitest'
 import { compilesWithReactCompiler, reactCompilerBabel } from '../scripts/react-compiler'

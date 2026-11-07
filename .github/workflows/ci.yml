@@ -408,6 +408,12 @@ jobs:
       - name: Run E2E tests
         run: xvfb-run --auto-servernum npx playwright test
 
+      # The two CI retries (playwright.config.ts) turn a spec that fails then passes green, so
+      # without this step a flake leaves no trace on the run that absorbed it.
+      - name: Report specs that passed on a retry
+        if: always()
+        run: node scripts/e2e-flaky-summary.mjs test-results/e2e-results.json
+
   # Checks the docs site on PRs that change it. Mintlify builds website/content only
   # after a merge to main, so a broken internal link or a missing image would otherwise
   # pass every PR check and surface on the live site (#450 was the same failure under

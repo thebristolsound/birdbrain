@@ -1,7 +1,5 @@
 # Workspace-Centric UI Redesign — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Transform Birdbrain from a dashboard-centric app (always landing on "Welcome to Birdbrain") into a workspace-centric IDE-like app where the active case IS the workspace, with session restoration, a vertical icon sidebar, a command palette for case switching, and case metadata merged into a collapsible header.
 
 **Architecture:** The app gains three new behavioral layers: (1) session persistence via `BirdbrainSettings` storing `lastActiveCaseId` + `lastActiveSection`, (2) a redirect-on-mount hook that auto-restores the last workspace, and (3) a new layout model replacing the horizontal tab bar with a vertical icon sidebar + collapsible case header. The existing Dashboard becomes a fallback for first-run onboarding only. The root layout changes from `TopBar + Outlet` to `Sidebar + (TopBar + Outlet)`.

@@ -7,9 +7,9 @@
 //   - a dirty working tree: the stamp must name a real commit, and on a clean
 //     tree `coverage:diff`'s working-tree scoring (#508) equals the committed
 //     diff CI measures;
-//   - a Node major other than 20: Electron's postinstall breaks silently on
-//     24, and a non-interactive shell does not activate mise (CLAUDE.md "Run
-//     everything on Node 20").
+//   - a Node major other than 24: the toolchain and Electron's test runtime
+//     share that major, and a non-interactive shell does not activate mise
+//     (CLAUDE.md "Run everything on Node 24").
 // A block left by an earlier run is removed before either check, so a refusal
 // never leaves an older block at the documented path to paste.
 //
@@ -43,7 +43,7 @@ import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 export const BLOCK_VERSION = 1
-export const REQUIRED_NODE_MAJOR = 20
+export const REQUIRED_NODE_MAJOR = 24
 export const DEFAULT_OUT = join('.preflight', 'verification.md')
 
 const parseArgs = (argv) => {
@@ -69,7 +69,7 @@ export const nodeVersionProblem = (version) => {
   return (
     `Node v${version} is not the pinned ${REQUIRED_NODE_MAJOR}.x. .nvmrc and .mise.toml pin it, ` +
     'but a non-interactive shell does not activate mise; run `mise exec -- pnpm preflight` ' +
-    'or `nvm use` first (CLAUDE.md "Run everything on Node 20").'
+    'or `nvm use` first (CLAUDE.md "Run everything on Node 24").'
   )
 }
 

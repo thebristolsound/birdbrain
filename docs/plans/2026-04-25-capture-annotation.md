@@ -1,14 +1,12 @@
 # Capture Annotation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Add screenshot annotation (rect, arrow, highlight, redact-solid, numbered pin) to the `CaptureViewer` Screenshot tab. Annotations are stored as vector JSON and burned into the export PNG by the main process via `sharp` + SVG composite, leaving the original screenshot and hash chain untouched.
 
 **Architecture:** Migration v17 adds `annotations` and `annotation_pins` tables. A new main-process service `annotations.ts` exposes CRUD over IPC. Renderer uses `react-konva` for an in-image-space `<Stage>` shared between view and edit modes. Export integration substitutes the burned PNG into the existing single-file HTML export.
 
 **Tech Stack:** TypeScript, better-sqlite3, Electron IPC, React 19, react-konva + konva + use-image, sharp, vitest, Playwright
 
-**Spec:** `docs/superpowers/specs/2026-04-25-capture-annotation-design.md`
+**Spec:** `docs/specs/2026-04-25-capture-annotation-design.md`
 
 ---
 

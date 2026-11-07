@@ -18,15 +18,18 @@ import {
 } from '@renderer/lib/api/launchedBrowser'
 import { useAppStore } from '@renderer/stores/appStore'
 import { cn } from '@renderer/lib/utils'
+import { CaptureControl } from '@renderer/components/launchedBrowser/CaptureControl'
 import { InfoTip } from '@renderer/components/launchedBrowser/InfoTip'
 import { PopOutStub } from '@renderer/components/launchedBrowser/PopOutStub'
 import { egressName } from '@renderer/components/launchedBrowser/startDialogModel'
 import {
+  captureTarget,
   extensionWarningTitle,
   formatElapsed,
   noticeCard,
   panelView,
   tabCount,
+  tabStatus,
   tabTitle,
   type PanelView
 } from '@renderer/components/launchedBrowser/captureSessionPanelModel'
@@ -93,6 +96,8 @@ function BrowserBody({
   // The pop-out's title bar names the Case.
   const inPopOut = form === 'window'
   const listsTabs = form === 'rail' || form === 'overlay'
+  // The popover only counts tabs; every other form holds the Capture control (#1832).
+  const capturesHere = form !== 'popover'
   const pad = listsTabs ? 'px-3 py-2.5' : 'px-2.5 py-2'
   const openCaseLink = showOpenCase && (
     <OpenCaseLink caseId={caseId} caseName={caseName} onDone={onDone} />
@@ -202,8 +207,9 @@ function BrowserBody({
           <ExtensionWarning count={extensionWarnings.length} egress={egressText} />
         </div>
       )}
+      {capturesHere && kind === 'open' && <CaptureControl browser={browser} pad={pad} />}
       {listsTabs ? (
-        <TabList tabs={tabs} />
+        <TabList tabs={tabs} selectable={!browser.captureUnavailable} />
       ) : (
         <div className={cn('flex flex-col gap-1.5', pad)}>
           <span className="text-text-muted">{tabCount(tabs.length)}</span>
@@ -280,7 +286,13 @@ function ExtensionWarning({ count, egress }: { count: number; egress: string | n
   )
 }
 
-function TabList({ tabs }: { tabs: LaunchedBrowserTab[] }) {
+// Each row names its tab, and once the engine records it, whether its page was recorded from
+// its first request or why it cannot be captured (`1k`). A row the Capture control can take
+// is a button that makes it the capture target.
+function TabList({ tabs, selectable }: { tabs: LaunchedBrowserTab[]; selectable: boolean }) {
+  const pickedId = useAppStore((s) => s.captureTargetId)
+  const setTarget = useAppStore((s) => s.setCaptureTargetId)
+  const target = captureTarget(tabs, pickedId)
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-auto px-3 py-2">
       {tabs.length === 0 ? (
@@ -289,20 +301,78 @@ function TabList({ tabs }: { tabs: LaunchedBrowserTab[] }) {
         <>
           <div className={EYEBROW}>{tabCount(tabs.length)}</div>
           <ul aria-label="Tabs" className="flex flex-col gap-1.5">
-            {tabs.map((tab) => (
-              <li
-                key={tab.targetId}
-                title={tab.url}
-                className="min-w-0 rounded border border-border bg-card px-[7px] py-[5px]"
-              >
-                <div className="truncate font-semibold text-text-primary">{tabTitle(tab)}</div>
-                <div className="truncate font-mono text-[10px] text-text-muted">{tab.url}</div>
-              </li>
-            ))}
+            {tabs.map((tab) => {
+              const status = tabStatus(tab)
+              const takes =
+                selectable && tab.refusal === undefined && tab.firstRequest !== undefined
+              const chosen = target?.targetId === tab.targetId
+              const body = (
+                <>
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate font-semibold text-text-primary">
+                      {tabTitle(tab)}
+                    </span>
+                    {status && <TabStatusLabel status={status} />}
+                  </div>
+                  <div className="truncate font-mono text-[10px] text-text-muted">{tab.url}</div>
+                  {tab.refusal === 'crashed' && (
+                    <div className="text-danger-fg">Reload it in the browser, then capture.</div>
+                  )}
+                </>
+              )
+              return (
+                <li
+                  key={tab.targetId}
+                  title={tab.url}
+                  className={cn(
+                    'min-w-0 rounded border bg-card',
+                    tab.refusal === 'private' || tab.refusal === 'not-http'
+                      ? 'border-dotted border-border text-text-muted'
+                      : tab.refusal === 'crashed'
+                        ? 'border-danger-line bg-danger-surface'
+                        : chosen
+                          ? 'border-accent'
+                          : 'border-border'
+                  )}
+                >
+                  {takes ? (
+                    <button
+                      type="button"
+                      aria-pressed={chosen}
+                      className="w-full min-w-0 px-[7px] py-[5px] text-left"
+                      onClick={() => setTarget(tab.targetId)}
+                    >
+                      {body}
+                    </button>
+                  ) : (
+                    <div className="px-[7px] py-[5px]">{body}</div>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         </>
       )}
     </div>
+  )
+}
+
+function TabStatusLabel({ status }: { status: NonNullable<ReturnType<typeof tabStatus>> }) {
+  const { label, tip, tone } = status
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      <span
+        className={cn(
+          'whitespace-nowrap text-[10px]',
+          tone === 'chip' && 'rounded border border-border-strong px-1 font-mono text-text-muted',
+          tone === 'muted' && 'text-text-muted',
+          tone === 'danger' && 'font-semibold text-danger-fg'
+        )}
+      >
+        {label}
+      </span>
+      {tip && <InfoTip text={tip} />}
+    </span>
   )
 }
 

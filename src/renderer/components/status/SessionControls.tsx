@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { launchedBrowserStatusQueryOptions } from '@renderer/lib/api/launchedBrowser'
+import {
+  launchedBrowserName,
+  launchedBrowserStatusQueryOptions
+} from '@renderer/lib/api/launchedBrowser'
 import { useParams } from '@tanstack/react-router'
 import { motion, AnimatePresence } from 'motion/react'
 import { useAppStore } from '@renderer/stores/appStore'
@@ -12,6 +15,7 @@ export function SessionControls() {
   const sessionActive = useAppStore((s) => s.sessionActive)
   const setSessionActive = useAppStore((s) => s.setSessionActive)
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
+  const sessionCaseId = useAppStore((s) => s.activeCaseId)
   const { data: cases = [] } = useQuery(casesQueryOptions)
   const { data: launched } = useQuery(launchedBrowserStatusQueryOptions)
   const [toggling, setToggling] = useState(false)
@@ -26,7 +30,17 @@ export function SessionControls() {
   const launchedSession = launched?.state === 'open' || launched?.state === 'closed'
   if (!connectedToExtension && !launchedSession) return null
 
-  const activeCase = cases.find((c) => c.id === activeCaseId)
+  // The label after the switch names the Capture Session's Active Case, the Case Captures go into,
+  // which need not be the Case on screen: while a launched browser is open it pins the Case, and
+  // main refuses another Case's activation without an update. Once the browser closes the pin
+  // lifts and opening a Case moves the Active Case, so the browser's own Case is not used. It
+  // shows on Case screens only, as before.
+  const intoCase = activeCaseId ? cases.find((c) => c.id === sessionCaseId) : undefined
+  // Then the source (`1i`). As on the REC pill, a closed browser is no longer named.
+  const source =
+    launched?.state === 'open'
+      ? `${launchedBrowserName(launched.browser.label)}${connectedToExtension ? ', and the extension' : ''}`
+      : null
 
   const handleToggleSession = async () => {
     if (toggling) return
@@ -80,16 +94,18 @@ export function SessionControls() {
         </button>
       </label>
       <AnimatePresence>
-        {sessionActive && activeCase && (
+        {sessionActive && intoCase && (
           <motion.span
-            title={activeCase.name}
-            className="hidden max-w-[140px] truncate text-xs text-text-muted lg:inline"
+            data-testid="session-source-line"
+            title={source ? `${intoCase.name} · ${source}` : intoCase.name}
+            className="hidden min-w-0 text-xs text-text-muted lg:inline-flex"
             initial={presets.fadeIn.initial}
             animate={presets.fadeIn.animate}
             exit={presets.fadeIn.exit}
             transition={presets.fadeIn.transition}
           >
-            {activeCase.name}
+            <span className="max-w-[140px] truncate">{intoCase.name}</span>
+            {source && <span className="whitespace-pre"> · {source}</span>}
           </motion.span>
         )}
       </AnimatePresence>

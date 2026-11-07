@@ -13,7 +13,7 @@ bad() { echo "FAIL $1"; fails=$((fails + 1)); }
 check() { if eval "$2"; then ok "$1"; else bad "$1"; fi; }
 g() { git -c user.name=t -c user.email=t@t -c commit.gpgsign=false -c core.hooksPath=/dev/null "$@"; }
 
-mkdir -p "$fx/bin" "$fx/trees" "$fx/tmp" "$fx/t3/birdbrain"
+mkdir -p "$fx/bin" "$fx/trees" "$fx/tmp" "$fx/scratch" "$fx/t3/birdbrain"
 git init -q --bare -b main "$fx/origin.git"
 g clone -q "$fx/origin.git" "$fx/main" 2>/dev/null
 m="$fx/main"
@@ -53,6 +53,16 @@ g -C "$m" worktree add -q --detach "$fx/tmp/orphan" main 2>/dev/null
 g -C "$m" worktree add -q --detach "$fx/tmp/own" main 2>/dev/null
 g -C "$m" worktree lock --reason "birdbrain conflict pid=$$ created=now" "$fx/tmp/own"
 echo o > "$fx/tmp/orphan/o.txt"; g -C "$fx/tmp/orphan" add o.txt; g -C "$fx/tmp/orphan" commit -qm orphan
+# The scratch root on disk: a detached tree on a ref, and one at an unreachable commit that
+# its own session locked (a preflight tree at a squash-merged PR head, after the branch went).
+g -C "$m" worktree add -q --detach "$fx/scratch/home-scratch" main 2>/dev/null
+g -C "$m" worktree add -q --detach "$fx/scratch/own-orphan" main 2>/dev/null
+g -C "$m" worktree lock --reason "birdbrain preflight pid=$$ created=now" "$fx/scratch/own-orphan"
+echo p > "$fx/scratch/own-orphan/p.txt"; g -C "$fx/scratch/own-orphan" add p.txt; g -C "$fx/scratch/own-orphan" commit -qm own-orphan
+# The same tree once its session is gone: a dead lock pid, head at an unreachable commit.
+g -C "$m" worktree add -q --detach "$fx/scratch/dead-orphan" main 2>/dev/null
+g -C "$m" worktree lock --reason "birdbrain preflight pid=$dead created=now" "$fx/scratch/dead-orphan"
+echo q > "$fx/scratch/dead-orphan/q.txt"; g -C "$fx/scratch/dead-orphan" add q.txt; g -C "$fx/scratch/dead-orphan" commit -qm dead-orphan
 g -C "$m" branch br-merged main; g -C "$m" branch br-moved main; g -C "$m" branch br-nopr main
 echo s > "$m/a.txt"; g -C "$m" stash push -q -m teardown-fixture
 
@@ -78,7 +88,7 @@ pr() { printf '{"number":%s,"state":"%s","headRefName":"%s","headRefOid":"%s","i
 printf '#!/bin/sh\n[ "$1 $2" = "pr list" ] || exit 1\ncat "%s"\n' "$fx/prs.json" > "$fx/bin/gh"
 chmod +x "$fx/bin/gh"
 
-run() { (cd "$m" && PATH="$fx/bin:$PATH" TEARDOWN_T3_ROOT="$fx/t3" TEARDOWN_TMP_ROOT="$fx/tmp" bash "$td" "$@"); }
+run() { (cd "$m" && PATH="$fx/bin:$PATH" TEARDOWN_T3_ROOT="$fx/t3" TEARDOWN_TMP_ROOT="$fx/tmp" TEARDOWN_SCRATCH_ROOT="$fx/scratch" bash "$td" "$@"); }
 has_tree() { git -C "$m" worktree list --porcelain | grep -qx "worktree $1"; }
 has_branch() { git -C "$m" show-ref --verify --quiet "refs/heads/$1"; }
 
@@ -112,6 +122,8 @@ CLAUDE_PID=1 run close "$fx/tmp/own" >/dev/null; rc=$?
 check "close refuses another session's live lock" '[ "$rc" -eq 1 ] && has_tree "$fx/tmp/own"'
 CLAUDE_PID=$$ run close "$fx/tmp/own" >/dev/null; rc=$?
 check "close lifts its own session's lock (the creation rule)" '[ "$rc" -eq 0 ] && ! has_tree "$fx/tmp/own"'
+CLAUDE_PID=1 run close "$fx/scratch/own-orphan" >/dev/null 2>&1; rc=$?
+check "close refuses another session's locked detached tree at an unreachable commit" '[ "$rc" -eq 1 ] && has_tree "$fx/scratch/own-orphan"'
 check "close --branch with no holder is a no-op" 'run close --branch nosuch | grep -q "no worktree holds nosuch"'
 
 # Apply.
@@ -132,6 +144,11 @@ check "t3code tree: kept without --t3code" 'has_tree "$fx/t3/birdbrain/t3tree"'
 check "gone directory: pruned" '! has_tree "$fx/trees/gone"'
 check "detached scratch under the tmp root: removed" '! has_tree "$fx/tmp/scratch"'
 check "detached with an unreachable commit: kept" 'has_tree "$fx/tmp/orphan"'
+check "detached scratch under the home-disk root: removed" '! has_tree "$fx/scratch/home-scratch"'
+check "live-locked detached scratch tree: kept by the sweep" 'has_tree "$fx/scratch/own-orphan"'
+check "dead-locked detached scratch tree at an unreachable commit: removed" '! has_tree "$fx/scratch/dead-orphan"'
+CLAUDE_PID=$$ run close "$fx/scratch/own-orphan" >/dev/null; rc=$?
+check "close removes its own session's clean detached tree at an unreachable commit" '[ "$rc" -eq 0 ] && ! has_tree "$fx/scratch/own-orphan"'
 check "branch, merged at the PR head: deleted" '! has_branch br-merged'
 check "branch, merged but tip moved: kept" 'has_branch br-moved'
 check "branch, no PR: kept" 'has_branch br-nopr'

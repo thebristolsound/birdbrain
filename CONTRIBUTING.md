@@ -43,7 +43,7 @@ Contributions unlikely to land:
 
 ## Development setup
 
-1. Use **Node 20** (`.nvmrc` and `.mise.toml` pin it) and [pnpm](https://pnpm.io/).
+1. Use **Node 24** (`.nvmrc` and `.mise.toml` pin it) and [pnpm](https://pnpm.io/).
 2. `pnpm install` — installs dependencies and rebuilds the native SQLite module.
 3. `pnpm dev` — starts the Electron app in dev mode.
 4. `pnpm build:extension` — builds the Chrome extension (load `extension/dist`

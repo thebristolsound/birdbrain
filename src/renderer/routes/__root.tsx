@@ -37,6 +37,7 @@ import { ShareCoachMark } from '@renderer/components/onboarding/ShareCoachMark'
 import { LeftoverBrowserNotice } from '@renderer/components/launchedBrowser/LeftoverBrowserNotice'
 import { StartDialog } from '@renderer/components/launchedBrowser/StartDialog'
 import { StopSessionDialog } from '@renderer/components/launchedBrowser/StopSessionDialog'
+import { TabPicker } from '@renderer/components/launchedBrowser/TabPicker'
 import { AppToaster } from '@renderer/components/ui'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 import { subscribeToMainLog } from '@renderer/lib/mainLogBridge'
@@ -150,6 +151,7 @@ const rootRoute = createRootRoute({
           <LeftoverBrowserNotice />
           <StartDialog />
           <StopSessionDialog />
+          <TabPicker inPopOut={false} />
           <ShareCoachMark />
           <CrashRecoveryPrompt />
           <VpnWarningDialog />

@@ -7,7 +7,10 @@
 // `Emulation.setAutomationOverride` (spec, "The CDP client"), no
 // `Network.configureDurableMessages` (2026-10-17 ruling), and no `Runtime.enable`,
 // `Log.enable`, `Performance.enable` or `Debugger.enable` (spec, "Attach before request").
-// The client throws on any method not listed here.
+// The client throws on any method not listed here. Clicked Captures (#1832) add the recording
+// setup (`Network.setCacheDisabled`, decision D6; `Page.enable`, the maintainer's P3 ruling of
+// 2026-11-05), the body fetch, and the artifact commands. No command that reads a request body
+// (`Network.getRequestPostData`) is listed: a launched record holds none (ADR-0051).
 
 export interface TargetInfo {
   targetId: string
@@ -49,6 +52,22 @@ export interface NetworkResponse {
   fromDiskCache?: boolean
   fromServiceWorker?: boolean
   fromPrefetchCache?: boolean
+}
+
+export interface FrameInfo {
+  id: string
+  parentId?: string
+  loaderId: string
+  url: string
+  urlFragment?: string
+}
+
+export interface Viewport {
+  x: number
+  y: number
+  width: number
+  height: number
+  scale: number
 }
 
 type NoParams = Record<string, never>
@@ -118,6 +137,39 @@ export interface CdpCommandMap {
     }
     result: { result: RemoteObject; exceptionDetails?: ExceptionDetails }
   }
+  'Network.setCacheDisabled': { params: { cacheDisabled: boolean }; result: NoResult }
+  'Network.getResponseBody': {
+    params: { requestId: string }
+    result: { body: string; base64Encoded: boolean }
+  }
+  // For `Page.frameNavigated`, the commit signal of a main-frame document (spec, "From a
+  // session-long recording", step 2).
+  'Page.enable': { params: NoParams; result: NoResult }
+  'Page.getFrameTree': {
+    params: NoParams
+    result: { frameTree: { frame: FrameInfo } }
+  }
+  'Page.getLayoutMetrics': {
+    params: NoParams
+    result: {
+      cssContentSize?: { x: number; y: number; width: number; height: number }
+      cssLayoutViewport?: { clientWidth: number; clientHeight: number }
+    }
+  }
+  'Page.captureScreenshot': {
+    params: {
+      format: 'png'
+      captureBeyondViewport: boolean
+      fromSurface?: boolean
+      clip?: Viewport
+    }
+    result: { data: string }
+  }
+  'Page.captureSnapshot': { params: { format: 'mhtml' }; result: { data: string } }
+  'Page.printToPDF': {
+    params: { printBackground?: boolean; transferMode?: 'ReturnAsBase64' }
+    result: { data: string }
+  }
 }
 
 export type CdpMethod = keyof CdpCommandMap
@@ -134,7 +186,15 @@ export const LAUNCHED_BROWSER_COMMANDS = [
   'Runtime.runIfWaitingForDebugger',
   'Network.enable',
   'Page.createIsolatedWorld',
-  'Runtime.evaluate'
+  'Runtime.evaluate',
+  'Network.setCacheDisabled',
+  'Network.getResponseBody',
+  'Page.enable',
+  'Page.getFrameTree',
+  'Page.getLayoutMetrics',
+  'Page.captureScreenshot',
+  'Page.captureSnapshot',
+  'Page.printToPDF'
 ] as const satisfies readonly CdpMethod[]
 
 // Parameters the client refuses on a listed command, for a caller that gets past the types.
@@ -142,7 +202,7 @@ export const REFUSED_PARAMS: Partial<Record<CdpMethod, readonly string[]>> = {
   'Network.enable': ['enableDurableMessages']
 }
 
-export interface CdpEventMap {
+interface TypedEvents {
   'Target.attachedToTarget': {
     sessionId: string
     targetInfo: TargetInfo
@@ -160,6 +220,38 @@ export interface CdpEventMap {
     response: NetworkResponse
     frameId?: string
   }
+  // A tab's renderer crashed; the target stays until it loads again or closes.
+  'Target.targetCrashed': { targetId: string; status: string; errorCode: number }
+  // `type` is `BackForwardCacheRestore` for a page the back-forward cache restored.
+  'Page.frameNavigated': { frame: FrameInfo; type?: string }
+  // A same-document navigation (the history API, a fragment change), with the frame's new URL.
+  'Page.navigatedWithinDocument': { frameId: string; url: string }
+}
+
+// The `Network` events a tab's recording reads (spec, "From a session-long recording", step 4).
+// Each arrives with fields the recording replaces or removes before it holds the event, so they
+// are typed at the recording, not here.
+export const RECORDED_NETWORK_EVENTS = [
+  'Network.requestWillBeSent',
+  'Network.requestWillBeSentExtraInfo',
+  'Network.responseReceived',
+  'Network.responseReceivedExtraInfo',
+  'Network.responseReceivedEarlyHints',
+  'Network.requestServedFromCache',
+  'Network.dataReceived',
+  'Network.loadingFinished',
+  'Network.loadingFailed',
+  'Network.webSocketCreated',
+  'Network.webSocketWillSendHandshakeRequest',
+  'Network.webSocketHandshakeResponseReceived',
+  'Network.signedExchangeReceived'
+] as const
+
+export type RecordedNetworkEvent = (typeof RECORDED_NETWORK_EVENTS)[number]
+
+// Every other recorded `Network` event reaches its handler untyped, as the protocol sent it.
+export type CdpEventMap = TypedEvents & {
+  [E in Exclude<RecordedNetworkEvent, keyof TypedEvents>]: Record<string, unknown>
 }
 
 export type CdpEventName = keyof CdpEventMap

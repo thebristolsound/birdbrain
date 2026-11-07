@@ -119,9 +119,6 @@ ds-bundle/
 .design-sync/node_modules
 /node_modules
 
-# subagent-driven-development scratch
-.superpowers/
-
 # Third-party vendor documentation kept locally for research reference only
 # (competitor guides, PDFs). Not ours to redistribute, and this repo is heading
 # for public visibility — it must never enter history. See #265 (verify

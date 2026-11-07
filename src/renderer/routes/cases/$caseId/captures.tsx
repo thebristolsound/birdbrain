@@ -19,13 +19,15 @@ import { WaybackPanel } from '@renderer/components/captures/WaybackPanel'
 import {
   capturePanelIds,
   visibleCaptureColumns,
-  DETAILS_FOLD_ROOM_PX,
+  detailsFoldRoomPx,
+  viewerMinPx,
   DETAILS_PANEL,
   LIST_PANEL,
   PANEL_GROUP_ID,
   SIDE_RAIL_PX,
   VIEWER_PANEL
 } from '@renderer/components/captures/captureColumns'
+import { useCaptureSessionRailDocked } from '@renderer/components/launchedBrowser/CaptureSessionDock'
 import { useCaptureView } from '@renderer/components/captures/useCaptureView'
 import { useListColumnCollapsed } from '@renderer/hooks/useListColumnCollapsed'
 import { useListColumnWidth } from '@renderer/hooks/useListColumnWidth'
@@ -136,6 +138,7 @@ export function CapturesRoute() {
   // The screen's own width, which the Capture Session rail beside it takes from (#1831).
   const rootRef = useRef<HTMLDivElement>(null)
   const screenWidth = useViewWidth(rootRef, window.innerWidth - SIDE_RAIL_PX)
+  const railDocked = useCaptureSessionRailDocked()
   const { view, setView } = useCaptureView()
   const { collapsed: listCollapsed, setCollapsed: setListCollapsed } = useListColumnCollapsed()
 
@@ -159,8 +162,8 @@ export function CapturesRoute() {
 
   // Sync forced flag from the screen's width.
   useEffect(() => {
-    setPanelCollapsedForced(screenWidth < DETAILS_FOLD_ROOM_PX)
-  }, [screenWidth, setPanelCollapsedForced])
+    setPanelCollapsedForced(screenWidth < detailsFoldRoomPx(railDocked))
+  }, [screenWidth, railDocked, setPanelCollapsedForced])
 
   useEffect(() => {
     if (!panelCollapsedForced) setForcedPanelOpen(false)
@@ -359,7 +362,7 @@ export function CapturesRoute() {
         )}
         <Panel
           id={VIEWER_PANEL.id}
-          minSize={VIEWER_PANEL.minSize}
+          minSize={viewerMinPx(railDocked)}
           className="flex min-w-0"
           style={{ overflow: 'hidden' }}
         >

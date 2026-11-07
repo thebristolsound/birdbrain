@@ -1,7 +1,5 @@
 # UI Bug Audit Fixes — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Fix 8 confirmed UI bugs covering responsive layout, light-mode token hygiene, dead controls, a Tailwind class typo, invisible interaction affordances, a broken scroll container, and a fragile back-navigation.
 
 **Architecture:** All changes are confined to the renderer layer — no IPC, no main process, no new routes. Each task is a surgical edit to one or two files with no new abstractions needed.

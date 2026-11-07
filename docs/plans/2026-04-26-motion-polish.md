@@ -1,20 +1,17 @@
 # Motion Polish Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Tighten Birdbrain's existing `motion/lib` system into a whisper-quiet T3-Chat-style motion layer covering tactile micro-interactions, list/content reveals, loading transitions, and a working "Reduce motion" toggle.
 
 **Architecture:** Extend the existing `src/renderer/lib/motion/` system (springs, presets, MotionProvider) with two new springs and three new presets. Wrap a small set of UI primitives (`Button`, `Card`) for tactile feedback. Apply `AnimatePresence` to three high-traffic lists. Wire the dead "Reduce motion" toggle in `AppearanceConfig` end-to-end (settings type → IPC → hook → MotionProvider + CSS gate).
 
 **Tech Stack:** `motion` v12 (Framer's successor), Tailwind v4 with custom semantic tokens, React 19, Zustand (UI state only — settings stay local), Vitest with `happy-dom` for hook tests, `@testing-library/react` `renderHook`. The companion `BirdbrainSettings` interface and `DEFAULT_SETTINGS` live in `src/shared/types.ts` and `src/main/services/settings.ts` respectively.
 
-**Spec:** `docs/superpowers/specs/2026-04-26-motion-polish-design.md`
+**Spec:** `docs/specs/2026-04-26-motion-polish-design.md`
 
 **Conventions used in this plan:**
 - All code changes live in the renderer except the settings type (shared) and `DEFAULT_SETTINGS` (main).
 - Commit format follows the project style: `<type>(<scope>): <subject>` — types are `feat`, `fix`, `refactor`, `chore`, `docs`, `test`. Author is `Matt Donovan`.
 - Per CLAUDE.md: never `git add -A` / `git add .`. Stage explicit paths.
-- The `docs/superpowers/` directory is gitignored — the spec and this plan are not committed.
 
 ---
 
@@ -1410,7 +1407,7 @@ git commit -m "refactor(ui): narrow transition-all to specific properties"
 **Files:**
 - Create: `docs/motion-polish-checklist.md`
 
-A short hand-test sheet for the seven surfaces touched. Lives outside `docs/superpowers/` so it can be committed.
+A short hand-test sheet for the seven surfaces touched.
 
 - [ ] **Step 1: Write the checklist**
 

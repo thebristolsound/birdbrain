@@ -1,6 +1,16 @@
-import { Sun, Moon, ChevronsUpDown, ChevronRight, Settings, ArrowLeft } from 'lucide-react'
+import { useState } from 'react'
+import {
+  Sun,
+  Moon,
+  ChevronDown,
+  ChevronsUpDown,
+  ChevronRight,
+  Settings,
+  ArrowLeft
+} from 'lucide-react'
 import logoImg from '@renderer/assets/logo.png'
-import { Button } from '@renderer/components/ui'
+import { Button, Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui'
+import { cn } from '@renderer/lib/utils'
 import { useMatchRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
@@ -9,6 +19,10 @@ import { accelerator } from '@renderer/lib/accelerator'
 import { SearchBar } from '@renderer/components/search/SearchBar'
 import { SessionControls } from '@renderer/components/status/SessionControls'
 import { CaptureSessionButton } from '@renderer/components/launchedBrowser/CaptureSessionButton'
+import {
+  CaptureSessionPanel,
+  useCaptureSessionView
+} from '@renderer/components/launchedBrowser/CaptureSessionPanel'
 import {
   launchedBrowserName,
   launchedBrowserStatusQueryOptions
@@ -73,6 +87,10 @@ export function TopBar() {
   })
   const self = roster?.members.find((m) => m.installationId === roster.installationId) ?? null
   const switchTitle = `Switch case (${accelerator('K')})`
+  // The name can hide on a narrow window, so the tooltip carries it in full.
+  const crumbTitle = [activeCase?.name, switchTitle, self && youAreLine(self.memberCode)]
+    .filter(Boolean)
+    .join(' · ')
 
   // Simplified settings header
   if (isOnSettings) {
@@ -94,16 +112,17 @@ export function TopBar() {
 
         <div className="flex-1" />
 
-        {/* A running session keeps its indicator and stop control here too. */}
-        {sessionActive && (
+        {/* A running session keeps its indicator and stop control here too. Settings has no
+            rail, so the REC pill opens the Capture Session panel (`2d`); Open ‹Case› stays on the
+            dashboard's. */}
+        {sessionActive ? (
           <div className="flex items-center gap-2">
             <SessionControls />
-            <RecIndicator />
+            <RecIndicator popover={{ showOpenCase: false }} />
           </div>
+        ) : (
+          <CaptureSessionButton showOpenCase={false} />
         )}
-        {/* Settings has no rail, so the Capture Session panel opens from here (`2d`). Open ‹Case›
-            stays on the dashboard's. */}
-        <CaptureSessionButton showOpenCase={false} />
 
         <Button
           variant="ghost"
@@ -122,8 +141,16 @@ export function TopBar() {
     <header className={HEADER_CLASS}>
       {/* The side groups share what the search leaves equally, so the search sits at the
           window's centre until a side needs more than its half. The case name's track
-          gives way first, down to the switcher icon; then the search shrinks. */}
-      <div className="grid flex-1 basis-0 grid-cols-[max-content_max-content_minmax(2rem,max-content)] items-center gap-3">
+          gives way first, down to about eight characters; then the search shrinks. */}
+      <div
+        className={cn(
+          'grid flex-1 basis-0 items-center gap-3 max-[1000px]:grid-cols-[max-content_max-content_minmax(2rem,max-content)]',
+          // Below 1,000 pixels the name hides and its track narrows (design review of 2026-11-04).
+          self
+            ? 'grid-cols-[max-content_max-content_minmax(7.5rem,max-content)]'
+            : 'grid-cols-[max-content_max-content_minmax(6rem,max-content)]'
+        )}
+      >
         {/* Logo — click to go home */}
         <button
           onClick={() => navigate({ to: '/' })}
@@ -146,7 +173,7 @@ export function TopBar() {
               data-tour="caseswitcher"
               onClick={() => setCommandPaletteOpen(true)}
               className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-elevated transition-colors"
-              title={self ? `${switchTitle} · ${youAreLine(self.memberCode)}` : switchTitle}
+              title={crumbTitle}
             >
               {self && (
                 <MemberCodeChip
@@ -156,7 +183,10 @@ export function TopBar() {
                   data-testid="topbar-member-code"
                 />
               )}
-              <span className="max-w-[220px] truncate font-display text-xs font-bold text-text-primary">
+              <span
+                data-testid="topbar-case-name-text"
+                className="min-w-16 max-w-[220px] truncate font-display text-xs font-bold text-text-primary max-[1000px]:hidden"
+              >
                 {activeCase?.name ?? ''}
               </span>
               <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-text-muted" />
@@ -177,11 +207,14 @@ export function TopBar() {
         data-testid="topbar-controls"
         className="flex flex-1 basis-0 items-center justify-end gap-2"
       >
-        {/* The case's session switch lives in CaseActionBar, under this bar. */}
-        {sessionActive && <RecIndicator />}
-        {/* Case screens carry the Capture Session rail; the dashboard and the wizard have none
-            (`2c`). */}
-        {!activeCaseId && <CaptureSessionButton showOpenCase={isOnDashboard} />}
+        {/* The case's session switch lives in CaseActionBar, under this bar. Case screens
+            carry the Capture Session rail; on the dashboard and the wizard, which have none, the
+            REC pill opens the panel (`2c`). With no session running there is no pill, and a
+            notice the panel still holds opens from the Capture Session button. */}
+        {sessionActive && (
+          <RecIndicator popover={activeCaseId ? undefined : { showOpenCase: isOnDashboard }} />
+        )}
+        {!activeCaseId && !sessionActive && <CaptureSessionButton showOpenCase={isOnDashboard} />}
 
         {/* The Case's one sharing control: "Share" until a peer joins, then the sync state. */}
         {activeCase && (
@@ -230,14 +263,26 @@ export function TopBar() {
   )
 }
 
-// Names the launched browser while it is open (`2c`, `2d`).
-function RecIndicator() {
+const REC_PILL_CLASS =
+  'flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5'
+
+// Names the launched browser while it is open (`2c`, `2d`). On screens with no rail it is also the
+// trigger for the Capture Session panel, as a 300-pixel popover under it, while the panel has
+// something to show; the outline takes the accent while the popover is open.
+function RecIndicator({ popover }: { popover?: { showOpenCase: boolean } }) {
   const { data: launched } = useQuery(launchedBrowserStatusQueryOptions)
-  return (
-    <div
-      data-testid="topbar-rec"
-      className="flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5"
-    >
+  const view = useCaptureSessionView()
+  const [open, setOpen] = useState(false)
+  const trigger = popover !== undefined && view.kind !== 'none'
+  // A popover open as the panel emptied would open again with the next launch.
+  const [wasTrigger, setWasTrigger] = useState(trigger)
+  if (trigger !== wasTrigger) {
+    setWasTrigger(trigger)
+    if (!trigger) setOpen(false)
+  }
+
+  const content = (
+    <>
       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
       <span className="text-[10px] font-medium text-danger-fg">REC</span>
       {launched?.state === 'open' && (
@@ -245,6 +290,38 @@ function RecIndicator() {
           · {launchedBrowserName(launched.browser.label)}
         </span>
       )}
-    </div>
+    </>
+  )
+  if (!trigger) {
+    return (
+      <div data-testid="topbar-rec" className={REC_PILL_CLASS}>
+        {content}
+      </div>
+    )
+  }
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          data-testid="topbar-rec"
+          className={cn(
+            REC_PILL_CLASS,
+            'transition-colors hover:bg-red-500/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+            open && 'outline-2 outline-offset-1 outline-accent'
+          )}
+        >
+          {content}
+          <ChevronDown aria-hidden="true" className="h-3 w-3 text-text-muted" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" sideOffset={6} aria-label="Capture Session" className="w-[300px]">
+        <CaptureSessionPanel
+          form="popover"
+          showOpenCase={popover.showOpenCase}
+          onDone={() => setOpen(false)}
+        />
+      </PopoverContent>
+    </Popover>
   )
 }

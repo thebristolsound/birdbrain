@@ -1,7 +1,5 @@
 # Data Page Full-Text Search Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Add fast, substring full-text search to the Data page (`DataExplorer`), with a per-result "To selector" action.
 
 **Architecture:** An FTS5 trigram index over `extracted_data(value, source_url)` (migration v17) backs a `searchExtractedData(caseId, query)` DB function, exposed through the standard `extractedData:search` IPC channel and a React Query option. `DataExplorer` swaps its three-column drill-down for a flat results list while a query is active; each result opens a small anchored `CreateSelectorPopover` to create a selector.

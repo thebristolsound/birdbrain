@@ -257,7 +257,11 @@ const CODE_LABELS: Record<LogCode, string> = {
   'launchedBrowser.version_save_failed': "Couldn't save the launched browser's version",
   'launchedBrowser.profiles_swept': 'Deleted leftover launched browser profiles',
   'launchedBrowser.profile_sweep_failed': "Couldn't delete a leftover launched browser profile",
-  'launchedBrowser.leftover_running': 'A launched browser from an earlier run is still open'
+  'launchedBrowser.leftover_running': 'A launched browser from an earlier run is still open',
+  'launchedBrowser.capture_failed': 'A Capture in the launched browser failed',
+  'launchedBrowser.capture_part_failed':
+    'A Capture in the launched browser stored without its Transaction Record or PDF',
+  'launchedBrowser.shortcut_failed': 'The capture shortcut could not be registered'
 }
 
 export function labelForCode(code: LogCode): string {

@@ -16,6 +16,19 @@ repository must follow it. The dispatch step copies this section into the squash
 
 </details>
 
+<!-- When the change shows on screen, keep the block below with a before and after screenshot
+per screen, referenced by local path and uploaded after the PR opens ("Screenshots for visual
+changes" in the post-pr-body skill). Delete these instruction lines and the closing marker
+after the block, or GitHub shows no images. Otherwise delete everything down to that marker.
+<details>
+<summary>Screenshots, before and after</summary>
+
+- Before, <screen>: ![before](/path/to/before.png)
+- After, <screen>: ![after](/path/to/after.png)
+
+</details>
+-->
+
 ## Evidence-affecting
 
 No
@@ -40,8 +53,9 @@ If Yes, keep this collapsed subsection and fill every field; otherwise delete it
 
 <!-- Paste .preflight/verification.md verbatim below, marker line included, generated at the
 head sha under review. It already wraps the step list in a <details> block under a plain
-summary line. Nothing above this line exceeds 40 top-layer lines; collapsed lines and these
-comments do not count. -->
+summary line. For a PR nobody preflighted locally (dependabot, a human author), paste what
+scripts/verification-from-ci.sh <n> prints instead. Nothing above this line exceeds 40
+top-layer lines; collapsed lines and these comments do not count. -->
 ## Verification
 
 <!-- An agent-written description ends with this line, uncommented and last:

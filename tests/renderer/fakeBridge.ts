@@ -61,7 +61,8 @@ const EVENTS = [
   'onInvestigationProgress',
   'onWaybackLinkProgress',
   'onLaunchedBrowserStatus',
-  'onLaunchedBrowserPopOut'
+  'onLaunchedBrowserPopOut',
+  'onLaunchedBrowserPickTab'
 ] as const satisfies readonly EventKey[]
 
 const TOP_LEVEL = ['search', 'testPipeline', 'testHttp'] as const satisfies readonly TopLevelKey[]

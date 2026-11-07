@@ -6,6 +6,7 @@
 // numbers as pixels.
 
 import { LIST_COLUMN_SIZE } from '@renderer/components/layout/listColumnSize'
+import { WAYBACK_PANEL_WIDTH_PX } from '@renderer/components/captures/waybackPanelModel'
 
 export const PANEL_GROUP_ID = 'captures-columns'
 
@@ -33,6 +34,42 @@ export const DETAILS_PANEL = {
   minSize: 320,
   maxSize: 680
 } as const
+
+// SEPARATOR_CLASS's `w-[7px]`.
+const SEPARATOR_PX = 7
+
+// The Capture Session rail on a Case screen (#1831, `1f`).
+const CAPTURE_SESSION_RAIL_PX = 320
+
+// While the Capture Session rail is docked the viewer keeps at least this much: the list and the
+// details panel give way toward their minimums first, and the details panel folds when that is
+// not enough (design review of 2026-11-04, answer 1).
+export const DOCKED_VIEWER_MIN_PX = 480
+
+export function viewerMinPx(railDocked: boolean): number {
+  return railDocked ? DOCKED_VIEWER_MIN_PX : VIEWER_PANEL.minSize
+}
+
+// The screen width under which the details panel folds. Beside the docked rail it is the docked
+// minimums with the viewer at 480: 240 + 7 + 480 + 7 + 320 = 1,054.
+export function detailsFoldRoomPx(railDocked: boolean): number {
+  if (!railDocked) return DETAILS_FOLD_ROOM_PX
+  return (
+    LIST_PANEL.minSize + SEPARATOR_PX + DOCKED_VIEWER_MIN_PX + SEPARATOR_PX + DETAILS_PANEL.minSize
+  )
+}
+
+// Whether the Capture Session rail docks, given the room beside the side rail: the rail, plus the
+// Captures screen with its details panel folded to a strip and the viewer at 480. On the Wayback
+// tab the list goes and the 436-pixel slide-out comes. Every Case screen uses the Captures
+// screen's minimums, and the rule reads no selection, so selecting or clearing a Capture never
+// swaps the rail for the strip.
+export function captureSessionRailFits(room: number, waybackTab: boolean): boolean {
+  const beside = waybackTab
+    ? DOCKED_VIEWER_MIN_PX + WAYBACK_PANEL_WIDTH_PX + RAIL_WIDTH_PX
+    : LIST_PANEL.minSize + SEPARATOR_PX + DOCKED_VIEWER_MIN_PX + RAIL_WIDTH_PX
+  return room >= beside + CAPTURE_SESSION_RAIL_PX
+}
 
 export type CaptureColumnState = 'panel' | 'rail' | 'hidden'
 

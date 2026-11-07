@@ -10,7 +10,7 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm typecheck` - Typechecks all six tsconfig projects, tests included; see "Testing" below
 - `pnpm lint:boundaries` - Packages under `src/packages/` are importable only through their root files, and no import cycles
 - `pnpm lint:agents-md` - Advisory, never fails. `CLAUDE.md` and `AGENTS.md` are normally the same document: edit `CLAUDE.md`, then copy it over `AGENTS.md` (no symlink: `core.symlinks=false` checkouts turn it into a one-line file)
-- `pnpm preflight` - The full verify block: refuses a dirty tree and a non-20.x Node, runs lint, typecheck, unit tests, build, coverage thresholds and diff coverage, and writes `.preflight/verification.md`
+- `pnpm preflight` - The full verify block: refuses a dirty tree and a non-24.x Node, runs lint, typecheck, unit tests, build, coverage thresholds and diff coverage, and writes `.preflight/verification.md`
 - `pnpm check` - The loop between edits: runs on a dirty tree, picks lint, typecheck, related tests, boundaries and Vale from what changed since `origin/main`, and runs them in parallel. It skips build and coverage, so its summary in `.preflight/check.md` is not a Verification block; `--dry-run` prints the plan
 - `pnpm test:reliability` - Reverts the branch's source changes and mutates its changed lines, rerunning the related unit tests each time, to find tests that would not fail if the change were wrong. It edits tracked files while it runs, so it refuses a dirty tree; see "Test reliability probe" in [Testing](docs/agents/testing.md)
 - `pnpm build:test-sharp` - Linux only: build sharp against the system libvips for the test runner, then run tests with `BIRDBRAIN_TEST_SYSTEM_SHARP=1`. Works around a SIGSEGV in tests that use sharp under Electron; see "sharp under Electron on Linux" in [Testing](docs/agents/testing.md)
@@ -20,7 +20,7 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 
 Docs site commands run from `website/content/` through `pnpm dlx` (see "Documentation site"): `pnpm dlx mint dev`, `pnpm dlx mint broken-links`.
 
-**Run everything on Node 20.** `.nvmrc` and `.mise.toml` pin it, and CI reads `.nvmrc` (`node-version-file`). `engines.node` is only a floor (`>=20.19.0`) — Node 24 satisfies it, so engines will not keep you off the broken version. `.mise.toml` exists because mise ignores `.nvmrc` by default, so shells and agent worktrees would otherwise land on whatever Node is newest. Under Node 24 Electron's postinstall silently fails to extract the binary (extract-zip's promise never settles): install exits 0 but leaves `node_modules/electron/dist` broken, which is what `scripts/ensure-electron.mjs` now backstops. If Electron is mysteriously missing, check `node --version` first.
+**Run everything on Node 24.** `.nvmrc` and `.mise.toml` pin it, and CI reads `.nvmrc` (`node-version-file`). It is the major Electron 45 bundles, so the toolchain and the unit tests (which run inside Electron with `ELECTRON_RUN_AS_NODE=1`) share one Node; revisit the pin when an Electron bump moves its bundled Node. `engines.node` is only a floor (`>=24.0.0`): Node 26 satisfies it, so preflight's major check is what holds the pin. `.mise.toml` exists because mise ignores `.nvmrc` by default, so shells and agent worktrees would otherwise land on whatever Node is newest. Electron's own postinstall can exit 0 without extracting its binary (extract-zip's promise never settles on some hosts); `scripts/ensure-electron.mjs` backstops that with the platform's archive tool. If Electron is mysteriously missing, check `node --version` first.
 
 **Test shell behaviour under `bash -c`, never in the agent tool shell.** Hooks (`.claude/hooks/*.sh`) and workflow `run:` steps are bash, but the tool named `Bash` is not always bash: on the maintainer's machine it is zsh, where unquoted parameter expansion does not word-split, so an argument-splitting check passes there and proves nothing about CI.
 
@@ -50,7 +50,7 @@ Adding a long-lived reference page, and the Vale setup for prose linting, are de
 
 **Docs may ship in the same PR as the code they describe.** The repository does not require specs, plans, ADRs, or reference docs to have their own PR or commit. Bundling a doc with the `src/**` change it documents is normal and preferred — a guide for a feature that has not merged yet is worth less on its own, and the split costs more than it returns.
 
-**Override for agentic tooling:** When a skill or agent specifies a different default path (e.g. Superpowers' `docs/superpowers/specs/` and `docs/superpowers/plans/`), treat the canonical paths above as the user-preference override. Write specs to `docs/specs/` and plans to `docs/plans/`. The legacy `docs/superpowers/` tree is frozen — do not add new files there.
+**Override for agentic tooling:** When a skill or agent specifies a different default path, treat the canonical paths above as the user-preference override. Write specs to `docs/specs/` and plans to `docs/plans/`.
 
 ## Documentation site
 
@@ -150,6 +150,12 @@ auto-merge with the composed message once the `merge-gate` check passes; an `evi
 PR also needs the maintainer's approving review or `approved` label at head (ADR-0041). Scripted
 merges, the dispatcher's included, go through `.claude/skills/merge-pr/scripts/merge.sh <n>`
 (ADR-0022).
+
+**Work that changes what a user sees ships with screenshots.** Every PR whose change shows on
+screen in the app, the extension's pages, or a docs site page attaches before and after images
+to its description through GitHub's file attachment; a change with no visual effect, such as a
+refactor that renders the same, carries none. "Screenshots for visual changes" in
+`.claude/skills/post-pr-body/SKILL.md` gives the capture and upload steps.
 
 ### Worktrees
 

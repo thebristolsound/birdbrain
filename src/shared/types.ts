@@ -623,9 +623,10 @@ export interface PersonaImportResult {
   importedAt: string
 }
 
-// Whether the OS key `safeStorage.isEncryptionAvailable()` reports on
-// protects the partition's cookie store (#414). False means the import UI
-// warns and requires acknowledgement before loading anything.
+// Whether `safeStorage.isEncryptionAvailable()` reports an OS key (#414). It
+// does not protect the partition's cookie store, which the build writes
+// unencrypted either way (ADR-0030). False means the import UI requires
+// acknowledgement before loading anything.
 export interface PersonaStorageState {
   encryptionAvailable: boolean
 }

@@ -134,6 +134,7 @@ interface ManifestLine {
   type: string
   captureContentHash?: string
   tsaToken?: string
+  screenshotHash?: string
 }
 
 const manifestLines = (dir: string): ManifestLine[] =>
@@ -360,7 +361,7 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
    */
   const exportPackage = async (
     name: string,
-    options: { captureIds?: string[] } = {}
+    { screenshots = true, ...options }: { captureIds?: string[]; screenshots?: boolean } = {}
   ): Promise<string> => {
     const outputPath = join(tempDir, `${name}.zip`)
     await generateReport(
@@ -369,7 +370,7 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
         format: 'zip',
         include: {
           captures: true,
-          screenshots: true,
+          screenshots,
           auditTrail: true,
           notes: false,
           annotations: 'none'
@@ -444,6 +445,19 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     expect(entries.get(PACKAGE_ROOT_FILES.certification)!.toString('utf-8')).toContain(
       'Signing key (SHA-256 of signing-public-key.pem)'
     )
+  })
+
+  // #1986: the Screenshots option leaves the image out of the report only, so
+  // the anchored screenshot is enclosed and step 5 finds it.
+  it.skipIf(!RUNS)('passes verify.sh on a package exported with screenshots off', async () => {
+    const dir = await exportPackage('no-screenshots', { screenshots: false })
+    const { screenshotHash } = manifestLines(dir).find(({ type }) => type === 'capture')!
+    const shot = readFileSync(join(dir, screenshotPath(screenshotHash!)))
+    expect(sha256(shot)).toBe(screenshotHash)
+
+    const run = runVerifyScript(dir)
+    expect(run.status, run.output).toBe(0)
+    expect(run.output).toContain('verify.sh: PASS')
   })
 
   it.skipIf(!RUNS)('records verify.sh in the package index', () => {

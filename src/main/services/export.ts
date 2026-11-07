@@ -119,6 +119,22 @@ function caseEntriesOf(
 }
 
 /**
+ * Each Capture's signed entry, by its chain id; where a chain holds more than
+ * one, the last wins, as in resolveEntrySignatures.
+ */
+function captureEntriesByChainId(
+  caseEntries: Record<string, unknown>[]
+): Map<string, Record<string, unknown>> {
+  const byId = new Map<string, Record<string, unknown>>()
+  for (const entry of caseEntries) {
+    if (entry.type === 'capture' && typeof entry.captureId === 'string') {
+      byId.set(entry.captureId, entry)
+    }
+  }
+  return byId
+}
+
+/**
  * The capture engine's fields per Capture, from the snapshot the package is
  * built from. The local chain is verified over that same read, as
  * readCaptureEntryAt does, so no earlier verification of a separate read
@@ -745,6 +761,21 @@ export async function generateReport(
           caseEntries.filter(isTimestampEntry)
         )
       : new Map<string, string>()
+  // An Evidence Package encloses every screenshot a signed capture entry
+  // anchors, whatever include.screenshots says (#1986): Package Verification
+  // fails a signed screenshotHash whose file the package lacks, as D10 of
+  // docs/plans/2026-10-10-capture-engine-first-slice.md rules for the
+  // Transaction Record and the PDF. The option still governs the image the
+  // report reproduces, which comes from data.screenshots, filled only when it is on.
+  if (options.format === 'zip' && !workingCopy) {
+    const signedEntries = captureEntriesByChainId(caseEntries)
+    for (const capture of captures) {
+      if (screenshotDigests.has(capture.id)) continue
+      if (typeof signedEntries.get(chainIdOf(capture.id))?.screenshotHash !== 'string') continue
+      const bytes = defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'png')
+      if (bytes) screenshotDigests.set(capture.id, sha256(bytes))
+    }
+  }
   data.packagedPaths = buildPackagedPaths(
     data,
     options,
@@ -1525,7 +1556,10 @@ function buildEvidenceZip(
         signingKeyRanges: signingKeyRanges(manifest.entries, publicKeyPem),
         contents: {
           captureCount: data.captures.length,
-          screenshotCount: data.screenshots.size,
+          // Captures whose screenshot the package encloses, which with
+          // screenshots off is more than the report reproduces.
+          screenshotCount: data.captures.filter(({ id }) => data.packagedPaths.get(id)?.screenshot)
+            .length,
           noteCount: meta.notes?.length ?? 0,
           ...exhibitKindCounts(data)
         },
@@ -1599,14 +1633,7 @@ function buildEvidenceZip(
   // resolve to the same path. Emit the zip entry once; multiple capture
   // records may still reference it. createStoredZip does not dedupe entry names.
   const emittedContentPaths = new Set<string>()
-  // Each Capture's signed entry, by its chain id; where a chain holds more
-  // than one, the last wins, as in resolveEntrySignatures.
-  const captureEntries = new Map<string, Record<string, unknown>>()
-  for (const entry of caseEntries) {
-    if (entry.type === 'capture' && typeof entry.captureId === 'string') {
-      captureEntries.set(entry.captureId, entry)
-    }
-  }
+  const captureEntries = captureEntriesByChainId(caseEntries)
   const addContentAddressed = (
     bytes: Buffer | null,
     packagePath: (digest: string) => string
@@ -1641,13 +1668,13 @@ function buildEvidenceZip(
     // is untouched. The .txt sidecar's integrity is bound by textSha256 in the
     // per-capture record + the signed manifest entry; it is not re-bundled here
     // (its content already surfaces in report.html / the MHTML page).
-    // Gated on data.screenshots, which loadExportData only populates when
-    // include.screenshots is set — so an export that omits screenshots does not
-    // ship them via the content-addressed sidecar. The raw on-disk bytes are
-    // used (not the possibly-annotated report copy) so the digest matches the
-    // screenshotHash anchored at ingest.
+    // Gated on the packaged path the report was rendered against, which
+    // generateReport sets for an anchored screenshot whatever
+    // include.screenshots says (see the comment there). The raw on-disk bytes
+    // are used (not the possibly-annotated report copy) so the digest matches
+    // the screenshotHash anchored at ingest.
     const screenshot = addContentAddressed(
-      data.screenshots.has(capture.id)
+      data.packagedPaths.get(capture.id)?.screenshot
         ? defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'png')
         : null,
       packagedScreenshotPath

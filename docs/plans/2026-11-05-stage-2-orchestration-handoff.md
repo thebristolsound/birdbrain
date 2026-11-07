@@ -129,10 +129,11 @@ started it and apart from the fifteen rulings:
   `tests/main/services/sharing/loopbackTransport.test.ts` "close ends its streams, stops
   answering and removes its record" (expected `Uint8Array[120]`, got null), which also fails at
   origin/main's code on this host, so no coverage figure was computed.
-- **Screenshots not uploaded.** gh here is 2.96.0, and the post-pr-body upload route needs
-  `gh pr comment --attach` from 2.99. The pairs for #2090 and #2093 are under
-  `/tmp/birdbrain-shots/`, and both bodies carry the hand-off line.
-- **Next command.** Upload the #2090 and #2093 screenshot pairs; the maintainer reviews #2091,
+- **Screenshots.** gh on this host was 2.96.0, and the post-pr-body upload route needs
+  `gh pr comment --attach` from 2.99, so the ship agents left hand-off lines. At the maintainer's
+  word gh was upgraded to 2.103.3 from the GitHub CLI apt repository, the pairs were posted as
+  comments on #2090 and #2093, and both bodies now link the uploaded images.
+- **Next command.** The maintainer reviews #2091,
   #2092 and #2094 (merge-gate waits on that sign-off) and answers the #2093 hover text.
 
 ## Open questions

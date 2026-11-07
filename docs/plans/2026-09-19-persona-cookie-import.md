@@ -158,9 +158,9 @@ Recorded in ADR-0030 and the `CONTEXT.md` entry for **Persona** (phase 0, 2026-0
    install. Only Chromium's own cookie store on the partition holds the values, and it holds them
    unencrypted in the partition's `Cookies` database under the user-data folder: Electron's
    `EnableCookieEncryption` fuse is off in the build Birdbrain ships, and turning it on is #88
-   ([at-rest assessment](../specs/2026-10-11-persona-cookies-at-rest-assessment.md)). When
-   `safeStorage.isEncryptionAvailable()` returns false the import UI shows the #414 warning and
-   requires acknowledgement.
+   ([at-rest assessment](../specs/2026-10-11-persona-cookies-at-rest-assessment.md)). The import
+   UI shows the #414 warning on every machine, and requires acknowledgement when
+   `safeStorage.isEncryptionAvailable()` returns false.
 9. **Optional Manifest fields at schema 7, verifier ships first** (replaced on 2026-11-02 by the
    rule of ADR-0030 as amended on 2026-10-31, ADR-0030:94-102). `personaId` and `personaLabel` are
    optional on `capture` entries and on `exhibit` entries. The writer puts them on an `exhibit`

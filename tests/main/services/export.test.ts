@@ -2446,13 +2446,14 @@ describe('export', () => {
     }
 
     // The cover's trusted-time tally is read from a manifest snapshot taken after
-    // the run, so the sentence the operator signs must not claim it.
+    // the run, and the printed digests are the recorded ones, so the sentence the
+    // operator signs must claim neither.
     const verified = await statementOf(true)
     expect(verified).toContain(
-      'the digests and integrity results reproduced here are those produced by the tool at the ' +
+      'and the integrity results reproduced here are those produced by the tool at the ' +
         'verification run recorded under “Chain of custody”.'
     )
-    expect(verified).not.toMatch(/counts|trusted/i)
+    expect(verified).not.toMatch(/counts|trusted|digest/i)
 
     expect(await statementOf(false)).toContain(
       'I have not altered the captures, the manifest or the packaged artefacts. No verification ' +

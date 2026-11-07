@@ -103,6 +103,20 @@ started it and apart from the fifteen rulings:
   "Set up a proxy" link, so part B (slice 4b) waits for it.
 - **Next command.** Brief and start slice 5 (Duplicate and received Persona rows) in its own
   worktree.
+- **Host move.** The laptop's 7.5G `/tmp` tmpfs filled and its load reached about 40, so its
+  four-lane workflow (wf_726810a9-448) opened no PR. Lanes A (slice 5, fe1968f1 and 82aea6bc),
+  B (#1954, 632609d3) and C's #1107 (b11c715a) were pushed as plain branches; #1109 and the
+  #1824 remainder never started. The session continues on the WSL2 host, where Node is 20.20.2,
+  `/tmp` sits on the 1 TB root disk, and sharp passes under Electron without the system-sharp
+  build. This clone's shared git config names the author birdbrain-agent for the dispatcher, so
+  every agent commit sets the `GIT_AUTHOR_*` and `GIT_COMMITTER_*` variables to Matt Donovan
+  instead (the maintainer's pick).
+- **#1107 ruling.** The maintainer chose integrity results only: the operator statement drops
+  "digests" and matches the note near `reportHtml.ts:1117`.
+- **In flight.** Workflow wf_11707b6c-bc2 runs five lanes from worktrees under
+  `/tmp/birdbrain-wt/uc4-*`: slice 5 review then ship, #1954 ship, #1107 wording fix then review
+  and ship, #1109 build (after the #1107 wording) then review and ship, and #1824 build then
+  review and ship. One preflight at a time; no merges.
 
 ## Open questions
 

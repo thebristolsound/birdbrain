@@ -89,7 +89,7 @@ of a cookie value is Chromium's own store for that session, the partition's `Coo
 database under the user-data folder, and it holds the values unencrypted: Electron's
 `EnableCookieEncryption` fuse is off in the build Birdbrain ships, so neither the operating
 system key nor `safeStorage` protects them. Turning the fuse on is #88. Settings shows the #414
-warning, which says the cookies are unencrypted, only when `safeStorage` reports no key.
+warning, which says the cookies are unencrypted, on every machine (#1824, ruled 2026-11-05).
 
 **Optional Manifest fields, at the next schema number.** `personaId` and `personaLabel` are
 optional on `capture` entries and on `exhibit` entries whose origin is `extension`, `background`

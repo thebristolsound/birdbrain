@@ -223,7 +223,7 @@ describe('PersonasSection rows', () => {
   })
 })
 
-describe('PersonasSection unprotected cookie store (#414)', () => {
+describe('PersonasSection cookie warning and the #414 acknowledgement', () => {
   beforeEach(() => bridge([persona], false))
 
   it('shows the warning and blocks import until acknowledged', async () => {
@@ -231,8 +231,10 @@ describe('PersonasSection unprotected cookie store (#414)', () => {
     await screen.findByTestId('persona-unprotected-warning')
     const importButton = (await screen.findByTestId('persona-import')) as HTMLButtonElement
     await waitFor(() => expect(importButton.disabled).toBe(true))
+    expect(importButton.title).toBe('Acknowledge the warning above to import')
     fireEvent.click(screen.getByTestId('persona-unprotected-acknowledge'))
     await waitFor(() => expect(importButton.disabled).toBe(false))
+    expect(importButton.title).toBe('Load a cookie file into this persona')
     fireEvent.click(importButton)
     await waitFor(() => expect(importCookies).toHaveBeenCalledWith('p-1'))
   })
@@ -249,13 +251,14 @@ describe('PersonasSection unprotected cookie store (#414)', () => {
     expect(warning).not.toMatch(/credential store|protected|operating system/i)
   })
 
-  it('blocks import with no warning while the storage state is unknown', async () => {
+  it('blocks import while the storage state is unknown, warning without acknowledgement', async () => {
     storageState.mockImplementation(() => new Promise(() => undefined))
     renderSection()
     const importButton = (await screen.findByTestId('persona-import')) as HTMLButtonElement
     expect(importButton.disabled).toBe(true)
-    expect(importButton.title).toMatch(/Checking whether the cookie store is protected/)
-    expect(screen.queryByTestId('persona-unprotected-warning')).toBeNull()
+    expect(importButton.title).toBe('Checking whether import needs your acknowledgement')
+    expect(screen.getByTestId('persona-unprotected-warning')).toBeTruthy()
+    expect(screen.queryByTestId('persona-unprotected-acknowledge')).toBeNull()
   })
 
   it('keeps import blocked when the storage state cannot be read', async () => {
@@ -269,11 +272,17 @@ describe('PersonasSection unprotected cookie store (#414)', () => {
     expect(importCookies).not.toHaveBeenCalled()
   })
 
-  it('shows no warning when the store is protected', async () => {
+  // Ruling 10 of 2026-11-05: the cookies are unencrypted on every machine, so a
+  // machine where safeStorage reports a key shows the warning too. Only the
+  // acknowledgement still depends on the key.
+  it('shows the warning without the acknowledgement when safeStorage reports a key', async () => {
     bridge([persona], true)
     renderSection()
-    await screen.findByTestId('persona-row-p-1')
-    await waitFor(() => expect(storageState).toHaveBeenCalled())
-    expect(screen.queryByTestId('persona-unprotected-warning')).toBeNull()
+    const importButton = await enabledImportButton()
+    expect(importButton.title).toBe('Load a cookie file into this persona')
+    expect(screen.getByTestId('persona-unprotected-warning').textContent).toMatch(
+      /^Imported cookies sit on disk unencrypted/
+    )
+    expect(screen.queryByTestId('persona-unprotected-acknowledge')).toBeNull()
   })
 })

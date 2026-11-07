@@ -88,9 +88,14 @@ dispatch. `scripts/jev-lens/score.mjs` measures them.
 
 ## Reviewer pre-pass outcomes
 
-`node scripts/review-outcomes.mjs [--since YYYY-MM-DD]` reads every agent PR's pre-pass verdicts
-and the dispatcher's replies, and prints rounds per PR, findings by severity, findings carried
-from an earlier round, and how many findings were applied or refused, with each refusal's reason.
-Run it before changing `birdbrain-reviewer` or its model, and again after, to see whether the
-change made review noisier or slower to converge. A reply counts against a finding only when it
-uses the keyed shape the dispatch skill describes; older bare replies are counted as unkeyed.
+`node scripts/review-outcomes.mjs [--since YYYY-MM-DD] [--by-month] [--json] [--repo owner/name]`
+reads every agent PR's pre-pass verdicts, in each shape the pre-pass has used, and the replies
+posted to them as PR comments. It prints rounds per PR, findings by severity, and one outcome per
+finding: fixed (applied, and a later round reviewed it), applied (no later round), disputed,
+deferred to an issue, overridden (merged while the last verdict requested changes), or no reply,
+with each disputed or deferred reason. `--by-month` adds a row per month the PRs were opened, and
+`--json` prints the same figures as JSON. Run it before changing `birdbrain-reviewer` or its model,
+and again after, to see whether the change made review noisier or slower to converge. The script
+joins a reply to its finding by the keyed shape the dispatch skill describes, or by a numbered
+line; it counts a bare `Applied.` without joining it to any finding, and it never reads
+replies in inline review threads, which answer other reviewers.

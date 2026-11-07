@@ -1058,8 +1058,10 @@ describe('export', () => {
     expect(evidence.artifacts.filter((a) => a.path === expectedPath)).toHaveLength(1)
   })
 
-  it('omits screenshots from the package when include.screenshots is false (#152)', async () => {
-    const screenshot = Buffer.from('screenshot-bytes-should-not-leak')
+  // #1986 narrows #152: with screenshots off the package still encloses the
+  // screenshot the signed entry anchors, and only the report leaves it out.
+  it('encloses the anchored screenshot and passes Package Verification with screenshots off', async () => {
+    const screenshot = Buffer.from('screenshot-bytes-the-signed-entry-anchors')
     const { capture } = await ingestMhtmlCapture({
       caseId,
       url: 'https://example.com/shot',
@@ -1077,8 +1079,74 @@ describe('export', () => {
       toolVersion: '0.1.0',
       screenshot
     })
+    const expectedDigest = createHash('sha256').update(screenshot).digest('hex')
+    const expectedPath = `screenshots/${expectedDigest}.png`
+    expect(capture.screenshotHash).toBe(expectedDigest)
 
     const outputPath = join(tempDir, 'shot-no-screenshots.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'evidence',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    expect(entries.get(expectedPath)).toEqual(screenshot)
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      captures: Array<{
+        id: string
+        screenshotPath: string | null
+        screenshotSha256: string | null
+      }>
+      artifacts: Array<{ path: string; sha256: string }>
+    }
+    expect(evidence.captures.find((c) => c.id === capture.id)).toMatchObject({
+      screenshotPath: expectedPath,
+      screenshotSha256: expectedDigest
+    })
+    expect(evidence.artifacts.find((a) => a.path === expectedPath)?.sha256).toBe(expectedDigest)
+
+    // The report reproduces no image, and names the enclosed copy as it names
+    // every other file the package holds.
+    const report = entries.get('report.html')!.toString('utf-8')
+    expect(report).not.toContain('<img src="data:image/png')
+    expect(report).toContain(expectedPath)
+    expect(entries.get('certification.html')!.toString('utf-8')).toContain(
+      '1 capture, 1 screenshot, 0 operator notes'
+    )
+
+    const dir = join(tempDir, 'shot-no-screenshots-unpacked')
+    for (const [name, bytes] of entries) {
+      mkdirSync(dirname(join(dir, name)), { recursive: true })
+      writeFileSync(join(dir, name), bytes)
+    }
+    const result = verifyEvidencePackage(dir)
+    expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
+    expect(result.checks.find((c) => c.name === `capture ${capture.id} screenshot`)?.status).toBe(
+      'pass'
+    )
+  })
+
+  it('leaves out, with screenshots off, a stored screenshot the signed entry does not anchor', async () => {
+    const screenshot = Buffer.from('screenshot-bytes-should-not-leak')
+    const { capture } = await ingest(caseId, '<html><body>No screenshot at ingest</body></html>')
+    // Written straight into the store, as a Case Archive import or a hand can
+    // leave a file there that the entry does not anchor.
+    defaultCaptureStore.writeScreenshot(caseId, capture.id, screenshot)
+    expect(capture.screenshotHash ?? null).toBeNull()
+
+    const outputPath = join(tempDir, 'unanchored-no-screenshots.zip')
     await generateReport(
       caseId,
       {
@@ -1112,6 +1180,49 @@ describe('export', () => {
     expect(rec.screenshotPath).toBeNull()
     expect(rec.screenshotSha256).toBeNull()
     expect(evidence.artifacts.some((a) => a.path.startsWith('screenshots/'))).toBe(false)
+  })
+
+  it('leaves the anchored screenshot out of a Working Copy with screenshots off', async () => {
+    const screenshot = Buffer.from('screenshot-bytes-should-not-leak')
+    await ingestMhtmlCapture({
+      caseId,
+      url: 'https://example.com/shot',
+      title: 'Shot',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      stream: Readable.from([Buffer.from('mhtml')]) as unknown as ReadableStream<Uint8Array>,
+      textContent: 'extracted text for export',
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      extensionVersion: '',
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      screenshot
+    })
+
+    const outputPath = join(tempDir, 'working-copy-no-screenshots.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'working-copy',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    expect(entries.has('WORKING-COPY.json')).toBe(true)
+    expect([...entries.keys()].some((k) => k.startsWith('screenshots/'))).toBe(false)
   })
 
   // Step 4 of docs/plans/2026-10-10-capture-engine-first-slice.md, on a Capture
@@ -1209,14 +1320,21 @@ describe('export', () => {
       expect(status(`capture ${ENGINE_ID} pdf`)).toBe('pass')
     })
 
-    // Membership only: Package Verification fails this package on its anchored
-    // screenshot, a defect that predates this change (#1986).
     it('ships both when the export leaves screenshots out, since no option omits them', async () => {
       await seed()
-      const { entries } = await exportZip('engine-no-screenshots', { screenshots: false })
+      const { outputPath, entries } = await exportZip('engine-no-screenshots', {
+        screenshots: false
+      })
 
       expect(entries.get(recordPath)).toEqual(ENGINE_FILES.transactionRecord)
       expect(entries.get(enginePdfPath)).toEqual(ENGINE_FILES.pdf)
+      const dir = join(tempDir, 'engine-no-screenshots-unpacked')
+      for (const [name, bytes] of readStoredZipEntries(outputPath)) {
+        mkdirSync(dirname(join(dir, name)), { recursive: true })
+        writeFileSync(join(dir, name), bytes)
+      }
+      const result = verifyEvidencePackage(dir)
+      expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
     })
 
     it("encloses a Duplicate's copies and its source's files as one entry each", async () => {

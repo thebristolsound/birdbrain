@@ -4,7 +4,12 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 // @ts-expect-error - build script with no type declarations; the tsconfigs exclude scripts/
-import { annotations, formatSummary, summarize } from '../scripts/e2e-flaky-summary.mjs'
+import {
+  annotations,
+  formatSummary,
+  MAX_ANNOTATIONS,
+  summarize
+} from '../scripts/e2e-flaky-summary.mjs'
 
 const SCRIPT = resolve(__dirname, '../scripts/e2e-flaky-summary.mjs')
 const ROOT = '/repo/e2e'
@@ -105,6 +110,18 @@ describe('formatSummary', () => {
     )
   })
 
+  it('escapes a pipe so a title cannot end its table cell', () => {
+    const text = formatSummary({
+      total: 1,
+      passed: 0,
+      failed: 0,
+      flaky: 1,
+      skipped: 0,
+      flakyTests: [{ file: 'e2e/a.spec.ts', line: 3, title: 'a | b', attempts: 2, failures: 1 }]
+    })
+    expect(text).toContain('| `e2e/a.spec.ts:3` a \\| b | 1 | 2 |')
+  })
+
   it('says so when no spec needed a retry', () => {
     const text = formatSummary(summarize({ suites: [report.suites[1]] }, '/repo'))
     expect(text).toContain('No spec needed a retry to pass.')
@@ -127,6 +144,32 @@ describe('annotations', () => {
     expect(line).toBe(
       '::warning file=e2e/a%2Cb%3Ac.ts,line=1,title=Flaky E2E spec::' +
         '100%25%0Anew failed 1 of 2 attempts before passing'
+    )
+  })
+})
+
+describe('annotations past the per-step limit', () => {
+  const flaky = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      file: 'e2e/a.spec.ts',
+      line: i + 1,
+      title: `spec ${i + 1}`,
+      attempts: 2,
+      failures: 1
+    }))
+
+  it('emits every warning when the specs fit the limit', () => {
+    const lines = annotations({ flakyTests: flaky(MAX_ANNOTATIONS) })
+    expect(lines).toHaveLength(MAX_ANNOTATIONS)
+    expect(lines.at(-1)).toContain(`line=${MAX_ANNOTATIONS},`)
+  })
+
+  it('keeps the last slot for a count of the specs it left out', () => {
+    const lines = annotations({ flakyTests: flaky(MAX_ANNOTATIONS + 3) })
+    expect(lines).toHaveLength(MAX_ANNOTATIONS)
+    expect(lines.at(-2)).toContain(`line=${MAX_ANNOTATIONS - 1},`)
+    expect(lines.at(-1)).toBe(
+      '::warning title=Flaky E2E spec::4 more flaky specs; the job summary lists every one'
     )
   })
 })
@@ -167,9 +210,10 @@ describe('the script', () => {
     expect(stdout).toContain('No Playwright JSON report at')
   })
 
-  it('fails on a report that is not JSON', () => {
+  it('turns a report it cannot parse into a warning and exits 0', () => {
     const reportPath = join(dir, 'report.json')
     writeFileSync(reportPath, 'not json')
-    expect(() => run([reportPath])).toThrow()
+    const stdout = run([reportPath])
+    expect(stdout).toMatch(/^::warning title=E2E retry report::Not written: /m)
   })
 })

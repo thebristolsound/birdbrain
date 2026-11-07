@@ -3,7 +3,8 @@
 // CI retries a failed spec twice (playwright.config.ts), so a spec that fails then passes turns
 // the job green and nothing else says it happened. This reads Playwright's JSON report and
 // writes the counts to the job summary, with a warning annotation per flaky spec, so a
-// flake is visible on the run that absorbed it. It reports only: it never fails the job.
+// flake is visible on the run that absorbed it. It reports only: it never fails the job, and
+// a report it cannot read becomes a warning rather than an exit code.
 //
 // Usage: node scripts/e2e-flaky-summary.mjs [report.json]
 //   Default report: test-results/e2e-results.json. The summary goes to $GITHUB_STEP_SUMMARY
@@ -14,16 +15,19 @@ import { join, relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const DEFAULT_REPORT = 'test-results/e2e-results.json'
+const HEADING = '## E2E retries'
+
+// GitHub shows at most 10 warning annotations from one step; the job summary lists the rest.
+export const MAX_ANNOTATIONS = 10
 
 // The spec's file as a path from the repository root, which is what an annotation's `file=`
 // needs. Playwright reports spec files relative to the config's rootDir.
-const specPath = (report, spec, cwd) => {
-  const rootDir = report.config?.rootDir
-  return rootDir ? relative(cwd, join(rootDir, spec.file)) : spec.file
-}
+const specPath = (rootDir, spec, cwd) =>
+  rootDir ? relative(cwd, join(rootDir, spec.file)) : spec.file
 
 export const summarize = (report, cwd = process.cwd()) => {
   const stats = { total: 0, passed: 0, failed: 0, flaky: 0, skipped: 0, flakyTests: [] }
+  const rootDir = report.config?.rootDir
 
   // A top-level suite is a spec file, whose title is the file name; nested suites are
   // `describe` blocks, whose titles belong in the spec's name.
@@ -38,7 +42,7 @@ export const summarize = (report, cwd = process.cwd()) => {
           stats.flaky += 1
           const results = test.results ?? []
           stats.flakyTests.push({
-            file: specPath(report, spec, cwd),
+            file: specPath(rootDir, spec, cwd),
             line: spec.line,
             title: [...path, spec.title].join(' > '),
             attempts: results.length,
@@ -56,9 +60,12 @@ export const summarize = (report, cwd = process.cwd()) => {
   return stats
 }
 
+// A `|` in a spec title would end the table cell.
+const cell = (s) => s.replace(/\|/g, '\\|')
+
 export const formatSummary = (stats) => {
   const lines = [
-    '## E2E retries',
+    HEADING,
     '',
     '| Total | Passed | Failed | Flaky | Skipped |',
     '| ---: | ---: | ---: | ---: | ---: |',
@@ -74,7 +81,7 @@ export const formatSummary = (stats) => {
       '| Spec | Failed attempts | Attempts |',
       '| --- | ---: | ---: |',
       ...stats.flakyTests.map(
-        (t) => `| \`${t.file}:${t.line}\` ${t.title} | ${t.failures} | ${t.attempts} |`
+        (t) => `| \`${cell(t.file)}:${t.line}\` ${cell(t.title)} | ${t.failures} | ${t.attempts} |`
       )
     )
   }
@@ -86,13 +93,22 @@ export const formatSummary = (stats) => {
 const escapeData = (s) => s.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A')
 const escapeProperty = (s) => escapeData(s).replace(/:/g, '%3A').replace(/,/g, '%2C')
 
-export const annotations = (stats) =>
-  stats.flakyTests.map(
-    (t) =>
-      `::warning file=${escapeProperty(t.file)},line=${t.line},title=Flaky E2E spec::${escapeData(
-        `${t.title} failed ${t.failures} of ${t.attempts} attempts before passing`
-      )}`
+const warning = (message, properties = '') =>
+  `::warning ${properties}title=Flaky E2E spec::${escapeData(message)}`
+
+export const annotations = ({ flakyTests }) => {
+  const shown =
+    flakyTests.length > MAX_ANNOTATIONS ? flakyTests.slice(0, MAX_ANNOTATIONS - 1) : flakyTests
+  const lines = shown.map((t) =>
+    warning(
+      `${t.title} failed ${t.failures} of ${t.attempts} attempts before passing`,
+      `file=${escapeProperty(t.file)},line=${t.line},`
+    )
   )
+  const rest = flakyTests.length - shown.length
+  if (rest > 0) lines.push(warning(`${rest} more flaky specs; the job summary lists every one`))
+  return lines
+}
 
 const main = () => {
   const reportPath = process.argv[2] ?? DEFAULT_REPORT
@@ -103,7 +119,7 @@ const main = () => {
   // The E2E step may have stopped before Playwright wrote a report (a failed build, a
   // timeout). That failure is already the job's verdict; say so here and add nothing.
   if (!existsSync(reportPath)) {
-    write(`## E2E retries\n\nNo Playwright JSON report at \`${reportPath}\`.\n`)
+    write(`${HEADING}\n\nNo Playwright JSON report at \`${reportPath}\`.\n`)
     return
   }
   const stats = summarize(JSON.parse(readFileSync(reportPath, 'utf8')))
@@ -115,7 +131,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   try {
     main()
   } catch (error) {
-    console.error(error.message)
-    process.exitCode = 1
+    console.log(`::warning title=E2E retry report::${escapeData(`Not written: ${error.message}`)}`)
   }
 }

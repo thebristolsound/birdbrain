@@ -330,7 +330,10 @@ comments. Classify:
   `mcp__github__add_issue_comment` or `add_reply_to_pull_request_comment`). Each reply is in the
   `post-comment` reply shape, `Applied.` with the commit collapsed in a `<details>` block or
   `Not applied: <one plain sentence>`, and `.claude/skills/post-comment/scripts/check.sh <file>` runs on each file before it is
-  posted. Your read of that text before posting is the editorial pass; a subagent that posts directly has bypassed it,
+  posted. Post the replies to one pre-pass verdict as a single PR comment, one entry per finding
+  headed `**<verdict comment id>-finding-<n>**` with its reply under it, as on #2079:
+  `scripts/review-outcomes.mjs` matches a reply to the finding it answers only by that key, and a
+  bare reply counts as unkeyed. Your read of that text before posting is the editorial pass; a subagent that posts directly has bypassed it,
   which is a reportable contract violation even when the content was fine — and it lands under
   the wrong identity, since only the dispatcher holds the machine token. Then run the
   reviewer pre-pass (section 4).

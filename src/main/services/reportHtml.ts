@@ -1465,7 +1465,9 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
               unstamped === 1 ? '' : 's'
             } without trusted time</p><p>${unstamped} exhibit${
               unstamped === 1 ? '' : 's'
-            } in this package (${pendingCount} eligible for timestamping,
+            } in this ${
+              isPackagedExport(ctx.options) ? 'package' : 'report'
+            } (${pendingCount} eligible for timestamping,
             ${noneCount} not) carr${unstamped === 1 ? 'ies' : 'y'} no RFC 3161 token. For ${
               unstamped === 1 ? 'it' : 'those'
             }, the recorded time is the operator's local system clock only. The export was not

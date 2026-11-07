@@ -156,6 +156,7 @@ export default defineConfig({
           clearMocks: false,
           include: ['tests/**/*.test.ts', 'src/packages/**/tests/**/*.test.{ts,mts,cts}'],
           exclude: ['tests/renderer/**', 'tests/hooks/**'],
+          globalSetup: ['./tests/setup/tmpdir.ts'],
           setupFiles: [
             './tests/setup/system-sharp.ts',
             './tests/setup/signing-key.ts',

@@ -1,6 +1,7 @@
-import { mkdtempSync } from 'fs'
+import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { afterAll } from 'vitest'
 import { initSigningKey } from '@main/services/signingKey'
 
 // appendManifestEntry signs every entry, so any test that touches the capture
@@ -13,6 +14,9 @@ import { initSigningKey } from '@main/services/signingKey'
 // encryption backend and no dialog to show, so the production default (which
 // refuses when there is no GUI to ask through, #414) would otherwise fail
 // every test file that touches the capture/manifest path.
-initSigningKey(mkdtempSync(join(tmpdir(), 'birdbrain-test-signkey-')), {
+const dir = mkdtempSync(join(tmpdir(), 'birdbrain-test-signkey-'))
+initSigningKey(dir, {
   confirmUnprotectedKey: () => true
 })
+// One directory per test file, so it goes when the file's tests are done.
+afterAll(() => rmSync(dir, { recursive: true, force: true }))

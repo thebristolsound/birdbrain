@@ -59,8 +59,9 @@ extension build when `extension/` changed, the unit suite once with coverage, an
 expansion is documented once, in the header of `scripts/preflight.mjs`. Paste the file's
 contents verbatim as the PR body's `## Verification` section. Never commit it: the commit
 would move HEAD and make the stamp stale. A stop hook (`.claude/hooks/verify-before-stop.sh`)
-sends you back once if you finish with commits past `origin/main` and no passing block for HEAD;
-on the give-up path, say so in your report and stop again.
+sends you back if you finish with commits past `origin/main` and uncommitted changes or no
+block for HEAD, up to three times per commit. A block at HEAD that records a failure sends you
+back once; on the give-up path, say so in your report and stop again.
 
 **The coverage steps are the ones the rest of the loop cannot stand in for.** CI's job named
 `test` runs the suite *and then* `scripts/diff-coverage.mjs` (`.github/workflows/ci.yml`),

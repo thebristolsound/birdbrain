@@ -3,6 +3,8 @@ import { execFileSync } from 'child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
+// @ts-expect-error - build script with no type declarations; the tsconfigs exclude scripts/
+import { formatVerificationBlock } from '../scripts/preflight.mjs'
 
 const HOOK = resolve(__dirname, '../.claude/hooks/verify-before-stop.sh')
 
@@ -30,11 +32,18 @@ const commit = (name: string) => {
   return git('rev-parse', 'HEAD')
 }
 
-const writeBlock = (sha: string, status = 'pass') => {
+// The block preflight itself writes, so a change to its stamp line breaks these tests.
+const writeBlock = (sha: string, status: 'pass' | 'fail' = 'pass') => {
   mkdirSync(join(repo, '.preflight'), { recursive: true })
   writeFileSync(
     join(repo, '.preflight', 'verification.md'),
-    `## Verification\n\n<!-- preflight v3 sha=${sha} status=${status} -->\n\n| step | exit |\n`
+    formatVerificationBlock({
+      sha,
+      nodeVersion: '24.0.0',
+      base: 'origin/main',
+      mergeBase: sha,
+      steps: [{ command: 'pnpm lint', status, exitCode: status === 'pass' ? 0 : 1 }]
+    })
   )
 }
 
@@ -58,7 +67,9 @@ const implementer = { agent_type: 'birdbrain-implementer', stop_hook_active: fal
 beforeEach(() => {
   repo = mkdtempSync(join(tmpdir(), 'verify-before-stop-'))
   git('init', '-q', '-b', 'work')
-  commit('base.txt')
+  writeFileSync(join(repo, '.gitignore'), '.preflight/\n')
+  git('add', '.gitignore')
+  git('commit', '-q', '-m', 'ignore preflight output')
   git('update-ref', 'refs/remotes/origin/main', 'HEAD')
 })
 
@@ -91,14 +102,46 @@ describe('verify-before-stop hook', () => {
     expect(stderr).toContain('records status=fail')
   })
 
+  it('lets the next stop through when the block at HEAD records a failure', () => {
+    writeBlock(commit('work.txt'), 'fail')
+    expect(stop({ ...implementer, stop_hook_active: true }).code).toBe(0)
+  })
+
+  it('blocks uncommitted changes even with a passing block at HEAD', () => {
+    writeBlock(commit('work.txt'))
+    writeFileSync(join(repo, 'work.txt'), 'edited after preflight\n')
+    const { code, stderr } = stop({ ...implementer, stop_hook_active: true })
+    expect(code).toBe(2)
+    expect(stderr).toContain('uncommitted changes')
+  })
+
   it('lets the implementer stop with a passing block at HEAD', () => {
     writeBlock(commit('work.txt'))
     expect(stop(implementer).code).toBe(0)
   })
 
-  it('lets the stop through the second time, so the give-up path is never trapped', () => {
+  it('keeps blocking a missing block when the agent stops again', () => {
     commit('work.txt')
-    expect(stop({ ...implementer, stop_hook_active: true }).code).toBe(0)
+    stop(implementer)
+    const { code, stderr } = stop({ ...implementer, stop_hook_active: true })
+    expect(code).toBe(2)
+    expect(stderr).toContain('Stop 2 of 3')
+  })
+
+  it('lets the stop through after three held stops on one commit', () => {
+    commit('work.txt')
+    const again = { ...implementer, stop_hook_active: true }
+    expect([stop(implementer), stop(again), stop(again)].map((r) => r.code)).toEqual([2, 2, 2])
+    expect(stop(again).code).toBe(0)
+  })
+
+  it('starts the count again on a new commit', () => {
+    commit('work.txt')
+    for (let i = 0; i < 4; i += 1) stop(implementer)
+    commit('more.txt')
+    const { code, stderr } = stop(implementer)
+    expect(code).toBe(2)
+    expect(stderr).toContain('Stop 1 of 3')
   })
 
   it('lets an implementer with nothing committed past main stop', () => {

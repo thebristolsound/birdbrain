@@ -113,10 +113,27 @@ started it and apart from the fifteen rulings:
   instead (the maintainer's pick).
 - **#1107 ruling.** The maintainer chose integrity results only: the operator statement drops
   "digests" and matches the note near `reportHtml.ts:1117`.
-- **In flight.** Workflow wf_11707b6c-bc2 runs five lanes from worktrees under
-  `/tmp/birdbrain-wt/uc4-*`: slice 5 review then ship, #1954 ship, #1107 wording fix then review
-  and ship, #1109 build (after the #1107 wording) then review and ship, and #1824 build then
-  review and ship. One preflight at a time; no merges.
+- **Node correction.** Main pins Node 24 since #2076 (111329ef); this branch predated it and
+  said 20, and an earlier report here repeated that. The session's PATH puts Node 20 first, so
+  every agent ran node, pnpm and git hooks through `mise exec --`. This branch merged origin/main
+  (ba1d3e21) so it reads the current `CLAUDE.md`.
+- **Shipped as PRs.** Workflow wf_e7cc5ddf-ac6 (a relaunch of wf_11707b6c-bc2 with the Node fix)
+  opened five PRs, none merged:
+  - #2090, #1954 (632609d3), not evidence-affecting.
+  - #2091, slice 5 (82aea6bc), evidence-affecting; both reviews approved.
+  - #2092, #1107 (204e2210, the integrity-only wording), evidence-affecting.
+  - #2093, #1824 remainder (ef21acd2), not evidence-affecting; asks the maintainer to accept the
+    new hover text "Checking whether import needs your acknowledgement".
+  - #2094, #1109 (2b1fa8ca), evidence-affecting; merges cleanly with #2092.
+- **Red on this host.** Every preflight here failed only on
+  `tests/main/services/sharing/loopbackTransport.test.ts` "close ends its streams, stops
+  answering and removes its record" (expected `Uint8Array[120]`, got null), which also fails at
+  origin/main's code on this host, so no coverage figure was computed.
+- **Screenshots not uploaded.** gh here is 2.96.0, and the post-pr-body upload route needs
+  `gh pr comment --attach` from 2.99. The pairs for #2090 and #2093 are under
+  `/tmp/birdbrain-shots/`, and both bodies carry the hand-off line.
+- **Next command.** Upload the #2090 and #2093 screenshot pairs; the maintainer reviews #2091,
+  #2092 and #2094 (merge-gate waits on that sign-off) and answers the #2093 hover text.
 
 ## Open questions
 

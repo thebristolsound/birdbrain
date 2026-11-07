@@ -575,6 +575,68 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     }
   }
 
+  const LOOSE_JSON =
+    'FAIL [step 4] entry at position 1: Invalid JSON, it holds a value spelled outside the ' +
+    'JSON grammar, or more than one value'
+
+  /**
+   * A copy of the good package with manifest line 1 rewritten by `respell`, and
+   * the unsigned index rehashed so step 1 still passes.
+   */
+  const respelledCopy = (name: string, respell: (line: string) => string): string => {
+    const dir = corruptedCopy(`loose-json-${name.replace(/\W+/g, '-')}`)
+    const path = join(dir, 'manifest.jsonl')
+    const lines = readFileSync(path, 'utf-8').split('\n')
+    const respelled = respell(lines[1])
+    expect(respelled).not.toBe(lines[1])
+    lines[1] = respelled
+    writeFileSync(path, lines.join('\n'))
+    const evidencePath = join(dir, 'evidence.json')
+    const evidence = JSON.parse(readFileSync(evidencePath, 'utf-8')) as {
+      artifacts: Array<{ path: string; sha256: string; sizeBytes: number }>
+    }
+    const bytes = readFileSync(path)
+    for (const artifact of evidence.artifacts) {
+      if (artifact.path !== 'manifest.jsonl') continue
+      artifact.sha256 = sha256(bytes)
+      artifact.sizeBytes = bytes.length
+    }
+    writeFileSync(evidencePath, JSON.stringify(evidence, null, 2))
+    return dir
+  }
+
+  /** #1922: a row for manifest line 1 respelled into text JSON.parse rejects. */
+  const looseJsonRow = (
+    name: string,
+    respell: (line: string) => string,
+    steps: number[]
+  ): ConformanceRow => ({
+    name: `an entry line that holds ${name}`,
+    build: () => respelledCopy(name, respell),
+    binary: 'fail',
+    script: 'fail',
+    steps,
+    says: [LOOSE_JSON],
+    binaryFails: { name: 'manifest chain', reason: 'Invalid JSON (at index 1)' }
+  })
+
+  // jq 1.7 reads a lowercase nan as null. jq 1.6 rejects it, so steps 2 and 6
+  // fail on that line as well.
+  const jqReadsNan = ((): boolean => {
+    try {
+      execFileSync('jq', ['empty'], { input: 'nan', stdio: ['pipe', 'ignore', 'ignore'] })
+      return true
+    } catch {
+      return false
+    }
+  })()
+
+  /** Line 1 with its index, 1, spelled as `literal`. */
+  const indexAs =
+    (literal: string) =>
+    (line: string): string =>
+      line.replace(/"index":1(?=[,}])/, `"index":${literal}`)
+
   const CONFORMANCE: ConformanceRow[] = [
     {
       name: 'the good package',
@@ -750,6 +812,61 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       steps: [1, 4, 6],
       says: ['entry at position 1: Invalid JSON, it begins with a byte-order mark'],
       binaryFails: { name: 'manifest chain', reason: 'Invalid JSON (at index 1)' }
+    },
+    // #1922: jq 1.7 reads each spelling below and JSON.parse rejects it. jq also
+    // recomputes the entryHash from its own reading, so a spelling that reads
+    // as 1 leaves the line's hash and signature verifying, and before the fix
+    // verify.sh passed a package the binary failed.
+    ...['01', '+1', '1.'].map((literal) =>
+      looseJsonRow(`the index 1 spelled ${literal}`, indexAs(literal), [4])
+    ),
+    // These read as another value, so the recomputed entryHash no longer
+    // matches either.
+    ...['00', '-01', '01.5', '.5', '1.e5', 'NaN', '-nan', 'Infinity', 'infinity', '-Infinity'].map(
+      (literal) => looseJsonRow(`the index spelled ${literal}`, indexAs(literal), [3, 4])
+    ),
+    looseJsonRow('the index spelled nan', indexAs('nan'), jqReadsNan ? [3, 4] : [2, 3, 4, 6]),
+    // Every field read of this line yields two values, so steps 2 and 3 fail too.
+    looseJsonRow('a second value after the first', (line) => `${line}{"b":2}`, [2, 3, 4]),
+    {
+      // A line of JSON whitespace holds no value, so step 4 fails it on its
+      // index and never names its spelling. Inserting it also changes the
+      // index the signed export entry hashes.
+      name: 'a line of spaces and a tab between two entries',
+      build: () => respelledCopy('spaces', (line) => `${line}\n \t `),
+      binary: 'fail',
+      script: 'fail',
+      steps: [2, 3, 4],
+      says: ['FAIL [step 4] entry at position 2 declares index , so the chain is not contiguous'],
+      saysNot: ['Invalid JSON'],
+      binaryFails: {
+        name: 'package hash',
+        reason: 'does not match the packageHash in the signed export entry'
+      }
+    },
+    {
+      // The same spellings inside a string are text to both verifiers.
+      name: 'an entry whose strings hold 01, +1, .5, NaN and Infinity as text',
+      build: async () => {
+        appendManifestEntry(join(tempDir, 'captures', caseId), {
+          type: 'timestamp',
+          caseId,
+          captureContentHash: contentHash,
+          timestamp: '2026-04-05T12:04:00.000Z',
+          operatorId: 'op',
+          operatorName: 'Operator "01" +1 .5 NaN Infinity -nan 1.e5 {}{} \\',
+          toolVersion: '0.1.0'
+        })
+        const dir = await exportPackage('loose-spellings-as-text')
+        expect(readFileSync(join(dir, 'manifest.jsonl'), 'utf-8')).toContain(
+          '"Operator \\"01\\" +1 .5 NaN Infinity -nan 1.e5 {}{} \\\\"'
+        )
+        return dir
+      },
+      binary: 'pass',
+      script: 'pass',
+      steps: [],
+      saysNot: ['FAIL']
     },
     {
       // A shell `read` loop skips a last line with no newline after it, and

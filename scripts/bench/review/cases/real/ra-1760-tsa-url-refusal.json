@@ -1,0 +1,19 @@
+{
+  "id": "ra-1760-tsa-url-refusal",
+  "kind": "real",
+  "source": {
+    "pr": 1760,
+    "base": "8bbbe33c1ad25daba0af62191a1ce44538bfe408",
+    "head": "6dc9fdfeec9cd9e3eeff97f54fcf81754c74969f"
+  },
+  "tags": [
+    "approved",
+    "merged",
+    "approve"
+  ],
+  "truth": {
+    "verdict": "approve for human review",
+    "defects": [],
+    "refuted": []
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "id": "rs-2079-runbook-content-check-exit",
+  "kind": "real",
+  "source": {
+    "pr": 2079,
+    "base": "e4bf4e891888a00e3f3b3321b938f6b2b905fd26",
+    "head": "dcb698bfc8244c7edb205bdbe7f38c6270ed1a96"
+  },
+  "tags": [
+    "shipped",
+    "merged",
+    "approve"
+  ],
+  "truth": {
+    "verdict": "approve for human review",
+    "defects": [
+      {
+        "id": "d1",
+        "file": "src/main/services/verifyRunbook.ts",
+        "lineStart": 317,
+        "lineEnd": 319,
+        "category": "other",
+        "blocking": false,
+        "description": "The runbook's content check, pasted into a fresh shell with $line unset, compares two empty hashes and now exits 0 with content OK, where the block on main exited 1"
+      }
+    ],
+    "refuted": []
+  }
+}

@@ -168,6 +168,19 @@ mutations (`b`), the seven wave-2 PRs (`r`, two approve) and ten merged agent PR
 final pre-pass approved them with no blocker and which the maintainer merged (`ra`, verdict
 approve, no adjudicated defects). Twenty approve cases, twenty-five request-changes.
 
+Added on 2026-11-07, following Anthropic's Claude Code team, whose reviewer eval is built from
+past incidents (https://claude.dev/blog/solving-code-review-at-anthropic/): ten shipped-defect
+cases (`rs`) and three more clean merges (`ra-1654`, `ra-1760`, `ra-1821`). Each `rs` case pins
+the head a pre-pass or merge let through, with defects a later review, issue or fix commit
+confirmed: #1846 (field extractor budgets, caught by an outside review), wave 1 batch 1's #666,
+#673 and #674 (the twelve blockers of the hand-run pre-pass, less two that fall outside the
+commit range), #1269, #1297 (issue #1301), #499 (issue #1107), #438, #2079 and #1844. Line ranges
+come from the fix commit's diff against the case head. `rs-2079` is an approve case with one
+non-blocking defect: the pre-pass rated it pre-existing and the PR merged with it as a follow-up.
+Left out: #1587, whose orphan-sweep defect the five `m` and `b` cases on that head already carry,
+and #1683, where the record does not settle whether the defect should block. Select them with
+`--tag shipped`.
+
 `cases/real/<id>.json` pins a PR at the commit a pre-pass reviewed and carries the truth file by
 hand: adjudicated defects, and findings a skeptic pass refuted. The seven wave-2 PRs (#709 to
 #715) come from `docs/plans/2026-08-22-wave2-review-verdict.md` and the pre-pass comments it

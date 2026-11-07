@@ -1,0 +1,47 @@
+{
+  "id": "rs-673-popup-prefilter-cold-worker",
+  "kind": "real",
+  "source": {
+    "pr": 673,
+    "base": "8020911a454931c5f347309d8012af473c8e8643",
+    "head": "702dca2cee9d86ceffc77fd76f29aeacf6b6577a"
+  },
+  "tags": [
+    "shipped",
+    "merged",
+    "request-changes"
+  ],
+  "truth": {
+    "verdict": "request changes",
+    "defects": [
+      {
+        "id": "d1",
+        "file": "extension/src/background.ts",
+        "lineStart": 325,
+        "lineEnd": 345,
+        "category": "wrong-default",
+        "blocking": true,
+        "description": "userIgnoredPatterns starts as an empty list and is filled only by the first successful status poll, so after a service-worker eviction GET_PAGE_STATUS and MANUAL_CAPTURE treat every URL as not ignored and capture a page matching the operator's ignore rule"
+      },
+      {
+        "id": "d2",
+        "file": "extension/src/background.ts",
+        "lineStart": 371,
+        "lineEnd": 376,
+        "category": "other",
+        "blocking": true,
+        "description": "lastCaptureByTab is not cleared on a case switch (selectorSummaryByTab is), so after capturing a page into Case A and switching to Case B the popup shows the Case A capture record and manifest index under Case B"
+      },
+      {
+        "id": "d3",
+        "file": "extension/src/popup/PopupApp.tsx",
+        "lineStart": 485,
+        "lineEnd": 486,
+        "category": "overclaim",
+        "blocking": true,
+        "description": "The popup tells the operator no other case names leave the app while the same component fetches and renders every case name in its case menu"
+      }
+    ],
+    "refuted": []
+  }
+}

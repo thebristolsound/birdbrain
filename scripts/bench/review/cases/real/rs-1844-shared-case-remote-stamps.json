@@ -1,0 +1,38 @@
+{
+  "id": "rs-1844-shared-case-remote-stamps",
+  "kind": "real",
+  "source": {
+    "pr": 1844,
+    "base": "def735d8346e4fe93c75c5fc00ea8e7e7fcf6d06",
+    "head": "156bd896b93df390ecbb73acb30672e0c7ede557"
+  },
+  "tags": [
+    "shipped",
+    "merged",
+    "request-changes"
+  ],
+  "truth": {
+    "verdict": "request changes",
+    "defects": [
+      {
+        "id": "d1",
+        "file": "src/main/services/trustedTime.ts",
+        "lineStart": 39,
+        "lineEnd": 50,
+        "category": "removed-guard",
+        "blocking": true,
+        "description": "On a computer that did not record a capture, a third member's chain that walks first can supply a forged stamp, checked only for layout, in place of the authoring member's genuine one"
+      },
+      {
+        "id": "d2",
+        "file": "src/main/services/trustedTime.ts",
+        "lineStart": 99,
+        "lineEnd": 106,
+        "category": "other",
+        "blocking": true,
+        "description": "The startup mirror rebuild now walks every Shared Case, so one unreadable member chain throws out of it and stops the app opening"
+      }
+    ],
+    "refuted": []
+  }
+}

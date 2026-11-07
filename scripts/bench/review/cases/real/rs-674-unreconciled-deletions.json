@@ -1,0 +1,47 @@
+{
+  "id": "rs-674-unreconciled-deletions",
+  "kind": "real",
+  "source": {
+    "pr": 674,
+    "base": "4ab77d486a6e84c4d79bc0d76a10080f4fb16cb8",
+    "head": "28734d2ebb0cd5cea5851406925efc97069944f0"
+  },
+  "tags": [
+    "shipped",
+    "merged",
+    "request-changes"
+  ],
+  "truth": {
+    "verdict": "request changes",
+    "defects": [
+      {
+        "id": "d1",
+        "file": "src/shared/verify/evidencePackage.ts",
+        "lineStart": 273,
+        "lineEnd": 287,
+        "category": "other",
+        "blocking": true,
+        "description": "The coverage failure reason names an interrupted delete whenever deletedIds has the id, so an evidence.json edited to re-add a capture the chain legitimately deleted gets a benign explanation from the only check that catches it"
+      },
+      {
+        "id": "d2",
+        "file": "src/renderer/components/settings/DiagnosticsPanel.tsx",
+        "lineStart": 155,
+        "lineEnd": 160,
+        "category": "overclaim",
+        "blocking": true,
+        "description": "The clean-bill sentence renders whenever findings is empty, so with zero cases scanned or cases listed as unscanned it still says every deleted capture is gone from the database"
+      },
+      {
+        "id": "d3",
+        "file": "src/main/services/deletionReconciliation.ts",
+        "lineStart": 90,
+        "lineEnd": 94,
+        "category": "swallowed-error",
+        "blocking": true,
+        "description": "readManifestSnapshot returns an empty buffer for a missing manifest.jsonl and an empty chain verifies, so a case whose manifest was lost counts as a verified, clean case"
+      }
+    ],
+    "refuted": []
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "id": "rs-438-typecheck-include-gap",
+  "kind": "real",
+  "source": {
+    "pr": 438,
+    "base": "9bb735191c55daf39cef512cd80bb2ecffb5695e",
+    "head": "62a8760e26cc39295a63f97402b9ac62e86bdf85"
+  },
+  "tags": [
+    "shipped",
+    "merged",
+    "request-changes"
+  ],
+  "truth": {
+    "verdict": "request changes",
+    "defects": [
+      {
+        "id": "d1",
+        "file": "tsconfig.test.node.json",
+        "lineStart": 23,
+        "lineEnd": 23,
+        "category": "other",
+        "blocking": true,
+        "description": "The new tests/**/*.ts include does not match .mts or .cts, and the e2e project this diff adds to pnpm typecheck includes only **/*.ts, so a tests/**/*.mts or e2e/**/*.tsx file lands in no project and pnpm typecheck exits 0 on a deliberate type error"
+      }
+    ],
+    "refuted": []
+  }
+}

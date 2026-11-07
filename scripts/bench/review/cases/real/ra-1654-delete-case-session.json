@@ -1,0 +1,19 @@
+{
+  "id": "ra-1654-delete-case-session",
+  "kind": "real",
+  "source": {
+    "pr": 1654,
+    "base": "14ac46c0967dae1725ecd420c3341abe04e10db0",
+    "head": "e25ca60199c7a46e8bcf8ce68584e11908508151"
+  },
+  "tags": [
+    "approved",
+    "merged",
+    "approve"
+  ],
+  "truth": {
+    "verdict": "approve for human review",
+    "defects": [],
+    "refuted": []
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "id": "ra-1821-background-permissions",
+  "kind": "real",
+  "source": {
+    "pr": 1821,
+    "base": "2598173fd170604ca7ec0df571f1e08bade2a8b1",
+    "head": "560adba98c68fd67e3662d0f22835cb7047246bd"
+  },
+  "tags": [
+    "approved",
+    "merged",
+    "approve"
+  ],
+  "truth": {
+    "verdict": "approve for human review",
+    "defects": [],
+    "refuted": []
+  }
+}

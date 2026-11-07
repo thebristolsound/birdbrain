@@ -1,0 +1,38 @@
+{
+  "id": "rs-1269-exhibit-derivation-mirror",
+  "kind": "real",
+  "source": {
+    "pr": 1269,
+    "base": "e27ee086d20ca5cccb6e2b6856d5da97b17b7314",
+    "head": "515b48774d8ec87df9078ced8dd66a4485500ca4"
+  },
+  "tags": [
+    "shipped",
+    "merged",
+    "request-changes"
+  ],
+  "truth": {
+    "verdict": "request changes",
+    "defects": [
+      {
+        "id": "d1",
+        "file": "src/main/services/exhibitBackfill.ts",
+        "lineStart": 170,
+        "lineEnd": 180,
+        "category": "wrong-argument",
+        "blocking": true,
+        "description": "The signed derivation entry takes parentContentHash from the hand-editable exhibits.content_hash mirror instead of the verified chain entry, so an edited mirror gets a valid signature over a parent hash no capture entry attests"
+      },
+      {
+        "id": "d2",
+        "file": "src/main/services/db/exhibitRepo.ts",
+        "lineStart": 180,
+        "lineEnd": 196,
+        "category": "other",
+        "blocking": true,
+        "description": "Export-then-import of a Case with a deleted capture renumbers Exhibit 3 to 2 while the copied renumber entry still pins 3, and no corrective entry is written, contrary to the comment that an import cannot renumber"
+      }
+    ],
+    "refuted": []
+  }
+}

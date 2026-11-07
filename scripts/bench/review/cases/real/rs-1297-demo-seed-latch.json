@@ -1,0 +1,29 @@
+{
+  "id": "rs-1297-demo-seed-latch",
+  "kind": "real",
+  "source": {
+    "pr": 1297,
+    "base": "b4412945675b16b68489bce7e6b1d01630fd5a39",
+    "head": "bbb1863c1590e03abfc2d3935981c60643691495"
+  },
+  "tags": [
+    "shipped",
+    "merged",
+    "request-changes"
+  ],
+  "truth": {
+    "verdict": "request changes",
+    "defects": [
+      {
+        "id": "d1",
+        "file": "src/main/services/demoCase.ts",
+        "lineStart": 61,
+        "lineEnd": 70,
+        "category": "swallowed-error",
+        "blocking": true,
+        "description": "latchSeeded swallows a failing settings write, so demoCaseSeeded stays false while isFreshInstall never clears, and every later launch imports another demo Case with its own signed import entry"
+      }
+    ],
+    "refuted": []
+  }
+}

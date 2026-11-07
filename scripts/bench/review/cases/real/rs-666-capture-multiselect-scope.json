@@ -1,0 +1,56 @@
+{
+  "id": "rs-666-capture-multiselect-scope",
+  "kind": "real",
+  "source": {
+    "pr": 666,
+    "base": "4ab77d486a6e84c4d79bc0d76a10080f4fb16cb8",
+    "head": "464ff874c068331dc6c3243d6b13d7ee71b32623"
+  },
+  "tags": [
+    "shipped",
+    "merged",
+    "request-changes"
+  ],
+  "truth": {
+    "verdict": "request changes",
+    "defects": [
+      {
+        "id": "d1",
+        "file": "src/renderer/stores/appStore.ts",
+        "lineStart": 91,
+        "lineEnd": 101,
+        "category": "other",
+        "blocking": true,
+        "description": "selectCaptureRange only unions the anchor-to-target span into the existing set, so a corrective shift-click on a nearer row never shrinks an overshot range and the bulk delete removes every overshot capture"
+      },
+      {
+        "id": "d2",
+        "file": "src/renderer/components/captures/useCaptureSelection.ts",
+        "lineStart": 59,
+        "lineEnd": 62,
+        "category": "other",
+        "blocking": true,
+        "description": "toggleSelectAll derives its checked state from the visible rows but clears the whole store, and selectAllCaptures replaces the set, so under a filter they drop or act on selections the operator cannot see"
+      },
+      {
+        "id": "d3",
+        "file": "src/renderer/components/captures/useCaptureSelection.ts",
+        "lineStart": 76,
+        "lineEnd": 91,
+        "category": "other",
+        "blocking": true,
+        "description": "Escape precedence over the command palette depends on listener registration order, and this child listener registers first, so on a deep-linked captures route Escape in the palette also wipes the selection"
+      },
+      {
+        "id": "d4",
+        "file": "src/renderer/components/captures/CaptureItem.tsx",
+        "lineStart": 103,
+        "lineEnd": 120,
+        "category": "other",
+        "blocking": true,
+        "description": "The row checkbox is always mounted and hidden only by opacity-0, so every row has an invisible tab stop that toggles batch selection on Space"
+      }
+    ],
+    "refuted": []
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "id": "rs-1846-field-extractor-budgets",
+  "kind": "real",
+  "source": {
+    "pr": 1846,
+    "base": "6724907dc2f5c043b7cb49c6672120f19b2268ee",
+    "head": "47a0633a34990288fc06ab90b020cef9459bd754"
+  },
+  "tags": [
+    "shipped",
+    "merged",
+    "request-changes"
+  ],
+  "truth": {
+    "verdict": "request changes",
+    "defects": [
+      {
+        "id": "d1",
+        "file": "src/main/services/search/fieldExtractor.ts",
+        "lineStart": 288,
+        "lineEnd": 301,
+        "category": "other",
+        "blocking": true,
+        "description": "headerFieldsFromText builds every header field from the whole Extracted Text before the maxRows ceiling in add() is checked, so a header-heavy capture of up to 250 MB is scanned and allocated in full on the main process"
+      },
+      {
+        "id": "d2",
+        "file": "src/main/services/search/fieldExtractor.ts",
+        "lineStart": 102,
+        "lineEnd": 116,
+        "category": "removed-guard",
+        "blocking": true,
+        "description": "htmlInputs checks a legacy .html capture only against maxPartBytes, so a legacy capture skips the maxTotalBytes and maxParts budgets that an MHTML part is held to"
+      }
+    ],
+    "refuted": []
+  }
+}

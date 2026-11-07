@@ -1,0 +1,29 @@
+{
+  "id": "rs-499-operator-statement-trusted-time",
+  "kind": "real",
+  "source": {
+    "pr": 499,
+    "base": "fb6401456144ade26973a12e17d666a2d5f2cc96",
+    "head": "99c2018f4445419312653f95e6c6858300987290"
+  },
+  "tags": [
+    "shipped",
+    "merged",
+    "request-changes"
+  ],
+  "truth": {
+    "verdict": "request changes",
+    "defects": [
+      {
+        "id": "d1",
+        "file": "src/main/services/reportHtml.ts",
+        "lineStart": 431,
+        "lineEnd": 434,
+        "category": "overclaim",
+        "blocking": true,
+        "description": "The signed operator statement attributes every cover count to the verification run, but the trusted-time tally now comes from a manifest snapshot read after verifyCaptures, so a token appended in between is signed as if the verification run had counted it"
+      }
+    ],
+    "refuted": []
+  }
+}

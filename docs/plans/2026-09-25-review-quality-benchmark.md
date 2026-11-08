@@ -330,9 +330,10 @@ Thirteen real cases: ten defects a pre-pass or merge let through, and three clea
 one rep). The record is `scripts/bench/review/baselines/shipped-2026-11-07.md`. Read-only: verdict
 0.88, blocker recall 0.48, every clean merge approved. The dispatch flow matched the same
 blockers on the cases both ran, at about eleven times the time per row, with one 30-minute
-timeout. Both runs read each PR's final description, and 14 of the read-only run's 17 findings
-on it concern later commits; the builder now takes the description at the pinned head, and a
-run on the rebuilt cases is still to do.
+timeout. Both runs read each PR's final description, which often describes the fix for the
+defect a case scores. The builder now takes the description at the pinned head, and a read-only
+rerun on the rebuilt cases (2026-11-08) scored verdict 0.85, blocker recall 0.31 and defect
+recall 0.28: the final descriptions had been leading the reviewer to some of the defects.
 
 ## Accounts and usage windows
 

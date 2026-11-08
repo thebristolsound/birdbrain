@@ -26,7 +26,7 @@ import { canonicalStringify } from '@shared/verify'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
-import type { ExportOptions } from '@shared/types'
+import type { Capture, ExportOptions } from '@shared/types'
 import type { TrustedTimeResult } from '@shared/verify'
 
 function readStoredZipEntries(path: string): Map<string, Buffer> {
@@ -1014,5 +1014,87 @@ describe('certification', () => {
       )
       expect(cert).not.toContain('Signing key (SHA-256 of signing-public-key.pem)')
     })
+  })
+})
+
+describe('certification known answer', () => {
+  const capture = (id: string, title: string, url: string): Capture => ({
+    id,
+    caseId: 'case-kat',
+    url,
+    title,
+    hash: id.slice(-1).repeat(64),
+    timestamp: '2026-04-05T12:00:00.000Z',
+    createdAt: '2026-04-05T12:00:00.000Z',
+    format: 'mhtml',
+    method: 'extension'
+  })
+  const stamped = capture('cap-kat-a', 'Stamped <Page> & "co"', 'https://example.com/a?x=1&y=2')
+  const anonymous = capture('cap-kat-b', 'Stamped, no authority name', 'https://example.com/b')
+  const pending = capture('cap-kat-c', 'Pending Page', 'https://example.com/c')
+  const unstamped = capture('cap-kat-d', 'Unstamped Page', 'https://example.com/d')
+
+  // The hex is frozen from the input shape before #1110 paired each capture
+  // with its trusted-time resolution: the same facts must render the same
+  // bytes, so a reshape that changes a byte of the document fails here.
+  it('renders the frozen document for a mixed trusted-time and signature package', () => {
+    const html = buildCertification(
+      {
+        caseName: 'KAT <Case>',
+        caseNumber: 'CPS 2026/114',
+        isDemo: false,
+        purposeOrAuthority: 'Disclosure & review',
+        manifestHead: { index: 7, entryHash: 'e'.repeat(64) },
+        signingKeyFingerprint: 'f'.repeat(64),
+        contents: {
+          captureCount: 4,
+          screenshotCount: 1,
+          noteCount: 2,
+          exhibitCountsByKind: { attachment: 1 }
+        },
+        exportTimestamp: '2026-04-05T13:00:00.000Z',
+        installationId: 'install-kat',
+        operatorName: 'Det. Smith',
+        operatorRole: 'Detective',
+        operatorOrganization: 'Metro PD',
+        tsaUrl: 'https://tsa.example/timestamp',
+        tsaEnabled: true,
+        captures: [stamped, anonymous, pending, unstamped],
+        trustedTimeByCaptureId: new Map<string, TrustedTimeResult>([
+          [
+            stamped.id,
+            {
+              trustedTime: 'rfc3161',
+              tsaName: 'tsa.example.com',
+              stampedAt: '2026-04-05T12:01:00.000Z'
+            }
+          ],
+          [anonymous.id, { trustedTime: 'rfc3161' }],
+          [pending.id, { trustedTime: 'pending' }],
+          [unstamped.id, { trustedTime: 'none' }]
+        ]),
+        entrySignatureByCaptureId: new Map<string, EntrySignatureStatus>([
+          [stamped.id, 'signed'],
+          [anonymous.id, 'signed'],
+          [pending.id, 'unsigned-legacy'],
+          [unstamped.id, 'no-entry']
+        ]),
+        exhibits: [
+          {
+            id: 'exh-kat-1',
+            kind: 'attachment',
+            name: 'statement.pdf',
+            exhibitNumber: 5,
+            trustedTime: { trustedTime: 'none' },
+            entrySignature: 'signed'
+          }
+        ]
+      },
+      '1.0.0'
+    )
+
+    expect(createHash('sha256').update(html, 'utf-8').digest('hex')).toBe(
+      'c71621c86bfbd505a8e67f6a4175c607980c923d3910c4c7e9d694875e4e6c60'
+    )
   })
 })

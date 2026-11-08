@@ -11,12 +11,12 @@ authorized this job on 2026-11-08 and chose its shape and host.
 ## Context
 
 The Claude pre-pass is the only model review an agent PR gets before a person reads it. On
-2026-11-08 the review benchmark's read-only Claude run matched 0.31 of the blockers in ten defects
-that shipped (`scripts/bench/review/baselines/shipped-2026-11-07.md` on the benchmark
-branch), so most shipped defects get past one model family. The maintainer has a ChatGPT plan
-for the month and asked for an OpenAI model to review alongside, as the carson-agents
-repository does: a separate read by another model family, asked for with a label, posted as an
-advisory comment and status.
+2026-11-08 the review benchmark scored both model families on ten defects that shipped
+(`scripts/bench/review/baselines/shipped-2026-11-07.md` on the benchmark branch). Of their 19
+blocking defects, Claude Opus 5.5 caught 6 and `gpt-6.1-sol` 8, only 3 of them the same, so the two
+together caught 11. The maintainer has a ChatGPT plan for the month and asked for an OpenAI model to
+review alongside, as the carson-agents repository does: a separate read by another model family,
+asked for with a label, posted as an advisory comment and status.
 
 That repository runs its review in GitHub Actions. This one cannot do the same on the plan:
 OpenAI's guide to ChatGPT sign-in in CI says not to use it for public repositories, and an API

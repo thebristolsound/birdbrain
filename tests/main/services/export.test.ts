@@ -3532,6 +3532,68 @@ describe('export', () => {
       ])
     })
 
+    // #844: the dialog's Captures toggle is the operator's only way to keep page
+    // archives out of a Working Copy, and the marker must not list what is gone.
+    it('a Working Copy with captures excluded ships no page archive and indexes none', async () => {
+      const { capture } = await ingest(caseId, '<html><body>WC</body></html>')
+
+      const outputPath = join(tempDir, 'wc-no-pages.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: { ...EVIDENCE_INCLUDE, captures: false, auditTrail: false },
+          exportClass: 'working-copy',
+          outputPath
+        },
+        captureLifecycle
+      )
+
+      const entries = readStoredZipEntries(outputPath)
+      expect([...entries.keys()].sort()).toEqual(['WORKING-COPY.json', 'notes.md'])
+      const marker = JSON.parse(entries.get('WORKING-COPY.json')!.toString('utf-8')) as {
+        contents: { captureCount: number }
+        captures: Array<{ id: string; pagePath: string | null }>
+        artifacts: Array<{ path: string }>
+      }
+      expect(marker.contents.captureCount).toBe(1)
+      expect(marker.captures).toEqual([expect.objectContaining({ id: capture.id, pagePath: null })])
+      expect(marker.artifacts.map((a) => a.path)).toEqual(['notes.md'])
+    })
+
+    // #844: an Evidence Package cannot omit a page archive its index and chain
+    // name, so the captures flag leaves its page archives exactly as they were.
+    it('an Evidence Package ships its page archives whatever the captures flag says', async () => {
+      const { capture } = await ingest(caseId, '<html><body>EV</body></html>')
+      const pagePath = `pages/${capture.id}.mhtml`
+
+      const read = async (captures: boolean): Promise<Map<string, Buffer>> => {
+        const outputPath = join(tempDir, `ev-captures-${captures}.zip`)
+        await generateReport(
+          caseId,
+          {
+            format: 'zip',
+            include: { ...EVIDENCE_INCLUDE, captures },
+            exportClass: 'evidence',
+            outputPath
+          },
+          captureLifecycle
+        )
+        return readStoredZipEntries(outputPath)
+      }
+      const withCaptures = await read(true)
+      const withoutCaptures = await read(false)
+
+      expect([...withoutCaptures.keys()].sort()).toEqual([...withCaptures.keys()].sort())
+      expect(withoutCaptures.get(pagePath)).toEqual(withCaptures.get(pagePath))
+      const evidence = JSON.parse(withoutCaptures.get('evidence.json')!.toString('utf-8')) as {
+        captures: Array<{ mhtmlPath: string | null }>
+        artifacts: Array<{ path: string }>
+      }
+      expect(evidence.captures.map((c) => c.mhtmlPath)).toEqual([pagePath])
+      expect(evidence.artifacts.map((a) => a.path)).toContain(pagePath)
+    })
+
     // R4's two known answers on the manifest entry: a Working Copy appends an
     // entry carrying exportClass 'working-copy'; an evidence export's entry
     // OMITS the key — never null, never 'evidence'.

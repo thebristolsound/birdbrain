@@ -347,6 +347,93 @@ describe('ExportDialog', () => {
     expect(screen.getByText('Customise contents')).toBeDefined()
   })
 
+  // #844: the evidence zip ships every page archive whatever the toggle says,
+  // so the evidence class offers no unchecked state for the zip to contradict.
+  it('renders Captures always-on in an evidence package and says why', async () => {
+    renderDialog()
+
+    fireEvent.click(screen.getByText('Customise contents'))
+    const captures = screen.getByLabelText('Captures (page archives)') as HTMLInputElement
+    expect(captures.checked).toBe(true)
+    expect(captures.disabled).toBe(true)
+    fireEvent.click(captures)
+    expect(captures.checked).toBe(true)
+    expect(screen.getByTestId('export-captures-invariant-note').textContent).toBe(
+      'Page archives always ship in a certified package.'
+    )
+
+    fireEvent.click(screen.getByText('Export'))
+    await waitFor(() => expect(generateReport).toHaveBeenCalledTimes(1))
+    expect(lastOptions(generateReport).include.captures).toBe(true)
+  })
+
+  // #887: the pinned-snapshot notice promises references that render inside
+  // the exhibit modules, which drop out when captures are excluded. A custom
+  // evidence export must therefore never reach the report with captures off.
+  it('keeps the pinned-snapshot promise true in a custom evidence export', async () => {
+    listCasePins.mockResolvedValue(PINS)
+    renderDialog()
+
+    await screen.findByTestId('export-pinned-wayback')
+    fireEvent.click(screen.getByText('Customise contents'))
+    for (const item of ['Screenshots', 'Operator notes', 'Integrity verification']) {
+      fireEvent.click(screen.getByLabelText(item))
+    }
+    fireEvent.click(screen.getByLabelText('Captures (page archives)'))
+    expect(screen.getByText('Custom selection')).toBeDefined()
+
+    expect(screen.getByTestId('export-pinned-wayback').textContent).toContain(
+      'Included in the report as archive.org references'
+    )
+    fireEvent.click(screen.getByText('Export'))
+    await waitFor(() => expect(generateReport).toHaveBeenCalledTimes(1))
+    const options = lastOptions(generateReport)
+    expect(options.exportClass).toBe('evidence')
+    expect(options.include.captures).toBe(true)
+  })
+
+  // #887: a Working Copy may drop its page archives, and switching class from
+  // there must not carry the unchecked box into the evidence package.
+  it('does not carry an unchecked Captures from a Working Copy into an evidence package', async () => {
+    listCasePins.mockResolvedValue(PINS)
+    renderDialog()
+
+    await screen.findByTestId('export-pinned-wayback')
+    fireEvent.click(screen.getByLabelText(/Working copy/))
+    fireEvent.click(screen.getByText('Customise contents'))
+    const wcCaptures = screen.getByLabelText('Captures (page archives)') as HTMLInputElement
+    expect(wcCaptures.disabled).toBe(false)
+    fireEvent.click(wcCaptures)
+    expect(wcCaptures.checked).toBe(false)
+    expect(screen.queryByTestId('export-captures-invariant-note')).toBeNull()
+    expect(screen.queryByTestId('export-pinned-wayback')).toBeNull()
+
+    fireEvent.click(screen.getByLabelText(/Full evidence bundle/))
+    const captures = screen.getByLabelText('Captures (page archives)') as HTMLInputElement
+    expect(captures.checked).toBe(true)
+    expect(captures.disabled).toBe(true)
+    expect(screen.getByTestId('export-pinned-wayback')).toBeDefined()
+
+    fireEvent.click(screen.getByText('Export'))
+    await waitFor(() => expect(generateReport).toHaveBeenCalledTimes(1))
+    expect(lastOptions(generateReport).include.captures).toBe(true)
+  })
+
+  it('lets a Working Copy export leave its page archives out', async () => {
+    renderDialog()
+
+    fireEvent.click(screen.getByLabelText(/Working copy/))
+    fireEvent.click(screen.getByText('Customise contents'))
+    fireEvent.click(screen.getByLabelText('Captures (page archives)'))
+    expect(screen.getByText('Custom selection')).toBeDefined()
+
+    fireEvent.click(screen.getByText('Export'))
+    await waitFor(() => expect(generateReport).toHaveBeenCalledTimes(1))
+    const options = lastOptions(generateReport)
+    expect(options.exportClass).toBe('working-copy')
+    expect(options.include.captures).toBe(false)
+  })
+
   it('replaces the custody card with a non-evidentiary notice under Working copy', async () => {
     renderDialog()
 

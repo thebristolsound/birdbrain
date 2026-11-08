@@ -810,7 +810,7 @@ export async function generateReport(
       // No report, no certification: the Working Copy deliberately carries no
       // evidentiary documents at all (#399, ADR-0010).
       onProgress?.('Packaging working copy...', 90)
-      zip = buildWorkingCopyZip(caseId, data, packageMeta, reader)
+      zip = buildWorkingCopyZip(caseId, data, packageMeta, reader, options.include.captures)
     } else {
       onProgress?.('Generating report...', 80)
       const html = buildHtmlReport(data, options)
@@ -1847,10 +1847,11 @@ const WORKING_COPY_STATEMENT =
 /**
  * The Working Copy zip (#399, ADR-0010): page archives, the operator-facing
  * screenshots, operator notes, and the WORKING-COPY.json marker that names the
- * class — nothing else. No manifest.jsonl, no report, no certification, no
- * signing key, no evidence.json, no VERIFY.md and no TSA material: every one
- * of those is evidentiary-shaped, and shipping any of them would blur the two
- * classes back together.
+ * class — nothing else. Unlike the Evidence Package's, its page archives ship
+ * only when include.captures is set (#844). No manifest.jsonl, no report, no
+ * certification, no signing key, no evidence.json, no VERIFY.md and no TSA
+ * material: every one of those is evidentiary-shaped, and shipping any of them
+ * would blur the two classes back together.
  *
  * The marker doubles as the human-readable index (path + sha256 per file), is
  * unshifted like evidence.json — outside `artifacts` and outside packageHash —
@@ -1861,7 +1862,8 @@ function buildWorkingCopyZip(
   caseId: string,
   data: ExportData,
   meta: PackageMeta,
-  reader: PackageReader
+  reader: PackageReader,
+  includePageArchives: boolean
 ): EvidenceZipResult {
   const { entries, artifacts, add } = createArtifactAccumulator()
   // Named as the Evidence Package names them — see resolveChainNames.
@@ -1869,7 +1871,9 @@ function buildWorkingCopyZip(
 
   const captureIndex = data.captures.map((capture) => {
     const id = chainIdOf(capture.id)
-    const mhtml = defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'mhtml')
+    const mhtml = includePageArchives
+      ? defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'mhtml')
+      : null
     const pagePath = capturePagePath(id)
     if (mhtml) add(pagePath, mhtml)
 

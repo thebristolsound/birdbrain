@@ -76,9 +76,10 @@ export function useNoteSelection(hostRef: RefObject<HTMLElement | null>): UseNot
         setSelection(null)
         return
       }
-      // A selection that started in the editor can end outside it; only text
-      // the note actually contains gets an action.
-      if (native.anchorNode && !host.contains(native.anchorNode)) {
+      // The text read below spans anchor to focus, and a drag in either
+      // direction can cross the editor's edge; only a selection with both ends
+      // inside the host is text the note actually contains.
+      if (!host.contains(native.anchorNode) || !host.contains(native.focusNode)) {
         setSelection(null)
         return
       }

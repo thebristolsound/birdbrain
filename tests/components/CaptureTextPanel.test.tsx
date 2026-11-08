@@ -39,10 +39,12 @@ function renderPanel() {
  */
 function selectInPanel(text: string) {
   const host = screen.getByTestId('capture-text')
+  const textNode = host.querySelector('p')?.firstChild ?? null
   vi.spyOn(window, 'getSelection').mockReturnValue({
     isCollapsed: false,
     rangeCount: 1,
-    anchorNode: host.querySelector('p')?.firstChild ?? null,
+    anchorNode: textNode,
+    focusNode: textNode,
     removeAllRanges: vi.fn(),
     toString: () => text,
     getRangeAt: () => ({ getBoundingClientRect: () => ({ left: 40, bottom: 30 }) })

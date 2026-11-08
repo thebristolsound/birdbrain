@@ -22,14 +22,17 @@ function stubSelection(options: {
   collapsed?: boolean
   rangeCount?: number
   anchorNode?: Node | null
+  focusNode?: Node | null
   rect?: { left: number; bottom: number }
 }): void {
   const { text, collapsed = false, rangeCount = 1, rect = { left: 140, bottom: 60 } } = options
   const anchorNode = options.anchorNode === undefined ? host.firstChild : options.anchorNode
+  const focusNode = options.focusNode === undefined ? host.firstChild : options.focusNode
   vi.spyOn(window, 'getSelection').mockReturnValue({
     isCollapsed: collapsed,
     rangeCount,
     anchorNode,
+    focusNode,
     removeAllRanges,
     toString: () => text,
     getRangeAt: () => ({ getBoundingClientRect: () => rect })
@@ -83,10 +86,27 @@ describe('useNoteSelection', () => {
     expect(result.current.selection).toBeNull()
   })
 
-  it('ignores a selection whose anchor is outside the editor', () => {
+  it('ignores a backward drag that starts outside the editor and ends inside it', () => {
     const outside = document.createElement('p')
     document.body.appendChild(outside)
-    stubSelection({ text: 'meridian-trust.com', anchorNode: outside })
+    stubSelection({ text: 'meridian-trust.com', anchorNode: outside, focusNode: host.firstChild })
+    const { result } = setup()
+
+    act(() => result.current.onSelectionEnd({ target: host }))
+    expect(result.current.selection).toBeNull()
+  })
+
+  // The anchor is where the drag started, so a check on it alone passes this
+  // direction, and the range's text includes what lies past the editor (#878).
+  it('ignores a forward drag that starts inside the editor and ends outside it', () => {
+    const outside = document.createElement('p')
+    outside.appendChild(document.createTextNode('Case overview'))
+    document.body.appendChild(outside)
+    stubSelection({
+      text: 'meridian-trust.com overnight Case',
+      anchorNode: host.firstChild,
+      focusNode: outside.firstChild
+    })
     const { result } = setup()
 
     act(() => result.current.onSelectionEnd({ target: host }))

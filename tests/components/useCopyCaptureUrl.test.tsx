@@ -5,9 +5,10 @@ import type { Capture } from '@shared/types'
 
 const notifySuccess = vi.hoisted(() => vi.fn())
 const notifyError = vi.hoisted(() => vi.fn())
+const notifyWarn = vi.hoisted(() => vi.fn())
 
 vi.mock('@renderer/lib/notify', () => ({
-  notify: { error: notifyError, warn: vi.fn(), success: notifySuccess, info: vi.fn() }
+  notify: { error: notifyError, warn: notifyWarn, success: notifySuccess, info: vi.fn() }
 }))
 
 import { copyCaptureUrl, useCopyCaptureUrl } from '@renderer/components/captures/useCopyCaptureUrl'
@@ -52,6 +53,7 @@ afterEach(() => {
   vi.restoreAllMocks()
   notifySuccess.mockReset()
   notifyError.mockReset()
+  notifyWarn.mockReset()
 })
 
 describe('copyCaptureUrl', () => {
@@ -79,6 +81,16 @@ describe('copyCaptureUrl', () => {
     // otherwise carry. Same contract as the route's open-external failure.
     expect(message).toBe("Couldn't copy the URL to your clipboard")
     expect(opts.cause).toBe(cause)
+  })
+
+  it('writes nothing for an empty stored URL, and says so', async () => {
+    await copyCaptureUrl('')
+
+    expect(writeText).not.toHaveBeenCalled()
+    expect(notifySuccess).not.toHaveBeenCalled()
+    expect(notifyWarn).toHaveBeenCalledExactlyOnceWith(
+      'Nothing was copied: the stored URL is empty'
+    )
   })
 })
 
@@ -117,6 +129,31 @@ describe('useCopyCaptureUrl', () => {
 
     expect(event.defaultPrevented).toBe(false)
     expect(writeText).not.toHaveBeenCalled()
+    expect(notifyWarn).not.toHaveBeenCalled()
+  })
+
+  it('copies nothing from the menu for a capture carrying no URL, and says so', async () => {
+    const { result } = renderHook(() => useCopyCaptureUrl({ ...capture, url: '' }))
+
+    await act(async () => result.current())
+
+    expect(writeText).not.toHaveBeenCalled()
+    expect(notifySuccess).not.toHaveBeenCalled()
+    expect(notifyWarn).toHaveBeenCalledExactlyOnceWith(
+      'Nothing was copied: the stored URL is empty'
+    )
+  })
+
+  it('says so on ctrl+C for a capture carrying no URL, rather than going silent', () => {
+    renderHook(() => useCopyCaptureUrl({ ...capture, url: '' }))
+
+    const event = press('c', { ctrlKey: true })
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(writeText).not.toHaveBeenCalled()
+    expect(notifyWarn).toHaveBeenCalledExactlyOnceWith(
+      'Nothing was copied: the stored URL is empty'
+    )
   })
 
   it('leaves a real text selection to the native copy', () => {

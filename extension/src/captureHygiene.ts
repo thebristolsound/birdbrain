@@ -1,7 +1,11 @@
 // This function is also passed to chrome.scripting.executeScript, so its body
 // must stay self-contained and may not close over module state.
 export function removeInjectedBirdbrainUi(): void {
-  document.getElementById('birdbrain-capture-toast')?.remove()
+  // The capture toast host (#981), matched on toast.ts's TOAST_SELECTOR for
+  // the same reason as the selection bar below; kept in step by hand.
+  document
+    .querySelectorAll('div[data-birdbrain-ui="capture-toast"]')
+    .forEach((node) => node.remove())
   // The in-page selection bar host (#393) — kept in step by hand with
   // selectionBar.ts, per the captureSuppression.ts header. Matched on the
   // marker attribute render() sets rather than on the host id: this runs

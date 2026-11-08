@@ -5,7 +5,14 @@
 // injected — this is the DOM that pageCapture.saveAsMHTML archives and that the
 // screenshot passes render.
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
-import { showToast, updateToast } from '../../extension/src/toast'
+import {
+  showToast,
+  TOAST_ID,
+  TOAST_MARKER,
+  TOAST_MARKER_VALUE,
+  TOAST_SELECTOR,
+  updateToast
+} from '../../extension/src/toast'
 import { removeInjectedBirdbrainUi } from '../../extension/src/captureHygiene'
 import { releaseCaptureUiSuppression } from '../../extension/src/captureSuppression'
 import {
@@ -249,6 +256,44 @@ describe('PREPARE_FOR_CAPTURE (#379)', () => {
     expect(document.documentElement.outerHTML).toBe(baseline)
   })
 
+  it('leaves a page-owned element carrying the toast id in the serialised DOM', () => {
+    // Same defect as the bar's (#981): the toast host was matched on its id,
+    // so a page node sharing it was deleted before the bytes were taken.
+    setPageHtml(
+      '<main><p>Report abuse to evil@example.com immediately.</p>' +
+        `<div id="${TOAST_ID}">Page-owned, not ours</div></main>`
+    )
+    const baseline = document.documentElement.outerHTML
+
+    showToast({ status: 'capturing' })
+    expect(document.querySelector(TOAST_SELECTOR)?.shadowRoot).toBeInstanceOf(ShadowRoot)
+
+    expect(dispatch({ type: 'PREPARE_FOR_CAPTURE' })).toContainEqual({ ok: true })
+
+    expect(document.querySelector(TOAST_SELECTOR)).toBeNull()
+    expect(document.documentElement.outerHTML).toBe(baseline)
+
+    // The executeScript fallback is a separate hand-maintained list
+    releaseCaptureUiSuppression()
+    showToast({ status: 'capturing' })
+    expect(document.querySelector(TOAST_SELECTOR)?.shadowRoot).toBeInstanceOf(ShadowRoot)
+    removeInjectedBirdbrainUi()
+    expect(document.querySelector(TOAST_SELECTOR)).toBeNull()
+    expect(document.documentElement.outerHTML).toBe(baseline)
+  })
+
+  it('removes the real toast when a page forges its marker earlier in the document', () => {
+    // The residual limit toast.ts documents: the forged node goes too, but it
+    // must not be the only one that goes and leave the real toast in the frame.
+    setPageHtml(`<main><div ${TOAST_MARKER}="${TOAST_MARKER_VALUE}">Forged</div></main>`)
+
+    showToast({ status: 'capturing' })
+    expect(document.querySelectorAll(TOAST_SELECTOR)).toHaveLength(2)
+
+    expect(dispatch({ type: 'PREPARE_FOR_CAPTURE' })).toContainEqual({ ok: true })
+    expect(document.querySelectorAll(TOAST_SELECTOR)).toHaveLength(0)
+  })
+
   it('removes a toast that is mid-dismissal without waiting for its timer', () => {
     setPageHtml(PAGE_HTML)
     updateToast({ status: 'success' })
@@ -270,7 +315,8 @@ describe('PREPARE_FOR_CAPTURE (#379)', () => {
   it('reports which teardown failed instead of claiming a clean page', () => {
     setPageHtml(PAGE_HTML)
     const host = document.createElement('div')
-    host.id = 'birdbrain-capture-toast'
+    host.id = TOAST_ID
+    host.setAttribute(TOAST_MARKER, TOAST_MARKER_VALUE)
     document.body.appendChild(host)
     // Simulate a teardown that cannot complete: the node refuses to be removed
     const remove = vi.spyOn(host, 'remove').mockImplementation(() => {

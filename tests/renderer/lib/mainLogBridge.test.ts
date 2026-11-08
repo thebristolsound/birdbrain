@@ -61,6 +61,14 @@ describe('mainLogBridge', () => {
     expect(toastFns.warning).not.toHaveBeenCalled()
   })
 
+  it('does not toast an imported row the startup repair could not fix', async () => {
+    const { subscribeToMainLog } = await import('@renderer/lib/mainLogBridge')
+    subscribeToMainLog()
+    listener?.({ ...entry('warn'), source: 'exhibits', code: 'exhibits.path_unrepaired' })
+    listener?.({ ...entry('warn'), id: 'a2', source: 'staging', code: 'staging.path_unrepaired' })
+    expect(toastFns.warning).not.toHaveBeenCalled()
+  })
+
   it('ignores renderer-originated entries so they do not toast twice', async () => {
     const { subscribeToMainLog } = await import('@renderer/lib/mainLogBridge')
     subscribeToMainLog()

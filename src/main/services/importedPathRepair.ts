@@ -15,7 +15,9 @@ import { ident } from '@main/services/logSafe'
 // each file under the kind's subdirectory as `<row id><ext>`, so the row is
 // pointed at the one file there carrying its id, in the form the fixed
 // `rerootPath` writes. With no such file, or several, the row is left and
-// logged. Only the `path` column changes: no file, hash or chain entry does.
+// logged. Only the `path` column is written, and no file, hash or chain entry
+// changes. An Exhibit row's update still fires the existing exhibits revision
+// trigger, which advances the Case revision and writes a change-log row.
 //
 // Not in `migrations.ts` for the reason `exhibitBackfill.ts` gives: the
 // storage root does not exist yet when migrations run. It needs no completion

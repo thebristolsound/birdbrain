@@ -129,6 +129,12 @@ describe('imported path repair (#1610)', () => {
       path: `${caseId}/attachments/${id}.zip`,
       contentHash: sha256(ZIP)
     })
+    // One change-log row for the insert, and one from the repair's update.
+    expect(
+      getDb()
+        .prepare('SELECT COUNT(*) AS n FROM case_change_log WHERE kind = ? AND target_id = ?')
+        .get('exhibit', id)
+    ).toEqual({ n: 2 })
   })
 
   it('points a pooled row at its one file, keeping its hash', () => {

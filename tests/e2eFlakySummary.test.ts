@@ -3,12 +3,12 @@ import { execFileSync } from 'child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
-// @ts-expect-error - build script with no type declarations; the tsconfigs exclude scripts/
 import {
   annotations,
   formatSummary,
   MAX_ANNOTATIONS,
   summarize
+  // @ts-expect-error - build script with no type declarations; the tsconfigs exclude scripts/
 } from '../scripts/e2e-flaky-summary.mjs'
 
 const SCRIPT = resolve(__dirname, '../scripts/e2e-flaky-summary.mjs')

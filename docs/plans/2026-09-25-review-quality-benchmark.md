@@ -323,6 +323,17 @@ row died with exit 127 at the moment of the swap; 0.154.0 is no longer installed
 writes fresh 0.158.0 manifests for `gpt-6-astra` and `gpt-5.6-sol`, and the 0.154.0 rows stay as a cross-version
 check. The Claude sweep was unaffected: its harness version is 2.1.283 throughout.
 
+## Shipped-defect cases (2026-11-07)
+
+Thirteen real cases: ten defects a pre-pass or merge let through, and three clean merges. Opus
+5.5 at `high` ran them read-only (L1, two reps) and through the dispatch flow (L2, eight cases,
+one rep). The record is `scripts/bench/review/baselines/shipped-2026-11-07.md`. Read-only: verdict
+0.88, blocker recall 0.48, every clean merge approved. The dispatch flow matched the same
+blockers on the cases both ran, at about eleven times the time per row, with one 30-minute
+timeout. Both runs read each PR's final description, and 14 of the read-only run's 17 findings
+on it concern later commits; the builder now takes the description at the pinned head, and a
+run on the rebuilt cases is still to do.
+
 ## Accounts and usage windows
 
 There is no dollar cost and no cap the runner can enforce. Both subscriptions meter usage in

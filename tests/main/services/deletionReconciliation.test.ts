@@ -6,7 +6,7 @@ import { createHash } from 'crypto'
 import { Readable } from 'stream'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
-import { createCase } from '@main/services/db/caseRepo'
+import { createCase, updateCase } from '@main/services/db/caseRepo'
 import { insertCapture, deleteCapture, listCaptures } from '@main/services/db/captureRepo'
 import { appendManifestEntry, initManifest, verifyManifestChain } from '@main/services/manifest'
 import { scanUnreconciledDeletions } from '@main/services/deletionReconciliation'
@@ -97,9 +97,44 @@ describe('scanUnreconciledDeletions', () => {
         captureId: capture.id,
         manifestIndex: index,
         entryTimestamp: '2026-04-05T13:30:00.000Z',
-        operatorName: 'Test Operator'
+        operatorName: 'Test Operator',
+        caseArchived: false
       }
     ])
+  })
+
+  // #670. An archived case keeps its manifest and its capture rows, so the
+  // crash artefact survives archiving. The scan covers it, and the finding says
+  // the case is archived because the recovery runs from the case.
+  it('reports the crash artefact in an archived case and marks the finding archived', () => {
+    const { caseId, caseDir } = makeCase('Archived Crash Case')
+    const capture = addCapture(caseId, 'https://example.com/archived')
+    const index = appendDeletion(caseDir, capture)
+    updateCase({ id: caseId, archived: true })
+
+    const report = scanUnreconciledDeletions()
+
+    expect(report.casesScanned).toBe(1)
+    expect(report.unscanned).toEqual([])
+    expect(report.findings).toEqual([
+      expect.objectContaining({
+        caseId,
+        caseName: 'Archived Crash Case',
+        captureId: capture.id,
+        manifestIndex: index,
+        caseArchived: true
+      })
+    ])
+  })
+
+  it('counts archived and active cases alike in casesScanned', () => {
+    makeCase('Active')
+    const { caseId } = makeCase('Archived')
+    updateCase({ id: caseId, archived: true })
+
+    const report = scanUnreconciledDeletions()
+    expect(report.casesScanned).toBe(2)
+    expect(report.findings).toEqual([])
   })
 
   it('carries the entry reason through when one was recorded (#580)', () => {

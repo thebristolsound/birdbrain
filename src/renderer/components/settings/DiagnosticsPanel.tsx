@@ -130,6 +130,10 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
+// #670. scanUnreconciledDeletions reads every case, archived ones included, so
+// the counts below cover both.
+const SCAN_COVERAGE = 'The scan reads archived cases as well as active ones.'
+
 // #622. Every sentence here is bounded by what the scan actually established:
 // the chain verified, the row is present, the files were never looked at. Per
 // ADR-0004, verification establishes only the property actually tested — so the
@@ -154,18 +158,16 @@ function ManifestReconciliation({ report }: { report: UnreconciledDeletionReport
         <p className="text-xs text-text-muted">
           None found across {formatCount(report.casesScanned)} verified{' '}
           {report.casesScanned === 1 ? 'case' : 'cases'}. Every capture those manifests record as
-          deleted is gone from the database.
+          deleted is gone from the database. {SCAN_COVERAGE}
         </p>
       ) : report.findings.length === 0 ? (
         // No findings, but the scan did not cover everything, so the clean bill
         // above would be a claim about cases it never read. The unscanned list
-        // below says which. Archived cases are skipped by listCases and appear
-        // in neither count (#670), which is why the wording above is bounded to
-        // the manifests actually scanned.
+        // below says which.
         <p className="text-xs text-text-muted">
           None found across {formatCount(report.casesScanned)} verified{' '}
           {report.casesScanned === 1 ? 'case' : 'cases'}. This says nothing about the cases listed
-          below.
+          below. {SCAN_COVERAGE}
         </p>
       ) : (
         <>
@@ -188,6 +190,12 @@ function ManifestReconciliation({ report }: { report: UnreconciledDeletionReport
                   {finding.operatorName ? ` by ${finding.operatorName}` : ''}
                   {finding.reason ? ` — ${finding.reason}` : ''}
                 </div>
+                {finding.caseArchived && (
+                  <div className="text-text-muted">
+                    This case is archived; it may need unarchiving before the capture can be deleted
+                    again.
+                  </div>
+                )}
               </li>
             ))}
           </ul>

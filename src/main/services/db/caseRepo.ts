@@ -32,6 +32,16 @@ export function listCases(): Case[] {
   return rows.map(rowToCase)
 }
 
+// Every Case, archived ones included, in `listCases` order. The unreconciled-
+// deletion scan reads these: an archived Case keeps its manifest and capture
+// rows, so it can carry the same crash artefact (#670).
+export function listAllCases(): Case[] {
+  const rows = getDb()
+    .prepare('SELECT * FROM cases ORDER BY updated_at DESC, rowid DESC')
+    .all() as Array<Record<string, unknown>>
+  return rows.map(rowToCase)
+}
+
 export function getCase(id: string): Case | undefined {
   const row = getDb().prepare('SELECT * FROM cases WHERE id = ?').get(id) as
     Record<string, unknown> | undefined

@@ -18,7 +18,17 @@ export function getSelector(id: string): Selector | undefined {
   return row ? rowToSelector(row) : undefined
 }
 
+// An empty pattern is a substring of every text, so the Selector would match
+// every capture in the case. The single-create IPC handler refuses one too;
+// this is the backstop for every caller, bulk create included (#877).
+function refuseEmptyPattern(pattern: unknown): void {
+  if (typeof pattern !== 'string' || pattern.trim() === '') {
+    throw new Error('A selector needs a pattern')
+  }
+}
+
 export function createSelector(params: CreateSelectorParams): Selector {
+  refuseEmptyPattern(params.pattern)
   const id = uuid()
   const now = new Date().toISOString()
   getDb()
@@ -50,6 +60,7 @@ function originOrNull(origin: unknown): string | null {
 
 export function bulkCreateSelectors(params: CreateSelectorParams[]): Selector[] {
   if (params.length === 0) return []
+  for (const p of params) refuseEmptyPattern(p.pattern)
   const d = getDb()
   const now = new Date().toISOString()
   const insert = d.prepare(

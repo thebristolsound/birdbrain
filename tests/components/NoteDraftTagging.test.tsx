@@ -259,8 +259,9 @@ describe('AddNoteModal draft tagging (#391)', () => {
   })
 
   /**
-   * The captures route keeps the modal mounted and swaps its capture props, so
-   * closing it and reopening on another capture is a prop change, not a remount.
+   * Keeps the modal mounted and swaps its capture props, so closing it and
+   * reopening on another capture is a prop change, not a remount. No current
+   * screen does this; the captures route unmounts the modal on close.
    */
   function ReopenHarness() {
     const [open, setOpen] = useState(true)

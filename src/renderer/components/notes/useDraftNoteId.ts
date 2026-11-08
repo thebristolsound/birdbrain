@@ -4,10 +4,12 @@ import { useCallback, useRef, useState } from 'react'
  * The id of the note a New note card or Add Note modal is drafting, once the
  * Tag action has written it out (#391).
  *
- * Both hosts stay mounted across close and reopen, so a `notes:create` still in
- * flight when the draft is reset would otherwise resolve into the next draft and
- * point its Save at the earlier note (#873, #890). Each reset starts a new draft
- * session, and a create only binds the session it started in.
+ * No current screen keeps either form mounted across close and reopen: the card
+ * has no host, and the captures route unmounts the modal on close. A host that
+ * did keep one mounted would let a `notes:create` still in flight at reset
+ * resolve into the next draft and point its Save at the earlier note (#873,
+ * #890). Each reset starts a new draft session, and a create only binds the
+ * session it started in.
  */
 export function useDraftNoteId() {
   const [draftNoteId, setDraftNoteId] = useState<string | null>(null)

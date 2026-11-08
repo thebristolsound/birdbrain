@@ -571,9 +571,11 @@ export function importCaptureTagRows(rows: Record<string, unknown>[], ctx: Impor
        exhibit_id, tag_id, author_installation_id, version, deleted_at, row_signature
      ) VALUES (?, ?, ?, ?, ?, ?)`
   )
+  const inCase = importedRowCheck('exhibits', ctx)
   for (const ct of rows) {
     const exhibitId = ctx.mapId(ct.capture_id as string)
     assertLiveReference('exhibit_tags', { exhibit_id: exhibitId }, 'An archived tag application')
+    inCase(exhibitId, 'Exhibit')
     insert.run(exhibitId, ctx.mapTag(ct.tag_id as string), ...syncColumnValues(ct))
   }
 }
@@ -586,11 +588,27 @@ export function importNoteTagRows(rows: Record<string, unknown>[], ctx: ImportCt
        note_id, tag_id, author_installation_id, version, deleted_at, row_signature
      ) VALUES (?, ?, ?, ?, ?, ?)`
   )
+  const inCase = importedRowCheck('notes', ctx)
   for (const nt of rows) {
-    insert.run(
-      ctx.mapId(nt.note_id as string),
-      ctx.mapTag(nt.tag_id as string),
-      ...syncColumnValues(nt)
-    )
+    const noteId = ctx.mapId(nt.note_id as string)
+    inCase(noteId, 'Note')
+    insert.run(noteId, ctx.mapTag(nt.tag_id as string), ...syncColumnValues(nt))
+  }
+}
+
+// An application naming an id the archive does not carry would otherwise land on whatever row
+// another Case holds under it (see ImportCtx.mapId), so each must name a row of the new Case,
+// which only the import itself writes.
+function importedRowCheck(
+  table: 'exhibits' | 'notes',
+  ctx: ImportCtx
+): (id: string, noun: string) => void {
+  const held = getDb().prepare(`SELECT 1 FROM ${table} WHERE id = ? AND case_id = ?`)
+  return (id, noun) => {
+    if (held.get(id, ctx.newCaseId) === undefined) {
+      throw new Error(
+        `An archived tag application names ${noun} ${id}, which the archive does not carry`
+      )
+    }
   }
 }

@@ -60,7 +60,11 @@ import {
   transactionRecordPath as packagedTransactionRecordPath
 } from '../../packages/evidence-package-layout/index'
 import type { TrustedTimeResult } from '@shared/verify'
-import { buildCertification, type SigningKeyRange } from '@main/services/certification'
+import {
+  buildCertification,
+  type CertificationCaptureInput,
+  type SigningKeyRange
+} from '@main/services/certification'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import {
   buildHtmlReport,
@@ -320,6 +324,26 @@ export function resolveExportTrustedTime(
     },
     byCaptureId
   }
+}
+
+/**
+ * Pairs each capture with its trusted-time resolution for certification.html,
+ * which accepts no capture without one (#1110). resolveExportTrustedTime sets an
+ * entry for every capture it is given, and generateReport gives it the list it
+ * packages, so an absent entry is a broken invariant: refuse rather than
+ * certify a state nothing resolved.
+ */
+export function pairCapturesWithTrustedTime(
+  captures: Capture[],
+  byCaptureId: Map<string, TrustedTimeResult>
+): CertificationCaptureInput[] {
+  return captures.map((capture) => {
+    const trustedTime = byCaptureId.get(capture.id)
+    if (trustedTime === undefined) {
+      throw new Error(`certification: no trusted time resolved for capture ${capture.id}`)
+    }
+    return { capture, trustedTime }
+  })
 }
 
 /**
@@ -1536,8 +1560,7 @@ function buildEvidenceZip(
         operatorOrganization: data.operatorOrganization,
         tsaUrl: data.tsaUrl,
         tsaEnabled: data.tsaEnabled,
-        captures: data.captures,
-        trustedTimeByCaptureId: data.trustedTimeByCaptureId,
+        captures: pairCapturesWithTrustedTime(data.captures, data.trustedTimeByCaptureId),
         entrySignatureByCaptureId: data.entrySignatureByCaptureId,
         // The same single resolution the report renders, so the two documents
         // cannot report different states for one Exhibit (#492, #611).

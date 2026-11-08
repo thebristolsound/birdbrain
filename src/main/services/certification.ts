@@ -99,19 +99,21 @@ export interface CertificationInput {
    * (#1169). Optional and true when absent, matching the settings default.
    */
   tsaEnabled?: boolean
-  captures: Capture[]
   /**
-   * The export's single trusted-time resolution, keyed by capture id — see
-   * resolveExportTrustedTime in export.ts. This document's ONLY source for the
-   * axis, by design (#492): the summary prose is folded out of the same rows it
-   * introduces, so the two cannot contradict each other whatever else changes.
+   * Every exported Capture, each paired with the export's single trusted-time
+   * resolution for it — see resolveExportTrustedTime in export.ts. That
+   * resolution is this document's ONLY source for the axis, by design (#492):
+   * the summary prose is folded out of the same rows it introduces, so the two
+   * cannot contradict each other whatever else changes. The pairing is what now
+   * guarantees every row has one: a capture cannot arrive without its
+   * resolution, so no row falls back to a state nothing resolved (#1110).
    *
    * Not the DB mirror, which is rebuildable state that can disagree with the
    * tokens actually retained; and not the export's HashVerification results,
    * whose trustedTime is an earlier read of the same manifest and so can only be
    * superseded by the snapshot the package is built from.
    */
-  trustedTimeByCaptureId: Map<string, TrustedTimeResult>
+  captures: CertificationCaptureInput[]
   /**
    * The export's single per-entry signature resolution, keyed by capture id —
    * see resolveEntrySignatures in export.ts. This document's ONLY source for the
@@ -159,6 +161,12 @@ export interface SigningKeyRange {
   carriedByImportAt: number | null
 }
 
+/** One exported Capture and the trusted-time resolution the export made for it. */
+export interface CertificationCaptureInput {
+  capture: Capture
+  trustedTime: TrustedTimeResult
+}
+
 /** One committed non-Capture Exhibit, as the certifier states it. */
 export interface CertificationExhibitInput {
   id: string
@@ -169,8 +177,6 @@ export interface CertificationExhibitInput {
   trustedTime: TrustedTimeResult
   entrySignature: EntrySignatureStatus
 }
-
-const NO_TRUSTED_TIME: TrustedTimeResult = { trustedTime: 'none' }
 
 /**
  * One Exhibit's row. `title`/`url` carry a Capture's page title and URL; for
@@ -233,8 +239,7 @@ export function buildCertificationFields(
   data: CertificationInput,
   toolVersion: string
 ): CertificationFields {
-  const captures: CertificationExhibitRow[] = data.captures.map((capture) => {
-    const resolved = data.trustedTimeByCaptureId.get(capture.id) ?? NO_TRUSTED_TIME
+  const captures: CertificationExhibitRow[] = data.captures.map(({ capture, trustedTime }) => {
     const entrySignature = data.entrySignatureByCaptureId.get(capture.id)
     // No default: the map is total over data.captures, so an absent key is a
     // broken invariant rather than a capture without an entry — which the map
@@ -248,9 +253,9 @@ export function buildCertificationFields(
       kind: 'capture',
       title: capture.title,
       url: capture.url,
-      trustedTime: resolved.trustedTime,
-      tsaName: resolved.tsaName,
-      stampedAt: resolved.stampedAt,
+      trustedTime: trustedTime.trustedTime,
+      tsaName: trustedTime.tsaName,
+      stampedAt: trustedTime.stampedAt,
       entrySignature
     }
   })

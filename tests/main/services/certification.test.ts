@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, expectTypeOf, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -16,8 +16,12 @@ import {
   type CaptureLifecycle
 } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
-import { generateReport } from '@main/services/export'
-import { buildCertification, type SigningKeyRange } from '@main/services/certification'
+import { generateReport, pairCapturesWithTrustedTime } from '@main/services/export'
+import {
+  buildCertification,
+  type CertificationInput,
+  type SigningKeyRange
+} from '@main/services/certification'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import type { EntrySignatureStatus } from '@main/services/reportHtml'
 import { insertCapture, setCaptureTrustedTime } from '@main/services/db/captureRepo'
@@ -507,10 +511,12 @@ describe('certification', () => {
         operatorRole: 'Researcher',
         operatorOrganization: 'Independent Research Group',
         tsaUrl: 'https://tsa.example/timestamp',
-        captures: [{ ...capture, trustedTimeStatus: 'rfc3161' }],
-        trustedTimeByCaptureId: new Map<string, TrustedTimeResult>([
-          [capture.id, { trustedTime: 'none' }]
-        ]),
+        captures: [
+          {
+            capture: { ...capture, trustedTimeStatus: 'rfc3161' },
+            trustedTime: { trustedTime: 'none' }
+          }
+        ],
         entrySignatureByCaptureId: new Map<string, EntrySignatureStatus>([[capture.id, 'signed']])
       },
       resolveToolVersion()
@@ -548,18 +554,17 @@ describe('certification', () => {
         operatorRole: 'Researcher',
         operatorOrganization: 'Independent Research Group',
         tsaUrl: 'https://tsa.example/timestamp',
-        captures: [stamped, pending],
-        trustedTimeByCaptureId: new Map<string, TrustedTimeResult>([
-          [
-            stamped.id,
-            {
+        captures: [
+          {
+            capture: stamped,
+            trustedTime: {
               trustedTime: 'rfc3161',
               tsaName: 'tsa.example.com',
               stampedAt: '2026-04-05T12:01:00.000Z'
             }
-          ],
-          [pending.id, { trustedTime: 'pending' }]
-        ]),
+          },
+          { capture: pending, trustedTime: { trustedTime: 'pending' } }
+        ],
         entrySignatureByCaptureId: new Map<string, EntrySignatureStatus>([
           [stamped.id, 'signed'],
           [pending.id, 'signed']
@@ -812,7 +817,6 @@ describe('certification', () => {
           operatorOrganization: 'Metro PD',
           tsaUrl: 'https://tsa.example/timestamp',
           captures: [],
-          trustedTimeByCaptureId: new Map<string, TrustedTimeResult>(),
           entrySignatureByCaptureId: new Map<string, EntrySignatureStatus>()
         },
         resolveToolVersion()
@@ -848,8 +852,7 @@ describe('certification', () => {
             operatorRole: 'Detective',
             operatorOrganization: 'Metro PD',
             tsaUrl: 'https://tsa.example/timestamp',
-            captures: [capture],
-            trustedTimeByCaptureId: new Map<string, TrustedTimeResult>(),
+            captures: [{ capture, trustedTime: { trustedTime: 'none' } }],
             entrySignatureByCaptureId: new Map<string, EntrySignatureStatus>()
           },
           resolveToolVersion()
@@ -969,7 +972,6 @@ describe('certification', () => {
           operatorOrganization: 'Metro PD',
           tsaUrl: 'https://tsa.example/timestamp',
           captures: [],
-          trustedTimeByCaptureId: new Map<string, TrustedTimeResult>(),
           entrySignatureByCaptureId: new Map<string, EntrySignatureStatus>()
         },
         '1.0.0'
@@ -1017,7 +1019,7 @@ describe('certification', () => {
   })
 })
 
-describe('certification known answer', () => {
+describe('certification from a literal input', () => {
   const capture = (id: string, title: string, url: string): Capture => ({
     id,
     caseId: 'case-kat',
@@ -1033,10 +1035,50 @@ describe('certification known answer', () => {
   const anonymous = capture('cap-kat-b', 'Stamped, no authority name', 'https://example.com/b')
   const pending = capture('cap-kat-c', 'Pending Page', 'https://example.com/c')
   const unstamped = capture('cap-kat-d', 'Unstamped Page', 'https://example.com/d')
+  // The resolution the export's map form carries, which the frozen input below
+  // passed beside the captures before #1110.
+  const trustedTimeByCaptureId = new Map<string, TrustedTimeResult>([
+    [
+      stamped.id,
+      { trustedTime: 'rfc3161', tsaName: 'tsa.example.com', stampedAt: '2026-04-05T12:01:00.000Z' }
+    ],
+    [anonymous.id, { trustedTime: 'rfc3161' }],
+    [pending.id, { trustedTime: 'pending' }],
+    [unstamped.id, { trustedTime: 'none' }]
+  ])
+
+  // #1110: a capture absent from a separate trusted-time map rendered as 'none'.
+  // Paired, the absent resolution is a compile error, so typecheck runs this test.
+  it('cannot carry a capture without its trusted-time resolution', () => {
+    expectTypeOf<CertificationInput>().not.toHaveProperty('trustedTimeByCaptureId')
+    const unresolved: CertificationInput['captures'] = [
+      // @ts-expect-error -- the resolution is required beside the capture
+      { capture: stamped }
+    ]
+    expect(unresolved).toHaveLength(1)
+  })
+
+  it('pairs each capture with its resolution, in capture order', () => {
+    expect(pairCapturesWithTrustedTime([pending, stamped], trustedTimeByCaptureId)).toEqual([
+      { capture: pending, trustedTime: { trustedTime: 'pending' } },
+      { capture: stamped, trustedTime: trustedTimeByCaptureId.get(stamped.id) }
+    ])
+  })
+
+  // The export resolves every capture it packages, so an absent entry is a
+  // broken invariant. Pairing it with 'none' would be the #1110 under-claim
+  // moved one call up.
+  it('refuses to pair a capture the trusted-time resolution never saw', () => {
+    const partial = new Map([...trustedTimeByCaptureId].filter(([id]) => id !== pending.id))
+    expect(() => pairCapturesWithTrustedTime([stamped, pending], partial)).toThrow(
+      `certification: no trusted time resolved for capture ${pending.id}`
+    )
+  })
 
   // The hex is frozen from the input shape before #1110 paired each capture
-  // with its trusted-time resolution: the same facts must render the same
-  // bytes, so a reshape that changes a byte of the document fails here.
+  // with its trusted-time resolution, over the same captures and map: the same
+  // facts must render the same bytes, so a reshape that changes a byte of the
+  // document fails here.
   it('renders the frozen document for a mixed trusted-time and signature package', () => {
     const html = buildCertification(
       {
@@ -1059,20 +1101,10 @@ describe('certification known answer', () => {
         operatorOrganization: 'Metro PD',
         tsaUrl: 'https://tsa.example/timestamp',
         tsaEnabled: true,
-        captures: [stamped, anonymous, pending, unstamped],
-        trustedTimeByCaptureId: new Map<string, TrustedTimeResult>([
-          [
-            stamped.id,
-            {
-              trustedTime: 'rfc3161',
-              tsaName: 'tsa.example.com',
-              stampedAt: '2026-04-05T12:01:00.000Z'
-            }
-          ],
-          [anonymous.id, { trustedTime: 'rfc3161' }],
-          [pending.id, { trustedTime: 'pending' }],
-          [unstamped.id, { trustedTime: 'none' }]
-        ]),
+        captures: pairCapturesWithTrustedTime(
+          [stamped, anonymous, pending, unstamped],
+          trustedTimeByCaptureId
+        ),
         entrySignatureByCaptureId: new Map<string, EntrySignatureStatus>([
           [stamped.id, 'signed'],
           [anonymous.id, 'signed'],

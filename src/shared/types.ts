@@ -1100,6 +1100,11 @@ export const LOG_CODES = [
   // over the remaining Cases, so this line is the only record that a Case did
   // not get its numbers or its anchored thumbnails.
   'exhibits.backfill_failed',
+  // An imported row whose path the startup repair (#1610) could not point at
+  // a file: none or several carry its id, or the directory could not be read.
+  // The row keeps the bare Case id as its path and is retried next launch.
+  'exhibits.path_unrepaired',
+  'staging.path_unrepaired',
   // A Staging Pool commit (#1148) whose manifest append or row insert threw:
   // the entry was rolled back and the file returned to the pool, so this line
   // is the only record that the operator's commit did not land.

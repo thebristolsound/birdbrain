@@ -83,6 +83,7 @@ import {
 } from '@main/services/sharing/syncService'
 import { createTimestampWorker } from '@main/services/timestampWorker'
 import { runExhibitBackfill } from '@main/services/exhibitBackfill'
+import { runImportedPathRepair } from '@main/services/importedPathRepair'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createRecaptureService } from '@main/services/recapture'
 import { createSessionService } from '@main/services/session'
@@ -718,6 +719,9 @@ if (!gotSingleInstanceLock) {
       // from a backfill pass, so running first would leave the Case the tour is
       // about waiting for the second launch to get them.
       await runExhibitBackfill({ toolVersion: app.getVersion() })
+      // Imported rows left naming the Case folder (#1610). After storage init for
+      // the reason the backfill above gives; it changes only row paths.
+      runImportedPathRepair()
 
       // Build the Selector Lifecycle. Its emitter broadcasts rematched events
       // to every renderer; injecting via factory keeps Electron out of the

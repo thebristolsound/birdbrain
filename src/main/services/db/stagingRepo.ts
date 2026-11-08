@@ -108,6 +108,24 @@ export function deleteStagingFile(id: string): boolean {
   return getDb().prepare('DELETE FROM staging_files WHERE id = ?').run(id).changes > 0
 }
 
+// Pooled rows whose path is the bare Case id, the shape `listExhibitsWithCaseIdPath`
+// describes (#1610).
+export function listStagingFilesWithCaseIdPath(): Array<{ id: string; caseId: string }> {
+  return getDb()
+    .prepare(
+      'SELECT id, case_id AS caseId FROM staging_files WHERE path = case_id ORDER BY case_id, id'
+    )
+    .all() as Array<{ id: string; caseId: string }>
+}
+
+export function repairStagingFileCaseIdPath(id: string, path: string): boolean {
+  return (
+    getDb()
+      .prepare('UPDATE staging_files SET path = ? WHERE id = ? AND path = case_id')
+      .run(path, id).changes > 0
+  )
+}
+
 // --- Archive round trip (#1148, X12) ----------------------------------------
 
 export function collectStagingFilesForCase(caseId: string): Record<string, unknown>[] {

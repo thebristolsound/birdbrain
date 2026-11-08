@@ -32,6 +32,14 @@ function noteRow(id: string): Note {
   }
 }
 
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((r) => {
+    resolve = r
+  })
+  return { promise, resolve }
+}
+
 interface Stubs {
   create: ReturnType<typeof vi.fn>
   update: ReturnType<typeof vi.fn>
@@ -161,6 +169,35 @@ describe('CreateNoteCard draft tagging (#391)', () => {
     expect(create).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Second' }))
   })
 
+  it('a create still in flight at Cancel does not rebind the reopened card (#873)', async () => {
+    const { create, update } = stubBridge()
+    const pending = deferred<Note>()
+    create.mockImplementationOnce(() => pending.promise)
+    wrap(<ToggleHarness />)
+    fireEvent.change(screen.getByTestId('create-note-title'), {
+      target: { value: 'Wire transfer' }
+    })
+
+    selectInEditor('wire transfer')
+    await tagTheSelection()
+    expect(create).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByText('Cancel'))
+    await act(async () => {
+      pending.resolve(noteRow('note-1'))
+    })
+
+    fireEvent.click(screen.getByTestId('notes-new-button'))
+    fireEvent.change(screen.getByTestId('create-note-title'), { target: { value: 'Second' } })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('create-note-submit'))
+    })
+
+    expect(update).not.toHaveBeenCalled()
+    expect(create).toHaveBeenCalledTimes(2)
+    expect(create).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Second' }))
+  })
+
   it('abandons the cancelled draft rather than resuming it on reopen', async () => {
     stubBridge()
     wrap(<ToggleHarness />)
@@ -219,5 +256,64 @@ describe('AddNoteModal draft tagging (#391)', () => {
     })
     expect(create).toHaveBeenCalledTimes(1)
     expect(update).toHaveBeenCalledWith(expect.objectContaining({ id: 'note-1' }))
+  })
+
+  /**
+   * The captures route keeps the modal mounted and swaps its capture props, so
+   * closing it and reopening on another capture is a prop change, not a remount.
+   */
+  function ReopenHarness() {
+    const [open, setOpen] = useState(true)
+    const [capture, setCapture] = useState({ id: 'cap-1', title: 'Sign-in page' })
+    return (
+      <>
+        <button
+          data-testid="reopen-on-cap-2"
+          onClick={() => {
+            setCapture({ id: 'cap-2', title: 'Profile page' })
+            setOpen(true)
+          }}
+        />
+        <AddNoteModal
+          open={open}
+          caseId={CASE_ID}
+          captureId={capture.id}
+          captureTitle={capture.title}
+          captureUrl={`https://meridian-trust.example/${capture.id}`}
+          onClose={() => setOpen(false)}
+        />
+      </>
+    )
+  }
+
+  it('a create still in flight at close does not rebind the modal reopened on another capture (#890)', async () => {
+    const { create, update } = stubBridge()
+    const pending = deferred<Note>()
+    create.mockImplementationOnce(() => pending.promise)
+    create.mockImplementationOnce(async () => noteRow('note-2'))
+    wrap(<ReopenHarness />)
+
+    selectInEditor('wire transfer')
+    await tagTheSelection()
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(create).toHaveBeenLastCalledWith(expect.objectContaining({ captureId: 'cap-1' }))
+
+    fireEvent.click(screen.getByText('Cancel'))
+    fireEvent.click(screen.getByTestId('reopen-on-cap-2'))
+    await act(async () => {
+      pending.resolve(noteRow('note-1'))
+    })
+
+    fireEvent.change(screen.getByTestId('add-note-title'), { target: { value: 'Note B' } })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('add-note-submit'))
+    })
+
+    // Note A keeps its title and body; note B is created against its own capture.
+    expect(update).not.toHaveBeenCalled()
+    expect(create).toHaveBeenCalledTimes(2)
+    expect(create).toHaveBeenLastCalledWith(
+      expect.objectContaining({ captureId: 'cap-2', title: 'Note B' })
+    )
   })
 })

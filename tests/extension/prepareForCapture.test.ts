@@ -282,6 +282,26 @@ describe('PREPARE_FOR_CAPTURE (#379)', () => {
     expect(document.documentElement.outerHTML).toBe(baseline)
   })
 
+  it('strips a toast host a pre-marker extension version left, in the fallback', () => {
+    // After an extension update the old content script is orphaned and its toast
+    // host stays in the tab; that host was built with the id and no marker.
+    setPageHtml(
+      '<main><p>Report abuse to evil@example.com immediately.</p>' +
+        `<div id="${TOAST_ID}">Page-owned, not ours</div></main>`
+    )
+    const baseline = document.documentElement.outerHTML
+
+    const legacy = document.createElement('div')
+    legacy.id = TOAST_ID
+    legacy.attachShadow({ mode: 'open' }).innerHTML =
+      '<div class="toast capturing visible"><span class="message">Capturing</span></div>'
+    document.body.appendChild(legacy)
+
+    removeInjectedBirdbrainUi()
+    expect(legacy.isConnected).toBe(false)
+    expect(document.documentElement.outerHTML).toBe(baseline)
+  })
+
   it('removes the real toast when a page forges its marker earlier in the document', () => {
     // The residual limit toast.ts documents: the forged node goes too, but it
     // must not be the only one that goes and leave the real toast in the frame.

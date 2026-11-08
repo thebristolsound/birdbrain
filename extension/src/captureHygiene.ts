@@ -6,6 +6,13 @@ export function removeInjectedBirdbrainUi(): void {
   document
     .querySelectorAll('div[data-birdbrain-ui="capture-toast"]')
     .forEach((node) => node.remove())
+  // A host an extension version from before the marker left in the tab carries
+  // only the id. It is told from a page's own element by its open shadow root
+  // holding the toast; a page can forge that pair as it can the marker, the
+  // limit toast.ts states.
+  document.querySelectorAll('div#birdbrain-capture-toast').forEach((node) => {
+    if (node.shadowRoot?.querySelector('.toast')) node.remove()
+  })
   // The in-page selection bar host (#393) — kept in step by hand with
   // selectionBar.ts, per the captureSuppression.ts header. Matched on the
   // marker attribute render() sets rather than on the host id: this runs

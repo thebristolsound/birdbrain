@@ -82,10 +82,12 @@ export function classifySelection(raw: string): ClassifiedSelection {
     // tracking parameter is the one URL rather than the host. Userinfo is a
     // credential, so it goes too. The port stays — `host:8443` is a
     // different service, not the same host. A fully qualified name's trailing
-    // dot goes, because page text names the host without it.
+    // dot goes, because page text names the host without it. A port with no
+    // host before it derives nothing: `:` alone is in nearly every capture.
     const authority = text.replace(/^https?:\/\//i, '').split(/[/?#]/)[0]
+    const host = authority.slice(authority.lastIndexOf('@') + 1).replace(/\.+(:\d*)?$/, '$1')
     return {
-      value: authority.slice(authority.lastIndexOf('@') + 1).replace(/\.+(:\d*)?$/, '$1'),
+      value: /^:\d*$/.test(host) ? '' : host,
       kind: 'domain',
       // A Selector is a case-insensitive substring test over a capture's
       // extracted text (selectorMatch.selectorMatchOutcome), never over its URL,

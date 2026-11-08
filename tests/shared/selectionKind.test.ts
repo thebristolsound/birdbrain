@@ -77,6 +77,32 @@ const KNOWN_ANSWERS: Array<{
     kind: 'domain',
     note: 'Path stripped — watches for this host anywhere in a page.'
   },
+  // With the dot gone these would leave a bare port or colon, and ':' is a
+  // substring of nearly every capture's text.
+  {
+    input: 'https://.:/x',
+    value: '',
+    kind: 'domain',
+    note: 'Path stripped — watches for this host anywhere in a page.'
+  },
+  {
+    input: 'https://..:/x',
+    value: '',
+    kind: 'domain',
+    note: 'Path stripped — watches for this host anywhere in a page.'
+  },
+  {
+    input: 'https://.:8443/x',
+    value: '',
+    kind: 'domain',
+    note: 'Path stripped — watches for this host anywhere in a page.'
+  },
+  {
+    input: 'https://:8443/x',
+    value: '',
+    kind: 'domain',
+    note: 'Path stripped — watches for this host anywhere in a page.'
+  },
   {
     input: 'accounts@meridian-trust.com',
     value: 'accounts@meridian-trust.com',
@@ -182,7 +208,10 @@ describe('isActionableSelection', () => {
     'https:///path',
     'https://?utm=1',
     'https://#frag',
-    'https://@/x'
+    'https://@/x',
+    'https://.:/x',
+    'https://..:/x',
+    'https://:8443/x'
   ])('rejects %s, whose derived value is empty', (input) => {
     expect(classifySelection(input).value).toBe('')
     expect(isActionableSelection(input)).toBe(false)

@@ -104,7 +104,9 @@ Scheduled Dispatch runs every hour with two slots, under the spend cap; Schedule
 reviews one maintainer PR an hour under its own cap (ADR-0046); Doc curator is paused. Before
 restarting Doc curator or adding automation machinery, read
 [ADR-0029](docs/adr/0029-measure-before-expanding-agent-automation.md): verify basic spending
-limits and obtain explicit maintainer authorization.
+limits and obtain explicit maintainer authorization. The cross-model review reads a PR the maintainer
+labels `cross-model-review` with an OpenAI model, from his machine, as an advisory comment
+([ADR-0056](docs/adr/0056-cross-model-review-is-advisory-and-runs-on-the-maintainers-machine.md)).
 
 Unattended jobs working a `ready-for-agent` issue, and any session that opens or labels an agent
 PR, follow [Background jobs](docs/agents/background-jobs.md): the wait-for-confirmation opt-out,

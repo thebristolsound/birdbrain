@@ -20,12 +20,18 @@ export function canonical(value) {
 
 export const manifestHash = (manifest) => sha256(canonical(manifest)).slice(0, 16)
 
-// The corpus a run scores: case ids with the head each pins and the truth it
-// is graded against. A changed truth file or a re-pinned head changes the id.
+// The corpus a run scores: case ids with the head each pins, the PR body the
+// reviewer reads and the truth it is graded against. A changed truth file, PR
+// body or a re-pinned head changes the id.
 export function corpusHash(fixtures) {
   const entries = [...fixtures.values()]
     .sort((a, b) => a.id.localeCompare(b.id))
-    .map((f) => ({ id: f.id, head: f.source.head, truth: sha256(canonical(f.truth)) }))
+    .map((f) => ({
+      id: f.id,
+      head: f.source.head,
+      body: f.prBody == null ? null : sha256(f.prBody),
+      truth: sha256(canonical(f.truth))
+    }))
   return sha256(canonical(entries)).slice(0, 16)
 }
 

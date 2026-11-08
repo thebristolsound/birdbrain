@@ -35,14 +35,21 @@ again picks up from that row. Rows that finished `ok`, `error` or `unsupported` 
 re-run under the same manifest. `build-cases.mjs` fetches `refs/pull/<n>/head` when a pinned
 commit is not local. `fixtures/`, `results/` and `.cache/` are ignored.
 
+`pr.md` and `pr.json` carry the PR description as it read while the pinned head was the PR's
+newest commit: the last edit in GitHub's edit history before the next commit, or the current
+description when the head is the PR's last commit. A case pinned to an early commit would
+otherwise carry a description of later commits, and the reviewer reports the gap between the
+two as findings no truth file lists. An edit made after the last push, such as a refreshed
+verification block, still reaches a case pinned to that last commit.
+
 ## What one run fixes
 
 The manifest hashes the prompt template (`prompts/code-review.md`), the reviewer definition
-(`.claude/agents/birdbrain-reviewer.md`), `CLAUDE.md`, the corpus (every case id, head and
-truth file), the tool tier, the model, the effort, the harness version, the Node version, the
-timeout and a hash of the active login. The id names a run; two runs compare when their
-manifests agree on everything but the axes under comparison (model, effort, and across
-vendors the harness), which is the key the report joins on.
+(`.claude/agents/birdbrain-reviewer.md`), `CLAUDE.md`, the corpus (every case id, head, PR
+description and truth file), the tool tier, the model, the effort, the harness version, the
+Node version, the timeout and a hash of the active login. The id names a run; two runs
+compare when their manifests agree on everything but the axes under comparison (model,
+effort, and across vendors the harness), which is the key the report joins on.
 
 The harness is pinned as far as its flags allow:
 

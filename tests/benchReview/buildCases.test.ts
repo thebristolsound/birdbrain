@@ -11,7 +11,7 @@ import {
   // @ts-expect-error - tooling script with no type declarations; the tsconfigs exclude scripts/
 } from '../../scripts/bench/review/build-cases.mjs'
 // @ts-expect-error - tooling script with no type declarations; the tsconfigs exclude scripts/
-import { showFile, revExists } from '../../scripts/bench/review/lib/git.mjs'
+import { bodyAt, showFile, revExists } from '../../scripts/bench/review/lib/git.mjs'
 
 const git = (cwd: string, ...args: string[]) =>
   execFileSync('git', args, {
@@ -151,6 +151,17 @@ describe('buildCase with git', () => {
       rmSync(out, { recursive: true, force: true })
     }
   })
+  it('asks for the PR as it read at the pinned head', () => {
+    const asked: unknown[][] = []
+    buildCase(spec(), {
+      ...gitDeps(repo, { gh: false }),
+      pr: (...args: unknown[]) => {
+        asked.push(args)
+        return { title: 'T', url: 'u', body: 'B' }
+      }
+    })
+    expect(asked).toEqual([[7, head]])
+  })
   it('git helpers answer null and false for what is not there', () => {
     expect(showFile(repo, head, 'src/a.ts')).toContain('three')
     expect(showFile(repo, head, 'src/missing.ts')).toBeNull()
@@ -184,5 +195,37 @@ describe('loadSpecs', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('bodyAt', () => {
+  const commits = [
+    { oid: 'a', committedDate: '2026-11-06T01:00:00Z' },
+    { oid: 'b', committedDate: '2026-11-06T02:00:00Z' },
+    { oid: 'c', committedDate: '2026-11-06T03:00:00Z' }
+  ]
+  // Out of order on purpose: GitHub lists the newest edit first.
+  const edits = [
+    { editedAt: '2026-11-06T02:30:00Z', diff: 'after b' },
+    { editedAt: '2026-11-06T01:30:00Z', diff: 'after a' },
+    { editedAt: '2026-11-06T01:10:00Z', diff: 'opened' }
+  ]
+  const pr = { body: 'final', commits, edits }
+
+  it('takes the last edit before the next commit', () => {
+    expect(bodyAt(pr, 'a')).toBe('after a')
+    expect(bodyAt(pr, 'b')).toBe('after b')
+  })
+  it('keeps the current body for the newest commit or a body never edited', () => {
+    expect(bodyAt(pr, 'c')).toBe('final')
+    expect(bodyAt({ ...pr, edits: [] }, 'a')).toBe('final')
+  })
+  it('takes the first body when the PR was opened after the next commit', () => {
+    expect(
+      bodyAt({ ...pr, edits: [{ editedAt: '2026-11-06T02:10:00Z', diff: 'late' }] }, 'a')
+    ).toBe('late')
+  })
+  it('refuses a head the PR does not hold', () => {
+    expect(() => bodyAt(pr, 'z')).toThrow(/not a commit of the PR/)
   })
 })

@@ -62,7 +62,7 @@ export function buildCase(spec, deps) {
     }
   }
   const diff = deps.diff(spec.source.head, files, spec.source.base)
-  const pr = deps.pr ? deps.pr(spec.source.pr) : null
+  const pr = deps.pr ? deps.pr(spec.source.pr, spec.source.head) : null
   return { spec: { ...spec, truth: undefined }, truth, files, diff, pr }
 }
 

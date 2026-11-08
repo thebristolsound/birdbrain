@@ -90,6 +90,13 @@ describe('manifest', () => {
     expect(h1).not.toBe(corpusHash(fx('2'.repeat(40), 'request changes')))
     expect(h1).not.toBe(corpusHash(fx('1'.repeat(40), 'approve for human review')))
   })
+  it('the corpus hash moves with the PR body', () => {
+    const fx = (prBody: string | null) =>
+      new Map([['a', { id: 'a', source: { head: '1'.repeat(40) }, prBody, truth: {} }]])
+    expect(corpusHash(fx('one'))).toBe(corpusHash(fx('one')))
+    expect(corpusHash(fx('one'))).not.toBe(corpusHash(fx('two')))
+    expect(corpusHash(fx('one'))).not.toBe(corpusHash(fx(null)))
+  })
 })
 
 describe('prompt', () => {

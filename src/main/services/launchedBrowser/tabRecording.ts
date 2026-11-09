@@ -66,8 +66,6 @@ interface Navigation {
   firstSeen: Map<string, number>
   // Request ids whose `requestWillBeSent` carried a body the scrub removed, one entry per hop.
   withheld: Array<{ requestId: string; index: number }>
-  // Request ids a service worker served, from `Network.responseReceived` on the page's session.
-  servedByServiceWorker: Set<string>
   bodies: Map<string, ResponseBodyResult>
   lastFinished: Map<string, string>
   dataLengths: Map<string, number>
@@ -149,7 +147,6 @@ function emptyNavigation(id: number, at: number): Navigation {
     logBytes: 0,
     firstSeen: new Map(),
     withheld: [],
-    servedByServiceWorker: new Set(),
     bodies: new Map(),
     lastFinished: new Map(),
     dataLengths: new Map(),
@@ -276,10 +273,6 @@ export function createTabRecording({
     }
     if (!hold(nav, { sessionId: key, method, params })) return
     if (requestId === undefined) return
-    if (method === 'Network.responseReceived' && key === PAGE) {
-      const { response } = params as { response?: { fromServiceWorker?: boolean } }
-      if (response?.fromServiceWorker === true) nav.servedByServiceWorker.add(requestId)
-    }
     if (method === 'Network.loadingFinished') {
       nav.open.delete(requestId)
       nav.lastFinished.set(requestId, key)
@@ -375,10 +368,6 @@ export function createTabRecording({
         const keptIndex = retainedIndexes.get(index)
         if (keptIndex !== undefined) next.withheld.push({ requestId, index: keptIndex })
       }
-      for (const requestId of previous.servedByServiceWorker) {
-        if ((previous.firstSeen.get(requestId) ?? -1) >= start)
-          next.servedByServiceWorker.add(requestId)
-      }
       for (const [requestId, length] of previous.dataLengths) {
         if ((previous.firstSeen.get(requestId) ?? -1) >= start)
           next.dataLengths.set(requestId, length)
@@ -455,6 +444,23 @@ export function createTabRecording({
           const { requestId } = (event.params ?? {}) as { requestId?: string }
           return requestId === undefined || began(requestId)
         }).length
+        const hopStarts = new Map<string, number>()
+        const servedByServiceWorker = new Set<string>()
+        for (const [index, { method, params, sessionId }] of events.entries()) {
+          const { requestId, response } = params as {
+            requestId?: string
+            response?: { fromServiceWorker?: boolean }
+          }
+          if (requestId === undefined) continue
+          if (method === 'Network.requestWillBeSent') hopStarts.set(requestId, index)
+          if (
+            method === 'Network.responseReceived' &&
+            sessionId === PAGE &&
+            response?.fromServiceWorker === true &&
+            (hopStarts.get(requestId) ?? requestCutIndex) < requestCutIndex
+          )
+            servedByServiceWorker.add(requestId)
+        }
         for (const { sessionId, type } of attachedAtCut) {
           events.push({
             sessionId: PAGE,
@@ -484,7 +490,7 @@ export function createTabRecording({
         return {
           ...collected,
           requestBodiesWithheld: nav.withheld.filter(({ index }) => index < cutIndex).length,
-          servedByServiceWorker: [...nav.servedByServiceWorker].filter(began).length
+          servedByServiceWorker: servedByServiceWorker.size
         }
       }
     }

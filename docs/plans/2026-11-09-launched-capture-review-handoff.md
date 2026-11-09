@@ -14,14 +14,18 @@ requested the fixes through merge.
 - Preserve active progress when another trigger arrives. Check the running app
   with a held acquisition fixture before and after the fix; finish that fixture
   and observe its Exhibit Number.
-- Run the focused recorder, collector, artifact, and service tests: 138 pass.
+- Run the focused recorder, collector, artifact, and service tests: 139 pass.
 - Rebuild test-only libvips and sharp under the ignored local cache because the
   old build names a missing OpenEXR library. Production dependencies stay unchanged.
 
+- Complete type checking and scoped lint.
+- Address Sol finding S1: count service-worker responses by the hop's request
+  boundary. A response after the cut still counts when its hop began before it.
+
 ## In flight
 
-- Finish type checking, then run full verification.
-- Obtain Sol review, open the pull request with the screenshot pair, and handle
+- Run full verification after the other full test runs finish.
+- Obtain Sol's second review, open the pull request with the screenshot pair, and handle
   review and checks through the repository's merge gate.
 
 Next command after the other full test runs on this machine finish:

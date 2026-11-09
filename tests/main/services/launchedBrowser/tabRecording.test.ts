@@ -233,8 +233,9 @@ describe('tab recording', () => {
         mimeType: 'text/html'
       }
     })
-    finished(page, 'R1', 'https://a.test/after')
-    const { exchanges, counts, requestBodiesWithheld } = await cut.collect(1_000)
+    servedResponse(page, 'R1', 'https://a.test/after')
+    const { exchanges, counts, requestBodiesWithheld, servedByServiceWorker } =
+      await cut.collect(1_000)
     expect(exchanges.map(({ request }) => request.url)).toEqual([
       'https://a.test/',
       'https://a.test/before'
@@ -242,6 +243,8 @@ describe('tab recording', () => {
     expect(exchanges[1]).toMatchObject({ state: 'redirected', response: { status: 302 } })
     expect(counts.exchanges).toBe(2)
     expect(requestBodiesWithheld).toBe(0)
+    expect(servedByServiceWorker).toBe(0)
+    expect((await recording.cut().collect(1_000)).servedByServiceWorker).toBe(1)
     expect(await urls(recording)).toEqual([
       'https://a.test/',
       'https://a.test/before',
@@ -293,6 +296,15 @@ describe('tab recording', () => {
     })
     session.emit('Network.loadingFinished', { requestId })
   }
+
+  it('counts a service-worker response after the cut when its hop began before it', async () => {
+    const { recording, page } = setUp()
+    document(page, 'D1', 'https://a.test/')
+    sent(page, 'S1', 'https://a.test/offline.json')
+    const cut = recording.cut()
+    servedResponse(page, 'S1', 'https://a.test/offline.json')
+    expect((await cut.collect(1_000)).servedByServiceWorker).toBe(1)
+  })
 
   it("counts a response a service worker served on the page's own session only", async () => {
     const { recording, page } = setUp()

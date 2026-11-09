@@ -45,6 +45,7 @@ tree "$fx/t3/birdbrain/t3tree" t3tree
 tree "$fx/trees/artefacts" artefacts
 mkdir -p "$fx/trees/artefacts/.preflight" "$fx/trees/artefacts/dist"
 echo v > "$fx/trees/artefacts/.preflight/verification.md"
+echo c > "$fx/trees/artefacts/.preflight/check.md"
 echo t > "$fx/trees/artefacts/dist/tracked.txt"; g -C "$fx/trees/artefacts" add -f dist/tracked.txt; g -C "$fx/trees/artefacts" commit -qm dist
 tree "$fx/trees/viamerge" viamerge
 tree "$fx/trees/gone" gone;               rm -rf "$fx/trees/gone"
@@ -111,7 +112,8 @@ check "close refuses a t3code tree without --t3code" '[ "$rc" -eq 1 ] && has_tre
 (cd "$fx/trees/merged" && PATH="$fx/bin:$PATH" TEARDOWN_T3_ROOT="$fx/t3" TEARDOWN_TMP_ROOT="$fx/tmp" bash "$td" close) >/dev/null 2>&1; rc=$?
 check "close refuses the tree the caller stands in" '[ "$rc" -eq 1 ] && has_tree "$fx/trees/merged"'
 run close "$fx/trees/artefacts" --artefacts >/dev/null
-check "--artefacts removes an ignored output" '[ ! -e "$fx/trees/artefacts/.preflight" ]'
+check "--artefacts removes an ignored output" '[ ! -e "$fx/trees/artefacts/.preflight/check.md" ]'
+check "--artefacts keeps the verification block the stop hook reads" '[ "$(cat "$fx/trees/artefacts/.preflight/verification.md")" = v ]'
 check "--artefacts keeps an ignored dir that holds a tracked file" '[ -f "$fx/trees/artefacts/dist/tracked.txt" ]'
 check "--artefacts keeps the tree" 'has_tree "$fx/trees/artefacts"'
 run close "$fx/trees/open" >/dev/null; rc=$?

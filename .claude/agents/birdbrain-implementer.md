@@ -58,7 +58,10 @@ extension build when `extension/` changed, the unit suite once with coverage, an
 `origin/main` — and writes a sha-stamped block to `.preflight/verification.md`. The command
 expansion is documented once, in the header of `scripts/preflight.mjs`. Paste the file's
 contents verbatim as the PR body's `## Verification` section. Never commit it: the commit
-would move HEAD and make the stamp stale.
+would move HEAD and make the stamp stale. A stop hook (`.claude/hooks/verify-before-stop.sh`)
+sends you back if you finish with commits past `origin/main` and uncommitted changes or no
+block for HEAD, up to three times per commit. A block at HEAD that records a failure sends you
+back once per commit; on the give-up path, say so in your report and stop again.
 
 **The coverage steps are the ones the rest of the loop cannot stand in for.** CI's job named
 `test` runs the suite *and then* `scripts/diff-coverage.mjs` (`.github/workflows/ci.yml`),
@@ -273,7 +276,8 @@ Evidence-affecting PRs are never merged without human review. Do not weaken that
 
 - After the final push or hand-off, run `.claude/skills/teardown/scripts/teardown.sh close
   --artefacts` in your worktree. It clears build and test outputs and keeps the tree, which
-  goes when the PR merges, so a fix round can still land in it.
+  goes when the PR merges, so a fix round can still land in it. It also keeps
+  `.preflight/verification.md`, which the stop hook reads when you finish.
 - An agent PR merges only on a pre-pass `success`. An evidence-affecting PR is merged by a
   human, never by the dispatcher (ADR-0014); the dispatcher marks either kind ready for review on
   the approve verdict (ADR-0025).

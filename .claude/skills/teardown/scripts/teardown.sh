@@ -37,6 +37,7 @@ tmp_root="${TEARDOWN_TMP_ROOT:-/tmp}"
 # maintainer's machine is a shared tmpfs. Trees under /tmp from before that rule still count.
 scratch_root="${TEARDOWN_SCRATCH_ROOT:-$HOME/worktrees/birdbrain/scratch}"
 artefact_paths=".preflight .health coverage test-results playwright-report out dist extension/dist .serena/cache"
+kept_artefact=".preflight/verification.md"
 
 say() { [ "$count" -eq 1 ] || echo "teardown: $*"; }
 fail() { echo "teardown: refused: $*" >&2; exit 1; }
@@ -199,6 +200,14 @@ clean_artefacts() {
     [ -e "$path/$a" ] || continue
     git -C "$path" check-ignore -q "$a" || { say "kept $a: not ignored in $path"; continue; }
     [ -z "$(git -C "$path" ls-files -- "$a" | head -1)" ] || { say "kept $a: git tracks files under it in $path"; continue; }
+    # The stop hook (.claude/hooks/verify-before-stop.sh) reads the block after the
+    # implementer's last step, so an artefact pass that deleted it would send every verified
+    # run back to preflight.
+    if [ "$artefacts" -eq 1 ] && [ "$a" = "${kept_artefact%%/*}" ] && [ -f "$path/$kept_artefact" ]; then
+      find "${path:?}/$a" -mindepth 1 ! -path "$path/$kept_artefact" -delete \
+        && say "cleared $path/$a, kept $kept_artefact"
+      continue
+    fi
     rm -rf "${path:?}/$a" && say "removed $path/$a"
   done
 }

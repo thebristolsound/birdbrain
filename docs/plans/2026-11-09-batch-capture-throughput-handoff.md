@@ -28,6 +28,24 @@ asked for the slices to be filed and then built, in a Claude Code session on 202
 
 Continue slice 1 in the worktree above.
 
+## Decisions taken
+
+- **Host in job log lines (slice 1):** Matt chose no host, in this session on 2026-11-09. Job
+  lines name the job by capture id and Case id, and the redaction rules in `logSafe.ts` stay as
+  they are. Slice 3's stored job table is where a failed URL is seen.
+- **Time left on the Transaction Record failure line (slice 1):** Matt chose to put the capture
+  id and time left on the `transaction_record_failed` line in slice 1, and to update the one test
+  that pins that line's shape.
+- **Step callback:** slice 1 adds `onStep` with ten fine render steps; slice 4 groups them into
+  the design's seven phases for `onPhase`.
+
+## Found, not fixed
+
+- A render that finishes after its deadline opens the temp page file the timeout path already
+  deleted, with no error handler: an uncaught exception in the main process. Pre-existing.
+- `PrintTimeout` is not an allowed error name, so PDF timeouts log as a generic error.
+- URLs refused at enqueue never become jobs and get no log line.
+
 ## Open questions
 
-None yet.
+None.

@@ -39,6 +39,24 @@ function clearNativeSelection(): void {
 }
 
 /**
+ * The part of `range` inside `host`. Moving a boundary past the other one
+ * collapses the range (DOM `setStart`/`setEnd`), so a range wholly outside
+ * the host comes back empty.
+ */
+function clipToHost(range: Range, host: HTMLElement): Range {
+  const bounds = document.createRange()
+  bounds.selectNodeContents(host)
+  const clipped = range.cloneRange()
+  if (clipped.compareBoundaryPoints(Range.START_TO_START, bounds) < 0) {
+    clipped.setStart(bounds.startContainer, bounds.startOffset)
+  }
+  if (clipped.compareBoundaryPoints(Range.END_TO_END, bounds) > 0) {
+    clipped.setEnd(bounds.endContainer, bounds.endOffset)
+  }
+  return clipped
+}
+
+/**
  * Raise a Selector/Tag action bar for text selected inside the note editor
  * (#391).
  *
@@ -76,18 +94,18 @@ export function useNoteSelection(hostRef: RefObject<HTMLElement | null>): UseNot
         setSelection(null)
         return
       }
-      // A selection that started in the editor can end outside it; only text
-      // the note actually contains gets an action.
-      if (native.anchorNode && !host.contains(native.anchorNode)) {
-        setSelection(null)
-        return
-      }
-      const text = normalizeSelection(native.toString())
+      // A selection can run past the host's edge in either direction, and a
+      // Chromium triple-click on a non-editable host's last block puts the
+      // focus on whatever follows the host (#878). Only the part inside the
+      // host is read; a selection that misses it entirely reads as empty.
+      const crossesEdge = !host.contains(native.anchorNode) || !host.contains(native.focusNode)
+      const range = crossesEdge ? clipToHost(native.getRangeAt(0), host) : native.getRangeAt(0)
+      const text = normalizeSelection(crossesEdge ? range.toString() : native.toString())
       if (!isActionableSelection(text)) {
         setSelection(null)
         return
       }
-      const rect = native.getRangeAt(0).getBoundingClientRect()
+      const rect = range.getBoundingClientRect()
       const hostRect = host.getBoundingClientRect()
       const position = selectionOverlayPosition(rect, {
         left: hostRect.left,

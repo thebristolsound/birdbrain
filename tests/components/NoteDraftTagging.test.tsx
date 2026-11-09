@@ -67,6 +67,7 @@ function selectInEditor(text: string): void {
     isCollapsed: false,
     rangeCount: 1,
     anchorNode: body,
+    focusNode: body,
     removeAllRanges: vi.fn(),
     toString: () => text,
     getRangeAt: () => ({ getBoundingClientRect: () => ({ left: 0, bottom: 0 }) })

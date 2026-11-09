@@ -2,6 +2,7 @@ import {
   REPORT_PAGE_CSS,
   describeSharedCaseExclusion,
   describeSharedCaseMember,
+  exhibitTag,
   type EntrySignatureStatus,
   type ExportSharedCase
 } from '@main/services/reportHtml'
@@ -9,7 +10,7 @@ import {
   TRUSTED_TIME_AUTHORITY_NOT_CONTACTED,
   TRUSTED_TIME_LABELS
 } from '@shared/trustedTimeDisclosure'
-import type { Capture, TrustedTime } from '@shared/types'
+import type { Capture, CaptureMethod, TrustedTime } from '@shared/types'
 import type { TrustedTimeResult } from '@shared/verify'
 import { PACKAGE_ROOT_FILES } from '../../packages/evidence-package-layout/index'
 
@@ -46,7 +47,10 @@ export interface CertificationInput {
   signingKeyRanges?: SigningKeyRange[]
   /** What this package actually contains, counted from what was packaged. */
   contents: {
+    /** Captures that observed a page: every packaged Capture except the Duplicates. */
     captureCount: number
+    /** Duplicates (#1015), stated apart because each copies a capture and observed nothing. */
+    duplicateCount?: number
     screenshotCount: number
     noteCount: number
     /**
@@ -136,6 +140,12 @@ export interface CertificationInput {
    */
   entrySignatureByCaptureId: Map<string, EntrySignatureStatus>
   /**
+   * The citation of every numbered Capture in the Case, inside the export or
+   * not, as report.html cites it. Read for a Duplicate's source only, which a
+   * selection export need not include.
+   */
+  exhibitCitationByCaptureId: Map<string, string>
+  /**
    * Committed Exhibits of every other kind (ADR-0023, #1156), each carrying
    * its own already-resolved trusted-time and entry-signature state. They join
    * the capture rows below in one table and one set of counts: ADR-0023 makes
@@ -193,6 +203,11 @@ export interface CertificationExhibitRow {
   tsaName?: string
   stampedAt?: string
   entrySignature: EntrySignatureStatus
+  /** A Capture's method; absent for every other kind. */
+  method?: CaptureMethod
+  /** A Duplicate's source, by capture id and by citation where the Case records them. */
+  duplicateOfCaptureId?: string
+  duplicateOfCitation?: string
 }
 
 export interface CertificationFields {
@@ -235,6 +250,12 @@ export interface CertificationFields {
   sharedCase: ExportSharedCase | null
 }
 
+// Printed only for a package holding a Duplicate (#1015), so a package without
+// one renders byte for byte as before.
+const DUPLICATE_SENTENCE =
+  'Duplicates copy an earlier capture and observed nothing themselves, so they are left out ' +
+  'of the trusted-time counts below and listed separately.'
+
 export function buildCertificationFields(
   data: CertificationInput,
   toolVersion: string
@@ -248,6 +269,7 @@ export function buildCertificationFields(
     if (entrySignature === undefined) {
       throw new Error(`certification: no entry signature resolved for capture ${capture.id}`)
     }
+    const { method, duplicateOfCaptureId } = capture
     return {
       id: capture.id,
       kind: 'capture',
@@ -256,7 +278,17 @@ export function buildCertificationFields(
       trustedTime: trustedTime.trustedTime,
       tsaName: trustedTime.tsaName,
       stampedAt: trustedTime.stampedAt,
-      entrySignature
+      entrySignature,
+      method,
+      ...(method === 'duplicate'
+        ? {
+            duplicateOfCaptureId,
+            duplicateOfCitation:
+              duplicateOfCaptureId === undefined
+                ? undefined
+                : data.exhibitCitationByCaptureId.get(duplicateOfCaptureId)
+          }
+        : {})
     }
   })
 
@@ -277,8 +309,13 @@ export function buildCertificationFields(
     }))
   ]
 
+  // A Duplicate shares its source's content hash, and the export resolves
+  // trusted time per content hash, so counting it would count one observation's
+  // token twice. Its manifest entry is its own, so the signature counts keep it.
+  const observed = exhibits.filter(({ method }) => method !== 'duplicate')
+  const hasDuplicates = observed.length < exhibits.length
   const counts: Record<TrustedTime, number> = { rfc3161: 0, pending: 0, none: 0 }
-  for (const row of exhibits) counts[row.trustedTime]++
+  for (const row of observed) counts[row.trustedTime]++
 
   const signatureCounts: Record<EntrySignatureStatus, number> = {
     signed: 0,
@@ -296,7 +333,8 @@ export function buildCertificationFields(
       'were hashed with SHA-256 and recorded in a hash-chained append-only manifest, so that ' +
       'any later alteration of a capture or of the manifest is detectable. Where enabled, the ' +
       'capture content hash was submitted to an RFC 3161 Time-Stamping Authority and the ' +
-      'returned timestamp token was retained alongside the capture.',
+      'returned timestamp token was retained alongside the capture.' +
+      (hasDuplicates ? ` ${DUPLICATE_SENTENCE}` : ''),
     // A declined installation still names its configured endpoint and says it was
     // not contacted (#1169 round-2 review). The process paragraph above hedges
     // with "Where enabled"; `tsaContacted` is what stops the endpoint beside it
@@ -314,7 +352,7 @@ export function buildCertificationFields(
       stampedCount: counts.rfc3161,
       pendingCount: counts.pending,
       noneCount: counts.none,
-      allStamped: exhibits.length > 0 && counts.pending + counts.none === 0
+      allStamped: observed.length > 0 && counts.pending + counts.none === 0
     },
     entrySignatures: {
       signedCount: signatureCounts.signed,
@@ -356,6 +394,7 @@ function buildContentsSummary(contents: CertificationInput['contents']): string 
   const unanchored = contents.unanchoredDerivedFileCount ?? 0
   const unverifiable = contents.unverifiableDerivedFileCount ?? 0
   const missing = contents.missingDerivedFileCount ?? 0
+  const duplicates = contents.duplicateCount ?? 0
   // Enclosure first and in full — the three clauses that partition the Case's
   // Derived Files — then the anchoring disclosure over files already counted.
   // The two were one clause until #1156's fix round, where "N derived files
@@ -363,6 +402,7 @@ function buildContentsSummary(contents: CertificationInput['contents']): string 
   // a file whose bytes the export could not read.
   return [
     plural(contents.captureCount, 'capture'),
+    ...(duplicates > 0 ? [plural(duplicates, 'duplicate')] : []),
     ...byKind,
     plural(contents.screenshotCount, 'screenshot'),
     ...(derived > 0 ? [`${plural(derived, 'derived file')} enclosed`] : []),
@@ -402,8 +442,12 @@ export function buildCertification(data: CertificationInput, toolVersion: string
 function renderCertificationHtml(fields: CertificationFields): string {
   const { certifier, trustedTime, entrySignatures } = fields
 
-  const stamped = fields.exhibits.filter((c) => c.trustedTime === 'rfc3161')
-  const unstamped = fields.exhibits.filter((c) => c.trustedTime !== 'rfc3161')
+  // The tables partition the rows the trusted-time counts are folded from, so a
+  // Duplicate is listed in its own table rather than beside the observations.
+  const observed = fields.exhibits.filter((c) => c.method !== 'duplicate')
+  const duplicates = fields.exhibits.filter((c) => c.method === 'duplicate')
+  const stamped = observed.filter((c) => c.trustedTime === 'rfc3161')
+  const unstamped = observed.filter((c) => c.trustedTime !== 'rfc3161')
 
   // Worded over exhibits, not captures: ADR-0023 makes the Exhibit the unit
   // this document describes, and "all 2 captures carry a timestamp" over a
@@ -470,6 +514,24 @@ function renderCertificationHtml(fields: CertificationFields): string {
       </tr>`
     )
     .join('')
+
+  const duplicateRows = duplicates
+    .map(
+      (c) => `<tr>
+        <td><span class="ex-title">${esc(c.title)}</span>
+        <span class="ex-url mono">${esc(c.url)}</span></td>
+        <td>Duplicate of ${exhibitTag(c.duplicateOfCitation ?? '')}</td>
+      </tr>`
+    )
+    .join('')
+  // Appended to the unstamped table's line, so a package with no Duplicate
+  // renders byte for byte as it did before #1015.
+  const duplicatesTable = duplicateRows
+    ? `
+  <p class="micro-heading">Duplicates</p>
+  <table class="index"><thead><tr><th>Title and URL</th>
+  <th>Source</th></tr></thead><tbody>${duplicateRows}</tbody></table>`
+    : ''
 
   // Counted from the same rows report.html states per exhibit, so the summary
   // and the per-exhibit disclosure are one derivation (#611). The all-signed
@@ -596,7 +658,7 @@ function renderCertificationHtml(fields: CertificationFields): string {
   <table class="index"><thead><tr><th>Title or file name, and URL or kind</th>
   <th>Clock basis</th></tr></thead><tbody>${unstampedRows}</tbody></table>`
       : ''
-  }
+  }${duplicatesTable}
 
   <h2 style="margin-top:22pt">Entry signatures</h2>
   <div class="rule-medium"></div>

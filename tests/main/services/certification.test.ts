@@ -174,7 +174,8 @@ const DIRECT_INPUT_EXTRAS = {
   isDemo: false,
   manifestHead: null,
   signingKeyFingerprint: 'f'.repeat(64),
-  contents: { captureCount: 1, screenshotCount: 0, noteCount: 0 }
+  contents: { captureCount: 1, screenshotCount: 0, noteCount: 0 },
+  exhibitCitationByCaptureId: new Map<string, string>()
 }
 
 const ZIP_OPTIONS: ExportOptions = {
@@ -944,6 +945,26 @@ describe('certification', () => {
       expect(cert).not.toMatch(/investigator/i)
     })
 
+    // #1015, through the export: the contents count and the row's citation come
+    // from the Case's own records, not from the literal input the KAT supplies.
+    it('counts a Duplicate apart and cites the Exhibit it copies', async () => {
+      const { capture: source } = await ingest(
+        caseId,
+        '<html><body>One</body></html>',
+        'https://example.com/1',
+        'One'
+      )
+      const result = await captureLifecycle.duplicate(source.id)
+      if (result.status !== 'duplicated') throw new Error('expected a duplicate')
+
+      const cert = await exportCert()
+
+      expect(cert).toContain('1 capture, 1 duplicate, 0 screenshots, 0 operator notes')
+      // The source is the Case's first Exhibit.
+      expect(cert).toContain('<td>Duplicate of Exhibit 1</td>')
+      expect(cert).toContain('observed nothing themselves')
+    })
+
     it('counts excluded notes as zero in the contents summary', async () => {
       await ingest(caseId, '<html><body>One</body></html>', 'https://example.com/1', 'One')
       createNote({ caseId, title: 'N', body: 'excluded from this export' })
@@ -1111,6 +1132,7 @@ describe('certification from a literal input', () => {
           [pending.id, 'unsigned-legacy'],
           [unstamped.id, 'no-entry']
         ]),
+        exhibitCitationByCaptureId: new Map<string, string>(),
         exhibits: [
           {
             id: 'exh-kat-1',
@@ -1128,5 +1150,125 @@ describe('certification from a literal input', () => {
     expect(createHash('sha256').update(html, 'utf-8').digest('hex')).toBe(
       'c71621c86bfbd505a8e67f6a4175c607980c923d3910c4c7e9d694875e4e6c60'
     )
+    expect(html).not.toContain(DUPLICATE_SENTENCE)
+    expect(html).not.toContain('Duplicate')
+  })
+
+  // #1015: a Duplicate observed nothing, so the statement names it as one, cites
+  // the Exhibit it copies, and keeps it out of the counts of captured pages.
+  describe('a package holding a Duplicate', () => {
+    const source = capture('cap-kat-s', 'Observed Page', 'https://example.com/s')
+    const duplicate: Capture = {
+      ...capture('cap-kat-t', 'Observed Page', 'https://example.com/s'),
+      hash: source.hash,
+      method: 'duplicate',
+      duplicateOfCaptureId: source.id
+    }
+    const token: TrustedTimeResult = {
+      trustedTime: 'rfc3161',
+      tsaName: 'tsa.example.com',
+      stampedAt: '2026-04-05T12:01:00.000Z'
+    }
+    const certify = (captures: Capture[], citations: Array<[string, string]>): string =>
+      buildCertification(
+        {
+          caseName: 'KAT Case',
+          isDemo: false,
+          manifestHead: { index: 1, entryHash: 'e'.repeat(64) },
+          signingKeyFingerprint: 'f'.repeat(64),
+          contents: {
+            captureCount: captures.filter(({ method }) => method !== 'duplicate').length,
+            duplicateCount: captures.filter(({ method }) => method === 'duplicate').length,
+            screenshotCount: 0,
+            noteCount: 0
+          },
+          exportTimestamp: '2026-04-05T13:00:00.000Z',
+          installationId: 'install-kat',
+          operatorName: 'Det. Smith',
+          operatorRole: 'Detective',
+          operatorOrganization: 'Metro PD',
+          tsaUrl: 'https://tsa.example/timestamp',
+          tsaEnabled: true,
+          captures: captures.map((c) => ({ capture: c, trustedTime: token })),
+          entrySignatureByCaptureId: new Map<string, EntrySignatureStatus>(
+            captures.map(({ id }) => [id, 'signed'])
+          ),
+          exhibitCitationByCaptureId: new Map(citations)
+        },
+        '1.0.0'
+      )
+    const section = (html: string, from: string, to: string): string => {
+      const start = html.indexOf(from)
+      const end = html.indexOf(to, start)
+      expect(start).toBeGreaterThan(-1)
+      expect(end).toBeGreaterThan(start)
+      return html.slice(start, end)
+    }
+
+    it('renders the known-answer text for one Duplicate and one ordinary capture', () => {
+      const html = certify(
+        [source, duplicate],
+        [
+          [source.id, '3'],
+          [duplicate.id, '4']
+        ]
+      )
+
+      expect(html).toContain(
+        '<div class="field-value">1 capture, 1 duplicate, 0 screenshots, 0 operator notes</div>'
+      )
+      expect(section(html, 'Process</h2>', 'Trusted time</h2>')).toContain(
+        'returned timestamp token was retained alongside the capture. ' +
+          DUPLICATE_SENTENCE +
+          '</p>'
+      )
+      // The shared token is counted once, for the observation that earned it.
+      const trustedTime = section(html, 'Trusted time</h2>', 'Entry signatures</h2>')
+      expect(trustedTime).toMatch(/<p>All 1 exhibit in this export carry an RFC 3161/)
+      const timestamped = section(trustedTime, 'Timestamped exhibits', '</table>')
+      expect(timestamped.match(/<tr>/g)).toHaveLength(2)
+      expect(timestamped).not.toContain('Duplicate')
+      expect(section(trustedTime, '<p class="micro-heading">Duplicates</p>', '</table>')).toBe(
+        '<p class="micro-heading">Duplicates</p>\n' +
+          '  <table class="index"><thead><tr><th>Title and URL</th>\n' +
+          '  <th>Source</th></tr></thead><tbody><tr>\n' +
+          '        <td><span class="ex-title">Observed Page</span>\n' +
+          '        <span class="ex-url mono">https://example.com/s</span></td>\n' +
+          '        <td>Duplicate of Exhibit 3</td>\n' +
+          '      </tr></tbody>'
+      )
+      // The Duplicate's manifest entry is its own and carries its own signature.
+      expect(section(html, 'Entry signatures</h2>', 'Operator</h2>')).toContain('(2 of 2)')
+      expect(createHash('sha256').update(html, 'utf-8').digest('hex')).toBe(
+        'c7922affdd221cc2c9ed88ab679c313e20d68edc3b11bdd3a55ca22b90cb0e9b'
+      )
+    })
+
+    it('says so when the copied Exhibit has no recorded number', () => {
+      const html = certify([duplicate], [])
+
+      expect(html).toContain('<td>Duplicate of Exhibit (number not recorded)</td>')
+      expect(html).toContain(DUPLICATE_SENTENCE)
+    })
+
+    it('omits the sentence and the list for a package with no Duplicate', () => {
+      const html = certify([source], [[source.id, '3']])
+
+      expect(html).not.toContain(DUPLICATE_SENTENCE)
+      expect(html).not.toContain('Duplicate')
+      expect(html).toContain('1 capture, 0 screenshots, 0 operator notes')
+    })
+
+    // A Recapture goes back to the page and observes it again, so its row is an
+    // ordinary captured page.
+    it('renders a background Recapture exactly as any other capture', () => {
+      const recapture: Capture = { ...source, method: 'background' }
+
+      expect(certify([recapture], [[source.id, '3']])).toBe(certify([source], [[source.id, '3']]))
+    })
   })
 })
+
+const DUPLICATE_SENTENCE =
+  'Duplicates copy an earlier capture and observed nothing themselves, so they are left out ' +
+  'of the trusted-time counts below and listed separately.'

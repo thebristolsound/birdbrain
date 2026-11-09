@@ -66,7 +66,10 @@ describe('StatusGroup', () => {
   it('is neutral with no icon while all is nominal', async () => {
     renderWith({ kind: 'direct' }, true)
     const button = await screen.findByTestId('status-group')
-    await waitFor(() => expect(button.getAttribute('aria-label')).toContain('all nominal'))
+    await waitFor(() =>
+      expect(button.getAttribute('aria-label')).toContain('Egress: Direct · VPN seen')
+    )
+    expect(button.getAttribute('aria-label')).toContain('all nominal')
     expect(button.dataset.severity).toBe('nominal')
     expect(button.querySelector('svg')).toBeNull()
   })

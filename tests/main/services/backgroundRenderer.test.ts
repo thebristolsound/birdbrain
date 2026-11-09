@@ -2931,9 +2931,7 @@ describe("renderPageInHiddenWindow's log lines", () => {
     const [[source, , context, error]] = lines
     expect(source).toBe('backgroundRenderer')
     expect(error).toBeUndefined()
-    expect(Object.keys(context).sort()).toEqual(
-      ['captureId', 'ms', 'timeLeftMs', ...STEP_KEYS].sort()
-    )
+    expect(Object.keys(context).sort()).toEqual(['captureId', 'ms', ...STEP_KEYS].sort())
     expect(context.captureId).toBe(IDS.captureId)
     // The steps follow each other with no gap, so together they are the render's time.
     const steps = STEP_KEYS.map((key) => context[key] as number)
@@ -2964,7 +2962,7 @@ describe("renderPageInHiddenWindow's log lines", () => {
       message: /The Transaction Record writer did not settle within (\d+)ms/
     }
   ])(
-    'names the bound that expired when $name run out, and logs the time the bound was cut to',
+    'names the bound that expired when $name run out, and keeps the time left at the start',
     async ({ arrange, errorName, message }) => {
       arrange()
       // Under the 40 s end reserve, so the record's bounds are cut to the time left.
@@ -2976,13 +2974,36 @@ describe("renderPageInHiddenWindow's log lines", () => {
       // The name is what the log keeps of the error.
       expect(sanitizeError(error).name).toBe(errorName)
       const boundMs = Number(String(error).match(message)?.[1])
+      const { timeLeftMs } = transactionRecord
+      expect(timeLeftMs).toBeGreaterThan(0)
+      expect(timeLeftMs).toBeLessThanOrEqual(2_000)
+      // The bound is the time left, read as the end phases start (less the collect, for the writer).
+      expect(Math.abs((timeLeftMs as number) - boundMs)).toBeLessThanOrEqual(5)
       const [[, , context]] = logged(info, 'backgroundRenderer.render_completed')
-      expect(context.timeLeftMs as number).toBeGreaterThan(0)
-      expect(context.timeLeftMs as number).toBeLessThanOrEqual(2_000)
-      expect(Math.abs((context.timeLeftMs as number) - boundMs)).toBeLessThanOrEqual(5)
+      expect(context).not.toHaveProperty('timeLeftMs')
     },
     30_000
   )
+
+  // Review of #2127, finding 7: the teardown after the print is no step's time.
+  it('stops timing the PDF step when the print ends, before the teardown', async () => {
+    ctl.blocker = {
+      enableBlockingInSession: vi.fn(),
+      isBlockingEnabled: vi.fn(() => true),
+      // Released in the teardown; a slow release would land on the last step timed.
+      disableBlockingInSession: vi.fn(() => {
+        const until = Date.now() + 200
+        while (Date.now() < until) {
+          // busy: the release is synchronous
+        }
+      })
+    }
+    const { info } = await renderLogged()
+    const [[, , context]] = logged(info, 'backgroundRenderer.render_completed')
+    expect(context.pdfMs as number).toBeLessThan(150)
+    const sum = STEP_KEYS.reduce((total, key) => total + (context[key] as number), 0)
+    expect((context.ms as number) - sum).toBeGreaterThanOrEqual(200)
+  }, 30_000)
 
   it('logs the step a timed-out render reached, and the time of each step up to it', async () => {
     ctl.loadUrlShouldHang = true

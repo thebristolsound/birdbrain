@@ -436,8 +436,9 @@ export type TransactionRecordOutcome =
       boundTls?: BoundTls
       boundTlsAbsent?: Exclude<BoundTlsAbsence, 'not-recorded'>
     }
-  // Bound TLS Details are then `not-recorded` (D7).
-  | { present: false; reason: 'failed'; error: unknown }
+  // Bound TLS Details are then `not-recorded` (D7). `timeLeftMs` is the time the render had left
+  // when the end phases started, for the log only; the inventory records the reason alone.
+  | { present: false; reason: 'failed'; error: unknown; timeLeftMs?: number }
 
 // A document's URL without its fragment, which CDP leaves out of a request's URL; undefined when
 // it does not parse.
@@ -520,9 +521,11 @@ export async function finishTransactionRecord(
     write = writeTransactionRecord
   }: FinishOptions
 ): Promise<TransactionRecordOutcome> {
+  let leftAtStart = Number.POSITIVE_INFINITY
   try {
+    leftAtStart = timeLeftMs()
     const { exchanges, counts, mainDocument } = await recorder.collect(
-      Math.min(collectMs, timeLeftMs())
+      Math.min(collectMs, leftAtStart)
     )
     const { bytes, replacedHeaders } = await withinMs(
       write({ ...writer, exchanges }),
@@ -554,6 +557,11 @@ export async function finishTransactionRecord(
       ...('boundTls' in bound ? { boundTls: BoundTlsSchema.parse(bound.boundTls) } : bound)
     }
   } catch (error) {
-    return { present: false, reason: 'failed', error }
+    return {
+      present: false,
+      reason: 'failed',
+      error,
+      ...(Number.isFinite(leftAtStart) ? { timeLeftMs: leftAtStart } : {})
+    }
   }
 }

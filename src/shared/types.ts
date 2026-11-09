@@ -991,7 +991,8 @@ export const LOG_CODES = [
   // The Transaction Record of a background render failed or ran out of time
   // (open question E of docs/plans/2026-10-10-capture-engine-first-slice.md).
   // Logged by the Recapture queue once the Capture is stored; its inventory
-  // records the record absent as `failed`.
+  // records the record absent as `failed`. It names the job's capture id and,
+  // when the end phases ran, the time they had left (#2121).
   'backgroundRenderer.transaction_record_failed',
   // The PDF of a background render failed, ran out of time, was over a size
   // bound, or was refused because the page navigated after the save, which its
@@ -1234,8 +1235,8 @@ export const LOG_CONTEXT_KEYS = [
   'channel',
   'attempt',
   // A Background Job's lines (#2127): the step it reached, why it left no
-  // Capture, the time the Transaction Record's end bounds were cut to (the
-  // render's time left less its end margin), and the duration of each step.
+  // Capture, the time its render had left, less the end margin, when the
+  // Transaction Record's end phases started, and the duration of each step.
   'step',
   'failureKind',
   'timeLeftMs',

@@ -818,8 +818,23 @@ describe('finishTransactionRecord', () => {
       if (outcome.present) throw new Error('expected the record to fail')
       expect(outcome.error).toMatchObject({ name: errorName, message })
       expect(sanitizeError(outcome.error).name).toBe(errorName)
+      expect(outcome.timeLeftMs).toBe(timeLeft())
     }
   )
+
+  it('keeps no time left when the render set no deadline', async () => {
+    const { recorder } = await started()
+    recorder.stop()
+    const outcome = await finishTransactionRecord(recorder, {
+      collectMs: 30,
+      writeMs: 30,
+      writer: WRITER,
+      committedUrl: 'http://127.0.0.1/',
+      write: () => new Promise<never>(() => {})
+    })
+    expect(outcome).toMatchObject({ present: false, reason: 'failed' })
+    expect(outcome).not.toHaveProperty('timeLeftMs')
+  })
 
   it('records the record failed at once when no time is left', async () => {
     const { recorder } = await started()

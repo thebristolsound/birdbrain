@@ -912,7 +912,8 @@ const STEP_DURATION_KEYS = {
 interface StepClock {
   enter: (step: RenderStep) => void
   // Ends the clock and closes the step it is in, so a failed render's last step
-  // is timed to the failure. Steps entered after it are neither timed nor heard.
+  // is timed to the failure. Steps entered after it are neither timed nor heard,
+  // and a second call returns what the first did.
   stop: () => { reached: RenderStep; durations: LogContext }
 }
 
@@ -985,8 +986,6 @@ export const renderPageInHiddenWindow: RenderPage = async (
   // first load, such as a slow `setProxy`, cannot let a phase settle after the deadline.
   const startedAt = Date.now()
   const steps = createStepClock('setup', onStep)
-  // The time the Transaction Record's end phases are cut to, read as that step starts.
-  let recordTimeLeftMs: number | undefined
   const remainingMs = (reserveMs = 0) =>
     Math.max(0, timeoutMs - (Date.now() - startedAt) - reserveMs)
   let deadlineTimer: NodeJS.Timeout | undefined
@@ -1201,7 +1200,6 @@ export const renderPageInHiddenWindow: RenderPage = async (
       const userAgent = wc.getUserAgent()
       const browserVersion = `Chrome/${process.versions.chrome}`
       steps.enter('transaction-record')
-      recordTimeLeftMs = remainingMs(END_MARGIN_MS)
       const transactionRecord: TransactionRecordOutcome = recording
         ? await finishTransactionRecord(activeRecorder, {
             collectMs: BODY_COLLECT_TIMEOUT_MS,
@@ -1231,6 +1229,8 @@ export const renderPageInHiddenWindow: RenderPage = async (
         contentHeight: screenshotRecord.contentHeight,
         boundMs: Math.min(PRINT_TIMEOUT_MS, remainingMs(END_MARGIN_MS))
       })
+      // The print is the last step timed; the teardown below is not part of it.
+      steps.stop()
 
       return {
         mhtmlStream: createReadStream(tmpPath) as unknown as AsyncIterable<Uint8Array>,
@@ -1263,8 +1263,7 @@ export const renderPageInHiddenWindow: RenderPage = async (
   const timings = (durations: LogContext): LogContext => ({
     captureId: ident(captureId),
     ms: Date.now() - startedAt,
-    ...durations,
-    ...(recordTimeLeftMs === undefined ? {} : { timeLeftMs: recordTimeLeftMs })
+    ...durations
   })
 
   const rendering = render()

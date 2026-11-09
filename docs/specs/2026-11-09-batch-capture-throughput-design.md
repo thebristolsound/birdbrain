@@ -447,9 +447,10 @@ interface BackgroundJobView {
 }
 ```
 
-`RenderPage`'s options gain an optional `onPhase(phase)` callback and an optional `AbortSignal`.
-The renderer calls `onPhase` at each phase boundary, at most seven times per job. The service
-writes the phase to the row and emits the view; it does not write timing into the row.
+Slice 1 added an optional `onStep(step)` callback to `RenderPage`'s options, which the renderer
+calls as it starts each of its ten steps. Slice 4 maps those steps onto the seven phases above
+rather than adding a second callback, and adds an optional `AbortSignal`. The service writes the
+phase to the row and emits the view; it does not write timing into the row.
 
 #### IPC
 
@@ -544,8 +545,9 @@ Each slice ships on its own and leaves the app working.
    `recapture:resume`, `recapture:dismiss`, the job channel, and a minimal resume control for held
    Batches on the capture status button. Concurrency stays 1. Blocking tier
    (`db/**`).
-4. **Progress, cancel and retry.** `onPhase`, the `AbortSignal`, `recapture:cancel`,
-   `recapture:retry` for a job or a Batch, and the pre-render exclusion check. Blocking tier.
+4. **Progress, cancel and retry.** The phase, mapped from slice 1's `onStep` steps, the
+   `AbortSignal`, `recapture:cancel`, `recapture:retry` for a job or a Batch, and the pre-render
+   exclusion check. Blocking tier.
 5. **Make parallel renders safe at concurrency 1.** The per-Case ingest slot and the consent blocker
    fix, each with its test, while the pool still runs one worker. Blocking tier.
 6. **Turn on the pool.** Concurrency from the formula, the `BIRDBRAIN_BACKGROUND_WORKERS`

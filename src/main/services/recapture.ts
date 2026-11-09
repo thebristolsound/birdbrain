@@ -453,11 +453,12 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       // Said only once the Capture is stored, so a job that then fails or is skipped
       // never reports a stored Capture.
       if (!rendered.transactionRecord.present) {
+        const { error, timeLeftMs } = rendered.transactionRecord
         logger.error(
           'backgroundRenderer',
           'backgroundRenderer.transaction_record_failed',
-          undefined,
-          rendered.transactionRecord.error
+          { captureId: ident(captureId), ...(timeLeftMs === undefined ? {} : { timeLeftMs }) },
+          error
         )
       }
       if (!rendered.pdf.present) {

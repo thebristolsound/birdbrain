@@ -464,7 +464,8 @@ describe('recapture service', () => {
       const FAILED: RenderedPage['transactionRecord'] = {
         present: false,
         reason: 'failed',
-        error: new Error('The body fetches did not settle within 5000ms')
+        error: new Error('The body fetches did not settle within 5000ms'),
+        timeLeftMs: 4_321
       }
       const notices = (spy: { mock: { calls: unknown[][] } }) =>
         spy.mock.calls.filter(([, code]) => code === 'backgroundRenderer.transaction_record_failed')
@@ -492,11 +493,32 @@ describe('recapture service', () => {
           [
             'backgroundRenderer',
             'backgroundRenderer.transaction_record_failed',
-            undefined,
+            { captureId: newCaptures[0].id, timeLeftMs: 4_321 },
             FAILED.error
           ]
         ])
         expect(storedWhenLogged).toBe(true)
+        // The time left reaches the log, not the signed inventory part.
+        const entry = readFileSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
+        expect(entry).toContain('"transactionRecord":{"present":false,"reason":"failed"}')
+      })
+
+      it('names no time left when the end phases never ran', async () => {
+        const spy = vi.spyOn(logger, 'error')
+        const svc = makeService(
+          fakeRender({
+            transactionRecord: {
+              present: false,
+              reason: 'failed',
+              error: new Error('Network.enable failed or did not answer on the page')
+            }
+          })
+        )
+        svc.enqueue([{ url: 'https://example.com/page', caseId }])
+        await svc.idle()
+        expect(notices(spy).map(([, , context]) => context)).toEqual([
+          { captureId: newCaptures[0].id }
+        ])
       })
 
       it('is not logged when the job then refuses the final URL', async () => {
@@ -1174,6 +1196,7 @@ describe('Capture link jobs (ADR-0040)', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     closeDatabase()
     rmSync(tempDir, { recursive: true, force: true })
   })
@@ -1481,7 +1504,26 @@ describe('Capture link jobs (ADR-0040)', () => {
         }
       ]
     ])
-    info.mockRestore()
+  })
+
+  it('logs a link job whose source read and whose render then threw as kind render', async () => {
+    const source = await sourceCapture()
+    const warn = vi.spyOn(logger, 'warn')
+    const linkSvc = createRecaptureService({
+      renderPage: async () => {
+        throw new Error('net::ERR_CONNECTION_RESET')
+      },
+      captureLifecycle,
+      emitEvent: (e) => events.push(e),
+      emitNewCapture: (c) => newCaptures.push(c),
+      timeoutMs: 45_000
+    })
+    linkSvc.enqueueLink(linkPayload(source.id))
+    await linkSvc.idle()
+    const failed = warn.mock.calls.filter(([, code]) => code === 'backgroundRenderer.job_failed')
+    expect(failed.map(([, , context]) => context)).toEqual([
+      { captureId: expect.any(String), caseId, ms: expect.any(Number), failureKind: 'render' }
+    ])
   })
 
   it('logs a source check that throws as a failed job of kind link-source-error', async () => {
@@ -1501,7 +1543,6 @@ describe('Capture link jobs (ADR-0040)', () => {
       ms: expect.any(Number),
       failureKind: 'link-source-error'
     })
-    warn.mockRestore()
   })
 
   // The manifest writer runs no schema check, and the strict schema refuses a

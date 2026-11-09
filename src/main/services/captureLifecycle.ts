@@ -1934,6 +1934,13 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
               scrollToLoad: sourceEntry.scrollToLoad,
               transactionRecordHash: sourceEntry.transactionRecordHash,
               pdfHash: sourceEntry.pdfHash,
+              // The Persona (ruling 4 of 2026-11-05) and the launched browser the source was
+              // taken under (schema 7), re-anchored from its signed entry like `tls` above.
+              personaId: sourceEntry.personaId,
+              personaLabel: sourceEntry.personaLabel,
+              browserProduct: sourceEntry.browserProduct,
+              browserVersion: sourceEntry.browserVersion,
+              browserFamily: sourceEntry.browserFamily,
               sizeBytes: mhtml.sizeBytes,
               operatorId: getInstallationId(),
               operatorName,
@@ -1981,6 +1988,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
                 // so no Bound TLS Details.
                 transactionRecordHash: sourceEntry.transactionRecordHash,
                 pdfHash: sourceEntry.pdfHash,
+                personaId: sourceEntry.personaId,
+                personaLabel: sourceEntry.personaLabel,
                 exhibitNumber
               })
           )

@@ -974,7 +974,8 @@ describe('copy', () => {
         'delete it.'
     )
     expect(COPY.revokeNote).toBe(
-      'Recorded in your Manifest as member-revoke. Cannot be undone; they would need a new invite.'
+      'Recorded in your Manifest as member-revoke. Cannot be undone; their installation cannot ' +
+        'rejoin this Case, even with a new invite.'
     )
     expect(COPY.chainNoteVerified).toBe('Verified chain · Seq is the entry index')
     expect(COPY.chainNoteTimeline).toBe('Cross-chain order is by asserted time, not verified')

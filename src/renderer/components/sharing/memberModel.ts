@@ -266,8 +266,11 @@ export const COPY = {
   excludedIntegrity: 'At the last verification, the entry, bytes, and hash verified.',
   excludedStays:
     'The Exhibit stays in the Case and in every member’s copy; exports list it as excluded.',
+  // A new invite does not readmit them: the roster keeps a revoked member, and
+  // addMember refuses an installation or key already on it as already-member.
   revokeNote:
-    'Recorded in your Manifest as member-revoke. Cannot be undone; they would need a new invite.',
+    'Recorded in your Manifest as member-revoke. Cannot be undone; their installation cannot ' +
+    'rejoin this Case, even with a new invite.',
   cancel: 'Cancel',
   excludeBody:
     'The Exhibit stays in the Case and in every member’s copy. Exports will list it as excluded, ' +

@@ -1465,7 +1465,9 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
               unstamped === 1 ? '' : 's'
             } without trusted time</p><p>${unstamped} exhibit${
               unstamped === 1 ? '' : 's'
-            } in this package (${pendingCount} eligible for timestamping,
+            } in this ${
+              isPackagedExport(ctx.options) ? 'package' : 'report'
+            } (${pendingCount} eligible for timestamping,
             ${noneCount} not) carr${unstamped === 1 ? 'ies' : 'y'} no RFC 3161 token. For ${
               unstamped === 1 ? 'it' : 'those'
             }, the recorded time is the operator's local system clock only. The export was not
@@ -1637,8 +1639,9 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   ${
     data.verifications.length > 0
       ? `<p>I generated this report from the Birdbrain case identified on the cover. I have not altered
-  the captures, the manifest or the packaged artefacts, and the counts and digests reproduced here
-  are those produced by the tool at the verification run recorded under “Chain of custody”.</p>`
+  the captures, the manifest or the packaged artefacts, and the integrity results reproduced
+  here are those produced by the tool at the verification run recorded under “Chain of
+  custody”.</p>`
       : `<p>I generated this report from the Birdbrain case identified on the cover. I have not altered
   the captures, the manifest or the packaged artefacts. <strong>No verification was run for this
   export</strong>, so the digests reproduced here are those recorded for each capture rather than

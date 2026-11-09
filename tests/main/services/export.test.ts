@@ -1613,6 +1613,54 @@ describe('export', () => {
     expect(content).toMatch(/export\s+was\s+not\s+blocked/i)
   })
 
+  it('names a package in the trusted-time banner only when the export is one (#1109)', async () => {
+    await ingest(caseId, '<html><body>Banner scope</body></html>', 'https://example.com', 'B')
+    const bannerOf = async (format: 'html' | 'zip'): Promise<string> => {
+      const outputPath = join(tempDir, `banner.${format}`)
+      await generateReport(
+        caseId,
+        {
+          format,
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail: false,
+            notes: false,
+            annotations: 'none'
+          },
+          exportClass: 'evidence',
+          outputPath
+        },
+        captureLifecycle
+      )
+      const report =
+        format === 'zip'
+          ? readStoredZipEntries(outputPath).get('report.html')!.toString('utf-8')
+          : readFileSync(outputPath, 'utf-8')
+      const [banner] = report.match(
+        /<div class="note"><p class="note-title">\d+ exhibits? without trusted time[\s\S]*?<\/div>/
+      )!
+      return banner
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+    }
+
+    const standalone = await bannerOf('html')
+    expect(standalone).toBe(
+      '1 exhibit without trusted time 1 exhibit in this report (1 eligible for timestamping, 0 ' +
+        "not) carries no RFC 3161 token. For it, the recorded time is the operator's local " +
+        'system clock only. The export was not blocked; the gap is recorded rather than concealed.'
+    )
+    expect(standalone).not.toMatch(/package/i)
+
+    expect(await bannerOf('zip')).toBe(
+      '1 exhibit without trusted time 1 exhibit in this package (1 eligible for timestamping, 0 ' +
+        "not) carries no RFC 3161 token. For it, the recorded time is the operator's local " +
+        'system clock only. The export was not blocked; the gap is recorded rather than concealed.'
+    )
+  })
+
   // #492: the preflight counts are printed in certification.html beside per-capture
   // rows resolved from the manifest alone. A capture with no manifest entry whose
   // mirror claims rfc3161 used to be counted as stamped, so the document could claim
@@ -2417,6 +2465,50 @@ describe('export', () => {
     expect(html).not.toMatch(/those produced by the tool at the verification run/)
     expect(html).toMatch(/No verification was run for this\s+export/)
     expect(html).toContain('I make no statement about')
+  })
+
+  it('scopes the signed statement to what the verification run recomputed (#1107)', async () => {
+    await ingest(caseId, '<html>signed scope</html>')
+    const statementOf = async (auditTrail: boolean): Promise<string> => {
+      const outputPath = join(tempDir, `statement-${auditTrail}.html`)
+      await generateReport(
+        caseId,
+        {
+          format: 'html',
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail,
+            notes: false,
+            annotations: 'none'
+          },
+          exportClass: 'evidence',
+          outputPath
+        },
+        captureLifecycle
+      )
+      const [, section] = readFileSync(outputPath, 'utf-8').match(
+        /<h2>Operator statement<\/h2>([\s\S]*?)<\/section>/
+      )!
+      return section.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ')
+    }
+
+    // The cover's trusted-time tally is read from a manifest snapshot taken after
+    // the run, and the printed digests are the recorded ones, so the sentence the
+    // operator signs must claim neither.
+    const verified = await statementOf(true)
+    expect(verified).toContain(
+      'and the integrity results reproduced here are those produced by the tool at the ' +
+        'verification run recorded under “Chain of custody”.'
+    )
+    expect(verified).not.toMatch(/counts|trusted|digest/i)
+
+    expect(await statementOf(false)).toContain(
+      'I have not altered the captures, the manifest or the packaged artefacts. No verification ' +
+        'was run for this export, so the digests reproduced here are those recorded for each ' +
+        'capture rather than values recomputed from the stored bytes at the time of export, and ' +
+        'I make no statement about whether the stored bytes still match them.'
+    )
   })
 
   it('qualifies the attestation statement rather than claiming it for every capture', async () => {

@@ -120,6 +120,61 @@ describe('StatusGroup', () => {
   })
 })
 
+describe('StatusGroup announcements and popover', () => {
+  const liveRegion = () => document.querySelector('[aria-live="polite"]')!
+  async function renderNominal() {
+    renderWith({ kind: 'direct' }, true)
+    const button = await screen.findByTestId('status-group')
+    await waitFor(() =>
+      expect(button.getAttribute('aria-label')).toContain('Egress: Direct · VPN seen')
+    )
+    return button
+  }
+
+  it('announces a change of severity in the polite live region', async () => {
+    const button = await renderNominal()
+    expect(liveRegion().textContent).toBe('')
+
+    act(() =>
+      useAppStore.setState({ captureStats: { successCount: 4, failCount: 2, skipCount: 0 } })
+    )
+    await waitFor(() => expect(button.dataset.severity).toBe('danger'))
+    expect(liveRegion().textContent).toBe(button.getAttribute('aria-label'))
+  })
+
+  it('does not announce a new count at the same severity', async () => {
+    await renderNominal()
+    act(() =>
+      useAppStore.setState({ captureStats: { successCount: 5, failCount: 0, skipCount: 0 } })
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('status-group').getAttribute('aria-label')).toContain('5 captured')
+    )
+    expect(liveRegion().textContent).toBe('')
+  })
+
+  it('closes the capture log with the popover', async () => {
+    const button = await renderNominal()
+    fireEvent.click(button)
+    fireEvent.click(await screen.findByRole('button', { name: 'Capture log' }))
+    expect(await screen.findByTestId('capture-log')).toBeTruthy()
+
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Status' }), { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Status' })).toBeNull())
+    fireEvent.click(button)
+    await screen.findByRole('dialog', { name: 'Status' })
+    expect(screen.queryByTestId('capture-log')).toBeNull()
+  })
+
+  it('shows the Capture Health icon, not the Egress icon, when failures are the worst', async () => {
+    useAppStore.setState({ captureStats: { successCount: 1, failCount: 1, skipCount: 0 } })
+    const button = await renderNominal()
+    await waitFor(() => expect(button.dataset.severity).toBe('danger'))
+    const icon = button.querySelector('svg')
+    expect(icon?.getAttribute('class')).toContain('lucide-activity')
+  })
+})
+
 // The closed button carries queued background captures, as the Capture Health pill did (#2122).
 describe('StatusGroup background captures', () => {
   const queued = (pending: number) =>

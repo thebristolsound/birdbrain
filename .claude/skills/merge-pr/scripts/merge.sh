@@ -1,30 +1,35 @@
 #!/usr/bin/env bash
 # Squash-merge one PR the way ADR-0022 expects, then read back what landed.
-#   merge.sh <pr-number> [--cli gh|agh] [--dry-run] [--admin]
+#   merge.sh <pr-number> [--cli gh|agh] [--dry-run] [--admin] [--wait [minutes]]
 # --cli agh runs every GitHub write as the machine account (ADR-0027); the dispatcher uses it.
 # --dry-run stops after composing the subject and body.
-# --admin merges through the ruleset bypass. Emergencies only: the routine path for the
-# maintainer is the `merge` label (ADR-0041), and merge-gate replaces the review rule.
+# --admin merges through the ruleset bypass. While the main-merge-authority ruleset
+# (2026-10-24) keeps its update rule on main, the plain merge is refused with "the base branch
+# policy prohibits the merge" and the `merge` label's auto-merge (ADR-0041) never fires, so
+# under gh the bypass is the maintainer's path until that rule changes. agh never takes it.
+# --wait polls the merge-gate runs this script re-runs or finds running (15 minutes unless a
+# number follows), then re-reads every check once, so one call carries a stale gate through.
 set -u
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="${CLAUDE_PROJECT_DIR:-$(git -C "$here" rev-parse --show-toplevel)}"
 body_check="$root/.claude/skills/post-pr-body/scripts/check.sh"
 
-n="" cli="gh" dry=0 admin=""
+n="" cli="gh" dry=0 admin="" wait_min=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --cli) cli="$2"; shift 2 ;;
     --cli=*) cli="${1#--cli=}"; shift ;;
     --dry-run) dry=1; shift ;;
     --admin) admin="--admin"; shift ;;
+    --wait) wait_min=15; if [[ "${2:-}" =~ ^[0-9]+$ ]]; then wait_min="$2"; shift; fi; shift ;;
     -*) echo "merge-pr: unknown flag $1" >&2; exit 2 ;;
     *) n="$1"; shift ;;
   esac
 done
-[ -n "$n" ] || { echo "usage: merge.sh <pr-number> [--cli gh|agh] [--dry-run] [--admin]" >&2; exit 2; }
+[ -n "$n" ] || { echo "usage: merge.sh <pr-number> [--cli gh|agh] [--dry-run] [--admin] [--wait [minutes]]" >&2; exit 2; }
 case "$cli" in gh|agh) ;; *) echo "merge-pr: --cli must be gh or agh" >&2; exit 2 ;; esac
-[ -n "$admin" ] && [ "$cli" = "agh" ] && { echo "merge-pr: --admin is the maintainer's emergency path, never the machine account's" >&2; exit 2; }
+[ -n "$admin" ] && [ "$cli" = "agh" ] && { echo "merge-pr: --admin is the maintainer's bypass, never the machine account's" >&2; exit 2; }
 if [ "$cli" = "agh" ]; then
   # agh is a shell function on the maintainer's machine (docs/agents/github-access.md); a script
   # has to define it from the same token and prove the identity before any write (ADR-0027).
@@ -95,16 +100,36 @@ else
   # where a dispatch on the head branch would run whatever that branch holds.
   case " $bad_checks " in
     *" merge-gate="*)
-      gate_runs="$(node -e '
+      # Red completed runs are re-run; a run still in progress is only waited for, since
+      # GitHub refuses to re-run it.
+      gate_lists="$(node -e '
 const ok=new Set(["success","skipped","neutral"])
-const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).check_runs.filter(r=>r.name==="merge-gate"&&!(r.status==="completed"&&ok.has(r.conclusion)))
-const ids=c.map(r=>(r.details_url||"").match(/\/actions\/runs\/(\d+)/)?.[1]).filter(Boolean)
-process.stdout.write([...new Set(ids)].join(" "))' "$work/checks.json")"
+const runs=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).check_runs.filter(r=>r.name==="merge-gate"&&!(r.status==="completed"&&ok.has(r.conclusion)))
+const id=r=>(r.details_url||"").match(/\/actions\/runs\/(\d+)/)?.[1]
+const red=[...new Set(runs.filter(r=>r.status==="completed").map(id).filter(Boolean))]
+const live=[...new Set(runs.filter(r=>r.status!=="completed").map(id).filter(Boolean))]
+process.stdout.write(red.join(" ")+"\n"+live.join(" ")+"\n")' "$work/checks.json")"
+      { read -r gate_red; read -r gate_live; } <<<"$gate_lists"
       if [ "$dry" -eq 0 ]; then
-        for gate_run in $gate_runs; do
+        for gate_run in $gate_red; do
           "$cli" run rerun "$gate_run" >/dev/null \
             && say "merge-gate re-run started (run $gate_run)" || say "WARN could not re-run merge-gate (run $gate_run)"
         done
+        [ -z "$gate_live" ] || say "merge-gate still running (run $gate_live)"
+        if [ -n "$wait_min" ] && [ -n "$gate_red$gate_live" ]; then
+          deadline=$(( $(date +%s) + wait_min * 60 ))
+          sleep 10  # a re-run keeps the old attempt's "completed" status for a moment
+          for gate_run in $gate_red $gate_live; do
+            until [ "$("$cli" run view "$gate_run" --json status --jq .status 2>/dev/null)" = completed ]; do
+              [ "$(date +%s)" -lt "$deadline" ] || fail "merge-gate run $gate_run still running after ${wait_min}m"
+              sleep 30
+            done
+          done
+          say "merge-gate runs finished; re-reading every check"
+          rm -rf "$work"
+          # shellcheck disable=SC2086
+          exec "$0" "$n" --cli "$cli" $admin
+        fi
       fi ;;
   esac
   [ -z "$bad_checks" ] || fail "required checks not green at head: $bad_checks"
@@ -140,7 +165,7 @@ if [ -n "$evidence" ]; then
 fi
 
 # 4b. The review rule is gone (ADR-0041); merge-gate, checked above, is the sign-off. --admin is
-#     the emergency bypass and is never chosen here on the caller's behalf.
+#     the ruleset bypass and is never chosen here on the caller's behalf.
 [ -n "$admin" ] && say "merging with the admin bypass, as asked"
 
 # 5. Subject and body for the squash commit.

@@ -290,6 +290,26 @@ describe('StartDialog (S2)', () => {
     expect(launchButton('Launch').disabled).toBe(true)
   })
 
+  it('refuses before the launch where main offers none, and says why', async () => {
+    const reason = 'The launched browser is not available on macOS yet.'
+    mount({ status: { state: 'none', launchUnavailable: reason } })
+    open()
+    const body = await dialog()
+    const card = await within(body).findByRole('status')
+    expect(card.textContent).toContain(reason)
+    expect(launchButton('Launch').disabled).toBe(true)
+  })
+
+  it('gives that reason, not state 1, when it also found no browser', async () => {
+    const reason = 'The launched browser is not available on macOS yet.'
+    mount({ browsers: [], status: { state: 'none', launchUnavailable: reason } })
+    open()
+    const body = await dialog()
+    const card = await within(body).findByRole('status')
+    expect(card.textContent).toContain(reason)
+    expect(card.textContent).not.toContain('No supported browser found')
+  })
+
   it('refuses with state 4 while a launched browser is open, and shows its Case', async () => {
     mount({ status: { state: 'open', browser: { ...SUMMARY, caseId: 'case-9' } } })
     open()

@@ -10,6 +10,12 @@ import { notify } from '@renderer/lib/notify'
  * anything per capture.
  */
 export async function copyCaptureUrl(url: string): Promise<void> {
+  // Silence here would let the operator paste the previous clipboard as this
+  // capture's URL (#945).
+  if (url === '') {
+    notify.warn('Nothing was copied: the stored URL is empty')
+    return
+  }
   try {
     await navigator.clipboard.writeText(url)
     notify.success('Copied URL')
@@ -30,12 +36,12 @@ export function useCopyCaptureUrl(capture: Capture | null): () => void {
   const url = capture?.url
 
   const copyUrl = useCallback(() => {
-    if (url) void copyCaptureUrl(url)
+    if (url !== undefined) void copyCaptureUrl(url)
   }, [url])
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.defaultPrevented || e.repeat || !url) return
+      if (e.defaultPrevented || e.repeat || url === undefined) return
       // Cmd on macOS, Ctrl elsewhere — the same pair every other accelerator in
       // the app accepts (useCommandPalette, useCaptureSelection). Shift and Alt
       // belong to other accelerators, so they must not fall through to this one.

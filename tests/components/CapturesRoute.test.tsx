@@ -8,6 +8,10 @@ import type { Capture } from '@shared/types'
 // Hoisted: the factories run while the route's import graph is still loading,
 // which is before a plain top-level const would be initialised.
 const notifyError = vi.hoisted(() => vi.fn())
+// Whether the Capture Session rail is docked beside the screen, which CaptureSessionDock tells it.
+const railDocked = vi.hoisted(() => ({ value: false }))
+// The minimum each resizable column is given, by panel id.
+const panelMinSizes = vi.hoisted(() => new Map<string, unknown>())
 
 vi.mock('@renderer/lib/notify', () => ({
   notify: { error: notifyError, warn: vi.fn(), success: vi.fn(), info: vi.fn() }
@@ -16,6 +20,21 @@ vi.mock('@renderer/lib/notify', () => ({
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ caseId: 'case1' })
 }))
+
+vi.mock('@renderer/components/launchedBrowser/CaptureSessionDock', () => ({
+  useCaptureSessionRailDocked: () => railDocked.value
+}))
+
+vi.mock('react-resizable-panels', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-resizable-panels')>()
+  return {
+    ...actual,
+    Panel: (props: Parameters<typeof actual.Panel>[0]) => {
+      panelMinSizes.set(String(props.id), props.minSize)
+      return <actual.Panel {...props} />
+    }
+  }
+})
 
 // The route's own handler is what is under test; the capture list, viewer and
 // note modal contribute nothing to it and each drag in their own data graph.
@@ -183,6 +202,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  railDocked.value = false
+  panelMinSizes.clear()
   window.innerWidth = NARROW_WIDTH
   notifyError.mockReset()
   useAppStore.getState().setSelectedCaptureId(null)
@@ -606,6 +627,40 @@ describe('CapturesRoute', () => {
       renderRoute()
       await screen.findByText(OPEN_CONTROL)
       act(() => reportWidth(1_052))
+      expect(await screen.findByText('panel: open externally')).toBeDefined()
+    })
+  })
+  // Design review of 2026-11-04, answer 1: while the rail is docked the viewer keeps 480 pixels,
+  // the list and the details panel give way toward their minimums first, and the details panel
+  // folds when that is not enough.
+  describe('the viewer beside the docked Capture Session rail', () => {
+    let reportWidth: (width: number) => void
+
+    beforeEach(() => {
+      reportWidth = stubResizeObserverWithWidth()
+    })
+
+    it('keeps the viewer at 480 pixels while the rail is docked, and at 360 otherwise', async () => {
+      renderRouteWide()
+      await screen.findByText('panel: open externally')
+      expect(panelMinSizes.get('capture-viewer')).toBe(360)
+      cleanup()
+      railDocked.value = true
+      renderRouteWide()
+      await screen.findByText('panel: open externally')
+      expect(panelMinSizes.get('capture-viewer')).toBe(480)
+      expect(panelMinSizes.get('capture-list')).toBe(240)
+      expect(panelMinSizes.get('capture-details')).toBe(320)
+    })
+
+    it('folds the details panel below 1,054 pixels while the rail is docked', async () => {
+      railDocked.value = true
+      renderRouteWide()
+      await screen.findByText('panel: open externally')
+      act(() => reportWidth(1_053))
+      expect(await screen.findByText(OPEN_CONTROL)).toBeDefined()
+      expect(screen.queryByText('panel: open externally')).toBeNull()
+      act(() => reportWidth(1_054))
       expect(await screen.findByText('panel: open externally')).toBeDefined()
     })
   })

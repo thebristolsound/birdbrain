@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, vi } from 'vitest'
+import { execFileSync } from 'child_process'
 import { createHash, createSign, generateKeyPairSync } from 'crypto'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
@@ -30,7 +31,11 @@ import { PACKAGE_ROOT_FILES } from '../../../src/packages/evidence-package-layou
 import { HAS_OPENSSL } from '../../helpers/openssl'
 import { HAS_JQ, jqIsRequired } from '../../helpers/jq'
 import { createLocalTsa, type LocalTsa } from '../../helpers/localTsa'
-import { extractRunbookBlocks, runRunbookBlocks } from '../../helpers/runbookBlocks'
+import {
+  extractRunbookBlocks,
+  runRunbookBlocks,
+  type RunbookBlock
+} from '../../helpers/runbookBlocks'
 import { runVerifyScript } from '../../helpers/verifyScript'
 import {
   checkConformance,
@@ -50,8 +55,16 @@ import {
   ENGINE_INVENTORY,
   ENGINE_SCROLL_TO_LOAD
 } from '../../helpers/captureEnginePackage'
-import { pdfPath, transactionRecordPath } from '../../../src/packages/evidence-package-layout/index'
+import {
+  pdfPath,
+  screenshotPath,
+  transactionRecordPath
+} from '../../../src/packages/evidence-package-layout/index'
 import { CaptureInventorySchema, ScrollToLoadRecordSchema } from '@shared/schemas'
+
+// 60 s, not the 15 s in vitest.config.ts: this suite crosses 15 s when several agent
+// sessions share the cores, and a timeout here turns a local preflight into a false fail.
+vi.setConfig({ testTimeout: 60_000 })
 
 // #584: the shipped VERIFY.md is executed against a real evidence package, and
 // the verify.sh that ships beside it is run on that package and on deliberately
@@ -121,6 +134,7 @@ interface ManifestLine {
   type: string
   captureContentHash?: string
   tsaToken?: string
+  screenshotHash?: string
 }
 
 const manifestLines = (dir: string): ManifestLine[] =>
@@ -149,6 +163,52 @@ function bindingsFor(dir: string, entries: Map<string, Buffer>): Array<Record<st
     bindings.push({ '<contentHash>': entry.captureContentHash, '<token>': token })
   }
   return bindings
+}
+
+// Text that picks out each step 5 block of the shipped runbook, and only it.
+const CONTENT_BLOCK = '.screenshotHash'
+const EXHIBIT_BLOCK = `select(.type == "exhibit")'`
+const DERIVED_BLOCK = `select(.type == "derivation")'`
+
+/** The step 5 block of the runbook `dir` encloses that carries `marker`. */
+function step5Block(dir: string, marker: string): RunbookBlock {
+  const runbook = readFileSync(join(dir, PACKAGE_ROOT_FILES.verifyRunbook), 'utf-8')
+  const matches = extractRunbookBlocks(runbook).filter(
+    ({ section, code }) => section.startsWith('Step 5') && code.includes(marker)
+  )
+  expect(matches, marker).toHaveLength(1)
+  return matches[0]
+}
+
+/** Sets `$line` to one capture's entry, as the runbook's step 2 sets it to the first line. */
+const pickCapture = (id: string): RunbookBlock => ({
+  section: 'test setup',
+  ordinal: 0,
+  code: `line=$(jq -c 'select(.type == "capture" and .captureId == "${id}")' manifest.jsonl)\n`,
+  placeholders: []
+})
+
+/**
+ * Runs blocks under plain `sh` with no errexit and no pipefail, options an interactive
+ * shell starts without, so the status is the block's own and not the harness's options.
+ */
+function runPlain(
+  blocks: RunbookBlock[],
+  cwd: string,
+  shell: 'sh' | 'bash' = 'sh'
+): { status: number; stdout: string } {
+  const code = blocks.map((block) => block.code).join('\n')
+  try {
+    const stdout = execFileSync(shell, ['-c', code], {
+      cwd,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    return { status: 0, stdout }
+  } catch (error) {
+    const spawned = error as { status?: number; stdout?: string }
+    return { status: spawned.status ?? 1, stdout: spawned.stdout ?? '' }
+  }
 }
 
 describe('the shipped runbook and verify.sh, executed against a real evidence package', () => {
@@ -301,7 +361,7 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
    */
   const exportPackage = async (
     name: string,
-    options: { captureIds?: string[] } = {}
+    { screenshots = true, ...options }: { captureIds?: string[]; screenshots?: boolean } = {}
   ): Promise<string> => {
     const outputPath = join(tempDir, `${name}.zip`)
     await generateReport(
@@ -310,7 +370,7 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
         format: 'zip',
         include: {
           captures: true,
-          screenshots: true,
+          screenshots,
           auditTrail: true,
           notes: false,
           annotations: 'none'
@@ -385,6 +445,19 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     expect(entries.get(PACKAGE_ROOT_FILES.certification)!.toString('utf-8')).toContain(
       'Signing key (SHA-256 of signing-public-key.pem)'
     )
+  })
+
+  // #1986: the Screenshots option leaves the image out of the report only, so
+  // the anchored screenshot is enclosed and step 5 finds it.
+  it.skipIf(!RUNS)('passes verify.sh on a package exported with screenshots off', async () => {
+    const dir = await exportPackage('no-screenshots', { screenshots: false })
+    const { screenshotHash } = manifestLines(dir).find(({ type }) => type === 'capture')!
+    const shot = readFileSync(join(dir, screenshotPath(screenshotHash!)))
+    expect(sha256(shot)).toBe(screenshotHash)
+
+    const run = runVerifyScript(dir)
+    expect(run.status, run.output).toBe(0)
+    expect(run.output).toContain('verify.sh: PASS')
   })
 
   it.skipIf(!RUNS)('records verify.sh in the package index', () => {
@@ -515,6 +588,68 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       binaryFails: { name: 'manifest chain', reason: 'Invalid entry shape' }
     }
   }
+
+  const LOOSE_JSON =
+    'FAIL [step 4] entry at position 1: Invalid JSON, it holds a value spelled outside the ' +
+    'JSON grammar, or more than one value'
+
+  /**
+   * A copy of the good package with manifest line 1 rewritten by `respell`, and
+   * the unsigned index rehashed so step 1 still passes.
+   */
+  const respelledCopy = (name: string, respell: (line: string) => string): string => {
+    const dir = corruptedCopy(`loose-json-${name.replace(/\W+/g, '-')}`)
+    const path = join(dir, 'manifest.jsonl')
+    const lines = readFileSync(path, 'utf-8').split('\n')
+    const respelled = respell(lines[1])
+    expect(respelled).not.toBe(lines[1])
+    lines[1] = respelled
+    writeFileSync(path, lines.join('\n'))
+    const evidencePath = join(dir, 'evidence.json')
+    const evidence = JSON.parse(readFileSync(evidencePath, 'utf-8')) as {
+      artifacts: Array<{ path: string; sha256: string; sizeBytes: number }>
+    }
+    const bytes = readFileSync(path)
+    for (const artifact of evidence.artifacts) {
+      if (artifact.path !== 'manifest.jsonl') continue
+      artifact.sha256 = sha256(bytes)
+      artifact.sizeBytes = bytes.length
+    }
+    writeFileSync(evidencePath, JSON.stringify(evidence, null, 2))
+    return dir
+  }
+
+  /** #1922: a row for manifest line 1 respelled into text JSON.parse rejects. */
+  const looseJsonRow = (
+    name: string,
+    respell: (line: string) => string,
+    steps: number[]
+  ): ConformanceRow => ({
+    name: `an entry line that holds ${name}`,
+    build: () => respelledCopy(name, respell),
+    binary: 'fail',
+    script: 'fail',
+    steps,
+    says: [LOOSE_JSON],
+    binaryFails: { name: 'manifest chain', reason: 'Invalid JSON (at index 1)' }
+  })
+
+  // jq 1.7 reads a lowercase nan as null. jq 1.6 rejects it, so steps 2 and 6
+  // fail on that line as well.
+  const jqReadsNan = ((): boolean => {
+    try {
+      execFileSync('jq', ['empty'], { input: 'nan', stdio: ['pipe', 'ignore', 'ignore'] })
+      return true
+    } catch {
+      return false
+    }
+  })()
+
+  /** Line 1 with its index, 1, spelled as `literal`. */
+  const indexAs =
+    (literal: string) =>
+    (line: string): string =>
+      line.replace(/"index":1(?=[,}])/, `"index":${literal}`)
 
   const CONFORMANCE: ConformanceRow[] = [
     {
@@ -691,6 +826,61 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       steps: [1, 4, 6],
       says: ['entry at position 1: Invalid JSON, it begins with a byte-order mark'],
       binaryFails: { name: 'manifest chain', reason: 'Invalid JSON (at index 1)' }
+    },
+    // #1922: jq 1.7 reads each spelling below and JSON.parse rejects it. jq also
+    // recomputes the entryHash from its own reading, so a spelling that reads
+    // as 1 leaves the line's hash and signature verifying, and before the fix
+    // verify.sh passed a package the binary failed.
+    ...['01', '+1', '1.'].map((literal) =>
+      looseJsonRow(`the index 1 spelled ${literal}`, indexAs(literal), [4])
+    ),
+    // These read as another value, so the recomputed entryHash no longer
+    // matches either.
+    ...['00', '-01', '01.5', '.5', '1.e5', 'NaN', '-nan', 'Infinity', 'infinity', '-Infinity'].map(
+      (literal) => looseJsonRow(`the index spelled ${literal}`, indexAs(literal), [3, 4])
+    ),
+    looseJsonRow('the index spelled nan', indexAs('nan'), jqReadsNan ? [3, 4] : [2, 3, 4, 6]),
+    // Every field read of this line yields two values, so steps 2 and 3 fail too.
+    looseJsonRow('a second value after the first', (line) => `${line}{"b":2}`, [2, 3, 4]),
+    {
+      // A line of JSON whitespace holds no value, so step 4 fails it on its
+      // index and never names its spelling. Inserting it also changes the
+      // index the signed export entry hashes.
+      name: 'a line of spaces and a tab between two entries',
+      build: () => respelledCopy('spaces', (line) => `${line}\n \t `),
+      binary: 'fail',
+      script: 'fail',
+      steps: [2, 3, 4],
+      says: ['FAIL [step 4] entry at position 2 declares index , so the chain is not contiguous'],
+      saysNot: ['Invalid JSON'],
+      binaryFails: {
+        name: 'package hash',
+        reason: 'does not match the packageHash in the signed export entry'
+      }
+    },
+    {
+      // The same spellings inside a string are text to both verifiers.
+      name: 'an entry whose strings hold 01, +1, .5, NaN and Infinity as text',
+      build: async () => {
+        appendManifestEntry(join(tempDir, 'captures', caseId), {
+          type: 'timestamp',
+          caseId,
+          captureContentHash: contentHash,
+          timestamp: '2026-04-05T12:04:00.000Z',
+          operatorId: 'op',
+          operatorName: 'Operator "01" +1 .5 NaN Infinity -nan 1.e5 {}{} \\',
+          toolVersion: '0.1.0'
+        })
+        const dir = await exportPackage('loose-spellings-as-text')
+        expect(readFileSync(join(dir, 'manifest.jsonl'), 'utf-8')).toContain(
+          '"Operator \\"01\\" +1 .5 NaN Infinity -nan 1.e5 {}{} \\\\"'
+        )
+        return dir
+      },
+      binary: 'pass',
+      script: 'pass',
+      steps: [],
+      saysNot: ['FAIL']
     },
     {
       // A shell `read` loop skips a last line with no newline after it, and
@@ -1018,6 +1208,242 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     }
   })
 
+  // #1453: each of these blocks once printed its MISMATCH line and exited 0, so
+  // only verify.sh could fail the package. Each case runs the runbook's own
+  // block, under the harness and under a plain shell, which has no pipefail to
+  // carry a failure out of a loop.
+  describe("the runbook's step 5 blocks on a tampered package", () => {
+    const screenshotOf = (dir: string): string => {
+      const capture = readFileSync(join(dir, 'manifest.jsonl'), 'utf-8')
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as { type: string; screenshotHash?: string })
+        .find((line) => line.type === 'capture')!
+      return screenshotPath(capture.screenshotHash!)
+    }
+
+    const TAMPERED = [
+      {
+        name: 'a substituted page',
+        file: 'page',
+        marker: CONTENT_BLOCK,
+        path: () => join('pages', `${captureId}.mhtml`),
+        mismatch: () => 'CONTENT MISMATCH',
+        // The block goes on to the screenshot after the page fails.
+        alsoSays: () => 'screenshot OK'
+      },
+      {
+        name: 'a changed screenshot',
+        file: 'screenshot',
+        marker: CONTENT_BLOCK,
+        path: () => screenshotOf(packageDir),
+        mismatch: () => 'SCREENSHOT MISMATCH',
+        alsoSays: () => 'content OK'
+      },
+      {
+        name: 'a substituted exhibit',
+        file: 'exhibit',
+        marker: EXHIBIT_BLOCK,
+        path: () => join('attachments', `${exhibitId}.zip`),
+        mismatch: () => `EXHIBIT ${exhibitNumber} MISMATCH`
+      },
+      {
+        name: 'a substituted derived file',
+        file: 'derived file',
+        marker: DERIVED_BLOCK,
+        path: () => `pages/${captureId}_thumb.jpg`,
+        mismatch: () => `DERIVED FILE MISMATCH: pages/${captureId}_thumb.jpg`
+      }
+    ]
+
+    it.skipIf(!RUNS)('pass the good package under a plain shell', () => {
+      const GOOD = [
+        { marker: CONTENT_BLOCK, says: ['content OK', 'screenshot OK'] },
+        { marker: EXHIBIT_BLOCK, says: [`exhibit ${exhibitNumber} OK`] },
+        { marker: DERIVED_BLOCK, says: [`derived pages/${captureId}_thumb.jpg OK`] }
+      ]
+      // One shell per block, so each status is that block's own.
+      for (const { marker, says } of GOOD) {
+        const result = runPlain(
+          [pickCapture(captureId), step5Block(packageDir, marker)],
+          packageDir
+        )
+        expect(result.status, result.stdout).toBe(0)
+        expect(result.stdout).not.toContain('MISMATCH')
+        for (const text of says) expect(result.stdout).toContain(text)
+      }
+    })
+
+    it.skipIf(!RUNS)('pass a capture entry with no screenshot hash', () => {
+      // The block reads only $line, so dropping the field from it is an entry
+      // that anchors no screenshot.
+      const noShot: RunbookBlock = {
+        ...pickCapture(captureId),
+        code: `line=$(jq -c 'select(.type == "capture" and .captureId == "${captureId}") | del(.screenshotHash)' manifest.jsonl)\n`
+      }
+      const blocks = [noShot, step5Block(packageDir, CONTENT_BLOCK)]
+
+      const harness = runRunbookBlocks(blocks, { cwd: packageDir })
+      expect(harness.ok, `${harness.stdout}\n${harness.stderr}`).toBe(true)
+      const plain = runPlain(blocks, packageDir)
+      expect(plain.status, plain.stdout).toBe(0)
+      for (const out of [harness.stdout, plain.stdout]) {
+        expect(out).toContain('content OK')
+        expect(out).not.toMatch(/screenshot/i)
+      }
+    })
+
+    // Pasted into a fresh shell without step 2, the block has no hash to compare, and an
+    // empty want equals the empty got of a page it could not name.
+    it.skipIf(!RUNS)('exit non-zero when $line holds no expected hash', () => {
+      const noHash: RunbookBlock = {
+        ...pickCapture(captureId),
+        code: `line=$(jq -c 'select(.type == "capture" and .captureId == "${captureId}") | del(.contentHash)' manifest.jsonl)\n`
+      }
+      for (const blocks of [
+        [step5Block(packageDir, CONTENT_BLOCK)],
+        [noHash, step5Block(packageDir, CONTENT_BLOCK)]
+      ]) {
+        const harness = runRunbookBlocks(blocks, { cwd: packageDir })
+        expect(harness.ok, harness.stdout).toBe(false)
+        // Under nounset an unset $line aborts the block before it prints a verdict.
+        if (blocks.length > 1) {
+          expect(harness.stdout).toContain('CONTENT MISMATCH: no expected hash')
+        }
+        for (const shell of ['sh', 'bash'] as const) {
+          const plain = runPlain(blocks, packageDir, shell)
+          expect(plain.status, `${shell}: ${plain.stdout}`).not.toBe(0)
+          expect(plain.stdout).toContain('CONTENT MISMATCH: no expected hash')
+          expect(plain.stdout).not.toContain('content OK')
+        }
+      }
+    })
+
+    // A loop that kept only its last file's result would pass every one-file case above,
+    // so this package encloses two of each and damages only the one read first.
+    it.skipIf(!RUNS)(
+      'exit non-zero when an earlier file differs and a later one matches',
+      async () => {
+        const screenshot = await sharp({
+          create: { width: 24, height: 24, channels: 4, background: { r: 9, g: 9, b: 9, alpha: 1 } }
+        })
+          .png()
+          .toBuffer()
+        const payload = '<html><body>Second capture</body></html>'
+        const { capture: second } = await ingestMhtmlCapture({
+          caseId,
+          url: 'https://example.com/second',
+          title: 'Second Page',
+          timestamp: '2026-04-05T12:02:00.000Z',
+          stream: Readable.from([Buffer.from(payload)]) as unknown as ReadableStream<Uint8Array>,
+          textContent: payload,
+          headers: {},
+          browserVersion: '',
+          userAgent: '',
+          httpStatus: 200,
+          extensionVersion: '',
+          operatorId: 'op',
+          operatorName: 'Test Operator',
+          toolVersion: '0.1.0',
+          screenshot
+        })
+        const attachment = join(tempDir, 'uploads', 'second.zip')
+        writeFileSync(attachment, Buffer.from('PK\u0003\u0004 second attachment payload'))
+        const [staged] = await uploadToStaging(caseId, [attachment])
+        await commitStagedFiles(caseId, [staged.id])
+        await backfillCase(caseId, { toolVersion: '0.1.0' })
+        const dir = await exportPackage('runbook-two-of-each')
+
+        const lines = readFileSync(join(dir, 'manifest.jsonl'), 'utf-8')
+          .split('\n')
+          .filter(Boolean)
+          .map((line) => JSON.parse(line) as Record<string, unknown>)
+        const exhibits = lines
+          .filter((line) => line.type === 'exhibit')
+          .map((line) => ({
+            number: line.exhibitNumber as number,
+            rel: (line.path as string).split('/').slice(1).join('/')
+          }))
+        const derived = lines
+          .filter((line) => line.type === 'derivation')
+          .map((line) => `pages/${(line.outputPath as string).split('/').pop()}`)
+        expect(exhibits).toHaveLength(2)
+        expect(exhibits[0].rel).toBe(`attachments/${exhibitId}.zip`)
+        expect(derived).toEqual([`pages/${captureId}_thumb.jpg`, `pages/${second.id}_thumb.jpg`])
+
+        for (const path of [exhibits[0].rel, derived[0]]) {
+          const bytes = readFileSync(join(dir, path))
+          bytes[0] ^= 0xff
+          writeFileSync(join(dir, path), bytes)
+        }
+
+        const CASES = [
+          {
+            marker: EXHIBIT_BLOCK,
+            mismatch: `EXHIBIT ${exhibits[0].number} MISMATCH`,
+            ok: `exhibit ${exhibits[1].number} OK`
+          },
+          {
+            marker: DERIVED_BLOCK,
+            mismatch: `DERIVED FILE MISMATCH: ${derived[0]}`,
+            ok: `derived ${derived[1]} OK`
+          }
+        ]
+        for (const { marker, mismatch, ok } of CASES) {
+          const blocks = [step5Block(dir, marker)]
+          const harness = runRunbookBlocks(blocks, { cwd: dir })
+          expect(harness.ok, harness.stdout).toBe(false)
+          expect(harness.failedBlock).toMatch(/\(Step 5/)
+
+          const plain = runPlain(blocks, dir)
+          expect(plain.status, plain.stdout).not.toBe(0)
+          for (const out of [harness.stdout, plain.stdout]) {
+            expect(out).toContain(mismatch)
+            expect(out).toContain(ok)
+          }
+        }
+      }
+    )
+
+    for (const row of TAMPERED) {
+      it.skipIf(!RUNS)(`exit non-zero on ${row.name}`, () => {
+        const dir = corruptedCopy(`runbook-${row.name.replace(/\W/g, '-')}`)
+        const path = join(dir, row.path())
+        const bytes = readFileSync(path)
+        bytes[0] ^= 0xff
+        writeFileSync(path, bytes)
+        const blocks = [pickCapture(captureId), step5Block(dir, row.marker)]
+
+        const harness = runRunbookBlocks(blocks, { cwd: dir })
+        expect(harness.ok, harness.stdout).toBe(false)
+        expect(harness.failedBlock).toMatch(/\(Step 5/)
+        expect(harness.stdout).toContain(row.mismatch())
+
+        const plain = runPlain(blocks, dir)
+        expect(plain.status, plain.stdout).not.toBe(0)
+        expect(plain.stdout).toContain(row.mismatch())
+        if (row.alsoSays) expect(plain.stdout).toContain(row.alsoSays())
+      })
+
+      it.skipIf(!RUNS)(`exit non-zero on a deleted ${row.file}`, () => {
+        const dir = corruptedCopy(`runbook-deleted-${row.file.replace(/ /g, '-')}`)
+        rmSync(join(dir, row.path()))
+        const blocks = [pickCapture(captureId), step5Block(dir, row.marker)]
+
+        // Under errexit and pipefail the failed hash aborts the block before it
+        // prints a verdict, so only the failure is pinned here.
+        const harness = runRunbookBlocks(blocks, { cwd: dir })
+        expect(harness.ok, harness.stdout).toBe(false)
+        expect(harness.failedBlock).toMatch(/\(Step 5/)
+
+        const plain = runPlain(blocks, dir)
+        expect(plain.status, plain.stdout).not.toBe(0)
+        expect(plain.stdout).toContain(row.mismatch())
+        if (row.alsoSays) expect(plain.stdout).toContain(row.alsoSays())
+      })
+    }
+  })
+
   // Step 4 of docs/plans/2026-10-10-capture-engine-first-slice.md: the two
   // verifiers agree on each file present, absent, changed and missing, in a
   // package the export path wrote from a Capture built by hand. A changed or
@@ -1132,23 +1558,36 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
 
     it.skipIf(!RUNS)("runs the runbook's step 5 commands over both files", async () => {
       const dir = await engineExport('engine-runbook')
-      const runbook = readFileSync(join(dir, PACKAGE_ROOT_FILES.verifyRunbook), 'utf-8')
-      const step5 = extractRunbookBlocks(runbook).find(
-        ({ section, code }) => section.startsWith('Step 5') && code.includes('.pdfHash')
-      )!
-      const pickEntry = {
-        section: 'test setup',
-        ordinal: 0,
-        code: `line=$(jq -c 'select(.type == "capture" and .captureId == "${ENGINE_ID}")' manifest.jsonl)\n`,
-        placeholders: []
-      }
-      const result = runRunbookBlocks([pickEntry, step5], { cwd: dir })
+      const step5 = step5Block(dir, CONTENT_BLOCK)
+      const result = runRunbookBlocks([pickCapture(ENGINE_ID), step5], { cwd: dir })
       expect(result.ok, `${result.stdout}\n${result.stderr}`).toBe(true)
       expect(result.stdout).toContain('content OK')
-      for (const { path } of FILES) {
-        expect(result.stdout).toContain(`${sha256(readFileSync(join(dir, path)))}  ${path}`)
-      }
+      for (const { check } of FILES) expect(result.stdout).toContain(`${check} OK`)
+      expect(runPlain([pickCapture(ENGINE_ID), step5], dir).status).toBe(0)
     })
+
+    // #1453: these lines once printed a hash beside a "must equal" comment and
+    // compared nothing, so the block passed whatever the file held.
+    for (const { label, check, path } of FILES) {
+      it.skipIf(!RUNS)(`fails the runbook's step 5 block on a changed ${label}`, async () => {
+        const dir = await engineExport(`engine-runbook-${check.replace(/\W/g, '-')}`)
+        const bytes = readFileSync(join(dir, path))
+        bytes[0] ^= 0xff
+        writeFileSync(join(dir, path), bytes)
+        const step5 = step5Block(dir, CONTENT_BLOCK)
+        const mismatch = `${check.toUpperCase()} MISMATCH`
+
+        const result = runRunbookBlocks([pickCapture(ENGINE_ID), step5], { cwd: dir })
+        expect(result.ok, result.stdout).toBe(false)
+        expect(result.failedBlock).toMatch(/\(Step 5/)
+        expect(result.stdout).toContain(mismatch)
+        expect(result.stdout).toContain('content OK')
+
+        const plain = runPlain([pickCapture(ENGINE_ID), step5], dir)
+        expect(plain.status, plain.stdout).not.toBe(0)
+        expect(plain.stdout).toContain(mismatch)
+      })
+    }
 
     // Step 10: a PDF the ingest stored, as a background Recapture hands it over, exported
     // through the real export path.

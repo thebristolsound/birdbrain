@@ -86,19 +86,32 @@ const VERSION = {
 }
 
 describe('LAUNCHED_BROWSER_COMMANDS', () => {
-  it('lists exactly the commands the launcher, attaching and Egress checks send', () => {
+  it('lists exactly the commands the launcher, attaching, Egress checks and Captures send', () => {
     expect([...LAUNCHED_BROWSER_COMMANDS].sort()).toEqual([
       'Browser.close',
       'Browser.getVersion',
       'Browser.setPermission',
       'Network.enable',
+      'Network.getResponseBody',
+      'Network.setCacheDisabled',
+      'Page.captureScreenshot',
+      'Page.captureSnapshot',
       'Page.createIsolatedWorld',
+      'Page.enable',
+      'Page.getFrameTree',
+      'Page.getLayoutMetrics',
+      'Page.printToPDF',
       'Runtime.evaluate',
       'Runtime.runIfWaitingForDebugger',
       'Target.getTargets',
       'Target.setAutoAttach',
       'Target.setDiscoverTargets'
     ])
+  })
+
+  // ADR-0051: a launched record holds no request body, so the engine never asks for one.
+  it('does not list Network.getRequestPostData', () => {
+    expect(LAUNCHED_BROWSER_COMMANDS).not.toContain('Network.getRequestPostData')
   })
 
   it.each(NEVER_SENT)('does not list %s', (method) => {

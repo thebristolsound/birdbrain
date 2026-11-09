@@ -89,14 +89,14 @@ agh() { GH_TOKEN="$BIRDBRAIN_AGENT_GH_TOKEN" gh "$@"; }
   identity whatever credential is offered (#960), so a web cycle fails the identity check and
   stops here. Scheduled fires run on GitHub Actions instead.
 
-`.claude/hooks/session-start.sh` installs `gh` and pins Node 20, but **only on the web** — it
+`.claude/hooks/session-start.sh` installs `gh` and pins Node 24, but **only on the web** — it
 exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
 
-- **On the web**, if `gh` is missing or `node` reports v22, the hook did not run and everything
+- **On the web**, if `gh` is missing or `node` reports anything but v24, the hook did not run and everything
   below is unreliable.
-- **Locally**, nothing pins Node for a non-interactive shell: `.mise.toml` pins 20 but mise
-  does not auto-activate, so `node -v` commonly reports 24, which silently breaks Electron.
-  Check it, and if it is not 20.x, instruct the implementer to prefix every verification
+- **Locally**, nothing pins Node for a non-interactive shell: `.mise.toml` pins 24 but mise
+  does not auto-activate, so `node -v` commonly reports mise's global default instead.
+  Check it, and if it is not 24.x, instruct the implementer to prefix every verification
   command with `mise exec --` (`mise exec -- pnpm lint`, and so on).
 
 ## Session rules
@@ -327,10 +327,15 @@ comments. Classify:
   happening — it returns them as text keyed to the comment or thread ids they answer, and
   **you** post them via the write path (locally `gh api .../issues/<n>/comments -X POST
   --input <file>`, or `.../pulls/<n>/comments/<id>/replies` for an inline thread; on the web
-  `mcp__github__add_issue_comment` or `add_reply_to_pull_request_comment`). Each reply is in the
-  `post-comment` reply shape, `Applied.` with the commit collapsed in a `<details>` block or
-  `Not applied: <one plain sentence>`, and `.claude/skills/post-comment/scripts/check.sh <file>` runs on each file before it is
-  posted. Your read of that text before posting is the editorial pass; a subagent that posts directly has bypassed it,
+  `mcp__github__add_issue_comment` or `add_reply_to_pull_request_comment`). A reply on an
+  inline thread is in the `post-comment` review-reply shape, `Applied.` with the commit
+  collapsed in a `<details>` block or `Not applied: <one plain sentence>`. A pre-pass verdict
+  has no thread, so the replies to its findings go in one PR comment, the `post-comment`
+  keyed-replies shape: a numbered plain line per finding, and inside the `<details>` block
+  one entry per finding headed `**<verdict comment id>-finding-<n>**` (`finding-<n>-and-<m>`
+  when one reply answers two) with its review reply under it. `scripts/review-outcomes.mjs`
+  joins a reply to its finding by that key. `.claude/skills/post-comment/scripts/check.sh
+  <file>` runs on each file before it is posted. Your read of that text before posting is the editorial pass; a subagent that posts directly has bypassed it,
   which is a reportable contract violation even when the content was fine — and it lands under
   the wrong identity, since only the dispatcher holds the machine token. Then run the
   reviewer pre-pass (section 4).
@@ -653,12 +658,14 @@ token so one identity authors every agent PR (ADR-0027). (On the web it is also 
 `docs/agents/github-access.md`.) The implementer pushes its branch — over the git credential
 the checkout carries: the maintainer's SSH login in a local session, the machine account over
 HTTPS on the Actions host (ADR-0026) — and returns the PR
-title, head sha, a path to the PR body it wrote, and the labels it determined are required.
+title, head sha, a path to the PR body it wrote, any screenshot paths, and the labels it
+determined are required.
 **You** open the **draft** PR against `main` and apply the labels via the write path:
 
 - Locally: `agh pr create --draft --base main --head <branch> --title <title> --body-file
-  <path> --label agent-authored --label agent-pr` — **through `agh`, never bare `gh`**, and
-  **apply the labels in the create call, not afterwards.** The `pre-pass-gate` workflow reads
+  <path> --label agent-authored --label agent-pr`. Run it **through `agh`, never bare `gh`**,
+  and **apply the labels in the create call, not afterwards.** Never pass `--attach` to it:
+  screenshots go up after the PR exists, by the route below. The `pre-pass-gate` workflow reads
   labels on the `opened` event; a PR opened unlabelled seeds `agent/pre-pass=success` and
   would then have to be upgraded to `pending`, which is a write that can race the
   dispatcher's own verdict on the same sha.
@@ -693,6 +700,15 @@ PR holding an unreleased slot is recoverable, an unlabelled PR with the slot alr
 is the wave 1 failure. **Then release the claim**: remove `agent-wip` from the issue — the
 `agent-pr` label on the PR is the slot marker from here on. A claim that outlives its
 PR-open is the leftover state section 1 has to clean up.
+
+**Screenshots go up once the PR exists.** When the implementer returned screenshot paths, run
+step 3 of `post-pr-body`'s "Screenshots for visual changes" through `agh` (`agh pr comment`
+with `--attach`, then the REST body write). Before opening, run that skill's
+`scripts/check.sh --screenshots <body-file>`; a visual change without captured PNGs returns to
+the implementer. If an upload fails, leave the PR in draft and report the command and error
+as a blocker, following step 4. Keep capture and upload with the implementer and dispatcher.
+A fix round that returns new paths gets the same steps. The body is ready for review when
+every required image is an uploaded GitHub attachment.
 
 `agent-authored` goes on every agent PR — it records that an agent wrote the diff, and both
 `pre-pass-gate.yml` and `ci.yml`'s draft exemption key on it (#561). `agent-pr` goes on every

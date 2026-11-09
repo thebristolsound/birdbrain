@@ -176,6 +176,7 @@ const COMMANDS = {
   async 'new-case'(name) {
     need()
     await page.evaluate(() => (window.location.hash = '/cases/new'))
+    await page.click('[data-testid="case-start-blank"]', { timeout: 10_000 })
     await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10_000 })
     await page.fill('[data-testid="case-name-input"]', name || `Driver case ${Date.now()}`)
     await page.click('[data-testid="case-create-btn"]')

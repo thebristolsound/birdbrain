@@ -13,11 +13,18 @@ with an empty body. This skill supplies it and then checks the result instead of
 ## Run
 
 ```shell
-.claude/skills/merge-pr/scripts/merge.sh <n>              # you, as the maintainer
+.claude/skills/merge-pr/scripts/merge.sh <n> --admin      # you, as the maintainer (see below)
 .claude/skills/merge-pr/scripts/merge.sh <n> --cli agh    # the dispatcher (ADR-0027)
 .claude/skills/merge-pr/scripts/merge.sh <n> --dry-run    # stop after composing the message
-.claude/skills/merge-pr/scripts/merge.sh <n> --admin      # emergency: merge through the bypass
+.claude/skills/merge-pr/scripts/merge.sh <n> --admin --wait   # also wait out a stale merge-gate
 ```
+
+**Under `gh`, pass `--admin`.** The main-merge-authority ruleset (2026-10-24) has an `update`
+rule on `main` whose bypass covers only the admin role and the machine account, and
+auto-merge exercises no bypass. So the plain call fails with "the base branch policy
+prohibits the merge" on every PR, the `merge` label's auto-merge arms and never fires, and
+the bypass is the maintainer's path until that rule is changed or dropped. The script never
+adds the flag itself, and `agh` refuses it.
 
 `--cli agh` defines `agh` from `BIRDBRAIN_AGENT_GH_TOKEN` and refuses to continue unless it
 authenticates as the machine account.
@@ -39,13 +46,15 @@ authenticates as the machine account.
    human review. A label read that fails refuses the merge rather than reading as "no label."
 5. The `merge-gate` check (ADR-0041) replaces the code-owner review rule, so no author needs
    the bypass. When it is the red check, the script first re-runs the last attempt of every red
-   `merge-gate` run at head, because a pre-pass verdict is a commit status and triggers nothing.
-   `--admin` takes the ruleset bypass for an emergency; the script never chooses it, and `agh`
-   refuses it.
+   completed `merge-gate` run at head, because a pre-pass verdict is a commit status and
+   triggers nothing; a run still in progress is left to finish. Without `--wait` it then
+   refuses, and the caller runs it again once the gate is green. With `--wait [minutes]`
+   (15 by default) it polls those runs itself and re-reads every check once, so the
+   `approved` label or a body edit that left the gate stale costs one call.
 
-The routine maintainer path is the `merge` label, not this script: `.github/workflows/merge-on-label.yml`
-composes the same message with `scripts/compose.mjs` and enables auto-merge as the machine
-account.
+The `merge` label path, `.github/workflows/merge-on-label.yml`, composes the same message with
+`scripts/compose.mjs` and enables auto-merge as the machine account; the ruleset above keeps
+that auto-merge from firing today.
 
 The dispatcher's other conditions (a `success` pre-pass verdict on this sha, slot state, the
 blocking-tier path list) stay the dispatcher's to establish.

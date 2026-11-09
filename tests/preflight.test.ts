@@ -215,16 +215,16 @@ describe('childEnv', () => {
 })
 
 describe('nodeVersionProblem', () => {
-  it('accepts any 20.x', () => {
-    expect(nodeVersionProblem('20.20.2')).toBeNull()
-    expect(nodeVersionProblem('20.19.0')).toBeNull()
+  it('accepts any 24.x', () => {
+    expect(nodeVersionProblem('24.22.1')).toBeNull()
+    expect(nodeVersionProblem('24.0.0')).toBeNull()
   })
 
   it('names the pin and the mise gap on any other major', () => {
-    const problem = nodeVersionProblem('24.17.0')
-    expect(problem).toContain('Node v24.17.0 is not the pinned 20.x')
+    const problem = nodeVersionProblem('20.20.2')
+    expect(problem).toContain('Node v20.20.2 is not the pinned 24.x')
     expect(problem).toContain('mise')
-    expect(nodeVersionProblem('22.0.0')).toContain('not the pinned 20.x')
+    expect(nodeVersionProblem('26.0.0')).toContain('not the pinned 24.x')
   })
 })
 
@@ -329,7 +329,7 @@ process.exit(failed ? 1 : 0)
 
   const run = (overrides: Record<string, string> = {}) =>
     // The parent Vitest process uses Electron's Node. Preflight requires the
-    // repository's Node 20 toolchain, so resolve node from PATH for this CLI test.
+    // repository's Node 24 toolchain, so resolve node from PATH for this CLI test.
     spawnSync('node', [SCRIPT, '--base', 'HEAD'], {
       cwd: repo,
       encoding: 'utf8',

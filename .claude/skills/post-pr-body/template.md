@@ -16,6 +16,21 @@ repository must follow it. The dispatch step copies this section into the squash
 
 </details>
 
+<details>
+<summary>Visual changes</summary>
+
+<!-- Replace the bullet with either "Visual changes: No. <reason>" explaining why the rendered
+result stays the same, or "Visual changes: Yes" followed by a Before/After pair per screen.
+Hidden controls, error notices and changed values are visual changes. For Yes, rename the
+summary to "Screenshots, before and after" and use matching screen names:
+- Before, capture viewer: ![before](/absolute/path/to/before.png)
+- After, capture viewer: ![after](/absolute/path/to/after.png)
+Capture before opening the draft; upload the PNGs and replace paths with GitHub attachment
+links after opening. See "Screenshots for visual changes" in the post-pr-body skill. -->
+- Visual changes:
+
+</details>
+
 ## Evidence-affecting
 
 No
@@ -40,8 +55,9 @@ If Yes, keep this collapsed subsection and fill every field; otherwise delete it
 
 <!-- Paste .preflight/verification.md verbatim below, marker line included, generated at the
 head sha under review. It already wraps the step list in a <details> block under a plain
-summary line. Nothing above this line exceeds 40 top-layer lines; collapsed lines and these
-comments do not count. -->
+summary line. For a PR nobody preflighted locally (dependabot, a human author), paste what
+scripts/verification-from-ci.sh <n> prints instead. Nothing above this line exceeds 40
+top-layer lines; collapsed lines and these comments do not count. -->
 ## Verification
 
 <!-- An agent-written description ends with this line, uncommented and last:

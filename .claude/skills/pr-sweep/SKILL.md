@@ -40,7 +40,9 @@ The machine has 4 cores and every agent runs tests: keep **three agents in fligh
 refill a slot the moment one returns. Order the review lane smallest diff first; hold a
 conflicted PR until the clean ones ahead of it have merged, so it is resolved once.
 
-- **review**: post `agent/pre-pass` `pending` on the head sha, then spawn
+- **review**: post `agent/pre-pass` `pending` on the head
+  (`.claude/skills/pr-sweep/scripts/post-status.sh <n> pending 'Reviewer pre-pass running.'`),
+  then spawn
   `birdbrain-reviewer` with the review prompt in [prompts.md](prompts.md).
 - **fix**: spawn `birdbrain-implementer` with the fix prompt in [prompts.md](prompts.md). When
   it returns, post its replies and body, then send the PR back to **review** as a delta round
@@ -54,14 +56,18 @@ re-reads the review surface itself.
 ## 3. Act on a verdict
 
 Run `.claude/skills/post-comment/scripts/check.sh` on the verdict file, post it with `agh`,
-then set the status (`success` or `failure`, description ≤140 chars naming what is wrong,
-`target_url` the comment).
+then set the status (`.claude/skills/pr-sweep/scripts/post-status.sh <n> success|failure
+'<what is wrong, ≤140 chars>' <comment url>`).
 
 - **Approve**: apply any `## Summary` corrections the reviewer gave before merging, because
   the Summary becomes the squash commit body on `main`. Then merge.
 - **Blockers only in the body, sha unchanged**: fix the body yourself (`gh pr edit
   --body-file`, after `post-pr-body` check), post a short follow-up comment saying so, and
   set `success` on the same sha. No new code round.
+- **No Summary and no Verification** (a dependabot or human body): write the Summary,
+  Changes and Evidence-affecting sections yourself and append the block
+  `.claude/skills/post-pr-body/scripts/verification-from-ci.sh <n>` prints from the
+  required checks at head. No local preflight: CI already ran that loop at this sha.
 - **Code blockers**: post `failure` and move the PR to **fix**.
 
 An agent that surfaces a product question does not block the merge. Put the question to the
@@ -69,9 +75,20 @@ maintainer in plain words and keep going.
 
 ## 4. Merge
 
-Before each merge: required checks green at head (`gh pr checks <n> --required`), `mergeable`
-settled to `MERGEABLE` (it reads `UNKNOWN` for a few seconds after any merge; poll), and a
-`success` pre-pass on head. Then `merge.sh <n>`.
+Before each merge: start `gh pr checks <n> --required --watch --interval 60` as a background
+command and refill agent slots while it runs. When it exits green, confirm `mergeable`
+settled to `MERGEABLE` (it reads `UNKNOWN` for a few seconds after any merge; poll) and a
+`success` pre-pass on head.
+
+An evidence-affecting PR also needs the sign-off merge-gate reads: apply the label at the
+reviewed head with `BIRDBRAIN_MAINTAINER_LABEL_OK=1 gh pr edit <n> --add-label approved`. An
+approving review is refused on the maintainer's own PRs, and the prefix is the label hook's
+path for a session the maintainer invoked.
+
+Then `merge.sh <n> --admin --wait`. The sweep carries the maintainer's authority, so the
+bypass needs no further ask (the plain call is refused by the base branch policy; see the
+`merge-pr` skill), and `--wait` carries the merge-gate re-run that the label or a body edit
+left stale through to the merge in one call.
 
 After every merge, re-read `mergeable` on the rest. A PR that turned `CONFLICTING`:
 
@@ -103,16 +120,19 @@ The sweep is done when both hold:
 
 - `gh pr list --state open` is empty, or every PR left is named in the report with the
   blocker that keeps it off `main`.
-- `main`'s CI run at the final merge commit is green (`gh run watch`). Runs cancelled by a
-  newer push are not failures.
+- `main`'s CI run at the final merge commit is green (`gh run watch`), watched once, there;
+  the runs at intermediate merges are not waited on. Runs cancelled by a newer push are not
+  failures.
 
 Report: what merged, blockers caught and fixed before merge, bodies corrected, issues filed,
 and each open question for the maintainer restated in full.
 
 ## Gotchas
 
-- `gh pr checks <n> --required --watch --interval 60` in a background shell is the CI wait;
-  CI does not run at all on a conflicting PR.
+- CI does not run at all on a conflicting PR.
+- The top layer of a comment or body is plain language: the checks reject "pre-pass",
+  "linter", ADR numbers and inline code there. Write "review", "style check", and the
+  decision in words.
 - A session restart kills background agents. Check each PR's remote head, then resume each
   agent by id with `SendMessage` rather than respawning it.
 - `git branch -D` is blocked by a hook; delete temp branches with `-d` after their commits

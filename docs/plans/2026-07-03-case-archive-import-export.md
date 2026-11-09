@@ -1,7 +1,5 @@
 # Case Archive Import/Export Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Spec:** `docs/specs/2026-07-03-case-archive-import-export-design.md` (on branch `docs/case-archive-design`)
 
 **Goal:** A `.birdbrain` zip archive format that exports a full-fidelity case from one Birdbrain instance and imports it into another, with hash/chain verification and chain-of-custody preservation.
@@ -986,7 +984,7 @@ git commit -m "test(e2e): case archive export/import round-trip"
 ### Task 10: Finish
 
 - [ ] Run everything: `pnpm lint && pnpm test && pnpm build && pnpm test:e2e`
-- [ ] Use superpowers:finishing-a-development-branch — open a PR for `feat/case-archive-import-export` (and a separate one for `docs/case-archive-design` if not already opened). Do not bundle the spec into the feature PR.
+- [ ] Open a PR for `feat/case-archive-import-export` (and a separate one for `docs/case-archive-design` if not already opened). Do not bundle the spec into the feature PR.
 
 ## Self-review notes (already applied)
 

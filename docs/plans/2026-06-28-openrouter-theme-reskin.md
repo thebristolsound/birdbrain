@@ -1,7 +1,5 @@
 # OpenRouter Theme Reskin Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Reskin birdbrain to OpenRouter's flat zinc + `#6467f2` indigo visual language (light + dark), Inter type, 8px/6px radii, and bar-chart accent palette — without changing app structure.
 
 **Architecture:** All color/radius/shadow/font changes flow through the central token system in `src/renderer/styles/globals.css`, so the ~82 components consuming semantic token classes reskin with no edits. Bespoke effects are neutralized in CSS (not deleted). A new `.neu-overlay` class gives floating panels a flat-but-raised look. The bar-chart palette ships as a typed constant consumed by `SourcesBlock`. Verification is build + Playwright/Electron screenshots of both themes.

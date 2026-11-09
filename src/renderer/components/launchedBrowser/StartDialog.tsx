@@ -25,6 +25,7 @@ import {
   egressKindName,
   launchSteps,
   refusalFor,
+  unavailableRefusal,
   type LaunchRefusal,
   type StepProgress
 } from '@renderer/components/launchedBrowser/startDialogModel'
@@ -93,6 +94,7 @@ export function StartDialog() {
 
   // A refusal known before the launch starts. A missing operator name shows in its own row.
   const blocked =
+    unavailableRefusal(status) ??
     busyRefusal(status) ??
     (browsers?.length === 0 ? NO_BROWSER_REFUSAL : null) ??
     (egress?.kind === 'unavailable' ? UNREADABLE_EGRESS_REFUSAL : null)

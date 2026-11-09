@@ -63,7 +63,11 @@ export function normalizeSelection(raw: string): string {
 /** Whether a passage is worth offering an action bar for at all. */
 export function isActionableSelection(raw: string): boolean {
   const text = normalizeSelection(raw)
-  return text.length >= SELECTION_MIN_LENGTH && text.length <= SELECTION_MAX_LENGTH
+  if (text.length < SELECTION_MIN_LENGTH || text.length > SELECTION_MAX_LENGTH) return false
+  // Checked on the derived value rather than per input shape: an empty
+  // pattern is a substring of every capture's text, so a Selector made from
+  // it would match the whole case (#877).
+  return classifySelection(text).value.trim() !== ''
 }
 
 export function classifySelection(raw: string): ClassifiedSelection {
@@ -77,10 +81,13 @@ export function classifySelection(raw: string): ClassifiedSelection {
     // query and no path carries the query into the value otherwise, and a
     // tracking parameter is the one URL rather than the host. Userinfo is a
     // credential, so it goes too. The port stays — `host:8443` is a
-    // different service, not the same host.
+    // different service, not the same host. A fully qualified name's trailing
+    // dot goes, because page text names the host without it. A port with no
+    // host before it derives nothing: `:` alone is in nearly every capture.
     const authority = text.replace(/^https?:\/\//i, '').split(/[/?#]/)[0]
+    const host = authority.slice(authority.lastIndexOf('@') + 1).replace(/\.+(:\d*)?$/, '$1')
     return {
-      value: authority.slice(authority.lastIndexOf('@') + 1),
+      value: /^:\d*$/.test(host) ? '' : host,
       kind: 'domain',
       // A Selector is a case-insensitive substring test over a capture's
       // extracted text (selectorMatch.selectorMatchOutcome), never over its URL,

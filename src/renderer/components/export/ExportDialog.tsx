@@ -350,12 +350,17 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
                     {!workingCopy && (
                       // Evidence Package invariants: always on, never
                       // deselectable — a package without them is not an
-                      // Evidence Package but a Working Copy (#399).
+                      // Evidence Package but a Working Copy (#399). Page
+                      // archives join them: the evidence zip ships every one
+                      // whatever the toggle says (#844), and the pinned
+                      // snapshot promise below needs the report's capture
+                      // modules the toggle would drop (#887).
                       <>
                         {(
                           [
                             ['manifest', 'Manifest — full case chain, never a slice'],
-                            ['certification', 'Certification']
+                            ['certification', 'Certification'],
+                            ['captures', 'Captures (page archives)']
                           ] as const
                         ).map(([key, label]) => (
                           <label key={key} className="flex items-center gap-2 opacity-80">
@@ -374,11 +379,19 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
                             </span>
                           </label>
                         ))}
+                        <p
+                          className="text-[11px] text-text-muted"
+                          data-testid="export-captures-invariant-note"
+                        >
+                          Page archives cannot be left out of a certified package.
+                        </p>
                       </>
                     )}
                     {(
                       [
-                        ['captures', 'Captures (page archives)'],
+                        // The Working Copy zip honours this toggle; the
+                        // evidence class renders it always-on above.
+                        ...(workingCopy ? [['captures', 'Captures (page archives)'] as const] : []),
                         ['screenshots', 'Screenshots'],
                         ['notes', 'Operator notes'],
                         // No verification materials exist in a Working Copy,

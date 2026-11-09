@@ -5,7 +5,7 @@ import { tmpdir } from 'os'
 import { Readable } from 'stream'
 import { createHash } from 'crypto'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
-import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { getCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
 import { getExhibitSearchBuild } from '@main/services/db/searchFieldRepo'
@@ -13,7 +13,7 @@ import { initManifest, verifyManifestChain } from '@main/services/manifest'
 import { createCaptureStore } from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
-import type { CaptureLifecycle } from '@main/services/captureLifecycle'
+import type { CaptureLifecycle, IngestParams } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSigningKey, resetSigningKey } from '@main/services/signingKey'
@@ -265,6 +265,123 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
     })
     expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
     expect(verifyManifestChain(caseDir).valid).toBe(true)
+  })
+
+  // Ruling 4 of 2026-11-05 (docs/plans/2026-10-31-capture-engine-stage-2.md), and the launched
+  // browser's three fields beside it.
+  describe('a source taken under a Persona or in a launched browser', () => {
+    const PERSONA = { id: 'persona-row-id', label: 'Pseudonym A' }
+    const BROWSER = { product: 'Chrome', version: '154.0.8037.97', family: 'chromium' as const }
+
+    async function ingestSource(extra: Partial<IngestParams>): Promise<Capture> {
+      const { capture } = await lifecycle.ingest({
+        caseId,
+        url: 'https://example.com/persona',
+        title: 'Persona',
+        timestamp: '2026-11-05T12:00:00.000Z',
+        stream: Readable.from([Buffer.from(MHTML_BODY)]) as unknown as ReadableStream<Uint8Array>,
+        textContent: TEXT,
+        headers: {},
+        browserVersion: 'Chrome/120',
+        userAgent: 'Mozilla/5.0',
+        httpStatus: 200,
+        operatorId: 'op-source',
+        operatorName: 'Original Operator',
+        toolVersion: '0.1.0',
+        method: 'background',
+        ...extra
+      })
+      return capture
+    }
+
+    async function duplicateOf(id: string): Promise<Capture> {
+      const result = await lifecycle.duplicate(id)
+      if (result.status !== 'duplicated') throw new Error('expected a duplicate')
+      return result.capture
+    }
+
+    function personaColumns(id: string): unknown {
+      return getDb().prepare('SELECT persona_id, persona_label FROM captures WHERE id = ?').get(id)
+    }
+
+    it("signs the source's Persona id and label on the copy's entry, and the row mirrors them", async () => {
+      const persona = await ingestSource({ persona: PERSONA })
+
+      const { id } = await duplicateOf(persona.id)
+
+      const entry = manifestLines().at(-1)!
+      expect(entry).toMatchObject({
+        captureId: id,
+        method: 'duplicate',
+        duplicateOfCaptureId: persona.id,
+        personaId: PERSONA.id,
+        personaLabel: PERSONA.label,
+        schemaVersion: 7
+      })
+      expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
+      expect(personaColumns(id)).toEqual({ persona_id: PERSONA.id, persona_label: PERSONA.label })
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
+      await expect(lifecycle.verify(id)).resolves.toMatchObject({ status: 'verified' })
+    })
+
+    it("takes the Persona from the source's signed entry, never its edited row", async () => {
+      const persona = await ingestSource({ persona: PERSONA })
+      getDb()
+        .prepare('UPDATE captures SET persona_id = ?, persona_label = ? WHERE id = ?')
+        .run('edited-id', 'Edited label', persona.id)
+
+      const { id } = await duplicateOf(persona.id)
+
+      expect(manifestLines().at(-1)).toMatchObject({
+        personaId: PERSONA.id,
+        personaLabel: PERSONA.label
+      })
+      expect(personaColumns(id)).toEqual({ persona_id: PERSONA.id, persona_label: PERSONA.label })
+    })
+
+    it("signs the launched browser's product, version and family on the copy's entry", async () => {
+      const launched = await ingestSource({
+        method: 'launched',
+        browserVersion: BROWSER.version,
+        launchedBrowser: BROWSER
+      })
+
+      const { id } = await duplicateOf(launched.id)
+
+      const entry = manifestLines().at(-1)!
+      expect(entry).toMatchObject({
+        method: 'duplicate',
+        browserProduct: BROWSER.product,
+        browserVersion: BROWSER.version,
+        browserFamily: BROWSER.family,
+        schemaVersion: 7
+      })
+      expect('personaId' in entry).toBe(false)
+      expect('personaLabel' in entry).toBe(false)
+      expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
+      expect(getCapture(id)?.browserVersion).toBe(BROWSER.version)
+      expect(personaColumns(id)).toEqual({ persona_id: null, persona_label: null })
+      await expect(lifecycle.verify(id)).resolves.toMatchObject({ status: 'verified' })
+    })
+
+    it('signs no Persona or browser key for a source with neither, and leaves the columns NULL', async () => {
+      const [sourceEntry] = manifestLines().filter((line) => line.type === 'capture')
+
+      const { id } = await duplicateOf(source.id)
+
+      const entry = manifestLines().at(-1)!
+      for (const key of [
+        'personaId',
+        'personaLabel',
+        'browserProduct',
+        'browserVersion',
+        'browserFamily'
+      ]) {
+        expect(key in entry, key).toBe(false)
+      }
+      expect(entry.schemaVersion).toBe(sourceEntry.schemaVersion)
+      expect(personaColumns(id)).toEqual({ persona_id: null, persona_label: null })
+    })
   })
 
   // D11 of docs/plans/2026-10-10-capture-engine-first-slice.md, on a source

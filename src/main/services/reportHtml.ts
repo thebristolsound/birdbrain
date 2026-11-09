@@ -48,6 +48,7 @@ import type {
   TrustedTime,
   WaybackRef
 } from '@shared/types'
+import { LAUNCHED_CAPTURE_METHODS } from '@shared/types'
 import { ManifestEntrySchema } from '@shared/schemas'
 import type { BoundTls, CaptureInventory, ScrollToLoadRecord } from '@shared/schemas'
 import type { TrustedTimeResult } from '@shared/verify'
@@ -133,7 +134,12 @@ export interface CaptureEngineFacts {
   boundTls?: BoundTls
   boundTlsAbsent?: BoundTlsAbsence
   pdfHash?: string
+  // The entry, or for a Duplicate the entry it copies, was taken in a browser Birdbrain launched:
+  // no Image Source Pinning ran, and the record keeps no body the browser returned as text.
+  launchedBrowser?: true
 }
+
+const LAUNCHED_METHODS: ReadonlySet<string> = new Set(LAUNCHED_CAPTURE_METHODS)
 
 /**
  * One Capture's capture engine fields as its entry records them, and whether
@@ -162,6 +168,31 @@ export function resolveCaptureEngineFacts(
   chainVerified: boolean
 ): Map<string, CaptureEngineEntry> {
   const byCaptureId = new Map<string, CaptureEngineEntry>()
+  const origins = new Map<string, { method?: string; duplicateOf?: string }>()
+  for (const raw of entries) {
+    if (raw.type !== 'capture' || typeof raw.captureId !== 'string') continue
+    const parsed = ManifestEntrySchema.safeParse(raw)
+    if (parsed.success && parsed.data.type === 'capture') {
+      const { method, duplicateOfCaptureId: duplicateOf } = parsed.data
+      origins.set(raw.captureId, { method, duplicateOf })
+    } else {
+      origins.delete(raw.captureId)
+    }
+  }
+  // A Duplicate signs its source's facts under its own method, so the source names the browser.
+  const takenInLaunchedBrowser = (captureId: string): boolean => {
+    const seen = new Set<string>()
+    let id: string | undefined = captureId
+    while (id !== undefined && !seen.has(id)) {
+      seen.add(id)
+      const origin = origins.get(id)
+      if (origin?.method !== 'duplicate') {
+        return origin?.method !== undefined && LAUNCHED_METHODS.has(origin.method)
+      }
+      id = origin.duplicateOf
+    }
+    return false
+  }
   for (const raw of entries) {
     if (raw.type !== 'capture' || typeof raw.captureId !== 'string') continue
     const parsed = ManifestEntrySchema.safeParse(raw)
@@ -176,8 +207,12 @@ export function resolveCaptureEngineFacts(
       if (boundTlsAbsent !== undefined) facts.boundTlsAbsent = boundTlsAbsent
       if (pdfHash !== undefined) facts.pdfHash = pdfHash
     }
-    if (Object.keys(facts).length > 0) byCaptureId.set(raw.captureId, { facts, chainVerified })
-    else byCaptureId.delete(raw.captureId)
+    if (Object.keys(facts).length > 0) {
+      if (takenInLaunchedBrowser(raw.captureId)) facts.launchedBrowser = true
+      byCaptureId.set(raw.captureId, { facts, chainVerified })
+    } else {
+      byCaptureId.delete(raw.captureId)
+    }
   }
   return byCaptureId
 }
@@ -1430,7 +1465,9 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
               unstamped === 1 ? '' : 's'
             } without trusted time</p><p>${unstamped} exhibit${
               unstamped === 1 ? '' : 's'
-            } in this package (${pendingCount} eligible for timestamping,
+            } in this ${
+              isPackagedExport(ctx.options) ? 'package' : 'report'
+            } (${pendingCount} eligible for timestamping,
             ${noneCount} not) carr${unstamped === 1 ? 'ies' : 'y'} no RFC 3161 token. For ${
               unstamped === 1 ? 'it' : 'those'
             }, the recorded time is the operator's local system clock only. The export was not
@@ -1602,8 +1639,9 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   ${
     data.verifications.length > 0
       ? `<p>I generated this report from the Birdbrain case identified on the cover. I have not altered
-  the captures, the manifest or the packaged artefacts, and the counts and digests reproduced here
-  are those produced by the tool at the verification run recorded under “Chain of custody”.</p>`
+  the captures, the manifest or the packaged artefacts, and the integrity results reproduced
+  here are those produced by the tool at the verification run recorded under “Chain of
+  custody”.</p>`
       : `<p>I generated this report from the Birdbrain case identified on the cover. I have not altered
   the captures, the manifest or the packaged artefacts. <strong>No verification was run for this
   export</strong>, so the digests reproduced here are those recorded for each capture rather than
@@ -1892,11 +1930,20 @@ function captureEngineBlocks(engine: CaptureEngineEntry | undefined): string {
     are not reported here.</p>
   </div>`
   }
-  const { inventory, scrollToLoad, transactionRecordHash, boundTls, boundTlsAbsent, pdfHash } =
-    engine.facts
+  const {
+    inventory,
+    scrollToLoad,
+    transactionRecordHash,
+    boundTls,
+    boundTlsAbsent,
+    pdfHash,
+    launchedBrowser = false
+  } = engine.facts
   return [
-    inventory ? inventoryBlock(inventory, transactionRecordHash, pdfHash) : '',
-    inventory?.transactionRecord.present ? transactionRecordBlock(inventory.transactionRecord) : '',
+    inventory ? inventoryBlock(inventory, transactionRecordHash, pdfHash, launchedBrowser) : '',
+    inventory?.transactionRecord.present
+      ? transactionRecordBlock(inventory.transactionRecord, launchedBrowser)
+      : '',
     scrollToLoad ? scrollToLoadBlock(scrollToLoad) : '',
     boundTls ? boundTlsBlock(boundTls) : '',
     boundTlsAbsent
@@ -1915,21 +1962,29 @@ function yesNo(value: boolean): string {
 function inventoryBlock(
   inventory: CaptureInventory,
   transactionRecordHash: string | undefined,
-  pdfHash: string | undefined
+  pdfHash: string | undefined,
+  launchedBrowser: boolean
 ): string {
   const { mhtml, screenshot, transactionRecord, pdf } = inventory
   const digest = (hash: string | undefined): string =>
     hash ? `; the entry anchors it by SHA-256 <span class="mono break">${esc(hash)}</span>` : ''
-  const items = [
-    `<strong>Page archive (MHTML):</strong> taken. ${mhtml.pinnedImages} image${
-      mhtml.pinnedImages === 1 ? ' was' : 's were'
-    } offered as a set of sources and pinned to the source the page displayed before the screenshot and the save, and ${
+  const pageArchive = launchedBrowser
+    ? `<strong>Page archive (MHTML):</strong> taken. No Image Source Pinning runs for a capture
+    taken in a browser Birdbrain launched, so no image was pinned before the screenshot or the
+    save; the entry's two pinning counts, ${mhtml.pinnedImages} and ${
       mhtml.pinnedImagesNotLoaded
-    } of them were still loading, or had failed to load, just before the save. The counts cover
+    }, are not the result of a pin.`
+    : `<strong>Page archive (MHTML):</strong> taken. ${mhtml.pinnedImages} image${
+        mhtml.pinnedImages === 1 ? ' was' : 's were'
+      } offered as a set of sources and pinned to the source the page displayed before the screenshot and the save, and ${
+        mhtml.pinnedImagesNotLoaded
+      } of them were still loading, or had failed to load, just before the save. The counts cover
     only images in the page's own document, outside frames, shadow roots and
     <code>picture</code> elements, that had finished loading and displayed an image before the
     pin; an image still loading when the wait before the pin ended, one that failed to load, and
-    one shown from a <code>blob:</code> address were left as they were and are not counted.`,
+    one shown from a <code>blob:</code> address were left as they were and are not counted.`
+  const items = [
+    pageArchive,
     `<strong>Screenshot:</strong> taken, ${screenshot.width} × ${screenshot.height} pixels, of a
     content area of ${screenshot.contentWidth} × ${screenshot.contentHeight} CSS pixels. Scaled
     down: ${yesNo(screenshot.scaled)}. Cut short of the content height: ${yesNo(
@@ -1961,7 +2016,8 @@ function optionalCount(label: string, value: number | undefined): Array<[string,
 }
 
 function transactionRecordBlock(
-  record: Extract<CaptureInventory['transactionRecord'], { present: true }>
+  record: Extract<CaptureInventory['transactionRecord'], { present: true }>,
+  launchedBrowser: boolean
 ): string {
   const { servedByServiceWorker, requestBodiesWithheld, httpCacheDisabled } = record
   const counts: Array<[string, number]> = [
@@ -1973,7 +2029,9 @@ function transactionRecordBlock(
     ['Still in flight when collection stopped, recorded as a request only', record.inFlight],
     ['Finished with no response, recorded as a request only', record.finishedWithoutResponse],
     [
-      'Responses recorded without their body, which was over the size budget or which the browser did not return',
+      launchedBrowser
+        ? 'Responses recorded without their body: every body the launched browser returned as text, which the capture engine does not keep (rulings of 2026-10-17 and 2026-10-26 on durable messages and character sets), and any body over the size budget or not returned by the browser'
+        : 'Responses recorded without their body, which was over the size budget or which the browser did not return',
       record.bodiesOmitted
     ],
     ['Requests whose body the browser did not hand over in full', record.incompleteRequestBodies],

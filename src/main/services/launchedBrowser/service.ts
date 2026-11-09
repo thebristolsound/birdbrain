@@ -18,6 +18,13 @@ import {
   type LaunchHooks,
   type LaunchRequest
 } from '@main/services/launchedBrowser/launcher'
+import {
+  createLaunchedCaptures,
+  type CaptureRequest,
+  type LaunchedCaptures,
+  type LaunchedCapturesDeps
+} from '@main/services/launchedBrowser/captures'
+import { pickShortcutTab } from '@main/services/launchedBrowser/tabPicking'
 
 // One launched browser at a time, inside a Capture Session (decisions D10 and D20). A launch
 // needs an operator name and an Active Case, checks the Egress proxy before the browser starts,
@@ -44,7 +51,28 @@ export interface LaunchedBrowserServiceDeps {
   subscribeEgressChange?: (listener: () => void) => () => void
   emitStatus?: (status: LaunchedBrowserStatus) => void
   log?: Pick<Logger, 'info' | 'warn' | 'error'>
+  // Clicked Captures (#1832). Without it the browser launches and records nothing.
+  captures?: Pick<LaunchedCapturesDeps, 'sink' | 'birdbrainVersion' | 'citationOf' | 'timings'> &
+    Partial<Pick<LaunchedCapturesDeps, 'capture'>>
+  platform?: NodeJS.Platform
+  // Electron's globalShortcut, injected so the service stays testable. `register` answers
+  // whether Electron accepted the accelerator; a desktop can still drop it silently (P17).
+  shortcut?: {
+    register: (accelerator: string, onPress: () => void) => boolean
+    unregister: (accelerator: string) => void
+  }
+  // Asks the renderer to open the tab picker, when the shortcut finds more than one tab or none.
+  emitPickTab?: () => void
 }
+
+// The capture shortcut. Microsoft Edge binds Ctrl+Shift+S (the mock's note), and the probe
+// registered this accelerator under X11 (P17).
+export const CAPTURE_SHORTCUT = 'CommandOrControl+Shift+F9'
+
+// The maintainer's ruling of 2026-11-05 on P7: no launched browser, and so no launched Capture,
+// on macOS until a macOS run and the known-answer validation pass there.
+export const MACOS_UNAVAILABLE =
+  'The launched browser is not available on macOS yet: Birdbrain has not validated it there.'
 
 export interface LaunchedBrowserService {
   status: () => LaunchedBrowserStatus
@@ -59,6 +87,13 @@ export interface LaunchedBrowserService {
   sessionEnded: () => void
   // SIGKILL with nothing to await, for quitting: Electron does not await before-quit.
   killForQuit: () => void
+  // A clicked Capture of one tab (#1832). Resolves with the status that holds the progress the
+  // panel shows, whatever became of the Capture; rejects only when no browser is open or the
+  // platform offers no launched browser.
+  capture: (targetId: string, request: CaptureRequest) => Promise<LaunchedBrowserStatus>
+  // What the capture shortcut does: capture the one tab that is visible and focused, or ask for
+  // the tab picker.
+  shortcutPressed: () => Promise<void>
   dispose: () => void
 }
 
@@ -75,6 +110,8 @@ interface Attempt {
   notice: LaunchedBrowserNotice | undefined
   // Settles when the launch has resolved or failed.
   settled: Promise<void>
+  captures: LaunchedCaptures | null
+  shortcutRegistered: boolean
 }
 
 const BUSY: Readonly<Record<'starting' | 'open' | 'closing', string>> = {
@@ -107,10 +144,17 @@ export function createLaunchedBrowserService(
     prepareEgress = prepareEgressChecks,
     subscribeEgressChange = onEgressChange,
     emitStatus,
-    log = logger
+    log = logger,
+    platform = process.platform,
+    shortcut,
+    emitPickTab
   } = deps
+  const unavailable = platform === 'darwin' ? MACOS_UNAVAILABLE : undefined
 
-  let current: LaunchedBrowserStatus = { state: 'none' }
+  // Where no launch starts, the status never leaves this one.
+  let current: LaunchedBrowserStatus = unavailable
+    ? { state: 'none', launchUnavailable: unavailable }
+    : { state: 'none' }
   let active: Attempt | null = null
 
   function setStatus(next: LaunchedBrowserStatus): void {
@@ -118,10 +162,39 @@ export function createLaunchedBrowserService(
     emitStatus?.(next)
   }
 
+  // The summary with each tab's recording flags and the last Capture's progress.
+  function summaryOf(attempt: Attempt): LaunchedBrowserSummary {
+    const { summary, captures, shortcutRegistered } = attempt
+    const progress = captures?.progress()
+    return {
+      ...summary,
+      tabs: captures ? captures.decorate(summary.tabs) : summary.tabs,
+      ...(progress ? { capture: progress } : {}),
+      ...(unavailable ? { captureUnavailable: unavailable } : {}),
+      ...(captures && !unavailable && summary.version !== null
+        ? {
+            shortcut: {
+              accelerator: CAPTURE_SHORTCUT,
+              state: shortcutRegistered ? ('unknown' as const) : ('failed' as const)
+            }
+          }
+        : {})
+    }
+  }
+
   function show(attempt: Attempt, state: 'starting' | 'open' | 'closing'): void {
     if (active !== attempt) return
-    const { summary: browser, step } = attempt
+    const { step } = attempt
+    const browser = summaryOf(attempt)
     setStatus(state === 'starting' ? { state, browser, step } : { state, browser })
+  }
+
+  function stopCaptures(attempt: Attempt): void {
+    if (attempt.shortcutRegistered) {
+      shortcut?.unregister(CAPTURE_SHORTCUT)
+      attempt.shortcutRegistered = false
+    }
+    attempt.captures?.dispose()
   }
 
   function reach(attempt: Attempt, step: LaunchedBrowserStep): void {
@@ -133,6 +206,7 @@ export function createLaunchedBrowserService(
   // The attempt gives up the slot and the pin. `closed` keeps its summary for the panel.
   function release(attempt: Attempt, next: LaunchedBrowserStatus): void {
     if (active !== attempt) return
+    stopCaptures(attempt)
     active = null
     session.unpinActiveCase()
     setStatus(next)
@@ -233,6 +307,17 @@ export function createLaunchedBrowserService(
   ): Promise<LaunchedBrowserStatus> {
     const { label } = found
     const { caseId } = attempt.summary
+    const refresh = (): void => {
+      if (current.state === 'starting' || current.state === 'open') show(attempt, current.state)
+    }
+    if (deps.captures) {
+      attempt.captures = createLaunchedCaptures({
+        ...deps.captures,
+        activeCaseId: () => session.snapshot().activeCaseId,
+        onChange: refresh,
+        log
+      })
+    }
     const hooks: LaunchHooks = {
       onExtensionWarning: (extensionId) => {
         const { extensionWarnings } = attempt.summary
@@ -256,6 +341,15 @@ export function createLaunchedBrowserService(
     try {
       guard = await prepareEgress(egress, label)
       reach(attempt, 'browser')
+      const { captures } = attempt
+      if (captures) {
+        captures.setEgress(guard.egress)
+        const guardSession = guard.hooks.onRecordedSession
+        hooks.onRecordedSession = (cdpSession, target, recording) => {
+          guardSession?.(cdpSession, target, recording)
+          captures.onRecordedSession(cdpSession, target, recording)
+        }
+      }
       const { checkFirstTab } = guard.hooks
       const firstTab: LaunchHooks = checkFirstTab
         ? {
@@ -308,6 +402,18 @@ export function createLaunchedBrowserService(
     } catch (error) {
       log.warn('launchedBrowser', 'launchedBrowser.version_save_failed', undefined, error)
     }
+    if (attempt.captures) {
+      attempt.captures.attach(launched.client, launched.identity, launched.firstTab)
+      if (!unavailable && shortcut) {
+        let registered = false
+        try {
+          registered = shortcut.register(CAPTURE_SHORTCUT, () => void shortcutPressed())
+        } catch (error) {
+          log.warn('launchedBrowser', 'launchedBrowser.shortcut_failed', undefined, error)
+        }
+        attempt.shortcutRegistered = registered
+      }
+    }
     guard.enforce(launched, (error) => {
       const unwatched = (error as { code?: unknown }).code === 'EGRESS_UNWATCHED'
       log.warn(
@@ -338,6 +444,7 @@ export function createLaunchedBrowserService(
   }
 
   async function launchOne(found: LaunchableBrowser): Promise<LaunchedBrowserStatus> {
+    if (unavailable) throw codedError(unavailable, 'LAUNCHED_BROWSER_UNAVAILABLE')
     if (current.state === 'starting' || current.state === 'open' || current.state === 'closing') {
       throw codedError(
         `Birdbrain runs one launched browser at a time, and ${current.browser.label} is ` +
@@ -379,6 +486,8 @@ export function createLaunchedBrowserService(
       browser: null,
       closing: null,
       notice: undefined,
+      captures: null,
+      shortcutRegistered: false,
       settled: new Promise<void>((resolve) => {
         settle = resolve
       })
@@ -391,6 +500,32 @@ export function createLaunchedBrowserService(
     } finally {
       settle()
     }
+  }
+
+  async function captureTabOf(
+    targetId: string,
+    request: CaptureRequest
+  ): Promise<LaunchedBrowserStatus> {
+    const attempt = active
+    if (unavailable) {
+      throw codedError(unavailable, 'LAUNCHED_CAPTURE_UNAVAILABLE')
+    }
+    if (!attempt || current.state !== 'open' || !attempt.captures) {
+      throw codedError('No launched browser is open.', 'BROWSER_NOT_OPEN')
+    }
+    await attempt.captures.capture(targetId, request)
+    return current
+  }
+
+  async function shortcutPressed(): Promise<void> {
+    const attempt = active
+    if (!attempt?.captures || current.state !== 'open' || unavailable) return
+    const choice = pickShortcutTab(await attempt.captures.focusStates())
+    if ('pick' in choice) {
+      emitPickTab?.()
+      return
+    }
+    await attempt.captures.capture(choice.capture, { scrollToLoad: false })
   }
 
   const unsubscribe = subscribeEgressChange(egressChanged)
@@ -409,6 +544,8 @@ export function createLaunchedBrowserService(
       if (attempt && !attempt.browser) abort(attempt, 'cancel')
     },
     sessionEnded,
+    capture: captureTabOf,
+    shortcutPressed,
     killForQuit: () => {
       const attempt = active
       if (attempt?.browser) attempt.browser.kill()

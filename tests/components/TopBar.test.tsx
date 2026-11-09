@@ -165,7 +165,26 @@ describe('the breadcrumb chip', () => {
       expect(screen.getByTestId('topbar-case-name').textContent).toContain('Operation Kestrel')
     )
     expect(screen.queryByTestId('topbar-member-code')).toBeNull()
-    expect(screen.getByTestId('topbar-case-name').title).toMatch(/^Switch case \(.+\)$/)
+    expect(screen.getByTestId('topbar-case-name').title).toMatch(
+      /^Operation Kestrel · Switch case \(.+\)$/
+    )
+  })
+})
+
+// Design review of 2026-11-04: at 1,200 pixels the Case name had shortened to "F.". jsdom has no
+// layout, so e2e/topbar-layout.spec.ts measures the name against the search at each width.
+describe('the breadcrumb case name', () => {
+  it("shows the open Case's name", async () => {
+    renderAt('/cases/case1/overview')
+    const name = await screen.findByTestId('topbar-case-name-text')
+    await waitFor(() => expect(name.textContent).toBe('Operation Kestrel'))
+  })
+
+  it('carries the full name in the tooltip for when it is hidden', async () => {
+    renderAt('/cases/case1/overview')
+    await waitFor(() =>
+      expect(screen.getByTestId('topbar-case-name').title).toMatch(/^Operation Kestrel · /)
+    )
   })
 })
 
@@ -342,5 +361,32 @@ describe('the Capture Session button', () => {
     const mark = screen.getByTestId('topbar-rec')
     expect(mark.textContent).toContain('Recording')
     expect(mark.textContent).toContain('extension')
+  })
+
+  it('leaves a notice to the Capture Session button once no session runs', async () => {
+    useAppStore.setState({ sessionActive: false, dismissedLaunchNotice: null })
+    bridgeWith({
+      state: 'none',
+      notice: { code: 'EGRESS_BYPASS', message: 'A response did not come through…' }
+    })
+    renderAt('/')
+    fireEvent.click(await screen.findByTestId('topbar-capture-session'))
+    const popover = await screen.findByRole('dialog', { name: 'Capture Session' })
+    expect(popover.textContent).toContain('The Capture Session ended.')
+    expect(screen.queryByTestId('topbar-rec')).toBeNull()
+  })
+
+  it('leaves a notice to the Capture Session button in Settings once no session runs', async () => {
+    useAppStore.setState({ sessionActive: false, dismissedLaunchNotice: null })
+    bridgeWith({
+      state: 'none',
+      notice: { code: 'EGRESS_BYPASS', message: 'A response did not come through…' }
+    })
+    renderAt('/settings')
+    fireEvent.click(await screen.findByTestId('topbar-capture-session'))
+    const popover = await screen.findByRole('dialog', { name: 'Capture Session' })
+    expect(popover.textContent).toContain('The Capture Session ended.')
+    expect(screen.queryByTestId('topbar-rec')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Open\b/ })).toBeNull()
   })
 })

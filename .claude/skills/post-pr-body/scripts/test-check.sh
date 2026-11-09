@@ -4,6 +4,25 @@ set -u
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 check="$here/check.sh"
 fx="$here/fixtures"
+hook_fx="$(mktemp -d)"
+trap 'rm -rf "$hook_fx"' EXIT
+# Historical fixtures also exercise merge compatibility. Agent writes add the new declaration.
+node - "$fx" "$hook_fx" <<'JS'
+const { readdirSync, readFileSync, writeFileSync } = require('node:fs')
+const { join } = require('node:path')
+for (const file of readdirSync(process.argv[2])) {
+  let body = readFileSync(join(process.argv[2], file), 'utf8')
+  if (file.startsWith('pass-')) {
+    const declare = (s) => s.replace('</details>', '- Visual changes: No. Changes only backend behavior.\n\n</details>')
+    if (file.endsWith('.json')) {
+      const payload = JSON.parse(body)
+      payload.body = declare(payload.body)
+      body = JSON.stringify(payload)
+    } else body = declare(body)
+  }
+  writeFileSync(join(process.argv[3], file), body)
+}
+JS
 fails=0
 
 expect() {
@@ -18,7 +37,7 @@ expect() {
 
 hook() {
   # $1 command, $2 agent_type (default: the bound agent; "" for an interactive session)
-  node -e 'const a=process.argv[3]; process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:process.argv[1],...(a?{agent_type:a}:{}),tool_input:{command:process.argv[2]}}))' "$fx" "$1" "${2-birdbrain-implementer}" \
+  node -e 'const a=process.argv[3]; process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:process.argv[1],...(a?{agent_type:a}:{}),tool_input:{command:process.argv[2]}}))' "$hook_fx" "$1" "${2-birdbrain-implementer}" \
     | "$check" >/dev/null 2>&1
   echo $?
 }
@@ -40,6 +59,7 @@ printf '%s' "$out" | grep -q 'lines above ## Verification' && echo "ok   1117 tr
 printf '%s' "$out" | grep -q 'sections must be exactly' && echo "ok   1117 trips the section rule" || { echo "FAIL 1117 sections"; fails=$((fails + 1)); }
 
 expect 0 "$(hook "gh pr view 12")" "hook ignores a read"
+expect 2 "$(hook "gh pr create --body-file '$fx/pass-filled.md'")" "hook requires a visual-change declaration on new writes"
 expect 0 "$(hook "gh pr edit 12 --add-label agent-authored")" "hook allows an edit with no body"
 expect 0 "$(hook "gh pr create --draft --base main --title 't' --body-file pass-filled.md --label agent-authored")" "hook allows a passing body file"
 expect 0 "$(hook "agh pr create --draft --body-file=pass-filled.md")" "hook allows agh with --body-file="

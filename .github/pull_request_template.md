@@ -16,6 +16,21 @@ repository must follow it. The dispatch step copies this section into the squash
 
 </details>
 
+<details>
+<summary>Visual changes</summary>
+
+<!-- Replace the bullet with either "Visual changes: No. <reason>" explaining why the rendered
+result stays the same, or "Visual changes: Yes" followed by a Before/After pair per screen.
+Hidden controls, error notices and changed values are visual changes. For Yes, rename the
+summary to "Screenshots, before and after" and use matching screen names:
+- Before, capture viewer: ![before](/absolute/path/to/before.png)
+- After, capture viewer: ![after](/absolute/path/to/after.png)
+Capture before opening the draft; upload the PNGs and replace paths with GitHub attachment
+links after opening. See "Screenshots for visual changes" in the post-pr-body skill. -->
+- Visual changes:
+
+</details>
+
 ## Evidence-affecting
 
 No

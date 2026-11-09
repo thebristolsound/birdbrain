@@ -1,7 +1,5 @@
 # Wayback Machine Corroboration Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Add an **Archive** tab to the capture viewer that looks up the captured URL in the Internet Archive Wayback Machine, shows a timeline with the snapshot closest to the capture timestamp highlighted, opens snapshots externally, and lets the user pin snapshot references to the capture.
 
 **Architecture:** A main-process service (`waybackMachine.ts`) queries the Wayback **CDX API** (outbound HTTP must run in main — archive.org sends no CORS headers, and this matches `timestamp.ts`/`tlsCertChain.ts`). Pinned references persist in a new `capture_archive_refs` table (migration v21). A new IPC `archive` domain wires service + DB to a React-Query-backed `ArchiveTab`. This is **corroboration only** — it never touches the capture's hash chain (same stance as the TLS cert-chain feature, #123).

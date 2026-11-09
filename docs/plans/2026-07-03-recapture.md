@@ -1,7 +1,5 @@
 # Recapture Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Background capture of URLs (recapture of an existing capture, or pasted URLs) via a hidden Electron BrowserWindow, producing a full MHTML capture + whole-page screenshot through the existing forensic pipeline.
 
 **Architecture:** A new main-process `recapture` service owns a serial in-memory queue. Each job renders the URL in a locked-down hidden `BrowserWindow` (injectable `renderPage` seam), then feeds the result into the existing `captureLifecycle.ingest` — hashing, manifest chain, TSA stamping, TLS corroboration all unchanged. New provenance fields (`method`, `supersedesCaptureId`) flow through DB migration v23 and the manifest entry with the established omit-when-absent grandfathering convention. UI adds a Recapture action, an Add-URLs box, and supersedes link chips; progress rides the existing capture-activity events.

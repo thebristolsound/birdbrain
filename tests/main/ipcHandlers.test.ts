@@ -569,6 +569,8 @@ describe('ipcHandlers — launched browser (#1831)', () => {
       cancelLaunch: vi.fn(),
       sessionEnded: vi.fn(),
       killForQuit: vi.fn(),
+      capture: vi.fn(async () => OPEN),
+      shortcutPressed: vi.fn(async () => {}),
       dispose: vi.fn(),
       ...overrides
     }
@@ -737,6 +739,34 @@ describe('ipcHandlers — launched browser (#1831)', () => {
       state: 'none'
     })
     expect(service.endCaptureSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('takes a clicked Capture of the named tab with only a true Scroll-to-load choice (#1832)', async () => {
+    const service = fakeService()
+    register(service)
+    expect(
+      expectOk(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_CAPTURE, 't1', { scrollToLoad: true }))
+    ).toEqual(OPEN)
+    await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_CAPTURE, 't1', { scrollToLoad: 'yes' })
+    expect(service.capture).toHaveBeenNthCalledWith(1, 't1', { scrollToLoad: true })
+    expect(service.capture).toHaveBeenNthCalledWith(2, 't1', { scrollToLoad: false })
+  })
+
+  it('refuses a Capture that names no tab, and passes on the service refusal and its code', async () => {
+    const unavailable = Object.assign(new Error('Not on macOS yet.'), {
+      code: 'LAUNCHED_CAPTURE_UNAVAILABLE'
+    })
+    const service = fakeService({ capture: vi.fn(async () => Promise.reject(unavailable)) })
+    register(service)
+    expect(refusal(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_CAPTURE, '', {}))).toMatchObject({
+      ok: false,
+      code: 'BAD_REQUEST'
+    })
+    expect(refusal(await invoke(IPC_CHANNELS.LAUNCHED_BROWSER_CAPTURE, 't1', {}))).toEqual({
+      ok: false,
+      error: 'Not on macOS yet.',
+      code: 'LAUNCHED_CAPTURE_UNAVAILABLE'
+    })
   })
 
   it('cancels a launch that is starting and returns the status', async () => {
@@ -4240,7 +4270,7 @@ describe('ipcHandlers — diagnostics logging', () => {
     expect(result).toBeNull()
   })
 
-  it('diagnostics:lastSession surfaces an unclean prior session recorded in the log dir', async () => {
+  it('diagnostics:lastSession surfaces a crashed prior session recorded in the log dir', async () => {
     // The log dir is created lazily on first flush, not by initLogger itself —
     // write and flush an entry first so it exists to hold sessions.json.
     await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'info', code: 'query.failed' })
@@ -4253,7 +4283,8 @@ describe('ipcHandlers — diagnostics logging', () => {
       version: '1.0.0',
       platform: 'win32',
       installFormat: 'nsis',
-      cleanExit: false
+      cleanExit: false,
+      crashed: true
     }
     writeFileSync(join(getLogDir(), 'sessions.json'), JSON.stringify([record]))
 

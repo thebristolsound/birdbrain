@@ -24,7 +24,6 @@ const AGENT_TOOL_DIRS = [
   '.sandcastle',
   '.serena',
   '.specify',
-  '.superpowers',
   '.zed'
 ]
 

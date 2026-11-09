@@ -105,12 +105,36 @@ export const BROWSER_FAMILIES = [
 ] as const
 export type BrowserFamily = (typeof BROWSER_FAMILIES)[number]
 
+// Why the panel cannot capture a tab (#1832): it is in a private window, a browser context the
+// engine never records (spec, "Tabs, windows, and browser contexts"); its address is not `http`
+// or `https`; or its renderer crashed and it has not loaded again.
+export const LAUNCHED_TAB_REFUSALS = ['private', 'not-http', 'crashed'] as const
+export type LaunchedTabRefusal = (typeof LAUNCHED_TAB_REFUSALS)[number]
+
 // A tab in the launched browser, as the browser reports it: a page target and no frame, worker
-// or prerendered page.
+// or prerendered page. `firstRequest` is whether the engine recorded the tab's committed page
+// from its document request, so a Capture of it carries a Transaction Record; absent before the
+// engine has a recording for the tab.
 export interface LaunchedBrowserTab {
   targetId: string
   title: string
   url: string
+  firstRequest?: boolean
+  refusal?: LaunchedTabRefusal
+}
+
+// The last clicked Capture in the launched browser, as the panel shows it (`1l`).
+export type LaunchedCaptureProgress =
+  | { state: 'capturing'; targetId: string; title: string }
+  | { state: 'captured'; targetId: string; captureId: string; citation: string }
+  | { state: 'abandoned'; targetId: string }
+  | { state: 'refused' | 'failed'; targetId: string; message: string }
+
+// The capture shortcut (#1832, P17). Birdbrain cannot tell whether a desktop delivers it, so the
+// panel never shows it as working: `unknown` once registered, `failed` when Electron refused it.
+export interface LaunchedCaptureShortcut {
+  accelerator: string
+  state: 'unknown' | 'failed'
 }
 
 // The launched browser as the Capture Session panel shows it (#1831). `closed` is a browser that
@@ -129,6 +153,11 @@ export interface LaunchedBrowserSummary {
   sessionStartedAt: number | null
   // The browser's tabs in the order it opened them; empty once it has closed.
   tabs: LaunchedBrowserTab[]
+  // Clicked Captures (#1832). `captureUnavailable` says why this platform offers none: macOS waits
+  // for its pipe measurement and known-answer validation (maintainer ruling, 2026-11-05).
+  capture?: LaunchedCaptureProgress
+  captureUnavailable?: string
+  shortcut?: LaunchedCaptureShortcut
 }
 
 // What the Operator is told about how the last launched browser closed, when Birdbrain ended its
@@ -142,8 +171,10 @@ export interface LaunchedBrowserNotice {
 // starting the browser until its first tab is found, and the checks on that tab (not Direct).
 export type LaunchedBrowserStep = 'proxy' | 'browser' | 'first-tab'
 
+// `launchUnavailable` says why this platform offers no launch: macOS waits for a run there and
+// the known-answer validation (maintainer ruling, 2026-11-05).
 export type LaunchedBrowserStatus =
-  | { state: 'none'; notice?: LaunchedBrowserNotice }
+  | { state: 'none'; notice?: LaunchedBrowserNotice; launchUnavailable?: string }
   | { state: 'starting'; browser: LaunchedBrowserSummary; step: LaunchedBrowserStep }
   | { state: 'open' | 'closing' | 'closed'; browser: LaunchedBrowserSummary }
 
@@ -592,9 +623,10 @@ export interface PersonaImportResult {
   importedAt: string
 }
 
-// Whether the OS key `safeStorage.isEncryptionAvailable()` reports on
-// protects the partition's cookie store (#414). False means the import UI
-// warns and requires acknowledgement before loading anything.
+// Whether `safeStorage.isEncryptionAvailable()` reports an OS key (#414). It
+// does not protect the partition's cookie store, which the build writes
+// unencrypted either way (ADR-0030). False means the import UI requires
+// acknowledgement before loading anything.
 export interface PersonaStorageState {
   encryptionAvailable: boolean
 }
@@ -827,6 +859,9 @@ export interface UnreconciledDeletionFinding {
   // #580's optional reason field: distinguishes a self-test cleanup from an
   // operator deletion. Absent on entries that carried none.
   reason?: string
+  // The scan covers archived cases (#670). The recovery runs from the case, and
+  // the case list leaves archived cases out, so the panel says so.
+  caseArchived: boolean
 }
 
 // A case the scan could not make the "chain valid" claim over, so it reports
@@ -1068,6 +1103,11 @@ export const LOG_CODES = [
   // over the remaining Cases, so this line is the only record that a Case did
   // not get its numbers or its anchored thumbnails.
   'exhibits.backfill_failed',
+  // An imported row whose path the startup repair (#1610) could not point at
+  // a file: none or several carry its id, or the directory could not be read.
+  // The row keeps the bare Case id as its path and is retried next launch.
+  'exhibits.path_unrepaired',
+  'staging.path_unrepaired',
   // A Staging Pool commit (#1148) whose manifest append or row insert threw:
   // the entry was rolled back and the file returned to the pool, so this line
   // is the only record that the operator's commit did not land.
@@ -1134,7 +1174,12 @@ export const LOG_CODES = [
   'launchedBrowser.version_save_failed',
   'launchedBrowser.profiles_swept',
   'launchedBrowser.profile_sweep_failed',
-  'launchedBrowser.leftover_running'
+  'launchedBrowser.leftover_running',
+  // A clicked Capture (#1832) that failed, or one whose Transaction Record or PDF failed while the
+  // Capture stored.
+  'launchedBrowser.capture_failed',
+  'launchedBrowser.capture_part_failed',
+  'launchedBrowser.shortcut_failed'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 
@@ -1241,6 +1286,9 @@ export interface SessionRecord {
   platform: string
   installFormat: string
   cleanExit: boolean
+  // Set when Birdbrain recorded its own fatal error on the way out. Only these sessions raise the
+  // crash prompt: an unclean exit without it is an outside kill (End task, kill -9, shutdown).
+  crashed?: boolean
   // Set once the crash prompt has been shown, so it is offered exactly once.
   acknowledged?: boolean
 }
@@ -1547,7 +1595,8 @@ export interface ExtractedDataSearchResult {
   sourceUrls: string[]
 }
 
-export type CaptureSource = 'auto' | 'manual' | 'selector' | 'recapture'
+// 'launched' = a clicked Capture in the browser Birdbrain launched (#1832).
+export type CaptureSource = 'auto' | 'manual' | 'selector' | 'recapture' | 'launched'
 
 export interface CaptureEvent {
   type: 'received' | 'stored' | 'failed' | 'skipped'

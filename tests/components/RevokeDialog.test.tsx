@@ -91,8 +91,8 @@ describe('RevokeDialog', () => {
     )
     expect(
       screen.getByText(
-        'Recorded in your Manifest as member-revoke. Cannot be undone; they would need a new ' +
-          'invite.'
+        'Recorded in your Manifest as member-revoke. Cannot be undone; their installation ' +
+          'cannot rejoin this Case, even with a new invite.'
       )
     ).toBeTruthy()
   })

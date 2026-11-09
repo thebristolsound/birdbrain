@@ -69,6 +69,10 @@ export function TopBar() {
   })
   const self = roster?.members.find((m) => m.installationId === roster.installationId) ?? null
   const switchTitle = `Switch case (${accelerator('K')})`
+  // The name can hide on a narrow window, so the tooltip carries it in full.
+  const crumbTitle = [activeCase?.name, switchTitle, self && youAreLine(self.memberCode)]
+    .filter(Boolean)
+    .join(' · ')
 
   // Simplified settings header
   if (isOnSettings) {
@@ -108,8 +112,9 @@ export function TopBar() {
     <header className={HEADER_CLASS}>
       {/* The side groups share what the search leaves equally, so the search sits at the
           window's centre until a side needs more than its half. The case name's track
-          gives way first, down to the switcher icon; then the search shrinks. */}
-      <div className="grid flex-1 basis-0 grid-cols-[max-content_max-content_minmax(10rem,max-content)] items-center gap-3">
+          gives way first, down to 160 pixels; then the search shrinks. Below 1,000 pixels the
+          name hides and its track narrows (design review of 2026-11-04). */}
+      <div className="grid flex-1 basis-0 grid-cols-[max-content_max-content_minmax(10rem,max-content)] items-center gap-3 max-[1000px]:grid-cols-[max-content_max-content_minmax(2rem,max-content)]">
         {/* Logo — click to go home */}
         <button
           onClick={() => navigate({ to: '/' })}
@@ -132,7 +137,7 @@ export function TopBar() {
               data-tour="caseswitcher"
               onClick={() => setCommandPaletteOpen(true)}
               className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-elevated transition-colors"
-              title={self ? `${switchTitle} · ${youAreLine(self.memberCode)}` : switchTitle}
+              title={crumbTitle}
             >
               {self && (
                 <MemberCodeChip
@@ -142,7 +147,10 @@ export function TopBar() {
                   data-testid="topbar-member-code"
                 />
               )}
-              <span className="max-w-[220px] truncate font-display text-xs font-semibold text-text-primary">
+              <span
+                data-testid="topbar-case-name-text"
+                className="max-w-[220px] truncate font-display text-xs font-semibold text-text-primary max-[1000px]:hidden"
+              >
                 {activeCase?.name ?? ''}
               </span>
               <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-text-muted" />

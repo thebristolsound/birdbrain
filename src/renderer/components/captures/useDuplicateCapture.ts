@@ -19,9 +19,17 @@ export function duplicateRefusalMessage(
     case 'copy_mismatch':
       return 'The capture changed while it was being copied — nothing was added'
     case 'not_verified':
-      return result.detail === 'legacy'
-        ? 'Legacy HTML captures have no manifest entry, so they cannot be duplicated'
-        : 'Only a capture that currently verifies can be duplicated'
+      if (result.detail === 'legacy') {
+        return 'Legacy HTML captures have no manifest entry, so they cannot be duplicated'
+      }
+      // Main sends this detail only after the capture verified (#1954).
+      if (result.detail === 'entry-mismatch') {
+        return (
+          'This capture cannot be duplicated because it cannot be matched to its manifest ' +
+          'entry; its verification is not affected'
+        )
+      }
+      return 'Only a capture that currently verifies can be duplicated'
   }
 }
 

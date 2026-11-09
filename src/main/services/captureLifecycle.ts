@@ -42,6 +42,7 @@ import { fetchCertChain as defaultFetchCertChain } from '@main/services/tlsCertC
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
 import type {
   BoundTlsAbsence,
+  BrowserFamily,
   Capture,
   CaptureEvent,
   CaptureMethod,
@@ -153,6 +154,16 @@ export interface IngestParams {
   // The id to store the Capture under, when the acquiring path already named it:
   // the Transaction Record's `warcinfo` carries the id. Otherwise ingest picks one.
   captureId?: string
+  // The launched browser that took a `launched` Capture (schema 7, decision D12): the product and
+  // version `Browser.getVersion` reported, and the product family the engine launched. The entry
+  // signs all three; the row keeps the version in `browser_version` (`browserVersion` above).
+  launchedBrowser?: LaunchedBrowserIdentity
+}
+
+export interface LaunchedBrowserIdentity {
+  product: string
+  version: string
+  family: BrowserFamily
 }
 
 // A link Capture's source as the ingest records it (ADR-0040). The entry signs `signed`,
@@ -176,6 +187,40 @@ export interface IngestResult {
 // manual capture of the URL seconds earlier would have been found by the
 // lookup that precedes it.
 export type AdmissionRoute = CaptureUploadSource | 'attach'
+
+// A clicked Capture in the browser Birdbrain launched (#1832). It is not a wire
+// source: the capture server's schema is unchanged, and only the launched
+// browser's engine builds one. The engine names the Capture Session's Active
+// Case at the moment of the trigger, and the URL is the page's address at the
+// cut, moved by any same-document navigation. The exclusion policy is checked
+// against both that address and the committed URL the page loaded from, and a
+// match on either refuses. Every artifact arrives taken, so admission reads
+// nothing more from the page.
+export interface LaunchedAdmissionRequest {
+  route: 'launched'
+  caseId: string
+  url: string
+  // The URL the page's document committed at; absent or equal to `url` when no
+  // same-document navigation moved the address.
+  committedUrl?: string
+  title: string
+  timestamp: string
+  captureId: string
+  mhtml: Buffer
+  screenshot: Buffer
+  textContent: string
+  httpStatus: number
+  userAgent: string
+  browser: LaunchedBrowserIdentity
+  // Absent for Direct.
+  egress?: CaptureEgress
+  inventory: CaptureInventory
+  scrollToLoad?: ScrollToLoadRecord
+  transactionRecord?: Buffer
+  boundTls?: BoundTls
+  boundTlsAbsent?: BoundTlsAbsence
+  pdf?: Buffer
+}
 
 // What an acquiring path hands `admit`: the wire payload minus transport, with
 // no policy applied yet. Everything `IngestParams` derives (operator, tool
@@ -258,8 +303,20 @@ export interface CaptureLifecycle {
   // ingest: operator gate, case resolution, exclusion, the manual dedup
   // window, the screenshot cap, the session count and the activity events.
   // Refusals are outcomes, never throws. The transport that calls this maps
-  // the outcome to a status code and nothing else.
-  admit: (request: AdmissionRequest) => Promise<AdmissionOutcome>
+  // the outcome to a status code and nothing else. The launched route runs the
+  // same operator gate, case resolution and exclusion check, and passes
+  // `method: 'launched'` to the ingest.
+  admit: (request: AdmissionRequest | LaunchedAdmissionRequest) => Promise<AdmissionOutcome>
+  // The launched route's checks before the engine takes anything from the page
+  // (spec, "The Capture sequence", step 1): the operator gate, the case, and
+  // the exclusion policy on the committed URL and the current address, with
+  // the activity event admit would emit. Null when a Capture of the page would
+  // be admitted.
+  screenLaunched: (caseId: string, url: string, committedUrl?: string) => AdmissionRefusal | null
+  // A launched Capture the engine abandoned because a new document committed
+  // before every artifact was taken: nothing is stored, and the activity feed
+  // says so.
+  abandonedLaunched: (url: string) => void
   // `reason` is recorded on the manifest deletion entry. Pass it whenever the
   // deletion is not an operator deleting evidence — a chain reader has no other
   // way to tell such a deletion from a real removal (#580). No caller passes one
@@ -474,6 +531,9 @@ export async function ingestMhtmlCapture(
         boundTls: params.boundTls,
         boundTlsAbsent: params.boundTlsAbsent,
         pdfHash,
+        browserProduct: params.launchedBrowser?.product,
+        browserVersion: params.launchedBrowser?.version,
+        browserFamily: params.launchedBrowser?.family,
         operatorId: params.operatorId,
         operatorName: params.operatorName,
         toolVersion: params.toolVersion
@@ -543,7 +603,9 @@ export async function ingestMhtmlCapture(
         })
         return { capture, contentHash: hash }
       },
-      carriesCaptureEngineField(params) || params.persona !== undefined
+      carriesCaptureEngineField(params) ||
+        params.persona !== undefined ||
+        params.launchedBrowser !== undefined
         ? { check: strictCaptureEntry }
         : {}
     )
@@ -1365,7 +1427,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
   // excluded URL with a missing, unknown or archived case answers the case
   // refusal rather than the exclusion one, and emits no 'skipped' event.
   function resolveAdmittedCase(
-    request: AdmissionRequest
+    request: Pick<AdmissionRequest, 'route' | 'caseId'>
   ): { caseId: string } | { refusal: AdmissionRefusal } {
     if (request.route === 'auto') {
       const session = sessionService.snapshot()
@@ -1380,7 +1442,143 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     return { caseId: request.caseId }
   }
 
+  // The operator gate, the case, and the exclusion policy, with the activity
+  // event each refusal emits. Every route runs them in this order. The launched
+  // route passes the committed URL too, so a page loaded from an excluded
+  // address is refused after a same-document navigation moves it elsewhere.
+  function screenAdmission(
+    source: CaptureSource,
+    url: string,
+    caseRequest: Pick<AdmissionRequest, 'route' | 'caseId'>,
+    committedUrl?: string
+  ): { caseId: string; operatorName: string } | { refusal: AdmissionRefusal } {
+    const now = (): string => new Date().toISOString()
+    const operatorName = trimmedOperatorName()
+    if (!operatorName) {
+      emitCaptureEvent({
+        type: 'failed',
+        source,
+        url,
+        timestamp: now(),
+        error: 'Operator name required'
+      })
+      return { refusal: { kind: 'operator_name_required' } }
+    }
+
+    const resolved = resolveAdmittedCase(caseRequest)
+    if ('refusal' in resolved) return resolved
+    const { caseId } = resolved
+
+    // The list blocks every capture route into this case, manual included
+    // (ruled 2026-08-21). An operator who excludes a URL from a case means
+    // it, and a rule that permits the one route that currently works would
+    // be worse than no rule.
+    const screened = committedUrl && committedUrl !== url ? [committedUrl, url] : [url]
+    for (const address of screened) {
+      const blocked = matchCaseExclusion(address, caseId)
+      if (!blocked) continue
+      emitCaptureEvent({
+        type: 'skipped',
+        source,
+        url: address,
+        timestamp: now(),
+        skipReason: blockedSkipReason(blocked)
+      })
+      return { refusal: { kind: 'excluded', pattern: blocked } }
+    }
+    return { caseId, operatorName }
+  }
+
+  // The launched route (#1832). The manual dedup window does not apply to it
+  // (open question Q1, answered here for the maintainer to confirm): the window
+  // swallows a double-click on the extension's button, while the launched
+  // browser's engine takes one Capture at a time and refuses a second click
+  // until the first has finished, and two Captures of one navigation are
+  // ADR-0035's overlap, each complete alone.
+  async function admitLaunched(request: LaunchedAdmissionRequest): Promise<AdmissionOutcome> {
+    const { url } = request
+    const source: CaptureSource = 'launched'
+    const now = (): string => new Date().toISOString()
+    const startTime = Date.now()
+    try {
+      // The engine names the case, as every route but 'auto' does.
+      const screened = screenAdmission(
+        source,
+        url,
+        { route: 'manual', caseId: request.caseId },
+        request.committedUrl
+      )
+      if ('refusal' in screened) return { ok: false, refusal: screened.refusal }
+      const { caseId, operatorName } = screened
+
+      emitCaptureEvent({ type: 'received', source, url, timestamp: now() })
+
+      const { mhtml, browser } = request
+      const { capture, contentHash } = await lifecycle.ingest({
+        caseId,
+        url,
+        title: request.title || url,
+        timestamp: request.timestamp,
+        stream: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new Uint8Array(mhtml.buffer, mhtml.byteOffset, mhtml.byteLength))
+            controller.close()
+          }
+        }),
+        textContent: request.textContent,
+        headers: {},
+        browserVersion: browser.version,
+        userAgent: request.userAgent,
+        httpStatus: request.httpStatus,
+        operatorId: getInstallationId(),
+        operatorName,
+        toolVersion: resolveToolVersion(),
+        method: 'launched',
+        screenshot: request.screenshot,
+        egress: request.egress,
+        inventory: request.inventory,
+        scrollToLoad: request.scrollToLoad,
+        transactionRecord: request.transactionRecord,
+        boundTls: request.boundTls,
+        boundTlsAbsent: request.boundTlsAbsent,
+        pdf: request.pdf,
+        captureId: request.captureId,
+        launchedBrowser: browser
+      })
+
+      emitNewCapture(capture)
+      emitCaptureEvent({
+        type: 'stored',
+        captureId: capture.id,
+        source,
+        url,
+        timestamp: now(),
+        durationMs: Date.now() - startTime
+      })
+      return { ok: true, capture, contentHash, screenshotStatus: 'saved' }
+    } catch (err) {
+      logger.error('captureLifecycle', 'capture.failed', undefined, err)
+      emitCaptureEvent({ type: 'failed', source, url, timestamp: now(), error: String(err) })
+      return { ok: false, refusal: { kind: 'failed', error: err } }
+    }
+  }
+
   const lifecycle: CaptureLifecycle = {
+    abandonedLaunched(url) {
+      emitCaptureEvent({
+        type: 'failed',
+        source: 'launched',
+        url,
+        timestamp: new Date().toISOString(),
+        error: 'Capture abandoned: a new page loaded in the tab while it was being captured'
+      })
+    },
+
+    screenLaunched(caseId, url, committedUrl) {
+      const screened = screenAdmission('launched', url, { route: 'manual', caseId }, committedUrl)
+      return 'refusal' in screened ? screened.refusal : null
+    },
+
     async ingest(params) {
       const egressIsDirect = deps.egressIsDirect ?? (() => currentEgress().kind === 'direct')
       const tlsSkipped =
@@ -1400,6 +1598,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     },
 
     async admit(request) {
+      if (request.route === 'launched') return admitLaunched(request)
       const { route, url } = request
       const source: CaptureSource = route === 'attach' ? 'manual' : route
       const now = (): string => new Date().toISOString()
@@ -1411,37 +1610,9 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
       const startTime = Date.now()
       const timestamp = request.timestamp || now()
       try {
-        const operatorName = trimmedOperatorName()
-        if (!operatorName) {
-          emitCaptureEvent({
-            type: 'failed',
-            source,
-            url,
-            timestamp: now(),
-            error: 'Operator name required'
-          })
-          return { ok: false, refusal: { kind: 'operator_name_required' } }
-        }
-
-        const resolved = resolveAdmittedCase(request)
-        if ('refusal' in resolved) return { ok: false, refusal: resolved.refusal }
-        const { caseId } = resolved
-
-        // The list blocks every capture route into this case, manual included
-        // (ruled 2026-08-21). An operator who excludes a URL from a case means
-        // it, and a rule that permits the one route that currently works would
-        // be worse than no rule.
-        const blocked = matchCaseExclusion(url, caseId)
-        if (blocked) {
-          emitCaptureEvent({
-            type: 'skipped',
-            source,
-            url,
-            timestamp: now(),
-            skipReason: blockedSkipReason(blocked)
-          })
-          return { ok: false, refusal: { kind: 'excluded', pattern: blocked } }
-        }
+        const screened = screenAdmission(source, url, request)
+        if ('refusal' in screened) return { ok: false, refusal: screened.refusal }
+        const { caseId, operatorName } = screened
 
         if (route === 'manual') {
           const dedupeKey = caseId + ':' + url
@@ -1763,6 +1934,13 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
               scrollToLoad: sourceEntry.scrollToLoad,
               transactionRecordHash: sourceEntry.transactionRecordHash,
               pdfHash: sourceEntry.pdfHash,
+              // The Persona (ruling 4 of 2026-11-05) and the launched browser the source was
+              // taken under (schema 7), re-anchored from its signed entry like `tls` above.
+              personaId: sourceEntry.personaId,
+              personaLabel: sourceEntry.personaLabel,
+              browserProduct: sourceEntry.browserProduct,
+              browserVersion: sourceEntry.browserVersion,
+              browserFamily: sourceEntry.browserFamily,
               sizeBytes: mhtml.sizeBytes,
               operatorId: getInstallationId(),
               operatorName,
@@ -1810,6 +1988,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
                 // so no Bound TLS Details.
                 transactionRecordHash: sourceEntry.transactionRecordHash,
                 pdfHash: sourceEntry.pdfHash,
+                personaId: sourceEntry.personaId,
+                personaLabel: sourceEntry.personaLabel,
                 exhibitNumber
               })
           )

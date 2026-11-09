@@ -20,7 +20,9 @@ them cleaned up before, is in `docs/agents/worktrees.md`.
 
 `--artefacts` deletes the git-ignored outputs (`.preflight/`, `.health/`, `coverage/`,
 `test-results/`, `playwright-report/`, `out/`, `dist/`, `extension/dist/`,
-`.serena/cache/`) and keeps the tree, so a fix round can still land in it. The tree itself
+`.serena/cache/`) and keeps the tree, so a fix round can still land in it. It leaves one file
+in `.preflight/`: `verification.md`, which the implementer's stop hook
+(`.claude/hooks/verify-before-stop.sh`) reads after this step. The tree itself
 goes when its PR merges, through `merge.sh`. `--merged <sha>` states the merged head instead
 of asking GitHub, which can lag a merge by seconds.
 
@@ -49,7 +51,9 @@ merge leaves no ancestry, so `git merge-base` cannot answer it.
 | Registered, directory gone                   | `git worktree prune`                           |
 | Clean tree, merged PR                        | remove; `branch -D` when the tip is the merged head, else keep |
 | Clean tree, PR closed unmerged               | remove; keep the branch                        |
-| Clean detached tree under `/tmp`, HEAD on a ref | remove                                      |
+| Clean detached tree under a scratch root, HEAD on a ref | remove                              |
+| Clean detached tree locked by the closing session (`close` only) | remove                     |
+| Clean detached tree under a scratch root, lock pid dead | remove                              |
 | Branch with no tree, tip is a merged PR head | `branch -D`                                    |
 
 Everything else is a report lane: listed and left, whatever the flags. That covers an open
@@ -62,17 +66,21 @@ the act. A lock is lifted only when the process ID in its reason is dead.
 
 ## Creating a scratch tree
 
-A worktree you create yourself goes under `/tmp/birdbrain-wt/` and is locked with your
-session's process ID, so the sweep can find it and leaves it alone while you run:
+A worktree you create yourself goes under the scratch root, `~/worktrees/birdbrain/scratch/`
+(`TEARDOWN_SCRATCH_ROOT`), on disk: `/tmp` on the maintainer's machine is a 7.5 GB shared
+tmpfs that two installed trees fill. Lock it with your session's process ID, so the sweep can
+find it and leaves it alone while you run. A tree that serves one PR checks out that PR's
+branch rather than a detached sha, so `merge.sh` closes it at the merge:
 
 ```shell
-git worktree add /tmp/birdbrain-wt/<purpose>-<n> <ref>
-git worktree lock /tmp/birdbrain-wt/<purpose>-<n> \
+git worktree add ~/worktrees/birdbrain/scratch/<purpose>-<n> <branch-or-ref>
+git worktree lock ~/worktrees/birdbrain/scratch/<purpose>-<n> \
   --reason "birdbrain <purpose> pid=${CLAUDE_PID:-$PPID} created=$(date -u +%FT%TZ)"
 ```
 
-When the work is pushed, `teardown.sh close <path>` removes it. t3code and Agent-tool trees
-keep their own roots and locks.
+When the work is pushed, `teardown.sh close <path>` removes it, detached or not: a clean
+tree your session locked loses nothing. Trees under `/tmp/birdbrain-wt/` from before this
+rule are still swept. t3code and Agent-tool trees keep their own roots and locks.
 
 ## Tests
 

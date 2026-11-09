@@ -255,6 +255,26 @@ export function backfillExhibitsForCaptures(
   return rows.length
 }
 
+// Non-Capture rows whose path is the bare Case id: what `rerootPath` wrote
+// before #1609 for an archive path with `\` separators or no directory (#1610).
+export function listExhibitsWithCaseIdPath(): Array<{ id: string; caseId: string; kind: string }> {
+  return getDb()
+    .prepare(
+      `SELECT id, case_id AS caseId, kind FROM exhibits
+        WHERE kind != 'capture' AND path = case_id ORDER BY case_id, id`
+    )
+    .all() as Array<{ id: string; caseId: string; kind: string }>
+}
+
+// Guarded on that same shape, so a row whose path names a file is never rewritten.
+export function repairExhibitCaseIdPath(id: string, path: string): boolean {
+  return (
+    getDb()
+      .prepare(`UPDATE exhibits SET path = ? WHERE id = ? AND kind != 'capture' AND path = case_id`)
+      .run(path, id).changes > 0
+  )
+}
+
 // Deletes the Exhibit row for an id, cascading its Derived Files. Its tag
 // applications have no key to it since v41 (#1877): the caller settles them
 // first (settleRowsOnDeletedCapture, removeExhibitDependents). Returns

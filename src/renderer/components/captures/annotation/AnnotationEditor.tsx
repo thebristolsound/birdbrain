@@ -69,8 +69,10 @@ export function AnnotationEditor(props: Props) {
     setPopoverPinShapeId(null)
     setDraftPinShapeId(null)
   }
+  // The pin record is deleted at once, so undo must not bring the marker back
+  // without its note.
   const removePin = (shape: PinAnnotation) => {
-    editor.removeShape(shape.id)
+    editor.discardShape(shape.id)
     mutations.deletePin.mutate(shape.pinId)
   }
   const handleZoomAt = (delta: number, cx: number, cy: number) => {

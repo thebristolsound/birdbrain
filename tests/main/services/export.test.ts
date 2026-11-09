@@ -1058,8 +1058,10 @@ describe('export', () => {
     expect(evidence.artifacts.filter((a) => a.path === expectedPath)).toHaveLength(1)
   })
 
-  it('omits screenshots from the package when include.screenshots is false (#152)', async () => {
-    const screenshot = Buffer.from('screenshot-bytes-should-not-leak')
+  // #1986 narrows #152: with screenshots off the package still encloses the
+  // screenshot the signed entry anchors, and only the report leaves it out.
+  it('encloses the anchored screenshot and passes Package Verification with screenshots off', async () => {
+    const screenshot = Buffer.from('screenshot-bytes-the-signed-entry-anchors')
     const { capture } = await ingestMhtmlCapture({
       caseId,
       url: 'https://example.com/shot',
@@ -1077,8 +1079,74 @@ describe('export', () => {
       toolVersion: '0.1.0',
       screenshot
     })
+    const expectedDigest = createHash('sha256').update(screenshot).digest('hex')
+    const expectedPath = `screenshots/${expectedDigest}.png`
+    expect(capture.screenshotHash).toBe(expectedDigest)
 
     const outputPath = join(tempDir, 'shot-no-screenshots.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'evidence',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    expect(entries.get(expectedPath)).toEqual(screenshot)
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      captures: Array<{
+        id: string
+        screenshotPath: string | null
+        screenshotSha256: string | null
+      }>
+      artifacts: Array<{ path: string; sha256: string }>
+    }
+    expect(evidence.captures.find((c) => c.id === capture.id)).toMatchObject({
+      screenshotPath: expectedPath,
+      screenshotSha256: expectedDigest
+    })
+    expect(evidence.artifacts.find((a) => a.path === expectedPath)?.sha256).toBe(expectedDigest)
+
+    // The report reproduces no image, and names the enclosed copy as it names
+    // every other file the package holds.
+    const report = entries.get('report.html')!.toString('utf-8')
+    expect(report).not.toContain('<img src="data:image/png')
+    expect(report).toContain(expectedPath)
+    expect(entries.get('certification.html')!.toString('utf-8')).toContain(
+      '1 capture, 1 screenshot, 0 operator notes'
+    )
+
+    const dir = join(tempDir, 'shot-no-screenshots-unpacked')
+    for (const [name, bytes] of entries) {
+      mkdirSync(dirname(join(dir, name)), { recursive: true })
+      writeFileSync(join(dir, name), bytes)
+    }
+    const result = verifyEvidencePackage(dir)
+    expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
+    expect(result.checks.find((c) => c.name === `capture ${capture.id} screenshot`)?.status).toBe(
+      'pass'
+    )
+  })
+
+  it('leaves out, with screenshots off, a stored screenshot the signed entry does not anchor', async () => {
+    const screenshot = Buffer.from('screenshot-bytes-should-not-leak')
+    const { capture } = await ingest(caseId, '<html><body>No screenshot at ingest</body></html>')
+    // Written straight into the store, as a Case Archive import or a hand can
+    // leave a file there that the entry does not anchor.
+    defaultCaptureStore.writeScreenshot(caseId, capture.id, screenshot)
+    expect(capture.screenshotHash ?? null).toBeNull()
+
+    const outputPath = join(tempDir, 'unanchored-no-screenshots.zip')
     await generateReport(
       caseId,
       {
@@ -1112,6 +1180,49 @@ describe('export', () => {
     expect(rec.screenshotPath).toBeNull()
     expect(rec.screenshotSha256).toBeNull()
     expect(evidence.artifacts.some((a) => a.path.startsWith('screenshots/'))).toBe(false)
+  })
+
+  it('leaves the anchored screenshot out of a Working Copy with screenshots off', async () => {
+    const screenshot = Buffer.from('screenshot-bytes-should-not-leak')
+    await ingestMhtmlCapture({
+      caseId,
+      url: 'https://example.com/shot',
+      title: 'Shot',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      stream: Readable.from([Buffer.from('mhtml')]) as unknown as ReadableStream<Uint8Array>,
+      textContent: 'extracted text for export',
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      extensionVersion: '',
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      screenshot
+    })
+
+    const outputPath = join(tempDir, 'working-copy-no-screenshots.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'working-copy',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    expect(entries.has('WORKING-COPY.json')).toBe(true)
+    expect([...entries.keys()].some((k) => k.startsWith('screenshots/'))).toBe(false)
   })
 
   // Step 4 of docs/plans/2026-10-10-capture-engine-first-slice.md, on a Capture
@@ -1209,14 +1320,21 @@ describe('export', () => {
       expect(status(`capture ${ENGINE_ID} pdf`)).toBe('pass')
     })
 
-    // Membership only: Package Verification fails this package on its anchored
-    // screenshot, a defect that predates this change (#1986).
     it('ships both when the export leaves screenshots out, since no option omits them', async () => {
       await seed()
-      const { entries } = await exportZip('engine-no-screenshots', { screenshots: false })
+      const { outputPath, entries } = await exportZip('engine-no-screenshots', {
+        screenshots: false
+      })
 
       expect(entries.get(recordPath)).toEqual(ENGINE_FILES.transactionRecord)
       expect(entries.get(enginePdfPath)).toEqual(ENGINE_FILES.pdf)
+      const dir = join(tempDir, 'engine-no-screenshots-unpacked')
+      for (const [name, bytes] of readStoredZipEntries(outputPath)) {
+        mkdirSync(dirname(join(dir, name)), { recursive: true })
+        writeFileSync(join(dir, name), bytes)
+      }
+      const result = verifyEvidencePackage(dir)
+      expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
     })
 
     it("encloses a Duplicate's copies and its source's files as one entry each", async () => {
@@ -1611,6 +1729,54 @@ describe('export', () => {
     // Whitespace-tolerant: the sentence wraps across source lines in the
     // template literal, so the emitted HTML carries a newline mid-phrase.
     expect(content).toMatch(/export\s+was\s+not\s+blocked/i)
+  })
+
+  it('names a package in the trusted-time banner only when the export is one (#1109)', async () => {
+    await ingest(caseId, '<html><body>Banner scope</body></html>', 'https://example.com', 'B')
+    const bannerOf = async (format: 'html' | 'zip'): Promise<string> => {
+      const outputPath = join(tempDir, `banner.${format}`)
+      await generateReport(
+        caseId,
+        {
+          format,
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail: false,
+            notes: false,
+            annotations: 'none'
+          },
+          exportClass: 'evidence',
+          outputPath
+        },
+        captureLifecycle
+      )
+      const report =
+        format === 'zip'
+          ? readStoredZipEntries(outputPath).get('report.html')!.toString('utf-8')
+          : readFileSync(outputPath, 'utf-8')
+      const [banner] = report.match(
+        /<div class="note"><p class="note-title">\d+ exhibits? without trusted time[\s\S]*?<\/div>/
+      )!
+      return banner
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+    }
+
+    const standalone = await bannerOf('html')
+    expect(standalone).toBe(
+      '1 exhibit without trusted time 1 exhibit in this report (1 eligible for timestamping, 0 ' +
+        "not) carries no RFC 3161 token. For it, the recorded time is the operator's local " +
+        'system clock only. The export was not blocked; the gap is recorded rather than concealed.'
+    )
+    expect(standalone).not.toMatch(/package/i)
+
+    expect(await bannerOf('zip')).toBe(
+      '1 exhibit without trusted time 1 exhibit in this package (1 eligible for timestamping, 0 ' +
+        "not) carries no RFC 3161 token. For it, the recorded time is the operator's local " +
+        'system clock only. The export was not blocked; the gap is recorded rather than concealed.'
+    )
   })
 
   // #492: the preflight counts are printed in certification.html beside per-capture
@@ -2417,6 +2583,50 @@ describe('export', () => {
     expect(html).not.toMatch(/those produced by the tool at the verification run/)
     expect(html).toMatch(/No verification was run for this\s+export/)
     expect(html).toContain('I make no statement about')
+  })
+
+  it('scopes the signed statement to what the verification run recomputed (#1107)', async () => {
+    await ingest(caseId, '<html>signed scope</html>')
+    const statementOf = async (auditTrail: boolean): Promise<string> => {
+      const outputPath = join(tempDir, `statement-${auditTrail}.html`)
+      await generateReport(
+        caseId,
+        {
+          format: 'html',
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail,
+            notes: false,
+            annotations: 'none'
+          },
+          exportClass: 'evidence',
+          outputPath
+        },
+        captureLifecycle
+      )
+      const [, section] = readFileSync(outputPath, 'utf-8').match(
+        /<h2>Operator statement<\/h2>([\s\S]*?)<\/section>/
+      )!
+      return section.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ')
+    }
+
+    // The cover's trusted-time tally is read from a manifest snapshot taken after
+    // the run, and the printed digests are the recorded ones, so the sentence the
+    // operator signs must claim neither.
+    const verified = await statementOf(true)
+    expect(verified).toContain(
+      'and the integrity results reproduced here are those produced by the tool at the ' +
+        'verification run recorded under “Chain of custody”.'
+    )
+    expect(verified).not.toMatch(/counts|trusted|digest/i)
+
+    expect(await statementOf(false)).toContain(
+      'I have not altered the captures, the manifest or the packaged artefacts. No verification ' +
+        'was run for this export, so the digests reproduced here are those recorded for each ' +
+        'capture rather than values recomputed from the stored bytes at the time of export, and ' +
+        'I make no statement about whether the stored bytes still match them.'
+    )
   })
 
   it('qualifies the attestation statement rather than claiming it for every capture', async () => {
@@ -3438,6 +3648,68 @@ describe('export', () => {
         `pages/${capture.id}.mhtml`,
         `screenshots/${capture.id}.png`
       ])
+    })
+
+    // #844: the dialog's Captures toggle is the operator's only way to keep page
+    // archives out of a Working Copy, and the marker must not list what is gone.
+    it('a Working Copy with captures excluded ships no page archive and indexes none', async () => {
+      const { capture } = await ingest(caseId, '<html><body>WC</body></html>')
+
+      const outputPath = join(tempDir, 'wc-no-pages.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: { ...EVIDENCE_INCLUDE, captures: false, auditTrail: false },
+          exportClass: 'working-copy',
+          outputPath
+        },
+        captureLifecycle
+      )
+
+      const entries = readStoredZipEntries(outputPath)
+      expect([...entries.keys()].sort()).toEqual(['WORKING-COPY.json', 'notes.md'])
+      const marker = JSON.parse(entries.get('WORKING-COPY.json')!.toString('utf-8')) as {
+        contents: { captureCount: number }
+        captures: Array<{ id: string; pagePath: string | null }>
+        artifacts: Array<{ path: string }>
+      }
+      expect(marker.contents.captureCount).toBe(1)
+      expect(marker.captures).toEqual([expect.objectContaining({ id: capture.id, pagePath: null })])
+      expect(marker.artifacts.map((a) => a.path)).toEqual(['notes.md'])
+    })
+
+    // #844: an Evidence Package cannot omit a page archive its index and chain
+    // name, so the captures flag leaves its page archives exactly as they were.
+    it('an Evidence Package ships its page archives whatever the captures flag says', async () => {
+      const { capture } = await ingest(caseId, '<html><body>EV</body></html>')
+      const pagePath = `pages/${capture.id}.mhtml`
+
+      const read = async (captures: boolean): Promise<Map<string, Buffer>> => {
+        const outputPath = join(tempDir, `ev-captures-${captures}.zip`)
+        await generateReport(
+          caseId,
+          {
+            format: 'zip',
+            include: { ...EVIDENCE_INCLUDE, captures },
+            exportClass: 'evidence',
+            outputPath
+          },
+          captureLifecycle
+        )
+        return readStoredZipEntries(outputPath)
+      }
+      const withCaptures = await read(true)
+      const withoutCaptures = await read(false)
+
+      expect([...withoutCaptures.keys()].sort()).toEqual([...withCaptures.keys()].sort())
+      expect(withoutCaptures.get(pagePath)).toEqual(withCaptures.get(pagePath))
+      const evidence = JSON.parse(withoutCaptures.get('evidence.json')!.toString('utf-8')) as {
+        captures: Array<{ mhtmlPath: string | null }>
+        artifacts: Array<{ path: string }>
+      }
+      expect(evidence.captures.map((c) => c.mhtmlPath)).toEqual([pagePath])
+      expect(evidence.artifacts.map((a) => a.path)).toContain(pagePath)
     })
 
     // R4's two known answers on the manifest entry: a Working Copy appends an

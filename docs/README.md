@@ -11,7 +11,6 @@ Author-time documentation for the project. All folders are tracked, including `p
 | `adr/`       | Architecture Decision Records.                                                                                             | `NNNN-<slug>.md`                                                             | yes                 |
 | `plans/`     | Implementation plans, migration trackers, and operational checklists. Living documents — checked off as work progresses.   | `YYYY-MM-DD-<slug>.md`                                                       | yes (since 2026-07) |
 | `archive/`   | Superseded specs moved out of the active folders.                                                                          | Original filename preserved                                                  | yes                 |
-| `superpowers/` | Output from the superpowers agent skill — managed by tooling, do not hand-edit.                                          | Tool-managed                                                                 | yes (frozen)        |
 
 `plans/` has been tracked since July 2026. Plans remain author-time artifacts: they get checked off and go stale, and staleness is expected.
 
@@ -66,8 +65,6 @@ all.
 
 | Tool / skill                | Built-in default                                      | **Override (use this instead)**           |
 | --------------------------- | ----------------------------------------------------- | ----------------------------------------- |
-| `superpowers:brainstorming` | varies (plugin default)                               | `docs/specs/YYYY-MM-DD-<topic>-design.md` |
-| `superpowers:writing-plans` | varies (plugin default)                               | `docs/plans/YYYY-MM-DD-<feature>.md`      |
 | `speckit.*`                 | varies                                                | follow the canonical layout above         |
 
 ## Prose linting

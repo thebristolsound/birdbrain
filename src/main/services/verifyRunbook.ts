@@ -312,21 +312,43 @@ Trust model before reading it as one.
 
 \`\`\`sh
 # Content:
+failed=0
 id=$(echo "$line" | jq -r '.captureId')
-want=$(echo "$line" | jq -r '.contentHash')
-got=$(sha256sum "${capturePagePath('$id')}" | cut -d' ' -f1)
-[ "$want" = "$got" ] && echo "content OK" || echo "CONTENT MISMATCH"
+want=$(echo "$line" | jq -r '.contentHash // empty')
+if [ -z "$want" ]; then
+  echo "CONTENT MISMATCH: no expected hash"; failed=1
+else
+  got=$(sha256sum "${capturePagePath('$id')}" | cut -d' ' -f1)
+  [ "$want" = "$got" ] && echo "content OK" || { echo "CONTENT MISMATCH"; failed=1; }
+fi
 
 # Screenshot (if the entry has screenshotHash; the file is named by that hash):
 shot=$(echo "$line" | jq -r '.screenshotHash // empty')
-[ -n "$shot" ] && sha256sum "${screenshotPath('$shot')}"   # must equal $shot
+if [ -n "$shot" ]; then
+  got=$(sha256sum "${screenshotPath('$shot')}" | cut -d' ' -f1)
+  [ "$shot" = "$got" ] && echo "screenshot OK" || { echo "SCREENSHOT MISMATCH"; failed=1; }
+fi
 
 # Transaction Record and PDF, by the screenshot's rule:
 record=$(echo "$line" | jq -r '.transactionRecordHash // empty')
-[ -n "$record" ] && sha256sum "${transactionRecordPath('$record')}"   # must equal $record
+if [ -n "$record" ]; then
+  got=$(sha256sum "${transactionRecordPath('$record')}" | cut -d' ' -f1)
+  [ "$record" = "$got" ] && echo "transaction record OK" || { echo "TRANSACTION RECORD MISMATCH"; failed=1; }
+fi
 pdf=$(echo "$line" | jq -r '.pdfHash // empty')
-[ -n "$pdf" ] && sha256sum "${pdfPath('$pdf')}"   # must equal $pdf
+if [ -n "$pdf" ]; then
+  got=$(sha256sum "${pdfPath('$pdf')}" | cut -d' ' -f1)
+  [ "$pdf" = "$got" ] && echo "pdf OK" || { echo "PDF MISMATCH"; failed=1; }
+fi
+
+# Non-zero if any file above differs from its signed hash:
+[ "$failed" = 0 ]
 \`\`\`
+
+Each block in this step prints a line for every file it checks, and exits
+non-zero if any of them differs from its signed hash. The content block also
+exits non-zero when \`$line\` holds no \`contentHash\`, as in a shell where
+${stepRef(2)} did not set it.
 
 An entry with no \`screenshotHash\`, \`transactionRecordHash\` or \`pdfHash\`
 anchors no such file, so there is nothing to check for it, and Birdbrain
@@ -354,13 +376,18 @@ inside the case directory — drop the leading case-id segment — so
 expected absent on exactly the same terms as captures.
 
 \`\`\`sh
-jq -c 'select(.type == "exhibit")' ${ROOT.manifest} | while IFS= read -r ex; do
-  rel=$(printf '%s' "$ex" | jq -r '.path' | cut -d/ -f2-)
-  num=$(printf '%s' "$ex" | jq -r '.exhibitNumber')
-  want=$(printf '%s' "$ex" | jq -r '.contentHash')
-  got=$(sha256sum "$rel" | cut -d' ' -f1)
-  [ "$want" = "$got" ] && echo "exhibit $num OK" || echo "EXHIBIT $num MISMATCH"
-done
+jq -c 'select(.type == "exhibit")' ${ROOT.manifest} | {
+  failed=0
+  while IFS= read -r ex; do
+    rel=$(printf '%s' "$ex" | jq -r '.path' | cut -d/ -f2-)
+    num=$(printf '%s' "$ex" | jq -r '.exhibitNumber')
+    want=$(printf '%s' "$ex" | jq -r '.contentHash')
+    got=$(sha256sum "$rel" | cut -d' ' -f1)
+    [ "$want" = "$got" ] && echo "exhibit $num OK" || { echo "EXHIBIT $num MISMATCH"; failed=1; }
+  done
+  # Read inside the braces: sh and bash run a pipeline's loop in a subshell.
+  [ "$failed" = 0 ]
+}
 \`\`\`
 
 **Derived files.** A derived file is bytes the tool computed FROM an exhibit —
@@ -374,17 +401,21 @@ Bind it by the entry that names THAT parent and THAT path, never by an entry's
 position in the file: an index says where an entry sits, not what it is about.
 
 \`\`\`sh
-jq -c 'select(.type == "derivation")' ${ROOT.manifest} | while IFS= read -r d; do
-  parent=$(printf '%s' "$d" | jq -r '.parentExhibitId')
-  ppath=$(jq -rn --arg p "$parent" \\
-    'first(inputs | select(.type == "exhibit" and .exhibitId == $p) | .path) // empty' \\
-    ${ROOT.manifest})
-  if [ -n "$ppath" ]; then dir=$(dirname "$(printf '%s' "$ppath" | cut -d/ -f2-)"); else dir=${CAPTURE_PACKAGE_DIRECTORY}; fi
-  rel="$dir/$(basename "$(printf '%s' "$d" | jq -r '.outputPath')")"
-  want=$(printf '%s' "$d" | jq -r '.outputHash')
-  got=$(sha256sum "$rel" | cut -d' ' -f1)
-  [ "$want" = "$got" ] && echo "derived $rel OK" || echo "DERIVED FILE MISMATCH: $rel"
-done
+jq -c 'select(.type == "derivation")' ${ROOT.manifest} | {
+  failed=0
+  while IFS= read -r d; do
+    parent=$(printf '%s' "$d" | jq -r '.parentExhibitId')
+    ppath=$(jq -rn --arg p "$parent" \\
+      'first(inputs | select(.type == "exhibit" and .exhibitId == $p) | .path) // empty' \\
+      ${ROOT.manifest})
+    if [ -n "$ppath" ]; then dir=$(dirname "$(printf '%s' "$ppath" | cut -d/ -f2-)"); else dir=${CAPTURE_PACKAGE_DIRECTORY}; fi
+    rel="$dir/$(basename "$(printf '%s' "$d" | jq -r '.outputPath')")"
+    want=$(printf '%s' "$d" | jq -r '.outputHash')
+    got=$(sha256sum "$rel" | cut -d' ' -f1)
+    [ "$want" = "$got" ] && echo "derived $rel OK" || { echo "DERIVED FILE MISMATCH: $rel"; failed=1; }
+  done
+  [ "$failed" = 0 ]
+}
 \`\`\`
 
 ${runbookHeading(6)}
@@ -587,26 +618,32 @@ for f in manifest*.jsonl ${LINEAGE_DIRECTORY}/*/manifest.*.jsonl; do
        else (first($chain[] | select(.type == "import" and .index > $merge.index)) | .sourceCaseId) // "-"
        end) as $merge_case
     | .heads[] | "\\($merge_case) \\(.installationId) \\(.index) \\(.entryHash)"' "$f"
-done | while read -r merge_case id index hash; do
-  if [ "$merge_case" = "-" ]; then
-    chain="manifest.$id.jsonl"
-    [ -e "$chain" ] || chain=${ROOT.manifest}
-  else
-    chain="${LINEAGE_DIRECTORY}/$merge_case/manifest.$id.jsonl"
-    if [ ! -e "$chain" ]; then
-      chain=${ROOT.manifest}
-      for c in manifest*.jsonl; do
-        if jq -e --arg merge_case "$merge_case" 'select(.type == "import" and .sourceCaseId == $merge_case)' "$c" > /dev/null; then
-          chain=$c
-          break
-        fi
-      done
+done | {
+  failed=0
+  while read -r merge_case id index hash; do
+    if [ "$merge_case" = "-" ]; then
+      chain="manifest.$id.jsonl"
+      [ -e "$chain" ] || chain=${ROOT.manifest}
+    else
+      chain="${LINEAGE_DIRECTORY}/$merge_case/manifest.$id.jsonl"
+      if [ ! -e "$chain" ]; then
+        chain=${ROOT.manifest}
+        for c in manifest*.jsonl; do
+          if jq -e --arg merge_case "$merge_case" 'select(.type == "import" and .sourceCaseId == $merge_case)' "$c" > /dev/null; then
+            chain=$c
+            break
+          fi
+        done
+      fi
     fi
-  fi
-  actual=$(sed -n "$((index + 1))p" "$chain" | jq -r '.entryHash')
-  if [ "$actual" = "$hash" ]; then echo "head OK: $id #$index"; else echo "head MISMATCH: $id #$index"; fi
-done
+    actual=$(sed -n "$((index + 1))p" "$chain" | jq -r '.entryHash')
+    if [ "$actual" = "$hash" ]; then echo "head OK: $id #$index"; else echo "head MISMATCH: $id #$index"; failed=1; fi
+  done
+  [ "$failed" = 0 ]
+}
 \`\`\`
+
+The block exits non-zero on any \`head MISMATCH\`, as the ${stepRef(5)} blocks do.
 
 An \`exclude\` in the Owner's chain records that the Owner excluded an Exhibit.
 The Exhibit stays in the package, its entry stays in its author's chain, and

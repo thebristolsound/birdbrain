@@ -1,14 +1,12 @@
 # Annotation Editor Zoom & Pan Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Make full-page screenshots readable in the annotation editor by defaulting to fit-width view and adding cursor-anchored zoom plus drag-pan; preserve all existing annotation behavior including the export burn-in path.
 
 **Architecture:** Add a `useZoomPan` hook that owns `{ userScale, panX, panY }` with `fitScale` derived from current image and container dimensions. `AnnotationCanvas` becomes a fixed-size Stage (container-sized) that consumes the hook's transform; pointer math switches to `stage.getRelativePointerPosition()` so existing draft-shape code works unchanged under zoom and pan. `AnnotationEditor` gains a header-bar zoom-control cluster (Hand, −, %, +, Fit, 1:1) visible in both view and edit modes. The Konva `Stage` already remounts on capture switch via `key={captureId}` (`CaptureViewer.tsx:608`), so reset-on-capture-switch is automatic.
 
 **Tech Stack:** React 19, react-konva 19, konva 10, TypeScript, Vitest (happy-dom), @testing-library/react, Playwright + Electron.
 
-**Spec:** `docs/superpowers/specs/2026-04-25-annotation-editor-zoom-pan-design.md`
+**Spec:** `docs/specs/2026-04-25-annotation-editor-zoom-pan-design.md`
 
 ---
 

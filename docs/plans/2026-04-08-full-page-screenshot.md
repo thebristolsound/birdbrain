@@ -1,7 +1,5 @@
 # Full-Page Screenshot Capture Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Replace viewport-only screenshots with full-page scroll-and-stitch capture for manual and selector captures, while wiring up the existing `captureScreenshots` setting so it actually controls screenshot behavior.
 
 **Architecture:** The content script gains a new `CAPTURE_FULL_PAGE` message handler that scrolls the page, requests viewport slices from the background script via `REQUEST_VIEWPORT_CAPTURE`, stitches them on an OffscreenCanvas, and returns a PNG data URL. The background script orchestrates which capture path to use based on source type and the `captureScreenshots` setting (now communicated via `/api/status`).

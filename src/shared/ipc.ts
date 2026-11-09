@@ -193,6 +193,8 @@ export const IPC_CHANNELS = {
   LAUNCHED_BROWSER_SHOW_POP_OUT: 'launchedBrowser:showPopOut',
   LAUNCHED_BROWSER_DOCK: 'launchedBrowser:dock',
   LAUNCHED_BROWSER_POP_OUT_STATE: 'launchedBrowser:popOutState',
+  // A clicked Capture of one tab in the launched browser (#1832).
+  LAUNCHED_BROWSER_CAPTURE: 'launchedBrowser:capture',
 
   // Search
   SEARCH: 'search:query',
@@ -373,6 +375,8 @@ export const IPC_CHANNELS = {
   WAYBACK_LINK_PROGRESS: 'event:waybackLinkProgress',
   LAUNCHED_BROWSER_STATUS_CHANGED: 'event:launchedBrowserStatus',
   LAUNCHED_BROWSER_POP_OUT_CHANGED: 'event:launchedBrowserPopOut',
+  // The capture shortcut found more than one tab it could take, or none (#1832).
+  LAUNCHED_BROWSER_PICK_TAB: 'event:launchedBrowserPickTab',
 
   // Capture pipeline observability
   CAPTURE_ACTIVITY: 'event:captureActivity',
@@ -1170,6 +1174,12 @@ export interface IpcInvokeContract {
   'launchedBrowser:showPopOut': { args: []; result: void }
   'launchedBrowser:dock': { args: []; result: void }
   'launchedBrowser:popOutState': { args: []; result: boolean }
+  // A clicked Capture of one tab; resolves with the status that holds its progress. Refused,
+  // with a code, when no browser is open or the platform offers no launched Capture.
+  'launchedBrowser:capture': {
+    args: [targetId: string, request: { scrollToLoad: boolean }]
+    result: LaunchedBrowserStatus
+  }
 
   'search:query': { args: [caseId: string, query: string]; result: Capture[] }
 
@@ -1378,6 +1388,7 @@ export interface IpcEventContract {
   'event:waybackLinkProgress': WaybackLinkProgressEvent
   'event:launchedBrowserStatus': LaunchedBrowserStatus
   'event:launchedBrowserPopOut': LaunchedBrowserPopOutEvent
+  'event:launchedBrowserPickTab': null
 }
 
 export type IpcEventChannel = keyof IpcEventContract

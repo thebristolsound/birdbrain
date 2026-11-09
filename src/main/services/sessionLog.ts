@@ -4,8 +4,11 @@ import { randomUUID } from 'node:crypto'
 import type { SessionRecord } from '@shared/types'
 
 // A launch writes session.lock and clears it in before-quit. A lock that is
-// still present at the next launch is the ONLY signal for an OOM kill or power
-// loss — no JS handler observes those — so this drives the crash prompt.
+// still present at the next launch records an unclean exit in sessions.json.
+// It does not raise the crash prompt by itself: on Windows, End task kills the
+// process without running any handler, and testers who close the app that way
+// were greeted with a crash prompt on almost every launch. The prompt needs
+// markCrashed, which the fatal-error paths call before they exit.
 
 const SESSIONS_FILE = 'sessions.json'
 const LOCK_FILE = 'session.lock'
@@ -55,6 +58,7 @@ function normalizeSessionRecord(r: Record<string, unknown>): SessionRecord {
     platform: str(r.platform, 'unknown'),
     installFormat: str(r.installFormat, 'unknown'),
     cleanExit: r.cleanExit === true,
+    ...(r.crashed === true ? { crashed: true } : {}),
     ...(r.acknowledged === true ? { acknowledged: true } : {})
   }
 }
@@ -157,18 +161,26 @@ export function markCleanExit(logDir: string): void {
   // The lock goes ONLY if the clean state actually reached disk. writeSessions
   // swallows its errors, so a transiently locked sessions.json during an
   // otherwise normal quit would leave the record at cleanExit:false while the
-  // lock disappeared — and takeUncleanSession reads records, not the lock, so
-  // the next launch would greet the tester with a recovery prompt for a crash
-  // that never happened. Keeping the lock costs nothing: reclaimOrphanedLock
-  // reconciles it on the next start.
+  // lock disappeared, recording a normal quit as an unclean one. Keeping the
+  // lock costs nothing: reclaimOrphanedLock reconciles it on the next start.
   if (!writeSessions(logDir, records)) return
 
   try {
     rmSync(lockPath(logDir), { force: true })
   } catch {
-    // A lock we cannot remove makes the next launch report a false crash —
+    // A lock we cannot remove makes the next launch record a false unclean exit —
     // annoying, but not a reason to throw out of before-quit and block exit.
   }
+}
+
+// Called on the way out of a fatal error, which then exits without before-quit,
+// so the lock stays and the record stays unclean.
+export function markCrashed(logDir: string): void {
+  const records = readSessions(logDir)
+  const current = records.find((r) => r.sessionId === currentSessionId)
+  if (!current) return
+  current.crashed = true
+  writeSessions(logDir, records)
 }
 
 // Take-once. Without acknowledging, a single genuine crash leaves cleanExit
@@ -177,7 +189,7 @@ export function markCleanExit(logDir: string): void {
 export function takeUncleanSession(logDir: string): SessionRecord | null {
   const records = readSessions(logDir)
   const unclean = records
-    .filter((r) => !r.cleanExit && !r.acknowledged && r.sessionId !== currentSessionId)
+    .filter((r) => !r.cleanExit && r.crashed && !r.acknowledged && r.sessionId !== currentSessionId)
     .pop()
   if (!unclean) return null
 

@@ -60,7 +60,11 @@ import {
   transactionRecordPath as packagedTransactionRecordPath
 } from '../../packages/evidence-package-layout/index'
 import type { TrustedTimeResult } from '@shared/verify'
-import { buildCertification, type SigningKeyRange } from '@main/services/certification'
+import {
+  buildCertification,
+  type CertificationCaptureInput,
+  type SigningKeyRange
+} from '@main/services/certification'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import {
   buildHtmlReport,
@@ -116,6 +120,22 @@ function caseEntriesOf(
     .filter(([id]) => id !== verification.localInstallationId)
     .flatMap(([, accepted]) => accepted)
   return [...manifest.entries, ...remote]
+}
+
+/**
+ * Each Capture's signed entry, by its chain id; where a chain holds more than
+ * one, the last wins, as in resolveEntrySignatures.
+ */
+function captureEntriesByChainId(
+  caseEntries: Record<string, unknown>[]
+): Map<string, Record<string, unknown>> {
+  const byId = new Map<string, Record<string, unknown>>()
+  for (const entry of caseEntries) {
+    if (entry.type === 'capture' && typeof entry.captureId === 'string') {
+      byId.set(entry.captureId, entry)
+    }
+  }
+  return byId
 }
 
 /**
@@ -320,6 +340,26 @@ export function resolveExportTrustedTime(
     },
     byCaptureId
   }
+}
+
+/**
+ * Pairs each capture with its trusted-time resolution for certification.html,
+ * which accepts no capture without one (#1110). resolveExportTrustedTime sets an
+ * entry for every capture it is given, and generateReport gives it the list it
+ * packages, so an absent entry is a broken invariant: refuse rather than
+ * certify a state nothing resolved.
+ */
+export function pairCapturesWithTrustedTime(
+  captures: Capture[],
+  byCaptureId: Map<string, TrustedTimeResult>
+): CertificationCaptureInput[] {
+  return captures.map((capture) => {
+    const trustedTime = byCaptureId.get(capture.id)
+    if (trustedTime === undefined) {
+      throw new Error(`certification: no trusted time resolved for capture ${capture.id}`)
+    }
+    return { capture, trustedTime }
+  })
 }
 
 /**
@@ -745,6 +785,21 @@ export async function generateReport(
           caseEntries.filter(isTimestampEntry)
         )
       : new Map<string, string>()
+  // An Evidence Package encloses every screenshot a signed capture entry
+  // anchors, whatever include.screenshots says (#1986): Package Verification
+  // fails a signed screenshotHash whose file the package lacks, as D10 of
+  // docs/plans/2026-10-10-capture-engine-first-slice.md rules for the
+  // Transaction Record and the PDF. The option still governs the image the
+  // report reproduces, which comes from data.screenshots, filled only when it is on.
+  if (options.format === 'zip' && !workingCopy) {
+    const signedEntries = captureEntriesByChainId(caseEntries)
+    for (const capture of captures) {
+      if (screenshotDigests.has(capture.id)) continue
+      if (typeof signedEntries.get(chainIdOf(capture.id))?.screenshotHash !== 'string') continue
+      const bytes = defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'png')
+      if (bytes) screenshotDigests.set(capture.id, sha256(bytes))
+    }
+  }
   data.packagedPaths = buildPackagedPaths(
     data,
     options,
@@ -810,7 +865,7 @@ export async function generateReport(
       // No report, no certification: the Working Copy deliberately carries no
       // evidentiary documents at all (#399, ADR-0010).
       onProgress?.('Packaging working copy...', 90)
-      zip = buildWorkingCopyZip(caseId, data, packageMeta, reader)
+      zip = buildWorkingCopyZip(caseId, data, packageMeta, reader, options.include.captures)
     } else {
       onProgress?.('Generating report...', 80)
       const html = buildHtmlReport(data, options)
@@ -1525,7 +1580,10 @@ function buildEvidenceZip(
         signingKeyRanges: signingKeyRanges(manifest.entries, publicKeyPem),
         contents: {
           captureCount: data.captures.length,
-          screenshotCount: data.screenshots.size,
+          // Captures whose screenshot the package encloses, which with
+          // screenshots off is more than the report reproduces.
+          screenshotCount: data.captures.filter(({ id }) => data.packagedPaths.get(id)?.screenshot)
+            .length,
           noteCount: meta.notes?.length ?? 0,
           ...exhibitKindCounts(data)
         },
@@ -1536,8 +1594,7 @@ function buildEvidenceZip(
         operatorOrganization: data.operatorOrganization,
         tsaUrl: data.tsaUrl,
         tsaEnabled: data.tsaEnabled,
-        captures: data.captures,
-        trustedTimeByCaptureId: data.trustedTimeByCaptureId,
+        captures: pairCapturesWithTrustedTime(data.captures, data.trustedTimeByCaptureId),
         entrySignatureByCaptureId: data.entrySignatureByCaptureId,
         // The same single resolution the report renders, so the two documents
         // cannot report different states for one Exhibit (#492, #611).
@@ -1599,14 +1656,7 @@ function buildEvidenceZip(
   // resolve to the same path. Emit the zip entry once; multiple capture
   // records may still reference it. createStoredZip does not dedupe entry names.
   const emittedContentPaths = new Set<string>()
-  // Each Capture's signed entry, by its chain id; where a chain holds more
-  // than one, the last wins, as in resolveEntrySignatures.
-  const captureEntries = new Map<string, Record<string, unknown>>()
-  for (const entry of caseEntries) {
-    if (entry.type === 'capture' && typeof entry.captureId === 'string') {
-      captureEntries.set(entry.captureId, entry)
-    }
-  }
+  const captureEntries = captureEntriesByChainId(caseEntries)
   const addContentAddressed = (
     bytes: Buffer | null,
     packagePath: (digest: string) => string
@@ -1641,13 +1691,13 @@ function buildEvidenceZip(
     // is untouched. The .txt sidecar's integrity is bound by textSha256 in the
     // per-capture record + the signed manifest entry; it is not re-bundled here
     // (its content already surfaces in report.html / the MHTML page).
-    // Gated on data.screenshots, which loadExportData only populates when
-    // include.screenshots is set — so an export that omits screenshots does not
-    // ship them via the content-addressed sidecar. The raw on-disk bytes are
-    // used (not the possibly-annotated report copy) so the digest matches the
-    // screenshotHash anchored at ingest.
+    // Gated on the packaged path the report was rendered against, which
+    // generateReport sets for an anchored screenshot whatever
+    // include.screenshots says (see the comment there). The raw on-disk bytes
+    // are used (not the possibly-annotated report copy) so the digest matches
+    // the screenshotHash anchored at ingest.
     const screenshot = addContentAddressed(
-      data.screenshots.has(capture.id)
+      data.packagedPaths.get(capture.id)?.screenshot
         ? defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'png')
         : null,
       packagedScreenshotPath
@@ -1847,10 +1897,11 @@ const WORKING_COPY_STATEMENT =
 /**
  * The Working Copy zip (#399, ADR-0010): page archives, the operator-facing
  * screenshots, operator notes, and the WORKING-COPY.json marker that names the
- * class — nothing else. No manifest.jsonl, no report, no certification, no
- * signing key, no evidence.json, no VERIFY.md and no TSA material: every one
- * of those is evidentiary-shaped, and shipping any of them would blur the two
- * classes back together.
+ * class — nothing else. Unlike the Evidence Package's, its page archives ship
+ * only when include.captures is set (#844). No manifest.jsonl, no report, no
+ * certification, no signing key, no evidence.json, no VERIFY.md and no TSA
+ * material: every one of those is evidentiary-shaped, and shipping any of them
+ * would blur the two classes back together.
  *
  * The marker doubles as the human-readable index (path + sha256 per file), is
  * unshifted like evidence.json — outside `artifacts` and outside packageHash —
@@ -1861,7 +1912,8 @@ function buildWorkingCopyZip(
   caseId: string,
   data: ExportData,
   meta: PackageMeta,
-  reader: PackageReader
+  reader: PackageReader,
+  includePageArchives: boolean
 ): EvidenceZipResult {
   const { entries, artifacts, add } = createArtifactAccumulator()
   // Named as the Evidence Package names them — see resolveChainNames.
@@ -1869,7 +1921,9 @@ function buildWorkingCopyZip(
 
   const captureIndex = data.captures.map((capture) => {
     const id = chainIdOf(capture.id)
-    const mhtml = defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'mhtml')
+    const mhtml = includePageArchives
+      ? defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'mhtml')
+      : null
     const pagePath = capturePagePath(id)
     if (mhtml) add(pagePath, mhtml)
 

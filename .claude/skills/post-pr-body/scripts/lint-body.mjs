@@ -1,10 +1,12 @@
 #!/usr/bin/env node
-// Lints a PR body against ../template.md. Usage: lint-body.mjs [--any-author] <file>
+// Lints a PR body against ../template.md. Usage: lint-body.mjs [--any-author] [--screenshots] <file>
 // The file is Markdown, or JSON with a `body` string (a `gh api --input` payload).
 // --any-author accepts a body without the attribution line (a human-written PR); the merge
 // path uses it. The line, when present, must still be last.
+// --screenshots adds the visual declaration and image checks for new agent body writes.
 // Prints one finding per line and exits 1 on any finding.
 import { readFileSync } from 'node:fs'
+import { isAbsolute } from 'node:path'
 import { parseLayers, plainLanguageFindings, summaryFindings } from './layers.mjs'
 
 const MAX_LINES_ABOVE_VERIFICATION = 40
@@ -21,7 +23,9 @@ const IMPACT_FIELDS = [
   'Backward verification',
   'Known-answer test'
 ]
-const PREFLIGHT_MARKER = /^<!-- preflight v\d+ sha=[0-9a-f]{40} status=\w+ -->$/
+// `source=ci` marks a block verification-from-ci.sh composed from the required checks at head
+// (a dependabot or human PR nobody preflighted locally) instead of a `pnpm preflight` run.
+const PREFLIGHT_MARKER = /^<!-- preflight v\d+ sha=[0-9a-f]{40} status=\w+( source=\w+)? -->$/
 // The footer a cloud-proxy session appends after the body it was given (ADR-0022).
 const PLATFORM_FOOTER = /^_?Generated (with|by) \[Claude Code\]\([^)]*\)_?$/
 const FORBIDDEN = [
@@ -58,7 +62,64 @@ function countSentences(text) {
   return (prose.match(/[.!?](?=\s|$)/g) || []).length
 }
 
-export function lintBody(raw, { anyAuthor = false } = {}) {
+function screenshotFindings(lines) {
+  const declarations = lines.filter((line) => /^\s*- Visual changes:/i.test(line))
+  if (declarations.length !== 1) {
+    return ['Changes needs one "- Visual changes: Yes" or "- Visual changes: No. <reason>" declaration']
+  }
+  const declaration = declarations[0].trim()
+  const no = declaration.match(/^- Visual changes: No\.\s+(\S.*)$/i)
+  const images = lines.filter((line) => /!\[[^\]]*\]\(/.test(line))
+  if (no) {
+    return images.length ? ['Visual changes is No but Changes contains screenshot images'] : []
+  }
+  if (!/^- Visual changes: Yes\s*$/i.test(declaration)) {
+    return ['Visual changes must say Yes, or No followed by a reason']
+  }
+
+  const findings = []
+  const screens = new Map()
+  for (const line of lines) {
+    if (!/^\s*- (Before|After),/i.test(line)) continue
+    const shot = line.match(/^\s*- (Before|After), (.+?): !\[[^\]]*\]\((<[^>]+>|[^)]+)\)\s*$/i)
+    if (!shot) {
+      findings.push('each Before/After row needs an image; a screenshot handoff is not evidence')
+      continue
+    }
+    const [, phase, screen, reference] = shot
+    const path = reference.replace(/^<|>$/g, '')
+    const key = screen.trim().toLowerCase()
+    const pair = screens.get(key) ?? new Map()
+    const side = phase.toLowerCase()
+    if (pair.has(side)) findings.push(`duplicate ${side} screenshot for ${screen}`)
+    pair.set(side, path)
+    screens.set(key, pair)
+    if (/^https:\/\/github\.com\/user-attachments\/assets\/[\w-]+$/.test(path)) continue
+    if (!isAbsolute(path)) {
+      findings.push(`${phase}, ${screen}: use a GitHub attachment or an absolute path to a captured PNG`)
+      continue
+    }
+    try {
+      const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+      if (!readFileSync(path).subarray(0, png.length).equals(png)) {
+        findings.push(`${phase}, ${screen}: the local screenshot is not a PNG`)
+      }
+    } catch {
+      findings.push(`${phase}, ${screen}: the local screenshot cannot be read: ${path}`)
+    }
+  }
+  if (!screens.size) findings.push('Visual changes is Yes but no before/after screenshot pair is supplied')
+  for (const [screen, pair] of screens) {
+    if (!pair.has('before') || !pair.has('after')) {
+      findings.push(`${screen} needs both Before and After rows with the same screen name`)
+    } else if (pair.get('before') === pair.get('after')) {
+      findings.push(`${screen} needs separate before and after screenshots`)
+    }
+  }
+  return findings
+}
+
+export function lintBody(raw, { anyAuthor = false, screenshots = false } = {}) {
   const findings = []
   const text = dropPlatformFooter(raw.replace(/\r\n/g, '\n'))
   const lines = text.split('\n')
@@ -117,6 +178,7 @@ export function lintBody(raw, { anyAuthor = false } = {}) {
 
   const changes = section('## Changes', '## Evidence-affecting')
   if (changes) {
+    if (screenshots) findings.push(...screenshotFindings(changes.lines))
     const outside = changes.indexes.filter((i) => top[i] && visibleText[i].trim() !== '')
     if (outside.length) {
       findings.push(`Changes is one <details> block of file-group bullets; found text outside it: "${visibleText[outside[0]].trim().slice(0, 60)}"`)
@@ -131,6 +193,7 @@ export function lintBody(raw, { anyAuthor = false } = {}) {
       if (!body.some((l) => /^\s*- \S/.test(l))) findings.push('Changes has no bullets')
     }
   }
+  if (screenshots && !changes) findings.push('Changes is missing its visual-change declaration')
 
   const evidence = section('## Evidence-affecting', '## Verification')
   if (evidence) {
@@ -226,12 +289,13 @@ function bodyFromFile(path) {
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop())) {
   const args = process.argv.slice(2)
   const anyAuthor = args.includes('--any-author')
+  const screenshots = args.includes('--screenshots')
   const file = args.find((a) => !a.startsWith('--'))
   if (!file) {
-    console.error('usage: lint-body.mjs [--any-author] <file>')
+    console.error('usage: lint-body.mjs [--any-author] [--screenshots] <file>')
     process.exit(2)
   }
-  const findings = lintBody(bodyFromFile(file), { anyAuthor })
+  const findings = lintBody(bodyFromFile(file), { anyAuthor, screenshots })
   for (const f of findings) console.log(`- ${f}`)
   process.exit(findings.length ? 1 : 0)
 }

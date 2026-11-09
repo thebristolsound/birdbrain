@@ -364,14 +364,23 @@ export const useAppStore = create<AppState>((set) => ({
   addCaptureEvent: (event) =>
     set((s) => {
       let existing = s.captureEvents
-      // Terminal events replace the matching 'received' spinner
-      if (event.type === 'stored' || event.type === 'failed' || event.type === 'skipped') {
-        const idx = existing.findIndex(
-          (e) => e.type === 'received' && e.url === event.url && e.source === event.source
+      // A background job keeps one row: each of its events replaces the row its last event left,
+      // matched by job id, so two jobs for one address never clear each other's row. A terminal
+      // event with no job (the extension, the launched browser, a URL the queue refused at
+      // enqueue) replaces a 'received' row from its own source and address that has no job.
+      const { jobId, type, url, source } = event
+      const terminal = type === 'stored' || type === 'failed' || type === 'skipped'
+      let idx = -1
+      if (jobId) {
+        idx = existing.findIndex((e) => e.jobId === jobId)
+      } else if (terminal) {
+        idx = existing.findIndex(
+          (e) =>
+            e.type === 'received' && e.jobId === undefined && e.url === url && e.source === source
         )
-        if (idx !== -1) {
-          existing = [...existing.slice(0, idx), ...existing.slice(idx + 1)]
-        }
+      }
+      if (idx !== -1) {
+        existing = [...existing.slice(0, idx), ...existing.slice(idx + 1)]
       }
       const events = [event, ...existing].slice(0, 50)
       const stats = { ...s.captureStats }

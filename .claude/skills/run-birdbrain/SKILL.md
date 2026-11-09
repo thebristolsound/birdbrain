@@ -58,11 +58,11 @@ already in place, so the app opens straight to the dashboard. `quit` deletes tha
 | `launch fresh` | Start as a first install: no `settings.json`, so the app seeds the demo case and opens the onboarding tour (`click-text skip tour` closes it). |
 | `size [w h]` | Resize the window (default 1440 900). The default window is 900x571. |
 | `ss [name]` | Screenshot to `/tmp/birdbrain-shots/<name>.png`. Includes `<webview>` content. |
-| `new-case [name]` | Create a case through the New Case form and remember its id. |
+| `new-case [name]` | Choose Blank Case on the New Case start step, fill the form, and remember the new case's id. |
 | `capture [slug]` | Post a manual capture with a small valid MHTML to the capture server (`127.0.0.1:19845`) for the case from `new-case`, the same route the extension uses. Prints the server's JSON. |
 | `case-view <tab>` | Go to `/cases/<id>/<tab>`: `overview`, `captures`, and so on. |
 | `goto <route>` | Set the hash route, for example `goto /cases/new`. |
-| `click <css>` / `click-text <text>` / `click-role <role> <name>` | Playwright clicks, 10 second timeout. |
+| `click <css>` / `click-text <text>` / `click-role <role> <name>` | Playwright clicks, 10 second timeout. `click-text` and `click-role` match any element whose text or name contains the argument and click the first, so `click-role button Export` can hit a case named "Export demo"; scope with `click <css>` when a name is not unique. |
 | `fill <css> <text>` / `type <text>` / `press <key>` | Keyboard input. |
 | `wait <css>` / `text [css]` / `testids` | Wait for an element, print `innerText`, list every `data-testid` on screen. |
 | `eval <js>` | Evaluate in the renderer and print JSON. |

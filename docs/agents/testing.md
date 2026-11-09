@@ -15,6 +15,8 @@ A type-level assertion in `tests/` is now live, so `expectTypeOf` is available f
 
 **A single-file run drops console output from passing tests.** Vitest 5 detects an agent session (`isAgent` from `std-env`) and picks its `minimal` reporter, which sets `silent` to `passed-only`, so a `console.log` in a test that passes prints nothing under `pnpm test <path>` while `process.stdout.write` still does. Three review runs lost a probe to this. Pass `--silent=false` to see the output: `pnpm test <path> --silent=false`.
 
+**Run one full suite per machine at a time.** The unit tests have a 15 second timeout, and some tests that run shell scripts or build an export take several seconds alone. With two full runs on one machine (`pnpm preflight`, `pnpm test:coverage`, or a reviewer's coverage run), those tests time out in files the branch never touched. On 2026-11-08 this failed `tests/dispatchChecks.test.ts` and `tests/main/services/derivedFileStates.test.ts` that way, and both passed alone. When an unrelated test times out under load, run its file alone with `pnpm test <path>`, then rerun the full suite with nothing else running. A failed coverage run writes no `coverage/coverage-final.json`, so `pnpm coverage:diff` has nothing to score until a full run passes.
+
 **`tests/components/**/*.test.tsx` run in the jsdom Vitest project**, not the Electron node one; the node project's `tests/**/*.test.ts` include glob does not match `.test.tsx`. A `// @vitest-environment jsdom` directive in a component test is therefore valid and may be kept for clarity — it is not an invalid override of the Electron environment.
 
 ## sharp under Electron on Linux

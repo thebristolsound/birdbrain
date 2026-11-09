@@ -2,7 +2,7 @@
 
 Design mock for the app chrome's top bar and Case action bar, built in the same change as the code
 (`src/renderer/components/layout/TopBar.tsx`, `CaseActionBar.tsx`, `status/StatusGroup.tsx`,
-`status/RecordingMark.tsx`). Suggested repo path: `docs/design-handoff/2026-11-08-top-bar/`.
+`status/RecordingMark.tsx`).
 
 - `Top Bar.dc.html`: the canvas. Section 0 is the bar as it was (seven controls and the OS buttons
   in one row, three tinted status pills, the Case name cut before the search); M is the two marks
@@ -29,6 +29,7 @@ Design mock for the app chrome's top bar and Case action bar, built in the same 
 
 Two independent reviews of the options (a product read and an accessibility and consistency
 read) both chose B on the condition that the action bar's left side names the section; their
-corrections are folded into the canvas's A, B and R sections.
+corrections are folded into the canvas's A, B and R sections. The reviews ran in the design
+session and are not in this repository.
 
 Invented names only: the Case **New Shared Case**, Member Code JD.

@@ -127,6 +127,8 @@ export function withTransaction<T>(fn: () => T): T {
 // touch the filesystem: the staged-sidecar read arrives as `getText`.
 export interface ImportCtx {
   newCaseId: string
+  // Returns an id the archive does not carry unchanged: the collision remap covers only the
+  // archive's own rows, so a reference through it can name a row of another Case (#883).
   mapId: (id: string) => string
   mapTag: (id: string) => string
   getText: (oldId: string, newId: string) => string

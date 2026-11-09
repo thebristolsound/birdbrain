@@ -1063,6 +1063,42 @@ describe('caseArchive import', () => {
     }
   })
 
+  // #883: the collision remap passes an id the archive does not carry through unchanged, so a
+  // tag application naming a row of another Case of this database would land on that row.
+  it('refuses an archive whose tag applications name a note or Capture of another Case', async () => {
+    const elsewhereCase = createCase({ name: 'Elsewhere' }).id
+    const elsewhereNote = createNote({ caseId: elsewhereCase, title: 'Not in the archive' }).id
+    const elsewhereCapture = insertCapture({
+      caseId: elsewhereCase,
+      url: 'https://example.com/elsewhere',
+      title: 'Elsewhere',
+      hash: 'h',
+      timestamp: '2026-01-01T00:00:00.000Z'
+    }).id
+    const rows: Record<string, (data: Record<string, unknown>) => Record<string, unknown>> = {
+      noteTags: (data) => ({
+        ...data,
+        noteTags: [{ note_id: elsewhereNote, tag_id: (data.tags as Array<{ id: string }>)[0].id }]
+      }),
+      captureTags: (data) => ({
+        ...data,
+        captureTags: [
+          { capture_id: elsewhereCapture, tag_id: (data.tags as Array<{ id: string }>)[0].id }
+        ]
+      })
+    }
+    for (const [table, mutate] of Object.entries(rows)) {
+      const path = join(tempDir, `elsewhere-${table}.birdbrain`)
+      copyFileSync(archivePath, path)
+      rewriteDataJson(path, mutate)
+      await expect(importCaseArchive(path), table).rejects.toThrow(
+        /which the archive does not carry/
+      )
+    }
+    expect(getTagsForNote(elsewhereNote)).toEqual([])
+    expect(getTagsForCapture(elsewhereCapture)).toEqual([])
+  })
+
   it('re-import remaps colliding capture ids consistently and records the map', async () => {
     const first = await importCaseArchive(archivePath)
     const second = await importCaseArchive(archivePath)

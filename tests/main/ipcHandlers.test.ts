@@ -319,9 +319,14 @@ beforeEach(async () => {
       queued: 0,
       running: 0,
       held: 0,
+      heldBatches: [],
       concurrency: 1,
       activeUrl: null
     })),
+    recoverStoredJobs: vi.fn(),
+    listJobs: vi.fn(() => []),
+    resume: vi.fn(() => ({ resumed: 2 })),
+    dismiss: vi.fn(() => ({ dismissed: 1 })),
     idle: vi.fn()
   }
   updaterService = {
@@ -3117,6 +3122,8 @@ describe('ipcHandlers — database admin', () => {
     )
     expect(restored.restored).toBe(true)
     expect(clearOrphanedPartitions).toHaveBeenCalledWith(userDataPath)
+    // The restored copy's jobs go through the startup pass in this session.
+    expect(recaptureService.recoverStoredJobs).toHaveBeenCalledTimes(1)
     expect(expectOk(await invoke(IPC_CHANNELS.CASES_GET, afterSnapshot.id))).toBeUndefined()
     // The database is open again on the other side of the restore.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
@@ -3141,6 +3148,7 @@ describe('ipcHandlers — database admin', () => {
 
     expect(res.restored).toBe(true)
     expect(clearOrphanedPartitions).toHaveBeenCalledWith(userDataPath)
+    expect(recaptureService.recoverStoredJobs).toHaveBeenCalledTimes(1)
     // Re-opened on the other side, and holding the backup rather than the
     // database that was running when it was chosen.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
@@ -3412,6 +3420,8 @@ describe('ipcHandlers — database admin', () => {
     expect(res.error).not.toContain(userDataPath)
     // The database is back — the restore stopped before it moved anything.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
+    // It holds this session's jobs, which the startup pass would hold or mark interrupted.
+    expect(recaptureService.recoverStoredJobs).not.toHaveBeenCalled()
   })
 
   it('does not migrate a truncated database forward when the restore failed', async () => {
@@ -4040,10 +4050,51 @@ describe('ipcHandlers — recapture', () => {
       queued: 0,
       running: 0,
       held: 0,
+      heldBatches: [],
       concurrency: 1,
       activeUrl: null
     })
     expect(recaptureService.status).toHaveBeenCalled()
+  })
+
+  it('recapture:listJobs takes a Case or a Batch, never both or neither', async () => {
+    expectOk(await invoke(IPC_CHANNELS.RECAPTURE_LIST_JOBS, { caseId: 'case-1' }))
+    expectOk(await invoke(IPC_CHANNELS.RECAPTURE_LIST_JOBS, { batchId: 'batch-1' }))
+    expect(recaptureService.listJobs.mock.calls).toEqual([
+      [{ caseId: 'case-1' }],
+      [{ batchId: 'batch-1' }]
+    ])
+    for (const query of [undefined, {}, { caseId: 'c', batchId: 'b' }, { caseId: 7 }]) {
+      const res = (await invoke(IPC_CHANNELS.RECAPTURE_LIST_JOBS, query)) as { code?: string }
+      expect(res.code).toBe('INVALID_RECAPTURE_PAYLOAD')
+    }
+    expect(recaptureService.listJobs).toHaveBeenCalledTimes(2)
+  })
+
+  it('recapture:resume hands the Batch id to the queue', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.RECAPTURE_RESUME, { batchId: 'batch-1' }))).toEqual({
+      resumed: 2
+    })
+    expect(recaptureService.resume).toHaveBeenCalledWith('batch-1')
+    for (const payload of [undefined, {}, { batchId: '' }, 'batch-1']) {
+      const res = (await invoke(IPC_CHANNELS.RECAPTURE_RESUME, payload)) as { code?: string }
+      expect(res.code).toBe('INVALID_RECAPTURE_PAYLOAD')
+    }
+    expect(recaptureService.resume).toHaveBeenCalledTimes(1)
+  })
+
+  it('recapture:dismiss takes a job or a Batch, never both or neither', async () => {
+    expectOk(await invoke(IPC_CHANNELS.RECAPTURE_DISMISS, { jobId: 'job-1' }))
+    expectOk(await invoke(IPC_CHANNELS.RECAPTURE_DISMISS, { batchId: 'batch-1' }))
+    expect(recaptureService.dismiss.mock.calls).toEqual([
+      [{ jobId: 'job-1' }],
+      [{ batchId: 'batch-1' }]
+    ])
+    for (const target of [null, {}, { jobId: 'j', batchId: 'b' }]) {
+      const res = (await invoke(IPC_CHANNELS.RECAPTURE_DISMISS, target)) as { code?: string }
+      expect(res.code).toBe('INVALID_RECAPTURE_PAYLOAD')
+    }
+    expect(recaptureService.dismiss).toHaveBeenCalledTimes(2)
   })
 })
 

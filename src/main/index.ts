@@ -816,8 +816,16 @@ if (!gotSingleInstanceLock) {
           if (mainWindow && !mainWindow.isDestroyed()) {
             sendEvent(mainWindow.webContents, IPC_CHANNELS.NEW_CAPTURE, capture)
           }
+        },
+        emitJob: (job) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            sendEvent(mainWindow.webContents, IPC_CHANNELS.RECAPTURE_JOB, job)
+          }
         }
       })
+      // Before any IPC handler or the capture server can queue a job: jobs from an earlier
+      // session are held or marked interrupted, and old stored rows go.
+      recaptureService.recoverStoredJobs()
 
       // Update-delivery service (notify/check-only). Broadcasts status transitions
       // to the renderer; reads the release channel + auto-check policy from settings.

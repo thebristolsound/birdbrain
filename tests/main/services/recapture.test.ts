@@ -784,7 +784,15 @@ describe('recapture service', () => {
         await new Promise<void>((resolve) => gate.push(resolve))
         return fakeRender()(url, opts)
       })
-      const idle = { pending: 0, queued: 0, running: 0, held: 0, concurrency: 1, activeUrl: null }
+      const idle = {
+        pending: 0,
+        queued: 0,
+        running: 0,
+        held: 0,
+        heldBatches: [],
+        concurrency: 1,
+        activeUrl: null
+      }
       expect(svc.status()).toEqual(idle)
 
       svc.enqueue([

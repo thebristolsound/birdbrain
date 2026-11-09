@@ -1,5 +1,8 @@
 import { randomUUID } from 'crypto'
+import * as backgroundJobRepo from '@main/services/db/backgroundJobRepo'
+import type { JobEnd } from '@main/services/db/backgroundJobRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
+import { getCase } from '@main/services/db/caseRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
 import {
   entryDescribesRow,
@@ -28,9 +31,12 @@ import { ManifestEntrySchema } from '@shared/schemas'
 import type { CaptureInventory, ScrollToLoadRecord } from '@shared/schemas'
 import type { Capture, CaptureEvent, ConsentSuppression } from '@shared/types'
 import type {
+  BackgroundJobView,
   EnqueueResult,
   LinkedFrom,
+  RecaptureDismissTarget,
   RecaptureEnqueuePayload,
+  RecaptureListJobsQuery,
   RecaptureQueueStatus
 } from '@shared/ipc'
 
@@ -125,6 +131,8 @@ export interface RecaptureDeps {
   captureLifecycle: CaptureLifecycle
   emitEvent: (event: CaptureEvent) => void
   emitNewCapture: (capture: Capture) => void
+  // Hears every change of a job's state, with the row as it now reads.
+  emitJob?: (job: BackgroundJobView) => void
   timeoutMs?: number
 }
 
@@ -133,11 +141,38 @@ export interface RecaptureService {
   // Capture link's route (ADR-0040): one job, whose URL is the link address.
   enqueueLink: (payload: RecaptureEnqueuePayload) => EnqueueResult
   status: () => RecaptureQueueStatus
+  // The pass before the queue runs: at startup, and after a restore re-opens the database in
+  // the running app, since a restored copy can hold rows from an earlier session.
+  recoverStoredJobs: () => void
+  listJobs: (query: RecaptureListJobsQuery) => BackgroundJobView[]
+  // Sets the Batch's `held` jobs `queued`, so they run after the jobs already queued.
+  resume: (batchId: string) => { resumed: number }
+  dismiss: (target: RecaptureDismissTarget) => { dismissed: number }
   // resolves when the queue drains — used by tests only
   idle: () => Promise<void>
 }
 
 const DEFAULT_TIMEOUT_MS = 120_000
+
+// A `stored` row repeats its Capture's address outside the Manifest, so it goes after a week. A
+// row that ended without a Capture stays until the Operator dismisses it or deletes its Case.
+export const STORED_JOB_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
+
+export const INTERRUPTED_JOB_ERROR = 'Birdbrain closed while this job was running'
+
+// How a job ended, as its row records it.
+type JobOutcome = Omit<JobEnd, 'finishedAt'>
+
+function jobOf({
+  jobId,
+  batchId,
+  url,
+  caseId,
+  supersedesCaptureId,
+  linkedFrom
+}: BackgroundJobView): RecaptureJob {
+  return { jobId, batchId, url, caseId, supersedesCaptureId, linkedFrom }
+}
 
 const LOGIN_TITLE_RE = /\b(log ?in|sign ?in|sign ?up|authenticate|two-factor|verification)\b/i
 const LOGIN_PATH_RE = /(^|\/)(login|signin|sign-in|auth|sso|accounts?\/(login|signin))([/?#]|$)/i
@@ -279,7 +314,6 @@ function validateUrl(raw: string): string | null {
 
 export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS
-  const queue: RecaptureJob[] = []
   let active: RecaptureJob | null = null
   let draining: Promise<void> | null = null
 
@@ -290,9 +324,15 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     deps.emitEvent({ ...event, jobId, batchId, ...(linkedFrom ? { linkedFrom } : {}) })
   }
 
-  async function runJob(job: RecaptureJob): Promise<void> {
+  const emitJob = (view: BackgroundJobView): void => deps.emitJob?.(view)
+
+  // `captureId` is the id the attempt's row names, and `timestamp` the Capture's, both taken as
+  // the row is claimed.
+  async function runJob(
+    job: RecaptureJob,
+    { captureId, timestamp }: { captureId: string; timestamp: string }
+  ): Promise<JobOutcome> {
     const emitEvent = (event: CaptureEvent): void => emitJobEvent(job, event)
-    const timestamp = new Date().toISOString()
     emitEvent({
       type: 'received',
       source: 'recapture',
@@ -303,7 +343,6 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
 
     let rendered: RenderedPage | undefined
     const started = Date.now()
-    const captureId = randomUUID()
     const toolVersion = resolveToolVersion()
     // The job's log lines name it by the id its render's lines carry, and its Case, never by its
     // address (logSafe.ts), and say how long it ran, as its terminal event does.
@@ -336,7 +375,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
             skipReason: read.refused
           })
           logSkipped('link-source')
-          return
+          return { state: 'skipped', failureKind: 'link-source', error: read.refused }
         }
         linkSource = read.source
         stage = 'render'
@@ -373,15 +412,16 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       const refused = refusedAddressClass(rendered.finalUrl)
       if (refused) {
         rendered.mhtmlStream.destroy?.()
+        const skipReason = `Redirects to ${refused}`
         emitEvent({
           type: 'skipped',
           source: 'recapture',
           url: job.url,
           timestamp: new Date().toISOString(),
-          skipReason: `Redirects to ${refused}`
+          skipReason
         })
         logSkipped('refused-address')
-        return
+        return { state: 'skipped', failureKind: 'refused-address', error: skipReason }
       }
 
       // Second enforcement point (#400). `enqueue` could only judge the URL the
@@ -397,15 +437,16 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         // process. Batch recapture fans out one job per capture, so that is one
         // fd and one multi-megabyte file per blocked job (#766).
         rendered.mhtmlStream.destroy?.()
+        const skipReason = blockedSkipReason(blocked)
         emitEvent({
           type: 'skipped',
           source: 'recapture',
           url: rendered.finalUrl,
           timestamp: new Date().toISOString(),
-          skipReason: blockedSkipReason(blocked)
+          skipReason
         })
         logSkipped('excluded')
-        return
+        return { state: 'skipped', failureKind: 'excluded', error: skipReason }
       }
 
       const settings = getSettings()
@@ -493,6 +534,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         ...jobContext(),
         ingestMs
       })
+      return { state: 'stored', warning }
     } catch (err) {
       if (err instanceof RefusedAddressError) {
         emitEvent({
@@ -503,15 +545,16 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
           skipReason: err.message
         })
         logSkipped('refused-address')
-        return
+        return { state: 'skipped', failureKind: 'refused-address', error: err.message }
       }
+      const error = err instanceof Error ? err.message : String(err)
       emitEvent({
         type: 'failed',
         source: 'recapture',
         url: job.url,
         timestamp: new Date().toISOString(),
         durationMs: Date.now() - started,
-        error: err instanceof Error ? err.message : String(err)
+        error
       })
       const failureKind = err instanceof RecaptureTimeout ? 'timeout' : stage
       logger.warn(
@@ -524,22 +567,45 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         },
         err
       )
+      return { state: 'failed', failureKind, error }
     } finally {
       await rendered?.cleanup().catch(() => {})
     }
   }
 
+  // One job at a time, each claimed from its row as the last one ends. A database the loop
+  // cannot read or write (a restore closes it) stops the loop; the next enqueue or resume starts
+  // it again, and a row it left `running` is `interrupted` at the next start.
   function drain(): void {
     if (draining) return
     draining = (async () => {
-      while (queue.length > 0) {
-        active = queue.shift()!
-        await runJob(active)
-        active = null
+      for (;;) {
+        const attempt = { captureId: randomUUID(), timestamp: new Date().toISOString() }
+        const claimed = backgroundJobRepo.claimNextQueued({
+          startedAt: attempt.timestamp,
+          captureId: attempt.captureId
+        })
+        if (!claimed) return
+        emitJob(claimed)
+        active = jobOf(claimed)
+        try {
+          const outcome = await runJob(active, attempt)
+          const ended = backgroundJobRepo.finishJob(claimed.jobId, {
+            ...outcome,
+            finishedAt: new Date().toISOString()
+          })
+          if (ended) emitJob(ended)
+        } finally {
+          active = null
+        }
       }
-    })().finally(() => {
-      draining = null
-    })
+    })()
+      .catch((err: unknown) => {
+        logger.error('backgroundRenderer', 'backgroundRenderer.job_queue_failed', undefined, err)
+      })
+      .finally(() => {
+        draining = null
+      })
   }
 
   const service: RecaptureService = {
@@ -549,7 +615,8 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       const accepted: RecaptureJob[] = []
       for (const request of requests) {
         const job = { ...request, jobId: randomUUID(), batchId }
-        const reason = validateUrl(job.url)
+        // A job's row names its Case through a foreign key, so a Case that is gone refuses here.
+        const reason = validateUrl(job.url) ?? (getCase(job.caseId) ? null : 'Case not found')
         if (reason) {
           rejected.push({ url: job.url, reason })
           continue
@@ -575,20 +642,34 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
           rejected.push({ url: job.url, reason: blockedSkipReason(blocked) })
           continue
         }
-        queue.push(job)
         accepted.push(job)
       }
+      const queuedAt = new Date().toISOString()
+      backgroundJobRepo.insertQueuedJobs(
+        accepted.map(({ jobId, batchId, caseId, url, supersedesCaptureId, linkedFrom }) => ({
+          id: jobId,
+          batchId,
+          caseId,
+          url,
+          supersedesCaptureId,
+          linkedFrom,
+          queuedAt
+        }))
+      )
       // Every `queued` event goes out before `drain` starts the first job and emits its `received`.
       for (const job of accepted) {
         emitJobEvent(job, {
           type: 'queued',
           source: 'recapture',
           url: job.url,
-          timestamp: new Date().toISOString(),
+          timestamp: queuedAt,
           supersedesCaptureId: job.supersedesCaptureId
         })
       }
-      if (accepted.length > 0) drain()
+      if (accepted.length > 0) {
+        for (const view of backgroundJobRepo.listJobs({ batchId })) emitJob(view)
+        drain()
+      }
       return {
         batchId,
         accepted: accepted.length,
@@ -620,16 +701,42 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       return service.enqueue([{ url: linkHref, caseId, linkedFrom: { captureId, linkHref } }])
     },
     status() {
-      const running = active ? 1 : 0
+      const { queued, running, held } = backgroundJobRepo.countActiveJobs()
       return {
-        pending: queue.length + running,
-        queued: queue.length,
+        pending: queued + running,
+        queued,
         running,
-        held: 0,
+        held,
+        heldBatches: backgroundJobRepo.listHeldBatches(),
         concurrency: 1,
         activeUrl: active?.url ?? null
       }
     },
+    recoverStoredJobs() {
+      const now = Date.now()
+      const { interrupted, held } = backgroundJobRepo.recoverJobsAtStartup({
+        now: new Date(now).toISOString(),
+        storedBefore: new Date(now - STORED_JOB_RETENTION_MS).toISOString(),
+        interruptedError: INTERRUPTED_JOB_ERROR
+      })
+      for (const { job, captureId } of interrupted) {
+        logger.warn('backgroundRenderer', 'backgroundRenderer.job_failed', {
+          ...(captureId ? { captureId: ident(captureId) } : {}),
+          caseId: ident(job.caseId),
+          failureKind: tag('interrupted', 'backgroundJobFailureKind')
+        })
+        emitJob(job)
+      }
+      for (const job of held) emitJob(job)
+    },
+    listJobs: (query) => backgroundJobRepo.listJobs(query),
+    resume(batchId) {
+      const resumed = backgroundJobRepo.resumeBatch(batchId)
+      for (const view of resumed) emitJob(view)
+      if (resumed.length > 0) drain()
+      return { resumed: resumed.length }
+    },
+    dismiss: (target) => ({ dismissed: backgroundJobRepo.dismissJobs(target) }),
     async idle() {
       while (draining) await draining
     }

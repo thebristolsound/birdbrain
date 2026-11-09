@@ -7,8 +7,27 @@ import { queryKeys } from '@renderer/lib/api/keys'
 import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
 
+const routerState = vi.hoisted(() => ({ pathname: '/cases/case-1/notes' }))
+const navigate = vi.hoisted(() => vi.fn())
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => navigate,
+  useMatchRoute:
+    () =>
+    ({ to }: { to: string; fuzzy?: boolean }) => {
+      const prefix = to.replace('$caseId', 'case-1')
+      return routerState.pathname.startsWith(prefix) ? {} : false
+    }
+}))
 vi.mock('@renderer/components/status/SessionControls', () => ({
   SessionControls: () => <div data-testid="session-controls" />
+}))
+vi.mock('@renderer/components/status/SharePill', () => ({
+  SharePill: ({ caseId }: { caseId: string }) => <div data-testid="share-pill">{caseId}</div>
+}))
+vi.mock('@renderer/components/export/ExportMenu', () => ({
+  ExportMenu: ({ caseId, caseName }: { caseId: string; caseName: string }) => (
+    <div data-testid="export-menu">{`${caseId}:${caseName}`}</div>
+  )
 }))
 
 import { CaseActionBar } from '@renderer/components/layout/CaseActionBar'
@@ -24,7 +43,10 @@ const BROWSER = {
 }
 
 function mount(status: LaunchedBrowserStatus = { state: 'none' }) {
-  fakeBridge({ launchedBrowser: { status: vi.fn(async () => status) } })
+  fakeBridge({
+    launchedBrowser: { status: vi.fn(async () => status) },
+    cases: { get: vi.fn(async () => ({ id: 'case-1', name: 'Operation Kestrel' })) }
+  })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   // Main's status, as useServerStatus keeps it from the pushed events.
   client.setQueryData(queryKeys.launchedBrowserStatus, status)
@@ -37,7 +59,39 @@ function mount(status: LaunchedBrowserStatus = { state: 'none' }) {
 
 afterEach(() => {
   cleanup()
-  useAppStore.setState({ connectedToExtension: false, startDialogCaseId: null })
+  useAppStore.setState({
+    connectedToExtension: false,
+    startDialogCaseId: null,
+    sessionActive: false
+  })
+})
+
+// What you can do to this Case, in one row (docs/design-handoff/2026-11-08-top-bar/, Option B).
+describe("CaseActionBar as the Case's action row", () => {
+  it('names the section on its left', () => {
+    mount()
+    expect(screen.getByTestId('case-action-bar-section').textContent).toBe('Notes')
+  })
+
+  it('carries Share and Export for the open Case', async () => {
+    mount()
+    const bar = screen.getByTestId('case-action-bar')
+    expect((await within(bar).findByTestId('share-pill')).textContent).toBe('case-1')
+    expect((await within(bar).findByTestId('export-menu')).textContent).toBe(
+      'case-1:Operation Kestrel'
+    )
+  })
+
+  it('shows the recording mark beside the switch while a session runs, and not otherwise', () => {
+    mount()
+    expect(screen.queryByTestId('topbar-rec')).toBeNull()
+    cleanup()
+    useAppStore.setState({ sessionActive: true })
+    mount()
+    const mark = screen.getByTestId('topbar-rec')
+    expect(mark.textContent).toContain('Recording')
+    expect(mark.textContent).not.toContain('REC')
+  })
 })
 
 describe('CaseActionBar', () => {

@@ -6,7 +6,9 @@ type Page = import('@playwright/test').Page
 
 // The top-bar search used to sit at the window's centre on its own layer, so on
 // a window about 1400px wide it covered the Capture Session switch and the REC
-// indicator. It now takes its place between the two side groups.
+// indicator. It now takes its place between the two side groups. Since the 2026-11-08
+// top bar, the Case's actions (Share, Export, Launch browser, the switch and the recording
+// mark) live in the Case action bar under it; the top bar keeps the status group and Settings.
 
 const NAMES = ['Kestrel', 'Operation Kestrel Harbour Review of subject accounts and linked domains']
 
@@ -38,7 +40,7 @@ test.describe('Top bar layout', () => {
       const caseId = await createCase(page, name)
 
       // Stand in for a connected extension and a running session: the switch only
-      // renders with an extension attached, and the REC pill only while recording.
+      // renders with an extension attached, and the recording mark only while recording.
       await electronApp.evaluate(({ BrowserWindow }, id) => {
         const { webContents } = BrowserWindow.getAllWindows()[0]
         webContents.send('event:extensionConnection', { connected: true })
@@ -46,13 +48,18 @@ test.describe('Top bar layout', () => {
       }, caseId)
       await expect(page.getByTestId('topbar-rec')).toBeVisible({ timeout: 10000 })
 
-      // The session switch sits in the case action bar, so the top bar's right side does
-      // not grow toward the native window controls while recording. Export stays in the
-      // top bar and folds to its icon on narrow windows.
+      // The Case's actions sit in the case action bar, so the top bar's right side does not
+      // grow toward the native window controls while recording: the switch, the recording
+      // mark, Export (which folds to its icon on narrow windows) and the Share pill.
       const actionBar = page.getByTestId('case-action-bar')
       await expect(actionBar.getByRole('switch', { name: 'Capture Session' })).toBeVisible()
-      await expect(controls.getByRole('button', { name: /Export/ })).toBeVisible()
+      await expect(actionBar.getByTestId('topbar-rec')).toBeVisible()
+      await expect(actionBar.getByRole('button', { name: /Export/ })).toBeVisible()
+      await expect(actionBar.getByTestId('case-action-bar-section')).toHaveText('Overview')
       await expect(controls.getByRole('switch', { name: 'Capture Session' })).toHaveCount(0)
+      await expect(controls.getByRole('button', { name: /Export/ })).toHaveCount(0)
+      await expect(controls.getByTestId('topbar-rec')).toHaveCount(0)
+      await expect(controls.getByTestId('status-group')).toBeVisible()
 
       for (const width of [1400, 1100, 1000, 900]) {
         await electronApp.windows()[0].setViewportSize({ width, height: 800 })
@@ -81,8 +88,8 @@ test.describe('Top bar layout', () => {
         expect(scrollWidth).toBeLessThanOrEqual(width)
 
         // The Share pill keeps its label from 1,024px up and folds to the icon below that
-        // (docs/design-handoff/2026-10-28-share-a-case/, frame G).
-        const pill = controls.getByTestId('share-pill')
+        // (docs/design-handoff/2026-10-28-share-a-case/, frame G), now in the action bar.
+        const pill = actionBar.getByTestId('share-pill')
         await expect(pill).toHaveAttribute('data-state', 'share')
         const { width: pillWidth } = (await pill.boundingBox())!
         if (width >= 1024) expect(pillWidth).toBeGreaterThan(40)
@@ -147,7 +154,7 @@ test.describe('Top bar layout', () => {
     await expect(overlay).toBeVisible()
 
     await page
-      .getByTestId('topbar-controls')
+      .getByTestId('case-action-bar')
       .getByRole('button', { name: /Export/ })
       .click()
     await page.getByRole('menuitem', { name: 'Export evidence report' }).click()

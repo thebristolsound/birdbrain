@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { FileOutput, ChevronDown, FileText, Archive, Loader2, X } from 'lucide-react'
+import { FileOutput, FileText, Archive, Loader2, X } from 'lucide-react'
 import { AnimatePresence } from 'motion/react'
 import { Button } from '@renderer/components/ui'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
@@ -144,14 +144,14 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
         ) : (
           <FileOutput className="h-3 w-3" strokeWidth={1.8} />
         )}
-        {/* The top bar shares its row with the case search, so the label folds to the
-            icon below xl and stays the button's accessible name. */}
-        <span className="sr-only xl:not-sr-only">
+        {/* In the Case action bar the label folds to the icon below lg and stays the button's
+            accessible name. No chevron: the format choice is the menu this opens, not a split
+            control (docs/design-handoff/2026-11-08-top-bar/). */}
+        <span className="sr-only lg:not-sr-only">
           {isExporting && archiveProgress
             ? `${archiveProgress.step} — ${Math.round(archiveProgress.percent)}%`
             : 'Export'}
         </span>
-        <ChevronDown className="h-3 w-3" strokeWidth={1.8} />
       </Button>
 
       {open && (

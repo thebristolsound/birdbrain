@@ -6,7 +6,7 @@ import type { ReactNode } from 'react'
 import type { Capture, CaptureEvent } from '@shared/types'
 import { useAppStore } from '@renderer/stores/appStore'
 import { notify } from '@renderer/lib/notify'
-import { CaptureHealth } from '@renderer/components/status/CaptureHealth'
+import { CaptureLog } from '@renderer/components/status/CaptureHealth'
 import { fakeBridge, quietVpnWarning } from '../renderer/fakeBridge'
 
 const navigate = vi.hoisted(() => vi.fn())
@@ -35,7 +35,6 @@ const storedEvent: CaptureEvent = {
 }
 
 async function openEvent(event: CaptureEvent = storedEvent) {
-  openPopover()
   const rowText = event.url.length > 40 ? event.url.slice(0, 40) + '...' : event.url
   fireEvent.contextMenu(screen.getByText(rowText))
   return screen.findByRole('menu')
@@ -46,11 +45,7 @@ function renderHealth() {
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  return render(<CaptureHealth />, { wrapper: Wrapper })
-}
-
-function openPopover() {
-  fireEvent.click(screen.getByTitle('Capture pipeline health'))
+  return render(<CaptureLog />, { wrapper: Wrapper })
 }
 
 beforeEach(() => {
@@ -70,22 +65,11 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('CaptureHealth', () => {
-  it('does not read the recapture queue while the popover is closed', async () => {
-    const queueStatus = vi.fn(async () => ({ pending: 0, inFlight: 0 }))
-    fakeBridge({ recapture: { queueStatus } })
-
-    renderHealth()
-
-    await waitFor(() => expect(screen.getByTitle('Capture pipeline health')).toBeDefined())
-    expect(queueStatus).not.toHaveBeenCalled()
-  })
-
-  it('shows pending background captures once the popover is open', async () => {
+describe('CaptureLog', () => {
+  it('shows pending background captures', async () => {
     fakeBridge({ recapture: { queueStatus: vi.fn(async () => ({ pending: 2, inFlight: 1 })) } })
 
     renderHealth()
-    openPopover()
 
     expect(await screen.findByTestId('recapture-pending-badge')).toBeDefined()
     expect(screen.getByTestId('recapture-pending-badge').textContent).toContain(
@@ -100,10 +84,9 @@ describe('CaptureHealth', () => {
     })
 
     renderHealth()
-    openPopover()
-    fireEvent.click(screen.getByText('Test Pipeline'))
+    fireEvent.click(screen.getByText('Test pipeline'))
 
-    expect(await screen.findByText('Pipeline OK — verified in 42ms')).toBeDefined()
+    expect(await screen.findByText('Pipeline OK, verified in 42ms')).toBeDefined()
   })
 
   it('surfaces a rejected http test as a failure rather than swallowing it', async () => {
@@ -113,10 +96,9 @@ describe('CaptureHealth', () => {
     })
 
     renderHealth()
-    openPopover()
     fireEvent.click(screen.getByText('Test HTTP'))
 
-    expect(await screen.findByText(/Pipeline FAILED/)).toBeDefined()
+    expect(await screen.findByText(/Pipeline failed/)).toBeDefined()
   })
 })
 
@@ -145,7 +127,6 @@ describe('pipeline event colors', () => {
       ]
     })
     renderHealth()
-    openPopover()
 
     const iconClass = (type: string) =>
       screen
@@ -209,7 +190,7 @@ describe('pipeline event context menu', () => {
     fireEvent.mouseDown(item)
     fireEvent.click(item)
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(event.url))
-    expect(screen.getByText('Capture Pipeline')).toBeDefined()
+    expect(screen.getByText('Capture log')).toBeDefined()
     expect(get).not.toHaveBeenCalled()
   })
 

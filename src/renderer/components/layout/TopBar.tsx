@@ -1,4 +1,4 @@
-import { Sun, Moon, ChevronsUpDown, ChevronRight, Settings, ArrowLeft } from 'lucide-react'
+import { ChevronsUpDown, ChevronRight, Settings, ArrowLeft } from 'lucide-react'
 import logoImg from '@renderer/assets/logo.png'
 import { Button } from '@renderer/components/ui'
 import { useMatchRoute, useNavigate, useRouter } from '@tanstack/react-router'
@@ -7,21 +7,14 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { caseQueryOptions } from '@renderer/lib/queries'
 import { accelerator } from '@renderer/lib/accelerator'
 import { SearchBar } from '@renderer/components/search/SearchBar'
-import { SessionControls } from '@renderer/components/status/SessionControls'
 import { CaptureSessionButton } from '@renderer/components/launchedBrowser/CaptureSessionButton'
-import {
-  launchedBrowserName,
-  launchedBrowserStatusQueryOptions
-} from '@renderer/lib/api/launchedBrowser'
-import { ConnectionStatus } from '@renderer/components/status/ConnectionStatus'
-import { CaptureHealth } from '@renderer/components/status/CaptureHealth'
-import { SharePill } from '@renderer/components/status/SharePill'
+import { SessionControls } from '@renderer/components/status/SessionControls'
+import { StatusGroup } from '@renderer/components/status/StatusGroup'
+import { RecordingMark } from '@renderer/components/status/RecordingMark'
+import { useCaptureSessionView } from '@renderer/components/launchedBrowser/CaptureSessionPanel'
 import { MemberCodeChip } from '@renderer/components/sharing/MemberCodeChip'
 import { youAreLine } from '@renderer/components/sharing/memberModel'
 import { membersQueryOptions } from '@renderer/lib/api/sharing'
-import { ExportMenu } from '@renderer/components/export/ExportMenu'
-import { EgressIndicator } from '@renderer/components/status/EgressIndicator'
-import { useTheme } from '@renderer/hooks/useTheme'
 import { useUpdateStatus } from '@renderer/hooks/useUpdateStatus'
 import {
   WINDOW_CONTROLS_LEFT_PROPERTY,
@@ -47,8 +40,11 @@ export function TopBar() {
   const router = useRouter()
   const matchRoute = useMatchRoute()
   const sessionActive = useAppStore((s) => s.sessionActive)
+  // With no launched browser the Capture Session control is absent, so an extension-only
+  // session carries its own recording mark on the screens that have no action bar.
+  const launchedView = useCaptureSessionView()
+  const extensionOnlyRecording = sessionActive && launchedView.kind === 'none'
   const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen)
-  const { theme, toggleTheme } = useTheme()
   const { status: updateStatus } = useUpdateStatus()
   const updateAvailable =
     updateStatus?.state === 'available' || updateStatus?.state === 'downloaded'
@@ -94,26 +90,16 @@ export function TopBar() {
 
         <div className="flex-1" />
 
-        {/* A running session keeps its indicator and stop control here too. */}
-        {sessionActive && (
-          <div className="flex items-center gap-2">
-            <SessionControls />
-            <RecIndicator />
-          </div>
-        )}
-        {/* Settings has no rail, so the Capture Session panel opens from here (`2d`). Open ‹Case›
-            stays on the dashboard's. */}
+        {/* A running session keeps its stop control here too; the Capture Session control
+            carries the recording mark and opens the panel, since Settings has no rail (`2d`).
+            Open ‹Case› stays on the dashboard's. */}
+        {sessionActive && <SessionControls />}
+        {extensionOnlyRecording && <RecordingMark />}
         <CaptureSessionButton showOpenCase={false} />
-
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={toggleTheme}
-          title="Toggle theme"
-          style={END_INSET}
-        >
-          {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-        </Button>
+        {/* How the app is doing, the same control as on a Case (2026-11-08 top bar). */}
+        <div style={END_INSET}>
+          <StatusGroup />
+        </div>
       </header>
     )
   }
@@ -123,7 +109,7 @@ export function TopBar() {
       {/* The side groups share what the search leaves equally, so the search sits at the
           window's centre until a side needs more than its half. The case name's track
           gives way first, down to the switcher icon; then the search shrinks. */}
-      <div className="grid flex-1 basis-0 grid-cols-[max-content_max-content_minmax(2rem,max-content)] items-center gap-3">
+      <div className="grid flex-1 basis-0 grid-cols-[max-content_max-content_minmax(10rem,max-content)] items-center gap-3">
         {/* Logo — click to go home */}
         <button
           onClick={() => navigate({ to: '/' })}
@@ -156,7 +142,7 @@ export function TopBar() {
                   data-testid="topbar-member-code"
                 />
               )}
-              <span className="max-w-[220px] truncate font-display text-xs font-bold text-text-primary">
+              <span className="max-w-[220px] truncate font-display text-xs font-semibold text-text-primary">
                 {activeCase?.name ?? ''}
               </span>
               <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-text-muted" />
@@ -172,40 +158,27 @@ export function TopBar() {
         </div>
       )}
 
-      {/* Right controls */}
+      {/* Right controls: how the app is doing, then Settings. What acts on the Case (Share,
+          Export, Launch browser, the session switch and the recording mark) lives in
+          CaseActionBar, under this bar (docs/design-handoff/2026-11-08-top-bar/, Option B). */}
       <div
         data-testid="topbar-controls"
         className="flex flex-1 basis-0 items-center justify-end gap-2"
       >
-        {/* The case's session switch lives in CaseActionBar, under this bar. */}
-        {sessionActive && <RecIndicator />}
-        {/* Case screens carry the Capture Session rail; the dashboard and the wizard have none
-            (`2c`). */}
+        {/* The dashboard and the wizard have no rail and no action bar (`2c`), so the session's
+            control, and the recording mark while it records, stay up here. */}
+        {!activeCaseId && extensionOnlyRecording && <RecordingMark />}
         {!activeCaseId && <CaptureSessionButton showOpenCase={isOnDashboard} />}
 
-        {/* The Case's one sharing control: "Share" until a peer joins, then the sync state. */}
-        {activeCase && (
-          <SharePill
-            caseId={activeCase.id}
-            onOpenMembers={() =>
-              navigate({ to: '/cases/$caseId/settings', params: { caseId: activeCase.id } })
-            }
-          />
-        )}
-        <EgressIndicator />
-        <ConnectionStatus />
-        <CaptureHealth />
-
-        {activeCaseId && activeCase && (
-          <ExportMenu caseId={activeCase.id} caseName={activeCase.name} />
-        )}
+        <StatusGroup />
 
         <Button
           variant="ghost"
-          size="icon-sm"
+          size="icon"
           onClick={() => navigate({ to: '/settings' })}
           title={updateAvailable ? 'Settings — update available' : 'Settings'}
           className="relative"
+          style={END_INSET}
         >
           <Settings className="h-3.5 w-3.5" />
           {updateAvailable && (
@@ -215,36 +188,7 @@ export function TopBar() {
             />
           )}
         </Button>
-
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={toggleTheme}
-          title="Toggle theme"
-          style={END_INSET}
-        >
-          {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-        </Button>
       </div>
     </header>
-  )
-}
-
-// Names the launched browser while it is open (`2c`, `2d`).
-function RecIndicator() {
-  const { data: launched } = useQuery(launchedBrowserStatusQueryOptions)
-  return (
-    <div
-      data-testid="topbar-rec"
-      className="flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5"
-    >
-      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
-      <span className="text-[10px] font-medium text-danger-fg">REC</span>
-      {launched?.state === 'open' && (
-        <span className="whitespace-nowrap text-[10px] text-text-secondary">
-          · {launchedBrowserName(launched.browser.label)}
-        </span>
-      )}
-    </div>
   )
 }

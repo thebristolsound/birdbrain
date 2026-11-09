@@ -32,9 +32,11 @@ export function RecordingMark({
       )}
     >
       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-danger-fg" aria-hidden="true" />
-      <span className="sr-only">Recording</span>
       {since !== null ? (
-        <Elapsed since={since} />
+        <>
+          <span className="sr-only">Recording</span>
+          <Elapsed since={since} />
+        </>
       ) : (
         <span className="font-mono text-text-primary">Recording</span>
       )}

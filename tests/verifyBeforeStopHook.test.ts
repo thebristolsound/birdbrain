@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 // @ts-expect-error - build script with no type declarations; the tsconfigs exclude scripts/
 import { formatVerificationBlock } from '../scripts/preflight.mjs'
 
 const HOOK = resolve(__dirname, '../.claude/hooks/verify-before-stop.sh')
+const TEARDOWN = resolve(__dirname, '../.claude/skills/teardown/scripts/teardown.sh')
 
 let repo: string
 
@@ -33,10 +34,10 @@ const commit = (name: string) => {
 }
 
 // The block preflight itself writes, so a change to its stamp line breaks these tests.
-const writeBlock = (sha: string, status: 'pass' | 'fail' = 'pass') => {
-  mkdirSync(join(repo, '.preflight'), { recursive: true })
+const writeBlock = (sha: string, status: 'pass' | 'fail' = 'pass', root = repo) => {
+  mkdirSync(join(root, '.preflight'), { recursive: true })
   writeFileSync(
-    join(repo, '.preflight', 'verification.md'),
+    join(root, '.preflight', 'verification.md'),
     formatVerificationBlock({
       sha,
       nodeVersion: '24.0.0',
@@ -64,6 +65,21 @@ const stop = (payload: Record<string, unknown>) => {
 
 const implementer = { agent_type: 'birdbrain-implementer', stop_hook_active: false }
 
+// A linked worktree one commit past origin/main, the tree an implementer works in. Teardown
+// refuses the main checkout, so the cleanup tests need one.
+const linkedTree = () => {
+  const tree = `${repo}-tree`
+  git('worktree', 'add', '-q', '-b', 'task', tree)
+  writeFileSync(join(tree, 'task.txt'), 'task\n')
+  git('-C', tree, 'add', 'task.txt')
+  git('-C', tree, 'commit', '-q', '-m', 'task')
+  return { tree, head: git('-C', tree, 'rev-parse', 'HEAD') }
+}
+
+// The implementer's last step: `teardown.sh close --artefacts`, run from inside its tree.
+const closeArtefacts = (tree: string) =>
+  execFileSync('bash', [TEARDOWN, 'close', '--artefacts'], { cwd: tree, encoding: 'utf8' })
+
 beforeEach(() => {
   repo = mkdtempSync(join(tmpdir(), 'verify-before-stop-'))
   git('init', '-q', '-b', 'work')
@@ -75,6 +91,7 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(repo, { recursive: true, force: true })
+  rmSync(`${repo}-tree`, { recursive: true, force: true })
 })
 
 describe('verify-before-stop hook', () => {
@@ -104,7 +121,63 @@ describe('verify-before-stop hook', () => {
 
   it('lets the next stop through when the block at HEAD records a failure', () => {
     writeBlock(commit('work.txt'), 'fail')
+    expect(stop(implementer).code).toBe(2)
     expect(stop({ ...implementer, stop_hook_active: true }).code).toBe(0)
+  })
+
+  it('holds a failing block once when an earlier stop on the commit was already held', () => {
+    const head = commit('work.txt')
+    const again = { ...implementer, stop_hook_active: true }
+    expect(stop(implementer).stderr).toContain('no verification block')
+    writeBlock(head, 'fail')
+    const { code, stderr } = stop(again)
+    expect(code).toBe(2)
+    expect(stderr).toContain('records status=fail')
+    expect(stop(again).code).toBe(0)
+  })
+
+  it('holds a failing block once after the three holds for a missing block are spent', () => {
+    const head = commit('work.txt')
+    const again = { ...implementer, stop_hook_active: true }
+    for (let i = 0; i < 3; i += 1) stop(again)
+    writeBlock(head, 'fail')
+    expect(stop(again).stderr).toContain('records status=fail')
+    expect(stop(again).code).toBe(0)
+  })
+
+  it('names the give-up path when it holds a stop with no block', () => {
+    commit('work.txt')
+    const { stderr } = stop(implementer)
+    expect(stderr).toContain('give-up path')
+    expect(stderr).toContain('after 3 held stops')
+  })
+
+  it('still passes a verified implementer after teardown clears the artefacts', () => {
+    const { tree, head } = linkedTree()
+    writeBlock(head, 'pass', tree)
+    writeFileSync(join(tree, '.preflight', 'check.md'), 'a check summary\n')
+    expect(stop({ ...implementer, cwd: tree }).code).toBe(0)
+    expect(closeArtefacts(tree)).toContain('kept .preflight/verification.md')
+    expect(existsSync(join(tree, '.preflight', 'check.md'))).toBe(false)
+    expect(stop({ ...implementer, cwd: tree }).code).toBe(0)
+  })
+
+  it('keeps the count of held stops across a teardown of the artefacts', () => {
+    const { tree } = linkedTree()
+    const held = { ...implementer, cwd: tree }
+    const codes = []
+    for (let i = 0; i < 3; i += 1) {
+      codes.push(stop(held).code)
+      mkdirSync(join(tree, '.preflight'), { recursive: true })
+      closeArtefacts(tree)
+    }
+    expect(codes).toEqual([2, 2, 2])
+    expect(stop(held).code).toBe(0)
+  })
+
+  it('holds a main session started as the implementer, not only a subagent', () => {
+    commit('work.txt')
+    expect(stop({ ...implementer, hook_event_name: 'Stop' }).code).toBe(2)
   })
 
   it('blocks uncommitted changes even with a passing block at HEAD', () => {

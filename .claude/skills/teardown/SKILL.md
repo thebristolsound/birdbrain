@@ -20,7 +20,9 @@ them cleaned up before, is in `docs/agents/worktrees.md`.
 
 `--artefacts` deletes the git-ignored outputs (`.preflight/`, `.health/`, `coverage/`,
 `test-results/`, `playwright-report/`, `out/`, `dist/`, `extension/dist/`,
-`.serena/cache/`) and keeps the tree, so a fix round can still land in it. The tree itself
+`.serena/cache/`) and keeps the tree, so a fix round can still land in it. It leaves one file
+in `.preflight/`: `verification.md`, which the implementer's stop hook
+(`.claude/hooks/verify-before-stop.sh`) reads after this step. The tree itself
 goes when its PR merges, through `merge.sh`. `--merged <sha>` states the merged head instead
 of asking GitHub, which can lag a merge by seconds.
 

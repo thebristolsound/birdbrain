@@ -10,17 +10,23 @@
 # `<!-- preflight vN sha=<sha> status=<pass|fail> -->`, from .preflight/verification.md.
 #
 # It acts only for the agents named in $bound, read from the payload's agent_type, which
-# SubagentStop always carries and Stop carries in a session started with `--agent`. Every
-# other session passes through. For a subagent started with worktree isolation, the payload's
-# cwd is that worktree (checked on Claude Code 2.1.318), so the stamp read is the agent's own.
+# SubagentStop always carries and Stop carries in a session started with `--agent`. So a main
+# session started as a bound agent is held at each turn end too, interactive or not; a session
+# with any other agent type, or none, passes through. For a subagent started with worktree
+# isolation, the payload's cwd is that worktree (checked on Claude Code 2.1.318), so the stamp
+# read is the agent's own.
 #
-# A stop goes through when the block at HEAD passes on a clean tree. A block at HEAD that
-# records a failure holds the first stop and lets the next one through (stop_hook_active):
-# the agent ran the checks on its final commit and the block says what failed, which is the
-# give-up path. A missing or stale block, or uncommitted changes, holds every stop, up to
-# $max_blocks times per commit. The bound is this hook's own: Claude Code's cap of eight
-# consecutive blocks resets whenever the agent calls a tool, so an agent that cannot run
-# preflight at all (a wrong Node, a broken install) would otherwise be held indefinitely.
+# A stop goes through when the block at HEAD passes on a clean tree. A missing or stale block,
+# or uncommitted changes, holds every stop, up to $max_blocks times per commit. The bound is
+# this hook's own: Claude Code's cap of eight consecutive blocks resets whenever the agent
+# calls a tool, so an agent that cannot run preflight at all (a wrong Node, a broken install)
+# would otherwise be held indefinitely. A block at HEAD that records a failure holds one stop
+# per commit, whatever was held before it, and lets the next one through: the agent ran the
+# checks on its final commit and the block says what failed, which is the give-up path.
+#
+# Both counts live in the worktree's git directory, not in .preflight/, so no cleanup of the
+# ignored outputs starts them again. `teardown.sh close --artefacts`, the implementer's last
+# step, clears .preflight/ but keeps verification.md for this hook to read.
 #
 # Exit codes: 0 allows the stop, 2 sends the agent back to work with stderr as the reason.
 set -u
@@ -30,10 +36,10 @@ bound="birdbrain-implementer"
 max_blocks=3
 
 input="$(cat)"
-read -r agent active cwd < <(printf '%s' "$input" | node -e '
+read -r agent cwd < <(printf '%s' "$input" | node -e '
   let j = {}
   try { j = JSON.parse(require("fs").readFileSync(0, "utf8")) } catch {}
-  process.stdout.write(`${j.agent_type || "-"} ${j.stop_hook_active ? 1 : 0} ${j.cwd || process.cwd()}\n`)')
+  process.stdout.write(`${j.agent_type || "-"} ${j.cwd || process.cwd()}\n`)')
 
 case " $bound " in *" $agent "*) ;; *) exit 0 ;; esac
 
@@ -47,7 +53,14 @@ block="$root/.preflight/verification.md"
 stamp="$(grep -m1 -oE '<!-- preflight v[0-9]+ sha=[0-9a-f]+ status=[a-z]+ -->' "$block" 2>/dev/null)"
 sha="$(printf '%s' "$stamp" | sed -nE 's/.* sha=([0-9a-f]+) .*/\1/p')"
 status="$(printf '%s' "$stamp" | sed -nE 's/.* status=([a-z]+) .*/\1/p')"
+give_up="If you are taking the give-up path instead, say so in your report and stop again"
+limit="$give_up: this hook lets the stop through after $max_blocks held stops on one commit."
 next="Commit your work, run \`pnpm preflight\`, and fix what it reports before you finish."
+
+state="$(git -C "$root" rev-parse --path-format=absolute --git-path birdbrain-stop-blocks 2>/dev/null)" || exit 0
+read -r last count reminded 2>/dev/null < "$state" || true
+[ "${last:-}" = "$head" ] || { count=0; reminded=0; }
+count="${count:-0}"; reminded="${reminded:-0}"
 
 if [ -n "$(git -C "$root" status --porcelain 2>/dev/null)" ]; then
   reason="the working tree has uncommitted changes, which no verification block can cover"
@@ -57,19 +70,17 @@ elif [ -z "$stamp" ]; then
 elif [ "$sha" != "$head" ]; then
   reason="the verification block is for ${sha:0:12}, not HEAD ${head:0:12}"
 elif [ "$status" != pass ]; then
-  [ "$active" = 1 ] && exit 0
-  reason="the verification block at HEAD records status=$status"
-  next="Fix what it reports and run \`pnpm preflight\` again. If you are taking the give-up path instead, say so in your report and stop again: a block at HEAD that records the failure lets the next stop through."
+  [ "$reminded" = 1 ] && exit 0
+  printf '%s %s 1\n' "$head" "$count" > "$state"
+  echo "verify-before-stop: the verification block at HEAD records status=$status. Fix what it reports and run \`pnpm preflight\` again. $give_up: a block at HEAD that records the failure lets the next stop through." >&2
+  exit 2
 else
   exit 0
 fi
 
-counter="$root/.preflight/stop-blocks"
-read -r last count 2>/dev/null < "$counter" || true
-[ "${last:-}" = "$head" ] || count=0
-count=$((${count:-0} + 1))
+count=$((count + 1))
 [ "$count" -gt "$max_blocks" ] && exit 0
-mkdir -p "$root/.preflight" && printf '%s %s\n' "$head" "$count" > "$counter"
+printf '%s %s %s\n' "$head" "$count" "$reminded" > "$state"
 
-echo "verify-before-stop: $reason. $next (Stop $count of $max_blocks held for this commit.)" >&2
+echo "verify-before-stop: $reason. $next $limit (Stop $count of $max_blocks held for this commit.)" >&2
 exit 2

@@ -62,4 +62,12 @@ describe('statusModel', () => {
     expect(m.signals[2].text).toBe('23 captured · 3 failed')
     expect(m.summary).toContain('a problem')
   })
+
+  it('names queued background captures in the summary only when there are some', () => {
+    expect(statusModel({ ...base, pending: 0 }).queued).toBeNull()
+    const one = statusModel({ ...base, pending: 1 })
+    expect(one.queued).toBe('1 background capture queued or running')
+    expect(one.summary).toMatch(/Nothing captured yet\. 1 background capture queued or running\.$/)
+    expect(one.severity).toBe('nominal')
+  })
 })

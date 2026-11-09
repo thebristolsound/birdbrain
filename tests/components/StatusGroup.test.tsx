@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import type { EgressSetting } from '@shared/types'
+import type { CaptureEvent, EgressSetting } from '@shared/types'
+import type { RecaptureQueueStatus } from '@shared/ipc'
 import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { stubResizeObserver } from './resizeObserverStub'
@@ -13,12 +14,16 @@ vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 
 import { StatusGroup } from '@renderer/components/status/StatusGroup'
 
-function renderWith(egress: EgressSetting, vpnSeen: boolean | undefined) {
+function renderWith(
+  egress: EgressSetting,
+  vpnSeen: boolean | undefined,
+  queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => ({ pending: 0, activeUrl: null }))
+) {
   const vpnStatus = vi.fn(async () => ({ vpnSeen }))
   fakeBridge({
     settings: { get: vi.fn(async () => ({ egress })) },
     egress: { vpnStatus },
-    recapture: { queueStatus: vi.fn(async () => ({ pending: 0, inFlight: 0 })) }
+    recapture: { queueStatus }
   })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   function Wrapper({ children }: { children: ReactNode }) {
@@ -112,5 +117,91 @@ describe('StatusGroup', () => {
     expect(await screen.findByTestId('capture-log')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Egress settings' }))
     expect(navigate).toHaveBeenCalledWith({ to: '/settings', search: { section: 'egress' } })
+  })
+})
+
+// The closed button carries queued background captures, as the Capture Health pill did (#2122).
+describe('StatusGroup background captures', () => {
+  const queued = (pending: number) =>
+    vi.fn(async (): Promise<RecaptureQueueStatus> => ({
+      pending,
+      activeUrl: pending ? 'https://example.org/queued' : null
+    }))
+  const started: CaptureEvent = {
+    type: 'received',
+    source: 'recapture',
+    url: 'https://example.org/queued',
+    timestamp: '2026-11-09T03:48:00Z'
+  }
+
+  it('shows a spinner with the pending count on the closed button', async () => {
+    renderWith({ kind: 'direct' }, true, queued(3))
+
+    const indicator = await screen.findByTestId('recapture-pending-indicator')
+    expect(indicator.textContent).toBe('3')
+    expect(indicator.getAttribute('title')).toBe('3 background captures queued or running')
+    expect(indicator.querySelector('svg')?.getAttribute('class')).toContain('animate-spin')
+    expect(screen.getByTestId('status-group').getAttribute('aria-label')).toContain(
+      '3 background captures queued or running.'
+    )
+    expect(screen.queryByRole('dialog', { name: 'Status' })).toBeNull()
+  })
+
+  it('shows no pending indicator when the queue is empty', async () => {
+    const queueStatus = queued(0)
+    renderWith({ kind: 'direct' }, true, queueStatus)
+
+    await waitFor(() => expect(queueStatus).toHaveBeenCalled())
+    expect(screen.queryByTestId('recapture-pending-indicator')).toBeNull()
+  })
+
+  it('re-reads the queue when a background capture starts or finishes', async () => {
+    const queueStatus = queued(0)
+    renderWith({ kind: 'direct' }, true, queueStatus)
+    await waitFor(() => expect(queueStatus).toHaveBeenCalledTimes(1))
+
+    queueStatus.mockResolvedValue({ pending: 1, activeUrl: started.url })
+    act(() => useAppStore.getState().addCaptureEvent(started))
+    expect((await screen.findByTestId('recapture-pending-indicator')).textContent).toBe('1')
+
+    queueStatus.mockResolvedValue({ pending: 0, activeUrl: null })
+    act(() =>
+      useAppStore
+        .getState()
+        .addCaptureEvent({ ...started, type: 'stored', timestamp: '2026-11-09T03:48:12Z' })
+    )
+    await waitFor(() => expect(screen.queryByTestId('recapture-pending-indicator')).toBeNull())
+  })
+
+  // The last capture's stored event can arrive before the queue drops it, so the
+  // button relies on the poll to clear.
+  it('polls while a capture is pending and stops once the queue empties', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const queueStatus = queued(1)
+      renderWith({ kind: 'direct' }, true, queueStatus)
+      expect((await screen.findByTestId('recapture-pending-indicator')).textContent).toBe('1')
+
+      queueStatus.mockResolvedValue({ pending: 0, activeUrl: null })
+      await act(() => vi.advanceTimersByTimeAsync(2000))
+      await waitFor(() => expect(screen.queryByTestId('recapture-pending-indicator')).toBeNull())
+
+      const calls = queueStatus.mock.calls.length
+      await act(() => vi.advanceTimersByTimeAsync(6000))
+      expect(queueStatus).toHaveBeenCalledTimes(calls)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not re-read the queue for a capture from another source', async () => {
+    const queueStatus = queued(0)
+    renderWith({ kind: 'direct' }, true, queueStatus)
+    await waitFor(() => expect(queueStatus).toHaveBeenCalledTimes(1))
+
+    act(() => useAppStore.getState().addCaptureEvent({ ...started, source: 'auto' }))
+
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(queueStatus).toHaveBeenCalledTimes(1)
   })
 })

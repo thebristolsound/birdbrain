@@ -1,11 +1,12 @@
 import { createElement, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { Activity, Puzzle, type LucideIcon } from 'lucide-react'
+import { Activity, Loader2, Puzzle, type LucideIcon } from 'lucide-react'
 import { Button, Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui'
 import { useAppStore } from '@renderer/stores/appStore'
 import { settingsQueryOptions } from '@renderer/lib/api/settings'
 import { vpnStatusQueryOptions } from '@renderer/lib/api/egress'
+import { recaptureQueueQueryOptions } from '@renderer/lib/api/recapture'
 import { cn } from '@renderer/lib/utils'
 import { egressIcon } from '@renderer/components/status/egressText'
 import {
@@ -45,6 +46,19 @@ export function StatusGroup() {
   const direct = egress?.kind === 'direct'
   const { data: vpn } = useQuery({ ...vpnStatusQueryOptions, enabled: direct })
   const vpnSeen = direct ? vpn?.vpnSeen : undefined
+  // The button shows queued background captures while closed. A job that starts or ends emits a
+  // recapture event, so the queue is re-read on each one, then polled while something is pending.
+  const latestRecaptureEvent = useAppStore((s) =>
+    s.captureEvents.find((event) => event.source === 'recapture')
+  )
+  const { data: queue, refetch: refetchQueue } = useQuery({
+    ...recaptureQueueQueryOptions,
+    refetchInterval: (query) => ((query.state.data?.pending ?? 0) > 0 ? 2000 : false)
+  })
+  useEffect(() => {
+    if (latestRecaptureEvent) void refetchQueue()
+  }, [latestRecaptureEvent, refetchQueue])
+  const pending = queue?.pending ?? 0
 
   const model = statusModel({
     egress,
@@ -52,7 +66,8 @@ export function StatusGroup() {
     connectedToExtension,
     successCount: captureStats.successCount,
     failCount: captureStats.failCount,
-    sessionActive
+    sessionActive,
+    pending
   })
   const [extension, egressSignal, health] = model.signals
 
@@ -124,6 +139,16 @@ export function StatusGroup() {
                   {model.word}
                 </span>
               )}
+            </span>
+          )}
+          {model.queued && (
+            <span
+              data-testid="recapture-pending-indicator"
+              title={model.queued}
+              className="inline-flex items-center gap-1 tabular-nums text-text-secondary"
+            >
+              <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+              {pending}
             </span>
           )}
         </button>

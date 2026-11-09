@@ -27,6 +27,8 @@ export interface StatusInput {
   successCount: number
   failCount: number
   sessionActive: boolean
+  /** Background captures queued or running (recapture queue). */
+  pending?: number
 }
 
 export interface StatusModel {
@@ -38,6 +40,8 @@ export interface StatusModel {
   word: string | null
   /** The stored count, shown while a session runs so the Operator sees evidence landing. */
   count: number | null
+  /** The background-capture line, or null while the queue is empty. */
+  queued: string | null
   /** The whole state in one sentence, for the button's accessible name. */
   summary: string
 }
@@ -105,7 +109,14 @@ export function statusModel(input: StatusInput): StatusModel {
           .map((s) => (s.severity === 'danger' ? 'a problem' : 'a warning'))
           .filter((v, i, a) => a.indexOf(v) === i)
           .join(' and ')
-  const summary = `Status: ${lead}. Egress: ${egressSignal.text}. Extension: ${extension.text}. ${health.text}.`
+  const pending = input.pending ?? 0
+  const queued =
+    pending > 0
+      ? `${pending} background capture${pending === 1 ? '' : 's'} queued or running`
+      : null
+  const summary =
+    `Status: ${lead}. Egress: ${egressSignal.text}. Extension: ${extension.text}. ${health.text}.` +
+    (queued ? ` ${queued}.` : '')
 
   return {
     signals: [extension, egressSignal, health],
@@ -113,6 +124,7 @@ export function statusModel(input: StatusInput): StatusModel {
     severity: worst?.severity ?? 'nominal',
     word,
     count,
+    queued,
     summary
   }
 }

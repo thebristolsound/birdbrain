@@ -90,6 +90,14 @@ _Avoid_: extension (unqualified), plugin, add-on.
 A fresh background Capture of an existing Capture's URL, stored as a linked sibling that supersedes it. The original is never touched; both stay fully visible.
 _Avoid_: refresh, re-fetch, update.
 
+**Background Job**:
+One URL the Operator asked Birdbrain to render in the background into a Case, held from the moment it is accepted until it ends: stored as a `background` Capture, skipped by a rule that refuses it, failed, or cancelled. A Recapture, a pasted URL and a link Capture are each a Background Job. Its record is the job's state, never evidence: it stays out of the Manifest, and nothing that verifies a Capture reads it.
+_Avoid_: task, queue item, recapture (for a job that supersedes nothing).
+
+**Batch**:
+The Background Jobs one Operator action queued, always into one Case. A single Recapture from the Capture menu is a Batch of one, and a retried Background Job stays in the Batch that first queued it.
+_Avoid_: run, bulk job.
+
 **Duplicate**:
 A byte-for-byte copy of a Capture whose integrity verifies at the moment of copying, stored in the same Case as its own Capture with a Manifest Entry linking back to the source. It observed nothing and is never a second sighting of the page.
 _Avoid_: copy, clone, second capture.
@@ -349,6 +357,7 @@ _Avoid_: risky change, core change, forensic change.
 - A **Capture**'s **Content Hash** may be attested by one **Timestamp Token** from a **TSA**, moving its **Trusted Time** from `pending` to `rfc3161`
 - **Trusted Time** and **Integrity Status** are orthogonal: a byte-perfect **Capture** is integrity-verified whether or not it carries a trusted timestamp
 - A **Recapture** produces a new **Capture** that supersedes an existing one; both remain visible and neither is overwritten
+- A **Background Job** ends with at most one **Capture**; a **Recapture** is a **Background Job** that supersedes an existing **Capture**, and every **Background Job** in a **Batch** targets the **Batch**'s one **Case**
 - A **Duplicate** is a new **Capture** that links to its source and shares its **Content Hash**; unlike a **Recapture** it observed nothing
 - A link **Capture** observed its destination afresh, so unlike a **Duplicate** it is a new sighting; it names the **Capture** whose stored page held the link (ADR-0040)
 - A **TLS Cert Chain** and a **Wayback Ref** attach to a **Capture** as corroboration only, and bind nothing about the captured transaction
@@ -419,6 +428,10 @@ _Avoid_: risky change, core change, forensic change.
 - "auto-capture" names four unrelated things: the top-bar switch that starts and stops a **Capture Session** (#813), the Signals card and the `autoCaptureMode` setting that edit a Case's URL exclusion policy (#744), the Capture Server capturing a page before the extension attaches a **Tag** or **Note** to it, and the withdrawn passive capture whose return ADR-0037 scopes to a launched browser (#600). Say "Capture Session" for the switch, "exclusion policy" for the card, and "capture-then-attach" for the server path; outside text marked _Planned_, "passive capture" and its vocabulary stay reserved to ADR-0013 and ADR-0037 until the restoration lands.
 
 - "exclusion" names three unrelated things: the URL exclusion policy that stops the extension capturing a page, a Shared Case `exclude` entry that keeps an Exhibit out of exports, and an Exhibit **Withheld from analysis**. Name which one; never write "excluded" for the third.
+
+- "batch" is two things: a **Batch** of Background Jobs, and a batch delete, which removes several Captures in one Capture Lifecycle operation. The defined term means only the first; say "batch delete" for the second.
+
+- "recapture" is wider in code than in the domain: every **Background Job**'s events and its `CaptureSource` say `recapture`, a pasted URL's and a link Capture's included, though neither supersedes anything. In prose, say **Recapture** only for a job that supersedes an existing Capture, and **Background Job** for the rest.
 
 - "route" is the Capture Server's HTTP route (a handler that parses a request and hands it to the Capture Lifecycle). The path outbound traffic takes is the **Egress**; never call it a route.
 

@@ -6,9 +6,8 @@ Design mock for the app chrome's top bar and Case action bar, built in the same 
 
 - `Top Bar.dc.html`: the canvas. Section 0 is the bar as it was (seven controls and the OS buttons
   in one row, three tinted status pills, the Case name cut before the search); M is the two marks
-  before and after; A, B and C are the options; R the rules. Open it from the design project root
-  so the Birdbrain UI stylesheet loads; `support.js` and `_ds/` are copied from the 2026-11-01
-  bundle so it renders here too.
+  before and after; A, B and C are the options; R the rules. It loads `support.js` and `_ds/`
+  from the 2026-11-01 bundle beside this folder, so keep that folder in place for it to render.
 
 ## What was built: Option B
 

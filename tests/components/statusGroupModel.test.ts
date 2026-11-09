@@ -18,7 +18,7 @@ describe('statusModel', () => {
     expect(m.word).toBeNull()
     expect(m.count).toBeNull()
     expect(m.summary).toBe(
-      'Status: all nominal. Egress: Direct · VPN seen. Extension: Connected. No Captures this session.'
+      'Status: all nominal. Egress: Direct · VPN seen. Extension: Connected. Nothing captured yet.'
     )
   })
 
@@ -59,7 +59,7 @@ describe('statusModel', () => {
 
   it('always names a failure count in the health row', () => {
     const m = statusModel({ ...base, successCount: 23, failCount: 3 })
-    expect(m.signals[2].text).toBe('23 this session · 3 failed')
+    expect(m.signals[2].text).toBe('23 captured · 3 failed')
     expect(m.summary).toContain('a problem')
   })
 })

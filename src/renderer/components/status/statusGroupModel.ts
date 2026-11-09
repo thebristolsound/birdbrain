@@ -71,10 +71,10 @@ export function statusModel(input: StatusInput): StatusModel {
     name: 'Capture Health',
     text:
       failCount > 0
-        ? `${successCount} this session · ${failCount} failed`
+        ? `${successCount} captured · ${failCount} failed`
         : successCount > 0
-          ? `${successCount} this session`
-          : 'No Captures this session',
+          ? `${successCount} captured`
+          : 'Nothing captured yet',
     severity: failCount > 0 ? 'danger' : 'nominal'
   }
 

@@ -47,7 +47,7 @@ describe('StatusGroup', () => {
     const button = await screen.findByTestId('status-group')
     await waitFor(() => expect(button.dataset.severity).toBe('warning'))
     expect(button.getAttribute('aria-label')).toBe(
-      'Status: a warning. Egress: Direct · VPN not seen. Extension: Connected. No Captures this session.'
+      'Status: a warning. Egress: Direct · VPN not seen. Extension: Connected. Nothing captured yet.'
     )
     expect(button.className).not.toMatch(/bg-(warning|danger|success)-surface/)
     // The worst signal's icon joins the dots, so the state reads without colour.

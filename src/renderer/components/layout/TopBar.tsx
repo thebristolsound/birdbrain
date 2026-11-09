@@ -149,7 +149,7 @@ export function TopBar() {
               )}
               <span
                 data-testid="topbar-case-name-text"
-                className="max-w-[220px] truncate font-display text-xs font-semibold text-text-primary max-[1000px]:hidden"
+                className="min-w-16 max-w-[220px] truncate font-display text-xs font-semibold text-text-primary max-[1000px]:hidden"
               >
                 {activeCase?.name ?? ''}
               </span>

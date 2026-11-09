@@ -145,7 +145,7 @@ export interface RecaptureService {
   // the running app, since a restored copy can hold rows from an earlier session.
   recoverStoredJobs: () => void
   listJobs: (query: RecaptureListJobsQuery) => BackgroundJobView[]
-  // Sets the Batch's `held` jobs `queued`, so they run after the jobs already queued.
+  // Sets the Batch's `held` jobs `queued`, behind the jobs already queued at the resume.
   resume: (batchId: string) => { resumed: number }
   dismiss: (target: RecaptureDismissTarget) => { dismissed: number }
   // resolves when the queue drains — used by tests only
@@ -731,7 +731,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     },
     listJobs: (query) => backgroundJobRepo.listJobs(query),
     resume(batchId) {
-      const resumed = backgroundJobRepo.resumeBatch(batchId)
+      const resumed = backgroundJobRepo.resumeBatch(batchId, new Date().toISOString())
       for (const view of resumed) emitJob(view)
       if (resumed.length > 0) drain()
       return { resumed: resumed.length }

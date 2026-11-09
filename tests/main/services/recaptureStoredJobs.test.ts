@@ -439,6 +439,38 @@ describe('stored background jobs', () => {
       svc.recoverStoredJobs()
       expect([running, queued].map(stateOf)).toEqual(['failed', 'held'])
     })
+
+    it('runs a resumed Batch after the jobs already queued, and before a Batch queued later', async () => {
+      const tick = () => new Promise((resolve) => setTimeout(resolve, 5))
+      const heldIds = earlierSession(['https://held.example.com/1', 'https://held.example.com/2'])
+      const heldBatch = backgroundJobRepo.getJob(heldIds[0])!.batchId
+      const { renderPage, gate, urls } = gatedRender()
+      const svc = makeService(renderPage)
+      svc.recoverStoredJobs()
+
+      svc.enqueue([
+        { url: 'https://fresh.example.com/1', caseId },
+        { url: 'https://fresh.example.com/2', caseId }
+      ])
+      await vi.waitFor(() => expect(gate).toHaveLength(1))
+      await tick()
+      expect(svc.resume(heldBatch)).toEqual({ resumed: 2 })
+      await tick()
+      svc.enqueue([{ url: 'https://later.example.com/', caseId }])
+      for (let i = 0; i < 5; i++) {
+        await vi.waitFor(() => expect(gate).toHaveLength(1))
+        gate.shift()!()
+      }
+      await svc.idle()
+
+      expect(urls).toEqual([
+        'https://fresh.example.com/1',
+        'https://fresh.example.com/2',
+        'https://held.example.com/1',
+        'https://held.example.com/2',
+        'https://later.example.com/'
+      ])
+    })
   })
 
   describe('dismiss', () => {

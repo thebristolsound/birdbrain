@@ -23,6 +23,7 @@ const COLUMNS: Array<[name: string, type: string, notnull: number, dflt: unknown
   ['phase', 'TEXT', 0, null, 0],
   ['attempts', 'INTEGER', 1, '0', 0],
   ['queued_at', 'TEXT', 1, null, 0],
+  ['resumed_at', 'TEXT', 0, null, 0],
   ['started_at', 'TEXT', 0, null, 0],
   ['finished_at', 'TEXT', 0, null, 0],
   ['capture_id', 'TEXT', 0, null, 0],

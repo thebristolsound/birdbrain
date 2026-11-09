@@ -179,6 +179,7 @@ CREATE TABLE background_jobs (
   phase TEXT,
   attempts INTEGER NOT NULL DEFAULT 0,
   queued_at TEXT NOT NULL,
+  resumed_at TEXT,
   started_at TEXT,
   finished_at TEXT,
   capture_id TEXT,
@@ -198,8 +199,9 @@ CREATE INDEX idx_background_jobs_batch ON background_jobs(batch_id);
 | `supersedes_capture_id`, `linked_from_capture_id`, `link_href` | The `RecaptureJob` fields today, so a job read back after a restart runs exactly as it was queued. `linked_from_capture_id` has no foreign key: `readLinkSource` already refuses a job whose source is gone. |
 | `phase` | The last progress phase while `running`; see [Events](#events-and-the-renderer-contract). |
 | `attempts` | Renders started for this job. A retry adds one. |
+| `queued_at`, `resumed_at` | When the job was accepted, and when the Operator last resumed its Batch. The worker claims by `resumed_at` when set, otherwise `queued_at`, so a resumed Batch runs after the jobs already queued at the resume and ahead of later ones; `queued_at` never changes. |
 | `capture_id` | Set when the attempt starts, to the id `runJob` generates and the Transaction Record's `warcinfo` names. It names a stored Capture only in state `stored`. No foreign key, so deleting the Capture keeps the job's history. |
-| `failure_kind` | For `failed`: `timeout`, `render`, `ingest`, or `interrupted`. For `skipped`: `excluded`, `refused-address`, or `link-source`. |
+| `failure_kind` | For `failed`: `timeout`, `render`, `ingest`, `link-source-error` (the link source check threw), or `interrupted`. For `skipped`: `excluded`, `refused-address`, or `link-source`. |
 | `error`, `warning` | The message the terminal event carries today (`error`, `skipReason`, `warning`). |
 
 #### States
@@ -234,8 +236,9 @@ At startup, before the queue runs:
    not on the queue: a Batch queued in this session runs at once, ahead of held ones, so a fresh
    paste never waits behind work from an earlier session.
 
-Restoring a database snapshot (`restoreSnapshotFile`) can bring back rows from the past. The same
-startup pass handles them, because a restore takes effect at the next start.
+Restoring a database snapshot or a backup file can bring back rows from the past. A restore
+re-opens the database in the running app, so the same pass runs right after a restore that
+succeeds, before the queue can claim a restored row.
 
 Deleting a Case deletes its jobs through the foreign key. A running job whose Case is deleted
 fails at ingest, as it does today.
@@ -266,13 +269,13 @@ table is not added to `ALLOWED_TABLES` in `dbAdmin.ts`, so Settings -> Database 
 
 #### Shape
 
-`drain()` becomes a pool of up to `concurrency` worker loops. Each loop claims the oldest `queued`
-row in one synchronous statement (better-sqlite3 runs in the main process, so two loops cannot
-claim the same row), sets it `running`, and calls `runJob`. Each job keeps its own hidden window
+`drain()` becomes a pool of up to `concurrency` worker loops. Each loop claims the next `queued`
+row in claim order (`resumed_at`, then `queued_at`) in one synchronous statement (better-sqlite3
+runs in the main process, so two loops cannot claim the same row), sets it `running`, and calls `runJob`. Each job keeps its own hidden window
 and its own in-memory partition, as the Recapture design requires; nothing is shared between
 renders.
 
-**One running job per site.** A loop claims the oldest `queued` row whose site has no job
+**One running job per site.** A loop claims the next `queued` row whose site has no job
 `running`, so a Batch with several pages on one site never loads that site twice at once.
 Concurrent requests to one server can trip rate limits or bot checks, which changes what a Capture
 holds. The site is the registrable domain from `tldts` (already a dependency), so
@@ -416,7 +419,8 @@ A second channel, `RECAPTURE_JOB`, sends a `BackgroundJobView` whenever a job's 
 changes. This is the state model #2124 reads:
 
 ```ts
-type BackgroundJobState = 'queued' | 'running' | 'stored' | 'skipped' | 'failed' | 'cancelled'
+type BackgroundJobState =
+  'queued' | 'held' | 'running' | 'stored' | 'skipped' | 'failed' | 'cancelled'
 
 type BackgroundJobPhase =
   | 'loading' // window setup, loadURL, document complete, first network idle
@@ -461,7 +465,7 @@ phase to the row and emits the view; it does not write timing into the row.
 | `recapture:listJobs` (new) | Returns `BackgroundJobView[]` for a Case or a batch, so the renderer can load state after a reload or a restart. |
 | `recapture:cancel` (new) | Takes a `jobId` or a `batchId`. A queued job becomes `cancelled`. A running job is aborted through its `AbortSignal`, which takes the render's existing deadline path (window destroyed, temp file removed, nothing stored). A job already ingesting finishes; cancel does not interrupt the manifest seam. |
 | `recapture:retry` (new) | Takes a `jobId` in `failed` or `cancelled`, or a `batchId`, which retries that Batch's `failed` and `cancelled` jobs. Sets each `queued` and adds one to `attempts`. Each attempt generates a new `capture_id`. |
-| `recapture:resume` (new) | Takes a `batchId` and sets its `held` jobs `queued`. |
+| `recapture:resume` (new) | Takes a `batchId`, sets its `held` jobs `queued` and records the resume in `resumed_at`. |
 | `recapture:dismiss` (new) | Takes a `jobId` or a `batchId` and deletes `failed`, `skipped` and `cancelled` rows. It never deletes a `stored`, `queued`, `held` or `running` row. |
 
 Retries are Operator-initiated only; see [States](#states).

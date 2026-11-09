@@ -42,6 +42,7 @@ interface JobRow {
   state: BackgroundJobState
   attempts: number
   queued_at: string
+  resumed_at: string | null
   started_at: string | null
   finished_at: string | null
   capture_id: string | null
@@ -52,6 +53,10 @@ interface JobRow {
 
 // Insertion order breaks a tie in `queued_at`, which one Batch's rows share to the millisecond.
 const QUEUE_ORDER = 'ORDER BY queued_at, rowid'
+
+// The claim's order: a resumed job queues from its resume, so a Batch resumed from an earlier
+// session runs after the jobs already queued then, and ahead of the ones queued after it.
+const CLAIM_ORDER = 'ORDER BY COALESCE(resumed_at, queued_at), queued_at, rowid'
 
 // The rows the Operator can dismiss: each is the only record of why a URL left no Capture.
 const DISMISSABLE = "state IN ('failed', 'skipped', 'cancelled')"
@@ -110,8 +115,8 @@ export function insertQueuedJobs(jobs: NewBackgroundJob[]): void {
   })()
 }
 
-// Takes the oldest `queued` row and marks it `running` in one statement, so two callers cannot
-// claim the same row. `held` rows are never claimed.
+// Takes the first `queued` row in claim order and marks it `running` in one statement, so two
+// callers cannot claim the same row. `held` rows are never claimed.
 export function claimNextQueued(attempt: {
   startedAt: string
   captureId: string
@@ -120,7 +125,7 @@ export function claimNextQueued(attempt: {
     .prepare(
       `UPDATE background_jobs
           SET state = 'running', attempts = attempts + 1, started_at = ?, capture_id = ?
-        WHERE id = (SELECT id FROM background_jobs WHERE state = 'queued' ${QUEUE_ORDER} LIMIT 1)
+        WHERE id = (SELECT id FROM background_jobs WHERE state = 'queued' ${CLAIM_ORDER} LIMIT 1)
         RETURNING *`
     )
     .get(attempt.startedAt, attempt.captureId) as JobRow | undefined
@@ -157,14 +162,14 @@ export function listJobs(query: RecaptureListJobsQuery): BackgroundJobView[] {
   return rows.map(toView)
 }
 
-export function resumeBatch(batchId: string): BackgroundJobView[] {
+export function resumeBatch(batchId: string, resumedAt: string): BackgroundJobView[] {
   const rows = getDb()
     .prepare(
-      `UPDATE background_jobs SET state = 'queued'
+      `UPDATE background_jobs SET state = 'queued', resumed_at = ?
         WHERE batch_id = ? AND state = 'held'
         RETURNING *`
     )
-    .all(batchId) as JobRow[]
+    .all(resumedAt, batchId) as JobRow[]
   return rows.map(toView)
 }
 

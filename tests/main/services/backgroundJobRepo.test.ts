@@ -125,10 +125,26 @@ describe('backgroundJobRepo', () => {
     claim()
     getDb().prepare("UPDATE background_jobs SET state = 'held' WHERE state = 'queued'").run()
 
-    expect(resumeBatch('batch-1').map(({ jobId, state }) => [jobId, state])).toEqual([
-      ['b', 'queued']
-    ])
+    expect(
+      resumeBatch('batch-1', '2026-11-09T12:00:00.000Z').map(({ jobId, state }) => [jobId, state])
+    ).toEqual([['b', 'queued']])
     expect([getJob('a')?.state, getJob('c')?.state]).toEqual(['running', 'held'])
+    // The view keeps when the job was accepted, not when it was resumed.
+    expect(getJob('b')?.queuedAt).toBe('2026-11-09T10:00:00.000Z')
+  })
+
+  it('claims a resumed job behind jobs queued before the resume and ahead of later ones', () => {
+    insertQueuedJobs([
+      job('held-1', { batchId: 'held', queuedAt: '2026-11-08T09:00:00.000Z' }),
+      job('held-2', { batchId: 'held', queuedAt: '2026-11-08T09:00:00.000Z' })
+    ])
+    getDb().prepare("UPDATE background_jobs SET state = 'held'").run()
+    insertQueuedJobs([job('before', { batchId: 'fresh', queuedAt: '2026-11-09T10:00:00.000Z' })])
+    resumeBatch('held', '2026-11-09T10:01:00.000Z')
+    insertQueuedJobs([job('after', { batchId: 'later', queuedAt: '2026-11-09T10:02:00.000Z' })])
+
+    const order = [claim(), claim(), claim(), claim(), claim()].map((view) => view?.jobId)
+    expect(order).toEqual(['before', 'held-1', 'held-2', 'after', undefined])
   })
 
   it('counts queued, running and held jobs, and lists held Batches oldest first with their Case', () => {

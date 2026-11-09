@@ -21,11 +21,12 @@ requested the fixes through merge.
 - Complete type checking and scoped lint.
 - Address Sol finding S1: count service-worker responses by the hop's request
   boundary. A response after the cut still counts when its hop began before it.
+- Obtain Sol approval in round two, with S1 resolved and no new findings.
 
 ## In flight
 
 - Run full verification after the other full test runs finish.
-- Obtain Sol's second review, open the pull request with the screenshot pair, and handle
+- Open the pull request with the screenshot pair, and handle
   review and checks through the repository's merge gate.
 
 Next command after the other full test runs on this machine finish:

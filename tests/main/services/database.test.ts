@@ -6,6 +6,7 @@ import Database from 'better-sqlite3'
 import { initDatabase, closeDatabase, getDb, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
 import {
   listCases,
+  listAllCases,
   getCase,
   createCase,
   updateCase,
@@ -177,6 +178,20 @@ describe('database', () => {
       const c = createCase({ name: 'To Archive' })
       updateCase({ id: c.id, archived: true })
       expect(listCases()).toHaveLength(0)
+    })
+
+    it('lists archived cases alongside active ones in listAllCases (#670)', () => {
+      const archived = createCase({ name: 'Archived' })
+      const active = createCase({ name: 'Active' })
+      updateCase({ id: archived.id, archived: true })
+      const listed = listAllCases().map(({ id, archived }) => ({ id, archived }))
+      expect(listed).toHaveLength(2)
+      expect(listed).toEqual(
+        expect.arrayContaining([
+          { id: archived.id, archived: true },
+          { id: active.id, archived: false }
+        ])
+      )
     })
 
     it('returns undefined for non-existent case', () => {

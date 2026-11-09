@@ -859,6 +859,9 @@ export interface UnreconciledDeletionFinding {
   // #580's optional reason field: distinguishes a self-test cleanup from an
   // operator deletion. Absent on entries that carried none.
   reason?: string
+  // The scan covers archived cases (#670). The recovery runs from the case, and
+  // the case list leaves archived cases out, so the panel says so.
+  caseArchived: boolean
 }
 
 // A case the scan could not make the "chain valid" claim over, so it reports

@@ -35,25 +35,26 @@ test.describe('Top bar layout', () => {
     const input = page.getByTestId('global-search-input')
     const caseName = page.getByTestId('topbar-case-name')
     const controls = page.getByTestId('topbar-controls')
+    const actionBar = page.getByTestId('case-action-bar')
 
     for (const name of NAMES) {
       const caseId = await createCase(page, name)
 
       // Stand in for a connected extension and a running session: the switch only
       // renders with an extension attached, and the recording mark only while recording.
-      await electronApp.evaluate(({ BrowserWindow }, id) => {
-        const { webContents } = BrowserWindow.getAllWindows()[0]
-        webContents.send('event:extensionConnection', { connected: true })
-        webContents.send('event:sessionStateChanged', { sessionActive: true, activeCaseId: id })
-      }, caseId)
-      await expect(page.getByTestId('topbar-rec')).toBeVisible({ timeout: 10000 })
-
-      // The Case's actions sit in the case action bar, so the top bar's right side does not
-      // grow toward the native window controls while recording: the switch, the recording
-      // mark, Export (which folds to its icon on narrow windows) and the Share pill.
-      const actionBar = page.getByTestId('case-action-bar')
+      // The app's own session update can land after the stand-in one, so send it until it holds.
+      await expect(async () => {
+        await electronApp.evaluate(({ BrowserWindow }, id) => {
+          const { webContents } = BrowserWindow.getAllWindows()[0]
+          webContents.send('event:extensionConnection', { connected: true })
+          webContents.send('event:sessionStateChanged', { sessionActive: true, activeCaseId: id })
+        }, caseId)
+        // The Case's actions sit in the case action bar, so the top bar's right side does not
+        // grow toward the native window controls while recording: the switch, the recording
+        // mark, Export (which folds to its icon on narrow windows) and the Share pill.
+        await expect(actionBar.getByTestId('topbar-rec')).toBeVisible({ timeout: 1000 })
+      }).toPass({ timeout: 10000 })
       await expect(actionBar.getByRole('switch', { name: 'Capture Session' })).toBeVisible()
-      await expect(actionBar.getByTestId('topbar-rec')).toBeVisible()
       await expect(actionBar.getByRole('button', { name: /Export/ })).toBeVisible()
       await expect(actionBar.getByTestId('case-action-bar-section')).toHaveText('Overview')
       await expect(controls.getByRole('switch', { name: 'Capture Session' })).toHaveCount(0)
@@ -168,8 +169,9 @@ test.describe('Top bar layout', () => {
   }) => {
     const caseId = await createCase(page, NAMES[1])
     const actionBar = page.getByTestId('case-action-bar')
-    // The app's own session update can land after the stand-in one, so send it until it holds.
-    await expect(async () => {
+    // The app's own session update can land after the stand-in one, so each check sends the
+    // stand-in again and confirms it holds; a bar with no session would fit trivially.
+    const holdRecording = async () => {
       await electronApp.evaluate(({ BrowserWindow }, id) => {
         const { webContents } = BrowserWindow.getAllWindows()[0]
         webContents.send('event:extensionConnection', { connected: true })
@@ -194,12 +196,13 @@ test.describe('Top bar layout', () => {
         'and the extension',
         { timeout: 1000 }
       )
-    }).toPass({ timeout: 10000 })
+    }
     const launch = actionBar.getByRole('button', { name: 'Launch browser' })
 
     for (const width of [1440, 1280, 1100, 1024]) {
       await electronApp.windows()[0].setViewportSize({ width, height: 800 })
       await expect(async () => {
+        await holdRecording()
         const overflow = await actionBar.evaluate((el) => el.scrollWidth - el.clientWidth)
         expect(overflow).toBeLessThanOrEqual(0)
         // One line: a wrapped label would double the button's height.

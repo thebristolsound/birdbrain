@@ -194,6 +194,61 @@ describe('tab recording', () => {
     expect(counts.inFlight).toBe(0)
   })
 
+  it('keeps early document header events when the navigation commits', async () => {
+    const { recording, page } = setUp()
+    document(page, 'OLD', 'https://old.test/')
+    page.emit('Network.requestWillBeSentExtraInfo', {
+      requestId: 'D1',
+      headers: { 'X-Actually-Sent': 'proof', Cookie: 'SECRET' }
+    })
+    page.emit('Network.responseReceivedExtraInfo', {
+      requestId: 'D1',
+      statusCode: 200,
+      headers: { 'X-Actually-Received': 'proof' }
+    })
+    document(page, 'D1', 'https://a.test/')
+    const { exchanges } = await recording.cut().collect(1_000)
+    expect(exchanges).toHaveLength(1)
+    expect(exchanges[0].request.extraInfo?.headers).toMatchObject({ 'X-Actually-Sent': 'proof' })
+    expect(exchanges[0].response?.extraInfo?.headers).toEqual({
+      'X-Actually-Received': 'proof'
+    })
+    expect(JSON.stringify(exchanges)).not.toContain('SECRET')
+  })
+
+  it('excludes later redirect hops while keeping the pre-cut redirect response', async () => {
+    const { recording, page } = setUp()
+    document(page, 'D1', 'https://a.test/')
+    sent(page, 'R1', 'https://a.test/before')
+    const cut = recording.cut()
+    page.emit('Network.requestWillBeSent', {
+      requestId: 'R1',
+      wallTime: (wall += 1),
+      request: { url: 'https://a.test/after', method: 'POST', headers: {}, hasPostData: true },
+      redirectResponse: {
+        url: 'https://a.test/before',
+        status: 302,
+        statusText: 'Found',
+        headers: {},
+        mimeType: 'text/html'
+      }
+    })
+    finished(page, 'R1', 'https://a.test/after')
+    const { exchanges, counts, requestBodiesWithheld } = await cut.collect(1_000)
+    expect(exchanges.map(({ request }) => request.url)).toEqual([
+      'https://a.test/',
+      'https://a.test/before'
+    ])
+    expect(exchanges[1]).toMatchObject({ state: 'redirected', response: { status: 302 } })
+    expect(counts.exchanges).toBe(2)
+    expect(requestBodiesWithheld).toBe(0)
+    expect(await urls(recording)).toEqual([
+      'https://a.test/',
+      'https://a.test/before',
+      'https://a.test/after'
+    ])
+  })
+
   it('fetches each body from the session that reported it and keeps it in memory', async () => {
     const { recording, page } = setUp()
     const frame = fakeSession('frame-session')
@@ -276,6 +331,8 @@ describe('tab recording', () => {
     await settle()
     const { counts } = await recording.cut().collect(1_000)
     expect(counts).toMatchObject({ recordedTargets: 0, unrecordedTargets: 1 })
+    expect(recording.fromFirstRequest()).toBe(false)
+    expect(recording.cut().fromFirstRequest).toBe(false)
   })
 
   it('counts a target whose setup failed as unrecorded', async () => {

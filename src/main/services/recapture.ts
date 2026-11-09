@@ -108,12 +108,17 @@ export class RecaptureTimeout extends Error {
 }
 
 export interface RecaptureJob {
+  // Set by `enqueue`, on every event the job emits: a new id per job, one Batch id per call.
+  jobId: string
+  batchId: string
   url: string
   caseId: string
   supersedesCaptureId?: string
   // Set by Capture link (ADR-0040). `runJob` checks the source before it renders.
   linkedFrom?: LinkedFrom
 }
+
+export type RecaptureJobRequest = Omit<RecaptureJob, 'jobId' | 'batchId'>
 
 export interface RecaptureDeps {
   renderPage: RenderPage
@@ -124,7 +129,7 @@ export interface RecaptureDeps {
 }
 
 export interface RecaptureService {
-  enqueue: (jobs: RecaptureJob[]) => EnqueueResult
+  enqueue: (jobs: RecaptureJobRequest[]) => EnqueueResult
   // Capture link's route (ADR-0040): one job, whose URL is the link address.
   enqueueLink: (payload: RecaptureEnqueuePayload) => EnqueueResult
   status: () => RecaptureQueueStatus
@@ -275,15 +280,18 @@ function validateUrl(raw: string): string | null {
 export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const queue: RecaptureJob[] = []
-  let activeUrl: string | null = null
+  let active: RecaptureJob | null = null
   let draining: Promise<void> | null = null
 
+  // Every event names its job and Batch, so the renderer can tell two jobs for one address apart.
+  // A Capture link job also names its source, because the exclusion skip names the final address
+  // rather than `job.url` (ADR-0040).
+  function emitJobEvent({ jobId, batchId, linkedFrom }: RecaptureJob, event: CaptureEvent): void {
+    deps.emitEvent({ ...event, jobId, batchId, ...(linkedFrom ? { linkedFrom } : {}) })
+  }
+
   async function runJob(job: RecaptureJob): Promise<void> {
-    // A Capture link job names itself on every event, because the exclusion skip names the final
-    // address rather than `job.url`, and another job can share the address (ADR-0040).
-    const { linkedFrom } = job
-    const emitEvent = (event: CaptureEvent): void =>
-      deps.emitEvent(linkedFrom ? { ...event, linkedFrom } : event)
+    const emitEvent = (event: CaptureEvent): void => emitJobEvent(job, event)
     const timestamp = new Date().toISOString()
     emitEvent({
       type: 'received',
@@ -525,10 +533,9 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     if (draining) return
     draining = (async () => {
       while (queue.length > 0) {
-        const job = queue.shift()!
-        activeUrl = job.url
-        await runJob(job)
-        activeUrl = null
+        active = queue.shift()!
+        await runJob(active)
+        active = null
       }
     })().finally(() => {
       draining = null
@@ -536,10 +543,12 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
   }
 
   const service: RecaptureService = {
-    enqueue(jobs) {
+    enqueue(requests) {
+      const batchId = randomUUID()
       const rejected: Array<{ url: string; reason: string }> = []
-      let accepted = 0
-      for (const job of jobs) {
+      const accepted: RecaptureJob[] = []
+      for (const request of requests) {
+        const job = { ...request, jobId: randomUUID(), batchId }
         const reason = validateUrl(job.url)
         if (reason) {
           rejected.push({ url: job.url, reason })
@@ -567,10 +576,25 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
           continue
         }
         queue.push(job)
-        accepted++
+        accepted.push(job)
       }
-      if (accepted > 0) drain()
-      return { accepted, rejected }
+      // Every `queued` event goes out before `drain` starts the first job and emits its `received`.
+      for (const job of accepted) {
+        emitJobEvent(job, {
+          type: 'queued',
+          source: 'recapture',
+          url: job.url,
+          timestamp: new Date().toISOString(),
+          supersedesCaptureId: job.supersedesCaptureId
+        })
+      }
+      if (accepted.length > 0) drain()
+      return {
+        batchId,
+        accepted: accepted.length,
+        jobIds: accepted.map(({ jobId }) => jobId),
+        rejected
+      }
     },
     // The checks the payload alone can answer, so the menu reports them at once. The source's
     // entry and bytes are checked when the job runs, before the render: a source deleted or
@@ -578,7 +602,9 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     enqueueLink({ urls, caseId, supersedesCaptureId, linkedFrom }) {
       const { captureId, linkHref } = linkedFrom ?? {}
       const refuse = (reason: string): EnqueueResult => ({
+        batchId: randomUUID(),
         accepted: 0,
+        jobIds: [],
         rejected: [{ url: typeof linkHref === 'string' ? linkHref : '', reason }]
       })
       if (typeof captureId !== 'string' || typeof linkHref !== 'string' || !captureId) {
@@ -594,7 +620,15 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       return service.enqueue([{ url: linkHref, caseId, linkedFrom: { captureId, linkHref } }])
     },
     status() {
-      return { pending: queue.length + (activeUrl ? 1 : 0), activeUrl }
+      const running = active ? 1 : 0
+      return {
+        pending: queue.length + running,
+        queued: queue.length,
+        running,
+        held: 0,
+        concurrency: 1,
+        activeUrl: active?.url ?? null
+      }
     },
     async idle() {
       while (draining) await draining

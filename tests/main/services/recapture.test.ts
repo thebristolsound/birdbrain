@@ -350,7 +350,7 @@ describe('recapture service', () => {
       svc.enqueue([{ url: 'https://example.com/page', caseId }])
       await svc.idle()
 
-      expect(events.map(({ type }) => type)).toEqual(['received', 'stored'])
+      expect(events.map(({ type }) => type)).toEqual(['queued', 'received', 'stored'])
       const [entry] = captureEntries()
       const parsed = ManifestEntrySchema.safeParse(entry)
       expect(parsed.success ? [] : parsed.error.issues).toEqual([])
@@ -395,7 +395,7 @@ describe('recapture service', () => {
       svc.enqueue([{ url: 'https://example.com/page', caseId }])
       await svc.idle()
 
-      expect(events.map(({ type }) => type)).toEqual(['received', 'stored'])
+      expect(events.map(({ type }) => type)).toEqual(['queued', 'received', 'stored'])
       const [entry] = captureEntries()
       const parsed = ManifestEntrySchema.safeParse(entry)
       expect(parsed.success ? [] : parsed.error.issues).toEqual([])
@@ -454,7 +454,14 @@ describe('recapture service', () => {
         })
         svc.enqueue([{ url: 'https://example.com/other', caseId }])
         await svc.idle()
-        expect(events.map(({ type }) => type)).toEqual(['received', 'stored', 'received', 'failed'])
+        expect(events.map(({ type }) => type)).toEqual([
+          'queued',
+          'received',
+          'stored',
+          'queued',
+          'received',
+          'failed'
+        ])
         expect(notices(spy)).toEqual([])
       })
     })
@@ -528,7 +535,7 @@ describe('recapture service', () => {
         )
         svc.enqueue([{ url: 'https://example.com/page', caseId }])
         await svc.idle()
-        expect(events.map(({ type }) => type)).toEqual(['received', 'skipped'])
+        expect(events.map(({ type }) => type)).toEqual(['queued', 'received', 'skipped'])
         expect(notices(spy)).toEqual([])
       })
 
@@ -546,7 +553,7 @@ describe('recapture service', () => {
         })
         svc.enqueue([{ url: 'https://example.com/page', caseId }])
         await svc.idle()
-        expect(events.map(({ type }) => type)).toEqual(['received', 'failed'])
+        expect(events.map(({ type }) => type)).toEqual(['queued', 'received', 'failed'])
         expect(notices(spy)).toEqual([])
       })
     })
@@ -694,6 +701,124 @@ describe('recapture service', () => {
     expect(newCaptures).toHaveLength(2)
   })
 
+  // Slice 2 of docs/specs/2026-11-09-batch-capture-throughput-design.md (#2128).
+  describe('job identity', () => {
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+    const eventsOf = (jobId: string) => events.filter((e) => e.jobId === jobId)
+
+    it('names each job and its Batch on every event, one Batch per call', async () => {
+      const svc = makeService(fakeRender())
+      const url = 'https://example.com/same'
+      const first = svc.enqueue([
+        { url, caseId },
+        { url, caseId }
+      ])
+      const second = svc.enqueue([{ url, caseId }])
+      await svc.idle()
+
+      const jobIds = [...first.jobIds, ...second.jobIds]
+      expect(jobIds).toHaveLength(3)
+      expect(new Set(jobIds).size).toBe(3)
+      for (const id of [...jobIds, first.batchId, second.batchId]) expect(id).toMatch(UUID)
+      expect(second.batchId).not.toBe(first.batchId)
+      expect(events.every((e) => e.jobId !== undefined)).toBe(true)
+      for (const [jobId, batchId] of [
+        [first.jobIds[0], first.batchId],
+        [first.jobIds[1], first.batchId],
+        [second.jobIds[0], second.batchId]
+      ]) {
+        expect(eventsOf(jobId).map(({ type, batchId }) => [type, batchId])).toEqual([
+          ['queued', batchId],
+          ['received', batchId],
+          ['stored', batchId]
+        ])
+      }
+    })
+
+    it('emits one queued event per accepted job before the first render, and none for a refused URL', () => {
+      setAutoCapturePolicy(caseId, { exclusions: ['secret.example.com'], mode: 'stack' })
+      const seenAtRender: string[][] = []
+      const svc = makeService(async (url, opts) => {
+        seenAtRender.push(events.map(({ type }) => type))
+        return fakeRender()(url, opts)
+      })
+      const original = 'capture-being-recaptured'
+      const res = svc.enqueue([
+        { url: 'https://example.com/a', caseId, supersedesCaptureId: original },
+        { url: 'not-a-url', caseId },
+        { url: 'https://secret.example.com/page', caseId },
+        { url: 'https://example.com/b', caseId }
+      ])
+
+      expect(res.accepted).toBe(2)
+      expect(res.rejected.map(({ url }) => url)).toEqual([
+        'not-a-url',
+        'https://secret.example.com/page'
+      ])
+      const queued = events.filter(({ type }) => type === 'queued')
+      expect(queued).toEqual([
+        expect.objectContaining({
+          source: 'recapture',
+          url: 'https://example.com/a',
+          jobId: res.jobIds[0],
+          batchId: res.batchId,
+          supersedesCaptureId: original
+        }),
+        expect.objectContaining({
+          source: 'recapture',
+          url: 'https://example.com/b',
+          jobId: res.jobIds[1],
+          batchId: res.batchId
+        })
+      ])
+      // The refused URL is no job: its skip names neither a job nor a Batch.
+      expect(events.find(({ type }) => type === 'skipped')).not.toHaveProperty('jobId')
+      // Both jobs are queued, in order, before the first one starts.
+      expect(seenAtRender[0]).toEqual(['skipped', 'queued', 'queued', 'received'])
+      return svc.idle()
+    })
+
+    it('reports queued and running jobs, with pending their sum', async () => {
+      const gate: Array<() => void> = []
+      const svc = makeService(async (url, opts) => {
+        await new Promise<void>((resolve) => gate.push(resolve))
+        return fakeRender()(url, opts)
+      })
+      const idle = { pending: 0, queued: 0, running: 0, held: 0, concurrency: 1, activeUrl: null }
+      expect(svc.status()).toEqual(idle)
+
+      svc.enqueue([
+        { url: 'https://example.com/1', caseId },
+        { url: 'https://example.com/2', caseId },
+        { url: 'https://example.com/3', caseId }
+      ])
+      await vi.waitFor(() => expect(gate).toHaveLength(1))
+      expect(svc.status()).toEqual({
+        ...idle,
+        pending: 3,
+        queued: 2,
+        running: 1,
+        activeUrl: 'https://example.com/1'
+      })
+
+      gate.shift()!()
+      await vi.waitFor(() => expect(gate).toHaveLength(1))
+      expect(svc.status()).toEqual({
+        ...idle,
+        pending: 2,
+        queued: 1,
+        running: 1,
+        activeUrl: 'https://example.com/2'
+      })
+
+      gate.shift()!()
+      await vi.waitFor(() => expect(gate).toHaveLength(1))
+      gate.shift()!()
+      await svc.idle()
+      expect(svc.status()).toEqual(idle)
+    })
+  })
+
   it('rejects invalid URLs at enqueue with per-URL reasons', async () => {
     const svc = makeService(fakeRender())
     const res = svc.enqueue([
@@ -819,7 +944,7 @@ describe('recapture service', () => {
     expect(svc.enqueue([{ url: 'https://public.example/r', caseId }]).accepted).toBe(1)
     await svc.idle()
 
-    expect(events.filter((e) => e.type !== 'received')).toEqual([
+    expect(events.filter(({ type }) => type !== 'queued' && type !== 'received')).toEqual([
       expect.objectContaining({
         type: 'skipped',
         source: 'recapture',
@@ -975,7 +1100,7 @@ describe('recapture service', () => {
         const svc = makeService(render)
         svc.enqueue([{ url: 'https://public.example/r', caseId }])
         await svc.idle()
-        expect(events.map(({ type }) => type)).toEqual(['received', 'skipped'])
+        expect(events.map(({ type }) => type)).toEqual(['queued', 'received', 'skipped'])
         expect(jobLines(info, warn)).toEqual([
           [
             'backgroundRenderer',
@@ -1227,7 +1352,12 @@ describe('Capture link jobs (ADR-0040)', () => {
 
   it('signs the source, its Content Hash from the entry, and the link address', async () => {
     const source = await sourceCapture()
-    expect(svc.enqueueLink(linkPayload(source.id))).toEqual({ accepted: 1, rejected: [] })
+    expect(svc.enqueueLink(linkPayload(source.id))).toEqual({
+      batchId: expect.any(String),
+      accepted: 1,
+      jobIds: [expect.any(String)],
+      rejected: []
+    })
     await svc.idle()
 
     const linked = getCapture(newCaptures[1].id)!
@@ -1309,7 +1439,9 @@ describe('Capture link jobs (ADR-0040)', () => {
     const source = await sourceCapture()
     const before = entries().length
     expect(svc.enqueueLink(linkPayload(source.id, urls))).toEqual({
+      batchId: expect.any(String),
       accepted: 0,
+      jobIds: [],
       rejected: [{ url: LINK, reason: 'Capture link takes exactly the link address' }]
     })
     await expectNothingWritten(before, 1)
@@ -1320,13 +1452,22 @@ describe('Capture link jobs (ADR-0040)', () => {
     const before = entries().length
     expect(
       svc.enqueueLink({ urls: [LINK], caseId, linkedFrom: { captureId: '', linkHref: LINK } })
-    ).toEqual({ accepted: 0, rejected: [{ url: LINK, reason: 'Invalid link source' }] })
-    expect(svc.enqueueLink({ urls: [LINK], caseId })).toEqual({
+    ).toEqual({
+      batchId: expect.any(String),
       accepted: 0,
+      jobIds: [],
+      rejected: [{ url: LINK, reason: 'Invalid link source' }]
+    })
+    expect(svc.enqueueLink({ urls: [LINK], caseId })).toEqual({
+      batchId: expect.any(String),
+      accepted: 0,
+      jobIds: [],
       rejected: [{ url: '', reason: 'Invalid link source' }]
     })
     expect(svc.enqueueLink({ ...linkPayload(source.id), supersedesCaptureId: source.id })).toEqual({
+      batchId: expect.any(String),
       accepted: 0,
+      jobIds: [],
       rejected: [{ url: LINK, reason: 'A link capture supersedes nothing' }]
     })
     await expectNothingWritten(before, 1)
@@ -1382,6 +1523,7 @@ describe('Capture link jobs (ADR-0040)', () => {
 
     const linkedFrom = { captureId: source.id, linkHref: LINK }
     expect(events.slice(before)).toMatchObject([
+      { type: 'queued', url: LINK, linkedFrom },
       { type: 'received', url: LINK, linkedFrom },
       { type: 'skipped', url: LANDED, linkedFrom }
     ])
@@ -1429,7 +1571,12 @@ describe('Capture link jobs (ADR-0040)', () => {
       caseId: newCaseId,
       linkedFrom: { captureId: renamed.id, linkHref: LINK }
     }
-    expect(svc.enqueueLink(payload)).toEqual({ accepted: 1, rejected: [] })
+    expect(svc.enqueueLink(payload)).toEqual({
+      batchId: expect.any(String),
+      accepted: 1,
+      jobIds: [expect.any(String)],
+      rejected: []
+    })
     await svc.idle()
 
     const linked = getCapture(newCaptures[1].id)!
@@ -1636,7 +1783,9 @@ describe("Capture link from a teammate's Capture (ADR-0040)", () => {
     })
     const linkedFrom = { captureId: source.captureId, linkHref: LINK }
     expect(svc.enqueueLink({ urls: [LINK], caseId: CASE_ID, linkedFrom })).toEqual({
+      batchId: expect.any(String),
       accepted: 1,
+      jobIds: [expect.any(String)],
       rejected: []
     })
     await svc.idle()

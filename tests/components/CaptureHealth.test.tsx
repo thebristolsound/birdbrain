@@ -27,6 +27,14 @@ const capture: Capture = {
   format: 'mhtml',
   method: 'extension'
 }
+const idleQueue: RecaptureQueueStatus = {
+  pending: 0,
+  queued: 0,
+  running: 0,
+  held: 0,
+  concurrency: 1,
+  activeUrl: null
+}
 const storedEvent: CaptureEvent = {
   type: 'stored',
   captureId: capture.id,
@@ -95,10 +103,7 @@ describe('CaptureHealth', () => {
   })
 
   it('re-reads the queue when a background capture starts or finishes', async () => {
-    const queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => ({
-      pending: 0,
-      activeUrl: null
-    }))
+    const queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => idleQueue)
     fakeBridge({ recapture: { queueStatus } })
     renderHealth()
     await waitFor(() => expect(queueStatus).toHaveBeenCalledTimes(1))
@@ -109,11 +114,11 @@ describe('CaptureHealth', () => {
       url: 'https://example.org/queued',
       timestamp: '2026-11-09T03:48:00Z'
     }
-    queueStatus.mockResolvedValue({ pending: 1, activeUrl: started.url })
+    queueStatus.mockResolvedValue({ ...idleQueue, pending: 1, running: 1, activeUrl: started.url })
     act(() => useAppStore.getState().addCaptureEvent(started))
     expect((await screen.findByTestId('recapture-pending-indicator')).textContent).toBe('1')
 
-    queueStatus.mockResolvedValue({ pending: 0, activeUrl: null })
+    queueStatus.mockResolvedValue(idleQueue)
     act(() =>
       useAppStore
         .getState()
@@ -128,14 +133,16 @@ describe('CaptureHealth', () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
     try {
       const queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => ({
+        ...idleQueue,
         pending: 1,
+        running: 1,
         activeUrl: 'https://example.org/queued'
       }))
       fakeBridge({ recapture: { queueStatus } })
       renderHealth()
       expect((await screen.findByTestId('recapture-pending-indicator')).textContent).toBe('1')
 
-      queueStatus.mockResolvedValue({ pending: 0, activeUrl: null })
+      queueStatus.mockResolvedValue(idleQueue)
       await act(() => vi.advanceTimersByTimeAsync(2000))
       await waitFor(() => expect(screen.queryByTestId('recapture-pending-indicator')).toBeNull())
 
@@ -219,7 +226,8 @@ describe('pipeline event colors', () => {
         }),
         event('failed', { error: 'server refused' }),
         event('skipped', { skipReason: 'ignored host' }),
-        event('received')
+        event('received'),
+        event('queued')
       ]
     })
     renderHealth()
@@ -235,6 +243,9 @@ describe('pipeline event colors', () => {
     expect(iconClass('failed')).toContain('text-danger-fg')
     expect(iconClass('skipped')).toContain('text-warning-fg')
     expect(iconClass('received')).toContain('text-accent')
+    // A job waiting its turn: no spinner, as nothing is running for it yet.
+    expect(iconClass('queued')).toContain('text-text-muted')
+    expect(iconClass('queued')).not.toContain('animate-spin')
     expect(screen.getByText('server refused').className).toBe('text-danger-fg')
     expect(screen.getByText('ignored host').className).toBe('text-text-secondary')
     expect(screen.getByText('Page looks like a login wall').className).toBe('text-warning-fg')

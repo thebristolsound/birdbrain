@@ -1633,7 +1633,9 @@ export interface ExtractedDataSearchResult {
 export type CaptureSource = 'auto' | 'manual' | 'selector' | 'recapture' | 'launched'
 
 export interface CaptureEvent {
-  type: 'received' | 'stored' | 'failed' | 'skipped'
+  // `queued` is a background job accepted at enqueue, before its render starts. It is not a
+  // Capture, so it counts toward no capture statistic.
+  type: 'queued' | 'received' | 'stored' | 'failed' | 'skipped'
   captureId?: string
   source: CaptureSource
   url: string
@@ -1651,6 +1653,10 @@ export interface CaptureEvent {
   // The source and link address of a Capture link job, on every event emitted while it runs, so
   // the viewer's notice can tell its job from another of the same address (ADR-0040).
   linkedFrom?: { captureId: string; linkHref: string }
+  // The background job and its Batch, on every event a background job emits. The extension and
+  // the launched browser run no job, so their events carry neither.
+  jobId?: string
+  batchId?: string
 }
 
 export interface OperatorIdentity {

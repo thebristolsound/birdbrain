@@ -274,6 +274,7 @@ describe('MhtmlViewer', () => {
     const one = 'https://a.example/one'
     const job = (linkHref: string) => ({ linkedFrom: { captureId: 'cap1', linkHref } })
     await captureLink(one)
+    emit({ type: 'queued', url: one, ...job(one) })
     emit({ type: 'received', url: one, ...job(one) })
     emit({ url: 'https://a.example/other', skipReason: 'Link source not found', ...job('other') })
     // Another job for the same address: a Recapture, a link from another stored page, or a

@@ -194,7 +194,12 @@ describe('CaptureDetailsPanel actions menu', () => {
 describe('CaptureDetailsPanel Recapture at the VPN warning', () => {
   it('shows no Recapture error when the Operator stops at the warning', async () => {
     useVpnWarningStore.setState({ open: false, request: null, settle: null })
-    const enqueue = vi.fn(async () => ({ accepted: 1, rejected: [] }))
+    const enqueue = vi.fn(async () => ({
+      batchId: 'batch',
+      accepted: 1,
+      jobIds: ['job'],
+      rejected: []
+    }))
     window.birdbrain.recapture.enqueue = enqueue
     window.birdbrain.egress.checkVpnWarning = vi.fn(async () => ({
       caseId: 'case1',

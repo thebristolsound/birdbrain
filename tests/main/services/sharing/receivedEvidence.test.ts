@@ -295,6 +295,43 @@ describe('received evidence (#1811)', () => {
     expect(getExhibit(capture.id)?.authorInstallationId).toBe(A.installationId)
   })
 
+  // Ruling 5 of 2026-11-05 (docs/plans/2026-10-31-capture-engine-stage-2.md).
+  it("fills both Persona columns from a Persona Capture's signed entry, and NULL without one", async () => {
+    await activate(A)
+    const plain = await addCapture(CASE_ID, A, 1)
+    const persona = { id: 'persona-alice', label: 'Research account' }
+    const { capture } = await ingestMhtmlCapture(
+      {
+        caseId: CASE_ID,
+        url: 'https://example.com/alice/persona',
+        title: 'Persona',
+        timestamp: TIME,
+        stream: Readable.from([
+          Buffer.from('<html><body>Persona page</body></html>')
+        ]) as unknown as ReadableStream<Uint8Array>,
+        textContent: '',
+        headers: {},
+        browserVersion: '',
+        userAgent: '',
+        httpStatus: 200,
+        method: 'background',
+        persona,
+        ...by(A)
+      },
+      async () => null
+    )
+    const recorded = recordSource(CASE_ID, A)
+
+    await activate(B)
+    const result = await pull(CASE_ID, recorded)
+    expect(result.errors).toEqual([])
+    expect(result.capturesApplied).toBe(2)
+    const columns = (id: string): unknown =>
+      getDb().prepare('SELECT persona_id, persona_label FROM captures WHERE id = ?').get(id)
+    expect(columns(capture.id)).toEqual({ persona_id: persona.id, persona_label: persona.label })
+    expect(columns(plain.captureId)).toEqual({ persona_id: null, persona_label: null })
+  })
+
   it('writes no row while a file is missing or fails its hash, and writes it once it arrives', async () => {
     await activate(A)
     const capture = await addCapture(CASE_ID, A, 1)

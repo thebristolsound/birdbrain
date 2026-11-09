@@ -30,9 +30,10 @@ export function PersonasSection() {
   const [adding, setAdding] = useState(false)
   const [newLabel, setNewLabel] = useState('')
   const [pendingDelete, setPendingDelete] = useState<Persona | null>(null)
-  // The #414 acknowledgement, held for the session: once the operator has
-  // accepted that the cookie store is unprotected on this machine, every
-  // import that follows is under the same fact.
+  // The #414 acknowledgement, asked for only where safeStorage reports no key
+  // and held for the session, so every import that follows is under the same
+  // fact. The cookie store is unencrypted either way (persona cookies at-rest
+  // assessment, 2026-10-11).
   const [unprotectedAcknowledged, setUnprotectedAcknowledged] = useState(false)
   const [lastImport, setLastImport] = useState<{
     personaId: string
@@ -42,8 +43,8 @@ export function PersonasSection() {
     null
   )
 
-  // Unknown (still loading, or the read failed) blocks import like an
-  // unprotected store does, so no cookie is written before the answer.
+  // Unknown (still loading, or the read failed) blocks import like a missing
+  // key does, so no cookie is written before the answer.
   const storageKnown = storage !== undefined
   const encryptionAvailable = storage?.encryptionAvailable ?? false
   const importBlocked = !storageKnown || (!encryptionAvailable && !unprotectedAcknowledged)
@@ -82,19 +83,21 @@ export function PersonasSection() {
         </p>
       </div>
 
-      {storageKnown && !encryptionAvailable && (
-        <div
-          role="alert"
-          data-testid="persona-unprotected-warning"
-          className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-[11px] text-text-secondary"
-        >
-          <div className="flex items-start gap-2">
-            <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warning-fg" />
-            <div className="space-y-2">
-              <p>
-                Imported cookies sit on disk unencrypted, readable by anything that can read this
-                user&rsquo;s files. This build of Birdbrain does not encrypt its cookie store.
-              </p>
+      {/* Shown on every machine (ruling 10 of 2026-11-05): with cookie encryption
+          off in the build, a key from safeStorage does not change what the warning says. */}
+      <div
+        role="alert"
+        data-testid="persona-unprotected-warning"
+        className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-[11px] text-text-secondary"
+      >
+        <div className="flex items-start gap-2">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warning-fg" />
+          <div className="space-y-2">
+            <p>
+              Imported cookies sit on disk unencrypted, readable by anything that can read this
+              user&rsquo;s files. This build of Birdbrain does not encrypt its cookie store.
+            </p>
+            {storageKnown && !encryptionAvailable && (
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -104,10 +107,10 @@ export function PersonasSection() {
                 />
                 I understand; allow cookie import anyway.
               </label>
-            </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
 
       {personas.length === 0 && !adding ? (
         <div
@@ -244,9 +247,9 @@ function PersonaRow({
           disabled={importBlocked || importing}
           title={
             !storageKnown
-              ? 'Checking whether the cookie store is protected'
+              ? 'Checking whether import needs your acknowledgement'
               : importBlocked
-                ? 'Acknowledge the unprotected cookie store above to import'
+                ? 'Acknowledge the warning above to import'
                 : 'Load a cookie file into this persona'
           }
           onClick={onImport}

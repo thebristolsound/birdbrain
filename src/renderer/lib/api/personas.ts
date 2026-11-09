@@ -7,7 +7,8 @@ export const personasQueryOptions = queryOptions({
   queryFn: () => window.birdbrain.persona.list()
 })
 
-// Whether the OS key protects the partitions' cookie stores (#414). A
+// Whether safeStorage reports an OS key, which decides whether import asks for
+// the #414 acknowledgement; the cookie stores are unencrypted either way. A
 // property of the install, not of a persona, so it is read once and never
 // invalidated by a write.
 export const personaStorageStateQueryOptions = queryOptions({

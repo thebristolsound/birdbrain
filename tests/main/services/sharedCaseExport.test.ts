@@ -2217,6 +2217,44 @@ describe('Shared Case export, import and fork (#1511)', () => {
       ])
     })
 
+    // #1922: jq reads 01 as 1, NaN as null and {}{} as two values, and
+    // JSON.parse rejects all three. 01 reads as the index it replaces, so the
+    // entry's hash and signature still verify under jq's reading.
+    it('fails a member entry line that holds a value spelled outside JSON', async () => {
+      const { peer } = ownerReplica()
+      document(peer, PEER, { installationId: PEER_ID, memberCode: 'RP' }, 2)
+      writeFileSync(join(caseDir(), peerChain), peer.jsonl)
+      const { dir } = await exportPackage()
+      const exported = readFileSync(join(dir, peerChain), 'utf-8')
+      const merge =
+        `merge entry 3 of ${localId} names installation ${PEER_ID}, whose chain ` +
+        'is not present or did not verify'
+      const respellings = [
+        (line: string) => line.replace(/"index":1(?=[,}])/, '"index":01'),
+        (line: string) => line.replace(/"index":1(?=[,}])/, '"index":NaN'),
+        (line: string) => `${line}{"b":2}`
+      ]
+      for (const respell of respellings) {
+        const lines = exported.split('\n')
+        const respelled = respell(lines[1])
+        expect(respelled).not.toBe(lines[1])
+        lines[1] = respelled
+        writeFileSync(join(dir, peerChain), lines.join('\n'))
+        reindex(dir, peerChain)
+
+        const run = runVerifyScript(dir)
+        expect(run.status, run.output).toBe(1)
+        expect(findings(run.output, 'FAIL'), respelled).toEqual([
+          `FAIL [step 4a] ${peerChain} (member RP): entry 1: Invalid JSON`,
+          `FAIL [step 4a] ${merge}`
+        ])
+        expect(sharedCaseFailures(dir)).toEqual([
+          `chain-broken: chain of ${PEER_ID} (RP): Invalid JSON`,
+          `merge-head-mismatch: ${merge}`
+        ])
+      }
+    })
+
     // #1725: a timestamp entry whose tsaToken is not a string breaks its member
     // chain for the package verifier. verify.sh fails the entry in step 6 by
     // index and chain, and VERIFY.md's by-hand command finds it in that file.

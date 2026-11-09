@@ -17,8 +17,8 @@ asked for the slices to be filed and then built, in a Claude Code session on 202
 
 | Slice | Issue | Branch | PR | State |
 | --- | --- | --- | --- | --- |
-| 1 | #2127 | `feat/background-jobs-instrumentation` | | in progress |
-| 2 | #2128 | | | not started |
+| 1 | #2127 | `feat/background-jobs-instrumentation` | #2133 (draft) | reviewed, fixed, preflight pass at `c3d4a40a` |
+| 2 | #2128 | `feat/background-jobs-ids` | | reviewed; fix round for the feed cap in progress |
 | 3 | #2129 | | | not started |
 | 4 | #2130 | | | not started |
 | 5 | #2131 | | | not started |
@@ -26,7 +26,7 @@ asked for the slices to be filed and then built, in a Claude Code session on 202
 
 ## Next command
 
-Continue slice 1 in the worktree above.
+Finish slice 2's fix round, open its PR with `--base feat/background-jobs-instrumentation`, then cut `feat/background-jobs-table` for slice 3.
 
 ## Decisions taken
 
@@ -40,6 +40,8 @@ Continue slice 1 in the worktree above.
   the design's seven phases for `onPhase`.
 
 ## Found, not fixed
+
+- A Recapture waiting in the queue shows no in-progress state, so a second click queues a duplicate. Pre-existing; the slice 2 `queued` event now carries the data to fix it.
 
 - A render that finishes after its deadline opens the temp page file the timeout path already
   deleted, with no error handler: an uncaught exception in the main process. Pre-existing.

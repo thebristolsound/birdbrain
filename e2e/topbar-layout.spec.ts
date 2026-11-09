@@ -160,6 +160,57 @@ test.describe('Top bar layout', () => {
     expect(await page.evaluate(() => window.location.hash)).toMatch(/#\/cases\/[^/]+\/settings$/)
   })
 
+  // With a launched browser and the extension both recording, the action bar carries the
+  // recording mark beside the session's source line; the source line gives way, not the row.
+  test('fits the Case action bar while a launched browser records', async ({
+    electronApp,
+    page
+  }) => {
+    const caseId = await createCase(page, NAMES[1])
+    const actionBar = page.getByTestId('case-action-bar')
+    // The app's own session update can land after the stand-in one, so send it until it holds.
+    await expect(async () => {
+      await electronApp.evaluate(({ BrowserWindow }, id) => {
+        const { webContents } = BrowserWindow.getAllWindows()[0]
+        webContents.send('event:extensionConnection', { connected: true })
+        webContents.send('event:sessionStateChanged', { sessionActive: true, activeCaseId: id })
+        webContents.send('event:launchedBrowserStatus', {
+          state: 'open',
+          browser: {
+            family: 'chrome',
+            label: 'Google Chrome',
+            caseId: id,
+            version: '149.0.7827.55',
+            extensionWarnings: [],
+            sessionStartedAt: Date.now() - 3_754_000,
+            tabs: [{ targetId: 't1', title: 'Harbor notices', url: 'https://ferry.test/' }]
+          }
+        })
+      }, caseId)
+      await expect(actionBar.getByTestId('topbar-rec')).toContainText('Launched Google Chrome', {
+        timeout: 1000
+      })
+      await expect(actionBar.getByTestId('session-source-line')).toContainText(
+        'and the extension',
+        { timeout: 1000 }
+      )
+    }).toPass({ timeout: 10000 })
+    const launch = actionBar.getByRole('button', { name: 'Launch browser' })
+
+    for (const width of [1440, 1280, 1100, 1024]) {
+      await electronApp.windows()[0].setViewportSize({ width, height: 800 })
+      await expect(async () => {
+        const overflow = await actionBar.evaluate((el) => el.scrollWidth - el.clientWidth)
+        expect(overflow).toBeLessThanOrEqual(0)
+        // One line: a wrapped label would double the button's height.
+        expect((await launch.boundingBox())!.height).toBeLessThanOrEqual(32)
+        await expect(actionBar.getByRole('switch', { name: 'Capture Session' })).toBeInViewport({
+          ratio: 1
+        })
+      }).toPass({ timeout: 5000 })
+    }
+  })
+
   test('the Export dialog covers the narrow-window details overlay', async ({
     electronApp,
     page

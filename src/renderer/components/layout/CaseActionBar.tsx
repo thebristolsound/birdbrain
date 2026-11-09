@@ -68,9 +68,10 @@ export function CaseActionBar({ caseId }: { caseId: string }) {
       <span className="h-5 w-px bg-border" aria-hidden="true" />
 
       {sessionActive && <RecordingMark />}
-      <span title={busy}>
+      <span title={busy} className="shrink-0">
         <Button
           variant="outline"
+          className="whitespace-nowrap"
           disabled={busy !== undefined}
           onClick={() => openStartDialog(caseId)}
         >

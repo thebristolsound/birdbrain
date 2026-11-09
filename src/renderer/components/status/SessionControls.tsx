@@ -67,7 +67,7 @@ export function SessionControls() {
   }
 
   return (
-    <div className="flex items-center gap-2 whitespace-nowrap">
+    <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
       <label className="flex cursor-pointer items-center gap-1.5">
         <span className="text-xs text-text-muted">Capture Session</span>
         <button
@@ -105,7 +105,9 @@ export function SessionControls() {
             transition={presets.fadeIn.transition}
           >
             <span className="max-w-[140px] truncate">{intoCase.name}</span>
-            {source && <span className="whitespace-pre"> · {source}</span>}
+            {source && (
+              <span className="overflow-hidden text-ellipsis whitespace-pre"> · {source}</span>
+            )}
           </motion.span>
         )}
       </AnimatePresence>

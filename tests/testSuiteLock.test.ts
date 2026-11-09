@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { execFileSync, spawn, spawnSync } from 'child_process'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  utimesSync,
+  writeFileSync
+} from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
@@ -54,7 +62,8 @@ let root: string
 let dir: string
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), 'suite-lock-'))
+  // git prints canonical paths, so a symlinked temporary directory (macOS /var) must not differ.
+  root = realpathSync(mkdtempSync(join(tmpdir(), 'suite-lock-')))
   dir = join(root, LOCK_NAME)
 })
 

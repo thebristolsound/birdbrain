@@ -104,7 +104,9 @@ Scheduled Dispatch runs every hour with two slots, under the spend cap; Schedule
 reviews one maintainer PR an hour under its own cap (ADR-0046); Doc curator is paused. Before
 restarting Doc curator or adding automation machinery, read
 [ADR-0029](docs/adr/0029-measure-before-expanding-agent-automation.md): verify basic spending
-limits and obtain explicit maintainer authorization.
+limits and obtain explicit maintainer authorization. The cross-model review reads a PR the maintainer
+labels `cross-model-review` with an OpenAI model, from his machine, as an advisory comment
+([ADR-0056](docs/adr/0056-cross-model-review-is-advisory-and-runs-on-the-maintainers-machine.md)).
 
 Unattended jobs working a `ready-for-agent` issue, and any session that opens or labels an agent
 PR, follow [Background jobs](docs/agents/background-jobs.md): the wait-for-confirmation opt-out,
@@ -172,3 +174,30 @@ of tree: [Worktrees](docs/agents/worktrees.md).
 - When a decision is deferred to the maintainer, restate the actual question in the message that
   defers it. Never reference an earlier question by position or as "your call" without restating
   it.
+
+## Code Review Rules
+
+Codex's GitHub reviewer reads this section; every reviewer applies it.
+
+### Evidence path
+
+- A change to a `blocking` file in the include list of
+  `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md` can change what a capture, hash,
+  signature, timestamp, manifest chain, export or verification proves. Flag it when the PR
+  description has no Evidence impact section, when no known-answer test or written
+  justification covers the changed behaviour, or when a package exported by an earlier version
+  would stop verifying. Safe path: all three present (ADR-0004, ADR-0014).
+
+### Missing input fails
+
+- A check, verifier, reconciliation or runbook step that meets missing input (an unset
+  variable, an absent file, an empty manifest or list) reports failure. Flag code where absence
+  reads as a pass: two empty hashes comparing equal, an empty chain verifying as valid, a
+  skipped item counted as checked, an exit status of 0 after a mismatch. Safe path: absence is
+  its own failure, with its own message.
+
+### Description at head
+
+- The PR description describes the diff at its head commit (ADR-0018). Flag a sentence the diff
+  does not support: a fix, guard or test said to be present that is absent, or a count that
+  does not match. Safe path: correct the sentence, or land the change it describes.

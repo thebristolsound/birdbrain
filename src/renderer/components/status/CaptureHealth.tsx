@@ -208,7 +208,7 @@ export function CaptureHealth() {
         {held > 0 && (
           <span
             data-testid="recapture-held-indicator"
-            title={`${held} background capture${held === 1 ? '' : 's'} held from an earlier session`}
+            title={`${held} background capture${held === 1 ? ' is' : 's are'} held`}
             className="flex items-center gap-1 text-text-secondary"
           >
             <Clock className="h-3.5 w-3.5" />
@@ -259,7 +259,7 @@ export function CaptureHealth() {
             {heldBatches.length > 0 && (
               <div data-testid="recapture-held" className="border-b border-border px-3 py-2">
                 <div className="text-[10px] font-medium text-text-secondary">
-                  {held} background capture{held === 1 ? '' : 's'} held from an earlier session
+                  {held} background capture{held === 1 ? ' is' : 's are'} held
                 </div>
                 <div className="text-[10px] text-text-faint">
                   Nothing is sent until you resume them.

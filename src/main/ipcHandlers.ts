@@ -1827,6 +1827,7 @@ export function registerIpcHandlers(deps: {
     if (canceled || filePaths.length === 0) return { restored: false }
 
     const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
+    const jobsBefore = recaptureService.beginRestore()
     const outcome = await restoreDatabase(
       { kind: 'file', path: filePaths[0] },
       { dbPath: join(userDataPath, 'birdbrain.db') }
@@ -1836,7 +1837,7 @@ export function registerIpcHandlers(deps: {
       case 'restored':
         // As for a snapshot restore below: the restored jobs go through the startup pass, and
         // an older file drops newer personas.
-        recaptureService.recoverStoredJobs()
+        recaptureService.finishRestore(jobsBefore)
         await personaSessions.clearOrphanedPartitions(userDataPath)
         return { restored: true }
       case 'rejected':
@@ -1883,6 +1884,7 @@ export function registerIpcHandlers(deps: {
     }
     if (!emptyWalBeforeReplace()) throw new IpcFailure(DB_IN_USE_MESSAGE, 'DB_IN_USE')
 
+    const jobsBefore = recaptureService.beginRestore()
     closeDatabase()
     let restoreErr: unknown = null
     try {
@@ -1937,7 +1939,7 @@ export function registerIpcHandlers(deps: {
     // The restored copy is open in this session, so its jobs from an earlier one go through the
     // startup pass now, before anything awaits: a `queued` row would otherwise run without the
     // Operator resuming it. Not after a failed restore, whose database holds this session's jobs.
-    if (!restoreErr) recaptureService.recoverStoredJobs()
+    if (!restoreErr) recaptureService.finishRestore(jobsBefore)
 
     // A snapshot older than a persona brings back a database without its row,
     // leaving that persona's cookies where nothing else can clear them.

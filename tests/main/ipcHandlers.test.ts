@@ -324,6 +324,8 @@ beforeEach(async () => {
       activeUrl: null
     })),
     recoverStoredJobs: vi.fn(),
+    beginRestore: vi.fn(() => []),
+    finishRestore: vi.fn(),
     listJobs: vi.fn(() => []),
     resume: vi.fn(() => ({ resumed: 2 })),
     dismiss: vi.fn(() => ({ dismissed: 1 })),
@@ -3122,8 +3124,11 @@ describe('ipcHandlers — database admin', () => {
     )
     expect(restored.restored).toBe(true)
     expect(clearOrphanedPartitions).toHaveBeenCalledWith(userDataPath)
-    // The restored copy's jobs go through the startup pass in this session.
-    expect(recaptureService.recoverStoredJobs).toHaveBeenCalledTimes(1)
+    // The restored copy's jobs go through the startup pass in this session, with the jobs read
+    // before the restore closed the database.
+    expect(recaptureService.finishRestore.mock.calls).toEqual([
+      [recaptureService.beginRestore.mock.results[0].value]
+    ])
     expect(expectOk(await invoke(IPC_CHANNELS.CASES_GET, afterSnapshot.id))).toBeUndefined()
     // The database is open again on the other side of the restore.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
@@ -3148,7 +3153,8 @@ describe('ipcHandlers — database admin', () => {
 
     expect(res.restored).toBe(true)
     expect(clearOrphanedPartitions).toHaveBeenCalledWith(userDataPath)
-    expect(recaptureService.recoverStoredJobs).toHaveBeenCalledTimes(1)
+    expect(recaptureService.beginRestore).toHaveBeenCalledTimes(1)
+    expect(recaptureService.finishRestore).toHaveBeenCalledTimes(1)
     // Re-opened on the other side, and holding the backup rather than the
     // database that was running when it was chosen.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
@@ -3421,7 +3427,7 @@ describe('ipcHandlers — database admin', () => {
     // The database is back — the restore stopped before it moved anything.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
     // It holds this session's jobs, which the startup pass would hold or mark interrupted.
-    expect(recaptureService.recoverStoredJobs).not.toHaveBeenCalled()
+    expect(recaptureService.finishRestore).not.toHaveBeenCalled()
   })
 
   it('does not migrate a truncated database forward when the restore failed', async () => {

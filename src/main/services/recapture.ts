@@ -141,9 +141,14 @@ export interface RecaptureService {
   // Capture link's route (ADR-0040): one job, whose URL is the link address.
   enqueueLink: (payload: RecaptureEnqueuePayload) => EnqueueResult
   status: () => RecaptureQueueStatus
-  // The pass before the queue runs: at startup, and after a restore re-opens the database in
-  // the running app, since a restored copy can hold rows from an earlier session.
+  // The pass before the queue runs at startup. `finishRestore` runs it after a restore too.
   recoverStoredJobs: () => void
+  // Read before a restore closes the database: the jobs this session has queued or is running.
+  beginRestore: () => BackgroundJobView[]
+  // After a restore re-opens the database: the startup pass, which leaves the job this process is
+  // still running to end as it would have, and a `failed` event for each job read by
+  // `beginRestore` that the restored copy does not hold.
+  finishRestore: (before: BackgroundJobView[]) => void
   listJobs: (query: RecaptureListJobsQuery) => BackgroundJobView[]
   // Sets the Batch's `held` jobs `queued`, behind the jobs already queued at the resume.
   resume: (batchId: string) => { resumed: number }
@@ -159,6 +164,8 @@ const DEFAULT_TIMEOUT_MS = 120_000
 export const STORED_JOB_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
 
 export const INTERRUPTED_JOB_ERROR = 'Birdbrain closed while this job was running'
+
+export const RESTORE_REMOVED_JOB_ERROR = 'A database restore removed this job'
 
 // How a job ended, as its row records it.
 type JobOutcome = Omit<JobEnd, 'finishedAt'>
@@ -326,6 +333,25 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
 
   const emitJob = (view: BackgroundJobView): void => deps.emitJob?.(view)
 
+  function recover(exceptJobId?: string): void {
+    const now = Date.now()
+    const { interrupted, held } = backgroundJobRepo.recoverJobsAtStartup({
+      now: new Date(now).toISOString(),
+      storedBefore: new Date(now - STORED_JOB_RETENTION_MS).toISOString(),
+      interruptedError: INTERRUPTED_JOB_ERROR,
+      exceptJobId
+    })
+    for (const { job, captureId } of interrupted) {
+      logger.warn('backgroundRenderer', 'backgroundRenderer.job_failed', {
+        ...(captureId ? { captureId: ident(captureId) } : {}),
+        caseId: ident(job.caseId),
+        failureKind: tag('interrupted', 'backgroundJobFailureKind')
+      })
+      emitJob(job)
+    }
+    for (const job of held) emitJob(job)
+  }
+
   // `captureId` is the id the attempt's row names, and `timestamp` the Capture's, both taken as
   // the row is claimed.
   async function runJob(
@@ -362,6 +388,22 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     let step: BackgroundJobStep | undefined
     let stage: 'link-source-error' | 'render' | 'ingest' = 'render'
     try {
+      // The list can change while a job waits, held across a restart included, so the check
+      // `enqueue` made on the job's own address (#400) is made again before anything is sent.
+      const excluded = matchCaseExclusion(job.url, job.caseId)
+      if (excluded) {
+        const skipReason = blockedSkipReason(excluded)
+        emitEvent({
+          type: 'skipped',
+          source: 'recapture',
+          url: job.url,
+          timestamp: new Date().toISOString(),
+          skipReason
+        })
+        logSkipped('excluded')
+        return { state: 'skipped', failureKind: 'excluded', error: skipReason }
+      }
+
       let linkSource: LinkSource | undefined
       if (job.linkedFrom) {
         stage = 'link-source-error'
@@ -712,22 +754,24 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         activeUrl: active?.url ?? null
       }
     },
-    recoverStoredJobs() {
-      const now = Date.now()
-      const { interrupted, held } = backgroundJobRepo.recoverJobsAtStartup({
-        now: new Date(now).toISOString(),
-        storedBefore: new Date(now - STORED_JOB_RETENTION_MS).toISOString(),
-        interruptedError: INTERRUPTED_JOB_ERROR
-      })
-      for (const { job, captureId } of interrupted) {
-        logger.warn('backgroundRenderer', 'backgroundRenderer.job_failed', {
-          ...(captureId ? { captureId: ident(captureId) } : {}),
-          caseId: ident(job.caseId),
-          failureKind: tag('interrupted', 'backgroundJobFailureKind')
+    recoverStoredJobs: () => recover(),
+    beginRestore: () => backgroundJobRepo.listActiveJobs(),
+    finishRestore(before) {
+      const running = active?.jobId
+      recover(running)
+      const finishedAt = new Date().toISOString()
+      for (const view of before) {
+        // The running job reports its own end; a job the restored copy holds was handled above.
+        if (view.jobId === running || backgroundJobRepo.getJob(view.jobId)) continue
+        emitJobEvent(jobOf(view), {
+          type: 'failed',
+          source: 'recapture',
+          url: view.url,
+          timestamp: finishedAt,
+          error: RESTORE_REMOVED_JOB_ERROR
         })
-        emitJob(job)
+        emitJob({ ...view, state: 'failed', error: RESTORE_REMOVED_JOB_ERROR, finishedAt })
       }
-      for (const job of held) emitJob(job)
     },
     listJobs: (query) => backgroundJobRepo.listJobs(query),
     resume(batchId) {

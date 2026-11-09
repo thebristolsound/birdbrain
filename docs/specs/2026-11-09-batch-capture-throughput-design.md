@@ -546,12 +546,12 @@ Each slice ships on its own and leaves the app working.
    same-URL rows clearing each other. Blocking tier (`recapture.ts`), no evidence change.
 3. **Stored job table.** The migration, `backgroundJobRepo.ts`, the service reading and writing
    rows, the startup pass with per-Batch holds and retention, `recapture:listJobs`,
-   `recapture:resume`, `recapture:dismiss`, the job channel, and a minimal resume control for held
-   Batches on the capture status button. Concurrency stays 1. Blocking tier
-   (`db/**`).
+   `recapture:resume`, `recapture:dismiss`, the job channel, the pre-render exclusion check, and a
+   minimal resume control for held Batches on the capture status button. The check comes here
+   because this is the first slice where a job can wait across a session while the list changes.
+   Concurrency stays 1. Blocking tier (`db/**`).
 4. **Progress, cancel and retry.** The phase, mapped from slice 1's `onStep` steps, the
-   `AbortSignal`, `recapture:cancel`, `recapture:retry` for a job or a Batch, and the pre-render
-   exclusion check. Blocking tier.
+   `AbortSignal`, `recapture:cancel`, and `recapture:retry` for a job or a Batch. Blocking tier.
 5. **Make parallel renders safe at concurrency 1.** The per-Case ingest slot and the consent blocker
    fix, each with its test, while the pool still runs one worker. Blocking tier.
 6. **Turn on the pool.** Concurrency from the formula, the `BIRDBRAIN_BACKGROUND_WORKERS`

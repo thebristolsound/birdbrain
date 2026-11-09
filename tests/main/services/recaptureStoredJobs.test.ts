@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync } from 'fs'
+import { copyFileSync, mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -14,6 +14,7 @@ import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import {
   INTERRUPTED_JOB_ERROR,
+  RESTORE_REMOVED_JOB_ERROR,
   RecaptureTimeout,
   STORED_JOB_RETENTION_MS,
   createRecaptureService,
@@ -470,6 +471,112 @@ describe('stored background jobs', () => {
         'https://held.example.com/2',
         'https://later.example.com/'
       ])
+    })
+  })
+
+  describe('a restore in the running app', () => {
+    let dbPath: string
+    let backup: string
+
+    // A file database, as a restore replaces one; the Case exists in every copy taken after this.
+    beforeEach(async () => {
+      closeDatabase()
+      dbPath = join(tempDir, 'birdbrain.db')
+      backup = join(tempDir, 'backup.db')
+      await initDatabase(dbPath)
+      caseId = createCase({ name: 'Restored' }).id
+      ensureCaseDir(caseId)
+    })
+
+    const takeBackup = () => getDb().exec(`VACUUM INTO '${backup}'`)
+
+    // What the restore handlers do: read this session's jobs, replace the file, re-open, finish.
+    async function restore(svc: ReturnType<typeof makeService>): Promise<void> {
+      const before = svc.beginRestore()
+      closeDatabase()
+      copyFileSync(backup, dbPath)
+      await initDatabase(dbPath)
+      svc.finishRestore(before)
+    }
+
+    it('lets the job still running end stored when the restored copy holds its row as running', async () => {
+      const { renderPage, gate } = gatedRender()
+      const svc = makeService(renderPage)
+      const {
+        jobIds: [running]
+      } = svc.enqueue([{ url: 'https://example.com/x', caseId }])
+      await vi.waitFor(() => expect(gate).toHaveLength(1))
+      // Another row left `running`, as by a process that is gone, still ends interrupted.
+      const [orphan] = earlierSession(['https://example.com/orphan'])
+      getDb().prepare("UPDATE background_jobs SET state = 'running' WHERE id = ?").run(orphan)
+      takeBackup()
+
+      await restore(svc)
+      expect([running, orphan].map(stateOf)).toEqual(['running', 'failed'])
+      expect(backgroundJobRepo.getJob(orphan)?.failureKind).toBe('interrupted')
+
+      gate.shift()!()
+      await svc.idle()
+      expect(backgroundJobRepo.getJob(running)).toMatchObject({
+        state: 'stored',
+        captureId: newCaptures[0].id
+      })
+    })
+
+    it('ends with a failed event each job of this session that the restored copy does not hold', async () => {
+      takeBackup()
+      const { renderPage, gate } = gatedRender()
+      const svc = makeService(renderPage)
+      const {
+        jobIds: [running, queued]
+      } = svc.enqueue([
+        { url: 'https://example.com/a', caseId },
+        { url: 'https://example.com/b', caseId }
+      ])
+      await vi.waitFor(() => expect(gate).toHaveLength(1))
+
+      await restore(svc)
+      const removed = events.filter(({ error }) => error === RESTORE_REMOVED_JOB_ERROR)
+      expect(removed).toEqual([
+        expect.objectContaining({ type: 'failed', jobId: queued, url: 'https://example.com/b' })
+      ])
+      expect(jobs.at(-1)).toMatchObject({
+        jobId: queued,
+        state: 'failed',
+        error: RESTORE_REMOVED_JOB_ERROR,
+        finishedAt: expect.any(String)
+      })
+
+      // The running job reports its own end, and nothing is left to claim.
+      gate.shift()!()
+      await svc.idle()
+      expect(events.filter(({ jobId }) => jobId === running).map(({ type }) => type)).toEqual([
+        'queued',
+        'received',
+        'stored'
+      ])
+      expect(gate).toHaveLength(0)
+    })
+  })
+
+  describe('the exclusion check before the render', () => {
+    it('skips a held job whose address the list refuses by the time it resumes, sending no request', async () => {
+      const [id] = earlierSession(['https://secret.example.com/page'])
+      const renderPage = vi.fn(render)
+      const svc = makeService(renderPage)
+      svc.recoverStoredJobs()
+      setAutoCapturePolicy(caseId, { exclusions: ['secret.example.com'], mode: 'stack' })
+
+      svc.resume(backgroundJobRepo.getJob(id)!.batchId)
+      await svc.idle()
+
+      expect(renderPage).not.toHaveBeenCalled()
+      expect(backgroundJobRepo.getJob(id)).toMatchObject({
+        state: 'skipped',
+        failureKind: 'excluded'
+      })
+      expect(events.map(({ type }) => type)).toEqual(['received', 'skipped'])
+      expect(backgroundJobRepo.getJob(id)?.error).toBe(events[1].skipReason)
     })
   })
 

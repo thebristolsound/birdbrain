@@ -162,6 +162,14 @@ export function listJobs(query: RecaptureListJobsQuery): BackgroundJobView[] {
   return rows.map(toView)
 }
 
+// The jobs this session has queued or is running: after the startup pass, every such row is one.
+export function listActiveJobs(): BackgroundJobView[] {
+  const rows = getDb()
+    .prepare(`SELECT * FROM background_jobs WHERE state IN ('queued', 'running') ${QUEUE_ORDER}`)
+    .all() as JobRow[]
+  return rows.map(toView)
+}
+
 export function resumeBatch(batchId: string, resumedAt: string): BackgroundJobView[] {
   const rows = getDb()
     .prepare(
@@ -215,10 +223,13 @@ export interface StartupRecovery {
 // The pass before the queue runs ("Restart and snapshot restore" in the design), in one
 // transaction: a running job's render or ingest ended with the process, a queued job waits for
 // the Operator, and a stored row past retention goes, because its Capture is the lasting record.
+// After a restore, `exceptJobId` is the job this process is still running, which ends as it
+// would have without the restore.
 export function recoverJobsAtStartup(params: {
   now: string
   storedBefore: string
   interruptedError: string
+  exceptJobId?: string
 }): StartupRecovery {
   const db = getDb()
   return db.transaction(() => {
@@ -226,10 +237,10 @@ export function recoverJobsAtStartup(params: {
       .prepare(
         `UPDATE background_jobs
             SET state = 'failed', failure_kind = 'interrupted', error = ?, finished_at = ?
-          WHERE state = 'running'
+          WHERE state = 'running' AND id IS NOT ?
           RETURNING *`
       )
-      .all(params.interruptedError, params.now) as JobRow[]
+      .all(params.interruptedError, params.now, params.exceptJobId ?? null) as JobRow[]
     const held = db
       .prepare(`UPDATE background_jobs SET state = 'held' WHERE state = 'queued' RETURNING *`)
       .all() as JobRow[]

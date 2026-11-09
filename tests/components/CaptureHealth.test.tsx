@@ -232,9 +232,7 @@ describe('held background captures', () => {
 
     const indicator = await screen.findByTestId('recapture-held-indicator')
     expect(indicator.textContent).toBe('3')
-    expect(indicator.getAttribute('title')).toBe(
-      '3 background captures held from an earlier session'
-    )
+    expect(indicator.getAttribute('title')).toBe('3 background captures are held')
     expect(screen.queryByTestId('recapture-pending-indicator')).toBeNull()
   })
 
@@ -244,7 +242,7 @@ describe('held background captures', () => {
     openPopover()
 
     const section = await screen.findByTestId('recapture-held')
-    expect(section.textContent).toContain('3 background captures held from an earlier session')
+    expect(section.textContent).toContain('3 background captures are held')
     expect(section.textContent).toContain('Nothing is sent until you resume them.')
     expect(screen.getByText('2 in Harbour Lane')).toBeDefined()
     expect(screen.getByText('1 in Quay Street')).toBeDefined()

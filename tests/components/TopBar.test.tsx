@@ -155,7 +155,9 @@ describe('the breadcrumb chip', () => {
     expect(chip.dataset.hue).toBe('accent')
     const switcher = screen.getByTestId('topbar-case-name')
     expect(switcher.contains(chip)).toBe(true)
-    expect(switcher.title).toMatch(/^Switch case \(.+\) · You are AR in this Case$/)
+    expect(switcher.title).toMatch(
+      /^Operation Kestrel · Switch case \(.+\) · You are AR in this Case$/
+    )
   })
 
   it('shows no chip and the plain tooltip on a Case nobody has shared', async () => {

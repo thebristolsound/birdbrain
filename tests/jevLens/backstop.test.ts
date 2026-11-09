@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   INCLUDE_LIST_DOC,
@@ -64,10 +65,18 @@ describe('parseIncludeList', () => {
     expect(tierOf('extension/src/captureSuppression.ts')).toBe('blocking')
     expect(tierOf('extension/src/captureHygiene.ts')).toBe('blocking')
     expect(tierOf('src/main/webviewPolicy.ts')).toBe('blocking')
-    expect(tierOf('src/main/services/captureLinks.ts')).toBe('advisory')
-    expect(tierOf('src/renderer/components/captures/LinksTab.tsx')).toBe('advisory')
+    expect(tierOf('src/main/services/captureLinks.ts')).toBe('blocking')
+    expect(tierOf('src/main/services/htmlParts.ts')).toBe('blocking')
+    expect(tierOf('src/renderer/components/captures/LinksTab.tsx')).toBe('blocking')
     expect(matchEntry(entries, 'src/main/windowReveal.ts')).toBeNull()
     expect(matchEntry(entries, 'src/renderer/components/signals/AutoCaptureCard.tsx')).toBeNull()
+  })
+
+  it('records the two carve-outs left off the include list on the exclusion list', () => {
+    const markdown = readFileSync(INCLUDE_LIST_DOC, 'utf8')
+    const exclusions = markdown.slice(markdown.indexOf('\n## Notable exclusions'))
+    expect(exclusions).toContain('| `src/main/windowReveal.ts` |')
+    expect(exclusions).toContain('| `src/renderer/components/signals/**` |')
   })
 })
 

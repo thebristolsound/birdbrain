@@ -18,15 +18,15 @@ asked for the slices to be filed and then built, in a Claude Code session on 202
 | Slice | Issue | Branch | PR | State |
 | --- | --- | --- | --- | --- |
 | 1 | #2127 | `feat/background-jobs-instrumentation` | #2133 (draft) | reviewed, fixed, preflight pass at `c3d4a40a` |
-| 2 | #2128 | `feat/background-jobs-ids` | | reviewed; fix round for the feed cap in progress |
-| 3 | #2129 | | | not started |
+| 2 | #2128 | `feat/background-jobs-ids` | #2135 (draft, base slice 1) | reviewed, fixed, preflight pass at `98dbaf1d`, screenshots in body |
+| 3 | #2129 | `feat/background-jobs-table` | | built at `f8bfbc75`; fix round for resume order in progress |
 | 4 | #2130 | | | not started |
 | 5 | #2131 | | | not started |
 | 6 | #2132 | | | not started |
 
 ## Next command
 
-Finish slice 2's fix round, open its PR with `--base feat/background-jobs-instrumentation`, then cut `feat/background-jobs-table` for slice 3.
+Finish slice 3's fix round, review it, take held-state screenshots with `~/bg-jobs-slice3-held-state.mjs`, open its PR with `--base feat/background-jobs-ids`, then cut `feat/background-jobs-controls` for slice 4.
 
 ## Decisions taken
 
@@ -38,6 +38,12 @@ Finish slice 2's fix round, open its PR with `--base feat/background-jobs-instru
   that pins that line's shape.
 - **Step callback:** slice 1 adds `onStep` with ten fine render steps; slice 4 groups them into
   the design's seven phases for `onPhase`.
+
+- **Resume order (slice 3):** a resumed held Batch goes to the back of the queue, through a
+  `resumed_at` column, following the design's decision that a fresh paste never waits behind
+  earlier-session work. Taken under the recommended-option rule; Matt may veto.
+- **Restore timing (slice 3):** the design said a restore takes effect at the next start; it
+  re-opens the database at once, so the startup pass also runs after a successful restore.
 
 ## Found, not fixed
 

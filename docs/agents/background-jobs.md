@@ -85,3 +85,18 @@ now, without the one-hour wait; the post step removes the label.
 Two Jev shadow lenses run event-driven from `.github/workflows/jev-lens.yml` (ADR-0031): `lens:*`
 issue labels and the `jev/evidence-hunks` commit status are advisory, never gate, and are never read by
 dispatch. `scripts/jev-lens/score.mjs` measures them.
+
+## Reviewer pre-pass outcomes
+
+`node scripts/review-outcomes.mjs [--since YYYY-MM-DD] [--by-month] [--json] [--repo owner/name]`
+reads every agent PR's pre-pass verdicts, in the shapes the pre-pass has used most, and the
+replies posted to them as PR comments. A verdict or reply in an older shape it does not read is
+not counted. It prints rounds per PR, findings by severity, and one outcome per
+finding: fixed (applied, and a later round reviewed it), applied (no later round), disputed,
+deferred to an issue, overridden (merged while the last verdict requested changes), or no reply,
+with each disputed or deferred reason. `--by-month` adds a row per month the PRs were opened, and
+`--json` prints the same figures as JSON. Run it before changing `birdbrain-reviewer` or its model,
+and again after, to see whether the change made review noisier or slower to converge. The script
+joins a reply to its finding by the keyed shape the dispatch skill describes, or by a numbered
+line; it counts a bare `Applied.` without joining it to any finding, and it never reads
+replies in inline review threads, which answer other reviewers.

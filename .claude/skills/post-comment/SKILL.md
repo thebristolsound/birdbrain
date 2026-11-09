@@ -35,9 +35,14 @@ checked as top layer.
 | cycle release | `Cycle release: PR #<n>` | 2 lines | none | none |
 | pre-pass verdict | `**Review verdict: <verdict>**` | 10 lines | required | at most 5 numbered findings, one plain sentence each; the block's summary starts `Full report` and names the reviewed commit id |
 | review reply | `Applied.` or `Not applied: <one sentence>` | 1 line | commit for `Applied.` | one reply per thread, nothing else |
+| keyed replies | free, naming the review it answers | 20 lines | required | one numbered plain sentence per finding; the block holds one entry per finding, `**<verdict comment id>-finding-<n>**` on its own line and a review reply under it |
 | give-up or defect | `Give-up: <one clause>` or `Defect: <one clause>` | 10 lines | required | `**What:**` on top; `**Where:**` as `file:line` and `**Reproduce:**` inside the block |
 | friction notes | `Friction notes: dispatch cycle` or `Friction notes: PR review` | 12 lines | required | one numbered plain sentence per note; a block under `<summary>Each note in full</summary>` holds one table row per note; at most 3 notes per agent |
 | anything else | free | 20 lines | optional | none |
+
+Keyed replies answer a pre-pass verdict, which has no thread to reply into, in one comment.
+The linter reads it as `anything else`, so the entry rules are the author's to keep;
+`scripts/review-outcomes.mjs` reads the keys to tally what happened to each finding.
 
 `<verdict>` is `approve for human review` or `request changes`. The full pre-pass report goes
 on the PR inside the verdict's `<details>` block, collapsed under `Full report`; when it

@@ -327,10 +327,15 @@ comments. Classify:
   happening — it returns them as text keyed to the comment or thread ids they answer, and
   **you** post them via the write path (locally `gh api .../issues/<n>/comments -X POST
   --input <file>`, or `.../pulls/<n>/comments/<id>/replies` for an inline thread; on the web
-  `mcp__github__add_issue_comment` or `add_reply_to_pull_request_comment`). Each reply is in the
-  `post-comment` reply shape, `Applied.` with the commit collapsed in a `<details>` block or
-  `Not applied: <one plain sentence>`, and `.claude/skills/post-comment/scripts/check.sh <file>` runs on each file before it is
-  posted. Your read of that text before posting is the editorial pass; a subagent that posts directly has bypassed it,
+  `mcp__github__add_issue_comment` or `add_reply_to_pull_request_comment`). A reply on an
+  inline thread is in the `post-comment` review-reply shape, `Applied.` with the commit
+  collapsed in a `<details>` block or `Not applied: <one plain sentence>`. A pre-pass verdict
+  has no thread, so the replies to its findings go in one PR comment, the `post-comment`
+  keyed-replies shape: a numbered plain line per finding, and inside the `<details>` block
+  one entry per finding headed `**<verdict comment id>-finding-<n>**` (`finding-<n>-and-<m>`
+  when one reply answers two) with its review reply under it. `scripts/review-outcomes.mjs`
+  joins a reply to its finding by that key. `.claude/skills/post-comment/scripts/check.sh
+  <file>` runs on each file before it is posted. Your read of that text before posting is the editorial pass; a subagent that posts directly has bypassed it,
   which is a reportable contract violation even when the content was fine — and it lands under
   the wrong identity, since only the dispatcher holds the machine token. Then run the
   reviewer pre-pass (section 4).

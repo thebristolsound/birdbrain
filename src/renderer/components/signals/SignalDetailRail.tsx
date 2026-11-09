@@ -5,6 +5,7 @@ import type { Capture } from '@shared/types'
 import { useAppStore } from '@renderer/stores/appStore'
 import { formatRelativeTime } from '@renderer/lib/formatRelativeTime'
 import { exportSelectorMatches } from '@renderer/lib/api/selectors'
+import { notify } from '@renderer/lib/notify'
 import { useForegroundMatchPreview } from '@renderer/components/selectors/useForegroundMatchPreview'
 import { ORIGIN_ICON, ORIGIN_LABEL } from '@renderer/components/selectors/selectorOrigin'
 import { useTagsMutations } from '@renderer/lib/api/tags'
@@ -121,8 +122,10 @@ export function SignalDetailRail({
     setExporting(true)
     try {
       await exportSelectorMatches(caseId, signal.id)
-    } catch (err) {
-      console.error('Export selector matches failed:', err)
+    } catch (cause) {
+      // Same reason as the row menu's export in SignalsOverview: the bridge call
+      // is not a mutation, so nothing else reports a failed write.
+      notify.error("Couldn't export the selector's matches", { cause })
     } finally {
       setExporting(false)
     }

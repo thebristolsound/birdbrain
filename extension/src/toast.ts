@@ -1,7 +1,23 @@
 import { isCaptureUiSuppressed, registerCaptureUiTeardown } from './captureSuppression'
 import type { CaptureCardDetails, ScreenshotKind } from '@shared/schemas'
 
-const TOAST_ID = 'birdbrain-capture-toast'
+export const TOAST_ID = 'birdbrain-capture-toast'
+
+/**
+ * How the toast host is recognised as extension-owned (#981).
+ *
+ * The id alone is not ownership: a page is free to carry an element with any
+ * id, and the toast's teardown and captureHygiene.ts's fallback both run before
+ * MHTML and screenshot collection, so matching on the id would delete a
+ * page-owned node out of the evidence. The attribute is set only by
+ * `getOrCreateHost()` below, the one place a host is created. A page can still
+ * forge it, and a forged host is removed with ours: the marker narrows the
+ * collision to pages that copy it on purpose and is not proof of ownership,
+ * the same residual limit selectionBar.ts states for its marker.
+ */
+export const TOAST_MARKER = 'data-birdbrain-ui'
+export const TOAST_MARKER_VALUE = 'capture-toast'
+export const TOAST_SELECTOR = `div[${TOAST_MARKER}="${TOAST_MARKER_VALUE}"]`
 
 interface ToastOptions {
   status: 'capturing' | 'success' | 'degraded' | 'error' | 'skipped'
@@ -23,11 +39,12 @@ const STORED_SCREENSHOT_LABEL: Record<ScreenshotKind, string> = {
 let removeTimeout: ReturnType<typeof setTimeout> | null = null
 
 function getOrCreateHost(): ShadowRoot {
-  let host = document.getElementById(TOAST_ID)
+  let host = document.querySelector<HTMLElement>(TOAST_SELECTOR)
   if (host?.shadowRoot) return host.shadowRoot
 
   host = document.createElement('div')
   host.id = TOAST_ID
+  host.setAttribute(TOAST_MARKER, TOAST_MARKER_VALUE)
   const shadow = host.attachShadow({ mode: 'open' })
   document.body.appendChild(host)
   return shadow
@@ -179,7 +196,8 @@ function removeToastImmediately(): void {
     clearTimeout(removeTimeout)
     removeTimeout = null
   }
-  document.getElementById(TOAST_ID)?.remove()
+  // All of them: a forged marker earlier in the document must not shadow ours.
+  document.querySelectorAll(TOAST_SELECTOR).forEach((host) => host.remove())
 }
 
 // The toast is in-page UI, so it tears itself down on the capture-suppression
@@ -188,7 +206,7 @@ registerCaptureUiTeardown(removeToastImmediately)
 
 export function removeToast(): void {
   removeTimeout = null
-  const host = document.getElementById(TOAST_ID)
+  const host = document.querySelector<HTMLElement>(TOAST_SELECTOR)
   if (!host?.shadowRoot) return
 
   const toast = host.shadowRoot.querySelector('.toast') as HTMLElement

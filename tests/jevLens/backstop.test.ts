@@ -56,6 +56,19 @@ describe('parseIncludeList', () => {
     expect(entries.length).toBeGreaterThan(50)
     expect(entries.every((e) => e.tier === 'blocking' || e.tier === 'advisory')).toBe(true)
   })
+
+  it('matches the paths registered on 2026-11-09, and leaves the excluded carve-out off', () => {
+    const entries: Entry[] = loadIncludeList()
+    const tierOf = (path: string) => matchEntry(entries, path)?.tier
+    expect(tierOf('extension/src/selectionBar.ts')).toBe('blocking')
+    expect(tierOf('extension/src/captureSuppression.ts')).toBe('blocking')
+    expect(tierOf('extension/src/captureHygiene.ts')).toBe('blocking')
+    expect(tierOf('src/main/webviewPolicy.ts')).toBe('blocking')
+    expect(tierOf('src/main/services/captureLinks.ts')).toBe('advisory')
+    expect(tierOf('src/renderer/components/captures/LinksTab.tsx')).toBe('advisory')
+    expect(matchEntry(entries, 'src/main/windowReveal.ts')).toBeNull()
+    expect(matchEntry(entries, 'src/renderer/components/signals/AutoCaptureCard.tsx')).toBeNull()
+  })
 })
 
 describe('globToRegExp', () => {

@@ -383,7 +383,7 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
                           className="text-[11px] text-text-muted"
                           data-testid="export-captures-invariant-note"
                         >
-                          Page archives always ship in a certified package.
+                          Page archives cannot be left out of a certified package.
                         </p>
                       </>
                     )}

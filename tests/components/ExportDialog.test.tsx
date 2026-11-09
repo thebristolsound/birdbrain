@@ -359,7 +359,7 @@ describe('ExportDialog', () => {
     fireEvent.click(captures)
     expect(captures.checked).toBe(true)
     expect(screen.getByTestId('export-captures-invariant-note').textContent).toBe(
-      'Page archives always ship in a certified package.'
+      'Page archives cannot be left out of a certified package.'
     )
 
     fireEvent.click(screen.getByText('Export'))

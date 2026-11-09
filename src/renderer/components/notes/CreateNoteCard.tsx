@@ -4,6 +4,7 @@ import { useNotesMutations } from '@renderer/lib/queries'
 import { Button, Input } from '@renderer/components/ui'
 import { NoteEditor } from '@renderer/components/notes/NoteEditor'
 import { useNoteEditor, useNoteEditorState } from '@renderer/components/notes/useNoteEditor'
+import { useDraftNoteId } from '@renderer/components/notes/useDraftNoteId'
 import { EMPTY_NOTE_DOC } from '@shared/noteDoc'
 
 interface CreateNoteCardProps {
@@ -21,7 +22,7 @@ export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNo
   // pressing Save — which the Tag action forces, since a tag cannot attach to
   // a note that does not exist (#391, ruling R15). From then on this card is
   // editing a real note, so Save updates rather than creating a second one.
-  const [draftNoteId, setDraftNoteId] = useState<string | null>(null)
+  const { draftNoteId, resetDraftNoteId, bindCreated } = useDraftNoteId()
   const editor = useNoteEditor({
     caseId,
     noteId: draftNoteId ?? undefined,
@@ -38,15 +39,13 @@ export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNo
       await update.mutateAsync({ id: draftNoteId, title: title.trim(), bodyDoc: doc })
       return draftNoteId
     }
-    const created = await create.mutateAsync({ caseId, title: title.trim(), bodyDoc: doc })
-    setDraftNoteId(created.id)
-    return created.id
+    return bindCreated(() => create.mutateAsync({ caseId, title: title.trim(), bodyDoc: doc }))
   }
 
   function resetDraft() {
     setTitle('')
     readBody.current = null
-    setDraftNoteId(null)
+    resetDraftNoteId()
     editor?.commands.clearContent()
   }
 

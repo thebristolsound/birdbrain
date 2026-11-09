@@ -28,12 +28,14 @@ const SEEN_LIMIT = 200
 // query logs without one (queryClient.ts). A toast here would double the first
 // and contradict the second. The imported-path repair retries an unrepaired
 // row at every launch and the operator has no action to take on it, so the
-// replay would raise the same toast at every start.
+// replay would raise the same toast at every start. A failed Background Job
+// already shows in the capture activity feed through its `failed` event.
 const LOG_ONLY: ReadonlySet<LogCode> = new Set<LogCode>([
   'ipc.request_refused',
   'ipc.request_threw',
   'exhibits.path_unrepaired',
-  'staging.path_unrepaired'
+  'staging.path_unrepaired',
+  'backgroundRenderer.job_failed'
 ])
 
 export function subscribeToMainLog(): () => void {

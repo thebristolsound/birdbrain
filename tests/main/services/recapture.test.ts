@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   createReadStream,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -25,6 +26,7 @@ import { initSettings, updateSettings } from '@main/services/settings'
 import { createCaptureLifecycle, verifyCapture } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import {
+  RecaptureTimeout,
   createRecaptureService,
   looksLikeLoginWall,
   redirectedFinalUrl,
@@ -37,6 +39,7 @@ import { getExhibit } from '@main/services/db/exhibitRepo'
 import { resetSigningKey } from '@main/services/signingKey'
 import { resetSyncStateMemory } from '@main/services/sharing/syncState'
 import { logger } from '@main/services/logger'
+import { sanitizeError } from '@main/services/logSafe'
 import { ManifestEntrySchema, type BoundTls, type ScrollToLoadRecord } from '@shared/schemas'
 import type { CaptureEvent, Capture } from '@shared/types'
 import {
@@ -865,6 +868,202 @@ describe('recapture service', () => {
     const stored = events.find((e) => e.type === 'stored')
     expect(stored?.warning).toMatch(/login/i)
   })
+
+  // Slice 1 of docs/specs/2026-11-09-batch-capture-throughput-design.md (#2127).
+  describe("the job's log line", () => {
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+    type Spy = { mock: { calls: unknown[][] } }
+    const JOB_CODES = [
+      'backgroundRenderer.job_stored',
+      'backgroundRenderer.job_skipped',
+      'backgroundRenderer.job_failed'
+    ]
+    const jobLines = (...spies: Spy[]) =>
+      spies
+        .flatMap((spy) => spy.mock.calls)
+        .filter(([, code]) => JOB_CODES.includes(code as string))
+
+    let info: ReturnType<typeof vi.spyOn>
+    let warn: ReturnType<typeof vi.spyOn>
+
+    beforeEach(() => {
+      info = vi.spyOn(logger, 'info')
+      warn = vi.spyOn(logger, 'warn')
+    })
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    // The log is handed over in bug reports, so no line of a job names its address.
+    function expectNoAddress(...hosts: string[]): void {
+      const logged = JSON.stringify([...info.mock.calls, ...warn.mock.calls])
+      for (const host of hosts) expect(logged).not.toContain(host)
+    }
+
+    it('is one info line for a stored job, under the Capture id, with the ingest time', async () => {
+      const svc = makeService(fakeRender())
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+      expect(jobLines(info, warn)).toEqual([
+        [
+          'backgroundRenderer',
+          'backgroundRenderer.job_stored',
+          {
+            captureId: newCaptures[0].id,
+            caseId,
+            ms: expect.any(Number),
+            ingestMs: expect.any(Number)
+          }
+        ]
+      ])
+      const [[, , { ms, ingestMs }]] = jobLines(info) as Array<
+        [string, string, Record<string, number>]
+      >
+      expect(ingestMs).toBeLessThanOrEqual(ms)
+      expectNoAddress('example.com')
+    })
+
+    it.each([
+      {
+        name: 'the render ends at a private address',
+        failureKind: 'refused-address',
+        render: fakeRender({ finalUrl: 'http://192.168.0.10/router' }),
+        hosts: ['192.168.0.10']
+      },
+      {
+        name: 'the render redirects into an excluded address',
+        failureKind: 'excluded',
+        exclusions: ['blocked.example'],
+        render: fakeRender({ finalUrl: 'https://blocked.example/landing' }),
+        hosts: ['blocked.example']
+      },
+      {
+        name: 'the renderer refuses a hop',
+        failureKind: 'refused-address',
+        render: (async () => {
+          throw new RefusedAddressError('a loopback address')
+        }) as RenderPage,
+        hosts: []
+      }
+    ])(
+      'is one info line naming the kind, not the reason, when $name',
+      async ({ failureKind, render, exclusions, hosts }) => {
+        if (exclusions) setAutoCapturePolicy(caseId, { exclusions, mode: 'stack' })
+        const svc = makeService(render)
+        svc.enqueue([{ url: 'https://public.example/r', caseId }])
+        await svc.idle()
+        expect(events.map(({ type }) => type)).toEqual(['received', 'skipped'])
+        expect(jobLines(info, warn)).toEqual([
+          [
+            'backgroundRenderer',
+            'backgroundRenderer.job_skipped',
+            { captureId: expect.stringMatching(UUID), caseId, ms: expect.any(Number), failureKind }
+          ]
+        ])
+        expectNoAddress('public.example', ...hosts)
+      }
+    )
+
+    it('is one warn line with the error and the step the render reached, when the render throws', async () => {
+      const error = new Error('net::ERR_NAME_NOT_RESOLVED')
+      const svc = makeService(async (_url, { onStep }) => {
+        onStep?.('setup')
+        onStep?.('load')
+        onStep?.('scroll')
+        throw error
+      })
+      svc.enqueue([{ url: 'https://nope.example/', caseId }])
+      await svc.idle()
+      expect(jobLines(info, warn)).toEqual([
+        [
+          'backgroundRenderer',
+          'backgroundRenderer.job_failed',
+          {
+            captureId: expect.stringMatching(UUID),
+            caseId,
+            ms: expect.any(Number),
+            failureKind: 'render',
+            step: 'scroll'
+          },
+          error
+        ]
+      ])
+      expect(jobLines(warn)).toHaveLength(1)
+      expectNoAddress('nope.example')
+    })
+
+    it('names no step when the render throws before its first', async () => {
+      const svc = makeService(async () => {
+        throw new Error('the Egress could not be read')
+      })
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+      const [[, , context]] = jobLines(warn) as Array<[string, string, Record<string, unknown>]>
+      expect(context).toMatchObject({ failureKind: 'render' })
+      expect(context).not.toHaveProperty('step')
+    })
+
+    it('names a timeout, and the step the render last reached, when the render hangs', async () => {
+      const svc = makeService(async (_url, { onStep }) => {
+        onStep?.('setup')
+        onStep?.('load')
+        return new Promise<RenderedPage>(() => {})
+      }, 50)
+      svc.enqueue([{ url: 'https://slow.example/', caseId }])
+      await svc.idle()
+      const [[, , context, error]] = jobLines(warn) as Array<
+        [string, string, Record<string, unknown>, unknown]
+      >
+      expect(context).toMatchObject({ failureKind: 'timeout', step: 'load' })
+      expect(error).toBeInstanceOf(RecaptureTimeout)
+      // The log keeps an error's name only when it is a known one.
+      expect(sanitizeError(error).name).toBe('RecaptureTimeout')
+      expect(events.at(-1)).toMatchObject({
+        type: 'failed',
+        error: 'Recapture timed out after 50ms'
+      })
+    })
+
+    it("names a timeout when the renderer's own deadline ends the render", async () => {
+      const svc = makeService(async (_url, { onStep }) => {
+        onStep?.('setup')
+        onStep?.('artifacts')
+        throw new RecaptureTimeout(120_000)
+      })
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+      const [[, , context]] = jobLines(warn) as Array<[string, string, Record<string, unknown>]>
+      expect(context).toMatchObject({ failureKind: 'timeout', step: 'artifacts' })
+    })
+
+    it('names the ingest when the ingest fails, and logs no stored line', async () => {
+      const failing = createCaptureLifecycle({ selectorLifecycle })
+      const error = new Error('disk full')
+      const svc = createRecaptureService({
+        renderPage: fakeRender(),
+        captureLifecycle: { ...failing, ingest: () => Promise.reject(error) },
+        emitEvent: (e) => events.push(e),
+        emitNewCapture: (c) => newCaptures.push(c)
+      })
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+      expect(jobLines(info, warn)).toEqual([
+        [
+          'backgroundRenderer',
+          'backgroundRenderer.job_failed',
+          {
+            captureId: expect.stringMatching(UUID),
+            caseId,
+            ms: expect.any(Number),
+            failureKind: 'ingest',
+            step: 'ingest'
+          },
+          error
+        ]
+      ])
+    })
+  })
 })
 
 describe('looksLikeLoginWall', () => {
@@ -1255,6 +1454,54 @@ describe('Capture link jobs (ADR-0040)', () => {
       type: 'skipped',
       skipReason: 'Link source has no manifest entry'
     })
+  })
+
+  // #2127: the line names the kind, not the refusal.
+  it('logs a refused source as a skipped job of kind link-source', async () => {
+    const info = vi.spyOn(logger, 'info')
+    const legacy = insertCapture({
+      caseId,
+      url: 'https://example.com/legacy',
+      title: 'Legacy',
+      hash: 'a'.repeat(64),
+      timestamp: '2026-01-01T00:00:00.000Z'
+    })
+    svc.enqueueLink(linkPayload(legacy.id))
+    await svc.idle()
+    const skipped = info.mock.calls.filter(([, code]) => code === 'backgroundRenderer.job_skipped')
+    expect(skipped).toEqual([
+      [
+        'backgroundRenderer',
+        'backgroundRenderer.job_skipped',
+        {
+          captureId: expect.any(String),
+          caseId,
+          ms: expect.any(Number),
+          failureKind: 'link-source'
+        }
+      ]
+    ])
+    info.mockRestore()
+  })
+
+  it('logs a source check that throws as a failed job of kind link-source-error', async () => {
+    const source = await sourceCapture()
+    const manifest = join(getStorageRoot(), caseId, MANIFEST_FILENAME)
+    rmSync(manifest)
+    mkdirSync(manifest)
+    const warn = vi.spyOn(logger, 'warn')
+    svc.enqueueLink(linkPayload(source.id))
+    await svc.idle()
+    expect(events.at(-1)).toMatchObject({ type: 'failed' })
+    const failed = warn.mock.calls.filter(([, code]) => code === 'backgroundRenderer.job_failed')
+    expect(failed).toHaveLength(1)
+    expect(failed[0][2]).toEqual({
+      captureId: expect.any(String),
+      caseId,
+      ms: expect.any(Number),
+      failureKind: 'link-source-error'
+    })
+    warn.mockRestore()
   })
 
   // The manifest writer runs no schema check, and the strict schema refuses a

@@ -180,6 +180,11 @@ const CODE_LABELS: Record<LogCode, string> = {
   'backgroundRenderer.consent_blocker_disable_failed':
     "Couldn't turn off the cookie-notice blocker",
   'backgroundRenderer.consent_blocker_enable_failed': "Couldn't turn on the cookie-notice blocker",
+  'backgroundRenderer.render_completed': 'Rendered a page in the background',
+  'backgroundRenderer.render_failed': 'A background render stopped before it finished',
+  'backgroundRenderer.job_stored': 'Stored a background capture',
+  'backgroundRenderer.job_skipped': 'Skipped a background capture that a rule refused',
+  'backgroundRenderer.job_failed': 'A background capture failed',
   'consentBlocker.filter_engine_failed': "Couldn't load the cookie-notice filter lists",
   'selectorLifecycle.retroactive_match_failed':
     "Couldn't match the new selector against existing captures",

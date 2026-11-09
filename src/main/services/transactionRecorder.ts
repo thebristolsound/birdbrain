@@ -109,19 +109,30 @@ export interface TransactionRecorder {
   dispose(): void
 }
 
+// Each end phase's bound has its own error name, because the log keeps an error's name and drops
+// its message (#2121). A setup command's bound is never logged: `answered` catches it.
+const BOUNDS = {
+  command: { what: 'command', name: 'TransactionRecordTimeout' },
+  collect: { what: 'The body fetches', name: 'TransactionRecordCollectTimeout' },
+  write: { what: 'The Transaction Record writer', name: 'TransactionRecordWriteTimeout' }
+} as const
+
+type BoundKind = keyof typeof BOUNDS
+
 class Bound extends Error {
-  constructor(what: string, ms: number) {
+  constructor(kind: BoundKind, ms: number) {
+    const { what, name } = BOUNDS[kind]
     super(`${what} did not settle within ${ms}ms`)
-    this.name = 'TransactionRecordTimeout'
+    this.name = name
   }
 }
 
 // A bound of zero or less has run out before the phase starts.
-function withinMs<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
-  if (ms <= 0) return Promise.reject(new Bound(what, Math.max(0, ms)))
+function withinMs<T>(promise: Promise<T>, ms: number, kind: BoundKind): Promise<T> {
+  if (ms <= 0) return Promise.reject(new Bound(kind, Math.max(0, ms)))
   let timer: NodeJS.Timeout | undefined
   const bound = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Bound(what, ms)), ms)
+    timer = setTimeout(() => reject(new Bound(kind, ms)), ms)
   })
   return Promise.race([promise, bound]).finally(() => clearTimeout(timer))
 }
@@ -394,7 +405,7 @@ export function createTransactionRecorder(
     },
     async collect(ms) {
       if (overflow) throw overflow
-      await withinMs(Promise.allSettled([...pending]), ms, 'The body fetches')
+      await withinMs(Promise.allSettled([...pending]), ms, 'collect')
       if (overflow) throw overflow
       const bodies = new Map<string, ResponseBodyResult>()
       for (const [requestId, sessionId] of lastFinished) {
@@ -516,7 +527,7 @@ export async function finishTransactionRecord(
     const { bytes, replacedHeaders } = await withinMs(
       write({ ...writer, exchanges }),
       Math.min(writeMs, timeLeftMs()),
-      'The Transaction Record writer'
+      'write'
     )
     // A part that says `present: true` parses only as the present variant.
     const inventory = TransactionRecordPartSchema.parse({

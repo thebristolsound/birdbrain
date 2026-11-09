@@ -10,6 +10,7 @@ import type {
   DebuggerSession,
   RecorderBudget
 } from '@main/services/transactionRecorder'
+import { sanitizeError } from '@main/services/logSafe'
 import { CaptureInventorySchema } from '@shared/schemas'
 import type { Exchange } from '../../../src/packages/transaction-record/collector'
 
@@ -770,6 +771,55 @@ describe('finishTransactionRecord', () => {
     expect(outcome).toMatchObject({ present: false, reason: 'failed' })
     expect(String(outcome.present || outcome.error)).toContain('writer did not settle within 30ms')
   })
+
+  // #2121: the log drops an error's message and keeps a known name, so the name says which.
+  it.each([
+    {
+      name: 'the body fetches never settle',
+      arrange: (fake: FakeDebugger) => {
+        fake.answers.set('Network.getResponseBody', 'hang')
+        page(fake).exchange('doc', 'http://127.0.0.1/', 12)
+      },
+      write: undefined,
+      timeLeft: (): number => 5_000,
+      errorName: 'TransactionRecordCollectTimeout',
+      message: 'The body fetches did not settle within 30ms'
+    },
+    {
+      name: 'the writer never settles',
+      arrange: () => {},
+      write: () => new Promise<never>(() => {}),
+      timeLeft: (): number => 5_000,
+      errorName: 'TransactionRecordWriteTimeout',
+      message: 'The Transaction Record writer did not settle within 30ms'
+    },
+    {
+      name: 'no time is left for the body fetches',
+      arrange: () => {},
+      write: undefined,
+      timeLeft: (): number => 0,
+      errorName: 'TransactionRecordCollectTimeout',
+      message: 'The body fetches did not settle within 0ms'
+    }
+  ])(
+    'names the bound that expired when $name',
+    async ({ arrange, write, timeLeft, errorName, message }) => {
+      const { fake, recorder } = await started()
+      arrange(fake)
+      recorder.stop()
+      const outcome = await finishTransactionRecord(recorder, {
+        collectMs: 30,
+        writeMs: 30,
+        timeLeftMs: timeLeft,
+        writer: WRITER,
+        committedUrl: 'http://127.0.0.1/',
+        ...(write ? { write } : {})
+      })
+      if (outcome.present) throw new Error('expected the record to fail')
+      expect(outcome.error).toMatchObject({ name: errorName, message })
+      expect(sanitizeError(outcome.error).name).toBe(errorName)
+    }
+  )
 
   it('records the record failed at once when no time is left', async () => {
     const { recorder } = await started()

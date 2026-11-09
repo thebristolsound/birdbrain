@@ -18,19 +18,28 @@ import type {
   TransactionRecordOutcome,
   TransactionRecorder
 } from '@main/services/transactionRecorder'
+import { RecaptureTimeout } from '@main/services/recapture'
 import type {
   ImageSourcePinning,
   PdfOutcome,
   PresentPdf,
   RenderPage,
+  RenderStep,
   RenderedPage,
   ScreenshotRecord
 } from '@main/services/recapture'
 import { CaptureInventorySchema } from '@shared/schemas'
 import type { ScrollToLoadRecord } from '@shared/schemas'
 import { MAX_PDF_CONTENT_HEIGHT_PX, MAX_PDF_SIZE } from '@shared/constants'
-import type { ConsentSuppression, KnownEgress, ScrollToLoadOutcome } from '@shared/types'
+import type {
+  ConsentSuppression,
+  KnownEgress,
+  LogContextKey,
+  ScrollToLoadOutcome
+} from '@shared/types'
 import { logger } from '@main/services/logger'
+import { ident, tag } from '@main/services/logSafe'
+import type { LogContext } from '@main/services/logSafe'
 
 const VIEWPORT = { width: 1280, height: 900 }
 export const NETWORK_IDLE_MS = 1200
@@ -887,6 +896,53 @@ function proxyFailure(err: unknown, egress: KnownEgress): Error | null {
   return new Error(`Could not go through the Egress proxy ${egress.proxyUrl}: ${message}`)
 }
 
+const STEP_DURATION_KEYS = {
+  setup: 'setupMs',
+  load: 'loadMs',
+  'network-idle': 'networkIdleMs',
+  scroll: 'scrollMs',
+  'post-scroll-idle': 'postScrollIdleMs',
+  settle: 'settleMs',
+  images: 'imagesMs',
+  artifacts: 'artifactsMs',
+  'transaction-record': 'transactionRecordMs',
+  pdf: 'pdfMs'
+} as const satisfies Record<RenderStep, LogContextKey>
+
+interface StepClock {
+  enter: (step: RenderStep) => void
+  // Ends the clock and closes the step it is in, so a failed render's last step
+  // is timed to the failure. Steps entered after it are neither timed nor heard.
+  stop: () => { reached: RenderStep; durations: LogContext }
+}
+
+// Times each step of a render for its log line (#2127), from `first`, and tells
+// `onStep` of each.
+function createStepClock(first: RenderStep, onStep?: (step: RenderStep) => void): StepClock {
+  const durations: LogContext = {}
+  let current = first
+  let enteredAt = Date.now()
+  let stopped = false
+  onStep?.(first)
+  const close = (): void => {
+    durations[STEP_DURATION_KEYS[current]] = Date.now() - enteredAt
+  }
+  return {
+    enter(step) {
+      if (stopped) return
+      close()
+      current = step
+      enteredAt = Date.now()
+      onStep?.(step)
+    },
+    stop() {
+      if (!stopped) close()
+      stopped = true
+      return { reached: current, durations }
+    }
+  }
+}
+
 // Renders a URL in a locked-down, invisible BrowserWindow with a fresh
 // in-memory session (no persist: prefix = nothing touches disk, nothing is
 // shared with the app or previous jobs). A hostile page runs in our process,
@@ -895,7 +951,7 @@ function proxyFailure(err: unknown, egress: KnownEgress): Error | null {
 // isolated cosmetic-filter bridge (see below).
 export const renderPageInHiddenWindow: RenderPage = async (
   url,
-  { timeoutMs, captureId, toolVersion }
+  { timeoutMs, captureId, toolVersion, onStep }
 ) => {
   // An Egress that could not be read sends nothing, so no window is made (ADR-0032).
   const egress = knownEgress()
@@ -928,14 +984,14 @@ export const renderPageInHiddenWindow: RenderPage = async (
   // The time left counts from the moment the deadline timer starts, so setup before the
   // first load, such as a slow `setProxy`, cannot let a phase settle after the deadline.
   const startedAt = Date.now()
+  const steps = createStepClock('setup', onStep)
+  // The time the Transaction Record's end phases are cut to, read as that step starts.
+  let recordTimeLeftMs: number | undefined
   const remainingMs = (reserveMs = 0) =>
     Math.max(0, timeoutMs - (Date.now() - startedAt) - reserveMs)
   let deadlineTimer: NodeJS.Timeout | undefined
   const deadline = new Promise<never>((_, reject) => {
-    deadlineTimer = setTimeout(
-      () => reject(new Error(`Recapture timed out after ${timeoutMs}ms`)),
-      timeoutMs
-    )
+    deadlineTimer = setTimeout(() => reject(new RecaptureTimeout(timeoutMs)), timeoutMs)
   })
 
   // A public page can send the render to the Operator's own machine or network by a
@@ -1074,11 +1130,13 @@ export const renderPageInHiddenWindow: RenderPage = async (
     networkTracker = createNetworkIdleTracker(session)
 
     try {
+      steps.enter('load')
       try {
         await wc.loadURL(url)
       } catch (err) {
         throw proxyFailure(err, egress) ?? err
       }
+      steps.enter('network-idle')
       await waitForDocumentComplete(wc, remainingMs(FINAL_ARTIFACT_RESERVE_MS))
       await networkTracker.waitForIdle(
         NETWORK_IDLE_MS,
@@ -1088,15 +1146,19 @@ export const renderPageInHiddenWindow: RenderPage = async (
       // Scroll through the complete document to trigger lazy-loaded/infinite-scroll
       // content before saving the MHTML. Unlike the original 30-viewport cap, this
       // runs until the page bottom is stable or the recapture budget is exhausted.
+      steps.enter('scroll')
       const scrollToLoad = await scrollToLoadLazyContent(
         wc,
         clampPhaseMs(remainingMs(FINAL_ARTIFACT_RESERVE_MS), MAX_SCROLL_PHASE_MS)
       )
+      steps.enter('post-scroll-idle')
       await networkTracker.waitForIdle(
         NETWORK_IDLE_MS,
         clampPhaseMs(remainingMs(FINAL_ARTIFACT_RESERVE_MS), POST_SCROLL_NETWORK_IDLE_MAX_MS)
       )
+      steps.enter('settle')
       await sleep(Math.min(FINAL_SETTLE_MS, remainingMs(FINAL_ARTIFACT_RESERVE_MS)))
+      steps.enter('images')
       await settleImageSets(
         wc,
         clampPhaseMs(remainingMs(FINAL_ARTIFACT_RESERVE_MS), IMAGE_SET_SETTLE_MAX_MS)
@@ -1110,6 +1172,7 @@ export const renderPageInHiddenWindow: RenderPage = async (
         clampPhaseMs(remainingMs(FINAL_ARTIFACT_RESERVE_MS), PIN_LOAD_MAX_MS)
       )
 
+      steps.enter('artifacts')
       const { png: screenshot, record: screenshotRecord } = await captureFullPageScreenshot(wc)
       const imageSourcePinning = await countPinnedImages(wc)
 
@@ -1137,6 +1200,8 @@ export const renderPageInHiddenWindow: RenderPage = async (
 
       const userAgent = wc.getUserAgent()
       const browserVersion = `Chrome/${process.versions.chrome}`
+      steps.enter('transaction-record')
+      recordTimeLeftMs = remainingMs(END_MARGIN_MS)
       const transactionRecord: TransactionRecordOutcome = recording
         ? await finishTransactionRecord(activeRecorder, {
             collectMs: BODY_COLLECT_TIMEOUT_MS,
@@ -1159,6 +1224,7 @@ export const renderPageInHiddenWindow: RenderPage = async (
           }
 
       // Last, under its own bound cut to the time left (PRINT_TIMEOUT_MS).
+      steps.enter('pdf')
       const pdf = await printPageToPdf(wc, {
         saved,
         navigations: () => navigations,
@@ -1192,10 +1258,30 @@ export const renderPageInHiddenWindow: RenderPage = async (
     }
   }
 
+  // A line's context: the job's capture id, the time since the deadline started,
+  // and each step timed so far.
+  const timings = (durations: LogContext): LogContext => ({
+    captureId: ident(captureId),
+    ms: Date.now() - startedAt,
+    ...durations,
+    ...(recordTimeLeftMs === undefined ? {} : { timeLeftMs: recordTimeLeftMs })
+  })
+
   const rendering = render()
+  let page: RenderedPage
   try {
-    return await Promise.race([rendering, deadline, refused])
+    page = await Promise.race([rendering, deadline, refused])
   } catch (err) {
+    const { reached, durations } = steps.stop()
+    // A refused hop ends the job skipped, which the job's own line records.
+    if (!(err instanceof RefusedAddressError)) {
+      logger.info(
+        'backgroundRenderer',
+        'backgroundRenderer.render_failed',
+        { ...timings(durations), step: tag(reached, 'backgroundJobStep') },
+        err
+      )
+    }
     // Destroying the window cancels the in-flight render: its next webContents
     // call rejects. Wait for it to settle so a mid-flight savePage can't
     // recreate the temp file after we delete it — but bound the wait, since
@@ -1209,4 +1295,10 @@ export const renderPageInHiddenWindow: RenderPage = async (
   } finally {
     clearTimeout(deadlineTimer)
   }
+  logger.info(
+    'backgroundRenderer',
+    'backgroundRenderer.render_completed',
+    timings(steps.stop().durations)
+  )
+  return page
 }

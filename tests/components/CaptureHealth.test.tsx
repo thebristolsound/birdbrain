@@ -98,7 +98,8 @@ describe('CaptureLog', () => {
     renderHealth()
     fireEvent.click(screen.getByText('Test HTTP'))
 
-    expect(await screen.findByText(/Pipeline failed/)).toBeDefined()
+    expect(await screen.findByText(/^HTTP failed: /)).toBeDefined()
+    expect(screen.getByRole('status').textContent).toMatch(/^HTTP failed: /)
   })
 })
 

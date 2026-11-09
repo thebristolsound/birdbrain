@@ -111,6 +111,7 @@ function EventRow({ event }: { event: CaptureEvent }) {
 // (StatusGroup.tsx) shows it inside its own popover behind Capture log.
 export function CaptureLog() {
   const [testResult, setTestResult] = useState<{
+    check: string
     success: boolean
     durationMs: number
     error?: string
@@ -124,14 +125,15 @@ export function CaptureLog() {
   const { data: queue } = useQuery({ ...recaptureQueueQueryOptions, refetchInterval: 2000 })
 
   async function runTest(
+    check: string,
     run: () => Promise<{ success: boolean; durationMs: number; error?: string }>
   ) {
     setTesting(true)
     setTestResult(null)
     try {
-      setTestResult(await run())
+      setTestResult({ check, ...(await run()) })
     } catch (err) {
-      setTestResult({ success: false, durationMs: 0, error: String(err) })
+      setTestResult({ check, success: false, durationMs: 0, error: String(err) })
     } finally {
       setTesting(false)
     }
@@ -203,7 +205,7 @@ export function CaptureLog() {
           variant="outline"
           size="xs"
           className="flex-1"
-          onClick={() => void runTest(testCapturePipeline)}
+          onClick={() => void runTest('Pipeline', testCapturePipeline)}
           disabled={testing}
         >
           {testing ? 'Testing…' : 'Test pipeline'}
@@ -212,22 +214,25 @@ export function CaptureLog() {
           variant="outline"
           size="xs"
           className="flex-1"
-          onClick={() => void runTest(testCaptureHttp)}
+          onClick={() => void runTest('HTTP', testCaptureHttp)}
           disabled={testing}
         >
           {testing ? 'Testing…' : 'Test HTTP'}
         </Button>
       </div>
 
-      {testResult && (
-        <div
-          className={`px-3 py-2 text-[11px] ${testResult.success ? 'text-success-fg' : 'text-danger-fg'}`}
-        >
-          {testResult.success
-            ? `Pipeline OK, verified in ${testResult.durationMs}ms`
-            : `Pipeline failed: ${testResult.error}`}
-        </div>
-      )}
+      {/* Present before the result lands, so screen readers announce it. */}
+      <div role="status">
+        {testResult && (
+          <div
+            className={`px-3 py-2 text-[11px] ${testResult.success ? 'text-success-fg' : 'text-danger-fg'}`}
+          >
+            {testResult.success
+              ? `${testResult.check} OK, verified in ${testResult.durationMs}ms`
+              : `${testResult.check} failed: ${testResult.error}`}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

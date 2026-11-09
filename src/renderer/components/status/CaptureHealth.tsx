@@ -16,7 +16,8 @@ import {
   recaptureQueueQueryOptions,
   testCaptureHttp,
   testCapturePipeline,
-  enqueueEventRecapture
+  enqueueEventRecapture,
+  useResumeHeldBatch
 } from '@renderer/lib/api/recapture'
 
 function EventIcon({ type }: { type: CaptureEvent['type'] }) {
@@ -146,6 +147,9 @@ export function CaptureHealth() {
     if (latestRecaptureEvent) void refetchQueue()
   }, [latestRecaptureEvent, refetchQueue])
   const pending = queue?.pending ?? 0
+  const held = queue?.held ?? 0
+  const heldBatches = queue?.heldBatches ?? []
+  const resume = useResumeHeldBatch()
 
   async function runPipelineTest() {
     setTesting(true)
@@ -201,6 +205,16 @@ export function CaptureHealth() {
             {pending}
           </span>
         )}
+        {held > 0 && (
+          <span
+            data-testid="recapture-held-indicator"
+            title={`${held} background capture${held === 1 ? '' : 's'} held from an earlier session`}
+            className="flex items-center gap-1 text-text-secondary"
+          >
+            <Clock className="h-3.5 w-3.5" />
+            {held}
+          </span>
+        )}
       </button>
 
       <AnimatePresence>
@@ -241,6 +255,35 @@ export function CaptureHealth() {
                 </span>
               )}
             </div>
+
+            {heldBatches.length > 0 && (
+              <div data-testid="recapture-held" className="border-b border-border px-3 py-2">
+                <div className="text-[10px] font-medium text-text-secondary">
+                  {held} background capture{held === 1 ? '' : 's'} held from an earlier session
+                </div>
+                <div className="text-[10px] text-text-faint">
+                  Nothing is sent until you resume them.
+                </div>
+                {heldBatches.map((batch) => (
+                  <div
+                    key={batch.batchId}
+                    className="mt-1.5 flex items-center justify-between gap-2 text-[11px]"
+                  >
+                    <span className="min-w-0 truncate text-text-muted">
+                      {batch.held} in {batch.caseName}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      onClick={() => resume.mutate(batch)}
+                      disabled={resume.isPending}
+                    >
+                      Resume
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {captureStats.lastError && (
               <div className="border-b border-border px-3 py-2">

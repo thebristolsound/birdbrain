@@ -4,10 +4,11 @@ import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-libra
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { Capture, CaptureEvent } from '@shared/types'
-import type { RecaptureQueueStatus } from '@shared/ipc'
+import type { HeldBatch, RecaptureQueueStatus } from '@shared/ipc'
 import { useAppStore } from '@renderer/stores/appStore'
 import { notify } from '@renderer/lib/notify'
 import { CaptureHealth } from '@renderer/components/status/CaptureHealth'
+import { settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
 import { fakeBridge, quietVpnWarning } from '../renderer/fakeBridge'
 
 const navigate = vi.hoisted(() => vi.fn())
@@ -203,6 +204,88 @@ describe('CaptureHealth', () => {
     fireEvent.click(screen.getByText('Test HTTP'))
 
     expect(await screen.findByText(/Pipeline FAILED/)).toBeDefined()
+  })
+})
+
+describe('held background captures', () => {
+  const batches: HeldBatch[] = [
+    { batchId: 'batch-a', caseId: 'case-a', caseName: 'Harbour Lane', held: 2 },
+    { batchId: 'batch-b', caseId: 'case-b', caseName: 'Quay Street', held: 1 }
+  ]
+  const heldQueue: RecaptureQueueStatus = { ...idleQueue, held: 3, heldBatches: batches }
+
+  function heldBridge(warn = false) {
+    const queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => heldQueue)
+    const resume = vi.fn(async () => ({ resumed: 1 }))
+    const checkVpnWarning = vi.fn(async (target: { caseId: string }) => ({
+      caseId: target.caseId,
+      warn,
+      canMute: false
+    }))
+    fakeBridge({ recapture: { queueStatus, resume }, egress: { checkVpnWarning } })
+    return { queueStatus, resume, checkVpnWarning }
+  }
+
+  it('shows the held count on the closed pill', async () => {
+    heldBridge()
+    renderHealth()
+
+    const indicator = await screen.findByTestId('recapture-held-indicator')
+    expect(indicator.textContent).toBe('3')
+    expect(indicator.getAttribute('title')).toBe(
+      '3 background captures held from an earlier session'
+    )
+    expect(screen.queryByTestId('recapture-pending-indicator')).toBeNull()
+  })
+
+  it('lists each held Batch with its Case and resumes only the one chosen', async () => {
+    const { queueStatus, resume, checkVpnWarning } = heldBridge()
+    renderHealth()
+    openPopover()
+
+    const section = await screen.findByTestId('recapture-held')
+    expect(section.textContent).toContain('3 background captures held from an earlier session')
+    expect(section.textContent).toContain('Nothing is sent until you resume them.')
+    expect(screen.getByText('2 in Harbour Lane')).toBeDefined()
+    expect(screen.getByText('1 in Quay Street')).toBeDefined()
+    const reads = queueStatus.mock.calls.length
+
+    const buttons = screen.getAllByRole('button', { name: 'Resume' })
+    expect(buttons).toHaveLength(2)
+    fireEvent.click(buttons[1])
+
+    await waitFor(() => expect(resume).toHaveBeenCalledWith({ batchId: 'batch-b' }))
+    expect(resume).toHaveBeenCalledTimes(1)
+    expect(checkVpnWarning).toHaveBeenCalledWith({ caseId: 'case-b' }, 'site')
+    await waitFor(() => expect(queueStatus.mock.calls.length).toBeGreaterThan(reads))
+  })
+
+  it('sends no resume when the Operator stops at the VPN warning', async () => {
+    const { resume, checkVpnWarning } = heldBridge(true)
+    renderHealth()
+    openPopover()
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Resume' }))[0])
+
+    await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
+    act(() => settleVpnWarning('dismiss'))
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: 'Resume' })[0].hasAttribute('disabled')).toBe(
+        false
+      )
+    )
+    expect(checkVpnWarning).toHaveBeenCalledWith({ caseId: 'case-a' }, 'site')
+    expect(resume).not.toHaveBeenCalled()
+  })
+
+  it('shows no held section when nothing is held', async () => {
+    const queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => idleQueue)
+    fakeBridge({ recapture: { queueStatus } })
+    renderHealth()
+    openPopover()
+
+    await waitFor(() => expect(queueStatus).toHaveBeenCalled())
+    expect(screen.queryByTestId('recapture-held')).toBeNull()
+    expect(screen.queryByTestId('recapture-held-indicator')).toBeNull()
   })
 })
 

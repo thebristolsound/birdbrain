@@ -698,9 +698,12 @@ PR-open is the leftover state section 1 has to clean up.
 
 **Screenshots go up once the PR exists.** When the implementer returned screenshot paths, run
 step 3 of `post-pr-body`'s "Screenshots for visual changes" through `agh` (`agh pr comment`
-with `--attach`, then the REST body write). A file that does not upload gets that section's
-step 4 handoff line in the body, and your report names the maintainer as the one to supply it.
-A fix round that returns new paths gets the same steps.
+with `--attach`, then the REST body write). Before opening, run that skill's
+`scripts/check.sh --screenshots <body-file>`; a visual change without captured PNGs returns to
+the implementer. If an upload fails, leave the PR in draft and report the command and error
+as a blocker, following step 4. Keep capture and upload with the implementer and dispatcher.
+A fix round that returns new paths gets the same steps. The body is ready for review when
+every required image is an uploaded GitHub attachment.
 
 `agent-authored` goes on every agent PR — it records that an agent wrote the diff, and both
 `pre-pass-gate.yml` and `ci.yml`'s draft exemption key on it (#561). `agent-pr` goes on every

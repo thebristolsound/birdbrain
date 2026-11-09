@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PR body check. Two modes:
-#   check.sh [--any-author] <body-file>   lint the file and exit 0/1
+#   check.sh [--any-author] [--screenshots] <body-file>   lint the file and exit 0/1
 #   check.sh                              PreToolUse hook: read the tool call on stdin, act on PR create/edit
 # --any-author accepts a body without the attribution line (a human-written PR); merge.sh uses it.
 # Hook exit codes: 0 allows the command, 2 blocks it and feeds stderr back to the agent.
@@ -44,8 +44,13 @@ lint() {
 }
 
 if [ $# -ge 1 ]; then
-  if [ "$1" = "--any-author" ]; then lint_flags="--any-author"; shift; fi
-  [ $# -ge 1 ] || { echo "usage: check.sh [--any-author] <body-file>" >&2; exit 2; }
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --any-author|--screenshots) lint_flags="$lint_flags $1"; shift ;;
+      *) break ;;
+    esac
+  done
+  [ $# -ge 1 ] || { echo "usage: check.sh [--any-author] [--screenshots] <body-file>" >&2; exit 2; }
   lint "$1"
   exit $?
 fi
@@ -69,6 +74,9 @@ cmd="$(printf '%s' "$cmd" | base64 -d)"
 # top-level session posts claims and verdicts under no agent_type. Interactive sessions pass
 # through.
 case " $bound " in *" $agent "*) ;; *) [ "${BIRDBRAIN_DISPATCH:-}" = 1 ] || exit 0 ;; esac
+
+# New agent body writes declare their visual effect. Legacy merge checks keep their contract.
+lint_flags="--screenshots"
 
 has() { printf '%s' "$cmd" | grep -Eq "$1"; }
 

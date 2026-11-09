@@ -16,18 +16,20 @@ repository must follow it. The dispatch step copies this section into the squash
 
 </details>
 
-<!-- When the change shows on screen, keep the block below with a before and after screenshot
-per screen, referenced by local path and uploaded after the PR opens ("Screenshots for visual
-changes" in the post-pr-body skill). Delete these instruction lines and the closing marker
-after the block, or GitHub shows no images. Otherwise delete everything down to that marker.
 <details>
-<summary>Screenshots, before and after</summary>
+<summary>Visual changes</summary>
 
-- Before, <screen>: ![before](/path/to/before.png)
-- After, <screen>: ![after](/path/to/after.png)
+<!-- Replace the bullet with either "Visual changes: No. <reason>" explaining why the rendered
+result stays the same, or "Visual changes: Yes" followed by a Before/After pair per screen.
+Hidden controls, error notices and changed values are visual changes. For Yes, rename the
+summary to "Screenshots, before and after" and use matching screen names:
+- Before, capture viewer: ![before](/absolute/path/to/before.png)
+- After, capture viewer: ![after](/absolute/path/to/after.png)
+Capture before opening the draft; upload the PNGs and replace paths with GitHub attachment
+links after opening. See "Screenshots for visual changes" in the post-pr-body skill. -->
+- Visual changes:
 
 </details>
--->
 
 ## Evidence-affecting
 

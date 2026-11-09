@@ -1,24 +1,51 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { execFileSync, spawn } from 'child_process'
+import { execFileSync, spawn, spawnSync } from 'child_process'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
+import { pathToFileURL } from 'url'
 import {
   HELD_ENV,
   LOCK_NAME,
+  MAX_AGE_MS,
   OWNERLESS_GRACE_MS,
+  REAP_STALE_MS,
   acquire,
+  clearStale,
   lockPath,
   readOwner,
+  recordChild,
   release,
   tryAcquire
   // @ts-expect-error - build script with no type declarations; the tsconfigs exclude scripts/
 } from '../scripts/test-suite-lock.mjs'
 
 const SCRIPT = resolve(__dirname, '..', 'scripts', 'test-suite-lock.mjs')
+const NODE_ENV = { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
 const alive = () => true
-const dead = () => false
-const owner = (pid: number) => ({ pid, cwd: '/w', startedAt: `t${pid}` })
+const base = (pid: number) => ({ pid, cwd: '/w' })
+
+// The pid of a process that has exited, so the real liveness check reports it gone.
+const exitedPid = () => {
+  const { pid } = spawnSync(process.execPath, ['-e', ''], { env: NODE_ENV })
+  return pid as number
+}
+
+const plant = (dir: string, owner: object) => {
+  mkdirSync(dir)
+  writeFileSync(join(dir, 'owner.json'), JSON.stringify(owner))
+}
+
+const age = (path: string, ms: number) => {
+  const then = new Date(Date.now() - ms)
+  utimesSync(path, then, then)
+}
+
+const git = (cwd: string, ...args: string[]) =>
+  execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], {
+    cwd,
+    stdio: 'ignore'
+  })
 
 let root: string
 let dir: string
@@ -33,73 +60,180 @@ afterEach(() => {
 })
 
 describe('tryAcquire', () => {
-  it('takes a free lock and records its owner', () => {
-    expect(tryAcquire(dir, owner(1), { alive })).toBeNull()
-    expect(readOwner(dir)).toEqual(owner(1))
+  it('takes a free lock and records its owner with the time it was taken', () => {
+    const { owner, holder } = tryAcquire(dir, base(1), { alive, now: 1_000 })
+    expect(holder).toBeUndefined()
+    expect(owner).toEqual({ ...base(1), startedAt: new Date(1_000).toISOString() })
+    expect(readOwner(dir)).toEqual(owner)
   })
 
-  it('reports the owner of a lock held by a live process', () => {
-    tryAcquire(dir, owner(1), { alive })
-    expect(tryAcquire(dir, owner(2), { alive })).toEqual(owner(1))
-    expect(readOwner(dir)).toEqual(owner(1))
+  it('reports the holder of a lock held by a live process and leaves it alone', () => {
+    const { owner } = tryAcquire(dir, base(1), { alive })
+    expect(tryAcquire(dir, base(2), { alive })).toEqual({ holder: owner })
+    expect(readOwner(dir)).toEqual(owner)
   })
 
-  it('takes over a lock whose process has exited', () => {
-    tryAcquire(dir, owner(1), { alive })
-    expect(tryAcquire(dir, owner(2), { alive: dead })).toBeNull()
-    expect(readOwner(dir)).toEqual(owner(2))
+  it('takes over a lock whose process has exited, judged by the real process table', () => {
+    plant(dir, { ...base(exitedPid()), startedAt: new Date().toISOString() })
+    const { owner } = tryAcquire(dir, base(process.pid))
+    expect(owner?.pid).toBe(process.pid)
+    expect(readOwner(dir)).toEqual(owner)
   })
 
-  it('waits on an ownerless lock until the grace period has passed', () => {
-    mkdirSync(dir)
+  it('keeps a lock whose wrapper died while its test run is still going', () => {
+    plant(dir, { ...base(exitedPid()), childPid: process.pid, startedAt: new Date().toISOString() })
+    expect(tryAcquire(dir, base(2)).holder?.childPid).toBe(process.pid)
+  })
+
+  it('takes over a lock older than any real run, even if its pid is in use again', () => {
     const now = Date.now()
-    expect(tryAcquire(dir, owner(2), { alive, now })).toEqual({ pid: null })
-    const old = new Date(now - OWNERLESS_GRACE_MS - 1_000)
-    utimesSync(dir, old, old)
-    expect(tryAcquire(dir, owner(2), { alive, now })).toBeNull()
-    expect(readOwner(dir)).toEqual(owner(2))
+    plant(dir, { ...base(1), startedAt: new Date(now - MAX_AGE_MS - 1_000).toISOString() })
+    expect(tryAcquire(dir, base(2), { alive, now }).owner?.pid).toBe(2)
   })
 
-  it('treats an owner file without a numeric pid as stale', () => {
+  it('treats an owner record without a start time as stale', () => {
+    plant(dir, { pid: 'x' })
+    expect(tryAcquire(dir, base(2), { alive }).owner?.pid).toBe(2)
+  })
+
+  it('replaces an empty lock directory at once', () => {
     mkdirSync(dir)
-    writeFileSync(join(dir, 'owner.json'), '{"pid":"x"}')
-    expect(tryAcquire(dir, owner(2), { alive })).toBeNull()
+    expect(tryAcquire(dir, base(2), { alive }).owner?.pid).toBe(2)
+  })
+
+  it('waits on a lock directory with no owner record until the grace period has passed', () => {
+    mkdirSync(dir)
+    writeFileSync(join(dir, 'note'), '')
+    expect(tryAcquire(dir, base(2), { alive })).toEqual({ holder: null })
+    age(dir, OWNERLESS_GRACE_MS + 1_000)
+    expect(tryAcquire(dir, base(2), { alive }).owner?.pid).toBe(2)
   })
 })
 
-describe('release', () => {
+describe('clearStale', () => {
+  it('leaves a lock that another process took after the waiter read it', () => {
+    const { owner: taken } = tryAcquire(dir, base(2), { alive })
+    expect(clearStale(dir, { ...base(1), startedAt: 'earlier' })).toBe(false)
+    expect(readOwner(dir)).toEqual(taken)
+  })
+
+  it('leaves an ownerless lock that a new owner has replaced', () => {
+    const { owner: taken } = tryAcquire(dir, base(2), { alive })
+    expect(clearStale(dir, null)).toBe(false)
+    expect(readOwner(dir)).toEqual(taken)
+  })
+
+  it('does nothing while another waiter is clearing', () => {
+    const stale = { ...base(1), startedAt: 'old' }
+    plant(dir, stale)
+    mkdirSync(`${dir}.reap`)
+    expect(clearStale(dir, stale)).toBe(false)
+    expect(readOwner(dir)).toEqual(stale)
+  })
+
+  it('clears a reap lock left by a waiter that died, then removes the stale lock', () => {
+    const stale = { ...base(1), startedAt: 'old' }
+    plant(dir, stale)
+    mkdirSync(`${dir}.reap`)
+    age(`${dir}.reap`, REAP_STALE_MS + 1_000)
+    expect(clearStale(dir, stale)).toBe(false)
+    expect(clearStale(dir, stale)).toBe(true)
+    expect(existsSync(dir)).toBe(false)
+    expect(existsSync(`${dir}.reap`)).toBe(false)
+  })
+})
+
+describe('many waiters on one stale lock', () => {
+  // Each worker imports the script and calls tryAcquire at the same instant, the way waiters
+  // whose polls coincide do. The first version of the takeover let two win in about one
+  // trial in eight, or crashed one with ENOENT.
+  const worker = `
+    const start = Number(process.env.START)
+    import(process.env.SCRIPT_URL).then(({ tryAcquire }) => {
+      while (Date.now() < start) {}
+      try {
+        const { owner } = tryAcquire(process.env.LOCK, { pid: process.pid, cwd: 'w' })
+        process.stdout.write(owner ? 'won' : 'waited')
+      } catch (error) {
+        process.stdout.write('error ' + error.code)
+      }
+    })`
+
+  const trial = (workers: number) => {
+    const start = Date.now() + 400
+    const runs = Array.from(
+      { length: workers },
+      () =>
+        new Promise<string>((done) => {
+          const child = spawn(process.execPath, ['-e', worker], {
+            env: {
+              ...NODE_ENV,
+              START: String(start),
+              LOCK: dir,
+              SCRIPT_URL: pathToFileURL(SCRIPT).href
+            }
+          })
+          let out = ''
+          child.stdout.on('data', (chunk) => (out += chunk))
+          child.on('close', () => done(out))
+        })
+    )
+    return Promise.all(runs)
+  }
+
+  it('lets exactly one take it over, and none fails', async () => {
+    for (let round = 0; round < 6; round += 1) {
+      rmSync(dir, { recursive: true, force: true })
+      plant(dir, { ...base(exitedPid()), startedAt: new Date().toISOString() })
+      const outcomes = await trial(4)
+      expect(outcomes.filter((outcome) => outcome === 'won')).toHaveLength(1)
+      expect(outcomes.filter((outcome) => outcome === 'waited')).toHaveLength(3)
+    }
+  }, 60_000)
+})
+
+describe('release and recordChild', () => {
   it('removes only a lock this owner holds', () => {
-    tryAcquire(dir, owner(1), { alive })
-    release(dir, owner(2))
-    expect(readOwner(dir)).toEqual(owner(1))
-    release(dir, owner(1))
+    const { owner } = tryAcquire(dir, base(1), { alive })
+    release(dir, { ...owner, startedAt: 'other' })
+    expect(readOwner(dir)).toEqual(owner)
+    release(dir, owner)
+    expect(existsSync(dir)).toBe(false)
+  })
+
+  it('adds the child pid to the owner record without changing who owns it', () => {
+    const { owner } = tryAcquire(dir, base(1), { alive })
+    recordChild(dir, owner, 42)
+    expect(readOwner(dir)).toEqual({ ...owner, childPid: 42 })
+    release(dir, owner)
     expect(existsSync(dir)).toBe(false)
   })
 })
 
 describe('acquire', () => {
   it('waits until the holder releases the lock', async () => {
-    const first = { ...owner(process.pid), startedAt: 'first' }
-    tryAcquire(dir, first)
+    const { owner: first } = tryAcquire(dir, base(process.pid))
     let acquired = false
-    const waiting = acquire(dir, owner(process.pid), { pollMs: 20 }).then(() => {
+    const waiting = acquire(dir, base(process.pid), { pollMs: 20 }).then((owner: object) => {
       acquired = true
+      return owner
     })
     await new Promise((done) => setTimeout(done, 100))
     expect(acquired).toBe(false)
     release(dir, first)
-    await waiting
-    expect(readOwner(dir)).toEqual(owner(process.pid))
+    const owner = await waiting
+    expect(readOwner(dir)).toEqual(owner)
   })
 })
 
 describe('lockPath', () => {
-  it('puts the lock in the common git directory shared by worktrees', () => {
+  it('gives a linked worktree the lock in the main clone, not its own git directory', () => {
     const repo = join(root, 'repo')
     mkdirSync(repo)
-    execFileSync('git', ['init', '-q'], { cwd: repo })
-    mkdirSync(join(repo, 'sub'))
-    expect(lockPath(join(repo, 'sub'))).toBe(join(repo, '.git', LOCK_NAME))
+    git(repo, 'init', '-q')
+    git(repo, 'commit', '-q', '--allow-empty', '-m', 'x')
+    git(repo, 'worktree', 'add', '-q', join(root, 'linked'))
+    expect(lockPath(join(root, 'linked'))).toBe(join(repo, '.git', LOCK_NAME))
   })
 
   it('returns null outside a repository', () => {
@@ -119,36 +253,38 @@ describe('the command line', () => {
       child.on('close', (status) => done({ status, stderr }))
     })
 
-  const repoEnv = () => {
+  const unheld = () => {
     const env = { ...process.env }
     delete env[HELD_ENV]
     return env
   }
 
-  it('holds the lock while the command runs, passes its exit code and releases', async () => {
-    execFileSync('git', ['init', '-q'], { cwd: root })
+  it('holds the lock with the child recorded while the command runs, then releases', async () => {
+    git(root, 'init', '-q')
     const lock = join(root, '.git', LOCK_NAME)
     const probe =
-      `const fs = require('fs');` +
-      `const o = JSON.parse(fs.readFileSync(${JSON.stringify(join(lock, 'owner.json'))}, 'utf8'));` +
-      `process.exit(o.pid === Number(process.env.${HELD_ENV}) ? 7 : 1)`
-    const { status } = await run(root, repoEnv(), probe)
+      `const o = JSON.parse(require('fs').readFileSync(${JSON.stringify(join(lock, 'owner.json'))}, 'utf8'));` +
+      `const ok = o.pid === Number(process.env.${HELD_ENV}) && o.childPid === process.pid;` +
+      `process.exit(ok ? 7 : 1)`
+    // recordChild runs just after spawn, so the probe may read the record before it lands.
+    const waitForChild = `setTimeout(() => { ${probe} }, 200)`
+    const { status } = await run(root, unheld(), waitForChild)
     expect(status).toBe(7)
     expect(existsSync(lock)).toBe(false)
   })
 
   it('runs without waiting when a parent already holds the lock', async () => {
-    execFileSync('git', ['init', '-q'], { cwd: root })
+    git(root, 'init', '-q')
     const lock = join(root, '.git', LOCK_NAME)
-    mkdirSync(lock)
-    writeFileSync(join(lock, 'owner.json'), JSON.stringify(owner(process.pid)))
+    const held = { ...base(process.pid), startedAt: new Date().toISOString() }
+    plant(lock, held)
     const { status, stderr } = await run(
       root,
-      { ...repoEnv(), [HELD_ENV]: String(process.pid) },
+      { ...unheld(), [HELD_ENV]: String(process.pid) },
       'process.exit(0)'
     )
     expect(status).toBe(0)
     expect(stderr).toBe('')
-    expect(readOwner(lock)).toEqual(owner(process.pid))
+    expect(readOwner(lock)).toEqual(held)
   })
 })

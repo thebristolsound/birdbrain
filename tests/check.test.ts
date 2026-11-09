@@ -174,6 +174,10 @@ describe('planChecks', () => {
     const test = find(plan(changed(path)), 'test')
     expect(test?.scope).toBe(`whole suite, ${path} changed`)
     expect(test?.args.slice(-1)).toEqual(['run'])
+    expect(test?.args.slice(0, 2)).toEqual([
+      join('scripts', 'test-suite-lock.mjs'),
+      process.execPath
+    ])
   })
 
   it('checks ADR numbers for a change under docs/adr/', () => {

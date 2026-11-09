@@ -76,6 +76,7 @@ const isWholeSuiteInput = (path) =>
 const ESLINT = join('node_modules', 'eslint', 'bin', 'eslint.js')
 const TSC = join('node_modules', 'typescript', 'bin', 'tsc')
 const ELECTRON = join('node_modules', 'electron', 'cli.js')
+const SUITE_LOCK = join('scripts', 'test-suite-lock.mjs')
 
 export const LEFT_TO_PREFLIGHT = 'build, extension build, coverage thresholds, diff coverage'
 
@@ -167,7 +168,8 @@ export const planChecks = (changes, { mergeBase, projects }) => {
         ? `whole suite, ${suiteInput} changed`
         : `whole suite, ${deletedCode[0].path} was deleted or renamed`,
       command: 'node',
-      args: [...vitest, 'run'],
+      // A whole-suite run takes the same lock as pnpm test:coverage (docs/agents/testing.md).
+      args: [SUITE_LOCK, process.execPath, ...vitest, 'run'],
       describe: describeVitest
     })
   } else if (testable.length > 0) {

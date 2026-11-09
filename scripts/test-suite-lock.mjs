@@ -4,22 +4,41 @@
 //
 //   node scripts/test-suite-lock.mjs <command> [args...]
 //
-// The lock is a directory, because mkdir is atomic on every platform. Its owner.json names the
-// process holding it; a lock whose process is gone is taken over. A command started by a
-// process that already holds the lock (HELD_ENV is set) runs without waiting.
+// The lock is a directory holding owner.json. A process builds it under a temporary name and
+// renames it into place, and a rename onto a directory that has files in it fails, so exactly
+// one process wins and the lock never exists without its owner. A lock whose processes are
+// gone, or that is older than any real run, is stale. A waiter clears it only while holding a
+// second lock (<lock>.reap), after reading the owner again, so it never removes a lock that
+// another waiter has taken since. A command started under a process that already holds the
+// lock (HELD_ENV is set) runs without waiting.
 import { execFileSync, spawn } from 'node:child_process'
-import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { randomBytes } from 'node:crypto'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmdirSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
+import { isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 export const LOCK_NAME = 'birdbrain-test-suite.lock'
 export const HELD_ENV = 'BIRDBRAIN_TEST_SUITE_LOCK_HELD'
-const OWNER_FILE = 'owner.json'
-// mkdir and writing owner.json are two steps, so a lock briefly has no owner. One that stays
-// ownerless this long belongs to a process that died between them.
+// A coverage run takes minutes. A lock this old belongs to a process whose pid was reused.
+export const MAX_AGE_MS = 60 * 60_000
+// A lock directory with files but no owner.json was made by hand (an empty one is simply
+// replaced); give whoever made it time to finish.
 export const OWNERLESS_GRACE_MS = 30_000
+// Clearing a stale lock takes milliseconds, so a reap lock this old belongs to a dead waiter.
+export const REAP_STALE_MS = 10_000
+const OWNER_FILE = 'owner.json'
 
 const log = (message) => process.stderr.write(`test-suite-lock: ${message}\n`)
+const unique = () => `${process.pid}-${randomBytes(4).toString('hex')}`
 
 // The common directory is shared by every worktree of one clone; null outside a repository.
 export const lockPath = (cwd) => {
@@ -55,84 +74,138 @@ export const readOwner = (dir) => {
 
 const sameOwner = (a, b) => a?.pid === b?.pid && a?.startedAt === b?.startedAt
 
-const isStale = (dir, owner, { now, alive }) => {
-  if (owner) return !(Number.isInteger(owner.pid) && alive(owner.pid))
+// Writing a temporary file and renaming it over owner.json keeps readers from seeing half of it.
+const writeOwner = (dir, owner) => {
+  const temp = join(dir, `${OWNER_FILE}.${unique()}`)
+  writeFileSync(temp, JSON.stringify(owner))
+  renameSync(temp, join(dir, OWNER_FILE))
+}
+
+const create = (dir, owner) => {
+  const temp = `${dir}.new-${unique()}`
+  mkdirSync(temp)
+  writeOwner(temp, owner)
   try {
-    return now - statSync(dir).mtimeMs > OWNERLESS_GRACE_MS
-  } catch {
-    return false
+    renameSync(temp, dir)
+    return true
+  } catch (error) {
+    rmSync(temp, { recursive: true, force: true })
+    // Linux reports ENOTEMPTY or EEXIST for an occupied target, Windows EPERM.
+    if (['ENOTEMPTY', 'EEXIST', 'EPERM'].includes(error.code)) return false
+    throw error
   }
 }
 
-// Moving the stale lock aside first means two waiters that both judged it stale cannot both
-// delete it: the second rename fails, or moves a lock someone has since taken, which it
-// moves back.
-const clearStale = (dir, seen) => {
-  const aside = `${dir}.stale-${process.pid}`
+export const isStale = (dir, owner, { now = Date.now(), alive = isAlive } = {}) => {
+  if (!owner) {
+    try {
+      return now - statSync(dir).mtimeMs > OWNERLESS_GRACE_MS
+    } catch {
+      return false
+    }
+  }
+  const started = Date.parse(owner.startedAt)
+  if (!(now - started <= MAX_AGE_MS)) return true
+  // The child is recorded too: a wrapper killed on its own leaves the test run going.
+  return ![owner.pid, owner.childPid].some((pid) => Number.isInteger(pid) && alive(pid))
+}
+
+// Removes the lock if it still belongs to `seen`. Returns whether it did.
+export const clearStale = (dir, seen, { now = Date.now() } = {}) => {
+  const reap = `${dir}.reap`
+  try {
+    mkdirSync(reap)
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error
+    try {
+      if (now - statSync(reap).mtimeMs > REAP_STALE_MS) rmdirSync(reap)
+    } catch {
+      // Another waiter cleared it first.
+    }
+    return false
+  }
+  try {
+    if (!sameOwner(readOwner(dir), seen)) return false
+    // A new lock can be renamed over an empty directory, so an empty ownerless one goes with
+    // rmdir, which fails if that has happened since the check above. A directory with files in
+    // it cannot be renamed over, so the rest are moved aside, which also means nobody sees one
+    // half-deleted.
+    if (!seen) {
+      try {
+        rmdirSync(dir)
+        return true
+      } catch (error) {
+        if (!['ENOTEMPTY', 'EEXIST'].includes(error.code)) return false
+        if (readOwner(dir)) return false
+      }
+    }
+    const aside = `${dir}.stale-${unique()}`
+    renameSync(dir, aside)
+    rmSync(aside, { recursive: true, force: true })
+    return true
+  } catch {
+    return false
+  } finally {
+    rmSync(reap, { recursive: true, force: true })
+  }
+}
+
+const describeStale = (owner) =>
+  owner
+    ? `removed a stale lock left by process ${owner.pid} (started ${owner.startedAt})`
+    : 'removed a lock directory that had no owner record'
+
+// Returns { owner } once this process holds the lock, with the record it wrote, or
+// { holder } naming the current holder (null when the lock has no owner record).
+export const tryAcquire = (dir, base, { now = Date.now(), alive = isAlive } = {}) => {
+  const owner = { ...base, startedAt: new Date(now).toISOString() }
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (create(dir, owner)) return { owner }
+    const current = readOwner(dir)
+    if (!existsSync(dir)) continue
+    if (!isStale(dir, current, { now, alive })) return { holder: current }
+    if (clearStale(dir, current, { now })) log(describeStale(current))
+  }
+  return { holder: readOwner(dir) }
+}
+
+export const recordChild = (dir, owner, childPid) => {
+  if (sameOwner(readOwner(dir), owner)) writeOwner(dir, { ...owner, childPid })
+}
+
+export const release = (dir, owner) => {
+  if (!sameOwner(readOwner(dir), owner)) return
+  const aside = `${dir}.done-${unique()}`
   try {
     renameSync(dir, aside)
   } catch {
     return
   }
-  if (sameOwner(readOwner(aside), seen)) {
-    rmSync(aside, { recursive: true, force: true })
-    return
-  }
-  try {
-    renameSync(aside, dir)
-  } catch {
-    rmSync(aside, { recursive: true, force: true })
-  }
-}
-
-// Returns null once this process holds the lock, or the current owner (null fields while the
-// owner is still writing owner.json) when another live process holds it.
-export const tryAcquire = (dir, owner, { now = Date.now(), alive = isAlive } = {}) => {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      mkdirSync(dir)
-      writeFileSync(join(dir, OWNER_FILE), JSON.stringify(owner))
-      return null
-    } catch (error) {
-      if (error.code !== 'EEXIST') throw error
-    }
-    const current = readOwner(dir)
-    if (!isStale(dir, current, { now, alive })) return current ?? { pid: null }
-    log(
-      current
-        ? `removing a lock left by process ${current.pid}, which is no longer running`
-        : 'removing a lock that never recorded its owner'
-    )
-    clearStale(dir, current)
-  }
-  return readOwner(dir) ?? { pid: null }
-}
-
-export const release = (dir, owner) => {
-  if (sameOwner(readOwner(dir), owner)) rmSync(dir, { recursive: true, force: true })
+  rmSync(aside, { recursive: true, force: true })
 }
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms))
 
-const describeOwner = (owner) =>
-  owner.pid === null
-    ? 'a run that is starting'
-    : `the run in ${owner.cwd} (process ${owner.pid}, started ${owner.startedAt})`
+const describeHolder = (holder) =>
+  holder
+    ? `the run in ${holder.cwd} (process ${holder.pid}, started ${holder.startedAt})`
+    : 'whoever made the lock directory'
 
-export const acquire = async (dir, owner, { pollMs = 5_000, reportMs = 60_000 } = {}) => {
+// Resolves with the owner record once this process holds the lock.
+export const acquire = async (dir, base, { pollMs = 5_000, reportMs = 60_000 } = {}) => {
   let waitingSince = null
   let lastReport = 0
   for (;;) {
-    const holder = tryAcquire(dir, owner)
-    if (!holder) {
+    const { owner, holder } = tryAcquire(dir, base)
+    if (owner) {
       if (waitingSince !== null) log('lock acquired; starting')
-      return
+      return owner
     }
     const now = Date.now()
     if (waitingSince === null) {
       waitingSince = now
       lastReport = now
-      log(`another full test run is using this machine; waiting for ${describeOwner(holder)}`)
+      log(`another full test run is using this clone; waiting for ${describeHolder(holder)}`)
       log(`if that process is not a test run, delete ${dir}`)
     } else if (now - lastReport >= reportMs) {
       lastReport = now
@@ -147,17 +220,18 @@ const main = async () => {
   if (!command) throw new Error('usage: test-suite-lock <command> [args...]')
   const cwd = process.cwd()
   const dir = process.env[HELD_ENV] ? null : lockPath(cwd)
-  const owner = { pid: process.pid, cwd, startedAt: new Date().toISOString() }
-  if (dir) await acquire(dir, owner)
-  const unlock = () => dir && release(dir, owner)
+  const owner = dir ? await acquire(dir, { pid: process.pid, cwd }) : null
+  const unlock = () => owner && release(dir, owner)
   process.on('exit', unlock)
 
-  // pnpm's Windows shims are .cmd files, which Node only spawns through a shell.
+  // pnpm's Windows shims are .cmd files, which Node only spawns through a shell. An absolute
+  // path such as process.execPath may contain spaces, which a shell would split.
   const child = spawn(command, args, {
     stdio: 'inherit',
-    shell: process.platform === 'win32',
+    shell: process.platform === 'win32' && !isAbsolute(command),
     env: { ...process.env, [HELD_ENV]: String(process.pid) }
   })
+  if (owner && child.pid) recordChild(dir, owner, child.pid)
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
     process.on(signal, () => child.kill(signal))
   }

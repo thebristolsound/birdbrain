@@ -18,14 +18,15 @@ Design mock for the app chrome's top bar and Case action bar, built in the same 
   (a plain button whose menu holds the formats), Launch browser, and while a session runs the
   recording mark and the Capture Session switch.
 - **Status group**: the Egress, the extension connection and Capture Health as three faint dots in
-  an unfilled pill. Off nominal, the worst signal's icon joins its dot and both take that signal's
-  colour, with one short word. Ranking: Egress unknown, capture failures, VPN not seen. A
+  an unfilled pill. Off nominal, the most severe indicator's icon joins its dot and both take
+  that indicator's colour, with one short word. Ranking: Egress unknown, capture failures, VPN not seen. A
   disconnected extension never colours anything. The count stays visible while a session runs;
   a failure count always shows. The button's accessible name is the whole state in one sentence;
   a polite live region announces severity changes only. App-wide, not per Case.
 - **Recording mark**: a 6px danger dot, a mono elapsed timer (a launched browser's session start)
   or the word Recording, and the source. No pill, fill, pulse or "REC". On the dashboard and in
-  Settings, which have no action bar, it is the Capture Session popover's trigger.
+  Settings, which have no action bar, it is the Capture Session popover's trigger while that popover
+  has a launched browser or a notice to show; otherwise the mark shows alone, with no popover.
 
 Two independent reviews of the options (a product read and an accessibility and consistency
 read) both chose B on the condition that the action bar's left side names the section; their

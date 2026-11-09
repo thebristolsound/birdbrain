@@ -16,6 +16,7 @@ import {
   readOwner,
   recordChild,
   release,
+  startTime,
   tryAcquire
   // @ts-expect-error - build script with no type declarations; the tsconfigs exclude scripts/
 } from '../scripts/test-suite-lock.mjs'
@@ -23,6 +24,8 @@ import {
 const SCRIPT = resolve(__dirname, '..', 'scripts', 'test-suite-lock.mjs')
 const NODE_ENV = { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
 const alive = () => true
+const noProc = () => null
+const ON_LINUX = process.platform === 'linux'
 const base = (pid: number) => ({ pid, cwd: '/w' })
 
 // The pid of a process that has exited, so the real liveness check reports it gone.
@@ -85,13 +88,26 @@ describe('tryAcquire', () => {
     expect(tryAcquire(dir, base(2)).holder?.childPid).toBe(process.pid)
   })
 
-  it('takes over a lock older than any real run, even if its pid is in use again', () => {
-    const now = Date.now()
-    plant(dir, { ...base(1), startedAt: new Date(now - MAX_AGE_MS - 1_000).toISOString() })
-    expect(tryAcquire(dir, base(2), { alive, now }).owner?.pid).toBe(2)
+  it.runIf(ON_LINUX)('takes over a lock whose pid now belongs to a different process', () => {
+    plant(dir, { ...base(process.pid), pidStart: 'not-this-process', startedAt: 'now' })
+    expect(tryAcquire(dir, base(2)).owner?.pid).toBe(2)
   })
 
-  it('treats an owner record without a start time as stale', () => {
+  it('keeps a lock older than an hour while its recorded process is still the same one', () => {
+    const now = Date.now()
+    const old = new Date(now - MAX_AGE_MS - 1_000).toISOString()
+    const held = { ...base(1), pidStart: '100', startedAt: old }
+    plant(dir, held)
+    expect(tryAcquire(dir, base(2), { alive, now, startOf: () => '100' })).toEqual({ holder: held })
+  })
+
+  it('without start times, takes over a lock older than an hour even if its pid is in use', () => {
+    const now = Date.now()
+    plant(dir, { ...base(1), startedAt: new Date(now - MAX_AGE_MS - 1_000).toISOString() })
+    expect(tryAcquire(dir, base(2), { alive, now, startOf: noProc }).owner?.pid).toBe(2)
+  })
+
+  it('treats an owner record without a usable pid as stale', () => {
     plant(dir, { pid: 'x' })
     expect(tryAcquire(dir, base(2), { alive }).owner?.pid).toBe(2)
   })
@@ -157,28 +173,43 @@ describe('many waiters on one stale lock', () => {
       } catch (error) {
         process.stdout.write('error ' + error.code)
       }
+      // A winner that exited would leave a stale lock that a late worker rightly takes over.
+      process.stdin.resume()
+      process.stdin.on('end', () => process.exit(0))
     })`
 
-  const trial = (workers: number) => {
+  const trial = async (workers: number) => {
     const start = Date.now() + 400
-    const runs = Array.from(
-      { length: workers },
-      () =>
+    const children = Array.from({ length: workers }, () =>
+      spawn(process.execPath, ['-e', worker], {
+        env: {
+          ...NODE_ENV,
+          START: String(start),
+          LOCK: dir,
+          SCRIPT_URL: pathToFileURL(SCRIPT).href
+        }
+      })
+    )
+    const reported = children.map(
+      (child) =>
         new Promise<string>((done) => {
-          const child = spawn(process.execPath, ['-e', worker], {
-            env: {
-              ...NODE_ENV,
-              START: String(start),
-              LOCK: dir,
-              SCRIPT_URL: pathToFileURL(SCRIPT).href
-            }
-          })
           let out = ''
-          child.stdout.on('data', (chunk) => (out += chunk))
+          child.stdout.on('data', (chunk) => {
+            out += chunk
+            done(out)
+          })
           child.on('close', () => done(out))
         })
     )
-    return Promise.all(runs)
+    const outcomes = await Promise.all(reported)
+    await Promise.all(
+      children.map((child) => {
+        const closed = new Promise((done) => child.on('close', done))
+        child.stdin.end()
+        return closed
+      })
+    )
+    return outcomes
   }
 
   it('lets exactly one take it over, and none fails', async () => {
@@ -192,6 +223,13 @@ describe('many waiters on one stale lock', () => {
   }, 60_000)
 })
 
+describe('startTime', () => {
+  it.runIf(ON_LINUX)('reads a running process and gives null for one that has exited', () => {
+    expect(startTime(process.pid)).toMatch(/^\d+$/)
+    expect(startTime(exitedPid())).toBeNull()
+  })
+})
+
 describe('release and recordChild', () => {
   it('removes only a lock this owner holds', () => {
     const { owner } = tryAcquire(dir, base(1), { alive })
@@ -203,8 +241,12 @@ describe('release and recordChild', () => {
 
   it('adds the child pid to the owner record without changing who owns it', () => {
     const { owner } = tryAcquire(dir, base(1), { alive })
-    recordChild(dir, owner, 42)
-    expect(readOwner(dir)).toEqual({ ...owner, childPid: 42 })
+    recordChild(dir, owner, process.pid)
+    expect(readOwner(dir)).toEqual({
+      ...owner,
+      childPid: process.pid,
+      childStart: startTime(process.pid)
+    })
     release(dir, owner)
     expect(existsSync(dir)).toBe(false)
   })

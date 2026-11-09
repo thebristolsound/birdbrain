@@ -278,6 +278,18 @@ export const formatSummary = ({ base, mergeBase, changedCount, results }) => {
   return lines.join('\n') + '\n'
 }
 
+// The suite lock's lines reach the console as they arrive, so a run waiting on another worktree
+// says why it is slow; all other output waits for the summary.
+export const LIVE_PREFIX = 'test-suite-lock: '
+export const liveLines = (write) => {
+  let partial = ''
+  return (chunk) => {
+    const lines = (partial + chunk).split('\n')
+    partial = lines.pop()
+    for (const line of lines) if (line.startsWith(LIVE_PREFIX)) write(`${line}\n`)
+  }
+}
+
 const runCheck = (check, { cwd, env }) =>
   new Promise((settle) => {
     const started = Date.now()
@@ -292,8 +304,12 @@ const runCheck = (check, { cwd, env }) =>
       stdio: ['ignore', 'pipe', 'pipe']
     })
     let output = ''
+    const relay = liveLines((line) => process.stderr.write(line))
     child.stdout.on('data', (chunk) => (output += chunk))
-    child.stderr.on('data', (chunk) => (output += chunk))
+    child.stderr.on('data', (chunk) => {
+      output += chunk
+      relay(chunk)
+    })
     const finish = (exitCode) => {
       const ms = Date.now() - started
       const detail = check.describe?.(output)

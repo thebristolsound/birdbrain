@@ -13,7 +13,8 @@
 //   overridden  the PR merged while its last verdict requested changes, with no reply
 //   no reply    none of the above
 //
-// Verdicts come in every shape the pre-pass has used: `**Review verdict: ...**` (the current
+// Verdicts come in the shapes the pre-pass has used most, and older shapes are not read:
+// `**Review verdict: ...**` (the current
 // post-comment shape), `**Reviewer pre-pass (<sha>): ...**`, and the `## Reviewer pre-pass`
 // headings with a `Verdict:` line. Findings are read from the findings table, a numbered
 // `1. **advisory** ...` list, or `### Finding 1 (blocking)` headings. A reply is joined to its

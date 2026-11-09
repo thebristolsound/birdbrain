@@ -34,7 +34,7 @@ export function CaptureSessionButton({ showOpenCase }: { showOpenCase: boolean }
           <button
             type="button"
             data-testid="topbar-capture-session"
-            aria-label="Capture Session"
+            aria-label="Capture Session, recording"
             className={cn('rounded-md hover:bg-elevated', open && 'bg-elevated')}
           >
             <RecordingMark trigger />

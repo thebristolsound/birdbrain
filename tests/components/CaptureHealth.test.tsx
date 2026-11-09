@@ -79,7 +79,7 @@ describe('CaptureHealth', () => {
 
     const indicator = await screen.findByTestId('recapture-pending-indicator')
     expect(indicator.textContent).toBe('3')
-    expect(indicator.getAttribute('title')).toBe('3 background captures in progress')
+    expect(indicator.getAttribute('title')).toBe('3 background captures queued or running')
     expect(indicator.querySelector('svg')?.getAttribute('class')).toContain('animate-spin')
     expect(screen.queryByText('Capture Pipeline')).toBeNull()
   })
@@ -120,6 +120,31 @@ describe('CaptureHealth', () => {
         .addCaptureEvent({ ...started, type: 'stored', timestamp: '2026-11-09T03:48:12Z' })
     )
     await waitFor(() => expect(screen.queryByTestId('recapture-pending-indicator')).toBeNull())
+  })
+
+  // The last capture's stored event can arrive before the queue drops it, so the
+  // pill relies on the poll to clear.
+  it('polls while a capture is pending and stops once the queue empties', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => ({
+        pending: 1,
+        activeUrl: 'https://example.org/queued'
+      }))
+      fakeBridge({ recapture: { queueStatus } })
+      renderHealth()
+      expect((await screen.findByTestId('recapture-pending-indicator')).textContent).toBe('1')
+
+      queueStatus.mockResolvedValue({ pending: 0, activeUrl: null })
+      await act(() => vi.advanceTimersByTimeAsync(2000))
+      await waitFor(() => expect(screen.queryByTestId('recapture-pending-indicator')).toBeNull())
+
+      const calls = queueStatus.mock.calls.length
+      await act(() => vi.advanceTimersByTimeAsync(6000))
+      expect(queueStatus).toHaveBeenCalledTimes(calls)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('does not re-read the queue for a capture from another source', async () => {

@@ -134,7 +134,7 @@ export function CaptureHealth() {
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
   // The pill shows queued background captures even while the popover is closed. A job
   // that starts emits a recapture event, so the queue is re-read on each one, then polled
-  // only while something is pending.
+  // while something is pending or the popover is open.
   const latestRecaptureEvent = captureEvents.find((event) => event.source === 'recapture')
   const { data: queue, refetch: refetchQueue } = useQuery({
     ...recaptureQueueQueryOptions,
@@ -192,7 +192,7 @@ export function CaptureHealth() {
         {pending > 0 && (
           <span
             data-testid="recapture-pending-indicator"
-            title={`${pending} background capture${pending === 1 ? '' : 's'} in progress`}
+            title={`${pending} background capture${pending === 1 ? '' : 's'} queued or running`}
             className="flex items-center gap-1 text-accent"
           >
             <Loader2 className="h-3.5 w-3.5 animate-spin" />

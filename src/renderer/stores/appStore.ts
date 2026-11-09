@@ -173,6 +173,23 @@ function selectedCaptureState(
   }
 }
 
+const MAX_CAPTURE_EVENTS = 50
+
+// The feed keeps the newest 50 rows, but a 'received' row goes last: the Recapture controls read
+// it as the job still running, and a large batch's 'queued' rows would otherwise push it out.
+// Received rows go too, oldest first, only when nothing else is left to drop.
+function capCaptureEvents(events: CaptureEvent[]): CaptureEvent[] {
+  let excess = events.length - MAX_CAPTURE_EVENTS
+  if (excess <= 0) return events
+  const kept = [...events]
+  for (let i = kept.length - 1; i >= 0 && excess > 0; i--) {
+    if (kept[i].type === 'received') continue
+    kept.splice(i, 1)
+    excess--
+  }
+  return kept.slice(0, MAX_CAPTURE_EVENTS)
+}
+
 export const useAppStore = create<AppState>((set) => ({
   sessionActive: false,
   activeCaseId: null,
@@ -382,7 +399,7 @@ export const useAppStore = create<AppState>((set) => ({
       if (idx !== -1) {
         existing = [...existing.slice(0, idx), ...existing.slice(idx + 1)]
       }
-      const events = [event, ...existing].slice(0, 50)
+      const events = capCaptureEvents([event, ...existing])
       const stats = { ...s.captureStats }
       if (event.type === 'stored') stats.successCount++
       if (event.type === 'failed') {

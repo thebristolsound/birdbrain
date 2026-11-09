@@ -651,7 +651,33 @@ describe('appStore', () => {
         ])
       })
 
-      it('counts no queued event toward the capture statistics', () => {
+      it('keeps a running job in the feed past the cap, dropping the oldest other rows', () => {
+        const running = { ...jobEvent('job-a', 'received'), supersedesCaptureId: 'cap-a' }
+        add(jobEvent('job-a', 'queued'))
+        add(running)
+        for (let i = 0; i < 60; i++) {
+          add({ ...jobEvent(`job-b${i}`, 'queued'), url: `https://example.com/${i}` })
+        }
+
+        const events = useAppStore.getState().captureEvents
+        expect(events).toHaveLength(50)
+        expect(events).toContain(running)
+        expect(events.filter(({ type }) => type === 'queued').map(({ jobId }) => jobId)).toEqual(
+          Array.from({ length: 49 }, (_, i) => `job-b${59 - i}`)
+        )
+      })
+
+      it('drops the oldest running rows once the feed holds nothing else', () => {
+        for (let i = 0; i < 55; i++) {
+          add({ type: 'received', source: 'auto', url: `https://example.com/${i}`, timestamp: '' })
+        }
+        expect(useAppStore.getState().captureEvents.map(({ url }) => url)).toEqual(
+          Array.from({ length: 50 }, (_, i) => `https://example.com/${54 - i}`)
+        )
+      })
+
+      // A guard on the statistics for the type this slice adds, not a change to how they count.
+      it('leaves the capture statistics unchanged for a queued event', () => {
         add(jobEvent('job-a', 'queued'))
         expect(useAppStore.getState().captureStats).toEqual({
           successCount: 0,

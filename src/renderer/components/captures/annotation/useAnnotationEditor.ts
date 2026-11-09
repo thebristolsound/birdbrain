@@ -100,9 +100,8 @@ export function useAnnotationEditor({ initialShapes }: Options) {
     [shapes]
   )
 
-  // For a shape whose backing record no longer exists, such as a pin cancelled
-  // before its note was added: undo must not restore it, so it leaves the
-  // history as well as the canvas.
+  // For a shape whose backing record no longer exists, such as a deleted pin:
+  // undo must not restore it, so it leaves the history as well as the canvas.
   const discardShape = useCallback(
     (id: string) => {
       const without = (arr: AnnotationShape[]) => arr.filter((s) => s.id !== id)

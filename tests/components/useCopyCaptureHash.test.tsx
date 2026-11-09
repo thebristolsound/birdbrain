@@ -5,9 +5,10 @@ import type { Capture } from '@shared/types'
 
 const notifySuccess = vi.hoisted(() => vi.fn())
 const notifyError = vi.hoisted(() => vi.fn())
+const notifyWarn = vi.hoisted(() => vi.fn())
 
 vi.mock('@renderer/lib/notify', () => ({
-  notify: { error: notifyError, warn: vi.fn(), success: notifySuccess, info: vi.fn() }
+  notify: { error: notifyError, warn: notifyWarn, success: notifySuccess, info: vi.fn() }
 }))
 
 import {
@@ -93,6 +94,7 @@ afterEach(() => {
   vi.restoreAllMocks()
   notifySuccess.mockReset()
   notifyError.mockReset()
+  notifyWarn.mockReset()
 })
 
 describe('copyCaptureHash', () => {
@@ -155,6 +157,53 @@ describe('copyCaptureHash', () => {
     // separate toast per capture instead.
     expect(message).toBe("Couldn't copy the SHA-256 to your clipboard")
     expect(opts.cause).toBe(cause)
+  })
+
+  it('confirms an uppercase digest as a SHA-256, since hex case carries no meaning', async () => {
+    await copyCaptureHash(UPPER_DIGEST)
+
+    expect(notifySuccess).toHaveBeenCalledWith('Copied SHA-256')
+    expect(notifyWarn).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['padded', PADDED_DIGEST],
+    ['blank', '   '],
+    ['prose', 'not a hash'],
+    ['one character short', DIGEST.slice(1)],
+    ['one character long', `${DIGEST}0`],
+    ['non-hex', `${DIGEST.slice(1)}g`]
+  ])('copies a %s stored value verbatim but warns it is not a SHA-256', async (_label, stored) => {
+    // Refusing the copy would hide the storage defect; a "Copied SHA-256"
+    // toast would vouch for a string that cannot be one (#950).
+    await copyCaptureHash(stored)
+
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(stored)
+    expect(notifySuccess).not.toHaveBeenCalled()
+    expect(notifyWarn).toHaveBeenCalledExactlyOnceWith(
+      "Copied the stored SHA-256, but it isn't a 64-character hex digest"
+    )
+  })
+
+  it('reports a refused write of a malformed value as a failure, not a warning', async () => {
+    stubClipboard(async () => {
+      throw new Error('NotAllowedError')
+    })
+
+    await copyCaptureHash('not a hash')
+
+    expect(notifyError).toHaveBeenCalledOnce()
+    expect(notifyWarn).not.toHaveBeenCalled()
+  })
+
+  it('writes nothing for an empty stored value, and says so', async () => {
+    await copyCaptureHash('')
+
+    expect(writeText).not.toHaveBeenCalled()
+    expect(notifySuccess).not.toHaveBeenCalled()
+    expect(notifyWarn).toHaveBeenCalledExactlyOnceWith(
+      'Nothing was copied: the stored SHA-256 is empty'
+    )
   })
 })
 
@@ -225,17 +274,22 @@ describe('useCopyCaptureHash', () => {
 
     expect(writeText).not.toHaveBeenCalled()
     expect(notifySuccess).not.toHaveBeenCalled()
+    expect(notifyWarn).not.toHaveBeenCalled()
   })
 
-  it('does nothing for a capture carrying no digest', () => {
+  it('copies nothing for a capture carrying no digest, and says so', async () => {
     const { result } = renderHook(() => useCopyCaptureHash({ ...capture, hash: '' }))
 
-    act(() => result.current())
+    await act(async () => result.current())
 
     // An empty clipboard write under a "Copied SHA-256" toast is the one
-    // outcome worse than no copy at all.
+    // outcome worse than no copy at all; a silent no-op is the next worst, as
+    // the operator then pastes whatever the clipboard held before (#945).
     expect(writeText).not.toHaveBeenCalled()
     expect(notifySuccess).not.toHaveBeenCalled()
+    expect(notifyWarn).toHaveBeenCalledExactlyOnceWith(
+      'Nothing was copied: the stored SHA-256 is empty'
+    )
   })
 
   it('follows the selection to another capture', async () => {

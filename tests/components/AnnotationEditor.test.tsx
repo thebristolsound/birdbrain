@@ -31,7 +31,11 @@ vi.mock('@renderer/components/captures/annotation/AnnotationCanvas', () => ({
           >
             {`canvas pin ${s.number}`}
           </button>
-        ) : null
+        ) : (
+          <button key={s.id} onClick={() => props.onSelect?.(s.id)}>
+            {`canvas ${s.kind} ${s.id}`}
+          </button>
+        )
       )}
       {props.shapes.map((s) =>
         s.kind === 'pin' ? (
@@ -354,6 +358,53 @@ describe('AnnotationEditor pin popover', () => {
       expect(screen.getByText('canvas pin 1')).toBeDefined()
       expect(screen.getByText('canvas pin 2')).toBeDefined()
     }
+  })
+
+  it('keeps a saved pin deleted from its popover out of undo and redo', async () => {
+    renderEditor()
+    fireEvent.click(await screen.findByText('canvas pin 1'))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete pin' }))
+    await waitFor(() => expect(deletePin).toHaveBeenCalledWith('p1'))
+
+    for (const shiftKey of [false, false, true, true]) {
+      fireEvent.keyDown(window, { key: 'z', ctrlKey: true, shiftKey })
+      expect(screen.queryByText('canvas pin 1')).toBeNull()
+      expect(screen.getByText('canvas pin 2')).toBeDefined()
+    }
+  })
+
+  it('keeps a saved pin deleted with the Delete key out of undo, after a move too', async () => {
+    renderEditor()
+    fireEvent.click(await screen.findByText('canvas pin 1'))
+    // The move puts a snapshot holding the pin on the undo stack.
+    fireEvent.click(screen.getByText('drag pin 1'))
+    fireEvent.keyDown(window, { key: 'Delete' })
+    await waitFor(() => expect(deletePin).toHaveBeenCalledWith('p1'))
+    expect(screen.queryByTestId('pin-popover')).toBeNull()
+
+    for (const shiftKey of [false, false, true, true]) {
+      fireEvent.keyDown(window, { key: 'z', ctrlKey: true, shiftKey })
+      expect(screen.queryByText('canvas pin 1')).toBeNull()
+      expect(screen.getByText('canvas pin 2')).toBeDefined()
+    }
+  })
+
+  it('still restores a deleted rectangle or arrow on undo', async () => {
+    shapes = [
+      ...shapes,
+      { kind: 'rect', id: 'r1', x: 10, y: 10, w: 50, h: 40, stroke: '#ef4444', strokeWidth: 3 },
+      { kind: 'arrow', id: 'a1', x1: 0, y1: 0, x2: 90, y2: 90, stroke: '#ef4444', strokeWidth: 3 }
+    ]
+    renderEditor()
+    for (const label of ['canvas rect r1', 'canvas arrow a1']) {
+      fireEvent.click(await screen.findByText(label))
+      fireEvent.keyDown(window, { key: 'Delete' })
+      expect(screen.queryByText(label)).toBeNull()
+
+      fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+      expect(screen.getByText(label)).toBeDefined()
+    }
+    expect(deletePin).not.toHaveBeenCalled()
   })
 
   it('saves the canvas again when a new pin is cancelled after the autosave', async () => {

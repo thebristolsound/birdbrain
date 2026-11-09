@@ -3,6 +3,7 @@ import { X } from 'lucide-react'
 import { useNotesMutations } from '@renderer/lib/queries'
 import { NoteEditor } from '@renderer/components/notes/NoteEditor'
 import { useNoteEditor, useNoteEditorState } from '@renderer/components/notes/useNoteEditor'
+import { useDraftNoteId } from '@renderer/components/notes/useDraftNoteId'
 import { EMPTY_NOTE_DOC, plainTextToNoteDoc } from '@shared/noteDoc'
 import {
   Dialog,
@@ -40,7 +41,7 @@ export function AddNoteModal({
   const readBody = useRef<(() => string) | null>(null)
   // See CreateNoteCard: the Tag action writes the draft out early, and from
   // then on Save updates that note instead of creating a second one (#391).
-  const [draftNoteId, setDraftNoteId] = useState<string | null>(null)
+  const { draftNoteId, resetDraftNoteId, bindCreated } = useDraftNoteId()
   const editor = useNoteEditor({
     caseId,
     noteId: draftNoteId ?? undefined,
@@ -54,14 +55,14 @@ export function AddNoteModal({
   useEffect(() => {
     if (!open || !editor) return
     setTitle(prefillTitle ?? captureTitle)
-    setDraftNoteId(null)
+    resetDraftNoteId()
     // Prefilled text (a selected passage, say) arrives as plain text; lift it
     // into document form so the investigator can format from there.
     const doc = prefillBody ? plainTextToNoteDoc(prefillBody) : EMPTY_NOTE_DOC
     editor.commands.setContent(doc)
     const prefilled = JSON.stringify(doc)
     readBody.current = () => prefilled
-  }, [open, editor, captureTitle, prefillTitle, prefillBody])
+  }, [open, editor, captureTitle, prefillTitle, prefillBody, resetDraftNoteId])
 
   async function persistDraft(): Promise<string> {
     const doc = readBody.current?.() ?? JSON.stringify(EMPTY_NOTE_DOC)
@@ -69,15 +70,15 @@ export function AddNoteModal({
       await update.mutateAsync({ id: draftNoteId, title: title.trim(), bodyDoc: doc })
       return draftNoteId
     }
-    const created = await create.mutateAsync({
-      caseId,
-      captureId,
-      title: title.trim(),
-      bodyDoc: doc,
-      sourceUrl: captureUrl
-    })
-    setDraftNoteId(created.id)
-    return created.id
+    return bindCreated(() =>
+      create.mutateAsync({
+        caseId,
+        captureId,
+        title: title.trim(),
+        bodyDoc: doc,
+        sourceUrl: captureUrl
+      })
+    )
   }
 
   async function handleSave() {

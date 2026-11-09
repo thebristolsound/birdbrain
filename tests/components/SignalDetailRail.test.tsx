@@ -15,6 +15,11 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigate
 }))
 
+const notifyError = vi.hoisted(() => vi.fn())
+vi.mock('@renderer/lib/notify', () => ({
+  notify: { success: vi.fn(), error: notifyError, warn: vi.fn(), info: vi.fn() }
+}))
+
 const captures: Capture[] = [
   {
     id: 'c1',
@@ -99,6 +104,7 @@ function emitRematched(event: SelectorRematchedEvent): void {
 
 beforeEach(() => {
   navigate.mockClear()
+  notifyError.mockReset()
   useAppStore.getState().clearSelectorFilters()
   useAppStore.getState().clearTagFilters()
   rematched = []
@@ -278,6 +284,28 @@ describe('SignalDetailRail actions', () => {
     fireEvent.click(screen.getByTestId('signal-export-csv'))
 
     await waitFor(() => expect(exportMatches).toHaveBeenCalledWith('case-1', 's1'))
+    expect(notifyError).not.toHaveBeenCalled()
+  })
+
+  // #1100: the rail's button and the row menu's Export item are two routes into
+  // one action, so a failed write reports the same way from both.
+  it('tells the operator when the selector’s export fails', async () => {
+    const exportMatches = vi.fn(async () => {
+      throw new Error('no disk')
+    })
+    fakeBridge({
+      captures: { list: vi.fn(async () => captures), getContent: vi.fn(async () => null) },
+      selectors: { matchingCaptures: vi.fn(async () => []), exportMatches }
+    })
+    renderRail(selectorSignal)
+
+    fireEvent.click(screen.getByTestId('signal-export-csv'))
+
+    await waitFor(() => expect(notifyError).toHaveBeenCalled())
+    expect(String(notifyError.mock.calls[0][0])).toContain('export')
+    await waitFor(() =>
+      expect(screen.getByTestId('signal-export-csv')).toHaveProperty('disabled', false)
+    )
   })
 
   it('disables Export CSV when the selector has matched nothing', () => {

@@ -181,8 +181,11 @@ pass above can still be non-compliant here. Check each one explicitly:
   "Screenshots for visual changes". A missing pair, a lone after shot, a local path, an image
   linked from anywhere else, or an after shot taken before a later commit changed that screen
   (the upload comment's `Taken at` line, then `git diff --name-only <taken-at> HEAD`) is a
-  `gate` finding. A handoff line from that section's step 4 in place of an image is `advisory`:
-  name the maintainer as the one to supply the shot, and do not request changes for it.
+  `gate` finding, including a placeholder handing capture or upload to the maintainer. Check
+  the visual-change declaration against the diff: hiding a control, changing a confirmation
+  value or adding an error notice changes what the operator sees. A No declaration needs a
+  reason consistent with the rendered result. Keep screenshot blockers assigned to the
+  implementer or dispatcher until the pair is attached.
 - **Auto-merge.** Confirm auto-merge is not enabled
   (`gh api repos/{owner}/{repo}/pulls/<n> --jq .auto_merge` must be `null`).
 - **Commit trailers.** Read every commit message on the branch

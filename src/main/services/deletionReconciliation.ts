@@ -56,9 +56,9 @@ function messageOf(err: unknown): string {
 }
 
 /**
- * Scans every live case for deletion entries the database has not caught up
- * with: a manifest `deletion` entry whose capture still has a row in that same
- * case.
+ * Scans every case, archived ones included, for deletion entries the database
+ * has not caught up with: a manifest `deletion` entry whose capture still has a
+ * row in that same case.
  *
  * Read-only. Reports nothing about a case whose chain does not verify — the
  * finding's claim is "the chain is valid AND the row is still there", and half
@@ -72,10 +72,10 @@ export function scanUnreconciledDeletions(
   const store = deps.store ?? defaultCaptureStore
   const generatedAt = (deps.now?.() ?? new Date()).toISOString()
 
-  let cases: ReturnType<typeof caseRepo.listCases>
+  let cases: ReturnType<typeof caseRepo.listAllCases>
   let publicKeyPem: string
   try {
-    cases = caseRepo.listCases()
+    cases = caseRepo.listAllCases()
     publicKeyPem = getPublicKeyPem()
   } catch {
     // Database, storage root or signing key not initialised. An empty findings
@@ -87,7 +87,7 @@ export function scanUnreconciledDeletions(
   const unscanned: UnscannedCase[] = []
   let casesScanned = 0
 
-  for (const { id: caseId, name: caseName } of cases) {
+  for (const { id: caseId, name: caseName, archived: caseArchived } of cases) {
     let caseDir: string
     let entries: Record<string, unknown>[]
     let imports: ManifestImportEntry[]
@@ -172,6 +172,7 @@ export function scanUnreconciledDeletions(
         manifestIndex: entry.index,
         entryTimestamp: typeof entry.timestamp === 'string' ? entry.timestamp : '',
         operatorName: typeof entry.operatorName === 'string' ? entry.operatorName : '',
+        caseArchived,
         ...(typeof entry.reason === 'string' ? { reason: entry.reason } : {})
       })
     }

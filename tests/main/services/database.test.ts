@@ -6,6 +6,7 @@ import Database from 'better-sqlite3'
 import { initDatabase, closeDatabase, getDb, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
 import {
   listCases,
+  listAllCases,
   getCase,
   createCase,
   updateCase,
@@ -73,6 +74,7 @@ import {
   deleteExtractedDataForCapture
 } from '@main/services/db/extractedDataRepo'
 import { SELECTOR_ORIGINS, type SelectorOrigin } from '@shared/types'
+import { classifySelection } from '@shared/selectionKind'
 import { saveAnnotations, upsertPin } from '@main/services/annotations'
 import { deleteRow, purgeArchived } from '@main/services/db/dbAdmin'
 import { windBackToV40 } from '../../helpers/windBackToV40'
@@ -176,6 +178,20 @@ describe('database', () => {
       const c = createCase({ name: 'To Archive' })
       updateCase({ id: c.id, archived: true })
       expect(listCases()).toHaveLength(0)
+    })
+
+    it('lists archived cases alongside active ones in listAllCases (#670)', () => {
+      const archived = createCase({ name: 'Archived' })
+      const active = createCase({ name: 'Active' })
+      updateCase({ id: archived.id, archived: true })
+      const listed = listAllCases().map(({ id, archived }) => ({ id, archived }))
+      expect(listed).toHaveLength(2)
+      expect(listed).toEqual(
+        expect.arrayContaining([
+          { id: archived.id, archived: true },
+          { id: active.id, archived: false }
+        ])
+      )
     })
 
     it('returns undefined for non-existent case', () => {
@@ -980,6 +996,42 @@ describe('database', () => {
       // Transaction should have rolled back — no selectors inserted for the valid case either.
       expect(listSelectors(c.id)).toHaveLength(0)
     })
+
+    it('refuses the whole batch when any pattern is empty or whitespace-only', () => {
+      const c = createCase({ name: 'Empty Bulk Case' })
+      expect(() =>
+        bulkCreateSelectors([
+          { caseId: c.id, pattern: 'ok' },
+          { caseId: c.id, pattern: '  ' }
+        ])
+      ).toThrow('A selector needs a pattern')
+      expect(listSelectors(c.id)).toHaveLength(0)
+    })
+  })
+
+  // An empty pattern is a substring of every text, so it would match every
+  // capture in the case (#877, #879).
+  describe('createSelector with an empty pattern', () => {
+    it.each(['', '   '])('refuses %j and writes no row', (pattern) => {
+      const c = createCase({ name: 'Empty Pattern Case' })
+      expect(() => createSelector({ caseId: c.id, pattern })).toThrow('A selector needs a pattern')
+      expect(listSelectors(c.id)).toHaveLength(0)
+    })
+  })
+
+  it('matches a capture of the host when the selection was a trailing-dot FQDN (#879)', () => {
+    const c = createCase({ name: 'Trailing Dot Case' })
+    const cap = insertCapture({
+      caseId: c.id,
+      url: 'https://example.com/x',
+      title: 'Example',
+      hash: 'fqdn1',
+      timestamp: new Date().toISOString()
+    })
+    const { value } = classifySelection('https://example.com./x')
+    const sel = createSelector({ caseId: c.id, pattern: value })
+    matchSelectorAgainstCaptures(sel.id, [{ captureId: cap.id, text: 'hosted on example.com' }])
+    expect(getSelectorCoverage(c.id).matched).toBe(1)
   })
 
   describe('getSelectorMatchesForExport', () => {

@@ -33,8 +33,8 @@ Five sections in a fixed order, a hard cap, and one closing line:
 2. `## Summary`: at most 5 plain sentences. What changed and why, and one sentence naming any
    handoff (for example, that the dispatch step opens and labels the PR). The dispatcher copies
    this section into the squash-merge commit body, so it is also the permanent record.
-3. `## Changes`: one `<details>` block holding one bullet per file group. No prose, no test
-   output, nothing outside the block.
+3. `## Changes`: one `<details>` block holding one bullet per file group, followed by the
+   visual-change block below. No prose or test output outside the blocks.
 4. `## Evidence-affecting`: `Yes` or `No` on its own line. When Yes, a `<details>` block holding
    the `### Evidence impact` subsection with the four fields from the template. The definition
    and the tiered path list are in `CONTEXT.md` and
@@ -57,16 +57,23 @@ Five sections in a fixed order, a hard cap, and one closing line:
 
 Everything above `## Verification` fits in 40 top-layer lines; collapsed lines do not count.
 The body has no other `##` sections: no acceptance-criteria walkthroughs and no reviewer notes.
-Visual evidence appears only as the screenshots block below. Fenced
+The visual-change declaration and evidence appear in the block below. Fenced
 blocks appear only inside a `<details>` block. Claims name only actions you took and states
 you observed after taking them; a label another actor applies or a check CI will run is named
 as a handoff, never asserted.
 
 ## Screenshots for visual changes
 
+A new agent-written body declares its visual effect in a second `<details>` block under
+`## Changes`. Use `- Visual changes: Yes` with the screenshot rows below, or
+`- Visual changes: No. <reason>` explaining why the rendered result stays the same. The
+reviewer checks this decision against the diff. A disappearing bar, a new error notice and
+a changed confirmation value are visual changes even when layout stays the same.
+
 A PR whose change shows on screen carries before and after screenshots. That covers the
 desktop app's renderer, the extension's popup and pages, and docs site pages, including copy,
-layout, theme and state changes. A change with no visual effect carries none.
+layout, theme and state changes. The implementer captures them before opening the draft or
+handing its body to the dispatcher. A change with no visual effect carries none.
 
 1. **Capture.** Take the before shot from a build of `origin/main`, ideally before editing,
    and the after shot at the head under review. Use the same route, window size, theme and
@@ -79,8 +86,10 @@ layout, theme and state changes. A change with no visual effect carries none.
      `chromium --headless --window-size=1440,900 --screenshot=<png> <url>`, against
      `https://docs.birdbrain.cc` for the before shot (Mintlify deploys `main`) and against
      the local preview `pnpm dlx mint dev` serves for the after shot.
-   - The extension's popup and pages: no tool in this repository captures them. Use the
-     handoff line from step 4 in place of each image.
+   - The extension's popup and pages: use the browser screenshot tools available in the
+     session. If capture tooling is unavailable, follow step 4.
+   Seed error paths and unusual states with test data or existing test helpers, then capture
+   the running UI. A state that needs a forced error still needs its screenshot pair.
 2. **Reference.** In the body file, reference each PNG by its absolute path in a second
    `<details>` block inside `## Changes`, after the file groups, one bullet per image and one
    before and after pair per changed screen:
@@ -89,6 +98,7 @@ layout, theme and state changes. A change with no visual effect carries none.
    <details>
    <summary>Screenshots, before and after</summary>
 
+   - Visual changes: Yes
    - Before, capture viewer: ![before](/tmp/birdbrain-shots/fix-viewer/viewer-before.png)
    - After, capture viewer: ![after](/tmp/birdbrain-shots/fix-viewer/viewer-after.png)
 
@@ -117,22 +127,28 @@ layout, theme and state changes. A change with no visual effect carries none.
 
    A fix round that changes a screen again takes a new after shot at the new head and runs
    step 3 for it; the before shot stays.
-4. **When a shot cannot be supplied.** No upload under the machine token is on record yet, so
-   whether GitHub accepts one from it is unverified. A file that did not upload, or a screen
-   no tool here captures, gets a handoff line in place of its image, for example
-   `- After, capture viewer: not uploaded, handed to the maintainer` (or `not captured`). The
-   author names the handoff in its report, and the maintainer takes and uploads that shot by
-   the route in step 3 under his own `gh`.
+4. **When capture or upload is blocked.** Report the attempted command, its error and the
+   missing screen. A capture blocker stops the PR-opening handoff; an upload blocker leaves
+   the existing PR in draft. Resolve the blocker and supply the pair before marking the work
+   ready for review. Handing missing screenshots to the maintainer does not satisfy this step.
 
 Never commit the images, and never link another image host. A dispatched implementer returns
-the PNG paths with its handoff, and the dispatcher runs step 3 with `agh`. The reviewer's
-"Screenshots" control (`birdbrain-reviewer`) reports a missing or stale pair as a `gate`
-finding and a step 4 handoff line as `advisory`.
+the PNG paths with its handoff, and the dispatcher runs step 3 with `agh`. A missing or stale
+pair, including a placeholder handed to the maintainer, is a `gate` finding in the reviewer's
+"Screenshots" control (`birdbrain-reviewer`).
+
+Run `scripts/check.sh --screenshots <body-file>` before the authoring handoff. This requires
+the declaration and checks a Yes decision for complete Before/After rows with matching screen
+names. Each image must be a readable local PNG at an absolute path or a GitHub attachment;
+the local form allows capture before the PR exists. The posted body must use uploaded links.
+The authoring hook enables this check for bound agent body writes. Direct checks without
+`--screenshots`, including existing merge-time `--any-author` calls, keep accepting legacy
+bodies so this authoring change does not retroactively block unrelated open PRs.
 
 ## How to open a PR
 
 1. Write the body to a file.
-2. Run `${CLAUDE_SKILL_DIR}/scripts/check.sh <file>` and fix the file until it exits 0.
+2. Run `${CLAUDE_SKILL_DIR}/scripts/check.sh --screenshots <file>` and fix the file until it exits 0.
 3. Open with `gh pr create --draft --body-file <file> ...` (or hand the path to the
    dispatcher, which opens the PR). Never `--body`: the hook blocks it.
 

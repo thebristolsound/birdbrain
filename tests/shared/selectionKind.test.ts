@@ -63,6 +63,46 @@ const KNOWN_ANSWERS: Array<{
     kind: 'domain',
     note: 'Path stripped — watches for this host anywhere in a page.'
   },
+  // A fully qualified name's trailing dot is not in the page text a Selector
+  // is tested against, so keeping it would match almost nothing (#879).
+  {
+    input: 'https://example.com./x',
+    value: 'example.com',
+    kind: 'domain',
+    note: 'Path stripped — watches for this host anywhere in a page.'
+  },
+  {
+    input: 'https://example.com.:8443/x',
+    value: 'example.com:8443',
+    kind: 'domain',
+    note: 'Path stripped — watches for this host anywhere in a page.'
+  },
+  // With the dot gone these would leave a bare port or colon, and ':' is a
+  // substring of nearly every capture's text.
+  {
+    input: 'https://.:/x',
+    value: '',
+    kind: 'domain',
+    note: 'Path stripped — watches for this host anywhere in a page.'
+  },
+  {
+    input: 'https://..:/x',
+    value: '',
+    kind: 'domain',
+    note: 'Path stripped — watches for this host anywhere in a page.'
+  },
+  {
+    input: 'https://.:8443/x',
+    value: '',
+    kind: 'domain',
+    note: 'Path stripped — watches for this host anywhere in a page.'
+  },
+  {
+    input: 'https://:8443/x',
+    value: '',
+    kind: 'domain',
+    note: 'Path stripped — watches for this host anywhere in a page.'
+  },
   {
     input: 'accounts@meridian-trust.com',
     value: 'accounts@meridian-trust.com',
@@ -158,6 +198,31 @@ describe('isActionableSelection', () => {
     expect(isActionableSelection('   abc   ')).toBe(true)
     expect(isActionableSelection('     ')).toBe(false)
     expect(SELECTION_MIN_LENGTH).toBe(3)
+  })
+
+  // Each passes the length bounds but derives an empty value, and an empty
+  // Selector is a substring of every capture's text (#877, #879).
+  it.each([
+    '...',
+    'https://operator@',
+    'https:///path',
+    'https://?utm=1',
+    'https://#frag',
+    'https://@/x',
+    'https://.:/x',
+    'https://..:/x',
+    'https://:8443/x'
+  ])('rejects %s, whose derived value is empty', (input) => {
+    expect(classifySelection(input).value).toBe('')
+    expect(isActionableSelection(input)).toBe(false)
+  })
+
+  it('still offers a URL whose authority is non-empty', () => {
+    expect(isActionableSelection('https://example.com/x')).toBe(true)
+    expect(classifySelection('https://example.com/x')).toMatchObject({
+      value: 'example.com',
+      kind: 'domain'
+    })
   })
 })
 

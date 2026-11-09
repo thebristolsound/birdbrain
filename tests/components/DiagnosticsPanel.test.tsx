@@ -300,7 +300,8 @@ describe('DiagnosticsPanel unreconciled deletions', () => {
     captureId: 'cap-abc-123',
     manifestIndex: 7,
     entryTimestamp: '2026-08-03T09:15:00.000Z',
-    operatorName: 'A. Analyst'
+    operatorName: 'A. Analyst',
+    caseArchived: false
   }
 
   function mount(report: UnreconciledDeletionReport) {
@@ -382,6 +383,20 @@ describe('DiagnosticsPanel unreconciled deletions', () => {
     expect(screen.getByText(/delete the capture again from its case/)).toBeDefined()
     expect(screen.getByText(/appends a fresh signed deletion entry/)).toBeDefined()
     expect(screen.getByText(/holds the claim rather than the data/)).toBeDefined()
+    expect(screen.queryByText(/may need unarchiving/)).toBeNull()
+  })
+
+  // #670. The scan covers archived cases, and the case list leaves them out, so
+  // a finding in one says where the recovery may first have to start.
+  it('says an archived case may need unarchiving before the delete is re-run', async () => {
+    mount({ ...cleanReport, casesScanned: 1, findings: [{ ...finding, caseArchived: true }] })
+
+    expect(await screen.findByText('cap-abc-123')).toBeDefined()
+    expect(
+      screen.getByText(
+        'This case is archived; it may need unarchiving before the capture can be deleted again.'
+      )
+    ).toBeDefined()
   })
 
   it('shows the #580 reason on an entry that recorded one', async () => {
@@ -398,6 +413,7 @@ describe('DiagnosticsPanel unreconciled deletions', () => {
     mount(cleanReport)
 
     expect(await screen.findByText(/None found across 3 verified cases/)).toBeDefined()
+    expect(screen.getByText(/The scan reads archived cases as well as active ones/)).toBeDefined()
     expect(screen.queryByText(/delete the capture again/)).toBeNull()
   })
 
@@ -441,6 +457,7 @@ describe('DiagnosticsPanel unreconciled deletions', () => {
 
     expect(await screen.findByText(/None found across 2 verified cases/)).toBeDefined()
     expect(screen.getByText(/This says nothing about the cases listed below/)).toBeDefined()
+    expect(screen.getByText(/The scan reads archived cases as well as active ones/)).toBeDefined()
     expect(screen.queryByText(/is gone from the database/)).toBeNull()
   })
 

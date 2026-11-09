@@ -73,6 +73,7 @@ import {
   deleteExtractedDataForCapture
 } from '@main/services/db/extractedDataRepo'
 import { SELECTOR_ORIGINS, type SelectorOrigin } from '@shared/types'
+import { classifySelection } from '@shared/selectionKind'
 import { saveAnnotations, upsertPin } from '@main/services/annotations'
 import { deleteRow, purgeArchived } from '@main/services/db/dbAdmin'
 import { windBackToV40 } from '../../helpers/windBackToV40'
@@ -980,6 +981,42 @@ describe('database', () => {
       // Transaction should have rolled back — no selectors inserted for the valid case either.
       expect(listSelectors(c.id)).toHaveLength(0)
     })
+
+    it('refuses the whole batch when any pattern is empty or whitespace-only', () => {
+      const c = createCase({ name: 'Empty Bulk Case' })
+      expect(() =>
+        bulkCreateSelectors([
+          { caseId: c.id, pattern: 'ok' },
+          { caseId: c.id, pattern: '  ' }
+        ])
+      ).toThrow('A selector needs a pattern')
+      expect(listSelectors(c.id)).toHaveLength(0)
+    })
+  })
+
+  // An empty pattern is a substring of every text, so it would match every
+  // capture in the case (#877, #879).
+  describe('createSelector with an empty pattern', () => {
+    it.each(['', '   '])('refuses %j and writes no row', (pattern) => {
+      const c = createCase({ name: 'Empty Pattern Case' })
+      expect(() => createSelector({ caseId: c.id, pattern })).toThrow('A selector needs a pattern')
+      expect(listSelectors(c.id)).toHaveLength(0)
+    })
+  })
+
+  it('matches a capture of the host when the selection was a trailing-dot FQDN (#879)', () => {
+    const c = createCase({ name: 'Trailing Dot Case' })
+    const cap = insertCapture({
+      caseId: c.id,
+      url: 'https://example.com/x',
+      title: 'Example',
+      hash: 'fqdn1',
+      timestamp: new Date().toISOString()
+    })
+    const { value } = classifySelection('https://example.com./x')
+    const sel = createSelector({ caseId: c.id, pattern: value })
+    matchSelectorAgainstCaptures(sel.id, [{ captureId: cap.id, text: 'hosted on example.com' }])
+    expect(getSelectorCoverage(c.id).matched).toBe(1)
   })
 
   describe('getSelectorMatchesForExport', () => {

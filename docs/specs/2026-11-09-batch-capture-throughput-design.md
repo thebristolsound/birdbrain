@@ -3,7 +3,8 @@
 **Date:** 2026-11-09
 
 **Status:** Draft, grilled with the maintainer on 2026-11-09; awaiting maintainer review. Slices 1
-to 6 are built on stacked pull requests, none merged yet.
+to 5 are on stacked pull requests, none merged yet; slice 6 is built on top of them, and its pull
+request is not open yet.
 
 **Frame of reference:** `origin/main` at `c1ed8ed8`. This spec cites code by symbol, per
 [`docs/README.md`](../README.md). The measured figures come from one batch on 2026-11-09 and from
@@ -240,7 +241,11 @@ At startup, before the queue runs:
 
 Restoring a database snapshot or a backup file can bring back rows from the past. A restore
 re-opens the database in the running app, so the same pass runs right after a restore that
-succeeds, before the queue can claim a restored row.
+succeeds, before the queue can claim a restored row. The restored copy can hold a job the app is
+still rendering in any state, or not at all, so the pass first writes that job's row back as
+`running` under its attempt's Capture id; the job then ends as it would have, and a resume cannot
+render it a second time. A job whose Case the restored copy lacks gets no row, and its ingest fails
+as it does after a Case delete.
 
 Deleting a Case deletes its jobs through the foreign key. A running job whose Case is deleted
 fails at ingest, as it does today.
@@ -278,7 +283,9 @@ and its own in-memory partition, as the Recapture design requires; nothing is sh
 renders.
 
 **One running job per site.** A loop claims the next `queued` row whose site has no job
-`running`, so a Batch with several pages on one site never loads that site twice at once.
+`running`, so a Batch with several pages on one site does not start two of them at once. The rule
+reads the address each job was queued with, not where it lands: two short-link hosts that
+redirect to one site can still load it twice at once.
 Concurrent requests to one server can trip rate limits or bot checks, which changes what a Capture
 holds. The site is the registrable domain from `tldts` (already a dependency), so
 `www.example.com` and `example.com` share a slot; an IP address or a host with no registrable
@@ -352,8 +359,8 @@ render keeps the blocker enabled until its cleanup, after the PDF.
 
 **Recommended default: 2.** Computed at startup as
 `clamp(floor(os.availableParallelism() / 4), 1, 2)`, so a machine with fewer than 8 logical CPUs
-runs 1. A worker does not start another job while `os.freemem()` is under 1.5 GB. The 4-CPUs-per-
-render ratio and the 1.5 GB floor are estimates to check against slice 1's timings, not
+runs 1. A worker does not start another job while `os.freemem()` is under 1.5 GiB. The 4-CPUs-per-
+render ratio and the 1.5 GiB floor are estimates to check against slice 1's timings, not
 measurements. Settings has no control for it. `BIRDBRAIN_BACKGROUND_WORKERS`, clamped to 1 and 2,
 overrides the formula, as `BIRDBRAIN_CONSENT_LISTS` and `BIRDBRAIN_WINDOW_SIZE` override their
 defaults; slice 6 uses it for its comparison, and support can use it to force 1.
@@ -394,11 +401,27 @@ Slice 6 built the pool with these choices:
   single worker's would; otherwise a machine with less than 1.5 GiB available would never capture
   in the background. A held slot looks again every 2 s and whenever a running job ends. On Linux,
   `os.freemem()` under the bundled Node 24.22 returns MemAvailable, which counts reclaimable page
-  cache, not MemFree.
+  cache, not MemFree. On macOS it may count free pages only, so the floor may hold the second job
+  more often there: the queue runs slower, not less safely.
 
 Slice 6 ran the comparison on 2026-11-09 on the built app, on a machine with 18 logical CPUs. Each
 pair ran back to back, once with 1 first and once with 2 first. The 1-minute load average stayed
-under 3 during every run.
+under 3 during every run. Neither batch nor the script that ran them is in the repository.
+
+- **The fixture batch** is 10 pages served from one local server, each on its own `*.localhost`
+  host: two lazy-loading pages that grow to 5 and 8 chunks, a page behind a consent overlay with a
+  scroll lock, a two-pane page, a page of 24 images, a page of 1,500 paragraphs, a page that waits
+  1.5 s on a script, a page with an iframe, and two plain pages, with a local filter list that
+  names the overlay.
+- **The public batch** is 20 pages on 20 sites, with the default filter lists:
+  `en.wikipedia.org/wiki/Bristol`, `www.mozilla.org/en-US/about/`, `www.ietf.org/about/`,
+  `www.rfc-editor.org/rfc/rfc2119.html`, `www.gov.uk/government/organisations`,
+  `www.nist.gov/about-nist`, `www.un.org/en/about-us`, `www.who.int/about`, `www.loc.gov/about/`,
+  `www.archives.gov/about`, `www.python.org/about/`, `www.gnu.org/philosophy/free-sw.html`,
+  `www.kernel.org/`, `www.debian.org/intro/about`, `www.apache.org/foundation/`,
+  `www.unicode.org/main.html`, `www.iana.org/about`,
+  `www.icann.org/resources/pages/welcome-2012-02-25-en`, `ecma-international.org/`, and
+  `european-union.europa.eu/index_en`, each over HTTPS.
 
 | Batch | Workers | Wall time, first start to last end | Stored / failed / skipped | Transaction Record `failed` |
 | --- | --- | --- | --- | --- |

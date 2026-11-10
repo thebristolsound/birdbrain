@@ -929,8 +929,8 @@ describe('stored background jobs', () => {
       await vi.waitFor(() => expect(backgroundJobRepo.getJob(id)?.phase).toBe('loading'))
 
       expect(svc.cancel({ jobId: id })).toEqual({ cancelled: 1, refused: 0 })
-      // The job is already ending, so a second cancel refuses it.
-      expect(svc.cancel({ batchId })).toEqual({ cancelled: 0, refused: 1 })
+      // The job is ending cancelled, so a second cancel during its wind-down counts it so.
+      expect(svc.cancel({ batchId })).toEqual({ cancelled: 1, refused: 0 })
       await svc.idle()
 
       expect(backgroundJobRepo.getJob(id)).toEqual({

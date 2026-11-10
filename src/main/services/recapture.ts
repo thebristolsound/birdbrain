@@ -933,9 +933,9 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       }
       const run = active
       if (!run || !targets(target, run.job)) return { cancelled: ended.length, refused: 0 }
-      if (run.ingesting || run.ended || run.controller.signal.aborted) {
-        return { cancelled: ended.length, refused: 1 }
-      }
+      // A job an earlier cancel aborted is ending cancelled.
+      if (run.controller.signal.aborted) return { cancelled: ended.length + 1, refused: 0 }
+      if (run.ingesting || run.ended) return { cancelled: ended.length, refused: 1 }
       run.controller.abort()
       return { cancelled: ended.length + 1, refused: 0 }
     },

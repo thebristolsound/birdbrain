@@ -1125,9 +1125,10 @@ async function handleSelectionAction(
     const lookup = await lookupCaptureByUrl({ caseId, url })
     if (lookup.found) {
       // Attaching to an existing Capture acquires nothing, so no suppression
-      // bracket opens and the bar keeps showing its own progress state.
-      const tab = await chrome.tabs.get(tabId)
-      return await attach({}, tab.title || '')
+      // bracket opens and the bar keeps showing its own progress state. The
+      // title is the resolved capture's, not the live tab's: the tab can have
+      // navigated while the lookup was in flight (#1007).
+      return await attach({}, lookup.capture?.title || '')
     }
 
     // Courtesy pre-check, on the ingest branch only to match the server

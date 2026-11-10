@@ -862,12 +862,21 @@ exit "$CLAUDE_EXIT"
           CLAUDE_EXIT: String(claudeExit)
         }
       })
-      const prompted = existsSync(join(dir, 'prompt'))
-      return {
-        status: result.status,
-        outputExists: existsSync(join(dir, 'out', 'findings.json')),
-        stderr: result.stderr,
-        prompt: prompted ? readFileSync(join(dir, 'prompt'), 'utf8') : null
+      const prompt = existsSync(join(dir, 'prompt'))
+        ? readFileSync(join(dir, 'prompt'), 'utf8')
+        : null
+      // leg.sh writes its inputs to a directory of its own and names each file in the prompt.
+      const inputs = /`(\S+)\/sources\.json`/.exec(prompt ?? '')?.[1]
+      try {
+        return {
+          status: result.status,
+          outputExists: existsSync(join(dir, 'out', 'findings.json')),
+          stderr: result.stderr,
+          prompt,
+          sources: inputs ? JSON.parse(readFileSync(join(inputs, 'sources.json'), 'utf8')) : null
+        }
+      } finally {
+        if (inputs) rmSync(inputs, { recursive: true, force: true })
       }
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -895,6 +904,7 @@ exit "$CLAUDE_EXIT"
     const r = leg('Closes #12\n\nSummary.')
     expect(r.status, r.stderr).toBe(0)
     expect(r.prompt).toContain('sources.json')
+    expect(r.sources).toEqual([{ path: 'issues/12', title: 'The contract', body: 'Do the thing.' }])
   })
 
   it('rejects a failed model process even when it prints structured output', () => {

@@ -498,6 +498,9 @@ describe('capture suppression round trip (#386)', () => {
 // place is in every frame of the capture (#993). It is held for the bracket
 // and put back on release, like the bar.
 describe("the operator's selection stays out of the frames (#993)", () => {
+  // The release loop logs and swallows a listener that throws, which would also skip the bar.
+  const RELEASE_FAILED = '[Birdbrain] Suppression release listener failed:'
+
   function selectionEnds(): [Node | null, number, Node | null, number] {
     const { anchorNode, anchorOffset, focusNode, focusOffset } = window.getSelection()!
     return [anchorNode, anchorOffset, focusNode, focusOffset]
@@ -606,10 +609,23 @@ describe("the operator's selection stays out of the frames (#993)", () => {
     expect(window.getSelection()!.toString()).toBe('ab')
   })
 
-  it('leaves the page without a selection when there was none', () => {
-    dispatch({ type: 'PREPARE_FOR_CAPTURE' })
-    dispatch({ type: 'RELEASE_CAPTURE_UI' })
-    expect(window.getSelection()!.rangeCount).toBe(0)
+  it('leaves the page without a selection when there was none, and still puts the bar back', async () => {
+    selectParagraph()
+    await mouseUp()
+    await clickAction('selector')
+    clearSelection()
+    const warn = vi.spyOn(console, 'warn')
+
+    try {
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(window.getSelection()!.rangeCount).toBe(0)
+      expect(barMessage()).toBe('Selector created')
+      expect(warn).not.toHaveBeenCalledWith(RELEASE_FAILED, expect.anything())
+    } finally {
+      warn.mockRestore()
+    }
   })
 
   it('holds the selection the operator made mid-capture, not the earlier one', async () => {
@@ -762,22 +778,32 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       expect(selectionEnds()).toEqual([first, 7, second, 11])
     })
 
-    it('restores nothing when the page shortened the held text during the capture', () => {
+    it('restores no range the page cut short during the capture, and still puts the bar back', async () => {
       const [first] = twoParagraphs()
+      // Only the end falls past the shortened text, so each end is checked on its own.
       composed = () =>
         new StaticRange({
           startContainer: first,
-          startOffset: 7,
+          startOffset: 2,
           endContainer: first,
           endOffset: 30
         })
-      window.getSelection()!.setBaseAndExtent(first, 7, first, 30)
+      window.getSelection()!.setBaseAndExtent(first, 2, first, 30)
+      await mouseUp()
+      await clickAction('selector')
+      const warn = vi.spyOn(console, 'warn')
 
-      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
-      first.data = 'Gone.'
-      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+      try {
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        first.data = 'Gone.'
+        dispatch({ type: 'RELEASE_CAPTURE_UI' })
 
-      expect(window.getSelection()!.rangeCount).toBe(0)
+        expect(window.getSelection()!.rangeCount).toBe(0)
+        expect(barMessage()).toBe('Selector created')
+        expect(warn).not.toHaveBeenCalledWith(RELEASE_FAILED, expect.anything())
+      } finally {
+        warn.mockRestore()
+      }
     })
   })
 })

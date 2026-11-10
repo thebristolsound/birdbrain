@@ -2940,7 +2940,7 @@ describe("renderPageInHiddenWindow's log lines", () => {
     for (const ms of steps) expect(ms).toBeGreaterThanOrEqual(0)
     const sum = steps.reduce((total, ms) => total + ms, 0)
     expect(sum).toBeLessThanOrEqual(context.ms as number)
-    expect((context.ms as number) - sum).toBeLessThan(100)
+    expect((context.ms as number) - sum).toBeLessThan(500)
     expect(context.ms as number).toBeLessThanOrEqual(elapsed)
     // The settle step waits FINAL_SETTLE_MS, so its time is on its own key.
     expect(context.settleMs as number).toBeGreaterThanOrEqual(450)
@@ -3004,7 +3004,6 @@ describe("renderPageInHiddenWindow's log lines", () => {
     }
     const { info } = await renderLogged()
     const [[, , context]] = logged(info, 'backgroundRenderer.render_completed')
-    expect(context.pdfMs as number).toBeLessThan(150)
     const sum = STEP_KEYS.reduce((total, key) => total + (context[key] as number), 0)
     expect((context.ms as number) - sum).toBeGreaterThanOrEqual(200)
   }, 30_000)

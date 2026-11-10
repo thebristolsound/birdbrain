@@ -515,6 +515,8 @@ function restoreSelection(): void {
   heldSelection = null
   const selection = window.getSelection()
   // A selection made during the capture, by the operator or the page, is newer than the held one.
+  // An empty one reads the same as the strip's own clear, so a page that cleared the selection
+  // during the capture gets the held one back.
   if (!held || !selection || selection.rangeCount > 0) return
   const { startContainer, startOffset, endContainer, endOffset } = held.range
   // A composed range does not follow DOM changes; ends the page cut away are not put back.

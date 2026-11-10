@@ -68,14 +68,15 @@ start to stored row. This section reproduces no URL from that database.
 
 The 360.1 s gap is three times the 120 s Recapture timeout (`DEFAULT_TIMEOUT_MS`), and three
 Captures were not stored. The likeliest reading is that three jobs ran to the timeout, back to
-back. Because failed jobs are not logged, this is an inference, not a measurement. **Three timed-out
-jobs used 53% of the batch's wall time and produced nothing.**
+back. Because failed jobs are not logged, this is an inference, not a measurement. **The gap with
+no stored Capture accounts for about 53% of the batch's wall time; three consecutive timeouts are
+one explanation.**
 
-Two further facts bear on #2121. The three Captures stored without a Transaction Record took
-16.5 s, 13.5 s and 19.8 s from start to row. Each finished far inside its 120 s, so the time left
-before the deadline (`timeLeftMs` in `finishTransactionRecord`) was not what cut them short. The
-fixed bound of one of the two end phases expired: `BODY_COLLECT_TIMEOUT_MS` (5 s) or
-`RECORD_WRITE_TIMEOUT_MS` (10 s). The log does not say which.
+The three Captures stored without a Transaction Record took 16.5 s, 13.5 s and 19.8 s from start
+to row. These durations do not indicate that the overall 120 s render deadline was exhausted.
+Expiration of `BODY_COLLECT_TIMEOUT_MS` (5 s) or `RECORD_WRITE_TIMEOUT_MS` (10 s) is a hypothesis;
+recording setup, collection, writing and schema validation can also fail. The retained log does
+not establish which cause occurred.
 
 A list-scheduling model of the same 25 jobs, run in arrival order with the three timeouts at
 120 s, reproduces the serial wall time (674 s against 673 s measured). Its estimates for more
@@ -239,8 +240,7 @@ At startup, before the queue runs:
 2. Every `queued` row becomes `held`. A held job runs only after the Operator resumes its Batch.
    Between sessions the Egress setting, the network, or the Operator's intent can change, and a
    held job sends no request the Operator did not start in this session. The hold is per Batch,
-   not on the queue: a Batch queued in this session runs at once, ahead of held ones, so a fresh
-   paste never waits behind work from an earlier session.
+   not on the queue: a fresh Batch does not wait behind jobs that remain held.
 
 Restoring a database snapshot or a backup file can bring back rows from the past. A restore
 re-opens the database in the running app, so the same pass runs right after a restore that
@@ -273,16 +273,25 @@ table is not added to `ALLOWED_TABLES` in `dbAdmin.ts`, so Settings -> Database 
 
 ### Bounded parallel workers
 
+#### Resume order build note
+
+**Build note, 2026-11-10:** unmerged slice 3 (#2141 at `0165b0b0`) adds nullable `resumed_at` to
+`background_jobs`. Resuming a Batch sets it to the resume time. Claims use
+`COALESCE(resumed_at, queued_at)`, then `queued_at` and insertion order. The resumed Batch follows
+jobs already queued at resume time; jobs queued later can follow it. This records the built
+ordering rule, not a guarantee that every future paste takes priority over resumed work.
+
 #### Shape
 
-`drain()` becomes a pool of up to `concurrency` worker loops. Each loop claims the oldest `queued`
-row in one synchronous statement (better-sqlite3 runs in the main process, so two loops cannot
-claim the same row), sets it `running`, and calls `runJob`. Each job keeps its own hidden window
-and its own in-memory partition, as the Recapture design requires; nothing is shared between
-renders.
+`drain()` becomes a pool of up to `concurrency` worker loops. Each loop claims the first eligible
+`queued` row in the claim order above in one synchronous statement (better-sqlite3 runs in the
+main process, so two loops cannot claim the same row), sets it `running`, and calls `runJob`.
+Each job keeps its own hidden window and its own in-memory partition, as the Recapture design
+requires; nothing is shared between renders.
 
-**One running job per site.** A loop claims the oldest `queued` row whose site has no job
-`running`, so a Batch with several pages on one site never loads that site twice at once.
+**One running job per site.** A loop claims the first eligible `queued` row in claim order whose
+site has no job `running`, so a Batch with several pages on one site never loads that site twice
+at once.
 Concurrent requests to one server can trip rate limits or bot checks, which changes what a Capture
 holds. The site is the registrable domain from `tldts` (already a dependency), so
 `www.example.com` and `example.com` share a slot; an IP address or a host with no registrable
@@ -371,9 +380,8 @@ contention stretches both phases without moving their bounds:
   50,000,000-byte cap on an idle machine, it has about 7 times headroom. Two workers are unlikely
   to use that; four rendering heavy pages could.
 - **Body collection** (5 s) waits on the network and on CDP messages the main process handles.
-  The 2026-11-09 failures happened at concurrency 1 in jobs that had plenty of time left, so one of
-  the two bounds already expires without contention, and the log does not say which. Contention
-  adds delay to every message the collector waits on.
+  The missing Transaction Records at concurrency 1 do not establish whether a fixed bound
+  expired. Contention can add delay to the messages collection waits on.
 
 This design does not change either bound. It orders the work so that the evidence comes first:
 
@@ -517,7 +525,7 @@ What each Evidence impact section has to answer:
 ## Alternatives rejected
 
 - **Keep the queue serial and shorten the steps.** The fixed waits add about 5 s per job; the batch
-  lost 360 s to three timeouts. Shortening the waits also shortens what the page has to load lazy
+  has an unexplained 360 s gap. Shortening the waits also shortens what the page has to load lazy
   content, which changes Captures.
 - **One worker per logical CPU.** Uncapped renders compete for the main process and the libuv pool,
   stretching the #2121 bounds and the artifact reserve on the machines least able to absorb it.

@@ -43,9 +43,9 @@ All six PRs are open as stacked drafts. Next is maintainer review from the botto
 - **Step callback:** slice 1 adds `onStep` with ten fine render steps; slice 4 groups them into
   the design's seven phases for `onPhase`.
 
-- **Resume order (slice 3):** a resumed held Batch goes to the back of the queue, through a
-  `resumed_at` column, following the design's decision that a fresh paste never waits behind
-  earlier-session work. Taken under the recommended-option rule; Matt may veto.
+- **Resume order (slice 3):** a resumed held Batch joins behind jobs already queued at the time of
+  resume, through a `resumed_at` column. Jobs queued later can follow it. Taken under the
+  recommended-option rule; Matt may veto.
 - **Restore timing (slice 3):** the design said a restore takes effect at the next start; it
   re-opens the database at once, so the startup pass also runs after a successful restore.
 

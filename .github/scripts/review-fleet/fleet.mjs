@@ -5,7 +5,8 @@
 //
 // Usage: fleet.mjs <command> <owner/repo> [args]
 //   plan <pr>               decide what the PR is owed at head; claim the head when it is owed a
-//                           review; post the status. Writes action, legs, sha to GITHUB_OUTPUT.
+//                           review, and record the start when it is owed the check of Codex;
+//                           post the status. Writes action, legs, sha to GITHUB_OUTPUT.
 //   record <pr> <sha> <dir> <review|verify>
 //                           merge the leg outputs under <dir>/<leg>/ into the head's state
 //                           comment and post the status. Writes relay=true|false.
@@ -35,6 +36,9 @@ const CLAUDE_TIMEOUT_MINUTES = 180
 // GitHub's 65,536-character comment limit.
 export const MAX_FINDINGS = 15
 const COMMENT_LIMIT = 60000
+// The Claude check of Codex starts at most this many times at one head. Codex posting more
+// findings at the same head starts another; past the limit the head fails.
+export const MAX_VERIFY_ATTEMPTS = 3
 // The status a break-glass override posts. merge-gate reads it as no review and checks the
 // label itself, so the override ends when the label goes.
 export const BREAK_GLASS_DESCRIPTION = `${BREAK_GLASS} applied by the maintainer; no review`
@@ -254,10 +258,20 @@ export function decide(f) {
   const verified = state.claudeVerify ?? {}
   const unverified = f.codexFindings.filter((x) => !verified[x.id])
   if (unverified.length) {
-    if (state.verifyFailedFor === f.codexFindings.map((x) => x.id).join(',')) {
+    const asked = f.codexFindings.map((x) => x.id).join(',')
+    const checking = `Claude checking ${unverified.length} Codex finding(s)`
+    const run = state.verify
+    if (state.verifyFailedFor === asked) {
       reasons.push('the Claude check of Codex did not finish')
+    } else if (run?.for === asked) {
+      // Started for these findings and no result recorded: wait, then fail. Never start it again.
+      if (minutesSince(run.startedAt, now) <= CLAUDE_TIMEOUT_MINUTES)
+        return out('pending', checking)
+      reasons.push('the Claude check of Codex started and never reported')
+    } else if ((run?.attempts ?? 0) >= MAX_VERIFY_ATTEMPTS) {
+      reasons.push(`the Claude check of Codex ran ${run.attempts} times and findings are unchecked`)
     } else {
-      return out('pending', `Claude checking ${unverified.length} Codex finding(s)`, 'verify')
+      return out('pending', checking, 'verify')
     }
   }
   const codexConfirmed = f.codexFindings.filter(
@@ -425,6 +439,13 @@ export function mergeFinders(state, outputs) {
   return { ...state, claude }
 }
 
+// Mark the check of these Codex findings started. plan writes this before the paid pass runs,
+// so a pass that records no result is bounded by its start time and the attempt count.
+export function startVerify(state, ids, now) {
+  const attempts = (state.verify?.attempts ?? 0) + 1
+  return { ...state, verify: { for: ids.join(','), startedAt: now, attempts } }
+}
+
 export function mergeVerify(state, output, ids) {
   if (!output || !Array.isArray(output.rulings)) return { ...state, verifyFailedFor: ids.join(',') }
   const claudeVerify = { ...(state.claudeVerify ?? {}) }
@@ -585,9 +606,15 @@ function plan(repo, n) {
     postStatus(repo, g.sha, running)
     return output({ action: 'review', legs: JSON.stringify(FINDER_LEGS), sha: g.sha })
   }
+  if (verdict.owed === 'verify') {
+    // Like the claim: the start is on the record before any paid step.
+    const ids = g.codexFindings.map((x) => x.id)
+    const started = startVerify(state, ids, new Date().toISOString())
+    publish(repo, n, g, started, judge(g, started, e))
+    return output({ action: 'verify', legs: JSON.stringify([VERIFY_LEG]), sha: g.sha })
+  }
   publish(repo, n, g, state, verdict)
-  const legs = verdict.owed === 'verify' ? [VERIFY_LEG] : []
-  output({ action: verdict.owed ?? 'none', legs: JSON.stringify(legs), sha: g.sha })
+  output({ action: verdict.owed ?? 'none', legs: '[]', sha: g.sha })
 }
 
 // kind is the plan's action: `review` records the finder passes, `verify` the check of Codex.

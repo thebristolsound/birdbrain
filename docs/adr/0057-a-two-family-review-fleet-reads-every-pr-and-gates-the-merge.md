@@ -50,7 +50,10 @@ Three facts shaped the design:
    lists Claude's blocking findings, asking for one `F<n>: CONFIRMED` or `F<n>: REFUTED` line
    each. Codex's inline findings at the head, with their P0 to P3 badges, are its findings.
 4. **Claude checks Codex.** When Codex answers, a fifth Claude pass rules on each Codex finding:
-   confirmed, refuted or unclear.
+   confirmed, refuted or unclear. The plan job writes the pass's start time and attempt count
+   into the state comment before the pass runs. A pass that records no result within 180
+   minutes fails the status and is not started again, and the check starts at most 3 times at
+   one head.
 5. **The script decides.** `review/fleet` is `failure` on a blocking finding the other family
    confirmed (Claude's `BLOCKING`, Codex's P0 and P1), and, because missing input fails, on a
    pass that did not finish or listed work it did not check, a relay never posted, Codex not

@@ -9,6 +9,7 @@ import {
   CODEX,
   FINDER_LEGS,
   MAX_FINDINGS,
+  MAX_VERIFY_ATTEMPTS,
   RELAY_MARK,
   capUsed,
   codexAnswered,
@@ -24,7 +25,8 @@ import {
   relayBody,
   relayFor,
   renderState,
-  settings
+  settings,
+  startVerify
   // @ts-expect-error - workflow script with no type declarations; the tsconfigs exclude .github/
 } from '../.github/scripts/review-fleet/fleet.mjs'
 
@@ -490,6 +492,37 @@ describe('decide', () => {
       status: 'pending',
       owed: 'verify'
     })
+  })
+
+  it('records that the check of Codex started, then waits on it without owing another', () => {
+    const started = startVerify(reviewed(), [11], '2026-11-10T11:40:00Z')
+    expect(started.verify).toEqual({ for: '11', startedAt: '2026-11-10T11:40:00Z', attempts: 1 })
+    expect(decide(facts({ state: started, codexFindings: [p1] }))).toMatchObject({
+      status: 'pending',
+      owed: null
+    })
+  })
+
+  it('fails a check of Codex that started and recorded no result, with its own message', () => {
+    const lost = startVerify(reviewed(), [11], '2026-11-10T08:00:00Z')
+    expect(decide(facts({ state: lost, codexFindings: [p1] }))).toMatchObject({
+      status: 'failure',
+      owed: null,
+      description: 'the Claude check of Codex started and never reported'
+    })
+    const noTime = { ...reviewed(), verify: { for: '11', attempts: 1 } }
+    expect(decide(facts({ state: noTime, codexFindings: [p1] })).status).toBe('failure')
+  })
+
+  it(`starts the check of Codex at most ${MAX_VERIFY_ATTEMPTS} times at one head`, () => {
+    let state = reviewed()
+    for (let i = 1; i < MAX_VERIFY_ATTEMPTS; i++) state = startVerify(state, [i], RELAY_AT)
+    expect(decide(facts({ state, codexFindings: [p1] })).owed).toBe('verify')
+    state = startVerify(state, [11], RELAY_AT)
+    expect(state.verify.attempts).toBe(MAX_VERIFY_ATTEMPTS)
+    const v = decide(facts({ state, codexFindings: [p1, p2] }))
+    expect(v).toMatchObject({ status: 'failure', owed: null })
+    expect(v.description).toContain(`${MAX_VERIFY_ATTEMPTS} times`)
   })
 
   it('fails when the Claude check of Codex did not finish, rather than asking forever', () => {

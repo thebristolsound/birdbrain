@@ -226,3 +226,10 @@ Every pull request the fleet covers fails its check for the policy reason that p
 - One product question goes to Matt: a shared case with no operator name shows its sync as failed and gives no reason. His earlier wording decision does not cover that state. The fix round leaves the behaviour and describes it.
 - A sweep implementer owns the fix round in its own application checkout. It pushes only after one passing locked verification and only as a fast-forward of `da541ed81f5f`. It returns its body, replies, screenshot comment and capture manifest under `/tmp/pr2175-fix-r3/`. The recovery thread was told another commit will land and keeps its signing tail held.
 - Next coordinator actions for 2175: upload the new screenshot pairs, post the returned body and replies, then send the new head to a delta review against `da541ed81f5f`.
+
+## Fleet repair fix round four
+
+- The sweep implementer pushed `0cab8a06791b` to 2160 as a fast-forward of `39fd0763ce96`, four commits. Its one locked full verification passed at that commit, exit 0: 9,950 tests passed, 66 skipped. Main had not moved, so there was no merge.
+- The blocker is fixed in `024585b0`: comment links in the Files changed form read as the comment, and a comment-like fragment in no supported form fails. The red run before the fix failed 30 of 63 cases. Two advisories became fixes: an unreadable label list now withdraws every label and fails the job, and the test stub applies the real query. The across-checks ruling order is unchanged and stays a maintainer decision.
+- Replaced the description from `/tmp/pr2160-fix-r4/body.md` and posted the four reply files as the machine account, starting with the [verdict replies](https://github.com/thebristolsound/birdbrain/pull/2160#issuecomment-6782018526). The review status is pending.
+- A delta review against `39fd0763ce96` is running. It also runs the stricter link rule over every open pull request description, because a legitimate link that now fails would fail every fleet pass once this change is on main.

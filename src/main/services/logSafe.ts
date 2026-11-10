@@ -149,9 +149,10 @@ export const BACKGROUND_JOB_STEPS = [
   'ingest'
 ] as const
 export type BackgroundJobStep = (typeof BACKGROUND_JOB_STEPS)[number]
-// Why a Background Job left no Capture, standing in for the skip reason or the
-// error message, which can name an address or an exclusion pattern. The first
-// four end a job `failed`, the last three `skipped`.
+// Why a Background Job ended `failed` or `skipped`, standing in for the skip
+// reason or the error message, which can name an address or an exclusion
+// pattern. The first four end a job `failed`, the last three `skipped`.
+// `ingest` covers everything after the render, so the Capture may exist.
 export const BACKGROUND_JOB_FAILURE_KINDS = [
   'timeout',
   'render',

@@ -1148,9 +1148,8 @@ export const renderPageInHiddenWindow: RenderPage = async (
       }
     }
 
-    networkTracker = createNetworkIdleTracker(session)
-
     try {
+      networkTracker = createNetworkIdleTracker(session)
       steps.enter('load')
       try {
         await wc.loadURL(url)

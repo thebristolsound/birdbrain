@@ -302,6 +302,7 @@ independent of the Operator who holds it.
 | Path | Tier | Why |
 |---|---|---|
 | `src/main/services/captureLifecycle.ts` | blocking | Ingest/delete pipeline: hashing, manifest entries, trusted-time reconciliation |
+| `src/main/services/operatorName.ts` | blocking | The operator gate (X47): capture admission, recapture, duplicate, deletion, the Staging Pool commit, the trusted-time worker and the Exhibit backfill refuse to sign an entry when it returns an empty name, so a change here decides whether an entry can name nobody. Added 2026-11-10 (#1332) |
 | `src/main/services/captureStore.ts` | blocking | Owner of capture artifact bytes on disk |
 | `src/main/services/exhibitNumbering.ts` | blocking | Takes the next Exhibit Number from the signed chain (X45), the number new capture and Exhibit entries record and a citation names. Added 2026-10-01; it shipped off the list with #1660 |
 | `src/main/services/exhibitBackfill.ts` | blocking | Startup backfill that appends signed `renumber` and `derivation` entries and anchors each Derived File's `outputHash`. Added 2026-10-01; it shipped off the list |

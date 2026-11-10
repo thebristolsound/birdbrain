@@ -95,7 +95,7 @@ keeps one state comment per head with the findings and rulings.
   builds, CI reads and external/editor observations the reviewer did not perform remain
   unverified. Fleet success does not certify them or waive required CI checks. Never clear or
   reinterpret an older mixed unchecked list. Old records require a fresh source review.
-- **Retry** a head by deleting its state comment. The next sweep claims the head as new, counts
+- **Retry** a head by deleting its state comment. The next plan claims the head as new, counts
   it against the daily cap, runs the passes again and posts a new relay. The earlier relay and
   Codex's rulings on it no longer count.
 - **Controls** are repository variables, changed with `gh variable set <name> --body <value>`:

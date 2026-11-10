@@ -9,7 +9,7 @@ const sha = 'a'.repeat(40)
 const repo = 'thebristolsound/birdbrain'
 
 // Exercise the real readers with read-only API fixtures. Unexpected writes fail the stub.
-function readers(stamps: unknown[]) {
+function readers(stamps: unknown[], enabled = 'true') {
   const dir = mkdtempSync(join(tmpdir(), 'override-readers-'))
   try {
     const gh = join(dir, 'gh')
@@ -44,7 +44,8 @@ console.log(JSON.stringify(result))
     const env = {
       ...process.env,
       PATH: `${dir}:${process.env.PATH}`,
-      STAMPS: JSON.stringify(stamps)
+      STAMPS: JSON.stringify(stamps),
+      REVIEW_FLEET_ENABLED: enabled
     }
     const run = (script: string, args: string[]) =>
       spawnSync(process.execPath, [join(root, '.github/scripts', script), ...args], {
@@ -82,6 +83,23 @@ describe('head-specific override authorization in every reader', () => {
     expect(next.status, next.stderr).toBe(0)
     expect(next.stdout).toContain('next: wait')
     expect(fleet.stdout).toContain('pending (owed a review)')
+  })
+
+  it('reads trusted fleet results and the existing enabled switch from API facts', () => {
+    const fleet = (state: string, description = '') => ({
+      context: 'review/fleet',
+      state,
+      description,
+      creator: { login: 'birdbrain-agent' }
+    })
+    expect(readers([fleet('failure')]).next.stdout).toContain('next: fix')
+    expect(readers([fleet('success')]).next.stdout).toContain('next: merge')
+    expect(
+      readers([fleet('success', 'break-glass applied by the maintainer; no review')]).next.stdout
+    ).toContain('next: wait')
+    const disabled = readers([], 'false')
+    expect(disabled.gate.status).toBe(0)
+    expect(disabled.next.stdout).toContain('next: merge')
   })
 
   it('accepts the override only with its own trusted stamp for this head', () => {

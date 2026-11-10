@@ -19,3 +19,13 @@
   with the documented test-only system sharp environment.
 - Open questions: none. Live fleet success still requires the implementation on trusted main
   and a separately authorized fresh review with complete source inputs.
+
+## Remaining review items
+
+- Completed: corrected the retry actor and requested-review reasons; added actual plan-path
+  coverage for persisting a verification start before the paid handoff and for API-derived
+  fleet status and switch readings.
+- In flight: final locked verification and coordinator handoff. No paid review was started.
+- Next command: `flock /home/matt/worktrees/birdbrain/.preflight.lock mise exec -- pnpm preflight`.
+- Open questions: none. The shell label-guard suite remains separately runnable; its current
+  command cases were executed during this repair.

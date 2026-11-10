@@ -128,7 +128,7 @@ Three facts shaped the design:
 - Codex's reply format cannot be enforced. An answer that rules on nothing fails closed, so
   false reds are expected until the relay's wording settles.
 - A head is reviewed once. To review it again the maintainer deletes its state comment, and the
-  next sweep claims the head as new and counts it against the daily cap. A relay posted before
+  next plan claims the head as new and counts it against the daily cap. A relay posted before
   the new claim, and Codex's rulings on it, no longer count, because finding IDs restart with
   each review.
 - One push costs four Claude passes, a Codex review, and one more Claude pass when Codex finds

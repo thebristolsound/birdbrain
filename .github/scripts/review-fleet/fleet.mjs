@@ -15,7 +15,7 @@
 //   gate <pr>               recompute and post the status
 //   sweep                   recompute every open PR's status; print the PRs owed paid work
 //
-// To review a head again, delete its state comment. The next sweep claims the head as new and
+// To review a head again, delete its state comment. The next plan claims the head as new and
 // counts it against the daily cap: the passes run again and a new relay goes out. The earlier
 // relay and Codex's rulings on it no longer count.
 //

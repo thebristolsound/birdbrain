@@ -352,6 +352,7 @@ describe('Codex', () => {
     expect(parseRulings(['I cannot agree that F1: REFUTED is right; F1 is real'])).toEqual({})
     expect(parseRulings(['As asked:\nF1: CONFIRMED | REFUTED'])).toEqual({})
     expect(parseRulings(['F1: maybe'])).toEqual({})
+    expect(parseRulings(['F1: REFUTED | the guard is at line 3'])).toEqual({ F1: 'REFUTED' })
     expect(
       parseRulings(['- **F1**: REFUTED, the guard is at line 3\n**F2: CONFIRMED**\n  F10: REFUTED'])
     ).toEqual({ F1: 'REFUTED', F2: 'CONFIRMED', F10: 'REFUTED' })
@@ -945,4 +946,113 @@ describe('override stamp workflow', () => {
       }
     }
   )
+})
+
+describe('plan persists verification before handing off paid work', () => {
+  it('writes the start before emitting verify and does not owe a duplicate attempt', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fleet-plan-'))
+    try {
+      const data = join(dir, 'data.json')
+      const saved = join(dir, 'saved.md')
+      const out = join(dir, 'output')
+      const state = reviewed()
+      const comment = {
+        id: 7,
+        user: { login: MACHINE },
+        body: renderState(state, { status: 'pending', description: 'checking' })
+      }
+      const responses = {
+        [`repos/${REPO}/pulls/7`]: [
+          {
+            state: 'open',
+            draft: false,
+            labels: [],
+            user: { login: MAINTAINER },
+            head: { sha: SHA, repo: { full_name: REPO } }
+          }
+        ],
+        [`repos/${REPO}/issues/7/comments?per_page=100`]: [
+          comment,
+          {
+            id: 8,
+            user: { login: MAINTAINER },
+            body: `<!-- ${RELAY_MARK} ${SHA} -->`,
+            created_at: RELAY_AT
+          }
+        ],
+        [`repos/${REPO}/pulls/7/reviews?per_page=100`]: [
+          { user: { login: CODEX }, commit_id: SHA, submitted_at: NOW }
+        ],
+        [`repos/${REPO}/pulls/7/comments?per_page=100`]: [
+          {
+            id: 11,
+            user: { login: CODEX },
+            commit_id: SHA,
+            body: '![P1 Badge](badge) A defect',
+            created_at: NOW
+          }
+        ],
+        [`repos/${REPO}/issues/7/events?per_page=100`]: [],
+        [`repos/${REPO}/commits/${SHA}/statuses?per_page=100`]: []
+      }
+      writeFileSync(data, JSON.stringify(responses))
+      writeFileSync(
+        join(dir, 'gh'),
+        `#!/usr/bin/env node
+const fs = require('node:fs')
+const a = process.argv.slice(2)
+if (a.includes('-X')) {
+  if (a.includes('PATCH')) {
+    if (fs.existsSync(process.env.GITHUB_OUTPUT) && fs.readFileSync(process.env.GITHUB_OUTPUT, 'utf8').includes('action=verify')) throw new Error('paid handoff preceded durable start')
+    fs.writeFileSync(process.env.SAVED, fs.readFileSync(0, 'utf8'))
+  }
+  console.log('{}')
+} else {
+  const path = a.at(-1)
+  const responses = JSON.parse(fs.readFileSync(process.env.DATA, 'utf8'))
+  if (!(path in responses)) throw new Error('unexpected read ' + path)
+  console.log(JSON.stringify([responses[path]]))
+}
+`
+      )
+      chmodSync(join(dir, 'gh'), 0o755)
+      const run = () =>
+        spawnSync(
+          process.execPath,
+          [join(__dirname, '..', '.github/scripts/review-fleet/fleet.mjs'), 'plan', REPO, '7'],
+          {
+            encoding: 'utf8',
+            env: {
+              ...process.env,
+              PATH: `${dir}:${process.env.PATH}`,
+              DATA: data,
+              SAVED: saved,
+              GITHUB_OUTPUT: out,
+              REVIEW_FLEET_ENABLED: 'true'
+            }
+          }
+        )
+      const first = run()
+      expect(first.status, first.stderr).toBe(0)
+      const persisted = readState(
+        [{ ...comment, body: readFileSync(saved, 'utf8') }],
+        MACHINE,
+        SHA
+      ).state
+      expect(persisted.verify).toMatchObject({ for: '11', attempts: 1 })
+      expect(Number.isFinite(Date.parse(persisted.verify.startedAt))).toBe(true)
+      expect(readFileSync(out, 'utf8')).toContain('action=verify')
+      responses[`repos/${REPO}/issues/7/comments?per_page=100`][0].body = readFileSync(
+        saved,
+        'utf8'
+      )
+      writeFileSync(data, JSON.stringify(responses))
+      writeFileSync(out, '')
+      const second = run()
+      expect(second.status, second.stderr).toBe(0)
+      expect(readFileSync(out, 'utf8')).toContain('action=none')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })

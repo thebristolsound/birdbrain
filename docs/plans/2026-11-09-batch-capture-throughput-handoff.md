@@ -11,7 +11,9 @@ asked for the slices to be filed and then built, in a Claude Code session on 202
   consent blocker), #2132 (slice 6, the pool). GitHub dependency edges record the order.
 - **Branches:** one per slice, each cut from the previous slice's branch, so the pull requests
   stack. Slice 1 starts from `origin/main` and carries the design's two commits.
-- **Worktree:** `~/worktrees/birdbrain/scratch/background-jobs-2127`, locked for this session.
+- **Worktrees:** `~/worktrees/birdbrain/scratch/background-jobs-2127` (slices 1 to 4),
+  `background-jobs-2131` (slices 5 and 6) and `bg-jobs-verify` (preflights for slices 1 and 2),
+  all under `~/worktrees/birdbrain/scratch/`.
 
 ## Progress
 
@@ -22,11 +24,11 @@ asked for the slices to be filed and then built, in a Claude Code session on 202
 | 3 | #2129 | `feat/background-jobs-table` | #2141 (draft, base slice 2) | preflight pass at `0165b0b0`, CI green |
 | 4 | #2130 | `feat/background-jobs-controls` | #2146 (draft, base slice 3) | reviewed, fixed, preflight pass at `bb16c930` |
 | 5 | #2131 | `feat/background-jobs-parallel-safe` | #2147 (draft, base slice 4) | preflight pass at `2dcf52b7`; CI rerun after an apt timeout |
-| 6 | #2132 | `feat/background-jobs-pool` | | built at `8336882f`, reviewed; fix round for the restore race in progress |
+| 6 | #2132 | `feat/background-jobs-pool` | #2152 (draft, base slice 5) | reviewed, fixed, preflight pass at `2433ef53` |
 
 ## Next command
 
-Finish slice 6's fix round and preflight in `~/worktrees/birdbrain/scratch/background-jobs-2131`, then open its PR with `--base feat/background-jobs-parallel-safe`.
+All six PRs are open as stacked drafts. Next is maintainer review from the bottom (#2133) up. Slice 5's CI (#2147) failed twice on an apt mirror timeout before any test ran; rerun with `gh run rerun 42756942335 --failed` if it fails again. After a lower PR merges, merge `main` into the next branch up (no rebase) and refresh its Verification block.
 
 ## Decisions taken
 
@@ -59,6 +61,12 @@ Finish slice 6's fix round and preflight in `~/worktrees/birdbrain/scratch/backg
   Record failures at either.
 
 ## Found, not fixed
+
+- `e2e/command-palette-navigation.spec.ts` failed on every local run at slice 6's head
+  (`case-start-step` not found). CI end-to-end passed on slices 1 to 4; slices 5 and 6 change no
+  code on that path. Not diagnosed.
+- A cancel accepted while a link job's source is checked counts as cancelled even if the check
+  then throws and the job ends `failed`.
 
 - PDFs are absent as `failed` on pages that hit the height cap (long-text fixture, the Wikipedia
   Bristol article), at both concurrencies; #2121 notes the same reason conflation.

@@ -348,6 +348,8 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         return
       }
 
+      const operatorName = trimmedOperatorName()
+      if (!operatorName) throw new OperatorNameRequiredError()
       const result = await deps.captureLifecycle.ingest({
         captureId,
         caseId: job.caseId,
@@ -368,7 +370,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         // nothing is written, because there is no redirect to record.
         finalUrl: redirectedFinalUrl(job.url, rendered.finalUrl),
         operatorId: getInstallationId(),
-        operatorName: trimmedOperatorName(),
+        operatorName,
         toolVersion,
         screenshot: rendered.screenshot,
         method: 'background',
@@ -445,7 +447,11 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         error: err instanceof Error ? err.message : String(err)
       })
     } finally {
-      await rendered?.cleanup().catch(() => {})
+      // Ingest can reject before it starts reading, leaving the renderer's file open.
+      rendered?.mhtmlStream.destroy?.()
+      await rendered?.cleanup().catch((err) => {
+        logger.error('backgroundRenderer', 'backgroundRenderer.cleanup_failed', undefined, err)
+      })
     }
   }
 

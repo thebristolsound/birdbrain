@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   createReadStream,
+  unlinkSync,
   existsSync,
   mkdtempSync,
   readdirSync,
@@ -786,6 +787,79 @@ describe('recapture service', () => {
   // A real ReadStream rather than a spy: what leaks is an open fd, and the
   // renderer's cleanup unlinks the temp file without closing it, so an
   // abandoned stream pins the deleted file's blocks (#766).
+  it('closes and unlinks a render accepted before the operator name was cleared', async () => {
+    const tmpFile = join(tempDir, 'held-render.mhtml')
+    writeFileSync(tmpFile, 'held render bytes')
+    const mhtmlStream = createReadStream(tmpFile)
+    await once(mhtmlStream, 'ready')
+    let finish!: (value: RenderedPage) => void
+    const render: RenderPage = () =>
+      new Promise((resolve) => {
+        finish = resolve
+      })
+    const cleanup = vi.fn(async () => {
+      unlinkSync(tmpFile)
+    })
+    const svc = makeService(render)
+    expect(svc.enqueue([{ url: 'https://example.com/held', caseId }]).accepted).toBe(1)
+    updateSettings({ operatorName: '' })
+    finish(
+      await fakeRender({ mhtmlStream, cleanup })(
+        'https://example.com/held',
+        {} as Parameters<RenderPage>[1]
+      )
+    )
+    await svc.idle()
+    expect(events.find((event) => event.type === 'failed')).toMatchObject({
+      error: 'Operator name required'
+    })
+    expect(newCaptures).toEqual([])
+    expect(cleanup).toHaveBeenCalledOnce()
+    expect(existsSync(tmpFile)).toBe(false)
+    expect(mhtmlStream.destroyed).toBe(true)
+    if (!mhtmlStream.closed) await once(mhtmlStream, 'close')
+    expect(mhtmlStream.closed).toBe(true)
+  })
+
+  it('closes an unread stream on ingest errors and reports cleanup errors', async () => {
+    const tmpFile = join(tempDir, 'failed-ingest.mhtml')
+    writeFileSync(tmpFile, 'failed ingest bytes')
+    const mhtmlStream = createReadStream(tmpFile)
+    await once(mhtmlStream, 'ready')
+    const ingestError = new Error('ingest refused before reading')
+    const cleanupError = new Error('cleanup failed')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle })
+    vi.spyOn(lifecycle, 'ingest').mockRejectedValue(ingestError)
+    const logged = vi.spyOn(logger, 'error').mockImplementation(() => 'log-id')
+    const svc = createRecaptureService({
+      renderPage: fakeRender({
+        mhtmlStream,
+        cleanup: async () => {
+          throw cleanupError
+        }
+      }),
+      captureLifecycle: lifecycle,
+      emitEvent: (event) => events.push(event),
+      emitNewCapture: (capture) => newCaptures.push(capture)
+    })
+    svc.enqueue([{ url: 'https://example.com/failed', caseId }])
+    await svc.idle()
+    expect(events.find((event) => event.type === 'failed')).toMatchObject({
+      error: ingestError.message
+    })
+    expect(newCaptures).toEqual([])
+    expect(mhtmlStream.destroyed).toBe(true)
+    if (!mhtmlStream.closed) await once(mhtmlStream, 'close')
+    expect(mhtmlStream.closed).toBe(true)
+    expect(logged).toHaveBeenCalledWith(
+      'backgroundRenderer',
+      'backgroundRenderer.cleanup_failed',
+      undefined,
+      cleanupError
+    )
+    logged.mockRestore()
+  })
+
   it('releases the rendered stream when the redirect is blocked', async () => {
     setAutoCapturePolicy(caseId, { exclusions: ['blocked.example'], mode: 'stack' })
     const tmpFile = join(tempDir, 'rendered.mhtml')

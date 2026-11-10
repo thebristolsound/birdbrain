@@ -95,7 +95,8 @@ keeps one state comment per head with the findings and rulings.
   source work. Missing issues or referenced review text fail before the paid call. Every
   `github.com` issue or pull request link and every `comment <number>` pointer in the
   description, and in each source fetched from it, counts as referenced review text. A link to another repository fails, because the pass
-  reads only this one, and so does a linked issue, comment or review with an empty body. An
+  reads only this one, and so do a comment link with a malformed anchor and a linked issue,
+  comment or review with an empty body. An
   unfinished caller, race, fixture or count trace still fails; do not call it a runtime limit.
 - **Runtime limitations** appear separately in the saved record and public report. Tests,
   builds, CI reads and external/editor observations the reviewer did not perform remain

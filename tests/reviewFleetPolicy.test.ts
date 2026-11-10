@@ -177,6 +177,38 @@ describe('source contract preparation before the paid call', () => {
     expect(seen).toEqual([`repos/${repo}/pulls/comments/3726451446`])
   })
 
+  it('reads the comment a link ends a sentence with', () => {
+    const seen: string[] = []
+    prepareInputs(
+      { body: `See https://github.com/${repo}/pull/9#issuecomment-123456789.` },
+      repo,
+      (path: string) => {
+        seen.push(path)
+        return { body: 'Review text.' }
+      }
+    )
+    expect(seen).toEqual([`repos/${repo}/issues/comments/123456789`])
+  })
+
+  // A link that names a comment it cannot identify must not read as the pull request instead.
+  it.each(['discussion_r-123', 'issuecomment123', 'pullrequestreview456', 'issuecomment-'])(
+    'fails a comment link whose anchor is malformed: #%s',
+    (anchor) => {
+      const seen: string[] = []
+      expect(() =>
+        prepareInputs(
+          { body: `Contract: https://github.com/${repo}/pull/9#${anchor}` },
+          repo,
+          (path: string) => {
+            seen.push(path)
+            return { body: 'The pull request description.' }
+          }
+        )
+      ).toThrow('malformed source link')
+      expect(seen).toEqual([])
+    }
+  )
+
   it('reads a link that spells this repository in another letter case', () => {
     const seen: string[] = []
     prepareInputs(

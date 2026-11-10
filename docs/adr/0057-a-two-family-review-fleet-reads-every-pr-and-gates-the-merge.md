@@ -81,9 +81,9 @@ Three facts shaped the design:
    Unrelated unchanged modules are outside the assignment. Missing source inputs, unfinished
    traces and malformed required output still fail. A referenced review contract is every
    `github.com` issue or pull request link, and every `comment <number>` pointer, in the
-   description and in each source fetched from it. A link to another repository, or to an
-   issue, comment or review with an empty body, is a missing source input: the pass fails
-   before the paid call.
+   description and in each source fetched from it. A link to another repository, a comment
+   link with a malformed anchor, or a link to an issue, comment or review with an empty body,
+   is a missing source input: the pass fails before the paid call.
 
    New schema version 2 outputs attest source completion with `source_review_complete`, keep
    unfinished source checks in `not_checked`, and record prohibited or unperformed runtime and

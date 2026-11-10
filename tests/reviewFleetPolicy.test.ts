@@ -281,6 +281,27 @@ describe('source contract preparation before the paid call', () => {
     expect(reads(`${link}/9/files,${link}/10/files#r5`)).toEqual(['pulls/9', 'pulls/comments/5'])
   })
 
+  // A short number after the word is prose ("comment 3"), and reading it would fail on a 404.
+  it('reads a comment-number pointer only from eight digits up', () => {
+    expect(reads('See comment 3 and comment 1234567, then comment 12345678.')).toEqual([
+      'issues/comments/12345678'
+    ])
+  })
+
+  it('stops at the thirtieth source instead of reading without limit', () => {
+    const closes = (n: number) =>
+      `Closes ${Array.from({ length: n }, (_, i) => `#${i + 1}`).join(', ')}`
+    expect(reads(closes(30))).toHaveLength(30)
+    const seen: string[] = []
+    expect(() =>
+      prepareInputs({ body: closes(31) }, repo, (path: string) => {
+        seen.push(path)
+        return { body: 'The source contract.' }
+      })
+    ).toThrow('too many referenced source contracts')
+    expect(seen).toHaveLength(30)
+  })
+
   it('reads a link that spells this repository in another letter case', () => {
     const seen: string[] = []
     prepareInputs(

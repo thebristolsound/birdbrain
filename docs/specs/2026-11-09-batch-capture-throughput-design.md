@@ -2,8 +2,9 @@
 
 **Date:** 2026-11-09
 
-**Status:** Draft, grilled with the maintainer on 2026-11-09; awaiting maintainer review. Nothing
-in it is implemented.
+**Status:** Draft, grilled with the maintainer on 2026-11-09; awaiting maintainer review. All six
+slices are built on stacked draft pull requests (#2133, #2135, #2141, #2146, #2147 and #2152), none
+merged yet.
 
 **Frame of reference:** `origin/main` at `c1ed8ed8`. This spec cites code by symbol, per
 [`docs/README.md`](../README.md). The measured figures come from one batch on 2026-11-09 and from

@@ -865,6 +865,11 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
       title: 'No text',
       timestamp: '2026-04-05T12:00:00.000Z',
       stream: Readable.from([Buffer.from(MHTML_BODY)]) as unknown as ReadableStream<Uint8Array>,
+      textContent: '',
+      headers: {},
+      browserVersion: 'Chrome/120',
+      userAgent: 'Mozilla/5.0',
+      httpStatus: 200,
       operatorId: 'op-source',
       operatorName: 'Original Operator',
       toolVersion: '0.1.0'

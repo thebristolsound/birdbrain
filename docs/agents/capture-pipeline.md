@@ -418,11 +418,22 @@ to the list without a refetch.
   the request ends, best-effort in two independent halves that report a failure to the operator
   rather than swallowing it, so a failed teardown — or a process killed mid-run — can leave the
   case row, the temporary directory, or both. A leftover case is named
-  `Birdbrain pipeline self-test (temporary)` and is safe to delete like any other; until it is
-  deleted, its sentinel capture verifies as missing, because a capture row's files are resolved
-  against the configured storage root and the sandbox's files were never written there. Because
-  the sandbox root is a temporary directory, a green result does not prove the configured storage
-  volume is writable.
+  `Birdbrain pipeline self-test (temporary)`; until it is deleted, its sentinel capture verifies
+  as missing, because a capture row's files are resolved against the configured storage root and
+  the sandbox's files were never written there. Because the sandbox root is a temporary
+  directory, a green result does not prove the configured storage volume is writable.
+- **Sandbox residue** (`isPipelineSelfTestResidue`, `sweepPipelineSelfTestResidue` in
+  `src/main/services/pipelineSelfTest.ts`): a case counts as residue only when it has the sandbox
+  name, every capture row in it has the sentinel URL, and it has no directory under the
+  configured storage root, where the sandbox never writes. While the self-test runs, the sandbox
+  is an ordinary case that the capture server's routes accept, so a client holding the token
+  can upload into it. Teardown checks the case first, and when the check fails it keeps the case
+  and its temporary directory and logs `captureServer.self_test_sandbox_kept` at warn, rather than
+  deleting the upload with the case. At startup, after the storage root is set and before the
+  demo seed and the capture server, a sweep deletes each unarchived case that passes the check,
+  with the temporary directory holding its files, and logs it at info. A case with the sandbox
+  name that fails the check is kept and logged at info. No route hides the sandbox from any
+  listing.
 - **Test HTTP** (`captures:testHttp` IPC): a `fetch` of `GET /api/status` from the main process,
   proving the listener independently of the extension.
 

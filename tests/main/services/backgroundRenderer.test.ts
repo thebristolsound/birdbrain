@@ -2068,7 +2068,9 @@ describe('renderPageInHiddenWindow', () => {
     }
     // The tracker's first call on the session throws once the blocker is enabled.
     consentBlocker.enableBlockingInSession.mockImplementation(() => {
-      const { session } = ctl.lastWindow!.webContents
+      const session = ctl.lastWindow!.webContents.session as {
+        webRequest: { onSendHeaders: ReturnType<typeof vi.fn> }
+      }
       session.webRequest.onSendHeaders.mockImplementation(() => {
         throw new Error('tracker broke')
       })

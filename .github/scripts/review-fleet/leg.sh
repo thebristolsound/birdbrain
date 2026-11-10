@@ -6,9 +6,11 @@
 # REVIEW_FLEET_EFFORT, OUT, and GH_TOKEN, the job's read-only token.
 #
 # The session runs in the PR's tree with only user settings loaded (--setting-sources user), so
-# a PR's own .claude/ settings and hooks never load next to the credential. It may read files and
-# run read-only git commands, and nothing else. No file is written: the answer comes back as
-# structured output, checked against the pass's schema.
+# a PR's own .claude/ settings and hooks never load next to the credential. It may read, grep and
+# glob files, and nothing else. It gets no shell, not even git: `git diff --no-index` can print
+# the process environment and `--output` writes files. The diff, commits and issue come in as
+# files instead. No file is written: the answer comes back as structured output, checked against
+# the pass's schema.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -61,7 +63,7 @@ claude -p "$prompt" \
   --setting-sources user \
   --add-dir "$in" \
   --permission-mode dontAsk \
-  --allowedTools 'Read' 'Grep' 'Glob' 'Bash(git log:*)' 'Bash(git show:*)' 'Bash(git diff:*)' 'Bash(git blame:*)' \
+  --allowedTools 'Read' 'Grep' 'Glob' \
   --strict-mcp-config --mcp-config '{"mcpServers":{}}' \
   --json-schema "$(cat "$schema")" \
   --output-format stream-json --verbose \

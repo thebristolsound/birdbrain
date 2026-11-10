@@ -624,13 +624,24 @@ describe('settings', () => {
     expect(settings.ignoredUrlPatterns).toEqual(['*.google.com', '*.bing.com'])
   })
 
-  // #724. Known answers for the global list's edit seam: the same grammar
-  // validateIgnorePattern applies to the per-case list.
-  describe('a new ignored URL pattern validateIgnorePattern refuses', () => {
+  // #724. Known answers for the global list's edit seam: the grammar
+  // validateIgnorePattern applies to the per-case list, plus surrounding
+  // whitespace, which validateIgnorePattern trims and matchIgnoredUrl does not.
+  describe('a new ignored URL pattern the matcher cannot use', () => {
     it.each([
       ['an uncompilable regex', '/[/', 'ignoredUrlPatterns.1: Invalid regular expression'],
       ['a URL path read as a regex with bad flags', '/some/path', 'ignoredUrlPatterns.1: '],
-      ['an empty pattern', '', 'ignoredUrlPatterns.1: Pattern is empty']
+      ['an empty pattern', '', 'ignoredUrlPatterns.1: Pattern is empty'],
+      [
+        'a regex with a trailing space',
+        '/example/ ',
+        'ignoredUrlPatterns.1: Pattern has leading or trailing whitespace'
+      ],
+      [
+        'a substring with a leading space',
+        ' example.com',
+        'ignoredUrlPatterns.1: Pattern has leading or trailing whitespace'
+      ]
     ])('refuses %s and keeps the stored list', (_name, pattern, message) => {
       updateSettings({ ignoredUrlPatterns: ['a.com'] })
       const before = readFileSync(settingsFile, 'utf-8')

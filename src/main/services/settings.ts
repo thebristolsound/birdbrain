@@ -310,16 +310,21 @@ export function updateSettings(partial: Partial<BirdbrainSettings>): BirdbrainSe
 }
 
 // The global ignore list gets the per-case list's check (#724; see validateIgnorePattern for
-// why), applied only to patterns the stored list does not already hold. A pattern stored
-// before the check is kept, and exempting it is what lets a list holding several be edited
-// at all: every removal but the last leaves one in the list.
+// why), plus surrounding whitespace, which validateIgnorePattern trims and matchIgnoredUrl
+// does not. It applies only to patterns the stored list does not already hold. A pattern
+// stored before the check is kept, and exempting it is what lets a list holding several be
+// edited at all: every removal but the last leaves one in the list.
 function refusedIgnorePatterns(patterns: string[] | undefined): string[] {
   if (!patterns) return []
   const stored = new Set(getSettings().ignoredUrlPatterns)
   return patterns.flatMap((pattern, i) => {
     if (stored.has(pattern)) return []
     const result = validateIgnorePattern(pattern)
-    return result.ok ? [] : [`ignoredUrlPatterns.${i}: ${result.reason}`]
+    if (!result.ok) return [`ignoredUrlPatterns.${i}: ${result.reason}`]
+    if (pattern !== pattern.trim()) {
+      return [`ignoredUrlPatterns.${i}: Pattern has leading or trailing whitespace`]
+    }
+    return []
   })
 }
 

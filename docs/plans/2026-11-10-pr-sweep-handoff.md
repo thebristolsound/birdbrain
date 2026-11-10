@@ -100,3 +100,10 @@ The survey did not resolve the product questions inside existing reviews. Restat
 - Corrected the description's claim that progress text moved into the hover title: the text appears in both places. The screenshot comment and the description with uploaded URLs passed their format checks.
 - The description records passing core CI and targeted checks, while expressly recording failed merge and fleet gates. Its blocked verification record is manual; regenerate the standard CI verification block with `verification-from-ci.sh 2159` once all required checks pass. Do not treat the manual record as a completed preflight.
 - Next, obtain the full current-head review of pull request 2159. Its failed fleet status remains a separate merge blocker.
+
+## Logging merge-gate notification
+
+- Inspected [merge-gate run 42891827389](https://github.com/thebristolsound/birdbrain/actions/runs/42891827389/job/130094757225) after its failure notification. It refused the unchanged `5edd154ce905` head because the fleet was pending at the time.
+- The [fleet workflow](https://github.com/thebristolsound/birdbrain/actions/runs/42891824721) has now completed successfully as a workflow, but the machine account posted a failed `review/fleet` status: all four Claude passes reported unchecked work. A successful workflow is not a successful review.
+- Direct status reads confirm that `agent/pre-pass` and the maintainer approval stamp succeeded at the same head. The evidence approval label remains present. The failed fleet result still prevents merging; another merge-gate run cannot satisfy that missing result.
+- The existing fleet-repair review is the next dependency for this failure. No gate override or paid rerun was attempted. The pull request remains watched for further changes.

@@ -73,6 +73,15 @@ describe('responseFactsForCapture (#797)', () => {
     expect(responseFactsForCapture(cached, 'https://user:pw@example.test/page')).toEqual(expected)
   })
 
+  it('canonicalizes the cached URL too, not only the captured one (#1008)', () => {
+    // The cache holds the raw webRequest URL, which may itself be non-canonical.
+    const slashed = { url: 'https://example.test/docs/', headers: { server: 'nginx' }, status: 200 }
+    expect(responseFactsForCapture(slashed, 'https://example.test/docs/#intro')).toEqual({
+      headers: { server: 'nginx' },
+      httpStatus: 200
+    })
+  })
+
   it('still hands over nothing for a genuinely different URL (#1008)', () => {
     expect(responseFactsForCapture(cached, 'https://example.test/page?q=1#section')).toEqual({})
     expect(responseFactsForCapture(cached, 'http://example.test/page')).toEqual({})

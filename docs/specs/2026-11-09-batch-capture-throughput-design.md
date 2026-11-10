@@ -3,7 +3,7 @@
 **Date:** 2026-11-09
 
 **Status:** Draft, grilled with the maintainer on 2026-11-09; awaiting maintainer review. Slices 1
-to 5 are built on stacked pull requests, none merged yet; slice 6 is not built.
+to 6 are built on stacked pull requests, none merged yet.
 
 **Frame of reference:** `origin/main` at `c1ed8ed8`. This spec cites code by symbol, per
 [`docs/README.md`](../README.md). The measured figures come from one batch on 2026-11-09 and from
@@ -382,6 +382,36 @@ Reasons for 2 rather than more:
   unless `UV_THREADPOOL_SIZE` changes it.
 - **The #2121 bounds are wall-clock.** See the next section.
 
+Slice 6 built the pool with these choices:
+
+- **The site is worked out at claim time**, not stored with the row. A slot skips a queued row
+  whose site matches one of the jobs this process is running, and claims the first row that does
+  not, in one transaction. The running set comes from the process rather than the rows, because a
+  restore can replace the rows while a render goes on. No column is added, so a database already
+  at version 46 needs nothing more. `tldts` reads the public suffix list's ICANN section only, so
+  `a.github.io` and `b.github.io` share one site.
+- **The memory floor holds only a second job.** The first job of an idle queue always starts, as a
+  single worker's would; otherwise a machine with less than 1.5 GiB available would never capture
+  in the background. A held slot looks again every 2 s and whenever a running job ends. On Linux,
+  `os.freemem()` under the bundled Node 24.22 returns MemAvailable, which counts reclaimable page
+  cache, not MemFree.
+
+Slice 6 ran the comparison on 2026-11-09 on the built app, on a machine with 18 logical CPUs. Each
+pair ran back to back, once with 1 first and once with 2 first. The 1-minute load average stayed
+under 3 during every run.
+
+| Batch | Workers | Wall time, first start to last end | Stored / failed / skipped | Transaction Record `failed` |
+| --- | --- | --- | --- | --- |
+| 10 local fixture pages | 1 | 54.9 s, 54.8 s | 10 / 0 / 0 | 0 of 10 |
+| 10 local fixture pages | 2 | 31.2 s, 31.2 s | 10 / 0 / 0 | 0 of 10 |
+| 20 public pages on 20 sites | 1 | 218.4 s, 215.8 s | 20 / 0 / 0 | 0 of 20 |
+| 20 public pages on 20 sites | 2 | 110.7 s, 110.1 s | 20 / 0 / 0 | 0 of 20 |
+
+Two workers took 57% of the serial wall time on the fixture batch and 51% on the public batch,
+inside the two-thirds goal, and each job took within 1.5 s of its serial time. No Transaction
+Record was absent as `failed` in either run, so the default stays the formula. With no failures at
+either concurrency, the runs cannot show a small rise in the rate; the per-job logging from slice 1
+is what would show one in use.
 
 #### Effect on the #2121 time bounds
 

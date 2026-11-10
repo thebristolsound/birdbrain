@@ -20,6 +20,7 @@ import {
   jobSite
 } from '@main/services/backgroundJobPool'
 import {
+  RESTORE_REMOVED_CAPTURE_ERROR,
   RESTORE_REMOVED_JOB_ERROR,
   RecaptureCancelled,
   createRecaptureService,
@@ -630,6 +631,54 @@ describe('the background job pool', () => {
       const ends = events.filter(({ jobId, type }) => jobId === id && type === 'failed')
       expect(ends).toHaveLength(1)
       expect(ends[0].error).not.toBe(RESTORE_REMOVED_JOB_ERROR)
+    })
+
+    // The restore lands after the ingest committed the Capture, while the job's cleanup runs.
+    it('ends failed a job whose Capture the restored copy lacks, though its ingest stored it', async () => {
+      const warn = vi.spyOn(logger, 'warn')
+      let releaseCleanup: () => void = () => {}
+      const cleanupHeld = new Promise<void>((resolve) => (releaseCleanup = resolve))
+      let cleaning = false
+      const svc = makeService(async (url) => ({
+        ...page(url),
+        cleanup: () => {
+          cleaning = true
+          return cleanupHeld
+        }
+      }))
+      getDb().exec(`VACUUM INTO '${backup}'`)
+      const {
+        jobIds: [id]
+      } = svc.enqueue([{ url: 'https://example.com/a', caseId }])
+      await vi.waitFor(() => expect(cleaning).toBe(true))
+      const [{ id: captureId }] = listCaptures(caseId)
+
+      const before = svc.beginRestore()
+      closeDatabase()
+      copyFileSync(backup, dbPath)
+      await initDatabase(dbPath)
+      svc.finishRestore(before)
+      expect(stateOf(id)).toBe('running')
+      expect(listCaptures(caseId)).toEqual([])
+
+      releaseCleanup()
+      await svc.idle()
+      const row = backgroundJobRepo.getJob(id)!
+      expect(row).toMatchObject({
+        state: 'failed',
+        failureKind: 'interrupted',
+        error: RESTORE_REMOVED_CAPTURE_ERROR
+      })
+      expect(row).not.toHaveProperty('captureId')
+      expect(
+        warn.mock.calls.filter(([, code]) => code === 'backgroundRenderer.job_failed')
+      ).toEqual([
+        [
+          'backgroundRenderer',
+          'backgroundRenderer.job_failed',
+          { captureId, caseId, failureKind: 'interrupted' }
+        ]
+      ])
     })
   })
 })

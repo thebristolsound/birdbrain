@@ -172,7 +172,10 @@ describe('useSelectorFilters', () => {
     expect(notify.error).toHaveBeenCalledTimes(1)
     expect(notify.error).toHaveBeenCalledWith(
       "Couldn't apply the selector filter.",
-      expect.objectContaining({ code: 'query.failed' })
+      expect.objectContaining({
+        code: 'query.failed',
+        cause: expect.objectContaining({ message: 'boom' })
+      })
     )
   })
 

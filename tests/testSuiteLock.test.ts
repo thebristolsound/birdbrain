@@ -19,6 +19,7 @@ import {
   HELD_ENV,
   LOCK_NAME,
   MAX_AGE_MS,
+  POLL_ENV,
   OWNERLESS_GRACE_MS,
   REAP_STALE_MS,
   acquire,
@@ -40,6 +41,7 @@ const NODE_ENV = { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
 const alive = () => true
 const noProc = () => null
 const ON_LINUX = process.platform === 'linux'
+const ON_WINDOWS = process.platform === 'win32'
 const base = (pid: number) => ({ pid, cwd: '/w' })
 
 // The pid of a process that has exited, so the real liveness check reports it gone.
@@ -506,6 +508,51 @@ describe('the command line', () => {
       `setTimeout(() => { ${probe(lock)} }, 200)`
     )
     expect(status).toBe(7)
+    expect(existsSync(lock)).toBe(false)
+  })
+
+  it.skipIf(ON_WINDOWS)('releases the lock and stops the command on SIGTERM', async () => {
+    git(root, 'init', '-q')
+    const lock = join(root, '.git', LOCK_NAME)
+    const wrapper = start(root, unheld(), 'setInterval(() => {}, 1000)')
+    await until(() => Number.isInteger(readOwner(lock)?.childPid), 'the command to be recorded')
+    const { childPid } = readOwner(lock)
+    wrapper.child.kill('SIGTERM')
+    expect(await wrapper.closed).toBe(1)
+    expect(existsSync(lock)).toBe(false)
+    await until(() => !isAlive(childPid), 'the command to stop')
+  })
+
+  it('waits for a live lock, says so, and starts only when the first run ends', async () => {
+    git(root, 'init', '-q')
+    const lock = join(root, '.git', LOCK_NAME)
+    const [go, order] = [join(root, 'go'), join(root, 'order')].map((path) => JSON.stringify(path))
+    const env = { ...unheld(), [POLL_ENV]: '20' }
+    const first = start(
+      root,
+      env,
+      `const fs = require('fs')
+      const timer = setInterval(() => {
+        if (!fs.existsSync(${go})) return
+        fs.appendFileSync(${order}, 'first ended\\n')
+        clearInterval(timer)
+      }, 10)`
+    )
+    await until(() => readOwner(lock)?.pid === first.child.pid, 'the first run to take the lock')
+    const second = start(root, env, `require('fs').appendFileSync(${order}, 'second started\\n')`)
+    await until(
+      () => second.stderr.includes('if that process is not a test run'),
+      'the wait message'
+    )
+    expect(second.stderr).toContain(
+      `another full test run is using this clone; waiting for the run in ${root} (process ${first.child.pid},`
+    )
+    expect(existsSync(join(root, 'order'))).toBe(false)
+    writeFileSync(join(root, 'go'), '')
+    expect(await first.closed).toBe(0)
+    expect(await second.closed).toBe(0)
+    expect(readFileSync(join(root, 'order'), 'utf8')).toBe('first ended\nsecond started\n')
+    expect(second.stderr).toContain('lock acquired; starting')
     expect(existsSync(lock)).toBe(false)
   })
 

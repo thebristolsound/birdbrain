@@ -45,6 +45,8 @@ export const MAX_AGE_MS = 60 * 60_000
 export const OWNERLESS_GRACE_MS = 30_000
 // Clearing a stale lock takes milliseconds, so a reap lock this old belongs to a dead waiter.
 export const REAP_STALE_MS = 10_000
+// Milliseconds between attempts while waiting, for the tests; the default is five seconds.
+export const POLL_ENV = 'BIRDBRAIN_TEST_SUITE_LOCK_POLL_MS'
 const OWNER_FILE = 'owner.json'
 
 const log = (message) => process.stderr.write(`test-suite-lock: ${message}\n`)
@@ -326,7 +328,8 @@ const main = async () => {
     pidNs: pidNamespace(),
     cwd
   }
-  const owner = dir && !nested ? await acquire(dir, self) : null
+  const pollMs = Number(process.env[POLL_ENV]) || undefined
+  const owner = dir && !nested ? await acquire(dir, self, { pollMs }) : null
   const unlock = () => owner && release(dir, owner)
   process.on('exit', unlock)
 

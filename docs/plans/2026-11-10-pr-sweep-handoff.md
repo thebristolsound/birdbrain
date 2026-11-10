@@ -13,7 +13,7 @@
 ## Next assignments
 
 - Review the existing fleet repair on pull request 2160 and determine why otherwise successful fleet runs report incomplete work. The release-note review has returned; see the checkpoint below.
-- Review the latest background-job logging changes on pull request 2133 against its earlier findings.
+- Review the grouped dependency update on pull request 2136 after its description and evidence label corrections. The logging review has returned; see the checkpoint below.
 - Supply the missing before and after images, check the top bar layout, and correct the description on pull request 2159.
 - The coordinator posts comments and body updates; delegated agents return files.
 
@@ -83,3 +83,11 @@ The survey did not resolve the product questions inside existing reviews. Restat
 - Posted the [description correction](https://github.com/thebristolsound/birdbrain/pull/2157#issuecomment-6777879574). No branch files changed.
 - Kept `agent/pre-pass` failed because the separate fleet check remains failed. Its passes report incomplete work even though the workflow jobs succeeded. The reviewer found the four blocking stale-count findings corrected in the current description; this does not satisfy the fleet gate.
 - Next, review pull request 2160, the existing fleet-repair change. Determine whether its fixes address the incomplete-review results, and identify the supported retry path. Preserve the gate while investigating.
+
+## Logging review checkpoint
+
+- The [logging review](https://github.com/thebristolsound/birdbrain/pull/2133#issuecomment-6777939300) found only description blockers at `5edd154ce905`. The five touched test files passed all 406 tests; both logging-order regression tests reject the previous implementation. Its merge trial against `00184202` was clean.
+- Narrowed the Changes and Evidence impact cleanup claims to failed-render logging, described the stored-job log test separately, and updated the attribution. Summary corrections: none. The body and both comment checks passed.
+- Posted the [correction record](https://github.com/thebristolsound/birdbrain/pull/2133#issuecomment-6777960654) and set `agent/pre-pass` to success for the unchanged head. Marked the pull request ready for review and applied the authorized evidence approval label at that head. Its required fleet review must complete before merge.
+- Read issue 2127 directly. Its first acceptance criterion asks for the job's URL host in logs, while this change expressly omits hosts under the existing redaction policy. If merging closes the issue, reopen it with this remaining requirement, as the sweep skill directs. Do not add host logging during this sweep.
+- Next, review pull request 2136's corrected description and evidence gate. Its earlier change request concerned those surfaces, not a demonstrated code defect.

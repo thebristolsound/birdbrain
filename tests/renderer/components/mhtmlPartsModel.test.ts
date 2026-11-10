@@ -11,6 +11,7 @@ import {
   partsBanners,
   refusalSentence,
   showValue,
+  UNANCHORED_PARTS_CAPTION,
   type ListedParts
 } from '@renderer/components/data/mhtmlPartsModel'
 
@@ -205,6 +206,12 @@ describe('the table labels', () => {
   it('states that only the whole file is anchored', () => {
     expect(PARTS_CAPTION).toBe(
       "Only the whole MHTML file is anchored in the manifest, and Verify checks it against its Content Hash. Each part's SHA-256 is computed now, over the part's bytes as stored before transfer decoding, and is not anchored."
+    )
+  })
+
+  it('states that an unanchored file anchors nothing, and names no Verify', () => {
+    expect(UNANCHORED_PARTS_CAPTION).toBe(
+      "This MHTML file has no Manifest Entry (unanchored), so neither the file nor its parts are anchored. Each part's SHA-256 is computed now, over the part's bytes as stored before transfer decoding."
     )
   })
 

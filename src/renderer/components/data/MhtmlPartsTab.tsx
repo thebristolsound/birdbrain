@@ -15,11 +15,14 @@ import {
   partsBanners,
   refusalSentence,
   showValue,
+  UNANCHORED_PARTS_CAPTION,
   type ListedParts
 } from '@renderer/components/data/mhtmlPartsModel'
 
 interface MhtmlPartsTabProps {
   listing: MhtmlPartsListing | null
+  // Whether the Capture's Exhibit has a Manifest Entry, so the caption never claims one it lacks.
+  anchored: boolean
   onCopy: (value: string, label: string) => void
 }
 
@@ -180,9 +183,11 @@ function PartRow({
 
 function Listed({
   listing,
+  anchored,
   onCopy
 }: {
   listing: ListedParts
+  anchored: boolean
   onCopy: (value: string, label: string) => void
 }) {
   return (
@@ -229,7 +234,7 @@ function Listed({
         className="mx-0.5 mt-2.5 text-[11px] leading-relaxed text-text-faint"
         data-testid="mhtml-parts-caption"
       >
-        {PARTS_CAPTION}
+        {anchored ? PARTS_CAPTION : UNANCHORED_PARTS_CAPTION}
       </p>
     </div>
   )
@@ -241,11 +246,11 @@ function Listed({
  * its bytes have no Manifest Entry of their own (ADR-0023). The Content-Location is text and
  * never a link, so nothing here navigates to a captured address.
  */
-export function MhtmlPartsTab({ listing, onCopy }: MhtmlPartsTabProps) {
+export function MhtmlPartsTab({ listing, anchored, onCopy }: MhtmlPartsTabProps) {
   if (listing === null) return <Stated reason="none">{NO_STORED_MHTML}</Stated>
   if (listing.status === 'refused') {
     const { refusal } = listing
     return <Stated reason={refusal.reason}>{refusalSentence(refusal)}</Stated>
   }
-  return <Listed listing={listing} onCopy={onCopy} />
+  return <Listed listing={listing} anchored={anchored} onCopy={onCopy} />
 }

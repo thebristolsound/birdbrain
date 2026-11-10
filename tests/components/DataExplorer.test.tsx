@@ -15,6 +15,7 @@ vi.mock('@renderer/lib/notify', () => ({
 }))
 
 import { DataExplorer } from '@renderer/components/dashboard/cases/DataExplorer'
+import { UNANCHORED_PARTS_CAPTION } from '@renderer/components/data/mhtmlPartsModel'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { queryClient as appQueryClient } from '@renderer/lib/queryClient'
 import { fakeBridge } from '../renderer/fakeBridge'
@@ -660,6 +661,20 @@ describe('DataExplorer MHTML Parts tab (#991)', () => {
     )
     await stripTabs(['Properties'])
     expect(listMhtmlParts).not.toHaveBeenCalledWith('cap-legacy')
+  })
+
+  it('says nothing is anchored for an MHTML Capture the row shows as unanchored', async () => {
+    stub()
+    window.birdbrain.captures.list = vi.fn(async () =>
+      STORED.map((capture) => ({ ...capture, format: 'mhtml' as const }))
+    )
+    renderExplorer()
+    fireEvent.click(await screen.findByTestId('artifact-row-cap-legacy'))
+    await waitFor(() =>
+      expect(text(screen.getByTestId('artifact-tabs-subtitle'))).toBe('Exhibit 2 / raw')
+    )
+    await stripTabs(['MHTML Parts', 'Properties'])
+    expect(text(await screen.findByTestId('mhtml-parts-caption'))).toBe(UNANCHORED_PARTS_CAPTION)
   })
 
   it('with extracted text, leads with the text and reads the parts only when picked', async () => {

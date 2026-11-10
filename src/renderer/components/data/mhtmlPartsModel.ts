@@ -30,6 +30,12 @@ export const PARTS_CAPTION =
   "Content Hash. Each part's SHA-256 is computed now, over the part's bytes as stored before " +
   'transfer decoding, and is not anchored.'
 
+// For a Capture whose Exhibit has no Manifest Entry, which the Data table badges unanchored.
+export const UNANCHORED_PARTS_CAPTION =
+  'This MHTML file has no Manifest Entry (unanchored), so neither the file nor its parts are ' +
+  "anchored. Each part's SHA-256 is computed now, over the part's bytes as stored before " +
+  'transfer decoding.'
+
 export const NO_STORED_MHTML = 'This row has no stored MHTML to read.'
 
 export const COPY_LABELS = {

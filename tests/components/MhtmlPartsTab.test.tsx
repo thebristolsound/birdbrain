@@ -6,7 +6,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, within } from '@testing-library/react'
 import type { MhtmlPartRow, MhtmlPartsListing, MhtmlPartsRefusal } from '@shared/types'
 import { MhtmlPartsTab } from '@renderer/components/data/MhtmlPartsTab'
-import { PARTS_CAPTION } from '@renderer/components/data/mhtmlPartsModel'
+import { PARTS_CAPTION, UNANCHORED_PARTS_CAPTION } from '@renderer/components/data/mhtmlPartsModel'
 
 afterEach(() => cleanup())
 
@@ -83,9 +83,11 @@ function listed(overrides: Partial<Extract<MhtmlPartsListing, { status: 'listed'
   return listing
 }
 
-function renderTab(listing: MhtmlPartsListing | null) {
+function renderTab(listing: MhtmlPartsListing | null, anchored = true) {
   const onCopy = vi.fn()
-  const { container } = render(<MhtmlPartsTab listing={listing} onCopy={onCopy} />)
+  const { container } = render(
+    <MhtmlPartsTab listing={listing} anchored={anchored} onCopy={onCopy} />
+  )
   return { onCopy, container }
 }
 
@@ -124,6 +126,14 @@ describe('MhtmlPartsTab, listed', () => {
     const all = text(screen.getByTestId('mhtml-parts-listed'))
     expect(all.replace(text(caption), '')).not.toMatch(/verif/i)
     expect(text(caption).match(/verif\w*/gi)).toEqual(['Verify'])
+    expect(container.querySelector('svg[class*="shield"]')).toBeNull()
+  })
+
+  it('says nothing is anchored when the Capture has no Manifest Entry', () => {
+    const { container } = renderTab(listed(), false)
+    const caption = text(screen.getByTestId('mhtml-parts-caption'))
+    expect(caption).toBe(UNANCHORED_PARTS_CAPTION)
+    expect(text(screen.getByTestId('mhtml-parts-listed'))).not.toMatch(/verif/i)
     expect(container.querySelector('svg[class*="shield"]')).toBeNull()
   })
 

@@ -134,7 +134,7 @@ function ReadFailed({
 
 // Mounted only while its tab shows, so the archive is read when the tab is shown and again on
 // every later showing, never on a row click alone (#991).
-function MhtmlPartsRead({ captureId }: { captureId: string }) {
+function MhtmlPartsRead({ captureId, anchored }: { captureId: string; anchored: boolean }) {
   const { data, isPending, isError, error, refetch } = useQuery(
     captureMhtmlPartsQueryOptions(captureId)
   )
@@ -144,7 +144,13 @@ function MhtmlPartsRead({ captureId }: { captureId: string }) {
   if (isPending) {
     return <p className="p-4 text-xs text-text-muted">Reading the stored MHTML…</p>
   }
-  return <MhtmlPartsTab listing={data} onCopy={(value, label) => void copyValue(value, label)} />
+  return (
+    <MhtmlPartsTab
+      listing={data}
+      anchored={anchored}
+      onCopy={(value, label) => void copyValue(value, label)}
+    />
+  )
 }
 
 export function DataExplorer() {
@@ -533,7 +539,13 @@ export function DataExplorer() {
         id: 'parts',
         label: 'MHTML Parts',
         hint: PARTS_TAB_HINT,
-        content: <MhtmlPartsRead key={selectedCapture.id} captureId={selectedCapture.id} />
+        content: (
+          <MhtmlPartsRead
+            key={selectedCapture.id}
+            captureId={selectedCapture.id}
+            anchored={selectedRow.rowType === 'anchored' && selectedRow.anchored}
+          />
+        )
       })
     }
     if (selectedCapture && hasHeadersOrTls(selectedCapture)) {

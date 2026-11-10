@@ -82,10 +82,19 @@ keeps one state comment per head with the findings and rulings.
 
 - **Red** means a blocking finding the other family confirmed, a pass that did not finish, Codex
   not answering within the timeout, a finding Codex did not rule on, or a blocking Codex finding
-  the Claude check ruled unclear. Push a fix, or apply `break-glass` to merge over it.
+  the Claude check ruled unclear. Push a fix, or apply `break-glass` to merge over it. The
+  override also needs its dedicated workflow-token stamp on the exact head.
 - **Pending** means a pass is running, Codex has not answered yet, or the daily cap is holding
   the head. A sweep every 15 minutes times out what Codex never answered and restarts work whose
   event was dropped.
+- **Source completion** requires every assigned source check and input under ADR-0057. New
+  outputs use contract version 2, `source_review_complete`, and `not_checked` for unfinished
+  source work. Missing issues or referenced review text fail before the paid call. An
+  unfinished caller, race, fixture or count trace still fails; do not call it a runtime limit.
+- **Runtime limitations** appear separately in the saved record and public report. Tests,
+  builds, CI reads and external/editor observations the reviewer did not perform remain
+  unverified. Fleet success does not certify them or waive required CI checks. Never clear or
+  reinterpret an older mixed unchecked list. Old records require a fresh source review.
 - **Retry** a head by deleting its state comment. The next sweep claims the head as new, counts
   it against the daily cap, runs the passes again and posts a new relay. The earlier relay and
   Codex's rulings on it no longer count.

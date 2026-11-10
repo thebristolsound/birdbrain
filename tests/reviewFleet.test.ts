@@ -39,7 +39,13 @@ const NOW = '2026-11-10T12:00:00Z'
 const RELAY_AT = '2026-11-10T11:30:00Z'
 const WORKFLOWS = join(__dirname, '..', '.github', 'workflows')
 
-const pass = (findings: unknown[] = []) => ({ findings, not_checked: [] as string[] })
+const sourceContract = {
+  contract_version: 2,
+  source_review_complete: true,
+  runtime_limitations: [] as string[],
+  not_checked: [] as string[]
+}
+const pass = (findings: unknown[] = []) => ({ ...sourceContract, findings })
 const allDone = Object.fromEntries(FINDER_LEGS.map((l: string) => [l, pass([])]))
 const blocking = {
   severity: 'BLOCKING',
@@ -193,11 +199,11 @@ describe('state comments', () => {
     }
   )
 
-  it('reads no state from a comment that does not end with the state marker', () => {
+  it('fails a recognized saved report whose last-line state is unreadable', () => {
     const trailing = `${body}\nappended text`
-    expect(
-      readState([{ id: 7, user: { login: MACHINE }, body: trailing }], MACHINE, SHA)
-    ).toBeNull()
+    const found = readState([{ id: 7, user: { login: MACHINE }, body: trailing }], MACHINE, SHA)
+    expect(found?.state.invalid).toBe(true)
+    expect(decide(facts({ state: found.state })).status).toBe('failure')
   })
 
   it('stays under the comment limit with the most and longest findings the record holds', () => {
@@ -232,7 +238,7 @@ describe('mergeFinders', () => {
   it('numbers findings across the passes and marks a pass with no output failed', () => {
     const state = reviewed({
       correctness: pass([blocking]),
-      claims: pass([{ ...blocking, severity: 'whatever' }]),
+      claims: pass([{ ...blocking, severity: 'NON-BLOCKING' }]),
       contract: null,
       tests: { notFindings: true }
     })
@@ -253,7 +259,7 @@ describe('mergeFinders', () => {
   it('marks a pass that lists unchecked work incomplete, and one with no list failed', () => {
     const state = reviewed({
       ...allDone,
-      correctness: { findings: [], not_checked: ['Could not read the diff'] },
+      correctness: { ...sourceContract, findings: [], not_checked: ['Could not read the diff'] },
       claims: { findings: [] }
     })
     expect(state.claude.legs).toMatchObject({ correctness: 'incomplete', claims: 'failed' })
@@ -478,7 +484,10 @@ describe('decide', () => {
   })
 
   it('fails a pass that reported work it did not check', () => {
-    const state = reviewed({ ...allDone, tests: { findings: [], not_checked: ['no diff'] } })
+    const state = reviewed({
+      ...allDone,
+      tests: { ...sourceContract, findings: [], not_checked: ['no diff'] }
+    })
     expect(decide(facts({ state }))).toMatchObject({
       status: 'failure',
       description: 'a Claude pass reported work it did not check: tests'
@@ -600,14 +609,14 @@ describe('decide', () => {
   })
 
   it('fails when the Claude check of Codex left a finding without a ruling', () => {
-    const empty = mergeVerify(reviewed(), { rulings: [] }, [11, 12])
+    const empty = mergeVerify(reviewed(), { ...sourceContract, rulings: [] }, [11, 12])
     expect(decide(facts({ state: empty, codexFindings: [p1, p2] }))).toMatchObject({
       status: 'failure',
       owed: null
     })
     const partial = mergeVerify(
       reviewed(),
-      { rulings: [{ id: 11, ruling: 'REFUTED', reason: 'r' }] },
+      { ...sourceContract, rulings: [{ id: 11, ruling: 'REFUTED', reason: 'r' }] },
       [11, 12]
     )
     expect(partial.claudeVerify[11].ruling).toBe('REFUTED')
@@ -622,6 +631,7 @@ describe('decide', () => {
       mergeVerify(
         reviewed(),
         {
+          ...sourceContract,
           rulings: [
             { id: 11, ruling, reason: 'r' },
             { id: 12, ruling, reason: 'r' }
@@ -644,22 +654,23 @@ describe('decide', () => {
     expect(undecided.description).not.toContain('refuted')
     const p2unclear = mergeVerify(
       reviewed(),
-      { rulings: [{ id: 12, ruling: 'UNCLEAR', reason: 'r' }] },
+      { ...sourceContract, rulings: [{ id: 12, ruling: 'UNCLEAR', reason: 'r' }] },
       [12]
     )
     expect(decide(facts({ state: p2unclear, codexFindings: [p2] })).status).toBe('success')
     const p2only = mergeVerify(
       reviewed(),
-      { rulings: [{ id: 12, ruling: 'CONFIRMED', reason: 'r' }] },
+      { ...sourceContract, rulings: [{ id: 12, ruling: 'CONFIRMED', reason: 'r' }] },
       [12]
     )
     expect(decide(facts({ state: p2only, codexFindings: [p2] })).status).toBe('success')
   })
 
-  it('ignores rulings on ids it did not ask about and unknown ruling words', () => {
+  it('fails malformed rulings instead of coercing them into a completed review', () => {
     const state = mergeVerify(
       reviewed(),
       {
+        ...sourceContract,
         rulings: [
           { id: 99, ruling: 'CONFIRMED' },
           { id: 11, ruling: 'MAYBE' }
@@ -667,7 +678,8 @@ describe('decide', () => {
       },
       [11]
     )
-    expect(state.claudeVerify).toEqual({})
+    expect(state.verifyFailedFor).toBe('11')
+    expect(state.claudeVerify).toBeUndefined()
   })
 
   it('keeps every description within the status limit', () => {
@@ -764,9 +776,9 @@ describe.skipIf(!HAS_JQ)('leg.sh inputs', () => {
   const LEG = join(__dirname, '..', '.github', 'scripts', 'review-fleet', 'leg.sh')
   const GH = `#!/usr/bin/env bash
 set -euo pipefail
-if [ "$1 $2" = "issue view" ]; then
+if [ "$1" = api ]; then
   [ "$ISSUE_EXIT" = 0 ] || { echo "stub gh: HTTP 502" >&2; exit "$ISSUE_EXIT"; }
-  printf '# The contract\\n\\nDo the thing.\\n'
+  printf '%s\\n' '{"title":"The contract","body":"Do the thing."}'
   exit 0
 fi
 [ "$1 $2" = "pr view" ] || { echo "stub gh: unsupported $*" >&2; exit 2; }
@@ -775,9 +787,10 @@ jq "$expr" "$PR_JSON"
 `
   const CLAUDE = `#!/usr/bin/env bash
 printf '%s' "$2" > "$PROMPT_OUT"
-echo '{"type":"result","structured_output":{"findings":[],"not_checked":[]}}'
+echo '{"type":"result","structured_output":{"contract_version":2,"source_review_complete":true,"findings":[],"not_checked":[],"runtime_limitations":[]}}'
+exit "$CLAUDE_EXIT"
 `
-  const leg = (body: string | null, issueExit = 0) => {
+  const leg = (body: string | null, issueExit = 0, claudeExit = 0) => {
     const dir = mkdtempSync(join(tmpdir(), 'fleet-leg-'))
     try {
       for (const [name, text] of [
@@ -823,12 +836,14 @@ echo '{"type":"result","structured_output":{"findings":[],"not_checked":[]}}'
           GITHUB_STEP_SUMMARY: join(dir, 'summary'),
           PR_JSON: join(dir, 'pr.json'),
           PROMPT_OUT: join(dir, 'prompt'),
-          ISSUE_EXIT: String(issueExit)
+          ISSUE_EXIT: String(issueExit),
+          CLAUDE_EXIT: String(claudeExit)
         }
       })
       const prompted = existsSync(join(dir, 'prompt'))
       return {
         status: result.status,
+        outputExists: existsSync(join(dir, 'out', 'findings.json')),
         stderr: result.stderr,
         prompt: prompted ? readFileSync(join(dir, 'prompt'), 'utf8') : null
       }
@@ -837,26 +852,47 @@ echo '{"type":"result","structured_output":{"findings":[],"not_checked":[]}}'
     }
   }
 
-  it.each([[''], [null], ['No closing line.\n\nMore.']])(
-    'runs the pass with no issue listed when the PR body is %j',
+  it.each(['', null])(
+    'fails before the paid call when the body has no source contract: %j',
     (body) => {
       const r = leg(body)
-      expect(r.status, r.stderr).toBe(0)
-      expect(r.prompt).toContain('pr.json')
-      expect(r.prompt).not.toContain('issue.md')
+      expect(r.status).toBe(1)
+      expect(r.stderr).toContain('PR has no source contract')
+      expect(r.prompt).toBeNull()
     }
   )
+
+  it('runs without an issue when the PR body supplies the contract', () => {
+    const r = leg('No closing line.\n\nDo the thing.')
+    expect(r.status, r.stderr).toBe(0)
+    expect(r.prompt).toContain('pr.json')
+    expect(r.prompt).toContain('sources.json')
+  })
 
   it('lists the issue the PR closes as an input', () => {
     const r = leg('Closes #12\n\nSummary.')
     expect(r.status, r.stderr).toBe(0)
-    expect(r.prompt).toContain('issue.md`: the issue the PR closes.')
+    expect(r.prompt).toContain('sources.json')
+  })
+
+  it('rejects a failed model process even when it prints structured output', () => {
+    const r = leg('No issue: source contract.', 0, 1)
+    expect(r.status).toBe(1)
+    expect(r.outputExists).toBe(false)
+    expect(r.stderr).toContain('claude exited 1')
+  })
+
+  it('fails before the paid call when referenced review text cannot be read', () => {
+    const r = leg(`Contract: https://github.com/${REPO}/pull/9#issuecomment-123456789`, 1)
+    expect(r.status).toBe(1)
+    expect(r.prompt).toBeNull()
+    expect(r.stderr).toContain('HTTP 502')
   })
 
   it('fails the pass before the paid call when the issue cannot be read', () => {
     const r = leg('Closes #12\n\nSummary.', 1)
     expect(r.status).toBe(1)
-    expect(r.stderr).toContain('could not read issue #12')
+    expect(r.stderr).toContain('HTTP 502')
     expect(r.prompt).toBeNull()
   })
 })

@@ -26,6 +26,7 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { breakGlassAuthorized, lastLabeler } from '../merge/gate.mjs'
+import { validOutput } from './output.mjs'
 
 export const CODEX = 'chatgpt-codex-connector[bot]'
 export const CONTEXT = 'review/fleet'
@@ -92,12 +93,22 @@ const STATE_RE = new RegExp(`^<!-- ${STATE_MARK} (\\{.*\\}) -->$`, 's')
 export function readState(comments, machine, sha) {
   for (const c of [...comments].reverse()) {
     if (c.user?.login !== machine) continue
+    const unreadable = () =>
+      (c.body ?? '').startsWith('**Review fleet:') &&
+      (c.body ?? '').split('\n')[0].includes(`at \`${sha.slice(0, 12)}\``)
+        ? { id: c.id, body: c.body, state: { sha, invalid: true } }
+        : null
     const m = STATE_RE.exec((c.body ?? '').trimEnd().split(/\r?\n/).pop())
-    if (!m) continue
+    if (!m) {
+      if (unreadable()) return unreadable()
+      continue
+    }
     let state
     try {
       state = JSON.parse(m[1])
+      if (!state || typeof state !== 'object') throw new Error('invalid state')
     } catch {
+      if (unreadable()) return unreadable()
       continue
     }
     if (state.sha === sha) return { id: c.id, body: c.body, state }
@@ -217,6 +228,13 @@ export function codexTexts({ reviews, comments, reviewComments }, sha, after) {
   ]
 }
 
+const stringList = (value) => Array.isArray(value) && value.every((x) => typeof x === 'string')
+const listMap = (value) =>
+  value &&
+  typeof value === 'object' &&
+  !Array.isArray(value) &&
+  Object.values(value).every(stringList)
+
 const minutesSince = (at, now) => (Date.parse(now) - Date.parse(at)) / 60000
 
 // The whole decision. Missing input is its own failure: a pass that did not report, Codex never
@@ -232,7 +250,27 @@ export function decide(f) {
   })
   if (f.breakGlass) return out('success', BREAK_GLASS_DESCRIPTION)
   if (!state) return out('pending', 'owed a review', 'review')
+  if (
+    state.invalid ||
+    state.v !== 1 ||
+    !/^[a-f0-9]{40}$/.test(state.sha ?? '') ||
+    !Number.isFinite(Date.parse(state.startedAt))
+  )
+    return out('failure', 'the saved review state is unreadable')
+  if (state.claude && state.claude.contractVersion !== 2)
+    return out('failure', 'the saved review needs a new completed source review')
+  if (
+    (state.claude &&
+      (!Array.isArray(state.claude.findings) ||
+        !listMap(state.claude.runtimeLimitations) ||
+        (state.claude.notChecked !== undefined && !listMap(state.claude.notChecked)))) ||
+    (state.verifyRuntimeLimitations !== undefined && !stringList(state.verifyRuntimeLimitations)) ||
+    (state.verifyNotChecked !== undefined && !stringList(state.verifyNotChecked))
+  )
+    return out('failure', 'the saved source review is malformed')
   const legs = state.claude?.legs ?? {}
+  if (state.claude && Object.keys(legs).length === 0)
+    return out('failure', 'the saved source review has no pass results')
   if (Object.keys(legs).length === 0) {
     if (minutesSince(state.startedAt, now) > CLAUDE_TIMEOUT_MINUTES) {
       return out('failure', 'the Claude passes started and never reported')
@@ -413,6 +451,22 @@ function renderBody(state, verdict, extra, details) {
         ].join('\n')
       : '',
     '',
+    '<details><summary>Runtime limitations, not verified</summary>',
+    '',
+    ...Object.entries(state.claude?.runtimeLimitations ?? {}).flatMap(([leg, limits]) =>
+      limits.map((text) => `- ${leg}: ${inert(text)}`)
+    ),
+    ...(state.verifyRuntimeLimitations ?? []).map((text) => `- verify-codex: ${inert(text)}`),
+    '</details>',
+    '',
+    '<details><summary>Unfinished source review</summary>',
+    '',
+    ...Object.entries(state.claude?.notChecked ?? {}).flatMap(([leg, items]) =>
+      items.map((text) => `- ${leg}: ${inert(text)}`)
+    ),
+    ...(state.verifyNotChecked ?? []).map((text) => `- verify-codex: ${inert(text)}`),
+    '</details>',
+    '',
     state.claude?.dropped
       ? `The record holds ${MAX_FINDINGS} findings; ${state.claude.dropped} non-blocking finding(s) were left out.`
       : '',
@@ -442,16 +496,18 @@ function renderBody(state, verdict, extra, details) {
 export function mergeFinders(state, outputs) {
   const legs = {}
   const notChecked = {}
+  const runtimeLimitations = {}
   const all = []
   for (const leg of FINDER_LEGS) {
     const o = outputs[leg]
-    if (!o || !Array.isArray(o.findings) || !Array.isArray(o.not_checked)) {
+    if (!validOutput('findings', o)) {
       legs[leg] = 'failed'
       continue
     }
-    const skipped = o.not_checked.map((x) => String(x).slice(0, 300)).filter((x) => x.trim())
-    legs[leg] = skipped.length ? 'incomplete' : 'done'
-    if (skipped.length) notChecked[leg] = skipped.slice(0, 5)
+    const skipped = o.not_checked
+    legs[leg] = skipped.length || !o.source_review_complete ? 'incomplete' : 'done'
+    if (skipped.length) notChecked[leg] = skipped
+    runtimeLimitations[leg] = o.runtime_limitations
     for (const x of o.findings) {
       all.push({
         leg,
@@ -467,7 +523,7 @@ export function mergeFinders(state, outputs) {
   const blocking = all.filter((x) => x.severity === 'BLOCKING')
   const ordered = [...blocking, ...all.filter((x) => x.severity !== 'BLOCKING')]
   const findings = ordered.slice(0, MAX_FINDINGS).map((x, i) => ({ id: `F${i + 1}`, ...x }))
-  const claude = { legs, findings }
+  const claude = { contractVersion: 2, legs, findings, runtimeLimitations }
   if (Object.keys(notChecked).length) claude.notChecked = notChecked
   if (ordered.length > MAX_FINDINGS) claude.dropped = ordered.length - MAX_FINDINGS
   if (blocking.length > MAX_FINDINGS) claude.droppedBlocking = blocking.length - MAX_FINDINGS
@@ -482,7 +538,14 @@ export function startVerify(state, ids, now) {
 }
 
 export function mergeVerify(state, output, ids) {
-  if (!output || !Array.isArray(output.rulings)) return { ...state, verifyFailedFor: ids.join(',') }
+  if (!validOutput('rulings', output)) return { ...state, verifyFailedFor: ids.join(',') }
+  state = {
+    ...state,
+    verifyRuntimeLimitations: output.runtime_limitations,
+    verifyNotChecked: output.not_checked
+  }
+  if (!output.source_review_complete || output.not_checked.length)
+    return { ...state, verifyFailedFor: ids.join(',') }
   const claudeVerify = { ...(state.claudeVerify ?? {}) }
   for (const r of output.rulings) {
     if (!ids.includes(r.id)) continue
@@ -491,7 +554,12 @@ export function mergeVerify(state, output, ids) {
   }
   // A ruling the pass left out is a failed check, not a reason to start another paid pass.
   const missing = ids.filter((id) => !claudeVerify[id])
-  return { ...state, claudeVerify, verifyFailedFor: missing.length ? ids.join(',') : undefined }
+  return {
+    ...state,
+    claudeVerify,
+    verifyRuntimeLimitations: output.runtime_limitations,
+    verifyFailedFor: missing.length ? ids.join(',') : undefined
+  }
 }
 
 // --- I/O ---------------------------------------------------------------------------------
@@ -590,7 +658,7 @@ function publish(repo, n, g, state, verdict) {
   const same = g.status?.state === verdict.status && g.status?.description === verdict.description
   if (!same) postStatus(repo, g.sha, verdict)
   if (!same && verdict.status === 'success') rerunRedGates(repo, g.sha)
-  if (!g.found) return
+  if (!g.found || state?.invalid) return
   const body = renderState(state, verdict, g)
   if (body !== g.found.body) writeComment(repo, n, g.found.id, body)
 }

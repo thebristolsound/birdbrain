@@ -8,3 +8,14 @@
 - Next command: `mise exec -- pnpm test tests/reviewFleet.test.ts` after policy regressions.
 - Open questions: none. The maintainer authorized completed source review with runtime
   limitations reported separately and existing required CI gates retained.
+
+## Source review contract implemented
+
+- Completed: versioned source-completion output, strict aggregation validation, visible runtime
+  limitations, source-contract fetching, and failure on unreadable saved reports.
+- Existing mixed unchecked records stay failed; no state was deleted or converted.
+- In flight: final committed-head verification, then a fast-forward push to the existing PR.
+- Next command: `flock /home/matt/worktrees/birdbrain/.preflight.lock mise exec -- pnpm preflight`
+  with the documented test-only system sharp environment.
+- Open questions: none. Live fleet success still requires the implementation on trusted main
+  and a separately authorized fresh review with complete source inputs.

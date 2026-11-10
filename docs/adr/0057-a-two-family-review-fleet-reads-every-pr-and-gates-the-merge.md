@@ -56,8 +56,8 @@ Three facts shaped the design:
    one head.
 5. **The script decides.** `review/fleet` is `failure` on a blocking finding the other family
    confirmed (Claude's `BLOCKING`, Codex's P0 and P1), and, because missing input fails, on a
-   pass that did not finish or listed work it did not check, a relay never posted, Codex not
-   answering within the timeout, a relayed finding Codex did not rule on, a Codex finding the
+   pass that did not finish its assigned source review or listed unfinished source work, a relay
+   never posted, Codex not answering within the timeout, a relayed finding Codex did not rule on, a Codex finding the
    Claude check left unruled, or a P0 or P1 Codex finding the Claude check ruled unclear: an
    undecided finding was not checked, so it is never counted as refuted. Rulings count only
    from Codex text tied to the head. It is `success` otherwise. `merge-gate` requires it at
@@ -69,6 +69,26 @@ Three facts shaped the design:
    token on the exact head. The label event stamps its event head, never a later head.
    `merge-on-label.yml` removes the label on every push and fails on removal errors; even a
    failed removal cannot authorize a later commit. Evidence approval is a separate stamp.
+   On 2026-11-10 the maintainer narrowed completeness to assigned source review. Each pass
+   reads the complete diff, PR title/body/commits, trusted rules, all closed issues and
+   referenced review contracts, plus the repository documents those rules require for the
+   changed areas. Correctness traces changed behavior through callers, guards, error paths
+   and races; claims checks each changed assertion against source; contract checks the diff
+   against its source contracts and applicable rules; tests checks changed assertions against
+   the behavior they claim and identifies changed behavior without a meaningful regression.
+   Unrelated unchanged modules are outside the assignment. Missing source inputs, unfinished
+   traces and malformed required output still fail.
+
+   New schema version 2 outputs attest source completion with `source_review_complete`, keep
+   unfinished source checks in `not_checked`, and record prohibited or unperformed runtime and
+   external checks separately in `runtime_limitations`. The saved state and public report
+   retain those limitations as unverified, including the Claude check of Codex. Runtime limits
+   do not satisfy source questions or turn an unclear ruling into a refutation. Required CI
+   gates remain unchanged; fleet success certifies completed source review only. Aggregation
+   validates required fields again and rejects old outputs. Old saved records and mixed
+   unchecked lists are not converted, filtered or cleared to make them pass. A fresh review
+   under the trusted implementation and new contract is required.
+
 6. **Spend.** Claude runs on the existing `CLAUDE_CODE_OAUTH_TOKEN` and Codex on the
    maintainer's ChatGPT plan; nothing bills per token. The maintainer asked for no hard cap for
    now, controllable without a PR. The limits are repository variables: `REVIEW_FLEET_ENABLED`

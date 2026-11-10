@@ -34,15 +34,8 @@ git -C "$PR_DIR" diff "$base" HEAD > "$in/diff.patch"
 gh pr view "$PR" -R "$R" --json title,body,commits \
   --jq '{title, body, commits: [.commits[] | {oid, messageHeadline, messageBody}]}' > "$in/pr.json"
 cp "$here/../../../CLAUDE.md" "$in/rules.md"
-# The linked issue, when line 1 of the body closes one. An empty body has no line 1.
-issue="$(jq -r '(.body // "") | (split("\n")[0] // "") | capture("^Closes #(?<n>[0-9]+)").n // empty' "$in/pr.json")"
-if [ -n "$issue" ]; then
-  # The issue is the contract the pass reads the PR against. An issue that cannot be read
-  # fails the pass here, before the paid call: an empty file would read as an empty contract.
-  gh issue view "$issue" -R "$R" --json title,body --jq '"# \(.title)\n\n\(.body)"' > "$in/issue.md" \
-    && [ -s "$in/issue.md" ] \
-    || { echo "could not read issue #$issue, which the PR closes" >&2; exit 1; }
-fi
+# Required issues and explicitly referenced review contracts are fetched before paid work.
+node "$here/inputs.mjs" "$R" "$in"
 if [ "$leg" = verify-codex ]; then
   node "$here/fleet.mjs" codex-findings "$R" "$PR" "$SHA" > "$in/codex.json"
 fi
@@ -55,7 +48,7 @@ prompt="$(cat "$here/prompts/common.md" "$prompt_file")
 - \`$in/diff.patch\`: the diff from the merge base with \`main\` to the head.
 - \`$in/pr.json\`: the title, body and commits.
 - \`$in/rules.md\`: this repository's \`CLAUDE.md\` from \`main\`.
-$( [ -f "$in/issue.md" ] && echo "- \`$in/issue.md\`: the issue the PR closes." || true )
+- \`$in/sources.json\`: all closed issues and referenced review contracts; read every entry.
 $( [ -f "$in/codex.json" ] && echo "- \`$in/codex.json\`: Codex's findings, the claims you check." || true )"
 
 cd "$PR_DIR"
@@ -77,6 +70,7 @@ set -e
 scrub "$OUT/transcript.jsonl"
 scrub "$OUT/claude.err"
 strip_spend "$OUT/transcript.jsonl"
+[ "$status" -eq 0 ] || { echo "pass $leg failed (claude exited $status)" >&2; exit 1; }
 
 jq -R -c 'fromjson? | select(type == "object" and .type == "result") | .structured_output // empty' \
   "$OUT/transcript.jsonl" | tail -n 1 > "$OUT/findings.json.tmp" || true
@@ -94,5 +88,7 @@ fi
   echo "## Review fleet: $leg (#$PR at ${SHA:0:8})"
   echo
   jq -r 'if .findings then (.findings[] | "- \(.severity): \(.plain)")
-    else (.rulings[] | "- \(.id): \(.ruling) - \(.reason)") end' "$OUT/findings.json"
+    else (.rulings[] | "- \(.id): \(.ruling) - \(.reason)") end,
+    ("### Runtime limitations (not verified)"), (.runtime_limitations[]? | "- \(.)"),
+    ("### Unfinished source review"), (.not_checked[]? | "- \(.)")' "$OUT/findings.json"
 } >> "${GITHUB_STEP_SUMMARY:-/dev/stdout}"

@@ -178,7 +178,7 @@
     "react-konva": "^19.3.2",
     "react-markdown": "^10.1.0",
     "react-resizable-panels": "^4.17.0",
-    "sharp": "^0.35.5",
+    "sharp": "0.35.5",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
     "tldts": "^7.4.19",

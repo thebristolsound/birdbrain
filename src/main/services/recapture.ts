@@ -402,7 +402,20 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     deps.emitEvent({ ...event, jobId, batchId, ...(linkedFrom ? { linkedFrom } : {}) })
   }
 
-  const emitJob = (view: BackgroundJobView): void => deps.emitJob?.(view)
+  // A view the window cannot take is logged and dropped: the job's row and render go on, and a
+  // throw here would otherwise reach the IPC call that queued the job, or end its worker slot.
+  function emitJob(view: BackgroundJobView): void {
+    try {
+      deps.emitJob?.(view)
+    } catch (err) {
+      logger.warn(
+        'backgroundRenderer',
+        'backgroundRenderer.job_view_failed',
+        { caseId: ident(view.caseId) },
+        err
+      )
+    }
+  }
 
   // The phase is progress, not the job's end, so a row the database cannot take, as while a
   // restore has it closed, does not end the render; `finishJob` records the end. The first such
@@ -835,8 +848,9 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       } finally {
         runs.delete(claimed.jobId)
       }
+      drain()
     })()
-      .then(drain, (err: unknown) => {
+      .catch((err: unknown) => {
         logger.error('backgroundRenderer', 'backgroundRenderer.job_queue_failed', undefined, err)
       })
       .finally(() => {

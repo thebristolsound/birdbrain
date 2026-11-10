@@ -30,14 +30,15 @@ const SEEN_LIMIT = 200
 // row at every launch and the operator has no action to take on it, so the
 // replay would raise the same toast at every start. A failed Background Job
 // already shows in the capture activity feed through its `failed` event, and a
-// job whose progress could not be recorded goes on and ends as it would have.
+// job whose progress could not be recorded or shown goes on and ends as it would have.
 const LOG_ONLY: ReadonlySet<LogCode> = new Set<LogCode>([
   'ipc.request_refused',
   'ipc.request_threw',
   'exhibits.path_unrepaired',
   'staging.path_unrepaired',
   'backgroundRenderer.job_failed',
-  'backgroundRenderer.job_phase_failed'
+  'backgroundRenderer.job_phase_failed',
+  'backgroundRenderer.job_view_failed'
 ])
 
 export function subscribeToMainLog(): () => void {

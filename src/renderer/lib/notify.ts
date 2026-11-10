@@ -190,6 +190,7 @@ const CODE_LABELS: Record<LogCode, string> = {
   'backgroundRenderer.job_phase_failed': "Couldn't record a background capture's progress",
   'backgroundRenderer.job_queue_failed': 'Background captures stopped',
   'backgroundRenderer.job_memory_held': 'A background capture is waiting for free memory',
+  'backgroundRenderer.job_view_failed': "Couldn't show a background capture's state",
   'consentBlocker.filter_engine_failed': "Couldn't load the cookie-notice filter lists",
   'selectorLifecycle.retroactive_match_failed':
     "Couldn't match the new selector against existing captures",

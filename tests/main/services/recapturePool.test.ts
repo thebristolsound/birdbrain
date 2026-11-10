@@ -12,6 +12,7 @@ import { initInstallationId, resetInstallationId } from '@main/services/installa
 import { initSettings, updateSettings } from '@main/services/settings'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
+import type { BackgroundJobView } from '@shared/ipc'
 import {
   MEMORY_GATE_RETRY_MS,
   MIN_FREE_MEMORY_BYTES,
@@ -125,13 +126,22 @@ describe('the background job pool', () => {
 
   function makeService(
     renderPage: RenderPage,
-    { concurrency = 2, freeMemory = () => PLENTY } = {}
+    {
+      concurrency = 2,
+      freeMemory = () => PLENTY,
+      emitJob
+    }: {
+      concurrency?: number
+      freeMemory?: () => number
+      emitJob?: (job: BackgroundJobView) => void
+    } = {}
   ) {
     return createRecaptureService({
       renderPage,
       captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
       emitEvent: () => {},
       emitNewCapture: () => {},
+      emitJob,
       timeoutMs: 45_000,
       concurrency,
       freeMemory
@@ -295,6 +305,35 @@ describe('the background job pool', () => {
     finish('https://example.com/a')
     finish('https://example.org/b')
     await svc.idle()
+  })
+
+  it('logs a job view the window cannot take, and runs the job to its end', async () => {
+    const warn = vi.spyOn(logger, 'warn')
+    const { renderPage, rendering, finish } = heldRenders()
+    const emitJob = vi.fn((view: BackgroundJobView) => {
+      if (view.state === 'running') throw new Error('window gone')
+    })
+    const svc = makeService(renderPage, { emitJob })
+    let enqueued: ReturnType<typeof svc.enqueue> | undefined
+    expect(() => {
+      enqueued = svc.enqueue([{ url: 'https://example.com/a', caseId }])
+    }).not.toThrow()
+    expect(rendering).toEqual(['https://example.com/a'])
+    finish('https://example.com/a')
+    await svc.idle()
+
+    expect(stateOf(enqueued!.jobIds[0])).toBe('stored')
+    expect(emitJob.mock.calls.at(-1)?.[0]).toMatchObject({ state: 'stored' })
+    const lines = warn.mock.calls.filter(
+      ([, code]) => code === 'backgroundRenderer.job_view_failed'
+    )
+    expect(lines.length).toBeGreaterThan(0)
+    expect(lines[0]).toEqual([
+      'backgroundRenderer',
+      'backgroundRenderer.job_view_failed',
+      { caseId },
+      expect.any(Error)
+    ])
   })
 
   it('cancels both running jobs of a Batch, and retries both', async () => {

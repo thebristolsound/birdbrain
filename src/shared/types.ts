@@ -1026,6 +1026,8 @@ export const LOG_CODES = [
   // A queued job waits to start beside a running one because free memory is under the floor
   // (`bytes` free, `count` running). Logged once each time the floor begins to hold one.
   'backgroundRenderer.job_memory_held',
+  // A job's view could not be sent to the window. The job goes on, and its row keeps its state.
+  'backgroundRenderer.job_view_failed',
   'consentBlocker.filter_engine_failed',
   'selectorLifecycle.retroactive_match_failed',
   'serverToken.token_invalid',

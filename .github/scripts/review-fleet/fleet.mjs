@@ -68,13 +68,15 @@ export function eligible(pr, { maintainer, machine, repo }) {
   return { ok: true, why: '' }
 }
 
-const STATE_RE = new RegExp(`<!-- ${STATE_MARK} (\\{.*?\\}) -->`, 's')
+const STATE_RE = new RegExp(`^<!-- ${STATE_MARK} (\\{.*\\}) -->$`)
 
-// The newest state comment the machine account posted for this head, or null.
+// The newest state comment the machine account posted for this head, or null. The state is the
+// comment's last line, which the renderer writes itself after every model-written string, so a
+// marker quoted in a finding is never read as the record.
 export function readState(comments, machine, sha) {
   for (const c of [...comments].reverse()) {
     if (c.user?.login !== machine) continue
-    const m = STATE_RE.exec(c.body ?? '')
+    const m = STATE_RE.exec((c.body ?? '').trimEnd().split(/\r?\n/).pop())
     if (!m) continue
     let state
     try {
@@ -300,14 +302,21 @@ export function relayBody(state, sha) {
   return redact(lines.join('\n'))
 }
 
+// Model-written text as the comments print it: an HTML comment opener is spelled out, so the
+// text can neither hide what follows it nor pass for one of the fleet's markers.
+const inert = (s) => String(s ?? '').replace(/<!--/g, '&lt;!--')
+
 function cell(s) {
-  return String(s ?? '')
-    .replace(/\|/g, '\\|')
-    .replace(/\s+/g, ' ')
-    .slice(0, 300)
+  return inert(
+    String(s ?? '')
+      .replace(/\|/g, '\\|')
+      .replace(/\s+/g, ' ')
+      .slice(0, 300)
+  )
 }
 
-// < and > are escaped, so no model-written text can end the HTML comment that carries the state.
+// < and > are escaped inside the state's own JSON, so no string in it can end the HTML comment
+// that carries it. Text outside the JSON is a separate matter: see readState and inert.
 const stateJson = (state) => JSON.stringify(state).replace(/</g, '\\u003c').replace(/>/g, '\\u003e')
 
 export function renderState(state, verdict, extra = {}) {
@@ -358,7 +367,7 @@ function renderBody(state, verdict, extra, details) {
           '',
           ...(state.claude?.findings ?? []).map(
             (x) =>
-              `**${x.id}** (${x.leg}, ${x.severity}) \`${x.file}${x.line ? `:${x.line}` : ''}\`: ${x.detail}${x.failure_scenario ? ` Failure scenario: ${x.failure_scenario}` : ''}`.slice(
+              `**${x.id}** (${x.leg}, ${x.severity}) \`${inert(x.file)}${x.line ? `:${x.line}` : ''}\`: ${inert(x.detail)}${x.failure_scenario ? ` Failure scenario: ${inert(x.failure_scenario)}` : ''}`.slice(
                 0,
                 2500
               ) + '\n'

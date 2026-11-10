@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["findings", "not_checked"],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "file", "line", "plain", "detail", "failure_scenario"],
+        "properties": {
+          "severity": { "type": "string", "enum": ["BLOCKING", "NON-BLOCKING"] },
+          "file": { "type": "string" },
+          "line": { "type": "integer" },
+          "plain": { "type": "string" },
+          "detail": { "type": "string" },
+          "failure_scenario": { "type": "string" }
+        }
+      }
+    },
+    "not_checked": { "type": "array", "items": { "type": "string" } }
+  }
+}

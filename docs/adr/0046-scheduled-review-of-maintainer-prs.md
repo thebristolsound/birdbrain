@@ -14,6 +14,10 @@ merge flow of [ADR-0041](0041-merges-are-requested-by-label.md).
 one-hour wait and the other-reviewer rule. The spend cap is unchanged. Decision 6 has the
 detail; [the plan](../plans/2026-10-12-review-on-request-label.md) has the implementation.
 
+**Amended 2026-11-10:** [ADR-0057](0057-a-two-family-review-fleet-reads-every-pr-and-gates-the-merge.md)
+replaces the hourly schedule with the review fleet, which reads every PR on each push. The
+`review:requested` label path of decision 6 stays; nothing else here runs on its own.
+
 ## Context
 
 The `pr-sweep` skill reviews, fixes and merges the open PRs, and it does so on the strength of

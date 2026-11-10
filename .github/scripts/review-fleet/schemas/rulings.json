@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["rulings"],
+  "properties": {
+    "rulings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "ruling", "reason"],
+        "properties": {
+          "id": { "type": "integer" },
+          "ruling": { "type": "string", "enum": ["CONFIRMED", "REFUTED", "UNCLEAR"] },
+          "reason": { "type": "string" }
+        }
+      }
+    }
+  }
+}

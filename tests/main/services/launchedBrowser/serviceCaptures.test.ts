@@ -212,6 +212,38 @@ function harness(options: Options = {}) {
 }
 
 describe('clicked Captures in the launched browser', () => {
+  it('keeps progress for the active Capture when the shortcut triggers again', async () => {
+    let finish: (value: TabCaptureArtifacts) => void = () => {}
+    const pending = new Promise<TabCaptureArtifacts>((resolve) => {
+      finish = resolve
+    })
+    const h = harness({
+      capture: () => pending,
+      browser: {
+        respond: ({ method }) => {
+          if (method === 'Page.createIsolatedWorld') return { result: { executionContextId: 3 } }
+          if (method === 'Runtime.evaluate') {
+            return { result: { result: { value: { visible: true, focused: true } } } }
+          }
+          return undefined
+        }
+      }
+    })
+    await h.open()
+    await h.loadFirstTab()
+    const first = h.service.capture('first-tab', { scrollToLoad: false })
+    await h.service.shortcutPressed()
+    const busy = h.service.status()
+    expect(busy.state === 'open' && busy.browser.capture).toMatchObject({ state: 'capturing' })
+    expect(h.capture).toHaveBeenCalledTimes(1)
+    finish(artifacts('https://a.test/'))
+    const done = await first
+    expect(done.state === 'open' && done.browser.capture).toMatchObject({
+      state: 'captured',
+      citation: 'NK-12'
+    })
+  })
+
   it('captures a recorded tab through the launched route and shows its Exhibit Number', async () => {
     const h = harness()
     await h.open()
@@ -409,9 +441,9 @@ describe('clicked Captures in the launched browser', () => {
     expect(h.service.status()).toMatchObject({ browser: { capture: { state: 'capturing' } } })
     const second = await h.service.capture('first-tab', { scrollToLoad: false })
     expect(second.state === 'open' && second.browser.capture).toMatchObject({
-      state: 'refused',
-      message: expect.stringMatching(/already running/)
+      state: 'capturing'
     })
+    expect(h.capture).toHaveBeenCalledTimes(1)
     finish()
     await first
     expect(h.admitted).toHaveLength(1)

@@ -277,12 +277,16 @@ pushed_by() {
 
 # Every comment, review comment and review on PR $1 as {login, at, trusted}.
 # $2 is the PR's author: the review bots are trusted only when it is the pipeline.
+# The review fleet's comments are left out (ADR-0057): its relay is posted with the
+# maintainer's token and its state comment by the pipeline, and neither is either
+# one acting on the PR. Codex's answer to the relay still counts, as a review bot's.
 activity() {
   local bots='[]'
   if [ -n "$me" ] && [ "$2" = "$me" ]; then bots="$review_bots"; fi
   {
     gh api --paginate "repos/$R/issues/$1/comments?per_page=100" \
-      | jq -c '.[] | {login: .user.login, at: .created_at}'
+      | jq -c '.[] | select(.body // "" | test("<!-- review-fleet:(relay|state) ") | not)
+        | {login: .user.login, at: .created_at}'
     gh api --paginate "repos/$R/pulls/$1/comments?per_page=100" \
       | jq -c '.[] | {login: .user.login, at: .created_at}'
     gh api --paginate "repos/$R/pulls/$1/reviews?per_page=100" \

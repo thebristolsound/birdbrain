@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { execFileSync, spawn, spawnSync } from 'child_process'
 import {
   existsSync,
@@ -50,6 +50,16 @@ const plant = (dir: string, owner: object) => {
 const age = (path: string, ms: number) => {
   const then = new Date(Date.now() - ms)
   utimesSync(path, then, then)
+}
+
+const captureStderr = (action: () => void) => {
+  const spy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  try {
+    action()
+    return spy.mock.calls.map(([chunk]) => String(chunk)).join('')
+  } finally {
+    spy.mockRestore()
+  }
 }
 
 const git = (cwd: string, ...args: string[]) =>
@@ -132,6 +142,42 @@ describe('tryAcquire', () => {
     expect(tryAcquire(dir, base(2), { alive })).toEqual({ holder: null })
     age(dir, OWNERLESS_GRACE_MS + 1_000)
     expect(tryAcquire(dir, base(2), { alive }).owner?.pid).toBe(2)
+  })
+
+  it('keeps a lock whose owner record cannot be parsed, and names the cause', () => {
+    mkdirSync(dir)
+    writeFileSync(join(dir, 'owner.json'), '')
+    age(dir, OWNERLESS_GRACE_MS + 1_000)
+    const { owner, holder } = tryAcquire(dir, base(2), { alive })
+    expect(owner).toBeUndefined()
+    expect(holder).toEqual({ unreadable: 'not valid JSON: Unexpected end of JSON input' })
+    expect(existsSync(join(dir, 'owner.json'))).toBe(true)
+  })
+
+  it('takes over a lock with an unparsable owner record only once it is over an hour old', () => {
+    mkdirSync(dir)
+    writeFileSync(join(dir, 'owner.json'), '{')
+    age(dir, MAX_AGE_MS + 1_000)
+    const stderr = captureStderr(() => {
+      expect(tryAcquire(dir, base(2), { alive }).owner?.pid).toBe(2)
+    })
+    expect(stderr).toContain('owner record could not be read (not valid JSON')
+    expect(stderr).not.toContain('no owner record')
+  })
+})
+
+describe('readOwner', () => {
+  it('gives null for a missing record and the cause for one that cannot be read', () => {
+    mkdirSync(dir)
+    expect(readOwner(dir)).toBeNull()
+    mkdirSync(join(dir, 'owner.json'))
+    expect(readOwner(dir)).toEqual({ unreadable: 'EISDIR' })
+  })
+
+  it('does not accept a record that is not a JSON object', () => {
+    mkdirSync(dir)
+    writeFileSync(join(dir, 'owner.json'), 'null')
+    expect(readOwner(dir)).toEqual({ unreadable: 'not a JSON object' })
   })
 })
 

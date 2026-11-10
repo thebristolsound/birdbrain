@@ -77,15 +77,25 @@ export const startTime = (pid) => {
   }
 }
 
+// null when the lock has no owner record. A record that is there but cannot be read or parsed
+// comes back as { unreadable: <cause> }, so a waiter does not take it for a lock nobody holds.
 export const readOwner = (dir) => {
+  let text
   try {
-    return JSON.parse(readFileSync(join(dir, OWNER_FILE), 'utf8'))
-  } catch {
-    return null
+    text = readFileSync(join(dir, OWNER_FILE), 'utf8')
+  } catch (error) {
+    return error.code === 'ENOENT' ? null : { unreadable: error.code ?? error.message }
+  }
+  try {
+    const owner = JSON.parse(text)
+    return owner && typeof owner === 'object' ? owner : { unreadable: 'not a JSON object' }
+  } catch (error) {
+    return { unreadable: `not valid JSON: ${error.message}` }
   }
 }
 
-const sameOwner = (a, b) => a?.pid === b?.pid && a?.startedAt === b?.startedAt
+const sameOwner = (a, b) =>
+  a?.pid === b?.pid && a?.startedAt === b?.startedAt && a?.unreadable === b?.unreadable
 
 // Writing a temporary file and renaming it over owner.json keeps readers from seeing half of it.
 const writeOwner = (dir, owner) => {
@@ -114,9 +124,12 @@ export const isStale = (
   owner,
   { now = Date.now(), alive = isAlive, startOf = startTime } = {}
 ) => {
-  if (!owner) {
+  if (!owner || owner.unreadable) {
+    // An unreadable record may belong to a live run whose processes cannot be checked, so it
+    // waits out the same age as a lock with no start times.
+    const limit = owner ? MAX_AGE_MS : OWNERLESS_GRACE_MS
     try {
-      return now - statSync(dir).mtimeMs > OWNERLESS_GRACE_MS
+      return now - statSync(dir).mtimeMs > limit
     } catch {
       return false
     }
@@ -174,13 +187,17 @@ export const clearStale = (dir, seen, { now = Date.now() } = {}) => {
   }
 }
 
-const describeStale = (owner) =>
-  owner
-    ? `removed a stale lock left by process ${owner.pid} (started ${owner.startedAt})`
-    : 'removed a lock directory that had no owner record'
+const describeStale = (owner) => {
+  if (!owner) return 'removed a lock directory that had no owner record'
+  if (owner.unreadable) {
+    return `removed a lock over an hour old whose owner record could not be read (${owner.unreadable})`
+  }
+  return `removed a stale lock left by process ${owner.pid} (started ${owner.startedAt})`
+}
 
 // Returns { owner } once this process holds the lock, with the record it wrote, or
-// { holder } naming the current holder (null when the lock has no owner record).
+// { holder } naming the current holder (null when the lock has no owner record, and
+// { unreadable } when it has one that cannot be read).
 export const tryAcquire = (
   dir,
   base,
@@ -215,10 +232,11 @@ export const release = (dir, owner) => {
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms))
 
-const describeHolder = (holder) =>
-  holder
-    ? `the run in ${holder.cwd} (process ${holder.pid}, started ${holder.startedAt})`
-    : 'whoever made the lock directory'
+const describeHolder = (holder) => {
+  if (!holder) return 'whoever made the lock directory'
+  if (holder.unreadable) return `a run whose owner record cannot be read (${holder.unreadable})`
+  return `the run in ${holder.cwd} (process ${holder.pid}, started ${holder.startedAt})`
+}
 
 // Resolves with the owner record once this process holds the lock.
 export const acquire = async (dir, base, { pollMs = 5_000, reportMs = 60_000 } = {}) => {

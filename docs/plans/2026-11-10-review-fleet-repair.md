@@ -37,3 +37,13 @@
 - In flight: locked final verification at the corrected committed head.
 - Next command: `flock /home/matt/worktrees/birdbrain/.preflight.lock mise exec -- pnpm preflight`.
 - Open questions: none.
+
+## Full verification correction
+
+- First full run: coverage and all checks except style passed. The schema reader needed an
+  explicit Node URL import; corrected it without changing a test.
+- Completed: reproduced and fixed success being published before an oversized or unwritable
+  report could save. Both failures now post failure and surface the error, preserving limits.
+- In flight: full locked verification at the corrected head, then the existing PR push.
+- Next command: `flock /home/matt/worktrees/birdbrain/.preflight.lock mise exec -- pnpm preflight`.
+- Open questions: none.

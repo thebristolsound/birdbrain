@@ -655,12 +655,23 @@ function writeComment(repo, n, id, body) {
 // Post the verdict and, when the head has a state comment, bring it up to date.
 // Writes only what changed, so the sweep's quarter-hourly pass costs no writes on a quiet PR.
 function publish(repo, n, g, state, verdict) {
+  // Save the complete report before success: a size or API failure must never leave a green
+  // status for findings and runtime limitations that were not persisted.
+  try {
+    if (g.found && !state?.invalid) {
+      const body = renderState(state, verdict, g)
+      if (body !== g.found.body) writeComment(repo, n, g.found.id, body)
+    }
+  } catch (error) {
+    postStatus(repo, g.sha, {
+      status: 'failure',
+      description: 'the review report could not be saved'
+    })
+    throw error
+  }
   const same = g.status?.state === verdict.status && g.status?.description === verdict.description
   if (!same) postStatus(repo, g.sha, verdict)
   if (!same && verdict.status === 'success') rerunRedGates(repo, g.sha)
-  if (!g.found || state?.invalid) return
-  const body = renderState(state, verdict, g)
-  if (body !== g.found.body) writeComment(repo, n, g.found.id, body)
 }
 
 function readLeg(dir, leg) {

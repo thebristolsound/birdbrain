@@ -83,7 +83,9 @@ Three facts shaped the design:
    New schema version 2 outputs attest source completion with `source_review_complete`, keep
    unfinished source checks in `not_checked`, and record prohibited or unperformed runtime and
    external checks separately in `runtime_limitations`. The saved state and public report
-   retain those limitations as unverified, including the Claude check of Codex. Runtime limits
+   retain those limitations as unverified, including the Claude check of Codex. The report must
+   render and save before success is published; size or storage errors fail and surface their
+   error instead of dropping limitations. Runtime limits
    do not satisfy source questions or turn an unclear ruling into a refutation. Required CI
    gates remain unchanged; fleet success certifies completed source review only. Aggregation
    validates required fields again and rejects old outputs. Old saved records and mixed

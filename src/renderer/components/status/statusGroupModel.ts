@@ -41,7 +41,10 @@ export interface StatusModel {
   severity: Severity
   /** The short word beside the dots, or null. */
   word: string | null
-  /** The stored count, shown while a session runs so the Operator sees evidence landing. */
+  /**
+   * Captures stored since launch or since the capture log was cleared, not the Case's total.
+   * Shown while a session runs so the Operator sees evidence landing.
+   */
   count: number | null
   /** The background-capture line, or null while the queue is empty. */
   queued: string | null
@@ -86,7 +89,8 @@ export function statusModel(input: StatusInput): StatusModel {
         ? `${successCount} captured · ${failCount} failed`
         : successCount > 0
           ? `${successCount} captured`
-          : 'Nothing captured yet',
+          : // The counters restart with the app and with Clear, so this is not "none yet".
+            'No captures logged',
     severity: failCount > 0 ? 'danger' : 'nominal'
   }
 

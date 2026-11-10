@@ -19,7 +19,7 @@ describe('statusModel', () => {
     expect(m.word).toBeNull()
     expect(m.count).toBeNull()
     expect(m.summary).toBe(
-      'Status: all nominal. Egress: Direct · VPN seen. Extension: Connected. Nothing captured yet.'
+      'Status: all nominal. Egress: Direct · VPN seen. Extension: Connected. No captures logged.'
     )
   })
 
@@ -91,7 +91,7 @@ describe('statusModel', () => {
     expect(statusModel({ ...base, pending: 0 }).queued).toBeNull()
     const one = statusModel({ ...base, pending: 1 })
     expect(one.queued).toBe('1 background capture queued or running')
-    expect(one.summary).toMatch(/Nothing captured yet\. 1 background capture queued or running\.$/)
+    expect(one.summary).toMatch(/No captures logged\. 1 background capture queued or running\.$/)
     expect(one.severity).toBe('nominal')
   })
 })

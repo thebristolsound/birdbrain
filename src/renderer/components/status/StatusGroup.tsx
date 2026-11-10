@@ -88,6 +88,10 @@ export function StatusGroup() {
     setAnnouncement(model.summary)
   }, [model.severity, model.summary])
 
+  // In the bar only the worst signal's dot takes a colour; the popover's rows keep their own.
+  const barSeverity = (signal: Signal): Severity =>
+    signal.key === model.worst?.key ? signal.severity : 'nominal'
+
   const worstIcon: LucideIcon | null =
     model.worst?.key === 'egress' && iconEgress
       ? egressIcon(iconEgress, vpnSeen)
@@ -118,9 +122,9 @@ export function StatusGroup() {
           )}
         >
           <span className="inline-flex items-center gap-1" aria-hidden="true">
-            <Dot severity={extension.severity} />
-            <Dot severity={egressSignal.severity} />
-            <Dot severity={health.severity} />
+            <Dot severity={barSeverity(extension)} />
+            <Dot severity={barSeverity(egressSignal)} />
+            <Dot severity={barSeverity(health)} />
           </span>
           {worstIcon &&
             model.worst &&
@@ -201,7 +205,7 @@ export function StatusGroup() {
 }
 
 function Dot({ severity }: { severity: Severity }) {
-  return <span className={cn('h-1.5 w-1.5 rounded-full', DOT[severity])} />
+  return <span data-testid="status-dot" className={cn('h-1.5 w-1.5 rounded-full', DOT[severity])} />
 }
 
 function Row({ icon, signal }: { icon: LucideIcon; signal: Signal }) {

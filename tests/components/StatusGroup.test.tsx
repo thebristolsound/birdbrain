@@ -200,6 +200,32 @@ describe('StatusGroup announcements and popover', () => {
     expect(screen.queryByTestId('capture-log')).toBeNull()
   })
 
+  // Design rule "No fills in the chrome": in the bar a dot takes a colour only for the worst
+  // signal. The dots sit in the order extension, Egress, Capture Health.
+  it("colours only the worst signal's dot when two signals are off nominal", async () => {
+    useAppStore.setState({ captureStats: { successCount: 1, failCount: 1, skipCount: 0 } })
+    renderWith({ kind: 'direct' }, false)
+    const button = await screen.findByTestId('status-group')
+    await waitFor(() =>
+      expect(button.getAttribute('aria-label')).toContain('Egress: Direct · VPN not seen')
+    )
+    const dots = [...button.querySelectorAll('[data-testid="status-dot"]')].map((d) => d.className)
+    expect(dots).toHaveLength(3)
+    expect(dots[0]).toContain('bg-text-faint')
+    expect(dots[1]).toContain('bg-text-faint')
+    expect(dots[2]).toContain('bg-danger-fg')
+  })
+
+  it('colours the Egress dot when the VPN warning is the only signal off nominal', async () => {
+    renderWith({ kind: 'direct' }, false)
+    const button = await screen.findByTestId('status-group')
+    await waitFor(() => expect(button.dataset.severity).toBe('warning'))
+    const dots = [...button.querySelectorAll('[data-testid="status-dot"]')].map((d) => d.className)
+    expect(dots[0]).toContain('bg-text-faint')
+    expect(dots[1]).toContain('bg-warning-fg')
+    expect(dots[2]).toContain('bg-text-faint')
+  })
+
   it('shows the Capture Health icon, not the Egress icon, when failures are the worst', async () => {
     useAppStore.setState({ captureStats: { successCount: 1, failCount: 1, skipCount: 0 } })
     const button = await renderNominal()

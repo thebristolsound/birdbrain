@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Check } from 'lucide-react'
 import type { BirdbrainSettings } from '@shared/types'
+import { validateIgnorePattern } from '@shared/urlPatterns'
 import { Card, CardContent, Input, Button, Label } from '@renderer/components/ui'
 import { FoundBrowsers } from '@renderer/components/launchedBrowser/FoundBrowsers'
 
@@ -11,19 +12,38 @@ interface CapturePreferencesProps {
 
 export function CapturePreferences({ settings, onUpdate }: CapturePreferencesProps) {
   const [newPattern, setNewPattern] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const { ignoredUrlPatterns } = settings
+
+  // Main refuses a list holding any pattern validateIgnorePattern rejects
+  // (SettingsUpdateSchema), including one stored before that check. Saying so
+  // here names the pattern to remove instead of failing after the round trip.
+  const savePatterns = (next: string[]): boolean => {
+    const invalid = next.find((pattern) => !validateIgnorePattern(pattern).ok)
+    if (invalid !== undefined) {
+      setError(`Remove the invalid pattern "${invalid}" before changing this list.`)
+      return false
+    }
+    setError(null)
+    onUpdate({ ignoredUrlPatterns: next })
+    return true
+  }
 
   const addPattern = () => {
-    if (!newPattern.trim()) return
-    onUpdate({
-      ignoredUrlPatterns: [...settings.ignoredUrlPatterns, newPattern.trim()]
-    })
-    setNewPattern('')
+    const pattern = newPattern.trim()
+    if (!pattern) return
+    // The same refusal as the per-case list (AutoCaptureCard), before the
+    // pattern appears in the list rather than after main refuses it.
+    const validation = validateIgnorePattern(pattern)
+    if (!validation.ok) {
+      setError(validation.reason)
+      return
+    }
+    if (savePatterns([...ignoredUrlPatterns, pattern])) setNewPattern('')
   }
 
   const removePattern = (index: number) => {
-    onUpdate({
-      ignoredUrlPatterns: settings.ignoredUrlPatterns.filter((_, i) => i !== index)
-    })
+    savePatterns(ignoredUrlPatterns.filter((_, i) => i !== index))
   }
 
   return (
@@ -76,26 +96,41 @@ export function CapturePreferences({ settings, onUpdate }: CapturePreferencesPro
                 Add
               </Button>
             </div>
+            {error && (
+              <p className="mb-2 text-xs text-danger-fg" data-testid="ignore-pattern-error">
+                {error}
+              </p>
+            )}
             <p className="mb-2 text-xs text-text-muted">
               Substring (<code className="text-text-muted">google.com</code>), wildcards (
               <code className="text-text-muted">*.facebook.com*</code>), or regex (
               <code className="text-text-muted">/pattern/i</code>)
             </p>
             <div className="space-y-1">
-              {settings.ignoredUrlPatterns.map((pattern, i) => (
-                <div
-                  key={pattern}
-                  className="flex items-center justify-between rounded bg-elevated px-2 py-1"
-                >
-                  <span className="font-mono text-xs text-text-muted">{pattern}</span>
-                  <button
-                    onClick={() => removePattern(i)}
-                    className="text-xs text-text-muted hover:text-danger-fg"
-                  >
-                    &times;
-                  </button>
-                </div>
-              ))}
+              {ignoredUrlPatterns.map((pattern, i) => {
+                const validation = validateIgnorePattern(pattern)
+                return (
+                  <div key={pattern} className="rounded bg-elevated px-2 py-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-xs text-text-muted">{pattern}</span>
+                      <button
+                        onClick={() => removePattern(i)}
+                        className="text-xs text-text-muted hover:text-danger-fg"
+                      >
+                        &times;
+                      </button>
+                    </div>
+                    {!validation.ok && (
+                      <p
+                        className="mt-0.5 text-xs text-danger-fg"
+                        data-testid="ignore-pattern-invalid"
+                      >
+                        {validation.reason}
+                      </p>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </div>
 

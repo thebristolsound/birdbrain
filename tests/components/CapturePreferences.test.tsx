@@ -3,6 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { BirdbrainSettings } from '@shared/types'
+import { validateIgnorePattern } from '@shared/urlPatterns'
 import { CapturePreferences } from '@renderer/components/settings/CapturePreferences'
 import { fakeBridge } from '../renderer/fakeBridge'
 
@@ -123,5 +124,70 @@ describe('CapturePreferences ignored URL patterns', () => {
     const { onUpdate } = renderPanel({ ignoredUrlPatterns: ['a.com', 'b.com'] })
     fireEvent.click(screen.getAllByText('×')[0])
     expect(onUpdate).toHaveBeenCalledWith({ ignoredUrlPatterns: ['b.com'] })
+  })
+
+  it('adds a regex pattern that compiles', () => {
+    const { onUpdate } = renderPanel()
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\./), { target: { value: '/^https:/i' } })
+    fireEvent.click(screen.getByText('Add'))
+    expect(onUpdate).toHaveBeenCalledWith({ ignoredUrlPatterns: ['/^https:/i'] })
+    expect(screen.queryByTestId('ignore-pattern-error')).toBeNull()
+  })
+
+  // #724: the same refusal the per-case list gives (AutoCaptureCard), with the
+  // engine's reason, and the typed pattern kept so it can be corrected.
+  it('refuses an uncompilable pattern inline and stores nothing', () => {
+    const { onUpdate } = renderPanel({ ignoredUrlPatterns: ['a.com'] })
+    const input = screen.getByPlaceholderText(/e\.g\./) as HTMLInputElement
+    fireEvent.change(input, { target: { value: '/[/' } })
+    fireEvent.click(screen.getByText('Add'))
+    expect(onUpdate).not.toHaveBeenCalled()
+    const reason = validateIgnorePattern('/[/')
+    expect(reason.ok).toBe(false)
+    expect(screen.getByTestId('ignore-pattern-error').textContent).toBe(
+      reason.ok ? '' : reason.reason
+    )
+    expect(input.value).toBe('/[/')
+  })
+
+  it('clears the refusal once a valid pattern is added', () => {
+    renderPanel()
+    const input = screen.getByPlaceholderText(/e\.g\./)
+    fireEvent.change(input, { target: { value: '/some/path' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(screen.getByTestId('ignore-pattern-error')).toBeDefined()
+    fireEvent.change(input, { target: { value: 'some.com/path' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(screen.queryByTestId('ignore-pattern-error')).toBeNull()
+  })
+
+  describe('a pattern stored before the list was validated', () => {
+    const stored = ['a.com', '/[/']
+
+    it('keeps it listed and marks it with the reason', () => {
+      renderPanel({ ignoredUrlPatterns: stored })
+      expect(screen.getByText('/[/')).toBeDefined()
+      const marks = screen.getAllByTestId('ignore-pattern-invalid')
+      expect(marks).toHaveLength(1)
+      const reason = validateIgnorePattern('/[/')
+      expect(marks[0].textContent).toBe(reason.ok ? '' : reason.reason)
+    })
+
+    // Main refuses the whole list while it holds one (SettingsUpdateSchema), so
+    // the panel says so before the round trip rather than after it.
+    it('refuses another change until it is removed, naming it', () => {
+      const { onUpdate } = renderPanel({ ignoredUrlPatterns: stored })
+      fireEvent.change(screen.getByPlaceholderText(/e\.g\./), { target: { value: 'b.com' } })
+      fireEvent.click(screen.getByText('Add'))
+      fireEvent.click(screen.getAllByText('×')[0])
+      expect(onUpdate).not.toHaveBeenCalled()
+      expect(screen.getByTestId('ignore-pattern-error').textContent).toContain('"/[/"')
+    })
+
+    it('can be removed', () => {
+      const { onUpdate } = renderPanel({ ignoredUrlPatterns: stored })
+      fireEvent.click(screen.getAllByText('×')[1])
+      expect(onUpdate).toHaveBeenCalledWith({ ignoredUrlPatterns: ['a.com'] })
+    })
   })
 })

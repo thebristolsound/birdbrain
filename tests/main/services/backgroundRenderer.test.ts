@@ -1993,9 +1993,11 @@ describe('renderPageInHiddenWindow', () => {
     ctl.egress = { kind: 'unavailable' }
     const before = ctl.createdWindows
 
-    await expect(
-      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000, ...IDS })
-    ).rejects.toThrow(EgressUnavailableError)
+    const render = renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000, ...IDS })
+    await expect(render).rejects.toThrow(EgressUnavailableError)
+    // The name is what the job's failed line keeps of the error.
+    const error: unknown = await render.catch((err: unknown) => err)
+    expect(sanitizeError(error).name).toBe('EgressUnavailableError')
 
     expect(ctl.createdWindows).toBe(before)
     expect(ctl.calls).toEqual([])

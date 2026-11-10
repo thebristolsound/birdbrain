@@ -1289,7 +1289,9 @@ export const ERROR_NAMES = [
   // that expired (#2121): the log drops messages, so the name is what says which.
   'RecaptureTimeout',
   'TransactionRecordCollectTimeout',
-  'TransactionRecordWriteTimeout'
+  'TransactionRecordWriteTimeout',
+  // Thrown before a render's first step, so the name is all its failed line says of the cause.
+  'EgressUnavailableError'
 ] as const
 
 export interface LoggedError {

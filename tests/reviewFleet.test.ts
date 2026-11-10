@@ -1,6 +1,9 @@
-import { readFileSync } from 'fs'
+import { spawnSync } from 'child_process'
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
 import { join } from 'path'
 import { describe, expect, it } from 'vitest'
+import { HAS_JQ } from './helpers/jq'
 import {
   BREAK_GLASS_DESCRIPTION,
   CODEX,
@@ -32,6 +35,7 @@ const MAINTAINER = 'thebristolsound'
 const REPO = 'thebristolsound/birdbrain'
 const NOW = '2026-11-10T12:00:00Z'
 const RELAY_AT = '2026-11-10T11:30:00Z'
+const WORKFLOWS = join(__dirname, '..', '.github', 'workflows')
 
 const pass = (findings: unknown[] = []) => ({ findings, not_checked: [] as string[] })
 const allDone = Object.fromEntries(FINDER_LEGS.map((l: string) => [l, pass([])]))
@@ -391,10 +395,7 @@ describe('Codex', () => {
   })
 
   it('keeps a relay comment from starting the Claude mention workflow', () => {
-    const workflow = readFileSync(
-      join(__dirname, '..', '.github', 'workflows', 'claude.yml'),
-      'utf8'
-    )
+    const workflow = readFileSync(join(WORKFLOWS, 'claude.yml'), 'utf8')
     const guarded =
       "github.event.comment.user.login == 'thebristolsound'" +
       " && contains(github.event.comment.body, '@claude')" +
@@ -564,5 +565,74 @@ describe('decide', () => {
       correctness: pass(Array.from({ length: 40 }, () => blocking))
     })
     expect(decide(facts({ state: many })).description.length).toBeLessThanOrEqual(140)
+  })
+})
+
+// The `run:` script of one step in a workflow job, dedented.
+function stepScript(workflow: string, job: string, step: string): string {
+  const lines = readFileSync(join(WORKFLOWS, workflow), 'utf8').split('\n')
+  const start = lines.indexOf(`  ${job}:`)
+  const named = lines.findIndex((l, i) => i > start && l.trim() === `- name: ${step}`)
+  const run = lines.findIndex((l, i) => i > named && /^\s+run: \|$/.test(l))
+  const indent = lines[run].indexOf('run:') + 2
+  const body: string[] = []
+  for (const line of lines.slice(run + 1)) {
+    if (line.trim() !== '' && line.search(/\S/) < indent) break
+    body.push(line.slice(indent))
+  }
+  return body.join('\n')
+}
+
+describe.skipIf(!HAS_JQ)('a push to a PR', () => {
+  const withdraw = (labels: string[]) => {
+    const dir = mkdtempSync(join(tmpdir(), 'fleet-withdraw-'))
+    try {
+      const gh = join(dir, 'gh')
+      writeFileSync(
+        gh,
+        '#!/usr/bin/env bash\necho "$*" >> "$GH_LOG"\n[ "$1 $2" = "pr view" ] && echo false\nexit 0\n'
+      )
+      chmodSync(gh, 0o755)
+      const log = join(dir, 'log')
+      writeFileSync(log, '')
+      const result = spawnSync(
+        'bash',
+        [
+          '-c',
+          stepScript('merge-on-label.yml', 'withdraw', 'Remove the sign-off and the merge request')
+        ],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            PATH: `${dir}:${process.env.PATH}`,
+            GH_LOG: log,
+            PR: '7',
+            GITHUB_REPOSITORY: REPO,
+            LABELS: JSON.stringify(labels)
+          }
+        }
+      )
+      expect(result.status, result.stderr).toBe(0)
+      return readFileSync(log, 'utf8')
+        .split('\n')
+        .filter((l) => l.includes('--remove-label'))
+        .map((l) => l.split('--remove-label ')[1].split(' ')[0])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  it('takes the break-glass override off with the sign-off and the merge request', () => {
+    expect(withdraw(['break-glass', 'agent-pr'])).toEqual(['break-glass'])
+    expect(withdraw(['approved', 'merge', 'break-glass'])).toEqual([
+      'approved',
+      'merge',
+      'break-glass'
+    ])
+  })
+
+  it('leaves labels that only contain a withdrawn name', () => {
+    expect(withdraw(['next: merge', 'not-break-glass'])).toEqual([])
   })
 })

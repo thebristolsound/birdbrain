@@ -12,9 +12,10 @@ name: Merge on label
 # is the default branch, and the PR body is read as data.
 #
 # Auto-merge stays armed only while the request stands:
-# - `withdraw`, on every push, removes `approved` and `merge` and turns auto-merge off, so a
-#   sign-off and a merge request always name the commit that lands. merge-gate also needs the
-#   `merge/approved` stamp on the current head, so a failed withdraw does not reopen the door.
+# - `withdraw`, on every push, removes `approved`, `merge` and `break-glass` and turns
+#   auto-merge off, so a sign-off, a merge request and a review override always name the commit
+#   that lands. merge-gate also needs the `merge/approved` stamp on the current head, so a
+#   failed withdraw does not reopen the door for `approved`; `break-glass` has no such stamp.
 # - `cancel`, when `merge` is removed, turns auto-merge off.
 # - `reject`, when anyone but the maintainer applies `merge`, removes it and says why. It reads
 #   no secret, so it needs no spend guard. Authorization reads the label's sender, never
@@ -245,7 +246,8 @@ jobs:
         run: |
           set -euo pipefail
           # Match whole names: a word match on the joined names reads `next: merge` as `merge`.
-          for label in approved merge; do
+          # break-glass goes too (ADR-0057): the override is for the commit it was applied on.
+          for label in approved merge break-glass; do
             if jq -e --arg l "$label" 'index($l)' <<< "$LABELS" > /dev/null; then
               gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --remove-label "$label" >/dev/null && echo "removed $label"
             fi

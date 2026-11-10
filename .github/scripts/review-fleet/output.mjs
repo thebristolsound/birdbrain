@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { URL } from 'node:url'
 
 const schemas = Object.fromEntries(
   ['findings', 'rulings'].map((kind) => [

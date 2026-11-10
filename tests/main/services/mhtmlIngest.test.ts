@@ -473,8 +473,8 @@ describe('two background jobs ingesting into one Case', () => {
       }
     }
     // Both renders have finished and both jobs wait on the TLS re-fetch, which then answers
-    // both in one turn: without the Case's slot, the second job appends between the first
-    // job's append and its rollback, and the rollback's truncation removes that entry.
+    // both in one turn. The first job's seam callback is synchronous, so its rollback truncates
+    // in the turn of its append, before the second job appends, with or without the Case's slot.
     let answerRefetch: (result: null) => void = () => {}
     const refetch = new Promise<null>((resolve) => {
       answerRefetch = resolve

@@ -342,4 +342,44 @@ describe('backgroundJobRepo', () => {
     // The next attempt counts, and names its own Capture id.
     expect(claim('cap-second')).toMatchObject({ jobId: 'failed', state: 'running', attempts: 2 })
   })
+
+  // A retry clears `capture_id`, and its next attempt would store a second Capture.
+  it("leaves a failed row whose attempt's Capture is in its Case as it is on a retry", () => {
+    insertQueuedJobs([job('landed'), job('elsewhere')])
+    const other = createCase({ name: 'Other' }).id
+    for (const [id, captureCase] of [
+      ['landed', caseId],
+      ['elsewhere', other]
+    ]) {
+      insertCapture({
+        id: `cap-${id}`,
+        caseId: captureCase,
+        url: 'https://example.com/',
+        title: 'T',
+        hash: 'a'.repeat(64),
+        timestamp: '2026-11-09T11:00:00.000Z',
+        format: 'mhtml',
+        method: 'background'
+      })
+      claim(`cap-${id}`)
+      finishJob(id, {
+        state: 'failed',
+        failureKind: 'ingest',
+        error: 'it broke',
+        finishedAt: '2026-11-09T11:30:00.000Z'
+      })
+    }
+
+    expect(retryJobs({ jobId: 'landed' }, '2026-11-09T12:00:00.000Z')).toEqual([])
+    const retried = retryJobs({ batchId: 'batch-1' }, '2026-11-09T12:00:00.000Z')
+    expect(retried.map(({ jobId }) => jobId)).toEqual(['elsewhere'])
+    expect(getJob('landed')).toMatchObject({
+      state: 'failed',
+      failureKind: 'ingest',
+      error: 'it broke'
+    })
+    expect(
+      getDb().prepare('SELECT capture_id FROM background_jobs WHERE id = ?').get('landed')
+    ).toEqual({ capture_id: 'cap-landed' })
+  })
 })

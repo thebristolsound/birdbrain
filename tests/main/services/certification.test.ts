@@ -101,7 +101,7 @@ async function seedLegacyGenesisCapture(caseId: string, caseDir: string) {
     contentHash: capture.hash,
     sizeBytes: Buffer.byteLength(bytes),
     operatorId: 'op',
-    operatorName: 'Test Operator',
+    operatorName: '',
     toolVersion: '0.0.1',
     index: 0,
     prevHash: '',

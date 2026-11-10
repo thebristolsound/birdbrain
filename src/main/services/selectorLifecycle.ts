@@ -132,13 +132,13 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
       return updated
     },
     // Operator-invoked backfill (#829). Ingest already matches enabled selectors
-    // against each new capture — captureLifecycle.runPostCaptureWork calls
-    // runActiveSelectorsForCapture whenever textContent is present — so ordinary
-    // post-creation captures are matched without this. This covers the captures
-    // that path does not reach. The main ones, not an exhaustive list: captures
-    // older than the RETRO_MAX_CAPTURES window create-time backfill scanned;
-    // captures ingested while the selector was disabled (matchSelectorsForCapture
-    // skips disabled selectors); and captures whose text was unavailable at ingest.
+    // against each new capture — captureLifecycle.runPostCaptureWork always calls
+    // runActiveSelectorsForCapture, with '' when the capture has no text (#1084) —
+    // so ordinary post-creation captures are matched without this. This covers the
+    // captures that path does not reach. The main ones, not an exhaustive list:
+    // captures older than the RETRO_MAX_CAPTURES window create-time backfill
+    // scanned; and captures ingested while the selector was disabled
+    // (matchSelectorsForCapture skips disabled selectors).
     //
     // Additive, never clear-then-rescan (ruling W2): matchSelectorAgainstCaptures
     // is INSERT OR IGNORE, so this pass can only add rows. The clear-first shape

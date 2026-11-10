@@ -163,6 +163,33 @@ describe('source contract preparation before the paid call', () => {
     expect(seen).toEqual([`repos/${repo}/issues/comments/6763346891`])
   })
 
+  // GitHub writes an inline review comment's anchor with no hyphen: `#discussion_r123`.
+  it('fetches an inline review comment a contract links, not the pull request around it', () => {
+    const seen: string[] = []
+    prepareInputs(
+      { body: `Contract: https://github.com/${repo}/pull/357#discussion_r3726451446` },
+      repo,
+      (path: string) => {
+        seen.push(path)
+        return { body: 'Review text.' }
+      }
+    )
+    expect(seen).toEqual([`repos/${repo}/pulls/comments/3726451446`])
+  })
+
+  it('reads a link that spells this repository in another letter case', () => {
+    const seen: string[] = []
+    prepareInputs(
+      { body: 'Contract: https://github.com/TheBristolSound/Birdbrain/issues/12' },
+      repo,
+      (path: string) => {
+        seen.push(path)
+        return { body: 'The source contract.' }
+      }
+    )
+    expect(seen).toEqual([`repos/${repo}/issues/12`])
+  })
+
   it('fails missing, unreadable or outside-repository source contracts', () => {
     expect(() => prepareInputs({ body: 'Closes #12' }, repo, () => ({ body: '' }))).toThrow(
       'required source'

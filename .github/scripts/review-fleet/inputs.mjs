@@ -8,14 +8,15 @@ import { closedIssues } from '../merge/gate.mjs'
 export function referencedSources(text, repo) {
   const paths = new Set()
   for (const m of String(text).matchAll(
-    /https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/(issues|pull)\/(\d+)(?:#(issuecomment|discussion_r|pullrequestreview)-(\d+))?/g
+    /https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/(issues|pull)\/(\d+)(?:#(issuecomment-|discussion_r|pullrequestreview-)(\d+))?/g
   )) {
     const [, target, kind, number, anchor, id] = m
     // Restrict credentials to this repository. Other contracts remain missing source work.
-    if (target !== repo) throw new Error(`referenced source outside ${repo}: ${target}`)
-    if (anchor === 'issuecomment') paths.add(`issues/comments/${id}`)
+    if (target.toLowerCase() !== repo.toLowerCase())
+      throw new Error(`referenced source outside ${repo}: ${target}`)
+    if (anchor === 'issuecomment-') paths.add(`issues/comments/${id}`)
     else if (anchor === 'discussion_r') paths.add(`pulls/comments/${id}`)
-    else if (anchor === 'pullrequestreview') paths.add(`pulls/${number}/reviews/${id}`)
+    else if (anchor === 'pullrequestreview-') paths.add(`pulls/${number}/reviews/${id}`)
     else paths.add(`${kind === 'pull' ? 'pulls' : 'issues'}/${number}`)
   }
   // Older descriptions name a comment by number rather than linking it.

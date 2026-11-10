@@ -354,6 +354,26 @@ describe('popup page status', () => {
     ).toBeTruthy()
   })
 
+  it('says so when a capture of the page is already running (#963)', async () => {
+    backgroundReplies = {
+      GET_PAGE_STATUS: pageStatus(),
+      MANUAL_CAPTURE: {
+        started: false,
+        blocked: null,
+        notReady: false,
+        alreadyRunning: true
+      } satisfies ManualCaptureResponse
+    }
+    await renderPopup()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Capture now' }))
+
+    expect(
+      await screen.findByText('Not captured — a capture of this page is already running.')
+    ).toBeTruthy()
+    expect(screen.queryByText('Not captured — this tab has no page to capture.')).toBeNull()
+  })
+
   it('shows the capture in flight once the background accepts it', async () => {
     backgroundReplies = {
       GET_PAGE_STATUS: pageStatus(),

@@ -399,6 +399,8 @@ export function Popup(): React.JSX.Element {
           ? `Not captured — ignored by your rule: ${response.blocked.pattern}`
           : "Not captured — this page can't be captured."
       )
+    } else if (response.alreadyRunning) {
+      setBlockedNotice('Not captured — a capture of this page is already running.')
     } else if (!response.started) {
       setBlockedNotice('Not captured — this tab has no page to capture.')
     }

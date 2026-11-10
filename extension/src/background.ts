@@ -221,7 +221,15 @@ const SELECTOR_CONTEXT_MENU_ID = 'birdbrain-create-selector'
 // Selector capture dedupe: caseId:url -> timestamp
 const selectorDedupeMap = new Map<string, number>()
 
-// Manual capture in-flight guard: tabId:caseId -> true while capture is in progress
+// One capture per tab (#963), shared by manual captures and selection Tags and
+// Quotes, whatever case each targets. A second capture that overlaps refuses
+// with a notice rather than queueing behind or joining the running one; the
+// ruling on #963 gives why.
+const captureRunningTabs = new Set<number>()
+const CAPTURE_RUNNING_NOTICE = 'Not captured — a capture of this page is already running'
+
+// Manual captures in flight, tabId:caseId: what STOP_CAPTURE and the popup's
+// "capturing" state read
 const pendingManualCaptures = new Set<string>()
 const cancelledManualCaptures = new Set<string>()
 const uploadingManualCaptures = new Set<string>()
@@ -816,8 +824,16 @@ async function manualCaptureTab(
   caseId: string,
   scrolling: boolean = false
 ): Promise<void> {
+  if (captureRunningTabs.has(tabId)) {
+    sendCaptureOutcomeToast(tabId, {
+      type: 'UPDATE_CAPTURE_TOAST',
+      status: 'skipped',
+      message: CAPTURE_RUNNING_NOTICE
+    })
+    return
+  }
+  captureRunningTabs.add(tabId)
   const key = `${tabId}:${caseId}`
-  if (pendingManualCaptures.has(key)) return
   pendingManualCaptures.add(key)
   let card: CaptureCardDetails | undefined
   let outcome: Record<string, unknown> | undefined
@@ -847,6 +863,9 @@ async function manualCaptureTab(
 
       // The last capture to finish collecting frames owns the upload toast.
       if (lastOnTab) sendToastWhenCaptureIdle(tabId, { type: 'SHOW_CAPTURE_TOAST' })
+      // A capture refused while these frames were taken says so now, during
+      // the upload, rather than when this capture's own outcome replaces it.
+      flushHeldToast(tabId)
 
       // `url` was read by the caller before the bracket opened. The same
       // two-sample, canonical check as the ingest branch of
@@ -959,6 +978,7 @@ async function manualCaptureTab(
     // otherwise, so a failure is never silent.
     sendCaptureOutcomeToast(tabId, { type: 'UPDATE_CAPTURE_TOAST', status: 'error', message })
   } finally {
+    captureRunningTabs.delete(tabId)
     pendingManualCaptures.delete(key)
     cancelledManualCaptures.delete(key)
     uploadingManualCaptures.delete(key)
@@ -1097,6 +1117,27 @@ async function handleSelectionAction(
     }
   }
 
+  // Held from before the lookup: a manual capture that started after a lookup
+  // missed would store the same page the attach is about to store.
+  if (captureRunningTabs.has(tabId)) {
+    return { ok: false, error: 'A capture of this page was already running; nothing was attached' }
+  }
+  captureRunningTabs.add(tabId)
+  try {
+    return await attachSelection(tabId, url, action, caseId, text, quoteText)
+  } finally {
+    captureRunningTabs.delete(tabId)
+  }
+}
+
+async function attachSelection(
+  tabId: number,
+  url: string,
+  action: Exclude<SelectionActionKind, 'selector'>,
+  caseId: string,
+  text: string,
+  quoteText: string
+): Promise<SelectionActionResponse> {
   // Tag and Quote ride the auto-capture-then-attach endpoints (#392): a
   // failed capture is a refusal on the server and no attach ever runs, so an
   // error here means nothing was created.
@@ -1177,9 +1218,11 @@ async function handleSelectionAction(
           ])
         )
         // This capture takes no more frames, so the bar may show its progress
-        // through the attach POST (#1002). A capture that opens on the tab
-        // meanwhile strips and latches the page again before its own frames.
+        // through the attach POST (#1002). No other capture opens on the tab
+        // meanwhile: this action holds the tab's guard until it settles (#963).
         void releaseCaptureUiWhenIdle(tabId)
+        // As on the manual path: a capture refused during these frames says so now.
+        flushHeldToast(tabId)
         const [mhtmlBlob, tab, textContent, shot] = frames
 
         // The frames describe whatever the tab was showing while they were
@@ -1570,6 +1613,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const blocked = blockedCaptureReason(url)
       if (blocked) {
         sendResponse({ started: false, blocked, notReady: false } satisfies ManualCaptureResponse)
+        return
+      }
+      // Answered here rather than by manualCaptureTab's in-page toast: the
+      // operator is looking at the popup.
+      if (captureRunningTabs.has(message.tabId)) {
+        sendResponse({
+          started: false,
+          blocked: null,
+          notReady: false,
+          alreadyRunning: true
+        } satisfies ManualCaptureResponse)
         return
       }
       manualCaptureTab(message.tabId, url, message.caseId)

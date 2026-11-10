@@ -108,4 +108,6 @@ export interface ManualCaptureResponse {
    * may not refuse this URL, and the worker declines to guess.
    */
   notReady: boolean
+  /** Nothing was sent because a capture of this tab was already running (#963). */
+  alreadyRunning?: true
 }

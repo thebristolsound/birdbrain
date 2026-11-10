@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
+import { listCaptures } from '@main/services/db/captureRepo'
 import * as backgroundJobRepo from '@main/services/db/backgroundJobRepo'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
@@ -365,6 +366,61 @@ describe('the background job pool', () => {
       await initDatabase(dbPath)
       caseId = createCase({ name: 'Restored' }).id
       ensureCaseDir(caseId)
+    })
+
+    // Runs a job, restores a copy in which `alter` has changed its row, and lets it end.
+    async function restoreWith(alter: (jobId: string) => void) {
+      const { renderPage, rendering, finish } = heldRenders()
+      const svc = makeService(renderPage)
+      const {
+        batchId,
+        jobIds: [id]
+      } = svc.enqueue([{ url: 'https://example.com/a', caseId }])
+      expect(rendering).toEqual(['https://example.com/a'])
+      const { captureId } = getDb()
+        .prepare('SELECT capture_id AS captureId FROM background_jobs WHERE id = ?')
+        .get(id) as { captureId: string }
+      const live = backgroundJobRepo.getJob(id)!
+      alter(id)
+      getDb().exec(`VACUUM INTO '${backup}'`)
+
+      const before = svc.beginRestore()
+      closeDatabase()
+      copyFileSync(backup, dbPath)
+      await initDatabase(dbPath)
+      svc.finishRestore(before)
+      expect(backgroundJobRepo.getJob(id)).toEqual(live)
+      expect(svc.status()).toMatchObject({ running: 1, held: 0, heldBatches: [] })
+      expect(svc.resume(batchId)).toEqual({ resumed: 0 })
+
+      finish('https://example.com/a')
+      await svc.idle()
+      return { id, captureId }
+    }
+
+    it('ends stored, under its Capture id, a running job whose restored row is queued', async () => {
+      const { id, captureId } = await restoreWith((jobId) => {
+        getDb()
+          .prepare(
+            `UPDATE background_jobs SET state = 'queued', attempts = 0, started_at = NULL,
+               capture_id = NULL WHERE id = ?`
+          )
+          .run(jobId)
+      })
+      expect(backgroundJobRepo.getJob(id)).toMatchObject({ state: 'stored', captureId })
+      expect(listCaptures(caseId).map(({ id: capture }) => capture)).toEqual([captureId])
+    })
+
+    it('ends stored, under its Capture id, a running job the restored copy has no row for', async () => {
+      const { id, captureId } = await restoreWith((jobId) => {
+        getDb().prepare('DELETE FROM background_jobs WHERE id = ?').run(jobId)
+      })
+      expect(backgroundJobRepo.getJob(id)).toMatchObject({
+        state: 'stored',
+        attempts: 1,
+        captureId
+      })
+      expect(listCaptures(caseId).map(({ id: capture }) => capture)).toEqual([captureId])
     })
 
     it('leaves both running jobs to end as they would have, and interrupts a running row of no job', async () => {

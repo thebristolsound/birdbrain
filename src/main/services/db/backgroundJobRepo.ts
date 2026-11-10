@@ -285,7 +285,16 @@ export function listHeldBatches(): HeldBatch[] {
     .all() as HeldBatch[]
 }
 
+// A job this process is running when a restore re-opens the database: its row as the claim read
+// it, with the phase it has reached, and the id its attempt stores the Capture under.
+export interface RunningAttempt {
+  job: BackgroundJobView
+  captureId: string
+}
+
 export interface StartupRecovery {
+  // After a restore, the rows of the jobs this process is still running, written back as running.
+  running: BackgroundJobView[]
   // The rows that were `running` whose attempt's Capture is in their Case, now `stored`.
   stored: BackgroundJobView[]
   // The other rows that were `running`, now `failed` as `interrupted`, each with the id its
@@ -300,17 +309,52 @@ export interface StartupRecovery {
 // ingest committed, so it is `stored`; any other running job's render or ingest ended with the
 // process. A queued job waits for the Operator, and a stored row past retention goes, because
 // its Capture is the lasting record.
-// After a restore, `exceptJobIds` are the jobs this process is still running, which end as they
-// would have without the restore.
+// After a restore, `running` are the jobs this process is still running. The restored copy can
+// hold each one's row in any state or not at all, so each is written back first as the process
+// knows it, `running` under its attempt's Capture id, and `finishJob` then records its end as it
+// would have without the restore. A job whose Case the restored copy lacks gets no row; its ingest
+// fails as it does when the Case is deleted.
 export function recoverJobsAtStartup(params: {
   now: string
   storedBefore: string
   interruptedError: string
-  exceptJobIds?: string[]
+  running?: RunningAttempt[]
 }): StartupRecovery {
   const db = getDb()
-  const except = JSON.stringify(params.exceptJobIds ?? [])
+  const attempts = params.running ?? []
+  const except = JSON.stringify(attempts.map(({ job }) => job.jobId))
+  const restoreRunning = db.prepare(
+    `INSERT INTO background_jobs
+       (id, batch_id, case_id, url, supersedes_capture_id, linked_from_capture_id, link_href,
+        state, phase, attempts, queued_at, started_at, capture_id)
+     SELECT ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?
+      WHERE EXISTS (SELECT 1 FROM cases WHERE id = ?)
+     ON CONFLICT (id) DO UPDATE
+        SET state = 'running', phase = excluded.phase, attempts = excluded.attempts,
+            started_at = excluded.started_at, capture_id = excluded.capture_id,
+            finished_at = NULL, failure_kind = NULL, error = NULL, warning = NULL
+     RETURNING *`
+  )
   return db.transaction(() => {
+    const running: JobRow[] = []
+    for (const { job, captureId } of attempts) {
+      const row = restoreRunning.get(
+        job.jobId,
+        job.batchId,
+        job.caseId,
+        job.url,
+        job.supersedesCaptureId ?? null,
+        job.linkedFrom?.captureId ?? null,
+        job.linkedFrom?.linkHref ?? null,
+        job.phase ?? null,
+        job.attempts,
+        job.queuedAt,
+        job.startedAt ?? null,
+        captureId,
+        job.caseId
+      ) as JobRow | undefined
+      if (row) running.push(row)
+    }
     const stored = db
       .prepare(
         `UPDATE background_jobs
@@ -342,6 +386,7 @@ export function recoverJobsAtStartup(params: {
       )
       .run(params.storedBefore).changes
     return {
+      running: running.map(toView),
       stored: stored.map(toView),
       interrupted: interrupted.map((row) => ({ job: toView(row), captureId: row.capture_id })),
       held: held.map(toView),

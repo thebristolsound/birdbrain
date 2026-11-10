@@ -6,7 +6,7 @@ import {
   jobSite
 } from '@main/services/backgroundJobPool'
 import * as backgroundJobRepo from '@main/services/db/backgroundJobRepo'
-import type { JobEnd } from '@main/services/db/backgroundJobRepo'
+import type { JobEnd, RunningAttempt } from '@main/services/db/backgroundJobRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import { getCase } from '@main/services/db/caseRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
@@ -187,9 +187,9 @@ export interface RecaptureService {
   recoverStoredJobs: () => void
   // Read before a restore closes the database: the jobs this session has queued or is running.
   beginRestore: () => BackgroundJobView[]
-  // After a restore re-opens the database: the startup pass, which leaves the jobs this process is
-  // still running to end as they would have, and a `failed` event for each job read by
-  // `beginRestore` that the restored copy does not hold.
+  // After a restore re-opens the database: the startup pass, which first writes back the rows of
+  // the jobs this process is still running, so each ends as it would have, and a `failed` event
+  // for each job read by `beginRestore` that the restored copy does not hold.
   finishRestore: (before: BackgroundJobView[]) => void
   listJobs: (query: RecaptureListJobsQuery) => BackgroundJobView[]
   // Sets the Batch's `held` jobs `queued`, behind the jobs already queued at the resume.
@@ -223,6 +223,8 @@ type JobOutcome = Omit<JobEnd, 'finishedAt'>
 // `ingesting`, as soon as the render's promise resolves, before anything else of the job runs.
 interface ActiveJob {
   job: RecaptureJob
+  // The row as the claim read it, which a restore writes back.
+  claimed: BackgroundJobView
   captureId: string
   controller: AbortController
   ended: boolean
@@ -437,14 +439,16 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     })
   }
 
-  function recover(exceptJobIds?: string[]): void {
+  function recover(running?: RunningAttempt[]): void {
     const now = Date.now()
-    const { stored, interrupted, held } = backgroundJobRepo.recoverJobsAtStartup({
+    const restored = backgroundJobRepo.recoverJobsAtStartup({
       now: new Date(now).toISOString(),
       storedBefore: new Date(now - STORED_JOB_RETENTION_MS).toISOString(),
       interruptedError: INTERRUPTED_JOB_ERROR,
-      exceptJobIds
+      running
     })
+    const { stored, interrupted, held } = restored
+    for (const job of restored.running) emitJob(job)
     // Stored, not interrupted: the Capture landed before the app closed, and a retry of the job
     // would take a second observation of the page.
     for (const job of stored) {
@@ -812,6 +816,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     emitJob(claimed)
     const run: ActiveJob = {
       job: jobOf(claimed),
+      claimed,
       captureId: attempt.captureId,
       controller: new AbortController(),
       ended: false,
@@ -948,10 +953,16 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     recoverStoredJobs: () => recover(),
     beginRestore: () => backgroundJobRepo.listActiveJobs(),
     finishRestore(before) {
-      recover([...runs.keys()])
+      recover(
+        [...runs.values()].map(({ claimed, phase, captureId }) => ({
+          job: { ...claimed, ...(phase ? { phase } : {}) },
+          captureId
+        }))
+      )
       const finishedAt = new Date().toISOString()
       for (const view of before) {
-        // A running job reports its own end; a job the restored copy holds was handled above.
+        // A running job's row was written back above, so it reports its own end; a job the
+        // restored copy holds was handled above.
         if (runs.has(view.jobId) || backgroundJobRepo.getJob(view.jobId)) continue
         emitJobEvent(jobOf(view), {
           type: 'failed',

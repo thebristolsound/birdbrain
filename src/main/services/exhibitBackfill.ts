@@ -1,8 +1,12 @@
 import { createHash } from 'crypto'
 import { existsSync } from 'fs'
-import { readFile, writeFile } from 'fs/promises'
+import { readFile, writeFile, rm } from 'fs/promises'
 import { listAllCaseIds } from '@main/services/db/caseRepo'
-import { backfillExhibitsForCaptures, listExhibits } from '@main/services/db/exhibitRepo'
+import {
+  backfillExhibitsForCaptures,
+  getExhibit,
+  listExhibits
+} from '@main/services/db/exhibitRepo'
 import {
   awaitingRenumber,
   hasRenumberEntry,
@@ -288,6 +292,7 @@ async function backfillThumbnail(
     // overwriting them would only make a second entry look necessary.
     if (!existsSync(paths.abs)) return 'skipped'
     const bytes = await readFile(paths.abs)
+    if (!getExhibit(exhibit.id)) return 'skipped'
     const contentHash = createHash('sha256').update(bytes).digest('hex')
     const anchored = contentHash === prior.outputHash
     insertDerivedFile({
@@ -310,6 +315,7 @@ async function backfillThumbnail(
     // there is not invented.
     if (!existsSync(paths.abs)) return 'skipped'
     const bytes = await readFile(paths.abs)
+    if (!getExhibit(exhibit.id)) return 'skipped'
     insertDerivedFile({
       exhibitId: exhibit.id,
       derivation: THUMBNAIL_DERIVATION,
@@ -326,49 +332,63 @@ async function backfillThumbnail(
   // the entry appended below anchors these bytes, so a later regeneration from
   // the same parent screenshot has to reproduce them.
   const { bytes, parameters } = await renderThumbnail(parent.screenshot)
-  await writeFile(paths.abs, bytes)
-  const outputHash = createHash('sha256').update(bytes).digest('hex')
-  const timestamp = new Date().toISOString()
-
-  // Through the write-ahead seam, not a bare append: if `insertDerivedFile`
-  // throws, the entry is truncated back off the chain rather than left
-  // describing a Derived File the database has no record of — which the next
-  // launch would answer by signing a second entry for the same file.
-  //
-  // Dated at migration with the migration as the tool (X34): the bytes were
-  // produced now, by this build, and dating them at the Capture's ingest would
-  // be a claim about a file that did not exist then.
-  await withManifestEntry(
-    store.caseDir(exhibit.caseId),
-    {
-      type: 'derivation',
-      caseId: exhibit.caseId,
-      parentExhibitId: parentId,
-      parentContentHash: parent.contentHash,
-      derivation: THUMBNAIL_DERIVATION,
-      derivationToolVersion: who.toolVersion,
-      derivationParameters: parameters,
-      outputHash,
-      outputPath: paths.rel,
-      timestamp,
-      ...who
-    },
-    (appended) => {
-      insertDerivedFile({
-        exhibitId: exhibit.id,
-        derivation: THUMBNAIL_DERIVATION,
-        toolVersion: who.toolVersion,
-        contentHash: outputHash,
-        path: paths.rel,
-        createdAt: timestamp,
-        manifestSeq: appended.index
-      })
+  if (!getExhibit(exhibit.id)) return 'skipped'
+  try {
+    await writeFile(paths.abs, bytes)
+    if (!getExhibit(exhibit.id)) {
+      await rm(paths.abs, { force: true })
+      return 'skipped'
     }
-  )
+    const outputHash = createHash('sha256').update(bytes).digest('hex')
+    const timestamp = new Date().toISOString()
+
+    // Through the write-ahead seam, not a bare append: if `insertDerivedFile`
+    // throws, the entry is truncated back off the chain rather than left
+    // describing a Derived File the database has no record of — which the next
+    // launch would answer by signing a second entry for the same file.
+    //
+    // Dated at migration with the migration as the tool (X34): the bytes were
+    // produced now, by this build, and dating them at the Capture's ingest would
+    // be a claim about a file that did not exist then.
+    await withManifestEntry(
+      store.caseDir(exhibit.caseId),
+      {
+        type: 'derivation',
+        caseId: exhibit.caseId,
+        parentExhibitId: parentId,
+        parentContentHash: parent.contentHash,
+        derivation: THUMBNAIL_DERIVATION,
+        derivationToolVersion: who.toolVersion,
+        derivationParameters: parameters,
+        outputHash,
+        outputPath: paths.rel,
+        timestamp,
+        ...who
+      },
+      (appended) => {
+        insertDerivedFile({
+          exhibitId: exhibit.id,
+          derivation: THUMBNAIL_DERIVATION,
+          toolVersion: who.toolVersion,
+          contentHash: outputHash,
+          path: paths.rel,
+          createdAt: timestamp,
+          manifestSeq: appended.index
+        })
+      }
+    )
+  } catch (err) {
+    try {
+      await rm(paths.abs, { force: true })
+    } catch (cleanupErr) {
+      throw new AggregateError([err, cleanupErr], 'Thumbnail backfill and cleanup failed')
+    }
+    throw err
+  }
   return 'anchored'
 }
 
-export async function backfillCase(
+async function backfillCaseInSlot(
   caseId: string,
   deps: ExhibitBackfillDeps
 ): Promise<ExhibitBackfillCaseResult> {
@@ -423,6 +443,29 @@ export async function backfillCase(
   return result
 }
 
+// Queue every caller, including startup and repeated name saves, before taking snapshots.
+const caseSlots = new Map<string, Promise<void>>()
+
+export async function backfillCase(
+  caseId: string,
+  deps: ExhibitBackfillDeps
+): Promise<ExhibitBackfillCaseResult> {
+  const prev = caseSlots.get(caseId) ?? Promise.resolve()
+  let release: () => void = () => {}
+  const mine = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const tail = prev.then(() => mine)
+  caseSlots.set(caseId, tail)
+  await prev
+  try {
+    return await backfillCaseInSlot(caseId, deps)
+  } finally {
+    release()
+    if (caseSlots.get(caseId) === tail) caseSlots.delete(caseId)
+  }
+}
+
 // Runs the backfill over every Case, including archived ones — an archived Case
 // is still evidence and still gets its numbers. A failure on one Case is logged
 // and the rest continue: this runs during startup, and a single unreadable case
@@ -455,5 +498,7 @@ export async function runHeldSigningWork(
   } catch (err) {
     logger.error('exhibits', 'exhibits.backfill_failed', undefined, err)
   }
-  void deps.processPendingTimestamps()
+  void deps.processPendingTimestamps().catch((err) => {
+    logger.error('timestampWorker', 'timestampWorker.stamp_failed', undefined, err)
+  })
 }

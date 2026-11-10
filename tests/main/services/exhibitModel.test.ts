@@ -51,8 +51,10 @@ import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive
 import {
   backfillCase,
   runExhibitBackfill,
+  runHeldSigningWork,
   THUMBNAIL_DERIVATION
 } from '@main/services/exhibitBackfill'
+import * as thumbnails from '@main/services/thumbnails'
 import { getThumbnail, renderThumbnail } from '@main/services/thumbnails'
 import { logger } from '@main/services/logger'
 import {
@@ -706,6 +708,68 @@ describe('exhibit model', () => {
       expect(chain.captureEntriesByIndex.get(0)?.contentHash).toBe(entry.parentContentHash)
     })
 
+    it('serializes repeated blank-to-set backfills while rendering is held', async () => {
+      const capture = await ingestInto(caseId, {
+        url: 'https://example.com/overlap',
+        title: 'Overlap',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot: await screenshotPng({ r: 15, g: 90, b: 15 })
+      })
+      let release!: () => void
+      const held = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const original = thumbnails.renderThumbnail
+      const render = vi.spyOn(thumbnails, 'renderThumbnail').mockImplementation(async (bytes) => {
+        await held
+        return original(bytes)
+      })
+      const deps = { toolVersion: TOOL_VERSION, processPendingTimestamps: async () => undefined }
+      const first = runHeldSigningWork(deps)
+      await vi.waitFor(() => expect(render).toHaveBeenCalledOnce())
+      updateSettings({ operatorName: '' })
+      updateSettings({ operatorName: 'Second Operator' })
+      const second = runHeldSigningWork(deps)
+      await new Promise((resolve) => setImmediate(resolve))
+      release()
+      await Promise.all([first, second])
+      render.mockRestore()
+      expect(listDerivedFilesForExhibit(capture.id)).toHaveLength(1)
+      expect(manifestLines(caseDir).filter((line) => line.type === 'derivation')).toHaveLength(1)
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
+    })
+
+    it('leaves no thumbnail when its capture is deleted during rendering', async () => {
+      const capture = await ingestInto(caseId, {
+        url: 'https://example.com/deleted-while-rendering',
+        title: 'Deleted',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot: await screenshotPng({ r: 15, g: 90, b: 15 })
+      })
+      let release!: () => void
+      const held = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const original = thumbnails.renderThumbnail
+      const render = vi.spyOn(thumbnails, 'renderThumbnail').mockImplementation(async (bytes) => {
+        await held
+        return original(bytes)
+      })
+      const pending = backfillCase(caseId, { toolVersion: TOOL_VERSION })
+      await vi.waitFor(() => expect(render).toHaveBeenCalledOnce())
+      const lifecycle = createCaptureLifecycle({
+        selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle
+      })
+      await lifecycle.delete(capture.id, 'delete during held backfill')
+      release()
+      await pending
+      render.mockRestore()
+      expect(existsSync(defaultCaptureStore.thumbnailPaths(caseId, capture.id).abs)).toBe(false)
+      expect(listDerivedFilesForExhibit(capture.id)).toEqual([])
+      expect(manifestLines(caseDir).filter((line) => line.type === 'derivation')).toEqual([])
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
+    })
+
     it('rolls the derivation entry back when its derived-file row cannot be written', async () => {
       await ingestInto(caseId, {
         url: 'https://example.com/rollback',
@@ -725,6 +789,9 @@ describe('exhibit model', () => {
 
       expect(manifestLines(caseDir).filter((line) => line.type === 'derivation')).toHaveLength(0)
       expect(listDerivedFilesForCase(caseId)).toEqual([])
+      expect(
+        existsSync(defaultCaptureStore.thumbnailPaths(caseId, listExhibits(caseId)[0].id).abs)
+      ).toBe(false)
       expect(verifyManifestChain(caseDir).valid).toBe(true)
 
       getDb().exec('DROP TRIGGER block_derived_insert')

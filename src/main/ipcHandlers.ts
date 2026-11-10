@@ -1348,8 +1348,8 @@ export function registerIpcHandlers(deps: {
     }
     // A channel switch or auto-check toggle must reconfigure the live updater.
     updaterService.applySettingsChange(partial)
-    // Awaited, so the save answers after the held entries are written and a screen that
-    // refetches on the answer reads them.
+    // Await the backfill attempt before answering so refetches see its completed writes.
+    // Trusted-time retries start in the background and may finish after the answer.
     if (!hadOperatorName && trimmedOperatorName() !== '') await deps.onOperatorNameSet?.()
     return updated
   })

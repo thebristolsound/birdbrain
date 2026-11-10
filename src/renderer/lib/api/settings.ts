@@ -13,8 +13,8 @@ export function settingsUpdateMutationOptions(queryClient: QueryClient) {
     mutationFn: (partial: Partial<BirdbrainSettings>) => window.birdbrain.settings.update(partial),
     onSuccess: (data: BirdbrainSettings, partial: Partial<BirdbrainSettings>) => {
       queryClient.setQueryData(queryKeys.settings, data)
-      // A first name lets main sign the entries it held (X47) before it answers; every
-      // Case's inventory and Manifest read again to show them.
+      // Refetch inventories and manifests after the held backfill attempt.
+      // Trusted-time retries may still be running when these reads finish.
       if (partial.operatorName !== undefined) {
         queryClient.invalidateQueries({ queryKey: ['exhibits'] })
         queryClient.invalidateQueries({ queryKey: ['manifest'] })

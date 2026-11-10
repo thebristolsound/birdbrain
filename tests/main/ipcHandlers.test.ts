@@ -2393,6 +2393,32 @@ describe('ipcHandlers — settings', () => {
       expect(processPendingTimestamps).toHaveBeenCalledTimes(1)
     })
 
+    it('answers without waiting for timestamps and logs a later retry rejection', async () => {
+      let reject!: (error: Error) => void
+      const pending = new Promise<never>((_resolve, fail) => {
+        reject = fail
+      })
+      registerWithHeldWork(() => pending)
+      settings.updateSettings({ operatorName: '' })
+      const logged = vi.spyOn(logger, 'error').mockImplementation(() => 'log-id')
+      const saved = expectOk<{ operatorName: string }>(
+        await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { operatorName: 'Agent Smith' })
+      )
+      expect(saved.operatorName).toBe('Agent Smith')
+      expect(renumberNames()).toEqual(['Agent Smith'])
+      const error = new Error('timestamp queue enumeration failed')
+      reject(error)
+      await vi.waitFor(() =>
+        expect(logged).toHaveBeenCalledWith(
+          'timestampWorker',
+          'timestampWorker.stamp_failed',
+          undefined,
+          error
+        )
+      )
+      logged.mockRestore()
+    })
+
     it('saves the name and logs, rather than failing the save, when the backfill throws', async () => {
       const processPendingTimestamps = vi.fn(async () => undefined)
       registerWithHeldWork(processPendingTimestamps)

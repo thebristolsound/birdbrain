@@ -381,7 +381,9 @@ async function backfillThumbnail(
     try {
       await rm(paths.abs, { force: true })
     } catch (cleanupErr) {
-      throw new AggregateError([err, cleanupErr], 'Thumbnail backfill and cleanup failed')
+      throw new AggregateError([err, cleanupErr], 'Thumbnail backfill and cleanup failed', {
+        cause: cleanupErr
+      })
     }
     throw err
   }

@@ -26,7 +26,6 @@ export interface StatusInput {
   egressReadFailed: boolean
   vpnSeen: boolean | undefined
   connectedToExtension: boolean
-  tabCount?: number
   successCount: number
   failCount: number
   sessionActive: boolean
@@ -55,17 +54,12 @@ export interface StatusModel {
 const RANK: Record<Severity, number> = { nominal: 0, warning: 1, danger: 2 }
 
 export function statusModel(input: StatusInput): StatusModel {
-  const { egress, egressReadFailed, vpnSeen, connectedToExtension, tabCount } = input
-  const { successCount, failCount } = input
+  const { egress, egressReadFailed, vpnSeen, connectedToExtension, successCount, failCount } = input
 
   const extension: Signal = {
     key: 'extension',
     name: 'Extension',
-    text: connectedToExtension
-      ? tabCount !== undefined
-        ? `Connected · ${tabCount} ${tabCount === 1 ? 'tab' : 'tabs'}`
-        : 'Connected'
-      : 'Not connected',
+    text: connectedToExtension ? 'Connected' : 'Not connected',
     severity: 'nominal'
   }
 

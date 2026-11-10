@@ -628,6 +628,27 @@ describe('walkMhtml', () => {
     )
   })
 
+  // Only two hyphens after the boundary close the archive; the a1762414 decoder read on past one.
+  it('does not close the archive at a delimiter followed by a single hyphen', () => {
+    const buffer = mhtml([
+      ...MULTIPART_TOP,
+      '--B',
+      'Content-Type: text/html',
+      '',
+      '<p>one --B-x</p>',
+      '--B',
+      'Content-Type: text/html',
+      '',
+      '<p>two</p>',
+      '--B--'
+    ])
+    expect(walk(buffer).summary).toMatchObject({ closed: true, totalParts: 3 })
+    expect(listHtmlPartsInMhtml(buffer).parts.map((part) => part.decode())).toEqual([
+      '<p>one ',
+      '<p>two</p>'
+    ])
+  })
+
   // The a1762414 decoder reads this archive the same way: one HTML part whose headers end at the
   // first LF LF, ahead of a CRLF CRLF pair later in its body.
   it('ends LF-only headers at the first blank line, inside the part', () => {

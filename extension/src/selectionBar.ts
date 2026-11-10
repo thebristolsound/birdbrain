@@ -480,15 +480,15 @@ function holdSelection(): void {
   if (!selection || selection.rangeCount === 0) return
   // getRangeAt reports a selection that crosses a shadow boundary as a collapsed point in
   // Chromium, so it could not be put back; the composed range keeps both ends where they are.
-  const [composed] =
-    typeof selection.getComposedRanges === 'function'
-      ? selection.getComposedRanges({ shadowRoots: shadowRootsUnder(document) })
-      : []
+  const composedAvailable = typeof selection.getComposedRanges === 'function'
+  const [composed] = composedAvailable
+    ? selection.getComposedRanges({ shadowRoots: shadowRootsUnder(document) })
+    : []
   const range = composed ?? selection.getRangeAt(0)
   // A caret paints no highlight, and clearing it would fire the page's selectionchange on every
-  // capture taken after a click. Read from the composed range, which keeps a shadow-crossing
-  // selection's true ends where getRangeAt would report it collapsed.
-  if (range.collapsed) return
+  // capture taken after a click. Only the composed range can tell a caret from a shadow-crossing
+  // selection, which getRangeAt reports as collapsed, so without it both are cleared.
+  if (composedAvailable && range.collapsed) return
   const backward =
     typeof selection.direction === 'string'
       ? selection.direction === 'backward'

@@ -522,20 +522,18 @@ describe("the operator's selection stays out of the frames (#993)", () => {
     expect(bar()).not.toBeNull()
   })
 
-  // A click leaves a caret that paints no highlight; clearing it would only fire the page's
-  // selectionchange on every capture taken after a click.
-  it('leaves a collapsed caret alone and fires no selectionchange for it', () => {
+  // Without composed ranges, getRangeAt reports a shadow-crossing selection as collapsed, so a
+  // caret cannot be told from one; both are cleared, as before the caret rule.
+  it('clears even a collapsed selection where composed ranges are unavailable', () => {
+    expect('getComposedRanges' in Selection.prototype).toBe(false)
     const text = document.querySelector('p')!.firstChild!
     window.getSelection()!.collapse(text, 5)
-    const removeAllRanges = vi.spyOn(Selection.prototype, 'removeAllRanges')
 
     dispatch({ type: 'PREPARE_FOR_CAPTURE' })
-    expect(removeAllRanges).not.toHaveBeenCalled()
-    expect(window.getSelection()!.rangeCount).toBe(1)
+    expect(window.getSelection()!.rangeCount).toBe(0)
     dispatch({ type: 'RELEASE_CAPTURE_UI' })
 
     expect(selectionEnds()).toEqual([text, 5, text, 5])
-    removeAllRanges.mockRestore()
   })
 
   it('keeps a backward selection backward where the selection reports no direction', async () => {
@@ -839,6 +837,51 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       const [first, second] = Array.from(document.querySelectorAll('p'))
       return [first.firstChild as Text, second.firstChild as Text]
     }
+
+    // A click leaves a caret that paints no highlight; clearing it would only fire the page's
+    // selectionchange on every capture taken after a click.
+    it('leaves a caret alone when its composed range is collapsed', () => {
+      const [first] = twoParagraphs()
+      composed = () =>
+        new StaticRange({
+          startContainer: first,
+          startOffset: 5,
+          endContainer: first,
+          endOffset: 5
+        })
+      window.getSelection()!.collapse(first, 5)
+      const removeAllRanges = vi.spyOn(Selection.prototype, 'removeAllRanges')
+
+      try {
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        expect(removeAllRanges).not.toHaveBeenCalled()
+        expect(window.getSelection()!.rangeCount).toBe(1)
+        dispatch({ type: 'RELEASE_CAPTURE_UI' })
+        expect(selectionEnds()).toEqual([first, 5, first, 5])
+      } finally {
+        removeAllRanges.mockRestore()
+      }
+    })
+
+    // Chromium's getRangeAt reports a selection that crosses a shadow boundary as collapsed; the
+    // composed range is what tells it from a caret, so the highlight still leaves the frame.
+    it('clears a shadow-crossing selection that getRangeAt reports as collapsed', () => {
+      const [first, second] = twoParagraphs()
+      composed = () =>
+        new StaticRange({
+          startContainer: first,
+          startOffset: 7,
+          endContainer: second,
+          endOffset: 11
+        })
+      window.getSelection()!.collapse(first, 7)
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      expect(window.getSelection()!.rangeCount).toBe(0)
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(selectionEnds()).toEqual([first, 7, second, 11])
+    })
 
     it('restores from the composed range and hands it every shadow root, closed ones included', () => {
       const [first, second] = twoParagraphs()

@@ -887,7 +887,13 @@ if (!gotSingleInstanceLock) {
         checkLeftoverBrowsers,
         popOut: { open: openPopOut, show: showPopOut, dock: dockPopOut, isOpen: popOutIsOpen },
         sharingService,
-        enqueueExhibitTimestamp: (exhibitId) => timestampWorker.enqueueExhibit(exhibitId)
+        enqueueExhibitTimestamp: (exhibitId) => timestampWorker.enqueueExhibit(exhibitId),
+        // The work a blank operator name held (X47): the Cases the backfill skipped, and the
+        // stamps the worker kept pending. The stamps wait on the network, so they are not awaited.
+        onOperatorNameSet: async () => {
+          await runExhibitBackfill({ toolVersion: app.getVersion() })
+          void timestampWorker.processPending()
+        }
       })
 
       // Start capture server and extension connection monitor. A failed bind

@@ -221,6 +221,8 @@ const CODE_LABELS: Record<LogCode, string> = {
   'demoCase.artifact_cleanup_failed':
     "The demonstration case was removed, but its files couldn't be deleted",
   'exhibits.backfill_failed': "Couldn't finish the exhibit migration for a case",
+  'exhibits.backfill_deferred':
+    "Held back a case's exhibit migration until an operator name is set in Settings",
   'exhibits.path_unrepaired': "Couldn't repair the file location of an imported exhibit",
   'staging.path_unrepaired': "Couldn't repair the file location of an imported pooled file",
   'staging.commit_failed': "Couldn't commit a pooled file to the case",

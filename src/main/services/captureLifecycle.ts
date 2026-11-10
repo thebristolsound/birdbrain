@@ -35,7 +35,7 @@ import {
 import type { AuthorChain, CaptureChainEntry, ManifestImportEntry } from '@main/services/manifest'
 import { reconcileCaptureTrustedTime, resolveTrustedTime } from '@main/services/trustedTime'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
-import { getSettings } from '@main/services/settings'
+import { OperatorNameRequiredError, trimmedOperatorName } from '@main/services/operatorName'
 import { currentEgress, type CaptureEgress } from '@main/services/egress'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import { fetchCertChain as defaultFetchCertChain } from '@main/services/tlsCertChain'
@@ -322,7 +322,9 @@ export interface CaptureLifecycle {
   // way to tell such a deletion from a real removal (#580). No caller passes one
   // since the pipeline self-test stopped deleting from a case (#614). Only chains
   // written while it did — between #580 and #614 — carry its `pipeline-test`;
-  // older ones hold its capture entry with no deletion at all.
+  // older ones hold its capture entry with no deletion at all. Throws
+  // OperatorNameRequiredError, writing nothing, when a `deletion` entry is due and no
+  // operator name is set (X47); `deleteMany` reports the same refusal as an outcome.
   delete: (captureId: string, reason?: string) => Promise<boolean>
   // Batch delete over a same-case id set (#394). Prefix-commit over the manifest
   // chain: one ordinary deletion entry per capture, in order, until the first
@@ -1042,12 +1044,6 @@ function holdsRow(caseId: string, ids: string[]): boolean {
   return ids.some((id) => held.has(id))
 }
 
-// The operator gate every ingest and duplicate passes. A signed entry naming
-// no operator would be a weaker record than any capture this app can produce.
-function trimmedOperatorName(): string {
-  return getSettings().operatorName?.trim() ?? ''
-}
-
 // The screenshot cap. An oversized artifact is dropped and reported, never
 // refused: a silently missing artifact would let the extension report a clean
 // capture that lost one.
@@ -1232,6 +1228,10 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
       return { outcome: { captureId, status: 'rejected', reason: 'not_author' } }
     }
     if (capture.format === 'mhtml') {
+      const operatorName = trimmedOperatorName()
+      if (!operatorName) {
+        return { outcome: { captureId, status: 'rejected', reason: 'operator_name_required' } }
+      }
       const caseDir = store.caseDir(capture.caseId)
       const headBefore = getManifestHead(caseDir).nextIndex
       let stage: 'artifacts' | 'db' = 'artifacts'
@@ -1243,7 +1243,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
             caseId: capture.caseId,
             contentHash: capture.hash,
             operatorId: getInstallationId(),
-            operatorName: getSettings().operatorName ?? '',
+            operatorName,
             toolVersion: resolveToolVersion(),
             ...(reason !== undefined ? { reason } : {})
           },
@@ -1692,6 +1692,9 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         const deletionChain = deletionChainOf(store.caseDir(capture.caseId))
         const { outcome, cause } = await deleteOne(capture, deletionChain, reason)
         if (cause !== undefined && !(cause instanceof ManifestRollback)) throw cause
+        if (outcome.status === 'rejected' && outcome.reason === 'operator_name_required') {
+          throw new OperatorNameRequiredError()
+        }
         return outcome.status === 'deleted' || outcome.status === 'deleted_unmanifested'
       })
     },

@@ -203,6 +203,8 @@ import { initInstallationId } from '@main/services/installationId'
 import { initServerToken } from '@main/services/serverToken'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
+import type { CaptureLifecycle } from '@main/services/captureLifecycle'
+import { OperatorNameRequiredError } from '@main/services/operatorName'
 import { createSessionService, type SessionService } from '@main/services/session'
 import {
   createLaunchedBrowserService,
@@ -1272,6 +1274,8 @@ describe('ipcHandlers — captures', () => {
   // handler, so a cancel is an empty list; commit and discard take an id list
   // that is shape-checked before anything reaches the pool.
   it('uploads, commits and discards pooled files, and treats a cancelled dialog as empty', async () => {
+    // The commit signs an `exhibit` entry, which needs a name (X47).
+    settings.updateSettings({ operatorName: 'Operator One' })
     expect(expectOk(await invoke(IPC_CHANNELS.STAGING_UPLOAD, caseId))).toEqual([])
 
     const source = join(userDataPath, 'bundle.zip')
@@ -1311,8 +1315,37 @@ describe('ipcHandlers — captures', () => {
     )
     expect(verification.status).toBeDefined()
 
-    expectOk(await invoke(IPC_CHANNELS.CAPTURES_DELETE, captureId))
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_DELETE, captureId))).toEqual({
+      deleted: true
+    })
     expect(expectOk<Capture[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST, caseId))).toHaveLength(0)
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_DELETE, captureId))).toEqual({
+      deleted: false
+    })
+  })
+
+  // The lifecycle's refusal itself is pinned in captureLifecycle.test.ts; this is the mapping.
+  it('answers a delete the lifecycle refuses for want of a name as a refusal (X47)', async () => {
+    const fault = new Error('disk gone')
+    const remove = vi
+      .fn<CaptureLifecycle['delete']>()
+      .mockRejectedValueOnce(new OperatorNameRequiredError())
+      .mockRejectedValueOnce(fault)
+    const selectorLifecycle = createSelectorLifecycle({ emitRematched: vi.fn() })
+    registerIpcHandlers({
+      selectorLifecycle,
+      captureLifecycle: { ...createCaptureLifecycle({ selectorLifecycle }), delete: remove },
+      recaptureService,
+      updaterService,
+      sessionService,
+      sharingService
+    })
+
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_DELETE, captureId))).toEqual({
+      deleted: false,
+      reason: 'operator_name_required'
+    })
+    await expect(invoke(IPC_CHANNELS.CAPTURES_DELETE, captureId)).rejects.toBe(fault)
   })
 
   // #462. This test used to assert that nothing answers CAPTURE_SERVER_PORT,
@@ -2275,6 +2308,39 @@ describe('ipcHandlers — settings', () => {
     })
     await expect(invoke(IPC_CHANNELS.SETTINGS_UPDATE, { theme: 'light' })).rejects.toBe(boom)
     spy.mockRestore()
+  })
+
+  // X47 (#1332): the work a blank name held runs when a save first sets one, and the save
+  // answers only once it has.
+  it('runs the held signing work when a save takes the operator name from blank to set', async () => {
+    const order: string[] = []
+    const onOperatorNameSet = vi.fn(async () => {
+      order.push('held work')
+    })
+    const selectorLifecycle = createSelectorLifecycle({ emitRematched: vi.fn() })
+    registerIpcHandlers({
+      selectorLifecycle,
+      captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
+      recaptureService,
+      updaterService,
+      sessionService,
+      sharingService,
+      onOperatorNameSet
+    })
+    settings.updateSettings({ operatorName: '' })
+
+    expectOk(await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { operatorName: '   ' }))
+    expectOk(await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { theme: 'light' }))
+    expect(onOperatorNameSet).not.toHaveBeenCalled()
+
+    const saved = invoke(IPC_CHANNELS.SETTINGS_UPDATE, { operatorName: 'Agent Smith' }).then(() =>
+      order.push('answered')
+    )
+    await saved
+    expect(order).toEqual(['held work', 'answered'])
+
+    expectOk(await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { operatorName: 'Agent Jones' }))
+    expect(onOperatorNameSet).toHaveBeenCalledTimes(1)
   })
 
   it('returns null when the storage-path picker is cancelled and a path otherwise', async () => {

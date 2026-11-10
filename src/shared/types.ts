@@ -1103,6 +1103,9 @@ export const LOG_CODES = [
   // over the remaining Cases, so this line is the only record that a Case did
   // not get its numbers or its anchored thumbnails.
   'exhibits.backfill_failed',
+  // The same backfill holding a Case back because no operator name is set (X47): it signs
+  // nothing for that Case and runs again once a name is saved.
+  'exhibits.backfill_deferred',
   // An imported row whose path the startup repair (#1610) could not point at
   // a file: none or several carry its id, or the directory could not be read.
   // The row keeps the bare Case id as its path and is retried next launch.
@@ -1779,6 +1782,10 @@ export interface InventoryExhibitRow extends InventoryRowCommon {
   // manifestSeq !== null. Stated as its own field so a consumer never has to
   // re-derive the anchoring claim from a nullable column.
   anchored: boolean
+  // Present when the chain records no number for this row yet and the backfill
+  // cannot sign one, because no operator name is set (X47). `exhibitNumber` is
+  // then the database's number only, which no entry vouches for.
+  unnumberedReason?: 'operator_name_required'
 }
 
 export interface InventoryDerivedFileRow extends InventoryRowCommon {
@@ -1878,7 +1885,13 @@ export type StagingCommitOutcome =
   | { stagingId: string; status: 'committed'; exhibitId: string; exhibitNumber: number }
   // `changed`: the bytes on disk no longer hash to the arrival hash (X13).
   // `missing`: the pooled file is gone. `not_found`: no such row in this Case.
-  | { stagingId: string; status: 'refused'; reason: 'changed' | 'missing' | 'not_found' }
+  // `operator_name_required`: no operator name is set, so no `exhibit` entry can be
+  // signed (X47); the file stays in the pool.
+  | {
+      stagingId: string
+      status: 'refused'
+      reason: 'changed' | 'missing' | 'not_found' | 'operator_name_required'
+    }
   // The manifest append or the row insert threw; the entry was rolled back and
   // the file put back in the pool. `error` is the error's name only.
   | { stagingId: string; status: 'failed'; error: string }

@@ -1096,6 +1096,108 @@ describe('exhibit model', () => {
     })
   })
 
+  // Known-answer test for the deferred-then-saved sequence (X47, #1332): with no operator
+  // name the backfill signs nothing for a Case that needs a `renumber` or a `derivation`
+  // entry, the inventory says why those rows have no number, and once a name is saved the
+  // same backfill numbers the Case under that name.
+  describe('backfill without an operator name (X47)', () => {
+    async function seedCaseNeedingBoth(): Promise<{ legacyId: string; shotId: string }> {
+      const shot = await ingestInto(caseId, {
+        url: 'https://example.com/unnamed-shot',
+        title: 'Shot',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot: await screenshotPng({ r: 40, g: 90, b: 160 })
+      })
+      return { legacyId: ingestPreX46(caseId, caseDir, 2), shotId: shot.id }
+    }
+
+    for (const blank of ['', '   ']) {
+      it(`skips the Case, signs nothing and logs why (${JSON.stringify(blank)})`, async () => {
+        await seedCaseNeedingBoth()
+        updateSettings({ operatorName: blank })
+        const before = readFileSync(join(caseDir, MANIFEST_FILENAME), 'utf-8')
+        const warned = vi.spyOn(logger, 'warn').mockImplementation(() => 'log-id')
+
+        const [result] = await runExhibitBackfill({ toolVersion: TOOL_VERSION })
+
+        expect(result).toMatchObject({
+          caseId,
+          skipped: 'operator_name_required',
+          renumbered: false,
+          thumbnailsAnchored: 0,
+          thumbnailsUnanchored: 0
+        })
+        expect(readFileSync(join(caseDir, MANIFEST_FILENAME), 'utf-8')).toBe(before)
+        expect(listDerivedFilesForCase(caseId)).toEqual([])
+        expect(warned).toHaveBeenCalledWith('exhibits', 'exhibits.backfill_deferred', {
+          caseId: expect.anything()
+        })
+        warned.mockRestore()
+      })
+    }
+
+    it('shows the rows awaiting a number as unnumbered for want of a name, and no others', async () => {
+      const { legacyId, shotId } = await seedCaseNeedingBoth()
+      updateSettings({ operatorName: '' })
+      await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      const reasons = (): Array<[string, string | undefined]> =>
+        getCaseInventory(caseId)
+          .rows.filter((row): row is InventoryExhibitRow => row.entity === 'exhibit')
+          .map((row) => [row.id, row.unnumberedReason])
+
+      // The ingested Capture carries its number on its own entry (X46); only the pre-X46 one
+      // waits on the `renumber` entry the backfill could not sign.
+      expect(reasons()).toEqual([
+        [shotId, undefined],
+        [legacyId, 'operator_name_required']
+      ])
+      updateSettings({ operatorName: 'Saved Operator' })
+      expect(reasons()).toEqual([
+        [shotId, undefined],
+        [legacyId, undefined]
+      ])
+    })
+
+    it('numbers the skipped Case under the name once one is saved', async () => {
+      const { legacyId, shotId } = await seedCaseNeedingBoth()
+      updateSettings({ operatorName: '' })
+      await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      updateSettings({ operatorName: '  Saved Operator  ' })
+      const result = await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      expect(result.skipped).toBeUndefined()
+      expect(result.renumbered).toBe(true)
+      expect(result.thumbnailsAnchored).toBe(1)
+      const signed = manifestLines(caseDir).filter(
+        (line) => line.type === 'renumber' || line.type === 'derivation'
+      )
+      expect(signed.map((line) => [line.type, line.operatorName])).toEqual([
+        ['renumber', 'Saved Operator'],
+        ['derivation', 'Saved Operator']
+      ])
+      expect(signed[0].assignments).toEqual([
+        { exhibitId: legacyId, exhibitNumber: 2, manifestIndex: 1 }
+      ])
+      expect(signed[1].parentExhibitId).toBe(shotId)
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
+    })
+
+    it('neither skips nor logs a Case that has nothing left to sign', async () => {
+      await seedCaseNeedingBoth()
+      await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+      updateSettings({ operatorName: '' })
+      const warned = vi.spyOn(logger, 'warn').mockImplementation(() => 'log-id')
+
+      const result = await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      expect(result.skipped).toBeUndefined()
+      expect(warned).not.toHaveBeenCalled()
+      warned.mockRestore()
+    })
+  })
+
   describe('inventory', () => {
     it('returns anchored and staged rows in one list with on-disk existence', async () => {
       const capture = await ingestInto(caseId, {

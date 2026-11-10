@@ -630,7 +630,18 @@ describe('staging pool', () => {
       const [staged] = await uploadToStaging(caseId, [sourceFile('bundle.zip', ZIP)])
       const [committed] = (await commitStagedFiles(caseId, [staged.id])).outcomes
       if (committed.status !== 'committed') throw new Error('commit failed')
-      const worker = createTimestampWorker({ requestToken: granting() })
+      const requester = granting()
+      let answered: () => void = () => {}
+      const tokenReturned = new Promise<void>((done) => {
+        answered = done
+      })
+      const worker = createTimestampWorker({
+        requestToken: async (contentHash) => {
+          const token = await requester(contentHash)
+          answered()
+          return token
+        }
+      })
       const stamps = (): number =>
         manifestLines(caseDir).filter((line) => line.type === 'timestamp').length
 
@@ -638,7 +649,10 @@ describe('staging pool', () => {
       let whileHeld = -1
       await withManifestSlot(caseDir, async () => {
         stamping = worker.stampExhibit(committed.exhibitId)
-        await new Promise((resolve) => setTimeout(resolve, 20))
+        // From the token on, the worker's path to its append is microtasks only, so one
+        // macrotask later it has either appended or queued on the slot.
+        await tokenReturned
+        await new Promise((resolve) => setImmediate(resolve))
         whileHeld = stamps()
       })
 

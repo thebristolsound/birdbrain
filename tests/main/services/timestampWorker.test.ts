@@ -382,13 +382,27 @@ describe('timestampWorker', () => {
 
     it("appends a receipt stamp only once the Case's manifest slot is free (#639)", async () => {
       const merge = appendMerge()
-      const worker = createTimestampWorker({ requestToken: grantingRequester() })
+      const granting = grantingRequester()
+      let answered: () => void = () => {}
+      const tokenReturned = new Promise<void>((done) => {
+        answered = done
+      })
+      const worker = createTimestampWorker({
+        requestToken: async (contentHash) => {
+          const token = await granting(contentHash)
+          answered()
+          return token
+        }
+      })
 
       let stamping: Promise<boolean> | undefined
       let whileHeld = -1
       await withManifestSlot(caseDir, async () => {
         stamping = worker.stampMerge(caseId, merge.index)
-        await new Promise((resolve) => setTimeout(resolve, 20))
+        // From the token on, the worker's path to its append is microtasks only, so one
+        // macrotask later it has either appended or queued on the slot.
+        await tokenReturned
+        await new Promise((resolve) => setImmediate(resolve))
         whileHeld = receiptEntries().length
       })
 

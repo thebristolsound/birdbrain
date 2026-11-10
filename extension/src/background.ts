@@ -1033,6 +1033,32 @@ function recordSelectionCapture(tabId: number, url: string, captured: boolean): 
   lastCaptureByTab.set(tabId, { url, at: Date.now(), manifestIndex: null })
 }
 
+interface NavigationWatch {
+  /** True once any URL the tab reported differed canonically from the watched one. */
+  navigatedAway: () => boolean
+  stop: () => void
+}
+
+/**
+ * Records every URL change one tab reports while armed (#1006). Sampling the
+ * tab URL cannot see a navigation that lands and reverts between two reads;
+ * the event stream reports both legs. Canonical comparison, so a fragment-only
+ * move is no stricter here than in the samplers it supplements.
+ */
+function watchTabNavigation(tabId: number, url: string): NavigationWatch {
+  const expected = canonicalizeUrl(url)
+  let navigated = false
+  const listener = (updatedTabId: number, changeInfo: chrome.tabs.OnUpdatedInfo): void => {
+    if (updatedTabId !== tabId || changeInfo.url === undefined) return
+    if (canonicalizeUrl(changeInfo.url) !== expected) navigated = true
+  }
+  chrome.tabs.onUpdated.addListener(listener)
+  return {
+    navigatedAway: () => navigated,
+    stop: () => chrome.tabs.onUpdated.removeListener(listener)
+  }
+}
+
 async function handleSelectionAction(
   tabId: number,
   url: string,
@@ -1123,55 +1149,68 @@ async function handleSelectionAction(
     // capture runs in, or the bar and the rest of the injected UI would be
     // serialised into the MHTML and rendered in the screenshot (#386). The
     // attach POST stays inside the bracket, mirroring manualCaptureTab.
-    return await captureSuppression.withSuppression(tabId, async ({ collectFrames }) => {
-      const { frames } = await collectFrames(() =>
-        Promise.all([
-          captureMhtml(tabId),
-          chrome.tabs.get(tabId),
-          getPlainTextFromTab(tabId),
-          captureScreenshotsEnabled ? captureFullPageScreenshot(tabId) : Promise.resolve(undefined)
-        ])
-      )
-      const [mhtmlBlob, tab, textContent, shot] = frames
+    // Armed before suppression starts and read after the settled sample.
+    const navigation = watchTabNavigation(tabId, url)
+    try {
+      return await captureSuppression.withSuppression(tabId, async ({ collectFrames }) => {
+        const { frames } = await collectFrames(() =>
+          Promise.all([
+            captureMhtml(tabId),
+            chrome.tabs.get(tabId),
+            getPlainTextFromTab(tabId),
+            captureScreenshotsEnabled
+              ? captureFullPageScreenshot(tabId)
+              : Promise.resolve(undefined)
+          ])
+        )
+        const [mhtmlBlob, tab, textContent, shot] = frames
 
-      // The frames describe whatever the tab was showing while they were
-      // taken, while `url` came from the sender at message time. If the tab
-      // navigated in between, the attach would store one page's bytes under
-      // another page's URL — an evidence-attribution error, not a UI glitch,
-      // so it is refused rather than corrected. Two samples: `tab` resolved
-      // concurrently with the frames, so alone it reads t=0 while the MHTML
-      // and a long screenshot stitch keep running; `settledTab` is read fresh
-      // after every frame settled, closing the collection window. A navigation
-      // that lands and reverts between the two samples is the residual no URL
-      // sampling can see. Compared canonically, so a fragment-only move stays
-      // the same page under exactly the identity rule the lookup used.
-      const settledTab = await chrome.tabs.get(tabId)
-      if (
-        canonicalizeUrl(tab.url ?? '') !== canonicalizeUrl(url) ||
-        canonicalizeUrl(settledTab.url ?? '') !== canonicalizeUrl(url)
-      ) {
-        return {
-          ok: false,
-          error: 'The page navigated while it was being captured; nothing was attached'
+        // The frames describe whatever the tab was showing while they were
+        // taken, while `url` came from the sender at message time. If the tab
+        // navigated in between, the attach would store one page's bytes under
+        // another page's URL — an evidence-attribution error, not a UI glitch,
+        // so it is refused rather than corrected. Two samples: `tab` resolved
+        // concurrently with the frames, so alone it reads t=0 while the MHTML
+        // and a long screenshot stitch keep running; `settledTab` is read fresh
+        // after every frame settled, closing the collection window. A
+        // navigation that lands and reverts between the two samples is
+        // invisible to both, so the watcher armed above refuses on any URL the
+        // tab reported in the bracket (#1006). What remains unseen is a
+        // reload or navigation that keeps the canonical URL, and an update
+        // event Chrome delivers only after the settled read. Compared
+        // canonically, so a fragment-only move stays the same page under
+        // exactly the identity rule the lookup used.
+        const settledTab = await chrome.tabs.get(tabId)
+        if (
+          navigation.navigatedAway() ||
+          canonicalizeUrl(tab.url ?? '') !== canonicalizeUrl(url) ||
+          canonicalizeUrl(settledTab.url ?? '') !== canonicalizeUrl(url)
+        ) {
+          return {
+            ok: false,
+            error: 'The page navigated while it was being captured; nothing was attached'
+          }
         }
-      }
 
-      return attach(
-        {
-          title: tab.title || url,
-          timestamp: new Date().toISOString(),
-          textContent,
-          mhtml: mhtmlBlob,
-          screenshot: shot?.blob,
-          browserVersion: getBrowserVersion(),
-          userAgent: getUserAgentString(),
-          extensionVersion: getExtensionVersion(),
-          ...getResponseFactsForCapture(tabId, url)
-        },
-        tab.title || '',
-        shot && screenshotFallbackNote('full-page', shot)
-      )
-    })
+        return attach(
+          {
+            title: tab.title || url,
+            timestamp: new Date().toISOString(),
+            textContent,
+            mhtml: mhtmlBlob,
+            screenshot: shot?.blob,
+            browserVersion: getBrowserVersion(),
+            userAgent: getUserAgentString(),
+            extensionVersion: getExtensionVersion(),
+            ...getResponseFactsForCapture(tabId, url)
+          },
+          tab.title || '',
+          shot && screenshotFallbackNote('full-page', shot)
+        )
+      })
+    } finally {
+      navigation.stop()
+    }
   } catch (err) {
     console.error('[Birdbrain] Selection bar action failed:', err)
     // Duck-typed like the `'status' in err` checks above rather than an

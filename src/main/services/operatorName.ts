@@ -1,9 +1,9 @@
 import { getSettings } from '@main/services/settings'
 
-// The operator gate every path that signs a Manifest Entry passes (X47): ingest, duplicate,
-// Capture deletion, the Staging Pool commit, the trusted-time worker and the Exhibit backfill.
-// Each refuses when this is empty, and none signs a placeholder in its place: a placeholder
-// would be a signed claim that nobody made the entry.
+// The operator gate (X47) that ingest, duplicate, Capture deletion, the Staging Pool commit,
+// the trusted-time worker and the Exhibit backfill pass before they sign a Manifest Entry. Each
+// refuses when this is empty, and none signs a placeholder in its place: a placeholder would
+// be a signed claim that nobody made the entry.
 export function trimmedOperatorName(): string {
   return getSettings().operatorName?.trim() ?? ''
 }

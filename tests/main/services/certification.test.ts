@@ -1316,6 +1316,32 @@ describe('certification from a literal input', () => {
       expect(trustedTime).toContain('<td>Duplicate of Exhibit 3</td>')
     })
 
+    // The Duplicate shares its source's content hash and so its token: "only" must
+    // not deny it the trusted time report.html shows for it.
+    it('scopes "only" to the observations when stamped and unstamped pages sit beside a Duplicate', () => {
+      const other = capture('cap-kat-u', 'Other Page', 'https://example.com/u')
+      const mixed = input(
+        [source, other, duplicate],
+        [
+          [source.id, '3'],
+          [other.id, '5'],
+          [duplicate.id, '4']
+        ]
+      )
+      mixed.captures = [
+        { capture: source, trustedTime: token },
+        { capture: other, trustedTime: { trustedTime: 'none' } },
+        { capture: duplicate, trustedTime: token }
+      ]
+      const html = buildCertification(mixed, '1.0.0')
+
+      const trustedTime = section(html, 'Trusted time</h2>', 'Entry signatures</h2>')
+      expect(trustedTime).toContain(
+        'asserted <strong>only</strong> for the 1 exhibit that is not a Duplicate listed as ' +
+          'timestamped below. For the 1 remaining exhibit that is not a Duplicate'
+      )
+    })
+
     it('says so when the copied Exhibit has no recorded number', () => {
       const html = certify([duplicate], [])
 

@@ -477,7 +477,9 @@ function renderCertificationHtml(fields: CertificationFields): string {
         : stamped.length > 0
           ? `<p>RFC 3161 trusted time is asserted <strong>only</strong> for the ${
               stamped.length
-            } exhibit${stamped.length === 1 ? '' : 's'} listed as timestamped below. For the ${
+            } exhibit${stamped.length === 1 ? '' : 's'}${notDuplicate(
+              stamped.length
+            )} listed as timestamped below. For the ${
               unstamped.length
             } remaining exhibit${unstamped.length === 1 ? '' : 's'}${notDuplicate(
               unstamped.length

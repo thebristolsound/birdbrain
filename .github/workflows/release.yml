@@ -261,9 +261,13 @@ jobs:
           in Chrome.
 
           \`SHA256SUMS.txt\` lists the SHA-256 of the Windows, Linux and extension files, of the
-          macOS files when this page has them, and of the bill of materials;
-          \`birdbrain-${TAG}.spdx.json\` is that bill of materials, in SPDX 2.3 JSON. To verify a
-          download, run \`sha256sum --check --ignore-missing SHA256SUMS.txt\` in its folder.
+          macOS files when this page has them, and of the bill of materials. To check a download
+          on Linux, put \`SHA256SUMS.txt\` in the folder that holds it and run
+          \`sha256sum --check --ignore-missing SHA256SUMS.txt\`.
+
+          \`birdbrain-${TAG}.spdx.json\` is that bill of materials: GitHub's dependency list for
+          the Birdbrain source repository's main branch, in SPDX 2.3 JSON, exported during this
+          release's build.
 
           Already installed? Use **Settings → Updates → Check for updates**. On macOS, download the new disk
           image from this page instead.

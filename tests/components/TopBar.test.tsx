@@ -314,13 +314,15 @@ describe('the Capture Session button', () => {
     expect(popover.textContent).toContain('Launched Google Chrome')
     expect(screen.getByTestId('session-controls')).toBeTruthy()
     expect(screen.getAllByTestId('topbar-rec')).toHaveLength(1)
-    expect(screen.queryByRole('button', { name: 'Open Operation Kestrel' })).toBeNull()
+    // The Open link names the Case once the Case list has loaded, so wait for the list first.
+    await waitFor(() => expect(popover.textContent).toContain('Into Operation Kestrel'))
+    expect(screen.queryByRole('button', { name: /^Open\b/ })).toBeNull()
   })
 
-  it('shows on the new-Case wizard, which has no rail', async () => {
+  it('opens it on the new-Case wizard, which has no rail', async () => {
     bridgeWith(OPEN)
     renderAt('/cases/new')
-    expect(await screen.findByTestId('topbar-capture-session')).toBeTruthy()
+    expect(await openPopover()).toBeTruthy()
   })
 
   it('leaves Case screens to the rail', async () => {

@@ -118,6 +118,18 @@ describe('MhtmlPartsTab, listed', () => {
     ).toContain('tail -c +$((offset+1)) <file> | head -c <size> | sha256sum')
   })
 
+  // jsdom's textContent ignores text-transform, so only the class shows that the label would
+  // render as SHA-256 (COMPUTED NOW).
+  it('shows the headers in their own case, with no uppercase class', () => {
+    renderTab(listed())
+    const table = screen.getByTestId('mhtml-parts-table')
+    const headerRow = table.querySelector('thead tr')
+    expect(headerRow?.className).not.toMatch(/\buppercase\b/)
+    for (const cell of within(table).getAllByRole('columnheader')) {
+      expect(cell.className).not.toMatch(/\buppercase\b/)
+    }
+  })
+
   it('says verify only in the caption, and shows no shield', () => {
     const { container } = renderTab(listed())
     expect(text(screen.getByTestId('mhtml-parts-table'))).not.toMatch(/verif/i)

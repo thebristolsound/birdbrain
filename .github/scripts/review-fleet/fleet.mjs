@@ -47,12 +47,19 @@ export const MAX_VERIFY_ATTEMPTS = 3
 // label itself, so the override ends when the label goes.
 export const BREAK_GLASS_DESCRIPTION = `${BREAK_GLASS} applied by the maintainer; no review`
 
+// An unset number takes its default. A set one that is not a whole number stops the run: a
+// mistyped cap must not read as the default of 40.
 export function settings(env) {
-  const int = (v, d) => (/^\d+$/.test(v ?? '') ? Number(v) : d)
+  const int = (name, fallback) => {
+    const v = (env[name] ?? '').trim()
+    if (v === '') return fallback
+    if (!/^\d+$/.test(v)) throw new Error(`${name} is "${v}"; it must be a whole number`)
+    return Number(v)
+  }
   return {
     enabled: (env.REVIEW_FLEET_ENABLED ?? '').trim().toLowerCase() !== 'false',
-    dailyCap: int(env.REVIEW_FLEET_DAILY_CAP, 40),
-    codexTimeout: int(env.REVIEW_FLEET_CODEX_TIMEOUT_MINUTES, 45)
+    dailyCap: int('REVIEW_FLEET_DAILY_CAP', 40),
+    codexTimeout: int('REVIEW_FLEET_CODEX_TIMEOUT_MINUTES', 45)
   }
 }
 

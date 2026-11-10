@@ -65,11 +65,21 @@ const facts = (over: Record<string, unknown> = {}) => ({
 })
 
 describe('settings', () => {
-  it('runs unless the variable says false, and falls back on a bad number', () => {
+  it('runs unless the variable says false, and uses the defaults for unset numbers', () => {
     expect(settings({})).toEqual({ enabled: true, dailyCap: 40, codexTimeout: 45 })
+    expect(
+      settings({ REVIEW_FLEET_DAILY_CAP: '', REVIEW_FLEET_CODEX_TIMEOUT_MINUTES: ' ' })
+    ).toEqual({ enabled: true, dailyCap: 40, codexTimeout: 45 })
     expect(settings({ REVIEW_FLEET_ENABLED: 'FALSE ' }).enabled).toBe(false)
     expect(settings({ REVIEW_FLEET_DAILY_CAP: '200' }).dailyCap).toBe(200)
-    expect(settings({ REVIEW_FLEET_DAILY_CAP: 'lots' }).dailyCap).toBe(40)
+    expect(settings({ REVIEW_FLEET_DAILY_CAP: ' 0 ' }).dailyCap).toBe(0)
+  })
+
+  it.each(['lots', '-1', '4.5', '40 heads'])('refuses the malformed cap %j', (value) => {
+    expect(() => settings({ REVIEW_FLEET_DAILY_CAP: value })).toThrow('REVIEW_FLEET_DAILY_CAP')
+    expect(() => settings({ REVIEW_FLEET_CODEX_TIMEOUT_MINUTES: value })).toThrow(
+      'REVIEW_FLEET_CODEX_TIMEOUT_MINUTES'
+    )
   })
 })
 

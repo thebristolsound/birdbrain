@@ -182,6 +182,74 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
     expect(verifyManifestChain(caseDir).valid).toBe(true)
   })
 
+  // Three writers, with the duplicate queued behind the first ingest. A slot dropped as that
+  // ingest left it would let the second ingest append beside the duplicate that then holds it.
+  it('holds a second ingest behind a duplicate that queued behind the first', async () => {
+    let releaseCopy: () => void = () => {}
+    const copyHeld = new Promise<void>((resolve) => (releaseCopy = resolve))
+    let copyStarted = false
+    let duplicating: ReturnType<CaptureLifecycle['duplicate']> | undefined
+    const store: CaptureStore = {
+      ...defaultCaptureStore,
+      // The first ingest writes its text inside the Case's slot, so the duplicate queues there.
+      writeText: (...args) => {
+        duplicating ??= held.duplicate(source.id)
+        return defaultCaptureStore.writeText(...args)
+      },
+      copyArtifacts: async (...args) => {
+        copyStarted = true
+        await copyHeld
+        return defaultCaptureStore.copyArtifacts(...args)
+      }
+    }
+    const fetchTlsCertChain = vi.fn(async () => null)
+    const held: CaptureLifecycle = createCaptureLifecycle({
+      selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle,
+      store,
+      fetchTlsCertChain,
+      egressIsDirect: () => true
+    })
+    const ingest = (name: string) =>
+      held.ingest({
+        caseId,
+        url: `https://example.com/${name}`,
+        title: name,
+        timestamp: '2026-04-05T13:00:00.000Z',
+        stream: Readable.from([
+          Buffer.from(`${name} page`)
+        ]) as unknown as ReadableStream<Uint8Array>,
+        textContent: name,
+        headers: {},
+        browserVersion: 'Chrome/120',
+        userAgent: 'Mozilla/5.0',
+        httpStatus: 200,
+        operatorId: 'op-later',
+        operatorName: 'Later Operator',
+        toolVersion: '0.1.0'
+      })
+
+    const first = await ingest('first')
+    await vi.waitFor(() => expect(copyStarted).toBe(true))
+    const second = ingest('second')
+    await vi.waitFor(() => expect(fetchTlsCertChain).toHaveBeenCalledTimes(2))
+    // As above: an ingest the slot did not hold would have appended by the next turn.
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(manifestLines().map(({ captureId }) => captureId)).toEqual([source.id, first.capture.id])
+
+    releaseCopy()
+    const duplicated = await duplicating
+    const { capture } = await second
+    expect(duplicated?.status).toBe('duplicated')
+    const duplicateId = duplicated?.status === 'duplicated' ? duplicated.capture.id : undefined
+    expect(manifestLines().map(({ captureId }) => captureId)).toEqual([
+      source.id,
+      first.capture.id,
+      duplicateId,
+      capture.id
+    ])
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+  })
+
   it('writes its own artifacts, its own signed entry, and leaves the chain valid', async () => {
     const result = await lifecycle.duplicate(source.id)
 

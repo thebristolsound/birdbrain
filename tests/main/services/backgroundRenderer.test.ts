@@ -2056,6 +2056,33 @@ describe('renderPageInHiddenWindow', () => {
     ).toHaveLength(1)
   }, 30_000)
 
+  // The proxy setup outlasts the deadline, so the enable comes after the deadline's cleanup and
+  // only the render's own cleanup can undo it.
+  it('disables the blocker when the idle tracker throws on a render the deadline ended', async () => {
+    ctl.egress = { kind: 'proxy', proxyUrl: 'socks5://127.0.0.1:1080', label: '' }
+    ctl.setProxyDelayMs = 200
+    const consentBlocker = {
+      enableBlockingInSession: vi.fn(),
+      isBlockingEnabled: vi.fn(() => true),
+      disableBlockingInSession: vi.fn()
+    }
+    // The tracker's first call on the session throws once the blocker is enabled.
+    consentBlocker.enableBlockingInSession.mockImplementation(() => {
+      const { session } = ctl.lastWindow!.webContents
+      session.webRequest.onSendHeaders.mockImplementation(() => {
+        throw new Error('tracker broke')
+      })
+    })
+    ctl.blocker = consentBlocker
+
+    await expect(
+      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 50, ...IDS })
+    ).rejects.toBeInstanceOf(RecaptureTimeout)
+    expect(consentBlocker.enableBlockingInSession).toHaveBeenCalledTimes(1)
+    expect(consentBlocker.disableBlockingInSession).toHaveBeenCalledTimes(1)
+    expect(ctl.calls).not.toContain('loadURL https://example.test/')
+  }, 30_000)
+
   it('destroys the window and cleans up when the navigation fails', async () => {
     ctl.loadUrlShouldReject = true
 

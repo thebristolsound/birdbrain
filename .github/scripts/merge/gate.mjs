@@ -48,6 +48,18 @@ export function approvalStamp(statuses) {
   return stamp ? stamp.state : 'absent'
 }
 
+// The newest review/fleet state the machine account posted (ADR-0057).
+export function fleetVerdict(statuses, machine) {
+  const mine = statuses.find((s) => s.context === 'review/fleet' && s.creator?.login === machine)
+  return mine ? mine.state : 'absent'
+}
+
+// The PRs the review fleet reads: same-repository heads the maintainer or the machine opened.
+// Forks and Dependabot get no fleet run, so requiring one would block them for good.
+export function fleetCovers({ enabled, author, maintainer, machine, sameRepo }) {
+  return enabled && sameRepo && (author === maintainer || author === machine)
+}
+
 // The maintainer's effective review: the newest that approves, requests changes or was
 // dismissed. A comment-only review changes nothing.
 export function effectiveReview(reviews, maintainer) {
@@ -83,6 +95,11 @@ export function decide(f) {
       `changes ${credential.join(', ')}, which reach the release credentials, with no sign-off at head: ${needs}`
     )
   }
+  if (f.fleetRequired && f.fleet !== 'success' && !f.breakGlass) {
+    reasons.push(
+      `review/fleet is ${f.fleet} at head: it must succeed, or ${f.maintainer} applies break-glass`
+    )
+  }
   return {
     pass: reasons.length === 0,
     agent,
@@ -91,6 +108,13 @@ export function decide(f) {
     signedOff,
     reasons
   }
+}
+
+function lastLabeler(repo, n, name) {
+  const events = api(`repos/${repo}/issues/${n}/events?per_page=100`).filter(
+    (e) => e.event === 'labeled' && e.label?.name === name
+  )
+  return events[events.length - 1]?.actor?.login ?? ''
 }
 
 function api(path) {
@@ -127,6 +151,16 @@ function main([repo, n]) {
       maintainer,
       issueEvidence,
       prepass: trustedPrepass(statuses, [maintainer, machine]),
+      fleet: fleetVerdict(statuses, machine),
+      fleetRequired: fleetCovers({
+        enabled: (process.env.REVIEW_FLEET_ENABLED ?? '').trim().toLowerCase() !== 'false',
+        author: pr.user?.login,
+        maintainer,
+        machine,
+        sameRepo: pr.head.repo?.full_name === repo
+      }),
+      breakGlass:
+        labels.includes('break-glass') && lastLabeler(repo, n, 'break-glass') === maintainer,
       approvalStamp: approvalStamp(statuses),
       reviews: api(`repos/${repo}/pulls/${n}/reviews?per_page=100`).map((r) => ({
         state: r.state,

@@ -5,6 +5,8 @@ import {
   decide,
   approvalStamp,
   effectiveReview,
+  fleetCovers,
+  fleetVerdict,
   maintainerOf,
   trustedPrepass
   // @ts-expect-error - workflow script with no type declarations; the tsconfigs exclude .github/
@@ -189,5 +191,53 @@ describe('merge-gate facts', () => {
     ]
     expect(effectiveReview(reviews, 'owner')?.state).toBe('APPROVED')
     expect(effectiveReview([], 'owner')).toBeNull()
+  })
+})
+
+describe('merge-gate review fleet (ADR-0057)', () => {
+  const covered = {
+    ...base,
+    author: 'owner',
+    fleetRequired: true,
+    fleet: 'absent',
+    breakGlass: false
+  }
+
+  it('blocks a covered PR until review/fleet succeeds at head', () => {
+    for (const fleet of ['absent', 'pending', 'failure', 'error']) {
+      const v = decide({ ...covered, fleet })
+      expect(v.pass).toBe(false)
+      expect(v.reasons.join(' ')).toContain(`review/fleet is ${fleet}`)
+    }
+    expect(decide({ ...covered, fleet: 'success' }).pass).toBe(true)
+  })
+
+  it('lets break-glass stand in for the fleet, and nothing else', () => {
+    expect(decide({ ...covered, breakGlass: true }).pass).toBe(true)
+    const evidence = { ...covered, breakGlass: true, labels: ['evidence-affecting'] }
+    expect(decide(evidence).pass).toBe(false)
+  })
+
+  it('does not require the fleet on a PR it does not cover', () => {
+    expect(decide({ ...covered, fleetRequired: false }).pass).toBe(true)
+  })
+
+  it('covers same-repository PRs by the maintainer or the machine while enabled', () => {
+    const who = { enabled: true, maintainer: 'owner', machine: 'bot', sameRepo: true }
+    expect(fleetCovers({ ...who, author: 'owner' })).toBe(true)
+    expect(fleetCovers({ ...who, author: 'bot' })).toBe(true)
+    expect(fleetCovers({ ...who, author: 'dependabot[bot]' })).toBe(false)
+    expect(fleetCovers({ ...who, author: 'owner', sameRepo: false })).toBe(false)
+    expect(fleetCovers({ ...who, author: 'owner', enabled: false })).toBe(false)
+  })
+
+  it("reads only the machine account's newest review/fleet status", () => {
+    const statuses = [
+      { context: 'review/fleet', state: 'success', creator: { login: 'intruder' } },
+      { context: 'review/fleet', state: 'failure', creator: { login: 'bot' } },
+      { context: 'review/fleet', state: 'success', creator: { login: 'bot' } }
+    ]
+    expect(fleetVerdict(statuses, 'bot')).toBe('failure')
+    expect(fleetVerdict([], 'bot')).toBe('absent')
   })
 })

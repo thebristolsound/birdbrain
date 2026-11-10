@@ -31,6 +31,8 @@ describe('background job pool rules', () => {
     expect(jobSite('https://WWW.Example.COM./b')).toBe('example.com')
     expect(jobSite('https://en.wikipedia.org/wiki/A')).toBe(jobSite('https://de.wikipedia.org/'))
     expect(jobSite('https://shop.bar.co.uk/')).toBe('bar.co.uk')
+    // The ICANN section only: a private suffix such as github.io does not split its hosts.
+    expect(jobSite('https://a.github.io/')).toBe(jobSite('https://b.github.io/'))
     expect(jobSite('https://example.org/')).not.toBe(jobSite('https://example.com/'))
   })
 

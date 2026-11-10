@@ -10,8 +10,8 @@ const { dependencies } = JSON.parse(read('package.json')) as {
 }
 const EXACT = /^\d+\.\d+\.\d+$/
 
-// sharp's output bytes are anchored in signed `derivation` entries, so the installed version may
-// change only in a commit that changes it, one bump per pull request (#1321).
+// sharp's output bytes are anchored in signed `derivation` entries, so a sharp bump arrives
+// alone, in its own pull request, not inside a grouped update (#1321).
 describe('sharp version pin', () => {
   it('names one exact version in package.json, with no range operator', () => {
     expect(dependencies.sharp).toMatch(EXACT)

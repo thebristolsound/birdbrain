@@ -116,7 +116,7 @@ export function decide(f) {
   }
 }
 
-function lastLabeler(repo, n, name) {
+export function lastLabeler(repo, n, name) {
   const events = api(`repos/${repo}/issues/${n}/events?per_page=100`).filter(
     (e) => e.event === 'labeled' && e.label?.name === name
   )

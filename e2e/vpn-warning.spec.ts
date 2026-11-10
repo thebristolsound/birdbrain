@@ -242,7 +242,8 @@ test.describe('VPN warning', () => {
       running: 0,
       held: 0,
       heldBatches: [],
-      concurrency: 1,
+      // 1 or 2 by the host's CPU count (backgroundJobPool.ts).
+      concurrency: expect.any(Number),
       activeUrl: null
     })
     expect(requested).not.toContain('/c2')

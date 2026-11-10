@@ -262,3 +262,11 @@ Every pull request the fleet covers fails its check for the policy reason that p
 - Both carry a successful review status at head, the evidence label and a passing verification from their author. Neither has the maintainer's evidence approval.
 - Two more choices wait for Matt before these merge. On 2177: a synchronous read of a deliberately extreme 199 MB archive of tiny parts blocks the main process for about 22 seconds, and 2178 triggers that read when a row is selected. On 2178: the tab's copy and layout strings, the features page sentence, and the reading of the issue's second acceptance criterion as refusing before reading.
 - Tell the recovery thread before merging or rebasing anything in this stack. Its only remaining work is the held signing tail.
+
+## Fleet repair fix round five
+
+- The same implementer pushed `38d707d05458` to 2160 as a fast-forward of `0cab8a06791b`, five commits, with no main merge. Its one locked full verification passed at that commit, exit 0: 9,977 tests passed, 66 skipped.
+- The blocker is fixed in `6d4a5d73`: a comment-number pointer is read as an issue comment first and as an inline review comment only when the first read answers not found. Any other error on the first read fails. The red run failed 16 of 89 cases. Input preparation now exits 0 for pull requests 2175, 2145 and 2160, and the implementer's final scan of all 40 open pull requests found none that fails it.
+- Three advisories became fixes: link fragments are decoded before they are read, the trailing punctuation strip runs in one pass under a timed test, and the label list must be exactly one list of names.
+- Replaced the description from `/tmp/pr2160-fix-r5/body.md` and posted the [reply](https://github.com/thebristolsound/birdbrain/pull/2160#issuecomment-6782700147). The review status is pending and a delta review against `0cab8a06791b` is running.
+- The delta review has three extra checks: rerun input preparation for every open pull request and name any that fails, because the implementer's earlier scan had one unexplained failure; test whether the timed test can pass with the defect restored or fail under load; and state exactly which existing fleet results and overrides stop counting when this change merges.

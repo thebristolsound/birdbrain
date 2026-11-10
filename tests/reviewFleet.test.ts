@@ -734,14 +734,26 @@ function stepScript(workflow: string, job: string, step: string): string {
 }
 
 describe.skipIf(!HAS_JQ)('a push to a PR', () => {
+  // `gh pr view` answers as GitHub CLI does: the fields `--json` names, through the `--jq`
+  // filter, so a query that names the wrong field does not read as armed.
+  const GH = `#!/usr/bin/env bash
+echo "$*" >> "$GH_LOG"
+if [ "$WITHDRAW_FAIL" = 1 ] && [ "$1 $2" = "pr edit" ]; then echo HTTP-502 >&2; exit 1; fi
+if [ "$1 $2" = "pr view" ]; then
+  [ "$VIEW_FAIL" = 1 ] && { echo HTTP-503 >&2; exit 1; }
+  while [ $# -gt 0 ]; do
+    case "$1" in --json) fields="$2" ;; --jq) expr="$2" ;; esac
+    shift
+  done
+  jq "{$fields}" <<< "$PR_JSON" | jq "$expr"
+fi
+exit 0
+`
   const withdraw = (labels: string[], { fail = false, armed = false, unread = false } = {}) => {
     const dir = mkdtempSync(join(tmpdir(), 'fleet-withdraw-'))
     try {
       const gh = join(dir, 'gh')
-      writeFileSync(
-        gh,
-        '#!/usr/bin/env bash\necho "$*" >> "$GH_LOG"\nif [ "${WITHDRAW_FAIL:-}" = 1 ] && [ "$1 $2" = "pr edit" ]; then echo HTTP-502 >&2; exit 1; fi\nif [ "$1 $2" = "pr view" ]; then [ "$VIEW_FAIL" = 1 ] && { echo HTTP-503 >&2; exit 1; }; echo "$AUTO_MERGE"; fi\nexit 0\n'
-      )
+      writeFileSync(gh, GH)
       chmodSync(gh, 0o755)
       const log = join(dir, 'log')
       writeFileSync(log, '')
@@ -758,7 +770,10 @@ describe.skipIf(!HAS_JQ)('a push to a PR', () => {
             PATH: `${dir}:${process.env.PATH}`,
             GH_LOG: log,
             WITHDRAW_FAIL: fail ? '1' : '0',
-            AUTO_MERGE: armed ? 'true' : 'false',
+            PR_JSON: JSON.stringify({
+              number: 7,
+              autoMergeRequest: armed ? { enabledAt: '2026-11-10T12:00:00Z' } : null
+            }),
             VIEW_FAIL: unread ? '1' : '0',
             PR: '7',
             GITHUB_REPOSITORY: REPO,

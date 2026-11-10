@@ -75,8 +75,9 @@ updates:
         patterns:
           - '*'
         exclude-patterns:
-          # sharp is pinned exactly because thumbnail bytes it renders are anchored in signed
-          # derivation entries, so each bump needs its own PR and a re-anchor decision (#1321).
+          # sharp is pinned exactly because thumbnail bytes it renders are anchored in
+          # signed derivation entries, so each bump needs its own PR and a re-anchor
+          # decision (#1321).
           - 'sharp'
         update-types:
           - minor

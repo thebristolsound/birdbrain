@@ -93,11 +93,6 @@ matching and passive capture"). It decides which Selectors a Capture's text matc
 Persisted Matches the Selector repo writes. The rename-detection-off rule catches the move itself
 and nothing after, so outside `db/**` a later edit touching only this file would otherwise match
 no entry.
-On 2026-11-10 `src/main/services/mhtmlParts.ts` was added to the Capture lifecycle table at
-blocking tier with #991, in the change that creates it. It reads a Capture's stored MHTML and
-reports what is inside it, so a wrong part boundary or span is a wrong statement about a Capture.
-No entry or glob names the file, so without the row a later edit touching only it would match no
-entry.
 `src/main/services/launchedBrowser/**` was added to Acquisition at blocking tier on 2026-11-03
 for #1831, step 3 of the launched-browser design's stage 2. It is a new acquisition path rather
 than a carve-out: it decides which browser starts, with which switches and browser profile, and
@@ -117,6 +112,11 @@ same step added three renderer files to Acquisition at blocking tier, by the pre
 `extension/src/popup/PopupApp.tsx`, which routes the extension's Captures: the panel's Capture
 control (`CaptureControl.tsx`), the tab picker (`TabPicker.tsx`), and the panel model whose
 `captureTarget` decides which tab the control names and takes (`captureSessionPanelModel.ts`).
+On 2026-11-10 `src/main/services/mhtmlParts.ts` was added to the Capture lifecycle table at
+blocking tier with #991, in the change that creates it. It reads a Capture's stored MHTML and
+reports what is inside it, so a wrong part boundary or span is a wrong statement about a Capture.
+No entry or glob names the file, so without the row a later edit touching only it would match no
+entry.
 
 ### Known gap: carve-outs are caught by review, not by a check
 

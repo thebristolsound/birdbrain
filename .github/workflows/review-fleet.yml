@@ -58,18 +58,21 @@ env:
 
 jobs:
   plan:
-    # A label event counts only for break-glass. An issue comment counts only from Codex, on a
-    # PR. A manual run counts from the maintainer or from the sweep's workflow token.
+    # The spend guard (#1310, as ADR-0057 amends it for this workflow): every job that reads a
+    # secret names who may start its attempt, so a re-run by anyone else runs nothing paid. A
+    # label event counts only for break-glass, and an issue comment only from Codex, on a PR.
     if: >-
       vars.REVIEW_FLEET_ENABLED != 'false'
+      && (github.triggering_actor == 'thebristolsound'
+        || github.triggering_actor == 'birdbrain-agent'
+        || github.triggering_actor == 'chatgpt-codex-connector[bot]'
+        || github.triggering_actor == 'github-actions[bot]')
       && ((github.event_name == 'pull_request_target'
           && ((github.event.action != 'labeled' && github.event.action != 'unlabeled')
             || github.event.label.name == 'break-glass'))
         || (github.event_name == 'issue_comment' && github.event.issue.pull_request
           && github.event.comment.user.login == 'chatgpt-codex-connector[bot]')
-        || (github.event_name == 'workflow_dispatch'
-          && (github.triggering_actor == 'thebristolsound'
-            || github.triggering_actor == 'github-actions[bot]')))
+        || github.event_name == 'workflow_dispatch')
     environment: paid-runs
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -98,7 +101,12 @@ jobs:
 
   legs:
     needs: plan
-    if: needs.plan.outputs.action == 'review' || needs.plan.outputs.action == 'verify'
+    if: >-
+      (needs.plan.outputs.action == 'review' || needs.plan.outputs.action == 'verify')
+      && (github.triggering_actor == 'thebristolsound'
+        || github.triggering_actor == 'birdbrain-agent'
+        || github.triggering_actor == 'chatgpt-codex-connector[bot]'
+        || github.triggering_actor == 'github-actions[bot]')
     environment: paid-runs
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -152,6 +160,10 @@ jobs:
     if: >-
       always()
       && (needs.plan.outputs.action == 'review' || needs.plan.outputs.action == 'verify')
+      && (github.triggering_actor == 'thebristolsound'
+        || github.triggering_actor == 'birdbrain-agent'
+        || github.triggering_actor == 'chatgpt-codex-connector[bot]'
+        || github.triggering_actor == 'github-actions[bot]')
     environment: paid-runs
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -192,6 +204,10 @@ jobs:
     if: >-
       always()
       && (needs.plan.outputs.action == 'relay' || needs.record.outputs.relay == 'true')
+      && (github.triggering_actor == 'thebristolsound'
+        || github.triggering_actor == 'birdbrain-agent'
+        || github.triggering_actor == 'chatgpt-codex-connector[bot]'
+        || github.triggering_actor == 'github-actions[bot]')
     environment: codex-relay
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -214,7 +230,12 @@ jobs:
 
   gate:
     needs: [plan, relay]
-    if: always() && needs.relay.result != 'skipped' && needs.plan.result == 'success'
+    if: >-
+      always() && needs.relay.result != 'skipped' && needs.plan.result == 'success'
+      && (github.triggering_actor == 'thebristolsound'
+        || github.triggering_actor == 'birdbrain-agent'
+        || github.triggering_actor == 'chatgpt-codex-connector[bot]'
+        || github.triggering_actor == 'github-actions[bot]')
     environment: paid-runs
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -237,7 +258,9 @@ jobs:
         run: node .github/scripts/review-fleet/fleet.mjs gate "$GITHUB_REPOSITORY" "$PR"
 
   sweep:
-    if: github.event_name == 'schedule' && vars.REVIEW_FLEET_ENABLED != 'false'
+    if: >-
+      github.event_name == 'schedule' && github.run_attempt == '1'
+      && vars.REVIEW_FLEET_ENABLED != 'false'
     environment: paid-runs
     runs-on: ubuntu-latest
     timeout-minutes: 15

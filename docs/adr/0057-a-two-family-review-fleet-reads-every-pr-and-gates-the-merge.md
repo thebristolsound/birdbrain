@@ -69,6 +69,16 @@ Three facts shaped the design:
 8. **The hourly PR review stops.** `pr-review.yml` keeps its `review:requested` label path and
    loses its schedule. The local `cross-model-review` job of ADR-0056 is removed.
 
+9. **The spend guard names more actors here.** The #1310 ruling admits a secret-reading job only
+   when the maintainer starts its attempt, or on a schedule's first attempt. The fleet starts on
+   events other accounts cause, so on 2026-11-09 the maintainer amended the ruling for
+   `review-fleet.yml` only: each of its secret-reading jobs names, as its own condition, the
+   maintainer, the machine account, Codex's app (`chatgpt-codex-connector[bot]`) and the
+   workflow token that the sweep's manual runs come from (`github-actions[bot]`). The sweep
+   keeps the schedule's first-attempt rule. A re-run by anyone else runs nothing paid.
+   `tests/spendGuardWorkflows.test.ts` holds the named list, and holds the relay token to the
+   relay job and its `codex-relay` environment.
+
 ## Consequences
 
 - The relay token can do more than post comments. A fine-grained token that comments on PRs can

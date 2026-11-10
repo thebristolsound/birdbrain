@@ -106,6 +106,10 @@ Three facts shaped the design:
   timeout fails the status, or the maintainer applies `break-glass`.
 - Codex's reply format cannot be enforced. An answer that rules on nothing fails closed, so
   false reds are expected until the relay's wording settles.
+- A head is reviewed once. To review it again the maintainer deletes its state comment, and the
+  next sweep claims the head as new and counts it against the daily cap. A relay posted before
+  the new claim, and Codex's rulings on it, no longer count, because finding IDs restart with
+  each review.
 - One push costs four Claude passes, a Codex review, and one more Claude pass when Codex finds
   anything. At the October rate of about 2.4 qualifying PRs a day plus agent PRs and their fix
   rounds, the default cap of 40 heads a day is not the limit on a normal day.

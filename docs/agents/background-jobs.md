@@ -86,6 +86,9 @@ keeps one state comment per head with the findings and rulings.
 - **Pending** means a pass is running, Codex has not answered yet, or the daily cap is holding
   the head. A sweep every 15 minutes times out what Codex never answered and restarts work whose
   event was dropped.
+- **Retry** a head by deleting its state comment. The next sweep claims the head as new, counts
+  it against the daily cap, runs the passes again and posts a new relay. The earlier relay and
+  Codex's rulings on it no longer count.
 - **Controls** are repository variables, changed with `gh variable set <name> --body <value>`:
   `REVIEW_FLEET_ENABLED=false` stops the fleet and lifts the `merge-gate` requirement,
   `REVIEW_FLEET_DAILY_CAP` sets the heads reviewed per 24 hours (default 40), and

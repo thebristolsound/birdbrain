@@ -487,6 +487,18 @@ describe('decide', () => {
     expect(decide(facts({ codexDone: false, relay: late })).status).toBe('failure')
   })
 
+  it('ignores a relay older than the claim, with the rulings it drew, and asks again', () => {
+    const retried = { ...withBlocking, startedAt: '2026-11-10T11:45:00Z' }
+    expect(decide(facts({ state: retried, rulings: { F1: 'REFUTED' } }))).toMatchObject({
+      status: 'pending',
+      owed: 'relay'
+    })
+    const fresh = { id: 2, at: '2026-11-10T11:50:00Z' }
+    expect(decide(facts({ state: retried, relay: fresh, rulings: { F1: 'REFUTED' } })).status).toBe(
+      'success'
+    )
+  })
+
   it('fails a blocking Claude finding Codex did not rule on', () => {
     const v = decide(facts({ state: withBlocking }))
     expect(v.status).toBe('failure')

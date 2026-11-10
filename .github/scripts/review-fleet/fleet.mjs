@@ -15,6 +15,10 @@
 //   gate <pr>               recompute and post the status
 //   sweep                   recompute every open PR's status; print the PRs owed paid work
 //
+// To review a head again, delete its state comment. The next sweep claims the head as new and
+// counts it against the daily cap: the passes run again and a new relay goes out. The earlier
+// relay and Codex's rulings on it no longer count.
+//
 // Env: GH_TOKEN; MACHINE (the machine login); MAINTAINER; REVIEW_FLEET_ENABLED,
 // REVIEW_FLEET_DAILY_CAP, REVIEW_FLEET_CODEX_TIMEOUT_MINUTES (repository variables).
 import { execFileSync } from 'node:child_process'
@@ -241,7 +245,11 @@ export function decide(f) {
 
   const claude = state.claude.findings ?? []
   const claudeBlocking = claude.filter((x) => x.severity === 'BLOCKING')
-  if (!f.relay) {
+  // A relay older than the claim asked about an earlier review of this head (the retry path in
+  // the header), and finding IDs restart with each review, so its rulings are not these.
+  const stale = f.relay && Date.parse(f.relay.at) < Date.parse(state.startedAt)
+  const relay = stale ? null : f.relay
+  if (!relay) {
     if (minutesSince(state.startedAt, now) > CLAUDE_TIMEOUT_MINUTES) {
       return out(
         'failure',
@@ -251,7 +259,7 @@ export function decide(f) {
     return out('pending', 'Codex not yet asked', 'relay')
   }
   if (!f.codexDone) {
-    if (minutesSince(f.relay.at, now) > f.codexTimeout) {
+    if (minutesSince(relay.at, now) > f.codexTimeout) {
       return out('failure', `Codex did not review the head within ${f.codexTimeout} minutes`)
     }
     return out('pending', 'waiting for Codex')

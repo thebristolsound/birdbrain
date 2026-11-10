@@ -175,6 +175,41 @@ describe('MhtmlViewer', () => {
     expect(screen.getAllByRole('menu')).toHaveLength(1)
   })
 
+  // #1727: Electron leaves linkText empty when the link's content is an image.
+  it.each([
+    ['the link text', { linkText: 'Story', altText: 'Logo' }, 'Story'],
+    ['the alternative text of an image link', { altText: 'Company logo' }, 'Company logo']
+  ])('copies %s as the link text', async (_, params, copied) => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    renderViewer()
+    const guest = await screen.findByTestId('mhtml-viewer')
+
+    guestContextMenu(guest, {
+      linkURL: 'https://a.example/one',
+      srcURL: 'https://a.example/logo.png',
+      mediaType: 'image',
+      ...params
+    })
+    fireEvent.click(await screen.findByTestId('context-menu-item-link-copy-text'))
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(copied))
+  })
+
+  it('turns Copy link text off for an image link with no alternative text', async () => {
+    renderViewer()
+    const guest = await screen.findByTestId('mhtml-viewer')
+
+    guestContextMenu(guest, {
+      linkURL: 'https://a.example/one',
+      srcURL: 'https://a.example/logo.png',
+      mediaType: 'image'
+    })
+
+    const item = await screen.findByTestId('context-menu-item-link-copy-text')
+    expect(item.getAttribute('aria-disabled')).toBe('true')
+  })
+
   it('shows the hovered link’s destination in a bubble and clears it on an empty one', async () => {
     renderViewer()
     const guest = await screen.findByTestId('mhtml-viewer')

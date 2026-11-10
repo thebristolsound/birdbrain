@@ -1,5 +1,7 @@
 # Review fleet repair
 
+**Status:** active
+
 - Completed: merged current main tooling; retained the action pin and all repair commits.
 - Completed: bound overrides to a dedicated head stamp, surfaced withdrawal errors, preserved
   conflicting confirmations and Unicode state, and stopped waiting on stale review labels.

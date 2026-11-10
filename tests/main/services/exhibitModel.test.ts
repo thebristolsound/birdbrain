@@ -1335,6 +1335,71 @@ describe('exhibit model', () => {
       expect(rows.get(killed.id)?.manifestSeq).toBe(entry.index)
       expect(rows.get(swapped.id)?.manifestSeq).toBeNull()
     })
+
+    // The pass reads each screenshot twice: once to decide whether the Case needs a
+    // signature, once to render. One that verifies only on the second read signs nothing.
+    it('signs nothing when a screenshot verifies again during a blank-name pass', async () => {
+      const parked = await ingestInto(caseId, {
+        url: 'https://example.com/unnamed-parked',
+        title: 'Parked',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot: await screenshotPng({ r: 200, g: 30, b: 30 })
+      })
+      writeFileSync(
+        defaultCaptureStore.artifactPaths(caseId, parked.id, 'png').abs,
+        await screenshotPng({ r: 30, g: 30, b: 200 })
+      )
+      writeFileSync(
+        defaultCaptureStore.thumbnailPaths(caseId, parked.id).abs,
+        Buffer.from('legacy thumbnail bytes')
+      )
+      const signedScreenshot = await screenshotPng({ r: 10, g: 200, b: 10 })
+      const restored = await ingestInto(caseId, {
+        url: 'https://example.com/unnamed-restored',
+        title: 'Restored',
+        timestamp: '2026-04-05T12:01:00.000Z',
+        screenshot: signedScreenshot
+      })
+      const restoredPng = defaultCaptureStore.artifactPaths(caseId, restored.id, 'png').abs
+      writeFileSync(restoredPng, await screenshotPng({ r: 1, g: 2, b: 3 }))
+      updateSettings({ operatorName: '' })
+      const before = readFileSync(join(caseDir, MANIFEST_FILENAME), 'utf-8')
+      const warned = vi.spyOn(logger, 'warn').mockImplementation(() => 'log-id')
+
+      const pass = backfillCase(caseId, { toolVersion: TOOL_VERSION })
+      // Microtasks only: the pass makes its blank-name check, finds nothing to sign and parks
+      // on the first thumbnail's file read. The signed screenshot then comes back on disk.
+      for (let i = 0; i < 5; i += 1) await Promise.resolve()
+      writeFileSync(restoredPng, signedScreenshot)
+      const result = await pass
+
+      expect(readFileSync(join(caseDir, MANIFEST_FILENAME), 'utf-8')).toBe(before)
+      // The unanchored row proves the pass was past its blank-name check when the file changed.
+      expect(result).toMatchObject({
+        skipped: 'operator_name_required',
+        thumbnailsAnchored: 0,
+        thumbnailsUnanchored: 1
+      })
+      expect(
+        listDerivedFilesForCase(caseId).map((row) => [row.exhibitId, row.manifestSeq])
+      ).toEqual([[parked.id, null]])
+      expect(existsSync(defaultCaptureStore.thumbnailPaths(caseId, restored.id).abs)).toBe(false)
+      expect(warned).toHaveBeenCalledWith('exhibits', 'exhibits.backfill_deferred', {
+        caseId: expect.anything()
+      })
+      warned.mockRestore()
+
+      updateSettings({ operatorName: 'Saved Operator' })
+      const named = await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      expect(named.skipped).toBeUndefined()
+      expect(named.thumbnailsAnchored).toBe(1)
+      const derivations = manifestLines(caseDir).filter((line) => line.type === 'derivation')
+      expect(derivations.map((line) => [line.parentExhibitId, line.operatorName])).toEqual([
+        [restored.id, 'Saved Operator']
+      ])
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
+    })
   })
 
   describe('inventory', () => {

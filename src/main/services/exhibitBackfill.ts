@@ -71,8 +71,9 @@ export interface ExhibitBackfillCaseResult {
   // Derived-file rows created, split by whether the chain covers them.
   thumbnailsAnchored: number
   thumbnailsUnanchored: number
-  // Set when the Case needed a signed entry and none could be signed (X47): its chain and
-  // its thumbnail rows are left as they were, and it is backfilled again once a name is saved.
+  // Set when the Case needed a signed entry and none could be signed (X47): its chain is left
+  // as it was, and it is backfilled again once a name is saved. The thumbnail counts are 0
+  // unless a screenshot began to verify after rows that sign nothing were recorded.
   skipped?: 'operator_name_required'
 }
 
@@ -280,7 +281,7 @@ async function backfillThumbnail(
   { exhibit, parentId, chainEntry, prior }: PendingThumbnail,
   store: CaptureStore,
   who: Operator
-): Promise<'anchored' | 'unanchored' | 'skipped'> {
+): Promise<'anchored' | 'unanchored' | 'skipped' | 'deferred'> {
   const paths = store.thumbnailPaths(exhibit.caseId, exhibit.id)
 
   if (prior !== undefined) {
@@ -327,6 +328,10 @@ async function backfillThumbnail(
     })
     return 'unanchored'
   }
+
+  // The operator gate (X47), at the branch that signs: the Case-wide check ran on an earlier
+  // read of this screenshot, and one that verifies only now was not counted there.
+  if (!who.operatorName) return 'deferred'
 
   // The same renderer `getThumbnail` uses, not a second copy of the pipeline:
   // the entry appended below anchors these bytes, so a later regeneration from
@@ -439,6 +444,11 @@ async function backfillCaseInSlot(
 
   for (const pending of thumbnailsPending(exhibits, store, caseDir)) {
     const outcome = await backfillThumbnail(pending, store, who)
+    if (outcome === 'deferred') {
+      // The rows left wait with it for the run once a name is saved.
+      logger.warn('exhibits', 'exhibits.backfill_deferred', { caseId: ident(caseId) })
+      return { ...result, skipped: 'operator_name_required' }
+    }
     if (outcome === 'anchored') result.thumbnailsAnchored += 1
     if (outcome === 'unanchored') result.thumbnailsUnanchored += 1
   }

@@ -484,7 +484,7 @@ describe('useTagsMutations', () => {
 })
 
 describe('useSelectorsMutations', () => {
-  it('invalidates selector list, match counts and coverage on every op', async () => {
+  it('invalidates selector list, match counts, coverage and matching captures on every op', async () => {
     const { invalidate, wrapper } = setup()
     const { result } = renderHook(() => useSelectorsMutations('c1'), { wrapper })
 
@@ -502,6 +502,8 @@ describe('useSelectorsMutations', () => {
       expect(keys).toContainEqual(['selectors', 'c1'])
       expect(keys).toContainEqual(['selectors', 'matchCounts', 'c1'])
       expect(keys).toContainEqual(['selectors', 'coverage', 'c1'])
+      // Not a prefix of ['selectors', 'c1'], so it needs its own line (#1203).
+      expect(keys).toContainEqual(['selectors', 'matchingCaptures', 'c1'])
     }
   })
 })

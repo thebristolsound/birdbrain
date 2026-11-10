@@ -1,3 +1,7 @@
+import { spawnSync } from 'child_process'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import { describe, expect, it } from 'vitest'
 // @ts-expect-error - workflow script with no declarations
 import { prepareInputs } from '../.github/scripts/review-fleet/inputs.mjs'
@@ -288,6 +292,94 @@ describe('source contract preparation before the paid call', () => {
     ])
   })
 
+  // A number pointer does not say which kind of comment it names. `answers` maps a path to its
+  // source, to an error the read throws, or to nothing: the reader's null for a 404.
+  const pointer = (
+    answers: Record<string, unknown>,
+    body = 'The review is comment 3963807921.'
+  ) => {
+    const seen: string[] = []
+    const run = () =>
+      prepareInputs({ body }, repo, (path: string) => {
+        const short = path.replace(`repos/${repo}/`, '')
+        seen.push(short)
+        if (answers[short] instanceof Error) throw answers[short]
+        return answers[short] ?? null
+      }).map((s: { path: string }) => s.path)
+    return { seen, run }
+  }
+  const asIssue = 'issues/comments/3963807921'
+  const asInline = 'pulls/comments/3963807921'
+
+  it('reads a number pointer an issue comment answers, and looks no further', () => {
+    const { seen, run } = pointer({
+      [asIssue]: { body: 'Issue.' },
+      [asInline]: { body: 'Inline.' }
+    })
+    expect(run()).toEqual([asIssue])
+    expect(seen).toEqual([asIssue])
+  })
+
+  it('reads a number pointer only an inline review comment answers', () => {
+    const { seen, run } = pointer({ [asInline]: { body: 'Inline.' } })
+    expect(run()).toEqual([asInline])
+    expect(seen).toEqual([asIssue, asInline])
+  })
+
+  it('fails a number pointer neither kind of comment answers, after trying both', () => {
+    const { seen, run } = pointer({})
+    expect(run).toThrow(`could not read required source ${asIssue} or ${asInline}`)
+    expect(seen).toEqual([asIssue, asInline])
+  })
+
+  it('fails on any other error from the issue comment read, without trying the inline one', () => {
+    const { seen, run } = pointer({ [asIssue]: new Error('HTTP 502'), [asInline]: { body: 'I.' } })
+    expect(run).toThrow('HTTP 502')
+    expect(seen).toEqual([asIssue])
+  })
+
+  it('fails an issue comment with an empty body, without trying the inline one', () => {
+    const { seen, run } = pointer({ [asIssue]: { body: ' ' }, [asInline]: { body: 'Inline.' } })
+    expect(run).toThrow('could not read required source')
+    expect(seen).toEqual([asIssue])
+  })
+
+  it('reads a comment once when a link and a number pointer both name it', () => {
+    const link = `https://github.com/${repo}/pull/9#discussion_r3963807921`
+    const { seen, run } = pointer(
+      { [asInline]: { body: 'Inline.' } },
+      `See ${link}, which is comment 3963807921 and again comment 3963807921.`
+    )
+    expect(run()).toEqual([asInline])
+    expect(seen).toEqual([asInline])
+  })
+
+  it('still fails a link to an issue comment that a number pointer found only inline', () => {
+    const link = `https://github.com/${repo}/pull/9#issuecomment-3963807921`
+    const { seen, run } = pointer(
+      { 'issues/12': { body: `See ${link}` }, [asInline]: { body: 'Inline.' } },
+      'Closes #12\nThe review is comment 3963807921.'
+    )
+    expect(run).toThrow(`could not read required source ${asIssue}`)
+    expect(seen).toEqual(['issues/12', asIssue, asInline, asIssue])
+  })
+
+  it('counts sources, not reads, toward the limit', () => {
+    const closes = (n: number) =>
+      `Closes ${Array.from({ length: n }, (_, i) => `#${i + 1}`).join(', ')}`
+    const issues = (n: number) =>
+      Object.fromEntries(
+        Array.from({ length: n }, (_, i) => [`issues/${i + 1}`, { body: 'Text.' }])
+      )
+    const inline = { [asInline]: { body: 'Inline.' } }
+    const fits = pointer({ ...issues(29), ...inline }, `${closes(29)}\nSee comment 3963807921.`)
+    expect(fits.run()).toHaveLength(30)
+    expect(fits.seen).toHaveLength(31)
+    const over = pointer({ ...issues(30), ...inline }, `${closes(30)}\nSee comment 3963807921.`)
+    expect(over.run).toThrow('too many referenced source contracts')
+    expect(over.seen).toHaveLength(30)
+  })
+
   it('stops at the thirtieth source instead of reading without limit', () => {
     const closes = (n: number) =>
       `Closes ${Array.from({ length: n }, (_, i) => `#${i + 1}`).join(', ')}`
@@ -327,5 +419,105 @@ describe('source contract preparation before the paid call', () => {
     expect(() =>
       prepareInputs({ body: 'https://github.com/other/repo/issues/1' }, repo, () => null)
     ).toThrow('outside')
+  })
+})
+
+// The literal command leg.sh runs, with a `gh` that answers each comment endpoint with the HTTP
+// status the case names, in the output GitHub CLI prints for it.
+describe('the input preparation command', () => {
+  const INPUTS = join(__dirname, '..', '.github', 'scripts', 'review-fleet', 'inputs.mjs')
+  const GH = `#!/usr/bin/env bash
+echo "$2" >> "$GH_LOG"
+case "$2" in
+  */issues/comments/*) code="$ISSUE_COMMENT" ;;
+  */pulls/comments/*) code="$REVIEW_COMMENT" ;;
+  *) code="$OTHER" ;;
+esac
+if [ "$code" = 200 ]; then printf '{"body":"Text at %s."}\\n' "$2"; exit 0; fi
+if [ "$code" = 404 ]; then
+  echo '{"message":"Not Found","status":"404"}'
+  echo 'gh: Not Found (HTTP 404)' >&2
+  exit 1
+fi
+echo "gh: Server Error (HTTP $code)" >&2
+exit 1
+`
+  const prepare = (body: string, issueComment: number, reviewComment: number, other = 200) => {
+    const dir = mkdtempSync(join(tmpdir(), 'fleet-inputs-'))
+    try {
+      writeFileSync(join(dir, 'gh'), GH)
+      chmodSync(join(dir, 'gh'), 0o755)
+      writeFileSync(join(dir, 'log'), '')
+      writeFileSync(join(dir, 'pr.json'), JSON.stringify({ title: 't', body, commits: [] }))
+      const result = spawnSync('node', [INPUTS, repo, dir], {
+        encoding: 'utf8',
+        timeout: 5000,
+        env: {
+          ...process.env,
+          PATH: `${dir}:${process.env.PATH}`,
+          GH_LOG: join(dir, 'log'),
+          ISSUE_COMMENT: String(issueComment),
+          REVIEW_COMMENT: String(reviewComment),
+          OTHER: String(other)
+        }
+      })
+      const saved = join(dir, 'sources.json')
+      return {
+        status: result.status,
+        stderr: result.stderr,
+        calls: readFileSync(join(dir, 'log'), 'utf8')
+          .split('\n')
+          .filter(Boolean)
+          .map((path) => path.replace(`repos/${repo}/`, '')),
+        sources: existsSync(saved)
+          ? JSON.parse(readFileSync(saved, 'utf8')).map((s: { path: string }) => s.path)
+          : null
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+  const body = 'The originating review is comment 3963807921.'
+  const asIssue = 'issues/comments/3963807921'
+  const asInline = 'pulls/comments/3963807921'
+
+  it('saves the issue comment a number pointer names', () => {
+    const r = prepare(body, 200, 200)
+    expect(r.status, r.stderr).toBe(0)
+    expect(r.sources).toEqual([asIssue])
+    expect(r.calls).toEqual([asIssue])
+  })
+
+  it('saves the inline review comment when the issue comment read is a 404', () => {
+    const r = prepare(body, 404, 200)
+    expect(r.status, r.stderr).toBe(0)
+    expect(r.sources).toEqual([asInline])
+    expect(r.calls).toEqual([asIssue, asInline])
+  })
+
+  it('exits non-zero and saves nothing when both reads are a 404', () => {
+    const r = prepare(body, 404, 404)
+    expect(r.status).not.toBe(0)
+    expect(r.stderr).toContain(`could not read required source ${asIssue} or ${asInline}`)
+    expect(r.sources).toBeNull()
+    expect(r.calls).toEqual([asIssue, asInline])
+  })
+
+  it.each([401, 403, 500, 502])(
+    'exits non-zero on HTTP %i from the issue comment read, without the second read',
+    (code) => {
+      const r = prepare(body, code, 200)
+      expect(r.status).not.toBe(0)
+      expect(r.stderr).toContain(`(HTTP ${code})`)
+      expect(r.sources).toBeNull()
+      expect(r.calls).toEqual([asIssue])
+    }
+  )
+
+  it('exits non-zero when a closed issue is a 404', () => {
+    const r = prepare('Closes #12', 200, 200, 404)
+    expect(r.status).not.toBe(0)
+    expect(r.stderr).toContain('could not read required source issues/12')
+    expect(r.sources).toBeNull()
   })
 })

@@ -93,10 +93,12 @@ keeps one state comment per head with the findings and rulings.
 - **Source completion** requires every assigned source check and input under ADR-0057. New
   outputs use contract version 2, `source_review_complete`, and `not_checked` for unfinished
   source work. Missing issues or referenced review text fail before the paid call. Every
-  `github.com` issue or pull request link and every `comment <number>` pointer in the
-  description, and in each source fetched from it, counts as referenced review text. A link to another repository fails, because the pass
-  reads only this one, and so do a comment link with a malformed anchor and a linked issue,
-  comment or review with an empty body. An
+  `github.com` issue or pull request link and every `comment <number>` pointer of eight or
+  more digits in the description, and in each source fetched from it, counts as referenced
+  review text. A comment link copied from the Files changed view (`/files#r<id>`) reads as that
+  inline comment. A link to another repository fails, because the pass reads only this one,
+  and so do a link whose fragment ADR-0057 defines as malformed and a linked issue, comment or
+  review with an empty body. An
   unfinished caller, race, fixture or count trace still fails; do not call it a runtime limit.
 - **Runtime limitations** appear separately in the saved record and public report. Tests,
   builds, CI reads and external/editor observations the reviewer did not perform remain

@@ -80,10 +80,16 @@ Three facts shaped the design:
    the behavior they claim and identifies changed behavior without a meaningful regression.
    Unrelated unchanged modules are outside the assignment. Missing source inputs, unfinished
    traces and malformed required output still fail. A referenced review contract is every
-   `github.com` issue or pull request link, and every `comment <number>` pointer, in the
-   description and in each source fetched from it. A link to another repository, a comment
-   link with a malformed anchor, or a link to an issue, comment or review with an empty body,
-   is a missing source input: the pass fails before the paid call.
+   `github.com` issue or pull request link, and every `comment <number>` pointer of eight or
+   more digits, in the description and in each source fetched from it. A link names a comment
+   by its fragment, whatever path or query comes before it: `#issuecomment-<id>`,
+   `#pullrequestreview-<id>`, `#discussion_r<id>`, or the `#r<id>` that the Files changed view
+   writes for an inline review comment. A fragment in none of those forms is malformed when,
+   with letter case, hyphens and underscores ignored, it contains `comment` or `review`, or
+   starts with `discussion_r` or `r` and then has a digit or ends; any other fragment reads as
+   the issue or pull request. A link to another repository, a link with a malformed fragment,
+   or a link to an issue, comment or review with an empty body, is a missing source input: the
+   pass fails before the paid call.
 
    New schema version 2 outputs attest source completion with `source_review_complete`, keep
    unfinished source checks in `not_checked`, and record prohibited or unperformed runtime and

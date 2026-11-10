@@ -190,24 +190,96 @@ describe('source contract preparation before the paid call', () => {
     expect(seen).toEqual([`repos/${repo}/issues/comments/123456789`])
   })
 
+  // The paths one description makes the pass read, in order, without the repository prefix.
+  const reads = (body: string) => {
+    const seen: string[] = []
+    prepareInputs({ body }, repo, (path: string) => {
+      seen.push(path.replace(`repos/${repo}/`, ''))
+      return { body: 'Review text.' }
+    })
+    return seen
+  }
+
+  // The Files changed view links an inline review comment as `/files#r<id>` or `/changes#r<id>`.
+  it.each([
+    ['pull/9/files#r5', 'pulls/comments/5'],
+    ['pull/9/changes#r5', 'pulls/comments/5'],
+    ['pull/9#r5', 'pulls/comments/5'],
+    ['pull/9/files?diff=split&w=1#r5', 'pulls/comments/5'],
+    ['pull/9/files#discussion_r5', 'pulls/comments/5'],
+    ['pull/9?notification_referrer_id=x#discussion_r5', 'pulls/comments/5'],
+    ['pull/9/#discussion_r5', 'pulls/comments/5'],
+    ['issues/9?x=1#issuecomment-5', 'issues/comments/5'],
+    ['pull/9/files#pullrequestreview-5', 'pulls/9/reviews/5']
+  ])('fetches the comment a link names behind a path or query: %s', (link, path) => {
+    expect(reads(`Contract: https://github.com/${repo}/${link}`)).toEqual([path])
+  })
+
   // A link that names a comment it cannot identify must not read as the pull request instead.
-  it.each(['discussion_r-123', 'issuecomment123', 'pullrequestreview456', 'issuecomment-'])(
-    'fails a comment link whose anchor is malformed: #%s',
-    (anchor) => {
-      const seen: string[] = []
-      expect(() =>
-        prepareInputs(
-          { body: `Contract: https://github.com/${repo}/pull/9#${anchor}` },
-          repo,
-          (path: string) => {
-            seen.push(path)
-            return { body: 'The pull request description.' }
-          }
-        )
-      ).toThrow('malformed source link')
-      expect(seen).toEqual([])
-    }
-  )
+  it.each([
+    'pull/9#discussion_r-123',
+    'pull/9#issuecomment123',
+    'pull/9#pullrequestreview456',
+    'pull/9#issuecomment-',
+    'pull/9#issuecomment_5',
+    'pull/9#issuecomment-new',
+    'pull/9#discussion-r5',
+    'pull/9#Discussion_r5',
+    'pull/9#discussion_r5abc',
+    'pull/9#discussion_r',
+    'pull/9#pullrequestreview-5-extra',
+    'pull/9/files#discussion-r5',
+    'pull/9/files#r-5',
+    'pull/9/files#R5',
+    'pull/9/files#r5x',
+    'pull/9/files#r',
+    'pull/9#comment-5',
+    'pull/9#review-5',
+    'pull/9#discussioncomment-5'
+  ])('fails a comment link whose anchor is malformed: %s', (link) => {
+    const seen: string[] = []
+    expect(() =>
+      prepareInputs(
+        { body: `Contract: https://github.com/${repo}/${link}` },
+        repo,
+        (path: string) => {
+          seen.push(path)
+          return { body: 'The pull request description.' }
+        }
+      )
+    ).toThrow(`malformed source link: https://github.com/${repo}/${link}`)
+    expect(seen).toEqual([])
+  })
+
+  it.each([
+    ['pull/9#discussion_bucket', 'pulls/9'],
+    ['pull/9#issue-123', 'pulls/9'],
+    ['pull/9#event-5', 'pulls/9'],
+    ['pull/9#ref-commit-abc123', 'pulls/9'],
+    ['pull/9/files#diff-0a1b2cR10', 'pulls/9'],
+    ['pull/9/files', 'pulls/9'],
+    ['pull/9/commits/abc123', 'pulls/9'],
+    ['issues/9#event-5', 'issues/9']
+  ])('reads the issue or pull request for a link that names no comment: %s', (link, path) => {
+    expect(reads(`Contract: https://github.com/${repo}/${link}`)).toEqual([path])
+  })
+
+  it.each([
+    'See LINK.',
+    'See LINK, then the rest.',
+    'See [the comment](LINK).',
+    '_See LINK_',
+    '**LINK**',
+    'Is it LINK?'
+  ])('reads a files-view comment link that sentence punctuation follows: %s', (sentence) => {
+    const link = `https://github.com/${repo}/pull/9/files#r5`
+    expect(reads(sentence.replace('LINK', link))).toEqual(['pulls/comments/5'])
+  })
+
+  it('reads both of two links written with no space between them', () => {
+    const link = `https://github.com/${repo}/pull`
+    expect(reads(`${link}/9/files,${link}/10/files#r5`)).toEqual(['pulls/9', 'pulls/comments/5'])
+  })
 
   it('reads a link that spells this repository in another letter case', () => {
     const seen: string[] = []

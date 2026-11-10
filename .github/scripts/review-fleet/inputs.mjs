@@ -5,22 +5,34 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { closedIssues } from '../merge/gate.mjs'
 
+// The rest of a link is captured without being consumed: it runs to whitespace or a Markdown
+// delimiter and stops before a second link, so two links with no space between them both match.
+const LINK =
+  /https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/(issues|pull)\/(\d+)(?=((?:(?!https?:\/\/)[^\s<>()[\]{}|"'`])*))/g
+
+// The four fragments GitHub writes for a comment; `r<id>` is the Files changed view's link to
+// an inline review comment.
+const COMMENT = /^(issuecomment-|pullrequestreview-|discussion_r|r)(\d+)$/
+// Any other spelling of one, read with letter case, hyphens and underscores removed.
+const COMMENT_LIKE = /comment|review|^(?:discussion)?r(?:\d|$)/
+
 export function referencedSources(text, repo) {
   const paths = new Set()
-  for (const m of String(text).matchAll(
-    /https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/(issues|pull)\/(\d+)(?:#(issuecomment|discussion_r|pullrequestreview)(-?)(\d*))?/g
-  )) {
-    const [link, target, kind, number, anchor, hyphen, id] = m
-    // Restrict credentials to this repository. Other contracts remain missing source work.
+  for (const [link, target, kind, number, rest] of String(text).matchAll(LINK)) {
+    // Credentials reach this repository only, so a link to another one is a missing source.
     if (target.toLowerCase() !== repo.toLowerCase())
       throw new Error(`referenced source outside ${repo}: ${target}`)
-    // GitHub writes `discussion_r<id>` with no hyphen and the other two anchors with one. A
-    // link that names a comment in any other shape must not read as the pull request around it.
-    if (anchor && (!id || (hyphen === '') !== (anchor === 'discussion_r')))
-      throw new Error(`malformed source link: ${link}`)
-    if (anchor === 'issuecomment') paths.add(`issues/comments/${id}`)
-    else if (anchor === 'discussion_r') paths.add(`pulls/comments/${id}`)
-    else if (anchor === 'pullrequestreview') paths.add(`pulls/${number}/reviews/${id}`)
+    // A path or query before the fragment does not change the comment it names, and sentence
+    // punctuation after the link is not part of it.
+    const hash = rest.indexOf('#')
+    const fragment = hash < 0 ? '' : rest.slice(hash + 1).replace(/[?!.,:;*_~]+$/, '')
+    const [, name, id] = COMMENT.exec(fragment) ?? []
+    // A link that names a comment in another shape must not read as the page around it.
+    if (!name && COMMENT_LIKE.test(fragment.toLowerCase().replace(/[-_]/g, '')))
+      throw new Error(`malformed source link: ${link}${rest.slice(0, hash)}#${fragment}`)
+    if (name === 'issuecomment-') paths.add(`issues/comments/${id}`)
+    else if (name === 'pullrequestreview-') paths.add(`pulls/${number}/reviews/${id}`)
+    else if (name) paths.add(`pulls/comments/${id}`)
     else paths.add(`${kind === 'pull' ? 'pulls' : 'issues'}/${number}`)
   }
   // Older descriptions name a comment by number rather than linking it.

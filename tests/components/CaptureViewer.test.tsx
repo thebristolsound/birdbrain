@@ -32,6 +32,7 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { stubMatchMedia } from './matchMediaStub'
 import { stubResizeObserver } from './resizeObserverStub'
+import { pinNonUtcTimeZone } from './timeZoneStub'
 
 const capture: Capture = {
   id: 'cap1',
@@ -354,7 +355,7 @@ describe('CaptureViewer archived-copy banner (#704)', () => {
     const banner = await screen.findByTestId('archived-copy-banner')
     expect(banner.textContent).toContain('Archived copy')
     // UTC-pinned, so this reads the same on every machine and in CI.
-    expect(banner.textContent).toContain('Captured Sat, Aug 1, 2026, 12:00 PM UTC')
+    expect(banner.textContent).toContain('Captured Aug 1, 2026 12:00:00 UTC')
   })
 
   it('states the same on a pre-v11 HTML capture, without claiming MHTML', async () => {
@@ -365,7 +366,7 @@ describe('CaptureViewer archived-copy banner (#704)', () => {
 
     const banner = await screen.findByTestId('archived-copy-banner')
     expect(banner.textContent).toContain('Archived copy')
-    expect(banner.textContent).toContain('Captured Sat, Aug 1, 2026, 12:00 PM UTC')
+    expect(banner.textContent).toContain('Captured Aug 1, 2026 12:00:00 UTC')
     // The claim holds for a capture that has no page.mhtml, so the copy must not
     // name one. Scoped to the banner — the tab body legitimately may.
     expect(banner.textContent).not.toMatch(/mhtml/i)
@@ -712,5 +713,52 @@ describe('CaptureViewer title', () => {
     renderViewer()
     const title = await screen.findByTestId('capture-viewer-title')
     expect(title.textContent).toBe('Example evidence page')
+  })
+})
+
+// #1051, #718: every capture time the viewer prints reads the same on every machine.
+describe('CaptureViewer capture times', () => {
+  pinNonUtcTimeZone()
+
+  it('names the source of a duplicate by its capture time in UTC', async () => {
+    const source = { ...capture, id: 'cap0', timestamp: '2026-07-01T21:04:05.000Z' }
+    const duplicate = { ...capture, method: 'duplicate' as const, duplicateOfCaptureId: 'cap0' }
+    fakeBridge({ captures: { list: vi.fn(async () => [duplicate, source]), getContent } })
+    renderViewer()
+
+    expect((await screen.findByTestId('duplicate-link-source')).textContent).toBe(
+      '← Duplicate of Jul 1, 2026 21:04:05 UTC'
+    )
+  })
+
+  it('names both ends of a recapture by capture time in UTC', async () => {
+    const original = { ...capture, id: 'cap0', timestamp: '2026-07-01T21:04:05.000Z' }
+    const current = { ...capture, supersedesCaptureId: 'cap0' }
+    const later = {
+      ...capture,
+      id: 'cap2',
+      supersedesCaptureId: 'cap1',
+      timestamp: '2026-09-02T23:30:15.000Z'
+    }
+    fakeBridge({ captures: { list: vi.fn(async () => [current, original, later]), getContent } })
+    renderViewer()
+
+    expect((await screen.findByTestId('supersedes-link-original')).textContent).toBe(
+      '← Recapture of Jul 1, 2026 21:04:05 UTC'
+    )
+    expect(screen.getByTestId('supersedes-link-recapture').textContent).toBe(
+      'Recaptured Sep 2, 2026 23:30:15 UTC →'
+    )
+  })
+
+  it('dates the archived-copy banner in UTC', async () => {
+    const late = { ...capture, timestamp: '2026-08-01T21:04:05.000Z' }
+    fakeBridge({ captures: { list: vi.fn(async () => [late]), getContent, getHtmlUrl } })
+    renderViewer()
+    fireEvent.click(await screen.findByRole('tab', { name: 'Page' }))
+
+    expect((await screen.findByTestId('archived-copy-banner')).textContent).toContain(
+      'Captured Aug 1, 2026 21:04:05 UTC'
+    )
   })
 })

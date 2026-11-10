@@ -832,6 +832,12 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
   // its matches carry the capture-time origin (#1082).
   it("matches the copy's own text against the active selectors on the next tick", async () => {
     const selector = createSelector({ caseId, pattern: 'only this page' })
+    createSelector({ caseId, pattern: 'drifted mirror' })
+    // A drifted source mirror matches only the second selector, so a row for the first and none
+    // for the second shows the copy was matched on its copied .txt bytes.
+    getDb()
+      .prepare('UPDATE capture_texts SET content = ? WHERE capture_id = ?')
+      .run('drifted mirror text', source.id)
     const matching = createCaptureLifecycle({
       selectorLifecycle: createSelectorLifecycle({ emitRematched: vi.fn() })
     })

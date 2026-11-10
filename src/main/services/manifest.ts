@@ -13,7 +13,7 @@ import {
   fsyncSync,
   truncateSync
 } from 'fs'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { createHash } from 'crypto'
 import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { carriesLaunchedBrowserValue, ManifestEntrySchema } from '@shared/schemas'
@@ -1083,6 +1083,30 @@ function fieldMinReaderSchemaVersion(entry: ManifestEntryInput): number {
     return CAPTURE_EGRESS_MIN_READER
   }
   return exhibitNumber !== undefined ? CAPTURE_EXHIBIT_NUMBER_MIN_READER : 0
+}
+
+// One in-memory queue per case directory (#394, #639). A batch delete holds it across awaits, so
+// a writer that takes it cannot land inside the batch's range; a writer that does not take it
+// still can. Not reentrant: `fn` must not wait on the same directory's slot. Keyed by the
+// resolved path, so two spellings of one directory share one queue.
+const manifestSlots = new Map<string, Promise<void>>()
+
+export async function withManifestSlot<T>(caseDir: string, fn: () => T | Promise<T>): Promise<T> {
+  const key = resolve(caseDir)
+  const prev = manifestSlots.get(key) ?? Promise.resolve()
+  let release: () => void = () => {}
+  const mine = new Promise<void>((done) => {
+    release = done
+  })
+  const tail = prev.then(() => mine)
+  manifestSlots.set(key, tail)
+  await prev
+  try {
+    return await fn()
+  } finally {
+    release()
+    if (manifestSlots.get(key) === tail) manifestSlots.delete(key)
+  }
 }
 
 // Write-ahead append: compute hash, append JSONL line, fsync.

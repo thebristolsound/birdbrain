@@ -176,6 +176,46 @@ describe('useSelectorFilters', () => {
     )
   })
 
+  // The re-picked set's key still holds the cached failure while its retry is
+  // in flight; reading that as a fresh failure would drop the filter again
+  // the moment the operator re-picks it.
+  it('keeps a re-picked selector while the retry of a failed lookup is in flight', async () => {
+    store().addSelectorFilter('s1')
+    let release: (ids: string[]) => void = () => {}
+    const matchingCaptures = vi
+      .fn<() => Promise<string[]>>()
+      .mockResolvedValueOnce(['c1'])
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockImplementationOnce(
+        () =>
+          new Promise<string[]>((resolve) => {
+            release = resolve
+          })
+      )
+    fakeBridge({ selectors: { matchingCaptures, list: vi.fn(async () => [{ id: 's1' }]) } })
+    const client = newClient()
+
+    renderHook(() => useSelectorFilters('case-1'), { wrapper: withClient(client) })
+    await waitFor(() => expect(store().filteredCaptureIds).toEqual(['c1']))
+
+    act(() => {
+      void client.invalidateQueries({
+        queryKey: queryKeys.selectorMatchingCapturesAll('case-1')
+      })
+    })
+    await waitFor(() => expect(store().activeSelectorFilters).toEqual([]))
+    expect(notify.error).toHaveBeenCalledTimes(1)
+
+    act(() => store().addSelectorFilter('s1'))
+    await waitFor(() => expect(matchingCaptures).toHaveBeenCalledTimes(3))
+    expect(store().activeSelectorFilters).toEqual(['s1'])
+    expect(notify.error).toHaveBeenCalledTimes(1)
+
+    await act(async () => release(['c2']))
+    await waitFor(() => expect(store().filteredCaptureIds).toEqual(['c2']))
+    expect(store().activeSelectorFilters).toEqual(['s1'])
+  })
+
   // After a delete the refreshed selector list no longer carries the id, so
   // nothing on screen names the filter for the operator to remove.
   it('drops an active selector the refreshed selector list no longer contains', async () => {

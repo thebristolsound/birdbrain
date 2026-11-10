@@ -2,11 +2,14 @@ import { describe, it, expect } from 'vitest'
 import {
   classifySelection,
   isActionableSelection,
+  isQuoteTextOf,
   normalizeSelection,
+  selectionQuoteText,
   selectionToTagName,
   SELECTION_KINDS,
   SELECTION_MAX_LENGTH,
-  SELECTION_MIN_LENGTH
+  SELECTION_MIN_LENGTH,
+  SELECTION_QUOTE_MAX_LENGTH
 } from '@shared/selectionKind'
 
 /**
@@ -250,5 +253,66 @@ describe('selectionToTagName', () => {
     for (const input of ['', '---', '。。。']) {
       expect(selectionToTagName(input)).not.toBe('')
     }
+  })
+})
+
+// A Quote keeps the passage's line breaks (#1003).
+describe('selectionQuoteText', () => {
+  const ADDRESS = '  Acme Holdings Ltd\n12 Harbour Road\n\nBristol BS1 4AA \n'
+
+  it('trims the raw selection and keeps its line structure', () => {
+    expect(selectionQuoteText(ADDRESS)).toBe(
+      'Acme Holdings Ltd\n12 Harbour Road\n\nBristol BS1 4AA'
+    )
+  })
+
+  it('keeps indentation inside the passage untouched', () => {
+    expect(selectionQuoteText('if (x) {\n  run()\n}')).toBe('if (x) {\n  run()\n}')
+  })
+
+  it('accepts a passage exactly at the cap', () => {
+    const atCap = `a${'\n'.repeat(SELECTION_QUOTE_MAX_LENGTH - 2)}b`
+    expect(selectionQuoteText(atCap)).toBe(atCap)
+  })
+
+  it('falls back to the collapsed passage over the cap, never a truncated one', () => {
+    const overCap = `a${'\n'.repeat(SELECTION_QUOTE_MAX_LENGTH - 1)}b`
+    expect(selectionQuoteText(overCap)).toBe('a b')
+  })
+
+  it('caps at 1000 characters, above the actionable maximum of the collapsed form', () => {
+    expect(SELECTION_QUOTE_MAX_LENGTH).toBe(1000)
+    expect(SELECTION_QUOTE_MAX_LENGTH).toBeGreaterThan(SELECTION_MAX_LENGTH)
+  })
+
+  it('reads an empty selection as empty', () => {
+    expect(selectionQuoteText('')).toBe('')
+    expect(selectionQuoteText('  \n ')).toBe('')
+  })
+})
+
+describe('isQuoteTextOf', () => {
+  it('accepts the quote text of the passage the bar was raised for', () => {
+    const raw = 'Acme Holdings Ltd\n12 Harbour Road'
+    expect(isQuoteTextOf(selectionQuoteText(raw), normalizeSelection(raw))).toBe(true)
+  })
+
+  it('rejects text that is a different passage once collapsed', () => {
+    expect(
+      isQuoteTextOf('Acme Holdings Ltd\nSomewhere else', 'Acme Holdings Ltd 12 Harbour Road')
+    ).toBe(false)
+  })
+
+  it('rejects quote text over the cap even when it collapses to the passage', () => {
+    const overCap = `a${'\n'.repeat(SELECTION_QUOTE_MAX_LENGTH - 1)}b`
+    expect(isQuoteTextOf(overCap, 'a b')).toBe(false)
+  })
+
+  it('rejects untrimmed quote text, which the content script never sends', () => {
+    expect(isQuoteTextOf(' a\nb', 'a b')).toBe(false)
+  })
+
+  it('rejects an empty pair rather than reading two blanks as a match', () => {
+    expect(isQuoteTextOf('', '')).toBe(false)
   })
 })

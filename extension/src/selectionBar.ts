@@ -16,8 +16,17 @@ import {
   onCaptureUiSuppressionReleased,
   registerCaptureUiTeardown
 } from './captureSuppression'
-import { isActionableSelection, normalizeSelection } from '@shared/selectionKind'
-import type { SelectionActionKind, SelectionActionResponse, SelectionBarState } from './messages'
+import {
+  isActionableSelection,
+  normalizeSelection,
+  selectionQuoteText
+} from '@shared/selectionKind'
+import type {
+  SelectionActionKind,
+  SelectionActionRequest,
+  SelectionActionResponse,
+  SelectionBarState
+} from './messages'
 
 export const SELECTION_BAR_ID = 'birdbrain-selection-bar'
 
@@ -43,8 +52,23 @@ const BAR_GAP = 8
 
 type BarState =
   | { phase: 'hidden' }
-  | { phase: 'ready'; text: string; x: number; y: number; enabled: boolean; reason: string }
-  | { phase: 'busy'; text: string; x: number; y: number; action: SelectionActionKind }
+  | {
+      phase: 'ready'
+      text: string
+      rawText: string
+      x: number
+      y: number
+      enabled: boolean
+      reason: string
+    }
+  | {
+      phase: 'busy'
+      text: string
+      rawText: string
+      x: number
+      y: number
+      action: SelectionActionKind
+    }
   | { phase: 'done'; x: number; y: number; ok: boolean; message: string }
 
 let state: BarState = { phase: 'hidden' }
@@ -295,6 +319,7 @@ async function showFromSelection(): Promise<void> {
   if (isCaptureUiSuppressed()) return
 
   const text = normalizeSelection(raw)
+  const rawText = selectionQuoteText(raw)
   const barState = await queryBarState()
   // Fail closed on an unreachable worker: no bar at all, not a disabled one.
   if (barState === null) return
@@ -319,6 +344,7 @@ async function showFromSelection(): Promise<void> {
   state = {
     phase: 'ready',
     text,
+    rawText,
     x,
     y,
     enabled,
@@ -333,8 +359,8 @@ async function showFromSelection(): Promise<void> {
 
 async function runAction(action: SelectionActionKind): Promise<void> {
   if (state.phase !== 'ready' || !state.enabled) return
-  const { text, x, y } = state
-  state = { phase: 'busy', text, x, y, action }
+  const { text, rawText, x, y } = state
+  state = { phase: 'busy', text, rawText, x, y, action }
   render()
 
   let response: SelectionActionResponse
@@ -342,8 +368,9 @@ async function runAction(action: SelectionActionKind): Promise<void> {
     response = (await chrome.runtime.sendMessage({
       type: 'SELECTION_ACTION',
       action,
-      text
-    })) as SelectionActionResponse
+      text,
+      rawText
+    } satisfies SelectionActionRequest)) as SelectionActionResponse
   } catch {
     response = { ok: false, error: "Can't reach the Birdbrain extension" }
   }

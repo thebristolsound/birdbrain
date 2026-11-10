@@ -126,21 +126,41 @@ export function insertQueuedJobs(jobs: NewBackgroundJob[]): void {
   })()
 }
 
-// Takes the first `queued` row in claim order and marks it `running` in one statement, so two
-// callers cannot claim the same row. `held` rows are never claimed.
-export function claimNextQueued(attempt: {
-  startedAt: string
-  captureId: string
-}): BackgroundJobView | undefined {
-  const row = getDb()
-    .prepare(
-      `UPDATE background_jobs
-          SET state = 'running', attempts = attempts + 1, started_at = ?, capture_id = ?
-        WHERE id = (SELECT id FROM background_jobs WHERE state = 'queued' ${CLAIM_ORDER} LIMIT 1)
-        RETURNING *`
-    )
-    .get(attempt.startedAt, attempt.captureId) as JobRow | undefined
-  return row ? toView(row) : undefined
+// The id of the first `queued` row in claim order whose address `runnable` accepts.
+function firstRunnable(runnable: (url: string) => boolean): string | undefined {
+  const rows = getDb()
+    .prepare(`SELECT id, url FROM background_jobs WHERE state = 'queued' ${CLAIM_ORDER}`)
+    .iterate() as IterableIterator<{ id: string; url: string }>
+  // Leaving the loop early ends the read, so another statement can run after it.
+  for (const { id, url } of rows) if (runnable(url)) return id
+  return undefined
+}
+
+export function hasRunnableQueued(runnable: (url: string) => boolean): boolean {
+  return firstRunnable(runnable) !== undefined
+}
+
+// Takes the first `queued` row in claim order that `runnable` accepts, and marks it `running`. The
+// read and the update run in one transaction, synchronously on the main process's one connection,
+// so two callers cannot claim the same row. `held` rows are never claimed.
+export function claimNextQueued(
+  attempt: { startedAt: string; captureId: string },
+  runnable: (url: string) => boolean = () => true
+): BackgroundJobView | undefined {
+  const db = getDb()
+  return db.transaction(() => {
+    const id = firstRunnable(runnable)
+    if (id === undefined) return undefined
+    const row = db
+      .prepare(
+        `UPDATE background_jobs
+            SET state = 'running', attempts = attempts + 1, started_at = ?, capture_id = ?
+          WHERE id = ? AND state = 'queued'
+          RETURNING *`
+      )
+      .get(attempt.startedAt, attempt.captureId, id) as JobRow | undefined
+    return row ? toView(row) : undefined
+  })()
 }
 
 // Records the phase a `running` row is in. Any other row is left as it is, as by `finishJob`.
@@ -280,37 +300,38 @@ export interface StartupRecovery {
 // ingest committed, so it is `stored`; any other running job's render or ingest ended with the
 // process. A queued job waits for the Operator, and a stored row past retention goes, because
 // its Capture is the lasting record.
-// After a restore, `exceptJobId` is the job this process is still running, which ends as it
+// After a restore, `exceptJobIds` are the jobs this process is still running, which end as they
 // would have without the restore.
 export function recoverJobsAtStartup(params: {
   now: string
   storedBefore: string
   interruptedError: string
-  exceptJobId?: string
+  exceptJobIds?: string[]
 }): StartupRecovery {
   const db = getDb()
+  const except = JSON.stringify(params.exceptJobIds ?? [])
   return db.transaction(() => {
     const stored = db
       .prepare(
         `UPDATE background_jobs
             SET state = 'stored', phase = NULL, finished_at = ?
-          WHERE state = 'running' AND id IS NOT ?
+          WHERE state = 'running' AND id NOT IN (SELECT value FROM json_each(?))
             AND EXISTS (
               SELECT 1 FROM captures c
                WHERE c.id = background_jobs.capture_id AND c.case_id = background_jobs.case_id
             )
           RETURNING *`
       )
-      .all(params.now, params.exceptJobId ?? null) as JobRow[]
+      .all(params.now, except) as JobRow[]
     const interrupted = db
       .prepare(
         `UPDATE background_jobs
             SET state = 'failed', phase = NULL, failure_kind = 'interrupted', error = ?,
                 finished_at = ?
-          WHERE state = 'running' AND id IS NOT ?
+          WHERE state = 'running' AND id NOT IN (SELECT value FROM json_each(?))
           RETURNING *`
       )
-      .all(params.interruptedError, params.now, params.exceptJobId ?? null) as JobRow[]
+      .all(params.interruptedError, params.now, except) as JobRow[]
     const held = db
       .prepare(`UPDATE background_jobs SET state = 'held' WHERE state = 'queued' RETURNING *`)
       .all() as JobRow[]

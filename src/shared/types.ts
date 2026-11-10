@@ -1019,9 +1019,13 @@ export const LOG_CODES = [
   // A running job's phase could not be written to its row, as while a restore has the database
   // closed. The render goes on; logged once per job.
   'backgroundRenderer.job_phase_failed',
-  // The background job queue stopped because it could not read or write a job's row, as while
-  // a restore has the database closed. The next enqueue or resume starts it again.
+  // A worker slot of the background job queue stopped because it could not read or write a job's
+  // row, as while a restore has the database closed. The next enqueue, resume or retry, or another
+  // job's end, starts it again.
   'backgroundRenderer.job_queue_failed',
+  // A queued job waits to start beside a running one because free memory is under the floor
+  // (`bytes` free, `count` running). Logged once each time the floor begins to hold one.
+  'backgroundRenderer.job_memory_held',
   'consentBlocker.filter_engine_failed',
   'selectorLifecycle.retroactive_match_failed',
   'serverToken.token_invalid',

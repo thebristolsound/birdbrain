@@ -9,6 +9,7 @@ import {
   dismissJobs,
   finishJob,
   getJob,
+  hasRunnableQueued,
   insertQueuedJobs,
   listHeldBatches,
   listJobs,
@@ -100,6 +101,38 @@ describe('backgroundJobRepo', () => {
     ).toEqual({ capture_id: 'cap-1' })
     expect([claim()?.jobId, claim()?.jobId, claim()]).toEqual(['second', 'late', undefined])
     expect(getJob('held')?.state).toBe('held')
+  })
+
+  it('claims the first queued job in claim order that the caller can run, leaving earlier ones queued', () => {
+    insertQueuedJobs([job('busy'), job('free'), job('later')])
+    const runnable = (url: string) => !url.endsWith('/busy')
+
+    expect(hasRunnableQueued(runnable)).toBe(true)
+    expect(hasRunnableQueued(() => false)).toBe(false)
+    expect(claimNextQueued({ startedAt: 'now', captureId: 'c' }, () => false)).toBeUndefined()
+    expect(claimNextQueued({ startedAt: 'now', captureId: 'c' }, runnable)?.jobId).toBe('free')
+    expect(claimNextQueued({ startedAt: 'now', captureId: 'c' }, runnable)?.jobId).toBe('later')
+    expect(hasRunnableQueued(runnable)).toBe(false)
+    expect(getJob('busy')?.state).toBe('queued')
+    expect(claim()?.jobId).toBe('busy')
+  })
+
+  it('leaves every running job it is told to except as it is at a restore, and interrupts the rest', () => {
+    insertQueuedJobs([job('a'), job('b'), job('orphan')])
+    for (const id of ['a', 'b', 'orphan']) claim(`cap-${id}`)
+
+    const { interrupted } = recoverJobsAtStartup({
+      now: '2026-11-09T12:00:00.000Z',
+      storedBefore: '2026-11-02T12:00:00.000Z',
+      interruptedError: 'closed',
+      exceptJobIds: ['a', 'b']
+    })
+    expect(interrupted.map(({ job: { jobId } }) => jobId)).toEqual(['orphan'])
+    expect(['a', 'b', 'orphan'].map((id) => getJob(id)?.state)).toEqual([
+      'running',
+      'running',
+      'failed'
+    ])
   })
 
   it('ends only a running job, and names its Capture only once stored', () => {

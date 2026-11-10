@@ -1,4 +1,10 @@
 import { randomUUID } from 'crypto'
+import { freemem } from 'os'
+import {
+  MEMORY_GATE_RETRY_MS,
+  MIN_FREE_MEMORY_BYTES,
+  jobSite
+} from '@main/services/backgroundJobPool'
 import * as backgroundJobRepo from '@main/services/db/backgroundJobRepo'
 import type { JobEnd } from '@main/services/db/backgroundJobRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
@@ -166,6 +172,10 @@ export interface RecaptureDeps {
   // Hears every change of a job's state, with the row as it now reads.
   emitJob?: (job: BackgroundJobView) => void
   timeoutMs?: number
+  // How many jobs run at once, 1 unless given; `resolveBackgroundWorkers` gives the app's.
+  concurrency?: number
+  // Free memory in bytes, `os.freemem()` unless given.
+  freeMemory?: () => number
 }
 
 export interface RecaptureService {
@@ -177,17 +187,17 @@ export interface RecaptureService {
   recoverStoredJobs: () => void
   // Read before a restore closes the database: the jobs this session has queued or is running.
   beginRestore: () => BackgroundJobView[]
-  // After a restore re-opens the database: the startup pass, which leaves the job this process is
-  // still running to end as it would have, and a `failed` event for each job read by
+  // After a restore re-opens the database: the startup pass, which leaves the jobs this process is
+  // still running to end as they would have, and a `failed` event for each job read by
   // `beginRestore` that the restored copy does not hold.
   finishRestore: (before: BackgroundJobView[]) => void
   listJobs: (query: RecaptureListJobsQuery) => BackgroundJobView[]
   // Sets the Batch's `held` jobs `queued`, behind the jobs already queued at the resume.
   resume: (batchId: string) => { resumed: number }
   dismiss: (target: RecaptureJobTarget) => { dismissed: number }
-  // Ends the target's queued and held jobs `cancelled`, and aborts its running job unless that
-  // job is past the cut-off: its render has returned its page, and the job ends as the ingest
-  // does, or something else has already ended its render. `refused` counts such a job.
+  // Ends the target's queued and held jobs `cancelled`, and aborts each of its running jobs unless
+  // that job is past the cut-off: its render has returned its page, and the job ends as the ingest
+  // does, or something else has already ended its render. `refused` counts such jobs.
   cancel: (target: RecaptureJobTarget) => RecaptureCancelResult
   // Queues the target's failed and cancelled jobs again, behind the jobs already queued.
   retry: (target: RecaptureJobTarget) => { retried: number }
@@ -208,7 +218,7 @@ export const RESTORE_REMOVED_JOB_ERROR = 'A database restore removed this job'
 // How a job ended, as its row records it.
 type JobOutcome = Omit<JobEnd, 'finishedAt'>
 
-// The job the worker is running, which cancel reads. `ended` is set once its render will return
+// A job a worker slot is running, which cancel reads. `ended` is set once its render will return
 // no page, and `ingesting` once the job holds the page: the queue sets it, and the phase
 // `ingesting`, as soon as the render's promise resolves, before anything else of the job runs.
 interface ActiveJob {
@@ -375,8 +385,13 @@ function validateUrl(raw: string): string | null {
 
 export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS
-  let active: ActiveJob | null = null
-  let draining: Promise<void> | null = null
+  const concurrency = deps.concurrency ?? 1
+  const freeMemory = deps.freeMemory ?? freemem
+  // The running jobs by job id, in the order they started, and the promise of each.
+  const runs = new Map<string, ActiveJob>()
+  const workers = new Set<Promise<void>>()
+  let memoryRetry: NodeJS.Timeout | undefined
+  let memoryHeld = false
 
   // Every event names its job and Batch, so the renderer can tell two jobs for one address apart.
   // A Capture link job also names its source, because the exclusion skip names the final address
@@ -422,13 +437,13 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     })
   }
 
-  function recover(exceptJobId?: string): void {
+  function recover(exceptJobIds?: string[]): void {
     const now = Date.now()
     const { stored, interrupted, held } = backgroundJobRepo.recoverJobsAtStartup({
       now: new Date(now).toISOString(),
       storedBefore: new Date(now - STORED_JOB_RETENTION_MS).toISOString(),
       interruptedError: INTERRUPTED_JOB_ERROR,
-      exceptJobId
+      exceptJobIds
     })
     // Stored, not interrupted: the Capture landed before the app closed, and a retry of the job
     // would take a second observation of the page.
@@ -534,7 +549,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       if (signal.aborted) return endCancelled()
 
       // The renderer honors timeoutMs itself; race defensively so a hung
-      // implementation can never wedge the serial queue.
+      // implementation can never hold a worker slot.
       let fallbackTimer: NodeJS.Timeout | undefined
       const fallbackTimeout = new Promise<never>((_, reject) => {
         fallbackTimer = setTimeout(() => {
@@ -745,46 +760,84 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     }
   }
 
-  // One job at a time, each claimed from its row as the last one ends. A database the loop
-  // cannot read or write (a restore closes it) stops the loop; the next enqueue or resume starts
-  // it again, and a row it left `running` is `interrupted` at the next start.
+  // Up to `concurrency` jobs at once, each slot claiming its next row as its last job ends. A slot
+  // claims only a job whose site has none running, read from this process's runs rather than the
+  // rows, which a restore can replace while a render goes on. A job does not start beside another
+  // while free memory is under the floor; the slot looks again after `MEMORY_GATE_RETRY_MS`, and
+  // when a running job ends. A database a slot cannot read or write (a restore closes it) stops
+  // that slot; the next enqueue, resume or retry, or another job's end, starts it again, and a row
+  // it left `running` is `interrupted` at the next start.
   function drain(): void {
-    if (draining) return
-    draining = (async () => {
-      for (;;) {
-        const attempt = { captureId: randomUUID(), timestamp: new Date().toISOString() }
-        const claimed = backgroundJobRepo.claimNextQueued({
-          startedAt: attempt.timestamp,
-          captureId: attempt.captureId
+    clearTimeout(memoryRetry)
+    memoryRetry = undefined
+    while (runs.size < concurrency) {
+      const busy = new Set([...runs.values()].map(({ job }) => jobSite(job.url)))
+      const runnable = (url: string): boolean => !busy.has(jobSite(url))
+      const attempt = { captureId: randomUUID(), timestamp: new Date().toISOString() }
+      let claimed: BackgroundJobView | undefined
+      try {
+        // The first job always starts, as a single worker's would.
+        if (runs.size > 0 && backgroundJobRepo.hasRunnableQueued(runnable)) {
+          const free = freeMemory()
+          if (free < MIN_FREE_MEMORY_BYTES) {
+            if (!memoryHeld) {
+              memoryHeld = true
+              logger.info('backgroundRenderer', 'backgroundRenderer.job_memory_held', {
+                bytes: free,
+                count: runs.size
+              })
+            }
+            memoryRetry = setTimeout(drain, MEMORY_GATE_RETRY_MS)
+            return
+          }
+        }
+        memoryHeld = false
+        claimed = backgroundJobRepo.claimNextQueued(
+          { startedAt: attempt.timestamp, captureId: attempt.captureId },
+          runnable
+        )
+      } catch (err) {
+        logger.error('backgroundRenderer', 'backgroundRenderer.job_queue_failed', undefined, err)
+        return
+      }
+      if (!claimed) return
+      start(claimed, attempt)
+    }
+  }
+
+  function start(
+    claimed: BackgroundJobView,
+    attempt: { captureId: string; timestamp: string }
+  ): void {
+    emitJob(claimed)
+    const run: ActiveJob = {
+      job: jobOf(claimed),
+      captureId: attempt.captureId,
+      controller: new AbortController(),
+      ended: false,
+      ingesting: false,
+      phaseWriteFailed: false
+    }
+    runs.set(claimed.jobId, run)
+    const worker: Promise<void> = (async () => {
+      try {
+        const outcome = await runJob(run, attempt)
+        const ended = backgroundJobRepo.finishJob(claimed.jobId, {
+          ...outcome,
+          finishedAt: new Date().toISOString()
         })
-        if (!claimed) return
-        emitJob(claimed)
-        active = {
-          job: jobOf(claimed),
-          captureId: attempt.captureId,
-          controller: new AbortController(),
-          ended: false,
-          ingesting: false,
-          phaseWriteFailed: false
-        }
-        try {
-          const outcome = await runJob(active, attempt)
-          const ended = backgroundJobRepo.finishJob(claimed.jobId, {
-            ...outcome,
-            finishedAt: new Date().toISOString()
-          })
-          if (ended) emitJob(ended)
-        } finally {
-          active = null
-        }
+        if (ended) emitJob(ended)
+      } finally {
+        runs.delete(claimed.jobId)
       }
     })()
-      .catch((err: unknown) => {
+      .then(drain, (err: unknown) => {
         logger.error('backgroundRenderer', 'backgroundRenderer.job_queue_failed', undefined, err)
       })
       .finally(() => {
-        draining = null
+        workers.delete(worker)
       })
+    workers.add(worker)
   }
 
   const service: RecaptureService = {
@@ -887,19 +940,19 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         running,
         held,
         heldBatches: backgroundJobRepo.listHeldBatches(),
-        concurrency: 1,
-        activeUrl: active?.job.url ?? null
+        concurrency,
+        // The first running job's address, until its readers move to the job view.
+        activeUrl: runs.values().next().value?.job.url ?? null
       }
     },
     recoverStoredJobs: () => recover(),
     beginRestore: () => backgroundJobRepo.listActiveJobs(),
     finishRestore(before) {
-      const running = active?.job.jobId
-      recover(running)
+      recover([...runs.keys()])
       const finishedAt = new Date().toISOString()
       for (const view of before) {
-        // The running job reports its own end; a job the restored copy holds was handled above.
-        if (view.jobId === running || backgroundJobRepo.getJob(view.jobId)) continue
+        // A running job reports its own end; a job the restored copy holds was handled above.
+        if (runs.has(view.jobId) || backgroundJobRepo.getJob(view.jobId)) continue
         emitJobEvent(jobOf(view), {
           type: 'failed',
           source: 'recapture',
@@ -930,13 +983,18 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         })
         emitJob(view)
       }
-      const run = active
-      if (!run || !targets(target, run.job)) return { cancelled: ended.length, refused: 0 }
-      if (run.ingesting || run.ended || run.controller.signal.aborted) {
-        return { cancelled: ended.length, refused: 1 }
+      let cancelled = ended.length
+      let refused = 0
+      for (const run of runs.values()) {
+        if (!targets(target, run.job)) continue
+        if (run.ingesting || run.ended || run.controller.signal.aborted) {
+          refused++
+          continue
+        }
+        run.controller.abort()
+        cancelled++
       }
-      run.controller.abort()
-      return { cancelled: ended.length + 1, refused: 0 }
+      return { cancelled, refused }
     },
     retry(target) {
       const retriedAt = new Date().toISOString()
@@ -955,7 +1013,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       return { retried: retried.length }
     },
     async idle() {
-      while (draining) await draining
+      while (workers.size > 0) await Promise.all(workers)
     }
   }
   return service

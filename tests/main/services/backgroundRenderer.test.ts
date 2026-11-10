@@ -2978,7 +2978,9 @@ describe("renderPageInHiddenWindow's log lines", () => {
       expect(timeLeftMs).toBeGreaterThan(0)
       expect(timeLeftMs).toBeLessThanOrEqual(2_000)
       // The bound is the time left, read as the end phases start (less the collect, for the writer).
-      expect(Math.abs((timeLeftMs as number) - boundMs)).toBeLessThanOrEqual(5)
+      // 100 ms of slack absorbs timer drift on a loaded machine; a bound from any other source
+      // (the 5 s or 10 s constants) would miss by seconds.
+      expect(Math.abs((timeLeftMs as number) - boundMs)).toBeLessThanOrEqual(100)
       const [[, , context]] = logged(info, 'backgroundRenderer.render_completed')
       expect(context).not.toHaveProperty('timeLeftMs')
     },

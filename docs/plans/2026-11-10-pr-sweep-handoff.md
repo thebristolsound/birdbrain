@@ -203,3 +203,10 @@ The survey did not resolve the product questions inside existing reviews. Restat
 ## Open question on the fleet gate
 
 Every pull request the fleet covers fails its check for the policy reason that pull request 2160 repairs. The repair takes effect only once it is on main, and the fleet cannot pass 2160 itself for the same reason. The maintainer's override label is the documented path past a failed fleet check. Matt has not authorized it for this sweep, so no pull request can merge until he decides whether to apply it to 2160 after its independent review approves.
+
+## Second test-lock verification failure
+
+- The queued full verification of pull request 2126 at `d50ea26b5d2a` failed, exit 1: 9,881 tests passed, 3 failed, 66 skipped. Every step before the coverage run passed. The log and exit code are `/home/matt/pr-sweep-fable/pr2126-preflight.log` and `.exit`.
+- The failures are the same two-second polling test at `tests/dispatchChecks.test.ts:370` and two 15-second timeouts in `tests/main/services/derivedFileStates.test.ts`. The branch changes neither file. Both are on the recovery thread's list of tests that fail under load and pass alone.
+- The machine was oversubscribed during the run: the 15-minute load average read 16.7 on 4 cores, with both delta reviewers running test files beside the coverage run. Run alone under the shared lock at the same commit, the two files passed all 43 tests in 29 seconds, exit 0 (`/home/matt/pr-sweep-fable/pr2126-two-files-alone.log`).
+- No assertion or timeout changed, nothing was pushed, and remote 2126 is still `84d56578cafe`. No third full run starts without Matt's answer. The question for him: rerun the full verification once, with no reviewer or other test run on the machine, or publish with CI as the full-suite evidence.

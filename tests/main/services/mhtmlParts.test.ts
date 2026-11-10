@@ -171,9 +171,23 @@ describe('listMhtmlParts known answers', () => {
       'Snapshot-Content-Location: https://example.com/elsewhere'
     )
     const { parts } = listed(listMhtmlParts(buffer, MHTML_PARTS_LIMITS, READ_AT))
-    expect(
-      parts.filter(({ mainDocument }) => mainDocument).map(({ position }) => position)
-    ).toEqual([1])
+    const marked = parts.filter(({ mainDocument }) => mainDocument)
+    expect(marked.map(({ position }) => position)).toEqual([1])
+    const main = readHtmlParts(buffer, 'https://example.com/').parts.find(
+      ({ frame }) => frame === 'main'
+    )
+    expect(marked[0].htmlPart).toBe(main?.part)
+  })
+
+  it('marks no part as the main document when the archive holds no HTML part', () => {
+    const buffer = Buffer.from(
+      'Content-Type: multipart/related; boundary=B\r\n\r\n' +
+        '--B\r\nContent-Type: text/css\r\n\r\nx\r\n' +
+        '--B\r\nContent-Type: image/png\r\n\r\ny\r\n--B--\r\n'
+    )
+    const { parts } = listed(listMhtmlParts(buffer, MHTML_PARTS_LIMITS, READ_AT))
+    expect(parts).toHaveLength(2)
+    expect(parts.every(({ mainDocument }) => !mainDocument)).toBe(true)
   })
 })
 

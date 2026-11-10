@@ -164,8 +164,8 @@ export function walkMhtml(buffer: Buffer, onPart: (part: MhtmlWalkPart) => void)
     const nextAt = buffer.indexOf(delimiter, partStart)
     const partEnd = nextAt === -1 ? buffer.length : nextAt
 
-    const partHeaderEnd = findHeaderEndBuf(buffer, partStart)
-    const headersTerminated = partHeaderEnd !== -1 && partHeaderEnd <= partEnd
+    const partHeaderEnd = findHeaderEndBuf(buffer, partStart, partEnd)
+    const headersTerminated = partHeaderEnd !== -1
     // Decode headers as latin1 (header bytes are ASCII per RFC 2045); cheap.
     const headers = headersTerminated
       ? buffer.slice(partStart, partHeaderEnd).toString('latin1')
@@ -297,16 +297,19 @@ function parseLocation(headers: string, name: string): string | null {
   return value ? value : null
 }
 
-function findHeaderEndBuf(buf: Buffer, from: number): number {
-  // Locate the blank-line separator between headers and body.
+// Locate the blank-line separator between headers and body, within [from, to). A part's search
+// stops at the part's end, so a file with no LF LF pair does not cost every part a scan to the
+// end of the file.
+function findHeaderEndBuf(buf: Buffer, from: number, to: number = buf.length): number {
   const crlfcrlf = Buffer.from([0x0d, 0x0a, 0x0d, 0x0a])
   const lflf = Buffer.from([0x0a, 0x0a])
-  const crlf = buf.indexOf(crlfcrlf, from)
-  const lf = buf.indexOf(lflf, from)
+  const region = buf.subarray(from, to)
+  const crlf = region.indexOf(crlfcrlf)
+  const lf = region.indexOf(lflf)
   if (crlf === -1 && lf === -1) return -1
-  if (crlf === -1) return lf + 2
-  if (lf === -1) return crlf + 4
-  return crlf < lf ? crlf + 4 : lf + 2
+  if (crlf === -1) return from + lf + 2
+  if (lf === -1) return from + crlf + 4
+  return from + (crlf < lf ? crlf + 4 : lf + 2)
 }
 
 function stripTrailingNewlineEnd(buf: Buffer, start: number, end: number): number {

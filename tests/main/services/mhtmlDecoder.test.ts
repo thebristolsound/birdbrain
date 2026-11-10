@@ -627,6 +627,54 @@ describe('walkMhtml', () => {
       ' tail</p>'
     )
   })
+
+  // The a1762414 decoder reads this archive the same way: one HTML part whose headers end at the
+  // first LF LF, ahead of a CRLF CRLF pair later in its body.
+  it('ends LF-only headers at the first blank line, inside the part', () => {
+    const buffer = Buffer.from(
+      [
+        'Content-Type: multipart/related; boundary=B',
+        '',
+        '--B',
+        'Content-Type: text/html',
+        '',
+        '<p>lf</p>\r\n\r\n<p>after</p>',
+        '--B',
+        'Content-Type: image/gif',
+        '--B--'
+      ].join('\n'),
+      'latin1'
+    )
+    const { parts } = walk(buffer)
+    expect(parts.map(({ headersTerminated, html }) => [headersTerminated, html])).toEqual([
+      [true, true],
+      [false, false]
+    ])
+    expect(listHtmlPartsInMhtml(buffer).parts.map((part) => part.decode())).toEqual([
+      '<p>lf</p>\r\n\r\n<p>after</p>'
+    ])
+  })
+
+  // With the header search running to the end of the file, the cost was the number of parts
+  // times the file size: this walk took about 7 s on 2026-11-10 before the search was bounded.
+  it('walks 20,000 parts with no LF LF pair in linear time', () => {
+    const part = [
+      '--B',
+      'Content-Type: image/png',
+      'Content-Transfer-Encoding: base64',
+      '',
+      'A'.repeat(140)
+    ]
+    const buffer = mhtml([
+      ...MULTIPART_TOP,
+      ...Array.from({ length: 20_000 }, () => part).flat(),
+      '--B--'
+    ])
+    expect(buffer.length).toBeGreaterThan(4_000_000)
+    const started = performance.now()
+    expect(walkMhtml(buffer, () => {}).totalParts).toBe(20_000)
+    expect(performance.now() - started).toBeLessThan(2_000)
+  })
 })
 
 describe('mainHtmlPartIndex', () => {

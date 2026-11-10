@@ -3,9 +3,11 @@ import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync, mkdirSync }
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
+import { randomUUID } from 'crypto'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { ingestMhtmlCapture, verifyCapture } from '@main/services/captureLifecycle'
 import { defaultCaptureStore } from '@main/services/captureStore'
+import type { CaptureStore } from '@main/services/captureStore'
 import { fetchCertChain } from '@main/services/tlsCertChain'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
@@ -436,5 +438,91 @@ describe('deletion manifest entry', () => {
     const lines = raw.trim().split('\n')
     expect(lines).toHaveLength(2)
     expect(JSON.parse(lines[1]).type).toBe('deletion')
+  })
+})
+
+describe('two background jobs ingesting into one Case', () => {
+  let tempDir: string
+  let caseId: string
+  let caseDir: string
+
+  beforeEach(async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-ingest-slot-'))
+    initStorage(join(tempDir, 'captures'))
+    await initDatabase(':memory:')
+    caseId = createCase({ name: 'Batch' }).id
+    caseDir = join(tempDir, 'captures', caseId)
+    ensureCaseDir(caseId)
+    initManifest(caseDir)
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  it("keeps the second job's entry when the first job's ingest fails after its append", async () => {
+    const firstId = randomUUID()
+    const secondId = randomUUID()
+    // The first job's seam body fails after its entry is appended, before its row.
+    const store: CaptureStore = {
+      ...defaultCaptureStore,
+      writeText: (writeCaseId, captureId, text) => {
+        if (captureId === firstId) throw new Error('disk full')
+        return defaultCaptureStore.writeText(writeCaseId, captureId, text)
+      }
+    }
+    // Both renders have finished and both jobs wait on the TLS re-fetch, which then answers
+    // both in one turn: without the Case's slot, the second job appends between the first
+    // job's append and its rollback, and the rollback's truncation removes that entry.
+    let answerRefetch: (result: null) => void = () => {}
+    const refetch = new Promise<null>((resolve) => {
+      answerRefetch = resolve
+    })
+    const fetchTls = vi.fn(() => refetch)
+    const ingestJob = (captureId: string, url: string) =>
+      ingestMhtmlCapture(
+        {
+          captureId,
+          caseId,
+          url,
+          title: url,
+          timestamp: '2026-11-09T12:00:00.000Z',
+          stream: Readable.from([
+            Buffer.from(`MHTML of ${url}`)
+          ]) as unknown as ReadableStream<Uint8Array>,
+          textContent: `text of ${url}`,
+          headers: {},
+          browserVersion: 'Chrome/140',
+          userAgent: 'Mozilla/5.0',
+          httpStatus: 200,
+          operatorId: 'op-1',
+          operatorName: 'Smith',
+          toolVersion: '0.1.0',
+          method: 'background',
+          consentSuppression: 'filter-list'
+        },
+        fetchTls,
+        store
+      )
+
+    const first = ingestJob(firstId, 'https://example.com/first')
+    await vi.waitFor(() => expect(fetchTls).toHaveBeenCalledTimes(1))
+    const second = ingestJob(secondId, 'https://example.com/second')
+    await vi.waitFor(() => expect(fetchTls).toHaveBeenCalledTimes(2))
+    answerRefetch(null)
+
+    await expect(first).rejects.toThrow('disk full')
+    const { capture } = await second
+
+    const entries = readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((line) => line !== '')
+      .map((line) => JSON.parse(line) as { captureId: string; index: number })
+    expect(entries.map(({ captureId }) => captureId)).toEqual([secondId])
+    expect(capture.manifestIndex).toBe(entries[0].index)
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+    expect((await verifyCapture(secondId)).status).toBe('verified')
+    expect(getCapture(firstId)).toBeUndefined()
   })
 })

@@ -416,6 +416,30 @@ function carriesCaptureEngineField(params: IngestParams): boolean {
   )
 }
 
+// Per-case serialisation for ingests, delete/deleteMany and duplicate (#394): the
+// manifest is one append-only file per case and a rollback is a truncation, so two
+// writers interleaving on the same chain could truncate each other's entries.
+// Callers queue in memory; there is no busy error. Module-wide, so every ingest
+// into a Case shares one slot with that Case's deletes.
+const caseSlots = new Map<string, Promise<void>>()
+
+async function withCaseSlot<T>(caseId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = caseSlots.get(caseId) ?? Promise.resolve()
+  let release: () => void = () => {}
+  const mine = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const tail = prev.then(() => mine)
+  caseSlots.set(caseId, tail)
+  await prev
+  try {
+    return await fn()
+  } finally {
+    release()
+    if (caseSlots.get(caseId) === tail) caseSlots.delete(caseId)
+  }
+}
+
 // End-to-end MHTML ingest:
 // 1. Stream-write + hash to disk (through the Capture Store)
 // 2. Inside withCaptureEntry's write-ahead seam: write sidecar files (.txt, .png) and insert the
@@ -496,101 +520,36 @@ export async function ingestMhtmlCapture(
   // both the pre-callback manifest failure (only the mhtml written) and a failure inside
   // the callback (sidecars written too). The store never touches manifest.jsonl.
   try {
-    // Taken with no await before the append below (see nextExhibitNumber).
-    const exhibitNumber = nextExhibitNumber(params.caseId, store)
-    return await withCaptureEntry(
-      caseDir,
-      {
-        captureId,
-        caseId: params.caseId,
-        url: params.url,
-        timestamp: params.timestamp,
-        contentHash: hash,
-        screenshotHash,
-        textHash,
-        headers: anchoredHeaders,
-        httpStatus: anchoredHttpStatus,
-        finalUrl: anchoredFinalUrl,
-        tls,
-        sizeBytes,
-        method: params.method,
-        supersedesCaptureId: params.supersedesCaptureId,
-        consentSuppression: params.consentSuppression,
-        exhibitNumber,
-        // Omitted for Direct, so those entries keep the canonical body they had.
-        egressKind: params.egress?.kind,
-        egressLabel: params.egress?.label,
-        userAgent: params.egress ? params.userAgent : undefined,
-        tlsSkipped: params.tlsSkipped,
-        ...params.linkSource?.signed,
-        personaId: params.persona?.id,
-        personaLabel: params.persona?.label,
-        inventory: params.inventory,
-        scrollToLoad: params.scrollToLoad,
-        transactionRecordHash,
-        boundTls: params.boundTls,
-        boundTlsAbsent: params.boundTlsAbsent,
-        pdfHash,
-        browserProduct: params.launchedBrowser?.product,
-        browserVersion: params.launchedBrowser?.version,
-        browserFamily: params.launchedBrowser?.family,
-        operatorId: params.operatorId,
-        operatorName: params.operatorName,
-        toolVersion: params.toolVersion
-      },
-      async (manifestResult) => {
-        // Write plain text content to disk for the viewer's Text tab
-        if (params.textContent) {
-          store.writeText(params.caseId, captureId, params.textContent)
-        }
-
-        // Write screenshot to disk
-        let screenshotPath: string | undefined
-        if (params.screenshot) {
-          screenshotPath = store.writeScreenshot(params.caseId, captureId, params.screenshot).rel
-        }
-
-        if (params.transactionRecord) {
-          store.writeTransactionRecord(params.caseId, captureId, params.transactionRecord)
-        }
-
-        if (params.pdf) {
-          store.writePdf(params.caseId, captureId, params.pdf)
-        }
-
-        const capture = captureRepo.insertCapture({
-          id: captureId,
+    // From the number through the row insert or the rollback, under the Case's slot:
+    // a rollback truncates to its anchor, which would drop an entry another ingest
+    // appended after it. The stream write and the TLS re-fetch above stay outside.
+    return await withCaseSlot(params.caseId, async () => {
+      const exhibitNumber = nextExhibitNumber(params.caseId, store)
+      return await withCaptureEntry(
+        caseDir,
+        {
+          captureId,
           caseId: params.caseId,
           url: params.url,
-          title: params.title,
-          hash,
           timestamp: params.timestamp,
-          headers: JSON.stringify(params.headers),
-          textContent: params.textContent,
-          format: 'mhtml',
-          mhtmlPath,
-          screenshotPath,
+          contentHash: hash,
           screenshotHash,
           textHash,
-          tlsCertChain: tls !== undefined ? JSON.stringify(tls) : undefined,
-          sizeBytes,
-          manifestIndex: manifestResult.index,
-          prevHash: manifestResult.prevHash,
-          entryHash: manifestResult.entryHash,
-          toolVersion: params.toolVersion,
-          extensionVersion: params.extensionVersion,
-          browserVersion: params.browserVersion,
-          userAgent: params.userAgent,
-          // The row mirrors what the entry anchors: an unrecorded status is
-          // stored as absent, never as the 0 the wire coerced it to.
+          headers: anchoredHeaders,
           httpStatus: anchoredHttpStatus,
-          operatorId: params.operatorId,
-          operatorName: params.operatorName,
+          finalUrl: anchoredFinalUrl,
+          tls,
+          sizeBytes,
           method: params.method,
           supersedesCaptureId: params.supersedesCaptureId,
           consentSuppression: params.consentSuppression,
+          exhibitNumber,
+          // Omitted for Direct, so those entries keep the canonical body they had.
+          egressKind: params.egress?.kind,
+          egressLabel: params.egress?.label,
+          userAgent: params.egress ? params.userAgent : undefined,
+          tlsSkipped: params.tlsSkipped,
           ...params.linkSource?.signed,
-          linkedFromCaptureId: params.linkSource?.rowId,
           personaId: params.persona?.id,
           personaLabel: params.persona?.label,
           inventory: params.inventory,
@@ -599,16 +558,85 @@ export async function ingestMhtmlCapture(
           boundTls: params.boundTls,
           boundTlsAbsent: params.boundTlsAbsent,
           pdfHash,
-          exhibitNumber
-        })
-        return { capture, contentHash: hash }
-      },
-      carriesCaptureEngineField(params) ||
-        params.persona !== undefined ||
-        params.launchedBrowser !== undefined
-        ? { check: strictCaptureEntry }
-        : {}
-    )
+          browserProduct: params.launchedBrowser?.product,
+          browserVersion: params.launchedBrowser?.version,
+          browserFamily: params.launchedBrowser?.family,
+          operatorId: params.operatorId,
+          operatorName: params.operatorName,
+          toolVersion: params.toolVersion
+        },
+        async (manifestResult) => {
+          // Write plain text content to disk for the viewer's Text tab
+          if (params.textContent) {
+            store.writeText(params.caseId, captureId, params.textContent)
+          }
+
+          // Write screenshot to disk
+          let screenshotPath: string | undefined
+          if (params.screenshot) {
+            screenshotPath = store.writeScreenshot(params.caseId, captureId, params.screenshot).rel
+          }
+
+          if (params.transactionRecord) {
+            store.writeTransactionRecord(params.caseId, captureId, params.transactionRecord)
+          }
+
+          if (params.pdf) {
+            store.writePdf(params.caseId, captureId, params.pdf)
+          }
+
+          const capture = captureRepo.insertCapture({
+            id: captureId,
+            caseId: params.caseId,
+            url: params.url,
+            title: params.title,
+            hash,
+            timestamp: params.timestamp,
+            headers: JSON.stringify(params.headers),
+            textContent: params.textContent,
+            format: 'mhtml',
+            mhtmlPath,
+            screenshotPath,
+            screenshotHash,
+            textHash,
+            tlsCertChain: tls !== undefined ? JSON.stringify(tls) : undefined,
+            sizeBytes,
+            manifestIndex: manifestResult.index,
+            prevHash: manifestResult.prevHash,
+            entryHash: manifestResult.entryHash,
+            toolVersion: params.toolVersion,
+            extensionVersion: params.extensionVersion,
+            browserVersion: params.browserVersion,
+            userAgent: params.userAgent,
+            // The row mirrors what the entry anchors: an unrecorded status is
+            // stored as absent, never as the 0 the wire coerced it to.
+            httpStatus: anchoredHttpStatus,
+            operatorId: params.operatorId,
+            operatorName: params.operatorName,
+            method: params.method,
+            supersedesCaptureId: params.supersedesCaptureId,
+            consentSuppression: params.consentSuppression,
+            ...params.linkSource?.signed,
+            linkedFromCaptureId: params.linkSource?.rowId,
+            personaId: params.persona?.id,
+            personaLabel: params.persona?.label,
+            inventory: params.inventory,
+            scrollToLoad: params.scrollToLoad,
+            transactionRecordHash,
+            boundTls: params.boundTls,
+            boundTlsAbsent: params.boundTlsAbsent,
+            pdfHash,
+            exhibitNumber
+          })
+          return { capture, contentHash: hash }
+        },
+        carriesCaptureEngineField(params) ||
+          params.persona !== undefined ||
+          params.launchedBrowser !== undefined
+          ? { check: strictCaptureEntry }
+          : {}
+      )
+    })
   } catch (err) {
     // Best-effort cleanup: never let an unlink failure mask the ingest error.
     try {
@@ -1183,29 +1211,6 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
       if (deps.extraction) void runCaptureProcessing(captureId, caseId, url)
       else runFieldBuild(captureId, url)
     })
-  }
-
-  // Per-case serialisation for delete/deleteMany (#394): the manifest is one
-  // append-only file per case and a rollback is a truncation, so two deletes
-  // interleaving on the same chain could truncate each other's entries.
-  // Callers queue in memory; there is no busy error.
-  const caseSlots = new Map<string, Promise<void>>()
-
-  async function withCaseSlot<T>(caseId: string, fn: () => Promise<T>): Promise<T> {
-    const prev = caseSlots.get(caseId) ?? Promise.resolve()
-    let release: () => void = () => {}
-    const mine = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    const tail = prev.then(() => mine)
-    caseSlots.set(caseId, tail)
-    await prev
-    try {
-      return await fn()
-    } finally {
-      release()
-      if (caseSlots.get(caseId) === tail) caseSlots.delete(caseId)
-    }
   }
 
   // The single-capture delete body, shared by `delete` and `deleteMany`.

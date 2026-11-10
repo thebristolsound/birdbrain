@@ -225,7 +225,8 @@ export function cancelWaitingJobs(
 
 // Queues the target's `failed` and `cancelled` rows again, clearing what the last attempt
 // recorded. `attempts` and `capture_id` change when the worker claims the row, as for any
-// attempt. A `skipped` row is not retried: the rule that refused it would refuse it again.
+// attempt. A `skipped` row is not retried: the rule that refused it would refuse it again. Nor is
+// a row whose attempt's Capture is in its Case: a retry would store a second one.
 export function retryJobs(target: RecaptureJobTarget, retriedAt: string): BackgroundJobView[] {
   const [column, value] = targetColumn(target)
   const rows = getDb()
@@ -235,6 +236,10 @@ export function retryJobs(target: RecaptureJobTarget, retriedAt: string): Backgr
               finished_at = NULL, capture_id = NULL, failure_kind = NULL, error = NULL,
               warning = NULL
         WHERE ${column} = ? AND state IN ('failed', 'cancelled')
+          AND NOT EXISTS (
+            SELECT 1 FROM captures c
+             WHERE c.id = background_jobs.capture_id AND c.case_id = background_jobs.case_id
+          )
         RETURNING *`
     )
     .all(retriedAt, value) as JobRow[]

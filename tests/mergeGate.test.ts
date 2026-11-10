@@ -11,6 +11,8 @@ import {
   trustedPrepass
   // @ts-expect-error - workflow script with no type declarations; the tsconfigs exclude .github/
 } from '../.github/scripts/merge/gate.mjs'
+// @ts-expect-error - workflow script with no type declarations; the tsconfigs exclude .github/
+import { BREAK_GLASS_DESCRIPTION } from '../.github/scripts/review-fleet/fleet.mjs'
 
 const HEAD = 'a'.repeat(40)
 const base = {
@@ -239,5 +241,17 @@ describe('merge-gate review fleet (ADR-0057)', () => {
     ]
     expect(fleetVerdict(statuses, 'bot')).toBe('failure')
     expect(fleetVerdict([], 'bot')).toBe('absent')
+  })
+
+  it("reads the fleet's break-glass success as an override, not a review", () => {
+    const override = [
+      {
+        context: 'review/fleet',
+        state: 'success',
+        description: BREAK_GLASS_DESCRIPTION,
+        creator: { login: 'bot' }
+      }
+    ]
+    expect(fleetVerdict(override, 'bot')).toBe('override')
   })
 })

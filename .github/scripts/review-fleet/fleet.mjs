@@ -28,8 +28,16 @@ export const RELAY_MARK = 'review-fleet:relay'
 export const BREAK_GLASS = 'break-glass'
 export const FINDER_LEGS = ['correctness', 'claims', 'contract', 'tests']
 export const VERIFY_LEG = 'verify-codex'
-// A Claude pass that claimed the head and never reported is a failure after this long.
+// A Claude pass that claimed the head and never reported is a failure after this long, and so is
+// a head whose Codex request was never posted.
 const CLAUDE_TIMEOUT_MINUTES = 180
+// The state comment stores at most this many Claude findings, blocking first, so it stays under
+// GitHub's 65,536-character comment limit.
+export const MAX_FINDINGS = 15
+const COMMENT_LIMIT = 60000
+// The status a break-glass override posts. merge-gate reads it as no review and checks the
+// label itself, so the override ends when the label goes.
+export const BREAK_GLASS_DESCRIPTION = `${BREAK_GLASS} applied by the maintainer; no review`
 
 export function settings(env) {
   const int = (v, d) => (/^\d+$/.test(v ?? '') ? Number(v) : d)
@@ -159,12 +167,27 @@ export function parseRulings(texts) {
   return rulings
 }
 
-export function codexTexts({ reviews, comments, reviewComments }, after) {
+// Only text tied to this head counts: finding IDs restart at F1 on every head, so a late answer
+// to an older head's relay must not rule on this one. An issue comment counts only when its
+// Codex review state names the head.
+export function codexTexts({ reviews, comments, reviewComments }, sha, after) {
   const by = (x) => x.user?.login === CODEX
+  const atHead = (c) => c.commit_id === sha || c.original_commit_id === sha
   return [
-    ...reviews.filter((r) => by(r) && (r.submitted_at ?? '') > after).map((r) => r.body ?? ''),
-    ...comments.filter((c) => by(c) && (c.created_at ?? '') > after).map((c) => c.body ?? ''),
-    ...reviewComments.filter((c) => by(c) && (c.created_at ?? '') > after).map((c) => c.body ?? '')
+    ...reviews
+      .filter((r) => by(r) && r.commit_id === sha && (r.submitted_at ?? '') > after)
+      .map((r) => r.body ?? ''),
+    ...comments
+      .filter(
+        (c) =>
+          by(c) &&
+          (c.updated_at ?? c.created_at ?? '') > after &&
+          codexState(c.body)?.code_review?.commit_sha === sha
+      )
+      .map((c) => c.body ?? ''),
+    ...reviewComments
+      .filter((c) => by(c) && atHead(c) && (c.created_at ?? '') > after)
+      .map((c) => c.body ?? '')
   ]
 }
 
@@ -180,7 +203,7 @@ export function decide(f) {
     owed,
     reasons
   })
-  if (f.breakGlass) return out('success', `${BREAK_GLASS} applied by the maintainer`)
+  if (f.breakGlass) return out('success', BREAK_GLASS_DESCRIPTION)
   if (!state) return out('pending', 'owed a review', 'review')
   const legs = state.claude?.legs ?? {}
   if (Object.keys(legs).length === 0) {
@@ -189,12 +212,30 @@ export function decide(f) {
     }
     return out('pending', 'Claude passes running')
   }
-  const failed = FINDER_LEGS.filter((l) => legs[l] !== 'done')
+  const failed = FINDER_LEGS.filter((l) => legs[l] !== 'done' && legs[l] !== 'incomplete')
   if (failed.length) return out('failure', `a Claude pass did not finish: ${failed.join(', ')}`)
+  const incomplete = FINDER_LEGS.filter((l) => legs[l] === 'incomplete')
+  if (incomplete.length) {
+    return out('failure', `a Claude pass reported work it did not check: ${incomplete.join(', ')}`)
+  }
+  if (state.claude.droppedBlocking) {
+    return out(
+      'failure',
+      `${state.claude.droppedBlocking} blocking finding(s) did not fit the record`
+    )
+  }
 
   const claude = state.claude.findings ?? []
   const claudeBlocking = claude.filter((x) => x.severity === 'BLOCKING')
-  if (!f.relay) return out('pending', 'Codex not yet asked', 'relay')
+  if (!f.relay) {
+    if (minutesSince(state.startedAt, now) > CLAUDE_TIMEOUT_MINUTES) {
+      return out(
+        'failure',
+        `the Codex request was not posted within ${CLAUDE_TIMEOUT_MINUTES} minutes`
+      )
+    }
+    return out('pending', 'Codex not yet asked', 'relay')
+  }
   if (!f.codexDone) {
     if (minutesSince(f.relay.at, now) > f.codexTimeout) {
       return out('failure', `Codex did not review the head within ${f.codexTimeout} minutes`)
@@ -266,7 +307,20 @@ function cell(s) {
     .slice(0, 300)
 }
 
+// < and > are escaped, so no model-written text can end the HTML comment that carries the state.
+const stateJson = (state) => JSON.stringify(state).replace(/</g, '\\u003c').replace(/>/g, '\\u003e')
+
 export function renderState(state, verdict, extra = {}) {
+  const full = renderBody(state, verdict, extra, true)
+  if (full.length <= COMMENT_LIMIT) return full
+  const short = renderBody(state, verdict, extra, false)
+  if (short.length > COMMENT_LIMIT) {
+    throw new Error(`state comment is ${short.length} characters, over ${COMMENT_LIMIT}`)
+  }
+  return short
+}
+
+function renderBody(state, verdict, extra, details) {
   const rows = (state.claude?.findings ?? []).map(
     (x) =>
       `| ${x.id} | ${x.leg} | ${x.severity} | ${cell(x.plain)} | ${extra.rulings?.[x.id] ?? (x.severity === 'BLOCKING' ? 'owed' : '-')} |`
@@ -294,38 +348,47 @@ export function renderState(state, verdict, extra = {}) {
         ].join('\n')
       : '',
     '',
-    '<details><summary>Claude findings in full</summary>',
+    state.claude?.dropped
+      ? `The record holds ${MAX_FINDINGS} findings; ${state.claude.dropped} non-blocking finding(s) were left out.`
+      : '',
     '',
-    ...(state.claude?.findings ?? []).map(
-      (x) =>
-        `**${x.id}** (${x.leg}, ${x.severity}) \`${x.file}${x.line ? `:${x.line}` : ''}\`: ${x.detail}${x.failure_scenario ? ` Failure scenario: ${x.failure_scenario}` : ''}`.slice(
-          0,
-          2500
-        ) + '\n'
-    ),
-    '</details>',
+    ...(details
+      ? [
+          '<details><summary>Claude findings in full</summary>',
+          '',
+          ...(state.claude?.findings ?? []).map(
+            (x) =>
+              `**${x.id}** (${x.leg}, ${x.severity}) \`${x.file}${x.line ? `:${x.line}` : ''}\`: ${x.detail}${x.failure_scenario ? ` Failure scenario: ${x.failure_scenario}` : ''}`.slice(
+                0,
+                2500
+              ) + '\n'
+          ),
+          '</details>'
+        ]
+      : ['The findings in full did not fit this comment; the workflow run summary lists them.']),
     '',
-    `<!-- ${STATE_MARK} ${JSON.stringify(state)} -->`
+    `<!-- ${STATE_MARK} ${stateJson(state)} -->`
   ].join('\n')
   return redact(body)
 }
 
-// Merge leg outputs into a state. Numbering runs across the passes in FINDER_LEGS order.
+// Merge leg outputs into a state. A pass that lists work it did not check is incomplete, which
+// fails. Blocking findings come first, each group in FINDER_LEGS order, numbered after the cap.
 export function mergeFinders(state, outputs) {
   const legs = {}
-  const findings = []
-  let n = 0
+  const notChecked = {}
+  const all = []
   for (const leg of FINDER_LEGS) {
     const o = outputs[leg]
-    if (!o || !Array.isArray(o.findings)) {
+    if (!o || !Array.isArray(o.findings) || !Array.isArray(o.not_checked)) {
       legs[leg] = 'failed'
       continue
     }
-    legs[leg] = 'done'
+    const skipped = o.not_checked.map((x) => String(x).slice(0, 300)).filter((x) => x.trim())
+    legs[leg] = skipped.length ? 'incomplete' : 'done'
+    if (skipped.length) notChecked[leg] = skipped.slice(0, 5)
     for (const x of o.findings) {
-      n += 1
-      findings.push({
-        id: `F${n}`,
+      all.push({
         leg,
         severity: x.severity === 'BLOCKING' ? 'BLOCKING' : 'NON-BLOCKING',
         file: String(x.file ?? ''),
@@ -336,7 +399,14 @@ export function mergeFinders(state, outputs) {
       })
     }
   }
-  return { ...state, claude: { legs, findings } }
+  const blocking = all.filter((x) => x.severity === 'BLOCKING')
+  const ordered = [...blocking, ...all.filter((x) => x.severity !== 'BLOCKING')]
+  const findings = ordered.slice(0, MAX_FINDINGS).map((x, i) => ({ id: `F${i + 1}`, ...x }))
+  const claude = { legs, findings }
+  if (Object.keys(notChecked).length) claude.notChecked = notChecked
+  if (ordered.length > MAX_FINDINGS) claude.dropped = ordered.length - MAX_FINDINGS
+  if (blocking.length > MAX_FINDINGS) claude.droppedBlocking = blocking.length - MAX_FINDINGS
+  return { ...state, claude }
 }
 
 export function mergeVerify(state, output, ids) {
@@ -347,7 +417,9 @@ export function mergeVerify(state, output, ids) {
     if (!['CONFIRMED', 'REFUTED', 'UNCLEAR'].includes(r.ruling)) continue
     claudeVerify[r.id] = { ruling: r.ruling, reason: String(r.reason ?? '').slice(0, 300) }
   }
-  return { ...state, claudeVerify, verifyFailedFor: undefined }
+  // A ruling the pass left out is a failed check, not a reason to start another paid pass.
+  const missing = ids.filter((id) => !claudeVerify[id])
+  return { ...state, claudeVerify, verifyFailedFor: missing.length ? ids.join(',') : undefined }
 }
 
 // --- I/O ---------------------------------------------------------------------------------
@@ -398,7 +470,9 @@ function gather(repo, n, e, pr, sha = pr.head.sha) {
     relay,
     breakGlass,
     codexDone: relay ? codexAnswered({ reviews, comments }, sha, relay.at) : false,
-    rulings: relay ? parseRulings(codexTexts({ reviews, comments, reviewComments }, relay.at)) : {},
+    rulings: relay
+      ? parseRulings(codexTexts({ reviews, comments, reviewComments }, sha, relay.at))
+      : {},
     codexFindings: codexFindings(reviewComments, sha)
   }
 }
@@ -415,6 +489,28 @@ function postStatus(repo, sha, verdict) {
   gh(args)
 }
 
+// A status triggers no PR event, so a merge-gate run that went red while the fleet was pending
+// stays red. Re-run each red run on the head once the fleet passes, as merge-on-label.yml does.
+function rerunRedGates(repo, sha) {
+  const runs = api(`repos/${repo}/commits/${sha}/check-runs?check_name=merge-gate&per_page=100`)
+    .flatMap((page) => page.check_runs ?? [])
+    .filter(
+      (r) => r.status === 'completed' && !['success', 'skipped', 'neutral'].includes(r.conclusion)
+    )
+    .map((r) => /\/actions\/runs\/(\d+)/.exec(r.details_url ?? '')?.[1])
+    .filter(Boolean)
+  for (const run of new Set(runs)) {
+    try {
+      gh(['run', 'rerun', run, '--repo', repo])
+      console.log(`review-fleet: re-ran red merge-gate run ${run}`)
+    } catch (err) {
+      console.log(
+        `::warning::could not re-run red merge-gate run ${run} (${err.message}); re-run it by hand or the merge stays blocked`
+      )
+    }
+  }
+}
+
 function writeComment(repo, n, id, body) {
   const path = id ? `repos/${repo}/issues/comments/${id}` : `repos/${repo}/issues/${n}/comments`
   gh(['api', '-X', id ? 'PATCH' : 'POST', path, '-F', 'body=@-'], body)
@@ -425,6 +521,7 @@ function writeComment(repo, n, id, body) {
 function publish(repo, n, g, state, verdict) {
   const same = g.status?.state === verdict.status && g.status?.description === verdict.description
   if (!same) postStatus(repo, g.sha, verdict)
+  if (!same && verdict.status === 'success') rerunRedGates(repo, g.sha)
   if (!g.found) return
   const body = renderState(state, verdict, g)
   if (body !== g.found.body) writeComment(repo, n, g.found.id, body)

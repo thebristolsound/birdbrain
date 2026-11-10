@@ -48,10 +48,16 @@ export function approvalStamp(statuses) {
   return stamp ? stamp.state : 'absent'
 }
 
-// The newest review/fleet state the machine account posted (ADR-0057).
+// The newest review/fleet state the machine account posted (ADR-0057). A success the fleet posted
+// for a break-glass override is no review: this gate checks the label itself, so the override
+// ends when the label is removed, even before the fleet replaces that status.
 export function fleetVerdict(statuses, machine) {
   const mine = statuses.find((s) => s.context === 'review/fleet' && s.creator?.login === machine)
-  return mine ? mine.state : 'absent'
+  if (!mine) return 'absent'
+  if (mine.state === 'success' && (mine.description ?? '').startsWith('break-glass ')) {
+    return 'override'
+  }
+  return mine.state
 }
 
 // The PRs the review fleet reads: same-repository heads the maintainer or the machine opened.

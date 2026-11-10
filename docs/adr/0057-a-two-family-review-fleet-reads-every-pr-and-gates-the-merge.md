@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 
-**Date:** 2026-11-09
+**Date:** 2026-11-10
 
 Amends [ADR-0046](0046-scheduled-review-of-maintainer-prs.md), whose hourly schedule this
 replaces, and [ADR-0041](0041-merges-are-requested-by-label.md), whose merge rule gains a
@@ -43,7 +43,9 @@ Three facts shaped the design:
    returning JSON checked against a schema: correctness, claims against code, contract and
    repository rules, and tests that cannot fail. Each runs in the PR's checkout with only user
    settings loaded, so a PR's own `.claude/` settings and hooks never load next to the
-   credential, and may read files and run read-only git commands, nothing else.
+   credential, and may read, grep and glob files, nothing else. It gets no shell, because even
+   `git diff --no-index` can print the job's credentials; the diff, commits and linked issue
+   come in as files.
 3. **Codex finds, and checks Claude.** A relay comment asks `@codex review` at the head and
    lists Claude's blocking findings, asking for one `F<n>: CONFIRMED` or `F<n>: REFUTED` line
    each. Codex's inline findings at the head, with their P0 to P3 badges, are its findings.
@@ -51,10 +53,13 @@ Three facts shaped the design:
    confirmed, refuted or unclear.
 5. **The script decides.** `review/fleet` is `failure` on a blocking finding the other family
    confirmed (Claude's `BLOCKING`, Codex's P0 and P1), and, because missing input fails, on a
-   pass that did not finish, Codex not answering within the timeout, or a relayed finding Codex
-   did not rule on. It is `success` otherwise. `merge-gate` requires it at head on every PR the
-   fleet covers. The maintainer's `break-glass` label stands in for it, in the fleet and in
-   `merge-gate`, and for nothing else.
+   pass that did not finish or listed work it did not check, a relay never posted, Codex not
+   answering within the timeout, a relayed finding Codex did not rule on, or a Codex finding the
+   Claude check left unruled. Rulings count only from Codex text tied to the head. It is
+   `success` otherwise. `merge-gate` requires it at head on every PR the fleet covers, and the
+   fleet re-runs red `merge-gate` runs when the status turns green. The maintainer's
+   `break-glass` label stands in for it, in the fleet and in `merge-gate`, and for nothing else:
+   the fleet's override status says so, and `merge-gate` accepts it only while the label stands.
 6. **Spend.** Claude runs on the existing `CLAUDE_CODE_OAUTH_TOKEN` and Codex on the
    maintainer's ChatGPT plan; nothing bills per token. The maintainer asked for no hard cap for
    now, controllable without a PR. The limits are repository variables: `REVIEW_FLEET_ENABLED`
@@ -71,7 +76,7 @@ Three facts shaped the design:
 
 9. **The spend guard names more actors here.** The #1310 ruling admits a secret-reading job only
    when the maintainer starts its attempt, or on a schedule's first attempt. The fleet starts on
-   events other accounts cause, so on 2026-11-09 the maintainer amended the ruling for
+   events other accounts cause, so on 2026-11-10 the maintainer amended the ruling for
    `review-fleet.yml` only: each of its secret-reading jobs names, as its own condition, the
    maintainer, the machine account, Codex's app (`chatgpt-codex-connector[bot]`) and the
    workflow token that the sweep's manual runs come from (`github-actions[bot]`). The sweep

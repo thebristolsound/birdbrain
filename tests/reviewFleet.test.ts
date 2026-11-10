@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  BREAK_GLASS_DESCRIPTION,
   CODEX,
   FINDER_LEGS,
+  MAX_FINDINGS,
   capUsed,
   codexAnswered,
   codexFindings,
@@ -28,7 +30,8 @@ const REPO = 'thebristolsound/birdbrain'
 const NOW = '2026-11-10T12:00:00Z'
 const RELAY_AT = '2026-11-10T11:30:00Z'
 
-const allDone = Object.fromEntries(FINDER_LEGS.map((l: string) => [l, { findings: [] }]))
+const pass = (findings: unknown[] = []) => ({ findings, not_checked: [] as string[] })
+const allDone = Object.fromEntries(FINDER_LEGS.map((l: string) => [l, pass([])]))
 const blocking = {
   severity: 'BLOCKING',
   file: 'src/a.ts',
@@ -86,7 +89,7 @@ describe('eligible', () => {
 })
 
 describe('state comments', () => {
-  const state = reviewed({ ...allDone, correctness: { findings: [blocking] } })
+  const state = reviewed({ ...allDone, correctness: pass([blocking]) })
   const verdict = { status: 'pending', description: 'x' }
   const body = renderState(state, verdict)
 
@@ -113,10 +116,37 @@ describe('state comments', () => {
     expect(capUsed(comments, MACHINE, '2026-11-09T12:00:00Z')).toBe(1)
   })
 
+  it('keeps the state when a finding quotes the end of an HTML comment', () => {
+    const quoted = reviewed({
+      ...allDone,
+      correctness: pass([{ ...blocking, detail: 'the template emits `} -->` and `<!--`' }])
+    })
+    const comments = [{ id: 7, user: { login: MACHINE }, body: renderState(quoted, verdict) }]
+    expect(readState(comments, MACHINE, SHA)?.state).toEqual(quoted)
+  })
+
+  it('stays under the comment limit with the most and longest findings the record holds', () => {
+    const long = {
+      ...blocking,
+      plain: 'p'.repeat(400),
+      detail: 'd'.repeat(2000),
+      failure_scenario: 's'.repeat(600)
+    }
+    const full = reviewed({
+      ...allDone,
+      correctness: pass(Array.from({ length: 40 }, () => long))
+    })
+    const body = renderState(full, verdict)
+    expect(body.length).toBeLessThanOrEqual(60000)
+    expect(readState([{ id: 7, user: { login: MACHINE }, body }], MACHINE, SHA)?.state).toEqual(
+      full
+    )
+  })
+
   it('redacts anything shaped like a credential before posting', () => {
     const leak = reviewed({
       ...allDone,
-      claims: { findings: [{ ...blocking, detail: 'token ghp_abcdefghijklmnop leaked' }] }
+      claims: pass([{ ...blocking, detail: 'token ghp_abcdefghijklmnop leaked' }])
     })
     expect(renderState(leak, verdict)).not.toContain('ghp_abcdefghijklmnop')
     expect(redact('sk-ant-abcdef123456')).toBe('sk-ant-<REDACTED>')
@@ -126,8 +156,8 @@ describe('state comments', () => {
 describe('mergeFinders', () => {
   it('numbers findings across the passes and marks a pass with no output failed', () => {
     const state = reviewed({
-      correctness: { findings: [blocking] },
-      claims: { findings: [{ ...blocking, severity: 'whatever' }] },
+      correctness: pass([blocking]),
+      claims: pass([{ ...blocking, severity: 'whatever' }]),
       contract: null,
       tests: { notFindings: true }
     })
@@ -143,6 +173,32 @@ describe('mergeFinders', () => {
       ['F1', 'BLOCKING'],
       ['F2', 'NON-BLOCKING']
     ])
+  })
+
+  it('marks a pass that lists unchecked work incomplete, and one with no list failed', () => {
+    const state = reviewed({
+      ...allDone,
+      correctness: { findings: [], not_checked: ['Could not read the diff'] },
+      claims: { findings: [] }
+    })
+    expect(state.claude.legs).toMatchObject({ correctness: 'incomplete', claims: 'failed' })
+    expect(state.claude.notChecked).toEqual({ correctness: ['Could not read the diff'] })
+  })
+
+  it(`stores at most ${MAX_FINDINGS} findings, blocking first`, () => {
+    const minor = { ...blocking, severity: 'NON-BLOCKING' }
+    const state = reviewed({
+      ...allDone,
+      correctness: pass(Array.from({ length: 12 }, () => minor)),
+      tests: pass(Array.from({ length: 5 }, () => blocking))
+    })
+    expect(state.claude.findings).toHaveLength(MAX_FINDINGS)
+    expect(state.claude.findings.slice(0, 5).every((x: { leg: string }) => x.leg === 'tests')).toBe(
+      true
+    )
+    expect(state.claude.findings[0].id).toBe('F1')
+    expect(state.claude.dropped).toBe(2)
+    expect(state.claude.droppedBlocking).toBeUndefined()
   })
 })
 
@@ -208,16 +264,58 @@ describe('Codex', () => {
     expect(parseRulings(['F1: maybe'])).toEqual({})
     const texts = codexTexts(
       {
-        reviews: [{ user: { login: CODEX }, submitted_at: NOW, body: 'F1: CONFIRMED' }],
+        reviews: [
+          { user: { login: CODEX }, commit_id: SHA, submitted_at: NOW, body: 'F1: CONFIRMED' }
+        ],
         comments: [
           { user: { login: CODEX }, created_at: '2026-11-10T11:00:00Z', body: 'F2: CONFIRMED' },
           { user: { login: MAINTAINER }, created_at: NOW, body: 'F3: CONFIRMED' }
         ],
         reviewComments: []
       },
+      SHA,
       RELAY_AT
     )
     expect(parseRulings(texts)).toEqual({ F1: 'CONFIRMED' })
+  })
+
+  it("takes no ruling from a late answer to an older head's relay", () => {
+    const state = (sha: string, ruling: string) =>
+      `F1: ${ruling}\n<!-- codex-review-state:v1 {"code_review":{"commit_sha":"${sha}","status":"completed"}} -->`
+    const texts = codexTexts(
+      {
+        reviews: [
+          { user: { login: CODEX }, commit_id: SHA, submitted_at: NOW, body: 'F1: CONFIRMED' },
+          { user: { login: CODEX }, commit_id: OLD, submitted_at: NOW, body: 'F1: REFUTED' }
+        ],
+        comments: [
+          { user: { login: CODEX }, created_at: NOW, body: state(OLD, 'REFUTED') },
+          { user: { login: CODEX }, created_at: NOW, body: 'F1: REFUTED, with no head named' }
+        ],
+        reviewComments: [
+          {
+            user: { login: CODEX },
+            commit_id: OLD,
+            original_commit_id: OLD,
+            created_at: NOW,
+            body: 'F1: REFUTED'
+          }
+        ]
+      },
+      SHA,
+      RELAY_AT
+    )
+    expect(parseRulings(texts)).toEqual({ F1: 'CONFIRMED' })
+    const atHead = codexTexts(
+      {
+        reviews: [],
+        comments: [{ user: { login: CODEX }, created_at: NOW, body: state(SHA, 'REFUTED') }],
+        reviewComments: []
+      },
+      SHA,
+      RELAY_AT
+    )
+    expect(parseRulings(atHead)).toEqual({ F1: 'REFUTED' })
   })
 
   it('finds the relay for the head from the maintainer only', () => {
@@ -234,7 +332,7 @@ describe('Codex', () => {
   it('asks for a ruling line per blocking Claude finding, and never mentions @claude', () => {
     const state = reviewed({
       ...allDone,
-      correctness: { findings: [blocking, { ...blocking, severity: 'NON-BLOCKING' }] }
+      correctness: pass([blocking, { ...blocking, severity: 'NON-BLOCKING' }])
     })
     const body = relayBody(state, SHA)
     expect(body.startsWith('@codex review\n')).toBe(true)
@@ -247,12 +345,42 @@ describe('Codex', () => {
 })
 
 describe('decide', () => {
-  const withBlocking = reviewed({ ...allDone, correctness: { findings: [blocking] } })
+  const withBlocking = reviewed({ ...allDone, correctness: pass([blocking]) })
   const p1 = { id: 11, severity: 'P1', title: 't' }
   const p2 = { id: 12, severity: 'P2', title: 't' }
 
-  it('lets the maintainer override with break-glass', () => {
-    expect(decide(facts({ state: null, breakGlass: true })).status).toBe('success')
+  it('lets the maintainer override with break-glass, in a status that names no review', () => {
+    expect(decide(facts({ state: null, breakGlass: true }))).toMatchObject({
+      status: 'success',
+      description: BREAK_GLASS_DESCRIPTION
+    })
+    expect(BREAK_GLASS_DESCRIPTION.startsWith('break-glass ')).toBe(true)
+  })
+
+  it('fails a pass that reported work it did not check', () => {
+    const state = reviewed({ ...allDone, tests: { findings: [], not_checked: ['no diff'] } })
+    expect(decide(facts({ state }))).toMatchObject({
+      status: 'failure',
+      description: 'a Claude pass reported work it did not check: tests'
+    })
+  })
+
+  it('fails when more blocking findings arrive than the record holds', () => {
+    const state = reviewed({
+      ...allDone,
+      correctness: pass(Array.from({ length: MAX_FINDINGS + 1 }, () => blocking))
+    })
+    expect(decide(facts({ state, rulings: {} })).description).toBe(
+      '1 blocking finding(s) did not fit the record'
+    )
+  })
+
+  it('fails a head whose Codex request was never posted', () => {
+    const old = { ...reviewed(), startedAt: '2026-11-10T08:00:00Z' }
+    expect(decide(facts({ state: old, relay: null }))).toMatchObject({
+      status: 'failure',
+      owed: null
+    })
   })
 
   it('owes a review to an unclaimed head, and waits on a claimed one', () => {
@@ -308,6 +436,24 @@ describe('decide', () => {
     expect(decide(facts({ state, codexFindings: [p1] })).status).toBe('failure')
   })
 
+  it('fails when the Claude check of Codex left a finding without a ruling', () => {
+    const empty = mergeVerify(reviewed(), { rulings: [] }, [11, 12])
+    expect(decide(facts({ state: empty, codexFindings: [p1, p2] }))).toMatchObject({
+      status: 'failure',
+      owed: null
+    })
+    const partial = mergeVerify(
+      reviewed(),
+      { rulings: [{ id: 11, ruling: 'REFUTED', reason: 'r' }] },
+      [11, 12]
+    )
+    expect(partial.claudeVerify[11].ruling).toBe('REFUTED')
+    expect(decide(facts({ state: partial, codexFindings: [p1, p2] }))).toMatchObject({
+      status: 'failure',
+      owed: null
+    })
+  })
+
   it('blocks only on a blocking Codex finding Claude confirmed', () => {
     const rule = (ruling: string) =>
       mergeVerify(
@@ -355,7 +501,7 @@ describe('decide', () => {
   it('keeps every description within the status limit', () => {
     const many = reviewed({
       ...allDone,
-      correctness: { findings: Array.from({ length: 40 }, () => blocking) }
+      correctness: pass(Array.from({ length: 40 }, () => blocking))
     })
     expect(decide(facts({ state: many })).description.length).toBeLessThanOrEqual(140)
   })

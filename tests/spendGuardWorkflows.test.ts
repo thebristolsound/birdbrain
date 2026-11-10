@@ -22,7 +22,7 @@ const PAID_SECRETS = [
   'TYPESAFE_API_KEY'
 ]
 const NO_ENVIRONMENT = ['jev-lens.yml hunks']
-// The maintainer's ruling of 2026-11-09 (ADR-0057): the review fleet starts on events other
+// The maintainer's ruling of 2026-11-10 (ADR-0057): the review fleet starts on events other
 // accounts cause, so each of its secret-reading jobs must instead carry, as a top-level
 // conjunct, either the named actors' guard or the scheduled-first-attempt test. Its relay job
 // alone holds the maintainer's relay token, in an environment of its own.

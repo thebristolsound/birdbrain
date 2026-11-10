@@ -419,11 +419,27 @@ function onKeyDown(event: KeyboardEvent): void {
 // every frame. Held and put back like the bar, not dropped.
 let heldSelection: { range: AbstractRange; backward: boolean } | null = null
 
+type TextField = HTMLInputElement | HTMLTextAreaElement
+
+// A text field keeps its own selection, which the document's reports only as a caret beside the
+// field, so a range taken from the document could not put it back.
+let heldField: {
+  field: TextField
+  start: number
+  end: number
+  direction: 'forward' | 'backward' | 'none'
+} | null = null
+
+function shadowRootOf(element: Element): ShadowRoot | null | undefined {
+  return (
+    element.shadowRoot ??
+    (element instanceof HTMLElement ? chrome.dom?.openOrClosedShadowRoot(element) : null)
+  )
+}
+
 function shadowRootsUnder(root: Document | ShadowRoot, found: ShadowRoot[] = []): ShadowRoot[] {
   root.querySelectorAll('*').forEach((element) => {
-    const shadow =
-      element.shadowRoot ??
-      (element instanceof HTMLElement ? chrome.dom?.openOrClosedShadowRoot(element) : null)
+    const shadow = shadowRootOf(element)
     if (!shadow) return
     found.push(shadow)
     shadowRootsUnder(shadow, found)
@@ -431,7 +447,34 @@ function shadowRootsUnder(root: Document | ShadowRoot, found: ShadowRoot[] = [])
   return found
 }
 
+function focusedTextField(): TextField | null {
+  let active = document.activeElement
+  let inner = active && shadowRootOf(active)?.activeElement
+  while (inner) {
+    active = inner
+    inner = shadowRootOf(active)?.activeElement
+  }
+  if (active instanceof HTMLTextAreaElement) return active
+  // Input types the text selection API does not apply to report null here.
+  if (active instanceof HTMLInputElement && active.selectionStart !== null) return active
+  return null
+}
+
+function holdField(field: TextField): void {
+  const { selectionStart: start, selectionEnd: end, selectionDirection } = field
+  // A later per-frame strip finds the field collapsed and keeps what the first held.
+  if (start === null || end === null || start === end) return
+  heldField = { field, start, end, direction: selectionDirection ?? 'none' }
+  field.setSelectionRange(end, end)
+}
+
 function holdSelection(): void {
+  const field = focusedTextField()
+  // Collapsing the field leaves it focused; removeAllRanges would also drop its selection.
+  if (field) {
+    holdField(field)
+    return
+  }
   const selection = window.getSelection()
   // A later per-frame strip finds the selection already empty and keeps what the first held.
   if (!selection || selection.rangeCount === 0) return
@@ -456,7 +499,18 @@ function fitsNode(node: Node, offset: number): boolean {
   return node.isConnected && offset <= length
 }
 
+function restoreField(): void {
+  const held = heldField
+  heldField = null
+  if (!held) return
+  const { field, start, end, direction } = held
+  // A selection made in the field during the capture is newer than the held one.
+  if (field.selectionStart !== field.selectionEnd) return
+  field.setSelectionRange(start, end, direction)
+}
+
 function restoreSelection(): void {
+  restoreField()
   const held = heldSelection
   heldSelection = null
   const selection = window.getSelection()

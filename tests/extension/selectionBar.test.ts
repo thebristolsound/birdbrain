@@ -603,6 +603,76 @@ describe("the operator's selection stays out of the frames (#993)", () => {
     expect(window.getSelection()!.rangeCount).toBe(0)
   })
 
+  // A text field's selection is its own: in Chromium the document's reports a caret beside the
+  // field, and removeAllRanges would drop the field's selection with nothing to put back.
+  describe('in a focused text field', () => {
+    function fieldEnds(field: HTMLInputElement | HTMLTextAreaElement): unknown[] {
+      const { selectionStart, selectionEnd, selectionDirection } = field
+      return [selectionStart, selectionEnd, selectionDirection]
+    }
+
+    function focusedInput(): HTMLInputElement {
+      setPageHtml(`${PAGE_HTML}<input value="Hello wide world">`)
+      const input = document.querySelector('input')!
+      input.focus()
+      input.setSelectionRange(2, 6, 'backward')
+      return input
+    }
+
+    it('collapses the field for every strip and puts its selection back, still focused', () => {
+      const input = focusedInput()
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      expect(fieldEnds(input).slice(0, 2)).toEqual([6, 6])
+      expect(document.activeElement).toBe(input)
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(fieldEnds(input)).toEqual([2, 6, 'backward'])
+      expect(document.activeElement).toBe(input)
+    })
+
+    it('keeps a selection the operator made in the field during the capture', () => {
+      const input = focusedInput()
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      input.setSelectionRange(0, 5)
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(fieldEnds(input).slice(0, 2)).toEqual([0, 5])
+    })
+
+    it('finds the field inside a web component', () => {
+      setPageHtml(`${PAGE_HTML}<div id="host"></div>`)
+      const host = document.getElementById('host')!
+      host.attachShadow({ mode: 'open' }).innerHTML = '<textarea>Hello wide world</textarea>'
+      const textarea = host.shadowRoot!.querySelector('textarea')!
+      textarea.focus()
+      textarea.setSelectionRange(1, 4)
+      expect(document.activeElement).toBe(host)
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      expect(fieldEnds(textarea).slice(0, 2)).toEqual([4, 4])
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(fieldEnds(textarea).slice(0, 2)).toEqual([1, 4])
+    })
+
+    it('treats a focused input with no text selection as no field', () => {
+      setPageHtml(`${PAGE_HTML}<input type="checkbox">`)
+      document.querySelector('input')!.focus()
+      selectParagraph()
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      expect(window.getSelection()!.rangeCount).toBe(0)
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(window.getSelection()!.toString()).toBe(
+        'Report abuse to evil@example.com immediately.'
+      )
+    })
+  })
+
   describe('with composed ranges, which keep ends inside shadow trees', () => {
     let calls: GetComposedRangesOptions[] = []
     let composed: () => StaticRange

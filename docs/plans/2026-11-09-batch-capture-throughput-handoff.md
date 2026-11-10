@@ -1,5 +1,7 @@
 # Batch capture throughput: build handoff
 
+**Status:** active
+
 Working notes for building the six slices of the
 [batch capture throughput design](../specs/2026-11-09-batch-capture-throughput-design.md). Matt
 asked for the slices to be filed and then built, in a Claude Code session on 2026-11-09.

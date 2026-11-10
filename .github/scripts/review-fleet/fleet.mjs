@@ -25,6 +25,7 @@ import { execFileSync } from 'node:child_process'
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { breakGlassAuthorized, lastLabeler } from '../merge/gate.mjs'
 
 export const CODEX = 'chatgpt-codex-connector[bot]'
 export const CONTEXT = 'review/fleet'
@@ -83,7 +84,7 @@ export function eligible(pr, { maintainer, machine, repo }) {
   return { ok: true, why: '' }
 }
 
-const STATE_RE = new RegExp(`^<!-- ${STATE_MARK} (\\{.*\\}) -->$`)
+const STATE_RE = new RegExp(`^<!-- ${STATE_MARK} (\\{.*\\}) -->$`, 's')
 
 // The newest state comment the machine account posted for this head, or null. The state is the
 // comment's last line, which the renderer writes itself after every model-written string, so a
@@ -176,7 +177,7 @@ export function codexAnswered({ reviews, comments }, sha, after) {
 // `F<n>: REFUTED`. A ruling quoted mid-sentence is not one, and neither is the relay's own
 // `CONFIRMED | REFUTED` template echoed back.
 const RULING_RE =
-  /^[ \t]*(?:[-*+][ \t]+)?[*_`]*(F\d+)[*_`]*[ \t]*[:-][ \t]*[*_`]*(CONFIRMED|REFUTED)\b(?![*_`]*[ \t]*\|)/gm
+  /^[ \t]*(?:[-*+][ \t]+)?[*_`]*(F\d+)[*_`]*[ \t]*[:-][*_`]*[ \t]*[*_`]*(CONFIRMED|REFUTED)\b([*_`]*[^\n]*)$/gm
 
 // Codex's rulings on the relayed findings, from any text it wrote after the relay. When it both
 // confirms and refutes a finding, the confirmation stands, whichever text or line came first:
@@ -185,6 +186,7 @@ export function parseRulings(texts) {
   const rulings = {}
   for (const t of texts) {
     for (const m of String(t).matchAll(RULING_RE)) {
+      if (/^[*_`]*[ \t]*\|[ \t]*[*_`]*(?:CONFIRMED|REFUTED)\b/.test(m[3])) continue
       if (rulings[m[1]] !== 'CONFIRMED') rulings[m[1]] = m[2]
     }
   }
@@ -515,28 +517,24 @@ function env() {
   }
 }
 
-function lastLabeler(repo, n, name) {
-  const events = api(`repos/${repo}/issues/${n}/events?per_page=100`).filter(
-    (ev) => ev.event === 'labeled' && ev.label?.name === name
-  )
-  return events[events.length - 1]?.actor?.login ?? ''
-}
-
 // Everything the decision reads about PR n at commit sha (its head unless given).
 function gather(repo, n, e, pr, sha = pr.head.sha) {
   const comments = api(`repos/${repo}/issues/${n}/comments?per_page=100`)
   const reviews = api(`repos/${repo}/pulls/${n}/reviews?per_page=100`)
   const reviewComments = api(`repos/${repo}/pulls/${n}/comments?per_page=100`)
   const relay = relayFor(comments, e.maintainer, sha)
-  const breakGlass =
-    pr.labels.some((l) => l.name === BREAK_GLASS) &&
-    lastLabeler(repo, n, BREAK_GLASS) === e.maintainer
+  const statuses = api(`repos/${repo}/commits/${sha}/statuses?per_page=100`)
+  const breakGlass = breakGlassAuthorized(
+    pr.labels.map((l) => l.name),
+    statuses,
+    lastLabeler(repo, n, BREAK_GLASS),
+    e.maintainer,
+    sha
+  )
   return {
     sha,
     found: readState(comments, e.machine, sha),
-    status: api(`repos/${repo}/commits/${sha}/statuses?per_page=100`).find(
-      (st) => st.context === CONTEXT && st.creator?.login === e.machine
-    ),
+    status: statuses.find((st) => st.context === CONTEXT && st.creator?.login === e.machine),
     relay,
     breakGlass,
     codexDone: relay ? codexAnswered({ reviews, comments }, sha, relay.at) : false,

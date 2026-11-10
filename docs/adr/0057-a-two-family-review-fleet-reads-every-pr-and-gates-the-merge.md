@@ -64,10 +64,11 @@ Three facts shaped the design:
    head on every PR the fleet covers, and the fleet re-runs red `merge-gate` runs when the
    status turns green. The maintainer's `break-glass` label stands in for it, in the fleet and
    in `merge-gate`, and for nothing else: the fleet's override status says so, and `merge-gate`
-   accepts it only while the label stands.
-   The override covers the commit it was applied on: `merge-on-label.yml` removes the label on
-   every push, as it removes `merge` and `approved`, so a later commit needs its own review or
-   its own override.
+   accepts it only while the label stands and its last labeller is the maintainer.
+   Every reader also requires the dedicated `merge/break-glass` success stamp from the workflow
+   token on the exact head. The label event stamps its event head, never a later head.
+   `merge-on-label.yml` removes the label on every push and fails on removal errors; even a
+   failed removal cannot authorize a later commit. Evidence approval is a separate stamp.
 6. **Spend.** Claude runs on the existing `CLAUDE_CODE_OAUTH_TOKEN` and Codex on the
    maintainer's ChatGPT plan; nothing bills per token. The maintainer asked for no hard cap for
    now, controllable without a PR. The limits are repository variables: `REVIEW_FLEET_ENABLED`

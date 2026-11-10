@@ -15,7 +15,7 @@ name: Merge on label
 # - `withdraw`, on every push, removes `approved`, `merge` and `break-glass` and turns
 #   auto-merge off, so a sign-off, a merge request and a review override always name the commit
 #   that lands. merge-gate also needs the `merge/approved` stamp on the current head, so a
-#   failed withdraw does not reopen the door for `approved`; `break-glass` has no such stamp.
+#   failed withdraw does not reopen the door for `approved`; `break-glass` needs its own `merge/break-glass` stamp.
 # - `cancel`, when `merge` is removed, turns auto-merge off.
 # - `reject`, when anyone but the maintainer applies `merge`, removes it and says why. It reads
 #   no secret, so it needs no spend guard. Authorization reads the label's sender, never
@@ -174,6 +174,28 @@ jobs:
             -f description="Signed off by $SENDER on this commit" >/dev/null
           echo "stamped merge/approved on ${SHA:0:12}"
 
+  stamp-override:
+    if: github.event_name == 'pull_request_target' && github.event.action == 'labeled' && github.event.label.name == 'break-glass'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Stamp the review override on the labelled commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          SENDER: ${{ github.event.sender.login }}
+        run: |
+          set -euo pipefail
+          if [ "$SENDER" != "thebristolsound" ]; then
+            gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --remove-label break-glass >/dev/null
+            echo "review override refused: only the maintainer may apply it" >&2
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" -f state=success -f context=merge/break-glass \
+            -f description="Review override by $SENDER on this commit" >/dev/null
+          echo "stamped merge/break-glass on ${SHA:0:12}"
+
   cancel:
     if: github.event_name == 'pull_request_target' && github.event.action == 'unlabeled' && github.event.label.name == 'merge'
     permissions:
@@ -249,7 +271,8 @@ jobs:
           # break-glass goes too (ADR-0057): the override is for the commit it was applied on.
           for label in approved merge break-glass; do
             if jq -e --arg l "$label" 'index($l)' <<< "$LABELS" > /dev/null; then
-              gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --remove-label "$label" >/dev/null && echo "removed $label"
+              gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --remove-label "$label" >/dev/null
+              echo "removed $label"
             fi
           done
           auto="$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json autoMergeRequest --jq '.autoMergeRequest != null')"

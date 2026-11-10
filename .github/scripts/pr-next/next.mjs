@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import {
   approvalStamp,
+  breakGlassAuthorized,
   closedIssues,
   decide as gate,
   effectiveReview,
@@ -133,8 +134,7 @@ export function decideNext(f) {
   if (pending.length) return answer('wait', `waiting on ${list(pending)}`)
   if (fromMachine && f.prepass !== 'success')
     return answer('wait', 'waiting on the reviewer pre-pass')
-  if (f.labels.includes('review:requested') || reviewState === 'review:stale')
-    return answer('wait', 'a scheduled review is queued')
+  if (f.labels.includes('review:requested')) return answer('wait', 'a requested review is queued')
   if (fleetOwed) return answer('wait', 'waiting on the review fleet')
   const ownPr = f.author === f.maintainer && !f.crossRepo && !f.labels.includes('agent-pr')
   if ((f.gate.evidence || f.gate.credential) && !f.gate.signedOff) {
@@ -238,8 +238,13 @@ function readFacts(repo, n, ctx) {
       machine: ctx.machine,
       sameRepo: !pr.isCrossRepository
     }),
-    breakGlass:
-      labels.includes('break-glass') && lastLabeler(repo, n, 'break-glass') === ctx.maintainer,
+    breakGlass: breakGlassAuthorized(
+      labels,
+      statuses,
+      lastLabeler(repo, n, 'break-glass'),
+      ctx.maintainer,
+      headSha
+    ),
     approvalStamp: approvalStamp(statuses),
     reviews: pr.reviews.map((r) => ({
       state: r.state,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  breakGlassAuthorized,
   closedIssues,
   credentialFiles,
   decide,
@@ -253,5 +254,22 @@ describe('merge-gate review fleet (ADR-0057)', () => {
       }
     ]
     expect(fleetVerdict(override, 'bot')).toBe('override')
+  })
+})
+
+describe('dedicated override stamp', () => {
+  const stamp = {
+    context: 'merge/break-glass',
+    sha: HEAD,
+    state: 'success',
+    creator: { login: 'github-actions[bot]' }
+  }
+  it('requires the live label, maintainer actor and latest trusted success', () => {
+    const authorized = (labels: string[], statuses: unknown[], actor = 'owner') =>
+      breakGlassAuthorized(labels, statuses, actor, 'owner', HEAD)
+    expect(authorized(['break-glass'], [stamp])).toBe(true)
+    expect(authorized([], [stamp])).toBe(false)
+    expect(authorized(['break-glass'], [stamp], 'other')).toBe(false)
+    expect(authorized(['break-glass'], [{ ...stamp, state: 'failure' }, stamp])).toBe(false)
   })
 })

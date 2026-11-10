@@ -48,6 +48,20 @@ export function approvalStamp(statuses) {
   return stamp ? stamp.state : 'absent'
 }
 
+// All readers require a dedicated workflow-token stamp for this exact head as well as the
+// live label and its maintainer actor. Evidence approval never authorizes a review override.
+export function breakGlassAuthorized(labels, statuses, labeler, maintainer, sha) {
+  const stamp = statuses.find(
+    (s) => s.context === 'merge/break-glass' && s.creator?.login === 'github-actions[bot]'
+  )
+  return (
+    labels.includes('break-glass') &&
+    labeler === maintainer &&
+    stamp?.state === 'success' &&
+    stamp.sha === sha
+  )
+}
+
 // The newest review/fleet state the machine account posted (ADR-0057). A success the fleet posted
 // for a break-glass override is no review: this gate checks the label itself, so the override
 // ends when the label is removed, even before the fleet replaces that status.
@@ -165,8 +179,13 @@ function main([repo, n]) {
         machine,
         sameRepo: pr.head.repo?.full_name === repo
       }),
-      breakGlass:
-        labels.includes('break-glass') && lastLabeler(repo, n, 'break-glass') === maintainer,
+      breakGlass: breakGlassAuthorized(
+        labels,
+        statuses,
+        lastLabeler(repo, n, 'break-glass'),
+        maintainer,
+        headSha
+      ),
       approvalStamp: approvalStamp(statuses),
       reviews: api(`repos/${repo}/pulls/${n}/reviews?per_page=100`).map((r) => ({
         state: r.state,

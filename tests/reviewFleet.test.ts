@@ -64,6 +64,38 @@ const facts = (over: Record<string, unknown> = {}) => ({
   ...over
 })
 
+describe('review safety regressions', () => {
+  it.each(['**F1:** CONFIRMED. Missing guard.', 'F1: CONFIRMED | missing guard'])(
+    'keeps confirmation dominant for %s',
+    (confirmation) => {
+      for (const texts of [
+        [confirmation, 'F1: REFUTED.'],
+        ['F1: REFUTED.', confirmation]
+      ]) {
+        const rulings = parseRulings(texts)
+        expect(rulings).toEqual({ F1: 'CONFIRMED' })
+        const state = reviewed({ ...allDone, correctness: pass([blocking]) })
+        expect(decide(facts({ state, rulings })).status).toBe('failure')
+      }
+    }
+  )
+
+  it.each(['\u2028', '\u2029'])(
+    'round-trips a Unicode separator in findings and reasons',
+    (separator) => {
+      const text = `before${separator}after`
+      const state = {
+        ...reviewed({ ...allDone, correctness: pass([{ ...blocking, detail: text }]) }),
+        claudeVerify: { 11: { ruling: 'REFUTED', reason: text } }
+      }
+      const body = renderState(state, { status: 'failure', description: 'blocked' })
+      expect(readState([{ id: 1, user: { login: MACHINE }, body }], MACHINE, SHA)?.state).toEqual(
+        state
+      )
+    }
+  )
+})
+
 describe('settings', () => {
   it('runs unless the variable says false, and uses the defaults for unset numbers', () => {
     expect(settings({})).toEqual({ enabled: true, dailyCap: 40, codexTimeout: 45 })
@@ -663,13 +695,13 @@ function stepScript(workflow: string, job: string, step: string): string {
 }
 
 describe.skipIf(!HAS_JQ)('a push to a PR', () => {
-  const withdraw = (labels: string[]) => {
+  const withdraw = (labels: string[], fail = false) => {
     const dir = mkdtempSync(join(tmpdir(), 'fleet-withdraw-'))
     try {
       const gh = join(dir, 'gh')
       writeFileSync(
         gh,
-        '#!/usr/bin/env bash\necho "$*" >> "$GH_LOG"\n[ "$1 $2" = "pr view" ] && echo false\nexit 0\n'
+        '#!/usr/bin/env bash\necho "$*" >> "$GH_LOG"\nif [ "${WITHDRAW_FAIL:-}" = 1 ] && [ "$1 $2" = "pr edit" ]; then echo HTTP-502 >&2; exit 1; fi\n[ "$1 $2" = "pr view" ] && echo false\nexit 0\n'
       )
       chmodSync(gh, 0o755)
       const log = join(dir, 'log')
@@ -686,12 +718,18 @@ describe.skipIf(!HAS_JQ)('a push to a PR', () => {
             ...process.env,
             PATH: `${dir}:${process.env.PATH}`,
             GH_LOG: log,
+            WITHDRAW_FAIL: fail ? '1' : '0',
             PR: '7',
             GITHUB_REPOSITORY: REPO,
             LABELS: JSON.stringify(labels)
           }
         }
       )
+      if (fail) {
+        expect(result.status).not.toBe(0)
+        expect(result.stderr).toContain('HTTP-502')
+        return []
+      }
       expect(result.status, result.stderr).toBe(0)
       return readFileSync(log, 'utf8')
         .split('\n')
@@ -709,6 +747,10 @@ describe.skipIf(!HAS_JQ)('a push to a PR', () => {
       'merge',
       'break-glass'
     ])
+  })
+
+  it('fails the job when label withdrawal fails', () => {
+    withdraw(['break-glass'], true)
   })
 
   it('leaves labels that only contain a withdrawn name', () => {
@@ -817,4 +859,54 @@ echo '{"type":"result","structured_output":{"findings":[],"not_checked":[]}}'
     expect(r.stderr).toContain('could not read issue #12')
     expect(r.prompt).toBeNull()
   })
+})
+
+describe('override stamp workflow', () => {
+  it.each([MAINTAINER, 'other'])(
+    'authorizes only the label sender at the event head: %s',
+    (sender) => {
+      const dir = mkdtempSync(join(tmpdir(), 'override-stamp-'))
+      try {
+        writeFileSync(join(dir, 'gh'), '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$GH_LOG"\n')
+        chmodSync(join(dir, 'gh'), 0o755)
+        const log = join(dir, 'log')
+        const r = spawnSync(
+          'bash',
+          [
+            '-c',
+            stepScript(
+              'merge-on-label.yml',
+              'stamp-override',
+              'Stamp the review override on the labelled commit'
+            )
+          ],
+          {
+            encoding: 'utf8',
+            env: {
+              ...process.env,
+              PATH: `${dir}:${process.env.PATH}`,
+              GH_LOG: log,
+              PR: '7',
+              SHA: OLD,
+              SENDER: sender,
+              GITHUB_REPOSITORY: REPO
+            }
+          }
+        )
+        const calls = readFileSync(log, 'utf8')
+        if (sender === MAINTAINER) {
+          expect(r.status, r.stderr).toBe(0)
+          expect(calls).toContain(`statuses/${OLD}`)
+          expect(calls).toContain('context=merge/break-glass')
+          expect(calls).not.toContain(SHA)
+        } else {
+          expect(r.status).toBe(1)
+          expect(calls).toContain('--remove-label break-glass')
+          expect(calls).not.toContain('statuses/')
+        }
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    }
+  )
 })

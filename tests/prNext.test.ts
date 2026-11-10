@@ -155,7 +155,7 @@ describe('decideNext', () => {
   })
 
   it('waits on a requested review, and hands one that ended without a verdict over', () => {
-    expect(next({ labels: ['review:stale'] })).toBe('next: wait')
+    expect(next({ labels: ['review:stale'], fleet: 'success' })).toBe('next: merge')
     expect(next({ labels: ['review:requested', 'review:passed'] })).toBe('next: wait')
     expect(next({ labels: ['review:failed'] })).toBe('next: review')
   })

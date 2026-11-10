@@ -712,45 +712,57 @@ describe('selectorLifecycle', () => {
   })
 
   // Ruling 2026-08-29, Direction 1: empty extracted text is evaluated and matches what matches
-  // the empty string; a capture whose text cannot be read at all is skipped (#1084).
+  // the empty string. Storage keeps no text as '', so only a missing text row is skipped (#1084).
   describe('empty extracted text (#1084)', () => {
     function emptyTextCaptures(caseId: string) {
       const base = { caseId, title: 'T', timestamp: '2026-01-01T00:00:00.000Z' }
       const mirrorOnly = insertCapture({ ...base, url: 'https://m', hash: 'h1', textContent: '' })
-      const emptySidecar = insertCapture({ ...base, url: 'https://s', hash: 'h2' })
+      const neverText = insertCapture({ ...base, url: 'https://u', hash: 'h2' })
+      // A non-empty mirror, so only the empty sidecar can produce a ^$ match.
+      const emptySidecar = insertCapture({
+        ...base,
+        url: 'https://s',
+        hash: 'h3',
+        textContent: 'mirror text'
+      })
       writeTxt(tempDir, caseId, emptySidecar.id, '')
-      const withText = insertCapture({ ...base, url: 'https://t', hash: 'h3', textContent: 'x' })
-      const noText = insertCapture({ ...base, url: 'https://n', hash: 'h4' })
-      getDb().prepare('DELETE FROM capture_texts WHERE capture_id = ?').run(noText.id)
-      return { mirrorOnly, emptySidecar, withText, noText }
+      const withText = insertCapture({ ...base, url: 'https://t', hash: 'h4', textContent: 'x' })
+      const noRow = insertCapture({ ...base, url: 'https://n', hash: 'h5' })
+      getDb().prepare('DELETE FROM capture_texts WHERE capture_id = ?').run(noRow.id)
+      return { mirrorOnly, neverText, emptySidecar, withText, noRow }
     }
 
     it('matches ^$ against every capture whose text is empty and none other', async () => {
       const c = createCase({ name: 'C' })
-      const { mirrorOnly, emptySidecar } = emptyTextCaptures(c.id)
+      const { mirrorOnly, neverText, emptySidecar } = emptyTextCaptures(c.id)
 
       const sel = lifecycle.createSelector({ caseId: c.id, pattern: '^$', isRegex: true })
       await waitFor(events, 1)
 
       expect(getCapturesMatchingSelectors(c.id, [sel.id]).sort()).toEqual(
-        [mirrorOnly.id, emptySidecar.id].sort()
+        [mirrorOnly.id, neverText.id, emptySidecar.id].sort()
       )
     })
 
-    it('skips a capture with no text at all on a rescan', async () => {
+    it('skips a capture whose text row is missing on a rescan', async () => {
       const c = createCase({ name: 'C' })
-      const { noText } = emptyTextCaptures(c.id)
+      const { noRow } = emptyTextCaptures(c.id)
       const sel = lifecycle.createSelector({ caseId: c.id, pattern: '^$', isRegex: true })
-      await waitFor(events, 1)
-
-      lifecycle.rescanSelector(sel.id)
+      // RegExp.test coerces null to 'null', so this selector matches noRow only if it is evaluated.
+      const nullSel = lifecycle.createSelector({ caseId: c.id, pattern: '^null$', isRegex: true })
       await waitFor(events, 2)
 
-      expect(getCapturesMatchingSelectors(c.id, [sel.id])).not.toContain(noText.id)
-      expect(getSelectorMatchCounts(c.id)[sel.id]).toBe(2)
+      lifecycle.rescanSelector(sel.id)
+      lifecycle.rescanSelector(nullSel.id)
+      await waitFor(events, 4)
+
+      expect(events.slice(2).map((e) => e.status)).toEqual(['done', 'done'])
+      expect(getCapturesMatchingSelectors(c.id, [nullSel.id])).toEqual([])
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).not.toContain(noRow.id)
+      expect(getSelectorMatchCounts(c.id)[sel.id]).toBe(3)
     })
 
-    it('matches ^$ at ingest against a capture whose text is empty', async () => {
+    it('writes a ^$ match from the capture-time matcher for empty text', async () => {
       const c = createCase({ name: 'C' })
       const sel = lifecycle.createSelector({ caseId: c.id, pattern: '^$', isRegex: true })
       await waitFor(events, 1)

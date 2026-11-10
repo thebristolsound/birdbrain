@@ -3066,6 +3066,19 @@ describe("renderPageInHiddenWindow's log lines", () => {
     expect(String(error)).toContain('navigation failed')
   }, 30_000)
 
+  // Review of #2133, finding 7: a development build's log call can throw (logSafe.ts).
+  it('tears the window down before the failed line, so a line that throws leaks none', async () => {
+    ctl.loadUrlShouldReject = true
+    vi.spyOn(logger, 'info').mockImplementation((_source, code) => {
+      if (code === 'backgroundRenderer.render_failed') throw new Error('log call threw')
+      return 'log-id'
+    })
+    await expect(
+      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000, ...IDS })
+    ).rejects.toThrow()
+    expect(ctl.lastWindow!.isDestroyed()).toBe(true)
+  }, 30_000)
+
   it('logs no render line for a refused hop, which the job logs as skipped', async () => {
     ctl.hop = { event: 'will-redirect', url: 'http://127.0.0.1:8080/admin', isMainFrame: true }
     const info = vi.spyOn(logger, 'info')

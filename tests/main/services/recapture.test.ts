@@ -1085,6 +1085,21 @@ describe('recapture service', () => {
         ]
       ])
     })
+
+    // Review of #2133, finding 7: a development build's log call can throw (logSafe.ts).
+    it('reports no failure for a stored job whose stored line throws', async () => {
+      info.mockImplementation((_source: unknown, code: unknown) => {
+        if (code === 'backgroundRenderer.job_stored') throw new Error('log call threw')
+        return 'log-id'
+      })
+      const cleanup = vi.fn(async () => {})
+      const svc = makeService(fakeRender({ cleanup }))
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await expect(svc.idle()).rejects.toThrow('log call threw')
+      expect(events.map(({ type }) => type)).toEqual(['received', 'stored'])
+      expect(jobLines(warn)).toEqual([])
+      expect(cleanup).toHaveBeenCalledTimes(1)
+    })
   })
 })
 

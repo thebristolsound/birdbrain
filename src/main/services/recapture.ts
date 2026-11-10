@@ -314,6 +314,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     // under unless it ran out of time. Everything after the render returns counts as the ingest.
     let step: BackgroundJobStep | undefined
     let stage: 'link-source-error' | 'render' | 'ingest' = 'render'
+    let stored: { ms: number; ingestMs: number } | undefined
     try {
       let linkSource: LinkSource | undefined
       if (job.linkedFrom) {
@@ -481,10 +482,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         durationMs: Date.now() - started,
         warning
       })
-      logger.info('backgroundRenderer', 'backgroundRenderer.job_stored', {
-        ...jobContext(),
-        ingestMs
-      })
+      stored = { ms: Date.now() - started, ingestMs }
     } catch (err) {
       if (err instanceof RefusedAddressError) {
         emitEvent({
@@ -518,6 +516,13 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       )
     } finally {
       await rendered?.cleanup().catch(() => {})
+    }
+    // Logged outside the `try`, so a log call that throws cannot report a stored job failed.
+    if (stored) {
+      logger.info('backgroundRenderer', 'backgroundRenderer.job_stored', {
+        ...jobContext(),
+        ...stored
+      })
     }
   }
 

@@ -100,9 +100,7 @@ test.describe('Background job pool', () => {
 
   // Renders every fixture page in one Batch with `workers` slots, and returns what each page's
   // manifest entry records, with the Batch's job rows.
-  async function renderBatch(
-    workers: number
-  ): Promise<{
+  async function renderBatch(workers: number): Promise<{
     recorded: Record<string, Recorded>
     jobs: BackgroundJobView[]
     concurrency: number

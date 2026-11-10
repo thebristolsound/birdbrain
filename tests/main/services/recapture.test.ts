@@ -798,6 +798,7 @@ describe('recapture service', () => {
         finish = resolve
       })
     const cleanup = vi.fn(async () => {
+      expect(mhtmlStream.closed).toBe(true)
       unlinkSync(tmpFile)
     })
     const svc = makeService(render)
@@ -856,6 +857,31 @@ describe('recapture service', () => {
       'backgroundRenderer.cleanup_failed',
       undefined,
       cleanupError
+    )
+    logged.mockRestore()
+  })
+
+  it('logs a genuine stream-open error while cleaning up an ingest refusal', async () => {
+    const mhtmlStream = createReadStream(join(tempDir, 'missing-render.mhtml'))
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle })
+    vi.spyOn(lifecycle, 'ingest').mockRejectedValue(new Error('ingest refused'))
+    const logged = vi.spyOn(logger, 'error').mockImplementation(() => 'log-id')
+    const cleanup = vi.fn(async () => undefined)
+    const svc = createRecaptureService({
+      renderPage: fakeRender({ mhtmlStream, cleanup }),
+      captureLifecycle: lifecycle,
+      emitEvent: (event) => events.push(event),
+      emitNewCapture: vi.fn()
+    })
+    svc.enqueue([{ url: 'https://example.com/missing-render', caseId }])
+    await svc.idle()
+    expect(mhtmlStream.closed).toBe(true)
+    expect(cleanup).toHaveBeenCalledOnce()
+    expect(logged).toHaveBeenCalledWith(
+      'backgroundRenderer',
+      'backgroundRenderer.cleanup_failed',
+      undefined,
+      expect.objectContaining({ code: 'ENOENT' })
     )
     logged.mockRestore()
   })

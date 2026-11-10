@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto'
+import { Readable } from 'stream'
+import { finished } from 'stream/promises'
 import * as captureRepo from '@main/services/db/captureRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
 import {
@@ -448,7 +450,27 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       })
     } finally {
       // Ingest can reject before it starts reading, leaving the renderer's file open.
-      rendered?.mhtmlStream.destroy?.()
+      const stream = rendered?.mhtmlStream
+      const closed =
+        stream instanceof Readable
+          ? finished(stream, { cleanup: true }).catch((err: unknown) => {
+              if (
+                err instanceof Error &&
+                'code' in err &&
+                err.code === 'ERR_STREAM_PREMATURE_CLOSE'
+              ) {
+                return
+              }
+              logger.error(
+                'backgroundRenderer',
+                'backgroundRenderer.cleanup_failed',
+                undefined,
+                err
+              )
+            })
+          : undefined
+      stream?.destroy?.()
+      await closed
       await rendered?.cleanup().catch((err) => {
         logger.error('backgroundRenderer', 'backgroundRenderer.cleanup_failed', undefined, err)
       })

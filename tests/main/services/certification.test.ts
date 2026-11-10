@@ -1169,34 +1169,39 @@ describe('certification from a literal input', () => {
       tsaName: 'tsa.example.com',
       stampedAt: '2026-04-05T12:01:00.000Z'
     }
-    const certify = (captures: Capture[], citations: Array<[string, string]>): string =>
-      buildCertification(
-        {
-          caseName: 'KAT Case',
-          isDemo: false,
-          manifestHead: { index: 1, entryHash: 'e'.repeat(64) },
-          signingKeyFingerprint: 'f'.repeat(64),
-          contents: {
-            captureCount: captures.filter(({ method }) => method !== 'duplicate').length,
-            duplicateCount: captures.filter(({ method }) => method === 'duplicate').length,
-            screenshotCount: 0,
-            noteCount: 0
-          },
-          exportTimestamp: '2026-04-05T13:00:00.000Z',
-          installationId: 'install-kat',
-          operatorName: 'Det. Smith',
-          operatorRole: 'Detective',
-          operatorOrganization: 'Metro PD',
-          tsaUrl: 'https://tsa.example/timestamp',
-          tsaEnabled: true,
-          captures: captures.map((c) => ({ capture: c, trustedTime: token })),
-          entrySignatureByCaptureId: new Map<string, EntrySignatureStatus>(
-            captures.map(({ id }) => [id, 'signed'])
-          ),
-          exhibitCitationByCaptureId: new Map(citations)
-        },
-        '1.0.0'
-      )
+    const input = (
+      captures: Capture[],
+      citations: Array<[string, string]>,
+      trustedTime: TrustedTimeResult = token
+    ): CertificationInput => ({
+      caseName: 'KAT Case',
+      isDemo: false,
+      manifestHead: { index: 1, entryHash: 'e'.repeat(64) },
+      signingKeyFingerprint: 'f'.repeat(64),
+      contents: {
+        captureCount: captures.filter(({ method }) => method !== 'duplicate').length,
+        duplicateCount: captures.filter(({ method }) => method === 'duplicate').length,
+        screenshotCount: 0,
+        noteCount: 0
+      },
+      exportTimestamp: '2026-04-05T13:00:00.000Z',
+      installationId: 'install-kat',
+      operatorName: 'Det. Smith',
+      operatorRole: 'Detective',
+      operatorOrganization: 'Metro PD',
+      tsaUrl: 'https://tsa.example/timestamp',
+      tsaEnabled: true,
+      captures: captures.map((c) => ({ capture: c, trustedTime })),
+      entrySignatureByCaptureId: new Map<string, EntrySignatureStatus>(
+        captures.map(({ id }) => [id, 'signed'])
+      ),
+      exhibitCitationByCaptureId: new Map(citations)
+    })
+    const certify = (
+      captures: Capture[],
+      citations: Array<[string, string]>,
+      trustedTime?: TrustedTimeResult
+    ): string => buildCertification(input(captures, citations, trustedTime), '1.0.0')
     const section = (html: string, from: string, to: string): string => {
       const start = html.indexOf(from)
       const end = html.indexOf(to, start)
@@ -1224,7 +1229,9 @@ describe('certification from a literal input', () => {
       )
       // The shared token is counted once, for the observation that earned it.
       const trustedTime = section(html, 'Trusted time</h2>', 'Entry signatures</h2>')
-      expect(trustedTime).toMatch(/<p>All 1 exhibit in this export carry an RFC 3161/)
+      expect(trustedTime).toMatch(
+        /<p>All 1 exhibit in this export that is not a Duplicate carry an RFC 3161/
+      )
       const timestamped = section(trustedTime, 'Timestamped exhibits', '</table>')
       expect(timestamped.match(/<tr>/g)).toHaveLength(2)
       expect(timestamped).not.toContain('Duplicate')
@@ -1240,8 +1247,29 @@ describe('certification from a literal input', () => {
       // The Duplicate's manifest entry is its own and carries its own signature.
       expect(section(html, 'Entry signatures</h2>', 'Operator</h2>')).toContain('(2 of 2)')
       expect(createHash('sha256').update(html, 'utf-8').digest('hex')).toBe(
-        'c7922affdd221cc2c9ed88ab679c313e20d68edc3b11bdd3a55ca22b90cb0e9b'
+        '2cd452b9c18b96da8c858b0c0b1a62596a1c268b0f2c4ce9f83dc4d55d205fa6'
       )
+    })
+
+    it('counts neither a Duplicate nor its unstamped row among the observations', () => {
+      const html = certify(
+        [source, duplicate],
+        [
+          [source.id, '3'],
+          [duplicate.id, '4']
+        ],
+        { trustedTime: 'none' }
+      )
+
+      const trustedTime = section(html, 'Trusted time</h2>', 'Entry signatures</h2>')
+      expect(trustedTime).toContain(
+        'for any of the 1 exhibit in this export that is not a Duplicate ' +
+          '(0 eligible for timestamping, 1 not).'
+      )
+      const unstamped = section(trustedTime, 'Exhibits without trusted time', '</table>')
+      expect(unstamped.match(/<tr>/g)).toHaveLength(2)
+      expect(unstamped).not.toContain('Duplicate')
+      expect(trustedTime).toContain('<td>Duplicate of Exhibit 3</td>')
     })
 
     it('says so when the copied Exhibit has no recorded number', () => {
@@ -1249,6 +1277,15 @@ describe('certification from a literal input', () => {
 
       expect(html).toContain('<td>Duplicate of Exhibit (number not recorded)</td>')
       expect(html).toContain(DUPLICATE_SENTENCE)
+      // Only Duplicates, so there is no observation to count, stamped or not.
+      const trustedTime = section(html, 'Trusted time</h2>', 'Entry signatures</h2>')
+      expect(trustedTime).toContain(
+        '<p>Every exhibit in this export is a Duplicate, listed below, so none is counted\n' +
+          '      here.</p>'
+      )
+      expect(trustedTime).not.toMatch(/\d+ exhibit/)
+      expect(trustedTime).not.toContain('Timestamped exhibits')
+      expect(trustedTime).not.toContain('Exhibits without trusted time')
     })
 
     it('omits the sentence and the list for a package with no Duplicate', () => {

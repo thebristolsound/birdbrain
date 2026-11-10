@@ -460,27 +460,35 @@ function renderCertificationHtml(fields: CertificationFields): string {
   // reports as switched off.
   const unstampedBreakdown =
     `${trustedTime.pendingCount} eligible for timestamping, ` + `${trustedTime.noneCount} not`
+  // The counts leave the Duplicates out, so with one present the prose names
+  // that scope; "in this export" alone would read as the whole package.
+  const notDuplicate = (n: number): string =>
+    duplicates.length === 0 ? '' : n === 1 ? ' that is not a Duplicate' : ' that are not Duplicates'
 
-  const trustedTimeProse = trustedTime.allStamped
-    ? `<p>All ${stamped.length} exhibit${
-        stamped.length === 1 ? '' : 's'
-      } in this export carry an RFC 3161 trusted timestamp asserting the time at which the
+  const trustedTimeProse =
+    observed.length === 0 && duplicates.length > 0
+      ? `<p>Every exhibit in this export is a Duplicate, listed below, so none is counted
+      here.</p>`
+      : trustedTime.allStamped
+        ? `<p>All ${stamped.length} exhibit${stamped.length === 1 ? '' : 's'} in this export${notDuplicate(
+            stamped.length
+          )} carry an RFC 3161 trusted timestamp asserting the time at which the
       exhibit's content digest existed.</p>`
-    : stamped.length > 0
-      ? `<p>RFC 3161 trusted time is asserted <strong>only</strong> for the ${
-          stamped.length
-        } exhibit${stamped.length === 1 ? '' : 's'} listed as timestamped below. For the ${
-          unstamped.length
-        } remaining exhibit${
-          unstamped.length === 1 ? '' : 's'
-        } (${unstampedBreakdown}), <strong>no trusted timestamp is
+        : stamped.length > 0
+          ? `<p>RFC 3161 trusted time is asserted <strong>only</strong> for the ${
+              stamped.length
+            } exhibit${stamped.length === 1 ? '' : 's'} listed as timestamped below. For the ${
+              unstamped.length
+            } remaining exhibit${unstamped.length === 1 ? '' : 's'}${notDuplicate(
+              unstamped.length
+            )} (${unstampedBreakdown}), <strong>no trusted timestamp is
         asserted</strong>; the recorded time is the operator's local system clock
         only.</p>`
-      : `<p><strong>No trusted timestamps are asserted</strong> for any of the ${
-          unstamped.length
-        } exhibit${
-          unstamped.length === 1 ? '' : 's'
-        } in this export (${unstampedBreakdown}). The recorded time is the operator's local
+          : `<p><strong>No trusted timestamps are asserted</strong> for any of the ${
+              unstamped.length
+            } exhibit${unstamped.length === 1 ? '' : 's'} in this export${notDuplicate(
+              unstamped.length
+            )} (${unstampedBreakdown}). The recorded time is the operator's local
         system clock only.</p>`
 
   const stampedRows = stamped

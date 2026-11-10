@@ -415,9 +415,17 @@ describe('readMhtmlParts', () => {
   })
 
   it('reports a failure to open for any reason other than a missing file', async () => {
+    const { store } = caseDir()
+    vi.mocked(fsPromises.open).mockRejectedValueOnce(
+      Object.assign(new Error('denied'), { code: 'EACCES' })
+    )
+    await expect(readMhtmlParts(stored, store)).rejects.toMatchObject({ code: 'EACCES' })
+  })
+
+  it('reports a failure to read a path that opens but is not a file', async () => {
     const { root } = caseDir()
     const store = { resolveAbsolute: () => root }
-    await expect(readMhtmlParts(stored, store)).rejects.toThrow()
+    await expect(readMhtmlParts(stored, store)).rejects.toMatchObject({ code: 'EISDIR' })
   })
 
   it('refuses a file over the limit before reading any byte of it', async () => {

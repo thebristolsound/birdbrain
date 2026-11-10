@@ -190,6 +190,9 @@ describe('consent blocking in more than one session', () => {
     expect(second.webRequest.onBeforeRequest).toHaveBeenCalledTimes(1)
     disable(first)
     expect([...ipcHandlers.keys()].sort()).toEqual(CHANNELS)
+    // The handler registered again answers as the library's does.
+    const mutationObserver = ipcHandlers.get(CHANNELS[1]) as (event: unknown) => Promise<boolean>
+    await expect(mutationObserver({})).resolves.toBe(engine.config.enableMutationObserver)
     disable(second)
     expect(ipcHandlers.size).toBe(0)
   })

@@ -7,7 +7,8 @@
 // The lock is a directory holding owner.json. A process builds it under a temporary name and
 // renames it into place, and a rename onto a directory that has files in it fails, so exactly
 // one process wins and the lock never exists without its owner. A lock whose processes are
-// gone is stale; on Linux a pid also counts as gone once its start time no longer matches. A
+// gone is stale; on Linux a pid also counts as gone once its start time no longer matches, and
+// a lock taken in another pid namespace (a container) is judged by age, not by its pids. A
 // waiter clears a stale lock only while holding a second lock (<lock>.reap), after reading the
 // owner again, and once it has moved the lock aside it checks that what it moved is the lock it
 // judged stale, and puts it back if not. That narrows the takeover race and does not close it:
@@ -24,6 +25,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readlinkSync,
   renameSync,
   rmdirSync,
   rmSync,
@@ -86,6 +88,16 @@ export const startTime = (pid) => {
 
 // null when the lock has no owner record. A record that is there but cannot be read or parsed
 // comes back as { unreadable: <cause> }, so a waiter does not take it for a lock nobody holds.
+// Linux only: a pid means something only inside its own pid namespace, so the owner record
+// names the one it was written in. A container or sandbox has another. null without /proc.
+export const pidNamespace = () => {
+  try {
+    return readlinkSync('/proc/self/ns/pid')
+  } catch {
+    return null
+  }
+}
+
 export const readOwner = (dir) => {
   let text
   try {
@@ -129,7 +141,7 @@ const create = (dir, owner) => {
 export const isStale = (
   dir,
   owner,
-  { now = Date.now(), alive = isAlive, startOf = startTime } = {}
+  { now = Date.now(), alive = isAlive, startOf = startTime, namespace = pidNamespace() } = {}
 ) => {
   if (!owner || owner.unreadable) {
     // An unreadable record may belong to a live run whose processes cannot be checked, so it
@@ -141,6 +153,10 @@ export const isStale = (
       return false
     }
   }
+  const tooOld = !(now - Date.parse(owner.startedAt) <= MAX_AGE_MS)
+  // The holder's pids cannot be looked up from another pid namespace, where the same numbers
+  // belong to other processes or to none, so only age counts.
+  if (owner.pidNs != null && owner.pidNs !== namespace) return tooOld
   // The child is recorded too: a wrapper killed on its own leaves the test run going.
   const processes = [
     [owner.pid, owner.pidStart],
@@ -151,7 +167,7 @@ export const isStale = (
   )
   if (!running) return true
   if (processes.some(([, start]) => start != null)) return false
-  return !(now - Date.parse(owner.startedAt) <= MAX_AGE_MS)
+  return tooOld
 }
 
 // Moves the lock aside and deletes it, unless what moved is not the lock `seen` describes: a
@@ -226,14 +242,14 @@ const describeStale = (owner) => {
 export const tryAcquire = (
   dir,
   base,
-  { now = Date.now(), alive = isAlive, startOf = startTime } = {}
+  { now = Date.now(), alive = isAlive, startOf = startTime, namespace = pidNamespace() } = {}
 ) => {
   const owner = { ...base, startedAt: new Date(now).toISOString() }
   for (let attempt = 0; attempt < 3; attempt += 1) {
     if (create(dir, owner)) return { owner }
     const current = readOwner(dir)
     if (!existsSync(dir)) continue
-    if (!isStale(dir, current, { now, alive, startOf })) return { holder: current }
+    if (!isStale(dir, current, { now, alive, startOf, namespace })) return { holder: current }
     if (clearStale(dir, current, { now })) log(describeStale(current))
   }
   return { holder: readOwner(dir) }
@@ -297,7 +313,12 @@ const main = async () => {
   // environment by an earlier run, or set by hand, waits like any other run.
   const heldBy = process.env[HELD_ENV]
   const nested = Boolean(dir && heldBy && String(readOwner(dir)?.pid) === heldBy)
-  const self = { pid: process.pid, pidStart: startTime(process.pid), cwd }
+  const self = {
+    pid: process.pid,
+    pidStart: startTime(process.pid),
+    pidNs: pidNamespace(),
+    cwd
+  }
   const owner = dir && !nested ? await acquire(dir, self) : null
   const unlock = () => owner && release(dir, owner)
   process.on('exit', unlock)

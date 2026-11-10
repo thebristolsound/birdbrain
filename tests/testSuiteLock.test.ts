@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readlinkSync,
   realpathSync,
   rmSync,
   utimesSync,
@@ -23,6 +24,7 @@ import {
   clearStale,
   discard,
   lockPath,
+  pidNamespace,
   readOwner,
   recordChild,
   release,
@@ -131,6 +133,25 @@ describe('tryAcquire', () => {
     const now = Date.now()
     plant(dir, { ...base(1), startedAt: new Date(now - MAX_AGE_MS - 1_000).toISOString() })
     expect(tryAcquire(dir, base(2), { alive, now, startOf: noProc }).owner?.pid).toBe(2)
+  })
+
+  it('keeps a lock taken in another pid namespace although its pid is not running here', () => {
+    const held = {
+      ...base(exitedPid()),
+      pidNs: 'pid:[1]',
+      startedAt: new Date().toISOString()
+    }
+    plant(dir, held)
+    expect(tryAcquire(dir, base(2), { namespace: 'pid:[2]' })).toEqual({ holder: held })
+    expect(tryAcquire(dir, base(2), { namespace: 'pid:[1]' }).owner?.pid).toBe(2)
+  })
+
+  it('takes over a lock from another pid namespace once it is over an hour old', () => {
+    const now = Date.now()
+    const old = new Date(now - MAX_AGE_MS - 1_000).toISOString()
+    plant(dir, { ...base(1), pidStart: '100', pidNs: 'pid:[1]', startedAt: old })
+    const here = { alive, now, startOf: () => '100' }
+    expect(tryAcquire(dir, base(2), { ...here, namespace: 'pid:[2]' }).owner?.pid).toBe(2)
   })
 
   it('treats an owner record without a usable pid as stale', () => {
@@ -307,6 +328,13 @@ describe('many waiters on one stale lock', () => {
   }, 60_000)
 })
 
+describe('pidNamespace', () => {
+  it.runIf(ON_LINUX)('names the namespace this process runs in', () => {
+    expect(pidNamespace()).toBe(readlinkSync('/proc/self/ns/pid'))
+    expect(pidNamespace()).toMatch(/^pid:\[\d+\]$/)
+  })
+})
+
 describe('startTime', () => {
   it.runIf(ON_LINUX)('reads a running process and gives null for one that has exited', () => {
     expect(startTime(process.pid)).toMatch(/^\d+$/)
@@ -388,7 +416,8 @@ describe('the command line', () => {
   // Exits 7 when the lock is held by the wrapper that started this command, with it recorded.
   const probe = (lock: string) =>
     `const o = JSON.parse(require('fs').readFileSync(${JSON.stringify(join(lock, 'owner.json'))}, 'utf8'));` +
-    `const ok = o.pid === Number(process.env.${HELD_ENV}) && o.childPid === process.pid;` +
+    `const ns = ${JSON.stringify(pidNamespace())};` +
+    `const ok = o.pid === Number(process.env.${HELD_ENV}) && o.childPid === process.pid && o.pidNs === ns;` +
     `process.exit(ok ? 7 : 1)`
 
   it('holds the lock with the child recorded while the command runs, then releases', async () => {

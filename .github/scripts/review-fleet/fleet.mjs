@@ -161,13 +161,20 @@ export function codexAnswered({ reviews, comments }, sha, after) {
   return review || summary
 }
 
-// Codex's rulings on the relayed findings: `F<n>: CONFIRMED` or `F<n>: REFUTED` in any text it
-// wrote after the relay. A later ruling on the same finding replaces an earlier one.
+// A ruling is a line that starts with it, list marker and emphasis aside: `F<n>: CONFIRMED` or
+// `F<n>: REFUTED`. A ruling quoted mid-sentence is not one, and neither is the relay's own
+// `CONFIRMED | REFUTED` template echoed back.
+const RULING_RE =
+  /^[ \t]*(?:[-*+][ \t]+)?[*_`]*(F\d+)[*_`]*[ \t]*[:-][ \t]*[*_`]*(CONFIRMED|REFUTED)\b(?![*_`]*[ \t]*\|)/gm
+
+// Codex's rulings on the relayed findings, from any text it wrote after the relay. When it both
+// confirms and refutes a finding, the confirmation stands, whichever text or line came first:
+// the sources carry no order worth trusting, and a contradiction must not read green.
 export function parseRulings(texts) {
   const rulings = {}
   for (const t of texts) {
-    for (const m of String(t).matchAll(/\b(F\d+)\s*[:-]\s*\**\s*(CONFIRMED|REFUTED)\b/g)) {
-      rulings[m[1]] = m[2]
+    for (const m of String(t).matchAll(RULING_RE)) {
+      if (rulings[m[1]] !== 'CONFIRMED') rulings[m[1]] = m[2]
     }
   }
   return rulings

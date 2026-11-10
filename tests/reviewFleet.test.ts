@@ -289,12 +289,27 @@ describe('Codex', () => {
     expect(codexAnswered({ reviews: [review], comments: [] }, SHA, RELAY_AT)).toBe(true)
   })
 
-  it('parses rulings, the later one winning, and only from Codex after the relay', () => {
+  it('lets a confirmation win over a refutation of the same finding, in either order', () => {
     expect(parseRulings(['F1: CONFIRMED because', 'F2 - **REFUTED**', 'F1: REFUTED'])).toEqual({
-      F1: 'REFUTED',
+      F1: 'CONFIRMED',
       F2: 'REFUTED'
     })
+    expect(parseRulings(['F1: REFUTED (inline)', 'F1: CONFIRMED (review body)'])).toEqual({
+      F1: 'CONFIRMED'
+    })
+    expect(parseRulings(['F1: REFUTED\nF1: CONFIRMED\nF1: REFUTED'])).toEqual({ F1: 'CONFIRMED' })
+  })
+
+  it('reads a ruling only from a line that starts with it', () => {
+    expect(parseRulings(['I cannot agree that F1: REFUTED is right; F1 is real'])).toEqual({})
+    expect(parseRulings(['As asked:\nF1: CONFIRMED | REFUTED'])).toEqual({})
     expect(parseRulings(['F1: maybe'])).toEqual({})
+    expect(
+      parseRulings(['- **F1**: REFUTED, the guard is at line 3\n**F2: CONFIRMED**\n  F10: REFUTED'])
+    ).toEqual({ F1: 'REFUTED', F2: 'CONFIRMED', F10: 'REFUTED' })
+  })
+
+  it('takes rulings only from Codex after the relay', () => {
     const texts = codexTexts(
       {
         reviews: [

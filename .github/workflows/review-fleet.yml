@@ -64,7 +64,7 @@ jobs:
     if: >-
       vars.REVIEW_FLEET_ENABLED != 'false'
       && (github.triggering_actor == 'thebristolsound'
-        || github.triggering_actor == 'birdbrain-agent'
+        || github.triggering_actor == vars.BIRDBRAIN_AGENT_GH_LOGIN
         || github.triggering_actor == 'chatgpt-codex-connector[bot]'
         || github.triggering_actor == 'github-actions[bot]')
       && ((github.event_name == 'pull_request_target'
@@ -104,7 +104,7 @@ jobs:
     if: >-
       (needs.plan.outputs.action == 'review' || needs.plan.outputs.action == 'verify')
       && (github.triggering_actor == 'thebristolsound'
-        || github.triggering_actor == 'birdbrain-agent'
+        || github.triggering_actor == vars.BIRDBRAIN_AGENT_GH_LOGIN
         || github.triggering_actor == 'chatgpt-codex-connector[bot]'
         || github.triggering_actor == 'github-actions[bot]')
     environment: paid-runs
@@ -161,7 +161,7 @@ jobs:
       always()
       && (needs.plan.outputs.action == 'review' || needs.plan.outputs.action == 'verify')
       && (github.triggering_actor == 'thebristolsound'
-        || github.triggering_actor == 'birdbrain-agent'
+        || github.triggering_actor == vars.BIRDBRAIN_AGENT_GH_LOGIN
         || github.triggering_actor == 'chatgpt-codex-connector[bot]'
         || github.triggering_actor == 'github-actions[bot]')
     environment: paid-runs
@@ -205,7 +205,7 @@ jobs:
       always()
       && (needs.plan.outputs.action == 'relay' || needs.record.outputs.relay == 'true')
       && (github.triggering_actor == 'thebristolsound'
-        || github.triggering_actor == 'birdbrain-agent'
+        || github.triggering_actor == vars.BIRDBRAIN_AGENT_GH_LOGIN
         || github.triggering_actor == 'chatgpt-codex-connector[bot]'
         || github.triggering_actor == 'github-actions[bot]')
     environment: codex-relay
@@ -233,7 +233,7 @@ jobs:
     if: >-
       always() && needs.relay.result != 'skipped' && needs.plan.result == 'success'
       && (github.triggering_actor == 'thebristolsound'
-        || github.triggering_actor == 'birdbrain-agent'
+        || github.triggering_actor == vars.BIRDBRAIN_AGENT_GH_LOGIN
         || github.triggering_actor == 'chatgpt-codex-connector[bot]'
         || github.triggering_actor == 'github-actions[bot]')
     environment: paid-runs

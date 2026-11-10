@@ -1,7 +1,7 @@
 import * as captureRepo from '@main/services/db/captureRepo'
 import * as selectorRepo from '@main/services/db/selectorRepo'
 import { defaultCaptureStore } from '@main/services/captureStore'
-import type { Selector } from '@shared/types'
+import type { MatchOrigin, Selector } from '@shared/types'
 import type {
   CreateSelectorParams,
   BulkCreateSelectorsParams,
@@ -38,6 +38,7 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
   function scheduleRetroactiveMatch(
     selectors: Selector[],
     caseId: string,
+    origin: MatchOrigin,
     options?: { unbounded?: boolean }
   ): void {
     if (selectors.length === 0) return
@@ -70,7 +71,7 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
 
         if (captureTexts.length > 0) {
           for (const sel of selectors) {
-            selectorRepo.matchSelectorAgainstCaptures(sel.id, captureTexts)
+            selectorRepo.matchSelectorAgainstCaptures(sel.id, captureTexts, origin)
           }
         }
 
@@ -96,7 +97,7 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
   return {
     createSelector(params) {
       const selector = selectorRepo.createSelector(params)
-      scheduleRetroactiveMatch([selector], params.caseId)
+      scheduleRetroactiveMatch([selector], params.caseId, 'create')
       return selector
     },
     bulkCreateSelectors(params) {
@@ -109,7 +110,7 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
           origin: s.origin
         }))
       )
-      scheduleRetroactiveMatch(created, params.caseId)
+      scheduleRetroactiveMatch(created, params.caseId, 'create')
       return created
     },
     updateSelector(params) {
@@ -125,7 +126,7 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
 
       if (matchSemanticsChanged) {
         selectorRepo.clearSelectorMatches(updated.id)
-        scheduleRetroactiveMatch([updated], updated.caseId, { unbounded: true })
+        scheduleRetroactiveMatch([updated], updated.caseId, 'update', { unbounded: true })
       }
 
       return updated
@@ -153,7 +154,7 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
     rescanSelector(id) {
       const selector = selectorRepo.getSelector(id)
       if (!selector) return false
-      scheduleRetroactiveMatch([selector], selector.caseId, { unbounded: true })
+      scheduleRetroactiveMatch([selector], selector.caseId, 'rescan', { unbounded: true })
       return true
     },
     runActiveSelectorsForCapture(captureId, caseId, textContent) {

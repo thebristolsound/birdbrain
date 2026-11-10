@@ -1377,6 +1377,20 @@ export function isSelectorOrigin(value: unknown): value is SelectorOrigin {
   return SELECTOR_ORIGINS.includes(value as SelectorOrigin)
 }
 
+// Which pass wrote a Persisted Match (#1069): ingest, a Selector's creation, an
+// edit to its pattern, or an operator's rescan. Named apart from `origin` because
+// a Case Archive carries selectors and their matches side by side, and the two
+// mean different things. Recorded when the row is written and never edited
+// after. Absent means the row predates provenance recording; legacy rows are not
+// backfilled, because guessing a value would be a false provenance claim.
+export const MATCH_ORIGINS = ['capture-time', 'create', 'update', 'rescan'] as const
+export type MatchOrigin = (typeof MATCH_ORIGINS)[number]
+
+// Plain TEXT, hand-editable from the Database Admin hatch, as with Selector origin.
+export function isMatchOrigin(value: unknown): value is MatchOrigin {
+  return MATCH_ORIGINS.includes(value as MatchOrigin)
+}
+
 export interface Selector {
   id: string
   caseId: string
@@ -1436,8 +1450,7 @@ export interface Note {
 // --- Cross-case recent activity (#403) ---
 // One row of the dashboard's recent-activity feed. Derived read-only from the
 // captures/notes/cases tables — nothing persists it. Selector hits are absent
-// deliberately: `selector_matches` carries no timestamp, so a hit event has no
-// honest time to order by (maintainer ruling 2026-08-20, #403).
+// deliberately; activityRepo.ts says why.
 interface RecentActivityBase {
   caseId: string
   caseName: string

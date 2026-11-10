@@ -887,9 +887,11 @@ describe('database', () => {
         timestamp: new Date().toISOString()
       })
       const sel = createSelector({ caseId: c.id, pattern: 'a\\.com', isRegex: true, label: 'test' })
-      matchSelectorAgainstCaptures(sel.id, [
-        { captureId: cap1.id, text: 'visit https://a.com today' }
-      ])
+      matchSelectorAgainstCaptures(
+        sel.id,
+        [{ captureId: cap1.id, text: 'visit https://a.com today' }],
+        'create'
+      )
 
       const cov = getSelectorCoverage(c.id)
       expect(cov.total).toBe(2)
@@ -921,7 +923,7 @@ describe('database', () => {
       // Shows matchSelectorsForCapture ran and writes rows for this Capture.
       const control = createSelector({ caseId: c.id, pattern: 'aaa' })
 
-      matchSelectorAgainstCaptures(slow.id, [{ captureId: cap.id, text }])
+      matchSelectorAgainstCaptures(slow.id, [{ captureId: cap.id, text }], 'create')
       expect(countOn('selector_matches', 'selector_id', slow.id)).toBe(0)
 
       matchSelectorsForCapture(cap.id, c.id, text)
@@ -1030,7 +1032,11 @@ describe('database', () => {
     })
     const { value } = classifySelection('https://example.com./x')
     const sel = createSelector({ caseId: c.id, pattern: value })
-    matchSelectorAgainstCaptures(sel.id, [{ captureId: cap.id, text: 'hosted on example.com' }])
+    matchSelectorAgainstCaptures(
+      sel.id,
+      [{ captureId: cap.id, text: 'hosted on example.com' }],
+      'create'
+    )
     expect(getSelectorCoverage(c.id).matched).toBe(1)
   })
 
@@ -1069,11 +1075,19 @@ describe('database', () => {
       })
       const otherSel = createSelector({ caseId: other.id, pattern: 'other' })
 
-      matchSelectorAgainstCaptures(sel.id, [
-        { captureId: cap1.id, text: 'example content' },
-        { captureId: cap2.id, text: 'another example here' }
-      ])
-      matchSelectorAgainstCaptures(otherSel.id, [{ captureId: otherCap.id, text: 'other' }])
+      matchSelectorAgainstCaptures(
+        sel.id,
+        [
+          { captureId: cap1.id, text: 'example content' },
+          { captureId: cap2.id, text: 'another example here' }
+        ],
+        'create'
+      )
+      matchSelectorAgainstCaptures(
+        otherSel.id,
+        [{ captureId: otherCap.id, text: 'other' }],
+        'create'
+      )
 
       const rows = getSelectorMatchesForExport(c.id)
       expect(rows).toHaveLength(2)
@@ -1107,8 +1121,8 @@ describe('database', () => {
       })
       const wanted = createSelector({ caseId: c.id, pattern: 'alpha' })
       const unwanted = createSelector({ caseId: c.id, pattern: 'beta' })
-      matchSelectorAgainstCaptures(wanted.id, [{ captureId: cap.id, text: 'alpha' }])
-      matchSelectorAgainstCaptures(unwanted.id, [{ captureId: cap.id, text: 'beta' }])
+      matchSelectorAgainstCaptures(wanted.id, [{ captureId: cap.id, text: 'alpha' }], 'create')
+      matchSelectorAgainstCaptures(unwanted.id, [{ captureId: cap.id, text: 'beta' }], 'create')
 
       expect(getSelectorMatchesForExport(c.id)).toHaveLength(2)
       const scoped = getSelectorMatchesForExport(c.id, wanted.id)
@@ -1127,7 +1141,7 @@ describe('database', () => {
         timestamp: '2026-01-01T00:00:00.000Z'
       })
       const foreign = createSelector({ caseId: other.id, pattern: 'alpha' })
-      matchSelectorAgainstCaptures(foreign.id, [{ captureId: cap.id, text: 'alpha' }])
+      matchSelectorAgainstCaptures(foreign.id, [{ captureId: cap.id, text: 'alpha' }], 'create')
 
       expect(getSelectorMatchesForExport(c.id, foreign.id)).toEqual([])
     })
@@ -1157,11 +1171,15 @@ describe('database', () => {
       const both = createSelector({ caseId: c.id, pattern: 'both' })
       const one = createSelector({ caseId: c.id, pattern: 'one' })
       createSelector({ caseId: c.id, pattern: 'none' })
-      matchSelectorAgainstCaptures(both.id, [
-        { captureId: cap0, text: 'both' },
-        { captureId: cap2, text: 'both' }
-      ])
-      matchSelectorAgainstCaptures(one.id, [{ captureId: cap1, text: 'one' }])
+      matchSelectorAgainstCaptures(
+        both.id,
+        [
+          { captureId: cap0, text: 'both' },
+          { captureId: cap2, text: 'both' }
+        ],
+        'create'
+      )
+      matchSelectorAgainstCaptures(one.id, [{ captureId: cap1, text: 'one' }], 'create')
 
       const matrix = getSelectorCaptureMatrix(c.id, 24)
 
@@ -1177,7 +1195,8 @@ describe('database', () => {
       const sel = createSelector({ caseId: c.id, pattern: 'all' })
       matchSelectorAgainstCaptures(
         sel.id,
-        caps.map((captureId) => ({ captureId, text: 'all' }))
+        caps.map((captureId) => ({ captureId, text: 'all' })),
+        'create'
       )
 
       // Newest two only: caps[4] and caps[3].
@@ -1191,7 +1210,7 @@ describe('database', () => {
       const other = createCase({ name: 'Matrix Other' })
       const [cap] = seedCaptures(other.id, 1)
       const foreign = createSelector({ caseId: other.id, pattern: 'x' })
-      matchSelectorAgainstCaptures(foreign.id, [{ captureId: cap, text: 'x' }])
+      matchSelectorAgainstCaptures(foreign.id, [{ captureId: cap, text: 'x' }], 'create')
 
       expect(getSelectorCaptureMatrix(c.id, 24)).toEqual({})
     })

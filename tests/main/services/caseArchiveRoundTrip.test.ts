@@ -198,7 +198,7 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
       isRegex: false,
       origin: 'extension'
     })
-    matchSelectorAgainstCaptures(sel.id, [{ captureId: cap1.id, text: 'alpha text' }])
+    matchSelectorAgainstCaptures(sel.id, [{ captureId: cap1.id, text: 'alpha text' }], 'create')
     // And one without, so NULL-survives-as-NULL is covered in the same pass.
     createSelector({ caseId: c.id, pattern: 'legacy', isRegex: false })
 
@@ -499,6 +499,44 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
     expect(row.consent_suppression).toBeNull()
     expect(row.format).toBe('html')
   })
+
+  // #1069: an archive row may predate the columns, or carry a value edited by hand. Neither is
+  // stored as a provenance claim the app cannot read.
+  it('a selector match row without readable provenance imports with null in both columns', async () => {
+    await initDatabase(':memory:')
+    const target = createCase({ name: 'Target', description: '', type: 'custom' })
+    const sel = createSelector({ caseId: target.id, pattern: 'x' })
+    const capture = (id: string) =>
+      insertCapture({
+        id,
+        caseId: target.id,
+        url: `https://${id}`,
+        title: id,
+        hash: id,
+        timestamp: '2026-01-01T00:00:00Z'
+      })
+    const [oldEpoch, edited] = [capture('old'), capture('edited')]
+    const identity: ImportCtx = { ...ctx, newCaseId: target.id, mapId: (id) => id }
+
+    withTransaction(() => {
+      importSelectorMatchRows(
+        [
+          { selector_id: sel.id, capture_id: oldEpoch.id },
+          { selector_id: sel.id, capture_id: edited.id, matched_at: 42, match_origin: 'imported' }
+        ],
+        identity
+      )
+    })
+
+    expect(
+      collectSelectorMatchesForCase(target.id).sort((a, b) =>
+        byId({ id: a.capture_id }, { id: b.capture_id })
+      )
+    ).toEqual([
+      { selector_id: sel.id, capture_id: edited.id, matched_at: null, match_origin: null },
+      { selector_id: sel.id, capture_id: oldEpoch.id, matched_at: null, match_origin: null }
+    ])
+  })
 })
 
 // #1813: the archive itself, not the repo bulk ops. A Derived File the source
@@ -641,7 +679,7 @@ describe('case archive round-trip of the Transaction Record and PDF', () => {
     expect(zip.get(`files/${CAPTURE_ID}.warc.gz`)).toEqual(ENGINE_FILES.transactionRecord)
     expect(zip.get(`files/${CAPTURE_ID}.pdf`)).toEqual(ENGINE_FILES.pdf)
     const header = JSON.parse(zip.get('package.json')!.toString('utf-8'))
-    expect(header.schemaVersion).toBe(15)
+    expect(header.schemaVersion).toBe(16)
   })
 
   it('restores both files under the id the Capture keeps', async () => {

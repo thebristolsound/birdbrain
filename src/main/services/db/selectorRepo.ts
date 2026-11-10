@@ -1,6 +1,11 @@
 import { v4 as uuid } from 'uuid'
-import type { Selector, ActiveCaseSelectors, SelectorMatchExportRow } from '@shared/types'
-import { isSelectorOrigin } from '@shared/types'
+import type {
+  Selector,
+  ActiveCaseSelectors,
+  MatchOrigin,
+  SelectorMatchExportRow
+} from '@shared/types'
+import { isMatchOrigin, isSelectorOrigin } from '@shared/types'
 import type { CreateSelectorParams, UpdateSelectorParams } from '@shared/ipc'
 import { selectorMatchesText } from '@main/services/selectorMatch'
 import { getDb, type ImportCtx } from '@main/services/db/core'
@@ -150,6 +155,12 @@ export function listActiveSelectors(caseId?: string): ActiveCaseSelectors[] {
 
 // --- Selector Matches ---
 
+// OR IGNORE keeps a row that already exists as it was: a later pass that finds
+// the same match again leaves the first matched_at and match_origin in place,
+// because the match was first found then (#1069).
+const INSERT_MATCH = `INSERT OR IGNORE INTO selector_matches
+  (selector_id, capture_id, matched_at, match_origin) VALUES (?, ?, ?, ?)`
+
 /**
  * @internal - Used only by selectorLifecycle.runActiveSelectorsForCapture.
  * Renderer code must go through the lifecycle, not this function.
@@ -161,15 +172,14 @@ export function matchSelectorsForCapture(
 ): void {
   const selectors = listSelectors(caseId)
   const d = getDb()
-  const insertStmt = d.prepare(
-    'INSERT OR IGNORE INTO selector_matches (selector_id, capture_id) VALUES (?, ?)'
-  )
+  const insertStmt = d.prepare(INSERT_MATCH)
+  const matchedAt = new Date().toISOString()
 
   const run = d.transaction(() => {
     for (const sel of selectors) {
       if (!sel.enabled) continue
       if (selectorMatchesText(sel, textContent)) {
-        insertStmt.run(sel.id, captureId)
+        insertStmt.run(sel.id, captureId, matchedAt, 'capture-time')
       }
     }
   })
@@ -184,20 +194,20 @@ export function matchSelectorsForCapture(
  */
 export function matchSelectorAgainstCaptures(
   selectorId: string,
-  captureTexts: Array<{ captureId: string; text: string }>
+  captureTexts: Array<{ captureId: string; text: string }>,
+  origin: MatchOrigin
 ): void {
   const sel = getSelector(selectorId)
   if (!sel) return
 
   const d = getDb()
-  const insertStmt = d.prepare(
-    'INSERT OR IGNORE INTO selector_matches (selector_id, capture_id) VALUES (?, ?)'
-  )
+  const insertStmt = d.prepare(INSERT_MATCH)
+  const matchedAt = new Date().toISOString()
 
   const run = d.transaction(() => {
     for (const { captureId, text } of captureTexts) {
       if (selectorMatchesText(sel, text)) {
-        insertStmt.run(selectorId, captureId)
+        insertStmt.run(selectorId, captureId, matchedAt, origin)
       }
     }
   })
@@ -400,11 +410,21 @@ export function importSelectorRows(rows: Record<string, unknown>[], ctx: ImportC
   }
 }
 
+// Keeps the provenance the archive carries rather than stamping the import: the
+// match was found when and how the exporter recorded it. A row from an archive
+// written before schemaVersion 16 carries neither key and lands NULL in both; a
+// value the app cannot read, such as a hand-edited origin, lands NULL too.
 export function importSelectorMatchRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
   const insert = getDb().prepare(
-    'INSERT INTO selector_matches (selector_id, capture_id) VALUES (?, ?)'
+    `INSERT INTO selector_matches (selector_id, capture_id, matched_at, match_origin)
+     VALUES (?, ?, ?, ?)`
   )
   for (const sm of rows) {
-    insert.run(ctx.mapId(sm.selector_id as string), ctx.mapId(sm.capture_id as string))
+    insert.run(
+      ctx.mapId(sm.selector_id as string),
+      ctx.mapId(sm.capture_id as string),
+      typeof sm.matched_at === 'string' ? sm.matched_at : null,
+      isMatchOrigin(sm.match_origin) ? sm.match_origin : null
+    )
   }
 }

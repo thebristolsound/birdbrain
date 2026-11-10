@@ -90,6 +90,13 @@ function parse(body: Record<string, unknown>) {
 
 const PASSIVE_METHOD = { method: 'launched-passive' }
 
+// A Duplicate names its source and when it was copied (#1000).
+const DUPLICATE_METHOD = {
+  method: 'duplicate',
+  duplicateOfCaptureId: 'src',
+  duplicatedAt: '2026-10-31T12:30:00.000Z'
+}
+
 function messages(body: Record<string, unknown>): string[] {
   return parse(body).error?.issues.map((issue) => issue.message) ?? []
 }
@@ -239,7 +246,7 @@ describe('manifest schema 7 — the schema', () => {
   })
 
   it('refuses a passive rule unless the method is launched-passive or duplicate', () => {
-    expect(parse({ ...PASSIVE_CAPTURE_BODY, method: 'duplicate' }).success).toBe(true)
+    expect(parse({ ...PASSIVE_CAPTURE_BODY, ...DUPLICATE_METHOD }).success).toBe(true)
     for (const method of ['launched', 'extension', 'background', undefined]) {
       expect(messages({ ...PASSIVE_CAPTURE_BODY, method }), String(method)).toEqual([
         '`passiveRule` requires method `launched-passive` or `duplicate`'
@@ -364,9 +371,10 @@ describe('manifest schema 7 — the schema', () => {
       const record = withTransactionRecord(SCHEMA_6_ENGINE_BODY, { present: false, reason })
       expect(parse(record).success).toBe(true)
     }
-    for (const method of ['extension', 'background', 'duplicate']) {
+    for (const method of ['extension', 'background']) {
       expect(parse({ ...SCHEMA_6_ENGINE_BODY, method }).success, method).toBe(true)
     }
+    expect(parse({ ...SCHEMA_6_ENGINE_BODY, ...DUPLICATE_METHOD }).success).toBe(true)
   })
 
   it('refuses a Persona label without its id, with a named error', () => {
@@ -577,7 +585,7 @@ describe('manifest schema 7 — the app verifier', () => {
       [capture({ method: 'background' }), 2],
       [capture({ method: 'extension', exhibitNumber: 3 }), 3],
       [capture({ egressKind: 'proxy' }), 5],
-      [capture({ method: 'duplicate', boundTlsAbsent: 'not-https' }), 6],
+      [capture({ ...DUPLICATE_METHOD, boundTlsAbsent: 'not-https' }), 6],
       [capture(inventoryWith({ transactionRecord: { present: false, reason: 'failed' } })), 6],
       [exhibit(), 3],
       [exhibit({ memberCode: 'AB' }), 4]

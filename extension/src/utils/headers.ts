@@ -42,9 +42,10 @@ export interface CachedResponse {
 // The status is sent so the app can anchor it into the signed manifest entry
 // instead of the constant 200 every capture request used to carry. A capture
 // whose response was never seen — the extension started after the page loaded,
-// or a same-document navigation to another path or query served no new
-// response — sends no status at all, and the app records the status as unknown. That is the honest reading:
-// an absent status means this build could not observe one.
+// or a same-document navigation to a different canonical URL served no new
+// response — sends no status at all, and the app records the status as
+// unknown. That is the honest reading: an absent status means this build
+// could not observe one.
 export interface CaptureResponseFacts {
   headers?: Record<string, string>
   httpStatus?: number

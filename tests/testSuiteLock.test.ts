@@ -10,7 +10,7 @@ import {
   writeFileSync
 } from 'fs'
 import { tmpdir } from 'os'
-import { join, resolve } from 'path'
+import { dirname, join, resolve } from 'path'
 import { pathToFileURL } from 'url'
 import {
   HELD_ENV,
@@ -75,9 +75,14 @@ beforeEach(() => {
   // git prints canonical paths, so a symlinked temporary directory (macOS /var) must not differ.
   root = realpathSync(mkdtempSync(join(tmpdir(), 'suite-lock-')))
   dir = join(root, LOCK_NAME)
+  // git answers from an exported GIT_DIR, or from a repository the temporary directory sits in,
+  // before it looks at these scratch directories.
+  vi.stubEnv('GIT_DIR', undefined)
+  vi.stubEnv('GIT_CEILING_DIRECTORIES', dirname(root))
 })
 
 afterEach(() => {
+  vi.unstubAllEnvs()
   rmSync(root, { recursive: true, force: true })
 })
 

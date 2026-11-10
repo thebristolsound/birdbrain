@@ -468,8 +468,8 @@ describe('the background job pool', () => {
     await vi.waitFor(() => expect(rendering).toHaveLength(2))
 
     expect(svc.cancel({ batchId })).toEqual({ cancelled: 2, refused: 0 })
-    // Both are already ending, so a second cancel refuses each.
-    expect(svc.cancel({ batchId })).toEqual({ cancelled: 0, refused: 2 })
+    // Both are ending cancelled, so a second cancel during their wind-down counts each so.
+    expect(svc.cancel({ batchId })).toEqual({ cancelled: 2, refused: 0 })
     await svc.idle()
     expect([a, b].map(stateOf)).toEqual(['cancelled', 'cancelled'])
 

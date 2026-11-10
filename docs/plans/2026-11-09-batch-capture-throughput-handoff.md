@@ -19,14 +19,14 @@ asked for the slices to be filed and then built, in a Claude Code session on 202
 | --- | --- | --- | --- | --- |
 | 1 | #2127 | `feat/background-jobs-instrumentation` | #2133 (draft) | reviewed, fixed, preflight pass at `c3d4a40a` |
 | 2 | #2128 | `feat/background-jobs-ids` | #2135 (draft, base slice 1) | reviewed, fixed, preflight pass at `98dbaf1d`, screenshots in body |
-| 3 | #2129 | `feat/background-jobs-table` | | built at `f8bfbc75`; fix round for resume order in progress |
-| 4 | #2130 | | | not started |
+| 3 | #2129 | `feat/background-jobs-table` | #2141 (draft, base slice 2) | two review rounds, preflight pass at `0165b0b0`, screenshots in body |
+| 4 | #2130 | `feat/background-jobs-controls` | | in progress |
 | 5 | #2131 | | | not started |
 | 6 | #2132 | | | not started |
 
 ## Next command
 
-Finish slice 3's fix round, review it, take held-state screenshots with `~/bg-jobs-slice3-held-state.mjs`, open its PR with `--base feat/background-jobs-ids`, then cut `feat/background-jobs-controls` for slice 4.
+Build slice 4 on `feat/background-jobs-controls`; open its PR with `--base feat/background-jobs-table`. Slices 1 and 2 PR bodies carry preflight blocks for their old heads (`c3d4a40a`, `98dbaf1d`); after their CI finishes at `d5e4d0a3` and `73ed4e66`, refresh their Verification blocks with `scripts/verification-from-ci.sh <n>`.
 
 ## Decisions taken
 
@@ -45,7 +45,14 @@ Finish slice 3's fix round, review it, take held-state screenshots with `~/bg-jo
 - **Restore timing (slice 3):** the design said a restore takes effect at the next start; it
   re-opens the database at once, so the startup pass also runs after a successful restore.
 
+- **Pre-render exclusion check:** moved from slice 4 into slice 3, the first slice where a job can
+  wait across a session.
+- **Stack upkeep:** fixes to a lower slice are merged up (no rebase, no force push).
+
 ## Found, not fixed
+
+- On `origin/main`, the app does not exit after quit while a background job waits on a server
+  that never answers; slice 3's build exits normally.
 
 - A Recapture waiting in the queue shows no in-progress state, so a second click queues a duplicate. Pre-existing; the slice 2 `queued` event now carries the data to fix it.
 

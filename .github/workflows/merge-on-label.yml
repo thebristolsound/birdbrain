@@ -272,7 +272,9 @@ jobs:
           # A removal that fails fails the job, but only after auto-merge is off (#1753).
           failed=0
           # A label list that cannot be read counts as every label present: try all, then fail.
-          if ! jq -e 'type == "array"' <<< "${LABELS:-}" > /dev/null; then
+          # Slurped, because `jq -e` alone reports on the last of several values.
+          if ! jq -e -s 'length == 1 and (.[0] | type == "array" and all(type == "string"))' \
+            <<< "${LABELS:-}" > /dev/null; then
             echo "::error::could not read the label list"
             failed=1
             LABELS='["approved", "merge", "break-glass"]'

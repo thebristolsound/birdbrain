@@ -850,7 +850,8 @@ exit 0
     expect(removed(['next: merge', 'not-break-glass'])).toEqual([])
   })
 
-  it.each(['not json', '', 'null', '{"merge":true}'])(
+  // The last two are JSON that is not one list of names: two values, and a list holding a list.
+  it.each(['not json', '', 'null', '{"merge":true}', '["merge"] []', '[1,null,["merge"]]'])(
     'tries every label, turns auto-merge off and fails when the label list is unreadable: %j',
     (labels) => {
       const r = withdraw(labels, { armed: true })

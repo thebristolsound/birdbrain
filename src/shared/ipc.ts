@@ -14,6 +14,7 @@ import type {
   BugReportResult,
   Capture,
   CaptureLinks,
+  MhtmlPartsListing,
   CaptureAnnotations,
   CaptureEvent,
   Case,
@@ -132,6 +133,7 @@ export const IPC_CHANNELS = {
   CAPTURES_GET_MHTML_URL: 'captures:getMhtmlUrl',
   CAPTURES_GET_HTML_URL: 'captures:getHtmlUrl',
   CAPTURES_GET_LINKS: 'captures:getLinks',
+  CAPTURES_LIST_MHTML_PARTS: 'captures:listMhtmlParts',
   CAPTURES_DELETE_MANY: 'captures:deleteMany',
   CAPTURES_DUPLICATE: 'captures:duplicate',
   CAPTURES_SET_FAVORITE_MANY: 'captures:setFavoriteMany',
@@ -1058,6 +1060,7 @@ export interface IpcInvokeContract {
   'captures:getMhtmlUrl': { args: [captureId: string]; result: string | null }
   'captures:getHtmlUrl': { args: [captureId: string]; result: string | null }
   'captures:getLinks': { args: [captureId: string]; result: CaptureLinks | null }
+  'captures:listMhtmlParts': { args: [captureId: string]; result: MhtmlPartsListing | null }
   'captures:testPipeline': { args: []; result: SelfTestResult }
   'captures:testHttp': { args: []; result: SelfTestResult }
   'captures:deleteMany': { args: [payload: CaptureBatchPayload]; result: BatchDeleteResult }

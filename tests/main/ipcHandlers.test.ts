@@ -172,6 +172,7 @@ import type {
   LaunchedBrowserOption,
   LaunchedBrowserStatus,
   LogEntry,
+  MhtmlPartsListing,
   RecentActivityEvent,
   SessionRecord,
   TrustedTime
@@ -923,6 +924,28 @@ describe('ipcHandlers — captures', () => {
   it('answers null links for a capture with no MHTML and for an unknown one', async () => {
     expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_LINKS, captureId))).toBeNull()
     expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_LINKS, 'missing'))).toBeNull()
+  })
+
+  // #991. The reader has its own known answers; this pins the channel's wiring.
+  it('answers null MHTML parts for an unknown capture and for one with no MHTML', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_LIST_MHTML_PARTS, 'missing'))).toBeNull()
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_LIST_MHTML_PARTS, captureId))).toBeNull()
+  })
+
+  it('lists the parts of the stored MHTML a capture names', async () => {
+    const mhtmlPath = join(caseId, 'parts-fixture.mhtml')
+    const cap = seedCapture({ format: 'mhtml', mhtmlPath })
+    writeFileSync(
+      defaultCaptureStore.resolveAbsolute(mhtmlPath),
+      readFileSync(join(__dirname, 'services/fixtures/mhtml-parts.mhtml'))
+    )
+
+    const listing = expectOk<MhtmlPartsListing | null>(
+      await invoke(IPC_CHANNELS.CAPTURES_LIST_MHTML_PARTS, cap.id)
+    )
+    if (listing?.status !== 'listed') throw new Error(`expected a listing, got ${listing?.status}`)
+    expect(listing.totalParts).toBe(6)
+    expect(listing.snapshotLocation).toBe('https://example.com/report')
   })
 
   // #906. The legacy viewer is a <webview> that loads the artefact by file URL, so

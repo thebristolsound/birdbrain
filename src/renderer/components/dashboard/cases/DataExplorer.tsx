@@ -132,8 +132,8 @@ function ReadFailed({
   )
 }
 
-// Mounted only while its tab shows, so the archive is read when the tab is shown and again on
-// every later showing, never on a row click alone (#991).
+// Mounted only while its tab shows, so the archive is read every time the tab is shown,
+// including when it leads the strip as soon as a row is selected (#991).
 function MhtmlPartsRead({ captureId, anchored }: { captureId: string; anchored: boolean }) {
   const { data, isPending, isError, error, refetch } = useQuery(
     captureMhtmlPartsQueryOptions(captureId)

@@ -546,12 +546,17 @@ export function mergeVerify(state, output, ids) {
   }
   if (!output.source_review_complete || output.not_checked.length)
     return { ...state, verifyFailedFor: ids.join(',') }
-  const claudeVerify = { ...(state.claudeVerify ?? {}) }
+  // A pass that rules twice on one finding keeps the ruling that blocks, whatever the order, as
+  // parseRulings does for Codex: a later refutation never erases a confirmation or an unclear.
+  const weight = { REFUTED: 0, UNCLEAR: 1, CONFIRMED: 2 }
+  const ruled = {}
   for (const r of output.rulings) {
     if (!ids.includes(r.id)) continue
-    if (!['CONFIRMED', 'REFUTED', 'UNCLEAR'].includes(r.ruling)) continue
-    claudeVerify[r.id] = { ruling: r.ruling, reason: String(r.reason ?? '').slice(0, 300) }
+    if (!Object.hasOwn(weight, r.ruling)) continue
+    if (ruled[r.id] && weight[ruled[r.id].ruling] >= weight[r.ruling]) continue
+    ruled[r.id] = { ruling: r.ruling, reason: String(r.reason ?? '').slice(0, 300) }
   }
+  const claudeVerify = { ...(state.claudeVerify ?? {}), ...ruled }
   // A ruling the pass left out is a failed check, not a reason to start another paid pass.
   const missing = ids.filter((id) => !claudeVerify[id])
   return {

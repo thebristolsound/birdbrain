@@ -667,6 +667,32 @@ describe('decide', () => {
     expect(decide(facts({ state: p2only, codexFindings: [p2] })).status).toBe('success')
   })
 
+  it.each([
+    ['CONFIRMED', 'REFUTED', 'Claude confirmed 1 blocking Codex finding(s)'],
+    ['REFUTED', 'CONFIRMED', 'Claude confirmed 1 blocking Codex finding(s)'],
+    ['UNCLEAR', 'REFUTED', 'the Claude check could not decide 1 blocking Codex finding(s)'],
+    ['REFUTED', 'UNCLEAR', 'the Claude check could not decide 1 blocking Codex finding(s)']
+  ])(
+    'keeps a blocking finding red when one pass rules on it twice: %s then %s',
+    (first, second, description) => {
+      const state = mergeVerify(
+        reviewed(),
+        {
+          ...sourceContract,
+          rulings: [
+            { id: 11, ruling: first, reason: 'r' },
+            { id: 11, ruling: second, reason: 'r' }
+          ]
+        },
+        [11]
+      )
+      expect(decide(facts({ state, codexFindings: [p1] }))).toMatchObject({
+        status: 'failure',
+        description
+      })
+    }
+  )
+
   it('fails malformed rulings instead of coercing them into a completed review', () => {
     const state = mergeVerify(
       reviewed(),

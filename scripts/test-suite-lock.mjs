@@ -10,7 +10,9 @@
 // gone is stale; on Linux a pid also counts as gone once its start time no longer matches. A
 // waiter clears a stale lock only while holding a second lock (<lock>.reap), after reading the
 // owner again, so it never removes a lock that another waiter has taken since. A command started
-// under a process that already holds the lock (HELD_ENV is set) runs without waiting.
+// under the process that holds the lock (HELD_ENV names the holder's pid) runs without waiting.
+// Outside a repository there is nowhere to put the lock: the command runs without it, and the
+// script says so.
 import { execFileSync, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import {
@@ -266,9 +268,14 @@ const main = async () => {
   const [command, ...args] = process.argv.slice(2)
   if (!command) throw new Error('usage: test-suite-lock <command> [args...]')
   const cwd = process.cwd()
-  const dir = process.env[HELD_ENV] ? null : lockPath(cwd)
+  const dir = lockPath(cwd)
+  if (!dir) log(`no git directory found from ${cwd}; running the command without the lock`)
+  // HELD_ENV skips the lock only for a command the current holder started. A value left in the
+  // environment by an earlier run, or set by hand, waits like any other run.
+  const heldBy = process.env[HELD_ENV]
+  const nested = Boolean(dir && heldBy && String(readOwner(dir)?.pid) === heldBy)
   const self = { pid: process.pid, pidStart: startTime(process.pid), cwd }
-  const owner = dir ? await acquire(dir, self) : null
+  const owner = dir && !nested ? await acquire(dir, self) : null
   const unlock = () => owner && release(dir, owner)
   process.on('exit', unlock)
 
@@ -277,7 +284,8 @@ const main = async () => {
   const child = spawn(command, args, {
     stdio: 'inherit',
     shell: process.platform === 'win32' && !isAbsolute(command),
-    env: { ...process.env, [HELD_ENV]: String(process.pid) }
+    // A nested run passes the holder's pid on unchanged, so a run nested in it still matches.
+    env: owner ? { ...process.env, [HELD_ENV]: String(process.pid) } : process.env
   })
   if (owner && child.pid) recordChild(dir, owner, child.pid)
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {

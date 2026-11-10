@@ -361,15 +361,17 @@ describe('the command line', () => {
     return env
   }
 
+  // Exits 7 when the lock is held by the wrapper that started this command, with it recorded.
+  const probe = (lock: string) =>
+    `const o = JSON.parse(require('fs').readFileSync(${JSON.stringify(join(lock, 'owner.json'))}, 'utf8'));` +
+    `const ok = o.pid === Number(process.env.${HELD_ENV}) && o.childPid === process.pid;` +
+    `process.exit(ok ? 7 : 1)`
+
   it('holds the lock with the child recorded while the command runs, then releases', async () => {
     git(root, 'init', '-q')
     const lock = join(root, '.git', LOCK_NAME)
-    const probe =
-      `const o = JSON.parse(require('fs').readFileSync(${JSON.stringify(join(lock, 'owner.json'))}, 'utf8'));` +
-      `const ok = o.pid === Number(process.env.${HELD_ENV}) && o.childPid === process.pid;` +
-      `process.exit(ok ? 7 : 1)`
     // recordChild runs just after spawn, so the probe may read the record before it lands.
-    const waitForChild = `setTimeout(() => { ${probe} }, 200)`
+    const waitForChild = `setTimeout(() => { ${probe(lock)} }, 200)`
     const { status } = await run(root, unheld(), waitForChild)
     expect(status).toBe(7)
     expect(existsSync(lock)).toBe(false)
@@ -388,5 +390,25 @@ describe('the command line', () => {
     expect(status).toBe(0)
     expect(stderr).toBe('')
     expect(readOwner(lock)).toEqual(held)
+  })
+
+  it('takes the lock when the held variable names a process that does not hold it', async () => {
+    git(root, 'init', '-q')
+    const lock = join(root, '.git', LOCK_NAME)
+    const { status } = await run(
+      root,
+      { ...unheld(), [HELD_ENV]: '1' },
+      `setTimeout(() => { ${probe(lock)} }, 200)`
+    )
+    expect(status).toBe(7)
+    expect(existsSync(lock)).toBe(false)
+  })
+
+  it('says so when it finds no git directory and runs the command without the lock', async () => {
+    const { status, stderr } = await run(root, unheld(), 'process.exit(7)')
+    expect(status).toBe(7)
+    expect(stderr).toBe(
+      `test-suite-lock: no git directory found from ${root}; running the command without the lock\n`
+    )
   })
 })

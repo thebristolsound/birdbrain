@@ -13,12 +13,14 @@ import { initSettings, updateSettings } from '@main/services/settings'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import type { BackgroundJobView } from '@shared/ipc'
+import type { CaptureEvent } from '@shared/types'
 import {
   MEMORY_GATE_RETRY_MS,
   MIN_FREE_MEMORY_BYTES,
   jobSite
 } from '@main/services/backgroundJobPool'
 import {
+  RESTORE_REMOVED_JOB_ERROR,
   RecaptureCancelled,
   createRecaptureService,
   type RenderedPage,
@@ -135,17 +137,19 @@ describe('the background job pool', () => {
     {
       concurrency = 2,
       freeMemory = () => PLENTY,
-      emitJob
+      emitJob,
+      emitEvent = () => {}
     }: {
       concurrency?: number
       freeMemory?: () => number
       emitJob?: (job: BackgroundJobView) => void
+      emitEvent?: (event: CaptureEvent) => void
     } = {}
   ) {
     return createRecaptureService({
       renderPage,
       captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
-      emitEvent: () => {},
+      emitEvent,
       emitNewCapture: () => {},
       emitJob,
       timeoutMs: 45_000,
@@ -573,7 +577,8 @@ describe('the background job pool', () => {
 
     it('leaves both running jobs to end as they would have, and interrupts a running row of no job', async () => {
       const { renderPage, rendering, finish } = heldRenders()
-      const svc = makeService(renderPage)
+      const events: CaptureEvent[] = []
+      const svc = makeService(renderPage, { emitEvent: (event) => events.push(event) })
       const urls = ['https://example.com/a', 'https://example.org/b']
       const { jobIds } = svc.enqueue(urls.map((url) => ({ url, caseId })))
       await vi.waitFor(() => expect(rendering).toEqual(urls))
@@ -596,6 +601,35 @@ describe('the background job pool', () => {
       finish(urls[1])
       await svc.idle()
       expect(jobIds.map(stateOf)).toEqual(['stored', 'stored'])
+      // The restored copy holds all three rows, so the restore removed none of them.
+      expect(events.map(({ error }) => error)).not.toContain(RESTORE_REMOVED_JOB_ERROR)
+    })
+
+    it('leaves a running job whose Case the restored copy lacks to report its own end', async () => {
+      const { renderPage, rendering, finish } = heldRenders()
+      const events: CaptureEvent[] = []
+      const svc = makeService(renderPage, { emitEvent: (event) => events.push(event) })
+      // The copy is taken before the job's Case exists, so the write-back gives the job no row.
+      getDb().exec(`VACUUM INTO '${backup}'`)
+      const later = createCase({ name: 'Later' }).id
+      ensureCaseDir(later)
+      const {
+        jobIds: [id]
+      } = svc.enqueue([{ url: 'https://example.com/a', caseId: later }])
+      expect(rendering).toEqual(['https://example.com/a'])
+
+      const before = svc.beginRestore()
+      closeDatabase()
+      copyFileSync(backup, dbPath)
+      await initDatabase(dbPath)
+      svc.finishRestore(before)
+      expect(backgroundJobRepo.getJob(id)).toBeUndefined()
+
+      finish('https://example.com/a')
+      await svc.idle()
+      const ends = events.filter(({ jobId, type }) => jobId === id && type === 'failed')
+      expect(ends).toHaveLength(1)
+      expect(ends[0].error).not.toBe(RESTORE_REMOVED_JOB_ERROR)
     })
   })
 })

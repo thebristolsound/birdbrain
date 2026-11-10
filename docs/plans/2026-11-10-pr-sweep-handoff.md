@@ -233,3 +233,10 @@ Every pull request the fleet covers fails its check for the policy reason that p
 - The blocker is fixed in `024585b0`: comment links in the Files changed form read as the comment, and a comment-like fragment in no supported form fails. The red run before the fix failed 30 of 63 cases. Two advisories became fixes: an unreadable label list now withdraws every label and fails the job, and the test stub applies the real query. The across-checks ruling order is unchanged and stays a maintainer decision.
 - Replaced the description from `/tmp/pr2160-fix-r4/body.md` and posted the four reply files as the machine account, starting with the [verdict replies](https://github.com/thebristolsound/birdbrain/pull/2160#issuecomment-6782018526). The review status is pending.
 - A delta review against `39fd0763ce96` is running. It also runs the stricter link rule over every open pull request description, because a legitimate link that now fails would fail every fleet pass once this change is on main.
+
+## Fleet repair round four verdict
+
+- Posted the [independent review of 2160](https://github.com/thebristolsound/birdbrain/pull/2160#issuecomment-6782336182) at `0cab8a06791b` and failed its review status. The Files changed link fix is verified: 23 mutations each failed a test, and no link in 38 open descriptions, 280 open issues or 400 merged descriptions is newly rejected.
+- One blocker remains, older than the fix round: a comment-number pointer is read only as an issue comment. Four of the eight pointers in the open issues name inline review comments. The input preparation exits 1 for pull requests 2175 and 2145, so every fleet pass on both would fail once this change is on main. Main today reads the closed issue and proceeds, so merging the unfixed head would be a regression for those two.
+- The same implementer has the second fix round in its existing checkout, with the same single locked verification and fast-forward rules. It returns its files under `/tmp/pr2160-fix-r5/`.
+- Next coordinator actions for 2160: post the returned body and replies, then send the new head to a delta review against `0cab8a06791b`.

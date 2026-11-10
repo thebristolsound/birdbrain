@@ -296,7 +296,8 @@ slot, the pattern `withCaseSlot` already applies to deletes (#394). The hashing 
 Chain fetch before it, which can take up to 10 s, stay outside the slot. The section inside it
 writes files and one row, so the slot costs little. Slice 5 moved `withCaseSlot` to module scope in
 `captureLifecycle.ts`, so an ingest into a Case also waits for that Case's deletes and duplicates,
-and they wait for it.
+and they wait for it. The ingest's callback into the seam is synchronous, so a failed ingest
+truncates in the same turn that it appended.
 
 With parallel renders, Manifest order is ingest order, and a Capture's `timestamp` is its job's
 start. Two adjacent entries can therefore carry timestamps out of order: job B starts after job A

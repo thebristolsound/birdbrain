@@ -708,13 +708,13 @@ function stepScript(workflow: string, job: string, step: string): string {
 }
 
 describe.skipIf(!HAS_JQ)('a push to a PR', () => {
-  const withdraw = (labels: string[], fail = false) => {
+  const withdraw = (labels: string[], { fail = false, armed = false } = {}) => {
     const dir = mkdtempSync(join(tmpdir(), 'fleet-withdraw-'))
     try {
       const gh = join(dir, 'gh')
       writeFileSync(
         gh,
-        '#!/usr/bin/env bash\necho "$*" >> "$GH_LOG"\nif [ "${WITHDRAW_FAIL:-}" = 1 ] && [ "$1 $2" = "pr edit" ]; then echo HTTP-502 >&2; exit 1; fi\n[ "$1 $2" = "pr view" ] && echo false\nexit 0\n'
+        '#!/usr/bin/env bash\necho "$*" >> "$GH_LOG"\nif [ "${WITHDRAW_FAIL:-}" = 1 ] && [ "$1 $2" = "pr edit" ]; then echo HTTP-502 >&2; exit 1; fi\n[ "$1 $2" = "pr view" ] && echo "$AUTO_MERGE"\nexit 0\n'
       )
       chmodSync(gh, 0o755)
       const log = join(dir, 'log')
@@ -732,30 +732,35 @@ describe.skipIf(!HAS_JQ)('a push to a PR', () => {
             PATH: `${dir}:${process.env.PATH}`,
             GH_LOG: log,
             WITHDRAW_FAIL: fail ? '1' : '0',
+            AUTO_MERGE: armed ? 'true' : 'false',
             PR: '7',
             GITHUB_REPOSITORY: REPO,
             LABELS: JSON.stringify(labels)
           }
         }
       )
-      if (fail) {
-        expect(result.status).not.toBe(0)
-        expect(result.stderr).toContain('HTTP-502')
-        return []
+      const calls = readFileSync(log, 'utf8').split('\n')
+      return {
+        status: result.status,
+        stderr: result.stderr,
+        disarmed: calls.some((l) => l.startsWith('pr merge 7 ') && l.includes('--disable-auto')),
+        removed: calls
+          .filter((l) => l.includes('--remove-label'))
+          .map((l) => l.split('--remove-label ')[1].split(' ')[0])
       }
-      expect(result.status, result.stderr).toBe(0)
-      return readFileSync(log, 'utf8')
-        .split('\n')
-        .filter((l) => l.includes('--remove-label'))
-        .map((l) => l.split('--remove-label ')[1].split(' ')[0])
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
   }
+  const removed = (labels: string[]) => {
+    const r = withdraw(labels)
+    expect(r.status, r.stderr).toBe(0)
+    return r.removed
+  }
 
   it('takes the break-glass override off with the sign-off and the merge request', () => {
-    expect(withdraw(['break-glass', 'agent-pr'])).toEqual(['break-glass'])
-    expect(withdraw(['approved', 'merge', 'break-glass'])).toEqual([
+    expect(removed(['break-glass', 'agent-pr'])).toEqual(['break-glass'])
+    expect(removed(['approved', 'merge', 'break-glass'])).toEqual([
       'approved',
       'merge',
       'break-glass'
@@ -763,11 +768,27 @@ describe.skipIf(!HAS_JQ)('a push to a PR', () => {
   })
 
   it('fails the job when label withdrawal fails', () => {
-    withdraw(['break-glass'], true)
+    const r = withdraw(['break-glass'], { fail: true })
+    expect(r.status).not.toBe(0)
+    expect(r.stderr).toContain('HTTP-502')
+  })
+
+  // #1753: an armed auto-merge left on after a push merges a commit nobody asked to merge.
+  it('still turns auto-merge off, and tries every label, when a removal fails', () => {
+    const r = withdraw(['approved', 'merge', 'break-glass'], { fail: true, armed: true })
+    expect(r.removed).toEqual(['approved', 'merge', 'break-glass'])
+    expect(r.disarmed).toBe(true)
+    expect(r.status).not.toBe(0)
+  })
+
+  it('turns auto-merge off after a clean withdrawal', () => {
+    const r = withdraw(['merge'], { armed: true })
+    expect(r.status, r.stderr).toBe(0)
+    expect(r.disarmed).toBe(true)
   })
 
   it('leaves labels that only contain a withdrawn name', () => {
-    expect(withdraw(['next: merge', 'not-break-glass'])).toEqual([])
+    expect(removed(['next: merge', 'not-break-glass'])).toEqual([])
   })
 })
 

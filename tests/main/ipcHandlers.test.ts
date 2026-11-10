@@ -2314,7 +2314,12 @@ describe('ipcHandlers — settings', () => {
   // answers only once it has.
   it('runs the held signing work when a save takes the operator name from blank to set', async () => {
     const order: string[] = []
+    let release = (): void => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
     const onOperatorNameSet = vi.fn(async () => {
+      await held
       order.push('held work')
     })
     const selectorLifecycle = createSelectorLifecycle({ emitRematched: vi.fn() })
@@ -2336,6 +2341,10 @@ describe('ipcHandlers — settings', () => {
     const saved = invoke(IPC_CHANNELS.SETTINGS_UPDATE, { operatorName: 'Agent Smith' }).then(() =>
       order.push('answered')
     )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(onOperatorNameSet).toHaveBeenCalledTimes(1)
+    expect(order).toEqual([])
+    release()
     await saved
     expect(order).toEqual(['held work', 'answered'])
 

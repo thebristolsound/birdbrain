@@ -788,7 +788,9 @@ const ManifestCaptureEntrySchema = z
   // The four shapes across the capture engine's fields that contradict
   // themselves; the MHTML counts and the Scroll-to-load record each carry one
   // more refine of their own. A released verifier cannot be recalled, so no
-  // other rule is added: none ties a field to a Capture Method, for one.
+  // other rule is added: none ties a capture engine field to a Capture Method.
+  // The recapture and duplicate links are tied to theirs, at the end of this
+  // schema, which says why that is safe.
   .refine(
     (entry) =>
       (entry.transactionRecordHash !== undefined) ===
@@ -856,6 +858,36 @@ const ManifestCaptureEntrySchema = z
   )
   .refine(personaFieldsNeedSchema7.check, personaFieldsNeedSchema7.issue)
   .refine(personaLabelNeedsId.check, personaLabelNeedsId.issue)
+  // The recapture and duplicate links name the method that makes them (#1000),
+  // at every schema version: every released writer put `supersedesCaptureId`
+  // only on a background Capture and the duplicate pair only, and whole, on a
+  // Duplicate, so no entry a released build signed is refused. A background
+  // Capture without the link is a first-time one, from Add URLs, and is not
+  // refused.
+  .refine((entry) => entry.supersedesCaptureId === undefined || entry.method === 'background', {
+    message: '`supersedesCaptureId` requires method `background`',
+    path: ['supersedesCaptureId']
+  })
+  .refine((entry) => duplicateFieldCount(entry) === 0 || entry.method === 'duplicate', {
+    message: '`duplicateOfCaptureId` and `duplicatedAt` require method `duplicate`',
+    path: ['method']
+  })
+  .refine((entry) => duplicateFieldCount(entry) !== 1, {
+    message: '`duplicateOfCaptureId` and `duplicatedAt` must be present together',
+    path: ['duplicateOfCaptureId']
+  })
+  .refine((entry) => entry.method !== 'duplicate' || duplicateFieldCount(entry) !== 0, {
+    message: 'method `duplicate` requires `duplicateOfCaptureId` and `duplicatedAt`',
+    path: ['duplicateOfCaptureId']
+  })
+
+function duplicateFieldCount(entry: {
+  duplicateOfCaptureId?: unknown
+  duplicatedAt?: unknown
+}): number {
+  const { duplicateOfCaptureId, duplicatedAt } = entry
+  return [duplicateOfCaptureId, duplicatedAt].filter((field) => field !== undefined).length
+}
 
 const SCHEMA_6_ABSENCE_REASONS: ReadonlySet<string> = new Set(INVENTORY_ABSENCE_REASONS)
 const LAUNCHED_METHODS: ReadonlySet<string> = new Set(LAUNCHED_CAPTURE_METHODS)

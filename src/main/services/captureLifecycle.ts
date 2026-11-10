@@ -1580,6 +1580,9 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     },
 
     async ingest(params) {
+      // Admission passes the gate's name already; recapture reaches ingest without admission.
+      const operatorName = params.operatorName.trim()
+      if (!operatorName) throw new OperatorNameRequiredError()
       const egressIsDirect = deps.egressIsDirect ?? (() => currentEgress().kind === 'direct')
       const tlsSkipped =
         params.tlsSkipped ??
@@ -1587,7 +1590,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           ? 'egress-not-direct'
           : undefined)
       const result = await ingestMhtmlCapture(
-        { ...params, tlsSkipped },
+        { ...params, operatorName, tlsSkipped },
         deps.fetchTlsCertChain ?? defaultFetchCertChain,
         store
       )

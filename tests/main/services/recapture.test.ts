@@ -684,6 +684,63 @@ describe('recapture service', () => {
     await svc.idle()
   })
 
+  // X47 (#1332): a recapture signs a `capture` entry, so it passes the operator gate like
+  // every other signing path, and is refused before it contacts the site.
+  describe('without an operator name (X47)', () => {
+    const URL = 'https://example.com/page'
+    const chainPath = (): string => join(getStorageRoot(), caseId, MANIFEST_FILENAME)
+
+    for (const blank of ['', '   ']) {
+      it(`refuses the job at enqueue and renders nothing (${JSON.stringify(blank)})`, async () => {
+        updateSettings({ operatorName: blank })
+        const render = vi.fn(fakeRender())
+        const svc = makeService(render)
+
+        const res = svc.enqueue([{ url: URL, caseId }])
+
+        expect(res).toEqual({
+          accepted: 0,
+          rejected: [{ url: URL, reason: 'Operator name required' }]
+        })
+        await svc.idle()
+        expect(render).not.toHaveBeenCalled()
+        expect(newCaptures).toEqual([])
+        expect(existsSync(chainPath())).toBe(false)
+      })
+    }
+
+    it('fails a queued job whose name was cleared before it was stored, signing nothing', async () => {
+      const svc = makeService(async (url, opts) => {
+        updateSettings({ operatorName: ' ' })
+        return fakeRender()(url, opts)
+      })
+
+      expect(svc.enqueue([{ url: URL, caseId }]).accepted).toBe(1)
+      await svc.idle()
+
+      expect(newCaptures).toEqual([])
+      expect(listCaptures(caseId)).toEqual([])
+      expect(events.find((e) => e.type === 'failed')?.error).toBe('Operator name required')
+      expect(existsSync(chainPath())).toBe(false)
+    })
+
+    it('signs the trimmed name', async () => {
+      updateSettings({ operatorName: '  Op  ' })
+      const svc = makeService(fakeRender())
+
+      svc.enqueue([{ url: URL, caseId }])
+      await svc.idle()
+
+      expect(newCaptures).toHaveLength(1)
+      const [entry] = readFileSync(chainPath(), 'utf-8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line) as { type: string; operatorName: string })
+        .filter((line) => line.type === 'capture')
+      expect(entry.operatorName).toBe('Op')
+    })
+  })
+
   // #400: the per-case exclusion list blocks every capture route, manual
   // included. Recapture is a producer the capture server never sees, so it
   // enforces the list itself — at enqueue for the requested URL, and again

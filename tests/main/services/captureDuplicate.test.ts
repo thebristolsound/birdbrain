@@ -860,13 +860,14 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
     expect(rows[0].matched_at).toEqual(expect.any(String))
   })
 
-  // Pins runPostCaptureWork's shared no-text guard as duplicate reaches it.
-  it('runs no selectors for a copy whose source has no text', async () => {
-    const runActiveSelectorsForCapture = vi.fn()
-    const stubbed = createCaptureLifecycle({
-      selectorLifecycle: { runActiveSelectorsForCapture } as unknown as SelectorLifecycle
+  // No .txt is written for empty text, so the copy has none and receives undefined. Ingest
+  // evaluates it as '' like a rescan does, so the source and its copy both match ^$ (#1084).
+  it('matches ^$ against both an empty-text source and its copy', async () => {
+    const selector = createSelector({ caseId, pattern: '^$', isRegex: true })
+    const matching = createCaptureLifecycle({
+      selectorLifecycle: createSelectorLifecycle({ emitRematched: vi.fn() })
     })
-    const { capture: textless } = await stubbed.ingest({
+    const { capture: textless } = await matching.ingest({
       caseId,
       url: 'https://example.com/no-text',
       title: 'No text',
@@ -882,15 +883,19 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
       toolVersion: '0.1.0'
     })
     await new Promise<void>((resolve) => setImmediate(resolve))
-    // The source's empty text is evaluated (#1084); writing no .txt for it leaves the copy none.
-    expect(runActiveSelectorsForCapture).toHaveBeenCalledWith(textless.id, caseId, '')
-    runActiveSelectorsForCapture.mockClear()
 
-    const result = await stubbed.duplicate(textless.id)
+    const result = await matching.duplicate(textless.id)
     if (result.status !== 'duplicated') throw new Error('expected a duplicate')
     await new Promise<void>((resolve) => setImmediate(resolve))
 
-    expect(runActiveSelectorsForCapture).not.toHaveBeenCalled()
+    const store = createCaptureStore({ getRoot: () => join(tempDir, 'captures') })
+    expect(existsSync(store.artifactPaths(caseId, result.capture.id, 'txt').abs)).toBe(false)
+    const matched = getDb()
+      .prepare('SELECT capture_id FROM selector_matches WHERE selector_id = ?')
+      .all(selector.id) as Array<{ capture_id: string }>
+    expect(matched.map((row) => row.capture_id).sort()).toEqual(
+      [textless.id, result.capture.id].sort()
+    )
   })
 
   it('keeps the committed entry, row and files when the post-commit mirror write fails', async () => {

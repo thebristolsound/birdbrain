@@ -727,7 +727,7 @@ describe('createCaptureLifecycle.ingest', () => {
     expect(runActive).toHaveBeenCalledWith(capture.id, caseId, 'hello extracted text')
   })
 
-  // Empty text reaches the selectors; a capture with no text does not (#1084).
+  // Ingest evaluates what a rescan reads back: '' for empty text and for no text (#1084).
   it('invokes selectorLifecycle with the empty string when textContent is empty', async () => {
     const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
     const body = Buffer.from('mhtml-body')
@@ -738,13 +738,14 @@ describe('createCaptureLifecycle.ingest', () => {
     expect(runActive).toHaveBeenCalledWith(capture.id, caseId, '')
   })
 
-  it('does NOT invoke selectorLifecycle for a received capture that has no text', async () => {
+  it('invokes selectorLifecycle with the empty string for a received capture with no text', async () => {
     const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
 
     lifecycle.processReceived({ id: 'received-1', caseId, url: 'https://example.com' }, undefined)
 
     await flushImmediate()
-    expect(runActive).not.toHaveBeenCalled()
+    expect(runActive).toHaveBeenCalledTimes(1)
+    expect(runActive).toHaveBeenCalledWith('received-1', caseId, '')
   })
 
   it('swallows a throwing selectorLifecycle and does not unhandled-reject ingest', async () => {

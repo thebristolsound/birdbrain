@@ -84,6 +84,20 @@ describe('capture_texts keeps captures_fts in sync', () => {
     expect(getCaptureTextContent(cap.id)).toBeNull()
   })
 
+  // So ingest passes '' for a capture with no text: it is what a rescan reads back (#1084).
+  it('reads a capture inserted with no text back as empty', () => {
+    const c = createCase({ name: 'C', description: '', type: 'custom' })
+    const cap = insertCapture({
+      caseId: c.id,
+      url: 'https://x.example',
+      title: 'T',
+      hash: 'h',
+      timestamp: '2026-01-01T00:00:00Z',
+      format: 'mhtml'
+    })
+    expect(getCaptureTextContent(cap.id)).toBe('')
+  })
+
   it('vacuum after deletes does not desync text linkage (implicit-rowid bug)', () => {
     const c = createCase({ name: 'C', description: '', type: 'custom' })
     const a = makeCapture(c.id, 'text of alpha', 'A')

@@ -1168,10 +1168,9 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
   ): void {
     setImmediate(() => {
       try {
-        // Empty text is evaluated; only a capture with no text at all is skipped (#1084).
-        if (textContent !== undefined) {
-          deps.selectorLifecycle.runActiveSelectorsForCapture(captureId, caseId, textContent)
-        }
+        // A capture with no text is stored with empty text, so ingest evaluates '' as a rescan
+        // would read it back (#1084).
+        deps.selectorLifecycle.runActiveSelectorsForCapture(captureId, caseId, textContent ?? '')
       } catch (err) {
         logger.error(
           'captureLifecycle',

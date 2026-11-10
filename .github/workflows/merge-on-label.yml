@@ -271,6 +271,12 @@ jobs:
           # break-glass goes too (ADR-0057): the override is for the commit it was applied on.
           # A removal that fails fails the job, but only after auto-merge is off (#1753).
           failed=0
+          # A label list that cannot be read counts as every label present: try all, then fail.
+          if ! jq -e 'type == "array"' <<< "${LABELS:-}" > /dev/null; then
+            echo "::error::could not read the label list"
+            failed=1
+            LABELS='["approved", "merge", "break-glass"]'
+          fi
           for label in approved merge break-glass; do
             if jq -e --arg l "$label" 'index($l)' <<< "$LABELS" > /dev/null; then
               if gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --remove-label "$label" >/dev/null; then

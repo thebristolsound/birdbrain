@@ -749,7 +749,10 @@ if [ "$1 $2" = "pr view" ]; then
 fi
 exit 0
 `
-  const withdraw = (labels: string[], { fail = false, armed = false, unread = false } = {}) => {
+  const withdraw = (
+    labels: string[] | string,
+    { fail = false, armed = false, unread = false } = {}
+  ) => {
     const dir = mkdtempSync(join(tmpdir(), 'fleet-withdraw-'))
     try {
       const gh = join(dir, 'gh')
@@ -777,7 +780,7 @@ exit 0
             VIEW_FAIL: unread ? '1' : '0',
             PR: '7',
             GITHUB_REPOSITORY: REPO,
-            LABELS: JSON.stringify(labels)
+            LABELS: typeof labels === 'string' ? labels : JSON.stringify(labels)
           }
         }
       )
@@ -846,6 +849,16 @@ exit 0
   it('leaves labels that only contain a withdrawn name', () => {
     expect(removed(['next: merge', 'not-break-glass'])).toEqual([])
   })
+
+  it.each(['not json', '', 'null', '{"merge":true}'])(
+    'tries every label, turns auto-merge off and fails when the label list is unreadable: %j',
+    (labels) => {
+      const r = withdraw(labels, { armed: true })
+      expect(r.removed).toEqual(['approved', 'merge', 'break-glass'])
+      expect(r.disarmed).toBe(true)
+      expect(r.status).not.toBe(0)
+    }
+  )
 })
 
 // leg.sh up to and including a stubbed `claude`: `gh pr view` answers from `pr` through its

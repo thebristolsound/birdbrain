@@ -1,4 +1,5 @@
-import { app } from 'electron'
+import { app, ipcMain } from 'electron'
+import type { Session } from 'electron'
 import { promises as fs } from 'fs'
 import { join } from 'path'
 import { ElectronBlocker } from '@ghostery/adblocker-electron'
@@ -61,4 +62,70 @@ export function getConsentBlocker(): Promise<ElectronBlocker | null> {
     }
   )
   return blockerPromise
+}
+
+// The pinned library enables blocking per session, but `BlockingContext.enable` registers its
+// cosmetic filter bridge on the global `ipcMain`, which takes one handler per channel, and
+// `disable` removes it. So a second session's enable throws, and the first render to end would
+// take the bridge from the others. The handlers forward to the engine and answer the frame that
+// asked, so one registration serves every session of one engine. These two functions own it.
+const COSMETIC_CHANNELS = [
+  '@ghostery/adblocker/inject-cosmetic-filters',
+  '@ghostery/adblocker/is-mutation-observer-enabled'
+] as const
+
+const enabledSessions = new Map<Session, ElectronBlocker>()
+
+function liftBridge(): void {
+  for (const channel of COSMETIC_CHANNELS) ipcMain.removeHandler(channel)
+}
+
+// Registers the bridge again, as the library does, for the sessions still enabled.
+function restoreBridge(): void {
+  const [engine] = enabledSessions.values()
+  if (!engine?.config.loadCosmeticFilters) return
+  liftBridge()
+  const [inject, mutationObserver] = COSMETIC_CHANNELS
+  ipcMain.handle(inject, (...args: Parameters<ElectronBlocker['onInjectCosmeticFilters']>) =>
+    engine.onInjectCosmeticFilters(...args)
+  )
+  ipcMain.handle(
+    mutationObserver,
+    (...args: Parameters<ElectronBlocker['onIsMutationObserverEnabled']>) =>
+      engine.onIsMutationObserverEnabled(...args)
+  )
+}
+
+// Throws when the engine cannot be enabled, with nothing left registered for this session.
+export function enableConsentBlocking(engine: ElectronBlocker, session: Session): void {
+  if (enabledSessions.has(session)) return
+  const [other] = enabledSessions.values()
+  // The bridge forwards to one engine, so a render with a different one is refused.
+  if (other !== undefined && other !== engine) {
+    throw new Error('Another consent filter engine is enabled in a render that is still running')
+  }
+  if (other !== undefined) liftBridge()
+  try {
+    engine.enableBlockingInSession(session)
+  } catch (err) {
+    try {
+      if (engine.isBlockingEnabled(session)) engine.disableBlockingInSession(session)
+    } finally {
+      restoreBridge()
+    }
+    throw err
+  }
+  enabledSessions.set(session, engine)
+}
+
+// Safe to call more than once, and for a session never enabled.
+export function disableConsentBlocking(session: Session): void {
+  const engine = enabledSessions.get(session)
+  if (engine === undefined) return
+  enabledSessions.delete(session)
+  try {
+    engine.disableBlockingInSession(session)
+  } finally {
+    restoreBridge()
+  }
 }

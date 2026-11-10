@@ -6,6 +6,7 @@ import { createHash } from 'crypto'
 import { gunzipSync } from 'zlib'
 import sharp from 'sharp'
 import type { WebContents } from 'electron'
+import { ElectronBlocker } from '@ghostery/adblocker-electron'
 import { createContext, runInContext, runInNewContext, type Context } from 'vm'
 import {
   IMAGE_SETS_LOADING_SCRIPT,
@@ -139,7 +140,11 @@ const ctl = vi.hoisted(() => ({
   beforePin: null as (() => void) | null,
   duringPinLoad: null as (() => void) | null,
   duringScreenshot: null as (() => void) | null,
-  runPinWorld: null as unknown as (wc: object, code: string) => unknown
+  runPinWorld: null as unknown as (wc: object, code: string) => unknown,
+  // The global `ipcMain` invoke handlers by channel, which take one handler each, as Electron's
+  // do, and a load of one URL that waits until the test opens it.
+  ipcHandlers: new Map<string, (...args: unknown[]) => unknown>(),
+  loadGate: null as { url: string; entered: boolean; opened: Promise<void> } | null
 }))
 
 type Handler = (...args: unknown[]) => void
@@ -190,12 +195,18 @@ interface FakeWebContents {
 // Defined via vi.hoisted so the class exists before the hoisted vi.mock factory
 // below references it. It closes over `ctl` (also hoisted) for per-test steering.
 const { MockBrowserWindow } = vi.hoisted(() => {
+  let preloads = 0
+  const nextPreloadId = () => `preload-${++preloads}`
   const makeSession = () => ({
     webRequest: {
       onSendHeaders: vi.fn(),
       onCompleted: vi.fn(),
-      onErrorOccurred: vi.fn()
+      onErrorOccurred: vi.fn(),
+      onBeforeRequest: vi.fn(),
+      onHeadersReceived: vi.fn()
     },
+    registerPreloadScript: vi.fn(() => nextPreloadId()),
+    unregisterPreloadScript: vi.fn(),
     setPermissionRequestHandler: vi.fn(),
     setPermissionCheckHandler: vi.fn(),
     setCertificateVerifyProc: vi.fn(() => {
@@ -329,6 +340,10 @@ const { MockBrowserWindow } = vi.hoisted(() => {
           if (ctl.loadUrlError) throw new Error(ctl.loadUrlError)
           if (ctl.loadUrlShouldReject) throw new Error('navigation failed')
           if (ctl.loadUrlShouldHang) return new Promise<void>(() => {})
+          if (ctl.loadGate?.url === url) {
+            ctl.loadGate.entered = true
+            await ctl.loadGate.opened
+          }
           if (ctl.hop) {
             const details = { ...ctl.hop, preventDefault: vi.fn() }
             ctl.lastHop = details
@@ -414,6 +429,17 @@ const { MockBrowserWindow } = vi.hoisted(() => {
 
 vi.mock('electron', () => ({
   BrowserWindow: MockBrowserWindow,
+  ipcMain: {
+    handle: (channel: string, handler: (...args: unknown[]) => unknown) => {
+      if (ctl.ipcHandlers.has(channel)) {
+        throw new Error(`Attempted to register a second handler for '${channel}'`)
+      }
+      ctl.ipcHandlers.set(channel, handler)
+    },
+    removeHandler: (channel: string) => {
+      ctl.ipcHandlers.delete(channel)
+    }
+  },
   app: {
     getPath: vi.fn(() => '/tmp'),
     get isPackaged() {
@@ -458,7 +484,8 @@ vi.mock('@main/services/egress', async (importOriginal) => {
   }
 })
 
-vi.mock('@main/services/consentBlocker', () => ({
+vi.mock('@main/services/consentBlocker', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@main/services/consentBlocker')>()),
   getConsentBlocker: vi.fn(async () => ctl.blocker)
 }))
 
@@ -1899,6 +1926,108 @@ describe('renderPageInHiddenWindow', () => {
     for await (const _chunk of result.mhtmlStream) void _chunk
     await result.cleanup()
   }, 30_000)
+
+  // Slice 5 of the batch capture design: the pinned library's enable registers global
+  // `ipcMain` handlers, so a second render's enable threw and it stored no suppression.
+  describe('two renders at once with the pinned consent blocker', () => {
+    const INJECT = '@ghostery/adblocker/inject-cosmetic-filters'
+    const MUTATION_OBSERVER = '@ghostery/adblocker/is-mutation-observer-enabled'
+    type Page = Awaited<ReturnType<typeof renderPageInHiddenWindow>>
+
+    const drain = async (page: Page) => {
+      for await (const _chunk of page.mhtmlStream) void _chunk
+      await page.cleanup()
+    }
+
+    // Every render a test starts, settled and torn down before the next test runs.
+    let started: Array<Promise<Page>> = []
+    const start = (url: string): Promise<Page> => {
+      const page = renderPageInHiddenWindow(url, { timeoutMs: 30_000, ...IDS })
+      started.push(page)
+      return page
+    }
+
+    // A render of `url` waits in its page load, with its blocker enabled, until opened.
+    let openLoad: () => void = () => {}
+    const holdLoad = async (url: string, render: () => Promise<Page>) => {
+      ctl.loadGate = { url, entered: false, opened: new Promise((resolve) => (openLoad = resolve)) }
+      const held = render()
+      await vi.waitFor(() => expect(ctl.loadGate?.entered).toBe(true))
+      // Wrapped: an async function returning the render's promise would wait for it.
+      return { held }
+    }
+
+    afterEach(async () => {
+      openLoad()
+      for (const outcome of await Promise.allSettled(started)) {
+        if (outcome.status === 'fulfilled') await drain(outcome.value)
+      }
+      started = []
+      ctl.loadGate = null
+      ctl.ipcHandlers.clear()
+    })
+
+    it('records filter-list for both', async () => {
+      ctl.blocker = ElectronBlocker.parse('example.test##.consent-wall')
+      const { held: second } = await holdLoad('https://example.test/second', () =>
+        start('https://example.test/second')
+      )
+      const firstPage = await start('https://example.test/first')
+      openLoad()
+      const secondPage = await second
+
+      expect(firstPage.consentSuppression).toBe('filter-list')
+      expect(secondPage.consentSuppression).toBe('filter-list')
+    }, 30_000)
+
+    it('keeps the cosmetic filter bridge for the render still running when the other ends', async () => {
+      ctl.blocker = ElectronBlocker.parse('example.test##.consent-wall')
+      const { held: second } = await holdLoad('https://example.test/second', () =>
+        start('https://example.test/second')
+      )
+      await drain(await start('https://example.test/first'))
+
+      // The first render's teardown ran the library's disable, which removes both channels.
+      expect([...ctl.ipcHandlers.keys()].sort()).toEqual([INJECT, MUTATION_OBSERVER])
+      const sender = { insertCSS: vi.fn(), executeJavaScript: vi.fn() }
+      await ctl.ipcHandlers.get(INJECT)!(
+        { sender, frameId: 1, processId: 1 },
+        'https://example.test/second'
+      )
+      expect(sender.insertCSS).toHaveBeenCalledWith(
+        expect.stringContaining('.consent-wall'),
+        expect.anything()
+      )
+
+      openLoad()
+      await drain(await second)
+      expect(ctl.ipcHandlers.size).toBe(0)
+    }, 30_000)
+
+    it('records no suppression for a render whose engine differs from a running one', async () => {
+      const errors = vi.spyOn(logger, 'error')
+      errors.mockClear()
+      ctl.blocker = ElectronBlocker.parse('example.test##.consent-wall')
+      const { held: first } = await holdLoad('https://example.test/first', () =>
+        start('https://example.test/first')
+      )
+
+      ctl.blocker = ElectronBlocker.parse('example.test##.other-wall')
+      const secondPage = await start('https://example.test/second')
+      expect(secondPage.consentSuppression).toBeUndefined()
+      expect(
+        errors.mock.calls.filter(
+          ([, code]) => code === 'backgroundRenderer.consent_blocker_enable_failed'
+        )
+      ).toHaveLength(1)
+      // The refused render's teardown leaves the running render's bridge in place.
+      await drain(secondPage)
+      expect([...ctl.ipcHandlers.keys()].sort()).toEqual([INJECT, MUTATION_OBSERVER])
+
+      openLoad()
+      expect((await first).consentSuppression).toBe('filter-list')
+    }, 30_000)
+  })
 
   it('destroys the window and cleans up when the navigation fails', async () => {
     ctl.loadUrlShouldReject = true

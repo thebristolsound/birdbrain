@@ -1,12 +1,15 @@
 import { BrowserWindow, app } from 'electron'
 import type { WebContents, Session } from 'electron'
-import type { ElectronBlocker } from '@ghostery/adblocker-electron'
 import sharp from 'sharp'
 import { createReadStream } from 'fs'
 import { unlink } from 'fs/promises'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import { getConsentBlocker } from '@main/services/consentBlocker'
+import {
+  disableConsentBlocking,
+  enableConsentBlocking,
+  getConsentBlocker
+} from '@main/services/consentBlocker'
 import { captureEgressOf, knownEgress, proxyConfigFor } from '@main/services/egress'
 import { RefusedAddressError, refusedAddressClass } from '@main/services/localAddressPolicy'
 import { testCertificateAllowance } from '@main/services/testCertificateAllowance'
@@ -1033,21 +1036,19 @@ export const renderPageInHiddenWindow: RenderPage = async (
   // window and the blocker/webRequest teardown still needs it.
   const session = wc.session
   let networkTracker: NetworkIdleTracker | undefined
-  let blocker: ElectronBlocker | null = null
   let recorder: TransactionRecorder | undefined
 
   // Step-level idempotent teardown — NOT a single once-guard. Both the inner
   // finally and the outer timeout path invoke this, and the blocker may only be
   // enabled AFTER the timeout already ran cleanup (render() is still awaiting
   // getConsentBlocker() when the deadline fires). A single guard would skip the
-  // blocker teardown in that race and leak its global ipcMain handlers, wedging
-  // the next recapture job. Each release re-checks its own state instead, and is
-  // wrapped so a post-destroy call can't throw out of cleanup.
+  // blocker teardown in that race and leave the session enabled. Each release
+  // re-checks its own state instead, and is wrapped so a post-destroy call can't
+  // throw out of cleanup.
   const cleanup = () => {
     try {
-      // Must be released per-job: enable() registers global ipcMain handlers
-      // that throw if a later job's session enables them while still registered.
-      if (blocker?.isBlockingEnabled(session)) blocker.disableBlockingInSession(session)
+      // Per session: a render running at the same time keeps its blocking.
+      disableConsentBlocking(session)
     } catch (err) {
       logger.error(
         'backgroundRenderer',
@@ -1129,10 +1130,10 @@ export const renderPageInHiddenWindow: RenderPage = async (
     // only bridges cosmetic-filter lookups over IPC and exposes nothing to the
     // page (contextIsolation holds).
     let consentSuppression: ConsentSuppression | undefined
-    blocker = await getConsentBlocker()
+    const blocker = await getConsentBlocker()
     if (blocker) {
       try {
-        blocker.enableBlockingInSession(session)
+        enableConsentBlocking(blocker, session)
         consentSuppression = 'filter-list'
       } catch (err) {
         logger.error(

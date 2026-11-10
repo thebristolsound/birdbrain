@@ -118,9 +118,10 @@ bar (`extension/src/selectionBar.ts`, ruling W25 on #967) and the two files of t
 interface suppression protocol (`captureSuppression.ts`, `captureHygiene.ts`) joined Acquisition
 at blocking tier. `src/main/webviewPolicy.ts`, split out of `src/main/index.ts` by #856, joined
 Integrity core at blocking tier, and `src/main/windowReveal.ts`, split out by the #643 fix,
-joined the exclusions (#1409). The Links tab, `captureLinks.ts`, `htmlParts.ts` and
-`useLinkMenuTarget.ts` joined Interpretation surfaces at blocking tier, because the address a
-row reports is the one Capture link signs (#1728). `src/renderer/components/signals/**` joined the exclusions beside
+joined the exclusions (#1409). The Links tab, `captureLinks.ts`, `htmlParts.ts`,
+`guestLink.ts` and `useLinkMenuTarget.ts` joined Interpretation surfaces at blocking tier,
+because each reads, resolves or sends the address Capture link signs (#1728).
+`src/renderer/components/signals/**` joined the exclusions beside
 `src/renderer/components/selectors/**` (#1083).
 
 ### Known gap: carve-outs are caught by review, not by a check
@@ -378,7 +379,8 @@ independent of the Operator who holds it.
 | `src/renderer/components/captures/LinksTab.tsx` | blocking | Shows the links a stored page holds, marks a link whose visible text names another host, and hands the chosen row's address to Capture link, which signs it as the new Capture's `linkHref` (ADR-0040) and prints it in the report. Added 2026-11-09 (#1728) |
 | `src/main/services/captureLinks.ts` | blocking | Reads the links out of a Capture's MHTML for the Links tab. The address it reports for a row is the one Capture link signs as `linkHref`, so a wrong resolution signs a claim that the source page named an address it did not. Added 2026-11-09 (#1728) |
 | `src/main/services/htmlParts.ts` | blocking | Reads a stored page's HTML parts under fixed ceilings and resolves each link's href, for `src/main/services/captureLinks.ts` and the Case search field index: the resolution that becomes a signed `linkHref`. Added 2026-11-09 |
-| `src/renderer/components/captures/useLinkMenuTarget.ts` | blocking | Builds the Capture link request from the Links tab and the viewer's context menu: the source Capture id and the address that main signs as `linkedFromCaptureId` and `linkHref` (ADR-0040). Main checks that the address equals the queued URL and that the source verifies, not that the source page holds the link. Added 2026-11-09 |
+| `src/renderer/components/captures/useLinkMenuTarget.ts` | blocking | Builds the Capture link request from the Links tab and the viewer's context menu: the address main signs as `linkHref` (ADR-0040), and the source Capture id main uses to find the source's verified entry, whose own id it signs as `linkedFromCaptureId`. Main checks that the address equals the queued URL and that the source verifies, not that the source page holds the link. Added 2026-11-09 |
+| `src/renderer/components/captures/guestLink.ts` | blocking | Reads the link address out of the stored-page viewer on a right-click (`readGuestContextMenu`) and on a click (`linkClickOutcome`); that address is the one Capture link signs as `linkHref`. Added 2026-11-09 |
 | `src/renderer/components/captures/WaybackPanel.tsx` | blocking | Pins Wayback corroboration refs: builds each pin from the chosen snapshot and the lookup's `checkedAt`. Replaced the `WaybackTab.tsx` entry on 2026-10-12; #856 deleted that file, and the entry matched nothing from then on |
 | `src/renderer/components/captures/CaptureDownloadMenu.tsx` | blocking | Per-capture evidence export surface |
 | `src/renderer/components/overview/VerifyBar.tsx` | blocking | Case-level verification display |

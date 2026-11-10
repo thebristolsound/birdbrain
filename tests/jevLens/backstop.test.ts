@@ -69,6 +69,7 @@ describe('parseIncludeList', () => {
     expect(tierOf('src/main/services/htmlParts.ts')).toBe('blocking')
     expect(tierOf('src/renderer/components/captures/LinksTab.tsx')).toBe('blocking')
     expect(tierOf('src/renderer/components/captures/useLinkMenuTarget.ts')).toBe('blocking')
+    expect(tierOf('src/renderer/components/captures/guestLink.ts')).toBe('blocking')
     expect(matchEntry(entries, 'src/main/windowReveal.ts')).toBeNull()
     expect(matchEntry(entries, 'src/renderer/components/signals/AutoCaptureCard.tsx')).toBeNull()
   })

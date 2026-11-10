@@ -1,11 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync
+} from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { createHash } from 'crypto'
 import type { BrowserWindow } from 'electron'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
-import { createCase, getCase, listCases } from '@main/services/db/caseRepo'
+import { createCase, getCase, listCases, updateCase } from '@main/services/db/caseRepo'
 import { listCaptures } from '@main/services/db/captureRepo'
 import { initStorage } from '@main/services/storage'
 import { initSettings, updateSettings } from '@main/services/settings'
@@ -18,9 +26,13 @@ import { readEntries, verifyManifestChain } from '@main/services/manifest'
 import { disposeLogger, initLogger, readRecentEntries } from '@main/services/logger'
 import {
   createPipelineSelfTestSandbox,
+  isPipelineSelfTestResidue,
+  PIPELINE_SELF_TEST_CASE_NAME,
   PIPELINE_SELF_TEST_URL,
+  sweepPipelineSelfTestResidue,
   type PipelineSelfTestSandbox
 } from '@main/services/pipelineSelfTest'
+import type { LogCode } from '@shared/types'
 import { IPC_CHANNELS } from '@shared/ipc'
 import { MANIFEST_FILENAME } from '@shared/constants'
 
@@ -51,6 +63,10 @@ let failIngest = false
 // from outside the route at which teardown can be made to fail.
 let breakTeardown: ((sandbox: PipelineSelfTestSandbox) => void) | null = null
 
+// Stands in for a process killed between ingest and teardown: the sandbox is
+// observed and then left exactly as the kill would leave it.
+let simulateKill = false
+
 vi.mock('@main/services/captureLifecycle', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@main/services/captureLifecycle')>()
   return {
@@ -80,6 +96,7 @@ vi.mock('@main/services/pipelineSelfTest', async (importOriginal) => {
             chainValid: verifyManifestChain(caseDir).valid,
             captureRows: listCaptures(sandbox.caseId).length
           })
+          if (simulateKill) return
           breakTeardown?.(sandbox)
           sandbox.dispose()
         }
@@ -106,6 +123,11 @@ const cleanupFailures = (): number =>
     (e) => e.level === 'error' && e.code === 'captureServer.self_test_cleanup_failed'
   ).length
 
+const logged = (code: LogCode): Array<{ level: string; caseId: unknown }> =>
+  readRecentEntries(50)
+    .filter((e) => e.code === code)
+    .map(({ level, context }) => ({ level, caseId: context?.caseId }))
+
 describe('capture-pipeline self-test sandbox (#614)', () => {
   let tempDir: string
   let baseUrl: string
@@ -117,6 +139,7 @@ describe('capture-pipeline self-test sandbox (#614)', () => {
     sent.length = 0
     failIngest = false
     breakTeardown = null
+    simulateKill = false
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-selftest-'))
     initLogger(tempDir, 'pipeline-self-test-session')
     await initDatabase(':memory:')
@@ -339,4 +362,133 @@ describe('capture-pipeline self-test sandbox (#614)', () => {
     expect(observed).toHaveLength(0)
     expect(listCases()).toHaveLength(0)
   })
+
+  // #1196: during the run the sandbox is an ordinary case, so a token-holding
+  // client can upload into it. Teardown must not cascade over that upload.
+  it('keeps a sandbox that gained a foreign capture, and warns', async () => {
+    const sandbox = createPipelineSelfTestSandbox()
+    await seedRealCapture(sandbox.caseId)
+    const foreignDir = join(tempDir, 'captures', sandbox.caseId)
+    const foreignFiles = readdirSync(foreignDir)
+    expect(foreignFiles.length).toBeGreaterThan(0)
+
+    sandbox.dispose()
+
+    expect(getCase(sandbox.caseId)?.name).toBe(PIPELINE_SELF_TEST_CASE_NAME)
+    expect(listCaptures(sandbox.caseId).map((c) => c.url)).toEqual(['https://example.com/evidence'])
+    expect(readdirSync(foreignDir)).toEqual(foreignFiles)
+    expect(existsSync(sandbox.root)).toBe(true)
+    expect(logged('captureServer.self_test_sandbox_kept')).toEqual([
+      { level: 'warn', caseId: sandbox.caseId }
+    ])
+    expect(cleanupFailures()).toBe(0)
+
+    rmSync(sandbox.root, { recursive: true, force: true })
+  })
+
+  it('reads a case as residue only by its name, its captures and its storage', async () => {
+    expect(isPipelineSelfTestResidue(createCase({ name: 'Real Investigation' }).id)).toBe(false)
+    expect(isPipelineSelfTestResidue('no-such-case')).toBe(false)
+
+    // A kill between creating the case and ingesting leaves it empty.
+    const empty = createCase({ name: PIPELINE_SELF_TEST_CASE_NAME })
+    expect(isPipelineSelfTestResidue(empty.id)).toBe(true)
+
+    // The sandbox never writes under the configured root, so anything there is
+    // someone else's, whatever URL its capture row carries.
+    mkdirSync(join(tempDir, 'captures', empty.id), { recursive: true })
+    expect(isPipelineSelfTestResidue(empty.id)).toBe(false)
+
+    simulateKill = true
+    expect((await readJson(await runSelfTest())).success).toBe(true)
+    const [sandbox] = observed
+    expect(isPipelineSelfTestResidue(sandbox.caseId)).toBe(true)
+    await seedRealCapture(sandbox.caseId)
+    rmSync(join(tempDir, 'captures', sandbox.caseId), { recursive: true, force: true })
+    expect(isPipelineSelfTestResidue(sandbox.caseId)).toBe(false)
+
+    rmSync(sandbox.root, { recursive: true, force: true })
+  })
+
+  // A process killed mid-run leaves the case holding the sentinel capture,
+  // plus its temp root. The next boot takes both, and nothing else.
+  it('sweeps a killed run at startup and leaves every other case alone', async () => {
+    const investigation = createCase({ name: 'Real Investigation' })
+    await seedRealCapture(investigation.id)
+    const manifestPath = join(tempDir, 'captures', investigation.id, MANIFEST_FILENAME)
+    const before = sha256(manifestPath)
+
+    simulateKill = true
+    expect((await readJson(await runSelfTest())).success).toBe(true)
+    expect((await readJson(await runSelfTest())).success).toBe(true)
+    const [residue, foreign] = observed
+    expect(listCaptures(residue.caseId)).toHaveLength(1)
+    expect(existsSync(residue.root)).toBe(true)
+    await seedRealCapture(foreign.caseId)
+
+    sweepPipelineSelfTestResidue()
+
+    expect(getCase(residue.caseId)).toBeUndefined()
+    expect(listCaptures(residue.caseId)).toHaveLength(0)
+    expect(existsSync(residue.root)).toBe(false)
+    expect(logged('captureServer.self_test_residue_removed')).toEqual([
+      { level: 'info', caseId: residue.caseId }
+    ])
+
+    expect(getCase(foreign.caseId)?.name).toBe(PIPELINE_SELF_TEST_CASE_NAME)
+    expect(listCaptures(foreign.caseId)).toHaveLength(2)
+    expect(readdirSync(join(tempDir, 'captures', foreign.caseId)).length).toBeGreaterThan(0)
+    expect(existsSync(foreign.root)).toBe(true)
+    expect(logged('captureServer.self_test_residue_kept')).toEqual([
+      { level: 'info', caseId: foreign.caseId }
+    ])
+
+    expect(sha256(manifestPath)).toBe(before)
+    expect(listCaptures(investigation.id)).toHaveLength(1)
+    expect(cleanupFailures()).toBe(0)
+
+    rmSync(foreign.root, { recursive: true, force: true })
+  })
+
+  // Archiving is an operator's act on the case, so the sweep does not read it.
+  it('does not sweep an archived case with the sandbox name', () => {
+    const archived = createCase({ name: PIPELINE_SELF_TEST_CASE_NAME })
+    updateCase({ id: archived.id, archived: true })
+
+    sweepPipelineSelfTestResidue()
+
+    expect(getCase(archived.id)?.archived).toBe(true)
+    expect(logged('captureServer.self_test_residue_removed')).toEqual([])
+  })
+
+  // TMPDIR is redirected so the temp root's parent can be made read-only
+  // without touching the shared temp directory.
+  it.skipIf(process.getuid?.() === 0)(
+    'reports a residue temp root the sweep cannot remove, having removed the case',
+    async () => {
+      const tmpRoot = mkdtempSync(join(tmpdir(), 'birdbrain-selftest-tmp-'))
+      const previousTmpdir = process.env.TMPDIR
+      process.env.TMPDIR = tmpRoot
+      try {
+        simulateKill = true
+        expect((await readJson(await runSelfTest())).success).toBe(true)
+        const [residue] = observed
+        chmodSync(tmpRoot, 0o500)
+
+        sweepPipelineSelfTestResidue()
+
+        expect(getCase(residue.caseId)).toBeUndefined()
+        expect(existsSync(residue.root)).toBe(true)
+        expect(logged('captureServer.self_test_cleanup_failed')).toEqual([
+          { level: 'error', caseId: residue.caseId }
+        ])
+        expect(logged('captureServer.self_test_residue_removed')).toEqual([])
+      } finally {
+        if (previousTmpdir === undefined) delete process.env.TMPDIR
+        else process.env.TMPDIR = previousTmpdir
+        chmodSync(tmpRoot, 0o700)
+        rmSync(tmpRoot, { recursive: true, force: true })
+      }
+    }
+  )
 })

@@ -1,9 +1,12 @@
-import { mkdtempSync, rmSync } from 'fs'
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import * as captureRepo from '@main/services/db/captureRepo'
 import * as caseRepo from '@main/services/db/caseRepo'
 import { createCaptureStore, type CaptureStore } from '@main/services/captureStore'
 import { logger } from '@main/services/logger'
+import { ident } from '@main/services/logSafe'
+import { getStorageRoot } from '@main/services/storage'
 
 // The fixed URL the capture-pipeline self-test ingests. It addresses nothing
 // and is never fetched, so no page content and no operator-supplied URL enters
@@ -14,9 +17,64 @@ export const PIPELINE_SELF_TEST_URL = 'birdbrain://pipeline-test'
 // one path dispose cannot cover, and what that kill leaves is not an empty case
 // — the capture row is committed by ingest before the request returns, so the
 // residue is this case holding the sentinel capture, its artifacts under a temp
-// root the OS sweeps on its own schedule. A case the operator can recognise by
-// name and delete is a better residue than an unexplained row.
-const SANDBOX_CASE_NAME = 'Birdbrain pipeline self-test (temporary)'
+// root. `sweepPipelineSelfTestResidue` takes both at the next boot.
+export const PIPELINE_SELF_TEST_CASE_NAME = 'Birdbrain pipeline self-test (temporary)'
+
+const SANDBOX_ROOT_PREFIX = 'birdbrain-pipeline-test-'
+
+/**
+ * Whether a case is nothing but what a self-test sandbox writes, and so safe to
+ * delete with everything it cascades to (#1183, #1196): it carries the sandbox
+ * name, every capture row it holds has the sentinel URL, and it has no
+ * directory under the configured storage root. The sandbox writes its files
+ * under its own temp root, never there, so a directory there means something
+ * else wrote into the case, whatever URL its row carries or whether the row
+ * survives. A case that does not exist is not residue.
+ */
+export function isPipelineSelfTestResidue(caseId: string): boolean {
+  if (caseRepo.getCase(caseId)?.name !== PIPELINE_SELF_TEST_CASE_NAME) return false
+  if (captureRepo.listCaptures(caseId).some(({ url }) => url !== PIPELINE_SELF_TEST_URL)) {
+    return false
+  }
+  return !existsSync(join(getStorageRoot(), caseId))
+}
+
+// A sandbox root holds `{caseId}/` (captureStore.ts), which is the only link
+// from a leftover case back to its root: nothing in the database records it.
+function removeSandboxRoots(caseId: string): void {
+  const dir = tmpdir()
+  for (const entry of readdirSync(dir)) {
+    if (entry.startsWith(SANDBOX_ROOT_PREFIX) && existsSync(join(dir, entry, caseId))) {
+      rmSync(join(dir, entry), { recursive: true, force: true })
+    }
+  }
+}
+
+/**
+ * Deletes what a self-test killed mid-run left behind: each case that
+ * `isPipelineSelfTestResidue` accepts, and the temp root holding its files.
+ * Runs once at boot, before the capture server can start another self-test,
+ * so it cannot take a live sandbox. A case carrying the sandbox name that fails
+ * the check is kept and logged. Archived cases are not read: archiving is
+ * something an operator did to the case.
+ */
+export function sweepPipelineSelfTestResidue(): void {
+  for (const { id, name } of caseRepo.listCases()) {
+    if (name !== PIPELINE_SELF_TEST_CASE_NAME) continue
+    const context = { caseId: ident(id) }
+    try {
+      if (!isPipelineSelfTestResidue(id)) {
+        logger.info('captureServer', 'captureServer.self_test_residue_kept', context)
+        continue
+      }
+      caseRepo.deleteCase(id)
+      removeSandboxRoots(id)
+      logger.info('captureServer', 'captureServer.self_test_residue_removed', context)
+    } catch (err) {
+      logger.error('captureServer', 'captureServer.self_test_cleanup_failed', context, err)
+    }
+  }
+}
 
 /**
  * A disposable stand-in for an investigation, for the capture-pipeline
@@ -35,11 +93,12 @@ const SANDBOX_CASE_NAME = 'Birdbrain pipeline self-test (temporary)'
  *
  * The case row is a real row while it exists — with `foreign_keys = ON` a
  * capture has no other way to be inserted — but it is created by this function,
- * holds only the sentinel capture, and lives for the length of one request
- * unless the process dies inside it or its removal fails (see
- * `SANDBOX_CASE_NAME` for what a kill leaves). It is not the hidden, permanent
- * internal case #614 rejected: nothing has to know to skip it, because by the
- * time anything could ask, it is gone.
+ * the self-test puts only the sentinel capture in it, and it lives for the
+ * length of one request unless the process dies inside it, its removal fails,
+ * or a client writes into it meanwhile (see `PIPELINE_SELF_TEST_CASE_NAME` for
+ * what a kill leaves, and `dispose` for the write). It is not the hidden,
+ * permanent internal case #614 rejected: nothing has to know to skip it,
+ * because by the time anything could ask, it is gone.
  */
 export interface PipelineSelfTestSandbox {
   /** The throwaway case the sentinel capture is ingested into. */
@@ -50,17 +109,18 @@ export interface PipelineSelfTestSandbox {
   store: CaptureStore
   /**
    * Removes the case row (cascading to the capture) and the temp directory.
-   * Each half is attempted whatever the other did. Never throws; either failure
-   * is logged.
+   * Each half is attempted whatever the other did. A case that
+   * `isPipelineSelfTestResidue` rejects is kept with its temp directory, and
+   * logged at warn. Never throws; either failure is logged.
    */
   dispose: () => void
 }
 
 export function createPipelineSelfTestSandbox(): PipelineSelfTestSandbox {
-  const root = mkdtempSync(join(tmpdir(), 'birdbrain-pipeline-test-'))
+  const root = mkdtempSync(join(tmpdir(), SANDBOX_ROOT_PREFIX))
   let caseId: string
   try {
-    caseId = caseRepo.createCase({ name: SANDBOX_CASE_NAME }).id
+    caseId = caseRepo.createCase({ name: PIPELINE_SELF_TEST_CASE_NAME }).id
   } catch (err) {
     // This throws before the caller has a sandbox to dispose, so its `finally`
     // covers nothing: a database that keeps failing would leak one temp
@@ -82,8 +142,18 @@ export function createPipelineSelfTestSandbox(): PipelineSelfTestSandbox {
     // this runs from a `finally` and must not replace the self-test's own
     // result. Neither is silent either — `logger.error` reaches the renderer
     // over `LOG_ENTRY`, which raises a toast (`notify.ts`).
+    //
+    // The one exception to independence is a case holding something the
+    // self-test did not write (#1196): the case is kept, and the root with it,
+    // so the operator finds the sandbox whole beside the capture it took in.
     dispose: () => {
       try {
+        if (!isPipelineSelfTestResidue(caseId)) {
+          logger.warn('captureServer', 'captureServer.self_test_sandbox_kept', {
+            caseId: ident(caseId)
+          })
+          return
+        }
         caseRepo.deleteCase(caseId)
       } catch (err) {
         logger.error('captureServer', 'captureServer.self_test_cleanup_failed', undefined, err)

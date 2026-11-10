@@ -960,6 +960,13 @@ export const LOG_CODES = [
   // Nothing left behind is evidence — the sandbox holds only the sentinel — so
   // the route reports its own result and this is the record that residue exists.
   'captureServer.self_test_cleanup_failed',
+  // Teardown kept the sandbox because something other than the self-test wrote
+  // to it (#1196); deleting the case would have cascaded over that write.
+  'captureServer.self_test_sandbox_kept',
+  // The startup sweep of what a killed self-test left (#1183): a case it
+  // removed, and a case with the sandbox name it kept because it holds more.
+  'captureServer.self_test_residue_removed',
+  'captureServer.self_test_residue_kept',
   // The capture server's listener failed (#513) — at boot usually EADDRINUSE
   // on 19845, held by another program or by a Birdbrain running against its
   // own data directory, since the single-instance lock stops a plain second

@@ -34,10 +34,14 @@ git -C "$PR_DIR" diff "$base" HEAD > "$in/diff.patch"
 gh pr view "$PR" -R "$R" --json title,body,commits \
   --jq '{title, body, commits: [.commits[] | {oid, messageHeadline, messageBody}]}' > "$in/pr.json"
 cp "$here/../../../CLAUDE.md" "$in/rules.md"
-# The linked issue, when line 1 of the body closes one.
-issue="$(jq -r '.body // "" | split("\n")[0] | capture("^Closes #(?<n>[0-9]+)").n // empty' "$in/pr.json")"
+# The linked issue, when line 1 of the body closes one. An empty body has no line 1.
+issue="$(jq -r '(.body // "") | (split("\n")[0] // "") | capture("^Closes #(?<n>[0-9]+)").n // empty' "$in/pr.json")"
 if [ -n "$issue" ]; then
-  gh issue view "$issue" -R "$R" --json title,body --jq '"# \(.title)\n\n\(.body)"' > "$in/issue.md" || true
+  # The issue is the contract the pass reads the PR against. An issue that cannot be read
+  # fails the pass here, before the paid call: an empty file would read as an empty contract.
+  gh issue view "$issue" -R "$R" --json title,body --jq '"# \(.title)\n\n\(.body)"' > "$in/issue.md" \
+    && [ -s "$in/issue.md" ] \
+    || { echo "could not read issue #$issue, which the PR closes" >&2; exit 1; }
 fi
 if [ "$leg" = verify-codex ]; then
   node "$here/fleet.mjs" codex-findings "$R" "$PR" "$SHA" > "$in/codex.json"

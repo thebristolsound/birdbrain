@@ -1,5 +1,5 @@
 import { spawnSync } from 'child_process'
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { describe, expect, it } from 'vitest'
@@ -713,5 +713,108 @@ describe.skipIf(!HAS_JQ)('a push to a PR', () => {
 
   it('leaves labels that only contain a withdrawn name', () => {
     expect(withdraw(['next: merge', 'not-break-glass'])).toEqual([])
+  })
+})
+
+// leg.sh up to and including a stubbed `claude`: `gh pr view` answers from `pr` through its
+// --jq filter, `gh issue view` exits with `issueExit`, and `claude` records the prompt it got.
+describe.skipIf(!HAS_JQ)('leg.sh inputs', () => {
+  const LEG = join(__dirname, '..', '.github', 'scripts', 'review-fleet', 'leg.sh')
+  const GH = `#!/usr/bin/env bash
+set -euo pipefail
+if [ "$1 $2" = "issue view" ]; then
+  [ "$ISSUE_EXIT" = 0 ] || { echo "stub gh: HTTP 502" >&2; exit "$ISSUE_EXIT"; }
+  printf '# The contract\\n\\nDo the thing.\\n'
+  exit 0
+fi
+[ "$1 $2" = "pr view" ] || { echo "stub gh: unsupported $*" >&2; exit 2; }
+while [ $# -gt 0 ]; do [ "$1" = --jq ] && expr="$2"; shift; done
+jq "$expr" "$PR_JSON"
+`
+  const CLAUDE = `#!/usr/bin/env bash
+printf '%s' "$2" > "$PROMPT_OUT"
+echo '{"type":"result","structured_output":{"findings":[],"not_checked":[]}}'
+`
+  const leg = (body: string | null, issueExit = 0) => {
+    const dir = mkdtempSync(join(tmpdir(), 'fleet-leg-'))
+    try {
+      for (const [name, text] of [
+        ['gh', GH],
+        ['claude', CLAUDE]
+      ]) {
+        writeFileSync(join(dir, name), text)
+        chmodSync(join(dir, name), 0o755)
+      }
+      const env = {
+        ...process.env,
+        PATH: `${dir}:${process.env.PATH}`,
+        GIT_CONFIG_GLOBAL: '/dev/null'
+      }
+      const git = (...args: string[]) => {
+        const r = spawnSync('git', ['-C', join(dir, 'pr'), ...args], { encoding: 'utf8', env })
+        expect(r.status, r.stderr).toBe(0)
+        return r.stdout.trim()
+      }
+      spawnSync('git', ['init', '-q', join(dir, 'pr')], { env })
+      git(
+        '-c',
+        'user.name=t',
+        '-c',
+        'user.email=t@example.com',
+        'commit',
+        '-q',
+        '--allow-empty',
+        '-m',
+        'base'
+      )
+      git('update-ref', 'refs/remotes/origin/main', 'HEAD')
+      writeFileSync(join(dir, 'pr.json'), JSON.stringify({ title: 't', body, commits: [] }))
+      const result = spawnSync('bash', [LEG, 'correctness'], {
+        encoding: 'utf8',
+        env: {
+          ...env,
+          PR: '7',
+          SHA: git('rev-parse', 'HEAD'),
+          PR_DIR: join(dir, 'pr'),
+          OUT: join(dir, 'out'),
+          GITHUB_REPOSITORY: REPO,
+          GITHUB_STEP_SUMMARY: join(dir, 'summary'),
+          PR_JSON: join(dir, 'pr.json'),
+          PROMPT_OUT: join(dir, 'prompt'),
+          ISSUE_EXIT: String(issueExit)
+        }
+      })
+      const prompted = existsSync(join(dir, 'prompt'))
+      return {
+        status: result.status,
+        stderr: result.stderr,
+        prompt: prompted ? readFileSync(join(dir, 'prompt'), 'utf8') : null
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  it.each([[''], [null], ['No closing line.\n\nMore.']])(
+    'runs the pass with no issue listed when the PR body is %j',
+    (body) => {
+      const r = leg(body)
+      expect(r.status, r.stderr).toBe(0)
+      expect(r.prompt).toContain('pr.json')
+      expect(r.prompt).not.toContain('issue.md')
+    }
+  )
+
+  it('lists the issue the PR closes as an input', () => {
+    const r = leg('Closes #12\n\nSummary.')
+    expect(r.status, r.stderr).toBe(0)
+    expect(r.prompt).toContain('issue.md`: the issue the PR closes.')
+  })
+
+  it('fails the pass before the paid call when the issue cannot be read', () => {
+    const r = leg('Closes #12\n\nSummary.', 1)
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('could not read issue #12')
+    expect(r.prompt).toBeNull()
   })
 })

@@ -646,6 +646,23 @@ describe('staging pool', () => {
       ])
       expect(verifyManifestChain(caseDir).valid).toBe(true)
     })
+
+    it('holds an attachment stamp when the name is cleared while the request is in flight (X47)', async () => {
+      const [staged] = await uploadToStaging(caseId, [sourceFile('bundle.zip', ZIP)])
+      const [committed] = (await commitStagedFiles(caseId, [staged.id])).outcomes
+      if (committed.status !== 'committed') throw new Error('commit failed')
+      const grant = granting()
+      const requestToken = vi.fn(async (contentHash: string) => {
+        updateSettings({ operatorName: '' })
+        return grant(contentHash)
+      })
+      const worker = createTimestampWorker({ requestToken })
+
+      expect(await worker.stampExhibit(committed.exhibitId)).toBe(false)
+
+      expect(requestToken).toHaveBeenCalledTimes(1)
+      expect(manifestLines(caseDir).filter((line) => line.type === 'timestamp')).toHaveLength(0)
+    })
   })
 
   describe('export coverage (X44, #1156)', () => {

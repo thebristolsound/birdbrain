@@ -1159,6 +1159,39 @@ describe('exhibit model', () => {
       ])
     })
 
+    it('shows no row unnumbered once the renumber entry is signed, with the name cleared after', async () => {
+      await seedCaseNeedingBoth()
+      await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+      updateSettings({ operatorName: '' })
+
+      const reasons = getCaseInventory(caseId)
+        .rows.filter((row): row is InventoryExhibitRow => row.entity === 'exhibit')
+        .map((row) => row.unnumberedReason)
+
+      expect(reasons).toEqual([undefined, undefined])
+    })
+
+    it('skips and logs a Case whose only unsigned entry is a thumbnail derivation', async () => {
+      await ingestInto(caseId, {
+        url: 'https://example.com/unnamed-derivation-only',
+        title: 'Shot',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot: await screenshotPng({ r: 160, g: 90, b: 40 })
+      })
+      updateSettings({ operatorName: '' })
+      const warned = vi.spyOn(logger, 'warn').mockImplementation(() => 'log-id')
+
+      const result = await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      expect(result.skipped).toBe('operator_name_required')
+      expect(result.renumbered).toBe(false)
+      expect(listDerivedFilesForCase(caseId)).toEqual([])
+      expect(warned).toHaveBeenCalledWith('exhibits', 'exhibits.backfill_deferred', {
+        caseId: expect.anything()
+      })
+      warned.mockRestore()
+    })
+
     it('numbers the skipped Case under the name once one is saved', async () => {
       const { legacyId, shotId } = await seedCaseNeedingBoth()
       updateSettings({ operatorName: '' })

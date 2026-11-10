@@ -498,6 +498,22 @@ describe('timestampWorker', () => {
       expect(await worker.processPending()).toEqual({ stamped: 1, failed: 0 })
       expect(receiptEntries().map((entry) => entry.operatorName)).toEqual(['Saved Operator'])
     })
+
+    it('holds a receipt stamp when the name is cleared while the request is in flight (X47)', async () => {
+      shareCase()
+      const merge = appendMerge()
+      const granting = grantingRequester()
+      const requestToken = vi.fn(async (contentHash: string) => {
+        updateSettings({ operatorName: '' })
+        return granting(contentHash)
+      })
+      const worker = createTimestampWorker({ requestToken })
+
+      expect(await worker.stampMerge(caseId, merge.index)).toBe(false)
+
+      expect(requestToken).toHaveBeenCalledTimes(1)
+      expect(receiptEntries()).toHaveLength(0)
+    })
   })
 
   // Trusted-time entries are signed like every other entry (X47, #1332): with no operator

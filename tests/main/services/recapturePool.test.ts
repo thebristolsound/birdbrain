@@ -26,6 +26,12 @@ import {
 } from '@main/services/recapture'
 import { logger } from '@main/services/logger'
 
+// The real repository, with `finishJob` replaceable for one call.
+vi.mock('@main/services/db/backgroundJobRepo', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@main/services/db/backgroundJobRepo')>()
+  return { ...actual, finishJob: vi.fn(actual.finishJob) }
+})
+
 vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@main/services/tlsCertChain')>()
   return { ...actual, fetchCertChain: vi.fn(async () => null) }
@@ -147,6 +153,9 @@ describe('the background job pool', () => {
       freeMemory
     })
   }
+
+  const heldLines = (info: ReturnType<typeof vi.spyOn>) =>
+    info.mock.calls.filter(([, code]) => code === 'backgroundRenderer.job_memory_held')
 
   const stateOf = (id: string) => backgroundJobRepo.getJob(id)?.state
 
@@ -305,6 +314,106 @@ describe('the background job pool', () => {
     finish('https://example.com/a')
     finish('https://example.org/b')
     await svc.idle()
+  })
+
+  it('reads free memory only when a job could start beside the running one', async () => {
+    const info = vi.spyOn(logger, 'info')
+    const { renderPage, rendering, finish } = heldRenders()
+    const freeMemory = vi.fn(() => MIN_FREE_MEMORY_BYTES - 1)
+    const svc = makeService(renderPage, { freeMemory })
+    svc.enqueue([
+      { url: 'https://example.com/a', caseId },
+      { url: 'https://www.example.com/b', caseId }
+    ])
+    // The only queued job shares the running job's site, so the floor has nothing to hold.
+    expect(rendering).toEqual(['https://example.com/a'])
+    expect(freeMemory).not.toHaveBeenCalled()
+    expect(heldLines(info)).toEqual([])
+    finish('https://example.com/a')
+    await vi.waitFor(() => expect(rendering).toEqual(['https://www.example.com/b']))
+    finish('https://www.example.com/b')
+    await svc.idle()
+    expect(freeMemory).not.toHaveBeenCalled()
+  })
+
+  it('logs a hold again once a job has started since the last one', async () => {
+    const info = vi.spyOn(logger, 'info')
+    const { renderPage, rendering, finish } = heldRenders()
+    const svc = makeService(renderPage, { freeMemory: () => MIN_FREE_MEMORY_BYTES - 1 })
+    svc.enqueue([
+      { url: 'https://example.com/a', caseId },
+      { url: 'https://example.org/b', caseId },
+      { url: 'https://example.net/c', caseId }
+    ])
+    expect(rendering).toEqual(['https://example.com/a'])
+    expect(heldLines(info)).toHaveLength(1)
+
+    // b starts alone once a ends, and the floor then holds c beside it: a second hold.
+    finish('https://example.com/a')
+    await vi.waitFor(() => expect(rendering).toEqual(['https://example.org/b']))
+    expect(heldLines(info)).toHaveLength(2)
+    finish('https://example.org/b')
+    await vi.waitFor(() => expect(rendering).toEqual(['https://example.net/c']))
+    finish('https://example.net/c')
+    await svc.idle()
+  })
+
+  it('replaces the pending memory retry when the queue is drained again, so only one is pending', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const { renderPage, rendering } = heldRenders()
+    const freeMemory = vi.fn(() => MIN_FREE_MEMORY_BYTES - 1)
+    const svc = makeService(renderPage, { freeMemory })
+    svc.enqueue([
+      { url: 'https://example.com/a', caseId },
+      { url: 'https://example.org/b', caseId }
+    ])
+    expect(freeMemory).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(MEMORY_GATE_RETRY_MS / 2)
+    svc.enqueue([{ url: 'https://example.net/c', caseId }])
+    expect(freeMemory).toHaveBeenCalledTimes(2)
+
+    // The first retry would have been due now; only the second is pending.
+    vi.advanceTimersByTime(MEMORY_GATE_RETRY_MS / 2)
+    expect(freeMemory).toHaveBeenCalledTimes(2)
+    vi.advanceTimersByTime(MEMORY_GATE_RETRY_MS / 2)
+    expect(freeMemory).toHaveBeenCalledTimes(3)
+    expect(rendering).toEqual(['https://example.com/a'])
+  })
+
+  it('stops a slot whose row cannot be ended, keeps the other running, and fills both again', async () => {
+    const error = vi.spyOn(logger, 'error')
+    const { renderPage, rendering, finish } = heldRenders()
+    const svc = makeService(renderPage)
+    const {
+      jobIds: [a, b, c]
+    } = svc.enqueue([
+      { url: 'https://example.com/a', caseId },
+      { url: 'https://example.org/b', caseId },
+      { url: 'https://example.net/c', caseId }
+    ])
+    expect(rendering).toEqual(['https://example.com/a', 'https://example.org/b'])
+    vi.mocked(backgroundJobRepo.finishJob).mockImplementationOnce(() => {
+      throw new Error('disk full')
+    })
+
+    finish('https://example.com/a')
+    await vi.waitFor(() =>
+      expect(error.mock.calls.map(([, code]) => code)).toContain(
+        'backgroundRenderer.job_queue_failed'
+      )
+    )
+    // a's row stays `running`, for the next start to mark interrupted; b goes on alone.
+    expect([a, b, c].map(stateOf)).toEqual(['running', 'running', 'queued'])
+    expect(rendering).toEqual(['https://example.org/b'])
+
+    finish('https://example.org/b')
+    await vi.waitFor(() => expect(rendering).toEqual(['https://example.net/c']))
+    svc.enqueue([{ url: 'https://example.edu/d', caseId }])
+    expect(rendering).toEqual(['https://example.net/c', 'https://example.edu/d'])
+    finish('https://example.net/c')
+    finish('https://example.edu/d')
+    await svc.idle()
+    expect([b, c].map(stateOf)).toEqual(['stored', 'stored'])
   })
 
   it('logs a job view the window cannot take, and runs the job to its end', async () => {

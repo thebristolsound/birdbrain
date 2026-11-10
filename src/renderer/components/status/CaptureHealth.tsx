@@ -132,12 +132,18 @@ export function CaptureHealth() {
   const clearCaptureEvents = useAppStore((s) => s.clearCaptureEvents)
   const sessionActive = useAppStore((s) => s.sessionActive)
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
-  // Queue status only renders inside the popover — don't poll while closed.
-  const { data: queue } = useQuery({
+  // The pill shows queued background captures even while the popover is closed. A job
+  // that starts emits a recapture event, so the queue is re-read on each one, then polled
+  // while something is pending or the popover is open.
+  const latestRecaptureEvent = captureEvents.find((event) => event.source === 'recapture')
+  const { data: queue, refetch: refetchQueue } = useQuery({
     ...recaptureQueueQueryOptions,
-    refetchInterval: 2000,
-    enabled: open
+    refetchInterval: (query) => (open || (query.state.data?.pending ?? 0) > 0 ? 2000 : false)
   })
+  useEffect(() => {
+    if (latestRecaptureEvent) void refetchQueue()
+  }, [latestRecaptureEvent, refetchQueue])
+  const pending = queue?.pending ?? 0
 
   async function runPipelineTest() {
     setTesting(true)
@@ -183,6 +189,16 @@ export function CaptureHealth() {
         <Activity className="h-3.5 w-3.5" />
         {captureStats.successCount > 0 && <span>{captureStats.successCount}</span>}
         {hasFailures && <span className="text-danger-fg">/{captureStats.failCount}!</span>}
+        {pending > 0 && (
+          <span
+            data-testid="recapture-pending-indicator"
+            title={`${pending} background capture${pending === 1 ? '' : 's'} queued or running`}
+            className="flex items-center gap-1 text-accent"
+          >
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            {pending}
+          </span>
+        )}
       </button>
 
       <AnimatePresence>
@@ -217,9 +233,9 @@ export function CaptureHealth() {
                 {captureStats.successCount}ok / {captureStats.failCount}fail /{' '}
                 {captureStats.skipCount}skip
               </div>
-              {queue && queue.pending > 0 && (
+              {pending > 0 && (
                 <span data-testid="recapture-pending-badge" className="text-text-muted">
-                  {queue.pending} background capture{queue.pending === 1 ? '' : 's'} pending
+                  {pending} background capture{pending === 1 ? '' : 's'} pending
                 </span>
               )}
             </div>

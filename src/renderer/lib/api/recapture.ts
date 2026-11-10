@@ -3,8 +3,8 @@ import type { EnqueueResult, LinkedFrom } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { requireContact } from '@renderer/lib/vpnWarning'
 
-// The queue only renders inside the CaptureHealth popover, so the poll
-// interval and `enabled` stay at the call site.
+// CaptureHealth is the only reader and decides when to poll, so the interval
+// stays at the call site.
 export const recaptureQueueQueryOptions = queryOptions({
   queryKey: queryKeys.recaptureQueue,
   queryFn: () => window.birdbrain.recapture.queueStatus()

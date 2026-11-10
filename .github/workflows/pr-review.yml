@@ -12,17 +12,15 @@ name: PR review
 # Cost. The pre-gate picks the PR from the API alone, under its own spend cap: 4
 # reviews in 24 hours and 1 per PR in 6, counted from this workflow's runs and
 # separate from dispatch's. A fire with nothing owed ends before the toolchain
-# installs. Hourly at :13, half an hour from dispatch's :43.
+# installs.
 #
-# On request. The maintainer applying `review:requested` to a PR starts a fire for
-# that PR at once (ADR-0046, decision 6). pull_request_target, because its ref is
-# main, which the paid-runs environment admits. The label is the request and this
-# event only starts a fire early: the concurrency group keeps one pending run, so a
-# dropped one is picked up by the next scheduled fire, which reads the label too.
-
+# On request only. Since ADR-0057 the review fleet (review-fleet.yml) reads every PR
+# the old hourly fire picked from, so the schedule is gone. The maintainer applying
+# `review:requested` to a PR starts a fire for that PR (ADR-0046, decision 6), or a
+# manual run does. pull_request_target, because its ref is main, which the paid-runs
+# environment admits. The concurrency group keeps one pending run, so a request
+# dropped behind another is made again by re-applying the label.
 on:
-  schedule:
-    - cron: '13 * * * *'
   pull_request_target:
     types: [labeled]
   workflow_dispatch:

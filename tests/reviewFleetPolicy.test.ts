@@ -380,6 +380,26 @@ describe('source contract preparation before the paid call', () => {
     expect(over.seen).toHaveLength(30)
   })
 
+  // A browser decodes a fragment before it looks for the comment.
+  it.each([
+    ['pull/9#issue%63omment-5', 'issues/comments/5'],
+    ['pull/9#discussion%5Fr5', 'pulls/comments/5'],
+    ['pull/9/files#%725', 'pulls/comments/5'],
+    ['pull/9#pullrequest%72eview-5', 'pulls/9/reviews/5'],
+    ['pull/9#:~:text=50%25%20done', 'pulls/9']
+  ])('reads a percent-encoded fragment as a browser does: %s', (link, path) => {
+    expect(reads(`Contract: https://github.com/${repo}/${link}`)).toEqual([path])
+  })
+
+  it.each(['pull/9#discussion%5Fr-5', 'pull/9#%zz', 'pull/9#100%'])(
+    'fails a fragment that is malformed once decoded, or does not decode: %s',
+    (link) => {
+      expect(() => reads(`Contract: https://github.com/${repo}/${link}`)).toThrow(
+        `malformed source link: https://github.com/${repo}/${link}`
+      )
+    }
+  )
+
   it('stops at the thirtieth source instead of reading without limit', () => {
     const closes = (n: number) =>
       `Closes ${Array.from({ length: n }, (_, i) => `#${i + 1}`).join(', ')}`
@@ -519,5 +539,13 @@ exit 1
     expect(r.status).not.toBe(0)
     expect(r.stderr).toContain('could not read required source issues/12')
     expect(r.sources).toBeNull()
+  })
+
+  // Node 24 rescans a punctuation run from every position when an end-anchored expression
+  // strips it. Electron's engine, which runs these tests, does not, so the command is timed.
+  it('reads a link behind a long run of punctuation before the five-second limit', () => {
+    const r = prepare(`https://github.com/${repo}/pull/9#event-5${'.'.repeat(200_000)}x`, 200, 200)
+    expect(r.status, r.stderr).toBe(0)
+    expect(r.sources).toEqual(['pulls/9'])
   })
 })

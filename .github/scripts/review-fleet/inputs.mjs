@@ -15,6 +15,17 @@ const LINK =
 const COMMENT = /^(issuecomment-|pullrequestreview-|discussion_r|r)(\d+)$/
 // Any other spelling of one, read with letter case, hyphens and underscores removed.
 const COMMENT_LIKE = /comment|review|^(?:discussion)?r(?:\d|$)/
+// Sentence punctuation that follows a link without being part of it.
+const TRAILING = '?!.,:;*_~'
+
+// A browser decodes a fragment before it looks for the comment. Null when it does not decode.
+function decoded(fragment) {
+  try {
+    return decodeURIComponent(fragment)
+  } catch {
+    return null
+  }
+}
 
 // The API paths a text names. A number pointer comes back as `comments/<id>`, which is neither
 // comment endpoint: prepareInputs reads it from both.
@@ -24,14 +35,18 @@ export function referencedSources(text, repo) {
     // Credentials reach this repository only, so a link to another one is a missing source.
     if (target.toLowerCase() !== repo.toLowerCase())
       throw new Error(`referenced source outside ${repo}: ${target}`)
-    // A path or query before the fragment does not change the comment it names, and sentence
-    // punctuation after the link is not part of it.
+    // A path or query before the fragment does not change the comment it names. The trailing
+    // punctuation goes in a loop: Node rescans a long run from every position for `[...]+$`.
     const hash = rest.indexOf('#')
-    const fragment = hash < 0 ? '' : rest.slice(hash + 1).replace(/[?!.,:;*_~]+$/, '')
-    const [, name, id] = COMMENT.exec(fragment) ?? []
+    let end = hash < 0 ? 0 : rest.length
+    while (end > hash + 1 && TRAILING.includes(rest[end - 1])) end--
+    const raw = rest.slice(hash + 1, end)
+    const fragment = decoded(raw)
+    const [, name, id] = COMMENT.exec(fragment ?? '') ?? []
     // A link that names a comment in another shape must not read as the page around it.
-    if (!name && COMMENT_LIKE.test(fragment.toLowerCase().replace(/[-_]/g, '')))
-      throw new Error(`malformed source link: ${link}${rest.slice(0, hash)}#${fragment}`)
+    const like = !name && COMMENT_LIKE.test((fragment ?? '').toLowerCase().replace(/[-_]/g, ''))
+    if (fragment === null || like)
+      throw new Error(`malformed source link: ${link}${rest.slice(0, hash)}#${raw}`)
     if (name === 'issuecomment-') paths.add(`issues/comments/${id}`)
     else if (name === 'pullrequestreview-') paths.add(`pulls/${number}/reviews/${id}`)
     else if (name) paths.add(`pulls/comments/${id}`)

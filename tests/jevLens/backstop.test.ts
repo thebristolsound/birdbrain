@@ -58,7 +58,7 @@ describe('parseIncludeList', () => {
     expect(entries.every((e) => e.tier === 'blocking' || e.tier === 'advisory')).toBe(true)
   })
 
-  it('matches the paths registered on 2026-11-09, and leaves the excluded carve-out off', () => {
+  it('matches the paths registered on 2026-11-09, and leaves the two exclusions off', () => {
     const entries: Entry[] = loadIncludeList()
     const tierOf = (path: string) => matchEntry(entries, path)?.tier
     expect(tierOf('extension/src/selectionBar.ts')).toBe('blocking')
@@ -68,13 +68,16 @@ describe('parseIncludeList', () => {
     expect(tierOf('src/main/services/captureLinks.ts')).toBe('blocking')
     expect(tierOf('src/main/services/htmlParts.ts')).toBe('blocking')
     expect(tierOf('src/renderer/components/captures/LinksTab.tsx')).toBe('blocking')
+    expect(tierOf('src/renderer/components/captures/useLinkMenuTarget.ts')).toBe('blocking')
     expect(matchEntry(entries, 'src/main/windowReveal.ts')).toBeNull()
     expect(matchEntry(entries, 'src/renderer/components/signals/AutoCaptureCard.tsx')).toBeNull()
   })
 
   it('records the two carve-outs left off the include list on the exclusion list', () => {
     const markdown = readFileSync(INCLUDE_LIST_DOC, 'utf8')
-    const exclusions = markdown.slice(markdown.indexOf('\n## Notable exclusions'))
+    const start = markdown.indexOf('\n## Notable exclusions')
+    const exclusions = markdown.slice(start, markdown.indexOf('\n## ', start + 1))
+    expect(exclusions.length).toBeGreaterThan(0)
     expect(exclusions).toContain('| `src/main/windowReveal.ts` |')
     expect(exclusions).toContain('| `src/renderer/components/signals/**` |')
   })

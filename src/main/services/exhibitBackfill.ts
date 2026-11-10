@@ -398,15 +398,17 @@ export async function backfillCase(
   const unnumbered = hasRenumberEntry(entries) ? [] : awaitingRenumber(exhibits, entries)
   if (!operatorName) {
     // A Case that needs a signed entry gets no thumbnail rows either, signed or
-    // not, so the run once a name is saved does the Case in one pass.
+    // not, so the run once a name is saved does the Case in one pass. Any other
+    // Case goes on below, where every row it has left signs nothing.
     const toSign =
       unnumbered.length > 0 ||
       thumbnailsPending(exhibits, store, caseDir).some((pending) =>
         wouldSignDerivation(pending, store)
       )
-    if (!toSign) return result
-    logger.warn('exhibits', 'exhibits.backfill_deferred', { caseId: ident(caseId) })
-    return { ...result, skipped: 'operator_name_required' }
+    if (toSign) {
+      logger.warn('exhibits', 'exhibits.backfill_deferred', { caseId: ident(caseId) })
+      return { ...result, skipped: 'operator_name_required' }
+    }
   }
   if (unnumbered.length > 0) {
     appendRenumberEntry(caseId, caseDir, unnumbered, who)

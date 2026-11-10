@@ -1196,6 +1196,45 @@ describe('exhibit model', () => {
       expect(warned).not.toHaveBeenCalled()
       warned.mockRestore()
     })
+
+    // Neither row needs a signature: one re-records against an entry already signed, the
+    // other has no parent the chain vouches for. A blank name holds neither back.
+    it('still records the thumbnail rows that sign nothing', async () => {
+      const killed = await ingestInto(caseId, {
+        url: 'https://example.com/unnamed-killed',
+        title: 'Killed',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot: await screenshotPng({ r: 70, g: 20, b: 120 })
+      })
+      await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+      const [entry] = manifestLines(caseDir).filter((line) => line.type === 'derivation')
+      getDb().prepare('DELETE FROM derived_files WHERE exhibit_id = ?').run(killed.id)
+      const swapped = await ingestInto(caseId, {
+        url: 'https://example.com/unnamed-swapped',
+        title: 'Swapped',
+        timestamp: '2026-04-05T12:01:00.000Z',
+        screenshot: await screenshotPng({ r: 120, g: 70, b: 20 })
+      })
+      writeFileSync(
+        defaultCaptureStore.artifactPaths(caseId, swapped.id, 'png').abs,
+        await screenshotPng({ r: 20, g: 120, b: 70 })
+      )
+      writeFileSync(
+        defaultCaptureStore.thumbnailPaths(caseId, swapped.id).abs,
+        Buffer.from('legacy thumbnail bytes')
+      )
+      updateSettings({ operatorName: '' })
+      const before = readFileSync(join(caseDir, MANIFEST_FILENAME), 'utf-8')
+
+      const result = await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      expect(result).toMatchObject({ thumbnailsAnchored: 1, thumbnailsUnanchored: 1 })
+      expect(result.skipped).toBeUndefined()
+      expect(readFileSync(join(caseDir, MANIFEST_FILENAME), 'utf-8')).toBe(before)
+      const rows = new Map(listDerivedFilesForCase(caseId).map((row) => [row.exhibitId, row]))
+      expect(rows.get(killed.id)?.manifestSeq).toBe(entry.index)
+      expect(rows.get(swapped.id)?.manifestSeq).toBeNull()
+    })
   })
 
   describe('inventory', () => {

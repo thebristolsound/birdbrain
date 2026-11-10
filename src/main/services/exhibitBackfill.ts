@@ -441,3 +441,19 @@ export async function runExhibitBackfill(
   }
   return results
 }
+
+// The work a blank operator name held (X47), run when a save first sets one: the
+// backfill over the Cases it skipped, then the stamps the trusted-time worker kept
+// pending, which wait on the network and so are started, not awaited. A failure is
+// logged rather than thrown, because the name is saved by then and the save must
+// not report that it was not.
+export async function runHeldSigningWork(
+  deps: ExhibitBackfillDeps & { processPendingTimestamps: () => Promise<unknown> }
+): Promise<void> {
+  try {
+    await runExhibitBackfill(deps)
+  } catch (err) {
+    logger.error('exhibits', 'exhibits.backfill_failed', undefined, err)
+  }
+  void deps.processPendingTimestamps()
+}

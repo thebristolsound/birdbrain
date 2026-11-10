@@ -158,7 +158,7 @@ vi.mock('@main/services/db/dbRestore', async (importActual) => {
 
 // --- Real services ----------------------------------------------------------
 import { IPC_CHANNELS } from '@shared/ipc'
-import { MAX_BATCH_CAPTURE_IDS } from '@shared/constants'
+import { MANIFEST_FILENAME, MAX_BATCH_CAPTURE_IDS } from '@shared/constants'
 import type { BatchCountResult, BatchDeleteResult, SelfTestResult } from '@shared/ipc'
 import { registerIpcHandlers, type PopOutWindowControls } from '@main/ipcHandlers'
 import type {
@@ -182,6 +182,7 @@ import {
   getLogDir,
   getLogPath,
   initLogger,
+  logger,
   readRecentEntries
 } from '@main/services/logger'
 import Database from 'better-sqlite3'
@@ -205,6 +206,7 @@ import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import { OperatorNameRequiredError } from '@main/services/operatorName'
+import { runExhibitBackfill, runHeldSigningWork } from '@main/services/exhibitBackfill'
 import { createSessionService, type SessionService } from '@main/services/session'
 import {
   createLaunchedBrowserService,
@@ -2350,6 +2352,70 @@ describe('ipcHandlers — settings', () => {
 
     expectOk(await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { operatorName: 'Agent Jones' }))
     expect(onOperatorNameSet).toHaveBeenCalledTimes(1)
+  })
+
+  // The same save through the hook the app wires, with the real backfill behind it: the seeded
+  // Capture has no entry, so its Case owes a `renumber` entry the blank name held back.
+  describe('with the held signing work the app runs', () => {
+    const renumberNames = (): unknown[] =>
+      readFileSync(join(storage.getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as { type: string; operatorName: string })
+        .filter((entry) => entry.type === 'renumber')
+        .map((entry) => entry.operatorName)
+
+    function registerWithHeldWork(processPendingTimestamps: () => Promise<unknown>): void {
+      const selectorLifecycle = createSelectorLifecycle({ emitRematched: vi.fn() })
+      registerIpcHandlers({
+        selectorLifecycle,
+        captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
+        recaptureService,
+        updaterService,
+        sessionService,
+        sharingService,
+        onOperatorNameSet: () =>
+          runHeldSigningWork({ toolVersion: '1.2.3', processPendingTimestamps })
+      })
+    }
+
+    it('numbers the held Case under the saved name before the save answers', async () => {
+      const processPendingTimestamps = vi.fn(async () => undefined)
+      registerWithHeldWork(processPendingTimestamps)
+      settings.updateSettings({ operatorName: '' })
+      const [skipped] = await runExhibitBackfill({ toolVersion: '1.2.3' })
+      expect(skipped.skipped).toBe('operator_name_required')
+      expect(renumberNames()).toEqual([])
+
+      expectOk(await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { operatorName: 'Agent Smith' }))
+
+      expect(renumberNames()).toEqual(['Agent Smith'])
+      expect(processPendingTimestamps).toHaveBeenCalledTimes(1)
+    })
+
+    it('saves the name and logs, rather than failing the save, when the backfill throws', async () => {
+      const processPendingTimestamps = vi.fn(async () => undefined)
+      registerWithHeldWork(processPendingTimestamps)
+      settings.updateSettings({ operatorName: '' })
+      const logged = vi.spyOn(logger, 'error').mockImplementation(() => 'log-id')
+      // The case list is read outside the backfill's per-Case catch; afterEach closes again.
+      closeDatabase()
+
+      const saved = expectOk<{ operatorName: string }>(
+        await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { operatorName: 'Agent Smith' })
+      )
+
+      expect(saved.operatorName).toBe('Agent Smith')
+      expect(settings.getSettings().operatorName).toBe('Agent Smith')
+      expect(logged).toHaveBeenCalledWith(
+        'exhibits',
+        'exhibits.backfill_failed',
+        undefined,
+        expect.anything()
+      )
+      expect(processPendingTimestamps).toHaveBeenCalledTimes(1)
+      logged.mockRestore()
+    })
   })
 
   it('returns null when the storage-path picker is cancelled and a path otherwise', async () => {

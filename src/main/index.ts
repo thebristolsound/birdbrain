@@ -82,7 +82,7 @@ import {
   type SyncService
 } from '@main/services/sharing/syncService'
 import { createTimestampWorker } from '@main/services/timestampWorker'
-import { runExhibitBackfill } from '@main/services/exhibitBackfill'
+import { runExhibitBackfill, runHeldSigningWork } from '@main/services/exhibitBackfill'
 import { runImportedPathRepair } from '@main/services/importedPathRepair'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createRecaptureService } from '@main/services/recapture'
@@ -888,12 +888,11 @@ if (!gotSingleInstanceLock) {
         popOut: { open: openPopOut, show: showPopOut, dock: dockPopOut, isOpen: popOutIsOpen },
         sharingService,
         enqueueExhibitTimestamp: (exhibitId) => timestampWorker.enqueueExhibit(exhibitId),
-        // The work a blank operator name held (X47): the Cases the backfill skipped, and the
-        // stamps the worker kept pending. The stamps wait on the network, so they are not awaited.
-        onOperatorNameSet: async () => {
-          await runExhibitBackfill({ toolVersion: app.getVersion() })
-          void timestampWorker.processPending()
-        }
+        onOperatorNameSet: () =>
+          runHeldSigningWork({
+            toolVersion: app.getVersion(),
+            processPendingTimestamps: () => timestampWorker.processPending()
+          })
       })
 
       // Start capture server and extension connection monitor. A failed bind

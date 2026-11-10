@@ -19,6 +19,7 @@ import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { generateReport, pairCapturesWithTrustedTime } from '@main/services/export'
 import {
   buildCertification,
+  buildCertificationFields,
   type CertificationInput,
   type SigningKeyRange
 } from '@main/services/certification'
@@ -965,6 +966,23 @@ describe('certification', () => {
       expect(cert).toContain('observed nothing themselves')
     })
 
+    it('cites the source of a Duplicate that a selection export leaves out', async () => {
+      const { capture: source } = await ingest(
+        caseId,
+        '<html><body>One</body></html>',
+        'https://example.com/1',
+        'One'
+      )
+      const result = await captureLifecycle.duplicate(source.id)
+      if (result.status !== 'duplicated') throw new Error('expected a duplicate')
+
+      const cert = await exportCert({ captureIds: [result.capture.id] })
+
+      expect(cert).toContain('0 captures, 1 duplicate, 0 screenshots')
+      expect(cert).toContain('<td>Duplicate of Exhibit 1</td>')
+      expect(cert).toContain('Every exhibit in this export is a Duplicate')
+    })
+
     it('counts excluded notes as zero in the contents summary', async () => {
       await ingest(caseId, '<html><body>One</body></html>', 'https://example.com/1', 'One')
       createNote({ caseId, title: 'N', body: 'excluded from this export' })
@@ -1249,6 +1267,32 @@ describe('certification from a literal input', () => {
       expect(createHash('sha256').update(html, 'utf-8').digest('hex')).toBe(
         '2cd452b9c18b96da8c858b0c0b1a62596a1c268b0f2c4ce9f83dc4d55d205fa6'
       )
+    })
+
+    it('carries the method and the source on the row, and counts no trusted time for it', () => {
+      const fields = buildCertificationFields(
+        input(
+          [source, duplicate],
+          [
+            [source.id, '3'],
+            [duplicate.id, '4']
+          ]
+        ),
+        '1.0.0'
+      )
+
+      expect(fields.exhibits.map(({ method }) => method)).toEqual(['extension', 'duplicate'])
+      expect(fields.exhibits[1]).toMatchObject({
+        duplicateOfCaptureId: source.id,
+        duplicateOfCitation: '3'
+      })
+      expect(fields.exhibits[0]).not.toHaveProperty('duplicateOfCaptureId')
+      expect(fields.trustedTime).toMatchObject({ stampedCount: 1, allStamped: true })
+      // Nothing observed, so nothing is all-stamped, though the copied token is present.
+      expect(buildCertificationFields(input([duplicate], []), '1.0.0').trustedTime).toMatchObject({
+        stampedCount: 0,
+        allStamped: false
+      })
     })
 
     it('counts neither a Duplicate nor its unstamped row among the observations', () => {

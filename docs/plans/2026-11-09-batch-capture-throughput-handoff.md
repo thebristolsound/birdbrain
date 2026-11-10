@@ -21,12 +21,12 @@ asked for the slices to be filed and then built, in a Claude Code session on 202
 | 2 | #2128 | `feat/background-jobs-ids` | #2135 (draft, base slice 1) | preflight pass at `73ed4e66`, CI green |
 | 3 | #2129 | `feat/background-jobs-table` | #2141 (draft, base slice 2) | preflight pass at `0165b0b0`, CI green |
 | 4 | #2130 | `feat/background-jobs-controls` | #2146 (draft, base slice 3) | reviewed, fixed, preflight pass at `bb16c930` |
-| 5 | #2131 | `feat/background-jobs-parallel-safe` | | reviewed; fix round in `~/worktrees/birdbrain/scratch/background-jobs-2131` |
-| 6 | #2132 | | | not started |
+| 5 | #2131 | `feat/background-jobs-parallel-safe` | #2147 (draft, base slice 4) | preflight pass at `2dcf52b7`; CI rerun after an apt timeout |
+| 6 | #2132 | `feat/background-jobs-pool` | | built at `8336882f`, reviewed; fix round for the restore race in progress |
 
 ## Next command
 
-Finish slice 5's fix round and preflight in `~/worktrees/birdbrain/scratch/background-jobs-2131`, open its PR with `--base feat/background-jobs-controls`, then cut `feat/background-jobs-pool` for slice 6.
+Finish slice 6's fix round and preflight in `~/worktrees/birdbrain/scratch/background-jobs-2131`, then open its PR with `--base feat/background-jobs-parallel-safe`.
 
 ## Decisions taken
 
@@ -54,7 +54,14 @@ Finish slice 5's fix round and preflight in `~/worktrees/birdbrain/scratch/backg
 - **Preflight load:** run every preflight as `flock ~/worktrees/birdbrain/.preflight.lock pnpm
   preflight`; other sessions share the machine and two test files time out under load.
 
+- **Pool default (slice 6):** on for 8+ logical CPUs. Comparison on 2026-11-09: 10 fixture pages
+  54.9 s at 1 worker, 31.2 s at 2; 20 public pages 218.4 s at 1, 110.7 s at 2; no Transaction
+  Record failures at either.
+
 ## Found, not fixed
+
+- PDFs are absent as `failed` on pages that hit the height cap (long-text fixture, the Wikipedia
+  Bristol article), at both concurrencies; #2121 notes the same reason conflation.
 
 - On `origin/main`, the app does not exit after quit while a background job waits on a server
   that never answers; slice 3's build exits normally.

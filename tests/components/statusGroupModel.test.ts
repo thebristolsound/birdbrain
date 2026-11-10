@@ -3,6 +3,7 @@ import { statusModel, type StatusInput } from '@renderer/components/status/statu
 
 const base: StatusInput = {
   egress: { kind: 'direct' },
+  egressReadFailed: false,
   vpnSeen: true,
   connectedToExtension: true,
   successCount: 0,
@@ -49,6 +50,29 @@ describe('statusModel', () => {
     })
     expect(unknown.worst?.key).toBe('egress')
     expect(unknown.word).toBe('Egress unknown')
+  })
+
+  // Missing input is its own state: an Egress nobody has read is not a nominal one.
+  it('does not call the state nominal while the Egress is still being read', () => {
+    const m = statusModel({ ...base, egress: undefined, vpnSeen: undefined })
+    expect(m.signals[1].text).toBe('Reading…')
+    expect(m.summary).toMatch(/^Status: reading the Egress\. Egress: Reading…\./)
+    expect(m.summary).not.toContain('all nominal')
+  })
+
+  it('reports a failed Egress read as a problem, over capture failures', () => {
+    const m = statusModel({
+      ...base,
+      egress: undefined,
+      egressReadFailed: true,
+      vpnSeen: undefined,
+      failCount: 3
+    })
+    expect(m.severity).toBe('danger')
+    expect(m.worst?.key).toBe('egress')
+    expect(m.word).toBe('Egress unknown')
+    expect(m.signals[1]).toMatchObject({ text: 'Egress unknown', severity: 'danger' })
+    expect(m.summary).toMatch(/^Status: a problem\. Egress: Egress unknown\./)
   })
 
   it('shows the stored count only while a session runs, whatever the colour', () => {

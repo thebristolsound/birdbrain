@@ -2,6 +2,7 @@ import { createElement, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { Activity, Loader2, Puzzle, type LucideIcon } from 'lucide-react'
+import type { EgressSetting } from '@shared/types'
 import { Button, Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui'
 import { useAppStore } from '@renderer/stores/appStore'
 import { settingsQueryOptions } from '@renderer/lib/api/settings'
@@ -34,6 +35,8 @@ const DOT: Record<Severity, string> = {
   danger: 'bg-danger-fg'
 }
 
+const UNREAD_EGRESS: EgressSetting = { kind: 'unavailable' }
+
 export function StatusGroup() {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -41,8 +44,11 @@ export function StatusGroup() {
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
   const captureStats = useAppStore((s) => s.captureStats)
   const sessionActive = useAppStore((s) => s.sessionActive)
-  const { data: settings } = useQuery(settingsQueryOptions)
+  const { data: settings, isError: settingsFailed } = useQuery(settingsQueryOptions)
   const egress = settings?.egress
+  // A failed settings read leaves the Egress unknown, with the unknown Egress's icon.
+  const egressReadFailed = settingsFailed && !egress
+  const iconEgress = egress ?? (egressReadFailed ? UNREAD_EGRESS : undefined)
   const direct = egress?.kind === 'direct'
   const { data: vpn } = useQuery({ ...vpnStatusQueryOptions, enabled: direct })
   const vpnSeen = direct ? vpn?.vpnSeen : undefined
@@ -62,6 +68,7 @@ export function StatusGroup() {
 
   const model = statusModel({
     egress,
+    egressReadFailed,
     vpnSeen,
     connectedToExtension,
     successCount: captureStats.successCount,
@@ -82,8 +89,8 @@ export function StatusGroup() {
   }, [model.severity, model.summary])
 
   const worstIcon: LucideIcon | null =
-    model.worst?.key === 'egress' && egress
-      ? egressIcon(egress, vpnSeen)
+    model.worst?.key === 'egress' && iconEgress
+      ? egressIcon(iconEgress, vpnSeen)
       : model.worst?.key === 'health'
         ? Activity
         : null
@@ -161,7 +168,7 @@ export function StatusGroup() {
           Status
         </div>
         <Row icon={Puzzle} signal={extension} />
-        <Row icon={egress ? egressIcon(egress, vpnSeen) : Activity} signal={egressSignal} />
+        <Row icon={iconEgress ? egressIcon(iconEgress, vpnSeen) : Activity} signal={egressSignal} />
         <Row icon={Activity} signal={health} />
         <div className="flex gap-2 border-t border-border px-2.5 py-2">
           <Button

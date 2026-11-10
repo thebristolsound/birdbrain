@@ -4,8 +4,8 @@ import { egressIndicatorText } from '@renderer/components/status/egressText'
 // The top bar's one status control (docs/design-handoff/2026-11-08-top-bar/, Option B): three
 // app-wide signals, read together. Nominal is neutral. Off nominal, the worst signal gives the
 // control its colour, its icon and one short word; the others stay as faint dots. Ranking, from
-// worst: an Egress that could not be read (nothing is sent, #1695); capture failures; a Direct
-// Egress with no VPN seen, which ADR-0032 keeps advisory. A disconnected extension is never a
+// worst: an Egress that could not be read (nothing is sent, #1695), or whose settings read
+// failed; capture failures; a Direct Egress with no VPN seen, which ADR-0032 keeps advisory. A disconnected extension is never a
 // signal: it is the normal state for anyone using Launch browser, which needs none.
 
 export type Severity = 'nominal' | 'warning' | 'danger'
@@ -20,7 +20,10 @@ export interface Signal {
 }
 
 export interface StatusInput {
+  /** Undefined until the settings read returns one. */
   egress: EgressSetting | undefined
+  /** The settings read failed: the Egress is unknown, which is not the same as still loading. */
+  egressReadFailed: boolean
   vpnSeen: boolean | undefined
   connectedToExtension: boolean
   tabCount?: number
@@ -49,7 +52,8 @@ export interface StatusModel {
 const RANK: Record<Severity, number> = { nominal: 0, warning: 1, danger: 2 }
 
 export function statusModel(input: StatusInput): StatusModel {
-  const { egress, vpnSeen, connectedToExtension, tabCount, successCount, failCount } = input
+  const { egress, egressReadFailed, vpnSeen, connectedToExtension, tabCount } = input
+  const { successCount, failCount } = input
 
   const extension: Signal = {
     key: 'extension',
@@ -62,12 +66,16 @@ export function statusModel(input: StatusInput): StatusModel {
     severity: 'nominal'
   }
 
-  const egressText = egress ? egressIndicatorText(egress, vpnSeen) : 'Reading…'
+  const egressUnknown = egress ? egress.kind === 'unavailable' : egressReadFailed
   const egressSignal: Signal = {
     key: 'egress',
     name: 'Egress',
-    text: egressText,
-    severity: egress?.kind === 'unavailable' ? 'danger' : vpnSeen === false ? 'warning' : 'nominal'
+    text: egress
+      ? egressIndicatorText(egress, vpnSeen)
+      : egressReadFailed
+        ? 'Egress unknown'
+        : 'Reading…',
+    severity: egressUnknown ? 'danger' : vpnSeen === false ? 'warning' : 'nominal'
   }
 
   const health: Signal = {
@@ -92,7 +100,7 @@ export function statusModel(input: StatusInput): StatusModel {
 
   const word =
     worst?.key === 'egress'
-      ? egress?.kind === 'unavailable'
+      ? egressUnknown
         ? 'Egress unknown'
         : 'VPN not seen'
       : worst?.key === 'health'
@@ -102,9 +110,12 @@ export function statusModel(input: StatusInput): StatusModel {
   const count = input.sessionActive && successCount > 0 ? successCount : null
 
   const issues = ranked.filter((s) => s.severity !== 'nominal')
+  // An Egress still being read is no issue yet, and no pass either.
   const lead =
     issues.length === 0
-      ? 'all nominal'
+      ? egress
+        ? 'all nominal'
+        : 'reading the Egress'
       : issues
           .map((s) => (s.severity === 'danger' ? 'a problem' : 'a warning'))
           .filter((v, i, a) => a.indexOf(v) === i)

@@ -19,9 +19,17 @@ function renderWith(
   vpnSeen: boolean | undefined,
   queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => ({ pending: 0, activeUrl: null }))
 ) {
+  return renderWithSettings(async () => ({ egress }), vpnSeen, queueStatus)
+}
+
+function renderWithSettings(
+  getSettings: () => Promise<{ egress: EgressSetting }>,
+  vpnSeen: boolean | undefined = undefined,
+  queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => ({ pending: 0, activeUrl: null }))
+) {
   const vpnStatus = vi.fn(async () => ({ vpnSeen }))
   fakeBridge({
-    settings: { get: vi.fn(async () => ({ egress })) },
+    settings: { get: vi.fn(getSettings) },
     egress: { vpnStatus },
     recapture: { queueStatus }
   })
@@ -117,6 +125,32 @@ describe('StatusGroup', () => {
     expect(await screen.findByTestId('capture-log')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Egress settings' }))
     expect(navigate).toHaveBeenCalledWith({ to: '/settings', search: { section: 'egress' } })
+  })
+})
+
+// Missing input is its own state: an Egress nobody has read is not a nominal one.
+describe('StatusGroup before the Egress is read', () => {
+  it('does not say all nominal while the settings are loading', async () => {
+    renderWithSettings(() => new Promise(() => {}))
+    const button = await screen.findByTestId('status-group')
+    expect(button.getAttribute('aria-label')).toMatch(/^Status: reading the Egress\. /)
+    expect(button.getAttribute('aria-label')).not.toContain('all nominal')
+  })
+
+  it('shows a problem, with the unknown-Egress icon and word, when the settings read fails', async () => {
+    renderWithSettings(async () => {
+      throw new Error('settings unreadable')
+    })
+    const button = await screen.findByTestId('status-group')
+    await waitFor(() => expect(button.dataset.severity).toBe('danger'))
+    expect(button.getAttribute('aria-label')).toMatch(
+      /^Status: a problem\. Egress: Egress unknown\. /
+    )
+    expect(button.textContent).toContain('Egress unknown')
+    expect(button.querySelector('svg')?.getAttribute('class')).toContain('shield-question')
+    expect(document.querySelector('[aria-live="polite"]')?.textContent).toBe(
+      button.getAttribute('aria-label')
+    )
   })
 })
 

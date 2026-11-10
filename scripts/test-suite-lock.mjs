@@ -9,10 +9,15 @@
 // one process wins and the lock never exists without its owner. A lock whose processes are
 // gone is stale; on Linux a pid also counts as gone once its start time no longer matches. A
 // waiter clears a stale lock only while holding a second lock (<lock>.reap), after reading the
-// owner again, so it never removes a lock that another waiter has taken since. A command started
-// under the process that holds the lock (HELD_ENV names the holder's pid) runs without waiting.
-// Outside a repository there is nowhere to put the lock: the command runs without it, and the
-// script says so.
+// owner again, and once it has moved the lock aside it checks that what it moved is the lock it
+// judged stale, and puts it back if not. That narrows the takeover race and does not close it:
+// the reap lock is cleared on age alone (REAP_STALE_MS), so a waiter that stalls for longer than
+// that in the middle of a takeover can move another waiter's new lock aside for a moment, and a
+// third run that tries in that moment takes the lock while the second still runs.
+//
+// A command started under the process that holds the lock (HELD_ENV names the holder's pid)
+// runs without waiting. Outside a repository there is nowhere to put the lock: the command runs
+// without it, and the script says so.
 import { execFileSync, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import {
@@ -149,6 +154,27 @@ export const isStale = (
   return !(now - Date.parse(owner.startedAt) <= MAX_AGE_MS)
 }
 
+// Moves the lock aside and deletes it, unless what moved is not the lock `seen` describes: a
+// waiter that stalled past REAP_STALE_MS can find another waiter's new lock here, and puts it
+// back. Returns whether the lock was removed.
+export const discard = (dir, seen) => {
+  const aside = `${dir}.stale-${unique()}`
+  renameSync(dir, aside)
+  if (sameOwner(readOwner(aside), seen)) {
+    rmSync(aside, { recursive: true, force: true })
+    return true
+  }
+  try {
+    renameSync(aside, dir)
+  } catch (error) {
+    log(
+      `moved a live lock aside and could not put it back; two runs may overlap (${error.message})`
+    )
+    rmSync(aside, { recursive: true, force: true })
+  }
+  return false
+}
+
 // Removes the lock if it still belongs to `seen`. Returns whether it did.
 export const clearStale = (dir, seen, { now = Date.now() } = {}) => {
   const reap = `${dir}.reap`
@@ -178,10 +204,7 @@ export const clearStale = (dir, seen, { now = Date.now() } = {}) => {
         if (readOwner(dir)) return false
       }
     }
-    const aside = `${dir}.stale-${unique()}`
-    renameSync(dir, aside)
-    rmSync(aside, { recursive: true, force: true })
-    return true
+    return discard(dir, seen)
   } catch {
     return false
   } finally {

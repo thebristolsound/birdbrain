@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   realpathSync,
   rmSync,
   utimesSync,
@@ -20,6 +21,7 @@ import {
   REAP_STALE_MS,
   acquire,
   clearStale,
+  discard,
   lockPath,
   readOwner,
   recordChild,
@@ -216,6 +218,28 @@ describe('clearStale', () => {
     expect(clearStale(dir, stale)).toBe(true)
     expect(existsSync(dir)).toBe(false)
     expect(existsSync(`${dir}.reap`)).toBe(false)
+  })
+})
+
+describe('discard', () => {
+  it('puts back a lock that is not the one the waiter judged stale', () => {
+    const { owner: taken } = tryAcquire(dir, base(2), { alive })
+    expect(discard(dir, { ...base(1), startedAt: 'earlier' })).toBe(false)
+    expect(readOwner(dir)).toEqual(taken)
+    expect(readdirSync(root)).toEqual([LOCK_NAME])
+  })
+
+  it('puts back a lock that gained an owner after the waiter saw none', () => {
+    const { owner: taken } = tryAcquire(dir, base(2), { alive })
+    expect(discard(dir, null)).toBe(false)
+    expect(readOwner(dir)).toEqual(taken)
+  })
+
+  it('removes the lock the waiter judged stale and leaves nothing behind', () => {
+    const stale = { ...base(1), startedAt: 'old' }
+    plant(dir, stale)
+    expect(discard(dir, stale)).toBe(true)
+    expect(readdirSync(root)).toEqual([])
   })
 })
 

@@ -24,8 +24,9 @@ import {
   type RenderPage
 } from '@main/services/recapture'
 import { logger } from '@main/services/logger'
+import { RefusedAddressError } from '@main/services/localAddressPolicy'
 import { MANIFEST_FILENAME } from '@shared/constants'
-import type { BackgroundJobView } from '@shared/ipc'
+import type { BackgroundJobView, RecaptureCancelResult } from '@shared/ipc'
 import type { CaptureEvent, Capture } from '@shared/types'
 
 vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
@@ -355,6 +356,42 @@ describe('stored background jobs', () => {
       expect(jobs.map(({ jobId, state }) => [jobId, state])).toEqual([[id, 'failed']])
     })
 
+    it('marks a running job stored when the Capture its attempt names is in its Case', async () => {
+      const [id] = earlierSession(['https://example.com/a'])
+      const captureId = randomUUID()
+      backgroundJobRepo.claimNextQueued({ startedAt: new Date().toISOString(), captureId })
+      // The app closed after the ingest wrote the Capture and before the row was finished.
+      insertCapture({
+        id: captureId,
+        caseId,
+        url: 'https://example.com/a',
+        title: 'A',
+        hash: 'a'.repeat(64),
+        timestamp: '2026-11-09T00:00:00.000Z',
+        format: 'mhtml',
+        method: 'background'
+      })
+      const info = vi.spyOn(logger, 'info')
+      const warn = vi.spyOn(logger, 'warn')
+      const svc = makeService()
+
+      svc.recoverStoredJobs()
+
+      expect(backgroundJobRepo.getJob(id)).toMatchObject({
+        state: 'stored',
+        captureId,
+        finishedAt: expect.any(String)
+      })
+      expect(backgroundJobRepo.getJob(id)).not.toHaveProperty('failureKind')
+      expect(
+        info.mock.calls.filter(([, code]) => code === 'backgroundRenderer.job_stored')
+      ).toEqual([['backgroundRenderer', 'backgroundRenderer.job_stored', { captureId, caseId }]])
+      expect(warn).not.toHaveBeenCalled()
+      expect(jobs.map(({ jobId, state }) => [jobId, state])).toEqual([[id, 'stored']])
+      // Its Capture is the observation, so there is nothing to retry.
+      expect(svc.retry({ jobId: id })).toEqual({ retried: 0 })
+    })
+
     it('holds a queued job, which sends no request', async () => {
       const [id] = earlierSession(['https://held.example.com/'])
       const renderPage = vi.fn(render)
@@ -529,10 +566,12 @@ describe('stored background jobs', () => {
     })
 
     it('lets a render go on when its phase cannot be written while the database is closed', async () => {
+      const warn = vi.spyOn(logger, 'warn')
       const svc = makeService(async (url, opts) => {
         opts.onStep?.('setup')
         closeDatabase()
         opts.onStep?.('scroll')
+        opts.onStep?.('settle')
         await initDatabase(dbPath)
         return render(url, opts)
       })
@@ -549,6 +588,19 @@ describe('stored background jobs', () => {
         'loading',
         'ingesting'
       ])
+      // Once per job, by its ids, though two phases went unwritten.
+      const lines = warn.mock.calls.filter(
+        ([, code]) => code === 'backgroundRenderer.job_phase_failed'
+      )
+      expect(lines).toEqual([
+        [
+          'backgroundRenderer',
+          'backgroundRenderer.job_phase_failed',
+          { captureId: newCaptures[0].id, caseId },
+          expect.any(Error)
+        ]
+      ])
+      expect(JSON.stringify(lines)).not.toContain('example.com')
     })
 
     it('ends with a failed event each job of this session that the restored copy does not hold', async () => {
@@ -818,7 +870,7 @@ describe('stored background jobs', () => {
       ])
       await vi.waitFor(() => expect(gate).toHaveLength(1))
 
-      expect(svc.cancel({ jobId: second })).toEqual({ cancelled: 1 })
+      expect(svc.cancel({ jobId: second })).toEqual({ cancelled: 1, refused: 0 })
       expect(backgroundJobRepo.getJob(second)).toEqual({
         jobId: second,
         batchId: expect.any(String),
@@ -831,7 +883,7 @@ describe('stored background jobs', () => {
         error: CANCELLED_JOB_ERROR
       })
       expect(jobs.at(-1)).toMatchObject({ jobId: second, state: 'cancelled' })
-      expect(svc.cancel({ jobId: second })).toEqual({ cancelled: 0 })
+      expect(svc.cancel({ jobId: second })).toEqual({ cancelled: 0, refused: 0 })
 
       gate.shift()!()
       await svc.idle()
@@ -857,8 +909,8 @@ describe('stored background jobs', () => {
       const svc = makeService(renderPage)
       svc.recoverStoredJobs()
 
-      expect(svc.cancel({ batchId: 'another-batch' })).toEqual({ cancelled: 0 })
-      expect(svc.cancel({ batchId })).toEqual({ cancelled: 2 })
+      expect(svc.cancel({ batchId: 'another-batch' })).toEqual({ cancelled: 0, refused: 0 })
+      expect(svc.cancel({ batchId })).toEqual({ cancelled: 2, refused: 0 })
       expect(ids.map(stateOf)).toEqual(['cancelled', 'cancelled'])
       expect(svc.resume(batchId)).toEqual({ resumed: 0 })
       await svc.idle()
@@ -875,9 +927,9 @@ describe('stored background jobs', () => {
       } = svc.enqueue([{ url: 'https://example.com/a', caseId }])
       await vi.waitFor(() => expect(backgroundJobRepo.getJob(id)?.phase).toBe('loading'))
 
-      expect(svc.cancel({ jobId: id })).toEqual({ cancelled: 1 })
-      // The job is already ending, so a second cancel finds nothing to stop.
-      expect(svc.cancel({ batchId })).toEqual({ cancelled: 0 })
+      expect(svc.cancel({ jobId: id })).toEqual({ cancelled: 1, refused: 0 })
+      // The job is already ending, so a second cancel refuses it.
+      expect(svc.cancel({ batchId })).toEqual({ cancelled: 0, refused: 1 })
       await svc.idle()
 
       expect(backgroundJobRepo.getJob(id)).toEqual({
@@ -929,7 +981,7 @@ describe('stored background jobs', () => {
       } = svc.enqueue([{ url: 'https://example.com/a', caseId }])
       await vi.waitFor(() => expect(gate).toHaveLength(1))
 
-      expect(svc.cancel({ jobId: id })).toEqual({ cancelled: 1 })
+      expect(svc.cancel({ jobId: id })).toEqual({ cancelled: 1, refused: 0 })
       gate.shift()!()
       await svc.idle()
 
@@ -943,7 +995,7 @@ describe('stored background jobs', () => {
     it('refuses a cancel from the moment the render hands over its page, and the job ends stored', async () => {
       const lifecycle = createCaptureLifecycle({ selectorLifecycle })
       const ingestGate: Array<() => void> = []
-      const refusals: Array<{ cancelled: number }> = []
+      const refusals: RecaptureCancelResult[] = []
       const svc = createRecaptureService({
         renderPage: render,
         captureLifecycle: {
@@ -970,10 +1022,10 @@ describe('stored background jobs', () => {
       ])
       await vi.waitFor(() => expect(ingestGate).toHaveLength(1))
 
-      expect(refusals).toEqual([{ cancelled: 0 }])
+      expect(refusals).toEqual([{ cancelled: 0, refused: 1 }])
       expect(backgroundJobRepo.getJob(id)).toMatchObject({ state: 'running', phase: 'ingesting' })
       // During the ingest, the Batch's cancel ends only the job still queued.
-      expect(svc.cancel({ batchId })).toEqual({ cancelled: 1 })
+      expect(svc.cancel({ batchId })).toEqual({ cancelled: 1, refused: 1 })
       expect(stateOf(queued)).toBe('cancelled')
 
       ingestGate.shift()!()
@@ -987,6 +1039,69 @@ describe('stored background jobs', () => {
       ])
       expect(captureEntries()).toHaveLength(1)
     })
+
+    // A render the deadline or a refused hop has ended takes up to 2 s more to reject.
+    function endedRender(error: Error): { renderPage: RenderPage; gate: Array<() => void> } {
+      const gate: Array<() => void> = []
+      return {
+        gate,
+        renderPage: async (_url, { onStep, onEnd }) => {
+          onStep?.('setup')
+          onStep?.('load')
+          onEnd?.()
+          await new Promise<void>((resolve) => gate.push(resolve))
+          throw error
+        }
+      }
+    }
+
+    it.each([
+      {
+        ending: 'a refused hop',
+        error: new RefusedAddressError('a loopback address'),
+        row: {
+          state: 'skipped',
+          failureKind: 'refused-address',
+          error: 'Redirects to a loopback address'
+        },
+        event: 'skipped',
+        line: 'backgroundRenderer.job_skipped'
+      },
+      {
+        ending: 'the deadline',
+        error: new RecaptureTimeout(45_000),
+        row: {
+          state: 'failed',
+          failureKind: 'timeout',
+          error: 'Recapture timed out after 45000ms'
+        },
+        event: 'failed',
+        line: 'backgroundRenderer.job_failed'
+      }
+    ])(
+      'refuses a cancel after $ending ended the render, which keeps that ending',
+      async ({ error, row, event, line }) => {
+        const info = vi.spyOn(logger, 'info')
+        const warn = vi.spyOn(logger, 'warn')
+        const { renderPage, gate } = endedRender(error)
+        const svc = makeService(renderPage)
+        const {
+          jobIds: [id]
+        } = svc.enqueue([{ url: 'https://example.com/a', caseId }])
+        await vi.waitFor(() => expect(gate).toHaveLength(1))
+
+        expect(svc.cancel({ jobId: id })).toEqual({ cancelled: 0, refused: 1 })
+        gate.shift()!()
+        await svc.idle()
+
+        expect(backgroundJobRepo.getJob(id)).toMatchObject(row)
+        expect(events.at(-1)?.type).toBe(event)
+        const codes = [...info.mock.calls, ...warn.mock.calls].map(([, code]) => code)
+        expect(codes).toContain(line)
+        expect(codes).not.toContain('backgroundRenderer.job_cancelled')
+        if (row.state === 'skipped') expect(svc.retry({ jobId: id })).toEqual({ retried: 0 })
+      }
+    )
 
     it('cancels a link job while its source is checked, before anything is sent', async () => {
       const renderPage = vi.fn(render)
@@ -1004,7 +1119,7 @@ describe('stored background jobs', () => {
         linkedFrom: { captureId: source.id, linkHref: link }
       })
       expect(stateOf(id)).toBe('running')
-      expect(svc.cancel({ jobId: id })).toEqual({ cancelled: 1 })
+      expect(svc.cancel({ jobId: id })).toEqual({ cancelled: 1, refused: 0 })
       await svc.idle()
 
       expect(stateOf(id)).toBe('cancelled')
@@ -1072,7 +1187,7 @@ describe('stored background jobs', () => {
         batchId,
         jobIds: [fail, skip, ok, cancel]
       } = svc.enqueue(urls.map((url) => ({ url, caseId })))
-      expect(svc.cancel({ jobId: cancel })).toEqual({ cancelled: 1 })
+      expect(svc.cancel({ jobId: cancel })).toEqual({ cancelled: 1, refused: 0 })
       await svc.idle()
       expect([fail, skip, ok, cancel].map(stateOf)).toEqual([
         'failed',

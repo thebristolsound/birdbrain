@@ -329,7 +329,7 @@ beforeEach(async () => {
     listJobs: vi.fn(() => []),
     resume: vi.fn(() => ({ resumed: 2 })),
     dismiss: vi.fn(() => ({ dismissed: 1 })),
-    cancel: vi.fn(() => ({ cancelled: 3 })),
+    cancel: vi.fn(() => ({ cancelled: 3, refused: 1 })),
     retry: vi.fn(() => ({ retried: 2 })),
     idle: vi.fn()
   }
@@ -4106,7 +4106,11 @@ describe('ipcHandlers — recapture', () => {
   })
 
   it.each([
-    { channel: IPC_CHANNELS.RECAPTURE_CANCEL, method: 'cancel', result: { cancelled: 3 } },
+    {
+      channel: IPC_CHANNELS.RECAPTURE_CANCEL,
+      method: 'cancel',
+      result: { cancelled: 3, refused: 1 }
+    },
     { channel: IPC_CHANNELS.RECAPTURE_RETRY, method: 'retry', result: { retried: 2 } }
   ] as const)(
     '$channel takes a job or a Batch, never both or neither',

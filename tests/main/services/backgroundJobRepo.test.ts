@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { closeDatabase, getDb, initDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
+import { insertCapture } from '@main/services/db/captureRepo'
 import {
   cancelWaitingJobs,
   claimNextQueued,
@@ -181,8 +182,35 @@ describe('backgroundJobRepo', () => {
     expect(listJobs({ batchId: 'batch-1' })).toHaveLength(2)
   })
 
-  it('recovers at startup in one pass: interrupted, held, and stored rows past the cutoff', () => {
-    insertQueuedJobs([job('running'), job('queued'), job('old'), job('recent'), job('failed')])
+  it('recovers at startup in one pass: landed, interrupted, held, and stored rows past the cutoff', () => {
+    insertQueuedJobs([
+      job('landed'),
+      job('elsewhere'),
+      job('running'),
+      job('queued'),
+      job('old'),
+      job('recent'),
+      job('failed')
+    ])
+    // Two attempts whose Capture rows exist: one in the job's Case, one in another Case.
+    const other = createCase({ name: 'Other' }).id
+    for (const [captureId, captureCase] of [
+      ['cap-landed', caseId],
+      ['cap-elsewhere', other]
+    ]) {
+      insertCapture({
+        id: captureId,
+        caseId: captureCase,
+        url: 'https://example.com/',
+        title: 'T',
+        hash: 'a'.repeat(64),
+        timestamp: '2026-11-09T11:00:00.000Z',
+        format: 'mhtml',
+        method: 'background'
+      })
+    }
+    claim('cap-landed')
+    claim('cap-elsewhere')
     for (const [id, state, finishedAt] of [
       ['old', 'stored', '2026-11-01T00:00:00.000Z'],
       ['recent', 'stored', '2026-11-05T00:00:00.000Z'],
@@ -201,7 +229,19 @@ describe('backgroundJobRepo', () => {
       interruptedError: 'closed'
     })
 
-    expect(recovery.interrupted).toEqual([
+    expect(recovery.stored).toEqual([
+      expect.objectContaining({
+        jobId: 'landed',
+        state: 'stored',
+        captureId: 'cap-landed',
+        finishedAt: '2026-11-09T12:00:00.000Z'
+      })
+    ])
+    expect(recovery.interrupted.map(({ job: { jobId } }) => jobId)).toEqual([
+      'elsewhere',
+      'running'
+    ])
+    expect(recovery.interrupted.slice(1)).toEqual([
       {
         job: expect.objectContaining({
           jobId: 'running',
@@ -217,6 +257,8 @@ describe('backgroundJobRepo', () => {
     expect(recovery.held.map(({ jobId, state }) => [jobId, state])).toEqual([['queued', 'held']])
     expect(recovery.deletedStored).toBe(1)
     expect(listJobs({ caseId }).map(({ jobId, state }) => [jobId, state])).toEqual([
+      ['landed', 'stored'],
+      ['elsewhere', 'failed'],
       ['running', 'failed'],
       ['queued', 'held'],
       ['recent', 'stored'],

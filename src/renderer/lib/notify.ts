@@ -187,6 +187,7 @@ const CODE_LABELS: Record<LogCode, string> = {
     'Skipped a background capture: its address or its link source was refused',
   'backgroundRenderer.job_failed': 'A background capture failed',
   'backgroundRenderer.job_cancelled': 'Cancelled a background capture',
+  'backgroundRenderer.job_phase_failed': "Couldn't record a background capture's progress",
   'backgroundRenderer.job_queue_failed': 'Background captures stopped',
   'consentBlocker.filter_engine_failed': "Couldn't load the cookie-notice filter lists",
   'selectorLifecycle.retroactive_match_failed':

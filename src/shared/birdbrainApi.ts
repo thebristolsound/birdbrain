@@ -135,6 +135,7 @@ import type {
   RecaptureQueueStatus,
   RecaptureListJobsQuery,
   RecaptureJobTarget,
+  RecaptureCancelResult,
   BackgroundJobView,
   RendererLogPayload,
   SessionStateEvent,
@@ -208,7 +209,7 @@ export interface BirdbrainAPI {
     listJobs(query: RecaptureListJobsQuery): Promise<BackgroundJobView[]>
     resume(payload: { batchId: string }): Promise<{ resumed: number }>
     dismiss(target: RecaptureJobTarget): Promise<{ dismissed: number }>
-    cancel(target: RecaptureJobTarget): Promise<{ cancelled: number }>
+    cancel(target: RecaptureJobTarget): Promise<RecaptureCancelResult>
     retry(target: RecaptureJobTarget): Promise<{ retried: number }>
   }
   tags: {

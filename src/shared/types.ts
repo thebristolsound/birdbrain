@@ -1006,15 +1006,19 @@ export const LOG_CODES = [
   // (#2127). Both carry the job's capture id, which the job lines below share.
   'backgroundRenderer.render_completed',
   'backgroundRenderer.render_failed',
-  // How each Background Job ended (#2127): stored with its ingest time, skipped
-  // by a rule, failed with the step it reached, or as `interrupted` at the next
-  // start when the app closed during it, or cancelled by the Operator. The app
+  // How each Background Job ended (#2127): stored with its ingest time (or at the
+  // next start, with none, when the app closed after its ingest), skipped by a
+  // rule, failed with the step it reached, or as `interrupted` at the next start
+  // when the app closed during it, or cancelled by the Operator. The app
   // window hears of each as an event; these lines and the job's
   // `background_jobs` row outlast the session.
   'backgroundRenderer.job_stored',
   'backgroundRenderer.job_skipped',
   'backgroundRenderer.job_failed',
   'backgroundRenderer.job_cancelled',
+  // A running job's phase could not be written to its row, as while a restore has the database
+  // closed. The render goes on; logged once per job.
+  'backgroundRenderer.job_phase_failed',
   // The background job queue stopped because it could not read or write a job's row, as while
   // a restore has the database closed. The next enqueue or resume starts it again.
   'backgroundRenderer.job_queue_failed',

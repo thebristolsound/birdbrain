@@ -952,7 +952,7 @@ function createStepClock(first: RenderStep, onStep?: (step: RenderStep) => void)
 // isolated cosmetic-filter bridge (see below).
 export const renderPageInHiddenWindow: RenderPage = async (
   url,
-  { timeoutMs, captureId, toolVersion, onStep, signal }
+  { timeoutMs, captureId, toolVersion, onStep, signal, onEnd }
 ) => {
   // An Egress that could not be read sends nothing, so no window is made (ADR-0032).
   const egress = knownEgress()
@@ -988,15 +988,25 @@ export const renderPageInHiddenWindow: RenderPage = async (
   const steps = createStepClock('setup', onStep)
   const remainingMs = (reserveMs = 0) =>
     Math.max(0, timeoutMs - (Date.now() - startedAt) - reserveMs)
-  // The deadline, a cancel through `signal` and a refused hop end the render the same way.
-  // `abandoned` is set as it ends, before anything else runs, because the render itself goes on
-  // until a call on the destroyed window throws, and the Transaction Record and PDF steps catch
-  // their own failures.
+  // The render will return no page: `onEnd` hears it once, as soon as it is known.
+  let endHeard = false
+  const hearEnd = (): void => {
+    if (endHeard) return
+    endHeard = true
+    onEnd?.()
+  }
+
+  // The deadline, a cancel through `signal` and a refused hop end the render the same way, and
+  // the first of them decides its error. `abandoned` is set as it ends, before anything else
+  // runs, because the render itself goes on until a call on the destroyed window throws, and the
+  // Transaction Record and PDF steps catch their own failures.
   let abandoned = false
   let endRender: (err: Error) => void = () => {}
   const ended = new Promise<never>((_, reject) => {
     endRender = (err) => {
+      if (abandoned) return
       abandoned = true
+      hearEnd()
       reject(err)
     }
   })
@@ -1284,6 +1294,7 @@ export const renderPageInHiddenWindow: RenderPage = async (
   try {
     page = await Promise.race([rendering, ended])
   } catch (err) {
+    hearEnd()
     const { reached, durations } = steps.stop()
     // A refused hop ends the job skipped, which the job's own line records.
     if (!(err instanceof RefusedAddressError)) {

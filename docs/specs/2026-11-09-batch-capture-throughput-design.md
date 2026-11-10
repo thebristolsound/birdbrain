@@ -2,8 +2,8 @@
 
 **Date:** 2026-11-09
 
-**Status:** Draft, grilled with the maintainer on 2026-11-09; awaiting maintainer review. Nothing
-in it is implemented.
+**Status:** Draft, grilled with the maintainer on 2026-11-09; awaiting maintainer review. Slices 1
+to 4 are built on stacked pull requests, none merged yet; slices 5 and 6 are not built.
 
 **Frame of reference:** `origin/main` at `c1ed8ed8`. This spec cites code by symbol, per
 [`docs/README.md`](../README.md). The measured figures come from one batch on 2026-11-09 and from
@@ -198,7 +198,7 @@ CREATE INDEX idx_background_jobs_batch ON background_jobs(batch_id);
 | `batch_id` | The job's Batch: one per `recapture:enqueue` or `recapture:enqueueCaptures` call, so #2124 can group a paste. A retry keeps it. |
 | `supersedes_capture_id`, `linked_from_capture_id`, `link_href` | The `RecaptureJob` fields today, so a job read back after a restart runs exactly as it was queued. `linked_from_capture_id` has no foreign key: `readLinkSource` already refuses a job whose source is gone. |
 | `phase` | The last progress phase while `running`; see [Events](#events-and-the-renderer-contract). |
-| `attempts` | Renders started for this job. A retry adds one. |
+| `attempts` | Attempts the worker has claimed for this job. Each claim adds one, the claim after a retry included; the retry itself adds nothing. |
 | `queued_at`, `resumed_at` | When the job was accepted, and when the Operator last resumed its Batch or retried the job. The worker claims by `resumed_at` when set, otherwise `queued_at`, so a resumed or retried job runs after the jobs already queued at that moment and ahead of later ones; `queued_at` never changes. |
 | `capture_id` | Set when the attempt starts, to the id `runJob` generates and the Transaction Record's `warcinfo` names. It names a stored Capture only in state `stored`. No foreign key, so deleting the Capture keeps the job's history. |
 | `failure_kind` | For `failed`: `timeout`, `render`, `ingest`, `link-source-error` (the link source check threw), or `interrupted`. For `skipped`: `excluded`, `refused-address`, or `link-source`. |
@@ -226,10 +226,12 @@ observation at a later time and a page that hung once usually hangs again.
 
 At startup, before the queue runs:
 
-1. Every `running` row becomes `failed` with `failure_kind = 'interrupted'`. The app closed during
-   its render or ingest. The ingest's write-ahead seam (`withManifestEntry`) already rolls back a
-   manifest entry whose row never landed, so an interrupted job leaves no partial Capture. It is
-   not re-run without the Operator, because a re-run is a new observation at a later time.
+1. A `running` row whose `capture_id` names a Capture in the row's Case becomes `stored`: the app
+   closed after the ingest committed and before the row was finished. Every other `running` row
+   becomes `failed` with `failure_kind = 'interrupted'`. The app closed during its render or
+   ingest. The ingest's write-ahead seam (`withManifestEntry`) already rolls back a manifest entry
+   whose row never landed, so an interrupted job leaves no partial Capture. It is not re-run
+   without the Operator, because a re-run is a new observation at a later time.
 2. Every `queued` row becomes `held`. A held job runs only after the Operator resumes its Batch.
    Between sessions the Egress setting, the network, or the Operator's intent can change, and a
    held job sends no request the Operator did not start in this session. The hold is per Batch,
@@ -463,7 +465,7 @@ phase to the row and emits the view; it does not write timing into the row.
 | `recapture:enqueue`, `recapture:enqueueCaptures` | `EnqueueResult` gains `batchId` and the accepted `jobIds`. |
 | `recapture:queueStatus` | `RecaptureQueueStatus` gains the counts `queued`, `running` and `held`, and `concurrency`. `pending` stays `queued + running`, which #2122 reads. `activeUrl` stays, as the first running job's URL, until its readers move. `e2e/vpn-warning.spec.ts` asserts the exact status object with `toEqual`, so slice 2 updates that assertion. |
 | `recapture:listJobs` (new) | Returns `BackgroundJobView[]` for a Case or a batch, so the renderer can load state after a reload or a restart. |
-| `recapture:cancel` (new) | Takes a `jobId` or a `batchId`. A queued or held job becomes `cancelled`. A running job is aborted through its `AbortSignal`, which takes the render's existing deadline path (window destroyed, temp file removed, nothing stored), and ends `cancelled`. A job is ingesting from the moment its render returns its page, when its phase becomes `ingesting`; a cancel from then on is refused and the job ends as the ingest does, so cancel never interrupts the manifest seam. A cancelled job's feed row ends with a `skipped` event whose reason is `Cancelled`. |
+| `recapture:cancel` (new) | Takes a `jobId` or a `batchId`. A queued or held job becomes `cancelled`. A running job is aborted through its `AbortSignal`, which takes the render's existing deadline path (window destroyed, temp file removed, nothing stored), and ends `cancelled`. A job is ingesting from the moment its render returns its page, when its phase becomes `ingesting`; a cancel from then on is refused and the job ends as the ingest does, so cancel never interrupts the manifest seam. A cancel that arrives after the deadline or a refused hop has already ended the render is refused too, and the job ends as that ending decided. The result counts the jobs cancelled and the running job refused. A cancelled job's feed row ends with a `skipped` event whose reason is `Cancelled`. |
 | `recapture:retry` (new) | Takes a `jobId` in `failed` or `cancelled`, or a `batchId`, which retries that Batch's `failed` and `cancelled` jobs. Sets each `queued`, behind the jobs already queued, and clears the last attempt's fields. The claim of the next attempt adds one to `attempts` and generates a new `capture_id`. |
 | `recapture:resume` (new) | Takes a `batchId`, sets its `held` jobs `queued` and records the resume in `resumed_at`. |
 | `recapture:dismiss` (new) | Takes a `jobId` or a `batchId` and deletes `failed`, `skipped` and `cancelled` rows. It never deletes a `stored`, `queued`, `held` or `running` row. |

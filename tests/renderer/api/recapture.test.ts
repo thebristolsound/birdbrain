@@ -102,7 +102,7 @@ describe('cancel and retry of background jobs', () => {
 
   it('cancels without the VPN warning, which only a contact asks', async () => {
     const checkVpnWarning = vi.fn(async () => ({ caseId: 'case-a', warn: true, canMute: true }))
-    const cancel = vi.fn(async () => ({ cancelled: 2 }))
+    const cancel = vi.fn(async () => ({ cancelled: 2, refused: 0 }))
     fakeBridge({ recapture: { cancel }, egress: { checkVpnWarning } })
     const { wrapper, invalidate } = withClient()
     const { result } = renderHook(() => useCancelBackgroundJobs(), { wrapper })
@@ -111,7 +111,7 @@ describe('cancel and retry of background jobs', () => {
     await act(async () => {
       outcome = await result.current.mutateAsync({ batchId: 'batch-1' })
     })
-    expect(outcome).toEqual({ cancelled: 2 })
+    expect(outcome).toEqual({ cancelled: 2, refused: 0 })
     expect(cancel).toHaveBeenCalledWith({ batchId: 'batch-1' })
     expect(checkVpnWarning).not.toHaveBeenCalled()
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.recaptureQueue })

@@ -2025,6 +2025,62 @@ describe('renderPageInHiddenWindow', () => {
     expect(streamsOnTempFiles()).toEqual([])
   }, 30_000)
 
+  it.each([
+    {
+      ending: 'the deadline',
+      arrange: () => {
+        ctl.loadUrlShouldHang = true
+      },
+      timeoutMs: 50,
+      error: RecaptureTimeout
+    },
+    {
+      ending: 'a refused hop',
+      arrange: () => {
+        ctl.hop = { event: 'will-redirect', url: 'http://127.0.0.1:8080/', isMainFrame: true }
+      },
+      timeoutMs: 30_000,
+      error: RefusedAddressError
+    },
+    {
+      ending: 'its own failure',
+      arrange: () => {
+        ctl.loadUrlShouldReject = true
+      },
+      timeoutMs: 30_000,
+      error: Error
+    }
+  ])(
+    'tells onEnd once when $ending ends it, and keeps that error through a later abort',
+    async ({ arrange, timeoutMs, error }) => {
+      arrange()
+      const controller = new AbortController()
+      const onEnd = vi.fn(() => controller.abort())
+      const render = renderPageInHiddenWindow('https://example.test/', {
+        timeoutMs,
+        ...IDS,
+        signal: controller.signal,
+        onEnd
+      })
+      await expect(render).rejects.toBeInstanceOf(error)
+      await expect(render).rejects.not.toBeInstanceOf(RecaptureCancelled)
+      expect(onEnd).toHaveBeenCalledTimes(1)
+    },
+    30_000
+  )
+
+  it('does not tell onEnd of a render that returns its page', async () => {
+    const onEnd = vi.fn()
+    const result = await renderPageInHiddenWindow('https://example.test/', {
+      timeoutMs: 30_000,
+      ...IDS,
+      onEnd
+    })
+    for await (const _chunk of result.mhtmlStream) void _chunk
+    await result.cleanup()
+    expect(onEnd).not.toHaveBeenCalled()
+  }, 30_000)
+
   it('returns its page as before when its signal is not aborted', async () => {
     const controller = new AbortController()
     const result = await renderPageInHiddenWindow('https://example.test/', {
@@ -3039,6 +3095,40 @@ describe('a Recapture of a rendered page, through ingest, and its PDF', () => {
     ])
     expect(jobs.at(-1)).toMatchObject({ state: 'stored' })
     expect(jobs.at(-1)).not.toHaveProperty('phase')
+  }, 30_000)
+
+  it('keeps a refused hop as the ending of a job cancelled after the hop ended its render', async () => {
+    ctl.hop = { event: 'will-redirect', url: 'http://127.0.0.1:8080/', isMainFrame: true }
+    const cancels: unknown[] = []
+    const jobs: BackgroundJobView[] = []
+    const service = createRecaptureService({
+      renderPage: (url, opts) =>
+        renderPageInHiddenWindow(url, {
+          ...opts,
+          onEnd: () => {
+            opts.onEnd?.()
+            cancels.push(service.cancel({ batchId: jobs[0].batchId }))
+          }
+        }),
+      captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
+      emitEvent: (event) => events.push(event),
+      emitNewCapture: () => {},
+      emitJob: (job) => jobs.push(job),
+      timeoutMs: 30_000
+    })
+    service.enqueue([{ url: 'https://example.test/', caseId }])
+    await service.idle()
+
+    expect(cancels).toEqual([{ cancelled: 0, refused: 1 }])
+    expect(jobs.at(-1)).toMatchObject({
+      state: 'skipped',
+      failureKind: 'refused-address',
+      error: 'Redirects to a loopback address'
+    })
+    expect(events.at(-1)).toMatchObject({
+      type: 'skipped',
+      skipReason: 'Redirects to a loopback address'
+    })
   }, 30_000)
 
   it('leaves no Capture, no manifest entry and no temp file when a job is cancelled before its ingest', async () => {

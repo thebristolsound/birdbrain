@@ -266,16 +266,20 @@ export function listHeldBatches(): HeldBatch[] {
 }
 
 export interface StartupRecovery {
-  // The rows that were `running`, now `failed` as `interrupted`, each with the id its attempt
-  // named, which the job's log lines carry.
+  // The rows that were `running` whose attempt's Capture is in their Case, now `stored`.
+  stored: BackgroundJobView[]
+  // The other rows that were `running`, now `failed` as `interrupted`, each with the id its
+  // attempt named, which the job's log lines carry.
   interrupted: Array<{ job: BackgroundJobView; captureId: string | null }>
   held: BackgroundJobView[]
   deletedStored: number
 }
 
 // The pass before the queue runs ("Restart and snapshot restore" in the design), in one
-// transaction: a running job's render or ingest ended with the process, a queued job waits for
-// the Operator, and a stored row past retention goes, because its Capture is the lasting record.
+// transaction. A running job whose Capture row is in its Case ended with the process after its
+// ingest committed, so it is `stored`; any other running job's render or ingest ended with the
+// process. A queued job waits for the Operator, and a stored row past retention goes, because
+// its Capture is the lasting record.
 // After a restore, `exceptJobId` is the job this process is still running, which ends as it
 // would have without the restore.
 export function recoverJobsAtStartup(params: {
@@ -286,6 +290,18 @@ export function recoverJobsAtStartup(params: {
 }): StartupRecovery {
   const db = getDb()
   return db.transaction(() => {
+    const stored = db
+      .prepare(
+        `UPDATE background_jobs
+            SET state = 'stored', phase = NULL, finished_at = ?
+          WHERE state = 'running' AND id IS NOT ?
+            AND EXISTS (
+              SELECT 1 FROM captures c
+               WHERE c.id = background_jobs.capture_id AND c.case_id = background_jobs.case_id
+            )
+          RETURNING *`
+      )
+      .all(params.now, params.exceptJobId ?? null) as JobRow[]
     const interrupted = db
       .prepare(
         `UPDATE background_jobs
@@ -305,6 +321,7 @@ export function recoverJobsAtStartup(params: {
       )
       .run(params.storedBefore).changes
     return {
+      stored: stored.map(toView),
       interrupted: interrupted.map((row) => ({ job: toView(row), captureId: row.capture_id })),
       held: held.map(toView),
       deletedStored

@@ -1013,6 +1013,13 @@ export type RecaptureListJobsQuery = { caseId: string } | { batchId: string }
 // `cancelled` rows, and `recapture:retry` queues only its `failed` and `cancelled` ones.
 export type RecaptureJobTarget = { jobId: string } | { batchId: string }
 
+// `cancelled` counts the jobs cancel ended or is ending; `refused` counts the running job it named
+// but could not stop, because its render had already returned its page or already been ended.
+export interface RecaptureCancelResult {
+  cancelled: number
+  refused: number
+}
+
 // `batchId` names the call; `jobIds` are its accepted jobs, in the order they were queued.
 export interface EnqueueResult {
   batchId: string
@@ -1134,7 +1141,7 @@ export interface IpcInvokeContract {
   'recapture:listJobs': { args: [query: RecaptureListJobsQuery]; result: BackgroundJobView[] }
   'recapture:resume': { args: [payload: { batchId: string }]; result: { resumed: number } }
   'recapture:dismiss': { args: [target: RecaptureJobTarget]; result: { dismissed: number } }
-  'recapture:cancel': { args: [target: RecaptureJobTarget]; result: { cancelled: number } }
+  'recapture:cancel': { args: [target: RecaptureJobTarget]; result: RecaptureCancelResult }
   'recapture:retry': { args: [target: RecaptureJobTarget]; result: { retried: number } }
 
   'tags:list': { args: []; result: Tag[] }

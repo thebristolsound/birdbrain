@@ -51,22 +51,110 @@ export interface MhtmlHtmlPartList {
  * asks for a folded URI.
  */
 export function listHtmlPartsInMhtml(buffer: Buffer): MhtmlHtmlPartList {
+  const parts: MhtmlHtmlPart[] = []
+  const { snapshotLocation } = walkMhtml(buffer, (part) => {
+    if (!part.headersTerminated || !part.html) return
+    const encoding = (part.transferEncoding ?? '7bit').toLowerCase()
+    const charset = parseCharset(part.contentType)
+    const { bodyStart, bodyEnd } = part
+    parts.push({
+      contentLocation: part.contentLocation,
+      encodedSize: bodyEnd - bodyStart,
+      decode: () => decodePartBody(buffer, bodyStart, bodyEnd, encoding, charset)
+    })
+  })
+  return { snapshotLocation, parts }
+}
+
+/** One part of an MHTML, of any type, as the walk finds it. Offsets index the buffer. */
+export interface MhtmlWalkPart {
+  /** The first byte after the delimiter line. */
+  partStart: number
+  /** The next delimiter, or the end of the buffer when none follows. */
+  partEnd: number
+  /**
+   * The body as stored, before transfer decoding: after the header blank line, or at
+   * `partStart` when the headers never end, up to the line break before `partEnd`.
+   */
+  bodyStart: number
+  bodyEnd: number
+  /**
+   * False when no blank line ends the headers inside the part. Its headers are then not read:
+   * `html` is false and the header fields below are null.
+   */
+  headersTerminated: boolean
+  html: boolean
+  contentType: string | null
+  transferEncoding: string | null
+  contentLocation: string | null
+  contentId: string | null
+}
+
+interface MhtmlWalkTop {
+  topContentType: string | null
+  snapshotLocation: string | null
+}
+
+export type MhtmlWalk =
+  | (MhtmlWalkTop & {
+      status: 'no-mime-header' | 'no-boundary'
+      boundary: null
+      closed: false
+      totalParts: 0
+    })
+  | (MhtmlWalkTop & {
+      status: 'walked'
+      boundary: string
+      /** The walk ended at a closing `--boundary--` delimiter rather than at the end of the buffer. */
+      closed: boolean
+      totalParts: number
+    })
+
+/**
+ * Every part of an MHTML in file order, passed to `onPart` one at a time so a caller keeps
+ * only what it needs. The HTML part list above is this walk filtered to terminated text/html
+ * parts, so a part's index among those is the index the HTML readers use.
+ */
+export function walkMhtml(buffer: Buffer, onPart: (part: MhtmlWalkPart) => void): MhtmlWalk {
   const topHeaderEnd = findHeaderEndBuf(buffer, 0)
-  if (topHeaderEnd === -1) return { snapshotLocation: null, parts: [] }
+  if (topHeaderEnd === -1) {
+    return {
+      status: 'no-mime-header',
+      topContentType: null,
+      snapshotLocation: null,
+      boundary: null,
+      closed: false,
+      totalParts: 0
+    }
+  }
 
   const topHeaders = buffer.slice(0, topHeaderEnd).toString('latin1')
+  const topContentType = parseHeader(topHeaders, 'content-type')
   const snapshotLocation = parseLocation(topHeaders, 'snapshot-content-location')
-  const boundary = parseBoundary(topHeaders)
-  if (!boundary) return { snapshotLocation, parts: [] }
+  const boundary = parseBoundary(topContentType)
+  if (!boundary) {
+    return {
+      status: 'no-boundary',
+      topContentType,
+      snapshotLocation,
+      boundary: null,
+      closed: false,
+      totalParts: 0
+    }
+  }
 
   const delimiter = Buffer.from('--' + boundary, 'latin1')
-  const parts: MhtmlHtmlPart[] = []
+  let closed = false
+  let totalParts = 0
 
   let at = buffer.indexOf(delimiter, topHeaderEnd)
   while (at !== -1) {
     const after = at + delimiter.length
     // Closing boundary marker: `--boundary--`
-    if (buffer[after] === 0x2d && buffer[after + 1] === 0x2d) break
+    if (buffer[after] === 0x2d && buffer[after + 1] === 0x2d) {
+      closed = true
+      break
+    }
 
     // Consume the CRLF (or LF) that separates the boundary line from the part.
     let partStart = after
@@ -77,27 +165,48 @@ export function listHtmlPartsInMhtml(buffer: Buffer): MhtmlHtmlPartList {
     const partEnd = nextAt === -1 ? buffer.length : nextAt
 
     const partHeaderEnd = findHeaderEndBuf(buffer, partStart)
-    if (partHeaderEnd !== -1 && partHeaderEnd <= partEnd) {
-      // Decode headers as latin1 (header bytes are ASCII per RFC 2045); cheap.
-      const headers = buffer.slice(partStart, partHeaderEnd).toString('latin1')
-      if (isTextHtml(headers)) {
-        const encoding = (parseHeader(headers, 'content-transfer-encoding') ?? '7bit').toLowerCase()
-        const charset = parseCharset(headers)
-        const bodyStart = partHeaderEnd
-        const bodyEnd = stripTrailingNewlineEnd(buffer, bodyStart, partEnd)
-        parts.push({
-          contentLocation: parseLocation(headers, 'content-location'),
-          encodedSize: bodyEnd - bodyStart,
-          decode: () => decodePartBody(buffer, bodyStart, bodyEnd, encoding, charset)
-        })
-      }
-    }
+    const headersTerminated = partHeaderEnd !== -1 && partHeaderEnd <= partEnd
+    // Decode headers as latin1 (header bytes are ASCII per RFC 2045); cheap.
+    const headers = headersTerminated
+      ? buffer.slice(partStart, partHeaderEnd).toString('latin1')
+      : null
+    const contentType = headers === null ? null : parseHeader(headers, 'content-type')
+    const bodyStart = headersTerminated ? partHeaderEnd : partStart
+    totalParts += 1
+    onPart({
+      partStart,
+      partEnd,
+      bodyStart,
+      bodyEnd: stripTrailingNewlineEnd(buffer, bodyStart, partEnd),
+      headersTerminated,
+      html: isTextHtml(contentType),
+      contentType,
+      transferEncoding: headers === null ? null : parseHeader(headers, 'content-transfer-encoding'),
+      contentLocation: headers === null ? null : parseLocation(headers, 'content-location'),
+      contentId: headers === null ? null : parseHeader(headers, 'content-id')
+    })
 
     if (nextAt === -1) break
     at = nextAt
   }
 
-  return { snapshotLocation, parts }
+  return { status: 'walked', topContentType, snapshotLocation, boundary, closed, totalParts }
+}
+
+/**
+ * Which of the text/html parts is the main document: the one saved from the archive's
+ * `Snapshot-Content-Location`, else the first. Null when there is no HTML part.
+ */
+export function mainHtmlPartIndex(
+  snapshotLocation: string | null,
+  htmlParts: readonly { contentLocation: string | null }[]
+): number | null {
+  if (htmlParts.length === 0) return null
+  const snapshotIndex =
+    snapshotLocation === null
+      ? -1
+      : htmlParts.findIndex((part) => part.contentLocation === snapshotLocation)
+  return snapshotIndex === -1 ? 0 : snapshotIndex
 }
 
 /**
@@ -239,20 +348,17 @@ function parseHeader(headers: string, name: string): string | null {
   return m ? m[1].trim() : null
 }
 
-function parseBoundary(headers: string): string | null {
-  const ct = parseHeader(headers, 'content-type')
+function parseBoundary(ct: string | null): string | null {
   if (!ct) return null
   const m = ct.match(/boundary\s*=\s*(?:"([^"]+)"|([^;\s]+))/i)
   return m ? (m[1] ?? m[2]) : null
 }
 
-function isTextHtml(headers: string): boolean {
-  const ct = parseHeader(headers, 'content-type')
+function isTextHtml(ct: string | null): boolean {
   return !!ct && /^\s*text\/html\b/i.test(ct)
 }
 
-function parseCharset(headers: string): string | null {
-  const ct = parseHeader(headers, 'content-type')
+function parseCharset(ct: string | null): string | null {
   if (!ct) return null
   const m = ct.match(/charset\s*=\s*(?:"([^"]+)"|([^;\s]+))/i)
   return m ? (m[1] ?? m[2]).toLowerCase() : null

@@ -6,7 +6,11 @@ import {
   extractHtmlFromMhtml,
   extractHtmlPartsFromMhtml,
   listHtmlPartsInMhtml,
-  readMhtmlTitle
+  mainHtmlPartIndex,
+  readMhtmlTitle,
+  walkMhtml,
+  type MhtmlWalk,
+  type MhtmlWalkPart
 } from '@main/services/mhtmlDecoder'
 
 function mhtml(lines: string[]): Buffer {
@@ -416,6 +420,236 @@ describe('what the HTML part readers see', () => {
         decode()
       ])
     }).toEqual(expected)
+  })
+})
+
+describe('walkMhtml', () => {
+  const walk = (buffer: Buffer): { summary: MhtmlWalk; parts: MhtmlWalkPart[] } => {
+    const parts: MhtmlWalkPart[] = []
+    const summary = walkMhtml(buffer, (part) => parts.push(part))
+    return { summary, parts }
+  }
+
+  // Offsets, sizes and digests computed outside the code under test, on 2026-11-10, with
+  // `tail -c +$((offset+1)) multi-part.mhtml | head -c <size> | sha256sum`. The delimiter lines
+  // start at 187, 452, 598, 860 and 1059 (`grep -abo -- ------MultiPartBoundary`). Part 2's
+  // digest also equals `printf 'iVBORw0KGgo=' | sha256sum`, the body as it reads in the file.
+  it('reports every part of multi-part.mhtml at its known offsets, sizes and digests', () => {
+    const buffer = readFileSync(join(__dirname, 'fixtures/multi-part.mhtml'))
+    const { summary, parts } = walk(buffer)
+    expect(summary).toEqual({
+      status: 'walked',
+      topContentType: 'multipart/related; type="text/html"; boundary="----MultiPartBoundary"',
+      snapshotLocation: 'https://example.com/page',
+      boundary: '----MultiPartBoundary',
+      closed: true,
+      totalParts: 4
+    })
+    expect(
+      parts.map((part) => ({
+        ...part,
+        sha256: createHash('sha256')
+          .update(buffer.subarray(part.bodyStart, part.bodyEnd))
+          .digest('hex')
+      }))
+    ).toEqual([
+      {
+        partStart: 212,
+        partEnd: 452,
+        bodyStart: 343,
+        bodyEnd: 450,
+        headersTerminated: true,
+        html: true,
+        contentType: 'text/html; charset=utf-8',
+        transferEncoding: 'quoted-printable',
+        contentLocation: 'https://example.com/page',
+        contentId: null,
+        sha256: '51e139ae51b1f7f100083f3536d21e615f4f25e831f15fe93abb93519265ce18'
+      },
+      {
+        partStart: 477,
+        partEnd: 598,
+        bodyStart: 584,
+        bodyEnd: 596,
+        headersTerminated: true,
+        html: false,
+        contentType: 'image/png',
+        transferEncoding: 'base64',
+        contentLocation: 'https://example.com/i.png',
+        contentId: null,
+        sha256: '929e08d597feae564ce98003c4a47ff5239a5b93681d186eda3a9871e5b62644'
+      },
+      {
+        partStart: 623,
+        partEnd: 860,
+        bodyStart: 796,
+        bodyEnd: 858,
+        headersTerminated: true,
+        html: true,
+        contentType: 'text/html; charset=utf-8',
+        transferEncoding: 'base64',
+        contentLocation: 'https://widgets.example/frame/one.html',
+        contentId: '<frame-1@mhtml.blink>',
+        sha256: 'd692e65d337705a1df44f2dbb2d64cd737f7f9cf9475343d9528b165357c79c1'
+      },
+      {
+        partStart: 885,
+        partEnd: 1059,
+        bodyStart: 1010,
+        bodyEnd: 1057,
+        headersTerminated: true,
+        html: true,
+        contentType: 'text/html; charset=iso-8859-1',
+        transferEncoding: 'binary',
+        contentLocation: 'cid:frame-2@mhtml.blink',
+        contentId: null,
+        sha256: '70f8f1e8349c1f9638ab19a7fda4e0ddcc9a9738dafd9acaec39d6a1ca544044'
+      }
+    ])
+  })
+
+  it.each([
+    ['fixtures/multi-part.mhtml', 4],
+    ['fixtures/mhtml-parts.mhtml', 6],
+    ['extraction/fixtures/cnn-iran-synthetic.mhtml', 3],
+    ['extraction/fixtures/cnn-pope-synthetic.mhtml', 3]
+  ])('%s: its HTML parts line up one to one with the HTML part list', (fixture, totalParts) => {
+    const buffer = readFileSync(join(__dirname, fixture))
+    const { summary, parts } = walk(buffer)
+    expect(summary.totalParts).toBe(totalParts)
+    expect(parts).toHaveLength(totalParts)
+    expect(
+      parts
+        .filter(({ headersTerminated, html }) => headersTerminated && html)
+        .map(({ contentLocation, bodyStart, bodyEnd }) => [contentLocation, bodyEnd - bodyStart])
+    ).toEqual(
+      listHtmlPartsInMhtml(buffer).parts.map(({ contentLocation, encodedSize }) => [
+        contentLocation,
+        encodedSize
+      ])
+    )
+  })
+
+  it.each(Object.keys(MALFORMED))(
+    '%s: its HTML parts line up one to one with the HTML part list',
+    (name) => {
+      const buffer = MALFORMED[name as Malformed]
+      expect(
+        walk(buffer)
+          .parts.filter(({ headersTerminated, html }) => headersTerminated && html)
+          .map(({ contentLocation, bodyStart, bodyEnd }) => [contentLocation, bodyEnd - bodyStart])
+      ).toEqual(
+        listHtmlPartsInMhtml(buffer).parts.map(({ contentLocation, encodedSize }) => [
+          contentLocation,
+          encodedSize
+        ])
+      )
+    }
+  )
+
+  it('tells a buffer with no header block from one with no boundary', () => {
+    expect(walk(MALFORMED['an empty buffer'])).toEqual({
+      summary: {
+        status: 'no-mime-header',
+        topContentType: null,
+        snapshotLocation: null,
+        boundary: null,
+        closed: false,
+        totalParts: 0
+      },
+      parts: []
+    })
+    expect(walk(Buffer.from('<html><body>a page</body></html>')).summary.status).toBe(
+      'no-mime-header'
+    )
+    expect(walk(MALFORMED['no boundary'])).toEqual({
+      summary: {
+        status: 'no-boundary',
+        topContentType: 'text/html',
+        snapshotLocation: 'https://example.com/a',
+        boundary: null,
+        closed: false,
+        totalParts: 0
+      },
+      parts: []
+    })
+  })
+
+  it('reports a part whose headers never end, and keeps the HTML numbering around it', () => {
+    const buffer = MALFORMED['unterminated headers between two HTML parts']
+    const { summary, parts } = walk(buffer)
+    expect(summary).toMatchObject({ status: 'walked', closed: true, totalParts: 3 })
+    expect(parts.map(({ headersTerminated }) => headersTerminated)).toEqual([true, false, true])
+    const [, lost] = parts
+    expect(lost).toMatchObject({
+      html: false,
+      contentType: null,
+      transferEncoding: null,
+      contentLocation: null,
+      contentId: null,
+      bodyStart: lost.partStart,
+      bodyEnd: lost.partEnd - 2
+    })
+    expect(buffer.subarray(lost.bodyStart, lost.bodyEnd).toString('latin1')).toBe(
+      'Content-Type: text/html\r\nContent-Location: https://example.com/lost'
+    )
+    expect(listHtmlPartsInMhtml(buffer).parts.map((part) => part.decode())).toEqual([
+      '<p>one</p>',
+      '<p>two</p>'
+    ])
+  })
+
+  it('reports an archive with no closing delimiter as not closed, its last part at the end', () => {
+    const buffer = MALFORMED['no closing delimiter']
+    const { summary, parts } = walk(buffer)
+    expect(summary).toMatchObject({ status: 'walked', closed: false, totalParts: 1 })
+    expect(parts[0].partEnd).toBe(buffer.length)
+  })
+
+  it('reports a boundary with no part after it as closed with no parts', () => {
+    const { summary, parts } = walk(mhtml([...MULTIPART_TOP, '--B--', '']))
+    expect(summary).toMatchObject({ status: 'walked', boundary: 'B', closed: true, totalParts: 0 })
+    expect(parts).toEqual([])
+  })
+
+  // The delimiter match is not anchored to a line start, so the checks split this body, and the
+  // walk shows the parts the checks read.
+  it('splits a body at a delimiter inside it, as the HTML readers do', () => {
+    const buffer = MALFORMED['a delimiter inside a body']
+    const { summary, parts } = walk(buffer)
+    expect(summary).toMatchObject({ closed: true, totalParts: 3 })
+    expect(parts.map(({ headersTerminated, html }) => [headersTerminated, html])).toEqual([
+      [true, true],
+      [false, false],
+      [true, true]
+    ])
+    expect(buffer.subarray(parts[1].bodyStart, parts[1].bodyEnd).toString('latin1')).toBe(
+      ' tail</p>'
+    )
+  })
+})
+
+describe('mainHtmlPartIndex', () => {
+  const at = (contentLocation: string | null) => ({ contentLocation })
+
+  it('picks the HTML part saved from the snapshot location', () => {
+    expect(
+      mainHtmlPartIndex('https://example.com/b', [
+        at('https://example.com/a'),
+        at('https://example.com/b')
+      ])
+    ).toBe(1)
+  })
+
+  it('falls back to the first HTML part when none was saved from the snapshot location', () => {
+    expect(
+      mainHtmlPartIndex('https://example.com/c', [at('https://example.com/a'), at(null)])
+    ).toBe(0)
+    expect(mainHtmlPartIndex(null, [at(null), at(null)])).toBe(0)
+  })
+
+  it('answers null when there is no HTML part', () => {
+    expect(mainHtmlPartIndex('https://example.com/a', [])).toBeNull()
   })
 })
 

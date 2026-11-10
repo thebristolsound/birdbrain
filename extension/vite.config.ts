@@ -39,14 +39,20 @@ const contentConfig = defineConfig({
   }
 })
 
+// The plugin writes to the resolved outDir rather than a fixed path, so a test can
+// run its closeBundle against a scratch directory (tests/extensionManifestBuild.test.ts).
+let dist = resolve(__dirname, 'dist')
+
 const mainConfig = defineConfig({
   plugins: [
     tailwindcss(),
     react(),
     {
       name: 'copy-extension-assets',
+      configResolved({ root, build: { outDir } }) {
+        dist = resolve(root, outDir)
+      },
       closeBundle() {
-        const dist = resolve(__dirname, 'dist')
         const { version: packageVersion } = JSON.parse(
           readFileSync(resolve(__dirname, '../package.json'), 'utf-8')
         )

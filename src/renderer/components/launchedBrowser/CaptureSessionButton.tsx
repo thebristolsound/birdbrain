@@ -34,9 +34,11 @@ export function CaptureSessionButton({ showOpenCase }: { showOpenCase: boolean }
           <button
             type="button"
             data-testid="topbar-capture-session"
-            aria-label="Capture Session, recording"
             className={cn('rounded-md hover:bg-elevated', open && 'bg-elevated')}
           >
+            {/* The mark's elapsed time and source stay in the accessible name, as the Export
+                button's label does: hidden text names the control, not an aria-label. */}
+            <span className="sr-only">Capture Session, </span>
             <RecordingMark trigger />
           </button>
         ) : (

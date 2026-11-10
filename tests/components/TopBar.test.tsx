@@ -296,6 +296,20 @@ describe('the Capture Session button', () => {
     expect(screen.getAllByTestId('topbar-rec')).toHaveLength(1)
   })
 
+  // The mark is the button's content, so its accessible name carries what the mark shows.
+  it("keeps the elapsed time and the source in the trigger's accessible name", async () => {
+    bridgeWith({ ...OPEN, browser: { ...OPEN.browser, sessionStartedAt: Date.now() - 5_000 } })
+    renderAt('/')
+    const button = await screen.findByTestId('topbar-capture-session')
+    await screen.findByRole('timer')
+    expect(button.getAttribute('aria-label')).toBeNull()
+    expect(
+      screen.getByRole('button', {
+        name: /^Capture Session, ?Recording ?00:0\d ?Launched Google Chrome$/
+      })
+    ).toBe(button)
+  })
+
   it('marks the outline button selected while its popover is open', async () => {
     useAppStore.setState({ sessionActive: false })
     bridgeWith(OPEN)

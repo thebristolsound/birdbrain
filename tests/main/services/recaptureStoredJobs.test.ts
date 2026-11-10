@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'fs'
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -8,6 +8,7 @@ import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase, deleteCase, setAutoCapturePolicy } from '@main/services/db/caseRepo'
 import { getCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
 import * as backgroundJobRepo from '@main/services/db/backgroundJobRepo'
+import { defaultCaptureStore } from '@main/services/captureStore'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
@@ -1125,6 +1126,61 @@ describe('stored background jobs', () => {
       expect(stateOf(id)).toBe('cancelled')
       expect(renderPage).toHaveBeenCalledTimes(1)
       expect(captureEntries()).toHaveLength(1)
+    })
+
+    it('ends a link job cancelled when its source is refused after the cancel', async () => {
+      const info = vi.spyOn(logger, 'info')
+      const renderPage = vi.fn(render)
+      const svc = makeService(renderPage)
+      svc.enqueue([{ url: 'https://example.com/source', caseId }])
+      await svc.idle()
+      const [source] = newCaptures
+      writeFileSync(defaultCaptureStore.resolveAbsolute(source.mhtmlPath!), 'altered bytes')
+      const link = 'https://example.com/linked'
+
+      const {
+        jobIds: [id]
+      } = svc.enqueueLink({
+        urls: [link],
+        caseId,
+        linkedFrom: { captureId: source.id, linkHref: link }
+      })
+      expect(svc.cancel({ jobId: id })).toEqual({ cancelled: 1, refused: 0 })
+      await svc.idle()
+
+      const row = backgroundJobRepo.getJob(id)!
+      expect(row).toMatchObject({ state: 'cancelled', error: CANCELLED_JOB_ERROR })
+      expect(row).not.toHaveProperty('failureKind')
+      expect(renderPage).toHaveBeenCalledTimes(1)
+      const codes = info.mock.calls.map(([, code]) => code)
+      expect(codes).toContain('backgroundRenderer.job_cancelled')
+      expect(codes).not.toContain('backgroundRenderer.job_skipped')
+    })
+
+    it('ends a job cancelled when the time limit passes while its cancelled render winds down', async () => {
+      const warn = vi.spyOn(logger, 'warn')
+      // A render that takes longer to end after a cancel than the time limit has left.
+      const svc = makeService((_url, { onStep }) => {
+        onStep?.('setup')
+        return new Promise<RenderedPage>(() => {})
+      }, 40)
+      const {
+        jobIds: [id]
+      } = svc.enqueue([{ url: 'https://example.com/a', caseId }])
+      expect(stateOf(id)).toBe('running')
+
+      expect(svc.cancel({ jobId: id })).toEqual({ cancelled: 1, refused: 0 })
+      await svc.idle()
+
+      const row = backgroundJobRepo.getJob(id)!
+      expect(row).toMatchObject({ state: 'cancelled', error: CANCELLED_JOB_ERROR })
+      expect(row).not.toHaveProperty('failureKind')
+      expect(events.map(({ type, skipReason }) => [type, skipReason])).toEqual([
+        ['queued', undefined],
+        ['received', undefined],
+        ['skipped', CANCELLED_JOB_ERROR]
+      ])
+      expect(warn.mock.calls.map(([, code]) => code)).not.toContain('backgroundRenderer.job_failed')
     })
   })
 

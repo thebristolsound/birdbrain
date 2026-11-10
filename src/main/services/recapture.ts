@@ -516,6 +516,8 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       if (job.linkedFrom) {
         stage = 'link-source-error'
         const read = await readLinkSource(job, job.linkedFrom)
+        // Cancelled while the link source was checked: nothing has been sent.
+        if (signal.aborted) return endCancelled()
         if ('refused' in read) {
           emitEvent({
             type: 'skipped',
@@ -530,8 +532,6 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         linkSource = read.source
         stage = 'render'
       }
-      // Cancelled while the link source was checked: nothing has been sent.
-      if (signal.aborted) return endCancelled()
 
       // The renderer honors timeoutMs itself; race defensively so a hung
       // implementation can never wedge the serial queue.
@@ -705,9 +705,10 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       })
       return { state: 'stored', warning }
     } catch (err) {
-      // Only a cancel that ended the render first ends the job cancelled: once the deadline or a
-      // refused hop has ended it, the render keeps that error and `cancel` refuses the job.
-      if (err instanceof RecaptureCancelled) return endCancelled()
+      // A cancel that `cancel` accepted ends the job cancelled whatever its wind-down threw: it
+      // aborts only before the ingest, so nothing was stored. Once the deadline or a refused hop
+      // has ended the render, `cancel` refuses the job and the render keeps that error.
+      if (err instanceof RecaptureCancelled || signal.aborted) return endCancelled()
       if (err instanceof RefusedAddressError) {
         emitEvent({
           type: 'skipped',

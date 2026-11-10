@@ -462,7 +462,13 @@ fi
 echo "gh: Server Error (HTTP $code)" >&2
 exit 1
 `
-  const prepare = (body: string, issueComment: number, reviewComment: number, other = 200) => {
+  const prepare = (
+    body: string,
+    issueComment: number,
+    reviewComment: number,
+    other = 200,
+    timeout?: number
+  ) => {
     const dir = mkdtempSync(join(tmpdir(), 'fleet-inputs-'))
     try {
       writeFileSync(join(dir, 'gh'), GH)
@@ -471,7 +477,7 @@ exit 1
       writeFileSync(join(dir, 'pr.json'), JSON.stringify({ title: 't', body, commits: [] }))
       const result = spawnSync('node', [INPUTS, repo, dir], {
         encoding: 'utf8',
-        timeout: 5000,
+        timeout,
         env: {
           ...process.env,
           PATH: `${dir}:${process.env.PATH}`,
@@ -542,10 +548,13 @@ exit 1
   })
 
   // Node 24 rescans a punctuation run from every position when an end-anchored expression
-  // strips it. Electron's engine, which runs these tests, does not, so the command is timed.
-  it('reads a link behind a long run of punctuation before the five-second limit', () => {
-    const r = prepare(`https://github.com/${repo}/pull/9#event-5${'.'.repeat(200_000)}x`, 200, 200)
+  // strips it: six seconds for 120,000 characters, against nine milliseconds for this run in
+  // one pass. Electron's engine, which runs these tests, does not rescan, so the command is
+  // timed and not the function.
+  it('reads a link behind a long run of punctuation within twenty seconds', () => {
+    const body = `https://github.com/${repo}/pull/9#event-5${'.'.repeat(1_000_000)}x`
+    const r = prepare(body, 200, 200, 200, 20_000)
     expect(r.status, r.stderr).toBe(0)
     expect(r.sources).toEqual(['pulls/9'])
-  })
+  }, 30_000)
 })

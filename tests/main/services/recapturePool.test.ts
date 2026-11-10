@@ -154,7 +154,7 @@ describe('the background job pool', () => {
     })
   }
 
-  const heldLines = (info: ReturnType<typeof vi.spyOn>) =>
+  const heldLines = (info: { mock: { calls: unknown[][] } }) =>
     info.mock.calls.filter(([, code]) => code === 'backgroundRenderer.job_memory_held')
 
   const stateOf = (id: string) => backgroundJobRepo.getJob(id)?.state

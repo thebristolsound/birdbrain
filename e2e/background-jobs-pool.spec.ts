@@ -145,6 +145,7 @@ test.describe('Background job pool', () => {
       for (const { url, captureId } of jobs) {
         const entry = entries.find((e) => e.captureId === captureId)
         expect(entry, url).toBeDefined()
+        expect(entry!.url, url).toBe(url)
         const { inventory, scrollToLoad, consentSuppression } = entry!
         recorded[new URL(url).hostname] = { inventory, scrollToLoad, consentSuppression }
       }

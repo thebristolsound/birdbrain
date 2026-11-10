@@ -4,17 +4,11 @@
 //
 //   node scripts/test-suite-lock.mjs <command> [args...]
 //
-// The lock is a directory holding owner.json. A process builds it under a temporary name and
-// renames it into place, and a rename onto a directory that has files in it fails, so exactly
-// one process wins and the lock never exists without its owner. A lock whose processes are
-// gone is stale; on Linux a pid also counts as gone once its start time no longer matches, and
-// a lock taken in another pid namespace (a container) is judged by age, not by its pids. A
-// waiter clears a stale lock only while holding a second lock (<lock>.reap), after reading the
-// owner again, and once it has moved the lock aside it checks that what it moved is the lock it
-// judged stale, and puts it back if not. That narrows the takeover race and does not close it:
-// the reap lock is cleared on age alone (REAP_STALE_MS), so a waiter that stalls for longer than
-// that in the middle of a takeover can move another waiter's new lock aside for a moment, and a
-// third run that tries in that moment takes the lock while the second still runs.
+// The lock is built with its owner record under a temporary name and renamed into place.
+// Cleanup holds <lock>.reap until it finishes. That guard never expires: elapsed time cannot
+// prove a paused reaper stopped. A reaper killed during cleanup leaves a guard for manual
+// inspection. Unknown ownership also waits; only established process exit or PID reuse lets
+// a waiter clear a recorded owner. This tracks the wrapper and direct child, not descendants.
 //
 // A command started under the process that holds the lock (HELD_ENV names the holder's pid)
 // runs without waiting. Outside a repository there is nowhere to put the lock: the command runs
@@ -29,7 +23,6 @@ import {
   renameSync,
   rmdirSync,
   rmSync,
-  statSync,
   writeFileSync
 } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
@@ -37,14 +30,6 @@ import { pathToFileURL } from 'node:url'
 
 export const LOCK_NAME = 'birdbrain-test-suite.lock'
 export const HELD_ENV = 'BIRDBRAIN_TEST_SUITE_LOCK_HELD'
-// Where there is no /proc to read a start time from, age is the only sign that a live pid was
-// reused: a coverage run takes minutes, so a lock this old is stale.
-export const MAX_AGE_MS = 60 * 60_000
-// A lock directory with files but no owner.json was made by hand (an empty one is simply
-// replaced); give whoever made it time to finish.
-export const OWNERLESS_GRACE_MS = 30_000
-// Clearing a stale lock takes milliseconds, so a reap lock this old belongs to a dead waiter.
-export const REAP_STALE_MS = 10_000
 // Milliseconds between attempts while waiting, for the tests; the default is five seconds.
 export const POLL_ENV = 'BIRDBRAIN_TEST_SUITE_LOCK_POLL_MS'
 const OWNER_FILE = 'owner.json'
@@ -58,11 +43,20 @@ export const lockPath = (cwd) => {
     const common = execFileSync('git', ['rev-parse', '--git-common-dir'], {
       cwd,
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, LC_ALL: 'C' }
     }).trim()
+    if (!common) throw new Error('git returned no common directory')
     return join(resolve(cwd, common), LOCK_NAME)
-  } catch {
-    return null
+  } catch (error) {
+    if (
+      error.status === 128 &&
+      /^fatal: not a git repository \(or any of the parent directories\): \.git\s*$/.test(
+        String(error.stderr)
+      )
+    )
+      return null
+    throw error
   }
 }
 
@@ -83,7 +77,7 @@ export const isAlive = (pid) => {
   try {
     process.kill(pid, 0)
   } catch (error) {
-    if (error.code !== 'EPERM') return false
+    if (error.code === 'ESRCH') return false
   }
   return statFields(pid)?.[0] !== 'Z'
 }
@@ -92,8 +86,6 @@ export const isAlive = (pid) => {
 // that recorded it.
 export const startTime = (pid) => statFields(pid)?.[19] ?? null
 
-// null when the lock has no owner record. A record that is there but cannot be read or parsed
-// comes back as { unreadable: <cause> }, so a waiter does not take it for a lock nobody holds.
 // Linux only: a pid means something only inside its own pid namespace, so the owner record
 // names the one it was written in. A container or sandbox has another. null without /proc.
 export const pidNamespace = () => {
@@ -104,6 +96,8 @@ export const pidNamespace = () => {
   }
 }
 
+// null when the lock has no owner record. A record that is there but cannot be read or parsed
+// comes back as { unreadable: <cause> }, so a waiter does not take it for a lock nobody holds.
 export const readOwner = (dir) => {
   let text
   try {
@@ -148,40 +142,32 @@ const create = (dir, owner) => {
 }
 
 export const isStale = (
-  dir,
+  _dir,
   owner,
-  { now = Date.now(), alive = isAlive, startOf = startTime, namespace = pidNamespace() } = {}
+  { alive = isAlive, startOf = startTime, namespace = pidNamespace() } = {}
 ) => {
-  if (!owner || owner.unreadable) {
-    // An unreadable record may belong to a live run whose processes cannot be checked, so it
-    // waits out the same age as a lock with no start times.
-    const limit = owner ? MAX_AGE_MS : OWNERLESS_GRACE_MS
-    try {
-      return now - statSync(dir).mtimeMs > limit
-    } catch {
-      return false
-    }
+  if (!owner || owner.unreadable) return false
+  // Missing or foreign namespace identity cannot establish that the recorded pids exited.
+  if (process.platform === 'linux' && namespace == null) return false
+  if ((owner.pidNs ?? null) !== namespace) return false
+  if (!Number.isInteger(owner.pid) || owner.pid <= 0) return false
+  if (owner.childPid != null && (!Number.isInteger(owner.childPid) || owner.childPid <= 0)) {
+    return false
   }
-  const tooOld = !(now - Date.parse(owner.startedAt) <= MAX_AGE_MS)
-  // The holder's pids cannot be looked up from another pid namespace, where the same numbers
-  // belong to other processes or to none, so only age counts.
-  if (owner.pidNs != null && owner.pidNs !== namespace) return tooOld
-  // The child is recorded too: a wrapper killed on its own leaves the test run going.
   const processes = [
     [owner.pid, owner.pidStart],
     [owner.childPid, owner.childStart]
-  ].filter(([pid]) => Number.isInteger(pid))
-  const running = processes.some(
-    ([pid, start]) => alive(pid) && (start == null || startOf(pid) === start)
-  )
-  if (!running) return true
-  if (processes.some(([, start]) => start != null)) return false
-  return tooOld
+  ].filter(([pid]) => pid != null)
+  return processes.every(([pid, start]) => {
+    if (!alive(pid)) return true
+    if (start == null) return false
+    const current = startOf(pid)
+    return current != null && current !== start
+  })
 }
 
-// Moves the lock aside and deletes it, unless what moved is not the lock `seen` describes: a
-// waiter that stalled past REAP_STALE_MS can find another waiter's new lock here, and puts it
-// back. Returns whether the lock was removed.
+// The caller holds the cleanup guard. The identity check also preserves a lock that changed
+// outside that protocol, provided no process acquires the path before it can be restored.
 export const discard = (dir, seen) => {
   const aside = `${dir}.stale-${unique()}`
   renameSync(dir, aside)
@@ -201,17 +187,14 @@ export const discard = (dir, seen) => {
 }
 
 // Removes the lock if it still belongs to `seen`. Returns whether it did.
-export const clearStale = (dir, seen, { now = Date.now() } = {}) => {
+export const clearStale = (dir, seen) => {
   const reap = `${dir}.reap`
   try {
     mkdirSync(reap)
   } catch (error) {
     if (error.code !== 'EEXIST') throw error
-    try {
-      if (now - statSync(reap).mtimeMs > REAP_STALE_MS) rmdirSync(reap)
-    } catch {
-      // Another waiter cleared it first.
-    }
+    // A stalled reaper may resume at any instruction, including immediately before rename.
+    // Do not remove its guard, even if it has no readable owner or is old.
     return false
   }
   try {
@@ -230,8 +213,9 @@ export const clearStale = (dir, seen, { now = Date.now() } = {}) => {
       }
     }
     return discard(dir, seen)
-  } catch {
-    return false
+  } catch (error) {
+    if (error.code === 'ENOENT') return false
+    throw error
   } finally {
     rmSync(reap, { recursive: true, force: true })
   }
@@ -239,9 +223,6 @@ export const clearStale = (dir, seen, { now = Date.now() } = {}) => {
 
 const describeStale = (owner) => {
   if (!owner) return 'removed a lock directory that had no owner record'
-  if (owner.unreadable) {
-    return `removed a lock over an hour old whose owner record could not be read (${owner.unreadable})`
-  }
   return `removed a stale lock left by process ${owner.pid} (started ${owner.startedAt})`
 }
 
@@ -259,7 +240,7 @@ export const tryAcquire = (
     const current = readOwner(dir)
     if (!existsSync(dir)) continue
     if (!isStale(dir, current, { now, alive, startOf, namespace })) return { holder: current }
-    if (clearStale(dir, current, { now })) log(describeStale(current))
+    if (clearStale(dir, current)) log(describeStale(current))
   }
   return { holder: readOwner(dir) }
 }
@@ -303,7 +284,9 @@ export const acquire = async (dir, base, { pollMs = 5_000, reportMs = 60_000 } =
       waitingSince = now
       lastReport = now
       log(`another full test run is using this clone; waiting for ${describeHolder(holder)}`)
-      log(`if that process is not a test run, delete ${dir}`)
+      log(
+        `inspect ${dir} and ${dir}.reap; remove them only after confirming no holder or reaper can resume`
+      )
     } else if (now - lastReport >= reportMs) {
       lastReport = now
       log(`still waiting after ${Math.round((now - waitingSince) / 60_000)} min`)

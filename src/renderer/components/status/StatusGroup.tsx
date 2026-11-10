@@ -1,6 +1,6 @@
 import { createElement, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
+import { useMatchRoute, useNavigate } from '@tanstack/react-router'
 import { Activity, Loader2, Puzzle, type LucideIcon } from 'lucide-react'
 import type { EgressSetting } from '@shared/types'
 import { Button, Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui'
@@ -39,6 +39,7 @@ const UNREAD_EGRESS: EgressSetting = { kind: 'unavailable' }
 
 export function StatusGroup() {
   const navigate = useNavigate()
+  const matchRoute = useMatchRoute()
   const [open, setOpen] = useState(false)
   const [showLog, setShowLog] = useState(false)
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
@@ -188,7 +189,12 @@ export function StatusGroup() {
             size="xs"
             onClick={() => {
               setOpen(false)
-              void navigate({ to: '/settings', search: { section: 'egress' } })
+              // From Settings this replaces the entry, so "Return to Birdbrain" still leaves.
+              void navigate({
+                to: '/settings',
+                search: { section: 'egress' },
+                replace: Boolean(matchRoute({ to: '/settings' }))
+              })
             }}
           >
             Egress settings

@@ -10,7 +10,14 @@ import { fakeBridge } from '../renderer/fakeBridge'
 import { stubResizeObserver } from './resizeObserverStub'
 
 const navigate = vi.hoisted(() => vi.fn())
-vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
+const route = vi.hoisted(() => ({ pathname: '/' }))
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => navigate,
+  useMatchRoute:
+    () =>
+    ({ to }: { to: string }) =>
+      route.pathname === to ? {} : false
+}))
 
 import { StatusGroup } from '@renderer/components/status/StatusGroup'
 
@@ -43,6 +50,8 @@ function renderWithSettings(
 
 beforeEach(() => {
   stubResizeObserver()
+  route.pathname = '/'
+  navigate.mockClear()
   useAppStore.setState({
     connectedToExtension: true,
     sessionActive: false,
@@ -124,7 +133,25 @@ describe('StatusGroup', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Capture log' }))
     expect(await screen.findByTestId('capture-log')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Egress settings' }))
-    expect(navigate).toHaveBeenCalledWith({ to: '/settings', search: { section: 'egress' } })
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/settings',
+      search: { section: 'egress' },
+      replace: false
+    })
+  })
+
+  // Settings' "Return to Birdbrain" goes back one history entry, which must not be Settings.
+  it('replaces the history entry when Egress settings is used from Settings', async () => {
+    route.pathname = '/settings'
+    renderWith({ kind: 'direct' }, true)
+    fireEvent.click(await screen.findByTestId('status-group'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Egress settings' }))
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/settings',
+      search: { section: 'egress' },
+      replace: true
+    })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Status' })).toBeNull())
   })
 })
 

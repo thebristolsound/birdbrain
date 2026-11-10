@@ -150,3 +150,8 @@ The survey did not resolve the product questions inside existing reviews. Restat
 - The lock implementer pushed `84d56578cafe9771f0cc05220f887545e124cab7` to 2126. Its locked full verification passed with 9,875 tests passed and 66 skipped; the two focused files passed all 95 tests. Main integrated without conflicts or dropped commits. Cleanup guards never expire, unknown ownership remains held, and source-control discovery errors stop execution.
 - Posted the corrected description and all seven keyed disposition files from `/tmp/pr2126-implementation/`. The [current source-blocker reply](https://github.com/thebristolsound/birdbrain/pull/2126#issuecomment-6779557220) records the repairs and remaining limits. Orphaned cleanup guards require manual inspection; surviving descendants are outside the wrapper's protection. The review status is pending for an independent delta review, and the fleet remains a separate requirement.
 - The next agent batch consists of independent delta reviews of 2126 and 2160, plus implementation of the existing 2175 signing findings. Each uses its application-provided isolated worktree; no new signing-tail or MHTML work is assigned.
+
+## Signing wording decision
+
+- Matt selected both concrete choices: keep the existing deletion, pooled-file, bulk-deletion and recapture refusal messages, and keep Data's Unnumbered label and tooltip. Preserve that copy during repair. This settles the wording choices without waiving source, screenshot or merge requirements.
+- The recovery owner reconfirmed that the signing tail stays held until the coordinator supplies 2175's settled head. The tail starts from its earlier first-round commit and will be updated and verified by that owner, outside this repair.

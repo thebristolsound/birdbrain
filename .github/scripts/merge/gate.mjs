@@ -138,8 +138,12 @@ export function lastLabeler(repo, n, name) {
   return events[events.length - 1]?.actor?.login ?? ''
 }
 
+// Every reader asks for a PR's whole event history, which outgrows Node's 1 MiB default.
 function api(path) {
-  const out = execFileSync('gh', ['api', '--paginate', '--slurp', path], { encoding: 'utf8' })
+  const out = execFileSync('gh', ['api', '--paginate', '--slurp', path], {
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024
+  })
   return JSON.parse(out).flat()
 }
 

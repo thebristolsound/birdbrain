@@ -9,7 +9,7 @@ const sha = 'a'.repeat(40)
 const repo = 'thebristolsound/birdbrain'
 
 // Exercise the real readers with read-only API fixtures. Unexpected writes fail the stub.
-function readers(stamps: unknown[], enabled = 'true') {
+function readers(stamps: unknown[], enabled = 'true', olderEvents = 0) {
   const dir = mkdtempSync(join(tmpdir(), 'override-readers-'))
   try {
     const gh = join(dir, 'gh')
@@ -31,8 +31,10 @@ if (a[0] === 'pr' && a[1] === 'view') {
   const p = a.at(-1)
   if (p.includes('/statuses')) result = statuses
   else if (p.endsWith('/pulls/7')) result = pr
-  else if (p.includes('/events')) result = [{event: 'labeled', label: {name: 'break-glass'},
-    actor: {login: 'thebristolsound'}}]
+  else if (p.includes('/events')) result = [
+    ...Array.from({ length: Number(process.env.OLDER_EVENTS) }, () => ({ event: 'labeled',
+      label: { name: 'size:XL', description: 'x'.repeat(1000) }, actor: { login: 'other' } })),
+    {event: 'labeled', label: {name: 'break-glass'}, actor: {login: 'thebristolsound'}}]
   else if (/\\/(comments|reviews|files|main)(\\?|$)/.test(p)) result = []
   else throw new Error('unexpected read ' + p)
   result = Array.isArray(result) ? [result] : [result]
@@ -45,6 +47,7 @@ console.log(JSON.stringify(result))
       ...process.env,
       PATH: `${dir}:${process.env.PATH}`,
       STAMPS: JSON.stringify(stamps),
+      OLDER_EVENTS: String(olderEvents),
       REVIEW_FLEET_ENABLED: enabled
     }
     const run = (script: string, args: string[]) =>
@@ -100,6 +103,14 @@ describe('head-specific override authorization in every reader', () => {
     const disabled = readers([], 'false')
     expect(disabled.gate.status).toBe(0)
     expect(disabled.next.stdout).toContain('next: merge')
+  })
+
+  // Every reader asks who applied the label on every PR, so the whole event history is read.
+  it('reads a label history larger than the default 1 MiB process buffer', () => {
+    const { gate, next, fleet } = readers([stamp()], 'true', 1500)
+    expect(gate.status, gate.stderr).toBe(0)
+    expect(next.stdout).toContain('next: merge')
+    expect(fleet.stdout).toContain('success (break-glass applied')
   })
 
   it('accepts the override only with its own trusted stamp for this head', () => {

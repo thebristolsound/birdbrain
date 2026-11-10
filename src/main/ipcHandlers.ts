@@ -40,6 +40,7 @@ import type {
   ExportResult,
   ArchiveExportResult,
   RecaptureEnqueuePayload,
+  RecaptureJobTarget,
   SelfTestResult,
   SessionStateEvent,
   CaptureBatchPayload,
@@ -219,6 +220,15 @@ function idField(payload: unknown, key: string): string | undefined {
   if (!payload || typeof payload !== 'object') return undefined
   const value = (payload as Record<string, unknown>)[key]
   return typeof value === 'string' && value !== '' ? value : undefined
+}
+
+// A job or a Batch, never both or neither.
+function jobTarget(payload: unknown, refusal: string): RecaptureJobTarget {
+  const jobId = idField(payload, 'jobId')
+  const batchId = idField(payload, 'batchId')
+  if (jobId !== undefined && batchId === undefined) return { jobId }
+  if (batchId !== undefined && jobId === undefined) return { batchId }
+  throw new IpcFailure(refusal, 'INVALID_RECAPTURE_PAYLOAD')
 }
 
 function isVpnWarningOccasion(value: unknown): value is VpnWarningOccasion {
@@ -1330,13 +1340,18 @@ export function registerIpcHandlers(deps: {
     return recaptureService.resume(batchId)
   })
 
-  handle(IPC_CHANNELS.RECAPTURE_DISMISS, (_, target: unknown) => {
-    const jobId = idField(target, 'jobId')
-    const batchId = idField(target, 'batchId')
-    if (jobId !== undefined && batchId === undefined) return recaptureService.dismiss({ jobId })
-    if (batchId !== undefined && jobId === undefined) return recaptureService.dismiss({ batchId })
-    throw new IpcFailure('Invalid dismiss target', 'INVALID_RECAPTURE_PAYLOAD')
-  })
+  handle(IPC_CHANNELS.RECAPTURE_DISMISS, (_, target: unknown) =>
+    recaptureService.dismiss(jobTarget(target, 'Invalid dismiss target'))
+  )
+
+  handle(IPC_CHANNELS.RECAPTURE_CANCEL, (_, target: unknown) =>
+    recaptureService.cancel(jobTarget(target, 'Invalid cancel target'))
+  )
+
+  // The renderer passes the VPN warning before it asks, as for an enqueue: a retry sends requests.
+  handle(IPC_CHANNELS.RECAPTURE_RETRY, (_, target: unknown) =>
+    recaptureService.retry(jobTarget(target, 'Invalid retry target'))
+  )
 
   // Search
   handle(IPC_CHANNELS.SEARCH, (_, caseId: string, query: string) => {

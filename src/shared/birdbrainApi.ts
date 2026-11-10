@@ -134,7 +134,7 @@ import type {
   EnqueueResult,
   RecaptureQueueStatus,
   RecaptureListJobsQuery,
-  RecaptureDismissTarget,
+  RecaptureJobTarget,
   BackgroundJobView,
   RendererLogPayload,
   SessionStateEvent,
@@ -207,7 +207,9 @@ export interface BirdbrainAPI {
     enqueueCaptures(payload: CaptureBatchPayload): Promise<EnqueueResult>
     listJobs(query: RecaptureListJobsQuery): Promise<BackgroundJobView[]>
     resume(payload: { batchId: string }): Promise<{ resumed: number }>
-    dismiss(target: RecaptureDismissTarget): Promise<{ dismissed: number }>
+    dismiss(target: RecaptureJobTarget): Promise<{ dismissed: number }>
+    cancel(target: RecaptureJobTarget): Promise<{ cancelled: number }>
+    retry(target: RecaptureJobTarget): Promise<{ retried: number }>
   }
   tags: {
     list(): Promise<Tag[]>

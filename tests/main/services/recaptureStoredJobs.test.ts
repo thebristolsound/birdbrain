@@ -1,20 +1,22 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { copyFileSync, mkdtempSync, rmSync } from 'fs'
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
-import { initStorage, ensureCaseDir } from '@main/services/storage'
+import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase, deleteCase, setAutoCapturePolicy } from '@main/services/db/caseRepo'
-import { insertCapture, listCaptures } from '@main/services/db/captureRepo'
+import { getCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
 import * as backgroundJobRepo from '@main/services/db/backgroundJobRepo'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import {
+  CANCELLED_JOB_ERROR,
   INTERRUPTED_JOB_ERROR,
   RESTORE_REMOVED_JOB_ERROR,
+  RecaptureCancelled,
   RecaptureTimeout,
   STORED_JOB_RETENTION_MS,
   createRecaptureService,
@@ -22,6 +24,7 @@ import {
   type RenderPage
 } from '@main/services/recapture'
 import { logger } from '@main/services/logger'
+import { MANIFEST_FILENAME } from '@shared/constants'
 import type { BackgroundJobView } from '@shared/ipc'
 import type { CaptureEvent, Capture } from '@shared/types'
 
@@ -177,18 +180,20 @@ describe('stored background jobs', () => {
       expect(listCaptures(caseId)[0].timestamp).toBe(row.startedAt)
     })
 
-    it('sends a view of the job on every change of state', async () => {
+    it('sends a view of the job on every change of state and phase', async () => {
       const svc = makeService()
       const { jobIds } = svc.enqueue([{ url: 'https://example.com/a', caseId }])
       await svc.idle()
-      expect(jobs.map(({ jobId, state }) => [jobId, state])).toEqual([
-        [jobIds[0], 'queued'],
-        [jobIds[0], 'running'],
-        [jobIds[0], 'stored']
+      // This render reports no step, so the only phase is the ingest.
+      expect(jobs.map(({ jobId, state, phase }) => [jobId, state, phase])).toEqual([
+        [jobIds[0], 'queued', undefined],
+        [jobIds[0], 'running', undefined],
+        [jobIds[0], 'running', 'ingesting'],
+        [jobIds[0], 'stored', undefined]
       ])
       // The attempt's id names a Capture only once one is stored under it.
       expect(jobs[1].captureId).toBeUndefined()
-      expect(jobs[2].captureId).toBe(newCaptures[0].id)
+      expect(jobs[3].captureId).toBe(newCaptures[0].id)
     })
 
     it('keeps the supersede and link fields a job was queued with', async () => {
@@ -523,6 +528,29 @@ describe('stored background jobs', () => {
       })
     })
 
+    it('lets a render go on when its phase cannot be written while the database is closed', async () => {
+      const svc = makeService(async (url, opts) => {
+        opts.onStep?.('setup')
+        closeDatabase()
+        opts.onStep?.('scroll')
+        await initDatabase(dbPath)
+        return render(url, opts)
+      })
+      const {
+        jobIds: [id]
+      } = svc.enqueue([{ url: 'https://example.com/x', caseId }])
+      await svc.idle()
+      expect(backgroundJobRepo.getJob(id)).toMatchObject({
+        state: 'stored',
+        captureId: newCaptures[0].id
+      })
+      expect(jobs.filter(({ state }) => state === 'running').map(({ phase }) => phase)).toEqual([
+        undefined,
+        'loading',
+        'ingesting'
+      ])
+    })
+
     it('ends with a failed event each job of this session that the restored copy does not hold', async () => {
       takeBackup()
       const { renderPage, gate } = gatedRender()
@@ -673,6 +701,445 @@ describe('stored background jobs', () => {
       // The row went with its Case, so there is no state left to report.
       expect(jobs).toHaveLength(sent)
       expect(svc.status()).toMatchObject({ pending: 0, running: 0 })
+    })
+  })
+
+  // The Case's manifest lines that record a Capture.
+  function captureEntries(): string[] {
+    const manifest = join(getStorageRoot(), caseId, MANIFEST_FILENAME)
+    if (!existsSync(manifest)) return []
+    return readFileSync(manifest, 'utf-8')
+      .split('\n')
+      .filter((line) => line.includes('"type":"capture"'))
+  }
+
+  const rawCaptureId = (id: string): unknown =>
+    (
+      getDb().prepare('SELECT capture_id FROM background_jobs WHERE id = ?').get(id) as {
+        capture_id: unknown
+      }
+    ).capture_id
+
+  const RENDER_STEPS = [
+    'setup',
+    'load',
+    'network-idle',
+    'scroll',
+    'post-scroll-idle',
+    'settle',
+    'images',
+    'artifacts',
+    'transaction-record',
+    'pdf'
+  ] as const
+
+  describe('the phase of a running job', () => {
+    it('moves the row and the view through the phases in order, and clears it at the end', async () => {
+      const rowPhases: Array<string | undefined> = []
+      const svc = makeService(async (url, opts) => {
+        for (const step of RENDER_STEPS) {
+          opts.onStep?.(step)
+          rowPhases.push(backgroundJobRepo.listJobs({ caseId })[0].phase)
+        }
+        return render(url, opts)
+      })
+      const {
+        jobIds: [id]
+      } = svc.enqueue([{ url: 'https://example.com/a', caseId }])
+      await svc.idle()
+
+      expect(rowPhases).toEqual([
+        'loading',
+        'loading',
+        'loading',
+        'scrolling',
+        'scrolling',
+        'settling',
+        'settling',
+        'artifacts',
+        'transaction-record',
+        'pdf'
+      ])
+      // One view per change of phase, with no timing in it.
+      expect(jobs.map(({ state, phase }) => [state, phase])).toEqual([
+        ['queued', undefined],
+        ['running', undefined],
+        ['running', 'loading'],
+        ['running', 'scrolling'],
+        ['running', 'settling'],
+        ['running', 'artifacts'],
+        ['running', 'transaction-record'],
+        ['running', 'pdf'],
+        ['running', 'ingesting'],
+        ['stored', undefined]
+      ])
+      expect(Object.keys(jobs[2]).sort()).toEqual(Object.keys(jobs[1]).concat('phase').sort())
+      expect(backgroundJobRepo.getJob(id)).not.toHaveProperty('phase')
+      expect(getDb().prepare('SELECT phase FROM background_jobs').all()).toEqual([{ phase: null }])
+    })
+
+    it('clears the phase of a job whose render fails', async () => {
+      const svc = makeService(async (_url, { onStep }) => {
+        onStep?.('setup')
+        onStep?.('scroll')
+        throw new Error('net::ERR_CONNECTION_RESET')
+      })
+      svc.enqueue([{ url: 'https://example.com/a', caseId }])
+      await svc.idle()
+      expect(jobs.map(({ state, phase }) => [state, phase])).toEqual([
+        ['queued', undefined],
+        ['running', undefined],
+        ['running', 'loading'],
+        ['running', 'scrolling'],
+        ['failed', undefined]
+      ])
+      expect(getDb().prepare('SELECT phase FROM background_jobs').all()).toEqual([{ phase: null }])
+    })
+  })
+
+  describe('cancel', () => {
+    // A render that ends only when its signal is aborted, as the renderer's deadline path does.
+    const abortableRender: RenderPage = (_url, { onStep, signal }) =>
+      new Promise((_, reject) => {
+        onStep?.('setup')
+        onStep?.('load')
+        signal?.addEventListener('abort', () => reject(new RecaptureCancelled()))
+      })
+
+    it('cancels a queued job, which sends no request', async () => {
+      const info = vi.spyOn(logger, 'info')
+      const { renderPage, gate, urls } = gatedRender()
+      const svc = makeService(renderPage)
+      const {
+        jobIds: [first, second]
+      } = svc.enqueue([
+        { url: 'https://example.com/a', caseId },
+        { url: 'https://example.com/b', caseId }
+      ])
+      await vi.waitFor(() => expect(gate).toHaveLength(1))
+
+      expect(svc.cancel({ jobId: second })).toEqual({ cancelled: 1 })
+      expect(backgroundJobRepo.getJob(second)).toEqual({
+        jobId: second,
+        batchId: expect.any(String),
+        caseId,
+        url: 'https://example.com/b',
+        state: 'cancelled',
+        attempts: 0,
+        queuedAt: expect.any(String),
+        finishedAt: expect.any(String),
+        error: CANCELLED_JOB_ERROR
+      })
+      expect(jobs.at(-1)).toMatchObject({ jobId: second, state: 'cancelled' })
+      expect(svc.cancel({ jobId: second })).toEqual({ cancelled: 0 })
+
+      gate.shift()!()
+      await svc.idle()
+      expect(urls).toEqual(['https://example.com/a'])
+      expect(stateOf(first)).toBe('stored')
+      expect(
+        events
+          .filter(({ jobId }) => jobId === second)
+          .map(({ type, skipReason }) => [type, skipReason])
+      ).toEqual([
+        ['queued', undefined],
+        ['skipped', CANCELLED_JOB_ERROR]
+      ])
+      expect(
+        info.mock.calls.filter(([, code]) => code === 'backgroundRenderer.job_cancelled')
+      ).toEqual([['backgroundRenderer', 'backgroundRenderer.job_cancelled', { caseId }]])
+    })
+
+    it('cancels a held Batch, which then has nothing to resume', async () => {
+      const ids = earlierSession(['https://held.example.com/1', 'https://held.example.com/2'])
+      const { batchId } = backgroundJobRepo.getJob(ids[0])!
+      const renderPage = vi.fn(render)
+      const svc = makeService(renderPage)
+      svc.recoverStoredJobs()
+
+      expect(svc.cancel({ batchId: 'another-batch' })).toEqual({ cancelled: 0 })
+      expect(svc.cancel({ batchId })).toEqual({ cancelled: 2 })
+      expect(ids.map(stateOf)).toEqual(['cancelled', 'cancelled'])
+      expect(svc.resume(batchId)).toEqual({ resumed: 0 })
+      await svc.idle()
+      expect(renderPage).not.toHaveBeenCalled()
+      expect(svc.status()).toMatchObject({ held: 0, heldBatches: [] })
+    })
+
+    it('aborts a running job before its ingest, which stores no Capture and no manifest entry', async () => {
+      const info = vi.spyOn(logger, 'info')
+      const svc = makeService(abortableRender)
+      const {
+        batchId,
+        jobIds: [id]
+      } = svc.enqueue([{ url: 'https://example.com/a', caseId }])
+      await vi.waitFor(() => expect(backgroundJobRepo.getJob(id)?.phase).toBe('loading'))
+
+      expect(svc.cancel({ jobId: id })).toEqual({ cancelled: 1 })
+      // The job is already ending, so a second cancel finds nothing to stop.
+      expect(svc.cancel({ batchId })).toEqual({ cancelled: 0 })
+      await svc.idle()
+
+      expect(backgroundJobRepo.getJob(id)).toEqual({
+        jobId: id,
+        batchId,
+        caseId,
+        url: 'https://example.com/a',
+        state: 'cancelled',
+        attempts: 1,
+        queuedAt: expect.any(String),
+        startedAt: expect.any(String),
+        finishedAt: expect.any(String),
+        error: CANCELLED_JOB_ERROR
+      })
+      expect(listCaptures(caseId)).toEqual([])
+      expect(newCaptures).toEqual([])
+      expect(captureEntries()).toEqual([])
+      expect(events.map(({ type, skipReason }) => [type, skipReason])).toEqual([
+        ['queued', undefined],
+        ['received', undefined],
+        ['skipped', CANCELLED_JOB_ERROR]
+      ])
+      expect(
+        info.mock.calls.filter(([, code]) => code === 'backgroundRenderer.job_cancelled')
+      ).toEqual([
+        [
+          'backgroundRenderer',
+          'backgroundRenderer.job_cancelled',
+          { captureId: rawCaptureId(id), caseId, ms: expect.any(Number), step: 'load' }
+        ]
+      ])
+    })
+
+    it('stores nothing when the render returns its page after the cancel', async () => {
+      const destroy = vi.fn()
+      const gate: Array<() => void> = []
+      const svc = makeService(async (url) => {
+        await new Promise<void>((resolve) => gate.push(resolve))
+        const mhtmlStream = Object.assign(
+          (async function* () {
+            yield Buffer.from('mhtml')
+          })(),
+          { destroy }
+        )
+        return page(url, { mhtmlStream })
+      })
+      const {
+        jobIds: [id]
+      } = svc.enqueue([{ url: 'https://example.com/a', caseId }])
+      await vi.waitFor(() => expect(gate).toHaveLength(1))
+
+      expect(svc.cancel({ jobId: id })).toEqual({ cancelled: 1 })
+      gate.shift()!()
+      await svc.idle()
+
+      expect(stateOf(id)).toBe('cancelled')
+      expect(destroy).toHaveBeenCalledTimes(1)
+      expect(listCaptures(caseId)).toEqual([])
+      expect(captureEntries()).toEqual([])
+      expect(jobs.map(({ phase }) => phase)).not.toContain('ingesting')
+    })
+
+    it('refuses a cancel from the moment the render hands over its page, and the job ends stored', async () => {
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle })
+      const ingestGate: Array<() => void> = []
+      const refusals: Array<{ cancelled: number }> = []
+      const svc = createRecaptureService({
+        renderPage: render,
+        captureLifecycle: {
+          ...lifecycle,
+          ingest: async (params) => {
+            await new Promise<void>((resolve) => ingestGate.push(resolve))
+            return lifecycle.ingest(params)
+          }
+        },
+        emitEvent: (e) => events.push(e),
+        emitNewCapture: (c) => newCaptures.push(c),
+        // The first thing to hear that the job is ingesting asks to cancel it.
+        emitJob: (job) => {
+          jobs.push(job)
+          if (job.phase === 'ingesting') refusals.push(svc.cancel({ jobId: job.jobId }))
+        }
+      })
+      const {
+        batchId,
+        jobIds: [id, queued]
+      } = svc.enqueue([
+        { url: 'https://example.com/a', caseId },
+        { url: 'https://example.com/b', caseId }
+      ])
+      await vi.waitFor(() => expect(ingestGate).toHaveLength(1))
+
+      expect(refusals).toEqual([{ cancelled: 0 }])
+      expect(backgroundJobRepo.getJob(id)).toMatchObject({ state: 'running', phase: 'ingesting' })
+      // During the ingest, the Batch's cancel ends only the job still queued.
+      expect(svc.cancel({ batchId })).toEqual({ cancelled: 1 })
+      expect(stateOf(queued)).toBe('cancelled')
+
+      ingestGate.shift()!()
+      await svc.idle()
+      expect(backgroundJobRepo.getJob(id)).toMatchObject({
+        state: 'stored',
+        captureId: newCaptures[0].id
+      })
+      expect(listCaptures(caseId).map(({ id: captureId }) => captureId)).toEqual([
+        newCaptures[0].id
+      ])
+      expect(captureEntries()).toHaveLength(1)
+    })
+
+    it('cancels a link job while its source is checked, before anything is sent', async () => {
+      const renderPage = vi.fn(render)
+      const svc = makeService(renderPage)
+      svc.enqueue([{ url: 'https://example.com/source', caseId }])
+      await svc.idle()
+      const [source] = newCaptures
+      const link = 'https://example.com/linked'
+
+      const {
+        jobIds: [id]
+      } = svc.enqueueLink({
+        urls: [link],
+        caseId,
+        linkedFrom: { captureId: source.id, linkHref: link }
+      })
+      expect(stateOf(id)).toBe('running')
+      expect(svc.cancel({ jobId: id })).toEqual({ cancelled: 1 })
+      await svc.idle()
+
+      expect(stateOf(id)).toBe('cancelled')
+      expect(renderPage).toHaveBeenCalledTimes(1)
+      expect(captureEntries()).toHaveLength(1)
+    })
+  })
+
+  describe('retry', () => {
+    // A render that fails for the addresses in `failing`, and leaves `skipped` at a local address.
+    function steeredRender(failing: Set<string>, rendered: string[] = []): RenderPage {
+      return async (url, opts) => {
+        rendered.push(url)
+        if (failing.has(url)) throw new Error('net::ERR_CONNECTION_RESET')
+        if (url.endsWith('/skip')) return page(url, { finalUrl: 'http://127.0.0.1/admin' })
+        return render(url, opts)
+      }
+    }
+
+    it('retries a failed job in its Batch, as its next attempt under a new Capture id', async () => {
+      const failing = new Set(['https://example.com/a'])
+      const svc = makeService(steeredRender(failing))
+      const {
+        batchId,
+        jobIds: [id]
+      } = svc.enqueue([{ url: 'https://example.com/a', caseId }])
+      await svc.idle()
+      expect(backgroundJobRepo.getJob(id)).toMatchObject({ state: 'failed', attempts: 1 })
+      const firstAttempt = rawCaptureId(id)
+      const seen = { events: events.length, jobs: jobs.length }
+
+      failing.clear()
+      expect(svc.retry({ jobId: id })).toEqual({ retried: 1 })
+      expect(jobs[seen.jobs]).toEqual({
+        jobId: id,
+        batchId,
+        caseId,
+        url: 'https://example.com/a',
+        state: 'queued',
+        attempts: 1,
+        queuedAt: expect.any(String)
+      })
+      await svc.idle()
+
+      const row = backgroundJobRepo.getJob(id)!
+      expect(row).toMatchObject({ state: 'stored', attempts: 2, batchId })
+      expect(row).not.toHaveProperty('error')
+      expect(row).not.toHaveProperty('failureKind')
+      expect(row.captureId).toBe(newCaptures[0].id)
+      expect(row.captureId).not.toBe(firstAttempt)
+      expect(getCapture(row.captureId!)?.timestamp).toBe(row.startedAt)
+      expect(events.slice(seen.events).map(({ type, jobId }) => [type, jobId])).toEqual([
+        ['queued', id],
+        ['received', id],
+        ['stored', id]
+      ])
+    })
+
+    it("retries a Batch's failed and cancelled jobs, and never its skipped or stored ones", async () => {
+      const failing = new Set(['https://example.com/fail'])
+      const rendered: string[] = []
+      const svc = makeService(steeredRender(failing, rendered))
+      const urls = ['fail', 'skip', 'ok', 'cancel'].map((name) => `https://example.com/${name}`)
+      const {
+        batchId,
+        jobIds: [fail, skip, ok, cancel]
+      } = svc.enqueue(urls.map((url) => ({ url, caseId })))
+      expect(svc.cancel({ jobId: cancel })).toEqual({ cancelled: 1 })
+      await svc.idle()
+      expect([fail, skip, ok, cancel].map(stateOf)).toEqual([
+        'failed',
+        'skipped',
+        'stored',
+        'cancelled'
+      ])
+      const storedCapture = backgroundJobRepo.getJob(ok)!.captureId
+
+      expect(svc.retry({ jobId: skip })).toEqual({ retried: 0 })
+      expect(svc.retry({ jobId: ok })).toEqual({ retried: 0 })
+      failing.clear()
+      rendered.length = 0
+      expect(svc.retry({ batchId })).toEqual({ retried: 2 })
+      await svc.idle()
+
+      expect(rendered).toEqual(['https://example.com/fail', 'https://example.com/cancel'])
+      expect(
+        svc.listJobs({ batchId }).map(({ jobId, state, attempts }) => [jobId, state, attempts])
+      ).toEqual([
+        [fail, 'stored', 2],
+        [skip, 'skipped', 1],
+        [ok, 'stored', 1],
+        [cancel, 'stored', 1]
+      ])
+      expect(backgroundJobRepo.getJob(ok)!.captureId).toBe(storedCapture)
+    })
+
+    it('queues a retried job behind the jobs already queued, and ahead of later ones', async () => {
+      const tick = () => new Promise((resolve) => setTimeout(resolve, 5))
+      const failing = new Set(['https://example.com/retried'])
+      const gate: Array<() => void> = []
+      const rendered: string[] = []
+      const steered = steeredRender(failing, rendered)
+      const svc = makeService(async (url, opts) => {
+        if (!failing.has(url)) await new Promise<void>((resolve) => gate.push(resolve))
+        return steered(url, opts)
+      })
+      const {
+        jobIds: [retried]
+      } = svc.enqueue([{ url: 'https://example.com/retried', caseId }])
+      await svc.idle()
+      failing.clear()
+
+      svc.enqueue([
+        { url: 'https://example.com/queued-1', caseId },
+        { url: 'https://example.com/queued-2', caseId }
+      ])
+      await vi.waitFor(() => expect(gate).toHaveLength(1))
+      await tick()
+      expect(svc.retry({ jobId: retried })).toEqual({ retried: 1 })
+      await tick()
+      svc.enqueue([{ url: 'https://example.com/later', caseId }])
+      for (let i = 0; i < 4; i++) {
+        await vi.waitFor(() => expect(gate).toHaveLength(1))
+        gate.shift()!()
+      }
+      await svc.idle()
+
+      expect(rendered).toEqual([
+        'https://example.com/retried',
+        'https://example.com/queued-1',
+        'https://example.com/queued-2',
+        'https://example.com/retried',
+        'https://example.com/later'
+      ])
+      expect(stateOf(retried)).toBe('stored')
     })
   })
 })

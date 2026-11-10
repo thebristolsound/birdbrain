@@ -112,7 +112,9 @@ const birdbrain = {
     enqueueCaptures: bridge(IPC_CHANNELS.RECAPTURE_ENQUEUE_CAPTURES),
     listJobs: bridge(IPC_CHANNELS.RECAPTURE_LIST_JOBS),
     resume: bridge(IPC_CHANNELS.RECAPTURE_RESUME),
-    dismiss: bridge(IPC_CHANNELS.RECAPTURE_DISMISS)
+    dismiss: bridge(IPC_CHANNELS.RECAPTURE_DISMISS),
+    cancel: bridge(IPC_CHANNELS.RECAPTURE_CANCEL),
+    retry: bridge(IPC_CHANNELS.RECAPTURE_RETRY)
   },
   tags: {
     list: bridge(IPC_CHANNELS.TAGS_LIST),

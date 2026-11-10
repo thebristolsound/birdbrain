@@ -143,6 +143,8 @@ export const IPC_CHANNELS = {
   RECAPTURE_LIST_JOBS: 'recapture:listJobs',
   RECAPTURE_RESUME: 'recapture:resume',
   RECAPTURE_DISMISS: 'recapture:dismiss',
+  RECAPTURE_CANCEL: 'recapture:cancel',
+  RECAPTURE_RETRY: 'recapture:retry',
   // A Background Job's state, sent each time it changes.
   RECAPTURE_JOB: 'event:recaptureJob',
 
@@ -980,12 +982,18 @@ export interface HeldBatch {
 export type BackgroundJobState =
   'queued' | 'held' | 'running' | 'stored' | 'skipped' | 'failed' | 'cancelled'
 
+// The part of a running job's work it is in, from the render's steps and then the ingest.
+export type BackgroundJobPhase =
+  'loading' | 'scrolling' | 'settling' | 'artifacts' | 'transaction-record' | 'pdf' | 'ingesting'
+
 export interface BackgroundJobView {
   jobId: string
   batchId: string
   caseId: string
   url: string
   state: BackgroundJobState
+  // Only while `running`.
+  phase?: BackgroundJobPhase
   attempts: number
   queuedAt: string
   startedAt?: string
@@ -1001,8 +1009,9 @@ export interface BackgroundJobView {
 
 export type RecaptureListJobsQuery = { caseId: string } | { batchId: string }
 
-// `recapture:dismiss` deletes only `failed`, `skipped` and `cancelled` rows of its target.
-export type RecaptureDismissTarget = { jobId: string } | { batchId: string }
+// One job or one Batch. `recapture:dismiss` deletes only the target's `failed`, `skipped` and
+// `cancelled` rows, and `recapture:retry` queues only its `failed` and `cancelled` ones.
+export type RecaptureJobTarget = { jobId: string } | { batchId: string }
 
 // `batchId` names the call; `jobIds` are its accepted jobs, in the order they were queued.
 export interface EnqueueResult {
@@ -1124,7 +1133,9 @@ export interface IpcInvokeContract {
   'recapture:enqueueCaptures': { args: [payload: CaptureBatchPayload]; result: EnqueueResult }
   'recapture:listJobs': { args: [query: RecaptureListJobsQuery]; result: BackgroundJobView[] }
   'recapture:resume': { args: [payload: { batchId: string }]; result: { resumed: number } }
-  'recapture:dismiss': { args: [target: RecaptureDismissTarget]; result: { dismissed: number } }
+  'recapture:dismiss': { args: [target: RecaptureJobTarget]; result: { dismissed: number } }
+  'recapture:cancel': { args: [target: RecaptureJobTarget]; result: { cancelled: number } }
+  'recapture:retry': { args: [target: RecaptureJobTarget]; result: { retried: number } }
 
   'tags:list': { args: []; result: Tag[] }
   'tags:create': { args: [params: CreateTagParams]; result: Tag }

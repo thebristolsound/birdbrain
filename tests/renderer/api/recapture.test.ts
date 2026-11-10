@@ -8,7 +8,9 @@ import {
   recaptureQueueQueryOptions,
   testCaptureHttp,
   testCapturePipeline,
-  useRecaptureMutations
+  useCancelBackgroundJobs,
+  useRecaptureMutations,
+  useRetryBackgroundJobs
 } from '@renderer/lib/api/recapture'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { ContactStoppedError, settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
@@ -86,5 +88,70 @@ describe('the VPN warning before a recapture', () => {
     })
     expect(outcome).toBeInstanceOf(ContactStoppedError)
     expect(enqueue).not.toHaveBeenCalled()
+  })
+})
+
+describe('cancel and retry of background jobs', () => {
+  function withClient() {
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children)
+    return { wrapper, invalidate }
+  }
+
+  it('cancels without the VPN warning, which only a contact asks', async () => {
+    const checkVpnWarning = vi.fn(async () => ({ caseId: 'case-a', warn: true, canMute: true }))
+    const cancel = vi.fn(async () => ({ cancelled: 2 }))
+    fakeBridge({ recapture: { cancel }, egress: { checkVpnWarning } })
+    const { wrapper, invalidate } = withClient()
+    const { result } = renderHook(() => useCancelBackgroundJobs(), { wrapper })
+
+    let outcome: unknown
+    await act(async () => {
+      outcome = await result.current.mutateAsync({ batchId: 'batch-1' })
+    })
+    expect(outcome).toEqual({ cancelled: 2 })
+    expect(cancel).toHaveBeenCalledWith({ batchId: 'batch-1' })
+    expect(checkVpnWarning).not.toHaveBeenCalled()
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.recaptureQueue })
+  })
+
+  it("retries once the warning for the jobs' Case lets it through", async () => {
+    const checkVpnWarning = vi.fn(async () => ({ caseId: 'case-a', warn: false, canMute: false }))
+    const retry = vi.fn(async () => ({ retried: 1 }))
+    fakeBridge({ recapture: { retry }, egress: { checkVpnWarning } })
+    const { wrapper, invalidate } = withClient()
+    const { result } = renderHook(() => useRetryBackgroundJobs(), { wrapper })
+
+    let outcome: unknown
+    await act(async () => {
+      outcome = await result.current.mutateAsync({ caseId: 'case-a', target: { jobId: 'job-1' } })
+    })
+    expect(outcome).toEqual({ retried: 1 })
+    expect(checkVpnWarning).toHaveBeenCalledWith({ caseId: 'case-a' }, 'site')
+    expect(retry).toHaveBeenCalledWith({ jobId: 'job-1' })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.recaptureQueue })
+  })
+
+  it('retries nothing when the Operator stops at the warning', async () => {
+    useVpnWarningStore.setState({ open: false, request: null, settle: null })
+    const checkVpnWarning = vi.fn(async () => ({ caseId: 'case-a', warn: true, canMute: true }))
+    const retry = vi.fn(async () => ({ retried: 1 }))
+    fakeBridge({ recapture: { retry }, egress: { checkVpnWarning } })
+    const { wrapper } = withClient()
+    const { result } = renderHook(() => useRetryBackgroundJobs(), { wrapper })
+
+    let outcome: unknown
+    await act(async () => {
+      const pending = result.current
+        .mutateAsync({ caseId: 'case-a', target: { batchId: 'batch-1' } })
+        .catch((err: unknown) => err)
+      await vi.waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
+      settleVpnWarning('set-up-proxy')
+      outcome = await pending
+    })
+    expect(outcome).toBeInstanceOf(ContactStoppedError)
+    expect(retry).not.toHaveBeenCalled()
   })
 })

@@ -1007,12 +1007,14 @@ export const LOG_CODES = [
   'backgroundRenderer.render_completed',
   'backgroundRenderer.render_failed',
   // How each Background Job ended (#2127): stored with its ingest time, skipped
-  // by a rule, or failed with the step it reached, or as `interrupted` at the
-  // next start when the app closed during it. The app window hears of each as an
-  // event; these lines and the job's `background_jobs` row outlast the session.
+  // by a rule, failed with the step it reached, or as `interrupted` at the next
+  // start when the app closed during it, or cancelled by the Operator. The app
+  // window hears of each as an event; these lines and the job's
+  // `background_jobs` row outlast the session.
   'backgroundRenderer.job_stored',
   'backgroundRenderer.job_skipped',
   'backgroundRenderer.job_failed',
+  'backgroundRenderer.job_cancelled',
   // The background job queue stopped because it could not read or write a job's row, as while
   // a restore has the database closed. The next enqueue or resume starts it again.
   'backgroundRenderer.job_queue_failed',
@@ -1289,9 +1291,11 @@ export const ERROR_NAMES = [
   'ProtocolError',
   'PeerByeError',
   'PeerUnreachableError',
-  // A Background Job that ran out of time, and the Transaction Record bound
-  // that expired (#2121): the log drops messages, so the name is what says which.
+  // A Background Job that ran out of time or was cancelled, and the Transaction
+  // Record bound that expired (#2121): the log drops messages, so the name is
+  // what says which.
   'RecaptureTimeout',
+  'RecaptureCancelled',
   'TransactionRecordCollectTimeout',
   'TransactionRecordWriteTimeout'
 ] as const

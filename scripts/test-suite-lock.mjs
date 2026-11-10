@@ -304,7 +304,14 @@ const main = async () => {
   // HELD_ENV skips the lock only for a command the current holder started. A value left in the
   // environment by an earlier run, or set by hand, waits like any other run.
   const heldBy = process.env[HELD_ENV]
-  const nested = Boolean(dir && heldBy && String(readOwner(dir)?.pid) === heldBy)
+  const heldOwner = dir && heldBy ? readOwner(dir) : null
+  const nested = Boolean(
+    heldOwner &&
+    !heldOwner.unreadable &&
+    Number.isInteger(heldOwner.pid) &&
+    heldOwner.pid > 0 &&
+    String(heldOwner.pid) === heldBy
+  )
   const self = {
     pid: process.pid,
     pidStart: startTime(process.pid),

@@ -633,6 +633,56 @@ describe('the command line', () => {
     expect(existsSync(lock)).toBe(false)
   })
 
+  it('takes the lock when an undefined held marker has no recorded owner', async () => {
+    git(root, 'init', '-q')
+    const lock = join(root, '.git', LOCK_NAME)
+    const { status } = await run(
+      root,
+      { ...unheld(), [HELD_ENV]: 'undefined' },
+      `setTimeout(() => { ${probe(lock)} }, 200)`
+    )
+    expect(status).toBe(7)
+    expect(existsSync(lock)).toBe(false)
+  })
+
+  it.each([
+    ['missing PID', '{}', 'undefined'],
+    ['unreadable record', '{', 'undefined'],
+    ['null PID', '{"pid":null}', 'null'],
+    ['zero PID', '{"pid":0}', '0'],
+    ['negative PID', '{"pid":-1}', '-1'],
+    ['fractional PID', '{"pid":1.5}', '1.5'],
+    ['string PID', JSON.stringify({ pid: String(process.pid) }), String(process.pid)],
+    [
+      'unreadable owner',
+      JSON.stringify({ pid: process.pid, unreadable: 'EACCES' }),
+      String(process.pid)
+    ]
+  ])('retains a lock with %s despite a matching held marker', async (_name, text, marker) => {
+    git(root, 'init', '-q')
+    const lock = join(root, '.git', LOCK_NAME)
+    const ran = join(root, 'ran')
+    mkdirSync(lock)
+    writeFileSync(join(lock, 'owner.json'), text)
+    const wrapper = start(
+      root,
+      { ...unheld(), [HELD_ENV]: marker, [POLL_ENV]: '20' },
+      `require('fs').writeFileSync(${JSON.stringify(ran)}, '')`
+    )
+    try {
+      await until(
+        () => existsSync(ran) || wrapper.stderr.includes('waiting for'),
+        'the waiter or its command'
+      )
+      expect(existsSync(ran)).toBe(false)
+      expect(wrapper.stderr).toContain('waiting for')
+      expect(readFileSync(join(lock, 'owner.json'), 'utf8')).toBe(text)
+    } finally {
+      wrapper.child.kill('SIGTERM')
+      await wrapper.closed
+    }
+  })
+
   it.skipIf(ON_WINDOWS)('releases the lock and stops the command on SIGTERM', async () => {
     git(root, 'init', '-q')
     const lock = join(root, '.git', LOCK_NAME)

@@ -66,7 +66,7 @@ console.log(JSON.stringify(result))
 
 const stamp = (context = 'merge/break-glass', head = sha, login = 'github-actions[bot]') => ({
   context,
-  sha: head,
+  description: `Review override by thebristolsound on ${head}`,
   state: 'success',
   creator: { login }
 })

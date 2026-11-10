@@ -935,6 +935,7 @@ describe('override stamp workflow', () => {
           expect(r.status, r.stderr).toBe(0)
           expect(calls).toContain(`statuses/${OLD}`)
           expect(calls).toContain('context=merge/break-glass')
+          expect(calls).toContain(`description=Review override by ${MAINTAINER} on ${OLD}`)
           expect(calls).not.toContain(SHA)
         } else {
           expect(r.status).toBe(1)

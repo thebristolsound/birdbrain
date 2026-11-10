@@ -29,3 +29,11 @@
 - Next command: `flock /home/matt/worktrees/birdbrain/.preflight.lock mise exec -- pnpm preflight`.
 - Open questions: none. The shell label-guard suite remains separately runnable; its current
   command cases were executed during this repair.
+
+## Status API verification
+
+- Completed: read the live status payload shape and corrected the override stamp to carry the
+  full head in its trusted description, since individual status payloads omit a SHA field.
+- In flight: locked final verification at the corrected committed head.
+- Next command: `flock /home/matt/worktrees/birdbrain/.preflight.lock mise exec -- pnpm preflight`.
+- Open questions: none.

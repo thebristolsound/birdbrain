@@ -193,7 +193,7 @@ jobs:
             exit 1
           fi
           gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" -f state=success -f context=merge/break-glass \
-            -f description="Review override by $SENDER on this commit" >/dev/null
+            -f description="Review override by $SENDER on $SHA" >/dev/null
           echo "stamped merge/break-glass on ${SHA:0:12}"
 
   cancel:

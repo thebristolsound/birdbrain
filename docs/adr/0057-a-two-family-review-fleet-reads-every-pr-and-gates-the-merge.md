@@ -66,7 +66,8 @@ Three facts shaped the design:
    in `merge-gate`, and for nothing else: the fleet's override status says so, and `merge-gate`
    accepts it only while the label stands and its last labeller is the maintainer.
    Every reader also requires the dedicated `merge/break-glass` success stamp from the workflow
-   token on the exact head. The label event stamps its event head, never a later head.
+   token queried at the exact head, with that full head in its description. The label event
+   stamps its event head, never a later head.
    `merge-on-label.yml` removes the label on every push and fails on removal errors; even a
    failed removal cannot authorize a later commit. Evidence approval is a separate stamp.
    On 2026-11-10 the maintainer narrowed completeness to assigned source review. Each pass

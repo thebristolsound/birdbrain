@@ -49,7 +49,8 @@ export function approvalStamp(statuses) {
 }
 
 // All readers require a dedicated workflow-token stamp for this exact head as well as the
-// live label and its maintainer actor. Evidence approval never authorizes a review override.
+// live label and its maintainer actor. Status payloads omit the SHA, so the trusted stamp
+// description also names it. Evidence approval never authorizes a review override.
 export function breakGlassAuthorized(labels, statuses, labeler, maintainer, sha) {
   const stamp = statuses.find(
     (s) => s.context === 'merge/break-glass' && s.creator?.login === 'github-actions[bot]'
@@ -58,7 +59,7 @@ export function breakGlassAuthorized(labels, statuses, labeler, maintainer, sha)
     labels.includes('break-glass') &&
     labeler === maintainer &&
     stamp?.state === 'success' &&
-    stamp.sha === sha
+    stamp.description === `Review override by ${maintainer} on ${sha}`
   )
 }
 

@@ -260,7 +260,7 @@ describe('merge-gate review fleet (ADR-0057)', () => {
 describe('dedicated override stamp', () => {
   const stamp = {
     context: 'merge/break-glass',
-    sha: HEAD,
+    description: `Review override by owner on ${HEAD}`,
     state: 'success',
     creator: { login: 'github-actions[bot]' }
   }

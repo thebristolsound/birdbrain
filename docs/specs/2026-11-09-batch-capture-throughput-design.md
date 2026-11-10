@@ -3,7 +3,7 @@
 **Date:** 2026-11-09
 
 **Status:** Draft, grilled with the maintainer on 2026-11-09; awaiting maintainer review. Slices 1
-to 4 are built on stacked pull requests, none merged yet; slices 5 and 6 are not built.
+to 5 are built on stacked pull requests, none merged yet; slice 6 is not built.
 
 **Frame of reference:** `origin/main` at `c1ed8ed8`. This spec cites code by symbol, per
 [`docs/README.md`](../README.md). The measured figures come from one batch on 2026-11-09 and from
@@ -294,7 +294,9 @@ lands after another job's append would remove that job's entry while its row sur
 lifecycle therefore runs the step from `nextExhibitNumber` through the row insert under a per-Case
 slot, the pattern `withCaseSlot` already applies to deletes (#394). The hashing and the TLS Cert
 Chain fetch before it, which can take up to 10 s, stay outside the slot. The section inside it
-writes files and one row, so the slot costs little.
+writes files and one row, so the slot costs little. Slice 5 moved `withCaseSlot` to module scope in
+`captureLifecycle.ts`, so an ingest into a Case also waits for that Case's deletes and duplicates,
+and they wait for it.
 
 With parallel renders, Manifest order is ingest order, and a Capture's `timestamp` is its job's
 start. Two adjacent entries can therefore carry timestamps out of order: job B starts after job A
@@ -309,8 +311,8 @@ The comment on `cleanup` in `renderPageInHiddenWindow` records that
 `ElectronBlocker.enableBlockingInSession` registers global `ipcMain` handlers, and that a second
 session enabling them while they are registered throws. The render catches that throw, logs
 `backgroundRenderer.consent_blocker_enable_failed`, and continues without Consent Suppression. With
-two concurrent renders, the second would store a Capture with no Consent Suppression and a consent
-wall in its screenshot, and nothing would fail.
+two concurrent renders, the second would store a Capture that records no Consent Suppression, and
+nothing would fail.
 
 Before concurrency rises above 1, the pool slice confirms the behaviour against the pinned
 `@ghostery/adblocker-electron` (`^2.20.3`) and either:
@@ -321,6 +323,24 @@ Before concurrency rises above 1, the pool slice confirms the behaviour against 
   page. That lease serializes the load phase of renders, and would remove most of the gain.
 
 If neither works, concurrency stays at 1 and this spec's pool slice stops at that finding.
+
+Slice 5 checked the pinned version (2.20.3) and took the first option. `BlockingContext.enable`
+registers a preload script and the network filters on the session, and two handlers on the global
+`ipcMain`; `disable` removes all of them. The two handlers forward to the engine and answer the
+frame that called them, so one registration serves every session. `enableConsentBlocking` and
+`disableConsentBlocking` in `consentBlocker.ts` own that registration: they remove it before the
+library registers it again for a second session, and register it again after a disable while
+another session is still enabled. A render whose engine differs from the one already enabled is
+refused, and records no suppression.
+
+A run of the library alone in Electron 45 showed what that second render held. Its enable throws
+after its preload script is registered and before its network filters are, so its cosmetic filters
+still applied through the first render's handlers, its network filters did not, and it recorded no
+Consent Suppression. The same run of the two functions above applied both kinds of filter in both
+sessions, and in the second after the first ended.
+
+The lease was not needed. Had it been, it would have serialized more than the load phase: the
+render keeps the blocker enabled until its cleanup, after the PDF.
 
 #### Concurrency
 
@@ -482,7 +502,7 @@ by [ADR-0014](../adr/0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot
 | --- | --- | --- |
 | `src/main/services/recapture.ts` | blocking | Job ids, the stored queue, the worker pool, per-Case ingest slots, cancel, retry, the pre-render exclusion check |
 | `src/main/services/backgroundRenderer.ts` | blocking | Phase callback, abort signal, phase-duration logging, the consent blocker lease or multi-session enable |
-| `src/main/services/consentBlocker.ts` | blocking | Only if the multi-session fix lives there |
+| `src/main/services/consentBlocker.ts` | blocking | The multi-session enable and disable (slice 5) |
 | `src/main/services/transactionRecorder.ts` | blocking | Slice 1 only: name the bound that expired in its error. No bound changes |
 | `src/main/services/captureLifecycle.ts` | blocking | The per-Case slot around the manifest append and row insert in the ingest |
 | `src/main/services/db/**` | blocking | The migration, `core.ts`, and `backgroundJobRepo.ts` |

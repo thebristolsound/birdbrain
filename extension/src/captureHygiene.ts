@@ -33,4 +33,8 @@ export function removeInjectedBirdbrainUi(): void {
     // reusing the extension's id prefix would still be removed
     .querySelectorAll('style[data-birdbrain-highlight="true"], div[id^="birdbrain-styles-"]')
     .forEach((node) => node.remove())
+  // The operator's selection highlight (#993), which selectionBar.ts holds and puts back on
+  // release. An orphaned script never receives that release, so here it is collapsed, not held:
+  // the operator selects again rather than the frames carrying the highlight.
+  window.getSelection()?.removeAllRanges()
 }

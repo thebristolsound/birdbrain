@@ -414,6 +414,64 @@ function onKeyDown(event: KeyboardEvent): void {
   if (event.key === 'Escape' && state.phase !== 'hidden' && state.phase !== 'busy') hide()
 }
 
+// The operator's selection, out of the page while a capture bracket is open
+// (#993): the native highlight is painted over page content, so it would be in
+// every frame. Held and put back like the bar, not dropped.
+let heldSelection: { range: AbstractRange; backward: boolean } | null = null
+
+function shadowRootsUnder(root: Document | ShadowRoot, found: ShadowRoot[] = []): ShadowRoot[] {
+  root.querySelectorAll('*').forEach((element) => {
+    const shadow =
+      element.shadowRoot ??
+      (element instanceof HTMLElement ? chrome.dom?.openOrClosedShadowRoot(element) : null)
+    if (!shadow) return
+    found.push(shadow)
+    shadowRootsUnder(shadow, found)
+  })
+  return found
+}
+
+function holdSelection(): void {
+  const selection = window.getSelection()
+  // A later per-frame strip finds the selection already empty and keeps what the first held.
+  if (!selection || selection.rangeCount === 0) return
+  // getRangeAt reports a selection that crosses a shadow boundary as a collapsed point in
+  // Chromium, so it could not be put back; the composed range keeps both ends where they are.
+  const [composed] =
+    typeof selection.getComposedRanges === 'function'
+      ? selection.getComposedRanges({ shadowRoots: shadowRootsUnder(document) })
+      : []
+  const range = composed ?? selection.getRangeAt(0)
+  const backward =
+    typeof selection.direction === 'string'
+      ? selection.direction === 'backward'
+      : selection.anchorNode !== range.startContainer ||
+        selection.anchorOffset !== range.startOffset
+  heldSelection = { range, backward }
+  selection.removeAllRanges()
+}
+
+function fitsNode(node: Node, offset: number): boolean {
+  const length = node instanceof CharacterData ? node.length : node.childNodes.length
+  return node.isConnected && offset <= length
+}
+
+function restoreSelection(): void {
+  const held = heldSelection
+  heldSelection = null
+  const selection = window.getSelection()
+  // A selection made during the capture, by the operator or the page, is newer than the held one.
+  if (!held || !selection || selection.rangeCount > 0) return
+  const { startContainer, startOffset, endContainer, endOffset } = held.range
+  // A composed range does not follow DOM changes; ends the page cut away are not put back.
+  if (!fitsNode(startContainer, startOffset) || !fitsNode(endContainer, endOffset)) return
+  if (held.backward) {
+    selection.setBaseAndExtent(endContainer, endOffset, startContainer, startOffset)
+  } else {
+    selection.setBaseAndExtent(startContainer, startOffset, endContainer, endOffset)
+  }
+}
+
 /**
  * Strips the bar for a capture but keeps its state: what the operator saw —
  * a raised bar, or an in-flight action's progress — comes back on release.
@@ -421,6 +479,7 @@ function onKeyDown(event: KeyboardEvent): void {
 function teardownForCapture(): void {
   clearHideTimeout()
   removeHost()
+  holdSelection()
 }
 
 export function initSelectionBar(): void {
@@ -436,6 +495,8 @@ export function initSelectionBar(): void {
   // capture on the tab is collecting frames, put back what was stripped —
   // including after a failed capture, whose restore path also releases.
   onCaptureUiSuppressionReleased(() => {
+    // First, and for a hidden bar too: the ready check below compares against the restored text.
+    restoreSelection()
     if (state.phase === 'hidden') return
     // A ready bar is an offer against one specific selection. The capture may
     // have outlived it — the operator can collapse or replace the selection

@@ -5,7 +5,7 @@
 // capture suppression protocol — stripped by the strip, latched against
 // re-injection until the background's release, restored afterwards on the
 // success and failure paths alike.
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest'
 import {
   isCaptureUiSuppressed,
   releaseCaptureUiSuppression
@@ -442,10 +442,13 @@ describe('capture suppression round trip (#386)', () => {
 
     // The operator clicked elsewhere while the latch was up: the retained
     // ready state is an offer against text no longer selected, and restoring
-    // it would invite an action on it.
-    clearSelection()
+    // it would invite an action on it. A click leaves a caret, not an empty
+    // selection: the strip already emptied it (#993).
+    const p = document.querySelector('p')!
+    window.getSelection()!.collapse(p.firstChild, 3)
     dispatch({ type: 'RELEASE_CAPTURE_UI' })
     expect(bar()).toBeNull()
+    expect(window.getSelection()!.isCollapsed).toBe(true)
   })
 
   it('does not restore a ready bar whose selection was replaced during the capture', async () => {
@@ -468,6 +471,8 @@ describe('capture suppression round trip (#386)', () => {
     // that produced the new selection runs its own pass.
     dispatch({ type: 'RELEASE_CAPTURE_UI' })
     expect(bar()).toBeNull()
+    // The held passage is not put back over the operator's newer selection.
+    expect(window.getSelection()!.toString()).toBe('A different passage entirely.')
   })
 
   it('is removed by the orphaned-content-script fallback strip', async () => {
@@ -486,6 +491,191 @@ describe('capture suppression round trip (#386)', () => {
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     expect(bar()).toBeNull()
+  })
+})
+
+// The native highlight is painted over page content, so a selection left in
+// place is in every frame of the capture (#993). It is held for the bracket
+// and put back on release, like the bar.
+describe("the operator's selection stays out of the frames (#993)", () => {
+  function selectionEnds(): [Node | null, number, Node | null, number] {
+    const { anchorNode, anchorOffset, focusNode, focusOffset } = window.getSelection()!
+    return [anchorNode, anchorOffset, focusNode, focusOffset]
+  }
+
+  it('collapses the selection for the strip and puts the same passage back on release', async () => {
+    selectParagraph()
+    await mouseUp()
+    const before = selectionEnds()
+
+    dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+    expect(window.getSelection()!.rangeCount).toBe(0)
+
+    dispatch({ type: 'RELEASE_CAPTURE_UI' })
+    expect(selectionEnds()).toEqual(before)
+    expect(window.getSelection()!.toString()).toBe('Report abuse to evil@example.com immediately.')
+    // Restored before the stale-selection check, so the offer comes back.
+    expect(bar()).not.toBeNull()
+  })
+
+  it('keeps a backward selection backward', async () => {
+    const text = document.querySelector('p')!.firstChild!
+    window.getSelection()!.setBaseAndExtent(text, 30, text, 7)
+    await mouseUp()
+
+    dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+    dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+    expect(selectionEnds()).toEqual([text, 30, text, 7])
+  })
+
+  it('stays collapsed through every per-frame strip, and the passage still takes a second action', async () => {
+    selectParagraph()
+    await mouseUp()
+    let resolveAction: (value: unknown) => void = () => {}
+    actionResponse = new Promise((resolve) => {
+      resolveAction = resolve
+    })
+    const clicked = clickAction('tag')
+    await Promise.resolve()
+
+    // The auto-capture's bracket strips once, then again before each slice;
+    // a later strip sees the empty selection and must keep what the first held.
+    dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+    dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+    expect(window.getSelection()!.rangeCount).toBe(0)
+    dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+    expect(window.getSelection()!.rangeCount).toBe(0)
+
+    dispatch({ type: 'RELEASE_CAPTURE_UI' })
+    resolveAction({ ok: true, detail: 'Page tagged', captured: true })
+    await clicked
+    expect(window.getSelection()!.toString()).toBe('Report abuse to evil@example.com immediately.')
+
+    await mouseUp()
+    await clickAction('quote')
+    expect(actionRequests.map((r) => [r.action, r.text])).toEqual([
+      ['tag', 'Report abuse to evil@example.com immediately.'],
+      ['quote', 'Report abuse to evil@example.com immediately.']
+    ])
+  })
+
+  it('puts back a selection the bar never offered on', async () => {
+    // Below the actionable minimum: no bar, but the highlight still paints.
+    setPageHtml('<main><p>ab</p></main>')
+    selectParagraph()
+    await mouseUp()
+    expect(bar()).toBeNull()
+
+    dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+    expect(window.getSelection()!.rangeCount).toBe(0)
+    dispatch({ type: 'RELEASE_CAPTURE_UI' })
+    expect(window.getSelection()!.toString()).toBe('ab')
+  })
+
+  it('leaves the page without a selection when there was none', () => {
+    dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+    dispatch({ type: 'RELEASE_CAPTURE_UI' })
+    expect(window.getSelection()!.rangeCount).toBe(0)
+  })
+
+  it('holds the selection the operator made mid-capture, not the earlier one', async () => {
+    setPageHtml(
+      '<main><p>Report abuse to evil@example.com immediately.</p>' +
+        '<p id="second">A different passage entirely.</p></main>'
+    )
+    selectParagraph()
+    dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+    const range = document.createRange()
+    range.selectNodeContents(document.getElementById('second')!)
+    window.getSelection()!.addRange(range)
+
+    // The next slice's strip takes the new selection out of the frame too.
+    dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+    expect(window.getSelection()!.rangeCount).toBe(0)
+    dispatch({ type: 'RELEASE_CAPTURE_UI' })
+    expect(window.getSelection()!.toString()).toBe('A different passage entirely.')
+  })
+
+  it('is collapsed by the orphaned-content-script fallback strip', () => {
+    selectParagraph()
+    removeInjectedBirdbrainUi()
+    expect(window.getSelection()!.rangeCount).toBe(0)
+  })
+
+  describe('with composed ranges, which keep ends inside shadow trees', () => {
+    let calls: GetComposedRangesOptions[] = []
+    let composed: () => StaticRange
+    let runtimeOnly: typeof chrome
+
+    beforeEach(() => {
+      calls = []
+      runtimeOnly = chrome
+      Object.defineProperty(Selection.prototype, 'getComposedRanges', {
+        configurable: true,
+        value: (options: GetComposedRangesOptions) => {
+          calls.push(options)
+          return [composed()]
+        }
+      })
+      vi.stubGlobal('chrome', {
+        ...chrome,
+        dom: { openOrClosedShadowRoot: (element: HTMLElement) => shadowRoots.get(element) ?? null }
+      })
+    })
+
+    afterEach(() => {
+      delete (Selection.prototype as Partial<Selection>).getComposedRanges
+      vi.stubGlobal('chrome', runtimeOnly)
+    })
+
+    function twoParagraphs(): [Text, Text] {
+      setPageHtml(
+        '<main><p>Report abuse to evil@example.com immediately.</p>' +
+          '<p id="second">A different passage entirely.</p><div id="host"></div></main>'
+      )
+      const [first, second] = Array.from(document.querySelectorAll('p'))
+      return [first.firstChild as Text, second.firstChild as Text]
+    }
+
+    it('restores from the composed range and hands it every shadow root, closed ones included', () => {
+      const [first, second] = twoParagraphs()
+      const open = document.getElementById('host')!.attachShadow({ mode: 'open' })
+      open.innerHTML = '<span id="inner"></span>'
+      const closed = open.getElementById('inner')!.attachShadow({ mode: 'closed' })
+      composed = () =>
+        new StaticRange({
+          startContainer: first,
+          startOffset: 7,
+          endContainer: second,
+          endOffset: 11
+        })
+      window.getSelection()!.setBaseAndExtent(first, 7, first, 12)
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      expect(calls).toEqual([{ shadowRoots: [open, closed] }])
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(selectionEnds()).toEqual([first, 7, second, 11])
+    })
+
+    it('restores nothing when the page shortened the held text during the capture', () => {
+      const [first] = twoParagraphs()
+      composed = () =>
+        new StaticRange({
+          startContainer: first,
+          startOffset: 7,
+          endContainer: first,
+          endOffset: 30
+        })
+      window.getSelection()!.setBaseAndExtent(first, 7, first, 30)
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      first.data = 'Gone.'
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(window.getSelection()!.rangeCount).toBe(0)
+    })
   })
 })
 

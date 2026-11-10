@@ -475,11 +475,13 @@ function renderCertificationHtml(fields: CertificationFields): string {
           )} carry an RFC 3161 trusted timestamp asserting the time at which the
       exhibit's content digest existed.</p>`
         : stamped.length > 0
-          ? `<p>RFC 3161 trusted time is asserted <strong>only</strong> for the ${
-              stamped.length
-            } exhibit${stamped.length === 1 ? '' : 's'}${notDuplicate(
-              stamped.length
-            )} listed as timestamped below. For the ${
+          ? `<p>${
+              duplicates.length === 0
+                ? `RFC 3161 trusted time is asserted <strong>only</strong> for the ${
+                    stamped.length
+                  } exhibit${stamped.length === 1 ? '' : 's'}`
+                : `Of the exhibits that are not Duplicates, RFC 3161 trusted time is asserted <strong>only</strong> for the ${stamped.length}`
+            } listed as timestamped below. For the ${
               unstamped.length
             } remaining exhibit${unstamped.length === 1 ? '' : 's'}${notDuplicate(
               unstamped.length

@@ -1316,8 +1316,8 @@ describe('certification from a literal input', () => {
       expect(trustedTime).toContain('<td>Duplicate of Exhibit 3</td>')
     })
 
-    // The Duplicate shares its source's content hash and so its token: "only" must
-    // not deny it the trusted time report.html shows for it.
+    // The Duplicate shares its source's content hash and so its token, so the scope
+    // comes before "only": after it, "only" would still deny the Duplicate that token.
     it('scopes "only" to the observations when stamped and unstamped pages sit beside a Duplicate', () => {
       const other = capture('cap-kat-u', 'Other Page', 'https://example.com/u')
       const mixed = input(
@@ -1337,8 +1337,9 @@ describe('certification from a literal input', () => {
 
       const trustedTime = section(html, 'Trusted time</h2>', 'Entry signatures</h2>')
       expect(trustedTime).toContain(
-        'asserted <strong>only</strong> for the 1 exhibit that is not a Duplicate listed as ' +
-          'timestamped below. For the 1 remaining exhibit that is not a Duplicate'
+        '<p>Of the exhibits that are not Duplicates, RFC 3161 trusted time is asserted ' +
+          '<strong>only</strong> for the 1 listed as timestamped below. For the 1 remaining ' +
+          'exhibit that is not a Duplicate'
       )
     })
 

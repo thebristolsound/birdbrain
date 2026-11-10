@@ -6,6 +6,7 @@ import { unlink } from 'fs/promises'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import {
+  ConsentBlockingUndoFailed,
   disableConsentBlocking,
   enableConsentBlocking,
   getConsentBlocker
@@ -1142,6 +1143,8 @@ export const renderPageInHiddenWindow: RenderPage = async (
           undefined,
           err
         )
+        // Filters may still apply to this session, so no Capture may record none: the render ends.
+        if (err instanceof ConsentBlockingUndoFailed) throw err
       }
     }
 

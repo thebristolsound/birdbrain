@@ -80,11 +80,12 @@ function liftBridge(): void {
   for (const channel of COSMETIC_CHANNELS) ipcMain.removeHandler(channel)
 }
 
-// Registers the bridge again, as the library does, for the sessions still enabled.
+// Leaves the channels as the sessions still enabled need them: registered again, as the library
+// does, for their engine, or clear, so that the next enable can register them.
 function restoreBridge(): void {
+  liftBridge()
   const [engine] = enabledSessions.values()
   if (!engine?.config.loadCosmeticFilters) return
-  liftBridge()
   const [inject, mutationObserver] = COSMETIC_CHANNELS
   ipcMain.handle(inject, (...args: Parameters<ElectronBlocker['onInjectCosmeticFilters']>) =>
     engine.onInjectCosmeticFilters(...args)
@@ -96,7 +97,23 @@ function restoreBridge(): void {
   )
 }
 
-// Throws when the engine cannot be enabled, with nothing left registered for this session.
+// Thrown when an enable failed and so did its undo, with the enable's error as the cause. The
+// session may still hold the preload or the network filters, so a render that goes on would
+// record no suppression while some filters apply.
+export class ConsentBlockingUndoFailed extends Error {
+  constructor(
+    enableError: unknown,
+    readonly undoError: unknown
+  ) {
+    super('The consent blocker failed to enable, and undoing the enable failed too', {
+      cause: enableError
+    })
+    this.name = 'ConsentBlockingUndoFailed'
+  }
+}
+
+// Throws the enable's own error when the engine cannot be enabled and the undo leaves nothing
+// registered for this session, and ConsentBlockingUndoFailed when the undo fails as well.
 export function enableConsentBlocking(engine: ElectronBlocker, session: Session): void {
   if (enabledSessions.has(session)) return
   const [other] = enabledSessions.values()
@@ -108,11 +125,16 @@ export function enableConsentBlocking(engine: ElectronBlocker, session: Session)
   try {
     engine.enableBlockingInSession(session)
   } catch (err) {
+    let undone = true
+    let undoError: unknown
     try {
       if (engine.isBlockingEnabled(session)) engine.disableBlockingInSession(session)
-    } finally {
-      restoreBridge()
+    } catch (caught) {
+      undone = false
+      undoError = caught
     }
+    restoreBridge()
+    if (!undone) throw new ConsentBlockingUndoFailed(err, undoError)
     throw err
   }
   enabledSessions.set(session, engine)

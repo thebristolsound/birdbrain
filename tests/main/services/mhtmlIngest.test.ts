@@ -525,4 +525,61 @@ describe('two background jobs ingesting into one Case', () => {
     expect((await verifyCapture(secondId)).status).toBe('verified')
     expect(getCapture(firstId)).toBeUndefined()
   })
+
+  // An appender outside the slot, such as the trusted-timestamp worker, can resume in the
+  // microtask after a failed ingest's seam body throws.
+  it('rolls a failed ingest back before an appender outside the slot resumes', async () => {
+    const failedId = randomUUID()
+    const appendedHash = 'a'.repeat(64)
+    const store: CaptureStore = {
+      ...defaultCaptureStore,
+      writeText: () => {
+        queueMicrotask(() =>
+          appendManifestEntry(caseDir, {
+            type: 'deletion',
+            captureId: randomUUID(),
+            caseId,
+            timestamp: '2026-11-09T12:00:01.000Z',
+            contentHash: appendedHash,
+            operatorId: 'op-1',
+            operatorName: 'Smith',
+            toolVersion: '0.1.0'
+          })
+        )
+        throw new Error('disk full')
+      }
+    }
+
+    await expect(
+      ingestMhtmlCapture(
+        {
+          captureId: failedId,
+          caseId,
+          url: 'https://example.com/failed',
+          title: 'Failed',
+          timestamp: '2026-11-09T12:00:00.000Z',
+          stream: Readable.from([Buffer.from('MHTML')]) as unknown as ReadableStream<Uint8Array>,
+          textContent: 'text',
+          headers: {},
+          browserVersion: '',
+          userAgent: '',
+          httpStatus: 200,
+          operatorId: 'op-1',
+          operatorName: 'Smith',
+          toolVersion: '0.1.0'
+        },
+        async () => null,
+        store
+      )
+    ).rejects.toThrow('disk full')
+
+    const entries = readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((line) => line !== '')
+      .map((line) => JSON.parse(line) as { type: string; contentHash: string })
+    expect(entries.map(({ type, contentHash }) => [type, contentHash])).toEqual([
+      ['deletion', appendedHash]
+    ])
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+  })
 })

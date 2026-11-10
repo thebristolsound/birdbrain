@@ -333,11 +333,17 @@ library registers it again for a second session, and register it again after a d
 another session is still enabled. A render whose engine differs from the one already enabled is
 refused, and records no suppression.
 
-A run of the library alone in Electron 45 showed what that second render held. Its enable throws
-after its preload script is registered and before its network filters are, so its cosmetic filters
-still applied through the first render's handlers, its network filters did not, and it recorded no
-Consent Suppression. The same run of the two functions above applied both kinds of filter in both
-sessions, and in the second after the first ended.
+A one-off probe on 2026-11-09, a script run once in Electron 45.2.1 and not kept in the repository,
+showed what that second render held. Two offscreen windows in two sessions loaded a local page with
+an element a cosmetic filter hides and a script a network filter blocks. With the library alone, the
+second session's enable threw after its preload script was registered and before its network
+filters were: its cosmetic filters still applied through the first render's handlers, its network
+filter did not, and the render would have recorded no Consent Suppression. With the two functions
+above, both kinds of filter applied in both sessions, and in the second after the first ended. The
+unit tests that pin this behaviour run the pinned library against a test double of `ipcMain`.
+
+If the library's undo of a failed enable also fails, the session may keep some filters, so the
+render ends with `ConsentBlockingUndoFailed` rather than storing a Capture that records none.
 
 The lease was not needed. Had it been, it would have serialized more than the load phase: the
 render keeps the blocker enabled until its cleanup, after the PDF.

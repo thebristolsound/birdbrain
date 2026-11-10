@@ -153,14 +153,30 @@ describe('consent blocking in more than one session', () => {
     '@ghostery/adblocker/is-mutation-observer-enabled'
   ]
 
-  const fakeSession = (preloadFails = false) => ({
-    registerPreloadScript: vi.fn(() => {
-      if (preloadFails) throw new Error('the session is gone')
-      return 'preload'
-    }),
-    unregisterPreloadScript: vi.fn(),
-    webRequest: { onBeforeRequest: vi.fn(), onHeadersReceived: vi.fn() }
-  })
+  // The library's enable registers the preload, the two channels, then `onHeadersReceived` and
+  // `onBeforeRequest`; its disable clears `onHeadersReceived` first, so a throw there stops it
+  // before it unregisters the preload or removes the channels.
+  const fakeSession = (
+    fails: { preload?: boolean; networkEnable?: boolean; disable?: boolean } | boolean = {}
+  ) => {
+    const { preload, networkEnable, disable } =
+      typeof fails === 'boolean' ? { preload: fails } : fails
+    return {
+      registerPreloadScript: vi.fn(() => {
+        if (preload) throw new Error('the session is gone')
+        return 'preload'
+      }),
+      unregisterPreloadScript: vi.fn(),
+      webRequest: {
+        onBeforeRequest: vi.fn((filter: unknown) => {
+          if (networkEnable && filter !== null) throw new Error('webRequest refused the listener')
+        }),
+        onHeadersReceived: vi.fn((filter: unknown) => {
+          if (disable && filter === null) throw new Error('webRequest refused the reset')
+        })
+      }
+    }
+  }
   type FakeSession = ReturnType<typeof fakeSession>
 
   // The pinned library's engine; only its list download is mocked above.
@@ -171,12 +187,14 @@ describe('consent blocking in more than one session', () => {
       typeof import('@ghostery/adblocker-electron')
     >('@ghostery/adblocker-electron')
     const mod = await import('@main/services/consentBlocker')
+    const { ConsentBlockingUndoFailed } = mod
     const asSession = (session: FakeSession) => session as unknown as Electron.Session
     return {
       engine: ElectronBlocker.parse('example.test##.consent-wall'),
       enable: (engine: InstanceType<typeof ElectronBlocker>, session: FakeSession) =>
         mod.enableConsentBlocking(engine, asSession(session)),
-      disable: (session: FakeSession) => mod.disableConsentBlocking(asSession(session))
+      disable: (session: FakeSession) => mod.disableConsentBlocking(asSession(session)),
+      ConsentBlockingUndoFailed
     }
   }
 
@@ -225,5 +243,50 @@ describe('consent blocking in more than one session', () => {
     disable(session)
     disable(session)
     expect(ipcHandlers.size).toBe(0)
+  })
+
+  it('reports the enable failure when its undo fails too, and the other session keeps its bridge', async () => {
+    const { engine, enable, disable, ConsentBlockingUndoFailed } = await load()
+    const first = fakeSession()
+    const broken = fakeSession({ networkEnable: true, disable: true })
+    enable(engine, first)
+
+    let thrown: unknown
+    try {
+      enable(engine, broken)
+    } catch (err) {
+      thrown = err
+    }
+    expect(thrown).toBeInstanceOf(ConsentBlockingUndoFailed)
+    expect((thrown as Error).cause).toEqual(new Error('webRequest refused the listener'))
+    expect((thrown as InstanceType<typeof ConsentBlockingUndoFailed>).undoError).toEqual(
+      new Error('webRequest refused the reset')
+    )
+    // The failed session's preload stayed registered: the caller must not go on.
+    expect(broken.unregisterPreloadScript).not.toHaveBeenCalled()
+    expect([...ipcHandlers.keys()].sort()).toEqual(CHANNELS)
+    disable(first)
+    expect(ipcHandlers.size).toBe(0)
+  })
+
+  it('leaves no channel registered when a failed enable and its undo were the only session', async () => {
+    const { engine, enable, ConsentBlockingUndoFailed } = await load()
+    expect(() => enable(engine, fakeSession({ networkEnable: true, disable: true }))).toThrow(
+      ConsentBlockingUndoFailed
+    )
+    expect(ipcHandlers.size).toBe(0)
+  })
+
+  it("clears the channels when the last session's disable throws, so the next enable works", async () => {
+    const { engine, enable, disable } = await load()
+    const stuck = fakeSession({ disable: true })
+    enable(engine, stuck)
+
+    expect(() => disable(stuck)).toThrow('webRequest refused the reset')
+    expect(ipcHandlers.size).toBe(0)
+    const next = fakeSession()
+    expect(() => enable(engine, next)).not.toThrow()
+    expect([...ipcHandlers.keys()].sort()).toEqual(CHANNELS)
+    disable(next)
   })
 })

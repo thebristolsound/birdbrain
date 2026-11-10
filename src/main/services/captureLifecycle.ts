@@ -565,7 +565,9 @@ export async function ingestMhtmlCapture(
           operatorName: params.operatorName,
           toolVersion: params.toolVersion
         },
-        async (manifestResult) => {
+        // Synchronous, so a throw truncates in the same turn: an async callback would
+        // roll back a microtask later, after another appender could have appended.
+        (manifestResult) => {
           // Write plain text content to disk for the viewer's Text tab
           if (params.textContent) {
             store.writeText(params.caseId, captureId, params.textContent)

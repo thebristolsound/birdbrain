@@ -23,6 +23,7 @@ import {
   scrollToLoadLazyContent,
   trimTrailingBackground
 } from '@main/services/backgroundRenderer'
+import { ConsentBlockingUndoFailed } from '@main/services/consentBlocker'
 import { logger } from '@main/services/logger'
 import { sanitizeError } from '@main/services/logSafe'
 import { ManifestEntrySchema, ScrollToLoadRecordSchema } from '@shared/schemas'
@@ -2028,6 +2029,32 @@ describe('renderPageInHiddenWindow', () => {
       expect((await first).consentSuppression).toBe('filter-list')
     }, 30_000)
   })
+
+  it('ends the render when the blocker fails to enable and the undo fails too', async () => {
+    const errors = vi.spyOn(logger, 'error')
+    errors.mockClear()
+    ctl.blocker = {
+      enableBlockingInSession: vi.fn(() => {
+        throw new Error('enable broke')
+      }),
+      isBlockingEnabled: vi.fn(() => true),
+      disableBlockingInSession: vi.fn(() => {
+        throw new Error('undo broke')
+      })
+    }
+    const render = renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000, ...IDS })
+
+    await expect(render).rejects.toBeInstanceOf(ConsentBlockingUndoFailed)
+    await expect(render).rejects.toHaveProperty('cause', new Error('enable broke'))
+    // No page was loaded, so nothing could be stored that records no suppression.
+    expect(ctl.calls).not.toContain('loadURL https://example.test/')
+    expect(ctl.lastWindow!.isDestroyed()).toBe(true)
+    expect(
+      errors.mock.calls.filter(
+        ([, code]) => code === 'backgroundRenderer.consent_blocker_enable_failed'
+      )
+    ).toHaveLength(1)
+  }, 30_000)
 
   it('destroys the window and cleans up when the navigation fails', async () => {
     ctl.loadUrlShouldReject = true

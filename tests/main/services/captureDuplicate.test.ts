@@ -10,7 +10,7 @@ import { createCase } from '@main/services/db/caseRepo'
 import { getCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
 import { getExhibitSearchBuild } from '@main/services/db/searchFieldRepo'
 import { initManifest, verifyManifestChain } from '@main/services/manifest'
-import { createCaptureStore } from '@main/services/captureStore'
+import { createCaptureStore, defaultCaptureStore } from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import type { CaptureLifecycle, IngestParams } from '@main/services/captureLifecycle'
@@ -123,6 +123,63 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
     resetInstallationId()
     rmSync(tempDir, { recursive: true, force: true })
     vi.restoreAllMocks()
+  })
+
+  // The Case's slot is module-wide: an ingest into the Case waits for a duplicate that holds it.
+  it('holds an ingest into the Case until a duplicate holding its slot has appended', async () => {
+    let releaseCopy: () => void = () => {}
+    const copyHeld = new Promise<void>((resolve) => (releaseCopy = resolve))
+    let copyStarted = false
+    const store: CaptureStore = {
+      ...defaultCaptureStore,
+      copyArtifacts: async (...args) => {
+        copyStarted = true
+        await copyHeld
+        return defaultCaptureStore.copyArtifacts(...args)
+      }
+    }
+    const fetchTlsCertChain = vi.fn(async () => null)
+    const held = createCaptureLifecycle({
+      selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle,
+      store,
+      fetchTlsCertChain,
+      egressIsDirect: () => true
+    })
+
+    const duplicating = held.duplicate(source.id)
+    await vi.waitFor(() => expect(copyStarted).toBe(true))
+    const ingesting = held.ingest({
+      caseId,
+      url: 'https://example.com/later',
+      title: 'Later',
+      timestamp: '2026-04-05T13:00:00.000Z',
+      stream: Readable.from([Buffer.from('later page')]) as unknown as ReadableStream<Uint8Array>,
+      textContent: 'later',
+      headers: {},
+      browserVersion: 'Chrome/120',
+      userAgent: 'Mozilla/5.0',
+      httpStatus: 200,
+      operatorId: 'op-later',
+      operatorName: 'Later Operator',
+      toolVersion: '0.1.0'
+    })
+    await vi.waitFor(() => expect(fetchTlsCertChain).toHaveBeenCalledTimes(1))
+    // From the re-fetch to the append is microtasks only, so an ingest the slot did not hold
+    // would have appended by the next turn.
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(manifestLines()).toHaveLength(1)
+
+    releaseCopy()
+    const duplicated = await duplicating
+    const { capture } = await ingesting
+    expect(duplicated.status).toBe('duplicated')
+    const duplicateId = duplicated.status === 'duplicated' ? duplicated.capture.id : undefined
+    expect(manifestLines().map(({ captureId }) => captureId)).toEqual([
+      source.id,
+      duplicateId,
+      capture.id
+    ])
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
   })
 
   it('writes its own artifacts, its own signed entry, and leaves the chain valid', async () => {

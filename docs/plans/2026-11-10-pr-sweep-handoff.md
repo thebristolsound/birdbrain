@@ -12,10 +12,10 @@
 
 ## Next assignments
 
-- Review the existing fleet repair on pull request 2160 and determine why otherwise successful fleet runs report incomplete work. The release-note review has returned; see the checkpoint below.
-- Review the grouped dependency update on pull request 2136 after its description and evidence label corrections. The logging review has returned; see the checkpoint below.
-- Review pull request 2159 after its matching screenshots and corrected description were posted. See the checkpoint below.
-- The coordinator posts comments and body updates; delegated agents return files.
+- Fix the four source blockers and implement the maintainer-approved source-review policy in the existing fleet repair, pull request 2160. Its starting head is `3f54cde37f9d`; read the posted review and policy decision below.
+- Review the corrected throughput design and build notes on pull request 2158 at `19e4a5e89cd8`.
+- Review the test-suite serialization delta on pull request 2126 at `8ee37c8d436b`.
+- The coordinator posts comments and body updates. Only the delegated implementer pushes the repair branch, as a fast-forward. Reviewers return files.
 
 ## Queue at the survey
 
@@ -107,3 +107,13 @@ The survey did not resolve the product questions inside existing reviews. Restat
 - The [fleet workflow](https://github.com/thebristolsound/birdbrain/actions/runs/42891824721) has now completed successfully as a workflow, but the machine account posted a failed `review/fleet` status: all four Claude passes reported unchecked work. A successful workflow is not a successful review.
 - Direct status reads confirm that `agent/pre-pass` and the maintainer approval stamp succeeded at the same head. The evidence approval label remains present. The failed fleet result still prevents merging; another merge-gate run cannot satisfy that missing result.
 - The existing fleet-repair review is the next dependency for this failure. No gate override or paid rerun was attempted. The pull request remains watched for further changes.
+
+## Fleet policy and dependency checkpoint
+
+- Posted the [fleet repair review](https://github.com/thebristolsound/birdbrain/pull/2160#issuecomment-6778227425). It reproduces four source blockers; the code must change before the description can claim those fixes. Kept the review status failed.
+- The maintainer explicitly chose completed source review, separately reported runtime limits, and unchanged CI gates. Recorded this [policy decision](https://github.com/thebristolsound/birdbrain/pull/2160#issuecomment-6778267096) on the repair. Missing source inputs and unfinished source checks still fail. Old mixed unchecked lists cannot be cleared or silently reclassified.
+- Corrected the [dependency update description](https://github.com/thebristolsound/birdbrain/pull/2136#issuecomment-6778268118), applied the authorized evidence approval at the unchanged head, and refreshed the old merge-gate attempts through the repository merge script. Every required check passed before merge.
+- Merged pull request 2136 as `3029954ee1338858f3be4a30a1b01c3000f14b3c`. Its tree exactly matches the simulated merge of the reviewed dependency head into main `00184202`; no change was dropped. The original branch commit is absent from ancestry because this is a squash. The remote branch is absent, confirmed with `git ls-remote` after a cleanup race warning.
+- Main now includes the dependency and runtime updates. Every implementer must fetch and merge this main before final verification. The separate sharp pin will need conflict resolution when its turn comes.
+- Posted the [top bar review](https://github.com/thebristolsound/birdbrain/pull/2159#issuecomment-6778289387): no source, screenshot, evidence or Summary defect remains. All 27 targeted unit tests passed; the reviewer checked all six uploaded images byte-for-byte against the local files. Its fleet and generated-verification gates remain outstanding.
+- No gate override, state deletion, or paid retry was performed. A retry still depends on a corrected trusted implementation, valid inputs, and fresh completed review output.

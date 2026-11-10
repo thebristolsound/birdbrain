@@ -12,10 +12,11 @@
 
 ## Next assignments
 
-- Fix the four source blockers and implement the maintainer-approved source-review policy in the existing fleet repair, pull request 2160. Its starting head is `3f54cde37f9d`; read the posted review and policy decision below.
-- Review the corrected throughput design and build notes on pull request 2158 at `19e4a5e89cd8`.
-- Review the test-suite serialization delta on pull request 2126 at `8ee37c8d436b`.
-- The coordinator posts comments and body updates. Only the delegated implementer pushes the repair branch, as a fast-forward. Reviewers return files.
+- The fleet implementer owns fixes on pull request 2160, starting from `3f54cde37f9d`, including the maintainer-approved review policy. It has the shared preflight-lock requirement.
+- Assign the four reproduced lock bypasses on pull request 2126 at `8ee37c8d436b` to one implementer. Only that worker may push its branch.
+- Review pull request 2175 at `c945b741666c`, including its exact refusal text, Data-screen wording, and twelve screenshots. Prepare the concrete veto choice for Matt; no veto approval exists yet.
+- The coordinator will make the small prose corrections from the pull request 2158 review directly in an isolated scratch tree. Use the exact D1/D2 corrections in comment 6778772932; do not implement new queue behavior or expand the existing unclassified technical detail.
+- Pull request 2176 at `bb6f12815c3f` is now owned by the sweep. Keep its branch stable while the recovery thread builds its unopened children; notify that thread before merge or base changes.
 
 ## Queue at the survey
 
@@ -117,3 +118,18 @@ The survey did not resolve the product questions inside existing reviews. Restat
 - Main now includes the dependency and runtime updates. Every implementer must fetch and merge this main before final verification. The separate sharp pin will need conflict resolution when its turn comes.
 - Posted the [top bar review](https://github.com/thebristolsound/birdbrain/pull/2159#issuecomment-6778289387): no source, screenshot, evidence or Summary defect remains. All 27 targeted unit tests passed; the reviewer checked all six uploaded images byte-for-byte against the local files. Its fleet and generated-verification gates remain outstanding.
 - No gate override, state deletion, or paid retry was performed. A retry still depends on a corrected trusted implementation, valid inputs, and fresh completed review output.
+
+## Recovery-thread coordination
+
+- Read the recovery thread through its latest ownership discussion and sent the agreed split back to it. The sweep owns all open recovery pull requests through 2176. The recovery thread owns only unopened signing-tail and MHTML Parts branches; it will notify the sweep when each opens.
+- The recovery thread confirmed that none of the listed veto choices has been reviewed by Matt. Agent-made decision comments are not his review. Hold these choices for concrete maintainer review before merging: 2145 export wording; 2149 missing-archive message; 2161 saved invalid patterns; 2162 version string; 2163 failed-lookup filter behavior; 2165 match-row editing; 2167 empty/no-text departure; 2171 quote cap/error; 2172 selection-dependent content/frame gap; 2173 restored highlight; 2174 notice/per-tab guard; 2175 refusal and Data-screen wording.
+- Notify the recovery thread when 2175 is settled or merged, and before any change to `fix/signing-refuses-empty-operator-name`. Keep `refactor/mhtml-walk-every-part` stable and notify before merging or changing the base of 2176. Its unopened children are `feat/mhtml-parts-ipc` and `feat/mhtml-parts-tab`; do not touch them.
+- Both sides agreed to use `flock /home/matt/worktrees/birdbrain/.preflight.lock` for full preflight, coverage, and reliability runs. Relayed this operational constraint to the existing fleet implementer without assigning another review.
+- Preserve the later 2172 review fixes when integrating 2173 and 2174, which started from its first-round commit. Use merge-based updates and fast-forward pushes, not history rewrites. Expect path-list table overlap between 2142, 2162, and the future Parts API change.
+
+## New review and logging follow-up
+
+- Posted the [design review](https://github.com/thebristolsound/birdbrain/pull/2158#issuecomment-6778772932): two prose blockers remain, unsupported timeout diagnosis and contradictory resume-order claims. Its integration trial with main is clean. The coordinator will fix these small findings; no executable behavior change is requested.
+- Posted the [test-lock review](https://github.com/thebristolsound/birdbrain/pull/2126#issuecomment-6778773447): four source blockers remain. Its 83 targeted tests, 41 inherited-environment tests, and six counterchecks do not make those reproduced cases safe. The integration trial preserves main's dependency changes.
+- Read all sixteen non-blocking findings for 2133, including the item omitted from its displayed fleet table, from all four original artifacts. Posted [individual dispositions](https://github.com/thebristolsound/birdbrain/pull/2133#issuecomment-6778590740) and narrowed the Summary and proof claims to accepted jobs, refused-redirect exceptions, actual outcome fields, historical design context, and CI rather than local verification. Development-only throw boundaries and remaining test gaps stay explicit.
+- No source changed on 2133. Its original source review remains successful; the fleet remains failed. No additional full suite or build ran for these description-only corrections.

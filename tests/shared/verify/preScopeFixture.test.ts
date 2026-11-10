@@ -51,6 +51,7 @@ describe('frozen pre-scope fixture package', () => {
     expect('scope' in exportEntries[0]).toBe(false)
     expect('captureIds' in exportEntries[0]).toBe(false)
     expect(entries.some((e) => e.type === 'deletion')).toBe(true)
+    expect(entries.some((e) => e.operatorName === '')).toBe(true)
   })
 
   // The two ways a bad schema change breaks a legacy export entry: a REQUIRED

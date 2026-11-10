@@ -1089,6 +1089,9 @@ export const LOG_CODES = [
   // settings.json at startup failed. Init swallows it and retries next launch;
   // this is the record that the key may still be on disk.
   'settings.retired_fields_cleanup_failed',
+  // The global ignored-URL list holds patterns stored before edits were
+  // validated (#724). They are kept, and Settings marks each one.
+  'settings.ignore_patterns_invalid',
   // First-launch seeding of the bundled demonstration Case Archive (#405).
   // Every outcome is recorded: an operator whose first launch produced no demo
   // case has no other way to tell a missing fixture from a refused import.

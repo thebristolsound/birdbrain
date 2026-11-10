@@ -2268,6 +2268,20 @@ describe('ipcHandlers — settings', () => {
     expect(stored.tsaUrl).toBe('https://custom.example/tsr')
   })
 
+  // #724, the global list's counterpart of the per-case refusal (#750): a pattern
+  // written past the Settings panel is refused at the seam, and nothing is stored.
+  it('refuses a global ignored URL pattern that does not compile', async () => {
+    expectOk(await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { ignoredUrlPatterns: ['a.com'] }))
+    const refused = await invoke(IPC_CHANNELS.SETTINGS_UPDATE, {
+      ignoredUrlPatterns: ['a.com', '/[/']
+    })
+    expect(refused).toMatchObject({ ok: false, code: 'INVALID_SETTINGS' })
+    const stored = expectOk<{ ignoredUrlPatterns: string[] }>(
+      await invoke(IPC_CHANNELS.SETTINGS_GET)
+    )
+    expect(stored.ignoredUrlPatterns).toEqual(['a.com'])
+  })
+
   it('still rejects a settings failure that is not a validation refusal', async () => {
     const boom = new Error('disk gone')
     const spy = vi.spyOn(settings, 'updateSettings').mockImplementationOnce(() => {

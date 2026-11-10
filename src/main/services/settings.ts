@@ -8,6 +8,7 @@ import {
 } from '@shared/schemas'
 import { DEFAULT_DEDUPE_WINDOW_SECONDS, DEFAULT_TSA_URL } from '@shared/constants'
 import { logger } from '@main/services/logger'
+import { validateIgnorePattern } from '@shared/urlPatterns'
 
 let _app: typeof import('electron').app | null = null
 try {
@@ -107,7 +108,26 @@ export function initSettings(userDataPath: string): void {
     }
   } else {
     removeRetiredSettings()
+    logInvalidIgnorePatterns()
   }
+}
+
+// An edit can no longer store an ignored URL pattern that validateIgnorePattern refuses
+// (#724), but one stored before that is kept rather than dropped. The count, never the
+// patterns, is logged once per launch so the log shows the list holds such a rule. A file
+// the schema rejects loads as defaults, so its patterns are not in force and are not counted.
+function logInvalidIgnorePatterns(): void {
+  let saved: unknown
+  try {
+    saved = JSON.parse(readFileSync(settingsPath, 'utf-8'))
+  } catch {
+    return
+  }
+  const parsed = PartialBirdbrainSettingsSchema.safeParse(saved)
+  if (!parsed.success) return
+  const { ignoredUrlPatterns = [] } = parsed.data
+  const count = ignoredUrlPatterns.filter((pattern) => !validateIgnorePattern(pattern).ok).length
+  if (count > 0) logger.warn('settings', 'settings.ignore_patterns_invalid', { count })
 }
 
 // Rewrites settings.json without the retired keys, leaving every other key as

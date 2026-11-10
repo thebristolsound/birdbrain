@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { DEFAULT_TSA_URL, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
+import { validateIgnorePattern } from '@shared/urlPatterns'
 import {
   BOUND_TLS_ABSENCES,
   BROWSER_FAMILIES,
@@ -1722,6 +1723,14 @@ export const BirdbrainSettingsSchema = z.object({
 // are stripped rather than rejected, so an older file still parses.
 export const PartialBirdbrainSettingsSchema = BirdbrainSettingsSchema.partial()
 
+// The global ignore list is checked on edit with the per-case list's rule (#724; see
+// validateIgnorePattern for why). Only the edit refuses: load keeps the bare array, so a
+// pattern stored before this check stays stored, and Settings marks it.
+const IgnoredUrlPatternEditSchema = z.string().superRefine((pattern, ctx) => {
+  const result = validateIgnorePattern(pattern)
+  if (!result.ok) ctx.addIssue({ code: 'custom', message: result.reason })
+})
+
 // Used on edit: the load schema with `tsaUrl` strict (see TsaUrlEditSchema), and an
 // Egress the Operator chose, never the unavailable marker. The launched browser keys are
 // stripped: main spawns the chosen executable, so only the main process sets them.
@@ -1729,6 +1738,7 @@ export const SettingsUpdateSchema = PartialBirdbrainSettingsSchema.omit({
   launchedBrowserExecutable: true,
   launchedBrowserVersions: true
 }).extend({
+  ignoredUrlPatterns: z.array(IgnoredUrlPatternEditSchema).optional(),
   tsaUrl: TsaUrlEditSchema.optional().default(DEFAULT_TSA_URL),
   egress: EgressSettingSchema.optional(),
   sharingRelayUrl: RelayUrlEditSchema.optional()

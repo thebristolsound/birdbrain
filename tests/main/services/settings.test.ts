@@ -624,6 +624,39 @@ describe('settings', () => {
     expect(settings.ignoredUrlPatterns).toEqual(['*.google.com', '*.bing.com'])
   })
 
+  // #724. Known answers for the global list's edit seam: the same grammar
+  // validateIgnorePattern applies to the per-case list.
+  describe('an ignored URL pattern validateIgnorePattern refuses', () => {
+    it.each([
+      ['an uncompilable regex', '/[/', 'ignoredUrlPatterns.1: Invalid regular expression'],
+      ['a URL path read as a regex with bad flags', '/some/path', 'ignoredUrlPatterns.1: '],
+      ['an empty pattern', '', 'ignoredUrlPatterns.1: Pattern is empty']
+    ])('refuses %s and keeps the stored list', (_name, pattern, message) => {
+      updateSettings({ ignoredUrlPatterns: ['a.com'] })
+      const before = readFileSync(settingsFile, 'utf-8')
+      expect(() => updateSettings({ ignoredUrlPatterns: ['a.com', pattern] })).toThrow(message)
+      expect(() => updateSettings({ ignoredUrlPatterns: ['a.com', pattern] })).toThrow(
+        InvalidSettingsError
+      )
+      expect(readFileSync(settingsFile, 'utf-8')).toBe(before)
+    })
+
+    it.each(['facebook.com', '*.bank.com*', 'exa?ple.com', '/^https:/i', '/(a+)+$/'])(
+      'accepts %j as before',
+      (pattern) => {
+        updateSettings({ ignoredUrlPatterns: [pattern] })
+        expect(getSettings().ignoredUrlPatterns).toEqual([pattern])
+      }
+    )
+
+    it('keeps one stored before the check, and still saves other settings', () => {
+      writeFileSync(settingsFile, JSON.stringify({ ignoredUrlPatterns: ['a.com', '/[/'] }))
+      expect(getSettings().ignoredUrlPatterns).toEqual(['a.com', '/[/'])
+      updateSettings({ theme: 'light' })
+      expect(getSettings()).toMatchObject({ theme: 'light', ignoredUrlPatterns: ['a.com', '/[/'] })
+    })
+  })
+
   it('returns empty operatorName by default', () => {
     const s = getSettings()
     expect(s.operatorName).toBe('')
@@ -861,6 +894,40 @@ describe('initSettings and the fresh-install latch', () => {
     expect(seeded).not.toHaveProperty('openRouterApiKey')
     expect(seeded).not.toHaveProperty('defaultModel')
     expect(seeded).not.toHaveProperty('analysisSystemPrompt')
+  })
+
+  // #724: a pattern stored before the edit seam validated is kept, and init
+  // records how many there are, once, without the patterns themselves.
+  it('logs the stored ignored URL patterns validateIgnorePattern refuses', async () => {
+    writeFileSync(
+      join(tempDir, 'settings.json'),
+      JSON.stringify({ ignoredUrlPatterns: ['a.com', '/[/', '/some/path'] }),
+      'utf-8'
+    )
+    loggerWarn.mockClear()
+    const { initSettings, getSettings: read } = await load()
+    initSettings(tempDir)
+    expect(loggerWarn).toHaveBeenCalledTimes(1)
+    expect(loggerWarn).toHaveBeenCalledWith('settings', 'settings.ignore_patterns_invalid', {
+      count: 2
+    })
+    expect(read().ignoredUrlPatterns).toEqual(['a.com', '/[/', '/some/path'])
+  })
+
+  it.each([
+    ['every stored pattern is valid', JSON.stringify({ ignoredUrlPatterns: ['a.com'] })],
+    ['the file will not parse', '{"ignoredUrlPatterns": ['],
+    ['the file fails the schema', JSON.stringify({ ignoredUrlPatterns: 'a.com' })]
+  ])('logs nothing about ignored URL patterns when %s', async (_name, contents) => {
+    writeFileSync(join(tempDir, 'settings.json'), contents, 'utf-8')
+    loggerWarn.mockClear()
+    const { initSettings } = await load()
+    initSettings(tempDir)
+    expect(loggerWarn).not.toHaveBeenCalledWith(
+      'settings',
+      'settings.ignore_patterns_invalid',
+      expect.anything()
+    )
   })
 
   it('does not throw when the settings directory cannot be written', async () => {

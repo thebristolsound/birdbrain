@@ -5,6 +5,7 @@ import {
   launchedBrowserStatusQueryOptions
 } from '@renderer/lib/api/launchedBrowser'
 import { formatElapsed } from '@renderer/components/launchedBrowser/captureSessionPanelModel'
+import { useAppStore } from '@renderer/stores/appStore'
 import { cn } from '@renderer/lib/utils'
 
 // Recording, without the camcorder (docs/design-handoff/2026-11-08-top-bar/): a 6px danger dot,
@@ -22,7 +23,14 @@ export function RecordingMark({
   const { data: launched } = useQuery(launchedBrowserStatusQueryOptions)
   const open = launched?.state === 'open'
   const since = open ? launched.browser.sessionStartedAt : null
-  const source = open ? launchedBrowserName(launched.browser.label) : 'extension'
+  const connectedToExtension = useAppStore((s) => s.connectedToExtension)
+  // A session outlives the launched browser that started it, and that browser needed no
+  // extension, so the extension is named only while one is connected.
+  const source = open
+    ? launchedBrowserName(launched.browser.label)
+    : connectedToExtension
+      ? 'extension'
+      : null
   return (
     <span
       data-testid="topbar-rec"
@@ -40,7 +48,7 @@ export function RecordingMark({
       ) : (
         <span className="font-mono text-text-primary">Recording</span>
       )}
-      <span className="text-text-muted">{source}</span>
+      {source && <span className="text-text-muted">{source}</span>}
       {trigger && (
         <span aria-hidden="true" className="text-text-faint">
           ▾

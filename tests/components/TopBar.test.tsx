@@ -65,7 +65,11 @@ beforeEach(() => {
   stubMatchMedia(false)
   getCase = vi.fn(async () => ({ id: 'case1', name: 'Operation Kestrel' }))
   fakeBridge({ cases: { get: getCase } })
-  useAppStore.setState({ sessionActive: false, commandPaletteOpen: false })
+  useAppStore.setState({
+    sessionActive: false,
+    connectedToExtension: false,
+    commandPaletteOpen: false
+  })
   navigate.mockClear()
 })
 
@@ -222,7 +226,7 @@ describe('the recording mark', () => {
   })
 
   it('shows on the dashboard during an extension-only session, as a dot and the word', () => {
-    useAppStore.setState({ sessionActive: true })
+    useAppStore.setState({ sessionActive: true, connectedToExtension: true })
     renderAt('/')
     const mark = screen.getByTestId('topbar-rec')
     expect(mark.textContent).toContain('Recording')
@@ -352,7 +356,7 @@ describe('the Capture Session button', () => {
     expect(screen.queryByTestId('topbar-capture-session')).toBeNull()
   })
 
-  it('names the launched browser in the mark while it is open, and the extension once it has closed', async () => {
+  it('names the launched browser in the mark while it is open, and no source once it has closed', async () => {
     bridgeWith(OPEN)
     renderAt('/')
     expect(await screen.findByText('Launched Google Chrome')).toBeTruthy()
@@ -360,9 +364,15 @@ describe('the Capture Session button', () => {
     bridgeWith({ state: 'closed', browser: { ...OPEN.browser, tabs: [] } })
     renderAt('/')
     await screen.findByTestId('topbar-capture-session')
-    const mark = screen.getByTestId('topbar-rec')
-    expect(mark.textContent).toContain('Recording')
-    expect(mark.textContent).toContain('extension')
+    expect(screen.getByTestId('topbar-rec').textContent).toBe('Recording▾')
+  })
+
+  it('names the extension in the mark once the browser has closed while one is connected', async () => {
+    useAppStore.setState({ connectedToExtension: true })
+    bridgeWith({ state: 'closed', browser: { ...OPEN.browser, tabs: [] } })
+    renderAt('/')
+    await screen.findByTestId('topbar-capture-session')
+    expect(screen.getByTestId('topbar-rec').textContent).toBe('Recordingextension▾')
   })
 
   it('leaves a notice to the Capture Session button once no session runs', async () => {

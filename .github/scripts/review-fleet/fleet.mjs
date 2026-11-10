@@ -271,6 +271,15 @@ export function decide(f) {
   return out('success', `no confirmed blocking finding (${refuted} blocking raised and refuted)`)
 }
 
+// Model-written text as the comments print it: an HTML comment opener is spelled out, so the
+// text can neither hide what follows it nor pass for one of the fleet's markers.
+const inert = (s) => String(s ?? '').replace(/<!--/g, '&lt;!--')
+
+// Model-written text in the relay, which goes out under the maintainer's name: a zero-width
+// space follows every @, so the text can start neither Codex nor any other assistant that
+// answers a mention. The first line is the one mention the relay makes.
+const unmention = (s) => inert(s).replace(/@/g, '@\u200b')
+
 export function relayBody(state, sha) {
   const blocking = (state.claude?.findings ?? []).filter((x) => x.severity === 'BLOCKING')
   const lines = [
@@ -286,9 +295,11 @@ export function relayBody(state, sha) {
       ''
     )
     for (const x of blocking) {
-      const at = x.file ? ` (\`${x.file}${x.line ? `:${x.line}` : ''}\`)` : ''
-      lines.push(`- **${x.id}**${at}: ${x.plain} ${x.detail}`.slice(0, 1500))
-      if (x.failure_scenario) lines.push(`  Failure scenario: ${x.failure_scenario}`.slice(0, 600))
+      const at = x.file ? ` (\`${unmention(x.file)}${x.line ? `:${x.line}` : ''}\`)` : ''
+      lines.push(`- **${x.id}**${at}: ${unmention(x.plain)} ${unmention(x.detail)}`.slice(0, 1500))
+      if (x.failure_scenario) {
+        lines.push(`  Failure scenario: ${unmention(x.failure_scenario)}`.slice(0, 600))
+      }
     }
     lines.push(
       '',
@@ -301,10 +312,6 @@ export function relayBody(state, sha) {
   }
   return redact(lines.join('\n'))
 }
-
-// Model-written text as the comments print it: an HTML comment opener is spelled out, so the
-// text can neither hide what follows it nor pass for one of the fleet's markers.
-const inert = (s) => String(s ?? '').replace(/<!--/g, '&lt;!--')
 
 function cell(s) {
   return inert(

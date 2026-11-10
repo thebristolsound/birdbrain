@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   readlinkSync,
   realpathSync,
@@ -23,6 +24,7 @@ import {
   acquire,
   clearStale,
   discard,
+  isAlive,
   lockPath,
   pidNamespace,
   readOwner,
@@ -63,6 +65,14 @@ const captureStderr = (action: () => void) => {
     return spy.mock.calls.map(([chunk]) => String(chunk)).join('')
   } finally {
     spy.mockRestore()
+  }
+}
+
+const until = async (check: () => boolean, what: string, ms = 10_000) => {
+  const end = Date.now() + ms
+  while (!check()) {
+    if (Date.now() > end) throw new Error(`timed out waiting for ${what}`)
+    await new Promise((done) => setTimeout(done, 20))
   }
 }
 
@@ -326,6 +336,33 @@ describe('many waiters on one stale lock', () => {
       expect(outcomes.filter((outcome) => outcome === 'waited')).toHaveLength(3)
     }
   }, 60_000)
+})
+
+describe('isAlive', () => {
+  it('tells a running process from one that has exited', () => {
+    expect(isAlive(process.pid)).toBe(true)
+    expect(isAlive(exitedPid())).toBe(false)
+  })
+
+  it.runIf(ON_LINUX)('reports a zombie as gone, and a lock it holds as stale', async () => {
+    // exec makes sleep the parent of the exited background job, and sleep never collects it.
+    const parent = spawn('sh', ['-c', 'sleep 0 & echo $!; exec sleep 60'])
+    try {
+      let out = ''
+      parent.stdout.on('data', (chunk) => (out += chunk))
+      await until(() => out.includes('\n'), 'the background pid')
+      const pid = Number(out)
+      await until(
+        () => readFileSync(`/proc/${pid}/stat`, 'utf8').includes(') Z '),
+        'the background job to become a zombie'
+      )
+      expect(isAlive(pid)).toBe(false)
+      plant(dir, { ...base(pid), pidStart: startTime(pid), startedAt: new Date().toISOString() })
+      expect(tryAcquire(dir, base(2)).owner?.pid).toBe(2)
+    } finally {
+      parent.kill('SIGKILL')
+    }
+  })
 })
 
 describe('pidNamespace', () => {

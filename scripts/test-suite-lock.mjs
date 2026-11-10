@@ -64,27 +64,31 @@ export const lockPath = (cwd) => {
   }
 }
 
-// EPERM means the process exists but belongs to another user.
-export const isAlive = (pid) => {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (error) {
-    return error.code === 'EPERM'
-  }
-}
-
-// Linux only: the start time, in clock ticks after boot (field 22 of /proc/<pid>/stat), tells
-// a reused pid from the process that recorded it. The command name in field 2 may contain spaces,
-// so fields are counted from its closing parenthesis.
-export const startTime = (pid) => {
+// Linux only: the fields of /proc/<pid>/stat from the third on. The command name in field 2
+// may contain spaces, so fields are counted from its closing parenthesis.
+const statFields = (pid) => {
   try {
     const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
-    return stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19] ?? null
+    return stat.slice(stat.lastIndexOf(')') + 2).split(' ')
   } catch {
     return null
   }
 }
+
+// EPERM means the process exists but belongs to another user. A zombie (state Z, field 3) has
+// exited and runs nothing; it keeps its pid and start time until its parent collects it.
+export const isAlive = (pid) => {
+  try {
+    process.kill(pid, 0)
+  } catch (error) {
+    if (error.code !== 'EPERM') return false
+  }
+  return statFields(pid)?.[0] !== 'Z'
+}
+
+// The start time, in clock ticks after boot (field 22), tells a reused pid from the process
+// that recorded it.
+export const startTime = (pid) => statFields(pid)?.[19] ?? null
 
 // null when the lock has no owner record. A record that is there but cannot be read or parsed
 // comes back as { unreadable: <cause> }, so a waiter does not take it for a lock nobody holds.

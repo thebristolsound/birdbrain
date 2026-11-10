@@ -281,8 +281,12 @@ jobs:
               fi
             fi
           done
-          auto="$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json autoMergeRequest --jq '.autoMergeRequest != null')"
-          if [ "$auto" = "true" ]; then
+          # A state that cannot be read counts as armed: turn it off anyway, then fail.
+          if ! auto="$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json autoMergeRequest --jq '.autoMergeRequest != null')"; then
+            echo "::error::could not read the auto-merge state"
+            failed=1
+          fi
+          if [ "$auto" != "false" ]; then
             gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --disable-auto
             echo "auto-merge disabled"
           fi

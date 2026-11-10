@@ -734,13 +734,13 @@ function stepScript(workflow: string, job: string, step: string): string {
 }
 
 describe.skipIf(!HAS_JQ)('a push to a PR', () => {
-  const withdraw = (labels: string[], { fail = false, armed = false } = {}) => {
+  const withdraw = (labels: string[], { fail = false, armed = false, unread = false } = {}) => {
     const dir = mkdtempSync(join(tmpdir(), 'fleet-withdraw-'))
     try {
       const gh = join(dir, 'gh')
       writeFileSync(
         gh,
-        '#!/usr/bin/env bash\necho "$*" >> "$GH_LOG"\nif [ "${WITHDRAW_FAIL:-}" = 1 ] && [ "$1 $2" = "pr edit" ]; then echo HTTP-502 >&2; exit 1; fi\n[ "$1 $2" = "pr view" ] && echo "$AUTO_MERGE"\nexit 0\n'
+        '#!/usr/bin/env bash\necho "$*" >> "$GH_LOG"\nif [ "${WITHDRAW_FAIL:-}" = 1 ] && [ "$1 $2" = "pr edit" ]; then echo HTTP-502 >&2; exit 1; fi\nif [ "$1 $2" = "pr view" ]; then [ "$VIEW_FAIL" = 1 ] && { echo HTTP-503 >&2; exit 1; }; echo "$AUTO_MERGE"; fi\nexit 0\n'
       )
       chmodSync(gh, 0o755)
       const log = join(dir, 'log')
@@ -759,6 +759,7 @@ describe.skipIf(!HAS_JQ)('a push to a PR', () => {
             GH_LOG: log,
             WITHDRAW_FAIL: fail ? '1' : '0',
             AUTO_MERGE: armed ? 'true' : 'false',
+            VIEW_FAIL: unread ? '1' : '0',
             PR: '7',
             GITHUB_REPOSITORY: REPO,
             LABELS: JSON.stringify(labels)
@@ -805,6 +806,20 @@ describe.skipIf(!HAS_JQ)('a push to a PR', () => {
     expect(r.removed).toEqual(['approved', 'merge', 'break-glass'])
     expect(r.disarmed).toBe(true)
     expect(r.status).not.toBe(0)
+  })
+
+  it('still tries to turn auto-merge off, and fails, when its state cannot be read', () => {
+    const r = withdraw(['merge'], { unread: true })
+    expect(r.removed).toEqual(['merge'])
+    expect(r.disarmed).toBe(true)
+    expect(r.status).not.toBe(0)
+    expect(r.stderr).toContain('HTTP-503')
+  })
+
+  it('leaves auto-merge alone when it is not armed', () => {
+    const r = withdraw(['merge'])
+    expect(r.status, r.stderr).toBe(0)
+    expect(r.disarmed).toBe(false)
   })
 
   it('turns auto-merge off after a clean withdrawal', () => {

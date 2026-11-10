@@ -13,6 +13,81 @@ function mhtml(lines: string[]): Buffer {
   return Buffer.from(lines.join('\r\n'), 'utf-8')
 }
 
+const MULTIPART_TOP = ['Content-Type: multipart/related; boundary=B', '']
+
+// Archives that are damaged, or not archives, built by hand so each holds one defect.
+const MALFORMED = {
+  'an empty buffer': Buffer.alloc(0),
+  'no boundary': mhtml([
+    'Snapshot-Content-Location: https://example.com/a',
+    'Content-Type: text/html',
+    '',
+    '<p>a</p>'
+  ]),
+  'unterminated headers between two HTML parts': mhtml([
+    ...MULTIPART_TOP,
+    '--B',
+    'Content-Type: text/html',
+    'Content-Location: https://example.com/one',
+    '',
+    '<p>one</p>',
+    '--B',
+    'Content-Type: text/html',
+    'Content-Location: https://example.com/lost',
+    '--B',
+    'Content-Type: text/html',
+    'Content-Location: https://example.com/two',
+    '',
+    '<p>two</p>',
+    '--B--'
+  ]),
+  'no closing delimiter': mhtml([
+    ...MULTIPART_TOP,
+    '--B',
+    'Content-Type: text/html',
+    '',
+    '<p>cut short',
+    ''
+  ]),
+  'a delimiter inside a body': mhtml([
+    ...MULTIPART_TOP,
+    '--B',
+    'Content-Type: text/html',
+    '',
+    '<p>one --B tail</p>',
+    '--B',
+    'Content-Type: text/html',
+    '',
+    '<p>two</p>',
+    '--B--'
+  ])
+}
+type Malformed = keyof typeof MALFORMED
+
+// `[contentLocation, encodedSize, decoded]` per HTML part, as the decoder at a1762414 read them.
+const MALFORMED_HTML_PARTS: Record<
+  Malformed,
+  { snapshotLocation: string | null; parts: unknown[] }
+> = {
+  'an empty buffer': { snapshotLocation: null, parts: [] },
+  'no boundary': { snapshotLocation: 'https://example.com/a', parts: [] },
+  'unterminated headers between two HTML parts': {
+    snapshotLocation: null,
+    parts: [
+      ['https://example.com/one', 10, '<p>one</p>'],
+      ['https://example.com/two', 10, '<p>two</p>']
+    ]
+  },
+  'no closing delimiter': { snapshotLocation: null, parts: [[null, 12, '<p>cut short']] },
+  'a delimiter inside a body': {
+    snapshotLocation: null,
+    parts: [
+      [null, 7, '<p>one '],
+      [null, 10, '<p>two</p>']
+    ]
+  }
+}
+
 describe('extractHtmlFromMhtml', () => {
   it('returns empty string for empty buffer', () => {
     expect(extractHtmlFromMhtml(Buffer.alloc(0))).toBe('')
@@ -237,6 +312,110 @@ describe('listHtmlPartsInMhtml and extractHtmlPartsFromMhtml', () => {
   it('answers no parts and no snapshot for something that is not an MHTML', () => {
     expect(listHtmlPartsInMhtml(Buffer.alloc(0))).toEqual({ snapshotLocation: null, parts: [] })
     expect(listHtmlPartsInMhtml(mhtml(['Content-Type: text/html', '', 'x'])).parts).toEqual([])
+  })
+})
+
+// What text extraction, the claim check, the Links tab and the received-evidence title read.
+// Every value below was taken from the decoder at a1762414, before the walker that lists every
+// part existed, so a change to the walk that moves any of them fails here.
+describe('what the HTML part readers see', () => {
+  const read = (buffer: Buffer): { snapshotLocation: string | null; parts: unknown[] } => {
+    const { snapshotLocation, parts } = listHtmlPartsInMhtml(buffer)
+    return {
+      snapshotLocation,
+      parts: parts.map(({ contentLocation, encodedSize, decode }) => [
+        contentLocation,
+        encodedSize,
+        createHash('sha256').update(decode(), 'utf8').digest('hex')
+      ])
+    }
+  }
+
+  it.each([
+    [
+      'fixtures/multi-part.mhtml',
+      'https://example.com/page',
+      [
+        [
+          'https://example.com/page',
+          107,
+          '81a2668c098c7a868a0110578eed301d5979aad9ebba2f085bafb3924a5c276e'
+        ],
+        [
+          'https://widgets.example/frame/one.html',
+          62,
+          'e1aedc6ce0a803af5c27e059caf7d47cdc071a0abf41699fa705b12a939a562f'
+        ],
+        [
+          'cid:frame-2@mhtml.blink',
+          47,
+          '980a80b777fada3192bdd03dbcbad49e4fd475dbe2cf1d62b4e85c9167660827'
+        ]
+      ],
+      null
+    ],
+    [
+      'fixtures/mhtml-parts.mhtml',
+      'https://example.com/report',
+      [
+        [
+          'https://example.com/report',
+          157,
+          '77688eb16da1d4735e485e8da79a7539f1b364ff0a975dcc198caf6ef77460e0'
+        ],
+        [
+          'https://widgets.example/embed/frame.html',
+          66,
+          'ca3adae7c817f71979e1a5db8dc9bfb76c0a48d866a726eea5fc376e267cd6de'
+        ],
+        [
+          'cid:frame-2@widgets.example',
+          51,
+          'c859751b8b3b5b1bcceb37accbe80a1ddae74299c5327a5dd7882e298f3eb488'
+        ]
+      ],
+      'Quarterly widget report'
+    ],
+    [
+      'extraction/fixtures/cnn-iran-synthetic.mhtml',
+      'https://www.cnn.com/2024/04/19/world/iran-nuclear-cyber',
+      [
+        [
+          'https://www.cnn.com/2024/04/19/world/iran-nuclear-cyber',
+          1911,
+          'c2be71c4ac61e29d2b9e31356f739f4370635134557d427c5e3bc0c2ebe076fe'
+        ]
+      ],
+      'Iran-Linked Threat Actor Targets Nuclear Negotiators'
+    ],
+    [
+      'extraction/fixtures/cnn-pope-synthetic.mhtml',
+      'https://www.cnn.com/2024/04/19/tech/pope-cybersecurity',
+      [
+        [
+          'https://www.cnn.com/2024/04/19/tech/pope-cybersecurity',
+          1705,
+          '11c2c2c3fe095342afe1ae5cf03ef12b71b6003d12d10be91dfa6efa98476abf'
+        ]
+      ],
+      'Pope Addresses Global Cybersecurity Summit at Vatican'
+    ]
+  ])('%s keeps its HTML parts and title', (fixture, snapshotLocation, parts, title) => {
+    const buffer = readFileSync(join(__dirname, fixture))
+    expect(read(buffer)).toEqual({ snapshotLocation, parts })
+    expect(readMhtmlTitle(buffer)).toBe(title)
+  })
+
+  it.each(Object.entries(MALFORMED_HTML_PARTS))('%s keeps its HTML parts', (name, expected) => {
+    const { snapshotLocation, parts } = listHtmlPartsInMhtml(MALFORMED[name as Malformed])
+    expect({
+      snapshotLocation,
+      parts: parts.map(({ contentLocation, encodedSize, decode }) => [
+        contentLocation,
+        encodedSize,
+        decode()
+      ])
+    }).toEqual(expected)
   })
 })
 

@@ -1085,10 +1085,11 @@ function fieldMinReaderSchemaVersion(entry: ManifestEntryInput): number {
   return exhibitNumber !== undefined ? CAPTURE_EXHIBIT_NUMBER_MIN_READER : 0
 }
 
-// One in-memory queue per case directory (#394, #639). A batch delete holds it across awaits, so
-// a writer that takes it cannot land inside the batch's range; a writer that does not take it
-// still can. Not reentrant: `fn` must not wait on the same directory's slot. Keyed by the
-// resolved path, so two spellings of one directory share one queue.
+// One in-memory queue per case directory (#394, #639). A rollback is a truncation, so two writers
+// that roll back on one chain must not interleave or they can truncate each other's entries. A
+// batch delete holds the slot across awaits, so a writer that takes it cannot land inside the
+// batch's range; a writer that does not take it still can. Not reentrant: `fn` must not wait on
+// the same directory's slot. Keyed by the resolved path, so two spellings share one queue.
 const manifestSlots = new Map<string, Promise<void>>()
 
 export async function withManifestSlot<T>(caseDir: string, fn: () => T | Promise<T>): Promise<T> {

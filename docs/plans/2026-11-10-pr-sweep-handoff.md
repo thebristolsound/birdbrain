@@ -14,7 +14,7 @@
 
 - Review the existing fleet repair on pull request 2160 and determine why otherwise successful fleet runs report incomplete work. The release-note review has returned; see the checkpoint below.
 - Review the grouped dependency update on pull request 2136 after its description and evidence label corrections. The logging review has returned; see the checkpoint below.
-- Supply the missing before and after images, check the top bar layout, and correct the description on pull request 2159.
+- Review pull request 2159 after its matching screenshots and corrected description were posted. See the checkpoint below.
 - The coordinator posts comments and body updates; delegated agents return files.
 
 ## Queue at the survey
@@ -91,3 +91,12 @@ The survey did not resolve the product questions inside existing reviews. Restat
 - Posted the [correction record](https://github.com/thebristolsound/birdbrain/pull/2133#issuecomment-6777960654) and set `agent/pre-pass` to success for the unchanged head. Marked the pull request ready for review and applied the authorized evidence approval label at that head. Its required fleet review must complete before merge.
 - Read issue 2127 directly. Its first acceptance criterion asks for the job's URL host in logs, while this change expressly omits hosts under the existing redaction policy. If merging closes the issue, reopen it with this remaining requirement, as the sweep skill directs. Do not add host logging during this sweep.
 - Next, review pull request 2136's corrected description and evidence gate. Its earlier change request concerned those surfaces, not a demonstrated code defect.
+
+## Top bar verification checkpoint
+
+- Posted [six matching screenshots](https://github.com/thebristolsound/birdbrain/pull/2159#issuecomment-6778026757) as the machine account, then read the comment back and replaced all local image paths in the description with GitHub attachment URLs. Three before-and-after pairs cover widths 900, 1400, and 1600 at height 800.
+- Before capture: `00184202` on main. After capture: unchanged pull request head `bc627a264ed1`. Both used the same invented case, theme, empty Captures route, and seeded export-progress state in the running Electron app. The coordinator inspected the 1400-pixel pair.
+- The existing top bar layout test passed: two tests, exit 0. One-time rendered checks passed at six widths. No product code or tests changed; missing regression assertions remain disclosed.
+- Corrected the description's claim that progress text moved into the hover title: the text appears in both places. The screenshot comment and the description with uploaded URLs passed their format checks.
+- The description records passing core CI and targeted checks, while expressly recording failed merge and fleet gates. Its blocked verification record is manual; regenerate the standard CI verification block with `verification-from-ci.sh 2159` once all required checks pass. Do not treat the manual record as a completed preflight.
+- Next, obtain the full current-head review of pull request 2159. Its failed fleet status remains a separate merge blocker.

@@ -5,10 +5,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
   CaptureUiSuppressionError,
   createCaptureSuppression,
-  isCaptureUiSuppressed,
-  onCaptureUiSuppressionReleased,
   registerCaptureUiTeardown,
-  releaseCaptureUiSuppression,
   suppressCaptureUi,
   suppressCaptureUiOrThrow
 } from '../../extension/src/captureSuppression'
@@ -286,73 +283,5 @@ describe('capture suppression boundary', () => {
       })
     ).rejects.toBe(boom)
     expect(suppression.isCollectingFrames(1)).toBe(false)
-  })
-})
-
-// Wired the way background.ts wires it: suppress strips the page, and restore sends the release
-// only once no capture on the tab is collecting frames. The teardown stands in for the selection
-// bar's, which holds the operator's selection out of the frames and puts it back on release (#993).
-describe('page state a teardown holds for the bracket', () => {
-  function heldStateBracket() {
-    const page = { selection: 'passage' as string | null, held: null as string | null }
-    register(() => {
-      if (page.selection === null) return
-      page.held = page.selection
-      page.selection = null
-    })
-    unregisterFns.push(
-      onCaptureUiSuppressionReleased(() => {
-        page.selection = page.held
-        page.held = null
-      })
-    )
-    const suppression = createCaptureSuppression({
-      suppress: async () => {
-        suppressCaptureUiOrThrow()
-      },
-      restore: async (tabId) => {
-        if (!suppression.isCollectingFrames(tabId)) releaseCaptureUiSuppression()
-      }
-    })
-    return { page, suppression }
-  }
-
-  it('stays held until the last concurrent capture has its frames, then comes back once', async () => {
-    const { page, suppression } = heldStateBracket()
-    const first = deferred<string>()
-    const second = deferred<string>()
-
-    const captureA = suppression.withSuppression(1, async ({ collectFrames }) => {
-      await collectFrames(() => first.promise)
-    })
-    const captureB = suppression.withSuppression(1, async ({ collectFrames }) => {
-      await collectFrames(() => second.promise)
-    })
-
-    first.resolve('a')
-    await captureA
-    expect(page.selection).toBeNull()
-    expect(isCaptureUiSuppressed()).toBe(true)
-
-    second.resolve('b')
-    await captureB
-    expect(page.selection).toBe('passage')
-    expect(isCaptureUiSuppressed()).toBe(false)
-  })
-
-  it('comes back when the capture throws mid-frame', async () => {
-    const { page, suppression } = heldStateBracket()
-    const boom = new Error('captureVisibleTab failed')
-
-    await expect(
-      suppression.withSuppression(1, async ({ collectFrames }) => {
-        await collectFrames(async () => {
-          expect(page.selection).toBeNull()
-          throw boom
-        })
-      })
-    ).rejects.toBe(boom)
-
-    expect(page.selection).toBe('passage')
   })
 })

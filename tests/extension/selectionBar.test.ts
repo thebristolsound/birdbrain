@@ -7,6 +7,7 @@
 // success and failure paths alike.
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest'
 import {
+  createCaptureSuppression,
   isCaptureUiSuppressed,
   releaseCaptureUiSuppression
 } from '../../extension/src/captureSuppression'
@@ -650,6 +651,72 @@ describe("the operator's selection stays out of the frames (#993)", () => {
     selectParagraph()
     removeInjectedBirdbrainUi()
     expect(window.getSelection()!.rangeCount).toBe(0)
+  })
+
+  // Wired the way background.ts wires it: suppress strips the page, and restore sends the release
+  // only once no capture on the tab is collecting frames.
+  describe("through the background's capture bracket", () => {
+    function bracket() {
+      const suppression = createCaptureSuppression({
+        suppress: async () => {
+          dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        },
+        restore: async (tabId) => {
+          if (!suppression.isCollectingFrames(tabId)) dispatch({ type: 'RELEASE_CAPTURE_UI' })
+        }
+      })
+      return suppression
+    }
+
+    const PASSAGE = 'Report abuse to evil@example.com immediately.'
+
+    it('holds the selection until the last concurrent capture has its frames, then puts it back', async () => {
+      selectParagraph()
+      const suppression = bracket()
+      let resolveFirst: () => void = () => {}
+      let resolveSecond: () => void = () => {}
+      const first = new Promise<void>((resolve) => {
+        resolveFirst = resolve
+      })
+      const second = new Promise<void>((resolve) => {
+        resolveSecond = resolve
+      })
+
+      const captureA = suppression.withSuppression(1, async ({ collectFrames }) => {
+        await collectFrames(() => first)
+      })
+      const captureB = suppression.withSuppression(1, async ({ collectFrames }) => {
+        await collectFrames(() => second)
+      })
+
+      resolveFirst()
+      await captureA
+      expect(window.getSelection()!.rangeCount).toBe(0)
+      expect(isCaptureUiSuppressed()).toBe(true)
+
+      resolveSecond()
+      await captureB
+      expect(window.getSelection()!.toString()).toBe(PASSAGE)
+      expect(isCaptureUiSuppressed()).toBe(false)
+    })
+
+    it('puts the selection back when the capture throws mid-frame', async () => {
+      selectParagraph()
+      const boom = new Error('captureVisibleTab failed')
+      let duringFrame = -1
+
+      await expect(
+        bracket().withSuppression(1, async ({ collectFrames }) => {
+          await collectFrames(async () => {
+            duringFrame = window.getSelection()!.rangeCount
+            throw boom
+          })
+        })
+      ).rejects.toBe(boom)
+
+      expect(duringFrame).toBe(0)
+      expect(window.getSelection()!.toString()).toBe(PASSAGE)
+    })
   })
 
   // A text field's selection is its own: in Chromium the document's reports a caret beside the

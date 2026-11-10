@@ -37,7 +37,7 @@ function Stated({ reason, children }: { reason: string; children: ReactNode }) {
 
 function CardLine({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="break-all">
+    <div className="wrap-anywhere">
       <span className="text-text-faint">{label}: </span>
       {children}
     </div>
@@ -135,12 +135,12 @@ function PartRow({
         )}
       </td>
       <td
-        className="max-w-[320px] break-all px-2.5 py-1.5 text-text-secondary"
+        className="max-w-[320px] wrap-anywhere px-2.5 py-1.5 text-text-secondary"
         data-testid="mhtml-part-location"
       >
         {locationCell(part)}
       </td>
-      <td className="break-all px-2.5 py-1.5">{typeCell(part)}</td>
+      <td className="wrap-anywhere px-2.5 py-1.5">{typeCell(part)}</td>
       <td className="whitespace-nowrap px-2.5 py-1.5">{encodingText(part)}</td>
       <td className="px-2.5 py-1.5 text-right">{offset}</td>
       <td className="whitespace-nowrap px-2.5 py-1.5 text-right" title={`${countText(size)} bytes`}>
@@ -204,7 +204,7 @@ function Listed({
           data-testid="mhtml-parts-table"
         >
           <thead>
-            <tr className="border-b border-border text-left font-display text-[10px] font-semibold uppercase tracking-label text-text-faint">
+            <tr className="border-b border-border text-left font-display text-[10px] font-semibold text-text-faint">
               <th className="px-2.5 py-1.5 font-semibold">{PARTS_COLUMNS.position}</th>
               <th className="px-2.5 py-1.5 font-semibold">{PARTS_COLUMNS.htmlPart}</th>
               <th className="px-2.5 py-1.5 font-semibold">{PARTS_COLUMNS.contentLocation}</th>

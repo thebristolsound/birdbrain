@@ -12,7 +12,7 @@
 
 ## Next assignments
 
-- Review the latest release-note and editor-setting changes on pull request 2157 against its earlier findings.
+- Review the existing fleet repair on pull request 2160 and determine why otherwise successful fleet runs report incomplete work. The release-note review has returned; see the checkpoint below.
 - Review the latest background-job logging changes on pull request 2133 against its earlier findings.
 - Supply the missing before and after images, check the top bar layout, and correct the description on pull request 2159.
 - The coordinator posts comments and body updates; delegated agents return files.
@@ -75,3 +75,11 @@ After each merge, refresh the remaining heads, bases, and conflicts. Keep stacks
 ## Open questions
 
 The survey did not resolve the product questions inside existing reviews. Restate each actual question when handling that pull request. Do not infer authority to apply a fleet override from the sweep invocation.
+
+## Release-note review checkpoint
+
+- The [current-head review](https://github.com/thebristolsound/birdbrain/pull/2157#issuecomment-6777863590) found no new source blocker. Its merge trial against `00184202` was clean. The reviewer evaluated all prior findings and the fleet artifacts, including findings omitted from the fleet comment.
+- Corrected the Summary to limit the editor exclusions to the listed folders, remove the outdated verification statement, and describe the release notes without claiming every retained sentence has a test. Updated the attribution. The body and both comment checks passed.
+- Posted the [description correction](https://github.com/thebristolsound/birdbrain/pull/2157#issuecomment-6777879574). No branch files changed.
+- Kept `agent/pre-pass` failed because the separate fleet check remains failed. Its passes report incomplete work even though the workflow jobs succeeded. The reviewer found the four blocking stale-count findings corrected in the current description; this does not satisfy the fleet gate.
+- Next, review pull request 2160, the existing fleet-repair change. Determine whether its fixes address the incomplete-review results, and identify the supported retry path. Preserve the gate while investigating.

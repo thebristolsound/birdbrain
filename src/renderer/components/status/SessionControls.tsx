@@ -36,7 +36,7 @@ export function SessionControls() {
   // lifts and opening a Case moves the Active Case, so the browser's own Case is not used. It
   // shows on Case screens only, as before.
   const intoCase = activeCaseId ? cases.find((c) => c.id === sessionCaseId) : undefined
-  // Then the source (`1i`). As on the REC pill, a closed browser is no longer named.
+  // Then the source (`1i`). As on the recording mark, a closed browser is no longer named.
   const source =
     launched?.state === 'open'
       ? `${launchedBrowserName(launched.browser.label)}${connectedToExtension ? ', and the extension' : ''}`

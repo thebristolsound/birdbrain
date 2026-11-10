@@ -81,8 +81,9 @@ test.describe('Top bar layout', () => {
           expect(overlapWidth(searchBox, rightBox)).toBeLessThanOrEqual(0)
         }).toPass({ timeout: 5000 })
 
-        // The case name shortens to about eight characters before the search gives up width, and
-        // hides below 1,000 pixels with the full name in the tooltip; never one letter.
+        // The case name's track keeps 160 pixels, and the name at least 64 of them, before the
+        // search gives up width. Below 1,000 pixels the name hides with the full name in the
+        // tooltip; never one letter.
         const nameText = caseName.getByTestId('topbar-case-name-text')
         if (width >= 1000) {
           // The text keeps its 64 pixels inside its own slot, clear of the search.

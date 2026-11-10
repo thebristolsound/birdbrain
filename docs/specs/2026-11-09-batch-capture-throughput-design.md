@@ -3,8 +3,7 @@
 **Date:** 2026-11-09
 
 **Status:** Draft, grilled with the maintainer on 2026-11-09; awaiting maintainer review. Slices 1
-to 5 are on stacked pull requests, none merged yet; slice 6 is built on top of them, and its pull
-request is not open yet.
+to 5 are on stacked pull requests, none merged yet; slice 6 is built on top of them in #2152.
 
 **Frame of reference:** `origin/main` at `c1ed8ed8`. This spec cites code by symbol, per
 [`docs/README.md`](../README.md). The measured figures come from one batch on 2026-11-09 and from

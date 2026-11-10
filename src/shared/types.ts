@@ -363,6 +363,61 @@ export interface CaptureLinks {
   mainDocumentSkipped: boolean
 }
 
+/** One part of a Capture's stored MHTML, as the MHTML Parts tab lists it (#991). */
+export interface MhtmlPartRow {
+  /** 1-based, in file order, counting every part. */
+  position: number
+  /** The index among text/html parts, as the HTML readers number them; null for other parts. */
+  htmlPart: number | null
+  mainDocument: boolean
+  contentType: string | null
+  transferEncoding: string | null
+  contentLocation: string | null
+  contentId: string | null
+  /** The byte offset in the file where the hashed span starts. */
+  offset: number
+  /** The span's length in bytes as stored, before transfer decoding. */
+  size: number
+  /** SHA-256 over the span, computed when the file was read. Not anchored in the manifest. */
+  sha256: string
+  /** False when no blank line ends the part's headers; its header fields are then null. */
+  headersTerminated: boolean
+  /** No delimiter follows the part, so it runs to the end of the file. */
+  endsAtEndOfFile: boolean
+  /** A header value in this row was cut at the field cap. */
+  fieldsTruncated: boolean
+}
+
+export type MhtmlPartsRefusal =
+  | { reason: 'file-missing'; path: string }
+  | { reason: 'too-large'; size: number; limit: number }
+  | { reason: 'no-mime-header' }
+  | { reason: 'no-boundary'; contentType: string | null; fieldsTruncated: boolean }
+  | { reason: 'no-parts'; boundary: string; fieldsTruncated: boolean }
+
+export type MhtmlPartsListing =
+  | { status: 'refused'; refusal: MhtmlPartsRefusal; readAt: string }
+  | {
+      status: 'listed'
+      readAt: string
+      /** Bytes in the file as read, not as recorded at capture. */
+      fileSize: number
+      topContentType: string | null
+      boundary: string
+      snapshotLocation: string | null
+      /** An archive header value above was cut at the field cap. */
+      fieldsTruncated: boolean
+      /** The walk ended at a closing delimiter rather than at the end of the file. */
+      closed: boolean
+      /** Every part in the file, including those past the row ceiling. */
+      totalParts: number
+      /** Parts, among all of them, whose headers have no terminating blank line. */
+      unterminatedParts: number
+      /** The row ceiling was reached: parts past it are counted but not listed or hashed. */
+      truncated: boolean
+      parts: MhtmlPartRow[]
+    }
+
 // A Case search field hit (docs/plans/2026-10-09-case-retrieval-first-slice.md, D6): one
 // record for each field and value in an Exhibit, the first in the stored file, with the
 // span it came from.

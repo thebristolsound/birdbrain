@@ -568,8 +568,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   // The release half of the suppression latch (#393): the background sends
-  // this from its restore effect once no capture on the tab is collecting
-  // frames, and gesture-raised UI (the selection bar) may show again.
+  // this once no capture on the tab is collecting frames, and gesture-raised
+  // UI (the selection bar) may show again.
   if (message.type === 'RELEASE_CAPTURE_UI') {
     releaseCaptureUiSuppression()
     sendResponse({ ok: true })

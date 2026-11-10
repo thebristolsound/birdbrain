@@ -251,20 +251,28 @@ const selectorSummaryByTab = new Map<number, { url: string; selectors: number; h
 const captureSuppression = createCaptureSuppression({
   suppress: prepareTabForCapture,
   restore: async (tabId) => {
-    // Release the page-side latch (#393) before re-injecting anything, and
-    // only when no capture on the tab is still collecting frames: the first
-    // of two concurrent captures to settle must not un-latch the page while
-    // the second is mid-frame. Safe self-reference — this effect only runs
-    // after createCaptureSuppression has returned.
-    if (!captureSuppression.isCollectingFrames(tabId)) {
-      await chrome.tabs.sendMessage(tabId, { type: 'RELEASE_CAPTURE_UI' }).catch(() => {})
-    }
+    // Release the page-side latch (#393) before re-injecting anything.
+    await releaseCaptureUiWhenIdle(tabId)
     await restoreSelectorHighlights(tabId)
     // A capture that settled while another was mid-frame had its toast held
     // back; the tab may be idle now that this one has released its slot.
     flushHeldToast(tabId)
   }
 })
+
+// Un-latches the page (#393) only when no capture on the tab is still
+// collecting frames: the first of two concurrent captures to finish must not
+// un-latch the page while the second is mid-frame. The check and the send run
+// in one synchronous step, so a capture that opens later sends its
+// PREPARE_FOR_CAPTURE after this release. Safe self-reference: it is only
+// called after createCaptureSuppression has returned.
+function releaseCaptureUiWhenIdle(tabId: number): Promise<void> {
+  if (captureSuppression.isCollectingFrames(tabId)) return Promise.resolve()
+  return chrome.tabs.sendMessage(tabId, { type: 'RELEASE_CAPTURE_UI' }).then(
+    () => {},
+    () => {}
+  )
+}
 
 // Progress toasts are dropped while the tab is collecting frames: showing one
 // would inject it into another capture's frames, and by the time the tab is
@@ -1153,8 +1161,7 @@ async function handleSelectionAction(
     // The case holds no capture of this URL, so the extension supplies the
     // bytes (R2) — collected inside the same suppression bracket every
     // capture runs in, or the bar and the rest of the injected UI would be
-    // serialised into the MHTML and rendered in the screenshot (#386). The
-    // attach POST stays inside the bracket, mirroring manualCaptureTab.
+    // serialised into the MHTML and rendered in the screenshot (#386).
     // Armed before suppression starts and read after the settled sample.
     const navigation = watchTabNavigation(tabId, url)
     try {
@@ -1169,6 +1176,10 @@ async function handleSelectionAction(
               : Promise.resolve(undefined)
           ])
         )
+        // This capture takes no more frames, so the bar may show its progress
+        // through the attach POST (#1002). A capture that opens on the tab
+        // meanwhile strips and latches the page again before its own frames.
+        void releaseCaptureUiWhenIdle(tabId)
         const [mhtmlBlob, tab, textContent, shot] = frames
 
         // The frames describe whatever the tab was showing while they were

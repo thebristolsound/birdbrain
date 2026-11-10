@@ -14,9 +14,9 @@
 //                  cannot reach this registry; the two are separate on purpose
 //                  and have to be kept in step by hand.
 //                  The strip is paired with a latch (#393): suppressCaptureUi()
-//                  raises it, and it stays up until the background's restore
-//                  effect sends RELEASE_CAPTURE_UI once no capture on the tab
-//                  is collecting frames. The registry alone only removes what
+//                  raises it, and it stays up until the background sends
+//                  RELEASE_CAPTURE_UI, which it does only once no capture on
+//                  the tab is collecting frames. The registry alone only removes what
 //                  is injected at the instant of the strip; UI raised by a page
 //                  gesture (the selection bar's mouseup) would otherwise
 //                  re-inject itself between the strip and the frames. Such UI
@@ -48,8 +48,8 @@ export function isCaptureUiSuppressed(): boolean {
 
 /**
  * Clears the latch and tells subscribers the page may carry UI again. Called
- * from the RELEASE_CAPTURE_UI handler; the background sends that message from
- * its restore effect only once no capture on the tab is collecting frames.
+ * from the RELEASE_CAPTURE_UI handler; the background sends that message only
+ * once no capture on the tab is collecting frames.
  */
 export function releaseCaptureUiSuppression(): void {
   if (!uiSuppressionInForce) return

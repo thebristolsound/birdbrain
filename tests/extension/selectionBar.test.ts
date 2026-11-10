@@ -518,15 +518,48 @@ describe("the operator's selection stays out of the frames (#993)", () => {
     expect(bar()).not.toBeNull()
   })
 
-  it('keeps a backward selection backward', async () => {
+  it('keeps a backward selection backward where the selection reports no direction', async () => {
+    // jsdom has no Selection.direction, so this is the anchor comparison's branch.
+    expect('direction' in Selection.prototype).toBe(false)
     const text = document.querySelector('p')!.firstChild!
     window.getSelection()!.setBaseAndExtent(text, 30, text, 7)
     await mouseUp()
 
     dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+    expect(window.getSelection()!.rangeCount).toBe(0)
     dispatch({ type: 'RELEASE_CAPTURE_UI' })
 
     expect(selectionEnds()).toEqual([text, 30, text, 7])
+  })
+
+  describe('where the selection reports its direction, as Chromium does', () => {
+    let direction = 'none'
+
+    beforeEach(() => {
+      Object.defineProperty(Selection.prototype, 'direction', {
+        configurable: true,
+        get: () => direction
+      })
+    })
+
+    afterEach(() => {
+      Reflect.deleteProperty(Selection.prototype, 'direction')
+    })
+
+    it.each([
+      ['backward', [30, 7]],
+      ['forward', [7, 30]]
+    ])('keeps a %s selection that way', (reported, [anchor, focus]) => {
+      direction = reported
+      const text = document.querySelector('p')!.firstChild!
+      window.getSelection()!.setBaseAndExtent(text, anchor, text, focus)
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      expect(window.getSelection()!.rangeCount).toBe(0)
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(selectionEnds()).toEqual([text, anchor, text, focus])
+    })
   })
 
   it('stays collapsed through every per-frame strip, and the passage still takes a second action', async () => {

@@ -485,6 +485,10 @@ function holdSelection(): void {
       ? selection.getComposedRanges({ shadowRoots: shadowRootsUnder(document) })
       : []
   const range = composed ?? selection.getRangeAt(0)
+  // A caret paints no highlight, and clearing it would fire the page's selectionchange on every
+  // capture taken after a click. Read from the composed range, which keeps a shadow-crossing
+  // selection's true ends where getRangeAt would report it collapsed.
+  if (range.collapsed) return
   const backward =
     typeof selection.direction === 'string'
       ? selection.direction === 'backward'

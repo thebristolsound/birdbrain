@@ -522,6 +522,22 @@ describe("the operator's selection stays out of the frames (#993)", () => {
     expect(bar()).not.toBeNull()
   })
 
+  // A click leaves a caret that paints no highlight; clearing it would only fire the page's
+  // selectionchange on every capture taken after a click.
+  it('leaves a collapsed caret alone and fires no selectionchange for it', () => {
+    const text = document.querySelector('p')!.firstChild!
+    window.getSelection()!.collapse(text, 5)
+    const removeAllRanges = vi.spyOn(Selection.prototype, 'removeAllRanges')
+
+    dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+    expect(removeAllRanges).not.toHaveBeenCalled()
+    expect(window.getSelection()!.rangeCount).toBe(1)
+    dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+    expect(selectionEnds()).toEqual([text, 5, text, 5])
+    removeAllRanges.mockRestore()
+  })
+
   it('keeps a backward selection backward where the selection reports no direction', async () => {
     // jsdom has no Selection.direction, so this is the anchor comparison's branch.
     expect('direction' in Selection.prototype).toBe(false)

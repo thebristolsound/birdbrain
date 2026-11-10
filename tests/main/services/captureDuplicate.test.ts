@@ -860,6 +860,7 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
     expect(rows[0].matched_at).toEqual(expect.any(String))
   })
 
+  // Pins runPostCaptureWork's shared no-text guard as duplicate reaches it.
   it('runs no selectors for a copy whose source has no text', async () => {
     const runActiveSelectorsForCapture = vi.fn()
     const stubbed = createCaptureLifecycle({

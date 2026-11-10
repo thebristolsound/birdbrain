@@ -169,6 +169,11 @@ describe('tryAcquire', () => {
     expect(tryAcquire(dir, base(2), { alive }).owner?.pid).toBe(2)
   })
 
+  it('leaves nothing behind when the owner record cannot be written', () => {
+    expect(() => tryAcquire(dir, { pid: 1n, cwd: '/w' }, { alive })).toThrow(/BigInt/)
+    expect(readdirSync(root)).toEqual([])
+  })
+
   it('replaces an empty lock directory at once', () => {
     mkdirSync(dir)
     expect(tryAcquire(dir, base(2), { alive }).owner?.pid).toBe(2)
@@ -433,16 +438,26 @@ describe('lockPath', () => {
 })
 
 describe('the command line', () => {
-  const run = (cwd: string, env: NodeJS.ProcessEnv, code: string) =>
-    new Promise<{ status: number | null; stderr: string }>((done) => {
-      const child = spawn(process.execPath, [SCRIPT, process.execPath, '-e', code], {
-        cwd,
-        env: { ...env, ELECTRON_RUN_AS_NODE: '1' }
-      })
-      let stderr = ''
-      child.stderr.on('data', (chunk) => (stderr += chunk))
-      child.on('close', (status) => done({ status, stderr }))
+  // Starts the wrapper around `node -e <code>`; nodeArgs go to the wrapper's own Node.
+  const start = (cwd: string, env: NodeJS.ProcessEnv, code: string, nodeArgs: string[] = []) => {
+    const child = spawn(process.execPath, [...nodeArgs, SCRIPT, process.execPath, '-e', code], {
+      cwd,
+      env: { ...env, ELECTRON_RUN_AS_NODE: '1' }
     })
+    const wrapper = {
+      child,
+      stderr: '',
+      closed: new Promise<number | null>((done) => child.on('close', done))
+    }
+    child.stderr.on('data', (chunk) => (wrapper.stderr += chunk))
+    return wrapper
+  }
+
+  const run = async (cwd: string, env: NodeJS.ProcessEnv, code: string, nodeArgs?: string[]) => {
+    const wrapper = start(cwd, env, code, nodeArgs)
+    const status = await wrapper.closed
+    return { status, stderr: wrapper.stderr }
+  }
 
   const unheld = () => {
     const env = { ...process.env }
@@ -491,6 +506,29 @@ describe('the command line', () => {
       `setTimeout(() => { ${probe(lock)} }, 200)`
     )
     expect(status).toBe(7)
+    expect(existsSync(lock)).toBe(false)
+  })
+
+  it('logs a failure to record the child and still passes its exit status on', async () => {
+    git(root, 'init', '-q')
+    const lock = join(root, '.git', LOCK_NAME)
+    const preload = join(root, 'fail-record.cjs')
+    writeFileSync(
+      preload,
+      `const fs = require('fs')
+      const { writeFileSync } = fs
+      fs.writeFileSync = (path, data, ...rest) => {
+        if (String(data).includes('childPid')) throw new Error('disk full')
+        return writeFileSync(path, data, ...rest)
+      }
+      require('module').syncBuiltinESMExports()`
+    )
+    const held = `process.exit(require('fs').existsSync(${JSON.stringify(lock)}) ? 7 : 1)`
+    const { status, stderr } = await run(root, unheld(), held, ['-r', preload])
+    expect(status).toBe(7)
+    expect(stderr).toBe(
+      "test-suite-lock: could not record the command's process in the lock: disk full\n"
+    )
     expect(existsSync(lock)).toBe(false)
   })
 

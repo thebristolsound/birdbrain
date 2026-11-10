@@ -129,15 +129,18 @@ const writeOwner = (dir, owner) => {
 
 const create = (dir, owner) => {
   const temp = `${dir}.new-${unique()}`
-  mkdirSync(temp)
-  writeOwner(temp, owner)
+  let built = false
   try {
+    mkdirSync(temp)
+    writeOwner(temp, owner)
+    built = true
     renameSync(temp, dir)
     return true
   } catch (error) {
     rmSync(temp, { recursive: true, force: true })
-    // Linux reports ENOTEMPTY or EEXIST for an occupied target, Windows EPERM.
-    if (['ENOTEMPTY', 'EEXIST', 'EPERM'].includes(error.code)) return false
+    // Linux reports ENOTEMPTY or EEXIST for an occupied target, Windows EPERM. The same codes
+    // from building the temporary directory are failures.
+    if (built && ['ENOTEMPTY', 'EEXIST', 'EPERM'].includes(error.code)) return false
     throw error
   }
 }
@@ -335,9 +338,17 @@ const main = async () => {
     // A nested run passes the holder's pid on unchanged, so a run nested in it still matches.
     env: owner ? { ...process.env, [HELD_ENV]: String(process.pid) } : process.env
   })
-  if (owner && child.pid) recordChild(dir, owner, child.pid)
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
     process.on(signal, () => child.kill(signal))
+  }
+  if (owner && child.pid) {
+    // The lock is held either way; without the child it reads as stale if this wrapper is
+    // killed on its own.
+    try {
+      recordChild(dir, owner, child.pid)
+    } catch (error) {
+      log(`could not record the command's process in the lock: ${error.message}`)
+    }
   }
   child.on('error', (error) => {
     log(error.message)

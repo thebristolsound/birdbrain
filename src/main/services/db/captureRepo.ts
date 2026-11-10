@@ -420,11 +420,13 @@ export function searchCaptures(query: string, caseId?: string): Capture[] {
   return rows.map((row) => withCitation(rowToCapture(row), row, cite))
 }
 
+// Empty text reads back as '' and a capture with no row as null: selector matching
+// evaluates the first and skips the second (#1084).
 export function getCaptureTextContent(captureId: string): string | null {
   const row = getDb()
     .prepare('SELECT content FROM capture_texts WHERE capture_id = ?')
     .get(captureId) as { content: string } | undefined
-  return row?.content || null
+  return row?.content ?? null
 }
 
 // --- Favorites ---

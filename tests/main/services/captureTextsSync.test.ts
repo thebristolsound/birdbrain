@@ -75,6 +75,15 @@ describe('capture_texts keeps captures_fts in sync', () => {
     expect(searchCaptures('zebra')).toEqual([])
   })
 
+  // Selector matching evaluates the first and skips the second (#1084).
+  it('reads empty text back as empty and a capture with no row as null', () => {
+    const c = createCase({ name: 'C', description: '', type: 'custom' })
+    const cap = makeCapture(c.id, '')
+    expect(getCaptureTextContent(cap.id)).toBe('')
+    deleteCapture(cap.id)
+    expect(getCaptureTextContent(cap.id)).toBeNull()
+  })
+
   it('vacuum after deletes does not desync text linkage (implicit-rowid bug)', () => {
     const c = createCase({ name: 'C', description: '', type: 'custom' })
     const a = makeCapture(c.id, 'text of alpha', 'A')

@@ -882,6 +882,9 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
       toolVersion: '0.1.0'
     })
     await new Promise<void>((resolve) => setImmediate(resolve))
+    // The source's empty text is evaluated (#1084); writing no .txt for it leaves the copy none.
+    expect(runActiveSelectorsForCapture).toHaveBeenCalledWith(textless.id, caseId, '')
+    runActiveSelectorsForCapture.mockClear()
 
     const result = await stubbed.duplicate(textless.id)
     if (result.status !== 'duplicated') throw new Error('expected a duplicate')

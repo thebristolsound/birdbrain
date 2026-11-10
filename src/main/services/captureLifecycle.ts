@@ -1168,7 +1168,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
   ): void {
     setImmediate(() => {
       try {
-        if (textContent) {
+        // Empty text is evaluated; only a capture with no text at all is skipped (#1084).
+        if (textContent !== undefined) {
           deps.selectorLifecycle.runActiveSelectorsForCapture(captureId, caseId, textContent)
         }
       } catch (err) {

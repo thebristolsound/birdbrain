@@ -66,7 +66,7 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
         for (let i = index; i < end; i++) {
           const cap = captures[i]
           const text = loadCaptureText(caseId, cap.id)
-          if (text) captureTexts.push({ captureId: cap.id, text })
+          if (text !== null) captureTexts.push({ captureId: cap.id, text })
         }
 
         if (captureTexts.length > 0) {

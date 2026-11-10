@@ -97,8 +97,8 @@ describe('migration v25: capture_texts', () => {
 
   it('gives legacy captures without an FTS row an empty capture_texts row', async () => {
     await initDatabase(dbPath)
-    // getCaptureTextContent keeps its pre-v25 contract: empty text reads as null
-    expect(getCaptureTextContent('cap2')).toBeNull()
+    // Empty text reads back as empty, apart from a capture with no row (#1084)
+    expect(getCaptureTextContent('cap2')).toBe('')
     const row = getDb()
       .prepare(`SELECT title, url, content FROM capture_texts WHERE capture_id = 'cap2'`)
       .get() as { title: string; url: string; content: string }

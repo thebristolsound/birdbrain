@@ -249,3 +249,16 @@ Every pull request the fleet covers fails its check for the policy reason that p
 - Pending substitution: the description says the mutation probe at `1a5a82f5bab1` was still running, CI run 42923910066. When it finishes, put its figures in `ciProbe` and `replyA4` in `/tmp/pr2175-fix-r3/facts.json`, rerun `python3 /tmp/pr2175-fix-r3/assemble.py`, substitute the 24 attachment links again and rewrite the description.
 - The cleanup screenshot pair shows a second product point for Matt: the notice says the app could not clean up the background capture, but in that run the cleanup succeeded and the failure was the read. The fix round left the label and lists it as left out.
 - One unanswered bot finding at the new head goes to the delta reviewer: clearing the name in Settings while a thumbnail renders still signs with the name captured at the start of the pass.
+
+## Parts tab stack handed over
+
+- The recovery thread opened and handed over the last two parts of issue 991, and will not push to either. The sweep now owns the whole stack and linked both to the coordinating session. 40 pull requests are open.
+
+  | Pull request | Head | Base | Next requirement |
+  | --- | --- | --- | --- |
+  | [#2177](https://github.com/thebristolsound/birdbrain/pull/2177) | `127f7b21af31` | `refactor/mhtml-walk-every-part` | Land 2176 first; fleet check held by its daily limit |
+  | [#2178](https://github.com/thebristolsound/birdbrain/pull/2178) | `2c37a52ca2d7` | `feat/mhtml-parts-ipc` | Land 2177 first; fleet check held by its daily limit; closes 991 |
+
+- Both carry a successful review status at head, the evidence label and a passing verification from their author. Neither has the maintainer's evidence approval.
+- Two more choices wait for Matt before these merge. On 2177: a synchronous read of a deliberately extreme 199 MB archive of tiny parts blocks the main process for about 22 seconds, and 2178 triggers that read when a row is selected. On 2178: the tab's copy and layout strings, the features page sentence, and the reading of the issue's second acceptance criterion as refusing before reading.
+- Tell the recovery thread before merging or rebasing anything in this stack. Its only remaining work is the held signing tail.

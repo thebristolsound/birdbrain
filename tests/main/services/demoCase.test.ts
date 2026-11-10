@@ -16,7 +16,14 @@ vi.mock('electron', () => ({
 }))
 
 import { initDatabase, closeDatabase } from '@main/services/db/core'
-import { createCase, getCase, listCases, setCaseDemo, updateCase } from '@main/services/db/caseRepo'
+import {
+  createCase,
+  getCase,
+  listAllCases,
+  listCases,
+  setCaseDemo,
+  updateCase
+} from '@main/services/db/caseRepo'
 import { insertCapture, listCaptures } from '@main/services/db/captureRepo'
 import { listExhibits } from '@main/services/db/exhibitRepo'
 import { addTagToCapture, createTag, listTags } from '@main/services/db/tagRepo'
@@ -30,6 +37,10 @@ import {
   getDemoCaseArchivePath,
   seedDemoCaseIfNeeded
 } from '@main/services/demoCase'
+import {
+  PIPELINE_SELF_TEST_CASE_NAME,
+  PIPELINE_SELF_TEST_URL
+} from '@main/services/pipelineSelfTest'
 import {
   DEMO_CASE_ARCHIVE_FILENAME,
   DEMO_CASE_OPERATOR_NAME,
@@ -225,6 +236,99 @@ describe('demo case seeding', () => {
     updateSettings({ isFreshInstall: true })
 
     expect(await seedDemoCaseIfNeeded()).toEqual({ seeded: false, reason: 'demo-case-present' })
+  })
+
+  // #1333: settings.json and the database are separate files, so losing the
+  // first marks an install fresh while the second still holds its evidence.
+  describe('after the settings file is lost', () => {
+    const loseSettings = (): void => {
+      const lostDir = join(tempDir, 'lost-settings')
+      mkdirSync(lostDir)
+      initSettings(lostDir)
+      expect(getSettings().isFreshInstall).toBe(true)
+    }
+
+    it('seeds nothing into a store that already holds a Case', async () => {
+      const own = createCase({ name: 'Real evidence' })
+      loseSettings()
+
+      const result = await seedDemoCaseIfNeeded()
+
+      expect(result).toEqual({ seeded: false, reason: 'cases-present' })
+      expect(listAllCases().map((c) => c.id)).toEqual([own.id])
+      expect(getSettings().demoCaseSeeded).toBe(true)
+    })
+
+    it('counts an archived Case', async () => {
+      const own = createCase({ name: 'Closed matter' })
+      updateCase({ id: own.id, archived: true })
+      loseSettings()
+
+      expect(await seedDemoCaseIfNeeded()).toEqual({ seeded: false, reason: 'cases-present' })
+    })
+
+    it('still seeds a store that holds no Case at all', async () => {
+      loseSettings()
+
+      const result = await seedDemoCaseIfNeeded()
+
+      expect(result.seeded).toBe(true)
+      expect(listAllCases().map((c) => c.id)).toEqual([result.caseId])
+    })
+
+    it('does not count a self-test sandbox Case left behind', async () => {
+      const sandbox = createCase({ name: PIPELINE_SELF_TEST_CASE_NAME })
+      insertCapture({
+        caseId: sandbox.id,
+        url: PIPELINE_SELF_TEST_URL,
+        title: 'Self-test',
+        hash: 'h-sandbox',
+        timestamp: '2026-01-16T09:31:47.000Z',
+        format: 'mhtml'
+      })
+      loseSettings()
+
+      expect((await seedDemoCaseIfNeeded()).seeded).toBe(true)
+    })
+
+    it('counts a sandbox-named Case holding a capture the self-test did not write', async () => {
+      const sandbox = createCase({ name: PIPELINE_SELF_TEST_CASE_NAME })
+      insertCapture({
+        caseId: sandbox.id,
+        url: 'https://nightjar-exchange.invalid/custody',
+        title: 'Custody',
+        hash: 'h-foreign',
+        timestamp: '2026-01-16T09:31:47.000Z',
+        format: 'mhtml'
+      })
+      loseSettings()
+
+      expect(await seedDemoCaseIfNeeded()).toEqual({ seeded: false, reason: 'cases-present' })
+    })
+
+    it('counts an archived self-test sandbox Case, which the boot sweep leaves alone', async () => {
+      const sandbox = createCase({ name: PIPELINE_SELF_TEST_CASE_NAME })
+      updateCase({ id: sandbox.id, archived: true })
+      loseSettings()
+
+      expect(await seedDemoCaseIfNeeded()).toEqual({ seeded: false, reason: 'cases-present' })
+    })
+  })
+
+  it('brings a deleted demo case back with the latch lost only into an otherwise empty store', async () => {
+    // The bound stated on `seedDemoCaseIfNeeded`: the database guards are
+    // probes, so with a settings write that keeps failing a deleted demo case
+    // returns, unless any other Case is there (#1301, #1333).
+    initSettings(join(tempDir, 'never-created'))
+
+    const first = await seedDemoCaseIfNeeded()
+    expect(deleteDemoCase(first.caseId!)).toBe(true)
+    const second = await seedDemoCaseIfNeeded()
+    expect(second.seeded).toBe(true)
+
+    createCase({ name: 'Real evidence' })
+    expect(deleteDemoCase(second.caseId!)).toBe(true)
+    expect(await seedDemoCaseIfNeeded()).toEqual({ seeded: false, reason: 'cases-present' })
   })
 
   it('does not throw when the latch write itself fails', async () => {

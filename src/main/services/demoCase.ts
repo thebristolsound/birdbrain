@@ -4,6 +4,7 @@ import { join } from 'path'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as tagRepo from '@main/services/db/tagRepo'
 import { importCaseArchive } from '@main/services/caseArchive'
+import { isPipelineSelfTestResidue } from '@main/services/pipelineSelfTest'
 import { getSettings, updateSettings } from '@main/services/settings'
 import { getStorageRoot } from '@main/services/storage'
 import { logger } from '@main/services/logger'
@@ -27,6 +28,7 @@ export type DemoCaseSkipReason =
   | 'not-a-fresh-install'
   | 'already-seeded'
   | 'demo-case-present'
+  | 'cases-present'
   | 'fixture-missing'
   | 'import-failed'
 
@@ -62,13 +64,8 @@ export function getDemoCaseArchivePath(): string {
  * so an unlatched demo case would take the whole launch with it. Same trade
  * `initSettings` makes for its own first-launch write.
  *
- * What losing this latch costs, plainly: nothing while a demo case is present,
- * because the database check in `seedDemoCaseIfNeeded` answers for it — but
- * that check is a probe of the current state, not a second latch, so on an
- * install whose settings write fails, deleting the demo case brings a fresh one
- * back on the next launch, and again after each later deletion. That bound is
- * the deliberate call on #1301, not an oversight; the full statement of it is
- * on `seedDemoCaseIfNeeded`.
+ * What losing this latch costs is bounded by the database probes in
+ * `seedDemoCaseIfNeeded`, which are not latches; the bound is stated there.
  */
 function latchSeeded(): void {
   try {
@@ -78,27 +75,38 @@ function latchSeeded(): void {
   }
 }
 
+// The sweep leaves archived Cases alone because archiving is the operator's
+// act, so an archived sandbox counts here too.
+function storeHoldsCases(): boolean {
+  return caseRepo
+    .listAllCases()
+    .some(({ id, archived }) => archived || !isPipelineSelfTestResidue(id))
+}
+
 /**
  * Imports the bundled demo Case, once, on a fresh install.
  *
- * Three guards. `isFreshInstall` keeps an upgrade from acquiring a demo case it
+ * Four guards. `isFreshInstall` keeps an upgrade from acquiring a demo case it
  * never asked for, and `demoCaseSeeded` records that the attempt happened
  * whatever its outcome, so a build with a broken fixture does not retry it every
  * launch. Both live in settings.json, whose write `latchSeeded` swallows, so
- * neither is certain to persist; the third guard is a row with `is_demo`
- * already in the database (#1301), and it is what stops a second copy arriving
- * behind the operator's back while the first one is still there.
+ * neither is certain to persist, and `initSettings` sets `isFreshInstall`
+ * whenever that file is missing, so an established install that loses it reads
+ * as fresh. The other two read the database. A row with `is_demo` (#1301) stops
+ * a second copy arriving while the first one is still there. Any Case at all,
+ * archived ones included (#1333), keeps the demo case and its signed import
+ * entry out of a store that already holds evidence; a non-archived Case that
+ * `isPipelineSelfTestResidue` accepts does not count, since it is what a killed
+ * self-test left and the boot sweep missed.
  *
- * What the third guard does NOT hold, stated plainly because two rounds of
- * review found it stated too strongly: it is a probe of the current state, not
- * a latch. On an install whose settings write fails, deleting the demo case
- * brings a fresh one back on the next launch — and again after each later
- * deletion, without bound. Nothing here counts deletions or remembers them.
+ * What the database guards do NOT hold: they are probes of the current state,
+ * not latches. On an install whose settings write fails, deleting the demo case
+ * from a store holding no other Case brings a fresh one back on the next
+ * launch, and again after each later deletion. Nothing here counts deletions.
  * Making that impossible would need a latch surviving a failed settings write;
- * keeping the probe and stating the bound is the deliberate choice on #1301.
- * What #405 asks for is narrower and does hold: no demo case ever arrives
- * without confirmation except on a first launch, since every other route in is
- * the operator's own Import Case dialog.
+ * keeping the probes and stating the bound is the choice on #1301, narrowed on
+ * #1333 to a store with no other Case. Every other route a demo case takes in
+ * is the operator's own Import Case dialog (#405).
  *
  * Never throws: a demonstration case failing to arrive must not stop the app
  * from starting.
@@ -113,6 +121,10 @@ export async function seedDemoCaseIfNeeded(): Promise<DemoCaseSeedResult> {
   if (caseRepo.hasDemoCase()) {
     latchSeeded()
     return { seeded: false, reason: 'demo-case-present' }
+  }
+  if (storeHoldsCases()) {
+    latchSeeded()
+    return { seeded: false, reason: 'cases-present' }
   }
 
   const archivePath = getDemoCaseArchivePath()

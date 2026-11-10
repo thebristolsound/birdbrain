@@ -548,7 +548,7 @@ describe('decide', () => {
     })
   })
 
-  it('blocks only on a blocking Codex finding Claude confirmed', () => {
+  it('passes a blocking Codex finding only when Claude refuted it', () => {
     const rule = (ruling: string) =>
       mergeVerify(
         reviewed(),
@@ -567,9 +567,18 @@ describe('decide', () => {
     expect(decide(facts({ state: rule('REFUTED'), codexFindings: findings })).status).toBe(
       'success'
     )
-    expect(decide(facts({ state: rule('UNCLEAR'), codexFindings: findings })).status).toBe(
-      'success'
+    const undecided = decide(facts({ state: rule('UNCLEAR'), codexFindings: findings }))
+    expect(undecided).toMatchObject({
+      status: 'failure',
+      description: 'the Claude check could not decide 1 blocking Codex finding(s)'
+    })
+    expect(undecided.description).not.toContain('refuted')
+    const p2unclear = mergeVerify(
+      reviewed(),
+      { rulings: [{ id: 12, ruling: 'UNCLEAR', reason: 'r' }] },
+      [12]
     )
+    expect(decide(facts({ state: p2unclear, codexFindings: [p2] })).status).toBe('success')
     const p2only = mergeVerify(
       reviewed(),
       { rulings: [{ id: 12, ruling: 'CONFIRMED', reason: 'r' }] },

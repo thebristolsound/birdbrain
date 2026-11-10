@@ -81,8 +81,8 @@ and a fifth Claude pass rules on Codex's. `.github/scripts/review-fleet/fleet.mj
 keeps one state comment per head with the findings and rulings.
 
 - **Red** means a blocking finding the other family confirmed, a pass that did not finish, Codex
-  not answering within the timeout, or a finding Codex did not rule on. Push a fix, or apply
-  `break-glass` to merge over it.
+  not answering within the timeout, a finding Codex did not rule on, or a blocking Codex finding
+  the Claude check ruled unclear. Push a fix, or apply `break-glass` to merge over it.
 - **Pending** means a pass is running, Codex has not answered yet, or the daily cap is holding
   the head. A sweep every 15 minutes times out what Codex never answered and restarts work whose
   event was dropped.

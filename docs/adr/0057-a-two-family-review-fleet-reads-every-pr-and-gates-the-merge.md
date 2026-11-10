@@ -57,12 +57,14 @@ Three facts shaped the design:
 5. **The script decides.** `review/fleet` is `failure` on a blocking finding the other family
    confirmed (Claude's `BLOCKING`, Codex's P0 and P1), and, because missing input fails, on a
    pass that did not finish or listed work it did not check, a relay never posted, Codex not
-   answering within the timeout, a relayed finding Codex did not rule on, or a Codex finding the
-   Claude check left unruled. Rulings count only from Codex text tied to the head. It is
-   `success` otherwise. `merge-gate` requires it at head on every PR the fleet covers, and the
-   fleet re-runs red `merge-gate` runs when the status turns green. The maintainer's
-   `break-glass` label stands in for it, in the fleet and in `merge-gate`, and for nothing else:
-   the fleet's override status says so, and `merge-gate` accepts it only while the label stands.
+   answering within the timeout, a relayed finding Codex did not rule on, a Codex finding the
+   Claude check left unruled, or a P0 or P1 Codex finding the Claude check ruled unclear: an
+   undecided finding was not checked, so it is never counted as refuted. Rulings count only
+   from Codex text tied to the head. It is `success` otherwise. `merge-gate` requires it at
+   head on every PR the fleet covers, and the fleet re-runs red `merge-gate` runs when the
+   status turns green. The maintainer's `break-glass` label stands in for it, in the fleet and
+   in `merge-gate`, and for nothing else: the fleet's override status says so, and `merge-gate`
+   accepts it only while the label stands.
    The override covers the commit it was applied on: `merge-on-label.yml` removes the label on
    every push, as it removes `merge` and `approved`, so a later commit needs its own review or
    its own override.

@@ -200,7 +200,8 @@ export function codexTexts({ reviews, comments, reviewComments }, sha, after) {
 const minutesSince = (at, now) => (Date.parse(now) - Date.parse(at)) / 60000
 
 // The whole decision. Missing input is its own failure: a pass that did not report, Codex never
-// answering, and a relayed finding Codex did not rule on all read red, never green.
+// answering, a relayed finding Codex did not rule on and a blocking Codex finding the Claude
+// check could not decide all read red, never green.
 export function decide(f) {
   const { state, now } = f
   const out = (status, description, owed = null, reasons = []) => ({
@@ -279,6 +280,16 @@ export function decide(f) {
   )
   if (codexConfirmed.length) {
     reasons.push(`Claude confirmed ${codexConfirmed.length} blocking Codex finding(s)`)
+  }
+  // An unclear ruling is a check that was not made, so it is not a refutation.
+  const codexUndecided = f.codexFindings.filter(
+    (x) =>
+      codexBlocks(x) && verified[x.id] && !['CONFIRMED', 'REFUTED'].includes(verified[x.id].ruling)
+  )
+  if (codexUndecided.length) {
+    reasons.push(
+      `the Claude check could not decide ${codexUndecided.length} blocking Codex finding(s)`
+    )
   }
   if (reasons.length) return out('failure', reasons.join('; '), null, reasons)
   const refuted = claudeBlocking.length + f.codexFindings.filter(codexBlocks).length

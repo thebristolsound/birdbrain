@@ -488,6 +488,39 @@ describe('readMhtmlParts', () => {
     expect(result.totalParts).toBe(6)
   })
 
+  it('reads on to the end when the file grew to more than twice its measured size', async () => {
+    const { root, store } = caseDir()
+    const tail = Buffer.alloc(FIXTURE_SIZE * 3, 0x41)
+    watchNextOpen((handle) => {
+      const stat = handle.stat.bind(handle)
+      vi.spyOn(handle, 'stat').mockImplementationOnce(async () => {
+        const measured = await stat()
+        appendFileSync(join(root, 'c1.mhtml'), tail)
+        return measured
+      })
+    })
+    const result = listed(await readMhtmlParts(stored, store))
+    expect(result.fileSize).toBe(FIXTURE_SIZE + tail.length)
+  })
+
+  it('refuses a file that grew to one byte past the limit after it was measured', async () => {
+    const { root, store } = caseDir()
+    watchNextOpen((handle) => {
+      const stat = handle.stat.bind(handle)
+      vi.spyOn(handle, 'stat').mockImplementationOnce(async () => {
+        const measured = await stat()
+        appendFileSync(join(root, 'c1.mhtml'), Buffer.from('\r\n'))
+        return measured
+      })
+    })
+    const limits = { ...MHTML_PARTS_LIMITS, maxFileBytes: FIXTURE_SIZE + 1 }
+    expect(refusal(await readMhtmlParts(stored, store, limits))).toEqual({
+      reason: 'too-large',
+      size: FIXTURE_SIZE + 2,
+      limit: FIXTURE_SIZE + 1
+    })
+  })
+
   it('counts every part of a file with thousands of them', async () => {
     const parts = Array.from({ length: 3000 }, (_, i) => `--B\r\n\r\npart ${i}\r\n`).join('')
     const big = Buffer.from(`Content-Type: multipart/related; boundary=B\r\n\r\n${parts}--B--\r\n`)

@@ -15,31 +15,24 @@ export function CapturePreferences({ settings, onUpdate }: CapturePreferencesPro
   const [error, setError] = useState<string | null>(null)
   const { ignoredUrlPatterns } = settings
 
-  // Main refuses a list holding any pattern validateIgnorePattern rejects
-  // (SettingsUpdateSchema), including one stored before that check. Saying so
-  // here names the pattern to remove instead of failing after the round trip.
-  const savePatterns = (next: string[]): boolean => {
-    const invalid = next.find((pattern) => !validateIgnorePattern(pattern).ok)
-    if (invalid !== undefined) {
-      setError(`Remove the invalid pattern "${invalid}" before changing this list.`)
-      return false
-    }
+  const savePatterns = (next: string[]) => {
     setError(null)
     onUpdate({ ignoredUrlPatterns: next })
-    return true
   }
 
   const addPattern = () => {
     const pattern = newPattern.trim()
     if (!pattern) return
     // The same refusal as the per-case list (AutoCaptureCard), before the
-    // pattern appears in the list rather than after main refuses it.
+    // pattern appears in the list rather than after main refuses it. Only the
+    // typed pattern is checked: main exempts the patterns already stored.
     const validation = validateIgnorePattern(pattern)
     if (!validation.ok) {
       setError(validation.reason)
       return
     }
-    if (savePatterns([...ignoredUrlPatterns, pattern])) setNewPattern('')
+    savePatterns([...ignoredUrlPatterns, pattern])
+    setNewPattern('')
   }
 
   const removePattern = (index: number) => {

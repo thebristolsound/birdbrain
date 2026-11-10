@@ -626,7 +626,7 @@ describe('settings', () => {
 
   // #724. Known answers for the global list's edit seam: the same grammar
   // validateIgnorePattern applies to the per-case list.
-  describe('an ignored URL pattern validateIgnorePattern refuses', () => {
+  describe('a new ignored URL pattern validateIgnorePattern refuses', () => {
     it.each([
       ['an uncompilable regex', '/[/', 'ignoredUrlPatterns.1: Invalid regular expression'],
       ['a URL path read as a regex with bad flags', '/some/path', 'ignoredUrlPatterns.1: '],
@@ -654,6 +654,31 @@ describe('settings', () => {
       expect(getSettings().ignoredUrlPatterns).toEqual(['a.com', '/[/'])
       updateSettings({ theme: 'light' })
       expect(getSettings()).toMatchObject({ theme: 'light', ignoredUrlPatterns: ['a.com', '/[/'] })
+    })
+
+    it('saves a new pattern alongside one stored before the check', () => {
+      writeFileSync(settingsFile, JSON.stringify({ ignoredUrlPatterns: ['/[/'] }))
+      updateSettings({ ignoredUrlPatterns: ['/[/', 'b.com'] })
+      expect(getSettings().ignoredUrlPatterns).toEqual(['/[/', 'b.com'])
+    })
+
+    // Every removal leaves the others stored, so each save still holds unusable ones.
+    it('removes several stored before the check one at a time', () => {
+      const stored = ['/admin/users', '/[/', '/example/ ']
+      writeFileSync(settingsFile, JSON.stringify({ ignoredUrlPatterns: stored }))
+      for (let left = stored.length - 1; left >= 0; left--) {
+        updateSettings({ ignoredUrlPatterns: stored.slice(0, left) })
+        expect(getSettings().ignoredUrlPatterns).toEqual(stored.slice(0, left))
+      }
+    })
+
+    it('refuses one stored before the check once it has been removed', () => {
+      writeFileSync(settingsFile, JSON.stringify({ ignoredUrlPatterns: ['a.com', '/[/'] }))
+      updateSettings({ ignoredUrlPatterns: ['a.com'] })
+      expect(() => updateSettings({ ignoredUrlPatterns: ['a.com', '/[/'] })).toThrow(
+        'ignoredUrlPatterns.1: Invalid regular expression'
+      )
+      expect(getSettings().ignoredUrlPatterns).toEqual(['a.com'])
     })
   })
 

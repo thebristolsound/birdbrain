@@ -304,7 +304,23 @@ export function updateSettings(partial: Partial<BirdbrainSettings>): BirdbrainSe
       `Invalid settings: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`
     )
   }
+  const refused = refusedIgnorePatterns(parsed.data.ignoredUrlPatterns)
+  if (refused.length > 0) throw new InvalidSettingsError(`Invalid settings: ${refused.join('; ')}`)
   return writeSettings(suppliedKeysOnly(partial, parsed.data))
+}
+
+// The global ignore list gets the per-case list's check (#724; see validateIgnorePattern for
+// why), applied only to patterns the stored list does not already hold. A pattern stored
+// before the check is kept, and exempting it is what lets a list holding several be edited
+// at all: every removal but the last leaves one in the list.
+function refusedIgnorePatterns(patterns: string[] | undefined): string[] {
+  if (!patterns) return []
+  const stored = new Set(getSettings().ignoredUrlPatterns)
+  return patterns.flatMap((pattern, i) => {
+    if (stored.has(pattern)) return []
+    const result = validateIgnorePattern(pattern)
+    return result.ok ? [] : [`ignoredUrlPatterns.${i}: ${result.reason}`]
+  })
 }
 
 // The launched browser keys, which the settings edit above strips (SettingsUpdateSchema).

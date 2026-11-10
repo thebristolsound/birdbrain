@@ -173,21 +173,31 @@ describe('CapturePreferences ignored URL patterns', () => {
       expect(marks[0].textContent).toBe(reason.ok ? '' : reason.reason)
     })
 
-    // Main refuses the whole list while it holds one (SettingsUpdateSchema), so
-    // the panel says so before the round trip rather than after it.
-    it('refuses another change until it is removed, naming it', () => {
+    // Only the typed pattern is checked: main exempts what is already stored.
+    it('does not stop another pattern being added', () => {
       const { onUpdate } = renderPanel({ ignoredUrlPatterns: stored })
       fireEvent.change(screen.getByPlaceholderText(/e\.g\./), { target: { value: 'b.com' } })
       fireEvent.click(screen.getByText('Add'))
-      fireEvent.click(screen.getAllByText('×')[0])
-      expect(onUpdate).not.toHaveBeenCalled()
-      expect(screen.getByTestId('ignore-pattern-error').textContent).toContain('"/[/"')
+      expect(onUpdate).toHaveBeenCalledWith({ ignoredUrlPatterns: [...stored, 'b.com'] })
+      expect(screen.queryByTestId('ignore-pattern-error')).toBeNull()
     })
 
     it('can be removed', () => {
       const { onUpdate } = renderPanel({ ignoredUrlPatterns: stored })
       fireEvent.click(screen.getAllByText('×')[1])
       expect(onUpdate).toHaveBeenCalledWith({ ignoredUrlPatterns: ['a.com'] })
+    })
+
+    // Each removal leaves the other invalid pattern in the list.
+    it('can be removed one at a time when two are stored', () => {
+      const first = renderPanel({ ignoredUrlPatterns: ['/admin/users', '/[/'] })
+      fireEvent.click(screen.getAllByText('×')[0])
+      expect(first.onUpdate).toHaveBeenCalledWith({ ignoredUrlPatterns: ['/[/'] })
+      cleanup()
+      const second = renderPanel({ ignoredUrlPatterns: ['/[/'] })
+      fireEvent.click(screen.getAllByText('×')[0])
+      expect(second.onUpdate).toHaveBeenCalledWith({ ignoredUrlPatterns: [] })
+      expect(screen.queryByTestId('ignore-pattern-error')).toBeNull()
     })
   })
 })

@@ -17,16 +17,16 @@ asked for the slices to be filed and then built, in a Claude Code session on 202
 
 | Slice | Issue | Branch | PR | State |
 | --- | --- | --- | --- | --- |
-| 1 | #2127 | `feat/background-jobs-instrumentation` | #2133 (draft) | reviewed, fixed, preflight pass at `c3d4a40a` |
-| 2 | #2128 | `feat/background-jobs-ids` | #2135 (draft, base slice 1) | reviewed, fixed, preflight pass at `98dbaf1d`, screenshots in body |
-| 3 | #2129 | `feat/background-jobs-table` | #2141 (draft, base slice 2) | two review rounds, preflight pass at `0165b0b0`, screenshots in body |
-| 4 | #2130 | `feat/background-jobs-controls` | | in progress |
-| 5 | #2131 | | | not started |
+| 1 | #2127 | `feat/background-jobs-instrumentation` | #2133 (draft) | preflight pass at `d5e4d0a3`, CI green |
+| 2 | #2128 | `feat/background-jobs-ids` | #2135 (draft, base slice 1) | preflight pass at `73ed4e66`, CI green |
+| 3 | #2129 | `feat/background-jobs-table` | #2141 (draft, base slice 2) | preflight pass at `0165b0b0`, CI green |
+| 4 | #2130 | `feat/background-jobs-controls` | #2146 (draft, base slice 3) | reviewed, fixed, preflight pass at `bb16c930` |
+| 5 | #2131 | `feat/background-jobs-parallel-safe` | | reviewed; fix round in `~/worktrees/birdbrain/scratch/background-jobs-2131` |
 | 6 | #2132 | | | not started |
 
 ## Next command
 
-Build slice 4 on `feat/background-jobs-controls`; open its PR with `--base feat/background-jobs-table`. Slices 1 and 2 PR bodies carry preflight blocks for their old heads (`c3d4a40a`, `98dbaf1d`); after their CI finishes at `d5e4d0a3` and `73ed4e66`, refresh their Verification blocks with `scripts/verification-from-ci.sh <n>`.
+Finish slice 5's fix round and preflight in `~/worktrees/birdbrain/scratch/background-jobs-2131`, open its PR with `--base feat/background-jobs-controls`, then cut `feat/background-jobs-pool` for slice 6.
 
 ## Decisions taken
 
@@ -48,6 +48,11 @@ Build slice 4 on `feat/background-jobs-controls`; open its PR with `--base feat/
 - **Pre-render exclusion check:** moved from slice 4 into slice 3, the first slice where a job can
   wait across a session.
 - **Stack upkeep:** fixes to a lower slice are merged up (no rebase, no force push).
+
+- **Consent blocker (slice 5):** the pinned library works in several sessions once Birdbrain owns
+  its two global channels, so no lease; slice 6 can run two renders.
+- **Preflight load:** run every preflight as `flock ~/worktrees/birdbrain/.preflight.lock pnpm
+  preflight`; other sessions share the machine and two test files time out under load.
 
 ## Found, not fixed
 

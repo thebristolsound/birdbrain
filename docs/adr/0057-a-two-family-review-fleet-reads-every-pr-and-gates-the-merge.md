@@ -50,16 +50,62 @@ Three facts shaped the design:
    lists Claude's blocking findings, asking for one `F<n>: CONFIRMED` or `F<n>: REFUTED` line
    each. Codex's inline findings at the head, with their P0 to P3 badges, are its findings.
 4. **Claude checks Codex.** When Codex answers, a fifth Claude pass rules on each Codex finding:
-   confirmed, refuted or unclear.
+   confirmed, refuted or unclear. A pass that rules twice on one finding keeps the ruling
+   that blocks: confirmed over unclear over refuted, in any order. The plan job writes the
+   pass's start time and attempt count into the state comment before the pass runs. A pass
+   that records no result within 180 minutes fails the status and is not started again, and
+   the check starts at most 3 times at one head.
 5. **The script decides.** `review/fleet` is `failure` on a blocking finding the other family
    confirmed (Claude's `BLOCKING`, Codex's P0 and P1), and, because missing input fails, on a
-   pass that did not finish or listed work it did not check, a relay never posted, Codex not
-   answering within the timeout, a relayed finding Codex did not rule on, or a Codex finding the
-   Claude check left unruled. Rulings count only from Codex text tied to the head. It is
-   `success` otherwise. `merge-gate` requires it at head on every PR the fleet covers, and the
-   fleet re-runs red `merge-gate` runs when the status turns green. The maintainer's
-   `break-glass` label stands in for it, in the fleet and in `merge-gate`, and for nothing else:
-   the fleet's override status says so, and `merge-gate` accepts it only while the label stands.
+   pass that did not finish its assigned source review or listed unfinished source work, a relay
+   never posted, Codex not answering within the timeout, a relayed finding Codex did not rule on, a Codex finding the
+   Claude check left unruled, or a P0 or P1 Codex finding the Claude check ruled unclear: an
+   undecided finding was not checked, so it is never counted as refuted. Rulings count only
+   from Codex text tied to the head. It is `success` otherwise. `merge-gate` requires it at
+   head on every PR the fleet covers, and the fleet re-runs red `merge-gate` runs when the
+   status turns green. The maintainer's `break-glass` label stands in for it, in the fleet and
+   in `merge-gate`, and for nothing else: the fleet's override status says so, and `merge-gate`
+   accepts it only while the label stands and its last labeller is the maintainer.
+   Every reader also requires the dedicated `merge/break-glass` success stamp from the workflow
+   token queried at the exact head, with that full head in its description. The label event
+   stamps its event head, never a later head.
+   `merge-on-label.yml` removes the label on every push and fails on removal errors; even a
+   failed removal cannot authorize a later commit. Evidence approval is a separate stamp.
+   On 2026-11-10 the maintainer narrowed completeness to assigned source review. Each pass
+   reads the complete diff, PR title/body/commits, trusted rules, all closed issues and
+   referenced review contracts, plus the repository documents those rules require for the
+   changed areas. Correctness traces changed behavior through callers, guards, error paths
+   and races; claims checks each changed assertion against source; contract checks the diff
+   against its source contracts and applicable rules; tests checks changed assertions against
+   the behavior they claim and identifies changed behavior without a meaningful regression.
+   Unrelated unchanged modules are outside the assignment. Missing source inputs, unfinished
+   traces and malformed required output still fail. A referenced review contract is every
+   `https://github.com/` issue or pull request link, and every `comment <number>` pointer of
+   eight or more digits, in the description and in each source fetched from it. A pointer does
+   not say which kind of comment it names, so the pass reads it as an issue comment first and
+   as an inline review comment only when that read is a 404. It fails when neither read
+   answers, and any other error on the first read fails without the second. A link names a
+   comment by its fragment, percent-decoded, whatever path or query comes before it:
+   `#issuecomment-<id>`, `#pullrequestreview-<id>`, `#discussion_r<id>`, or the `#r<id>` that
+   the Files changed view writes for an inline review comment. A fragment in none of those
+   forms is malformed when it does not decode, or when, with letter case, hyphens and
+   underscores ignored, it contains `comment` or `review`, or starts with `discussion_r` or `r`
+   and then has a digit or ends; any other fragment reads as the issue or pull request. A link
+   to another repository, a link with a malformed fragment, or a link to an issue, comment or
+   review with an empty body, is a missing source input: the pass fails before the paid call.
+
+   New schema version 2 outputs attest source completion with `source_review_complete`, keep
+   unfinished source checks in `not_checked`, and record prohibited or unperformed runtime and
+   external checks separately in `runtime_limitations`. The saved state and public report
+   retain those limitations as unverified, including the Claude check of Codex. The report must
+   render and save before success is published; size or storage errors fail and surface their
+   error instead of dropping limitations. Runtime limits
+   do not satisfy source questions or turn an unclear ruling into a refutation. Required CI
+   gates remain unchanged; fleet success certifies completed source review only. Aggregation
+   validates required fields again and rejects old outputs. Old saved records and mixed
+   unchecked lists are not converted, filtered or cleared to make them pass. A fresh review
+   under the trusted implementation and new contract is required.
+
 6. **Spend.** Claude runs on the existing `CLAUDE_CODE_OAUTH_TOKEN` and Codex on the
    maintainer's ChatGPT plan; nothing bills per token. The maintainer asked for no hard cap for
    now, controllable without a PR. The limits are repository variables: `REVIEW_FLEET_ENABLED`
@@ -98,6 +144,10 @@ Three facts shaped the design:
   timeout fails the status, or the maintainer applies `break-glass`.
 - Codex's reply format cannot be enforced. An answer that rules on nothing fails closed, so
   false reds are expected until the relay's wording settles.
+- A head is reviewed once. To review it again the maintainer deletes its state comment, and the
+  next plan claims the head as new and counts it against the daily cap. A relay posted before
+  the new claim, and Codex's rulings on it, no longer count, because finding IDs restart with
+  each review.
 - One push costs four Claude passes, a Codex review, and one more Claude pass when Codex finds
   anything. At the October rate of about 2.4 qualifying PRs a day plus agent PRs and their fix
   rounds, the default cap of 40 heads a day is not the limit on a normal day.

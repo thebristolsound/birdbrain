@@ -151,13 +151,17 @@ export const BACKGROUND_JOB_STEPS = [
 export type BackgroundJobStep = (typeof BACKGROUND_JOB_STEPS)[number]
 // Why a Background Job ended `failed` or `skipped`, standing in for the skip
 // reason or the error message, which can name an address or an exclusion
-// pattern. The first four end a job `failed`, the last three `skipped`.
-// `ingest` covers everything after the render, so the Capture may exist.
+// pattern. The first five end a job `failed`, the last three `skipped`;
+// `background_jobs` stores the same value in `failure_kind`. `ingest` covers
+// everything after the render, so the Capture may exist. `interrupted` is a
+// job whose run was cut off with no Capture: the app closed during it, the
+// queue stopped under it, or a restore removed the Capture it had stored.
 export const BACKGROUND_JOB_FAILURE_KINDS = [
   'timeout',
   'render',
   'ingest',
   'link-source-error',
+  'interrupted',
   'link-source',
   'excluded',
   'refused-address'

@@ -1,6 +1,7 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { EnqueueResult, LinkedFrom } from '@shared/ipc'
+import type { EnqueueResult, HeldBatch, LinkedFrom, RecaptureJobTarget } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { notify } from '@renderer/lib/notify'
 import { requireContact } from '@renderer/lib/vpnWarning'
 
 // The status group and the capture log each decide when to poll, so the interval
@@ -73,4 +74,55 @@ export async function enqueueEventRecapture(
 ): Promise<EnqueueResult> {
   await requireContact({ caseId }, 'site')
   return window.birdbrain.recapture.enqueueCaptures({ caseId, captureIds: [captureId] })
+}
+
+// A held Batch sends its requests once resumed, so resuming passes the VPN warning first, as
+// queueing it did in its own session.
+export function useResumeHeldBatch() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ caseId, batchId }: HeldBatch) => {
+      await requireContact({ caseId }, 'site')
+      return window.birdbrain.recapture.resume({ batchId })
+    },
+    // The queue refuses a resume while no operator name is set, as it refuses a new Batch.
+    onSuccess: ({ reason }) => {
+      if (reason) notify.warn(`Resume rejected: ${reason}`)
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.recaptureQueue })
+    },
+    meta: { action: 'resume held captures' }
+  })
+}
+
+// Cancel sends nothing, so it asks no warning.
+export function useCancelBackgroundJobs() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (target: RecaptureJobTarget) => window.birdbrain.recapture.cancel(target),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.recaptureQueue })
+    },
+    meta: { action: 'cancel background captures' }
+  })
+}
+
+// A retry sends its requests again, so it passes the VPN warning for the jobs' Case first.
+export function useRetryBackgroundJobs() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ caseId, target }: { caseId: string; target: RecaptureJobTarget }) => {
+      await requireContact({ caseId }, 'site')
+      return window.birdbrain.recapture.retry(target)
+    },
+    // The queue refuses a retry while no operator name is set, as it refuses a resume.
+    onSuccess: ({ reason }) => {
+      if (reason) notify.warn(`Retry rejected: ${reason}`)
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.recaptureQueue })
+    },
+    meta: { action: 'retry background captures' }
+  })
 }

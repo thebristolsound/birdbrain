@@ -4,7 +4,11 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import { Search, ShieldCheck, Upload, X } from 'lucide-react'
 import type { ExhibitVerification, InventoryRow } from '@shared/types'
 import { Button } from '@renderer/components/ui'
-import { captureContentQueryOptions, capturesQueryOptions } from '@renderer/lib/api/captures'
+import {
+  captureContentQueryOptions,
+  captureMhtmlPartsQueryOptions,
+  capturesQueryOptions
+} from '@renderer/lib/api/captures'
 import {
   exhibitInventoryQueryOptions,
   manifestSnapshotQueryOptions,
@@ -27,6 +31,8 @@ import { ArtifactTabs, type ArtifactTab } from '@renderer/components/data/Artifa
 import { PropertiesTab } from '@renderer/components/data/PropertiesTab'
 import { ExtractedTextTab } from '@renderer/components/data/ExtractedTextTab'
 import { HeadersTlsTab, hasHeadersOrTls } from '@renderer/components/data/HeadersTlsTab'
+import { MhtmlPartsTab } from '@renderer/components/data/MhtmlPartsTab'
+import { PARTS_TAB_HINT } from '@renderer/components/data/mhtmlPartsModel'
 import {
   ChainVerdict,
   ManifestLedgerTab,
@@ -124,6 +130,27 @@ function ReadFailed({
         Retry
       </Button>
     </div>
+  )
+}
+
+// Mounted only while its tab shows, so the archive is read every time the tab is shown,
+// including when it leads the strip as soon as a row is selected (#991).
+function MhtmlPartsRead({ captureId, anchored }: { captureId: string; anchored: boolean }) {
+  const { data, isPending, isError, error, refetch } = useQuery(
+    captureMhtmlPartsQueryOptions(captureId)
+  )
+  if (isError) {
+    return <ReadFailed what="the MHTML parts" error={error} onRetry={() => void refetch()} />
+  }
+  if (isPending) {
+    return <p className="p-4 text-xs text-text-muted">Reading the stored MHTML…</p>
+  }
+  return (
+    <MhtmlPartsTab
+      listing={data}
+      anchored={anchored}
+      onCopy={(value, label) => void copyValue(value, label)}
+    />
   )
 }
 
@@ -287,7 +314,7 @@ export function DataExplorer() {
   const selectedRow = shownRow?.raw ?? null
   const selectedCapture =
     selectedRow?.entity === 'exhibit' ? captureById.get(selectedRow.id) : undefined
-  const { data: extractedText } = useQuery({
+  const { data: extractedText, isPending: textPending } = useQuery({
     ...captureContentQueryOptions(selectedCapture?.id ?? '', 'txt'),
     enabled: selectedCapture !== undefined
   })
@@ -502,6 +529,22 @@ export function DataExplorer() {
                 ? { pattern: highlightSelector.pattern, isRegex: highlightSelector.isRegex }
                 : undefined
             }
+          />
+        )
+      })
+    }
+    // Pushed once the text read settles, failed or not: before then the tab would lead for a
+    // moment and start a read the strip then drops.
+    if (selectedCapture?.format === 'mhtml' && selectedCapture.mhtmlPath && !textPending) {
+      tabs.push({
+        id: 'parts',
+        label: 'MHTML Parts',
+        hint: PARTS_TAB_HINT,
+        content: (
+          <MhtmlPartsRead
+            key={selectedCapture.id}
+            captureId={selectedCapture.id}
+            anchored={selectedRow.rowType === 'anchored' && selectedRow.anchored}
           />
         )
       })

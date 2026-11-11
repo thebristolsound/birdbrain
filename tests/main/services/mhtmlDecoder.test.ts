@@ -734,6 +734,61 @@ describe('walkMhtml', () => {
     ])
   })
 
+  // Fleet finding F1 on #2178: a header written with no value read as the next header line, so
+  // the MHTML Parts tab showed `Content-Location: …` as a part's Content-ID.
+  it('reads a header written with no value as absent, not as the next header line', () => {
+    const buffer = mhtml([
+      'Content-Type: multipart/related; boundary=B',
+      'Snapshot-Content-Location:',
+      'Subject: page',
+      '',
+      '--B',
+      'Content-Type: image/gif',
+      'Content-ID:',
+      'Content-Location: https://a.example/x.gif',
+      'Content-Transfer-Encoding:',
+      'X-Note: after',
+      '',
+      'GIF',
+      '--B',
+      'Content-Type: text/html',
+      'Content-Location:',
+      'Content-ID: <x@y>',
+      '',
+      '<p>body</p>',
+      '--B--'
+    ])
+    const { summary, parts } = walk(buffer)
+    expect(summary).toMatchObject({ status: 'walked', snapshotLocation: null, totalParts: 2 })
+    expect(
+      parts.map(({ contentType, transferEncoding, contentLocation, contentId }) => ({
+        contentType,
+        transferEncoding,
+        contentLocation,
+        contentId
+      }))
+    ).toEqual([
+      {
+        contentType: 'image/gif',
+        transferEncoding: null,
+        contentLocation: 'https://a.example/x.gif',
+        contentId: null
+      },
+      {
+        contentType: 'text/html',
+        transferEncoding: null,
+        contentLocation: null,
+        contentId: '<x@y>'
+      }
+    ])
+    expect(
+      listHtmlPartsInMhtml(buffer).parts.map(({ contentLocation, decode }) => ({
+        contentLocation,
+        html: decode()
+      }))
+    ).toEqual([{ contentLocation: null, html: '<p>body</p>' }])
+  })
+
   // With the header search running to the end of the file, the cost was the number of parts
   // times the file size: this walk took about 7 s on 2026-11-10 before the search was bounded.
   it('walks 20,000 parts with no LF LF pair in linear time', () => {

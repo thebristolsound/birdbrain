@@ -40,6 +40,7 @@ import type {
   ExportResult,
   ArchiveExportResult,
   RecaptureEnqueuePayload,
+  RecaptureJobTarget,
   SelfTestResult,
   SessionStateEvent,
   CaptureBatchPayload,
@@ -225,6 +226,22 @@ function validateIds(ids: unknown): string[] {
     throw new IpcFailure('Invalid id list', 'INVALID_BATCH_PAYLOAD')
   }
   return ids
+}
+
+// A non-empty string field of a job channel's payload, or undefined for anything else.
+function idField(payload: unknown, key: string): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined
+  const value = (payload as Record<string, unknown>)[key]
+  return typeof value === 'string' && value !== '' ? value : undefined
+}
+
+// A job or a Batch, never both or neither.
+function jobTarget(payload: unknown, refusal: string): RecaptureJobTarget {
+  const jobId = idField(payload, 'jobId')
+  const batchId = idField(payload, 'batchId')
+  if (jobId !== undefined && batchId === undefined) return { jobId }
+  if (batchId !== undefined && jobId === undefined) return { batchId }
+  throw new IpcFailure(refusal, 'INVALID_RECAPTURE_PAYLOAD')
 }
 
 function isVpnWarningOccasion(value: unknown): value is VpnWarningOccasion {
@@ -1348,6 +1365,34 @@ export function registerIpcHandlers(deps: {
 
   handle(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS, () => recaptureService.status())
 
+  // A Case or a Batch, never both: the renderer reloads a job list it lost to a reload or a restart.
+  handle(IPC_CHANNELS.RECAPTURE_LIST_JOBS, (_, query: unknown) => {
+    const caseId = idField(query, 'caseId')
+    const batchId = idField(query, 'batchId')
+    if (caseId !== undefined && batchId === undefined) return recaptureService.listJobs({ caseId })
+    if (batchId !== undefined && caseId === undefined) return recaptureService.listJobs({ batchId })
+    throw new IpcFailure('Invalid job query', 'INVALID_RECAPTURE_PAYLOAD')
+  })
+
+  handle(IPC_CHANNELS.RECAPTURE_RESUME, (_, payload: unknown) => {
+    const batchId = idField(payload, 'batchId')
+    if (batchId === undefined) throw new IpcFailure('Invalid batch', 'INVALID_RECAPTURE_PAYLOAD')
+    return recaptureService.resume(batchId)
+  })
+
+  handle(IPC_CHANNELS.RECAPTURE_DISMISS, (_, target: unknown) =>
+    recaptureService.dismiss(jobTarget(target, 'Invalid dismiss target'))
+  )
+
+  handle(IPC_CHANNELS.RECAPTURE_CANCEL, (_, target: unknown) =>
+    recaptureService.cancel(jobTarget(target, 'Invalid cancel target'))
+  )
+
+  // The renderer passes the VPN warning before it asks, as for an enqueue: a retry sends requests.
+  handle(IPC_CHANNELS.RECAPTURE_RETRY, (_, target: unknown) =>
+    recaptureService.retry(jobTarget(target, 'Invalid retry target'))
+  )
+
   // Search
   handle(IPC_CHANNELS.SEARCH, (_, caseId: string, query: string) => {
     try {
@@ -1841,14 +1886,24 @@ export function registerIpcHandlers(deps: {
     if (canceled || filePaths.length === 0) return { restored: false }
 
     const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
+    // Read as the restore closes the database, not before it copies the file: the queue takes
+    // jobs while the copy is prepared, and each one the restored copy lacks is owed its end.
+    let jobsBefore: ReturnType<typeof recaptureService.beginRestore> = []
     const outcome = await restoreDatabase(
       { kind: 'file', path: filePaths[0] },
-      { dbPath: join(userDataPath, 'birdbrain.db') }
+      {
+        dbPath: join(userDataPath, 'birdbrain.db'),
+        beforeClose: () => {
+          jobsBefore = recaptureService.beginRestore()
+        }
+      }
     )
 
     switch (outcome.status) {
       case 'restored':
-        // As for a snapshot restore below: an older file drops newer personas.
+        // As for a snapshot restore below: the restored jobs go through the startup pass, and
+        // an older file drops newer personas.
+        recaptureService.finishRestore(jobsBefore)
         await personaSessions.clearOrphanedPartitions(userDataPath)
         return { restored: true }
       case 'rejected':
@@ -1858,6 +1913,9 @@ export function registerIpcHandlers(deps: {
           'DB_RESTORE_REJECTED'
         )
       case 'replace_failed':
+        // The session's own database is open again with its queued jobs, and the close may have
+        // stopped the queue.
+        if (outcome.databaseIntact) recaptureService.restartQueue()
         // Not "restart" when the file is damaged: startup has no intact check
         // and would migrate it, while a restore works with no database open.
         throw new IpcFailure(
@@ -1895,6 +1953,7 @@ export function registerIpcHandlers(deps: {
     }
     if (!emptyWalBeforeReplace()) throw new IpcFailure(DB_IN_USE_MESSAGE, 'DB_IN_USE')
 
+    const jobsBefore = recaptureService.beginRestore()
     closeDatabase()
     let restoreErr: unknown = null
     try {
@@ -1945,6 +2004,13 @@ export function registerIpcHandlers(deps: {
         'DB_REOPEN_FAILED'
       )
     }
+
+    // The restored copy is open in this session, so its jobs from an earlier one go through the
+    // startup pass now, before anything awaits: a `queued` row would otherwise run without the
+    // Operator resuming it. Not after a failed restore, whose database holds this session's jobs:
+    // its queue starts again instead, since the close may have stopped it.
+    if (restoreErr) recaptureService.restartQueue()
+    else recaptureService.finishRestore(jobsBefore)
 
     // A snapshot older than a persona brings back a database without its row,
     // leaving that persona's cookies where nothing else can clear them.

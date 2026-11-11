@@ -11,6 +11,7 @@ import {
   webContents as electronWebContents,
   webFrameMain
 } from 'electron'
+import { availableParallelism } from 'os'
 import { join, resolve } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
@@ -87,6 +88,7 @@ import { runExhibitBackfill, runHeldSigningWork } from '@main/services/exhibitBa
 import { runImportedPathRepair } from '@main/services/importedPathRepair'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createRecaptureService } from '@main/services/recapture'
+import { resolveBackgroundWorkers } from '@main/services/backgroundJobPool'
 import { createSessionService } from '@main/services/session'
 import {
   createLaunchedBrowserService,
@@ -821,8 +823,21 @@ if (!gotSingleInstanceLock) {
           if (mainWindow && !mainWindow.isDestroyed()) {
             sendEvent(mainWindow.webContents, IPC_CHANNELS.NEW_CAPTURE, capture)
           }
-        }
+        },
+        emitJob: (job) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            sendEvent(mainWindow.webContents, IPC_CHANNELS.RECAPTURE_JOB, job)
+          }
+        },
+        concurrency: resolveBackgroundWorkers(
+          process.env.BIRDBRAIN_BACKGROUND_WORKERS,
+          availableParallelism()
+        )
       })
+      // Before any IPC handler or the capture server can queue a job: a job an earlier session
+      // left running is marked stored when its Capture landed and interrupted when it did not,
+      // its queued jobs are held, and old stored rows go.
+      recaptureService.recoverStoredJobs()
 
       // Update-delivery service (notify/check-only). Broadcasts status transitions
       // to the renderer; reads the release channel + auto-check policy from settings.

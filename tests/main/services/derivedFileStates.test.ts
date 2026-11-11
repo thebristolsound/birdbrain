@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import {
   accessSync,
@@ -26,6 +26,10 @@ import { HAS_OPENSSL } from '../../helpers/openssl'
 import { HAS_JQ } from '../../helpers/jq'
 import { seedMixedKindCase, seedUnanchoredDerivedFile } from '../../helpers/mixedKindCase'
 import type { ExportOptions } from '@shared/types'
+
+// 60 s, not the 15 s in vitest.config.ts: each state exports a case and runs verify.sh, which
+// crosses 15 s when several agent sessions share the cores.
+vi.setConfig({ testTimeout: 60_000 })
 
 // The whole state space a Derived File can be in at export time, exported in
 // both classes and checked for mutual consistency (#1156 round 5).

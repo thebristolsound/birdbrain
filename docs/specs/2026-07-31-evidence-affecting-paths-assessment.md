@@ -112,6 +112,15 @@ same step added three renderer files to Acquisition at blocking tier, by the pre
 `extension/src/popup/PopupApp.tsx`, which routes the extension's Captures: the panel's Capture
 control (`CaptureControl.tsx`), the tab picker (`TabPicker.tsx`), and the panel model whose
 `captureTarget` decides which tab the control names and takes (`captureSessionPanelModel.ts`).
+On 2026-11-09 `src/main/services/backgroundJobPool.ts` was added to Acquisition at blocking tier
+with #2132, slice 6 of the batch capture throughput design. It holds rules the already-listed
+`src/main/services/recapture.ts` applies: how many background renders run at once, which site a
+job's address belongs to for the one-running-job-per-site rule, and the free-memory floor. They
+sit in their own file so the unit suite can reach them, the reason #478 moved window sizing out
+of `src/main/index.ts`. The call differs from #515's: window geometry enters no evidence, while
+these rules decide which pages render side by side and when, which can change what a render
+observes, so the file is an inclusion rather than an exclusion.
+
 On 2026-11-10 `src/main/services/mhtmlParts.ts` was added to the Capture lifecycle table at
 blocking tier with #991, in the change that creates it. It reads a Capture's stored MHTML and
 reports what is inside it, so a wrong part boundary or span is a wrong statement about a Capture.
@@ -278,6 +287,7 @@ that caused it was to record the carved-out file as an exclusion (#515), which i
 | `src/main/services/serverToken.ts` | blocking | Authenticates ingest; weakening admits spoofed captures into the evidence chain |
 | `src/main/services/session.ts` | blocking | Active-case state deciding which case a capture is filed under |
 | `src/main/services/recapture.ts` | blocking | Recapture queue re-acquiring URLs as new evidence |
+| `src/main/services/backgroundJobPool.ts` | blocking | The rules `recapture.ts` applies to decide how many background renders run at once, which jobs share a site and so are not started side by side, and when free memory holds a second render (#2132). Added 2026-11-09 |
 | `src/main/services/backgroundRenderer.ts` | blocking | Headless render producing the artifacts that get hashed |
 | `src/main/services/localAddressPolicy.ts` | blocking | Applies that classification to recapture links and each redirect hop, and holds the test-only loopback switch a packaged build ignores (#1726). Added 2026-10-16 |
 | `src/main/services/egress.ts` | blocking | The Egress (ADR-0032): the proxy configuration every render, the Wayback pane and update checks receive, the routed fetch for the TSA request, the Wayback lookup and the filter lists, and what a signed capture entry records about the route (#1695). Added 2026-10-17 |

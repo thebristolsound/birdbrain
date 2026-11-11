@@ -672,17 +672,22 @@ describe('manifest schema 7 — the package verifier and verify.sh', () => {
     expect(chainRow(result)?.status).toBe('fail')
   })
 
-  it.skipIf(!HAS_JQ || !HAS_OPENSSL)('passes verify.sh and Package Verification alike', () => {
-    for (const fields of [launchedFields(), passiveFields('every-page')]) {
-      rmSync(pkgDir, { recursive: true, force: true })
-      pkgDir = mkdtempSync(join(tmpdir(), 'birdbrain-schema7-pkg-'))
-      writeEnginePackage(pkgDir, fields, 7, { indexArtifacts: true })
-      writeFileSync(join(pkgDir, PACKAGE_ROOT_FILES.verifyScript), VERIFY_SCRIPT, 'utf-8')
-      const result = checkConformance(pkgDir)
-      expect({ binary: result.binary, script: result.script }, result.scriptOutput).toEqual({
-        binary: 'pass',
-        script: 'pass'
-      })
-    }
-  })
+  // 60 s: two verify.sh runs cross the 15 s default when agent sessions share the cores.
+  it.skipIf(!HAS_JQ || !HAS_OPENSSL)(
+    'passes verify.sh and Package Verification alike',
+    () => {
+      for (const fields of [launchedFields(), passiveFields('every-page')]) {
+        rmSync(pkgDir, { recursive: true, force: true })
+        pkgDir = mkdtempSync(join(tmpdir(), 'birdbrain-schema7-pkg-'))
+        writeEnginePackage(pkgDir, fields, 7, { indexArtifacts: true })
+        writeFileSync(join(pkgDir, PACKAGE_ROOT_FILES.verifyScript), VERIFY_SCRIPT, 'utf-8')
+        const result = checkConformance(pkgDir)
+        expect({ binary: result.binary, script: result.script }, result.scriptOutput).toEqual({
+          binary: 'pass',
+          script: 'pass'
+        })
+      }
+    },
+    60_000
+  )
 })

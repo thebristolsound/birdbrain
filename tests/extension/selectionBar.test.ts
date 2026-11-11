@@ -986,8 +986,9 @@ describe("the operator's selection stays out of the frames (#993)", () => {
   // Chromium 154 did in the review rounds' probes: the selected text and its direction, and a
   // character-wise move or extend, which acts inside the control. collapseToStart and
   // collapseToEnd act on the point the document reports once anything has read it, which takes
-  // the caret out of the control, so the stand-in fails a test that calls either there. An email,
-  // number or date input reports no selection offsets besides, so nothing else reaches into it.
+  // the caret out of the control, so the stand-in throws when either is called there. The capture's
+  // teardown catches that throw, so only a test that reads the selection afterwards fails. An
+  // email, number or date input reports no selection offsets besides, so nothing else reaches in.
   describe('in a text control, as Chromium reports its caret and selection', () => {
     const VALUES = {
       email: 'someone@example.com',

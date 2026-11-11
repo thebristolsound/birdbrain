@@ -119,6 +119,10 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
   }
 
   const isExporting = exportingCaseId === caseId
+  const progressLabel =
+    isExporting && archiveProgress
+      ? `${archiveProgress.step} — ${Math.round(archiveProgress.percent)}%`
+      : null
 
   return (
     <div className="relative" data-tour="export">
@@ -136,7 +140,7 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
-        title="Export"
+        title={progressLabel ?? 'Export'}
         className="gap-1.5 aria-disabled:opacity-50"
       >
         {isExporting ? (
@@ -145,11 +149,11 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
           <FileOutput className="h-3 w-3" strokeWidth={1.8} />
         )}
         {/* The top bar shares its row with the case search, so the label folds to the
-            icon below xl and stays the button's accessible name. */}
-        <span className="sr-only xl:not-sr-only">
-          {isExporting && archiveProgress
-            ? `${archiveProgress.step} — ${Math.round(archiveProgress.percent)}%`
-            : 'Export'}
+            icon below xl and stays the button's accessible name. not-sr-only resets
+            white-space, so truncate comes with it or a long step wraps out of the 28px
+            button; the title carries the full step. */}
+        <span className="sr-only xl:not-sr-only xl:max-w-44 xl:truncate">
+          {progressLabel ?? 'Export'}
         </span>
         <ChevronDown className="h-3 w-3" strokeWidth={1.8} />
       </Button>

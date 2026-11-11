@@ -15,8 +15,8 @@ name: PR next action
 #
 # A finished CI, Merge gate, Merge on label, Pre-pass gate or PR review run relabels the PRs it
 # names, or every open PR when it names none (a fork PR, or a push to main). The half-hourly
-# fire catches what no workflow reports: a commit status from the reviewer, auto-merge turned
-# off, a PR reaching the age when the scheduled review hands it over.
+# fire catches what no workflow reports: a commit status from the reviewer or the review
+# fleet, auto-merge turned off.
 
 on:
   workflow_run:
@@ -71,6 +71,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BIRDBRAIN_AGENT_GH_LOGIN: ${{ vars.BIRDBRAIN_AGENT_GH_LOGIN }}
+          REVIEW_FLEET_ENABLED: ${{ vars.REVIEW_FLEET_ENABLED }}
           PRS: ${{ inputs.pr || join(github.event.workflow_run.pull_requests.*.number, ' ') }}
         run: |
           # PRS is a space-separated list of numbers, or empty; word splitting is the point.

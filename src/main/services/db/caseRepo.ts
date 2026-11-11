@@ -151,6 +151,37 @@ export function deleteCase(id: string): boolean {
   return result.changes > 0
 }
 
+const CASE_ROW_OWNERS: Record<string, string> = {
+  case_id: 'case_id = @id',
+  capture_id: 'capture_id IN (SELECT id FROM captures WHERE case_id = @id)',
+  exhibit_id: 'exhibit_id IN (SELECT id FROM exhibits WHERE case_id = @id)'
+}
+
+// Every table holding a row that names this case, one of its captures or one of
+// its exhibits, in a `case_id`, `capture_id` or `exhibit_id` column. The tables
+// are read from the live schema, so one a later migration adds is listed
+// without a change here.
+export function listCaseDependentTables(id: string): string[] {
+  const d = getDb()
+  const columns = d
+    .prepare(
+      `SELECT m.name AS tableName, p.name AS columnName
+         FROM sqlite_master m JOIN pragma_table_info(m.name) p
+        WHERE m.type = 'table' AND p.name IN ('case_id', 'capture_id', 'exhibit_id')
+        ORDER BY m.name`
+    )
+    .all() as Array<{ tableName: string; columnName: string }>
+  const holding = columns
+    .filter(
+      ({ tableName, columnName }) =>
+        d
+          .prepare(`SELECT 1 FROM "${tableName}" WHERE ${CASE_ROW_OWNERS[columnName]} LIMIT 1`)
+          .get({ id }) !== undefined
+    )
+    .map(({ tableName }) => tableName)
+  return [...new Set(holding)]
+}
+
 // --- Auto-capture exclusions (#400) ---
 
 // The empty policy, and what a case that has never been given one reads as:

@@ -14,18 +14,25 @@ import { HAS_OPENSSL } from '../../helpers/openssl'
 import { checkConformance } from '../../helpers/verifyConformance'
 import { buildSignedChain } from '../../helpers/egressPackage'
 import { writeEnginePackage } from '../../helpers/captureEnginePackage'
-import { SCHEMA_2_CAPTURE_BODY } from '../../helpers/launchedBrowser'
+import {
+  LAUNCHED_CAPTURE_BODY,
+  PASSIVE_CAPTURE_BODY,
+  SCHEMA_2_CAPTURE_BODY
+} from '../../helpers/launchedBrowser'
 
 // Known-answer tests for the capture entry's provenance invariants (#1000, as
-// the maintainer ruled on 2026-11-09): the schema refuses only the shapes whose
-// method and provenance fields contradict each other, at every schema version.
-// The answers frozen here:
+// the maintainer ruled on 2026-11-09 in
+// https://github.com/thebristolsound/birdbrain/issues/1000#issuecomment-6752508679):
+// the schema refuses only the shapes whose method and provenance fields
+// contradict each other, at every schema version. The answers frozen here:
 //   1. each contradicting shape is refused with its own message, at every
 //      version, and a shape breaking two rules carries both messages;
-//   2. every shape a released writer produced still parses at every version,
-//      and a chain and a package holding them still verify at each released
+//   2. a recapture or duplicate link that is the empty string names no
+//      Capture and no time, and is refused at every version;
+//   3. every shape the app writes still parses at every version it can carry,
+//      and a chain and a package holding them still verify at each signed
 //      schema version;
-//   3. the app and package verifiers fail a chain holding a contradicting
+//   4. the app and package verifiers fail a chain holding a contradicting
 //      entry, and verify.sh, which reads none of these fields, still passes it.
 
 const SUPERSEDES_MESSAGE = '`supersedesCaptureId` requires method `background`'
@@ -42,14 +49,14 @@ const DUPLICATE_PAIR = {
 }
 
 const VERSIONS = Array.from({ length: MANIFEST_SCHEMA_VERSION }, (_, i) => i + 1)
-// The signed versions: entries are signed from 2, and the latest release,
-// v1.0.1-beta.26, reads up to 7.
-const RELEASED_VERSIONS = [2, 3, 4, 5, 6, 7]
+// The signed versions: the chain verifier checks signatures from schema 2 on.
+const SIGNED_VERSIONS = VERSIONS.filter((version) => version >= 2)
 
-// The shapes each released writer put on a capture entry, read from every
-// `v*` tag: the extension ingest names no method, Add URLs a background method
-// with no recapture link, Recapture a background method with one, and
-// Duplicate the duplicate method with both halves of its pair.
+// The shapes the extension ingest, Add URLs, Recapture and Duplicate write on
+// a capture entry: no method, a background method with no recapture link, a
+// background method with one, and the duplicate method with both halves of
+// its pair. The launched browser's two methods carry no link and need schema
+// 7; they are accepted below.
 const WRITTEN_SHAPES: Array<[string, Record<string, unknown>]> = [
   ['an extension capture, which names no method', {}],
   ['a first-time background capture from Add URLs', { method: 'background' }],
@@ -93,16 +100,42 @@ const ONE_RULE_SHAPES: Array<[string, Record<string, unknown>, string]> = [
   ]
 ]
 
+// Links that are present but empty, with the field each one is refused on.
+const EMPTY_LINK_SHAPES: Array<[string, Record<string, unknown>, string[]]> = [
+  [
+    'a recapture link naming no Capture',
+    { method: 'background', supersedesCaptureId: '' },
+    ['supersedesCaptureId']
+  ],
+  [
+    'a duplicate naming no source',
+    { method: 'duplicate', ...DUPLICATE_PAIR, duplicateOfCaptureId: '' },
+    ['duplicateOfCaptureId']
+  ],
+  [
+    'a duplicate with no copy time',
+    { method: 'duplicate', ...DUPLICATE_PAIR, duplicatedAt: '' },
+    ['duplicatedAt']
+  ],
+  [
+    'a duplicate naming neither source nor copy time',
+    { method: 'duplicate', duplicateOfCaptureId: '', duplicatedAt: '' },
+    ['duplicateOfCaptureId', 'duplicatedAt']
+  ]
+]
+
 function body(fields: Record<string, unknown>, schemaVersion: number): Record<string, unknown> {
   return { ...SCHEMA_2_CAPTURE_BODY, ...fields, schemaVersion }
 }
 
+function issues(entryBody: Record<string, unknown>) {
+  return (
+    ManifestEntrySchema.safeParse({ ...entryBody, entryHash: 'f'.repeat(64) }).error?.issues ?? []
+  )
+}
+
 function messages(fields: Record<string, unknown>, schemaVersion: number): string[] {
-  const parsed = ManifestEntrySchema.safeParse({
-    ...body(fields, schemaVersion),
-    entryHash: 'f'.repeat(64)
-  })
-  return parsed.error?.issues.map(({ message }) => message) ?? []
+  return issues(body(fields, schemaVersion)).map(({ message }) => message)
 }
 
 describe('capture entry provenance invariants — the schema', () => {
@@ -114,8 +147,22 @@ describe('capture entry provenance invariants — the schema', () => {
   }
 
   it('gives each rule its own message', () => {
-    expect(new Set(ONE_RULE_SHAPES.map(([, , message]) => message)).size).toBe(4)
+    const refused = ONE_RULE_SHAPES.map(([, fields]) =>
+      messages(fields, MANIFEST_SCHEMA_VERSION).join('\n')
+    )
+    expect(new Set(refused).size).toBe(4)
   })
+
+  for (const [label, fields, paths] of EMPTY_LINK_SHAPES) {
+    it(`refuses ${label}, at every schema version`, () => {
+      for (const version of VERSIONS) {
+        const found = issues(body(fields, version)).map(({ code, path }) => ({ code, path }))
+        expect(found, `v${version}`).toEqual(
+          paths.map((field) => ({ code: 'too_small', path: [field] }))
+        )
+      }
+    })
+  }
 
   it('carries both messages on half a pair under another method', () => {
     const fields = { method: 'background', duplicatedAt: DUPLICATE_PAIR.duplicatedAt }
@@ -132,6 +179,11 @@ describe('capture entry provenance invariants — the schema', () => {
       for (const version of VERSIONS) expect(messages(fields, version), `v${version}`).toEqual([])
     })
   }
+
+  it('accepts a launched and a passive capture, which carry no link, at schema 7', () => {
+    expect(issues(LAUNCHED_CAPTURE_BODY)).toEqual([])
+    expect(issues(PASSIVE_CAPTURE_BODY)).toEqual([])
+  })
 })
 
 describe('capture entry provenance invariants — the verifiers', () => {
@@ -153,8 +205,8 @@ describe('capture entry provenance invariants — the verifiers', () => {
   const chainRow = (result: ReturnType<typeof verifyEvidencePackage>) =>
     result.checks.find((check) => check.name === 'manifest chain')
 
-  it('verifies a chain holding every written shape, at each released schema version', () => {
-    for (const version of RELEASED_VERSIONS) {
+  it('verifies a chain holding every written shape, at each signed schema version', () => {
+    for (const version of SIGNED_VERSIONS) {
       const result = verifyChain(WRITTEN_SHAPES.map(([, fields]) => body(fields, version)))
       expect(result.reason, `v${version}`).toBeUndefined()
       expect(result.valid, `v${version}`).toBe(true)
@@ -162,8 +214,8 @@ describe('capture entry provenance invariants — the verifiers', () => {
   })
 
   for (const [label, fields] of WRITTEN_SHAPES.slice(1)) {
-    it(`passes a package holding ${label}, at each released schema version`, () => {
-      for (const version of RELEASED_VERSIONS) {
+    it(`passes a package holding ${label}, at each signed schema version`, () => {
+      for (const version of SIGNED_VERSIONS) {
         writeEnginePackage(pkgDir, fields, version)
         const result = verifyEvidencePackage(pkgDir)
         expect(
@@ -175,7 +227,7 @@ describe('capture entry provenance invariants — the verifiers', () => {
     })
   }
 
-  for (const [label, fields] of ONE_RULE_SHAPES) {
+  for (const [label, fields] of [...ONE_RULE_SHAPES, ...EMPTY_LINK_SHAPES]) {
     it(`breaks the chain at ${label}`, () => {
       const result = verifyChain([
         body({}, 2),
@@ -192,7 +244,11 @@ describe('capture entry provenance invariants — the verifiers', () => {
       writeEnginePackage(pkgDir, { method: undefined, ...fields }, MANIFEST_SCHEMA_VERSION)
       const result = verifyEvidencePackage(pkgDir)
       expect(result.pass, label).toBe(false)
-      expect(chainRow(result)?.status, label).toBe('fail')
+      expect(chainRow(result), label).toEqual({
+        name: 'manifest chain',
+        status: 'fail',
+        reason: 'Invalid entry shape (at index 0)'
+      })
     }
   })
 

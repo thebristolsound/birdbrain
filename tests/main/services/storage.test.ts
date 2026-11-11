@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { initStorage, ensureCaseDir, getCaseStorageSize } from '@main/services/storage'
+import {
+  initStorage,
+  ensureCaseDir,
+  getCaseStorageSize,
+  storageRootCreatedAtInit
+} from '@main/services/storage'
 
 describe('storage', () => {
   let tempDir: string
@@ -34,5 +39,17 @@ describe('storage', () => {
 
   it('returns 0 for non-existent case directory', () => {
     expect(getCaseStorageSize('nonexistent')).toBe(0)
+  })
+
+  it('records whether init had to create the root', () => {
+    expect(storageRootCreatedAtInit()).toBe(false)
+
+    const missing = join(tempDir, 'not-yet', 'captures')
+    initStorage(missing)
+    expect(existsSync(missing)).toBe(true)
+    expect(storageRootCreatedAtInit()).toBe(true)
+
+    initStorage(missing)
+    expect(storageRootCreatedAtInit()).toBe(false)
   })
 })

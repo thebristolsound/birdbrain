@@ -161,6 +161,8 @@ const CODE_LABELS: Record<LogCode, string> = {
     'Removed a case left by an interrupted pipeline self-test',
   'captureServer.self_test_residue_kept':
     'Kept a case named like the pipeline self-test case: it holds more than the self-test left',
+  'captureServer.self_test_storage_unavailable':
+    'Kept a pipeline self-test case: the capture storage folder is missing or unreadable',
   // Errno-neutral on purpose: one label serves two surfaces. In the Log tab it
   // reads a boot EADDRINUSE entry; as a toast it can only follow a successful
   // bind, because boot fails before setLoggerWindow and exits — so a label
@@ -187,6 +189,12 @@ const CODE_LABELS: Record<LogCode, string> = {
   'backgroundRenderer.consent_blocker_disable_failed':
     "Couldn't turn off the cookie-notice blocker",
   'backgroundRenderer.consent_blocker_enable_failed': "Couldn't turn on the cookie-notice blocker",
+  'backgroundRenderer.render_completed': 'Rendered a page in the background',
+  'backgroundRenderer.render_failed': 'A background render stopped before it finished',
+  'backgroundRenderer.job_stored': 'Stored a background capture',
+  'backgroundRenderer.job_skipped':
+    'Skipped a background capture: its address or its link source was refused',
+  'backgroundRenderer.job_failed': 'A background capture failed',
   'consentBlocker.filter_engine_failed': "Couldn't load the cookie-notice filter lists",
   'selectorLifecycle.retroactive_match_failed':
     "Couldn't match the new selector against existing captures",

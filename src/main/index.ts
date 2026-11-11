@@ -695,8 +695,9 @@ if (!gotSingleInstanceLock) {
       }
 
       // What a self-test killed mid-run left (#1183). After storage init, which
-      // the residue check reads; before the demo seed and the capture server,
-      // so neither sees a leftover sandbox and no new one can exist yet.
+      // the residue check reads; before the capture server, so no self-test can
+      // be running, and before the demo seed, which then never sees a case the
+      // sweep removes. A sandbox-named case the sweep keeps is still there.
       sweepPipelineSelfTestResidue()
 
       // Seed the bundled demonstration case (#405). Strictly after the storage

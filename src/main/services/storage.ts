@@ -5,12 +5,21 @@ import { join } from 'path'
 // Everything that knows capture artifact filenames lives in captureStore.ts.
 
 let storageRoot: string
+let rootCreatedAtInit = false
 
 export function initStorage(root: string): void {
   storageRoot = root
-  if (!existsSync(root)) {
+  rootCreatedAtInit = !existsSync(root)
+  if (rootCreatedAtInit) {
     mkdirSync(root, { recursive: true })
   }
+}
+
+// Whether `initStorage` had to create the root. A root made at this launch
+// holds nothing an earlier launch wrote, which is what an unmounted drive
+// leaves when its mount point is still writable.
+export function storageRootCreatedAtInit(): boolean {
+  return rootCreatedAtInit
 }
 
 export function getStorageRoot(): string {

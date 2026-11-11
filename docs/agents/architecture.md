@@ -167,6 +167,6 @@ Organized by feature under `src/renderer/components/`:
 - **selectors/** - CreateSelectorPopover, selectorOrigin.ts, selectorUtils.ts, useForegroundMatchPreview.ts (the Selectors screen itself moved to `signals/`)
 - **settings/** - SettingsView, AppearanceConfig, CapturePreferences, DatabaseAdmin, DiagnosticsPanel, OperatorConfig, StorageConfig, UpdatesConfig, About, plus database utility views under `settings/db/`
 - **signals/** - SignalsOverview (the consolidated Signals screen), AutoCaptureCard, AddSelectorRow, AddTagRow, BulkImportDrawer, SignalRow, CoverageStrip, SignalDetailRail, signalsModel.ts
-- **status/** - StatusGroup (the top bar's one status control: Egress, extension connection and Capture Health, over the pure `statusGroupModel.ts` and `egressText.ts`), CaptureHealth (the capture log the status popover opens), RecordingMark, SessionControls, SharePill
+- **status/** - StatusGroup (the top bar's one status control: Egress, extension connection and Capture Health, over the pure `statusGroupModel.ts` and `egressText.ts`), `CaptureLog` in `CaptureHealth.tsx` (the capture log the status popover opens, with `useSelfTest`, the pipeline and HTTP test state the status group holds for it), RecordingMark, SessionControls, SharePill
 - **tags/** - TagBadge
 - **ui/** - Shared primitives re-exported from `ui/index.ts`: badge, button, card, dialog, input, label, scroll-area, skeleton, tabs, textarea

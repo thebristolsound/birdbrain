@@ -27,10 +27,12 @@ import {
 // contradict each other, at every schema version. The answers frozen here:
 //   1. each contradicting shape is refused with its own message, at every
 //      version, and a shape breaking two rules carries both messages;
-//   2. every shape the app writes still parses at every version it can carry,
+//   2. a recapture or duplicate link that is the empty string names no
+//      Capture and no time, and is refused at every version;
+//   3. every shape the app writes still parses at every version it can carry,
 //      and a chain and a package holding them still verify at each signed
 //      schema version;
-//   3. the app and package verifiers fail a chain holding a contradicting
+//   4. the app and package verifiers fail a chain holding a contradicting
 //      entry, and verify.sh, which reads none of these fields, still passes it.
 
 const SUPERSEDES_MESSAGE = '`supersedesCaptureId` requires method `background`'
@@ -98,6 +100,30 @@ const ONE_RULE_SHAPES: Array<[string, Record<string, unknown>, string]> = [
   ]
 ]
 
+// Links that are present but empty, with the field each one is refused on.
+const EMPTY_LINK_SHAPES: Array<[string, Record<string, unknown>, string[]]> = [
+  [
+    'a recapture link naming no Capture',
+    { method: 'background', supersedesCaptureId: '' },
+    ['supersedesCaptureId']
+  ],
+  [
+    'a duplicate naming no source',
+    { method: 'duplicate', ...DUPLICATE_PAIR, duplicateOfCaptureId: '' },
+    ['duplicateOfCaptureId']
+  ],
+  [
+    'a duplicate with no copy time',
+    { method: 'duplicate', ...DUPLICATE_PAIR, duplicatedAt: '' },
+    ['duplicatedAt']
+  ],
+  [
+    'a duplicate naming neither source nor copy time',
+    { method: 'duplicate', duplicateOfCaptureId: '', duplicatedAt: '' },
+    ['duplicateOfCaptureId', 'duplicatedAt']
+  ]
+]
+
 function body(fields: Record<string, unknown>, schemaVersion: number): Record<string, unknown> {
   return { ...SCHEMA_2_CAPTURE_BODY, ...fields, schemaVersion }
 }
@@ -126,6 +152,17 @@ describe('capture entry provenance invariants — the schema', () => {
     )
     expect(new Set(refused).size).toBe(4)
   })
+
+  for (const [label, fields, paths] of EMPTY_LINK_SHAPES) {
+    it(`refuses ${label}, at every schema version`, () => {
+      for (const version of VERSIONS) {
+        const found = issues(body(fields, version)).map(({ code, path }) => ({ code, path }))
+        expect(found, `v${version}`).toEqual(
+          paths.map((field) => ({ code: 'too_small', path: [field] }))
+        )
+      }
+    })
+  }
 
   it('carries both messages on half a pair under another method', () => {
     const fields = { method: 'background', duplicatedAt: DUPLICATE_PAIR.duplicatedAt }
@@ -190,7 +227,7 @@ describe('capture entry provenance invariants — the verifiers', () => {
     })
   }
 
-  for (const [label, fields] of ONE_RULE_SHAPES) {
+  for (const [label, fields] of [...ONE_RULE_SHAPES, ...EMPTY_LINK_SHAPES]) {
     it(`breaks the chain at ${label}`, () => {
       const result = verifyChain([
         body({}, 2),

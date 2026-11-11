@@ -681,13 +681,15 @@ const ManifestCaptureEntrySchema = z
     finalUrl: z.string().min(1).optional(),
     tls: TlsCertChainResultSchema.optional(),
     method: z.enum(CAPTURE_METHODS).optional(),
-    supersedesCaptureId: z.string().optional(),
+    // The three links are never '': an empty link names no Capture and no
+    // time, so the method rules below would read it as present (#1000).
+    supersedesCaptureId: z.string().min(1).optional(),
     // Duplication provenance (#827), carried by entries whose method is
     // 'duplicate': the capture whose bytes were copied, and when the copy was
     // made. Both optional and omitted from every other entry, so legacy and
     // ordinary capture bodies — and their chain hashes — are unchanged.
-    duplicateOfCaptureId: z.string().optional(),
-    duplicatedAt: z.string().optional(),
+    duplicateOfCaptureId: z.string().min(1).optional(),
+    duplicatedAt: z.string().min(1).optional(),
     consentSuppression: z.enum(CONSENT_SUPPRESSIONS).optional(),
     // The Capture's Exhibit Number, recorded on the entry that anchors its
     // bytes (X18, X46). Optional because entries written before X46 carry
@@ -859,11 +861,12 @@ const ManifestCaptureEntrySchema = z
   .refine(personaFieldsNeedSchema7.check, personaFieldsNeedSchema7.issue)
   .refine(personaLabelNeedsId.check, personaLabelNeedsId.issue)
   // The recapture and duplicate links name the method that makes them (#1000),
-  // at every schema version: every released writer put `supersedesCaptureId`
-  // only on a background Capture and the duplicate pair only, and whole, on a
-  // Duplicate, so no entry a released build signed is refused. A background
-  // Capture without the link is a first-time one, from Add URLs, and is not
-  // refused.
+  // at every schema version. They are ungated because a survey of every `v*`
+  // tag, recorded in pull request 2180, found no released writer that put
+  // `supersedesCaptureId` off a background Capture, the duplicate pair
+  // anywhere but whole on a Duplicate, or any of the three links as ''. A
+  // background Capture without the link is a first-time one, from Add URLs,
+  // and is not refused.
   .refine((entry) => entry.supersedesCaptureId === undefined || entry.method === 'background', {
     message: '`supersedesCaptureId` requires method `background`',
     path: ['supersedesCaptureId']

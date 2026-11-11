@@ -16,8 +16,17 @@ import {
   onCaptureUiSuppressionReleased,
   registerCaptureUiTeardown
 } from './captureSuppression'
-import { isActionableSelection, normalizeSelection } from '@shared/selectionKind'
-import type { SelectionActionKind, SelectionActionResponse, SelectionBarState } from './messages'
+import {
+  isActionableSelection,
+  normalizeSelection,
+  selectionQuoteText
+} from '@shared/selectionKind'
+import type {
+  SelectionActionKind,
+  SelectionActionRequest,
+  SelectionActionResponse,
+  SelectionBarState
+} from './messages'
 
 export const SELECTION_BAR_ID = 'birdbrain-selection-bar'
 
@@ -43,8 +52,23 @@ const BAR_GAP = 8
 
 type BarState =
   | { phase: 'hidden' }
-  | { phase: 'ready'; text: string; x: number; y: number; enabled: boolean; reason: string }
-  | { phase: 'busy'; text: string; x: number; y: number; action: SelectionActionKind }
+  | {
+      phase: 'ready'
+      text: string
+      rawText: string
+      x: number
+      y: number
+      enabled: boolean
+      reason: string
+    }
+  | {
+      phase: 'busy'
+      text: string
+      rawText: string
+      x: number
+      y: number
+      action: SelectionActionKind
+    }
   | { phase: 'done'; x: number; y: number; ok: boolean; message: string }
 
 let state: BarState = { phase: 'hidden' }
@@ -311,7 +335,11 @@ async function showFromSelection(): Promise<void> {
   // rather than adopted: the mouseup that produced it runs its own pass.
   const settled = window.getSelection()
   if (!settled || settled.rangeCount === 0 || settled.isCollapsed) return
-  if (normalizeSelection(settled.toString()) !== text) return
+  const settledRaw = settled.toString()
+  if (normalizeSelection(settledRaw) !== text) return
+  // The same passage can come back laid out differently, and the stale check
+  // above cannot see that, so a Quote's line breaks are read here (#1003).
+  const rawText = selectionQuoteText(settledRaw)
 
   const enabled = barState.connected && barState.activeCaseId !== null
   const { x, y } = barPosition(settled.getRangeAt(0).getBoundingClientRect())
@@ -319,6 +347,7 @@ async function showFromSelection(): Promise<void> {
   state = {
     phase: 'ready',
     text,
+    rawText,
     x,
     y,
     enabled,
@@ -333,8 +362,8 @@ async function showFromSelection(): Promise<void> {
 
 async function runAction(action: SelectionActionKind): Promise<void> {
   if (state.phase !== 'ready' || !state.enabled) return
-  const { text, x, y } = state
-  state = { phase: 'busy', text, x, y, action }
+  const { text, rawText, x, y } = state
+  state = { phase: 'busy', text, rawText, x, y, action }
   render()
 
   let response: SelectionActionResponse
@@ -342,8 +371,9 @@ async function runAction(action: SelectionActionKind): Promise<void> {
     response = (await chrome.runtime.sendMessage({
       type: 'SELECTION_ACTION',
       action,
-      text
-    })) as SelectionActionResponse
+      text,
+      rawText
+    } satisfies SelectionActionRequest)) as SelectionActionResponse
   } catch {
     response = { ok: false, error: "Can't reach the Birdbrain extension" }
   }
@@ -418,15 +448,18 @@ export function initSelectionBar(): void {
     // they describe an action already taken, not one on offer.
     if (state.phase === 'ready') {
       const selection = window.getSelection()
+      const raw = selection ? selection.toString() : ''
       if (
         !selection ||
         selection.rangeCount === 0 ||
         selection.isCollapsed ||
-        normalizeSelection(selection.toString()) !== state.text
+        normalizeSelection(raw) !== state.text
       ) {
         hide()
         return
       }
+      // As in showFromSelection: the passage matched, its layout may not.
+      state = { ...state, rawText: selectionQuoteText(raw) }
     }
     render()
     // A restored result chip re-arms its auto-hide: the strip cleared the

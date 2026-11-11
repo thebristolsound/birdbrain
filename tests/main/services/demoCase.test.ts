@@ -40,7 +40,8 @@ import {
 } from '@main/services/demoCase'
 import {
   PIPELINE_SELF_TEST_CASE_NAME,
-  PIPELINE_SELF_TEST_URL
+  PIPELINE_SELF_TEST_URL,
+  sweepPipelineSelfTestResidue
 } from '@main/services/pipelineSelfTest'
 import {
   DEMO_CASE_ARCHIVE_FILENAME,
@@ -297,18 +298,34 @@ describe('demo case seeding', () => {
       expect(listAllCases().map((c) => c.id)).toEqual([result.caseId])
     })
 
-    it('does not count a self-test sandbox Case left behind', async () => {
-      const sandboxId = leaveSandbox()
-      loseSettings()
-
+    const expectSeededBeside = async (sandboxId: string): Promise<void> => {
       const result = await seedDemoCaseIfNeeded()
-
       expect(result.seeded).toBe(true)
       expect(
         listAllCases()
           .map((c) => c.id)
           .sort()
       ).toEqual([sandboxId, result.caseId].sort())
+    }
+
+    it('does not count a self-test sandbox Case left behind', async () => {
+      const sandboxId = leaveSandbox()
+      loseSettings()
+
+      await expectSeededBeside(sandboxId)
+    })
+
+    // The boot sweep deletes a leftover only on a storage root confirmed since
+    // before the Case was made (pipelineSelfTest.ts), and a launch with no
+    // record of the root confirms nothing. The seed asks only what the Case
+    // holds, so a leftover the sweep kept still does not count.
+    it('does not count a leftover the boot sweep kept on an unconfirmed storage root', async () => {
+      const sandboxId = leaveSandbox()
+      loseSettings()
+      sweepPipelineSelfTestResidue(tempDir)
+      expect(getCase(sandboxId)?.name).toBe(PIPELINE_SELF_TEST_CASE_NAME)
+
+      await expectSeededBeside(sandboxId)
     })
 
     // The residue check refuses each of these (pipelineSelfTest.ts), so the

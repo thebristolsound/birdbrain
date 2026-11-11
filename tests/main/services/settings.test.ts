@@ -692,6 +692,25 @@ describe('settings', () => {
       expect(getSettings().ignoredUrlPatterns).toEqual(['a.com'])
     })
 
+    // The exemption is per stored entry, so a second copy of a stored one is a new pattern.
+    it('refuses a second copy of one stored before the check', () => {
+      writeFileSync(settingsFile, JSON.stringify({ ignoredUrlPatterns: ['/[/'] }))
+      expect(() => updateSettings({ ignoredUrlPatterns: ['/[/', '/[/'] })).toThrow(
+        'ignoredUrlPatterns.1: Invalid regular expression'
+      )
+      expect(getSettings().ignoredUrlPatterns).toEqual(['/[/'])
+    })
+
+    it('keeps two copies stored before the check, and refuses a third', () => {
+      const stored = ['/[/', 'a.com', '/[/']
+      writeFileSync(settingsFile, JSON.stringify({ ignoredUrlPatterns: stored }))
+      updateSettings({ ignoredUrlPatterns: [...stored, 'b.com'] })
+      expect(getSettings().ignoredUrlPatterns).toEqual([...stored, 'b.com'])
+      expect(() => updateSettings({ ignoredUrlPatterns: [...stored, 'b.com', '/[/'] })).toThrow(
+        'ignoredUrlPatterns.4: Invalid regular expression'
+      )
+    })
+
     it('names every new pattern it refuses in one message', () => {
       updateSettings({ ignoredUrlPatterns: ['a.com'] })
       expect(() => updateSettings({ ignoredUrlPatterns: ['', 'a.com', ' b.com'] })).toThrow(

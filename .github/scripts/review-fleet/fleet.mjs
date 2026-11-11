@@ -5,7 +5,8 @@
 //
 // Usage: fleet.mjs <command> <owner/repo> [args]
 //   plan <pr>               decide what the PR is owed at head; claim the head when it is owed a
-//                           review; post the status. Writes action, legs, sha to GITHUB_OUTPUT.
+//                           review, and record the start when it is owed the check of Codex;
+//                           post the status. Writes action, legs, sha to GITHUB_OUTPUT.
 //   record <pr> <sha> <dir> <review|verify>
 //                           merge the leg outputs under <dir>/<leg>/ into the head's state
 //                           comment and post the status. Writes relay=true|false.
@@ -14,12 +15,18 @@
 //   gate <pr>               recompute and post the status
 //   sweep                   recompute every open PR's status; print the PRs owed paid work
 //
+// To review a head again, delete its state comment. The next plan claims the head as new and
+// counts it against the daily cap: the passes run again and a new relay goes out. The earlier
+// relay and Codex's rulings on it no longer count.
+//
 // Env: GH_TOKEN; MACHINE (the machine login); MAINTAINER; REVIEW_FLEET_ENABLED,
 // REVIEW_FLEET_DAILY_CAP, REVIEW_FLEET_CODEX_TIMEOUT_MINUTES (repository variables).
 import { execFileSync } from 'node:child_process'
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { breakGlassAuthorized, lastLabeler } from '../merge/gate.mjs'
+import { validOutput } from './output.mjs'
 
 export const CODEX = 'chatgpt-codex-connector[bot]'
 export const CONTEXT = 'review/fleet'
@@ -35,16 +42,26 @@ const CLAUDE_TIMEOUT_MINUTES = 180
 // GitHub's 65,536-character comment limit.
 export const MAX_FINDINGS = 15
 const COMMENT_LIMIT = 60000
+// The Claude check of Codex starts at most this many times at one head. Codex posting more
+// findings at the same head starts another; past the limit the head fails.
+export const MAX_VERIFY_ATTEMPTS = 3
 // The status a break-glass override posts. merge-gate reads it as no review and checks the
 // label itself, so the override ends when the label goes.
 export const BREAK_GLASS_DESCRIPTION = `${BREAK_GLASS} applied by the maintainer; no review`
 
+// An unset number takes its default. A set one that is not a whole number stops the run: a
+// mistyped cap must not read as the default of 40.
 export function settings(env) {
-  const int = (v, d) => (/^\d+$/.test(v ?? '') ? Number(v) : d)
+  const int = (name, fallback) => {
+    const v = (env[name] ?? '').trim()
+    if (v === '') return fallback
+    if (!/^\d+$/.test(v)) throw new Error(`${name} is "${v}"; it must be a whole number`)
+    return Number(v)
+  }
   return {
     enabled: (env.REVIEW_FLEET_ENABLED ?? '').trim().toLowerCase() !== 'false',
-    dailyCap: int(env.REVIEW_FLEET_DAILY_CAP, 40),
-    codexTimeout: int(env.REVIEW_FLEET_CODEX_TIMEOUT_MINUTES, 45)
+    dailyCap: int('REVIEW_FLEET_DAILY_CAP', 40),
+    codexTimeout: int('REVIEW_FLEET_CODEX_TIMEOUT_MINUTES', 45)
   }
 }
 
@@ -68,18 +85,30 @@ export function eligible(pr, { maintainer, machine, repo }) {
   return { ok: true, why: '' }
 }
 
-const STATE_RE = new RegExp(`<!-- ${STATE_MARK} (\\{.*?\\}) -->`, 's')
+const STATE_RE = new RegExp(`^<!-- ${STATE_MARK} (\\{.*\\}) -->$`, 's')
 
-// The newest state comment the machine account posted for this head, or null.
+// The newest state comment the machine account posted for this head, or null. The state is the
+// comment's last line, which the renderer writes itself after every model-written string, so a
+// marker quoted in a finding is never read as the record.
 export function readState(comments, machine, sha) {
   for (const c of [...comments].reverse()) {
     if (c.user?.login !== machine) continue
-    const m = STATE_RE.exec(c.body ?? '')
-    if (!m) continue
+    const unreadable = () =>
+      (c.body ?? '').startsWith('**Review fleet:') &&
+      (c.body ?? '').split('\n')[0].includes(`at \`${sha.slice(0, 12)}\``)
+        ? { id: c.id, body: c.body, state: { sha, invalid: true } }
+        : null
+    const m = STATE_RE.exec((c.body ?? '').trimEnd().split(/\r?\n/).pop())
+    if (!m) {
+      if (unreadable()) return unreadable()
+      continue
+    }
     let state
     try {
       state = JSON.parse(m[1])
+      if (!state || typeof state !== 'object') throw new Error('invalid state')
     } catch {
+      if (unreadable()) return unreadable()
       continue
     }
     if (state.sha === sha) return { id: c.id, body: c.body, state }
@@ -155,13 +184,21 @@ export function codexAnswered({ reviews, comments }, sha, after) {
   return review || summary
 }
 
-// Codex's rulings on the relayed findings: `F<n>: CONFIRMED` or `F<n>: REFUTED` in any text it
-// wrote after the relay. A later ruling on the same finding replaces an earlier one.
+// A ruling is a line that starts with it, list marker and emphasis aside: `F<n>: CONFIRMED` or
+// `F<n>: REFUTED`. A ruling quoted mid-sentence is not one, and neither is the relay's own
+// `CONFIRMED | REFUTED` template echoed back.
+const RULING_RE =
+  /^[ \t]*(?:[-*+][ \t]+)?[*_`]*(F\d+)[*_`]*[ \t]*[:-][*_`]*[ \t]*[*_`]*(CONFIRMED|REFUTED)\b([*_`]*[^\n]*)$/gm
+
+// Codex's rulings on the relayed findings, from any text it wrote after the relay. When it both
+// confirms and refutes a finding, the confirmation stands, whichever text or line came first:
+// the sources carry no order worth trusting, and a contradiction must not read green.
 export function parseRulings(texts) {
   const rulings = {}
   for (const t of texts) {
-    for (const m of String(t).matchAll(/\b(F\d+)\s*[:-]\s*\**\s*(CONFIRMED|REFUTED)\b/g)) {
-      rulings[m[1]] = m[2]
+    for (const m of String(t).matchAll(RULING_RE)) {
+      if (/^[*_`]*[ \t]*\|[ \t]*[*_`]*(?:CONFIRMED|REFUTED)\b/.test(m[3])) continue
+      if (rulings[m[1]] !== 'CONFIRMED') rulings[m[1]] = m[2]
     }
   }
   return rulings
@@ -191,10 +228,18 @@ export function codexTexts({ reviews, comments, reviewComments }, sha, after) {
   ]
 }
 
+const stringList = (value) => Array.isArray(value) && value.every((x) => typeof x === 'string')
+const listMap = (value) =>
+  value &&
+  typeof value === 'object' &&
+  !Array.isArray(value) &&
+  Object.values(value).every(stringList)
+
 const minutesSince = (at, now) => (Date.parse(now) - Date.parse(at)) / 60000
 
 // The whole decision. Missing input is its own failure: a pass that did not report, Codex never
-// answering, and a relayed finding Codex did not rule on all read red, never green.
+// answering, a relayed finding Codex did not rule on and a blocking Codex finding the Claude
+// check could not decide all read red, never green.
 export function decide(f) {
   const { state, now } = f
   const out = (status, description, owed = null, reasons = []) => ({
@@ -205,7 +250,27 @@ export function decide(f) {
   })
   if (f.breakGlass) return out('success', BREAK_GLASS_DESCRIPTION)
   if (!state) return out('pending', 'owed a review', 'review')
+  if (
+    state.invalid ||
+    state.v !== 1 ||
+    !/^[a-f0-9]{40}$/.test(state.sha ?? '') ||
+    !Number.isFinite(Date.parse(state.startedAt))
+  )
+    return out('failure', 'the saved review state is unreadable')
+  if (state.claude && state.claude.contractVersion !== 2)
+    return out('failure', 'the saved review needs a new completed source review')
+  if (
+    (state.claude &&
+      (!Array.isArray(state.claude.findings) ||
+        !listMap(state.claude.runtimeLimitations) ||
+        (state.claude.notChecked !== undefined && !listMap(state.claude.notChecked)))) ||
+    (state.verifyRuntimeLimitations !== undefined && !stringList(state.verifyRuntimeLimitations)) ||
+    (state.verifyNotChecked !== undefined && !stringList(state.verifyNotChecked))
+  )
+    return out('failure', 'the saved source review is malformed')
   const legs = state.claude?.legs ?? {}
+  if (state.claude && Object.keys(legs).length === 0)
+    return out('failure', 'the saved source review has no pass results')
   if (Object.keys(legs).length === 0) {
     if (minutesSince(state.startedAt, now) > CLAUDE_TIMEOUT_MINUTES) {
       return out('failure', 'the Claude passes started and never reported')
@@ -227,7 +292,11 @@ export function decide(f) {
 
   const claude = state.claude.findings ?? []
   const claudeBlocking = claude.filter((x) => x.severity === 'BLOCKING')
-  if (!f.relay) {
+  // A relay older than the claim asked about an earlier review of this head (the retry path in
+  // the header), and finding IDs restart with each review, so its rulings are not these.
+  const stale = f.relay && Date.parse(f.relay.at) < Date.parse(state.startedAt)
+  const relay = stale ? null : f.relay
+  if (!relay) {
     if (minutesSince(state.startedAt, now) > CLAUDE_TIMEOUT_MINUTES) {
       return out(
         'failure',
@@ -237,7 +306,7 @@ export function decide(f) {
     return out('pending', 'Codex not yet asked', 'relay')
   }
   if (!f.codexDone) {
-    if (minutesSince(f.relay.at, now) > f.codexTimeout) {
+    if (minutesSince(relay.at, now) > f.codexTimeout) {
       return out('failure', `Codex did not review the head within ${f.codexTimeout} minutes`)
     }
     return out('pending', 'waiting for Codex')
@@ -252,10 +321,20 @@ export function decide(f) {
   const verified = state.claudeVerify ?? {}
   const unverified = f.codexFindings.filter((x) => !verified[x.id])
   if (unverified.length) {
-    if (state.verifyFailedFor === f.codexFindings.map((x) => x.id).join(',')) {
+    const asked = f.codexFindings.map((x) => x.id).join(',')
+    const checking = `Claude checking ${unverified.length} Codex finding(s)`
+    const run = state.verify
+    if (state.verifyFailedFor === asked) {
       reasons.push('the Claude check of Codex did not finish')
+    } else if (run?.for === asked) {
+      // Started for these findings and no result recorded: wait, then fail. Never start it again.
+      if (minutesSince(run.startedAt, now) <= CLAUDE_TIMEOUT_MINUTES)
+        return out('pending', checking)
+      reasons.push('the Claude check of Codex started and never reported')
+    } else if ((run?.attempts ?? 0) >= MAX_VERIFY_ATTEMPTS) {
+      reasons.push(`the Claude check of Codex ran ${run.attempts} times and findings are unchecked`)
     } else {
-      return out('pending', `Claude checking ${unverified.length} Codex finding(s)`, 'verify')
+      return out('pending', checking, 'verify')
     }
   }
   const codexConfirmed = f.codexFindings.filter(
@@ -264,10 +343,29 @@ export function decide(f) {
   if (codexConfirmed.length) {
     reasons.push(`Claude confirmed ${codexConfirmed.length} blocking Codex finding(s)`)
   }
+  // An unclear ruling is a check that was not made, so it is not a refutation.
+  const codexUndecided = f.codexFindings.filter(
+    (x) =>
+      codexBlocks(x) && verified[x.id] && !['CONFIRMED', 'REFUTED'].includes(verified[x.id].ruling)
+  )
+  if (codexUndecided.length) {
+    reasons.push(
+      `the Claude check could not decide ${codexUndecided.length} blocking Codex finding(s)`
+    )
+  }
   if (reasons.length) return out('failure', reasons.join('; '), null, reasons)
   const refuted = claudeBlocking.length + f.codexFindings.filter(codexBlocks).length
   return out('success', `no confirmed blocking finding (${refuted} blocking raised and refuted)`)
 }
+
+// Model-written text as the comments print it: an HTML comment opener is spelled out, so the
+// text can neither hide what follows it nor pass for one of the fleet's markers.
+const inert = (s) => String(s ?? '').replace(/<!--/g, '&lt;!--')
+
+// Model-written text in the relay, which goes out under the maintainer's name: a zero-width
+// space follows every @, so the text can start neither Codex nor any other assistant that
+// answers a mention. The first line is the one mention the relay makes.
+const unmention = (s) => inert(s).replace(/@/g, '@\u200b')
 
 export function relayBody(state, sha) {
   const blocking = (state.claude?.findings ?? []).filter((x) => x.severity === 'BLOCKING')
@@ -284,9 +382,11 @@ export function relayBody(state, sha) {
       ''
     )
     for (const x of blocking) {
-      const at = x.file ? ` (\`${x.file}${x.line ? `:${x.line}` : ''}\`)` : ''
-      lines.push(`- **${x.id}**${at}: ${x.plain} ${x.detail}`.slice(0, 1500))
-      if (x.failure_scenario) lines.push(`  Failure scenario: ${x.failure_scenario}`.slice(0, 600))
+      const at = x.file ? ` (\`${unmention(x.file)}${x.line ? `:${x.line}` : ''}\`)` : ''
+      lines.push(`- **${x.id}**${at}: ${unmention(x.plain)} ${unmention(x.detail)}`.slice(0, 1500))
+      if (x.failure_scenario) {
+        lines.push(`  Failure scenario: ${unmention(x.failure_scenario)}`.slice(0, 600))
+      }
     }
     lines.push(
       '',
@@ -301,13 +401,16 @@ export function relayBody(state, sha) {
 }
 
 function cell(s) {
-  return String(s ?? '')
-    .replace(/\|/g, '\\|')
-    .replace(/\s+/g, ' ')
-    .slice(0, 300)
+  return inert(
+    String(s ?? '')
+      .replace(/\|/g, '\\|')
+      .replace(/\s+/g, ' ')
+      .slice(0, 300)
+  )
 }
 
-// < and > are escaped, so no model-written text can end the HTML comment that carries the state.
+// < and > are escaped inside the state's own JSON, so no string in it can end the HTML comment
+// that carries it. Text outside the JSON is a separate matter: see readState and inert.
 const stateJson = (state) => JSON.stringify(state).replace(/</g, '\\u003c').replace(/>/g, '\\u003e')
 
 export function renderState(state, verdict, extra = {}) {
@@ -348,6 +451,22 @@ function renderBody(state, verdict, extra, details) {
         ].join('\n')
       : '',
     '',
+    '<details><summary>Runtime limitations, not verified</summary>',
+    '',
+    ...Object.entries(state.claude?.runtimeLimitations ?? {}).flatMap(([leg, limits]) =>
+      limits.map((text) => `- ${leg}: ${inert(text)}`)
+    ),
+    ...(state.verifyRuntimeLimitations ?? []).map((text) => `- verify-codex: ${inert(text)}`),
+    '</details>',
+    '',
+    '<details><summary>Unfinished source review</summary>',
+    '',
+    ...Object.entries(state.claude?.notChecked ?? {}).flatMap(([leg, items]) =>
+      items.map((text) => `- ${leg}: ${inert(text)}`)
+    ),
+    ...(state.verifyNotChecked ?? []).map((text) => `- verify-codex: ${inert(text)}`),
+    '</details>',
+    '',
     state.claude?.dropped
       ? `The record holds ${MAX_FINDINGS} findings; ${state.claude.dropped} non-blocking finding(s) were left out.`
       : '',
@@ -358,7 +477,7 @@ function renderBody(state, verdict, extra, details) {
           '',
           ...(state.claude?.findings ?? []).map(
             (x) =>
-              `**${x.id}** (${x.leg}, ${x.severity}) \`${x.file}${x.line ? `:${x.line}` : ''}\`: ${x.detail}${x.failure_scenario ? ` Failure scenario: ${x.failure_scenario}` : ''}`.slice(
+              `**${x.id}** (${x.leg}, ${x.severity}) \`${inert(x.file)}${x.line ? `:${x.line}` : ''}\`: ${inert(x.detail)}${x.failure_scenario ? ` Failure scenario: ${inert(x.failure_scenario)}` : ''}`.slice(
                 0,
                 2500
               ) + '\n'
@@ -377,16 +496,18 @@ function renderBody(state, verdict, extra, details) {
 export function mergeFinders(state, outputs) {
   const legs = {}
   const notChecked = {}
+  const runtimeLimitations = {}
   const all = []
   for (const leg of FINDER_LEGS) {
     const o = outputs[leg]
-    if (!o || !Array.isArray(o.findings) || !Array.isArray(o.not_checked)) {
+    if (!validOutput('findings', o)) {
       legs[leg] = 'failed'
       continue
     }
-    const skipped = o.not_checked.map((x) => String(x).slice(0, 300)).filter((x) => x.trim())
-    legs[leg] = skipped.length ? 'incomplete' : 'done'
-    if (skipped.length) notChecked[leg] = skipped.slice(0, 5)
+    const skipped = o.not_checked
+    legs[leg] = skipped.length || !o.source_review_complete ? 'incomplete' : 'done'
+    if (skipped.length) notChecked[leg] = skipped
+    runtimeLimitations[leg] = o.runtime_limitations
     for (const x of o.findings) {
       all.push({
         leg,
@@ -402,24 +523,48 @@ export function mergeFinders(state, outputs) {
   const blocking = all.filter((x) => x.severity === 'BLOCKING')
   const ordered = [...blocking, ...all.filter((x) => x.severity !== 'BLOCKING')]
   const findings = ordered.slice(0, MAX_FINDINGS).map((x, i) => ({ id: `F${i + 1}`, ...x }))
-  const claude = { legs, findings }
+  const claude = { contractVersion: 2, legs, findings, runtimeLimitations }
   if (Object.keys(notChecked).length) claude.notChecked = notChecked
   if (ordered.length > MAX_FINDINGS) claude.dropped = ordered.length - MAX_FINDINGS
   if (blocking.length > MAX_FINDINGS) claude.droppedBlocking = blocking.length - MAX_FINDINGS
   return { ...state, claude }
 }
 
+// Mark the check of these Codex findings started. plan writes this before the paid pass runs,
+// so a pass that records no result is bounded by its start time and the attempt count.
+export function startVerify(state, ids, now) {
+  const attempts = (state.verify?.attempts ?? 0) + 1
+  return { ...state, verify: { for: ids.join(','), startedAt: now, attempts } }
+}
+
 export function mergeVerify(state, output, ids) {
-  if (!output || !Array.isArray(output.rulings)) return { ...state, verifyFailedFor: ids.join(',') }
-  const claudeVerify = { ...(state.claudeVerify ?? {}) }
+  if (!validOutput('rulings', output)) return { ...state, verifyFailedFor: ids.join(',') }
+  state = {
+    ...state,
+    verifyRuntimeLimitations: output.runtime_limitations,
+    verifyNotChecked: output.not_checked
+  }
+  if (!output.source_review_complete || output.not_checked.length)
+    return { ...state, verifyFailedFor: ids.join(',') }
+  // A pass that rules twice on one finding keeps the ruling that blocks, whatever the order, as
+  // parseRulings does for Codex: a later refutation never erases a confirmation or an unclear.
+  const weight = { REFUTED: 0, UNCLEAR: 1, CONFIRMED: 2 }
+  const ruled = {}
   for (const r of output.rulings) {
     if (!ids.includes(r.id)) continue
-    if (!['CONFIRMED', 'REFUTED', 'UNCLEAR'].includes(r.ruling)) continue
-    claudeVerify[r.id] = { ruling: r.ruling, reason: String(r.reason ?? '').slice(0, 300) }
+    if (!Object.hasOwn(weight, r.ruling)) continue
+    if (ruled[r.id] && weight[ruled[r.id].ruling] >= weight[r.ruling]) continue
+    ruled[r.id] = { ruling: r.ruling, reason: String(r.reason ?? '').slice(0, 300) }
   }
+  const claudeVerify = { ...(state.claudeVerify ?? {}), ...ruled }
   // A ruling the pass left out is a failed check, not a reason to start another paid pass.
   const missing = ids.filter((id) => !claudeVerify[id])
-  return { ...state, claudeVerify, verifyFailedFor: missing.length ? ids.join(',') : undefined }
+  return {
+    ...state,
+    claudeVerify,
+    verifyRuntimeLimitations: output.runtime_limitations,
+    verifyFailedFor: missing.length ? ids.join(',') : undefined
+  }
 }
 
 // --- I/O ---------------------------------------------------------------------------------
@@ -445,28 +590,24 @@ function env() {
   }
 }
 
-function lastLabeler(repo, n, name) {
-  const events = api(`repos/${repo}/issues/${n}/events?per_page=100`).filter(
-    (ev) => ev.event === 'labeled' && ev.label?.name === name
-  )
-  return events[events.length - 1]?.actor?.login ?? ''
-}
-
 // Everything the decision reads about PR n at commit sha (its head unless given).
 function gather(repo, n, e, pr, sha = pr.head.sha) {
   const comments = api(`repos/${repo}/issues/${n}/comments?per_page=100`)
   const reviews = api(`repos/${repo}/pulls/${n}/reviews?per_page=100`)
   const reviewComments = api(`repos/${repo}/pulls/${n}/comments?per_page=100`)
   const relay = relayFor(comments, e.maintainer, sha)
-  const breakGlass =
-    pr.labels.some((l) => l.name === BREAK_GLASS) &&
-    lastLabeler(repo, n, BREAK_GLASS) === e.maintainer
+  const statuses = api(`repos/${repo}/commits/${sha}/statuses?per_page=100`)
+  const breakGlass = breakGlassAuthorized(
+    pr.labels.map((l) => l.name),
+    statuses,
+    lastLabeler(repo, n, BREAK_GLASS),
+    e.maintainer,
+    sha
+  )
   return {
     sha,
     found: readState(comments, e.machine, sha),
-    status: api(`repos/${repo}/commits/${sha}/statuses?per_page=100`).find(
-      (st) => st.context === CONTEXT && st.creator?.login === e.machine
-    ),
+    status: statuses.find((st) => st.context === CONTEXT && st.creator?.login === e.machine),
     relay,
     breakGlass,
     codexDone: relay ? codexAnswered({ reviews, comments }, sha, relay.at) : false,
@@ -519,12 +660,23 @@ function writeComment(repo, n, id, body) {
 // Post the verdict and, when the head has a state comment, bring it up to date.
 // Writes only what changed, so the sweep's quarter-hourly pass costs no writes on a quiet PR.
 function publish(repo, n, g, state, verdict) {
+  // Save the complete report before success: a size or API failure must never leave a green
+  // status for findings and runtime limitations that were not persisted.
+  try {
+    if (g.found && !state?.invalid) {
+      const body = renderState(state, verdict, g)
+      if (body !== g.found.body) writeComment(repo, n, g.found.id, body)
+    }
+  } catch (error) {
+    postStatus(repo, g.sha, {
+      status: 'failure',
+      description: 'the review report could not be saved'
+    })
+    throw error
+  }
   const same = g.status?.state === verdict.status && g.status?.description === verdict.description
   if (!same) postStatus(repo, g.sha, verdict)
   if (!same && verdict.status === 'success') rerunRedGates(repo, g.sha)
-  if (!g.found) return
-  const body = renderState(state, verdict, g)
-  if (body !== g.found.body) writeComment(repo, n, g.found.id, body)
 }
 
 function readLeg(dir, leg) {
@@ -569,9 +721,15 @@ function plan(repo, n) {
     postStatus(repo, g.sha, running)
     return output({ action: 'review', legs: JSON.stringify(FINDER_LEGS), sha: g.sha })
   }
+  if (verdict.owed === 'verify') {
+    // Like the claim: the start is on the record before any paid step.
+    const ids = g.codexFindings.map((x) => x.id)
+    const started = startVerify(state, ids, new Date().toISOString())
+    publish(repo, n, g, started, judge(g, started, e))
+    return output({ action: 'verify', legs: JSON.stringify([VERIFY_LEG]), sha: g.sha })
+  }
   publish(repo, n, g, state, verdict)
-  const legs = verdict.owed === 'verify' ? [VERIFY_LEG] : []
-  output({ action: verdict.owed ?? 'none', legs: JSON.stringify(legs), sha: g.sha })
+  output({ action: verdict.owed ?? 'none', legs: '[]', sha: g.sha })
 }
 
 // kind is the plan's action: `review` records the finder passes, `verify` the check of Codex.

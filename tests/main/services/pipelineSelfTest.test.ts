@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   chmodSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -8,9 +9,10 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync
 } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import { createHash } from 'crypto'
 import type { BrowserWindow } from 'electron'
@@ -161,12 +163,12 @@ describe('capture-pipeline self-test sandbox (#614)', () => {
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-selftest-'))
     initLogger(tempDir, 'pipeline-self-test-session')
     await initDatabase(':memory:')
-    // The storage root predates the launch and is the configured one, as on
-    // any launch after the first: the sweep reads no other root.
-    mkdirSync(join(tempDir, 'captures'))
-    initStorage(join(tempDir, 'captures'))
     initSettings(tempDir)
-    updateSettings({ operatorName: 'Test Operator', storagePath: join(tempDir, 'captures') })
+    updateSettings({ operatorName: 'Test Operator' })
+    // An earlier launch: it starts the storage record the sweep requires,
+    // before any case of the test is made.
+    launch()
+    await tick()
     resetInstallationId()
     initInstallationId(tempDir)
     sessionService = createSessionService()
@@ -193,6 +195,22 @@ describe('capture-pipeline self-test sandbox (#614)', () => {
     disposeLogger()
     rmSync(tempDir, { recursive: true, force: true })
   })
+
+  // One launch as the sweep sees it: the storage half of boot
+  // (src/main/index.ts), with its fallback, and then the sweep.
+  const launch = (configured = join(tempDir, 'captures'), fallback?: string): void => {
+    try {
+      initStorage(configured)
+    } catch (err) {
+      if (!fallback) throw err
+      initStorage(fallback)
+    }
+    sweepPipelineSelfTestResidue(tempDir)
+  }
+
+  // A case counts as made after the storage record began only by a later
+  // clock reading, so tests let the clock move on before making one.
+  const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 2))
 
   const runSelfTest = (): Promise<Response> =>
     fetch(`${baseUrl}/api/captures/test`, {
@@ -442,7 +460,7 @@ describe('capture-pipeline self-test sandbox (#614)', () => {
     rmSync(sandbox.root, { recursive: true, force: true })
   })
 
-  it('reads a case as residue only by its name, its captures and its storage', async () => {
+  it('refuses a case by its name, a foreign capture or a folder under the storage root', async () => {
     expect(isPipelineSelfTestResidue(createCase({ name: 'Real Investigation' }).id)).toBe(false)
     expect(isPipelineSelfTestResidue('no-such-case')).toBe(false)
 
@@ -567,7 +585,7 @@ describe('capture-pipeline self-test sandbox (#614)', () => {
     write(held.id)
 
     expect(isPipelineSelfTestResidue(held.id)).toBe(false)
-    sweepPipelineSelfTestResidue()
+    launch()
 
     expect(getCase(held.id)?.name).toBe(PIPELINE_SELF_TEST_CASE_NAME)
     expect(logged('captureServer.self_test_residue_kept')).toEqual([
@@ -591,7 +609,7 @@ describe('capture-pipeline self-test sandbox (#614)', () => {
 
     expect(isPipelineSelfTestResidue(tagged.caseId)).toBe(false)
     expect(isPipelineSelfTestResidue(starred.caseId)).toBe(false)
-    sweepPipelineSelfTestResidue()
+    launch()
 
     expect(listCaptures(tagged.caseId)).toHaveLength(1)
     expect(listCaptures(starred.caseId)).toHaveLength(1)
@@ -632,7 +650,7 @@ describe('capture-pipeline self-test sandbox (#614)', () => {
     const lookalike = mkdtempSync(join(tmpdir(), 'birdbrain-selftest-lookalike-'))
     mkdirSync(join(lookalike, residue.caseId))
 
-    sweepPipelineSelfTestResidue()
+    launch()
 
     expect(getCase(residue.caseId)).toBeUndefined()
     expect(listCaptures(residue.caseId)).toHaveLength(0)
@@ -665,31 +683,35 @@ describe('capture-pipeline self-test sandbox (#614)', () => {
     updateCase({ id: archived.id, archived: true })
 
     expect(isPipelineSelfTestResidue(archived.id)).toBe(false)
-    sweepPipelineSelfTestResidue()
+    launch()
 
     expect(getCase(archived.id)?.archived).toBe(true)
     expect(logged('captureServer.self_test_residue_removed')).toEqual([])
+    // Not read at all: a case the sweep reads and keeps is logged as kept.
+    expect(logged('captureServer.self_test_residue_kept')).toEqual([])
+    expect(logged('captureServer.self_test_storage_unconfirmed')).toEqual([])
   })
 
-  // F1 of the review at b47ea2556ec4. A case has no folder under a storage
-  // root that is not the one earlier launches wrote under, whatever it holds
-  // on the real one. Each test leaves a sandbox-named case whose only trace of
-  // a foreign write is its folder on the configured volume.
-  describe('when the storage root cannot show what an earlier launch wrote', () => {
+  // The sweep takes a missing folder as proof only under a root that every
+  // launch since the case was made has run on. Each test below leaves a
+  // sandbox-named case whose only trace of a foreign write is its folder on a
+  // volume, and then launches on something else.
+  describe('when the storage root is not the one in use since the case was made', () => {
     let volume: string
     let leftover: SandboxObservation
 
-    // An earlier launch on the configured volume: a killed self-test, and a
-    // folder for its case there that something other than the self-test made.
+    // Earlier launches on the volume: the first starts its storage record, a
+    // self-test is killed, and something other than the self-test leaves a
+    // folder for the case there and no row in the database.
     beforeEach(async () => {
-      volume = join(tempDir, 'volume')
-      mkdirSync(join(volume, 'captures'), { recursive: true })
-      updateSettings({ storagePath: join(volume, 'captures') })
-      initStorage(join(volume, 'captures'))
+      volume = join(tempDir, 'volume', 'captures')
+      mkdirSync(volume, { recursive: true })
+      launch(volume)
+      await tick()
       simulateKill = true
       expect((await readJson(await runSelfTest())).success).toBe(true)
       ;[leftover] = observed
-      mkdirSync(join(volume, 'captures', leftover.caseId))
+      mkdirSync(join(volume, leftover.caseId))
       expect(isPipelineSelfTestResidue(leftover.caseId)).toBe(false)
     })
 
@@ -697,78 +719,325 @@ describe('capture-pipeline self-test sandbox (#614)', () => {
       rmSync(leftover.root, { recursive: true, force: true })
     })
 
-    const expectLeftoverKept = (): void => {
+    // Kept at every launch so far, each logged under the storage code at the
+    // level given, oldest first, and never removed. The log reads newest first.
+    const expectKept = (levels: string[]): void => {
       expect(getCase(leftover.caseId)?.name).toBe(PIPELINE_SELF_TEST_CASE_NAME)
       expect(listCaptures(leftover.caseId)).toHaveLength(1)
       expect(existsSync(leftover.root)).toBe(true)
-      expect(logged('captureServer.self_test_storage_unavailable')).toEqual([
-        { level: 'warn', caseId: leftover.caseId }
-      ])
+      expect(logged('captureServer.self_test_storage_unconfirmed').reverse()).toEqual(
+        levels.map((level) => ({ level, caseId: leftover.caseId }))
+      )
       expect(logged('captureServer.self_test_residue_removed')).toEqual([])
-      expect(logged('captureServer.self_test_residue_kept')).toEqual([])
       expect(cleanupFailures()).toBe(0)
     }
 
-    // The boot sequence in src/main/index.ts: the configured root cannot be
-    // created, so storage falls back to the default root.
-    it('keeps the case after boot fell back to the default root', () => {
-      renameSync(volume, `${volume}-unmounted`)
-      writeFileSync(volume, '')
-      expect(() => initStorage(join(volume, 'captures'))).toThrow()
-      initStorage(join(tempDir, 'captures'))
+    const unmount = (): void => renameSync(dirname(volume), `${dirname(volume)}-unmounted`)
 
-      sweepPipelineSelfTestResidue()
+    // The drive is absent and its mount point cannot be written, so boot falls
+    // back to the default root. The second launch is the one an earlier guard
+    // lost. When the drive returns, the case's folder on it is read again.
+    it('keeps the case on every launch while boot falls back, and when the drive returns', () => {
+      unmount()
+      writeFileSync(dirname(volume), '')
+      launch(volume, join(tempDir, 'captures'))
+      launch(volume, join(tempDir, 'captures'))
+      expectKept(['warn', 'info'])
 
-      expectLeftoverKept()
+      rmSync(dirname(volume))
+      renameSync(`${dirname(volume)}-unmounted`, dirname(volume))
+      launch(volume)
+      expectKept(['warn', 'info'])
+      expect(logged('captureServer.self_test_residue_kept')).toEqual([
+        { level: 'info', caseId: leftover.caseId }
+      ])
     })
 
-    // An unmounted drive whose mount point is still writable: `initStorage`
-    // creates an empty root there and reports nothing.
-    it('keeps the case when the configured root had to be created at this launch', () => {
-      renameSync(volume, `${volume}-unmounted`)
-      initStorage(join(volume, 'captures'))
+    // The same absence, but the folder for the case is gone from the drive when
+    // it returns. The drive's marker is from before the fallback launches, so
+    // the case predates the new run and is still kept.
+    it('keeps the case when the drive returns without its folder for the case', () => {
+      unmount()
+      writeFileSync(dirname(volume), '')
+      launch(volume, join(tempDir, 'captures'))
 
-      sweepPipelineSelfTestResidue()
+      rmSync(dirname(volume))
+      renameSync(`${dirname(volume)}-unmounted`, dirname(volume))
+      rmSync(join(volume, leftover.caseId), { recursive: true })
+      launch(volume)
+      launch(volume)
+      expectKept(['warn', 'warn', 'info'])
+    })
 
-      expectLeftoverKept()
+    // The drive is absent and its mount point is writable: `initStorage`
+    // creates an empty root there, and the next launch finds it in place.
+    it('keeps the case on every launch on a root the app had to create', () => {
+      unmount()
+      launch(volume)
+      launch(volume)
+      expectKept(['warn', 'info'])
+    })
+
+    it('keeps the case when an empty folder already sits at the configured path', () => {
+      unmount()
+      mkdirSync(volume, { recursive: true })
+      launch(volume)
+      launch(volume)
+      expectKept(['warn', 'info'])
+    })
+
+    it('keeps the case after the storage path changes to another existing folder', () => {
+      const other = join(tempDir, 'other')
+      mkdirSync(other)
+      launch(other)
+      launch(other)
+      expectKept(['warn', 'info'])
+    })
+
+    it('keeps the case when the configured path resolves to another folder', () => {
+      const other = join(tempDir, 'other')
+      mkdirSync(other)
+      unmount()
+      mkdirSync(dirname(volume))
+      symlinkSync(other, volume)
+      launch(volume)
+      launch(volume)
+      expectKept(['warn', 'info'])
+    })
+
+    // The copy predates the case's folder and one launch. That launch rewrote
+    // the marker, so the restored root carries one the record no longer names.
+    it('keeps the case when the root is restored from a copy older than the last launch', () => {
+      const backup = join(tempDir, 'backup')
+      cpSync(volume, backup, { recursive: true })
+      rmSync(join(backup, leftover.caseId), { recursive: true })
+      launch(volume)
+      expect(logged('captureServer.self_test_residue_kept')).toEqual([
+        { level: 'info', caseId: leftover.caseId }
+      ])
+
+      rmSync(volume, { recursive: true })
+      cpSync(backup, volume, { recursive: true })
+      launch(volume)
+      launch(volume)
+      expectKept(['warn', 'info'])
+    })
+
+    // The state of an install that held a leftover before the record existed.
+    it('keeps a case made before the storage record began', () => {
+      rmSync(join(volume, leftover.caseId), { recursive: true })
+      rmSync(join(tempDir, 'storage-root.json'))
+      launch(volume)
+      launch(volume)
+      expectKept(['warn', 'info'])
+    })
+
+    it('keeps the case when the storage record cannot be written', () => {
+      rmSync(join(volume, leftover.caseId), { recursive: true })
+      initStorage(volume)
+      sweepPipelineSelfTestResidue(join(tempDir, 'no-such-folder'))
+      expectKept(['warn'])
     })
 
     it.skipIf(process.getuid?.() === 0)(
-      'keeps the case when the storage root cannot be listed',
+      'keeps the case when the marker cannot be rewritten',
       () => {
-        chmodSync(join(volume, 'captures'), 0o000)
-        try {
-          expect(isPipelineSelfTestResidue(leftover.caseId)).toBe(false)
-          sweepPipelineSelfTestResidue()
-          expectLeftoverKept()
-        } finally {
-          chmodSync(join(volume, 'captures'), 0o700)
-        }
+        rmSync(join(volume, leftover.caseId), { recursive: true })
+        chmodSync(join(volume, '.birdbrain-storage-root.json'), 0o400)
+        launch(volume)
+        expectKept(['warn'])
       }
     )
 
-    // The control: the same case with the volume back is read as before.
-    it('sweeps the case once the configured root is back and holds no folder for it', () => {
-      rmSync(join(volume, 'captures', leftover.caseId), { recursive: true })
+    // The marker can be read and rewritten by name, but the root cannot be
+    // listed, so the case having no folder there is not known.
+    it.skipIf(process.getuid?.() === 0)(
+      'keeps the case when the root is the right one and cannot be listed',
+      () => {
+        chmodSync(volume, 0o300)
+        try {
+          expect(isPipelineSelfTestResidue(leftover.caseId)).toBe(false)
+          launch(volume)
+        } finally {
+          chmodSync(volume, 0o700)
+        }
+        expectKept([])
+        expect(logged('captureServer.self_test_storage_unavailable')).toEqual([
+          { level: 'warn', caseId: leftover.caseId }
+        ])
+      }
+    )
 
-      sweepPipelineSelfTestResidue()
+    // The control: every launch since the case was made ran on the volume,
+    // and the volume holds no folder for it.
+    it('sweeps the case when the root is the one in use since it was made', () => {
+      rmSync(join(volume, leftover.caseId), { recursive: true })
+
+      launch(volume)
 
       expect(getCase(leftover.caseId)).toBeUndefined()
       expect(existsSync(leftover.root)).toBe(false)
-      expect(logged('captureServer.self_test_storage_unavailable')).toEqual([])
+      expect(logged('captureServer.self_test_storage_unconfirmed')).toEqual([])
+      expect(logged('captureServer.self_test_residue_removed')).toEqual([
+        { level: 'info', caseId: leftover.caseId }
+      ])
     })
+  })
 
-    // Settings record the default root as an empty path, which boot resolves
-    // itself (src/main/index.ts), so there is no configured root to differ from.
-    it('sweeps under the default root, which settings record as an empty path', () => {
-      updateSettings({ storagePath: '' })
-      initStorage(join(tempDir, 'captures'))
+  // A fresh install: no case, and a root the first launch creates. That launch
+  // starts the record, so a run killed afterwards is swept at the next one.
+  it('starts the storage record on a fresh install and sweeps a run killed after it', async () => {
+    const fresh = join(tempDir, 'fresh', 'captures')
+    launch(fresh)
+    expect(logged('captureServer.self_test_storage_unconfirmed')).toEqual([])
+    await tick()
 
-      sweepPipelineSelfTestResidue()
+    simulateKill = true
+    expect((await readJson(await runSelfTest())).success).toBe(true)
+    const [residue] = observed
+    launch(fresh)
 
-      expect(getCase(leftover.caseId)).toBeUndefined()
-      expect(logged('captureServer.self_test_storage_unavailable')).toEqual([])
-    })
+    expect(getCase(residue.caseId)).toBeUndefined()
+    expect(existsSync(residue.root)).toBe(false)
+    expect(logged('captureServer.self_test_residue_removed')).toEqual([
+      { level: 'info', caseId: residue.caseId }
+    ])
+  })
+
+  // A table a later migration adds is found by a foreign key under any column
+  // name, through as many tables as the key chain has, or by one of the three
+  // column names. `elsewhere` is a row of the new table that names another
+  // case, or nothing: it must not keep this one.
+  interface LaterTable {
+    ddl: string
+    column: string
+    names: (sandbox: SandboxObservation) => string
+    elsewhere: (other: { caseId: string; captureId: string }) => string | null
+  }
+  const laterTables: Array<[string, LaterTable]> = [
+    [
+      'a foreign key to the case under another column name',
+      {
+        ddl: 'CREATE TABLE owner_marks (owner_case TEXT REFERENCES cases(id))',
+        column: 'owner_case',
+        names: ({ caseId }) => caseId,
+        elsewhere: ({ caseId }) => caseId
+      }
+    ],
+    [
+      'a foreign key to the case that names no column',
+      {
+        ddl: 'CREATE TABLE case_flags (flagged TEXT REFERENCES cases)',
+        column: 'flagged',
+        names: ({ caseId }) => caseId,
+        elsewhere: ({ caseId }) => caseId
+      }
+    ],
+    [
+      'a foreign key to one of its captures',
+      {
+        ddl: 'CREATE TABLE capture_flags (flagged TEXT REFERENCES captures(id))',
+        column: 'flagged',
+        names: ({ caseId }) => listCaptures(caseId)[0].id,
+        elsewhere: ({ captureId }) => captureId
+      }
+    ],
+    [
+      'a foreign key to a row the app derived from its capture',
+      {
+        ddl: 'CREATE TABLE build_reviews (build TEXT REFERENCES exhibit_search_builds(exhibit_id))',
+        column: 'build',
+        names: ({ caseId }) => listCaptures(caseId)[0].id,
+        elsewhere: () => null
+      }
+    ],
+    [
+      'a foreign key beside one to its own table',
+      {
+        ddl: 'CREATE TABLE threads (id TEXT PRIMARY KEY, parent TEXT REFERENCES threads(id), owner_case TEXT REFERENCES cases(id))',
+        column: 'owner_case',
+        names: ({ caseId }) => caseId,
+        elsewhere: ({ caseId }) => caseId
+      }
+    ],
+    [
+      'a case_id column and no foreign key',
+      {
+        ddl: 'CREATE TABLE background_jobs (case_id TEXT)',
+        column: 'case_id',
+        names: ({ caseId }) => caseId,
+        elsewhere: ({ caseId }) => caseId
+      }
+    ]
+  ]
+
+  it.each(laterTables)(
+    'keeps a killed run that a later table names by %s',
+    async (_label, table) => {
+      const investigation = createCase({ name: 'Real Investigation' })
+      await seedRealCapture(investigation.id)
+      simulateKill = true
+      expect((await readJson(await runSelfTest())).success).toBe(true)
+      const [sandbox] = observed
+      const [capture] = listCaptures(sandbox.caseId)
+      replaceExhibitFields(
+        {
+          exhibitId: capture.id,
+          caseId: sandbox.caseId,
+          contentHash: capture.hash,
+          textHash: null,
+          extractor: 'test',
+          builtAt: new Date().toISOString(),
+          outcome: 'no-source',
+          skippedJson: null
+        },
+        []
+      )
+      const insert = `INSERT INTO ${table.ddl.split(' ')[2]} (${table.column}) VALUES (?)`
+      getDb().exec(table.ddl)
+      getDb()
+        .prepare(insert)
+        .run(
+          table.elsewhere({
+            caseId: investigation.id,
+            captureId: listCaptures(investigation.id)[0].id
+          })
+        )
+      expect(isPipelineSelfTestResidue(sandbox.caseId)).toBe(true)
+
+      getDb().prepare(insert).run(table.names(sandbox))
+      expect(isPipelineSelfTestResidue(sandbox.caseId)).toBe(false)
+      launch()
+
+      expect(listCaptures(sandbox.caseId)).toHaveLength(1)
+      expect(logged('captureServer.self_test_residue_kept')).toEqual([
+        { level: 'info', caseId: sandbox.caseId }
+      ])
+
+      rmSync(sandbox.root, { recursive: true, force: true })
+    }
+  )
+
+  // Teardown keeps on the same check as the sweep, whatever made it fail.
+  const midRunWrites: Array<[string, (caseId: string) => void]> = [
+    ['its row was edited', (id) => updateCase({ id, description: 'Edited during the run' })],
+    ['it gained a note', (id) => createNote({ caseId: id, body: 'Operator note' })]
+  ]
+
+  it.each(midRunWrites)('keeps the sandbox at teardown when %s, and warns', (_label, write) => {
+    const sandbox = createPipelineSelfTestSandbox()
+    write(sandbox.caseId)
+
+    sandbox.dispose()
+
+    expect(getCase(sandbox.caseId)?.name).toBe(PIPELINE_SELF_TEST_CASE_NAME)
+    expect(existsSync(sandbox.root)).toBe(true)
+    expect(logged('captureServer.self_test_sandbox_kept')).toEqual([
+      { level: 'warn', caseId: sandbox.caseId }
+    ])
+    expect(cleanupFailures()).toBe(0)
+
+    rmSync(sandbox.root, { recursive: true, force: true })
   })
 
   // Teardown reads the same root, so a root it cannot list keeps the sandbox
@@ -810,7 +1079,7 @@ describe('capture-pipeline self-test sandbox (#614)', () => {
         const [residue] = observed
         chmodSync(tmpRoot, 0o500)
 
-        sweepPipelineSelfTestResidue()
+        launch()
 
         expect(getCase(residue.caseId)).toBeUndefined()
         expect(existsSync(residue.root)).toBe(true)
@@ -829,19 +1098,22 @@ describe('capture-pipeline self-test sandbox (#614)', () => {
 })
 
 // `src/main/index.ts` is outside the unit runner, so the launch order is read
-// from its source: the sweep runs once, after the storage root is set, and
-// before anything that reads cases or can start a self-test.
+// from its source: the sweep runs once, straight after the storage root is
+// set, and before anything that reads cases or can start a self-test.
 describe('the self-test residue sweep at launch', () => {
   const boot = readFileSync(join(process.cwd(), 'src/main/index.ts'), 'utf-8')
-  const sweepCall = 'sweepPipelineSelfTestResidue()'
+  const sweepCall = 'sweepPipelineSelfTestResidue(userDataPath)'
 
   it('is called exactly once', () => {
     expect(boot.split(sweepCall)).toHaveLength(2)
   })
 
-  it('runs after both storage initialisations', () => {
-    expect(boot.lastIndexOf('initStorage(')).toBeGreaterThan(-1)
-    expect(boot.indexOf(sweepCall)).toBeGreaterThan(boot.lastIndexOf('initStorage('))
+  // Directly after the block that sets the storage root, at that block's own
+  // depth: not inside its fallback branch, and not behind a condition.
+  it('follows the storage initialisation block, outside its fallback branch', () => {
+    expect(boot).toMatch(
+      /\n {8}initStorage\(defaultCapturesDir\)\n {6}\}\n\n(?: {6}\/\/[^\n]*\n)* {6}sweepPipelineSelfTestResidue\(userDataPath\)\n/
+    )
   })
 
   it.each([

@@ -1,4 +1,4 @@
-import { getDb } from '@main/services/db/core'
+import { getDb, isDatabaseOpen } from '@main/services/db/core'
 import type {
   BackgroundJobState,
   BackgroundJobView,
@@ -163,7 +163,10 @@ export function listJobs(query: RecaptureListJobsQuery): BackgroundJobView[] {
 }
 
 // The jobs this session has queued or is running: after the startup pass, every such row is one.
+// None when no database is open: a restore can start in that state, after one that left the file
+// unreadable, and there is then no row to read.
 export function listActiveJobs(): BackgroundJobView[] {
+  if (!isDatabaseOpen()) return []
   const rows = getDb()
     .prepare(`SELECT * FROM background_jobs WHERE state IN ('queued', 'running') ${QUEUE_ORDER}`)
     .all() as JobRow[]

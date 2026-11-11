@@ -146,6 +146,7 @@ export interface RecaptureService {
   // The pass before the queue runs at startup. `finishRestore` runs it after a restore too.
   recoverStoredJobs: () => void
   // Read before a restore closes the database: the jobs this session has queued or is running.
+  // None when no database is open, as after a restore that left the file unreadable.
   beginRestore: () => BackgroundJobView[]
   // After a restore re-opens the database: the startup pass, which first writes back the row of
   // the job this process is still running, so it ends as it would have, and a `failed` event for

@@ -923,6 +923,26 @@ describe('ipcHandlers — captures', () => {
     expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, captureId))).toBeNull()
   })
 
+  // #1128. The Page tab reads null as a missing archive, so only a file that is not
+  // there answers null; a lookup that fails for any other reason rejects.
+  it('answers the mhtml url, null for a missing file, and rejects a failed lookup', async () => {
+    const rel = `${caseId}/archive-1128.mhtml`
+    const abs = defaultCaptureStore.resolveAbsolute(rel)
+    const { id } = seedCapture({ format: 'mhtml', mhtmlPath: rel })
+    writeFileSync(abs, 'mhtml-bytes')
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, id))).toBe(
+      pathToFileURL(abs).toString()
+    )
+
+    unlinkSync(abs)
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, id))).toBeNull()
+
+    // A path through a regular file fails with ENOTDIR, not ENOENT.
+    writeFileSync(abs, 'mhtml-bytes')
+    const through = seedCapture({ format: 'mhtml', mhtmlPath: `${rel}/inner.mhtml` })
+    await expect(invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, through.id)).rejects.toThrow(/ENOTDIR/)
+  })
+
   // #1708. The parser has its own known answers; this pins the channel's wiring.
   it('answers null links for a capture with no MHTML and for an unknown one', async () => {
     expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_LINKS, captureId))).toBeNull()

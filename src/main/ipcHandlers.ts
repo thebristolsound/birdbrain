@@ -51,7 +51,7 @@ import type {
 import * as dbAdmin from '@main/services/db/dbAdmin'
 import * as dbSnapshots from '@main/services/db/dbSnapshots'
 import { restoreDatabase, type RestoreRejection } from '@main/services/db/dbRestore'
-import { existsSync } from 'fs'
+import { existsSync, statSync } from 'fs'
 import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
 import * as activityRepo from '@main/services/db/activityRepo'
@@ -1269,7 +1269,14 @@ export function registerIpcHandlers(deps: {
     const capture = captureRepo.getCapture(captureId)
     if (!capture || !capture.mhtmlPath) return null
     const abs = defaultCaptureStore.resolveAbsolute(capture.mhtmlPath)
-    if (!existsSync(abs)) return null
+    // The Page tab reports null as a missing archive (#1128), so a file that is not
+    // there is the only null; existsSync would read any failed stat as absent.
+    try {
+      statSync(abs)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+      throw err
+    }
     return pathToFileURL(abs).toString()
   })
 

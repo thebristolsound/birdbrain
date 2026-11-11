@@ -8,15 +8,17 @@
 // The checkout is the pull request's tree, which is read and never run. Every git command gets
 // its arguments as an array, with no shell and neither token in its environment. A branch name
 // from the API is checked as a ref name and resolved to a commit id once; every later command
-// takes commit ids. Each diff passes --no-ext-diff and --no-textconv. Git prints to this
-// process, which writes the files under the inputs directory. The one command that writes
+// takes commit ids. Each diff passes --no-ext-diff and --no-textconv, and every command reads
+// its attributes from an empty tree, so a .gitattributes in the pull request can neither mark a
+// file as binary, which would empty its hunks, nor name a merge or diff program. Git prints to
+// this process, which writes the files under the inputs directory. The one command that writes
 // objects, the automatic merge, writes them to a directory under the inputs that is removed
 // before this returns. The files before the change are written from the stored blobs, so no
 // checkout, filter, attribute or hook takes part.
 import { Buffer } from 'node:buffer'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { closeSync, mkdirSync, openSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ghList, ghRead } from './inputs.mjs'
 
@@ -44,8 +46,10 @@ const GIT_ENV = [
   'GIT_CONFIG_NOSYSTEM'
 ]
 
-function gitIn(dir) {
-  const argv = (args) => ['--no-pager', '-C', dir, ...args]
+// `attributes` is the tree every command takes its attributes from, in place of the checkout.
+function gitIn(dir, attributes) {
+  const source = attributes ? [`--attr-source=${attributes}`] : []
+  const argv = (args) => ['--no-pager', ...source, '-C', dir, ...args]
   const env = (more = {}) => {
     const kept = GIT_ENV.filter((name) => process.env[name] !== undefined)
     return { LC_ALL: 'C', ...Object.fromEntries(kept.map((n) => [n, process.env[n]])), ...more }
@@ -187,6 +191,11 @@ function treeFiles(git, commit, limit) {
     if (mode === '120000') skipped.push({ path, kind: 'symbolic link' })
     else if (mode === '160000') skipped.push({ path, kind: 'submodule' })
     else {
+      // Git prints no size for a blob the checkout lacks.
+      if (!/^\d+$/.test(size))
+        throw new Error(
+          `the tree at ${commit} names a blob the checkout does not hold: ${JSON.stringify(path)}`
+        )
       files.push({ path, blob: oid(blob, 'a blob'), size: Number(size) })
       bytes += Number(size)
     }
@@ -265,8 +274,9 @@ function lower({ pulls, closed, mine, repo, listed }) {
 }
 
 // `pulls` is every open pull request of the repository and `closed` its most recently updated
-// closed ones, as the API lists them. Everything that can fail is settled before the first file
-// is written.
+// closed ones, as the API lists them. Each check that refuses a head runs before the first file
+// is written. A git command that fails after that leaves the files written so far and throws,
+// and leg.sh stops there.
 export function prepareHistory({
   dir,
   out,
@@ -281,7 +291,10 @@ export function prepareHistory({
   if (!Array.isArray(closed)) throw new Error('no list of recently closed pull requests')
   const mine = pulls.find((p) => p?.number === number)
   if (!mine) throw new Error(`pull request #${number} is not among the open pull requests`)
-  const git = gitIn(dir)
+  // Git resolves a relative object directory against the checkout, not against this process.
+  out = resolve(out)
+  const empty = oid(gitIn(dir).text(['hash-object', '-t', 'tree', '/dev/null']), 'empty tree')
+  const git = gitIn(dir, empty)
   const head = oid(git.text(['rev-parse', '--verify', 'HEAD^{commit}']), 'HEAD')
   const mainTip = branchTip(git, 'main')
   const base = mine.base?.ref
@@ -343,7 +356,6 @@ export function prepareHistory({
     })
 
   mkdirSync(join(out, 'commits'))
-  const emptyTree = () => oid(git.text(['hash-object', '-t', 'tree', '/dev/null']), 'empty tree')
   const quarantine = join(out, '.objects')
   let commits
   try {
@@ -359,7 +371,7 @@ export function prepareHistory({
         .text(['log', '-1', '--no-show-signature', '--format=%aI%n%s', id])
         .replace(/\n$/, '')
         .split('\n')
-      const from = parents[0] ?? emptyTree()
+      const from = parents[0] ?? empty
       const patch = `commits/${String(i + 1).padStart(3, '0')}-${id}.patch`
       const { bytes, truncated } = writePatch(git, from, id, join(out, patch))
       return {

@@ -34,7 +34,11 @@ printf '%s\n' "$leg" > "$OUT/pass"
 head="$(git -C "$PR_DIR" rev-parse HEAD)"
 [ "$head" = "$SHA" ] || { echo "checked out $head, expected $SHA" >&2; exit 1; }
 base="$(git -C "$PR_DIR" merge-base origin/main HEAD)"
-git -C "$PR_DIR" diff "$base" HEAD > "$in/diff.patch"
+# Attributes come from an empty tree and no diff program runs, so a .gitattributes in the pull
+# request cannot mark a file as binary and empty its hunks from the diff the pass reviews.
+no_attributes="$(git -C "$PR_DIR" hash-object -t tree /dev/null)"
+git -C "$PR_DIR" --attr-source="$no_attributes" diff --no-ext-diff --no-textconv "$base" HEAD \
+  > "$in/diff.patch"
 gh pr view "$PR" -R "$R" --json title,body,commits \
   --jq '{title, body, commits: [.commits[] | {oid, messageHeadline, messageBody}]}' > "$in/pr.json"
 cp "$here/../../../CLAUDE.md" "$in/rules.md"

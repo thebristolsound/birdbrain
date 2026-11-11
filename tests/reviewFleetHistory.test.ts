@@ -782,6 +782,52 @@ describe('history failures stop the pass', () => {
     expect(s.commits().commits).toHaveLength(5)
   })
 
+  it('fails when the head shares no history with its base branch', () => {
+    const s = keep(stacked())
+    s.git('checkout', '-q', '--orphan', 'island')
+    const lone = s.commit('island.txt', 'i\n', 'unrelated root')
+    s.git('checkout', '-q', 'child')
+    s.origin('island', lone)
+    expect(() => s.prepare({ pulls: [pull(11, s.c2, 'child', 'island')] })).toThrow(
+      'the head has no merge base with the base branch'
+    )
+    expect(readdirSync(s.out)).toEqual([])
+  })
+
+  it('fails, naming the commit, when git cannot compute a merge', () => {
+    const s = keep(stacked())
+    const bin = join(s.root, 'bin')
+    mkdirSync(bin)
+    const real = spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim()
+    writeFileSync(
+      join(bin, 'git'),
+      `#!/usr/bin/env bash
+for arg in "$@"; do
+  if [ "$arg" = merge-tree ]; then echo "fatal: unable to read tree" >&2; exit 128; fi
+done
+exec ${real} "$@"
+`
+    )
+    chmodSync(join(bin, 'git'), 0o755)
+    vi.stubEnv('PATH', `${bin}:${process.env.PATH}`)
+    expect(() => s.prepare()).toThrow(
+      `git merge-tree failed for ${s.mg}: fatal: unable to read tree`
+    )
+    expect(existsSync(join(s.out, 'commits.json'))).toBe(false)
+    expect(existsSync(join(s.out, '.objects'))).toBe(false)
+  })
+
+  // The checkout lacks a file's contents: the step says which file before it writes anything.
+  it('fails before it writes anything when the tree names a blob the checkout lacks', () => {
+    const s = keep(stacked())
+    const blob = s.git('rev-parse', `${s.m1}:main.txt`)
+    rmSync(join(s.dir, '.git', 'objects', blob.slice(0, 2), blob.slice(2)))
+    expect(() => s.prepare()).toThrow(
+      `the tree at ${s.m1} names a blob the checkout does not hold: "main.txt"`
+    )
+    expect(readdirSync(s.out)).toEqual([])
+  })
+
   it('fails when the head shares no history with main', () => {
     const s = keep(stacked())
     s.git('checkout', '-q', '--orphan', 'island')
@@ -842,6 +888,53 @@ describe('what the pull request controls stays data', () => {
     expect(existsSync(marker(s))).toBe(true)
   })
 
+  // A `.gitattributes` is the pull request's to write. It must neither mark a file as binary,
+  // which would empty its hunks from the patch that sets the review scope, nor choose the
+  // program a merge runs.
+  it('takes no attribute from the tree: no hunk is emptied and no merge driver runs', () => {
+    const s = keep(scratch())
+    const ran = marker(s)
+    const program = join(s.root, 'program')
+    writeFileSync(program, `#!/usr/bin/env bash\ntouch ${ran}\nexit 1\n`)
+    chmodSync(program, 0o755)
+    const lines = (middle: string) => `top\n${'x\n'.repeat(8)}${middle}\n${'y\n'.repeat(8)}end\n`
+    const base = s.commit('shared.txt', lines('middle'), 'base')
+    s.git('checkout', '-q', '-b', 'lower')
+    const lower = s.commit('lower.txt', 'l\n', 'lower change')
+    s.git('checkout', '-q', '-b', 'child')
+    writeFileSync(join(s.dir, '.gitattributes'), '*.txt -diff merge=fleet\n')
+    s.git('add', '--', '.gitattributes')
+    s.commit('shared.txt', lines('middle').replace('top', 'top, edited by the child'), 'child')
+    s.git('checkout', '-q', 'main')
+    const main = s.commit('shared.txt', lines('middle').replace('end', 'end, on main'), 'main')
+    s.git('checkout', '-q', 'child')
+    s.git('merge', '-q', '--no-ff', '-m', 'merge main', 'main')
+    const head = s.git('rev-parse', 'HEAD')
+    s.origin('main', main)
+    s.origin('lower', lower)
+    s.git('config', 'merge.fleet.driver', `${program} %A %O %B`)
+    prepareHistory({
+      dir: s.dir,
+      out: s.out,
+      number: 7,
+      repo,
+      pulls: [pull(7, head, 'child', 'lower')],
+      closed: []
+    })
+    expect(existsSync(ran)).toBe(false)
+    const { commits } = s.commits()
+    expect(commits.at(-1)?.auto_merge).toBe('identical')
+    const child = commits.find((c) => c.subject === 'child')
+    expect(s.read(child?.patch ?? '')).toContain('+top, edited by the child')
+    expect(s.read('diff-base.patch')).toContain('+top, edited by the child')
+    for (const c of commits) expect(s.read(c.patch)).not.toContain('Binary files')
+    expect(s.read('diff-base.patch')).not.toContain('Binary files')
+    // The controls: the same repository does both things to a plain git command.
+    expect(s.git('diff', base, head, '--', 'shared.txt')).toContain('Binary files')
+    expect(s.run('merge-tree', '--write-tree', `${head}^1`, `${head}^2`).status).toBe(1)
+    expect(existsSync(ran)).toBe(true)
+  })
+
   it('gives git neither token', () => {
     const s = keep(stacked())
     const bin = join(s.root, 'bin')
@@ -885,9 +978,10 @@ esac
 `
     )
     chmodSync(join(bin, 'gh'), 0o755)
-    return (env = {}) =>
-      spawnSync('node', [HISTORY, repo, number, s.dir, s.out], {
+    return (env = {}, out = s.out, cwd?: string) =>
+      spawnSync('node', [HISTORY, repo, number, s.dir, out], {
         encoding: 'utf8',
+        cwd,
         env: {
           ...process.env,
           PATH: `${bin}:${process.env.PATH}`,
@@ -921,6 +1015,22 @@ esac
     expect(r.status).not.toBe(0)
     expect(r.stderr).toContain('no list of recently closed pull requests')
     expect(readdirSync(s.out)).toEqual([])
+  })
+
+  // The automatic merge of an `ours` merge is a new tree, which git writes under the inputs
+  // directory: a relative one must mean the same place to git as to this process.
+  it('writes the history into an inputs directory given as a relative path', () => {
+    const s = keep(stacked())
+    s.git('checkout', '-q', '-b', 'side', s.m1)
+    s.commit('side.txt', 's\n', 'side change')
+    s.git('checkout', '-q', 'child')
+    s.git('merge', '-q', '-s', 'ours', '-m', 'merge side, keeping ours', 'side')
+    const head = s.git('rev-parse', 'HEAD')
+    const r = command(s, [[s.pulls[0], pull(11, head, 'child', 'parent')]])({}, 'in', s.root)
+    expect(r.status, r.stderr).toBe(0)
+    expect(s.commits().commits.at(-1)).toMatchObject({ oid: head, auto_merge: 'differs' })
+    expect(existsSync(join(s.out, '.objects'))).toBe(false)
+    expect(existsSync(join(s.dir, 'in'))).toBe(false)
   })
 
   it('exits non-zero and writes nothing when the read fails', () => {

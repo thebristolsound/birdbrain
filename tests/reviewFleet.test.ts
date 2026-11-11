@@ -914,6 +914,7 @@ exit "$CLAUDE_EXIT"
       base?: string
       pulls?: (head: string) => unknown[]
       env?: Record<string, string>
+      attributes?: string
     } = {}
   ) => {
     const dir = mkdtempSync(join(tmpdir(), 'fleet-leg-'))
@@ -957,6 +958,10 @@ exit "$CLAUDE_EXIT"
       git('update-ref', 'refs/remotes/origin/main', commit(null, 'base'))
       const lower = commit('lower.txt', 'lower change')
       git('update-ref', 'refs/remotes/origin/lower', lower)
+      if (more.attributes) {
+        writeFileSync(join(dir, 'pr', '.gitattributes'), more.attributes)
+        git('add', '--', '.gitattributes')
+      }
       const head = commit('own.txt', 'own change')
       const mine = {
         number: 7,
@@ -1012,6 +1017,7 @@ exit "$CLAUDE_EXIT"
           head,
           lower,
           files: inputs ? readdirSync(inputs).sort() : null,
+          diff: inputs ? readFileSync(join(inputs, 'diff.patch'), 'utf8') : null,
           sources: inputs ? json('sources.json') : null,
           stack: inputs ? json('stack.json') : null,
           commits: inputs ? json('commits.json').commits : null,
@@ -1127,6 +1133,19 @@ exit "$CLAUDE_EXIT"
     // The shared prompt carries the rule the files serve.
     expect(r.prompt).toContain("is this pull\nrequest's own change and your review scope")
     expect(r.prompt).toContain('What they do not settle stays in\nnot_checked')
+  })
+
+  // A `.gitattributes` in the pull request must not empty a file's hunks from the diff the
+  // pass is told to review.
+  it('writes the whole diff against main whatever attributes the pull request sets', () => {
+    const plain = leg('No issue: source contract.')
+    const marked = leg('No issue: source contract.', 0, 0, { attributes: '*.txt -diff\n' })
+    expect(marked.status, marked.stderr).toBe(0)
+    for (const r of [plain, marked]) {
+      expect(r.diff).toContain('+own change')
+      expect(r.diff).toContain('+lower change')
+      expect(r.diff).not.toContain('Binary files')
+    }
   })
 
   it('rejects a failed model process even when it prints structured output', () => {

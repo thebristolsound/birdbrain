@@ -124,6 +124,9 @@ Three facts shaped the design:
      and no submodule, lists each one it left out, and fails on a path that would leave the
      directory or name a repository inside it. The passes check a "before this change" or
      "on main" citation there.
+   - Every diff, the one against `main` included, and the merge check take their attributes
+     from an empty tree, so a `.gitattributes` in the pull request can neither mark a file as
+     binary, which would empty its hunks, nor name a merge driver.
    - Each source carries its author and creation time. Each issue and pull request among the
      sources carries the comments the maintainer or the machine account wrote on it, without
      the fleet's own state and relay comments. No other author's comment is read.

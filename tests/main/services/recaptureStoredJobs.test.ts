@@ -16,6 +16,7 @@ import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import {
   CANCELLED_JOB_ERROR,
   INTERRUPTED_JOB_ERROR,
+  RESTORE_REMOVED_CAPTURE_ERROR,
   RESTORE_REMOVED_JOB_ERROR,
   RecaptureCancelled,
   RecaptureTimeout,
@@ -604,6 +605,46 @@ describe('stored background jobs', () => {
       expect(JSON.stringify(lines)).not.toContain('example.com')
     })
 
+    // Review of #2141, finding 1: the copy can predate the claim, or the resume before it.
+    it.each(['queued', 'held'] as const)(
+      'lets the job still running end stored when the restored copy holds its row as %s',
+      async (copied) => {
+        const { renderPage, gate, urls } = gatedRender()
+        const svc = makeService(renderPage)
+        const {
+          batchId,
+          jobIds: [running]
+        } = svc.enqueue([{ url: 'https://example.com/x', caseId }])
+        await vi.waitFor(() => expect(gate).toHaveLength(1))
+        const claimed = backgroundJobRepo.getJob(running)
+        // The row as a backup taken before the claim holds it.
+        getDb()
+          .prepare(
+            `UPDATE background_jobs
+                SET state = ?, attempts = 0, started_at = NULL, capture_id = NULL WHERE id = ?`
+          )
+          .run(copied, running)
+        takeBackup()
+
+        await restore(svc)
+        expect(backgroundJobRepo.getJob(running)).toEqual(claimed)
+        expect(svc.status()).toMatchObject({ running: 1, held: 0 })
+
+        gate.shift()!()
+        await svc.idle()
+        expect(backgroundJobRepo.getJob(running)).toMatchObject({
+          state: 'stored',
+          captureId: newCaptures[0].id
+        })
+        expect(jobs.at(-1)).toMatchObject({ jobId: running, state: 'stored' })
+        // Nothing is left to resume, so the page is not captured a second time.
+        expect(svc.resume(batchId)).toEqual({ resumed: 0 })
+        await svc.idle()
+        expect(urls).toEqual(['https://example.com/x'])
+        expect(listCaptures(caseId)).toHaveLength(1)
+      }
+    )
+
     it('ends with a failed event each job of this session that the restored copy does not hold', async () => {
       takeBackup()
       const { renderPage, gate } = gatedRender()
@@ -628,7 +669,9 @@ describe('stored background jobs', () => {
         finishedAt: expect.any(String)
       })
 
-      // The running job reports its own end, and nothing is left to claim.
+      // The running job's row was written back, so it reports its own end, and nothing is left
+      // to claim.
+      expect(stateOf(running)).toBe('running')
       gate.shift()!()
       await svc.idle()
       expect(events.filter(({ jobId }) => jobId === running).map(({ type }) => type)).toEqual([
@@ -636,7 +679,59 @@ describe('stored background jobs', () => {
         'received',
         'stored'
       ])
+      expect(backgroundJobRepo.getJob(running)).toMatchObject({
+        state: 'stored',
+        captureId: newCaptures[0].id
+      })
       expect(gate).toHaveLength(0)
+    })
+
+    // The restore lands after the ingest committed the Capture, while the job's cleanup runs.
+    it('ends failed a job whose Capture the restored copy lacks, though its ingest stored it', async () => {
+      const warn = vi.spyOn(logger, 'warn')
+      const info = vi.spyOn(logger, 'info')
+      let releaseCleanup: () => void = () => {}
+      const cleanupHeld = new Promise<void>((resolve) => (releaseCleanup = resolve))
+      let cleaning = false
+      const svc = makeService(async (url) =>
+        page(url, {
+          cleanup: () => {
+            cleaning = true
+            return cleanupHeld
+          }
+        })
+      )
+      takeBackup()
+      const {
+        jobIds: [id]
+      } = svc.enqueue([{ url: 'https://example.com/a', caseId }])
+      await vi.waitFor(() => expect(cleaning).toBe(true))
+      const [{ id: captureId }] = listCaptures(caseId)
+
+      await restore(svc)
+      expect(stateOf(id)).toBe('running')
+      expect(listCaptures(caseId)).toEqual([])
+
+      releaseCleanup()
+      await svc.idle()
+      const row = backgroundJobRepo.getJob(id)!
+      expect(row).toMatchObject({
+        state: 'failed',
+        failureKind: 'interrupted',
+        error: RESTORE_REMOVED_CAPTURE_ERROR
+      })
+      expect(row).not.toHaveProperty('captureId')
+      expect(
+        warn.mock.calls.filter(([, code]) => code === 'backgroundRenderer.job_failed')
+      ).toEqual([
+        [
+          'backgroundRenderer',
+          'backgroundRenderer.job_failed',
+          { captureId, caseId, failureKind: 'interrupted' }
+        ]
+      ])
+      // No stored line for a job whose row says it failed.
+      expect(info.mock.calls.map(([, code]) => code)).not.toContain('backgroundRenderer.job_stored')
     })
   })
 
@@ -987,7 +1082,8 @@ describe('stored background jobs', () => {
       await svc.idle()
 
       expect(stateOf(id)).toBe('cancelled')
-      expect(destroy).toHaveBeenCalledTimes(1)
+      // The cancel path destroys the stream, and the job's cleanup destroys it again.
+      expect(destroy).toHaveBeenCalled()
       expect(listCaptures(caseId)).toEqual([])
       expect(captureEntries()).toEqual([])
       expect(jobs.map(({ phase }) => phase)).not.toContain('ingesting')

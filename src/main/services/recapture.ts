@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto'
 import { freemem } from 'os'
+import { Readable } from 'stream'
+import { finished } from 'stream/promises'
 import {
   MEMORY_GATE_RETRY_MS,
   MIN_FREE_MEMORY_BYTES,
@@ -23,7 +25,7 @@ import type { CaptureEgress } from '@main/services/egress'
 import { getInstallationId } from '@main/services/installationId'
 import { RefusedAddressError, refusedAddressClass } from '@main/services/localAddressPolicy'
 import { authorChainOf, readCaseChains } from '@main/services/manifest'
-import { getSettings } from '@main/services/settings'
+import { OperatorNameRequiredError, trimmedOperatorName } from '@main/services/operatorName'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import { logger } from '@main/services/logger'
 import { ident, tag } from '@main/services/logSafe'
@@ -216,8 +218,8 @@ export const INTERRUPTED_JOB_ERROR = 'Birdbrain closed while this job was runnin
 export const RESTORE_REMOVED_JOB_ERROR = 'A database restore removed this job'
 export const RESTORE_REMOVED_CAPTURE_ERROR = "A database restore removed this job's Capture"
 
-// How a job ended, as its row records it.
-type JobOutcome = Omit<JobEnd, 'finishedAt'>
+// How a job ended, as its row records it. `logStored` writes a stored job's log line.
+type JobOutcome = Omit<JobEnd, 'finishedAt'> & { logStored?: () => void }
 
 // A job a worker slot is running, which cancel reads. `ended` is set once its render will return
 // no page, and `ingesting` once the job holds the page: the queue sets it, and the phase
@@ -651,7 +653,8 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         return { state: 'skipped', failureKind: 'excluded', error: skipReason }
       }
 
-      const settings = getSettings()
+      const operatorName = trimmedOperatorName()
+      if (!operatorName) throw new OperatorNameRequiredError()
       const ingestStartedAt = Date.now()
       const result = await deps.captureLifecycle.ingest({
         captureId,
@@ -673,7 +676,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         // nothing is written, because there is no redirect to record.
         finalUrl: redirectedFinalUrl(job.url, rendered.finalUrl),
         operatorId: getInstallationId(),
-        operatorName: settings.operatorName ?? '',
+        operatorName,
         toolVersion,
         screenshot: rendered.screenshot,
         method: 'background',
@@ -732,11 +735,16 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         durationMs: Date.now() - started,
         warning
       })
-      logger.info('backgroundRenderer', 'backgroundRenderer.job_stored', {
-        ...jobContext(),
-        ingestMs
-      })
-      return { state: 'stored', warning }
+      // The queue loop logs the stored line once the row is written, outside this `try`, so a
+      // log call that throws cannot change how a stored job ends.
+      const stored = { ...jobContext(), ingestMs }
+      return {
+        state: 'stored',
+        warning,
+        logStored: () => {
+          logger.info('backgroundRenderer', 'backgroundRenderer.job_stored', stored)
+        }
+      }
     } catch (err) {
       // A cancel that `cancel` accepted ends the job cancelled whatever its wind-down threw: it
       // aborts only before the ingest, so nothing was stored. Once the deadline or a refused hop
@@ -775,7 +783,31 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       )
       return { state: 'failed', failureKind, error }
     } finally {
-      await rendered?.cleanup().catch(() => {})
+      // Ingest can reject before it starts reading, leaving the renderer's file open.
+      const stream = rendered?.mhtmlStream
+      const closed =
+        stream instanceof Readable
+          ? finished(stream, { cleanup: true }).catch((err: unknown) => {
+              if (
+                err instanceof Error &&
+                'code' in err &&
+                err.code === 'ERR_STREAM_PREMATURE_CLOSE'
+              ) {
+                return
+              }
+              logger.error(
+                'backgroundRenderer',
+                'backgroundRenderer.cleanup_failed',
+                undefined,
+                err
+              )
+            })
+          : undefined
+      stream?.destroy?.()
+      await closed
+      await rendered?.cleanup().catch((err) => {
+        logger.error('backgroundRenderer', 'backgroundRenderer.cleanup_failed', undefined, err)
+      })
     }
   }
 
@@ -859,11 +891,13 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
             error: RESTORE_REMOVED_CAPTURE_ERROR
           }
         }
+        const { logStored, ...end } = outcome
         const ended = backgroundJobRepo.finishJob(claimed.jobId, {
-          ...outcome,
+          ...end,
           finishedAt: new Date().toISOString()
         })
         if (ended) emitJob(ended)
+        logStored?.()
       } finally {
         runs.delete(claimed.jobId)
       }
@@ -881,6 +915,17 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
   const service: RecaptureService = {
     enqueue(requests) {
       const batchId = randomUUID()
+      // The operator gate (X47), first as at admission: a job that cannot be signed is refused
+      // before its render contacts the site. Ingest checks again for a name cleared meanwhile.
+      if (!trimmedOperatorName()) {
+        const { message: reason } = new OperatorNameRequiredError()
+        return {
+          batchId,
+          accepted: 0,
+          jobIds: [],
+          rejected: requests.map(({ url }) => ({ url, reason }))
+        }
+      }
       const rejected: Array<{ url: string; reason: string }> = []
       const accepted: RecaptureJob[] = []
       for (const request of requests) {

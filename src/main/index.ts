@@ -83,7 +83,7 @@ import {
   type SyncService
 } from '@main/services/sharing/syncService'
 import { createTimestampWorker } from '@main/services/timestampWorker'
-import { runExhibitBackfill } from '@main/services/exhibitBackfill'
+import { runExhibitBackfill, runHeldSigningWork } from '@main/services/exhibitBackfill'
 import { runImportedPathRepair } from '@main/services/importedPathRepair'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createRecaptureService } from '@main/services/recapture'
@@ -901,7 +901,12 @@ if (!gotSingleInstanceLock) {
         checkLeftoverBrowsers,
         popOut: { open: openPopOut, show: showPopOut, dock: dockPopOut, isOpen: popOutIsOpen },
         sharingService,
-        enqueueExhibitTimestamp: (exhibitId) => timestampWorker.enqueueExhibit(exhibitId)
+        enqueueExhibitTimestamp: (exhibitId) => timestampWorker.enqueueExhibit(exhibitId),
+        onOperatorNameSet: () =>
+          runHeldSigningWork({
+            toolVersion: app.getVersion(),
+            processPendingTimestamps: () => timestampWorker.processPending()
+          })
       })
 
       // Start capture server and extension connection monitor. A failed bind

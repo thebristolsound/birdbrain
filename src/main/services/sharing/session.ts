@@ -17,7 +17,7 @@ import {
   readMemberChainText,
   truncateMemberChainLines
 } from '@main/services/manifest'
-import { getSettings } from '@main/services/settings'
+import { OperatorNameRequiredError, trimmedOperatorName } from '@main/services/operatorName'
 import { getStorageRoot } from '@main/services/storage'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import { defaultCaptureStore } from '@main/services/captureStore'
@@ -464,6 +464,8 @@ export async function pullFromPeer(
   }
   beginSession(caseId)
   try {
+    const operatorName = trimmedOperatorName()
+    if (!operatorName) throw new OperatorNameRequiredError()
     // Every stored member chain is judged before anything reads it, whether
     // or not this session will append to it: one stored whole by an older
     // build, or by a session killed before its judgement, that holds an entry
@@ -672,7 +674,6 @@ export async function pullFromPeer(
     // (decision 14), naming the head now held for each chain that advanced.
     if (advanced.length > 0) {
       options.onPhase?.('merge')
-      const { operatorName } = getSettings()
       const merge = appendManifestEntry(caseDir, {
         type: 'merge',
         caseId,

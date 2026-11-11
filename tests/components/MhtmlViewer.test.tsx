@@ -175,6 +175,41 @@ describe('MhtmlViewer', () => {
     expect(screen.getAllByRole('menu')).toHaveLength(1)
   })
 
+  // #1727: Electron leaves linkText empty when the link's content is an image.
+  it.each([
+    ['the link text', { linkText: 'Story', altText: 'Logo' }, 'Story'],
+    ['the alternative text of an image link', { altText: 'Company logo' }, 'Company logo']
+  ])('copies %s as the link text', async (_, params, copied) => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    renderViewer()
+    const guest = await screen.findByTestId('mhtml-viewer')
+
+    guestContextMenu(guest, {
+      linkURL: 'https://a.example/one',
+      srcURL: 'https://a.example/logo.png',
+      mediaType: 'image',
+      ...params
+    })
+    fireEvent.click(await screen.findByTestId('context-menu-item-link-copy-text'))
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(copied))
+  })
+
+  it('turns Copy link text off for an image link with no alternative text', async () => {
+    renderViewer()
+    const guest = await screen.findByTestId('mhtml-viewer')
+
+    guestContextMenu(guest, {
+      linkURL: 'https://a.example/one',
+      srcURL: 'https://a.example/logo.png',
+      mediaType: 'image'
+    })
+
+    const item = await screen.findByTestId('context-menu-item-link-copy-text')
+    expect(item.getAttribute('aria-disabled')).toBe('true')
+  })
+
   it('shows the hovered link’s destination in a bubble and clears it on an empty one', async () => {
     renderViewer()
     const guest = await screen.findByTestId('mhtml-viewer')
@@ -802,18 +837,49 @@ describe('MhtmlViewer', () => {
     expect(screen.queryByTestId('mhtml-viewer')).toBeNull()
   })
 
-  // The `captures:getMhtmlUrl` handler answers null for a capture whose file is gone,
-  // and this viewer has no state for that: the null lands on the
-  // same `!fileUrl` branch as a query still in flight, so a missing archive reads as a
-  // permanent "Loading MHTML...". That is pre-existing and out of scope for #465, and
-  // it is why this case is titled for what it asserts — no guest — rather than for a
-  // report the component does not make. `LegacyHtmlViewer` has the emptyLabel this one
-  // lacks.
-  it('mounts no guest while the archive URL is unresolved', async () => {
+  // #1128. The `captures:getMhtmlUrl` handler answers null once it has looked and found
+  // no file, so null is a missing archive, not a lookup still in flight.
+  it('reports a missing archive without mounting a guest', async () => {
     fakeBridge({ captures: { getMhtmlUrl: vi.fn().mockResolvedValue(null) } })
     renderViewer()
 
-    expect(await screen.findByText('Loading MHTML...')).toBeDefined()
+    expect(await screen.findByText('No MHTML available')).toBeDefined()
+    expect(screen.queryByText('Loading MHTML...')).toBeNull()
     expect(screen.queryByTestId('mhtml-viewer')).toBeNull()
+  })
+
+  it('words the missing archive as its mount asks', async () => {
+    fakeBridge({ captures: { getMhtmlUrl: vi.fn().mockResolvedValue(null) } })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <MhtmlViewer
+          captureId="cap1"
+          caseId="case1"
+          linkClicks={false}
+          emptyLabel="No stored page archive available"
+        />
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText('No stored page archive available')).toBeDefined()
+  })
+
+  it('shows the loading state while the archive URL is still resolving', async () => {
+    let resolve: (url: string | null) => void = () => {}
+    fakeBridge({
+      captures: {
+        getMhtmlUrl: vi.fn(() => new Promise<string | null>((done) => (resolve = done)))
+      }
+    })
+    renderViewer()
+
+    expect(screen.getByText('Loading MHTML...')).toBeDefined()
+    expect(screen.queryByText('No MHTML available')).toBeNull()
+    expect(screen.queryByTestId('mhtml-viewer')).toBeNull()
+
+    await act(async () => resolve(FILE_URL))
+    expect(await screen.findByTestId('mhtml-viewer')).toBeDefined()
+    expect(screen.queryByText('Loading MHTML...')).toBeNull()
   })
 })

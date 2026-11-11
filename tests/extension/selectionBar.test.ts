@@ -906,6 +906,34 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       expect(document.activeElement).toBe(input)
     })
 
+    // A page can change a held input's type during the capture. A number input takes no offsets,
+    // so setSelectionRange would throw out of the release listener and the bar would stay away.
+    it('puts nothing back into an input the page turned into one that takes no offsets', async () => {
+      selectParagraph()
+      await mouseUp()
+      await clickAction('tag')
+      expect(barMessage()).not.toBe('')
+      const input = document.createElement('input')
+      input.value = '1234567890'
+      document.body.append(input)
+      input.focus()
+      input.setSelectionRange(2, 6, 'backward')
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      try {
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        input.type = 'number'
+        expect(input.value).toBe('1234567890')
+        expect(input.selectionStart).toBeNull()
+        dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+        expect(warn).not.toHaveBeenCalledWith(RELEASE_FAILED, expect.anything())
+        expect(bar()).not.toBeNull()
+      } finally {
+        warn.mockRestore()
+      }
+    })
+
     it('finds the field inside a web component', () => {
       setPageHtml(`${PAGE_HTML}<div id="host"></div>`)
       const host = document.getElementById('host')!

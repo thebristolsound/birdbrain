@@ -216,7 +216,7 @@ export function mainHtmlPartIndex(
 export function readMhtmlTitle(buffer: Buffer): string | null {
   const topHeaderEnd = findHeaderEndBuf(buffer, 0)
   if (topHeaderEnd === -1) return null
-  const subject = headerOnItsLine(buffer.slice(0, topHeaderEnd).toString('latin1'), 'subject')
+  const subject = parseHeader(buffer.slice(0, topHeaderEnd).toString('latin1'), 'subject')
   const decoded = subject ? collapseWhitespace(decodeEncodedWords(subject)) : ''
   if (decoded) return decoded
 
@@ -225,14 +225,6 @@ export function readMhtmlTitle(buffer: Buffer): string | null {
   const content = firstTitleContent(first.decode())
   const title = content === null ? '' : collapseWhitespace(decodeXmlEntities(content))
   return title ? title : null
-}
-
-// A header's value, read from its own line only, so a header written with no value is absent.
-// parseHeader's `\s*` crosses the line break and returns the next header line instead.
-function headerOnItsLine(headers: string, name: string): string | null {
-  const m = unfoldHeaders(headers).match(new RegExp('^' + name + ':[ \\t]*([^\\r\\n]*)', 'im'))
-  const value = m ? m[1].trim() : ''
-  return value ? value : null
 }
 
 // The text of the first `<title>` element: the first `<title` tag, the `>` that ends it, then
@@ -344,11 +336,12 @@ function unfoldHeaders(headers: string): string {
   return headers.replace(/\r?\n[ \t]+/g, ' ')
 }
 
+// A header's value, read from its own line only, so a header written with no value is absent.
+// A `\s*` after the colon would cross the line break and return the next header line instead.
 function parseHeader(headers: string, name: string): string | null {
-  const unfolded = unfoldHeaders(headers)
-  const re = new RegExp('^' + name + ':\\s*([^\\r\\n]+)', 'im')
-  const m = unfolded.match(re)
-  return m ? m[1].trim() : null
+  const m = unfoldHeaders(headers).match(new RegExp('^' + name + ':[ \\t]*([^\\r\\n]*)', 'im'))
+  const value = m ? m[1].trim() : ''
+  return value ? value : null
 }
 
 function parseBoundary(ct: string | null): string | null {

@@ -1,14 +1,12 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { Capture, CaptureEvent } from '@shared/types'
-import type { HeldBatch, RecaptureQueueStatus } from '@shared/ipc'
 import { useAppStore } from '@renderer/stores/appStore'
 import { notify } from '@renderer/lib/notify'
-import { CaptureHealth } from '@renderer/components/status/CaptureHealth'
-import { settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
+import { CaptureLog, useSelfTest } from '@renderer/components/status/CaptureHealth'
 import { fakeBridge, quietVpnWarning } from '../renderer/fakeBridge'
 
 const navigate = vi.hoisted(() => vi.fn())
@@ -28,15 +26,6 @@ const capture: Capture = {
   format: 'mhtml',
   method: 'extension'
 }
-const idleQueue: RecaptureQueueStatus = {
-  pending: 0,
-  queued: 0,
-  running: 0,
-  held: 0,
-  heldBatches: [],
-  concurrency: 1,
-  activeUrl: null
-}
 const storedEvent: CaptureEvent = {
   type: 'stored',
   captureId: capture.id,
@@ -46,7 +35,6 @@ const storedEvent: CaptureEvent = {
 }
 
 async function openEvent(event: CaptureEvent = storedEvent) {
-  openPopover()
   const rowText = event.url.length > 40 ? event.url.slice(0, 40) + '...' : event.url
   fireEvent.contextMenu(screen.getByText(rowText))
   return screen.findByRole('menu')
@@ -57,11 +45,11 @@ function renderHealth() {
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  return render(<CaptureHealth />, { wrapper: Wrapper })
-}
-
-function openPopover() {
-  fireEvent.click(screen.getByTitle('Capture pipeline health'))
+  // The status group owns the self-test state; this stands in for it.
+  function Log() {
+    return <CaptureLog selfTest={useSelfTest()} />
+  }
+  return render(<Log />, { wrapper: Wrapper })
 }
 
 beforeEach(() => {
@@ -81,98 +69,11 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('CaptureHealth', () => {
-  it('shows a spinner with the pending count on the closed pill', async () => {
-    fakeBridge({ recapture: { queueStatus: vi.fn(async () => ({ pending: 3, activeUrl: null })) } })
-
-    renderHealth()
-
-    const indicator = await screen.findByTestId('recapture-pending-indicator')
-    expect(indicator.textContent).toBe('3')
-    expect(indicator.getAttribute('title')).toBe('3 background captures queued or running')
-    expect(indicator.querySelector('svg')?.getAttribute('class')).toContain('animate-spin')
-    expect(screen.queryByText('Capture Pipeline')).toBeNull()
-  })
-
-  it('shows no pending indicator when the queue is empty', async () => {
-    const queueStatus = vi.fn(async () => ({ pending: 0, activeUrl: null }))
-    fakeBridge({ recapture: { queueStatus } })
-
-    renderHealth()
-
-    await waitFor(() => expect(queueStatus).toHaveBeenCalled())
-    expect(screen.queryByTestId('recapture-pending-indicator')).toBeNull()
-  })
-
-  it('re-reads the queue when a background capture starts or finishes', async () => {
-    const queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => idleQueue)
-    fakeBridge({ recapture: { queueStatus } })
-    renderHealth()
-    await waitFor(() => expect(queueStatus).toHaveBeenCalledTimes(1))
-
-    const started: CaptureEvent = {
-      type: 'received',
-      source: 'recapture',
-      url: 'https://example.org/queued',
-      timestamp: '2026-11-09T03:48:00Z'
-    }
-    queueStatus.mockResolvedValue({ ...idleQueue, pending: 1, running: 1, activeUrl: started.url })
-    act(() => useAppStore.getState().addCaptureEvent(started))
-    expect((await screen.findByTestId('recapture-pending-indicator')).textContent).toBe('1')
-
-    queueStatus.mockResolvedValue(idleQueue)
-    act(() =>
-      useAppStore
-        .getState()
-        .addCaptureEvent({ ...started, type: 'stored', timestamp: '2026-11-09T03:48:12Z' })
-    )
-    await waitFor(() => expect(screen.queryByTestId('recapture-pending-indicator')).toBeNull())
-  })
-
-  // The last capture's stored event can arrive before the queue drops it, so the
-  // pill relies on the poll to clear.
-  it('polls while a capture is pending and stops once the queue empties', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
-    try {
-      const queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => ({
-        ...idleQueue,
-        pending: 1,
-        running: 1,
-        activeUrl: 'https://example.org/queued'
-      }))
-      fakeBridge({ recapture: { queueStatus } })
-      renderHealth()
-      expect((await screen.findByTestId('recapture-pending-indicator')).textContent).toBe('1')
-
-      queueStatus.mockResolvedValue(idleQueue)
-      await act(() => vi.advanceTimersByTimeAsync(2000))
-      await waitFor(() => expect(screen.queryByTestId('recapture-pending-indicator')).toBeNull())
-
-      const calls = queueStatus.mock.calls.length
-      await act(() => vi.advanceTimersByTimeAsync(6000))
-      expect(queueStatus).toHaveBeenCalledTimes(calls)
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('does not re-read the queue for a capture from another source', async () => {
-    const queueStatus = vi.fn(async () => ({ pending: 0, activeUrl: null }))
-    fakeBridge({ recapture: { queueStatus } })
-    renderHealth()
-    await waitFor(() => expect(queueStatus).toHaveBeenCalledTimes(1))
-
-    act(() => useAppStore.getState().addCaptureEvent(storedEvent))
-
-    await new Promise((resolve) => setTimeout(resolve, 50))
-    expect(queueStatus).toHaveBeenCalledTimes(1)
-  })
-
-  it('shows pending background captures once the popover is open', async () => {
+describe('CaptureLog', () => {
+  it('shows pending background captures', async () => {
     fakeBridge({ recapture: { queueStatus: vi.fn(async () => ({ pending: 2, inFlight: 1 })) } })
 
     renderHealth()
-    openPopover()
 
     expect(await screen.findByTestId('recapture-pending-badge')).toBeDefined()
     expect(screen.getByTestId('recapture-pending-badge').textContent).toContain(
@@ -187,10 +88,9 @@ describe('CaptureHealth', () => {
     })
 
     renderHealth()
-    openPopover()
-    fireEvent.click(screen.getByText('Test Pipeline'))
+    fireEvent.click(screen.getByText('Test pipeline'))
 
-    expect(await screen.findByText('Pipeline OK — verified in 42ms')).toBeDefined()
+    expect(await screen.findByText('Pipeline OK, verified in 42ms')).toBeDefined()
   })
 
   it('surfaces a rejected http test as a failure rather than swallowing it', async () => {
@@ -200,90 +100,10 @@ describe('CaptureHealth', () => {
     })
 
     renderHealth()
-    openPopover()
     fireEvent.click(screen.getByText('Test HTTP'))
 
-    expect(await screen.findByText(/Pipeline FAILED/)).toBeDefined()
-  })
-})
-
-describe('held background captures', () => {
-  const batches: HeldBatch[] = [
-    { batchId: 'batch-a', caseId: 'case-a', caseName: 'Harbour Lane', held: 2 },
-    { batchId: 'batch-b', caseId: 'case-b', caseName: 'Quay Street', held: 1 }
-  ]
-  const heldQueue: RecaptureQueueStatus = { ...idleQueue, held: 3, heldBatches: batches }
-
-  function heldBridge(warn = false) {
-    const queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => heldQueue)
-    const resume = vi.fn(async () => ({ resumed: 1 }))
-    const checkVpnWarning = vi.fn(async (target: { caseId: string }) => ({
-      caseId: target.caseId,
-      warn,
-      canMute: false
-    }))
-    fakeBridge({ recapture: { queueStatus, resume }, egress: { checkVpnWarning } })
-    return { queueStatus, resume, checkVpnWarning }
-  }
-
-  it('shows the held count on the closed pill', async () => {
-    heldBridge()
-    renderHealth()
-
-    const indicator = await screen.findByTestId('recapture-held-indicator')
-    expect(indicator.textContent).toBe('3')
-    expect(indicator.getAttribute('title')).toBe('3 background captures are held')
-    expect(screen.queryByTestId('recapture-pending-indicator')).toBeNull()
-  })
-
-  it('lists each held Batch with its Case and resumes only the one chosen', async () => {
-    const { queueStatus, resume, checkVpnWarning } = heldBridge()
-    renderHealth()
-    openPopover()
-
-    const section = await screen.findByTestId('recapture-held')
-    expect(section.textContent).toContain('3 background captures are held')
-    expect(section.textContent).toContain('Nothing is sent until you resume them.')
-    expect(screen.getByText('2 in Harbour Lane')).toBeDefined()
-    expect(screen.getByText('1 in Quay Street')).toBeDefined()
-    const reads = queueStatus.mock.calls.length
-
-    const buttons = screen.getAllByRole('button', { name: 'Resume' })
-    expect(buttons).toHaveLength(2)
-    fireEvent.click(buttons[1])
-
-    await waitFor(() => expect(resume).toHaveBeenCalledWith({ batchId: 'batch-b' }))
-    expect(resume).toHaveBeenCalledTimes(1)
-    expect(checkVpnWarning).toHaveBeenCalledWith({ caseId: 'case-b' }, 'site')
-    await waitFor(() => expect(queueStatus.mock.calls.length).toBeGreaterThan(reads))
-  })
-
-  it('sends no resume when the Operator stops at the VPN warning', async () => {
-    const { resume, checkVpnWarning } = heldBridge(true)
-    renderHealth()
-    openPopover()
-    fireEvent.click((await screen.findAllByRole('button', { name: 'Resume' }))[0])
-
-    await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
-    act(() => settleVpnWarning('dismiss'))
-    await waitFor(() =>
-      expect(screen.getAllByRole('button', { name: 'Resume' })[0].hasAttribute('disabled')).toBe(
-        false
-      )
-    )
-    expect(checkVpnWarning).toHaveBeenCalledWith({ caseId: 'case-a' }, 'site')
-    expect(resume).not.toHaveBeenCalled()
-  })
-
-  it('shows no held section when nothing is held', async () => {
-    const queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => idleQueue)
-    fakeBridge({ recapture: { queueStatus } })
-    renderHealth()
-    openPopover()
-
-    await waitFor(() => expect(queueStatus).toHaveBeenCalled())
-    expect(screen.queryByTestId('recapture-held')).toBeNull()
-    expect(screen.queryByTestId('recapture-held-indicator')).toBeNull()
+    expect(await screen.findByText(/^HTTP failed: /)).toBeDefined()
+    expect(screen.getByRole('status').textContent).toMatch(/^HTTP failed: /)
   })
 })
 
@@ -313,7 +133,6 @@ describe('pipeline event colors', () => {
       ]
     })
     renderHealth()
-    openPopover()
 
     const iconClass = (type: string) =>
       screen
@@ -371,7 +190,7 @@ describe('pipeline event context menu', () => {
     expect(get).toHaveBeenCalledWith('saved-capture')
   })
 
-  it('copies the full event URL and keeps the parent popover open when selecting a portal item', async () => {
+  it('copies the full event URL and keeps the log on screen when a portal item is chosen', async () => {
     const event = { ...storedEvent, url: 'https://example.org/a/very/long/path/that/is/truncated' }
     useAppStore.setState({ captureEvents: [event] })
     renderHealth()
@@ -380,7 +199,7 @@ describe('pipeline event context menu', () => {
     fireEvent.mouseDown(item)
     fireEvent.click(item)
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(event.url))
-    expect(screen.getByText('Capture Pipeline')).toBeDefined()
+    expect(screen.getByText('Capture log')).toBeDefined()
     expect(get).not.toHaveBeenCalled()
   })
 

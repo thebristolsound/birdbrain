@@ -67,9 +67,10 @@ export function exportSelectorMatches(
   return window.birdbrain.selectors.exportMatches(caseId, selectorId)
 }
 
-// The Captures one Selector matched, cached per selector set: the Data
-// screen's Keyword Hits node (#1150, X39) filters the table to these ids and
-// re-reads them on every tree click, which is what the cache identity is for.
+// The Captures a selector set matched, cached per set: the Data screen's
+// Keyword Hits node (#1150, X39) filters the table to these ids and re-reads
+// them on every tree click, which is what the cache identity is for. The
+// capture list's selector filter reads it too (#1203).
 export const selectorMatchingCapturesQueryOptions = (caseId: string, selectorIds: string[]) =>
   queryOptions({
     queryKey: queryKeys.selectorMatchingCaptures(caseId, selectorIds),
@@ -77,9 +78,8 @@ export const selectorMatchingCapturesQueryOptions = (caseId: string, selectorIds
     enabled: !!caseId && selectorIds.length > 0
   })
 
-// Read without a cache identity: the capture-filter effect and the foreground
-// match preview both want the current answer for an ad-hoc selector set, not a
-// cached one keyed by it.
+// Read without a cache identity: the foreground match preview wants the current
+// answer for an ad-hoc selector set, not a cached one keyed by it.
 export function listMatchingCaptureIds(caseId: string, selectorIds: string[]): Promise<string[]> {
   return window.birdbrain.selectors.matchingCaptures(caseId, selectorIds)
 }
@@ -92,6 +92,7 @@ export function useSelectorsMutations(caseId: string) {
     queryClient.invalidateQueries({ queryKey: queryKeys.selectorMatchCounts(caseId) })
     queryClient.invalidateQueries({ queryKey: queryKeys.selectorCoverage(caseId) })
     queryClient.invalidateQueries({ queryKey: queryKeys.selectorCaptureMatrix(caseId) })
+    queryClient.invalidateQueries({ queryKey: queryKeys.selectorMatchingCapturesAll(caseId) })
   }
 
   const create = useMutation({

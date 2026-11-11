@@ -55,6 +55,20 @@ let tabAfterFrames: typeof TAB = TAB
 // tabAfterFrames, so a test can hand the concurrent frame-collection sample
 // one page and the post-settle re-read another.
 let tabGetQueue: (typeof TAB)[] = []
+type TabUpdatedListener = (tabId: number, changeInfo: { url?: string; status?: string }) => void
+const tabUpdatedListeners = new Set<TabUpdatedListener>()
+type TabUpdate = { tabId: number; url: string }
+// Tab updates fired while the page is being stripped or the MHTML serialised,
+// so a test can move the tab and move it back inside the suppression bracket,
+// where no tabs.get sample sees it.
+let updatesDuringPrepare: TabUpdate[] = []
+let updatesDuringMhtml: TabUpdate[] = []
+
+function fireTabUpdates(updates: TabUpdate[]): void {
+  for (const { tabId, url } of updates) {
+    for (const listener of [...tabUpdatedListeners]) listener(tabId, { url })
+  }
+}
 
 // `senderTab` lets a test act from its own tab id: lastCaptureByTab persists
 // across tests, so stamped/not-stamped assertions need a tab no other test
@@ -163,7 +177,10 @@ beforeAll(async () => {
     },
     tabs: {
       onRemoved: { addListener: () => {} },
-      onUpdated: { addListener: () => {} },
+      onUpdated: {
+        addListener: (fn: TabUpdatedListener) => tabUpdatedListeners.add(fn),
+        removeListener: (fn: TabUpdatedListener) => tabUpdatedListeners.delete(fn)
+      },
       query: (_query: unknown, callback: (tabs: unknown[]) => void) => callback([]),
       // Both call shapes: the capture paths await the promise, GET_PAGE_STATUS
       // passes a callback
@@ -177,7 +194,10 @@ beforeAll(async () => {
       },
       sendMessage: (_tabId: number, message: { type: string }) => {
         events.push(message.type)
-        if (message.type === 'PREPARE_FOR_CAPTURE') return Promise.resolve(prepareResponse)
+        if (message.type === 'PREPARE_FOR_CAPTURE') {
+          fireTabUpdates(updatesDuringPrepare)
+          return Promise.resolve(prepareResponse)
+        }
         if (message.type === 'CAPTURE_FULL_PAGE') return Promise.resolve(fullPageResponse)
         if (message.type === 'CHECK_SELECTORS') return Promise.resolve([])
         return Promise.resolve(undefined)
@@ -186,6 +206,7 @@ beforeAll(async () => {
     pageCapture: {
       saveAsMHTML: (_details: unknown, callback: (blob?: Blob) => void) => {
         events.push('saveAsMHTML')
+        fireTabUpdates(updatesDuringMhtml)
         callback(mhtmlFails ? undefined : new Blob(['mhtml']))
       }
     },
@@ -222,6 +243,8 @@ beforeEach(() => {
   fullPageResponse = FULL_PAGE_SHOT
   tabAfterFrames = TAB
   tabGetQueue = []
+  updatesDuringPrepare = []
+  updatesDuringMhtml = []
   vi.mocked(createSelector).mockClear()
   vi.mocked(getActiveSelectors).mockClear()
   vi.mocked(lookupCaptureByUrl).mockClear()
@@ -411,6 +434,96 @@ describe('SELECTION_ACTION: tag and quote ride the #392 attach endpoints', () =>
 
     expect(response.ok).toBe(true)
     expect(vi.mocked(applyTagToUrl)).toHaveBeenCalled()
+  })
+
+  it('refuses when the navigation lands and reverts between the two tab reads (#1006)', async () => {
+    // Both samples read the sender's page, so only the per-tab watcher armed
+    // for the bracket can see that the MHTML was taken while the tab was away.
+    updatesDuringMhtml = [
+      { tabId: TAB.id, url: 'https://example.test/somewhere-else' },
+      { tabId: TAB.id, url: TAB.url }
+    ]
+    const armedBefore = tabUpdatedListeners.size
+
+    const response = (await dispatchWithResponse({
+      type: 'SELECTION_ACTION',
+      action: 'quote',
+      text: 'evil@example.com'
+    })) as SelectionActionResponse
+
+    expect(response).toEqual({
+      ok: false,
+      error: 'The page navigated while it was being captured; nothing was attached'
+    })
+    expect(vi.mocked(createNoteOnUrl)).not.toHaveBeenCalled()
+    expect(events).toContain('RELEASE_CAPTURE_UI')
+    // The watcher is disarmed once the bracket settles
+    expect(tabUpdatedListeners.size).toBe(armedBefore)
+  })
+
+  it('refuses a round trip that lands while the page is being stripped (#1006)', async () => {
+    // The watcher is armed before suppression starts, not only around frames
+    updatesDuringPrepare = [
+      { tabId: TAB.id, url: 'https://example.test/somewhere-else' },
+      { tabId: TAB.id, url: TAB.url }
+    ]
+
+    const response = (await dispatchWithResponse({
+      type: 'SELECTION_ACTION',
+      action: 'tag',
+      text: 'evil@example.com'
+    })) as SelectionActionResponse
+
+    expect(response).toEqual({
+      ok: false,
+      error: 'The page navigated while it was being captured; nothing was attached'
+    })
+    expect(vi.mocked(applyTagToUrl)).not.toHaveBeenCalled()
+  })
+
+  it('attaches when the watcher sees only a fragment move and back (#1006)', async () => {
+    // The watcher uses the samplers' canonical rule, so it is no stricter than
+    // they are: an in-page anchor round trip is the same page.
+    updatesDuringMhtml = [
+      { tabId: TAB.id, url: 'https://example.test/page#section-3' },
+      { tabId: TAB.id, url: TAB.url }
+    ]
+
+    const response = (await dispatchWithResponse({
+      type: 'SELECTION_ACTION',
+      action: 'tag',
+      text: 'evil@example.com'
+    })) as SelectionActionResponse
+
+    expect(response.ok).toBe(true)
+    expect(vi.mocked(applyTagToUrl)).toHaveBeenCalled()
+  })
+
+  it('attaches when another tab navigates during the capture (#1006)', async () => {
+    updatesDuringMhtml = [{ tabId: TAB.id + 1, url: 'https://example.test/somewhere-else' }]
+
+    const response = (await dispatchWithResponse({
+      type: 'SELECTION_ACTION',
+      action: 'tag',
+      text: 'evil@example.com'
+    })) as SelectionActionResponse
+
+    expect(response.ok).toBe(true)
+    expect(vi.mocked(applyTagToUrl)).toHaveBeenCalled()
+  })
+
+  it('disarms the navigation watcher when frame collection fails (#1006)', async () => {
+    mhtmlFails = true
+    const armedBefore = tabUpdatedListeners.size
+
+    const response = (await dispatchWithResponse({
+      type: 'SELECTION_ACTION',
+      action: 'tag',
+      text: 'evil@example.com'
+    })) as SelectionActionResponse
+
+    expect(response.ok).toBe(false)
+    expect(tabUpdatedListeners.size).toBe(armedBefore)
   })
 
   it('says so inline when the server dropped an oversized screenshot', async () => {

@@ -755,6 +755,33 @@ describe('walkMhtml', () => {
     expect(walkMhtml(buffer, () => {}).totalParts).toBe(20_000)
     expect(performance.now() - started).toBeLessThan(2_000)
   })
+
+  // A header written with no value is absent. A `\s*` after the colon crossed the line break and
+  // read the next header line as the value.
+  it.each([
+    ['Content-Type', 'contentType'],
+    ['Content-Transfer-Encoding', 'transferEncoding'],
+    ['Content-Location', 'contentLocation'],
+    ['Content-ID', 'contentId']
+  ])('reads a part %s written with no value as absent', (header, field) => {
+    const { parts } = walk(
+      mhtml([...MULTIPART_TOP, '--B', `${header}:`, 'X-Note: after', '', 'x', '--B--'])
+    )
+    expect(parts).toHaveLength(1)
+    expect(parts[0]).toMatchObject({ headersTerminated: true, html: false, [field]: null })
+  })
+
+  it('reads a top-level header written with no value as absent', () => {
+    const top = (lines: string[]) =>
+      walk(mhtml([...lines, '', '--B', 'Content-Type: text/css', '', 'x', '--B--'])).summary
+    expect(
+      top(['Snapshot-Content-Location:', 'Content-Type: multipart/related; boundary=B'])
+    ).toMatchObject({ status: 'walked', snapshotLocation: null, totalParts: 1 })
+    expect(top(['Content-Type:', 'X-Note: multipart/related; boundary=B'])).toMatchObject({
+      status: 'no-boundary',
+      topContentType: null
+    })
+  })
 })
 
 describe('mainHtmlPartIndex', () => {

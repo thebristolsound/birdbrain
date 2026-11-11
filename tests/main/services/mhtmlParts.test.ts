@@ -446,6 +446,21 @@ describe('listMhtmlParts on malformed input', () => {
     expect(result.parts.map(({ htmlPart }) => htmlPart)).toEqual([0, null, null, 1, null, 2])
   })
 
+  // A header written with no value is absent. Read with a pattern that crossed the line break,
+  // it took the next header line as its value, so the row showed a value the part does not hold.
+  it.each(ROW_FIELDS)('lists a %s header written with no value as absent', (field) => {
+    const buffer = onePart({ [field]: '' })
+    expect(buffer.toString('latin1')).toContain(`\r\n${ROW_HEADERS[field]}:\r\n`)
+    const result = listed(listMhtmlParts(buffer, MHTML_PARTS_LIMITS, READ_AT))
+    expect(result.parts).toHaveLength(1)
+    expect(result.parts[0]).toMatchObject({
+      ...ROW_VALUES,
+      [field]: null,
+      headersTerminated: true,
+      fieldsTruncated: false
+    })
+  })
+
   it('refuses an archive whose top header names no boundary', () => {
     const buffer = replaceOnce(fixture(), '\r\n\tboundary="----PartsFixtureBoundary"', '')
     expect(refusal(listMhtmlParts(buffer, MHTML_PARTS_LIMITS, READ_AT))).toEqual({

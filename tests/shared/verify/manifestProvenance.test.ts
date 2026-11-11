@@ -150,7 +150,14 @@ describe('capture entry provenance invariants — the schema', () => {
     const refused = ONE_RULE_SHAPES.map(([, fields]) =>
       messages(fields, MANIFEST_SCHEMA_VERSION).join('\n')
     )
-    expect(new Set(refused).size).toBe(4)
+    expect(new Set(refused)).toEqual(
+      new Set([
+        SUPERSEDES_MESSAGE,
+        DUPLICATE_METHOD_MESSAGE,
+        DUPLICATE_PAIR_MESSAGE,
+        DUPLICATE_NEEDS_PAIR_MESSAGE
+      ])
+    )
   })
 
   for (const [label, fields, paths] of EMPTY_LINK_SHAPES) {

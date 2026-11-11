@@ -26,6 +26,7 @@ import {
 } from '@main/services/db/caseRepo'
 import { insertCapture, listCaptures } from '@main/services/db/captureRepo'
 import { listExhibits } from '@main/services/db/exhibitRepo'
+import { createNote } from '@main/services/db/noteRepo'
 import { addTagToCapture, createTag, listTags } from '@main/services/db/tagRepo'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { initSettings, getSettings, updateSettings } from '@main/services/settings'
@@ -215,7 +216,8 @@ describe('demo case seeding', () => {
     // that does not exist, so the write throws for real rather than by a mock.
     // The bound, since the title reads absolute: the guard is a probe, so it
     // holds only while a demo case is present. Delete the one seeded here on
-    // such an install and the next launch seeds another (#1301).
+    // such an install and the next launch seeds another, because this store
+    // holds no other Case (#1301, #1333); a later test pins both halves.
     initSettings(join(tempDir, 'never-created'))
 
     const first = await seedDemoCaseIfNeeded()
@@ -238,13 +240,37 @@ describe('demo case seeding', () => {
     expect(await seedDemoCaseIfNeeded()).toEqual({ seeded: false, reason: 'demo-case-present' })
   })
 
+  // What a self-test killed after ingest leaves in the database.
+  const leaveSandbox = (): string => {
+    const sandbox = createCase({ name: PIPELINE_SELF_TEST_CASE_NAME })
+    insertCapture({
+      caseId: sandbox.id,
+      url: PIPELINE_SELF_TEST_URL,
+      title: 'Self-test',
+      hash: 'h-sandbox',
+      timestamp: '2026-01-16T09:31:47.000Z',
+      format: 'mhtml'
+    })
+    return sandbox.id
+  }
+
+  const expectSandboxCounted = async (sandboxId: string): Promise<void> => {
+    expect(await seedDemoCaseIfNeeded()).toEqual({ seeded: false, reason: 'cases-present' })
+    expect(listAllCases().map((c) => c.id)).toEqual([sandboxId])
+  }
+
   // #1333: settings.json and the database are separate files, so losing the
   // first marks an install fresh while the second still holds its evidence.
   describe('after the settings file is lost', () => {
+    // A later launch on the default storage root: the root the first launch
+    // made is still there, settings.json is not, and the settings written in
+    // its place name that root again, as `initSettings` does at boot.
     const loseSettings = (): void => {
+      initStorage(getStorageRoot())
       const lostDir = join(tempDir, 'lost-settings')
       mkdirSync(lostDir)
       initSettings(lostDir)
+      updateSettings({ storagePath: getStorageRoot() })
       expect(getSettings().isFreshInstall).toBe(true)
     }
 
@@ -277,18 +303,52 @@ describe('demo case seeding', () => {
     })
 
     it('does not count a self-test sandbox Case left behind', async () => {
-      const sandbox = createCase({ name: PIPELINE_SELF_TEST_CASE_NAME })
-      insertCapture({
-        caseId: sandbox.id,
-        url: PIPELINE_SELF_TEST_URL,
-        title: 'Self-test',
-        hash: 'h-sandbox',
-        timestamp: '2026-01-16T09:31:47.000Z',
-        format: 'mhtml'
-      })
+      const sandboxId = leaveSandbox()
       loseSettings()
 
-      expect((await seedDemoCaseIfNeeded()).seeded).toBe(true)
+      const result = await seedDemoCaseIfNeeded()
+
+      expect(result.seeded).toBe(true)
+      expect(
+        listAllCases()
+          .map((c) => c.id)
+          .sort()
+      ).toEqual([sandboxId, result.caseId].sort())
+    })
+
+    // The residue check refuses each of these (pipelineSelfTest.ts), so the
+    // Case is one the operator wrote into, whatever it is named.
+    it.each<[string, (caseId: string) => void]>([
+      ['whose row was edited', (id) => updateCase({ id, description: 'Subject of the inquiry' })],
+      ['holding a note', (id) => createNote({ caseId: id, body: 'Operator note' })]
+    ])('counts a sandbox-named Case %s', async (_label, write) => {
+      const sandboxId = leaveSandbox()
+      write(sandboxId)
+      loseSettings()
+
+      await expectSandboxCounted(sandboxId)
+    })
+
+    // The boot sweep deletes no sandbox-named Case under a storage root that
+    // cannot show what an earlier launch wrote, and the seed counts each one
+    // the sweep keeps. Here the lost settings file took a configured storage
+    // path with it, so boot made the default root at this launch.
+    it('counts a sandbox Case left behind when the storage root was created at this launch', async () => {
+      const sandboxId = leaveSandbox()
+      loseSettings()
+      const defaultRoot = join(tempDir, 'default-root')
+      updateSettings({ storagePath: defaultRoot })
+      initStorage(defaultRoot)
+
+      await expectSandboxCounted(sandboxId)
+    })
+
+    it('counts a sandbox Case left behind when the storage root can no longer be listed', async () => {
+      const sandboxId = leaveSandbox()
+      loseSettings()
+      rmSync(getStorageRoot(), { recursive: true })
+
+      await expectSandboxCounted(sandboxId)
     })
 
     it('counts a sandbox-named Case holding a capture the self-test did not write', async () => {
@@ -313,6 +373,17 @@ describe('demo case seeding', () => {
 
       expect(await seedDemoCaseIfNeeded()).toEqual({ seeded: false, reason: 'cases-present' })
     })
+  })
+
+  // The other way a storage root fails to vouch: the settings still name a
+  // storage path, and boot fell back from it to the default root
+  // (src/main/index.ts).
+  it('counts a sandbox Case left behind when boot fell back from the configured storage root', async () => {
+    const sandboxId = leaveSandbox()
+    initStorage(getStorageRoot())
+    updateSettings({ isFreshInstall: true, storagePath: join(tempDir, 'unmounted-volume') })
+
+    await expectSandboxCounted(sandboxId)
   })
 
   it('brings a deleted demo case back with the latch lost only into an otherwise empty store', async () => {

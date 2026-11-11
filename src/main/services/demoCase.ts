@@ -4,7 +4,10 @@ import { join } from 'path'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as tagRepo from '@main/services/db/tagRepo'
 import { importCaseArchive } from '@main/services/caseArchive'
-import { isPipelineSelfTestResidue } from '@main/services/pipelineSelfTest'
+import {
+  isPipelineSelfTestResidue,
+  storageRootHoldsEarlierLaunches
+} from '@main/services/pipelineSelfTest'
 import { getSettings, updateSettings } from '@main/services/settings'
 import { getStorageRoot } from '@main/services/storage'
 import { logger } from '@main/services/logger'
@@ -75,12 +78,13 @@ function latchSeeded(): void {
   }
 }
 
-// The sweep leaves archived Cases alone because archiving is the operator's
-// act, so an archived sandbox counts here too.
+// Every Case counts but self-test residue, read as the boot sweep reads it:
+// the residue check refuses an archived Case, and under a storage root that
+// cannot show what earlier launches wrote the sweep trusts no answer.
 function storeHoldsCases(): boolean {
-  return caseRepo
-    .listAllCases()
-    .some(({ id, archived }) => archived || !isPipelineSelfTestResidue(id))
+  const caseIds = caseRepo.listAllCaseIds()
+  if (!storageRootHoldsEarlierLaunches()) return caseIds.length > 0
+  return caseIds.some((id) => !isPipelineSelfTestResidue(id))
 }
 
 /**
@@ -95,9 +99,11 @@ function storeHoldsCases(): boolean {
  * as fresh. The other two read the database. A row with `is_demo` (#1301) stops
  * a second copy arriving while the first one is still there. Any Case at all,
  * archived ones included (#1333), keeps the demo case and its signed import
- * entry out of a store that already holds evidence; a non-archived Case that
- * `isPipelineSelfTestResidue` accepts does not count, since it is what a killed
- * self-test left and the boot sweep missed.
+ * entry out of a store that already holds evidence. The one Case that does not
+ * count is what a killed self-test left: a Case `isPipelineSelfTestResidue`
+ * accepts, on a storage root `storageRootHoldsEarlierLaunches` vouches for.
+ * The boot sweep deletes under the same two conditions, so a sandbox-named Case
+ * it chose to keep counts here.
  *
  * What the database guards do NOT hold: they are probes of the current state,
  * not latches. On an install whose settings write fails, deleting the demo case

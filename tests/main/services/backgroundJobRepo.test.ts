@@ -182,6 +182,71 @@ describe('backgroundJobRepo', () => {
     expect(listJobs({ batchId: 'batch-1' })).toHaveLength(2)
   })
 
+  // What the queue knows of a job it is running: the row the claim returned, and its Capture id.
+  const attemptOf = (id: string) => {
+    insertQueuedJobs([job(id)])
+    return { job: claim(`cap-${id}`)!, captureId: `cap-${id}` }
+  }
+  const recoverWith = (running: Array<ReturnType<typeof attemptOf>>) =>
+    recoverJobsAtStartup({
+      now: '2026-11-09T12:00:00.000Z',
+      storedBefore: '2026-11-02T12:00:00.000Z',
+      interruptedError: 'closed',
+      running
+    })
+
+  it('keeps the job the process runs running at a restore, and interrupts every other running row', () => {
+    const a = attemptOf('a')
+    attemptOf('orphan')
+
+    const { running, interrupted } = recoverWith([a])
+    expect(running).toEqual([a.job])
+    expect(interrupted.map(({ job: { jobId } }) => jobId)).toEqual(['orphan'])
+    expect(['a', 'orphan'].map((id) => getJob(id)?.state)).toEqual(['running', 'failed'])
+  })
+
+  // Review of #2141, finding 1: a copy taken before the claim holds the row queued or held.
+  it('writes back a running job whose restored row is in another state, as the process knows it', () => {
+    const states = ['queued', 'held', 'failed', 'skipped', 'stored']
+    // Claimed first, then given the state a restored copy could hold them in.
+    const attempts = states.map((state) => attemptOf(`in-${state}`))
+    attempts.forEach(({ job: { jobId } }, i) =>
+      getDb()
+        .prepare(
+          `UPDATE background_jobs SET state = ?, attempts = 0, started_at = NULL,
+             capture_id = NULL, error = 'old', finished_at = 'then' WHERE id = ?`
+        )
+        .run(states[i], jobId)
+    )
+
+    const { running, held } = recoverWith(attempts)
+    expect(held).toEqual([])
+    expect(running).toEqual(attempts.map(({ job: claimed }) => claimed))
+    for (const { job: claimed, captureId } of attempts) {
+      expect(getJob(claimed.jobId)).toEqual(claimed)
+      expect(
+        getDb().prepare('SELECT capture_id FROM background_jobs WHERE id = ?').get(claimed.jobId)
+      ).toEqual({ capture_id: captureId })
+    }
+    // Its end is recorded, under the attempt's Capture id.
+    const [first] = attempts
+    expect(
+      finishJob(first.job.jobId, { state: 'stored', finishedAt: '2026-11-09T12:01:00.000Z' })
+    ).toMatchObject({ state: 'stored', captureId: first.captureId })
+  })
+
+  it('inserts the row of a running job the restored copy does not hold, unless its Case is gone', () => {
+    const a = attemptOf('a')
+    const b = attemptOf('b')
+    const gone = { ...b, job: { ...b.job, caseId: 'no-such-case' } }
+    getDb().prepare("DELETE FROM background_jobs WHERE id IN ('a', 'b')").run()
+
+    const { running } = recoverWith([a, gone])
+    expect(running).toEqual([a.job])
+    expect(getJob('a')).toEqual(a.job)
+    expect(getJob('b')).toBeUndefined()
+  })
+
   it('recovers at startup in one pass: landed, interrupted, held, and stored rows past the cutoff', () => {
     insertQueuedJobs([
       job('landed'),

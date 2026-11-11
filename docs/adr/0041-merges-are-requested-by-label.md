@@ -13,6 +13,11 @@ auto-merge" means for an Evidence-Affecting Change, and amends the `main` rulese
 [ADR-0027](0027-agent-prs-are-opened-by-a-machine-account.md) are unchanged. Nothing is built; the
 plan is `docs/plans/2026-10-06-label-to-merge.md`.
 
+**Amended 2026-11-10:** [ADR-0057](0057-a-two-family-review-fleet-reads-every-pr-and-gates-the-merge.md)
+adds a requirement to the `merge-gate` rule of decision 1. On a pull request the review fleet
+covers, the `review/fleet` status must be success at head, or the maintainer's `break-glass`
+label must stand. The push in decision 2 removes `break-glass` with `approved` and `merge`.
+
 ## Context
 
 The `main` ruleset requires one approving review from a code owner, and `CODEOWNERS` names only

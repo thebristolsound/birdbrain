@@ -65,9 +65,7 @@ interface Navigation {
   // Where each request id's first `requestWillBeSent` sits in `log`.
   firstSeen: Map<string, number>
   // Request ids whose `requestWillBeSent` carried a body the scrub removed, one entry per hop.
-  withheld: string[]
-  // Request ids a service worker served, from `Network.responseReceived` on the page's session.
-  servedByServiceWorker: Set<string>
+  withheld: Array<{ requestId: string; index: number }>
   bodies: Map<string, ResponseBodyResult>
   lastFinished: Map<string, string>
   dataLengths: Map<string, number>
@@ -149,7 +147,6 @@ function emptyNavigation(id: number, at: number): Navigation {
     logBytes: 0,
     firstSeen: new Map(),
     withheld: [],
-    servedByServiceWorker: new Set(),
     bodies: new Map(),
     lastFinished: new Map(),
     dataLengths: new Map(),
@@ -267,7 +264,7 @@ export function createTabRecording({
       const index = nav.log.length
       if (!hold(nav, { sessionId: key, method, params })) return
       if (!nav.firstSeen.has(requestId)) nav.firstSeen.set(requestId, index)
-      if (bodyWithheld) nav.withheld.push(requestId)
+      if (bodyWithheld) nav.withheld.push({ requestId, index })
       nav.open.add(requestId)
       if (key === PAGE && type === 'Document' && frameId === tabId && loaderId !== undefined) {
         if (!candidates.has(loaderId)) candidates.set(loaderId, { navigation: nav, start: index })
@@ -276,10 +273,6 @@ export function createTabRecording({
     }
     if (!hold(nav, { sessionId: key, method, params })) return
     if (requestId === undefined) return
-    if (method === 'Network.responseReceived' && key === PAGE) {
-      const { response } = params as { response?: { fromServiceWorker?: boolean } }
-      if (response?.fromServiceWorker === true) nav.servedByServiceWorker.add(requestId)
-    }
     if (method === 'Network.loadingFinished') {
       nav.open.delete(requestId)
       nav.lastFinished.set(requestId, key)
@@ -355,8 +348,9 @@ export function createTabRecording({
       const { start } = candidate
       next.fromFirstRequest = true
       // The new document's exchanges, and every request started after its document request;
-      // an exchange of the previous page still finishing stays with the previous page.
-      for (let i = start; i < previous.log.length; i++) {
+      // their early header events belong too. Previous-page exchanges stay with that page.
+      const retainedIndexes = new Map<number, number>()
+      for (let i = 0; i < previous.log.length; i++) {
         const event = previous.log[i]
         const { requestId } = (event.params ?? {}) as { requestId?: string }
         if (requestId !== undefined) {
@@ -365,14 +359,14 @@ export function createTabRecording({
           if (!next.firstSeen.has(requestId)) next.firstSeen.set(requestId, next.log.length)
           if (previous.open.has(requestId)) next.open.add(requestId)
         }
-        hold(next, event)
+        if (requestId !== undefined || i >= start) {
+          const index = next.log.length
+          if (hold(next, event)) retainedIndexes.set(i, index)
+        }
       }
-      for (const requestId of previous.withheld) {
-        if ((previous.firstSeen.get(requestId) ?? -1) >= start) next.withheld.push(requestId)
-      }
-      for (const requestId of previous.servedByServiceWorker) {
-        if ((previous.firstSeen.get(requestId) ?? -1) >= start)
-          next.servedByServiceWorker.add(requestId)
+      for (const { requestId, index } of previous.withheld) {
+        const keptIndex = retainedIndexes.get(index)
+        if (keptIndex !== undefined) next.withheld.push({ requestId, index: keptIndex })
       }
       for (const [requestId, length] of previous.dataLengths) {
         if ((previous.firstSeen.get(requestId) ?? -1) >= start)
@@ -422,7 +416,8 @@ export function createTabRecording({
   function cut(): CutRecording {
     const nav = current
     const cutIndex = nav.log.length
-    const { id, committedUrl, pageUrl, fromFirstRequest, unrecorded } = nav
+    const { id, committedUrl, pageUrl, unrecorded } = nav
+    const fromFirstRequest = nav.fromFirstRequest && pageSetupAnswered
     // The children attached at the cut, with those that attached during this navigation and have
     // gone (their attach events are in the log), are the ones recorded for this page.
     const attachedAtCut: AttachedChild[] = [...attached].map((sessionId) => ({
@@ -445,6 +440,27 @@ export function createTabRecording({
           const { requestId } = (event.params ?? {}) as { requestId?: string }
           return requestId === undefined ? index < cutIndex : began(requestId)
         })
+        const requestCutIndex = nav.log.slice(0, cutIndex).filter((event) => {
+          const { requestId } = (event.params ?? {}) as { requestId?: string }
+          return requestId === undefined || began(requestId)
+        }).length
+        const hopStarts = new Map<string, number>()
+        const servedByServiceWorker = new Set<string>()
+        for (const [index, { method, params, sessionId }] of events.entries()) {
+          const { requestId, response } = params as {
+            requestId?: string
+            response?: { fromServiceWorker?: boolean }
+          }
+          if (requestId === undefined) continue
+          if (method === 'Network.requestWillBeSent') hopStarts.set(requestId, index)
+          if (
+            method === 'Network.responseReceived' &&
+            sessionId === PAGE &&
+            response?.fromServiceWorker === true &&
+            (hopStarts.get(requestId) ?? requestCutIndex) < requestCutIndex
+          )
+            servedByServiceWorker.add(requestId)
+        }
         for (const { sessionId, type } of attachedAtCut) {
           events.push({
             sessionId: PAGE,
@@ -465,11 +481,16 @@ export function createTabRecording({
         }
         // No session was sent `Network.configureDurableMessages`, which the 2026-10-17 ruling rules
         // out, so the collector keeps a body only when the browser returned it as base64.
-        const collected = collectExchanges({ events, responseBodies, recordedSessions })
+        const collected = collectExchanges({
+          events,
+          requestCutIndex,
+          responseBodies,
+          recordedSessions
+        })
         return {
           ...collected,
-          requestBodiesWithheld: nav.withheld.filter(began).length,
-          servedByServiceWorker: [...nav.servedByServiceWorker].filter(began).length
+          requestBodiesWithheld: nav.withheld.filter(({ index }) => index < cutIndex).length,
+          servedByServiceWorker: servedByServiceWorker.size
         }
       }
     }
@@ -482,7 +503,7 @@ export function createTabRecording({
     navigationId: () => current.id,
     committedUrl: () => current.committedUrl,
     pageUrl: () => current.pageUrl,
-    fromFirstRequest: () => current.fromFirstRequest,
+    fromFirstRequest: () => current.fromFirstRequest && pageSetupAnswered,
     activity: () => ({ open: current.open.size, lastActivityAt: current.lastActivityAt }),
     cut,
     crashed: () => {

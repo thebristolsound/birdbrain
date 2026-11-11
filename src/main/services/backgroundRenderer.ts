@@ -1283,9 +1283,9 @@ export const renderPageInHiddenWindow: RenderPage = async (
 
   // A line's context: the job's capture id, the time since the deadline started,
   // and each step timed so far.
-  const timings = (durations: LogContext): LogContext => ({
+  const timings = (durations: LogContext, ms = Date.now() - startedAt): LogContext => ({
     captureId: ident(captureId),
-    ms: Date.now() - startedAt,
+    ms,
     ...durations
   })
 
@@ -1296,15 +1296,7 @@ export const renderPageInHiddenWindow: RenderPage = async (
   } catch (err) {
     hearEnd()
     const { reached, durations } = steps.stop()
-    // A refused hop ends the job skipped, which the job's own line records.
-    if (!(err instanceof RefusedAddressError)) {
-      logger.info(
-        'backgroundRenderer',
-        'backgroundRenderer.render_failed',
-        { ...timings(durations), step: tag(reached, 'backgroundJobStep') },
-        err
-      )
-    }
+    const failedMs = Date.now() - startedAt
     // Destroying the window cancels the in-flight render: its next webContents
     // call rejects. Wait for it to settle so a mid-flight savePage can't
     // recreate the temp file after we delete it — but bound the wait, since
@@ -1314,6 +1306,16 @@ export const renderPageInHiddenWindow: RenderPage = async (
     if (!win.isDestroyed()) win.destroy()
     await Promise.race([rendering.catch(() => {}), sleep(2000)])
     await unlink(tmpPath).catch(() => {})
+    // Logged after the teardown, so a log call that throws leaves no window. A refused hop
+    // ends the job skipped, which the job's own line records.
+    if (!(err instanceof RefusedAddressError)) {
+      logger.info(
+        'backgroundRenderer',
+        'backgroundRenderer.render_failed',
+        { ...timings(durations, failedMs), step: tag(reached, 'backgroundJobStep') },
+        err
+      )
+    }
     throw err
   } finally {
     clearTimeout(deadlineTimer)

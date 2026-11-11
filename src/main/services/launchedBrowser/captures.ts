@@ -206,11 +206,11 @@ export function createLaunchedCaptures(deps: LaunchedCapturesDeps): LaunchedCapt
       return setProgress({ state: 'refused', targetId, message: 'That tab has closed.' })
     }
     if (running) {
-      return setProgress({
+      return {
         state: 'refused',
         targetId,
         message: 'A Capture is already running. Wait for it to finish.'
-      })
+      }
     }
     const refusal = refusalOf(targetId)
     if (refusal || !tab.recording)

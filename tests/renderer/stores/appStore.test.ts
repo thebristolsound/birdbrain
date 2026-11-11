@@ -669,11 +669,48 @@ describe('appStore', () => {
 
       it('drops the oldest running rows once the feed holds nothing else', () => {
         for (let i = 0; i < 55; i++) {
-          add({ type: 'received', source: 'auto', url: `https://example.com/${i}`, timestamp: '' })
+          add({ ...jobEvent(`job-${i}`, 'received'), url: `https://example.com/${i}` })
         }
         expect(useAppStore.getState().captureEvents.map(({ url }) => url)).toEqual(
           Array.from({ length: 50 }, (_, i) => `https://example.com/${54 - i}`)
         )
+      })
+
+      it('lets a received row that belongs to no job age out with the other rows', () => {
+        // The pipeline self-test emits 'received' and, when it fails, no terminal event.
+        const selfTest: CaptureEvent = {
+          type: 'received',
+          source: 'manual',
+          url: 'https://example.com/self-test',
+          timestamp: ''
+        }
+        add(selfTest)
+        for (let i = 0; i < 50; i++) {
+          add({ type: 'stored', source: 'auto', url: `https://example.com/${i}`, timestamp: '' })
+        }
+
+        const events = useAppStore.getState().captureEvents
+        expect(events).toHaveLength(50)
+        expect(events).not.toContain(selfTest)
+      })
+
+      it('keeps the event just added when every row in the feed is a running job', () => {
+        for (let i = 0; i < 50; i++) {
+          add({ ...jobEvent(`job-${i}`, 'received'), url: `https://example.com/${i}` })
+        }
+        const stored: CaptureEvent = {
+          type: 'stored',
+          source: 'auto',
+          url: 'https://example.com/other',
+          timestamp: ''
+        }
+        add(stored)
+
+        const events = useAppStore.getState().captureEvents
+        expect(events).toHaveLength(50)
+        expect(events[0]).toBe(stored)
+        expect(events.map(({ jobId }) => jobId)).not.toContain('job-0')
+        expect(useAppStore.getState().captureStats.successCount).toBe(1)
       })
 
       // A guard on the statistics for the type this slice adds, not a change to how they count.

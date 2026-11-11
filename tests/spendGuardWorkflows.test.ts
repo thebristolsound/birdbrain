@@ -22,6 +22,20 @@ const PAID_SECRETS = [
   'TYPESAFE_API_KEY'
 ]
 const NO_ENVIRONMENT = ['jev-lens.yml hunks']
+// The maintainer's ruling of 2026-11-10 (ADR-0057): the review fleet starts on events other
+// accounts cause, so each of its secret-reading jobs must instead carry, as a top-level
+// conjunct, either the named actors' guard or the scheduled-first-attempt test. Its relay job
+// alone holds the maintainer's relay token, in an environment of its own. The machine account is
+// named by the variable the fleet's identity step already reads, so the two cannot disagree; an
+// unset variable matches no actor.
+const FLEET = 'review-fleet.yml'
+const FLEET_GUARD =
+  "(github.triggering_actor == 'thebristolsound'" +
+  ' || github.triggering_actor == vars.BIRDBRAIN_AGENT_GH_LOGIN' +
+  " || github.triggering_actor == 'chatgpt-codex-connector[bot]'" +
+  " || github.triggering_actor == 'github-actions[bot]')"
+const FLEET_SCHEDULED = ["github.event_name == 'schedule'", "github.run_attempt == '1'"]
+const RELAY = { job: `${FLEET} relay`, environment: 'codex-relay', secret: 'CODEX_RELAY_TOKEN' }
 // Events whose GITHUB_REF is a pull request's merge ref, which the environment refuses.
 const PR_REF_EVENTS = ['pull_request', 'pull_request_review', 'pull_request_review_comment']
 
@@ -117,6 +131,7 @@ const readsSecret = ({ block }: Job): boolean =>
 
 const secretJobs = allJobs
   .filter(readsSecret)
+  .filter(({ file }) => file !== FLEET)
   .map(({ file, job, condition, scheduled }): [string, string, string, boolean] => [
     file,
     job,
@@ -125,8 +140,11 @@ const secretJobs = allJobs
   ])
 
 const paidJobs = allJobs.filter(readsSecret)
-const declaresEnvironment = ({ block }: Job): boolean =>
-  block.some((line) => line === `    environment: ${ENVIRONMENT}`)
+const fleetJobs = paidJobs.filter(({ file }) => file === FLEET)
+const environmentOf = ({ file, job }: Job): string =>
+  `${file} ${job}` === RELAY.job ? RELAY.environment : ENVIRONMENT
+const declaresEnvironment = (entry: Job): boolean =>
+  entry.block.some((line) => line === `    environment: ${environmentOf(entry)}`)
 
 describe('spend guard on jobs that read a stored secret', () => {
   it('finds every such job', () => {
@@ -170,14 +188,48 @@ describe('spend guard on jobs that read a stored secret', () => {
   )
 })
 
+describe('spend guard on the review fleet (ADR-0057)', () => {
+  it('finds every secret-reading fleet job', () => {
+    expect(fleetJobs.map(({ job }) => job).sort()).toEqual([
+      'gate',
+      'legs',
+      'plan',
+      'record',
+      'relay',
+      'sweep'
+    ])
+  })
+
+  it.each(fleetJobs.map((job): [string, Job] => [job.job, job]))(
+    'job %s checks who started the attempt, or admits only a first scheduled attempt',
+    (_job, { condition }) => {
+      const conjuncts = splitTop(expression(condition), '&&')
+      const scheduled = FLEET_SCHEDULED.every((c) => conjuncts.includes(c))
+      expect(conjuncts.includes(FLEET_GUARD) || scheduled).toBe(true)
+    }
+  )
+})
+
 describe(`the ${ENVIRONMENT} environment`, () => {
   it('holds every stored secret a workflow reads', () => {
     const read = new Set(
-      paidJobs.flatMap(({ block }) =>
-        block.flatMap((line) => [...line.matchAll(/\bsecrets\.([A-Z_]+)/g)].map((m) => m[1]))
-      )
+      paidJobs
+        .filter((entry) => `${entry.file} ${entry.job}` !== RELAY.job)
+        .flatMap(({ block }) =>
+          block.flatMap((line) => [...line.matchAll(/\bsecrets\.([A-Z_]+)/g)].map((m) => m[1]))
+        )
     )
     expect([...read].sort()).toEqual(PAID_SECRETS)
+  })
+
+  it('keeps the relay token to the relay job, in its own environment', () => {
+    const holders = paidJobs.filter(({ block }) =>
+      block.some((line) => line.includes(`secrets.${RELAY.secret}`))
+    )
+    expect(holders.map(({ file, job }) => `${file} ${job}`)).toEqual([RELAY.job])
+    const relay = holders[0]
+    const others = [...relay.block.join('\n').matchAll(/\bsecrets\.([A-Z_]+)/g)].map((m) => m[1])
+    expect(new Set(others)).toEqual(new Set([RELAY.secret]))
   })
 
   it.each(paidJobs.map((job): [string, string, Job] => [job.file, job.job, job]))(

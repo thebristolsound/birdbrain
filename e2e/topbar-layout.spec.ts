@@ -163,7 +163,8 @@ test.describe('Top bar layout', () => {
   })
 
   // With a launched browser and the extension both recording, the action bar carries the
-  // recording mark beside the session's source line; the source line gives way, not the row.
+  // recording mark between Launch browser and the switch; the switch's source line gives way,
+  // not the row.
   test('fits the Case action bar while a launched browser records', async ({
     electronApp,
     page
@@ -199,6 +200,13 @@ test.describe('Top bar layout', () => {
       )
     }
     const launch = actionBar.getByRole('button', { name: 'Launch browser' })
+    const row = [
+      actionBar.getByTestId('share-pill'),
+      actionBar.getByRole('button', { name: /Export/ }),
+      launch,
+      actionBar.getByTestId('topbar-rec'),
+      actionBar.getByRole('switch', { name: 'Capture Session' })
+    ]
 
     for (const width of [1440, 1280, 1100, 1024]) {
       await electronApp.windows()[0].setViewportSize({ width, height: 800 })
@@ -206,6 +214,17 @@ test.describe('Top bar layout', () => {
         await holdRecording()
         const overflow = await actionBar.evaluate((el) => el.scrollWidth - el.clientWidth)
         expect(overflow).toBeLessThanOrEqual(0)
+        const pageOverflow = await page.evaluate(
+          () => document.documentElement.scrollWidth - window.innerWidth
+        )
+        expect(pageOverflow).toBeLessThanOrEqual(0)
+        // Left to right with no overlap: Share, Export, Launch browser, the mark, the switch.
+        let edge = 0
+        for (const item of row) {
+          const { x, width: itemWidth } = (await item.boundingBox())!
+          expect(x).toBeGreaterThanOrEqual(edge)
+          edge = x + itemWidth
+        }
         // One line: a wrapped label would double the button's height.
         expect((await launch.boundingBox())!.height).toBeLessThanOrEqual(32)
         await expect(actionBar.getByRole('switch', { name: 'Capture Session' })).toBeInViewport({

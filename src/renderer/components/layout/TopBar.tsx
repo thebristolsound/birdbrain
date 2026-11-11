@@ -167,7 +167,7 @@ export function TopBar() {
       )}
 
       {/* Right controls: how the app is doing, then Settings. What acts on the Case (Share,
-          Export, Launch browser, the session switch and the recording mark) lives in
+          Export, Launch browser, the recording mark and the session switch) lives in
           CaseActionBar, under this bar (docs/design-handoff/2026-11-08-top-bar/, Option B). */}
       <div
         data-testid="topbar-controls"

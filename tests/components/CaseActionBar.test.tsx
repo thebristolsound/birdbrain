@@ -82,7 +82,7 @@ describe("CaseActionBar as the Case's action row", () => {
     )
   })
 
-  it('shows the recording mark beside the switch while a session runs, and not otherwise', () => {
+  it('shows the recording mark while a session runs, and not otherwise', () => {
     mount()
     expect(screen.queryByTestId('topbar-rec')).toBeNull()
     cleanup()
@@ -91,6 +91,30 @@ describe("CaseActionBar as the Case's action row", () => {
     const mark = screen.getByTestId('topbar-rec')
     expect(mark.textContent).toContain('Recording')
     expect(mark.textContent).not.toContain('REC')
+  })
+
+  // The mark belongs to the switch that starts and stops the session, so Launch browser comes
+  // before both and nothing sits between them.
+  it('orders the row Share, Export, Launch browser, recording mark, switch', async () => {
+    useAppStore.setState({ sessionActive: true, connectedToExtension: true })
+    mount()
+    const bar = screen.getByTestId('case-action-bar')
+    await within(bar).findByTestId('export-menu')
+    const row = Array.from(
+      bar.querySelectorAll(
+        '[data-testid="share-pill"], [data-testid="export-menu"], button, [data-testid="topbar-rec"], [data-testid="session-controls"]'
+      )
+    ).map((el) => el.getAttribute('data-testid') ?? el.textContent)
+    expect(row).toEqual([
+      'share-pill',
+      'export-menu',
+      'Launch browser',
+      'topbar-rec',
+      'session-controls'
+    ])
+    expect(within(bar).getByTestId('topbar-rec').nextElementSibling).toBe(
+      within(bar).getByTestId('session-controls')
+    )
   })
 })
 

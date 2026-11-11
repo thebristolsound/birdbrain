@@ -11,9 +11,10 @@ import { launchedBrowserStatusQueryOptions } from '@renderer/lib/api/launchedBro
 import { busyRefusal } from '@renderer/components/launchedBrowser/startDialogModel'
 
 // What you can do to this Case, in one row under the top bar (docs/design-handoff/2026-11-08-top-bar/,
-// Option B): Share, Export, Launch browser, and, while a session runs, the recording mark and the
-// Capture Session switch. The top bar above keeps where you are and how the app is doing. The bar
-// renders whenever a Case is open; the switch shows itself only while it has something to control.
+// Option B): Share, Export, Launch browser, the recording mark while a session runs, and the
+// Capture Session switch, in that order, so the mark sits against the switch. The top bar above
+// keeps where you are and how the app is doing. The bar renders whenever a Case is open; the
+// switch shows itself only while it has something to control (SessionControls).
 // Its left side names the section, which the rail shows only as an icon and the screen header can
 // scroll away: it is also what makes this a row rather than a second right-aligned cluster.
 
@@ -67,7 +68,6 @@ export function CaseActionBar({ caseId }: { caseId: string }) {
 
       <span className="h-5 w-px bg-border" aria-hidden="true" />
 
-      {sessionActive && <RecordingMark />}
       <span title={busy} className="shrink-0">
         <Button
           variant="outline"
@@ -78,6 +78,7 @@ export function CaseActionBar({ caseId }: { caseId: string }) {
           Launch browser
         </Button>
       </span>
+      {sessionActive && <RecordingMark />}
       <SessionControls />
     </div>
   )

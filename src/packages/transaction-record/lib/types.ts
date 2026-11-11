@@ -36,6 +36,8 @@ export interface RequestPostDataResult {
 export interface CollectorInput {
   /** Every event in arrival order, from the page's session and each child session. */
   events: readonly RecordedEvent[]
+  /** Only hops whose requestWillBeSent precedes this event index belong to the Capture. */
+  requestCutIndex?: number
   /**
    * Keyed by request id. A finished request missing here had no body returned. A body returned as
    * text is kept only when the session that reported the request's `Network.loadingFinished` is

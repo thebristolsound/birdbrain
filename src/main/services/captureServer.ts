@@ -707,8 +707,8 @@ function createApp(deps: CaptureServerDeps): Hono {
       // Nothing about the diagnostic needs a real case: it acquires nothing, so
       // the only case that can hold it is one that holds nothing else. The
       // sandbox's `dispose` runs from the `finally` below on every path the
-      // process survives, including the throw, and attempts both halves
-      // whatever the other did.
+      // process survives, including the throw. What it removes and what it
+      // keeps is stated there (`createPipelineSelfTestSandbox`).
       //
       // It is also the one producer the per-case exclusion list is deliberately
       // not applied to (#400, #766). Every acquisition route is checked — the

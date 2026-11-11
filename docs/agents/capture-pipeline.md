@@ -415,25 +415,37 @@ to the list without a refetch.
   into a throwaway sandbox, which is a temporary storage root carrying its own manifest plus a
   case row created for that one request. No investigation's chain gains an entry and no
   investigation gains a capture row, whatever happens next. The sandbox itself is torn down when
-  the request ends, best-effort in two independent halves that report a failure to the operator
-  rather than swallowing it, so a failed teardown — or a process killed mid-run — can leave the
-  case row, the temporary directory, or both. A leftover case is named
+  the request ends, best-effort: the case row first, then the temporary directory, which is
+  attempted whether or not the row went. A failure is reported to the operator rather than
+  swallowed, so a failed teardown — or a process killed mid-run — can leave the case row, the
+  temporary directory, or both. Teardown also keeps both on purpose, in the cases the Sandbox
+  residue entry below lists. A leftover case is named
   `Birdbrain pipeline self-test (temporary)`; until it is deleted, its sentinel capture verifies
   as missing, because a capture row's files are resolved against the configured storage root and
   the sandbox's files were never written there. Because the sandbox root is a temporary
   directory, a green result does not prove the configured storage volume is writable.
 - **Sandbox residue** (`isPipelineSelfTestResidue`, `sweepPipelineSelfTestResidue` in
-  `src/main/services/pipelineSelfTest.ts`): a case counts as residue only when it has the sandbox
-  name, every capture row in it has the sentinel URL, and it has no directory under the
-  configured storage root, where the sandbox never writes. While the self-test runs, the sandbox
-  is an ordinary case that the capture server's routes accept, so a client holding the token
-  can upload into it. Teardown checks the case first, and when the check fails it keeps the case
-  and its temporary directory and logs `captureServer.self_test_sandbox_kept` at warn, rather than
-  deleting the upload with the case. At startup, after the storage root is set and before the
-  demo seed and the capture server, a sweep deletes each unarchived case that passes the check,
-  with the temporary directory holding its files, and logs it at info. A case with the sandbox
-  name that fails the check is kept and logged at info. No route hides the sandbox from any
-  listing.
+  `src/main/services/pipelineSelfTest.ts`): a case counts as residue only when all of these hold.
+  Its row is as the self-test created it: the sandbox name, and no description, case number,
+  exclusion policy, archive, demo or sharing mark. Every capture row in it has the sentinel URL,
+  and every exhibit row belongs to one of those captures. No other table holds a row that names
+  the case, its captures or its exhibits, apart from the search fields and extracted data the app
+  derives from a capture without being asked. The storage root can be listed and has no directory
+  for the case, because the sandbox never writes there. While the self-test runs, the sandbox is
+  an ordinary case that the capture server's routes accept, so a client holding the token can
+  upload into it. Teardown checks the case first. When the case holds something else, teardown
+  keeps the case and its temporary directory and logs `captureServer.self_test_sandbox_kept` at
+  warn, rather than deleting that write with the case. When the storage root cannot be listed,
+  teardown keeps both and logs `captureServer.self_test_storage_unavailable` at warn. When the
+  case is already gone, teardown removes the temporary directory and logs nothing. At startup,
+  after the storage root is set and before the demo seed and the capture server, a sweep deletes
+  each unarchived case that passes the check, with every temporary directory that holds a folder
+  named for it, and logs it at info. A case with the sandbox name that fails the check is kept
+  and logged at info. The sweep deletes nothing when the storage root is not the one earlier
+  launches wrote under, which is what an unmounted drive leaves: startup fell back from the
+  configured root, or had to create it. It then logs
+  `captureServer.self_test_storage_unavailable` at warn for each case with the sandbox name. No
+  route hides the sandbox from any listing.
 - **Test HTTP** (`captures:testHttp` IPC): a `fetch` of `GET /api/status` from the main process,
   proving the listener independently of the extension.
 

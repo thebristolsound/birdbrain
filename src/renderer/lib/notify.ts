@@ -161,6 +161,8 @@ const CODE_LABELS: Record<LogCode, string> = {
     'Removed a case left by an interrupted pipeline self-test',
   'captureServer.self_test_residue_kept':
     'Kept a case named like the pipeline self-test case: it holds more than the self-test left',
+  'captureServer.self_test_storage_unavailable':
+    'Kept a pipeline self-test case: the capture storage folder is missing or unreadable',
   // Errno-neutral on purpose: one label serves two surfaces. In the Log tab it
   // reads a boot EADDRINUSE entry; as a toast it can only follow a successful
   // bind, because boot fails before setLoggerWindow and exits — so a label

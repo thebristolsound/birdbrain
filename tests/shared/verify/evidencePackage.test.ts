@@ -159,7 +159,7 @@ describe('verifyEvidencePackage', () => {
       httpStatus: 200,
       extensionVersion: '',
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0',
       screenshot
     })
@@ -1052,7 +1052,7 @@ describe('verifyEvidencePackage', () => {
         httpStatus: 200,
         extensionVersion: '',
         operatorId: 'op',
-        operatorName: '',
+        operatorName: 'Test Operator',
         toolVersion: '0.1.0'
       })
       return capture

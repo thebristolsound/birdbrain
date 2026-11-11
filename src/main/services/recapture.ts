@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto'
+import { Readable } from 'stream'
+import { finished } from 'stream/promises'
 import * as captureRepo from '@main/services/db/captureRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
 import {
@@ -14,9 +16,15 @@ import type { CaptureEgress } from '@main/services/egress'
 import { getInstallationId } from '@main/services/installationId'
 import { RefusedAddressError, refusedAddressClass } from '@main/services/localAddressPolicy'
 import { authorChainOf, readCaseChains } from '@main/services/manifest'
-import { getSettings } from '@main/services/settings'
+import { OperatorNameRequiredError, trimmedOperatorName } from '@main/services/operatorName'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import { logger } from '@main/services/logger'
+import { ident, tag } from '@main/services/logSafe'
+import type {
+  BackgroundJobFailureKind,
+  BackgroundJobStep,
+  LogContext
+} from '@main/services/logSafe'
 import type { TransactionRecordOutcome } from '@main/services/transactionRecorder'
 import { ManifestEntrySchema } from '@shared/schemas'
 import type { CaptureInventory, ScrollToLoadRecord } from '@shared/schemas'
@@ -76,12 +84,30 @@ export interface RenderedPage {
   cleanup: () => Promise<void>
 }
 
+export type RenderStep = Exclude<BackgroundJobStep, 'ingest'>
+
 // `captureId` is the id the Capture is stored under, which the Transaction
 // Record's `warcinfo` names; `toolVersion` is the Birdbrain version it names.
+// `onStep` hears each step as the render starts it, and nothing after the render
+// ends, so the last step it heard is the one a failed render reached.
 export type RenderPage = (
   url: string,
-  opts: { timeoutMs: number; captureId: string; toolVersion: string }
+  opts: {
+    timeoutMs: number
+    captureId: string
+    toolVersion: string
+    onStep?: (step: RenderStep) => void
+  }
 ) => Promise<RenderedPage>
+
+// The renderer's deadline and the queue's fallback both throw it, so a job's log
+// line can tell a timeout from a render that threw.
+export class RecaptureTimeout extends Error {
+  constructor(ms: number) {
+    super(`Recapture timed out after ${ms}ms`)
+    this.name = 'RecaptureTimeout'
+  }
+}
 
 export interface RecaptureJob {
   url: string
@@ -273,9 +299,28 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     const started = Date.now()
     const captureId = randomUUID()
     const toolVersion = resolveToolVersion()
+    // The job's log lines name it by the id its render's lines carry, and its Case, never by its
+    // address (logSafe.ts), and say how long it ran, as its terminal event does.
+    const jobContext = (): LogContext => ({
+      captureId: ident(captureId),
+      caseId: ident(job.caseId),
+      ms: Date.now() - started
+    })
+    const logSkipped = (failureKind: BackgroundJobFailureKind): void => {
+      logger.info('backgroundRenderer', 'backgroundRenderer.job_skipped', {
+        ...jobContext(),
+        failureKind: tag(failureKind, 'backgroundJobFailureKind')
+      })
+    }
+    // Where a throw would leave the job: the step it reached, and the failure kind it is logged
+    // under unless it ran out of time. Everything after the render returns counts as the ingest.
+    let step: BackgroundJobStep | undefined
+    let stage: 'link-source-error' | 'render' | 'ingest' = 'render'
+    let stored: { ms: number; ingestMs: number } | undefined
     try {
       let linkSource: LinkSource | undefined
       if (job.linkedFrom) {
+        stage = 'link-source-error'
         const read = await readLinkSource(job, job.linkedFrom)
         if ('refused' in read) {
           emitEvent({
@@ -285,29 +330,37 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
             timestamp: new Date().toISOString(),
             skipReason: read.refused
           })
+          logSkipped('link-source')
           return
         }
         linkSource = read.source
+        stage = 'render'
       }
 
       // The renderer honors timeoutMs itself; race defensively so a hung
       // implementation can never wedge the serial queue.
       let fallbackTimer: NodeJS.Timeout | undefined
       const fallbackTimeout = new Promise<never>((_, reject) => {
-        fallbackTimer = setTimeout(
-          () => reject(new Error(`Recapture timed out after ${timeoutMs}ms`)),
-          timeoutMs
-        )
+        fallbackTimer = setTimeout(() => reject(new RecaptureTimeout(timeoutMs)), timeoutMs)
       })
 
       try {
         rendered = await Promise.race([
-          deps.renderPage(job.url, { timeoutMs, captureId, toolVersion }),
+          deps.renderPage(job.url, {
+            timeoutMs,
+            captureId,
+            toolVersion,
+            onStep: (reached) => {
+              step = reached
+            }
+          }),
           fallbackTimeout
         ])
       } finally {
         clearTimeout(fallbackTimer)
       }
+      stage = 'ingest'
+      step = 'ingest'
 
       // `enqueue` refused a link that points at a local address; a redirect the renderer
       // did not see as a hop still lands here (#1726). Nothing reaches the database or the
@@ -322,6 +375,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
           timestamp: new Date().toISOString(),
           skipReason: `Redirects to ${refused}`
         })
+        logSkipped('refused-address')
         return
       }
 
@@ -345,10 +399,13 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
           timestamp: new Date().toISOString(),
           skipReason: blockedSkipReason(blocked)
         })
+        logSkipped('excluded')
         return
       }
 
-      const settings = getSettings()
+      const operatorName = trimmedOperatorName()
+      if (!operatorName) throw new OperatorNameRequiredError()
+      const ingestStartedAt = Date.now()
       const result = await deps.captureLifecycle.ingest({
         captureId,
         caseId: job.caseId,
@@ -369,7 +426,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         // nothing is written, because there is no redirect to record.
         finalUrl: redirectedFinalUrl(job.url, rendered.finalUrl),
         operatorId: getInstallationId(),
-        operatorName: settings.operatorName ?? '',
+        operatorName,
         toolVersion,
         screenshot: rendered.screenshot,
         method: 'background',
@@ -387,6 +444,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         ...transactionRecordFields(rendered.transactionRecord),
         pdf: rendered.pdf.present ? rendered.pdf.bytes : undefined
       })
+      const ingestMs = Date.now() - ingestStartedAt
 
       const warning = looksLikeLoginWall({
         requestedUrl: job.url,
@@ -399,11 +457,12 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       // Said only once the Capture is stored, so a job that then fails or is skipped
       // never reports a stored Capture.
       if (!rendered.transactionRecord.present) {
+        const { error, timeLeftMs } = rendered.transactionRecord
         logger.error(
           'backgroundRenderer',
           'backgroundRenderer.transaction_record_failed',
-          undefined,
-          rendered.transactionRecord.error
+          { captureId: ident(captureId), ...(timeLeftMs === undefined ? {} : { timeLeftMs }) },
+          error
         )
       }
       if (!rendered.pdf.present) {
@@ -426,6 +485,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         durationMs: Date.now() - started,
         warning
       })
+      stored = { ms: Date.now() - started, ingestMs }
     } catch (err) {
       if (err instanceof RefusedAddressError) {
         emitEvent({
@@ -435,6 +495,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
           timestamp: new Date().toISOString(),
           skipReason: err.message
         })
+        logSkipped('refused-address')
         return
       }
       emitEvent({
@@ -445,8 +506,50 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         durationMs: Date.now() - started,
         error: err instanceof Error ? err.message : String(err)
       })
+      const failureKind = err instanceof RecaptureTimeout ? 'timeout' : stage
+      logger.warn(
+        'backgroundRenderer',
+        'backgroundRenderer.job_failed',
+        {
+          ...jobContext(),
+          failureKind: tag(failureKind, 'backgroundJobFailureKind'),
+          ...(step ? { step: tag(step, 'backgroundJobStep') } : {})
+        },
+        err
+      )
     } finally {
-      await rendered?.cleanup().catch(() => {})
+      // Ingest can reject before it starts reading, leaving the renderer's file open.
+      const stream = rendered?.mhtmlStream
+      const closed =
+        stream instanceof Readable
+          ? finished(stream, { cleanup: true }).catch((err: unknown) => {
+              if (
+                err instanceof Error &&
+                'code' in err &&
+                err.code === 'ERR_STREAM_PREMATURE_CLOSE'
+              ) {
+                return
+              }
+              logger.error(
+                'backgroundRenderer',
+                'backgroundRenderer.cleanup_failed',
+                undefined,
+                err
+              )
+            })
+          : undefined
+      stream?.destroy?.()
+      await closed
+      await rendered?.cleanup().catch((err) => {
+        logger.error('backgroundRenderer', 'backgroundRenderer.cleanup_failed', undefined, err)
+      })
+    }
+    // Logged outside the `try`, so a log call that throws cannot report a stored job failed.
+    if (stored) {
+      logger.info('backgroundRenderer', 'backgroundRenderer.job_stored', {
+        ...jobContext(),
+        ...stored
+      })
     }
   }
 
@@ -466,6 +569,12 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
 
   const service: RecaptureService = {
     enqueue(jobs) {
+      // The operator gate (X47), first as at admission: a job that cannot be signed is refused
+      // before its render contacts the site. Ingest checks again for a name cleared meanwhile.
+      if (!trimmedOperatorName()) {
+        const { message: reason } = new OperatorNameRequiredError()
+        return { accepted: 0, rejected: jobs.map(({ url }) => ({ url, reason })) }
+      }
       const rejected: Array<{ url: string; reason: string }> = []
       let accepted = 0
       for (const job of jobs) {

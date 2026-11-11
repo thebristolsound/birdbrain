@@ -523,6 +523,46 @@ describe('stored background jobs', () => {
       })
     })
 
+    // Review of #2141, finding 1: the copy can predate the claim, or the resume before it.
+    it.each(['queued', 'held'] as const)(
+      'lets the job still running end stored when the restored copy holds its row as %s',
+      async (copied) => {
+        const { renderPage, gate, urls } = gatedRender()
+        const svc = makeService(renderPage)
+        const {
+          batchId,
+          jobIds: [running]
+        } = svc.enqueue([{ url: 'https://example.com/x', caseId }])
+        await vi.waitFor(() => expect(gate).toHaveLength(1))
+        const claimed = backgroundJobRepo.getJob(running)
+        // The row as a backup taken before the claim holds it.
+        getDb()
+          .prepare(
+            `UPDATE background_jobs
+                SET state = ?, attempts = 0, started_at = NULL, capture_id = NULL WHERE id = ?`
+          )
+          .run(copied, running)
+        takeBackup()
+
+        await restore(svc)
+        expect(backgroundJobRepo.getJob(running)).toEqual(claimed)
+        expect(svc.status()).toMatchObject({ running: 1, held: 0 })
+
+        gate.shift()!()
+        await svc.idle()
+        expect(backgroundJobRepo.getJob(running)).toMatchObject({
+          state: 'stored',
+          captureId: newCaptures[0].id
+        })
+        expect(jobs.at(-1)).toMatchObject({ jobId: running, state: 'stored' })
+        // Nothing is left to resume, so the page is not captured a second time.
+        expect(svc.resume(batchId)).toEqual({ resumed: 0 })
+        await svc.idle()
+        expect(urls).toEqual(['https://example.com/x'])
+        expect(listCaptures(caseId)).toHaveLength(1)
+      }
+    )
+
     it('ends with a failed event each job of this session that the restored copy does not hold', async () => {
       takeBackup()
       const { renderPage, gate } = gatedRender()
@@ -547,7 +587,9 @@ describe('stored background jobs', () => {
         finishedAt: expect.any(String)
       })
 
-      // The running job reports its own end, and nothing is left to claim.
+      // The running job's row was written back, so it reports its own end, and nothing is left
+      // to claim.
+      expect(stateOf(running)).toBe('running')
       gate.shift()!()
       await svc.idle()
       expect(events.filter(({ jobId }) => jobId === running).map(({ type }) => type)).toEqual([
@@ -555,6 +597,10 @@ describe('stored background jobs', () => {
         'received',
         'stored'
       ])
+      expect(backgroundJobRepo.getJob(running)).toMatchObject({
+        state: 'stored',
+        captureId: newCaptures[0].id
+      })
       expect(gate).toHaveLength(0)
     })
   })

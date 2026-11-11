@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import { Readable } from 'stream'
 import { finished } from 'stream/promises'
 import * as backgroundJobRepo from '@main/services/db/backgroundJobRepo'
-import type { JobEnd } from '@main/services/db/backgroundJobRepo'
+import type { JobEnd, RunningAttempt } from '@main/services/db/backgroundJobRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import { getCase } from '@main/services/db/caseRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
@@ -147,9 +147,9 @@ export interface RecaptureService {
   recoverStoredJobs: () => void
   // Read before a restore closes the database: the jobs this session has queued or is running.
   beginRestore: () => BackgroundJobView[]
-  // After a restore re-opens the database: the startup pass, which leaves the job this process is
-  // still running to end as it would have, and a `failed` event for each job read by
-  // `beginRestore` that the restored copy does not hold.
+  // After a restore re-opens the database: the startup pass, which first writes back the row of
+  // the job this process is still running, so it ends as it would have, and a `failed` event for
+  // each job read by `beginRestore` that the restored copy does not hold.
   finishRestore: (before: BackgroundJobView[]) => void
   listJobs: (query: RecaptureListJobsQuery) => BackgroundJobView[]
   // Sets the Batch's `held` jobs `queued`, behind the jobs already queued at the resume.
@@ -171,6 +171,14 @@ export const RESTORE_REMOVED_JOB_ERROR = 'A database restore removed this job'
 
 // How a job ended, as its row records it. `logStored` writes a stored job's log line.
 type JobOutcome = Omit<JobEnd, 'finishedAt'> & { logStored?: () => void }
+
+// The job the worker is running.
+interface ActiveJob {
+  job: RecaptureJob
+  // The row as the claim read it, which a restore writes back.
+  claimed: BackgroundJobView
+  captureId: string
+}
 
 function jobOf({
   jobId,
@@ -323,7 +331,7 @@ function validateUrl(raw: string): string | null {
 
 export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS
-  let active: RecaptureJob | null = null
+  let active: ActiveJob | null = null
   let draining: Promise<void> | null = null
 
   // Every event names its job and Batch, so the renderer can tell two jobs for one address apart.
@@ -335,14 +343,16 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
 
   const emitJob = (view: BackgroundJobView): void => deps.emitJob?.(view)
 
-  function recover(exceptJobId?: string): void {
+  function recover(running?: RunningAttempt[]): void {
     const now = Date.now()
-    const { interrupted, held } = backgroundJobRepo.recoverJobsAtStartup({
+    const restored = backgroundJobRepo.recoverJobsAtStartup({
       now: new Date(now).toISOString(),
       storedBefore: new Date(now - STORED_JOB_RETENTION_MS).toISOString(),
       interruptedError: INTERRUPTED_JOB_ERROR,
-      exceptJobId
+      running
     })
+    const { interrupted, held } = restored
+    for (const job of restored.running) emitJob(job)
     for (const { job, captureId } of interrupted) {
       logger.warn('backgroundRenderer', 'backgroundRenderer.job_failed', {
         ...(captureId ? { captureId: ident(captureId) } : {}),
@@ -661,9 +671,9 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         })
         if (!claimed) return
         emitJob(claimed)
-        active = jobOf(claimed)
+        active = { job: jobOf(claimed), claimed, captureId: attempt.captureId }
         try {
-          const { logStored, ...outcome } = await runJob(active, attempt)
+          const { logStored, ...outcome } = await runJob(active.job, attempt)
           const ended = backgroundJobRepo.finishJob(claimed.jobId, {
             ...outcome,
             finishedAt: new Date().toISOString()
@@ -795,18 +805,19 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         held,
         heldBatches: backgroundJobRepo.listHeldBatches(),
         concurrency: 1,
-        activeUrl: active?.url ?? null
+        activeUrl: active?.job.url ?? null
       }
     },
     recoverStoredJobs: () => recover(),
     beginRestore: () => backgroundJobRepo.listActiveJobs(),
     finishRestore(before) {
-      const running = active?.jobId
-      recover(running)
+      const running = active
+      recover(running ? [{ job: running.claimed, captureId: running.captureId }] : [])
       const finishedAt = new Date().toISOString()
       for (const view of before) {
-        // The running job reports its own end; a job the restored copy holds was handled above.
-        if (view.jobId === running || backgroundJobRepo.getJob(view.jobId)) continue
+        // The running job's row was written back above, so it reports its own end; a job the
+        // restored copy holds was handled above.
+        if (view.jobId === running?.job.jobId || backgroundJobRepo.getJob(view.jobId)) continue
         emitJobEvent(jobOf(view), {
           type: 'failed',
           source: 'recapture',

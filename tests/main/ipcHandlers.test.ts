@@ -189,6 +189,8 @@ import {
 import Database from 'better-sqlite3'
 import { closeDatabase, getDb, initDatabase, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
 import { createPreMigrationSnapshot } from '@main/services/db/dbSnapshots'
+import { listActiveJobs } from '@main/services/db/backgroundJobRepo'
+import { scratchPathFor } from '@main/services/db/dbRestore'
 import type { RestoreOutcome, RestoreRejection } from '@main/services/db/dbRestore'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
@@ -324,9 +326,17 @@ beforeEach(async () => {
       queued: 0,
       running: 0,
       held: 0,
+      heldBatches: [],
       concurrency: 1,
       activeUrl: null
     })),
+    recoverStoredJobs: vi.fn(),
+    beginRestore: vi.fn(() => []),
+    finishRestore: vi.fn(),
+    restartQueue: vi.fn(),
+    listJobs: vi.fn(() => []),
+    resume: vi.fn(() => ({ resumed: 2 })),
+    dismiss: vi.fn(() => ({ dismissed: 1 })),
     idle: vi.fn()
   }
   updaterService = {
@@ -3344,6 +3354,11 @@ describe('ipcHandlers — database admin', () => {
     )
     expect(restored.restored).toBe(true)
     expect(clearOrphanedPartitions).toHaveBeenCalledWith(userDataPath)
+    // The restored copy's jobs go through the startup pass in this session, with the jobs read
+    // before the restore closed the database.
+    expect(recaptureService.finishRestore.mock.calls).toEqual([
+      [recaptureService.beginRestore.mock.results[0].value]
+    ])
     expect(expectOk(await invoke(IPC_CHANNELS.CASES_GET, afterSnapshot.id))).toBeUndefined()
     // The database is open again on the other side of the restore.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
@@ -3363,11 +3378,31 @@ describe('ipcHandlers — database admin', () => {
       await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Recorded after the backup' })
     )
 
+    // The session's jobs are read once the copy is prepared, as the database closes: a job queued
+    // while the file was copied is among them (review of #2141, finding 3).
+    const copyPrepared: boolean[] = []
+    const jobsBefore = [
+      {
+        jobId: 'queued-during-the-copy',
+        batchId: 'batch',
+        caseId: afterBackup.id,
+        url: 'https://example.com/',
+        state: 'queued' as const,
+        attempts: 0,
+        queuedAt: '2026-11-11T00:00:00.000Z'
+      }
+    ]
+    recaptureService.beginRestore.mockImplementationOnce(() => {
+      copyPrepared.push(existsSync(scratchPathFor(dbPath)))
+      return jobsBefore
+    })
     showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [backupPath] })
     const res = expectOk<{ restored: boolean }>(await invoke(IPC_CHANNELS.DB_RESTORE))
 
     expect(res.restored).toBe(true)
     expect(clearOrphanedPartitions).toHaveBeenCalledWith(userDataPath)
+    expect(copyPrepared).toEqual([true])
+    expect(recaptureService.finishRestore.mock.calls).toEqual([[jobsBefore]])
     // Re-opened on the other side, and holding the backup rather than the
     // database that was running when it was chosen.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
@@ -3544,21 +3579,25 @@ describe('ipcHandlers — database admin', () => {
     {
       outcome: { status: 'replace_failed', databaseIntact: true },
       code: 'DB_RESTORE_FAILED',
-      says: 'Your database is still open, as it was before.'
+      says: 'Your database is still open, as it was before.',
+      // The session's database is open again with its queued jobs, so the queue starts again.
+      restarts: 1
     },
     {
       outcome: { status: 'replace_failed', databaseIntact: false },
       code: 'DB_RESTORE_FAILED',
-      says: 'Do not restart Birdbrain: restore a backup now.'
+      says: 'Do not restart Birdbrain: restore a backup now.',
+      restarts: 0
     },
     {
       outcome: { status: 'reopen_failed' },
       code: 'DB_REOPEN_FAILED',
-      says: 'could not be re-opened after the restore. Restart Birdbrain.'
+      says: 'could not be re-opened after the restore. Restart Birdbrain.',
+      restarts: 0
     }
-  ] satisfies Array<{ outcome: RestoreOutcome; code: string; says: string }>)(
+  ] satisfies Array<{ outcome: RestoreOutcome; code: string; says: string; restarts: number }>)(
     'maps a $outcome.status outcome to $code',
-    async ({ outcome, code, says }) => {
+    async ({ outcome, code, says, restarts }) => {
       restoreOutcomes.next.push(outcome)
       showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [dbPath] })
 
@@ -3570,8 +3609,52 @@ describe('ipcHandlers — database admin', () => {
       expect(res.error).toContain(says)
       expect(res.error).not.toContain(userDataPath)
       expect(clearOrphanedPartitions).not.toHaveBeenCalled()
+      expect(recaptureService.finishRestore).not.toHaveBeenCalled()
+      expect(recaptureService.restartQueue).toHaveBeenCalledTimes(restarts)
     }
   )
+
+  // After a restore that left the file unreadable the app says "restore a backup now", with no
+  // database open (review of #2141, second verdict, finding 1). Both handlers read the session's
+  // jobs through the repository's real read here, which the service's `beginRestore` is.
+  it('restores a chosen file with no database open', async () => {
+    const backupPath = join(userDataPath, 'chosen-backup.db')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: backupPath })
+    expectOk(await invoke(IPC_CHANNELS.DB_BACKUP))
+    recaptureService.beginRestore.mockImplementationOnce(() => listActiveJobs())
+    closeDatabase()
+
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [backupPath] })
+    const res = expectOk<{ restored: boolean }>(await invoke(IPC_CHANNELS.DB_RESTORE))
+
+    expect(res.restored).toBe(true)
+    expect(recaptureService.finishRestore.mock.calls).toEqual([[[]]])
+    expect(recaptureService.restartQueue).not.toHaveBeenCalled()
+    expectOk(await invoke(IPC_CHANNELS.DB_STATS))
+    expect(readdirSync(userDataPath).filter((f) => f.startsWith('birdbrain.db.'))).toEqual([])
+  })
+
+  it('restores a snapshot with no database open', async () => {
+    const conn = new Database(dbPath)
+    try {
+      await createPreMigrationSnapshot(conn, dbPath, LATEST_SCHEMA_VERSION, LATEST_SCHEMA_VERSION)
+    } finally {
+      conn.close()
+    }
+    const [{ fileName }] = expectOk<Array<{ fileName: string }>>(
+      await invoke(IPC_CHANNELS.DB_SNAPSHOTS)
+    )
+    recaptureService.beginRestore.mockImplementationOnce(() => listActiveJobs())
+    closeDatabase()
+
+    const res = expectOk<{ restored: boolean }>(
+      await invoke(IPC_CHANNELS.DB_RESTORE_SNAPSHOT, { fileName })
+    )
+
+    expect(res.restored).toBe(true)
+    expect(recaptureService.finishRestore.mock.calls).toEqual([[[]]])
+    expectOk(await invoke(IPC_CHANNELS.DB_STATS))
+  })
 
   it('refuses both restores while another connection is mid-read, keeping the database', async () => {
     const conn = new Database(dbPath)
@@ -3639,6 +3722,10 @@ describe('ipcHandlers — database admin', () => {
     expect(res.error).not.toContain(userDataPath)
     // The database is back — the restore stopped before it moved anything.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
+    // It holds this session's jobs, which the startup pass would hold or mark interrupted.
+    expect(recaptureService.finishRestore).not.toHaveBeenCalled()
+    // Its queue starts again instead: the close may have stopped it with jobs still queued.
+    expect(recaptureService.restartQueue).toHaveBeenCalledTimes(1)
   })
 
   it('does not migrate a truncated database forward when the restore failed', async () => {
@@ -4308,10 +4395,51 @@ describe('ipcHandlers — recapture', () => {
       queued: 0,
       running: 0,
       held: 0,
+      heldBatches: [],
       concurrency: 1,
       activeUrl: null
     })
     expect(recaptureService.status).toHaveBeenCalled()
+  })
+
+  it('recapture:listJobs takes a Case or a Batch, never both or neither', async () => {
+    expectOk(await invoke(IPC_CHANNELS.RECAPTURE_LIST_JOBS, { caseId: 'case-1' }))
+    expectOk(await invoke(IPC_CHANNELS.RECAPTURE_LIST_JOBS, { batchId: 'batch-1' }))
+    expect(recaptureService.listJobs.mock.calls).toEqual([
+      [{ caseId: 'case-1' }],
+      [{ batchId: 'batch-1' }]
+    ])
+    for (const query of [undefined, {}, { caseId: 'c', batchId: 'b' }, { caseId: 7 }]) {
+      const res = (await invoke(IPC_CHANNELS.RECAPTURE_LIST_JOBS, query)) as { code?: string }
+      expect(res.code).toBe('INVALID_RECAPTURE_PAYLOAD')
+    }
+    expect(recaptureService.listJobs).toHaveBeenCalledTimes(2)
+  })
+
+  it('recapture:resume hands the Batch id to the queue', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.RECAPTURE_RESUME, { batchId: 'batch-1' }))).toEqual({
+      resumed: 2
+    })
+    expect(recaptureService.resume).toHaveBeenCalledWith('batch-1')
+    for (const payload of [undefined, {}, { batchId: '' }, 'batch-1']) {
+      const res = (await invoke(IPC_CHANNELS.RECAPTURE_RESUME, payload)) as { code?: string }
+      expect(res.code).toBe('INVALID_RECAPTURE_PAYLOAD')
+    }
+    expect(recaptureService.resume).toHaveBeenCalledTimes(1)
+  })
+
+  it('recapture:dismiss takes a job or a Batch, never both or neither', async () => {
+    expectOk(await invoke(IPC_CHANNELS.RECAPTURE_DISMISS, { jobId: 'job-1' }))
+    expectOk(await invoke(IPC_CHANNELS.RECAPTURE_DISMISS, { batchId: 'batch-1' }))
+    expect(recaptureService.dismiss.mock.calls).toEqual([
+      [{ jobId: 'job-1' }],
+      [{ batchId: 'batch-1' }]
+    ])
+    for (const target of [null, {}, { jobId: 'j', batchId: 'b' }]) {
+      const res = (await invoke(IPC_CHANNELS.RECAPTURE_DISMISS, target)) as { code?: string }
+      expect(res.code).toBe('INVALID_RECAPTURE_PAYLOAD')
+    }
+    expect(recaptureService.dismiss).toHaveBeenCalledTimes(2)
   })
 })
 

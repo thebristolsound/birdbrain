@@ -134,6 +134,9 @@ import type {
   RecaptureEnqueuePayload,
   EnqueueResult,
   RecaptureQueueStatus,
+  RecaptureListJobsQuery,
+  RecaptureDismissTarget,
+  BackgroundJobView,
   RendererLogPayload,
   SessionStateEvent,
   LaunchedBrowserPopOutEvent,
@@ -205,6 +208,9 @@ export interface BirdbrainAPI {
     enqueue(payload: RecaptureEnqueuePayload): Promise<EnqueueResult>
     queueStatus(): Promise<RecaptureQueueStatus>
     enqueueCaptures(payload: CaptureBatchPayload): Promise<EnqueueResult>
+    listJobs(query: RecaptureListJobsQuery): Promise<BackgroundJobView[]>
+    resume(payload: { batchId: string }): Promise<{ resumed: number; reason?: string }>
+    dismiss(target: RecaptureDismissTarget): Promise<{ dismissed: number }>
   }
   tags: {
     list(): Promise<Tag[]>
@@ -430,6 +436,7 @@ export interface BirdbrainAPI {
   onExtensionConnection(callback: (data: { connected: boolean }) => void): () => void
   onExtensionAttach(callback: (event: ExtensionAttachEvent) => void): () => void
   onCaptureActivity(callback: (event: CaptureEvent) => void): () => void
+  onRecaptureJob(callback: (job: BackgroundJobView) => void): () => void
   onLogEntry(callback: (entry: LogEntry) => void): () => void
   onSelectorRematched(callback: (event: SelectorRematchedEvent) => void): () => void
   onDeepLinkNavigate(callback: (target: DeepLinkTarget) => void): () => void

@@ -2,9 +2,9 @@
 
 **Date:** 2026-11-09
 
-**Status:** Draft, grilled with the maintainer on 2026-11-09; awaiting maintainer review. All six
-slices are built on stacked draft pull requests (#2133, #2135, #2141, #2146, #2147 and #2152), none
-merged yet.
+**Status:** Draft, grilled with the maintainer on 2026-11-09; awaiting maintainer review. The six
+slices are built on stacked pull requests (#2133, #2135, #2141, #2146, #2147 and #2152), which
+merge in that order.
 
 **Frame of reference:** `origin/main` at `c1ed8ed8`. This spec cites code by symbol, per
 [`docs/README.md`](../README.md). The measured figures come from one batch on 2026-11-09 and from
@@ -183,6 +183,7 @@ CREATE TABLE background_jobs (
   phase TEXT,
   attempts INTEGER NOT NULL DEFAULT 0,
   queued_at TEXT NOT NULL,
+  resumed_at TEXT,
   started_at TEXT,
   finished_at TEXT,
   capture_id TEXT,
@@ -202,8 +203,9 @@ CREATE INDEX idx_background_jobs_batch ON background_jobs(batch_id);
 | `supersedes_capture_id`, `linked_from_capture_id`, `link_href` | The `RecaptureJob` fields today, so a job read back after a restart runs exactly as it was queued. `linked_from_capture_id` has no foreign key: `readLinkSource` already refuses a job whose source is gone. |
 | `phase` | The last progress phase while `running`; see [Events](#events-and-the-renderer-contract). |
 | `attempts` | Attempts the worker has claimed for this job. Each claim adds one, the claim after a retry included; the retry itself adds nothing. |
+| `queued_at`, `resumed_at` | When the job was accepted, and when the Operator last resumed its Batch. The worker claims by `resumed_at` when set, otherwise `queued_at`, so a resumed Batch runs after the jobs already queued at the resume and ahead of later ones; `queued_at` never changes. |
 | `capture_id` | Set when the attempt starts, to the id `runJob` generates and the Transaction Record's `warcinfo` names. It names a stored Capture only in state `stored`. No foreign key, so deleting the Capture keeps the job's history. |
-| `failure_kind` | For `failed`: `timeout`, `render`, `ingest`, or `interrupted`. For `skipped`: `excluded`, `refused-address`, or `link-source`. |
+| `failure_kind` | For `failed`: `timeout`, `render`, `ingest`, `link-source-error` (the link source check threw), or `interrupted`. For `skipped`: `excluded`, `refused-address`, or `link-source`. |
 | `error`, `warning` | The message the terminal event carries today (`error`, `skipReason`, `warning`). |
 
 #### States
@@ -244,7 +246,22 @@ At startup, before the queue runs:
 
 Restoring a database snapshot or a backup file can bring back rows from the past. A restore
 re-opens the database in the running app, so the same pass runs right after a restore that
-succeeds, before the queue can claim a restored row.
+succeeds, before the queue can claim a restored row. The restored copy can hold a job the app is
+still rendering in any state, or not at all, so the pass first writes that job's row back as
+`running` under its attempt's Capture id; the job then ends as it would have, and a resume does not
+render it a second time, unless the job ended while the restore had the database closed, when no row
+is written back. A job whose Case the restored copy lacks gets no row, and its ingest fails as it
+does after a Case delete.
+
+A restore can also start with no database open, after one that left the file unreadable. The
+session's jobs cannot be read then, so none of them is sent a `failed` event.
+
+The rule of step 1 also runs while the app is open. A throw between a job's claim and the write of
+its end stops the queue loop and leaves the row `running`. When the loop stops, and again when it
+next starts, each `running` row with no job behind it becomes `stored` if its Capture is in its
+Case and `failed` as `interrupted` otherwise. A row whose end the database refused stays `running`
+until then. After a restore that failed and left the session's own database open, the restore
+handlers start the loop again.
 
 Deleting a Case deletes its jobs through the foreign key. A running job whose Case is deleted
 fails at ingest, as it does today.
@@ -263,8 +280,9 @@ Capture, so it stays until the Operator dismisses it, retries it, or deletes its
 
 The table is one new schema version, scaffolded with `pnpm db:migration:new background-jobs`,
 which appends a fail-closed `if (version < N)` block to `src/main/services/db/migrations.ts` and
-bumps `LATEST_SCHEMA_VERSION` in `src/main/services/db/core.ts` (45 at the frame of reference, so
-46 unless another migration lands first). The block creates the table and indexes inside
+bumps `LATEST_SCHEMA_VERSION` in `src/main/services/db/core.ts` (45 at the frame of reference). The
+table is version 47: version 46 went to the selector match provenance columns, which merged
+first. The block creates the table and indexes inside
 `db.transaction`, uses `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS` so that a
 restored copy marked one version back can run it again (the precedent of the v43 to v45 blocks),
 and sets `user_version`. It reads and alters no existing table, so it carries no data migration.
@@ -275,7 +293,7 @@ table is not added to `ALLOWED_TABLES` in `dbAdmin.ts`, so Settings -> Database 
 
 #### Resume order build note
 
-**Build note, 2026-11-10:** unmerged slice 3 (#2141 at `0165b0b0`) adds nullable `resumed_at` to
+**Build note, 2026-11-10:** slice 3 (#2141) adds nullable `resumed_at` to
 `background_jobs`. Resuming a Batch sets it to the resume time. Claims use
 `COALESCE(resumed_at, queued_at)`, then `queued_at` and insertion order. The resumed Batch follows
 jobs already queued at resume time; jobs queued later can follow it. This records the built
@@ -479,7 +497,7 @@ phase to the row and emits the view; it does not write timing into the row.
 | `recapture:listJobs` (new) | Returns `BackgroundJobView[]` for a Case or a batch, so the renderer can load state after a reload or a restart. |
 | `recapture:cancel` (new) | Takes a `jobId` or a `batchId`. A queued or held job becomes `cancelled`. A running job is aborted through its `AbortSignal`, which takes the render's existing deadline path (window destroyed, temp file removed, nothing stored). A job already ingesting finishes; cancel does not interrupt the manifest seam. |
 | `recapture:retry` (new) | Takes a `jobId` in `failed` or `cancelled`, or a `batchId`, which retries that Batch's `failed` and `cancelled` jobs. Sets each `queued`. The claim of the next attempt adds one to `attempts` and generates a new `capture_id`. |
-| `recapture:resume` (new) | Takes a `batchId` and sets its `held` jobs `queued`. |
+| `recapture:resume` (new) | Takes a `batchId`, sets its `held` jobs `queued` and records the resume in `resumed_at`. Refused, with the reason `recapture:enqueue` gives, while no operator name is set; the jobs stay `held`. |
 | `recapture:dismiss` (new) | Takes a `jobId` or a `batchId` and deletes `failed`, `skipped` and `cancelled` rows. It never deletes a `stored`, `queued`, `held` or `running` row. |
 
 Retries are Operator-initiated only; see [States](#states).

@@ -142,6 +142,11 @@ export const IPC_CHANNELS = {
   RECAPTURE_ENQUEUE: 'recapture:enqueue',
   RECAPTURE_QUEUE_STATUS: 'recapture:queueStatus',
   RECAPTURE_ENQUEUE_CAPTURES: 'recapture:enqueueCaptures',
+  RECAPTURE_LIST_JOBS: 'recapture:listJobs',
+  RECAPTURE_RESUME: 'recapture:resume',
+  RECAPTURE_DISMISS: 'recapture:dismiss',
+  // A Background Job's state, sent each time it changes.
+  RECAPTURE_JOB: 'event:recaptureJob',
 
   // Tags
   TAGS_LIST: 'tags:list',
@@ -969,12 +974,50 @@ export interface RecaptureQueueStatus {
   pending: number
   queued: number
   running: number
-  // Jobs from an earlier session waiting for the Operator to resume their Batch. The queue holds
-  // no job across a restart yet, so it is always 0.
+  // Jobs waiting for the Operator to resume their Batch, in total and by Batch, oldest Batch
+  // first: those an earlier session left queued, and those a restore brought back queued.
   held: number
+  heldBatches: HeldBatch[]
   concurrency: number
   activeUrl: string | null
 }
+
+export interface HeldBatch {
+  batchId: string
+  caseId: string
+  caseName: string
+  held: number
+}
+
+// The states of a `background_jobs` row (docs/specs/2026-11-09-batch-capture-throughput-design.md,
+// "States"). `held` is a job an earlier session or a restored copy left queued, which runs only
+// once its Batch resumes.
+export type BackgroundJobState =
+  'queued' | 'held' | 'running' | 'stored' | 'skipped' | 'failed' | 'cancelled'
+
+export interface BackgroundJobView {
+  jobId: string
+  batchId: string
+  caseId: string
+  url: string
+  state: BackgroundJobState
+  attempts: number
+  queuedAt: string
+  startedAt?: string
+  finishedAt?: string
+  // Only when `stored`: the id names a Capture only once one was stored under it.
+  captureId?: string
+  failureKind?: string
+  error?: string
+  warning?: string
+  supersedesCaptureId?: string
+  linkedFrom?: LinkedFrom
+}
+
+export type RecaptureListJobsQuery = { caseId: string } | { batchId: string }
+
+// `recapture:dismiss` deletes only `failed`, `skipped` and `cancelled` rows of its target.
+export type RecaptureDismissTarget = { jobId: string } | { batchId: string }
 
 // `batchId` names the call; `jobIds` are its accepted jobs, in the order they were queued.
 export interface EnqueueResult {
@@ -1095,6 +1138,12 @@ export interface IpcInvokeContract {
   'recapture:enqueue': { args: [payload: RecaptureEnqueuePayload]; result: EnqueueResult }
   'recapture:queueStatus': { args: []; result: RecaptureQueueStatus }
   'recapture:enqueueCaptures': { args: [payload: CaptureBatchPayload]; result: EnqueueResult }
+  'recapture:listJobs': { args: [query: RecaptureListJobsQuery]; result: BackgroundJobView[] }
+  'recapture:resume': {
+    args: [payload: { batchId: string }]
+    result: { resumed: number; reason?: string }
+  }
+  'recapture:dismiss': { args: [target: RecaptureDismissTarget]; result: { dismissed: number } }
 
   'tags:list': { args: []; result: Tag[] }
   'tags:create': { args: [params: CreateTagParams]; result: Tag }
@@ -1398,6 +1447,7 @@ export interface IpcEventContract {
   'event:extensionConnection': ExtensionConnectionEvent
   'event:extensionAttach': ExtensionAttachEvent
   'event:captureActivity': CaptureEvent
+  'event:recaptureJob': BackgroundJobView
   'event:selector:rematched': SelectorRematchedEvent
   'event:deepLinkNavigate': DeepLinkTarget
   'event:updateStatus': UpdateStatus

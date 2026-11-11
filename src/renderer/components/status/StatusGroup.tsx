@@ -1,13 +1,13 @@
 import { createElement, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useMatchRoute, useNavigate } from '@tanstack/react-router'
-import { Activity, Loader2, Puzzle, type LucideIcon } from 'lucide-react'
+import { Activity, Clock, Loader2, Puzzle, type LucideIcon } from 'lucide-react'
 import type { EgressSetting } from '@shared/types'
 import { Button, Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui'
 import { useAppStore } from '@renderer/stores/appStore'
 import { settingsQueryOptions } from '@renderer/lib/api/settings'
 import { vpnStatusQueryOptions } from '@renderer/lib/api/egress'
-import { recaptureQueueQueryOptions } from '@renderer/lib/api/recapture'
+import { recaptureQueueQueryOptions, useResumeHeldBatch } from '@renderer/lib/api/recapture'
 import { cn } from '@renderer/lib/utils'
 import { egressIcon } from '@renderer/components/status/egressText'
 import {
@@ -23,7 +23,8 @@ import { CaptureLog, useSelfTest } from '@renderer/components/status/CaptureHeal
 // its dot and both take that signal's colour, with one short word; the pill itself stays
 // unfilled. The button's accessible name is the whole state (statusGroupModel's summary), and a
 // polite live region announces severity changes only, never each count. Click opens the three
-// rows.
+// rows, and above the buttons the held Batches, which an earlier session or a restore left
+// waiting, each with its Resume.
 
 const FG: Record<Severity, string> = {
   nominal: 'text-text-faint',
@@ -71,6 +72,9 @@ export function StatusGroup() {
     if (latestRecaptureEvent) void refetchQueue()
   }, [latestRecaptureEvent, refetchQueue])
   const pending = queue?.pending ?? 0
+  const held = queue?.held ?? 0
+  const heldBatches = queue?.heldBatches ?? []
+  const resume = useResumeHeldBatch()
 
   const model = statusModel({
     egress,
@@ -81,7 +85,8 @@ export function StatusGroup() {
     successCount: captureStats.successCount,
     failCount: captureStats.failCount,
     sessionActive,
-    pending
+    pending,
+    held
   })
   const [extension, egressSignal, health] = model.signals
 
@@ -172,6 +177,16 @@ export function StatusGroup() {
               {pending}
             </span>
           )}
+          {model.held && (
+            <span
+              data-testid="recapture-held-indicator"
+              title={model.held}
+              className="inline-flex items-center gap-1 tabular-nums text-text-secondary"
+            >
+              <Clock className="h-3 w-3" aria-hidden="true" />
+              {held}
+            </span>
+          )}
         </button>
       </PopoverTrigger>
       <span aria-live="polite" className="sr-only">
@@ -185,6 +200,32 @@ export function StatusGroup() {
         {/* An Egress still being read takes the unknown Egress's icon, as a failed read does. */}
         <Row icon={egressIcon(iconEgress ?? UNREAD_EGRESS, vpnSeen)} signal={egressSignal} />
         <Row icon={Activity} signal={health} />
+        {model.held && heldBatches.length > 0 && (
+          <div data-testid="recapture-held" className="border-t border-border px-2.5 py-2">
+            <div className="text-[11px] text-text-primary">{model.held}</div>
+            <div className="text-[10px] text-text-faint">
+              Nothing is sent until you resume them.
+            </div>
+            {heldBatches.map((batch) => (
+              <div
+                key={batch.batchId}
+                className="mt-1.5 flex items-center justify-between gap-2 text-[11px]"
+              >
+                <span className="min-w-0 truncate text-text-secondary">
+                  {batch.held} in {batch.caseName}
+                </span>
+                <Button
+                  variant="outline"
+                  size="xs"
+                  onClick={() => resume.mutate(batch)}
+                  disabled={resume.isPending}
+                >
+                  Resume
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2 border-t border-border px-2.5 py-2">
           <Button
             variant="outline"

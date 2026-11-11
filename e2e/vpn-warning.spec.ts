@@ -241,6 +241,7 @@ test.describe('VPN warning', () => {
       queued: 0,
       running: 0,
       held: 0,
+      heldBatches: [],
       concurrency: 1,
       activeUrl: null
     })

@@ -90,22 +90,28 @@ let inProgress = false
  * Expected outcomes are returned, never thrown, and carry no filesystem path;
  * the cause of each is logged here. The caller owns everything that follows a
  * successful restore, such as clearing state the restored database no longer
- * knows about.
+ * knows about. `beforeClose` runs once the copy is prepared, with nothing
+ * awaited between it and the close: the caller's last read of the live
+ * database, which stays open and writable while the copy is prepared.
  */
 export async function restoreDatabase(
   source: RestoreSource,
-  { dbPath }: { dbPath: string }
+  { dbPath, beforeClose }: { dbPath: string; beforeClose?: () => void }
 ): Promise<RestoreOutcome> {
   if (inProgress) return rejected('in_progress')
   inProgress = true
   try {
-    return await restore(source.path, dbPath)
+    return await restore(source.path, dbPath, beforeClose)
   } finally {
     inProgress = false
   }
 }
 
-async function restore(sourcePath: string, dbPath: string): Promise<RestoreOutcome> {
+async function restore(
+  sourcePath: string,
+  dbPath: string,
+  beforeClose?: () => void
+): Promise<RestoreOutcome> {
   // Checked first and again before the close: see the second call below.
   if (!emptyWalBeforeReplace()) return rejected('in_use')
 
@@ -132,6 +138,16 @@ async function restore(sourcePath: string, dbPath: string): Promise<RestoreOutco
   if (refusal) {
     clearStaging(staging)
     return refusal
+  }
+
+  // Ahead of the check below, so nothing the caller does here can leave the WAL
+  // non-empty at the close. A hook that throws ends the restore with nothing
+  // replaced, and takes the prepared copy with it.
+  try {
+    beforeClose?.()
+  } catch (err) {
+    clearStaging(staging)
+    throw err
   }
 
   // Again here, with no await between this and the close: the database stayed

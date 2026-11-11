@@ -3,7 +3,7 @@ import { runMigrations } from '@main/services/db/migrations'
 import { createPreMigrationSnapshot } from '@main/services/db/dbSnapshots'
 
 let db: Database.Database | null = null
-export const LATEST_SCHEMA_VERSION = 46
+export const LATEST_SCHEMA_VERSION = 47
 
 /**
  * Snapshot the database if — and only if — migrations are about to change it.
@@ -106,6 +106,12 @@ export function emptyWalBeforeReplace(): boolean {
 export function getDb(): Database.Database {
   if (!db) throw new Error('Database not initialized')
   return db
+}
+
+// False between a restore's close and its re-open, and after a restore that left the file
+// unreadable, when the app runs on with no database until another restore.
+export function isDatabaseOpen(): boolean {
+  return db !== null
 }
 
 export function closeDatabase(): void {

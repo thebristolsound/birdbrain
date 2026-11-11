@@ -691,6 +691,25 @@ describe('settings', () => {
       )
       expect(getSettings().ignoredUrlPatterns).toEqual(['a.com'])
     })
+
+    it('names every new pattern it refuses in one message', () => {
+      updateSettings({ ignoredUrlPatterns: ['a.com'] })
+      expect(() => updateSettings({ ignoredUrlPatterns: ['', 'a.com', ' b.com'] })).toThrow(
+        'Invalid settings: ignoredUrlPatterns.0: Pattern is empty; ' +
+          'ignoredUrlPatterns.2: Pattern has leading or trailing whitespace'
+      )
+    })
+
+    // A file the schema rejects loads as defaults, so nothing in it is exempt.
+    it('exempts nothing held in a file the schema rejects', () => {
+      const contents = JSON.stringify({ ignoredUrlPatterns: ['/[/'], captureScreenshots: 'yes' })
+      writeFileSync(settingsFile, contents)
+      expect(getSettings().ignoredUrlPatterns).toEqual([])
+      expect(() => updateSettings({ ignoredUrlPatterns: ['/[/'] })).toThrow(
+        'ignoredUrlPatterns.0: Invalid regular expression'
+      )
+      expect(readFileSync(settingsFile, 'utf-8')).toBe(contents)
+    })
   })
 
   it('returns empty operatorName by default', () => {
@@ -948,6 +967,25 @@ describe('initSettings and the fresh-install latch', () => {
       count: 2
     })
     expect(read().ignoredUrlPatterns).toEqual(['a.com', '/[/', '/some/path'])
+  })
+
+  // The matcher does not trim, so a stored pattern with a space at either end excludes
+  // nothing either, and is counted with the ones validateIgnorePattern refuses.
+  it('counts a stored ignored URL pattern with a space at either end', async () => {
+    const stored = ['a.com', '/example/ ', ' example.com', '/[/', '']
+    writeFileSync(
+      join(tempDir, 'settings.json'),
+      JSON.stringify({ ignoredUrlPatterns: stored }),
+      'utf-8'
+    )
+    loggerWarn.mockClear()
+    const { initSettings, getSettings: read } = await load()
+    initSettings(tempDir)
+    expect(loggerWarn).toHaveBeenCalledTimes(1)
+    expect(loggerWarn).toHaveBeenCalledWith('settings', 'settings.ignore_patterns_invalid', {
+      count: 4
+    })
+    expect(read().ignoredUrlPatterns).toEqual(stored)
   })
 
   it.each([

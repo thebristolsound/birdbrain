@@ -132,6 +132,22 @@ export function validateIgnorePattern(
 }
 
 /**
+ * `validateIgnorePattern` for a list that is matched as stored. The per-case list is trimmed
+ * before it is stored, so trimming in its check is harmless. The global list is not, and
+ * `matchIgnoredUrl` does not trim, so there a pattern with a space at either end is one more
+ * kind that can never match (#724).
+ */
+export function validateIgnorePatternAsStored(
+  pattern: string
+): ReturnType<typeof validateIgnorePattern> {
+  const result = validateIgnorePattern(pattern)
+  if (result.ok && pattern !== pattern.trim()) {
+    return { ok: false, reason: 'Pattern has leading or trailing whitespace' }
+  }
+  return result
+}
+
+/**
  * The patterns actually in force for one case (#400): the operator's global
  * ignore list combined with the case's own, per the case's mode.
  *

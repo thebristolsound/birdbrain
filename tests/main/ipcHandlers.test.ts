@@ -2325,10 +2325,13 @@ describe('ipcHandlers — settings', () => {
 
   // #724, the global list's counterpart of the per-case refusal (#750): a pattern
   // written past the Settings panel is refused at the seam, and nothing is stored.
-  it('refuses a global ignored URL pattern that does not compile', async () => {
+  it.each([
+    ['does not compile', '/[/'],
+    ['has a space at one end', ' example.com']
+  ])('refuses a global ignored URL pattern that %s', async (_name, pattern) => {
     expectOk(await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { ignoredUrlPatterns: ['a.com'] }))
     const refused = await invoke(IPC_CHANNELS.SETTINGS_UPDATE, {
-      ignoredUrlPatterns: ['a.com', '/[/']
+      ignoredUrlPatterns: ['a.com', pattern]
     })
     expect(refused).toMatchObject({ ok: false, code: 'INVALID_SETTINGS' })
     const stored = expectOk<{ ignoredUrlPatterns: string[] }>(

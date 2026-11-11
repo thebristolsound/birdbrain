@@ -173,6 +173,21 @@ describe('CapturePreferences ignored URL patterns', () => {
       expect(marks[0].textContent).toBe(reason.ok ? '' : reason.reason)
     })
 
+    // The matcher does not trim, so these exclude nothing as stored, and the row's text
+    // does not show the space.
+    it.each(['/example/ ', ' example.com'])('marks %j, which has a space at one end', (padded) => {
+      renderPanel({ ignoredUrlPatterns: ['a.com', padded] })
+      const marks = screen.getAllByTestId('ignore-pattern-invalid')
+      expect(marks).toHaveLength(1)
+      expect(marks[0].textContent).toBe('Pattern has leading or trailing whitespace')
+    })
+
+    it('can remove one with a space at one end, sending the others as stored', () => {
+      const { onUpdate } = renderPanel({ ignoredUrlPatterns: ['/example/ ', ' example.com'] })
+      fireEvent.click(screen.getAllByText('×')[0])
+      expect(onUpdate).toHaveBeenCalledWith({ ignoredUrlPatterns: [' example.com'] })
+    })
+
     // Only the typed pattern is checked: main exempts what is already stored.
     it('does not stop another pattern being added', () => {
       const { onUpdate } = renderPanel({ ignoredUrlPatterns: stored })

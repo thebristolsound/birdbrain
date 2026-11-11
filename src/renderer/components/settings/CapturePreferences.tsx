@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Check } from 'lucide-react'
 import type { BirdbrainSettings } from '@shared/types'
-import { validateIgnorePattern } from '@shared/urlPatterns'
+import { validateIgnorePattern, validateIgnorePatternAsStored } from '@shared/urlPatterns'
 import { Card, CardContent, Input, Button, Label } from '@renderer/components/ui'
 import { FoundBrowsers } from '@renderer/components/launchedBrowser/FoundBrowsers'
 
@@ -101,7 +101,7 @@ export function CapturePreferences({ settings, onUpdate }: CapturePreferencesPro
             </p>
             <div className="space-y-1">
               {ignoredUrlPatterns.map((pattern, i) => {
-                const validation = validateIgnorePattern(pattern)
+                const validation = validateIgnorePatternAsStored(pattern)
                 return (
                   <div key={pattern} className="rounded bg-elevated px-2 py-1">
                     <div className="flex items-center justify-between">

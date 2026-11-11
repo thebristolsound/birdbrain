@@ -553,7 +553,7 @@ describe("the operator's selection stays out of the frames (#993)", () => {
   })
 
   // Without composed ranges, getRangeAt reports a shadow-crossing selection as collapsed, so a
-  // caret cannot be told from one; both are cleared, as before the caret rule.
+  // caret cannot be told from one, and both are cleared.
   it('clears even a collapsed selection where composed ranges are unavailable', () => {
     expect('getComposedRanges' in Selection.prototype).toBe(false)
     const text = document.querySelector('p')!.firstChild!
@@ -717,12 +717,18 @@ describe("the operator's selection stays out of the frames (#993)", () => {
   })
 
   // The background also runs the fallback strip after a live script reports a failed teardown,
-  // and that script still gets the release.
+  // and that script still gets the release. The hold has emptied the selection by then, so the
+  // strip's own clear is seen here against a selection the page put back in between.
   it('puts the held selection back when the fallback strip ran after the hold', () => {
+    setPageHtml(
+      '<main><p>Report abuse to evil@example.com immediately.</p>' +
+        '<p id="second">A different passage entirely.</p></main>'
+    )
     selectParagraph()
     const before = selectionEnds()
 
     dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+    window.getSelection()!.selectAllChildren(document.getElementById('second')!)
     removeInjectedBirdbrainUi()
     expect(window.getSelection()!.rangeCount).toBe(0)
     dispatch({ type: 'RELEASE_CAPTURE_UI' })
@@ -1179,6 +1185,19 @@ describe("the operator's selection stays out of the frames (#993)", () => {
 
       expect(inner).toEqual({ anchor: 0, focus: 0 })
       expect(selectionEnds()).toEqual([...point, ...point])
+    })
+
+    // The fallback strip's clear takes the caret out of the input, and nothing can put a
+    // selection back into an input that takes no offsets.
+    it('selects nothing in the input after the fallback strip ran on top of the hold', () => {
+      focusedInputOf('email', 0, 7)
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      removeInjectedBirdbrainUi()
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(window.getSelection()!.rangeCount).toBe(0)
+      expect(moves).toEqual(['move backward'])
     })
 
     it('selects nothing in the input once the selection has moved to the page', () => {

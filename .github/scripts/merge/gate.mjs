@@ -48,6 +48,21 @@ export function approvalStamp(statuses) {
   return stamp ? stamp.state : 'absent'
 }
 
+// All readers require a dedicated workflow-token stamp for this exact head as well as the
+// live label and its maintainer actor. Status payloads omit the SHA, so the trusted stamp
+// description also names it. Evidence approval never authorizes a review override.
+export function breakGlassAuthorized(labels, statuses, labeler, maintainer, sha) {
+  const stamp = statuses.find(
+    (s) => s.context === 'merge/break-glass' && s.creator?.login === 'github-actions[bot]'
+  )
+  return (
+    labels.includes('break-glass') &&
+    labeler === maintainer &&
+    stamp?.state === 'success' &&
+    stamp.description === `Review override by ${maintainer} on ${sha}`
+  )
+}
+
 // The newest review/fleet state the machine account posted (ADR-0057). A success the fleet posted
 // for a break-glass override is no review: this gate checks the label itself, so the override
 // ends when the label is removed, even before the fleet replaces that status.
@@ -116,15 +131,19 @@ export function decide(f) {
   }
 }
 
-function lastLabeler(repo, n, name) {
+export function lastLabeler(repo, n, name) {
   const events = api(`repos/${repo}/issues/${n}/events?per_page=100`).filter(
     (e) => e.event === 'labeled' && e.label?.name === name
   )
   return events[events.length - 1]?.actor?.login ?? ''
 }
 
+// Every reader asks for a PR's whole event history, which outgrows Node's 1 MiB default.
 function api(path) {
-  const out = execFileSync('gh', ['api', '--paginate', '--slurp', path], { encoding: 'utf8' })
+  const out = execFileSync('gh', ['api', '--paginate', '--slurp', path], {
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024
+  })
   return JSON.parse(out).flat()
 }
 
@@ -165,8 +184,13 @@ function main([repo, n]) {
         machine,
         sameRepo: pr.head.repo?.full_name === repo
       }),
-      breakGlass:
-        labels.includes('break-glass') && lastLabeler(repo, n, 'break-glass') === maintainer,
+      breakGlass: breakGlassAuthorized(
+        labels,
+        statuses,
+        lastLabeler(repo, n, 'break-glass'),
+        maintainer,
+        headSha
+      ),
       approvalStamp: approvalStamp(statuses),
       reviews: api(`repos/${repo}/pulls/${n}/reviews?per_page=100`).map((r) => ({
         state: r.state,

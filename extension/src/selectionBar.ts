@@ -434,6 +434,14 @@ let heldField: {
   value: string
 } | null = null
 
+// A selection inside an input that reports no offsets, held as its text: see sitsInInput.
+let heldInput: {
+  input: HTMLInputElement
+  text: string
+  backward: boolean
+  value: string
+} | null = null
+
 function shadowRootOf(element: Element): ShadowRoot | null | undefined {
   return (
     element.shadowRoot ??
@@ -451,13 +459,18 @@ function shadowRootsUnder(root: Document | ShadowRoot, found: ShadowRoot[] = [])
   return found
 }
 
-function focusedTextField(): TextField | null {
+function focusedElement(): Element | null {
   let active = document.activeElement
   let inner = active && shadowRootOf(active)?.activeElement
   while (inner) {
     active = inner
     inner = shadowRootOf(active)?.activeElement
   }
+  return active
+}
+
+function focusedTextField(): TextField | null {
+  const active = focusedElement()
   if (active instanceof HTMLTextAreaElement) return active
   // Input types the text selection API does not apply to report null here.
   if (active instanceof HTMLInputElement && active.selectionStart !== null) return active
@@ -472,6 +485,44 @@ function holdField(field: TextField): void {
   field.setSelectionRange(end, end)
 }
 
+// getRangeAt reports a selection that crosses a shadow boundary as a collapsed point in
+// Chromium, so it could not be put back; the composed range keeps both ends where they are.
+function composedRange(selection: Selection): AbstractRange | undefined {
+  if (typeof selection.getComposedRanges !== 'function') return undefined
+  return selection.getComposedRanges({ shadowRoots: shadowRootsUnder(document) })[0]
+}
+
+// An email, number or date input reports no offsets, and the browser keeps its caret and
+// selection out of reach: the document reports either as a point just before the input, and the
+// composed range as the input itself. Only the selected text tells the two apart.
+function sitsInInput(selection: Selection, range: AbstractRange, input: Element): boolean {
+  const { startContainer, startOffset, endContainer, endOffset } = range
+  return (
+    selection.isCollapsed &&
+    startContainer.childNodes[startOffset] === input &&
+    endContainer === startContainer &&
+    endOffset - startOffset <= 1
+  )
+}
+
+// A move by one character collapses a selection onto the end it moves towards. collapseToStart
+// and collapseToEnd would act on the point the document reports, and leave the input.
+function collapseInInput(selection: Selection, toEnd: boolean): void {
+  selection.modify('move', toEnd ? 'forward' : 'backward', 'character')
+}
+
+function holdInput(input: HTMLInputElement, selection: Selection): void {
+  const text = selection.toString()
+  // A caret paints no highlight. A later per-frame strip finds the selection collapsed the same
+  // way and keeps what the first held.
+  if (text === '') return
+  const backward = selection.direction === 'backward'
+  heldInput = { input, text, backward, value: input.value }
+  // Emptying the document's selection would lose the place in the input, so it is collapsed
+  // inside it, on the anchor: extending from there on release gives the direction back too.
+  collapseInInput(selection, backward)
+}
+
 function holdSelection(): void {
   const field = focusedTextField()
   // Collapsing the field leaves it focused; removeAllRanges would also drop its selection.
@@ -482,17 +533,16 @@ function holdSelection(): void {
   const selection = window.getSelection()
   // A later per-frame strip finds the selection already empty and keeps what the first held.
   if (!selection || selection.rangeCount === 0) return
-  // getRangeAt reports a selection that crosses a shadow boundary as a collapsed point in
-  // Chromium, so it could not be put back; the composed range keeps both ends where they are.
-  const composedAvailable = typeof selection.getComposedRanges === 'function'
-  const [composed] = composedAvailable
-    ? selection.getComposedRanges({ shadowRoots: shadowRootsUnder(document) })
-    : []
-  const range = composed ?? selection.getRangeAt(0)
+  const range = composedRange(selection) ?? selection.getRangeAt(0)
+  const active = focusedElement()
+  if (active instanceof HTMLInputElement && sitsInInput(selection, range, active)) {
+    holdInput(active, selection)
+    return
+  }
   // A caret paints no highlight, and clearing it would fire the page's selectionchange on every
   // capture taken after a click. Only the composed range can tell a caret from a shadow-crossing
   // selection, which getRangeAt reports as collapsed, so without it both are cleared.
-  if (composedAvailable && range.collapsed) return
+  if (typeof selection.getComposedRanges === 'function' && range.collapsed) return
   const backward =
     typeof selection.direction === 'string'
       ? selection.direction === 'backward'
@@ -515,12 +565,37 @@ function restoreField(): void {
   // Put back only over what the strip left. A selection made, a caret moved or text typed in the
   // field during the capture is newer than the held one. A caret put back on the same offset
   // reads the same as the strip's own, so the held selection returns over it.
-  if (field.value !== value || field.selectionStart !== end || field.selectionEnd !== end) return
+  if (field.value !== value) return
+  const untouched = field.selectionStart === end && field.selectionEnd === end
+  // A caret or selection in a focused field always shows in the document's selection. An empty
+  // one was emptied after the hold, by the fallback strip, which also drops the field's caret to
+  // its start, or by the page: the held selection returns, as it does over a page's clear below.
+  const emptied = focusedTextField() === field && window.getSelection()?.rangeCount === 0
+  if (!untouched && !emptied) return
   field.setSelectionRange(start, end, direction)
+}
+
+function restoreInput(): void {
+  const held = heldInput
+  heldInput = null
+  const selection = window.getSelection()
+  if (!held || !selection || selection.rangeCount === 0) return
+  const { input, text, backward, value } = held
+  // Put back only over the caret the strip left in the same text, as for a text field.
+  if (focusedElement() !== input || input.value !== value || selection.toString() !== '') return
+  if (!sitsInInput(selection, composedRange(selection) ?? selection.getRangeAt(0), input)) return
+  for (let i = 0; i < text.length && selection.toString().length < text.length; i += 1) {
+    selection.modify('extend', backward ? 'backward' : 'forward', 'character')
+  }
+  const extended = selection.toString()
+  // The offsets cannot be read, so a caret the operator moved shows only now, as other text
+  // under the extension: back to where they left it. Nothing extended, nothing to take back.
+  if (extended !== text && extended !== '') collapseInInput(selection, backward)
 }
 
 function restoreSelection(): void {
   restoreField()
+  restoreInput()
   const held = heldSelection
   heldSelection = null
   const selection = window.getSelection()

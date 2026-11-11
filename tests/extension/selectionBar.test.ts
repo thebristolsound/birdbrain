@@ -1278,8 +1278,9 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       expect(selectionEnds()).toEqual([...point, ...point])
     })
 
-    // The fallback strip's clear takes the caret out of the input, and nothing can put a
-    // selection back into an input that takes no offsets.
+    // After the fallback strip's clear the document reports no selection in the input, and the
+    // release does not try to put one back. It must not throw on the empty selection either: the
+    // release loop would log that and skip the bar.
     it('selects nothing in the input after the fallback strip ran on top of the hold', () => {
       focusedInputOf('email', 0, 7)
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})

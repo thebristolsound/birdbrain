@@ -300,7 +300,7 @@ ordering rule, not a guarantee that every future paste takes priority over resum
 #### Shape
 
 `drain()` becomes a pool of up to `concurrency` worker loops. Each loop claims the first eligible
-`queued` row in the claim order above in one synchronous statement (better-sqlite3 runs in the
+`queued` row in the claim order above in one synchronous transaction (better-sqlite3 runs in the
 main process, so two loops cannot claim the same row), sets it `running`, and calls `runJob`.
 Each job keeps its own hidden window and its own in-memory partition, as the Recapture design
 requires; nothing is shared between renders.

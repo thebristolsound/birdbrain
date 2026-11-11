@@ -33,11 +33,25 @@ describe('readGuestContextMenu', () => {
     ).toEqual({
       linkUrl: 'https://example.com/a',
       linkText: 'Example',
+      altText: '',
       imageUrl: '',
       selectionText: '',
       x: 12,
       y: 34
     })
+  })
+
+  it('reads the alternative text of an image link, which Electron gives no link text', () => {
+    expect(
+      readGuestContextMenu(
+        contextMenuEvent({
+          linkURL: 'https://example.com/a',
+          srcURL: 'https://example.com/i.png',
+          mediaType: 'image',
+          altText: '  Company logo  '
+        })
+      )
+    ).toMatchObject({ linkText: '', altText: 'Company logo' })
   })
 
   it('takes srcURL as the image address only when the hit is an image', () => {
@@ -70,9 +84,15 @@ describe('readGuestContextMenu', () => {
   it('drops fields of the wrong type rather than passing them on', () => {
     expect(
       readGuestContextMenu(
-        contextMenuEvent({ linkURL: 'https://example.com/', linkText: 7, x: 'left', y: NaN })
+        contextMenuEvent({
+          linkURL: 'https://example.com/',
+          linkText: 7,
+          altText: null,
+          x: 'left',
+          y: NaN
+        })
       )
-    ).toMatchObject({ linkText: '', x: 0, y: 0 })
+    ).toMatchObject({ linkText: '', altText: '', x: 0, y: 0 })
   })
 })
 

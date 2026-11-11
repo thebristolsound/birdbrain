@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { getTagsForCapture } from '@main/services/db/tagRepo'
 import * as noteRepo from '@main/services/db/noteRepo'
@@ -222,9 +222,13 @@ describe('extension attach cache events (#852)', () => {
     expect(attachEvents()).toEqual([])
   })
 
-  it('stays silent when the tag write throws', async () => {
+  it('stays silent and leaves the tags table unchanged when the tag write throws', async () => {
     const caseId = await seedActiveCase('Failing Tag Case')
     const captureId = await seedCapture(caseId)
+    // Read the table itself, tombstones included: the capture having no tags
+    // still holds while a created-then-orphaned `tags` row survives (#1045).
+    const tagsTable = (): unknown[] => getDb().prepare('SELECT * FROM tags ORDER BY id').all()
+    const before = tagsTable()
     const spy = vi.spyOn(tagRepo, 'addTagToCapture').mockImplementation(() => {
       throw new Error('tag apply exploded')
     })
@@ -234,6 +238,7 @@ describe('extension attach cache events (#852)', () => {
       expect(res.status).toBe(500)
       expect(attachEvents()).toEqual([])
       expect(getTagsForCapture(captureId)).toEqual([])
+      expect(tagsTable()).toEqual(before)
     } finally {
       spy.mockRestore()
     }

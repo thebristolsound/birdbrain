@@ -214,110 +214,65 @@ jobs:
           cat > "$RUNNER_TEMP/release-notes.md" <<EOF
           ## About this beta
 
-          **What beta means here.** One thing holds and everything else is rough. The one thing:
-          Birdbrain must not silently lose, corrupt, or mis-attest evidence. Screens, wording and
-          workflows are changing on purpose; that floor is not.
+          Screens and workflows will change. The one rule that holds: Birdbrain must not
+          silently lose, corrupt, or mis-attest evidence.
 
-          **The installers are unsigned.** On Windows, SmartScreen warns about an unrecognized app;
-          click **More info**, then **Run anyway**. Code signing lands at the first non-beta release.
+          **The installers are unsigned.** When Windows SmartScreen warns,
+          click **More info**, then **Run anyway**.
 
-          **If a capture turns out not to be what Birdbrain claimed**, the advisory is a pinned issue on
-          [thebristolsound/birdbrain](https://github.com/thebristolsound/birdbrain/issues) plus a
-          patched release through the updater. That release reaches Windows and
-          AppImage installs in place. A \`.deb\` install updates only on **Restart to update**, so \`.deb\`
-          users have to look here.
+          If a capture turns out wrong, the advisory is a pinned issue on
+          [thebristolsound/birdbrain](https://github.com/thebristolsound/birdbrain/issues), plus a
+          patched release through the updater. A \`.deb\` install updates only on **Restart to update**.
 
-          **The source is public.** Birdbrain is open source under the MIT license and is built in
-          [thebristolsound/birdbrain](https://github.com/thebristolsound/birdbrain), which also
-          publishes these builds.
+          **The source is public.** MIT licensed, at
+          [thebristolsound/birdbrain](https://github.com/thebristolsound/birdbrain).
 
-          ### What to report
+          Report bugs as [issues](https://github.com/thebristolsound/birdbrain/issues).
+          Report a security vulnerability privately through the
+          [Security tab](https://github.com/thebristolsound/birdbrain/security).
 
-          Open an issue in
-          [thebristolsound/birdbrain](https://github.com/thebristolsound/birdbrain/issues).
-          Report a security vulnerability privately through its
-          [Security tab](https://github.com/thebristolsound/birdbrain/security), not in an issue.
-
-          **Do not report:** layout, spacing, visual design, wording, labels, or a general sense that it
-          feels dated. The UI is changing substantially and those decisions are made.
-
-          **Do report:**
-
-          1. Evidence lost, mangled, or mis-described — anything that disappeared, came back different,
-             or is described by the app as something other than what it is.
-          2. Sites that fail to capture, capture incompletely, or render wrong in the viewer, with the
-             URL where it can be shared.
-          3. Workflow dead-ends, where you wanted to do something and there was no path. Awkward is not
-             a dead-end.
-          4. Whether the certification and verify output read as true to someone who would have to
-             defend them to a hostile reader.
-
-          ## Which file do I download?
+          ## Downloads
 
           | You are on | Download |
           | --- | --- |
           | **Windows 10 / 11** | \`Birdbrain-Setup-${VERSION}.exe\` |
           | **Ubuntu** — preferred | \`Birdbrain-${VERSION}.AppImage\` |
           | **Ubuntu** — alternative | \`birdbrain_${VERSION}_amd64.deb\` |
-          | **macOS 13 or later, Apple Silicon** — experimental | \`Birdbrain-${VERSION}-arm64.dmg\` |
-          | **macOS 13 or later, Intel** — experimental | \`Birdbrain-${VERSION}.dmg\` |
+          | **macOS 13+, Apple Silicon** — experimental | \`Birdbrain-${VERSION}-arm64.dmg\` |
+          | **macOS 13+, Intel** — experimental | \`Birdbrain-${VERSION}.dmg\` |
 
-          The macOS files are on this page only if the experimental macOS build succeeded. A
-          failed macOS build does not stop the release, so check the file list below first.
+          The macOS files are on this page only if the experimental macOS build succeeded. The app
+          does not install updates on macOS.
 
-          **On Ubuntu, the AppImage needs the execute bit and FUSE 2 before it will run:**
+          The AppImage needs the execute bit and FUSE 2:
 
           \`\`\`bash
           chmod +x Birdbrain-${VERSION}.AppImage
           sudo apt install libfuse2t64      # 22.04 and earlier: libfuse2
-          ./Birdbrain-${VERSION}.AppImage
           \`\`\`
 
-          Ubuntu stopped installing FUSE 2 by default, and without it the app does not
-          start. If you would rather not install it, run the AppImage with
-          \`--appimage-extract-and-run\` instead.
-
-          The Chrome extension ships **inside** the app — do not download it separately.
-          After installing, use **Open extension folder** in the app and load that folder
-          in Chrome, so the extension always matches your app version. (The
-          \`birdbrain-extension.zip\` here is the same build, for developers only.)
-
-          \`SHA256SUMS.txt\` lists the SHA-256 of the Windows, Linux and extension files, of the
-          macOS files when this page has them, and of the bill of materials, taken from the
-          copies on this page. To check a download on Linux, put \`SHA256SUMS.txt\` in the
-          folder that holds it and run
-          \`sha256sum --check --ignore-missing SHA256SUMS.txt\`.
-
-          \`birdbrain-${TAG}.spdx.json\` is that bill of materials: GitHub's dependency list
-          for the Birdbrain source repository's main branch, in SPDX 2.3 JSON, exported
-          during this release's build.
-
-          Everything else on this page (\`latest*.yml\`, \`*.blockmap\`) is machinery for
-          the in-app updater. Ignore it.
-
-          **macOS is experimental.** The build is unsigned and not notarized, no machine
-          check launches it before it is published, and the app does not install updates on
-          macOS. macOS blocks the first launch, and may say the app is "damaged and can't be
-          opened": that is the download quarantine, not a corrupt file. After dragging
-          Birdbrain to Applications, clear the quarantine once:
+          On macOS, clear the download quarantine once after moving the app to Applications:
 
           \`\`\`bash
           xattr -dr com.apple.quarantine /Applications/Birdbrain.app
           \`\`\`
 
-          **Already running Birdbrain?** On Windows or Ubuntu you do not need this page.
-          **Settings → Updates → Check for updates** finds this version. If the download does not
-          start by itself, click **Download**. When it finishes, click **Restart to update**. On the
-          \`.deb\`, that last step asks for your system password. On macOS, download the new disk
-          image from this page and repeat the steps above instead. After updating, reload the
-          Birdbrain extension at \`chrome://extensions\`, because Chrome keeps the old copy loaded
-          until you do.
+          The Chrome extension ships inside the app: use **Open extension folder** and load that folder
+          in Chrome.
 
-          Platform notes, the extension load steps, and where advisories appear:
-          [Download Birdbrain](https://docs.birdbrain.cc/docs/download).
+          \`SHA256SUMS.txt\` lists the SHA-256 of the Windows, Linux and extension files, of the
+          macOS files when this page has them, and of the bill of materials. To check a download
+          on Linux, put \`SHA256SUMS.txt\` in the folder that holds it and run
+          \`sha256sum --check --ignore-missing SHA256SUMS.txt\`.
 
-          Step by step, from install to first capture:
-          [Install and first capture](https://docs.birdbrain.cc/docs/tester-guide).
+          \`birdbrain-${TAG}.spdx.json\` is that bill of materials: GitHub's dependency list for
+          the Birdbrain source repository's main branch, in SPDX 2.3 JSON, exported during this
+          release's build.
+
+          Already installed? Use **Settings → Updates → Check for updates**. On macOS, download the new disk
+          image from this page instead.
+
+          Full install steps: [Download Birdbrain](https://docs.birdbrain.cc/docs/download).
           EOF
 
       # sbom.sh cites GitHub's documented permission, contents: read.

@@ -624,6 +624,113 @@ describe('settings', () => {
     expect(settings.ignoredUrlPatterns).toEqual(['*.google.com', '*.bing.com'])
   })
 
+  // #724. Known answers for the global list's edit seam: the grammar
+  // validateIgnorePattern applies to the per-case list, plus surrounding
+  // whitespace, which validateIgnorePattern trims and matchIgnoredUrl does not.
+  describe('a new ignored URL pattern the matcher cannot use', () => {
+    it.each([
+      ['an uncompilable regex', '/[/', 'ignoredUrlPatterns.1: Invalid regular expression'],
+      ['a URL path read as a regex with bad flags', '/some/path', 'ignoredUrlPatterns.1: '],
+      ['an empty pattern', '', 'ignoredUrlPatterns.1: Pattern is empty'],
+      [
+        'a regex with a trailing space',
+        '/example/ ',
+        'ignoredUrlPatterns.1: Pattern has leading or trailing whitespace'
+      ],
+      [
+        'a substring with a leading space',
+        ' example.com',
+        'ignoredUrlPatterns.1: Pattern has leading or trailing whitespace'
+      ]
+    ])('refuses %s and keeps the stored list', (_name, pattern, message) => {
+      updateSettings({ ignoredUrlPatterns: ['a.com'] })
+      const before = readFileSync(settingsFile, 'utf-8')
+      expect(() => updateSettings({ ignoredUrlPatterns: ['a.com', pattern] })).toThrow(message)
+      expect(() => updateSettings({ ignoredUrlPatterns: ['a.com', pattern] })).toThrow(
+        InvalidSettingsError
+      )
+      expect(readFileSync(settingsFile, 'utf-8')).toBe(before)
+    })
+
+    it.each(['facebook.com', '*.bank.com*', 'exa?ple.com', '/^https:/i', '/(a+)+$/'])(
+      'accepts %j as before',
+      (pattern) => {
+        updateSettings({ ignoredUrlPatterns: [pattern] })
+        expect(getSettings().ignoredUrlPatterns).toEqual([pattern])
+      }
+    )
+
+    it('keeps one stored before the check, and still saves other settings', () => {
+      writeFileSync(settingsFile, JSON.stringify({ ignoredUrlPatterns: ['a.com', '/[/'] }))
+      expect(getSettings().ignoredUrlPatterns).toEqual(['a.com', '/[/'])
+      updateSettings({ theme: 'light' })
+      expect(getSettings()).toMatchObject({ theme: 'light', ignoredUrlPatterns: ['a.com', '/[/'] })
+    })
+
+    it('saves a new pattern alongside one stored before the check', () => {
+      writeFileSync(settingsFile, JSON.stringify({ ignoredUrlPatterns: ['/[/'] }))
+      updateSettings({ ignoredUrlPatterns: ['/[/', 'b.com'] })
+      expect(getSettings().ignoredUrlPatterns).toEqual(['/[/', 'b.com'])
+    })
+
+    // Every removal leaves the others stored, so each save still holds unusable ones.
+    it('removes several stored before the check one at a time', () => {
+      const stored = ['/admin/users', '/[/', '/example/ ']
+      writeFileSync(settingsFile, JSON.stringify({ ignoredUrlPatterns: stored }))
+      for (let left = stored.length - 1; left >= 0; left--) {
+        updateSettings({ ignoredUrlPatterns: stored.slice(0, left) })
+        expect(getSettings().ignoredUrlPatterns).toEqual(stored.slice(0, left))
+      }
+    })
+
+    it('refuses one stored before the check once it has been removed', () => {
+      writeFileSync(settingsFile, JSON.stringify({ ignoredUrlPatterns: ['a.com', '/[/'] }))
+      updateSettings({ ignoredUrlPatterns: ['a.com'] })
+      expect(() => updateSettings({ ignoredUrlPatterns: ['a.com', '/[/'] })).toThrow(
+        'ignoredUrlPatterns.1: Invalid regular expression'
+      )
+      expect(getSettings().ignoredUrlPatterns).toEqual(['a.com'])
+    })
+
+    // The exemption is per stored entry, so a second copy of a stored one is a new pattern.
+    it('refuses a second copy of one stored before the check', () => {
+      writeFileSync(settingsFile, JSON.stringify({ ignoredUrlPatterns: ['/[/'] }))
+      expect(() => updateSettings({ ignoredUrlPatterns: ['/[/', '/[/'] })).toThrow(
+        'ignoredUrlPatterns.1: Invalid regular expression'
+      )
+      expect(getSettings().ignoredUrlPatterns).toEqual(['/[/'])
+    })
+
+    it('keeps two copies stored before the check, and refuses a third', () => {
+      const stored = ['/[/', 'a.com', '/[/']
+      writeFileSync(settingsFile, JSON.stringify({ ignoredUrlPatterns: stored }))
+      updateSettings({ ignoredUrlPatterns: [...stored, 'b.com'] })
+      expect(getSettings().ignoredUrlPatterns).toEqual([...stored, 'b.com'])
+      expect(() => updateSettings({ ignoredUrlPatterns: [...stored, 'b.com', '/[/'] })).toThrow(
+        'ignoredUrlPatterns.4: Invalid regular expression'
+      )
+    })
+
+    it('names every new pattern it refuses in one message', () => {
+      updateSettings({ ignoredUrlPatterns: ['a.com'] })
+      expect(() => updateSettings({ ignoredUrlPatterns: ['', 'a.com', ' b.com'] })).toThrow(
+        'Invalid settings: ignoredUrlPatterns.0: Pattern is empty; ' +
+          'ignoredUrlPatterns.2: Pattern has leading or trailing whitespace'
+      )
+    })
+
+    // A file the schema rejects loads as defaults, so nothing in it is exempt.
+    it('exempts nothing held in a file the schema rejects', () => {
+      const contents = JSON.stringify({ ignoredUrlPatterns: ['/[/'], captureScreenshots: 'yes' })
+      writeFileSync(settingsFile, contents)
+      expect(getSettings().ignoredUrlPatterns).toEqual([])
+      expect(() => updateSettings({ ignoredUrlPatterns: ['/[/'] })).toThrow(
+        'ignoredUrlPatterns.0: Invalid regular expression'
+      )
+      expect(readFileSync(settingsFile, 'utf-8')).toBe(contents)
+    })
+  })
+
   it('returns empty operatorName by default', () => {
     const s = getSettings()
     expect(s.operatorName).toBe('')
@@ -861,6 +968,59 @@ describe('initSettings and the fresh-install latch', () => {
     expect(seeded).not.toHaveProperty('openRouterApiKey')
     expect(seeded).not.toHaveProperty('defaultModel')
     expect(seeded).not.toHaveProperty('analysisSystemPrompt')
+  })
+
+  // #724: a pattern stored before the edit seam validated is kept, and init
+  // records how many there are, once, without the patterns themselves.
+  it('logs the stored ignored URL patterns validateIgnorePattern refuses', async () => {
+    writeFileSync(
+      join(tempDir, 'settings.json'),
+      JSON.stringify({ ignoredUrlPatterns: ['a.com', '/[/', '/some/path'] }),
+      'utf-8'
+    )
+    loggerWarn.mockClear()
+    const { initSettings, getSettings: read } = await load()
+    initSettings(tempDir)
+    expect(loggerWarn).toHaveBeenCalledTimes(1)
+    expect(loggerWarn).toHaveBeenCalledWith('settings', 'settings.ignore_patterns_invalid', {
+      count: 2
+    })
+    expect(read().ignoredUrlPatterns).toEqual(['a.com', '/[/', '/some/path'])
+  })
+
+  // The matcher does not trim, so a stored pattern with a space at either end excludes
+  // nothing either, and is counted with the ones validateIgnorePattern refuses.
+  it('counts a stored ignored URL pattern with a space at either end', async () => {
+    const stored = ['a.com', '/example/ ', ' example.com', '/[/', '']
+    writeFileSync(
+      join(tempDir, 'settings.json'),
+      JSON.stringify({ ignoredUrlPatterns: stored }),
+      'utf-8'
+    )
+    loggerWarn.mockClear()
+    const { initSettings, getSettings: read } = await load()
+    initSettings(tempDir)
+    expect(loggerWarn).toHaveBeenCalledTimes(1)
+    expect(loggerWarn).toHaveBeenCalledWith('settings', 'settings.ignore_patterns_invalid', {
+      count: 4
+    })
+    expect(read().ignoredUrlPatterns).toEqual(stored)
+  })
+
+  it.each([
+    ['every stored pattern is valid', JSON.stringify({ ignoredUrlPatterns: ['a.com'] })],
+    ['the file will not parse', '{"ignoredUrlPatterns": ['],
+    ['the file fails the schema', JSON.stringify({ ignoredUrlPatterns: 'a.com' })]
+  ])('logs nothing about ignored URL patterns when %s', async (_name, contents) => {
+    writeFileSync(join(tempDir, 'settings.json'), contents, 'utf-8')
+    loggerWarn.mockClear()
+    const { initSettings } = await load()
+    initSettings(tempDir)
+    expect(loggerWarn).not.toHaveBeenCalledWith(
+      'settings',
+      'settings.ignore_patterns_invalid',
+      expect.anything()
+    )
   })
 
   it('does not throw when the settings directory cannot be written', async () => {

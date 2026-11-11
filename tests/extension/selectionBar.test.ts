@@ -681,7 +681,9 @@ describe("the operator's selection stays out of the frames (#993)", () => {
     const warn = vi.spyOn(console, 'warn')
 
     try {
-      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      // A strip that threw on the empty selection would answer a failed teardown, and the
+      // background would then run the fallback strip for every page with nothing selected.
+      expect(dispatch({ type: 'PREPARE_FOR_CAPTURE' })).toEqual([{ ok: true }])
       dispatch({ type: 'RELEASE_CAPTURE_UI' })
 
       expect(window.getSelection()!.rangeCount).toBe(0)
@@ -906,6 +908,19 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       expect(document.activeElement).toBe(input)
     })
 
+    // An emptied document selection says nothing about a field the operator has left since.
+    it('keeps a selection made in the field and then left, when the selection is emptied', () => {
+      const input = focusedInput()
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      input.setSelectionRange(0, 3)
+      input.blur()
+      window.getSelection()!.removeAllRanges()
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(fieldEnds(input).slice(0, 2)).toEqual([0, 3])
+    })
+
     // A page can change a held input's type during the capture. A number input takes no offsets,
     // so setSelectionRange would throw out of the release listener and the bar would stay away.
     it('puts nothing back into an input the page turned into one that takes no offsets', async () => {
@@ -965,14 +980,15 @@ describe("the operator's selection stays out of the frames (#993)", () => {
     })
   })
 
-  // An email, number or date input reports no selection offsets. Chromium reports a caret or a
-  // selection inside one as a point just before the input, with a composed range that spans the
-  // input, and jsdom models none of it. These tests stand in what Chromium 154 did in the review
-  // round's probe: the selected text and its direction, and a character-wise move or extend,
-  // which acts inside such an input. collapseToStart and collapseToEnd act on the point the
-  // document reports once anything has read it, which takes the caret out of the input, so the
-  // stand-in fails a test that calls either there.
-  describe('in a focused input that reports no selection offsets', () => {
+  // Chromium keeps a text control's caret and selection to itself. The document reports either as
+  // a point just before the control, or before the web component that holds it, with a composed
+  // range that spans the control, and jsdom models none of it. These tests stand in what
+  // Chromium 154 did in the review rounds' probes: the selected text and its direction, and a
+  // character-wise move or extend, which acts inside the control. collapseToStart and
+  // collapseToEnd act on the point the document reports once anything has read it, which takes
+  // the caret out of the control, so the stand-in fails a test that calls either there. An email,
+  // number or date input reports no selection offsets besides, so nothing else reaches into it.
+  describe('in a text control, as Chromium reports its caret and selection', () => {
     const VALUES = {
       email: 'someone@example.com',
       number: '1234567890',
@@ -984,9 +1000,26 @@ describe("the operator's selection stays out of the frames (#993)", () => {
     }
     const STUBBED = ['toString', 'collapseToStart', 'collapseToEnd', 'modify'] as const
     const LEFT_THE_INPUT = 'collapsed on the point the document reports, outside the input'
+    // Every call that changes the document's selection. Each fires the page's selectionchange in
+    // Chromium, a collapse onto the same point included, which jsdom lets pass in silence.
+    const MUTATORS = [
+      'removeAllRanges',
+      'empty',
+      'collapse',
+      'setPosition',
+      'extend',
+      'setBaseAndExtent',
+      'selectAllChildren',
+      'addRange'
+    ] as const
     const originals = new Map<string, PropertyDescriptor>()
-    let input: HTMLInputElement
+    let input: HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement
+    // Where the document reports the control's caret or selection, and where the composed range
+    // starts: the same place, unless a web component holds the control.
     let point: [Node, number]
+    let spanned: [Node, number]
+    // Where the composed range ends when a test needs it elsewhere than just after the control.
+    let spannedEnd: [Node, number] | null
     // The input's own caret or selection, as offsets into its value.
     let inner: { anchor: number; focus: number }
     // Every move and extend the extension asked for, inside the input or not.
@@ -997,16 +1030,44 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       return rangeCount === 1 && isCollapsed && anchorNode === point[0] && anchorOffset === point[1]
     }
 
-    function focusedInputOf(type: keyof typeof VALUES, anchor = 0, focus = anchor): void {
-      setPageHtml(`${PAGE_HTML}<input type="${type}" value="${VALUES[type]}">`)
-      input = document.querySelector('input')!
-      input.focus()
-      expect(input.selectionStart).toBeNull()
-      const parent = input.parentNode!
-      point = [parent, Array.from(parent.childNodes).indexOf(input)]
+    function before(node: Node): [Node, number] {
+      const parent = node.parentNode!
+      return [parent, Array.from(parent.childNodes).indexOf(node as ChildNode)]
+    }
+
+    // A caret (anchor and focus the same) or a selection inside the control, as reported.
+    function reportIn(control: typeof input, anchor: number, focus: number): void {
+      input = control
+      const root = control.getRootNode()
+      spanned = before(control)
+      spannedEnd = null
+      point = root instanceof ShadowRoot ? before(root.host) : spanned
       window.getSelection()!.collapse(...point)
       inner = { anchor, focus }
       moves = []
+    }
+
+    function focusedInputOf(
+      type: keyof typeof VALUES,
+      anchor = 0,
+      focus = anchor,
+      value = VALUES[type]
+    ): void {
+      setPageHtml(`${PAGE_HTML}<input type="${type}" value="${value}">`)
+      const control = document.querySelector('input')!
+      control.focus()
+      expect(control.selectionStart).toBeNull()
+      reportIn(control, anchor, focus)
+    }
+
+    function mutatorsCalled(run: () => void): string[] {
+      const spies = MUTATORS.map((name) => vi.spyOn(Selection.prototype, name))
+      try {
+        run()
+        return MUTATORS.filter((_, index) => spies[index].mock.calls.length > 0)
+      } finally {
+        spies.forEach((spy) => spy.mockRestore())
+      }
     }
 
     beforeEach(() => {
@@ -1061,7 +1122,11 @@ describe("the operator's selection stays out of the frames (#993)", () => {
                 : Math.min(anchor, focus)
               return
             }
-            inner.focus = Math.max(0, Math.min(input.value.length, focus + (forward ? 1 : -1)))
+            // One step covers a whole emoji, which is two units of the value.
+            const next = input.value.codePointAt(forward ? focus : Math.max(0, focus - 2)) ?? 0
+            const step = next > 0xffff ? 2 : 1
+            const to = focus + (forward ? step : -step)
+            inner.focus = Math.max(0, Math.min(input.value.length, to))
             if (alter === 'move') inner.anchor = inner.focus
           }
         },
@@ -1072,10 +1137,10 @@ describe("the operator's selection stays out of the frames (#993)", () => {
             return [
               inside(this)
                 ? new StaticRange({
-                    startContainer: point[0],
-                    startOffset: point[1],
-                    endContainer: point[0],
-                    endOffset: point[1] + 1
+                    startContainer: spanned[0],
+                    startOffset: spanned[1],
+                    endContainer: (spannedEnd ?? spanned)[0],
+                    endOffset: spannedEnd ? spannedEnd[1] : spanned[1] + 1
                   })
                 : new StaticRange({ startContainer, startOffset, endContainer, endOffset })
             ]
@@ -1094,19 +1159,17 @@ describe("the operator's selection stays out of the frames (#993)", () => {
     })
 
     function expectCaretLeftAlone(): void {
-      const removeAllRanges = vi.spyOn(Selection.prototype, 'removeAllRanges')
-      try {
-        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
-        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
-        expect(removeAllRanges).not.toHaveBeenCalled()
-        expect(selectionEnds()).toEqual([...point, ...point])
-        dispatch({ type: 'RELEASE_CAPTURE_UI' })
-        expect(selectionEnds()).toEqual([...point, ...point])
-        // Not even collapsed on itself: nothing here may fire the page's selectionchange.
-        expect(moves).toEqual([])
-      } finally {
-        removeAllRanges.mockRestore()
-      }
+      // Not even collapsed on itself: nothing here may fire the page's selectionchange.
+      expect(
+        mutatorsCalled(() => {
+          dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+          dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+          expect(selectionEnds()).toEqual([...point, ...point])
+          dispatch({ type: 'RELEASE_CAPTURE_UI' })
+          expect(selectionEnds()).toEqual([...point, ...point])
+        })
+      ).toEqual([])
+      expect(moves).toEqual([])
     }
 
     it.each(Object.keys(VALUES) as Array<keyof typeof VALUES>)(
@@ -1215,17 +1278,24 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       expect(selectionEnds()).toEqual([...point, ...point])
     })
 
-    // The fallback strip's clear takes the caret out of the input, and nothing can put a
-    // selection back into an input that takes no offsets.
+    // After the fallback strip's clear the document reports no selection in the input, and the
+    // release does not try to put one back. It must not throw on the empty selection either: the
+    // release loop would log that and skip the bar.
     it('selects nothing in the input after the fallback strip ran on top of the hold', () => {
       focusedInputOf('email', 0, 7)
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
-      removeInjectedBirdbrainUi()
-      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+      try {
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        removeInjectedBirdbrainUi()
+        dispatch({ type: 'RELEASE_CAPTURE_UI' })
 
-      expect(window.getSelection()!.rangeCount).toBe(0)
-      expect(moves).toEqual(['move backward'])
+        expect(warn).not.toHaveBeenCalledWith(RELEASE_FAILED, expect.anything())
+        expect(window.getSelection()!.rangeCount).toBe(0)
+        expect(moves).toEqual(['move backward'])
+      } finally {
+        warn.mockRestore()
+      }
     })
 
     it('selects nothing in the input once the selection has moved to the page', () => {
@@ -1240,6 +1310,262 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       expect(selectionEnds()).toEqual([text, 5, text, 5])
       // The page's caret is not extended either.
       expect(moves).toEqual(['move backward'])
+    })
+
+    // Chromium reports an input selected as a node as a selection that is not collapsed, and
+    // paints it.
+    it('strips an input selected as a node while it has the focus, as a page selection', () => {
+      focusedInputOf('email', 3)
+      window.getSelection()!.setBaseAndExtent(point[0], point[1], point[0], point[1] + 1)
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      expect(window.getSelection()!.rangeCount).toBe(0)
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(selectionEnds()).toEqual([point[0], point[1], point[0], point[1] + 1])
+      expect(moves).toEqual([])
+    })
+
+    it('puts back a selection that holds an emoji, and no more than was held', () => {
+      focusedInputOf('email', 0, 4, 'a\u{1F600}b\u{1F600}c@example.com')
+      expect(window.getSelection()!.toString()).toBe('a\u{1F600}b')
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      expect(inner).toEqual({ anchor: 0, focus: 0 })
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(inner).toEqual({ anchor: 0, focus: 4 })
+      // Three steps for four units of text.
+      expect(moves).toEqual(['move backward', ...Array.from('123', () => 'extend forward')])
+    })
+
+    describe('inside a web component', () => {
+      function focusedInputInComponent(anchor = 0, focus = anchor): void {
+        setPageHtml(`${PAGE_HTML}<div id="host"></div>`)
+        const host = document.getElementById('host')!
+        host.attachShadow({ mode: 'open' }).innerHTML =
+          '<input type="email" value="someone@example.com">'
+        const control = host.shadowRoot!.querySelector('input')!
+        control.focus()
+        expect(document.activeElement).toBe(host)
+        reportIn(control, anchor, focus)
+        expect(point).not.toEqual(spanned)
+      }
+
+      // A Chrome without composed ranges has no Selection.direction either.
+      function withoutComposedRanges(): void {
+        Reflect.deleteProperty(Selection.prototype, 'getComposedRanges')
+        Reflect.deleteProperty(Selection.prototype, 'direction')
+      }
+
+      function expectSelectionHeldAndPutBack(): void {
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        expect(inner).toEqual({ anchor: 0, focus: 0 })
+        expect(window.getSelection()!.rangeCount).toBe(1)
+        dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+        expect(inner).toEqual({ anchor: 0, focus: 7 })
+        expect(selectionEnds()).toEqual([...point, ...point])
+      }
+
+      it("leaves a caret in the component's email input alone", () => {
+        focusedInputInComponent(3)
+        expectCaretLeftAlone()
+      })
+
+      it('takes a selection inside the input out of every frame and puts it back', () => {
+        focusedInputInComponent(0, 7)
+        expectSelectionHeldAndPutBack()
+      })
+
+      // There the point before the component is all the document reports of the input.
+      it('leaves the caret alone there without composed ranges', () => {
+        withoutComposedRanges()
+        focusedInputInComponent(3)
+        expectCaretLeftAlone()
+      })
+
+      it('puts the selection back there without composed ranges', () => {
+        withoutComposedRanges()
+        focusedInputInComponent(0, 7)
+        expectSelectionHeldAndPutBack()
+      })
+    })
+
+    // After the operator leaves a text control for a button, a checkbox, a link or an area that
+    // takes no selection, Chromium still reports the control's caret or selection as above, and
+    // in this round's probe drew neither. Clearing it fired the page's selectionchange before
+    // the frame, and release selected the control as a node.
+    describe('once the control has lost the focus', () => {
+      const CONTROLS = {
+        text: '<input type="text" value="search terms here">',
+        search: '<input type="search" value="search terms here">',
+        email: '<input type="email" value="someone@example.com">',
+        number: '<input type="number" value="1234567890">',
+        textarea: '<textarea>Hello wide world</textarea>'
+      }
+      const TARGETS = {
+        'a button': 'button',
+        'a checkbox': 'input[type="checkbox"]',
+        'a link': 'a',
+        'document.body': null
+      }
+      type Kind = keyof typeof CONTROLS
+      type Target = keyof typeof TARGETS
+      type Control = HTMLInputElement | HTMLTextAreaElement
+
+      function leftControl(
+        kind: Kind,
+        target: Target,
+        where: 'the page' | 'a web component',
+        anchor: number,
+        focus: number
+      ): Control {
+        const inPage = where === 'the page'
+        setPageHtml(
+          `${PAGE_HTML}${inPage ? CONTROLS[kind] : '<div id="host"></div>'}` +
+            '<button>Search</button><input type="checkbox"><a href="#">A link</a>'
+        )
+        const holder = inPage
+          ? document.body
+          : document.getElementById('host')!.attachShadow({ mode: 'open' })
+        if (!inPage) holder.innerHTML = CONTROLS[kind]
+        const control = holder.querySelector<Control>('input:not([type="checkbox"]), textarea')!
+        control.focus()
+        if (control.selectionStart !== null) {
+          control.setSelectionRange(Math.min(anchor, focus), Math.max(anchor, focus))
+        }
+        const selector = TARGETS[target]
+        if (selector) document.querySelector<HTMLElement>(selector)!.focus()
+        else control.blur()
+        expect(document.activeElement).toBe(
+          selector ? document.querySelector(selector) : document.body
+        )
+        reportIn(control, anchor, focus)
+        return control
+      }
+
+      // A capture with two frames. Nothing may reach the page: no selectionchange, which jsdom
+      // fires for a changed range, and no call that fires one in Chromium where jsdom does not.
+      async function expectLeftAlone(control: Control): Promise<void> {
+        const offsets = [control.selectionStart, control.selectionEnd]
+        await flushTimers()
+        const events: string[] = []
+        const onEvent = (event: Event): void => {
+          events.push(event.type)
+        }
+        document.addEventListener('selectionchange', onEvent)
+        const setSelectionRange = vi.spyOn(control, 'setSelectionRange')
+        try {
+          const called = mutatorsCalled(() => {
+            dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+            dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+            expect(selectionEnds()).toEqual([...point, ...point])
+            dispatch({ type: 'RELEASE_CAPTURE_UI' })
+          })
+          await flushTimers()
+
+          expect(selectionEnds()).toEqual([...point, ...point])
+          expect(called).toEqual([])
+          expect(moves).toEqual([])
+          expect(events).toEqual([])
+          expect(setSelectionRange).not.toHaveBeenCalled()
+          expect([control.selectionStart, control.selectionEnd]).toEqual(offsets)
+        } finally {
+          document.removeEventListener('selectionchange', onEvent)
+          setSelectionRange.mockRestore()
+        }
+      }
+
+      const each = (kinds: Kind[]): Array<[Kind, Target]> =>
+        (Object.keys(TARGETS) as Target[]).flatMap((target) =>
+          kinds.map((kind): [Kind, Target] => [kind, target])
+        )
+
+      it.each(each(Object.keys(CONTROLS) as Kind[]))(
+        'leaves the %s control as the page had it, with the focus on %s',
+        async (kind, target) => {
+          // Its caret, then a selection in it.
+          await expectLeftAlone(leftControl(kind, target, 'the page', 3, 3))
+          await expectLeftAlone(leftControl(kind, target, 'the page', 2, 6))
+        }
+      )
+
+      it.each(each(['text', 'email']))(
+        'leaves the %s control of a web component as the page had it, with the focus on %s',
+        async (kind, target) => {
+          await expectLeftAlone(leftControl(kind, target, 'a web component', 3, 3))
+          await expectLeftAlone(leftControl(kind, target, 'a web component', 6, 2))
+        }
+      )
+
+      it('leaves it alone where composed ranges are unavailable too', async () => {
+        Reflect.deleteProperty(Selection.prototype, 'getComposedRanges')
+        await expectLeftAlone(leftControl('text', 'a button', 'the page', 2, 6))
+        await expectLeftAlone(leftControl('email', 'a checkbox', 'the page', 3, 3))
+      })
+
+      // There the document reports only the point before the web component, which reads the
+      // same as a caret on the page or a selection that crosses into the component: cleared.
+      it('clears the point before a web component where composed ranges are unavailable', () => {
+        Reflect.deleteProperty(Selection.prototype, 'getComposedRanges')
+        leftControl('text', 'a button', 'a web component', 3, 3)
+
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        expect(window.getSelection()!.rangeCount).toBe(0)
+        dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+        expect(selectionEnds()).toEqual([...point, ...point])
+      })
+
+      // Chromium reports a control selected as a node as a selection that is not collapsed, and
+      // paints it in the page.
+      it('strips a control selected as a node, and puts that selection back', () => {
+        leftControl('text', 'a button', 'the page', 3, 3)
+        window.getSelection()!.setBaseAndExtent(point[0], point[1], point[0], point[1] + 1)
+
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        expect(window.getSelection()!.rangeCount).toBe(0)
+        dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+        expect(selectionEnds()).toEqual([point[0], point[1], point[0], point[1] + 1])
+      })
+
+      // A selection that only starts at a control is on the page, whatever the document's own
+      // report says: getRangeAt reports one that crosses into a web component as collapsed too.
+      it.each([
+        ['runs on past the control', (): [Node, number] => [spanned[0], spanned[1] + 2]],
+        [
+          'ends in another node',
+          (): [Node, number] => [document.querySelector('a')!.firstChild!, 2]
+        ]
+      ])('strips a selection that starts at the control and %s', (_name, end) => {
+        leftControl('text', 'a button', 'the page', 3, 3)
+        spannedEnd = end()
+
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        expect(window.getSelection()!.rangeCount).toBe(0)
+        dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+        expect(selectionEnds()).toEqual([...spanned, ...spannedEnd])
+      })
+
+      // Only a text control was seen to keep a selection the page does not draw. The same report
+      // over anything else is taken for a selection of that node. Not a state the probe produced.
+      it('strips a selection reported the same way over a focused button', () => {
+        setPageHtml(`${PAGE_HTML}<button>Search</button>`)
+        const button = document.querySelector('button')!
+        button.focus()
+        reportIn(button, 0, 0)
+
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        expect(window.getSelection()!.rangeCount).toBe(0)
+        expect(moves).toEqual([])
+        dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+        expect(selectionEnds()).toEqual([...spanned, spanned[0], spanned[1] + 1])
+      })
     })
   })
 

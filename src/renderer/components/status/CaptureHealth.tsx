@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CheckCircle2, XCircle, AlertTriangle, Loader2 } from 'lucide-react'
+import { CheckCircle2, XCircle, AlertTriangle, Loader2, Clock } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
 import { useNavigate } from '@tanstack/react-router'
 import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContextMenu'
@@ -29,6 +29,8 @@ function EventIcon({ type }: { type: CaptureEvent['type'] }) {
       return <AlertTriangle className="h-3.5 w-3.5 text-warning-fg" />
     case 'received':
       return <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
+    case 'queued':
+      return <Clock className="h-3.5 w-3.5 text-text-muted" />
   }
 }
 

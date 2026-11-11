@@ -30,6 +30,7 @@ import {
   readSharedCaseSnapshot,
   withCaptureEntry,
   withDeletionEntry,
+  withManifestSlot,
   ManifestRollback
 } from '@main/services/manifest'
 import type { AuthorChain, CaptureChainEntry, ManifestImportEntry } from '@main/services/manifest'
@@ -1181,27 +1182,10 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     })
   }
 
-  // Per-case serialisation for delete/deleteMany (#394): the manifest is one
-  // append-only file per case and a rollback is a truncation, so two deletes
-  // interleaving on the same chain could truncate each other's entries.
-  // Callers queue in memory; there is no busy error.
-  const caseSlots = new Map<string, Promise<void>>()
-
-  async function withCaseSlot<T>(caseId: string, fn: () => Promise<T>): Promise<T> {
-    const prev = caseSlots.get(caseId) ?? Promise.resolve()
-    let release: () => void = () => {}
-    const mine = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    const tail = prev.then(() => mine)
-    caseSlots.set(caseId, tail)
-    await prev
-    try {
-      return await fn()
-    } finally {
-      release()
-      if (caseSlots.get(caseId) === tail) caseSlots.delete(caseId)
-    }
+  // Per-case serialisation for delete/deleteMany (#394), on the manifest's slot so the timestamp
+  // worker queues on the same one (#639). Callers queue in memory; there is no busy error.
+  function withCaseSlot<T>(caseId: string, fn: () => Promise<T>): Promise<T> {
+    return withManifestSlot(store.caseDir(caseId), fn)
   }
 
   // The single-capture delete body, shared by `delete` and `deleteMany`.
@@ -2024,13 +2008,9 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
               reconcileErr
             )
           }
-          // A copy is a new Exhibit with search field records of its own. Ingest builds
-          // them in runPostCaptureWork, which a duplicate does not run.
-          setImmediate(() => {
-            if (deps.extraction) {
-              void runCaptureProcessing(duplicateId, source.caseId, sourceEntry.url)
-            } else runFieldBuild(duplicateId, sourceEntry.url)
-          })
+          // A copy is a new Exhibit with selector matches and search field records of its
+          // own, so it takes the same post-capture work as ingest, over its own copied text.
+          runPostCaptureWork(duplicateId, source.caseId, sourceEntry.url, copiedText)
           return { status: 'duplicated', capture: captureRepo.getCapture(duplicateId) ?? capture }
         } catch (err) {
           // Pre-commit only: the manifest seam has already rolled its own entry

@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["rulings", "not_checked", "source_review_complete", "runtime_limitations", "contract_version"],
+  "properties": {
+    "rulings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "ruling", "reason"],
+        "properties": {
+          "id": { "type": "integer" },
+          "ruling": { "type": "string", "enum": ["CONFIRMED", "REFUTED", "UNCLEAR"] },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "not_checked": {
+      "type": "array", "maxItems": 10,
+      "items": { "type": "string", "minLength": 1, "maxLength": 600 }
+    },
+    "source_review_complete": { "type": "boolean" },
+    "runtime_limitations": {
+      "type": "array", "maxItems": 10,
+      "items": { "type": "string", "minLength": 1, "maxLength": 600 }
+    },
+    "contract_version": { "type": "integer", "enum": [2] }
+  }
+}

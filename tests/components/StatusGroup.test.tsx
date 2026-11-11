@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, act, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { CaptureEvent, EgressSetting } from '@shared/types'
@@ -135,6 +135,20 @@ describe('StatusGroup', () => {
     )
   })
 
+  // In the popover the label gives way, not the row's name: it ends in an ellipsis and the
+  // value's title holds it whole, the design's rule for a long name.
+  it('keeps a long Egress label readable in its popover row', async () => {
+    const label = 'Field office relay through the harbour authority gateway, floor three'
+    renderWith({ kind: 'proxy', proxyUrl: 'socks5://127.0.0.1:1080', label }, undefined)
+    fireEvent.click(await screen.findByTestId('status-group'))
+    const row = await screen.findByTestId('status-row-egress')
+    await waitFor(() => expect(row.textContent).toContain(`Proxy: ${label}`))
+    const value = within(row).getByTitle(`Proxy: ${label}`)
+    expect(within(value).getByText(`Proxy: ${label}`).className).toContain('truncate')
+    // The name's column sizes to the name; only the value's column may shrink.
+    expect(row.className).toContain('grid-cols-[18px_auto_minmax(0,1fr)]')
+  })
+
   it('shows the count while a session runs, and failures always', async () => {
     useAppStore.setState({
       sessionActive: true,
@@ -144,7 +158,7 @@ describe('StatusGroup', () => {
     const button = await screen.findByTestId('status-group')
     await waitFor(() => expect(button.dataset.severity).toBe('danger'))
     expect(button.textContent).toContain('23')
-    expect(button.textContent).toContain('3 failed')
+    expect(within(button).getByTestId('status-word').textContent).toBe('3 failed')
   })
 
   it('opens the three rows and the capture log behind Capture log', async () => {
@@ -199,6 +213,27 @@ describe('StatusGroup before the Egress is read', () => {
     expect(row.querySelector('svg')?.getAttribute('class')).not.toContain('lucide-activity')
   })
 
+  // Only the app changes the Egress, so a re-read that fails keeps the one read before it.
+  it('keeps the Egress it read when a later settings read fails', async () => {
+    let failing = false
+    const client = renderGroup(
+      async () => {
+        if (failing) throw new Error('settings unreadable')
+        return { egress: { kind: 'proxy', proxyUrl: 'socks5://127.0.0.1:1080', label: 'Lab' } }
+      },
+      async () => ({ vpnSeen: true })
+    )
+    const button = await screen.findByTestId('status-group')
+    await waitFor(() => expect(button.getAttribute('aria-label')).toContain('Egress: Proxy: Lab'))
+    failing = true
+    await act(() => client.refetchQueries({ queryKey: queryKeys.settings }))
+    expect(client.getQueryState(queryKeys.settings)?.status).toBe('error')
+    expect(button.getAttribute('aria-label')).toMatch(
+      /^Status: all nominal\. Egress: Proxy: Lab\. /
+    )
+    expect(button.dataset.severity).toBe('nominal')
+  })
+
   it('shows a problem, with the unknown-Egress icon and word, when the settings read fails', async () => {
     renderWithSettings(async () => {
       throw new Error('settings unreadable')
@@ -208,7 +243,7 @@ describe('StatusGroup before the Egress is read', () => {
     expect(button.getAttribute('aria-label')).toMatch(
       /^Status: a problem\. Egress: Egress unknown\. /
     )
-    expect(button.textContent).toContain('Egress unknown')
+    expect(within(button).getByTestId('status-word').textContent).toBe('Egress unknown')
     expect(button.querySelector('svg')?.getAttribute('class')).toContain('shield-question')
     expect(document.querySelector('[aria-live="polite"]')?.textContent).toBe(
       button.getAttribute('aria-label')
@@ -240,7 +275,7 @@ describe('StatusGroup before the VPN check answers', () => {
     expect(button.getAttribute('aria-label')).toMatch(
       /^Status: a warning\. Egress: Direct · VPN check failed\. /
     )
-    expect(button.textContent).toContain('VPN check failed')
+    expect(within(button).getByTestId('status-word').textContent).toBe('VPN check failed')
   })
 
   // A VPN drops outside Birdbrain, so the reading before a failed check says nothing.
@@ -259,6 +294,12 @@ describe('StatusGroup before the VPN check answers', () => {
     await waitFor(() => expect(button.dataset.severity).toBe('warning'))
     expect(button.getAttribute('aria-label')).toContain('Egress: Direct · VPN check failed')
     expect(button.getAttribute('aria-label')).not.toContain('VPN seen')
+    // The icons follow the failed check too: the plain shield, not the "VPN seen" one, in the
+    // bar and in the popover's Egress row.
+    expect(button.querySelector('svg')?.getAttribute('class')).toMatch(/lucide-shield( |$)/)
+    fireEvent.click(button)
+    const row = await screen.findByTestId('status-row-egress')
+    expect(row.querySelector('svg')?.getAttribute('class')).toMatch(/lucide-shield( |$)/)
   })
 })
 

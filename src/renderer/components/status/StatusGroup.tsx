@@ -153,7 +153,10 @@ export function StatusGroup() {
               {model.count !== null && model.word && <span className="text-text-faint"> · </span>}
               {/* The word shows from xl; below that the icon and dot carry the state. */}
               {model.word && (
-                <span className={cn(model.count === null && 'sr-only xl:not-sr-only')}>
+                <span
+                  data-testid="status-word"
+                  className={cn(model.count === null && 'sr-only xl:not-sr-only')}
+                >
                   {model.word}
                 </span>
               )}
@@ -218,25 +221,33 @@ export function StatusGroup() {
 }
 
 function Dot({ severity }: { severity: Severity }) {
-  return <span data-testid="status-dot" className={cn('h-1.5 w-1.5 rounded-full', DOT[severity])} />
+  return (
+    <span
+      data-testid="status-dot"
+      className={cn('h-1.5 w-1.5 shrink-0 rounded-full', DOT[severity])}
+    />
+  )
 }
 
 function Row({ icon, signal }: { icon: LucideIcon; signal: Signal }) {
   return (
     <div
       data-testid={`status-row-${signal.key}`}
-      className="grid grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-2 border-t border-border px-2.5 py-1.5 text-[11px]"
+      className="grid grid-cols-[18px_auto_minmax(0,1fr)] items-center gap-2 border-t border-border px-2.5 py-1.5 text-[11px]"
     >
       {createElement(icon, { className: 'h-3.5 w-3.5 text-text-muted', 'aria-hidden': true })}
-      <span className="text-text-primary">{signal.name}</span>
+      <span className="whitespace-nowrap text-text-primary">{signal.name}</span>
+      {/* A long Egress label gives way, not the row's name: it ends in an ellipsis and the title
+          holds it whole, as the Case name's does in the bar. */}
       <span
+        title={signal.text}
         className={cn(
-          'inline-flex items-center gap-1.5 whitespace-nowrap',
+          'flex min-w-0 items-center justify-end gap-1.5',
           signal.severity === 'nominal' ? 'text-text-secondary' : FG[signal.severity]
         )}
       >
         <Dot severity={signal.severity} />
-        {signal.text}
+        <span className="truncate">{signal.text}</span>
       </span>
     </div>
   )

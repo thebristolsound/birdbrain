@@ -239,6 +239,43 @@ test.describe('Top bar layout', () => {
     }
   })
 
+  // A long Egress label used to squeeze the row's name to nothing, print over it and run past
+  // the popover's edge. The label gives way now, and the value's title holds it whole.
+  test('keeps a long Egress label inside its status popover row', async ({ page }) => {
+    const label = 'Field office relay through the harbour authority gateway, floor three'
+    await page.evaluate(() => {
+      window.location.hash = '/settings'
+    })
+    await page.getByRole('tab', { name: 'Network' }).click()
+    await page.locator('input[name="egressKind"][value="proxy"]').check()
+    await page.fill('#egress-proxy', 'socks5://127.0.0.1:9')
+    await page.press('#egress-proxy', 'Tab')
+    // Each field saves as it loses focus, so wait for one save before starting the next.
+    const egressText = page.getByTestId('egress-indicator')
+    await expect(egressText).toHaveAttribute('title', 'Egress: Proxy')
+    await page.fill('#egress-label', label)
+    await page.press('#egress-label', 'Tab')
+    await expect(egressText).toHaveAttribute('title', `Egress: Proxy: ${label}`)
+    await createCase(page, NAMES[0])
+
+    await page.getByTestId('status-group').click()
+    const popover = page.getByRole('dialog', { name: 'Status' })
+    const row = popover.getByTestId('status-row-egress')
+    await expect(row).toContainText(`Proxy: ${label}`)
+    const name = row.locator(':scope > span').first()
+    const value = row.locator(':scope > span').last()
+    await expect(name).toHaveText('Egress')
+    const nameBox = (await name.boundingBox())!
+    const valueBox = (await value.boundingBox())!
+    const popoverBox = (await popover.boundingBox())!
+    // The name is whole, the value starts after it and ends inside the popover.
+    expect(await name.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0)
+    expect(nameBox.width).toBeGreaterThan(20)
+    expect(valueBox.x).toBeGreaterThanOrEqual(nameBox.x + nameBox.width)
+    expect(valueBox.x + valueBox.width).toBeLessThanOrEqual(popoverBox.x + popoverBox.width)
+    await expect(value).toHaveAttribute('title', `Proxy: ${label}`)
+  })
+
   test('the Export dialog covers the narrow-window details overlay', async ({
     electronApp,
     page

@@ -89,6 +89,15 @@ export function formatUtcTime(iso: string): string {
   return `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`
 }
 
+/**
+ * The compare view's date and time with the zone named, for capture times shown outside the
+ * compare view too (#1051). An unparseable value comes back as stored rather than as nothing.
+ */
+export function formatUtcTimestamp(iso: string): string {
+  const date = formatUtcDate(iso)
+  return date ? `${date} ${formatUtcTime(iso)} UTC` : iso
+}
+
 export function monthLabel(year: number, month: number): string {
   return `${MONTHS_LONG[month]} ${year}`
 }

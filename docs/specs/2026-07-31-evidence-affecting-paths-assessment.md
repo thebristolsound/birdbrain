@@ -113,6 +113,17 @@ same step added three renderer files to Acquisition at blocking tier, by the pre
 control (`CaptureControl.tsx`), the tab picker (`TabPicker.tsx`), and the panel model whose
 `captureTarget` decides which tab the control names and takes (`captureSessionPanelModel.ts`).
 
+On 2026-11-09 the rows that stale-closed issues had left unwritten were added. The selection
+bar (`extension/src/selectionBar.ts`, ruling W25 on #967) and the two files of the capture
+interface suppression protocol (`captureSuppression.ts`, `captureHygiene.ts`) joined Acquisition
+at blocking tier. `src/main/webviewPolicy.ts`, split out of `src/main/index.ts` by #856, joined
+Integrity core at blocking tier, and `src/main/windowReveal.ts`, split out by the #643 fix,
+joined the exclusions (#1409). The Links tab, `captureLinks.ts`, `htmlParts.ts`,
+`guestLink.ts` and `useLinkMenuTarget.ts` joined Interpretation surfaces at blocking tier,
+because each reads, resolves or sends the address Capture link signs (#1728).
+`src/renderer/components/signals/**` joined the exclusions beside
+`src/renderer/components/selectors/**` (#1083).
+
 ### Known gap: carve-outs are caught by review, not by a check
 
 Nothing detects a file being split out of an include-list path. The rename-detection-off rule
@@ -122,8 +133,8 @@ entry. That is why each amendment above was needed, and every one of them was wr
 person or an agent noticed while reading a diff.
 
 Whether that is the intended control or a gap worth closing with a check is open (#1410). Read
-this as an unresolved gap rather than a decision already taken. It is a live one: two further
-carve-outs from `src/main/index.ts` are on neither list today (#1409).
+this as an unresolved gap rather than a decision already taken. It has happened in practice:
+two further carve-outs from `src/main/index.ts` sat on neither list until 2026-11-09 (#1409).
 
 ## List format
 
@@ -242,6 +253,9 @@ that caused it was to record the carved-out file as an exclusion (#515), which i
 | `extension/src/background.ts` | blocking | Orchestrates MHTML/screenshot/text capture; caches response headers anchored into the signed manifest |
 | `extension/src/content.ts` | blocking | In-page capture: screenshot stitching, DOM mutation during capture, selector matching over page text |
 | `extension/src/toast.ts` | blocking | Injects DOM before/during capture — its markup can land inside captured bytes |
+| `extension/src/selectionBar.ts` | blocking | Injects the in-page selection bar, whose DOM can land inside captured bytes, the same failure mode as `extension/src/toast.ts` (W25). Added 2026-11-09 (#967) |
+| `extension/src/captureSuppression.ts` | blocking | The suppress and restore boundary every injected element registers with, so that no extension interface appears in a screenshot or archived DOM. Added 2026-11-09 (#967) |
+| `extension/src/captureHygiene.ts` | blocking | The background's fallback strip of injected extension interface from a tab before its frames are taken; a wrong match removes a page's own element from the evidence. Added 2026-11-09 (#967) |
 | `extension/src/utils/api.ts` | blocking | Builds the multipart capture payload that becomes hashed evidence and manifest fields |
 | `extension/src/utils/headers.ts` | blocking | Deterministic header normalization anchored into the hash-chained manifest |
 | `extension/src/popup/popup.tsx` | blocking | Routes a capture to a case (chain-of-custody routing) |
@@ -252,6 +266,7 @@ that caused it was to record the carved-out file as an exclusion (#515), which i
 | `src/main/services/captureServer.ts` | blocking | Ingest endpoint: upload validation, case routing, ingest-time selector matching |
 | `src/shared/urlPatterns.ts` | blocking | The ignored-URL matcher both sides run: it decides what never enters a case at all, and names the rule recorded as the reason for the absence |
 | `src/shared/urlCanonicalize.ts` | blocking | Canonical URL identity for the extension attach routes: decides which Capture a Tag or Note binds to, and whether an attach request ingests its payload or binds to an existing Capture |
+| `src/shared/extensionVersion.ts` | blocking | Decides the extension version every new Capture records, which the PDF cover, `report.html` and a Case Archive's `data.json` carry, and maps the package version into the manifest the release zip ships (#726). Added 2026-11-10 |
 | `src/shared/localAddress.ts` | blocking | The address classification the viewer's Capture link, the background capture and the viewer's Wayback link lookup run: it decides which links and redirects a background capture refuses to render and store (#1726), and which link addresses are never sent to archive.org (#1737). Added 2026-10-16 |
 | `src/shared/waybackLinkBatch.ts` | advisory | Decides which link addresses a Wayback batch discloses to archive.org (#1738): the list the confirmation shows after de-duplication and the 50-address cap, and main's refusal of a confirmed list that names an address twice or one its own address check rejects. Advisory, because the answers are not stored, anchored or exported, so it changes no evidentiary result; the refusal rule it calls stays in `src/shared/localAddress.ts`, and the single-link refusal sits in `src/main/ipcHandlers.ts`, also advisory. Added 2026-10-26 |
 | `src/main/services/exclusionPolicy.ts` | blocking | Resolves the per-case exclusion list into the answer the acquisition routes check before ingest, so it decides what those routes refuse. Not every route asks: the pipeline self-test (`POST /api/captures/test`) is a documented exception, so read the call sites rather than assuming coverage is total |
@@ -295,7 +310,8 @@ independent of the Operator who holds it.
 | `src/shared/verify/**` | blocking | Verification core: canonical JSON, chain, signature, RFC 3161 token, package verifier |
 | `src/verifier/**` | blocking | Standalone verifier CLI (fs+crypto-only constraint) |
 | `src/packages/evidence-package-layout/**` | blocking | The Package Layout: the exporter, Package Verification and `verify.sh` read every Evidence Package path from it, so changing a name changes where verification looks for that file in every package already exported. It also names the member and lineage chain files in a Case directory, which the manifest, the Shared Case sync modules and Case Archive export and import read. Added 2026-10-26 with #1904, which put the Transaction Record and PDF paths in it |
-| `src/main/index.ts` | blocking | Enforces evidence-viewer invariants (webview navigation block, sandbox webPreferences); boots DB/capture server/installation id |
+| `src/main/index.ts` | blocking | Wires the evidence-viewer invariants: sandboxed `webPreferences` on its windows, and the guest hooks (`will-attach-webview`, the window-open and navigation handlers, the guest sessions' permission handlers and request filter) that apply the decisions `src/main/webviewPolicy.ts` takes; boots DB/capture server/installation id |
+| `src/main/webviewPolicy.ts` | blocking | Decides each `<webview>` guest's policy per partition: which URLs and request hosts the MHTML and legacy HTML evidence viewers may load, with scripts off, navigation blocked and no permission granted, and which the Wayback replay pane may. Split out of the included `src/main/index.ts` by #856, and left off both lists until #1409. Added 2026-11-09 |
 
 ### Capture lifecycle, storage, parsing, extraction
 
@@ -362,6 +378,11 @@ independent of the Operator who holds it.
 | `src/renderer/components/captures/ProvenanceBadge.tsx` | blocking | Integrity + trusted-time status rendering |
 | `src/renderer/components/captures/getProvenanceColor.ts` | blocking | Status-to-meaning mapping |
 | `src/renderer/components/captures/MhtmlViewer.tsx` | blocking | Evidence rendering invariants (JS disabled, navigation blocked) |
+| `src/renderer/components/captures/LinksTab.tsx` | blocking | Shows the links a stored page holds, marks a link whose visible text names another host, and hands the chosen row's address to Capture link, which signs it as the new Capture's `linkHref` (ADR-0040) and prints it in the report. Added 2026-11-09 (#1728) |
+| `src/main/services/captureLinks.ts` | blocking | Reads the links out of a Capture's MHTML for the Links tab. The address it reports for a row is the one Capture link signs as `linkHref`, so a wrong resolution signs a claim that the source page named an address it did not. Added 2026-11-09 (#1728) |
+| `src/main/services/htmlParts.ts` | blocking | Reads a stored page's HTML parts under fixed ceilings and resolves each link's href, for `src/main/services/captureLinks.ts` and the Case search field index: the resolution that becomes a signed `linkHref`. Added 2026-11-09 |
+| `src/renderer/components/captures/useLinkMenuTarget.ts` | blocking | Builds the Capture link request from the Links tab and the viewer's context menu: the address main signs as `linkHref` (ADR-0040), and the source Capture id main uses to find the source's verified entry, whose own id it signs as `linkedFromCaptureId`. Main checks that the address equals the queued URL and that the source verifies, not that the source page holds the link. Added 2026-11-09 |
+| `src/renderer/components/captures/guestLink.ts` | blocking | Reads the link address out of the stored-page viewer on a right-click (`readGuestContextMenu`) and on a click (`linkClickOutcome`); that address is the one Capture link signs as `linkHref`. Added 2026-11-09 |
 | `src/renderer/components/captures/WaybackPanel.tsx` | blocking | Pins Wayback corroboration refs: builds each pin from the chosen snapshot and the lookup's `checkedAt`. Replaced the `WaybackTab.tsx` entry on 2026-10-12; #856 deleted that file, and the entry matched nothing from then on |
 | `src/renderer/components/captures/CaptureDownloadMenu.tsx` | blocking | Per-capture evidence export surface |
 | `src/renderer/components/overview/VerifyBar.tsx` | blocking | Case-level verification display |
@@ -444,6 +465,7 @@ It is *notable* exclusions, not an exhaustive complement of the include list.
 | `src/main/services/deepLink.ts` | Navigation plumbing |
 | `src/main/services/extensionPath.ts` | Extension setup plumbing |
 | `src/main/windowSize.ts` | Main-window geometry, and the `BIRDBRAIN_WINDOW_SIZE` override read only in an unpackaged build. It holds none of the invariants `src/main/index.ts` is listed for: no capture, content hash, manifest entry, canonical JSON field or signature depends on the size of the window the evidence is later viewed in. Split out of the included `src/main/index.ts` by #478, and left off both lists until #515 |
+| `src/main/windowReveal.ts` | When the app's windows, the main window and the pop-out, are shown: on `ready-to-show`, or under Linux on `did-finish-load` as well. It holds none of the invariants `src/main/index.ts` is listed for, the same reasoning as `src/main/windowSize.ts`. Split out of the included `src/main/index.ts` by the #643 fix, and left off both lists until #1409 |
 | `src/main/captureServerPort.ts` | The Capture Server port, and the `BIRDBRAIN_CAPTURE_SERVER_PORT` override read only in an unpackaged build, for the two-instance e2e spec (#1882). The same reasoning as `src/main/windowSize.ts`: the server behind the port hashes and stores a Capture the same way on any port, and a packaged build always listens where the extension looks |
 | `src/main/services/sharing/transport.ts` | The transport interface and its in-process form, `MemoryTransport` (#1512). A transport carries bytes between installations: it reads no message and decides nothing about what the session accepts, which the four blocking modules above do. The same reasoning as `src/main/services/exclusionPolicy.ts`'s inclusion in reverse (#227) and as `src/main/windowSize.ts` (#515): the evidentiary decision lives elsewhere. `irohTransport.ts` (#1809), the same interface over Iroh, joins this entry, and so does `loopbackTransport.ts` (#1882), the test-only form over sockets on 127.0.0.1 that the two-instance e2e spec selects through `BIRDBRAIN_E2E_SHARING_BRIDGE`, read only in an unpackaged build |
 | `src/renderer/lib/api/**` | High-churn typed passthrough; evidence parameters originate in included dialogs and are enforced in main (but see judgment call 2) |
@@ -462,6 +484,7 @@ It is *notable* exclusions, not an exhaustive complement of the include list.
 | `src/renderer/components/ui/**` | Shared UI primitives |
 | `src/renderer/components/notes/**` | Note-editing UI; the evidence binding lives in the included `src/shared/noteAnchor.ts` / `src/main/services/noteAnchorResolver.ts` |
 | `src/renderer/components/selectors/**` | Selector-management UI; matching lives in main |
+| `src/renderer/components/signals/**` | Selector and tag management UI, and the per-case capture exclusion card; matching lives in main, and the exclusions it writes are enforced in main by the included `src/main/services/exclusionPolicy.ts` |
 | `src/renderer/hooks/**` | Renderer chrome |
 | `src/renderer/routes/**` | Renderer chrome |
 | `src/renderer/stores/**` | UI-only state |

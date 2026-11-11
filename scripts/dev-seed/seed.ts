@@ -191,7 +191,8 @@ async function seedOrdinaryCase(who: Operator): Promise<string> {
   const selector = createSelector({ caseId, pattern: SELECTOR_PATTERN, label: 'Deposit reference' })
   matchSelectorAgainstCaptures(
     selector.id,
-    captures.map(({ id, text }) => ({ captureId: id, text }))
+    captures.map(({ id, text }) => ({ captureId: id, text })),
+    'create'
   )
 
   const suspect = createTag({ name: 'suspect-site', color: '#c2410c' })

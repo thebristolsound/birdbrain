@@ -684,7 +684,7 @@ interface FileExhibitView {
  * rather than counting the exhibit's position and presenting that as a
  * citation. Escaped: a Member Code can arrive in an imported archive.
  */
-function exhibitTag(citation: string): string {
+export function exhibitTag(citation: string): string {
   return citation ? `Exhibit ${esc(citation)}` : 'Exhibit (number not recorded)'
 }
 

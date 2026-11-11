@@ -279,8 +279,9 @@ Capture, so it stays until the Operator dismisses it, retries it, or deletes its
 
 The table is one new schema version, scaffolded with `pnpm db:migration:new background-jobs`,
 which appends a fail-closed `if (version < N)` block to `src/main/services/db/migrations.ts` and
-bumps `LATEST_SCHEMA_VERSION` in `src/main/services/db/core.ts` (45 at the frame of reference, so
-46 unless another migration lands first). The block creates the table and indexes inside
+bumps `LATEST_SCHEMA_VERSION` in `src/main/services/db/core.ts` (45 at the frame of reference). The
+table is version 47: version 46 went to the selector match provenance columns, which merged
+first. The block creates the table and indexes inside
 `db.transaction`, uses `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS` so that a
 restored copy marked one version back can run it again (the precedent of the v43 to v45 blocks),
 and sets `user_version`. It reads and alters no existing table, so it carries no data migration.

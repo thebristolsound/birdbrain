@@ -18,7 +18,7 @@ import {
   type NewBackgroundJob
 } from '@main/services/db/backgroundJobRepo'
 
-// The repository every read and write of `background_jobs` goes through (migration 46).
+// The repository every read and write of `background_jobs` goes through (migration 47).
 
 describe('backgroundJobRepo', () => {
   let caseId: string

@@ -222,6 +222,8 @@ const CODE_LABELS: Record<LogCode, string> = {
   'settings.fresh_install_seed_failed': "Couldn't save initial settings",
   'settings.retired_fields_cleanup_failed':
     "Couldn't remove retired AI settings from the settings file",
+  'settings.ignore_patterns_invalid':
+    'Saved ignored URL patterns include invalid ones — see Settings → Capture',
   'demoCase.seeded': 'Added the demonstration case',
   'demoCase.fixture_missing': 'The demonstration case is not bundled with this build',
   'demoCase.seed_failed': "Couldn't add the demonstration case",

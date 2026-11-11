@@ -90,7 +90,8 @@ export interface PartsBanner {
   text: string
 }
 
-// Each banner states a failure beside the list, so a partial list never reads as complete.
+// Each banner states a failure the reader detects beside the list. A damaged separator line or
+// separator text inside a part's body is not detected, so those lists carry no banner.
 export function partsBanners(listing: ListedParts): PartsBanner[] {
   const banners: PartsBanner[] = []
   if (!listing.closed) {

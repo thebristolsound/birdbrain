@@ -417,6 +417,217 @@ function onKeyDown(event: KeyboardEvent): void {
   if (event.key === 'Escape' && state.phase !== 'hidden' && state.phase !== 'busy') hide()
 }
 
+// The operator's selection, out of the page while a capture bracket is open
+// (#993): the native highlight is painted over page content, so it would be in
+// every frame. Held and put back like the bar, not dropped.
+let heldSelection: { range: AbstractRange; backward: boolean } | null = null
+
+type TextField = HTMLInputElement | HTMLTextAreaElement
+
+// A text field keeps its own selection, which the document's reports only as a caret beside the
+// field, so a range taken from the document could not put it back.
+let heldField: {
+  field: TextField
+  start: number
+  end: number
+  direction: 'forward' | 'backward' | 'none'
+  value: string
+} | null = null
+
+// A selection inside an input that reports no offsets, held as its text: see sitsInInput.
+let heldInput: {
+  input: HTMLInputElement
+  text: string
+  backward: boolean
+  value: string
+} | null = null
+
+function shadowRootOf(element: Element): ShadowRoot | null | undefined {
+  return (
+    element.shadowRoot ??
+    (element instanceof HTMLElement ? chrome.dom?.openOrClosedShadowRoot(element) : null)
+  )
+}
+
+function shadowRootsUnder(root: Document | ShadowRoot, found: ShadowRoot[] = []): ShadowRoot[] {
+  root.querySelectorAll('*').forEach((element) => {
+    const shadow = shadowRootOf(element)
+    if (!shadow) return
+    found.push(shadow)
+    shadowRootsUnder(shadow, found)
+  })
+  return found
+}
+
+function focusedElement(): Element | null {
+  let active = document.activeElement
+  let inner = active && shadowRootOf(active)?.activeElement
+  while (inner) {
+    active = inner
+    inner = shadowRootOf(active)?.activeElement
+  }
+  return active
+}
+
+function focusedTextField(): TextField | null {
+  const active = focusedElement()
+  if (active instanceof HTMLTextAreaElement) return active
+  // Input types the text selection API does not apply to report null here.
+  if (active instanceof HTMLInputElement && active.selectionStart !== null) return active
+  return null
+}
+
+function holdField(field: TextField): void {
+  const { selectionStart: start, selectionEnd: end, selectionDirection } = field
+  // A later per-frame strip finds the field collapsed and keeps what the first held.
+  if (start === null || end === null || start === end) return
+  heldField = { field, start, end, direction: selectionDirection ?? 'none', value: field.value }
+  field.setSelectionRange(end, end)
+}
+
+// getRangeAt reports a selection that crosses a shadow boundary as a collapsed point in
+// Chromium, so it could not be put back; the composed range keeps both ends where they are.
+function composedRange(selection: Selection): AbstractRange | undefined {
+  if (typeof selection.getComposedRanges !== 'function') return undefined
+  return selection.getComposedRanges({ shadowRoots: shadowRootsUnder(document) })[0]
+}
+
+// Chromium keeps the caret and selection of a text control out of the document's reach: it
+// reports either as a point just before the control, and the composed range as the control
+// itself. This is the node at that point, if the selection has that shape.
+function nodeAtPoint(selection: Selection, range: AbstractRange): Node | undefined {
+  const { startContainer, startOffset, endContainer, endOffset } = range
+  if (!selection.isCollapsed || endContainer !== startContainer) return undefined
+  return endOffset - startOffset <= 1 ? startContainer.childNodes[startOffset] : undefined
+}
+
+// An email, number or date input reports no offsets, so only the selected text tells its caret
+// from its selection. Without composed ranges the point is before the web component that holds
+// the input, not before the input.
+function sitsInInput(selection: Selection, range: AbstractRange, input: Element): boolean {
+  const at = nodeAtPoint(selection, range)
+  let node: Node | null = input
+  while (node && node !== at) {
+    const root = node.getRootNode()
+    node = root instanceof ShadowRoot ? root.host : null
+  }
+  return node !== null
+}
+
+// A move by one character collapses a selection onto the end it moves towards. collapseToStart
+// and collapseToEnd would act on the point the document reports, and leave the input.
+function collapseInInput(selection: Selection, toEnd: boolean): void {
+  selection.modify('move', toEnd ? 'forward' : 'backward', 'character')
+}
+
+function holdInput(input: HTMLInputElement, selection: Selection): void {
+  const text = selection.toString()
+  // A caret paints no highlight. A later per-frame strip finds the selection collapsed the same
+  // way and keeps what the first held.
+  if (text === '') return
+  const backward = selection.direction === 'backward'
+  heldInput = { input, text, backward, value: input.value }
+  // Emptying the document's selection would lose the place in the input, so it is collapsed
+  // inside it, on the anchor: extending from there on release gives the direction back too.
+  collapseInInput(selection, backward)
+}
+
+function holdSelection(): void {
+  const field = focusedTextField()
+  // Collapsing the field leaves it focused; removeAllRanges would also drop its selection.
+  if (field) {
+    holdField(field)
+    return
+  }
+  const selection = window.getSelection()
+  // A later per-frame strip finds the selection already empty and keeps what the first held.
+  if (!selection || selection.rangeCount === 0) return
+  const range = composedRange(selection) ?? selection.getRangeAt(0)
+  const active = focusedElement()
+  if (active instanceof HTMLInputElement && sitsInInput(selection, range, active)) {
+    holdInput(active, selection)
+    return
+  }
+  // A text control the operator left for a button or a link keeps the document's selection, and
+  // in the Chromium probe drew neither its caret nor its selected text. Nothing is in the frame
+  // to take out, and emptying it would fire the page's selectionchange before the frame.
+  const at = nodeAtPoint(selection, range)
+  if (at instanceof HTMLInputElement || at instanceof HTMLTextAreaElement) return
+  // A caret paints no highlight, and clearing it would fire the page's selectionchange on every
+  // capture taken after a click. Only the composed range can tell a caret from a shadow-crossing
+  // selection, which getRangeAt reports as collapsed, so without it both are cleared.
+  if (typeof selection.getComposedRanges === 'function' && range.collapsed) return
+  const backward =
+    typeof selection.direction === 'string'
+      ? selection.direction === 'backward'
+      : selection.anchorNode !== range.startContainer ||
+        selection.anchorOffset !== range.startOffset
+  heldSelection = { range, backward }
+  selection.removeAllRanges()
+}
+
+function fitsNode(node: Node, offset: number): boolean {
+  const length = node instanceof CharacterData ? node.length : node.childNodes.length
+  return node.isConnected && offset <= length
+}
+
+function restoreField(): void {
+  const held = heldField
+  heldField = null
+  if (!held) return
+  const { field, start, end, direction, value } = held
+  // Put back only over what the strip left. A selection made, a caret moved or text typed in the
+  // field during the capture is newer than the held one. A caret put back on the same offset
+  // reads the same as the strip's own, so the held selection returns over it.
+  if (field.value !== value) return
+  const untouched = field.selectionStart === end && field.selectionEnd === end
+  // None of the operator actions probed in a focused field left the document's selection empty.
+  // An empty one is read as emptied after the hold, by the fallback strip, which also drops the
+  // field's caret to its start, or by the page: the held selection returns, as it does over a
+  // page's clear below.
+  const emptied = focusedTextField() === field && window.getSelection()?.rangeCount === 0
+  if (!untouched && !emptied) return
+  field.setSelectionRange(start, end, direction)
+}
+
+function restoreInput(): void {
+  const held = heldInput
+  heldInput = null
+  const selection = window.getSelection()
+  if (!held || !selection || selection.rangeCount === 0) return
+  const { input, text, backward, value } = held
+  // Put back only over the caret the strip left in the same text, as for a text field.
+  if (focusedElement() !== input || input.value !== value || selection.toString() !== '') return
+  if (!sitsInInput(selection, composedRange(selection) ?? selection.getRangeAt(0), input)) return
+  for (let i = 0; i < text.length && selection.toString().length < text.length; i += 1) {
+    selection.modify('extend', backward ? 'backward' : 'forward', 'character')
+  }
+  const extended = selection.toString()
+  // The offsets cannot be read, so a caret the operator moved shows only now, as other text
+  // under the extension: back to where they left it. Nothing extended, nothing to take back.
+  if (extended !== text && extended !== '') collapseInInput(selection, backward)
+}
+
+function restoreSelection(): void {
+  restoreField()
+  restoreInput()
+  const held = heldSelection
+  heldSelection = null
+  const selection = window.getSelection()
+  // A selection made during the capture, by the operator or the page, is newer than the held one.
+  // An empty one reads the same as the strip's own clear, so a page that cleared the selection
+  // during the capture gets the held one back.
+  if (!held || !selection || selection.rangeCount > 0) return
+  const { startContainer, startOffset, endContainer, endOffset } = held.range
+  // A composed range does not follow DOM changes; ends the page cut away are not put back.
+  if (!fitsNode(startContainer, startOffset) || !fitsNode(endContainer, endOffset)) return
+  if (held.backward) {
+    selection.setBaseAndExtent(endContainer, endOffset, startContainer, startOffset)
+  } else {
+    selection.setBaseAndExtent(startContainer, startOffset, endContainer, endOffset)
+  }
+}
+
 /**
  * Strips the bar for a capture but keeps its state: what the operator saw —
  * a raised bar, or an in-flight action's progress — comes back on release.
@@ -424,6 +635,7 @@ function onKeyDown(event: KeyboardEvent): void {
 function teardownForCapture(): void {
   clearHideTimeout()
   removeHost()
+  holdSelection()
 }
 
 export function initSelectionBar(): void {
@@ -439,6 +651,8 @@ export function initSelectionBar(): void {
   // capture on the tab is collecting frames, put back what was stripped —
   // including after a failed capture, whose restore path also releases.
   onCaptureUiSuppressionReleased(() => {
+    // First, and for a hidden bar too: the ready check below compares against the restored text.
+    restoreSelection()
     if (state.phase === 'hidden') return
     // A ready bar is an offer against one specific selection. The capture may
     // have outlived it — the operator can collapse or replace the selection

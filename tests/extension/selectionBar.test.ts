@@ -910,6 +910,271 @@ describe("the operator's selection stays out of the frames (#993)", () => {
     })
   })
 
+  // An email, number or date input reports no selection offsets. Chromium reports a caret or a
+  // selection inside one as a point just before the input, with a composed range that spans the
+  // input, and jsdom models none of it. These tests stand in what Chromium 154 did in the review
+  // round's probe: the selected text and its direction, and a character-wise move or extend,
+  // which acts inside such an input. collapseToStart and collapseToEnd act on the point the
+  // document reports once anything has read it, which takes the caret out of the input, so the
+  // stand-in fails a test that calls either there.
+  describe('in a focused input that reports no selection offsets', () => {
+    const VALUES = {
+      email: 'someone@example.com',
+      number: '1234567890',
+      date: '2026-11-11',
+      time: '10:30',
+      'datetime-local': '2026-11-11T10:30',
+      month: '2026-11',
+      week: '2026-W46'
+    }
+    const STUBBED = ['toString', 'collapseToStart', 'collapseToEnd', 'modify'] as const
+    const LEFT_THE_INPUT = 'collapsed on the point the document reports, outside the input'
+    const originals = new Map<string, PropertyDescriptor>()
+    let input: HTMLInputElement
+    let point: [Node, number]
+    // The input's own caret or selection, as offsets into its value.
+    let inner: { anchor: number; focus: number }
+    // Every move and extend the extension asked for, inside the input or not.
+    let moves: string[] = []
+
+    function inside(selection: Selection): boolean {
+      const { rangeCount, isCollapsed, anchorNode, anchorOffset } = selection
+      return rangeCount === 1 && isCollapsed && anchorNode === point[0] && anchorOffset === point[1]
+    }
+
+    function focusedInputOf(type: keyof typeof VALUES, anchor = 0, focus = anchor): void {
+      setPageHtml(`${PAGE_HTML}<input type="${type}" value="${VALUES[type]}">`)
+      input = document.querySelector('input')!
+      input.focus()
+      expect(input.selectionStart).toBeNull()
+      const parent = input.parentNode!
+      point = [parent, Array.from(parent.childNodes).indexOf(input)]
+      window.getSelection()!.collapse(...point)
+      inner = { anchor, focus }
+      moves = []
+    }
+
+    beforeEach(() => {
+      for (const name of STUBBED) {
+        const original = Object.getOwnPropertyDescriptor(Selection.prototype, name)
+        if (original) originals.set(name, original)
+      }
+      const real = (name: string, selection: Selection, args: unknown[]): unknown =>
+        (originals.get(name)?.value as (...a: unknown[]) => unknown)?.apply(selection, args)
+      Object.defineProperties(Selection.prototype, {
+        toString: {
+          configurable: true,
+          value(this: Selection) {
+            if (!inside(this)) return real('toString', this, [])
+            const { anchor, focus } = inner
+            return input.value.slice(Math.min(anchor, focus), Math.max(anchor, focus))
+          }
+        },
+        direction: {
+          configurable: true,
+          get(this: Selection) {
+            if (!inside(this) || inner.anchor === inner.focus) return 'none'
+            return inner.anchor < inner.focus ? 'forward' : 'backward'
+          }
+        },
+        collapseToStart: {
+          configurable: true,
+          value(this: Selection) {
+            if (!inside(this)) return real('collapseToStart', this, [])
+            throw new Error(LEFT_THE_INPUT)
+          }
+        },
+        collapseToEnd: {
+          configurable: true,
+          value(this: Selection) {
+            if (!inside(this)) return real('collapseToEnd', this, [])
+            throw new Error(LEFT_THE_INPUT)
+          }
+        },
+        modify: {
+          configurable: true,
+          value(this: Selection, alter: string, direction: string, granularity: string) {
+            moves.push(`${alter} ${direction}`)
+            if (!inside(this)) return real('modify', this, [alter, direction, granularity])
+            expect(granularity).toBe('character')
+            const { anchor, focus } = inner
+            const forward = direction === 'forward'
+            if (alter === 'move' && anchor !== focus) {
+              // As an arrow key does: onto the end it moves towards, and no further.
+              inner.anchor = inner.focus = forward
+                ? Math.max(anchor, focus)
+                : Math.min(anchor, focus)
+              return
+            }
+            inner.focus = Math.max(0, Math.min(input.value.length, focus + (forward ? 1 : -1)))
+            if (alter === 'move') inner.anchor = inner.focus
+          }
+        },
+        getComposedRanges: {
+          configurable: true,
+          value(this: Selection) {
+            const { startContainer, startOffset, endContainer, endOffset } = this.getRangeAt(0)
+            return [
+              inside(this)
+                ? new StaticRange({
+                    startContainer: point[0],
+                    startOffset: point[1],
+                    endContainer: point[0],
+                    endOffset: point[1] + 1
+                  })
+                : new StaticRange({ startContainer, startOffset, endContainer, endOffset })
+            ]
+          }
+        }
+      })
+    })
+
+    afterEach(() => {
+      for (const name of [...STUBBED, 'direction', 'getComposedRanges']) {
+        Reflect.deleteProperty(Selection.prototype, name)
+        const original = originals.get(name)
+        if (original) Object.defineProperty(Selection.prototype, name, original)
+      }
+      originals.clear()
+    })
+
+    function expectCaretLeftAlone(): void {
+      const removeAllRanges = vi.spyOn(Selection.prototype, 'removeAllRanges')
+      try {
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        expect(removeAllRanges).not.toHaveBeenCalled()
+        expect(selectionEnds()).toEqual([...point, ...point])
+        dispatch({ type: 'RELEASE_CAPTURE_UI' })
+        expect(selectionEnds()).toEqual([...point, ...point])
+        // Not even collapsed on itself: nothing here may fire the page's selectionchange.
+        expect(moves).toEqual([])
+      } finally {
+        removeAllRanges.mockRestore()
+      }
+    }
+
+    it.each(Object.keys(VALUES) as Array<keyof typeof VALUES>)(
+      'leaves a caret in a focused %s input alone',
+      (type) => {
+        focusedInputOf(type, 3)
+        expectCaretLeftAlone()
+      }
+    )
+
+    it('leaves that caret alone where composed ranges are unavailable too', () => {
+      Reflect.deleteProperty(Selection.prototype, 'getComposedRanges')
+      focusedInputOf('email', 3)
+      expectCaretLeftAlone()
+    })
+
+    it.each([
+      ['forward', 0, 7],
+      ['backward', 7, 0]
+    ])(
+      'takes a %s selection inside the input out of every frame and puts it back as it was',
+      (_direction, anchor, focus) => {
+        focusedInputOf('email', anchor, focus)
+        const removeAllRanges = vi.spyOn(Selection.prototype, 'removeAllRanges')
+        try {
+          expect(window.getSelection()!.toString()).toBe('someone')
+
+          dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+          dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+          expect(window.getSelection()!.toString()).toBe('')
+          // Collapsed on the selection's anchor, inside the input: the document's own selection
+          // is not emptied, which would lose the place in the input.
+          expect(inner).toEqual({ anchor, focus: anchor })
+          expect(removeAllRanges).not.toHaveBeenCalled()
+
+          dispatch({ type: 'RELEASE_CAPTURE_UI' })
+          expect(inner).toEqual({ anchor, focus })
+          expect(selectionEnds()).toEqual([...point, ...point])
+          expect(document.activeElement).toBe(input)
+          // One move for all the strips, then one step per selected character.
+          const towardsFocus = anchor < focus ? 'forward' : 'backward'
+          expect(moves).toEqual([
+            `move ${anchor < focus ? 'backward' : 'forward'}`,
+            ...Array.from('someone', () => `extend ${towardsFocus}`)
+          ])
+        } finally {
+          removeAllRanges.mockRestore()
+        }
+      }
+    )
+
+    it('keeps a caret the operator moved in the input during the capture', () => {
+      focusedInputOf('email', 0, 7)
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      inner = { anchor: 12, focus: 12 }
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(inner).toEqual({ anchor: 12, focus: 12 })
+      expect(selectionEnds()).toEqual([...point, ...point])
+    })
+
+    it('keeps a caret the operator moved to where nothing can be extended', () => {
+      focusedInputOf('email', 0, 7)
+      const end = VALUES.email.length
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      inner = { anchor: end, focus: end }
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(inner).toEqual({ anchor: end, focus: end })
+      expect(selectionEnds()).toEqual([...point, ...point])
+    })
+
+    it('selects nothing in an input whose text changed during the capture', () => {
+      focusedInputOf('email', 0, 7)
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      // The held text is still there under the caret, so only the whole value tells.
+      input.value = 'someone@example.org'
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(inner).toEqual({ anchor: 0, focus: 0 })
+      expect(selectionEnds()).toEqual([...point, ...point])
+    })
+
+    it('keeps a selection the operator made in the input during the capture', () => {
+      focusedInputOf('email', 0, 7)
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      inner = { anchor: 3, focus: 9 }
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(inner).toEqual({ anchor: 3, focus: 9 })
+      expect(selectionEnds()).toEqual([...point, ...point])
+    })
+
+    it('selects nothing in an input that lost the focus during the capture', () => {
+      focusedInputOf('email', 0, 7)
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      input.blur()
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(inner).toEqual({ anchor: 0, focus: 0 })
+      expect(selectionEnds()).toEqual([...point, ...point])
+    })
+
+    it('selects nothing in the input once the selection has moved to the page', () => {
+      focusedInputOf('email', 0, 7)
+      const text = document.querySelector('p')!.firstChild!
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      window.getSelection()!.collapse(text, 5)
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(inner).toEqual({ anchor: 0, focus: 0 })
+      expect(selectionEnds()).toEqual([text, 5, text, 5])
+      // The page's caret is not extended either.
+      expect(moves).toEqual(['move backward'])
+    })
+  })
+
   describe('with composed ranges, which keep ends inside shadow trees', () => {
     let calls: GetComposedRangesOptions[] = []
     let composed: () => StaticRange

@@ -58,6 +58,7 @@ import {
   type IndicatorCategoryNode
 } from '@renderer/components/data/dataTreeModel'
 import {
+  exhibitLabel,
   filterRows,
   integrityCounts,
   rowsForNode,
@@ -90,7 +91,7 @@ function nodeTitle(key: DataNodeKey, rows: InventoryRow[]): { title: string; sub
     const id = key.slice('exhibit:'.length)
     const row = rows.find((r) => r.entity === 'exhibit' && r.id === id)
     return row && row.entity === 'exhibit'
-      ? { title: row.name, subtitle: `Exhibit ${row.citation}` }
+      ? { title: row.name, subtitle: exhibitLabel(row) }
       : { title: 'Exhibit', subtitle: '' }
   }
   if (key.startsWith('derived:')) {

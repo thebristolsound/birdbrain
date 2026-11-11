@@ -23,7 +23,7 @@ import {
   listStagingFiles
 } from '@main/services/db/stagingRepo'
 import { withManifestEntry } from '@main/services/manifest'
-import { getSettings } from '@main/services/settings'
+import { trimmedOperatorName } from '@main/services/operatorName'
 import { getInstallationId } from '@main/services/installationId'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import { logger } from '@main/services/logger'
@@ -186,6 +186,18 @@ export async function commitStagedFiles(
 ): Promise<StagingCommitResult> {
   const store = deps.store ?? defaultCaptureStore
   const caseDir = store.caseDir(caseId)
+  // Read once for the batch: every file is refused, and stays pooled, when no `exhibit` entry
+  // can be signed (X47).
+  const operatorName = trimmedOperatorName()
+  if (!operatorName) {
+    return {
+      outcomes: stagingIds.map((stagingId) => ({
+        stagingId,
+        status: 'refused',
+        reason: 'operator_name_required'
+      }))
+    }
+  }
   const outcomes: StagingCommitOutcome[] = []
   for (const stagingId of stagingIds) {
     const row = getStagingFile(stagingId)
@@ -208,7 +220,6 @@ export async function commitStagedFiles(
     const target = store.exhibitPaths(caseId, row.kind, exhibitId + extname(row.path))
     let moved = false
     try {
-      const settings = getSettings()
       const timestamp = new Date().toISOString()
       mkdirSync(dirname(target.abs), { recursive: true })
       await rename(pooledAbs, target.abs)
@@ -231,7 +242,7 @@ export async function commitStagedFiles(
           sizeBytes: statSync(target.abs).size,
           timestamp,
           operatorId: getInstallationId(),
-          operatorName: settings.operatorName ?? '',
+          operatorName,
           toolVersion: resolveToolVersion()
         },
         (appended) =>

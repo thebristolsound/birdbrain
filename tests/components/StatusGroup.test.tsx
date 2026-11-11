@@ -7,6 +7,7 @@ import type { CaptureEvent, EgressSetting } from '@shared/types'
 import type { HeldBatch, RecaptureQueueStatus, VpnStatus } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { useAppStore } from '@renderer/stores/appStore'
+import { notify } from '@renderer/lib/notify'
 import { settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { stubResizeObserver } from './resizeObserverStub'
@@ -561,7 +562,9 @@ describe('StatusGroup held background captures', () => {
 
   function renderHeld(warn = false) {
     const queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => heldQueue)
-    const resume = vi.fn(async () => ({ resumed: 1 }))
+    const resume = vi.fn(async (): Promise<{ resumed: number; reason?: string }> => ({
+      resumed: 1
+    }))
     const checkVpnWarning = vi.fn(async (target: { caseId: string }) => ({
       caseId: target.caseId,
       warn,
@@ -631,6 +634,21 @@ describe('StatusGroup held background captures', () => {
     )
     expect(checkVpnWarning).toHaveBeenCalledWith({ caseId: 'case-a' }, 'site')
     expect(resume).not.toHaveBeenCalled()
+  })
+
+  // The queue refuses a resume while no operator name is set, as it refuses a new Batch.
+  it('shows the refusal when the queue refuses a resume, and keeps the Batch listed', async () => {
+    const warn = vi.spyOn(notify, 'warn').mockImplementation(() => {})
+    const { resume } = renderHeld()
+    resume.mockResolvedValueOnce({ resumed: 0, reason: 'Operator name required' })
+    fireEvent.click(await screen.findByTestId('status-group'))
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Resume' }))[0])
+
+    await waitFor(() =>
+      expect(warn).toHaveBeenCalledWith('Resume rejected: Operator name required')
+    )
+    expect(screen.getAllByRole('button', { name: 'Resume' })).toHaveLength(2)
+    warn.mockRestore()
   })
 
   it('shows no held count and no held section when nothing is held', async () => {

@@ -141,8 +141,14 @@ async function restore(
   }
 
   // Ahead of the check below, so nothing the caller does here can leave the WAL
-  // non-empty at the close.
-  beforeClose?.()
+  // non-empty at the close. A hook that throws ends the restore with nothing
+  // replaced, and takes the prepared copy with it.
+  try {
+    beforeClose?.()
+  } catch (err) {
+    clearStaging(staging)
+    throw err
+  }
 
   // Again here, with no await between this and the close: the database stayed
   // open while the copy was prepared, and its WAL may have grown since. An

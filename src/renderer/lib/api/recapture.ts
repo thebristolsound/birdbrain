@@ -1,6 +1,7 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { EnqueueResult, HeldBatch, LinkedFrom, RecaptureJobTarget } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { notify } from '@renderer/lib/notify'
 import { requireContact } from '@renderer/lib/vpnWarning'
 
 // The status group and the capture log each decide when to poll, so the interval
@@ -83,6 +84,10 @@ export function useResumeHeldBatch() {
     mutationFn: async ({ caseId, batchId }: HeldBatch) => {
       await requireContact({ caseId }, 'site')
       return window.birdbrain.recapture.resume({ batchId })
+    },
+    // The queue refuses a resume while no operator name is set, as it refuses a new Batch.
+    onSuccess: ({ reason }) => {
+      if (reason) notify.warn(`Resume rejected: ${reason}`)
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.recaptureQueue })

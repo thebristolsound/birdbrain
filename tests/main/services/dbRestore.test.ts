@@ -184,6 +184,30 @@ describe('restoreDatabase from a file', () => {
     expect(getCase(during)).toBeUndefined()
   })
 
+  it('leaves no staging copy, and the database open, when the before-close hook throws', async () => {
+    const kept = createCase({ name: 'Kept' })
+    const backup = await backupTo('backup.db')
+
+    await expect(
+      restoreDatabase(
+        { kind: 'file', path: backup },
+        {
+          dbPath,
+          beforeClose: () => {
+            throw new Error('hook threw')
+          }
+        }
+      )
+    ).rejects.toThrow('hook threw')
+
+    expect(dottedSiblings()).toEqual([])
+    expect(getCase(kept.id)).toMatchObject({ name: 'Kept' })
+    // The in-progress flag is cleared, so a restore can follow.
+    expect(await restoreDatabase({ kind: 'file', path: backup }, { dbPath })).toEqual({
+      status: 'restored'
+    })
+  })
+
   it('does not run the before-close hook for a file it refuses', async () => {
     const notDb = join(dir, 'notes.db')
     writeFileSync(notDb, 'Meeting notes, not a database.\n'.repeat(200))

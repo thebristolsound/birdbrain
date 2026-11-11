@@ -98,7 +98,13 @@ export function useCasesMutations() {
 
   const remove = useMutation({
     mutationFn: (id: string) => window.birdbrain.cases.delete(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.cases }),
+    // The queue too: the Case's held background jobs go with it, and the status control reads
+    // the held count only on a capture event or while something is pending.
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.cases }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.recaptureQueue })
+      ]),
     meta: { action: 'delete case' }
   })
 

@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import {
+  copyFileSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync
+} from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -16,6 +24,7 @@ import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import {
   CANCELLED_JOB_ERROR,
   INTERRUPTED_JOB_ERROR,
+  QUEUE_STOPPED_JOB_ERROR,
   RESTORE_REMOVED_CAPTURE_ERROR,
   RESTORE_REMOVED_JOB_ERROR,
   RecaptureCancelled,
@@ -25,6 +34,7 @@ import {
   type RenderedPage,
   type RenderPage
 } from '@main/services/recapture'
+import { restoreDatabase } from '@main/services/db/dbRestore'
 import { logger } from '@main/services/logger'
 import { RefusedAddressError } from '@main/services/localAddressPolicy'
 import { MANIFEST_FILENAME } from '@shared/constants'
@@ -329,9 +339,115 @@ describe('stored background jobs', () => {
       await svc.idle()
       expect(svc.listJobs({ batchId })[0].state).toBe('stored')
     })
+
+    // Review of #2141, second verdict, finding 4: a row must not stay `running` with no job
+    // behind it once the database takes a write again.
+    it('ends the row of a job whose report threw, and leaves the next job queued', async () => {
+      const error = vi.spyOn(logger, 'error')
+      vi.spyOn(logger, 'warn').mockImplementation((_source: unknown, code: unknown) => {
+        if (code === 'backgroundRenderer.job_failed') throw new Error('log call threw')
+        return 'log-id'
+      })
+      const svc = makeService(async () => {
+        throw new Error('render failed')
+      })
+      const {
+        jobIds: [first, second]
+      } = svc.enqueue([
+        { url: 'https://example.com/a', caseId },
+        { url: 'https://example.com/b', caseId }
+      ])
+      await svc.idle()
+
+      expect(backgroundJobRepo.getJob(first)).toMatchObject({
+        state: 'failed',
+        failureKind: 'interrupted',
+        error: QUEUE_STOPPED_JOB_ERROR,
+        finishedAt: expect.any(String)
+      })
+      expect(stateOf(second)).toBe('queued')
+      expect(svc.status()).toMatchObject({ pending: 1, queued: 1, running: 0 })
+      expect(error.mock.calls.map(([, code]) => code)).toContain(
+        'backgroundRenderer.job_queue_failed'
+      )
+    })
+
+    it('settles rows an earlier stop left running when the loop next starts', async () => {
+      const [orphan, landed] = earlierSession(['https://example.com/o', 'https://example.com/l'])
+      const captureId = randomUUID()
+      const startedAt = new Date().toISOString()
+      backgroundJobRepo.claimNextQueued({ startedAt, captureId: randomUUID() })
+      backgroundJobRepo.claimNextQueued({ startedAt, captureId })
+      insertCapture({
+        id: captureId,
+        caseId,
+        url: 'https://example.com/l',
+        title: 'L',
+        hash: 'b'.repeat(64),
+        timestamp: '2026-11-09T00:00:00.000Z',
+        format: 'mhtml',
+        method: 'background'
+      })
+      const svc = makeService()
+      expect(svc.status()).toMatchObject({ running: 2 })
+
+      const { batchId } = svc.enqueue([{ url: 'https://example.com/new', caseId }])
+      await svc.idle()
+
+      expect(backgroundJobRepo.getJob(orphan)).toMatchObject({
+        state: 'failed',
+        failureKind: 'interrupted',
+        error: QUEUE_STOPPED_JOB_ERROR
+      })
+      expect(backgroundJobRepo.getJob(landed)).toMatchObject({ state: 'stored', captureId })
+      expect(svc.listJobs({ batchId })[0].state).toBe('stored')
+      expect(svc.status()).toMatchObject({ running: 0 })
+      expect(jobs.filter(({ jobId }) => jobId === orphan || jobId === landed)).toHaveLength(2)
+    })
+
+    it('starts the loop again when asked, as the restore handlers do after a failed restore', async () => {
+      const [id] = earlierSession(['https://example.com/a'])
+      const renderPage = vi.fn(render)
+      const svc = makeService(renderPage)
+      await svc.idle()
+      expect(renderPage).not.toHaveBeenCalled()
+
+      svc.restartQueue()
+      await svc.idle()
+
+      expect(stateOf(id)).toBe('stored')
+    })
   })
 
   describe('the pass before the queue runs', () => {
+    it('keeps a stored row for seven days', () => {
+      expect(STORED_JOB_RETENTION_MS).toBe(604_800_000)
+    })
+
+    // Review of #2141, second verdict, item 3: the operator gate that enqueue applies (X47).
+    it.each(['', '  '])(
+      'refuses a resume while the operator name is %j, renders nothing and leaves the jobs held',
+      async (blank) => {
+        const [id] = earlierSession(['https://held.example.com/'])
+        const batchId = backgroundJobRepo.getJob(id)!.batchId
+        const renderPage = vi.fn(render)
+        const svc = makeService(renderPage)
+        svc.recoverStoredJobs()
+        updateSettings({ operatorName: blank })
+
+        expect(svc.resume(batchId)).toEqual({ resumed: 0, reason: 'Operator name required' })
+        await svc.idle()
+        expect(renderPage).not.toHaveBeenCalled()
+        expect(stateOf(id)).toBe('held')
+        expect(events).toEqual([])
+
+        updateSettings({ operatorName: 'Op' })
+        expect(svc.resume(batchId)).toEqual({ resumed: 1 })
+        await svc.idle()
+        expect(stateOf(id)).toBe('stored')
+      }
+    )
+
     it('marks a running job interrupted, logs it, and leaves no Capture', async () => {
       const [id] = earlierSession(['https://example.com/a'])
       const captureId = randomUUID()
@@ -644,6 +760,32 @@ describe('stored background jobs', () => {
         expect(listCaptures(caseId)).toHaveLength(1)
       }
     )
+
+    // Review of #2141, second verdict, finding 1: after a restore that left the file unreadable
+    // the app tells the Operator to restore a backup with no database open.
+    it('restores with no database open, reading no job and leaving no staging copy', async () => {
+      takeBackup()
+      const svc = makeService()
+      closeDatabase()
+      expect(svc.beginRestore()).toEqual([])
+
+      let before: BackgroundJobView[] | undefined
+      const outcome = await restoreDatabase(
+        { kind: 'file', path: backup },
+        {
+          dbPath,
+          beforeClose: () => {
+            before = svc.beginRestore()
+          }
+        }
+      )
+
+      expect(outcome).toEqual({ status: 'restored' })
+      expect(before).toEqual([])
+      svc.finishRestore(before ?? [])
+      expect(svc.status()).toMatchObject({ pending: 0, held: 0 })
+      expect(readdirSync(tempDir).filter((name) => name.startsWith('birdbrain.db.'))).toEqual([])
+    })
 
     it('ends with a failed event each job of this session that the restored copy does not hold', async () => {
       takeBackup()

@@ -128,6 +128,28 @@ function setUp() {
 }
 
 describe('captureTab', () => {
+  it.each(['failed', 'unanswered'])(
+    'omits the record and Bound TLS when page setup is %s',
+    async (state) => {
+      const { page, input } = setUp()
+      const recording = createTabRecording({ tabId: TAB })
+      const setup =
+        state === 'failed'
+          ? Promise.reject(new Error('Network.setCacheDisabled failed'))
+          : new Promise<never>(() => {})
+      recording.addSession(page, 'page', setup)
+      loadDocument(page)
+      const artifacts = await captureTab(input({ recording }))
+      expect(artifacts.inventory.transactionRecord).toEqual({
+        present: false,
+        reason: 'page-not-recorded'
+      })
+      expect(artifacts.transactionRecord).toBeUndefined()
+      expect(artifacts.boundTls).toBeUndefined()
+      expect(artifacts.boundTlsAbsent).toBe('not-recorded')
+    }
+  )
+
   it('takes the artifacts in order and writes the record from the cut', async () => {
     const { page, input } = setUp()
     loadDocument(page)

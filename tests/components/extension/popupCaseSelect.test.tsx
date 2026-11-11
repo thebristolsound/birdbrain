@@ -61,11 +61,13 @@ let backgroundReplies: Record<string, unknown> = {}
 const createdTabs: string[] = []
 const openOptionsPage = vi.fn()
 
-function stubChrome(): void {
+function stubChrome(
+  manifest: { version: string; version_name?: string } = { version: '1.2.3' }
+): void {
   vi.stubGlobal('chrome', {
     runtime: {
       lastError: undefined,
-      getManifest: () => ({ version: '1.2.3' }),
+      getManifest: () => manifest,
       openOptionsPage,
       sendMessage: (message: Record<string, unknown>, callback?: (response: unknown) => void) => {
         sentMessages.push(message)
@@ -106,6 +108,13 @@ afterEach(() => {
 })
 
 describe('popup case select', () => {
+  it('shows the full release string the build stamped into the manifest', async () => {
+    stubChrome({ version: '1.0.1.26', version_name: '1.0.1-beta.26' })
+    await renderPopup()
+
+    expect(await screen.findByText('v1.0.1-beta.26')).toBeTruthy()
+  })
+
   it('fronts with the active case and offers the full list under "Set active case"', async () => {
     await renderPopup()
 

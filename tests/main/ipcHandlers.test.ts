@@ -316,9 +316,16 @@ beforeEach(async () => {
   const selectorLifecycle = createSelectorLifecycle({ emitRematched: vi.fn() })
   const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
   recaptureService = {
-    enqueue: vi.fn(() => ({ accepted: 1, rejected: [] })),
-    enqueueLink: vi.fn(() => ({ accepted: 1, rejected: [] })),
-    status: vi.fn(() => ({ pending: 0, activeUrl: null })),
+    enqueue: vi.fn(() => ({ batchId: 'batch', accepted: 1, jobIds: ['job'], rejected: [] })),
+    enqueueLink: vi.fn(() => ({ batchId: 'batch', accepted: 1, jobIds: ['job'], rejected: [] })),
+    status: vi.fn(() => ({
+      pending: 0,
+      queued: 0,
+      running: 0,
+      held: 0,
+      concurrency: 1,
+      activeUrl: null
+    })),
     idle: vi.fn()
   }
   updaterService = {
@@ -4273,7 +4280,14 @@ describe('ipcHandlers — recapture', () => {
 
   it('recapture:queueStatus reads the service status', async () => {
     const status = expectOk(await invoke(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS))
-    expect(status).toEqual({ pending: 0, activeUrl: null })
+    expect(status).toEqual({
+      pending: 0,
+      queued: 0,
+      running: 0,
+      held: 0,
+      concurrency: 1,
+      activeUrl: null
+    })
     expect(recaptureService.status).toHaveBeenCalled()
   })
 })

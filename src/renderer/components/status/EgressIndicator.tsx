@@ -60,7 +60,7 @@ export function EgressIndicator() {
       data-testid="egress-indicator"
       title={`Egress: ${text}`}
       className={cn(
-        'flex items-center gap-1.5 rounded-full border px-2.5 py-1',
+        'flex h-7 min-w-7 shrink-0 items-center justify-center gap-1.5 rounded-full border px-[7px] 2xl:px-2.5',
         warning
           ? 'border-warning-line bg-warning-surface text-warning-fg'
           : 'border-border text-text-muted'

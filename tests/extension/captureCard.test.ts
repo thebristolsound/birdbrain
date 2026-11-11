@@ -184,6 +184,19 @@ describe('post-capture card', () => {
     }
   )
 
+  it('stays up and shows the refusal when Recapture is refused', async () => {
+    const refusal = 'Not captured — a capture of this page is already running'
+    updateToast({ status: 'success', card, scrolling: true })
+    send.mockResolvedValueOnce({ ok: false, error: refusal })
+    click('.recapture')
+    await settle()
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'CAPTURE_CARD_ACTION', action: 'recapture' })
+    )
+    expect(shadow().querySelector('.card')).not.toBeNull()
+    expect(shadow().querySelector('[role=alert]')!.textContent).toBe(refusal)
+  })
+
   it('holds five seconds, pauses for interaction, and can be dismissed immediately', () => {
     updateToast({ status: 'success', card })
     vi.advanceTimersByTime(4000)

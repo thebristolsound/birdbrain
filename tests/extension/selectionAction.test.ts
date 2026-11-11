@@ -23,7 +23,8 @@ vi.mock('@extension/utils/api', () => ({
   createSelector: vi.fn(),
   lookupCaptureByUrl: vi.fn(),
   applyTagToUrl: vi.fn(),
-  createNoteOnUrl: vi.fn()
+  createNoteOnUrl: vi.fn(),
+  getCaptureCard: vi.fn()
 }))
 
 import {
@@ -33,7 +34,8 @@ import {
   createSelector,
   lookupCaptureByUrl,
   applyTagToUrl,
-  createNoteOnUrl
+  createNoteOnUrl,
+  getCaptureCard
 } from '@extension/utils/api'
 
 type SendResponse = (response?: unknown) => void
@@ -138,6 +140,7 @@ async function activateStatus(status: CaptureServerStatus): Promise<void> {
 
 beforeAll(async () => {
   vi.mocked(getStatus).mockResolvedValue(STATUS)
+  vi.mocked(getCaptureCard).mockRejectedValue(new Error('metadata unavailable'))
   vi.mocked(getActiveSelectors).mockResolvedValue([] as ActiveSelectorsResult)
   vi.mocked(createSelector).mockResolvedValue({
     selector: {
@@ -959,6 +962,50 @@ describe('SELECTION_ACTION: one capture per tab (#963)', () => {
     expect(await tagged).toMatchObject({ ok: true })
     expect(vi.mocked(applyTagToUrl)).toHaveBeenCalledTimes(1)
     expect(vi.mocked(createNoteOnUrl)).not.toHaveBeenCalled()
+  })
+
+  // The card's Recapture is the one manual route whose notice the card itself
+  // carries: a `skipped` toast would draw into the card's host, and the card
+  // closes that host when its action is acknowledged.
+  it("answers the capture card's Recapture with the refusal while a Tag attaches to a stored capture", async () => {
+    const TAB_CARD = { ...TAB, id: 65 }
+    const recapture = {
+      type: 'CAPTURE_CARD_ACTION',
+      captureId: 'cap-manual',
+      action: 'recapture',
+      scrolling: false
+    }
+    // A finished manual capture leaves its card on the page
+    vi.mocked(sendMhtmlCapture).mockResolvedValue(UPLOAD_RESULT)
+    await dispatchWithResponse({ ...manualCapture, tabId: TAB_CARD.id }, TAB_CARD)
+    await flush()
+    expect(vi.mocked(sendMhtmlCapture)).toHaveBeenCalledTimes(1)
+
+    // The lookup hits, so the Tag opens no suppression bracket and the card
+    // is still on screen while the attach holds the tab's guard
+    vi.mocked(lookupCaptureByUrl).mockResolvedValueOnce(LOOKUP_HIT)
+    const attach = hold(vi.mocked(applyTagToUrl))
+    const tagged = dispatchWithResponse(tag, TAB_CARD)
+    await flush()
+    events.length = 0
+
+    expect(await dispatchWithResponse(recapture, TAB_CARD)).toEqual({
+      ok: false,
+      error: 'Not captured — a capture of this page is already running'
+    })
+    await flush()
+    expect(events).not.toContain('UPDATE_CAPTURE_TOAST')
+    expect(events).not.toContain('PREPARE_FOR_CAPTURE')
+    expect(vi.mocked(sendMhtmlCapture)).toHaveBeenCalledTimes(1)
+
+    attach.release(TAG_RESULT)
+    expect(await tagged).toMatchObject({ ok: true })
+
+    // The tab is free again: the same button starts a capture
+    expect(await dispatchWithResponse(recapture, TAB_CARD)).toEqual({ ok: true })
+    await flush()
+    expect(events).toContain('PREPARE_FOR_CAPTURE')
+    expect(vi.mocked(sendMhtmlCapture)).toHaveBeenCalledTimes(2)
   })
 
   it('frees the tab when the Tag fails, so the next capture runs', async () => {

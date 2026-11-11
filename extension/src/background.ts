@@ -1541,6 +1541,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const url = sender.tab?.url
       if (!url || !ignoreRulesLoaded || blockedCaptureReason(url)) {
         sendResponse({ ok: false, error: 'This page cannot be captured now.' })
+      } else if (captureRunningTabs.has(tabId)) {
+        // Answered here rather than by manualCaptureTab's in-page toast: the
+        // card closes the toast host once its action is acknowledged, which
+        // would take the notice with it.
+        sendResponse({ ok: false, error: CAPTURE_RUNNING_NOTICE })
       } else {
         void manualCaptureTab(tabId, url, card.caseId, message.scrolling === true)
         sendResponse({ ok: true })

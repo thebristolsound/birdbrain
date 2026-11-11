@@ -173,6 +173,25 @@ function selectedCaptureState(
   }
 }
 
+const MAX_CAPTURE_EVENTS = 50
+
+// The feed keeps the newest 50 rows, but a running background job's 'received' row goes last: the
+// Recapture controls read it as the job still running, and a large batch's 'queued' rows would
+// otherwise push it out. Those rows go too, oldest first, only when nothing else is left to
+// drop. The event just added, at index 0, always stays.
+function capCaptureEvents(events: CaptureEvent[]): CaptureEvent[] {
+  let excess = events.length - MAX_CAPTURE_EVENTS
+  if (excess <= 0) return events
+  const kept = [...events]
+  for (let i = kept.length - 1; i > 0 && excess > 0; i--) {
+    const { type, source, jobId } = kept[i]
+    if (type === 'received' && source === 'recapture' && jobId !== undefined) continue
+    kept.splice(i, 1)
+    excess--
+  }
+  return kept.slice(0, MAX_CAPTURE_EVENTS)
+}
+
 export const useAppStore = create<AppState>((set) => ({
   sessionActive: false,
   activeCaseId: null,
@@ -364,16 +383,25 @@ export const useAppStore = create<AppState>((set) => ({
   addCaptureEvent: (event) =>
     set((s) => {
       let existing = s.captureEvents
-      // Terminal events replace the matching 'received' spinner
-      if (event.type === 'stored' || event.type === 'failed' || event.type === 'skipped') {
-        const idx = existing.findIndex(
-          (e) => e.type === 'received' && e.url === event.url && e.source === event.source
+      // A background job keeps one row: each of its events replaces the row its last event left,
+      // matched by job id, so two jobs for one address never clear each other's row. A terminal
+      // event with no job (the extension, the launched browser, a URL the queue refused at
+      // enqueue) replaces a 'received' row from its own source and address that has no job.
+      const { jobId, type, url, source } = event
+      const terminal = type === 'stored' || type === 'failed' || type === 'skipped'
+      let idx = -1
+      if (jobId) {
+        idx = existing.findIndex((e) => e.jobId === jobId)
+      } else if (terminal) {
+        idx = existing.findIndex(
+          (e) =>
+            e.type === 'received' && e.jobId === undefined && e.url === url && e.source === source
         )
-        if (idx !== -1) {
-          existing = [...existing.slice(0, idx), ...existing.slice(idx + 1)]
-        }
       }
-      const events = [event, ...existing].slice(0, 50)
+      if (idx !== -1) {
+        existing = [...existing.slice(0, idx), ...existing.slice(idx + 1)]
+      }
+      const events = capCaptureEvents([event, ...existing])
       const stats = { ...s.captureStats }
       if (event.type === 'stored') stats.successCount++
       if (event.type === 'failed') {

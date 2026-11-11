@@ -54,6 +54,10 @@ let scrollingResponse: Record<string, unknown> | 'throw' = { screenshot: SCROLLI
 let viewportFails = false
 let prepareResponse: Record<string, unknown> | 'throw' = { ok: true }
 let executeScriptFails = false
+// What chrome.runtime.getManifest() answers: an unstamped manifest by default,
+// the shape the extension build writes when a test sets one.
+const UNSTAMPED_MANIFEST = { version: '0.0.0-test' }
+let manifest: { version: string; version_name?: string } = UNSTAMPED_MANIFEST
 
 function dispatch(message: unknown): void {
   for (const listener of runtimeListeners) {
@@ -134,7 +138,7 @@ beforeAll(async () => {
     runtime: {
       id: EXTENSION_ID,
       lastError: undefined,
-      getManifest: () => ({ version: '0.0.0-test' }),
+      getManifest: () => manifest,
       onMessage: { addListener: (fn: Listener) => runtimeListeners.push(fn) },
       onInstalled: { addListener: () => {} }
     },
@@ -240,6 +244,7 @@ beforeEach(() => {
   viewportFails = false
   prepareResponse = { ok: true }
   executeScriptFails = false
+  manifest = UNSTAMPED_MANIFEST
   vi.mocked(sendMhtmlCapture).mockClear()
 })
 
@@ -496,5 +501,23 @@ describe('a screenshot fallback is reported to the operator (#1667)', () => {
       status: 'success',
       storedScreenshot: 'full-page'
     })
+  })
+})
+
+describe('the extension version a capture records (#726)', () => {
+  it('sends the full release string the build stamped into the manifest', async () => {
+    manifest = { version: '1.0.1.26', version_name: '1.0.1-beta.26' }
+
+    await captureFullPage()
+
+    expect(vi.mocked(sendMhtmlCapture).mock.calls.at(-1)?.[0].extensionVersion).toBe(
+      '1.0.1-beta.26'
+    )
+  })
+
+  it('sends the manifest version when the manifest carries no release string', async () => {
+    await captureFullPage()
+
+    expect(vi.mocked(sendMhtmlCapture).mock.calls.at(-1)?.[0].extensionVersion).toBe('0.0.0-test')
   })
 })

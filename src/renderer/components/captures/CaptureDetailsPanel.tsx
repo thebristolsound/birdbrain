@@ -39,6 +39,7 @@ import { useReduceMotion } from '@renderer/hooks/useReduceMotion'
 import { useTimeTick } from '@renderer/hooks/useTimeTick'
 import { presets } from '@renderer/lib/motion/presets'
 import { formatRelativeTime } from '@renderer/lib/formatRelativeTime'
+import { formatUtcTimestamp } from '@renderer/components/captures/waybackPanelModel'
 import { accelerator } from '@renderer/lib/accelerator'
 import { TagBadge } from '@renderer/components/tags/TagBadge'
 import { TagEditorPopover } from '@renderer/components/captures/TagEditorPopover'
@@ -432,7 +433,7 @@ export function CaptureDetailsPanel({
           icon={<Calendar className="h-3.5 w-3.5" />}
           label="Captured"
           value={
-            <span title={new Date(capture.timestamp).toLocaleString()}>
+            <span title={formatUtcTimestamp(capture.timestamp)}>
               {[
                 formatRelativeTime(capture.timestamp, now),
                 capture.format === 'mhtml' ? 'MHTML Archive' : 'HTML Page',

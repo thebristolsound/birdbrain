@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { insertCapture } from '@main/services/db/captureRepo'
 import {
@@ -584,6 +584,205 @@ describe('selectorLifecycle', () => {
       await waitFor(events, 3)
 
       expect(getSelectorMatchCounts(c.id)[sel.id]).toBe(1)
+    })
+  })
+
+  // #1069: each row records when it was found and which pass found it.
+  describe('match provenance', () => {
+    type ProvenanceRow = { capture_id: string; matched_at: string | null; match_origin: string }
+
+    function provenance(selectorId: string): ProvenanceRow[] {
+      return getDb()
+        .prepare(
+          `SELECT capture_id, matched_at, match_origin FROM selector_matches
+           WHERE selector_id = ? ORDER BY capture_id`
+        )
+        .all(selectorId) as ProvenanceRow[]
+    }
+
+    function captureWithText(caseId: string, name: string, text: string): string {
+      const { id } = insertCapture({
+        caseId,
+        url: `https://${name}`,
+        title: name,
+        hash: `h-${name}`,
+        timestamp: '2026-01-01T00:00:00.000Z'
+      })
+      writeTxt(tempDir, caseId, id, text)
+      return id
+    }
+
+    function expectStampedBetween(row: ProvenanceRow, from: string, to: string): void {
+      expect(row.matched_at).toBe(new Date(row.matched_at!).toISOString())
+      expect(row.matched_at! >= from && row.matched_at! <= to).toBe(true)
+    }
+
+    it('records create on the create-time pass, with the time it ran', async () => {
+      const c = createCase({ name: 'C' })
+      const cap = captureWithText(c.id, 'a', 'alpha here')
+      const from = new Date().toISOString()
+
+      const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
+      await waitFor(events, 1)
+
+      const rows = provenance(sel.id)
+      expect(rows).toMatchObject([{ capture_id: cap, match_origin: 'create' }])
+      expectStampedBetween(rows[0], from, new Date().toISOString())
+    })
+
+    it('records create on the bulk-create pass', async () => {
+      const c = createCase({ name: 'C' })
+      const cap = captureWithText(c.id, 'a', 'alpha and beta')
+
+      const [alpha, beta] = lifecycle.bulkCreateSelectors({
+        caseId: c.id,
+        selectors: [
+          { pattern: 'alpha', isRegex: false },
+          { pattern: 'beta', isRegex: false }
+        ]
+      })
+      await waitFor(events, 1)
+
+      for (const { id } of [alpha, beta]) {
+        expect(provenance(id)).toMatchObject([{ capture_id: cap, match_origin: 'create' }])
+      }
+    })
+
+    it('records update on the rematch an edited pattern runs', async () => {
+      const c = createCase({ name: 'C' })
+      const cap = captureWithText(c.id, 'a', 'alpha and beta')
+      const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
+      await waitFor(events, 1)
+      expect(provenance(sel.id)).toMatchObject([{ match_origin: 'create' }])
+
+      lifecycle.updateSelector({ id: sel.id, pattern: 'beta' })
+      await waitFor(events, 2)
+
+      expect(provenance(sel.id)).toMatchObject([{ capture_id: cap, match_origin: 'update' }])
+    })
+
+    it('records rescan on a new row and leaves an earlier row as it was found', async () => {
+      const c = createCase({ name: 'C' })
+      const first = captureWithText(c.id, 'first', 'alpha here')
+      const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
+      await waitFor(events, 1)
+      const [created] = provenance(sel.id)
+      // Back-dated so a restamp of the row would show, however fast the rescan runs.
+      getDb()
+        .prepare('UPDATE selector_matches SET matched_at = ? WHERE selector_id = ?')
+        .run('2026-01-02T00:00:00.000Z', sel.id)
+      const later = captureWithText(c.id, 'later', 'alpha again')
+      const from = new Date().toISOString()
+
+      lifecycle.rescanSelector(sel.id)
+      await waitFor(events, 2)
+
+      const rows = new Map(provenance(sel.id).map((row) => [row.capture_id, row]))
+      expect(created.match_origin).toBe('create')
+      expect(rows.get(first)).toEqual({
+        capture_id: first,
+        matched_at: '2026-01-02T00:00:00.000Z',
+        match_origin: 'create'
+      })
+      expect(rows.get(later)).toMatchObject({ match_origin: 'rescan' })
+      expectStampedBetween(rows.get(later)!, from, new Date().toISOString())
+    })
+
+    it('records capture-time on the match ingest runs', async () => {
+      const c = createCase({ name: 'C' })
+      const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
+      await waitFor(events, 1)
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://a',
+        title: 'A',
+        hash: 'h1',
+        timestamp: '2026-01-01T00:00:00.000Z'
+      })
+      const from = new Date().toISOString()
+
+      lifecycle.runActiveSelectorsForCapture(cap.id, c.id, 'alpha arrives')
+
+      const rows = provenance(sel.id)
+      expect(rows).toMatchObject([{ capture_id: cap.id, match_origin: 'capture-time' }])
+      expectStampedBetween(rows[0], from, new Date().toISOString())
+    })
+
+    // 120 captures is three chunks of 50, so a pass that has run one chunk still
+    // has two queued when the edit lands between them.
+    describe('a pattern edit while a pass is in flight', () => {
+      const CAPTURES = 120
+      const tick = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
+
+      function seed(caseId: string, text: string): void {
+        for (let i = 0; i < CAPTURES; i++) captureWithText(caseId, `c${i}`, text)
+      }
+
+      // No pass here is longer than three chunks, so ten turns after the first
+      // report outlast every pass still queued, whichever reports first.
+      async function settle(expectedEvents: number): Promise<void> {
+        await waitFor(events, expectedEvents)
+        for (let i = 0; i < 10; i++) await tick()
+      }
+
+      function origins(selectorId: string): string[] {
+        return provenance(selectorId).map((row) => row.match_origin)
+      }
+
+      it('stops the create-time pass, so every match is recorded as update', async () => {
+        const c = createCase({ name: 'C' })
+        seed(c.id, 'alpha and beta')
+        const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
+        await tick()
+        const written = provenance(sel.id).length
+        expect(written).toBeGreaterThan(0)
+        expect(written).toBeLessThan(CAPTURES)
+
+        lifecycle.updateSelector({ id: sel.id, pattern: 'beta' })
+        await settle(1)
+
+        expect(origins(sel.id)).toEqual(Array(CAPTURES).fill('update'))
+        expect(events).toEqual([{ selectorIds: [sel.id], caseId: c.id, status: 'done' }])
+      })
+
+      it('stops a rescan, so every match is recorded as update', async () => {
+        const c = createCase({ name: 'C' })
+        seed(c.id, 'alpha and beta')
+        const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'gamma' })
+        await waitFor(events, 1)
+        expect(provenance(sel.id)).toEqual([])
+
+        lifecycle.rescanSelector(sel.id)
+        await tick()
+        lifecycle.updateSelector({ id: sel.id, pattern: 'beta' })
+        await settle(2)
+
+        expect(origins(sel.id)).toEqual(Array(CAPTURES).fill('update'))
+        expect(events).toHaveLength(2)
+      })
+
+      it('leaves the other selectors of a bulk-create pass running', async () => {
+        const c = createCase({ name: 'C' })
+        seed(c.id, 'alpha and beta and gamma')
+        const [edited, untouched] = lifecycle.bulkCreateSelectors({
+          caseId: c.id,
+          selectors: [
+            { pattern: 'alpha', isRegex: false },
+            { pattern: 'beta', isRegex: false }
+          ]
+        })
+        await tick()
+
+        lifecycle.updateSelector({ id: edited.id, pattern: 'gamma' })
+        await settle(1)
+
+        expect(origins(edited.id)).toEqual(Array(CAPTURES).fill('update'))
+        expect(origins(untouched.id)).toEqual(Array(CAPTURES).fill('create'))
+        expect(events).toEqual([
+          { selectorIds: [edited.id, untouched.id], caseId: c.id, status: 'done' },
+          { selectorIds: [edited.id], caseId: c.id, status: 'done' }
+        ])
+      })
     })
   })
 

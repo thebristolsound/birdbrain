@@ -314,7 +314,10 @@ async function recapture(page: Page, caseId: string, url: string): Promise<Activ
   const handle = await page.waitForFunction(
     (target) => {
       const w = window as unknown as { activity: ActivityEvent[] }
-      return w.activity.find((e) => e.url === target && e.type !== 'received') ?? null
+      return (
+        w.activity.find((e) => e.url === target && e.type !== 'queued' && e.type !== 'received') ??
+        null
+      )
     },
     url,
     { timeout: 140000 }

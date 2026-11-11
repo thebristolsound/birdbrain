@@ -6,6 +6,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  truncateSync,
   writeFileSync
 } from 'fs'
 import type { FileHandle } from 'fs/promises'
@@ -140,6 +141,40 @@ function snapshotOnPartFour(): Buffer {
   )
 }
 
+const ROW_HEADERS = {
+  contentType: 'Content-Type',
+  transferEncoding: 'Content-Transfer-Encoding',
+  contentLocation: 'Content-Location',
+  contentId: 'Content-ID'
+} as const
+type RowField = keyof typeof ROW_HEADERS
+const ROW_FIELDS = Object.keys(ROW_HEADERS) as RowField[]
+const ROW_VALUES: Record<RowField, string> = {
+  contentType: 'text/css',
+  transferEncoding: '8bit',
+  contentLocation: 'https://example.com/a.css',
+  contentId: '<a@example.com>'
+}
+
+// An archive of one part carrying the four headers a row reports, each followed by another
+// header line, with `values` in place of the short ones above.
+function onePart(values: Partial<Record<RowField, string>>): Buffer {
+  return Buffer.from(
+    [
+      'Content-Type: multipart/related; boundary=B',
+      '',
+      '--B',
+      ...ROW_FIELDS.map((field) =>
+        `${ROW_HEADERS[field]}: ${values[field] ?? ROW_VALUES[field]}`.trimEnd()
+      ),
+      'X-Note: after',
+      '',
+      'x',
+      '--B--'
+    ].join('\r\n')
+  )
+}
+
 describe('listMhtmlParts known answers', () => {
   it('lists every part of the fixture with its span, hash and HTML-part number', () => {
     const buffer = fixture()
@@ -248,6 +283,137 @@ describe('listMhtmlParts known answers', () => {
   })
 })
 
+// A part may carry no header lines (RFC 2046): its delimiter line is followed at once by the
+// blank line that ends its headers, and its span starts after that blank line like any other
+// part's. Each archive below was also written to a file with `printf`. Offsets were read from
+// `grep -boa '^.*' <file>`, and each hash was computed on 2026-11-11 outside the code under test
+// with `tail -c +$((offset+1)) <file> | head -c <size> | sha256sum`. The first hash also equals
+// `printf x | sha256sum`.
+describe('listMhtmlParts on a part with an empty header block', () => {
+  const TOP = 'Content-Type: multipart/related; boundary=B'
+  const NO_HEADERS = {
+    contentType: null,
+    transferEncoding: null,
+    contentLocation: null,
+    contentId: null,
+    headersTerminated: true,
+    endsAtEndOfFile: false,
+    fieldsTruncated: false
+  }
+
+  it.each([
+    {
+      name: 'CRLF line breaks',
+      eol: '\r\n',
+      body: ['x'],
+      offset: 54,
+      size: 1,
+      sha256: '2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881'
+    },
+    {
+      name: 'LF line breaks',
+      eol: '\n',
+      body: ['x'],
+      offset: 50,
+      size: 1,
+      sha256: '2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881'
+    },
+    {
+      name: 'CRLF line breaks and a blank line in the body',
+      eol: '\r\n',
+      body: ['line one', '', 'line two'],
+      offset: 54,
+      size: 20,
+      sha256: '11d1c19558c8e42fa0865afdb074d28035be8e8b3721218c89051540ad7605ec'
+    },
+    {
+      name: 'LF line breaks and a blank line in the body',
+      eol: '\n',
+      body: ['line one', '', 'line two'],
+      offset: 50,
+      size: 18,
+      sha256: 'e986ba083c7c1a9361143d2d8ccd8477d1d5eeef8b94b67c6ad4693f8f7b942a'
+    },
+    {
+      name: 'CRLF line breaks and no body',
+      eol: '\r\n',
+      body: [],
+      offset: 54,
+      size: 0,
+      sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+    }
+  ])('lists the body alone, with $name', ({ eol, body, offset, size, sha256 }) => {
+    const buffer = Buffer.from([TOP, '', '--B', '', ...body, '--B--'].join(eol), 'latin1')
+    const result = listed(listMhtmlParts(buffer, MHTML_PARTS_LIMITS, READ_AT))
+    expect(result).toMatchObject({ closed: true, totalParts: 1, unterminatedParts: 0 })
+    expect(result.parts).toEqual([
+      { position: 1, htmlPart: null, mainDocument: false, ...NO_HEADERS, offset, size, sha256 }
+    ])
+  })
+
+  it('lists it between two parts that have headers, and keeps their numbering', () => {
+    const buffer = Buffer.from(
+      [
+        TOP,
+        '',
+        '--B',
+        'Content-Type: text/html',
+        'Content-Location: https://example.com/one',
+        '',
+        '<p>one</p>',
+        '--B',
+        '',
+        'bare',
+        '',
+        'more',
+        '--B',
+        'Content-Type: text/html',
+        'Content-Location: https://example.com/two',
+        '',
+        '<p>two</p>',
+        '--B--',
+        ''
+      ].join('\r\n'),
+      'latin1'
+    )
+    expect(buffer.length).toBe(249)
+    const result = listed(listMhtmlParts(buffer, MHTML_PARTS_LIMITS, READ_AT))
+    expect(result).toMatchObject({ closed: true, totalParts: 3, unterminatedParts: 0 })
+    const html = { ...NO_HEADERS, contentType: 'text/html' }
+    expect(result.parts).toEqual([
+      {
+        ...html,
+        position: 1,
+        htmlPart: 0,
+        mainDocument: true,
+        contentLocation: 'https://example.com/one',
+        offset: 122,
+        size: 10,
+        sha256: '8454f8f6a627398ff88dd131300df5b0e6a4d0140c940a677abb21439c1ea2f3'
+      },
+      {
+        ...NO_HEADERS,
+        position: 2,
+        htmlPart: null,
+        mainDocument: false,
+        offset: 141,
+        size: 12,
+        sha256: '68a14446323922d95d49333ffd41b7207489c8367fb7417c6269018cb9bcb1f4'
+      },
+      {
+        ...html,
+        position: 3,
+        htmlPart: 1,
+        mainDocument: false,
+        contentLocation: 'https://example.com/two',
+        offset: 230,
+        size: 10,
+        sha256: '95482e1757145624cdab7d9446ad00bd9714f0d1531dad96215cf1491369285a'
+      }
+    ])
+  })
+})
+
 describe('listMhtmlParts on malformed input', () => {
   it('reports a file cut short inside part 4 as not closed, with part 4 running to the end', () => {
     const result = listed(listMhtmlParts(fixture().subarray(0, 1180), MHTML_PARTS_LIMITS, READ_AT))
@@ -261,6 +427,28 @@ describe('listMhtmlParts on malformed input', () => {
       true
     ])
     expect(result.parts[3]).toMatchObject({ offset: 1159, size: 21 })
+  })
+
+  // The walk stops at the first closing delimiter. Parts after one are not counted or flagged:
+  // the only trace is the gap between the last span and the end of the file.
+  it('lists only the parts before a closing delimiter that comes early', () => {
+    const buffer = replaceOnce(
+      fixture(),
+      '\r\nbody { color: #333; }\r\n',
+      '\r\nbody { color: #333; }\r\n------PartsFixtureBoundary--\r\n'
+    )
+    const result = listed(listMhtmlParts(buffer, MHTML_PARTS_LIMITS, READ_AT))
+    expect(result).toMatchObject({
+      fileSize: 1721,
+      closed: true,
+      totalParts: 2,
+      unterminatedParts: 0,
+      truncated: false
+    })
+    expect(result.parts.map(({ position, offset, size }) => [position, offset, size])).toEqual([
+      [1, 401, 157],
+      [2, 696, 21]
+    ])
   })
 
   it('flags a part whose headers never end and keeps the HTML-part numbering', () => {
@@ -279,6 +467,21 @@ describe('listMhtmlParts on malformed input', () => {
       offset: 588
     })
     expect(result.parts.map(({ htmlPart }) => htmlPart)).toEqual([0, null, null, 1, null, 2])
+  })
+
+  // A header written with no value is absent. Read with a pattern that crossed the line break,
+  // it took the next header line as its value, so the row showed a value the part does not hold.
+  it.each(ROW_FIELDS)('lists a %s header written with no value as absent', (field) => {
+    const buffer = onePart({ [field]: '' })
+    expect(buffer.toString('latin1')).toContain(`\r\n${ROW_HEADERS[field]}:\r\n`)
+    const result = listed(listMhtmlParts(buffer, MHTML_PARTS_LIMITS, READ_AT))
+    expect(result.parts).toHaveLength(1)
+    expect(result.parts[0]).toMatchObject({
+      ...ROW_VALUES,
+      [field]: null,
+      headersTerminated: true,
+      fieldsTruncated: false
+    })
   })
 
   it('refuses an archive whose top header names no boundary', () => {
@@ -361,6 +564,33 @@ describe('listMhtmlParts ceilings', () => {
     expect(result.fieldsTruncated).toBe(true)
   })
 
+  // One part with one header over the cap at a time, so each field's share of the row flag is
+  // pinned apart from the other three.
+  describe.each(ROW_FIELDS)('with only %s over the field cap', (field) => {
+    const limits = { ...MHTML_PARTS_LIMITS, maxFieldChars: 40 }
+
+    it('cuts that value and flags the row', () => {
+      const result = listed(listMhtmlParts(onePart({ [field]: 'v'.repeat(41) }), limits, READ_AT))
+      expect(result.parts).toHaveLength(1)
+      expect(result.parts[0]).toMatchObject({
+        ...ROW_VALUES,
+        [field]: 'v'.repeat(40),
+        fieldsTruncated: true
+      })
+      // The archive's own flag covers the top-level header values, none of which is cut here.
+      expect(result.fieldsTruncated).toBe(false)
+    })
+
+    it('leaves a value exactly at the cap whole and the row unflagged', () => {
+      const result = listed(listMhtmlParts(onePart({ [field]: 'v'.repeat(40) }), limits, READ_AT))
+      expect(result.parts[0]).toMatchObject({
+        ...ROW_VALUES,
+        [field]: 'v'.repeat(40),
+        fieldsTruncated: false
+      })
+    })
+  })
+
   it('cuts each header field it reports, and the archive fields one by one', () => {
     const limits = { ...MHTML_PARTS_LIMITS, maxFieldChars: 8 }
     const result = listed(listMhtmlParts(fixture(), limits, READ_AT))
@@ -386,6 +616,11 @@ describe('listMhtmlParts ceilings', () => {
     expect(longSnapshot.topContentType).toBe('multipart/related; boundary=B')
     expect(longSnapshot.snapshotLocation).toBe('https://example.com/a-path-longer-than-f')
     expect(longSnapshot.fieldsTruncated).toBe(true)
+    // The helper's one part has an empty header block, which is not damage.
+    expect(longSnapshot.unterminatedParts).toBe(0)
+    expect(longSnapshot.parts).toEqual([
+      expect.objectContaining({ headersTerminated: true, size: 1, fieldsTruncated: false })
+    ])
 
     const narrow = { ...MHTML_PARTS_LIMITS, maxFieldChars: 34 }
     const longBoundary = listed(listMhtmlParts(archive('a', 'BBBBBB'), narrow, READ_AT))
@@ -598,6 +833,32 @@ describe('readMhtmlParts', () => {
     })
   })
 
+  // The file grew past the limit, then shrank before it was measured again. The read still took
+  // more than the limit, so the refusal reports the bytes read, not the smaller size now.
+  it('reports the bytes read when the file shrank after growing past the limit', async () => {
+    const { root, store } = caseDir()
+    const path = join(root, 'c1.mhtml')
+    watchNextOpen((handle) => {
+      const stat = handle.stat.bind(handle)
+      vi.spyOn(handle, 'stat')
+        .mockImplementationOnce(async () => {
+          const measured = await stat()
+          appendFileSync(path, Buffer.alloc(4096, 0x41))
+          return measured
+        })
+        .mockImplementationOnce(async () => {
+          truncateSync(path, 10)
+          return stat()
+        })
+    })
+    const limits = { ...MHTML_PARTS_LIMITS, maxFileBytes: FIXTURE_SIZE + 100 }
+    expect(refusal(await readMhtmlParts(stored, store, limits))).toEqual({
+      reason: 'too-large',
+      size: FIXTURE_SIZE + 101,
+      limit: FIXTURE_SIZE + 100
+    })
+  })
+
   it('counts every part of a file with thousands of them', async () => {
     const parts = Array.from({ length: 3000 }, (_, i) => `--B\r\n\r\npart ${i}\r\n`).join('')
     const big = Buffer.from(`Content-Type: multipart/related; boundary=B\r\n\r\n${parts}--B--\r\n`)
@@ -606,6 +867,14 @@ describe('readMhtmlParts', () => {
     expect(result.fileSize).toBe(big.length)
     expect(result.totalParts).toBe(3000)
     expect(result.closed).toBe(true)
+    // Each part has an empty header block. The first part's hash is `printf 'part 0' | sha256sum`.
+    expect(result.unterminatedParts).toBe(0)
+    expect(result.parts.every(({ headersTerminated }) => headersTerminated)).toBe(true)
+    expect(result.parts[0]).toMatchObject({
+      offset: 54,
+      size: 6,
+      sha256: '36b6f0204a800e7b687febe46ef87ebf43b5dc22f5f9741d78342964f9e656e0'
+    })
   })
 
   it('keeps the default limit at the stored-page cap', () => {

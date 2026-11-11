@@ -208,7 +208,12 @@ prove and what they do not.
   - X, Facebook, Instagram, LinkedIn, YouTube, GitHub, and Telegram accounts
   - `.onion` and `.i2p` addresses
 - Selectors flag exact text or a regular expression across every capture in the case,
-  including captures made before the selector existed. Matches export as CSV.
+  including captures made before the selector existed. Matches export as CSV. Each match
+  records when it was found and what found it: adding the capture to the case, creating the
+  selector, editing its pattern, or a rescan. A case archive carries both, and the CSV export
+  carries neither. A match an earlier release found, or one imported from an archive an
+  earlier release wrote, records neither, and Birdbrain makes no claim about when or why it
+  was found.
 - The Data screen lists every file in a case with its properties, extracted text, headers,
   TLS details, and manifest entries, and verifies any branch of the tree. Local files can be
   staged and then added to the evidence record or discarded.

@@ -956,10 +956,19 @@ export const LOG_CODES = [
   'captureServer.selector_create_failed',
   'captureServer.tag_apply_failed',
   'captureServer.note_create_failed',
-  // The capture-pipeline self-test failed to tear its sandbox down (#614).
-  // Nothing left behind is evidence — the sandbox holds only the sentinel — so
-  // the route reports its own result and this is the record that residue exists.
+  // The capture-pipeline self-test failed to tear its sandbox down (#614), or
+  // the startup sweep failed to remove a temp root (#1183). The route reports
+  // its own result, and this is the record that residue exists.
   'captureServer.self_test_cleanup_failed',
+  // Teardown kept the sandbox because something other than the self-test wrote
+  // to it (#1196); deleting the case would have cascaded over that write.
+  'captureServer.self_test_sandbox_kept',
+  // Teardown kept the sandbox because the storage root could not be listed, so
+  // whether it holds a folder for the case is not known.
+  'captureServer.self_test_storage_unavailable',
+  // The startup sweep removed a temp root an earlier self-test left (#1183).
+  // It removes no case.
+  'captureServer.self_test_temp_root_removed',
   // The capture server's listener failed (#513) — at boot usually EADDRINUSE
   // on 19845, held by another program or by a Birdbrain running against its
   // own data directory, since the single-instance lock stops a plain second

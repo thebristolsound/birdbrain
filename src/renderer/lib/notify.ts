@@ -155,6 +155,12 @@ const CODE_LABELS: Record<LogCode, string> = {
   'captureServer.tag_apply_failed': "Couldn't apply the tag",
   'captureServer.note_create_failed': "Couldn't create the note",
   'captureServer.self_test_cleanup_failed': "Couldn't clean up after the pipeline self-test",
+  'captureServer.self_test_sandbox_kept':
+    'Kept the pipeline self-test case: something other than the self-test wrote to it',
+  'captureServer.self_test_storage_unavailable':
+    'Kept a pipeline self-test case: the capture storage folder could not be read',
+  'captureServer.self_test_temp_root_removed':
+    'Removed a temporary folder left by the pipeline self-test',
   // Errno-neutral on purpose: one label serves two surfaces. In the Log tab it
   // reads a boot EADDRINUSE entry; as a toast it can only follow a successful
   // bind, because boot fails before setLoggerWindow and exits — so a label

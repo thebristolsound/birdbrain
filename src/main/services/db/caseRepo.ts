@@ -151,6 +151,72 @@ export function deleteCase(id: string): boolean {
   return result.changes > 0
 }
 
+// The columns that name a case, a capture or an exhibit without a foreign key
+// on some tables (v41, #1877), each with the rows of a case under it.
+const CASE_ROW_OWNERS: Record<string, string> = {
+  case_id: 'case_id = @id',
+  capture_id: 'capture_id IN (SELECT id FROM captures WHERE case_id = @id)',
+  exhibit_id: 'exhibit_id IN (SELECT id FROM exhibits WHERE case_id = @id)'
+}
+
+// A SQL condition over `table`'s own columns that holds for the rows belonging
+// to case `@id`, or null when nothing ties the table to a case. A row belongs
+// when one of the three columns above names the case, or when a foreign key of
+// the table points at a row that belongs, through any number of tables. A key
+// back to a table already on the path is not followed.
+function caseRowsCondition(table: string, path: string[]): string | null {
+  if (table === 'cases') return 'id = @id'
+  const d = getDb()
+  const columns = (
+    d.prepare('SELECT name FROM pragma_table_info(?)').all(table) as Array<{ name: string }>
+  ).map(({ name }) => name)
+  const conditions = Object.entries(CASE_ROW_OWNERS)
+    .filter(([column]) => columns.includes(column))
+    .map(([, condition]) => condition)
+  const keys = d
+    .prepare(
+      'SELECT "table" AS parent, "from" AS child, "to" AS target FROM pragma_foreign_key_list(?)'
+    )
+    .all(table) as Array<{ parent: string; child: string; target: string | null }>
+  for (const { parent, child, target } of keys) {
+    if (parent === table || path.includes(parent)) continue
+    const parentRows = caseRowsCondition(parent, [...path, table])
+    if (parentRows === null) continue
+    // A key that names no column points at the parent's primary key.
+    const parentKey =
+      target ??
+      (
+        d.prepare('SELECT name FROM pragma_table_info(?) WHERE pk = 1').get(parent) as {
+          name: string
+        }
+      ).name
+    conditions.push(`"${child}" IN (SELECT "${parentKey}" FROM "${parent}" WHERE ${parentRows})`)
+  }
+  return conditions.length > 0 ? conditions.map((condition) => `(${condition})`).join(' OR ') : null
+}
+
+// Every table other than `cases` holding a row that belongs to this case, as
+// `caseRowsCondition` defines belonging. The tables and their keys are read
+// from the live schema, so a table a later migration adds is listed when it
+// has one of the three columns or a foreign key that leads to a case. A table
+// that names a case by neither is not found.
+export function listCaseDependentTables(id: string): string[] {
+  const d = getDb()
+  const tables = d
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name <> 'cases' ORDER BY name"
+    )
+    .all() as Array<{ name: string }>
+  return tables
+    .map(({ name }) => ({ name, rows: caseRowsCondition(name, []) }))
+    .filter(
+      ({ name, rows }) =>
+        rows !== null &&
+        d.prepare(`SELECT 1 FROM "${name}" WHERE ${rows} LIMIT 1`).get({ id }) !== undefined
+    )
+    .map(({ name }) => name)
+}
+
 // --- Auto-capture exclusions (#400) ---
 
 // The empty policy, and what a case that has never been given one reads as:

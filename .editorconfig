@@ -12,9 +12,9 @@ trim_trailing_whitespace = true
 [*.{md,mdx}]
 trim_trailing_whitespace = false
 
-# Byte-exact known-answer fixtures (see .gitattributes), the other test fixtures and the
-# design exports are stored as received: an editor must not rewrite them.
-[{tests/shared/verify/fixtures/**,tests/main/services/fixtures/*.mhtml,tests/fixtures/**,docs/design-handoff/**}]
+# The byte-exact known-answer fixtures .gitattributes marks -text, the files under
+# tests/fixtures and the design exports are stored as received: an editor must not rewrite them.
+[{tests/shared/verify/fixtures/**,tests/main/services/fixtures/thumbnails/*.png,tests/main/services/fixtures/*.mhtml,tests/fixtures/**,docs/design-handoff/**}]
 charset = unset
 end_of_line = unset
 indent_style = unset

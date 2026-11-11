@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto'
+import { Readable } from 'stream'
+import { finished } from 'stream/promises'
 import * as captureRepo from '@main/services/db/captureRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
 import {
@@ -14,7 +16,7 @@ import type { CaptureEgress } from '@main/services/egress'
 import { getInstallationId } from '@main/services/installationId'
 import { RefusedAddressError, refusedAddressClass } from '@main/services/localAddressPolicy'
 import { authorChainOf, readCaseChains } from '@main/services/manifest'
-import { getSettings } from '@main/services/settings'
+import { OperatorNameRequiredError, trimmedOperatorName } from '@main/services/operatorName'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import { logger } from '@main/services/logger'
 import type { TransactionRecordOutcome } from '@main/services/transactionRecorder'
@@ -348,7 +350,8 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         return
       }
 
-      const settings = getSettings()
+      const operatorName = trimmedOperatorName()
+      if (!operatorName) throw new OperatorNameRequiredError()
       const result = await deps.captureLifecycle.ingest({
         captureId,
         caseId: job.caseId,
@@ -369,7 +372,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         // nothing is written, because there is no redirect to record.
         finalUrl: redirectedFinalUrl(job.url, rendered.finalUrl),
         operatorId: getInstallationId(),
-        operatorName: settings.operatorName ?? '',
+        operatorName,
         toolVersion,
         screenshot: rendered.screenshot,
         method: 'background',
@@ -446,7 +449,31 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         error: err instanceof Error ? err.message : String(err)
       })
     } finally {
-      await rendered?.cleanup().catch(() => {})
+      // Ingest can reject before it starts reading, leaving the renderer's file open.
+      const stream = rendered?.mhtmlStream
+      const closed =
+        stream instanceof Readable
+          ? finished(stream, { cleanup: true }).catch((err: unknown) => {
+              if (
+                err instanceof Error &&
+                'code' in err &&
+                err.code === 'ERR_STREAM_PREMATURE_CLOSE'
+              ) {
+                return
+              }
+              logger.error(
+                'backgroundRenderer',
+                'backgroundRenderer.cleanup_failed',
+                undefined,
+                err
+              )
+            })
+          : undefined
+      stream?.destroy?.()
+      await closed
+      await rendered?.cleanup().catch((err) => {
+        logger.error('backgroundRenderer', 'backgroundRenderer.cleanup_failed', undefined, err)
+      })
     }
   }
 
@@ -466,6 +493,12 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
 
   const service: RecaptureService = {
     enqueue(jobs) {
+      // The operator gate (X47), first as at admission: a job that cannot be signed is refused
+      // before its render contacts the site. Ingest checks again for a name cleared meanwhile.
+      if (!trimmedOperatorName()) {
+        const { message: reason } = new OperatorNameRequiredError()
+        return { accepted: 0, rejected: jobs.map(({ url }) => ({ url, reason })) }
+      }
       const rejected: Array<{ url: string; reason: string }> = []
       let accepted = 0
       for (const job of jobs) {

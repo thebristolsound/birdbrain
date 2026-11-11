@@ -264,6 +264,44 @@ describe('MhtmlPartsTab, listed', () => {
     expect(text(screen.getByTestId('mhtml-part-1'))).toContain('(none)')
   })
 
+  // The row the reader returns for a part with no header lines, whose headers end at the blank
+  // line straight after its delimiter. Its values are the known answer for that archive in
+  // tests/main/services/mhtmlParts.test.ts. It is a whole part, not a damaged one.
+  it('shows a part with an empty header block as a part with no header values', () => {
+    renderTab(
+      listed({
+        totalParts: 1,
+        parts: [
+          part({
+            position: 1,
+            contentType: null,
+            transferEncoding: null,
+            contentLocation: null,
+            contentId: null,
+            offset: 54,
+            size: 1,
+            sha256: '2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881'
+          })
+        ]
+      })
+    )
+    const row = screen.getByTestId('mhtml-part-1')
+    expect([...row.querySelectorAll('td')].slice(0, 8).map(text)).toEqual([
+      '1',
+      '',
+      '(none)',
+      '(none)',
+      '(none)',
+      '54',
+      '1 B',
+      '2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881'
+    ])
+    expect(text(row)).not.toContain('(headers unterminated)')
+    expect(within(row).queryByTestId('mhtml-part-copy-location')).toBeNull()
+    expect(within(row).getByTestId('mhtml-part-copy-sha256')).toBeTruthy()
+    expect(screen.queryByTestId(/mhtml-parts-banner-/)).toBeNull()
+  })
+
   it('shows a banner for an unclosed archive and for the row ceiling', () => {
     renderTab(listed({ closed: false, truncated: true, totalParts: 9000 }))
     expect(text(screen.getByTestId('mhtml-parts-banner-unclosed'))).toContain(

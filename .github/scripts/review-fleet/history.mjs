@@ -1,7 +1,7 @@
 // Trusted history preparation for the review fleet (ADR-0057). The passes get no shell and no
 // git, so what git would have told them is written here as files: every commit past main, a
-// patch per commit, the pull requests below the head, and the diff against a base branch other
-// than main.
+// patch per commit, the pull requests below the head, the diff against a base branch other than
+// main, and the repository's files as they stood before the change.
 //
 // Usage: history.mjs <owner/repo> <pr> <checkout> <inputs dir>
 //
@@ -11,11 +11,12 @@
 // takes commit ids. Each diff passes --no-ext-diff and --no-textconv. Git prints to this
 // process, which writes the files under the inputs directory. The one command that writes
 // objects, the automatic merge, writes them to a directory under the inputs that is removed
-// before this returns.
+// before this returns. The files before the change are written from the stored blobs, so no
+// checkout, filter, attribute or hook takes part.
 import { Buffer } from 'node:buffer'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { closeSync, mkdirSync, openSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ghList, ghRead } from './inputs.mjs'
 
@@ -23,11 +24,15 @@ import { ghList, ghRead } from './inputs.mjs'
 // longer patch is cut at the limit with the cut recorded in commits.json and in the patch.
 export const MAX_COMMITS = 300
 export const PATCH_LIMIT = 256 * 1024
+// The files of one commit, written out. A larger tree fails before the paid call.
+export const MAX_TREE_BYTES = 512 * 1024 * 1024
 
 const OID = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/
 const DIFF = ['diff', '--no-ext-diff', '--no-textconv', '--no-color']
 const PATCH = [...DIFF, '--src-prefix=a/', '--dst-prefix=b/', '-M']
 const BUFFER = 64 * 1024 * 1024
+// Blobs are read from git this many bytes at a time.
+const BATCH = 32 * 1024 * 1024
 
 // What git needs to find itself and its configuration, and nothing else the job holds.
 const GIT_ENV = [
@@ -63,6 +68,13 @@ function gitIn(dir) {
       })
       if (r.error) throw r.error
       return r
+    },
+    // Raw bytes out, for a command that reads its requests from standard input.
+    bytes: (args, input, size) => {
+      const r = spawnSync('git', argv(args), { input, env: env(), maxBuffer: size })
+      if (r.error) throw r.error
+      if (r.status !== 0) throw new Error(`git ${args[0]} failed: ${String(r.stderr).trim()}`)
+      return r.stdout
     },
     toFile: (args, file) => {
       const fd = openSync(file, 'w')
@@ -158,6 +170,62 @@ function autoMerge(git, id, parents, objects) {
   return tree === actual ? 'identical' : 'differs'
 }
 
+// The regular files of a commit's tree, with what was left out. A symbolic link is not made,
+// because the pass would read whatever it points at, and a submodule has no files here. A path
+// that could leave the directory, or name a repository inside it, fails.
+function treeFiles(git, commit, limit) {
+  const files = []
+  const skipped = []
+  let bytes = 0
+  for (const row of git.text(['ls-tree', '-r', '-l', '-z', '--full-tree', commit]).split('\0')) {
+    if (!row) continue
+    const tab = row.indexOf('\t')
+    const [mode, , blob, size] = row.slice(0, tab).split(/ +/)
+    const path = row.slice(tab + 1)
+    if (path.split('/').some((part) => ['', '.', '..'].includes(part) || /^\.git$/i.test(part)))
+      throw new Error(`unsafe path in the tree of ${commit}: ${JSON.stringify(path)}`)
+    if (mode === '120000') skipped.push({ path, kind: 'symbolic link' })
+    else if (mode === '160000') skipped.push({ path, kind: 'submodule' })
+    else {
+      files.push({ path, blob: oid(blob, 'a blob'), size: Number(size) })
+      bytes += Number(size)
+    }
+  }
+  if (bytes > limit)
+    throw new Error(`the tree at ${commit} is ${bytes} bytes, over the limit of ${limit}`)
+  return { commit, files, skipped, bytes }
+}
+
+// Writes each file as git stores it. `git cat-file --batch` answers `<id> blob <size>`, the
+// bytes and a line feed for each id it is sent; an answer in any other shape fails.
+function writeTree(git, { files }, dest) {
+  mkdirSync(dest)
+  let from = 0
+  while (from < files.length) {
+    let to = from
+    let size = 0
+    do size += files[to++].size
+    while (to < files.length && size + files[to].size <= BATCH)
+    const batch = files.slice(from, to)
+    const out = git.bytes(
+      ['cat-file', '--batch'],
+      batch.map((f) => `${f.blob}\n`).join(''),
+      size + 256 * batch.length + 1024
+    )
+    let at = 0
+    for (const { path, blob, size: length } of batch) {
+      const end = out.indexOf(0x0a, at)
+      if (end < 0 || out.toString('latin1', at, end) !== `${blob} blob ${length}`)
+        throw new Error(`git cat-file gave no blob for ${JSON.stringify(path)}`)
+      const file = join(dest, path)
+      mkdirSync(dirname(file), { recursive: true })
+      writeFileSync(file, out.subarray(end + 1, end + 1 + length), { flag: 'wx', mode: 0o644 })
+      at = end + 1 + length + 1
+    }
+    from = to
+  }
+}
+
 // One field per line and one file per line, so a search for a path or a commit id lands on it.
 function commitsJson(doc) {
   const line = (key, value, pad) => `${pad}${JSON.stringify(key)}: ${JSON.stringify(value)}`
@@ -206,7 +274,8 @@ export function prepareHistory({
   repo,
   pulls,
   closed,
-  maxCommits = MAX_COMMITS
+  maxCommits = MAX_COMMITS,
+  maxTreeBytes = MAX_TREE_BYTES
 }) {
   if (!Array.isArray(pulls)) throw new Error('no list of open pull requests')
   if (!Array.isArray(closed)) throw new Error('no list of recently closed pull requests')
@@ -261,6 +330,17 @@ export function prepareHistory({
     })
   const own = rows.map(([id]) => id).filter((id) => !holder.has(id))
   const inBase = new Set(base === 'main' ? [] : reached(baseTip))
+  // The repository before the change: at the merge base with main, and, when the base branch
+  // has moved past that, at the merge base with the base branch too.
+  const trees = [
+    { path: 'base-tree', is: 'the merge base with main', ...treeFiles(git, fromMain, maxTreeBytes) }
+  ]
+  if (fromBase !== fromMain)
+    trees.push({
+      path: 'base-branch-tree',
+      is: 'the merge base with the base branch',
+      ...treeFiles(git, fromBase, maxTreeBytes)
+    })
 
   mkdirSync(join(out, 'commits'))
   const emptyTree = () => oid(git.text(['hash-object', '-t', 'tree', '/dev/null']), 'empty tree')
@@ -310,6 +390,7 @@ export function prepareHistory({
     })
   )
   if (base !== 'main') git.toFile([...PATCH, fromBase, head], join(out, 'diff-base.patch'))
+  for (const tree of trees) writeTree(git, tree, join(out, tree.path))
   const stack = {
     pull_request: number,
     base,
@@ -318,7 +399,15 @@ export function prepareHistory({
     merge_base_with_base: fromBase,
     commits: own,
     below,
-    closed_pull_requests_checked: closed.length
+    closed_pull_requests_checked: closed.length,
+    trees: trees.map(({ path, is, commit, files, bytes, skipped }) => ({
+      path,
+      is,
+      commit,
+      files: files.length,
+      bytes,
+      skipped
+    }))
   }
   writeFileSync(join(out, 'stack.json'), `${JSON.stringify(stack, null, 2)}\n`)
   return { commits: commits.length, below: below.length, stacked: base !== 'main' }

@@ -117,18 +117,25 @@ Three facts shaped the design:
      review scope, and it also shows a commit the head merged from `main` that the base branch
      lacks. The diff against `main` stays as context, because the pull requests below are
      reviewed on their own.
+   - `base-tree/` holds every file at the merge base with `main`: the repository as it stood
+     before the change. When the base branch is not `main` and its merge base with the head is
+     another commit, `base-branch-tree/` holds every file at that commit. The step writes each
+     file from its stored blob, so no checkout, filter or hook runs; it makes no symbolic link
+     and no submodule, lists each one it left out, and fails on a path that would leave the
+     directory or name a repository inside it. The passes check a "before this change" or
+     "on main" citation there.
    - Each source carries its author and creation time. Each issue and pull request among the
      sources carries the comments the maintainer or the machine account wrote on it, without
      the fleet's own state and relay comments. No other author's comment is read.
    - A bare `#<n>` in the description, outside a code span or fenced block, is read as this
      repository's issue or pull request `<n>`. What that source cites is not followed.
 
-   The limits are 60 sources, 200 such comments, 1 MiB of `sources.json` and 300 commits. Going
-   over one fails the pass before the paid call with the limit in the message; no source,
-   comment or commit is dropped to fit. An unset `MAINTAINER` or `MACHINE` fails the same way.
-   An unfinished source check still fails, and nothing moved from `not_checked` to
-   `runtime_limitations`: a claim these files do not settle, such as what an old release tag
-   contains, is still unchecked.
+   The limits are 60 sources, 200 such comments, 1 MiB of `sources.json`, 300 commits and
+   512 MiB for one tree. Going over one fails the pass before the paid call with the limit in
+   the message; no source, comment, commit or file is dropped to fit. An unset `MAINTAINER` or
+   `MACHINE` fails the same way. An unfinished source check still fails, and nothing moved from
+   `not_checked` to `runtime_limitations`: a claim these files do not settle, such as what an
+   old release tag contains, is still unchecked.
 
    New schema version 2 outputs attest source completion with `source_review_complete`, keep
    unfinished source checks in `not_checked`, and record prohibited or unperformed runtime and

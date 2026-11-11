@@ -9,9 +9,9 @@
 # a PR's own .claude/ settings and hooks never load next to the credential. It may read, grep and
 # glob files, and nothing else. It gets no shell, not even git: `git diff --no-index` can print
 # the process environment and `--output` writes files. The diff, the commit history, the stack
-# below the head and the sources come in as files instead, written here before the paid call. No
-# file is written by the session: the answer comes back as structured output, checked against the
-# pass's schema.
+# below the head, the repository's files before the change and the sources come in as files
+# instead, written here before the paid call. No file is written by the session: the answer
+# comes back as structured output, checked against the pass's schema.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,8 +38,8 @@ cp "$here/../../../CLAUDE.md" "$in/rules.md"
 # Required issues, referenced review contracts and the maintainer's and machine account's
 # comments on them are fetched before paid work.
 node "$here/inputs.mjs" "$R" "$in"
-# The commits past main, a patch for each, the pull requests below the head, and the diff
-# against a base branch other than main.
+# The commits past main, a patch for each, the pull requests below the head, the diff against a
+# base branch other than main, and the repository's files before the change.
 node "$here/history.mjs" "$R" "$PR" "$PR_DIR" "$in"
 if [ "$leg" = verify-codex ]; then
   node "$here/fleet.mjs" codex-findings "$R" "$PR" "$SHA" > "$in/codex.json"
@@ -48,6 +48,12 @@ if [ -f "$in/diff-base.patch" ]; then
   scope="- \`$in/diff-base.patch\`: the diff from the merge base with the base branch to the head. The base branch is not \`main\`, so this is the pull request's own change and your review scope."
 else
   scope="- The base branch is \`main\`, so \`diff.patch\` is your review scope and there is no \`diff-base.patch\`."
+fi
+if [ -d "$in/base-branch-tree" ]; then
+  before="- \`$in/base-branch-tree/\`: the repository as it stood before this change: every file at the merge base with the base branch. Check a \"before this change\" citation there.
+- \`$in/base-tree/\`: the repository as it stood on \`main\`, below this pull request and the ones under it: every file at the merge base with \`main\`. Check an \"on main\" citation there."
+else
+  before="- \`$in/base-tree/\`: the repository as it stood before this change: every file at the merge base with \`main\`. Check a \"before this change\" or \"on main\" citation there."
 fi
 
 prompt="$(cat "$here/prompts/common.md" "$prompt_file")
@@ -63,6 +69,7 @@ $scope
 - \`$in/commits.json\`: every commit from the merge base with \`main\` to the head, oldest first, with its parents, author date, subject, the files it changed against its first parent, the pull request it belongs to, whether the base branch has it, and for a merge whether it is git's automatic merge.
 - \`$in/commits/\`: one patch per commit against its first parent, at the path \`commits.json\` gives.
 - \`$in/stack.json\`: the base branch, the commits that are this pull request's own, and the pull requests below it, open or recently closed, with the commits of each.
+$before
 $( [ -f "$in/codex.json" ] && echo "- \`$in/codex.json\`: Codex's findings, the claims you check." || true )"
 
 cd "$PR_DIR"

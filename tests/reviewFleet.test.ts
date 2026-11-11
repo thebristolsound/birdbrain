@@ -1014,7 +1014,14 @@ exit "$CLAUDE_EXIT"
           ownDiff:
             inputs && existsSync(join(inputs, 'diff-base.patch'))
               ? readFileSync(join(inputs, 'diff-base.patch'), 'utf8')
-              : null
+              : null,
+          // The files of each tree the step wrote for the repository before the change.
+          before: Object.fromEntries(
+            ['base-tree', 'base-branch-tree'].map((name) => [
+              name,
+              inputs && existsSync(join(inputs, name)) ? readdirSync(join(inputs, name)) : null
+            ])
+          )
         }
       } finally {
         if (inputs) rmSync(inputs, { recursive: true, force: true })
@@ -1064,6 +1071,7 @@ exit "$CLAUDE_EXIT"
     const r = leg('No issue: source contract.')
     expect(r.status, r.stderr).toBe(0)
     expect(r.files).toEqual([
+      'base-tree',
       'commits',
       'commits.json',
       'diff.patch',
@@ -1083,6 +1091,13 @@ exit "$CLAUDE_EXIT"
     // The base is main: the prompt names diff.patch as the scope and offers no base diff.
     expect(r.prompt).toContain('The base branch is `main`, so `diff.patch` is your review scope')
     expect(r.prompt).not.toMatch(/\/diff-base\.patch`: /)
+    // The repository before the change is the tree at the merge base with main, which holds
+    // neither commit's file.
+    expect(r.before).toEqual({ 'base-tree': [], 'base-branch-tree': null })
+    expect(r.prompt).toMatch(
+      /\/base-tree\/`: the repository as it stood before this change: every file at the merge base with `main`\. Check a "before this change" or "on main" citation there\./
+    )
+    expect(r.prompt).not.toContain('base-branch-tree/`: ')
   })
 
   it('scopes a stacked pull request to its own change, and tells the pass so', () => {
@@ -1096,6 +1111,15 @@ exit "$CLAUDE_EXIT"
       /\/diff-base\.patch`: the diff from the merge base with the base branch to the head\. The base branch is not `main`, so this is the pull request's own change and your review scope\./
     )
     expect(r.prompt).not.toContain('so `diff.patch` is your review scope')
+    // Before this change the repository had the lower pull request's file; main had neither.
+    expect(r.before).toEqual({ 'base-tree': [], 'base-branch-tree': ['lower.txt'] })
+    expect(r.prompt).toMatch(
+      /\/base-branch-tree\/`: the repository as it stood before this change: every file at the merge base with the base branch\. Check a "before this change" citation there\./
+    )
+    expect(r.prompt).toMatch(/\/base-tree\/`: the repository as it stood on `main`, below this/)
+    expect(r.prompt).toContain(
+      '**The repository as it stood before this change is in the inputs.**'
+    )
     // The shared prompt carries the rule the files serve.
     expect(r.prompt).toContain("is this pull\nrequest's own change and your review scope")
     expect(r.prompt).toContain('What they do not settle stays in\nnot_checked')

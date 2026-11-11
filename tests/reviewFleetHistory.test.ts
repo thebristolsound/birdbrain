@@ -1,20 +1,24 @@
 import { spawnSync } from 'child_process'
 import {
+  type Dirent,
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync
 } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { join, relative } from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   MAX_COMMITS,
+  MAX_TREE_BYTES,
   PATCH_LIMIT,
   prepareHistory
   // @ts-expect-error - workflow script with no declarations
@@ -309,15 +313,21 @@ describe('whether a merge commit is the automatic merge', () => {
 
   // The automatic merge of an edited merge is a tree the repository does not hold, so git has to
   // write it somewhere: a directory under the inputs that is gone when the step returns.
+  // A merge made with the `ours` strategy keeps the branch's tree, so the automatic merge of its
+  // parents is a tree the repository has never held, and git has to write it somewhere: a
+  // directory under the inputs that is gone when the step returns.
   it('writes no object into the checkout, and leaves no object directory behind', () => {
-    const s = merged(['child.txt', 'c\n'], ['main.txt', 'm\n'], (r) => {
-      r.git('merge', '-q', '--no-ff', '--no-commit', 'main')
-      writeFileSync(join(r.dir, 'main.txt'), 'edited by hand\n')
-      r.git('add', '--', 'main.txt')
-      r.git('commit', '-q', '-m', 'merge main')
-    })
+    const s = merged(['child.txt', 'c\n'], ['main.txt', 'm\n'], (r) =>
+      r.git('merge', '-q', '-s', 'ours', '-m', 'merge main', 'main')
+    )
+    expect(mergeOf(s)?.auto_merge).toBe('differs')
     expect(s.wrote).toBe(false)
-    expect(readdirSync(s.out).sort()).toEqual(['commits', 'commits.json', 'stack.json'])
+    expect(readdirSync(s.out).sort()).toEqual([
+      'base-tree',
+      'commits',
+      'commits.json',
+      'stack.json'
+    ])
   })
 })
 
@@ -345,7 +355,25 @@ describe('the stack below the head and the diff against the base branch', () => 
           commits: [s.p1, s.p2]
         }
       ],
-      closed_pull_requests_checked: 0
+      closed_pull_requests_checked: 0,
+      trees: [
+        {
+          path: 'base-tree',
+          is: 'the merge base with main',
+          commit: s.m1,
+          files: 2,
+          bytes: 10,
+          skipped: []
+        },
+        {
+          path: 'base-branch-tree',
+          is: 'the merge base with the base branch',
+          commit: s.p2,
+          files: 2,
+          bytes: 13,
+          skipped: []
+        }
+      ]
     })
   })
 
@@ -481,6 +509,217 @@ describe('the stack below the head and the diff against the base branch', () => 
     expect(existsSync(join(s.out, 'diff-base.patch'))).toBe(false)
     expect(s.stack()).toMatchObject({ base: 'main', below: [] })
     expect(s.stack().commits).toEqual([s.p1, s.p2, s.c1, s.mg, s.c2])
+  })
+})
+
+// Every file under a directory, as path to contents.
+const filesUnder = (dir: string): Record<string, string> =>
+  Object.fromEntries(
+    (readdirSync(dir, { recursive: true, withFileTypes: true }) as Dirent[])
+      .filter((entry) => entry.isFile())
+      .map((entry) => {
+        const file = join(entry.parentPath, entry.name)
+        return [relative(dir, file), readFileSync(file, 'utf8')]
+      })
+      .sort(([x], [y]) => (x < y ? -1 : 1))
+  )
+
+describe('the repository as it stood before the change', () => {
+  it('writes the files at the merge base with main, and none the change adds', () => {
+    const s = keep(stacked())
+    s.prepare({ number: 10, pulls: [pull(10, s.c2, 'child', 'main')] })
+    expect(filesUnder(join(s.out, 'base-tree'))).toEqual({
+      'base.txt': 'base\n',
+      'main.txt': 'main\n'
+    })
+    expect(existsSync(join(s.out, 'base-branch-tree'))).toBe(false)
+    expect(s.stack().trees).toEqual([
+      {
+        path: 'base-tree',
+        is: 'the merge base with main',
+        commit: s.m1,
+        files: 2,
+        bytes: 10,
+        skipped: []
+      }
+    ])
+  })
+
+  it('writes the files at the merge base with the base branch of a stacked change too', () => {
+    const s = keep(stacked())
+    s.prepare()
+    expect(filesUnder(join(s.out, 'base-tree'))).toEqual({
+      'base.txt': 'base\n',
+      'main.txt': 'main\n'
+    })
+    // What the parent had when this change last took it in: its file, and not main's newer one.
+    expect(filesUnder(join(s.out, 'base-branch-tree'))).toEqual({
+      'base.txt': 'base\n',
+      'parent.txt': 'one\ntwo\n'
+    })
+  })
+
+  it('writes one tree when the base branch is where main was', () => {
+    const s = keep(stacked())
+    s.origin('integration', s.m1)
+    s.prepare({ pulls: [pull(11, s.c2, 'child', 'integration')] })
+    expect(existsSync(join(s.out, 'base-branch-tree'))).toBe(false)
+    expect(existsSync(join(s.out, 'diff-base.patch'))).toBe(true)
+    expect(s.stack().trees.map((t: { path: string }) => t.path)).toEqual(['base-tree'])
+  })
+
+  // The base holds a nested file, bytes that are not text, an empty file, an executable, a
+  // symbolic link out of the tree and a submodule.
+  const odd = () => {
+    const s = keep(scratch())
+    const bytes = Buffer.from(Array.from({ length: 256 }, (_, i) => i))
+    mkdirSync(join(s.dir, 'deep', 'er'), { recursive: true })
+    writeFileSync(join(s.dir, 'deep', 'er', 'bytes.bin'), bytes)
+    writeFileSync(join(s.dir, 'empty'), '')
+    writeFileSync(join(s.dir, 'run.sh'), '#!/bin/sh\n', { mode: 0o755 })
+    symlinkSync('/proc/self/environ', join(s.dir, 'link'))
+    s.git('add', '--', 'deep', 'empty', 'run.sh', 'link')
+    s.git('update-index', '--add', '--cacheinfo', `160000,${'1'.repeat(40)},vendored`)
+    const base = s.commit('base.txt', 'base\n', 'base')
+    s.origin('main', base)
+    const head = s.commit('new.txt', 'n\n', 'the change')
+    prepareHistory({
+      dir: s.dir,
+      out: s.out,
+      number: 7,
+      repo,
+      pulls: [pull(7, head, 'odd', 'main')],
+      closed: []
+    })
+    return { ...s, bytes }
+  }
+
+  it('writes each file byte for byte, as a plain file', () => {
+    const s = odd()
+    const tree = join(s.out, 'base-tree')
+    expect(readFileSync(join(tree, 'deep', 'er', 'bytes.bin')).equals(s.bytes)).toBe(true)
+    expect(readFileSync(join(tree, 'empty'), 'utf8')).toBe('')
+    expect(readFileSync(join(tree, 'run.sh'), 'utf8')).toBe('#!/bin/sh\n')
+    expect(statSync(join(tree, 'run.sh')).mode & 0o111).toBe(0)
+    expect(existsSync(join(tree, 'new.txt'))).toBe(false)
+  })
+
+  it('makes no symbolic link and no submodule, and lists what it left out', () => {
+    const s = odd()
+    const tree = join(s.out, 'base-tree')
+    expect(() => lstatSync(join(tree, 'link'))).toThrow('ENOENT')
+    expect(existsSync(join(tree, 'vendored'))).toBe(false)
+    expect(s.stack().trees[0]).toMatchObject({
+      files: 4,
+      skipped: [
+        { path: 'link', kind: 'symbolic link' },
+        { path: 'vendored', kind: 'submodule' }
+      ]
+    })
+  })
+
+  // Git writes a file out through the filters its configuration names for the attributes a
+  // tree sets. The step reads stored blobs, so no filter runs and no attribute hides a file.
+  it('runs no filter the repository configures, and exports what an attribute would hide', () => {
+    const s = keep(scratch())
+    const ran = join(s.root, 'ran')
+    const program = join(s.root, 'program')
+    writeFileSync(program, `#!/usr/bin/env bash\ntouch ${ran}\ncat\n`)
+    chmodSync(program, 0o755)
+    writeFileSync(join(s.dir, '.gitattributes'), '* filter=fleet\nhidden.txt export-ignore\n')
+    writeFileSync(join(s.dir, 'hidden.txt'), 'kept\n')
+    s.git('add', '--', '.gitattributes', 'hidden.txt')
+    const base = s.commit('data.txt', 'stored\n', 'base')
+    s.origin('main', base)
+    const head = s.commit('new.txt', 'n\n', 'the change')
+    s.git('config', 'filter.fleet.smudge', program)
+    s.git('config', 'filter.fleet.clean', 'cat')
+    prepareHistory({
+      dir: s.dir,
+      out: s.out,
+      number: 7,
+      repo,
+      pulls: [pull(7, head, 'filtered', 'main')],
+      closed: []
+    })
+    expect(existsSync(ran)).toBe(false)
+    expect(filesUnder(join(s.out, 'base-tree'))).toEqual({
+      '.gitattributes': '* filter=fleet\nhidden.txt export-ignore\n',
+      'data.txt': 'stored\n',
+      'hidden.txt': 'kept\n'
+    })
+    // The control: `git archive` of the same commit runs the filter and drops the hidden file.
+    const archive = s.run('archive', '--format=tar', base)
+    expect(archive.status, archive.stderr).toBe(0)
+    expect(existsSync(ran)).toBe(true)
+    expect(archive.stdout).toContain('stored')
+    expect(archive.stdout).not.toContain('kept')
+  })
+
+  it.each(['..', '.git', '.GIT'])('fails on a tree that names %j', (name) => {
+    const s = keep(scratch())
+    const normal = s.commit('base.txt', 'base\n', 'normal')
+    const blob = s.git('rev-parse', `${normal}:base.txt`)
+    const inner = spawnSync('git', ['-C', s.dir, 'mktree'], {
+      encoding: 'utf8',
+      input: `100644 blob ${blob}\t${name}\n`
+    })
+    expect(inner.status, inner.stderr).toBe(0)
+    const outer = spawnSync('git', ['-C', s.dir, 'mktree'], {
+      encoding: 'utf8',
+      input: `040000 tree ${inner.stdout.trim()}\tdir\n`
+    })
+    expect(outer.status, outer.stderr).toBe(0)
+    const base = s.git('commit-tree', outer.stdout.trim(), '-m', 'crafted base')
+    const head = s.git('commit-tree', `${normal}^{tree}`, '-p', base, '-m', 'the change')
+    s.git('checkout', '-q', '--detach', head)
+    s.origin('main', base)
+    expect(() =>
+      prepareHistory({
+        dir: s.dir,
+        out: s.out,
+        number: 7,
+        repo,
+        pulls: [pull(7, head, 'crafted', 'main')],
+        closed: []
+      })
+    ).toThrow(`unsafe path in the tree of ${base}: ${JSON.stringify(`dir/${name}`)}`)
+    expect(readdirSync(s.out)).toEqual([])
+    expect(readdirSync(s.root).sort()).toEqual(['in', 'pr'])
+  })
+
+  it('fails when git answers a request for a file with anything but that file', () => {
+    const s = keep(stacked())
+    const bin = join(s.root, 'bin')
+    mkdirSync(bin)
+    const real = spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim()
+    writeFileSync(
+      join(bin, 'git'),
+      `#!/usr/bin/env bash
+for arg in "$@"; do
+  if [ "$arg" = cat-file ] && [ "\${!#}" = --batch ]; then
+    while read -r id; do echo "$id missing"; done
+    exit 0
+  fi
+done
+exec ${real} "$@"
+`
+    )
+    chmodSync(join(bin, 'git'), 0o755)
+    vi.stubEnv('PATH', `${bin}:${process.env.PATH}`)
+    expect(() => s.prepare()).toThrow('git cat-file gave no blob for "base.txt"')
+    expect(existsSync(join(s.out, 'base-tree', 'base.txt'))).toBe(false)
+  })
+
+  it('fails over the tree size limit, naming it, before it writes anything', () => {
+    const s = keep(stacked())
+    expect(MAX_TREE_BYTES).toBe(512 * 1024 * 1024)
+    expect(() => s.prepare({ maxTreeBytes: 9 })).toThrow(
+      `the tree at ${s.m1} is 10 bytes, over the limit of 9`
+    )
+    expect(readdirSync(s.out)).toEqual([])
+    s.prepare({ maxTreeBytes: 13 })
+    expect(existsSync(join(s.out, 'base-branch-tree', 'parent.txt'))).toBe(true)
   })
 })
 
@@ -663,6 +902,8 @@ esac
     const r = command(s, [s.pulls])()
     expect(r.status, r.stderr).toBe(0)
     expect(readdirSync(s.out).sort()).toEqual([
+      'base-branch-tree',
+      'base-tree',
       'commits',
       'commits.json',
       'diff-base.patch',

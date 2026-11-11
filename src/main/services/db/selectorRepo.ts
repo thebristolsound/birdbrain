@@ -410,10 +410,18 @@ export function importSelectorRows(rows: Record<string, unknown>[], ctx: ImportC
   }
 }
 
+// The form every write site stores: `new Date().toISOString()`.
+function isMatchedAt(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  const time = new Date(value)
+  return !Number.isNaN(time.getTime()) && time.toISOString() === value
+}
+
 // Keeps the provenance the archive carries rather than stamping the import: the
 // match was found when and how the exporter recorded it. A row from an archive
-// written before schemaVersion 16 carries neither key and lands NULL in both; a
-// value the app cannot read, such as a hand-edited origin, lands NULL too.
+// written before schemaVersion 16 carries neither key and lands NULL in both.
+// Each value is checked on its own, and one the app does not write, such as a
+// hand-edited time or origin, lands NULL too.
 export function importSelectorMatchRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
   const insert = getDb().prepare(
     `INSERT INTO selector_matches (selector_id, capture_id, matched_at, match_origin)
@@ -423,7 +431,7 @@ export function importSelectorMatchRows(rows: Record<string, unknown>[], ctx: Im
     insert.run(
       ctx.mapId(sm.selector_id as string),
       ctx.mapId(sm.capture_id as string),
-      typeof sm.matched_at === 'string' ? sm.matched_at : null,
+      isMatchedAt(sm.matched_at) ? sm.matched_at : null,
       isMatchOrigin(sm.match_origin) ? sm.match_origin : null
     )
   }

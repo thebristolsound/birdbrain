@@ -16,6 +16,7 @@ import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import {
   CANCELLED_JOB_ERROR,
   INTERRUPTED_JOB_ERROR,
+  RESTORE_REMOVED_CAPTURE_ERROR,
   RESTORE_REMOVED_JOB_ERROR,
   RecaptureCancelled,
   RecaptureTimeout,
@@ -683,6 +684,54 @@ describe('stored background jobs', () => {
         captureId: newCaptures[0].id
       })
       expect(gate).toHaveLength(0)
+    })
+
+    // The restore lands after the ingest committed the Capture, while the job's cleanup runs.
+    it('ends failed a job whose Capture the restored copy lacks, though its ingest stored it', async () => {
+      const warn = vi.spyOn(logger, 'warn')
+      const info = vi.spyOn(logger, 'info')
+      let releaseCleanup: () => void = () => {}
+      const cleanupHeld = new Promise<void>((resolve) => (releaseCleanup = resolve))
+      let cleaning = false
+      const svc = makeService(async (url) =>
+        page(url, {
+          cleanup: () => {
+            cleaning = true
+            return cleanupHeld
+          }
+        })
+      )
+      takeBackup()
+      const {
+        jobIds: [id]
+      } = svc.enqueue([{ url: 'https://example.com/a', caseId }])
+      await vi.waitFor(() => expect(cleaning).toBe(true))
+      const [{ id: captureId }] = listCaptures(caseId)
+
+      await restore(svc)
+      expect(stateOf(id)).toBe('running')
+      expect(listCaptures(caseId)).toEqual([])
+
+      releaseCleanup()
+      await svc.idle()
+      const row = backgroundJobRepo.getJob(id)!
+      expect(row).toMatchObject({
+        state: 'failed',
+        failureKind: 'interrupted',
+        error: RESTORE_REMOVED_CAPTURE_ERROR
+      })
+      expect(row).not.toHaveProperty('captureId')
+      expect(
+        warn.mock.calls.filter(([, code]) => code === 'backgroundRenderer.job_failed')
+      ).toEqual([
+        [
+          'backgroundRenderer',
+          'backgroundRenderer.job_failed',
+          { captureId, caseId, failureKind: 'interrupted' }
+        ]
+      ])
+      // No stored line for a job whose row says it failed.
+      expect(info.mock.calls.map(([, code]) => code)).not.toContain('backgroundRenderer.job_stored')
     })
   })
 

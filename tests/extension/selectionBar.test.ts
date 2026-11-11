@@ -792,14 +792,58 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       expect(document.activeElement).toBe(input)
     })
 
-    it('keeps a selection the operator made in the field during the capture', () => {
+    // The last two start or end on the caret the strip left, as shift and an arrow key would.
+    it.each([
+      [0, 5],
+      [3, 6],
+      [6, 9]
+    ])(
+      'keeps a selection the operator made in the field during the capture (%i to %i)',
+      (start, end) => {
+        const input = focusedInput()
+
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        input.setSelectionRange(start, end)
+        dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+        expect(fieldEnds(input).slice(0, 2)).toEqual([start, end])
+      }
+    )
+
+    it('keeps a caret the operator moved in the field during the capture', () => {
       const input = focusedInput()
 
       dispatch({ type: 'PREPARE_FOR_CAPTURE' })
-      input.setSelectionRange(0, 5)
+      // A click elsewhere in the field: still collapsed, but not where the strip left it.
+      input.setSelectionRange(11, 11)
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
       dispatch({ type: 'RELEASE_CAPTURE_UI' })
 
-      expect(fieldEnds(input).slice(0, 2)).toEqual([0, 5])
+      expect(fieldEnds(input).slice(0, 2)).toEqual([11, 11])
+    })
+
+    it('keeps the caret after text the operator typed in the field during the capture', () => {
+      const input = focusedInput()
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      input.setRangeText('!!', 6, 6, 'end')
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(input.value).toBe('Hello !!wide world')
+      expect(fieldEnds(input).slice(0, 2)).toEqual([8, 8])
+    })
+
+    it('selects nothing in a field whose text changed under a caret that did not move', () => {
+      const input = focusedInput()
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      // One character deleted and one typed: the caret is back where the strip left it, and the
+      // held offsets now name other text.
+      input.setRangeText('X', 5, 6, 'end')
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(input.value).toBe('HelloXwide world')
+      expect(fieldEnds(input).slice(0, 2)).toEqual([6, 6])
     })
 
     it('finds the field inside a web component', () => {

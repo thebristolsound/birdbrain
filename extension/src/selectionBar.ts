@@ -431,6 +431,7 @@ let heldField: {
   start: number
   end: number
   direction: 'forward' | 'backward' | 'none'
+  value: string
 } | null = null
 
 function shadowRootOf(element: Element): ShadowRoot | null | undefined {
@@ -467,7 +468,7 @@ function holdField(field: TextField): void {
   const { selectionStart: start, selectionEnd: end, selectionDirection } = field
   // A later per-frame strip finds the field collapsed and keeps what the first held.
   if (start === null || end === null || start === end) return
-  heldField = { field, start, end, direction: selectionDirection ?? 'none' }
+  heldField = { field, start, end, direction: selectionDirection ?? 'none', value: field.value }
   field.setSelectionRange(end, end)
 }
 
@@ -510,9 +511,11 @@ function restoreField(): void {
   const held = heldField
   heldField = null
   if (!held) return
-  const { field, start, end, direction } = held
-  // A selection made in the field during the capture is newer than the held one.
-  if (field.selectionStart !== field.selectionEnd) return
+  const { field, start, end, direction, value } = held
+  // Put back only over what the strip left. A selection made, a caret moved or text typed in the
+  // field during the capture is newer than the held one. A caret put back on the same offset
+  // reads the same as the strip's own, so the held selection returns over it.
+  if (field.value !== value || field.selectionStart !== end || field.selectionEnd !== end) return
   field.setSelectionRange(start, end, direction)
 }
 

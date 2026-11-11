@@ -1,12 +1,22 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync } from 'fs'
+import {
+  chmodSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import {
-  initStorage,
+  confirmStorageRoot,
   ensureCaseDir,
   getCaseStorageSize,
-  storageRootCreatedAtInit
+  initStorage,
+  STORAGE_ROOT_RECORD
 } from '@main/services/storage'
 
 describe('storage', () => {
@@ -41,15 +51,108 @@ describe('storage', () => {
     expect(getCaseStorageSize('nonexistent')).toBe(0)
   })
 
-  it('records whether init had to create the root', () => {
-    expect(storageRootCreatedAtInit()).toBe(false)
+  describe('confirmStorageRoot', () => {
+    let root: string
+    let recordPath: string
+    const marker = (): string => join(root, '.birdbrain-storage-root.json')
+    const nonceIn = (path: string): unknown => JSON.parse(readFileSync(path, 'utf-8')).nonce
 
-    const missing = join(tempDir, 'not-yet', 'captures')
-    initStorage(missing)
-    expect(existsSync(missing)).toBe(true)
-    expect(storageRootCreatedAtInit()).toBe(true)
+    beforeEach(() => {
+      root = join(tempDir, 'captures')
+      recordPath = join(tempDir, STORAGE_ROOT_RECORD)
+      initStorage(root)
+    })
 
-    initStorage(missing)
-    expect(storageRootCreatedAtInit()).toBe(false)
+    it('starts a run on a root with no marker and writes the same value to both files', () => {
+      const before = Date.now()
+      const { since, continued } = confirmStorageRoot(recordPath)
+
+      expect(continued).toBe(false)
+      expect(Date.parse(since ?? '')).toBeGreaterThanOrEqual(before)
+      expect(typeof nonceIn(marker())).toBe('string')
+      expect(nonceIn(recordPath)).toBe(nonceIn(marker()))
+    })
+
+    it('continues the run on the next launch, keeps its start and writes a new value', () => {
+      const first = confirmStorageRoot(recordPath)
+      const firstNonce = nonceIn(marker())
+      const second = confirmStorageRoot(recordPath)
+
+      expect(second).toEqual({ since: first.since, continued: true })
+      expect(nonceIn(marker())).not.toBe(firstNonce)
+      expect(nonceIn(recordPath)).toBe(nonceIn(marker()))
+    })
+
+    it('starts a new run on a root that holds no marker', () => {
+      confirmStorageRoot(recordPath)
+      rmSync(marker())
+
+      expect(confirmStorageRoot(recordPath).continued).toBe(false)
+    })
+
+    it('starts a new run on another root', () => {
+      confirmStorageRoot(recordPath)
+      initStorage(join(tempDir, 'elsewhere'))
+
+      expect(confirmStorageRoot(recordPath).continued).toBe(false)
+    })
+
+    it('starts a new run on a copy of the root from before the last marker was written', () => {
+      confirmStorageRoot(recordPath)
+      const copy = join(tempDir, 'copy')
+      cpSync(root, copy, { recursive: true })
+      confirmStorageRoot(recordPath)
+      rmSync(root, { recursive: true })
+      cpSync(copy, root, { recursive: true })
+
+      expect(confirmStorageRoot(recordPath).continued).toBe(false)
+    })
+
+    // The limit the function documents: such a copy carries the last marker.
+    it('continues the run on a copy of the root taken after the last marker was written', () => {
+      const first = confirmStorageRoot(recordPath)
+      const copy = join(tempDir, 'copy')
+      cpSync(root, copy, { recursive: true })
+      rmSync(root, { recursive: true })
+      cpSync(copy, root, { recursive: true })
+
+      expect(confirmStorageRoot(recordPath)).toEqual({ since: first.since, continued: true })
+    })
+
+    it.each([
+      ['is missing', (): void => rmSync(recordPath)],
+      ['is not JSON', (): void => writeFileSync(recordPath, 'not json')],
+      ['is not an object', (): void => writeFileSync(recordPath, 'null')],
+      [
+        'has no start time',
+        (): void => writeFileSync(recordPath, JSON.stringify({ nonce: nonceIn(marker()) }))
+      ],
+      ['has no value', (): void => writeFileSync(recordPath, JSON.stringify({ since: 'x' }))]
+    ])('starts a new run when the record %s', (_label, damage) => {
+      confirmStorageRoot(recordPath)
+      damage()
+
+      expect(confirmStorageRoot(recordPath).continued).toBe(false)
+    })
+
+    it('reports no start when the record cannot be written', () => {
+      expect(confirmStorageRoot(join(tempDir, 'no-such-folder', STORAGE_ROOT_RECORD))).toEqual({
+        since: null,
+        continued: false
+      })
+      expect(existsSync(marker())).toBe(false)
+    })
+
+    it.skipIf(process.getuid?.() === 0)(
+      'reports no start when the marker cannot be written, and starts a new run next time',
+      () => {
+        confirmStorageRoot(recordPath)
+        chmodSync(marker(), 0o400)
+        expect(confirmStorageRoot(recordPath)).toEqual({ since: null, continued: true })
+
+        chmodSync(marker(), 0o600)
+        expect(confirmStorageRoot(recordPath).continued).toBe(false)
+      }
+    )
   })
 })

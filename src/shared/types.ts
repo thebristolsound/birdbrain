@@ -968,9 +968,12 @@ export const LOG_CODES = [
   'captureServer.self_test_residue_removed',
   'captureServer.self_test_residue_kept',
   // Teardown or the sweep kept a sandbox-named case because the storage root
-  // could not show whether anything else wrote into it: the root could not be
-  // listed, or it is not the root earlier launches wrote under.
+  // could not be listed, so whether it holds a folder for the case is not known.
   'captureServer.self_test_storage_unavailable',
+  // The sweep kept a sandbox-named case that otherwise reads as residue,
+  // because `confirmStorageRoot` has no unbroken run of launches on the root
+  // in use that began before the case was made.
+  'captureServer.self_test_storage_unconfirmed',
   // The capture server's listener failed (#513) — at boot usually EADDRINUSE
   // on 19845, held by another program or by a Birdbrain running against its
   // own data directory, since the single-instance lock stops a plain second

@@ -337,6 +337,8 @@ beforeEach(async () => {
     listJobs: vi.fn(() => []),
     resume: vi.fn(() => ({ resumed: 2 })),
     dismiss: vi.fn(() => ({ dismissed: 1 })),
+    cancel: vi.fn(() => ({ cancelled: 3, refused: 1 })),
+    retry: vi.fn(() => ({ retried: 2 })),
     idle: vi.fn()
   }
   updaterService = {
@@ -4441,6 +4443,38 @@ describe('ipcHandlers — recapture', () => {
     }
     expect(recaptureService.dismiss).toHaveBeenCalledTimes(2)
   })
+
+  it.each([
+    {
+      channel: IPC_CHANNELS.RECAPTURE_CANCEL,
+      method: 'cancel',
+      result: { cancelled: 3, refused: 1 }
+    },
+    { channel: IPC_CHANNELS.RECAPTURE_RETRY, method: 'retry', result: { retried: 2 } }
+  ] as const)(
+    '$channel takes a job or a Batch, never both or neither',
+    async ({ channel, method, result }) => {
+      expect(expectOk(await invoke(channel, { jobId: 'job-1' }))).toEqual(result)
+      expectOk(await invoke(channel, { batchId: 'batch-1' }))
+      expect(recaptureService[method].mock.calls).toEqual([
+        [{ jobId: 'job-1' }],
+        [{ batchId: 'batch-1' }]
+      ])
+      for (const target of [
+        undefined,
+        null,
+        'job-1',
+        {},
+        { jobId: '' },
+        { batchId: 7 },
+        { jobId: 'j', batchId: 'b' }
+      ]) {
+        const res = (await invoke(channel, target)) as { code?: string }
+        expect(res.code).toBe('INVALID_RECAPTURE_PAYLOAD')
+      }
+      expect(recaptureService[method]).toHaveBeenCalledTimes(2)
+    }
+  )
 })
 
 describe('ipcHandlers — diagnostics logging', () => {

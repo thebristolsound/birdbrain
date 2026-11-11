@@ -1,9 +1,10 @@
 import { getDb, isDatabaseOpen } from '@main/services/db/core'
 import type {
+  BackgroundJobPhase,
   BackgroundJobState,
   BackgroundJobView,
   HeldBatch,
-  RecaptureDismissTarget,
+  RecaptureJobTarget,
   RecaptureListJobsQuery
 } from '@shared/ipc'
 
@@ -21,7 +22,10 @@ export interface NewBackgroundJob {
   queuedAt: string
 }
 
-export type TerminalJobState = Extract<BackgroundJobState, 'stored' | 'skipped' | 'failed'>
+export type TerminalJobState = Extract<
+  BackgroundJobState,
+  'stored' | 'skipped' | 'failed' | 'cancelled'
+>
 
 export interface JobEnd {
   state: TerminalJobState
@@ -40,6 +44,7 @@ interface JobRow {
   linked_from_capture_id: string | null
   link_href: string | null
   state: BackgroundJobState
+  phase: BackgroundJobPhase | null
   attempts: number
   queued_at: string
   resumed_at: string | null
@@ -54,12 +59,17 @@ interface JobRow {
 // Insertion order breaks a tie in `queued_at`, which one Batch's rows share to the millisecond.
 const QUEUE_ORDER = 'ORDER BY queued_at, rowid'
 
-// The claim's order: a resumed job queues from its resume, so a Batch resumed from an earlier
-// session runs after the jobs already queued then, and ahead of the ones queued after it.
+// The claim's order: a resumed or retried job queues from the moment the Operator resumed or
+// retried it, so it runs after the jobs already queued then, and ahead of the ones queued after.
 const CLAIM_ORDER = 'ORDER BY COALESCE(resumed_at, queued_at), queued_at, rowid'
 
 // The rows the Operator can dismiss: each is the only record of why a URL left no Capture.
 const DISMISSABLE = "state IN ('failed', 'skipped', 'cancelled')"
+
+// The column and value a target names its rows by.
+function targetColumn(target: RecaptureJobTarget): [string, string] {
+  return 'jobId' in target ? ['id', target.jobId] : ['batch_id', target.batchId]
+}
 
 function toView(row: JobRow): BackgroundJobView {
   const { linked_from_capture_id: linkedCaptureId, link_href: linkHref } = row
@@ -69,6 +79,7 @@ function toView(row: JobRow): BackgroundJobView {
     caseId: row.case_id,
     url: row.url,
     state: row.state,
+    ...(row.state === 'running' && row.phase !== null && { phase: row.phase }),
     attempts: row.attempts,
     queuedAt: row.queued_at,
     ...(row.started_at !== null && { startedAt: row.started_at }),
@@ -132,13 +143,21 @@ export function claimNextQueued(attempt: {
   return row ? toView(row) : undefined
 }
 
+// Records the phase a `running` row is in. Any other row is left as it is, as by `finishJob`.
+export function setJobPhase(id: string, phase: BackgroundJobPhase): BackgroundJobView | undefined {
+  const row = getDb()
+    .prepare(`UPDATE background_jobs SET phase = ? WHERE id = ? AND state = 'running' RETURNING *`)
+    .get(phase, id) as JobRow | undefined
+  return row ? toView(row) : undefined
+}
+
 // Ends a `running` row. A row that is no longer `running`, or is gone, is left as it is: its
 // Case was deleted, or the queue settled it when its loop stopped.
 export function finishJob(id: string, end: JobEnd): BackgroundJobView | undefined {
   const row = getDb()
     .prepare(
       `UPDATE background_jobs
-          SET state = ?, failure_kind = ?, error = ?, warning = ?, finished_at = ?
+          SET state = ?, phase = NULL, failure_kind = ?, error = ?, warning = ?, finished_at = ?
         WHERE id = ? AND state = 'running'
         RETURNING *`
     )
@@ -184,11 +203,50 @@ export function resumeBatch(batchId: string, resumedAt: string): BackgroundJobVi
   return rows.map(toView)
 }
 
-export function dismissJobs(target: RecaptureDismissTarget): number {
-  const [column, value] = 'jobId' in target ? ['id', target.jobId] : ['batch_id', target.batchId]
+export function dismissJobs(target: RecaptureJobTarget): number {
+  const [column, value] = targetColumn(target)
   return getDb()
     .prepare(`DELETE FROM background_jobs WHERE ${column} = ? AND ${DISMISSABLE}`)
     .run(value).changes
+}
+
+// Ends the target's `queued` and `held` rows `cancelled`. A `running` row ends through its render.
+export function cancelWaitingJobs(
+  target: RecaptureJobTarget,
+  end: { error: string; finishedAt: string }
+): BackgroundJobView[] {
+  const [column, value] = targetColumn(target)
+  const rows = getDb()
+    .prepare(
+      `UPDATE background_jobs SET state = 'cancelled', error = ?, finished_at = ?
+        WHERE ${column} = ? AND state IN ('queued', 'held')
+        RETURNING *`
+    )
+    .all(end.error, end.finishedAt, value) as JobRow[]
+  return rows.map(toView)
+}
+
+// Queues the target's `failed` and `cancelled` rows again, clearing what the last attempt
+// recorded. `attempts` and `capture_id` change when the worker claims the row, as for any
+// attempt. A `skipped` row is not retried: the rule that refused it would refuse it again. Nor is
+// a row whose attempt's Capture is in its Case: a retry would store a second one.
+export function retryJobs(target: RecaptureJobTarget, retriedAt: string): BackgroundJobView[] {
+  const [column, value] = targetColumn(target)
+  const rows = getDb()
+    .prepare(
+      `UPDATE background_jobs
+          SET state = 'queued', resumed_at = ?, phase = NULL, started_at = NULL,
+              finished_at = NULL, capture_id = NULL, failure_kind = NULL, error = NULL,
+              warning = NULL
+        WHERE ${column} = ? AND state IN ('failed', 'cancelled')
+          AND NOT EXISTS (
+            SELECT 1 FROM captures c
+             WHERE c.id = background_jobs.capture_id AND c.case_id = background_jobs.case_id
+          )
+        RETURNING *`
+    )
+    .all(retriedAt, value) as JobRow[]
+  return rows.map(toView)
 }
 
 export function countActiveJobs(): { queued: number; running: number; held: number } {
@@ -216,7 +274,7 @@ export function listHeldBatches(): HeldBatch[] {
 }
 
 // A job this process is running when a restore re-opens the database: its row as the claim read
-// it, and the id its attempt stores the Capture under.
+// it, with the phase it has reached, and the id its attempt stores the Capture under.
 export interface RunningAttempt {
   job: BackgroundJobView
   captureId: string
@@ -256,7 +314,7 @@ function settleRunning(
   const stored = db
     .prepare(
       `UPDATE background_jobs
-          SET state = 'stored', finished_at = ?
+          SET state = 'stored', phase = NULL, finished_at = ?
         WHERE state = 'running' AND id NOT IN (SELECT value FROM json_each(?))
           AND EXISTS (
             SELECT 1 FROM captures c
@@ -268,7 +326,8 @@ function settleRunning(
   const interrupted = db
     .prepare(
       `UPDATE background_jobs
-          SET state = 'failed', failure_kind = 'interrupted', error = ?, finished_at = ?
+          SET state = 'failed', phase = NULL, failure_kind = 'interrupted', error = ?,
+              finished_at = ?
         WHERE state = 'running' AND id NOT IN (SELECT value FROM json_each(?))
         RETURNING *`
     )
@@ -315,13 +374,13 @@ export function recoverJobsAtStartup(params: {
   const restoreRunning = db.prepare(
     `INSERT INTO background_jobs
        (id, batch_id, case_id, url, supersedes_capture_id, linked_from_capture_id, link_href,
-        state, attempts, queued_at, started_at, capture_id)
-     SELECT ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?
+        state, phase, attempts, queued_at, started_at, capture_id)
+     SELECT ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?
       WHERE EXISTS (SELECT 1 FROM cases WHERE id = ?)
      ON CONFLICT (id) DO UPDATE
-        SET state = 'running', attempts = excluded.attempts, started_at = excluded.started_at,
-            capture_id = excluded.capture_id, finished_at = NULL, failure_kind = NULL,
-            error = NULL, warning = NULL
+        SET state = 'running', phase = excluded.phase, attempts = excluded.attempts,
+            started_at = excluded.started_at, capture_id = excluded.capture_id,
+            finished_at = NULL, failure_kind = NULL, error = NULL, warning = NULL
      RETURNING *`
   )
   return db.transaction(() => {
@@ -335,6 +394,7 @@ export function recoverJobsAtStartup(params: {
         job.supersedesCaptureId ?? null,
         job.linkedFrom?.captureId ?? null,
         job.linkedFrom?.linkHref ?? null,
+        job.phase ?? null,
         job.attempts,
         job.queuedAt,
         job.startedAt ?? null,

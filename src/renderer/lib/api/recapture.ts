@@ -1,5 +1,5 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { EnqueueResult, HeldBatch, LinkedFrom } from '@shared/ipc'
+import type { EnqueueResult, HeldBatch, LinkedFrom, RecaptureJobTarget } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { notify } from '@renderer/lib/notify'
 import { requireContact } from '@renderer/lib/vpnWarning'
@@ -93,5 +93,36 @@ export function useResumeHeldBatch() {
       queryClient.invalidateQueries({ queryKey: queryKeys.recaptureQueue })
     },
     meta: { action: 'resume held captures' }
+  })
+}
+
+// Cancel sends nothing, so it asks no warning.
+export function useCancelBackgroundJobs() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (target: RecaptureJobTarget) => window.birdbrain.recapture.cancel(target),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.recaptureQueue })
+    },
+    meta: { action: 'cancel background captures' }
+  })
+}
+
+// A retry sends its requests again, so it passes the VPN warning for the jobs' Case first.
+export function useRetryBackgroundJobs() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ caseId, target }: { caseId: string; target: RecaptureJobTarget }) => {
+      await requireContact({ caseId }, 'site')
+      return window.birdbrain.recapture.retry(target)
+    },
+    // The queue refuses a retry while no operator name is set, as it refuses a resume.
+    onSuccess: ({ reason }) => {
+      if (reason) notify.warn(`Retry rejected: ${reason}`)
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.recaptureQueue })
+    },
+    meta: { action: 'retry background captures' }
   })
 }

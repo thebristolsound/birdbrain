@@ -3,6 +3,7 @@ import { closeDatabase, getDb, initDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { insertCapture } from '@main/services/db/captureRepo'
 import {
+  cancelWaitingJobs,
   claimNextQueued,
   countActiveJobs,
   dismissJobs,
@@ -14,6 +15,8 @@ import {
   listJobs,
   recoverJobsAtStartup,
   resumeBatch,
+  retryJobs,
+  setJobPhase,
   settleRunningJobs,
   type NewBackgroundJob
 } from '@main/services/db/backgroundJobRepo'
@@ -356,6 +359,7 @@ describe('backgroundJobRepo', () => {
         .run(state, finishedAt, id)
     }
     claim('cap-running')
+    setJobPhase('running', 'artifacts')
 
     const recovery = recoverJobsAtStartup({
       now: '2026-11-09T12:00:00.000Z',
@@ -387,6 +391,7 @@ describe('backgroundJobRepo', () => {
         captureId: 'cap-running'
       }
     ])
+    expect(phaseColumn('running')).toBeNull()
     expect(recovery.held.map(({ jobId, state }) => [jobId, state])).toEqual([['queued', 'held']])
     expect(recovery.deletedStored).toBe(1)
     expect(listJobs({ caseId }).map(({ jobId, state }) => [jobId, state])).toEqual([
@@ -397,5 +402,122 @@ describe('backgroundJobRepo', () => {
       ['recent', 'stored'],
       ['failed', 'failed']
     ])
+  })
+
+  // The raw column, which the view shows only while the row is `running`.
+  const phaseColumn = (id: string): unknown =>
+    (
+      getDb().prepare('SELECT phase FROM background_jobs WHERE id = ?').get(id) as {
+        phase: unknown
+      }
+    ).phase
+
+  it('records a phase only on a running row, and clears it when the row ends', () => {
+    insertQueuedJobs([job('a'), job('b')])
+    expect(setJobPhase('a', 'loading')).toBeUndefined()
+    claim()
+    expect(setJobPhase('a', 'scrolling')).toMatchObject({ state: 'running', phase: 'scrolling' })
+    expect(getJob('a')?.phase).toBe('scrolling')
+    expect(getJob('b')?.phase).toBeUndefined()
+
+    finishJob('a', { state: 'failed', finishedAt: '2026-11-09T11:05:00.000Z' })
+    expect(phaseColumn('a')).toBeNull()
+    expect(setJobPhase('a', 'pdf')).toBeUndefined()
+    expect(phaseColumn('a')).toBeNull()
+  })
+
+  it('cancels only the queued and held rows of its target', () => {
+    insertQueuedJobs([job('queued'), job('held'), job('running'), job('other', { batchId: 'b2' })])
+    getDb().prepare("UPDATE background_jobs SET state = 'held' WHERE id = 'held'").run()
+    getDb().prepare("UPDATE background_jobs SET state = 'running' WHERE id = 'running'").run()
+    const end = { error: 'Cancelled', finishedAt: '2026-11-09T11:10:00.000Z' }
+
+    expect(cancelWaitingJobs({ jobId: 'running' }, end)).toEqual([])
+    const ended = cancelWaitingJobs({ batchId: 'batch-1' }, end)
+    expect(ended.map(({ jobId }) => jobId).sort()).toEqual(['held', 'queued'])
+    expect(ended[0]).toMatchObject({ state: 'cancelled', ...end })
+    expect(listJobs({ caseId }).map(({ jobId, state }) => [jobId, state])).toEqual([
+      ['queued', 'cancelled'],
+      ['held', 'cancelled'],
+      ['running', 'running'],
+      ['other', 'queued']
+    ])
+  })
+
+  it('retries only failed and cancelled rows, clearing the last attempt and keeping its Batch', () => {
+    insertQueuedJobs(['failed', 'cancelled', 'skipped', 'stored'].map((id) => job(id)))
+    for (const id of ['failed', 'cancelled', 'skipped', 'stored']) {
+      claim(`cap-${id}`)
+      finishJob(id, {
+        state: id as 'failed' | 'cancelled' | 'skipped' | 'stored',
+        failureKind: 'render',
+        error: 'it broke',
+        warning: 'login wall',
+        finishedAt: '2026-11-09T11:30:00.000Z'
+      })
+    }
+
+    expect(retryJobs({ jobId: 'skipped' }, '2026-11-09T12:00:00.000Z')).toEqual([])
+    expect(retryJobs({ jobId: 'stored' }, '2026-11-09T12:00:00.000Z')).toEqual([])
+    const retried = retryJobs({ batchId: 'batch-1' }, '2026-11-09T12:00:00.000Z')
+    expect(retried.map(({ jobId }) => jobId).sort()).toEqual(['cancelled', 'failed'])
+    expect(getJob('failed')).toEqual({
+      jobId: 'failed',
+      batchId: 'batch-1',
+      caseId,
+      url: 'https://example.com/failed',
+      state: 'queued',
+      attempts: 1,
+      queuedAt: '2026-11-09T10:00:00.000Z'
+    })
+    const raw = getDb()
+      .prepare('SELECT capture_id, resumed_at FROM background_jobs WHERE id = ?')
+      .get('cancelled')
+    expect(raw).toEqual({ capture_id: null, resumed_at: '2026-11-09T12:00:00.000Z' })
+    expect(getJob('skipped')).toMatchObject({ state: 'skipped', error: 'it broke' })
+    expect(getJob('stored')).toMatchObject({ state: 'stored', captureId: 'cap-stored' })
+
+    // The next attempt counts, and names its own Capture id.
+    expect(claim('cap-second')).toMatchObject({ jobId: 'failed', state: 'running', attempts: 2 })
+  })
+
+  // A retry clears `capture_id`, and its next attempt would store a second Capture.
+  it("leaves a failed row whose attempt's Capture is in its Case as it is on a retry", () => {
+    insertQueuedJobs([job('landed'), job('elsewhere')])
+    const other = createCase({ name: 'Other' }).id
+    for (const [id, captureCase] of [
+      ['landed', caseId],
+      ['elsewhere', other]
+    ]) {
+      insertCapture({
+        id: `cap-${id}`,
+        caseId: captureCase,
+        url: 'https://example.com/',
+        title: 'T',
+        hash: 'a'.repeat(64),
+        timestamp: '2026-11-09T11:00:00.000Z',
+        format: 'mhtml',
+        method: 'background'
+      })
+      claim(`cap-${id}`)
+      finishJob(id, {
+        state: 'failed',
+        failureKind: 'ingest',
+        error: 'it broke',
+        finishedAt: '2026-11-09T11:30:00.000Z'
+      })
+    }
+
+    expect(retryJobs({ jobId: 'landed' }, '2026-11-09T12:00:00.000Z')).toEqual([])
+    const retried = retryJobs({ batchId: 'batch-1' }, '2026-11-09T12:00:00.000Z')
+    expect(retried.map(({ jobId }) => jobId)).toEqual(['elsewhere'])
+    expect(getJob('landed')).toMatchObject({
+      state: 'failed',
+      failureKind: 'ingest',
+      error: 'it broke'
+    })
+    expect(
+      getDb().prepare('SELECT capture_id FROM background_jobs WHERE id = ?').get('landed')
+    ).toEqual({ capture_id: 'cap-landed' })
   })
 })

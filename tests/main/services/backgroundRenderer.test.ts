@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll, afterEach } from 'vitest'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { createReadStream, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { createHash } from 'crypto'
@@ -28,7 +28,13 @@ import { ManifestEntrySchema, ScrollToLoadRecordSchema } from '@shared/schemas'
 import { RefusedAddressError } from '@main/services/localAddressPolicy'
 import { EgressUnavailableError } from '@main/services/egress'
 import { E2E_TRUSTED_CERT_SWITCH } from '@main/services/testCertificateAllowance'
-import { RecaptureTimeout, createRecaptureService, type PdfOutcome } from '@main/services/recapture'
+import {
+  CANCELLED_JOB_ERROR,
+  RecaptureCancelled,
+  RecaptureTimeout,
+  createRecaptureService,
+  type PdfOutcome
+} from '@main/services/recapture'
 import { createCaptureLifecycle, verifyCapture } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
@@ -38,6 +44,7 @@ import { getCapture, listCaptures } from '@main/services/db/captureRepo'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { MANIFEST_FILENAME, MAX_PDF_CONTENT_HEIGHT_PX, MAX_PDF_SIZE } from '@shared/constants'
+import type { BackgroundJobView } from '@shared/ipc'
 import type { CaptureEvent, EgressSetting } from '@shared/types'
 
 // Mutable harness the fake BrowserWindow/webContents read from, so each test can
@@ -66,6 +73,12 @@ const ctl = vi.hoisted(() => ({
   bodyHangs: false,
   writerThrows: false,
   writerHangs: false,
+  // How long the writer runs before it answers, and what happens as it starts: the step a cancel
+  // can land in that touches no window, so the render goes on after it.
+  writerDelayMs: 0,
+  duringWrite: null as (() => void) | null,
+  // Every temp file path the fake save wrote to.
+  savedPaths: [] as string[],
   isPackaged: false,
   securityDetails: {
     protocol: 'TLS 1.3',
@@ -358,6 +371,7 @@ const { MockBrowserWindow } = vi.hoisted(() => {
         },
         async savePage(path: string) {
           ctl.order.push('savePage')
+          ctl.savedPaths.push(path)
           if (ctl.lateEvent)
             emitPage(this.debugger, 'late', 'https://example.test/late.js', 'Script')
           if (ctl.reloadsBeforeSave)
@@ -415,13 +429,24 @@ vi.mock('../../../src/packages/transaction-record/writer', async (importOriginal
     ...actual,
     writeTransactionRecord: vi.fn((input: Parameters<typeof actual.writeTransactionRecord>[0]) => {
       ctl.order.push('writeTransactionRecord')
-      return ctl.writerHangs
-        ? new Promise<never>(() => {})
-        : ctl.writerThrows
-          ? Promise.reject(new Error('the writer broke'))
-          : actual.writeTransactionRecord(input)
+      ctl.duringWrite?.()
+      const write = () =>
+        ctl.writerHangs
+          ? new Promise<never>(() => {})
+          : ctl.writerThrows
+            ? Promise.reject(new Error('the writer broke'))
+            : actual.writeTransactionRecord(input)
+      return ctl.writerDelayMs > 0
+        ? new Promise((resolve) => setTimeout(resolve, ctl.writerDelayMs)).then(write)
+        : write()
     })
   }
+})
+
+// Spied, so a test can tell whether a render opened a stream on its temp file.
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs')>()
+  return { ...actual, default: actual, createReadStream: vi.fn(actual.createReadStream) }
 })
 
 vi.mock('@main/services/egress', async (importOriginal) => {
@@ -633,6 +658,9 @@ function resetRender(): void {
   ctl.bodyHangs = false
   ctl.writerThrows = false
   ctl.writerHangs = false
+  ctl.writerDelayMs = 0
+  ctl.duringWrite = null
+  ctl.savedPaths = []
   ctl.isPackaged = false
   ctl.lateEvent = false
   resetPrint()
@@ -1763,6 +1791,9 @@ describe('renderPageInHiddenWindow', () => {
     ctl.bodyHangs = false
     ctl.writerThrows = false
     ctl.writerHangs = false
+    ctl.writerDelayMs = 0
+    ctl.duringWrite = null
+    ctl.savedPaths = []
     ctl.isPackaged = false
     ctl.lateEvent = false
     resetPrint()
@@ -1890,6 +1921,178 @@ describe('renderPageInHiddenWindow', () => {
 
     // The timeout path also tears the window down.
     expect(ctl.lastWindow!.isDestroyed()).toBe(true)
+  }, 30_000)
+
+  // The fake window refuses nothing once destroyed, so a render that ended before its network
+  // tracker was set up, or during the record's writer, goes on to the print.
+  async function renderGoesOnToThePrint(): Promise<void> {
+    await vi.waitFor(() => expect(ctl.order).toContain('printToPDF'), { timeout: 10_000 })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+
+  // A stream a render opened on its temp file.
+  const streamsOnTempFiles = (): unknown[] =>
+    vi.mocked(createReadStream).mock.calls.filter(([path]) => ctl.savedPaths.includes(String(path)))
+
+  it('ends the render the way the deadline does when its signal aborts, and hears no step after', async () => {
+    const controller = new AbortController()
+    const info = vi.spyOn(logger, 'info')
+    const heard: string[] = []
+    const render = renderPageInHiddenWindow('https://example.test/', {
+      timeoutMs: 60_000,
+      ...IDS,
+      signal: controller.signal,
+      onStep: (step) => {
+        heard.push(step)
+        if (step === 'scroll') controller.abort()
+      }
+    })
+    await expect(render).rejects.toBeInstanceOf(RecaptureCancelled)
+    await expect(render).rejects.toThrow(CANCELLED_JOB_ERROR)
+    expect(heard).toEqual(['setup', 'load', 'network-idle', 'scroll'])
+    expect(ctl.lastWindow!.isDestroyed()).toBe(true)
+    const [[, , context, error]] = info.mock.calls.filter(
+      ([, code]) => code === 'backgroundRenderer.render_failed'
+    )
+    expect(context).toMatchObject({ captureId: IDS.captureId, step: 'scroll' })
+    expect(error).toBeInstanceOf(RecaptureCancelled)
+    // The teardown took the network idle tracker the next step waits on, so the render stopped
+    // there, before the save.
+    expect(ctl.order).not.toContain('savePage')
+    expect(streamsOnTempFiles()).toEqual([])
+    info.mockRestore()
+  }, 30_000)
+
+  // Slice 1's finding: a page returned after the end path removed its temp file opened a stream
+  // on the missing file, whose error no listener heard. A cancel during the record's writer, which
+  // touches no window, lets the render outlast the end path's 2 s wait.
+  it('opens no stream and leaves no temp file when the render returns after a cancel ended it', async () => {
+    const controller = new AbortController()
+    ctl.writerDelayMs = 2_500
+    ctl.duringWrite = () => controller.abort()
+    await expect(
+      renderPageInHiddenWindow('https://example.test/', {
+        timeoutMs: 30_000,
+        ...IDS,
+        signal: controller.signal
+      })
+    ).rejects.toBeInstanceOf(RecaptureCancelled)
+    // The end path gave up waiting before the writer answered, and removed the file.
+    expect(ctl.order).not.toContain('printToPDF')
+    const [saved] = ctl.savedPaths
+    expect(existsSync(saved)).toBe(false)
+
+    await renderGoesOnToThePrint()
+    expect(streamsOnTempFiles()).toEqual([])
+    expect(existsSync(saved)).toBe(false)
+  }, 30_000)
+
+  it('removes a temp file a late save writes after the end path removed it', async () => {
+    const controller = new AbortController()
+    ctl.writerDelayMs = 2_500
+    // The file comes back while the writer runs, after the end path has given up on the render.
+    ctl.duringWrite = () => {
+      controller.abort()
+      setTimeout(() => writeFileSync(ctl.savedPaths[0], 'late MHTML'), 2_200)
+    }
+    await expect(
+      renderPageInHiddenWindow('https://example.test/', {
+        timeoutMs: 30_000,
+        ...IDS,
+        signal: controller.signal
+      })
+    ).rejects.toBeInstanceOf(RecaptureCancelled)
+    await renderGoesOnToThePrint()
+    expect(existsSync(ctl.savedPaths[0])).toBe(false)
+  }, 30_000)
+
+  it('ends at once when its signal was aborted before it started', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const heard: string[] = []
+    await expect(
+      renderPageInHiddenWindow('https://example.test/', {
+        timeoutMs: 30_000,
+        ...IDS,
+        signal: controller.signal,
+        onStep: (step) => heard.push(step)
+      })
+    ).rejects.toBeInstanceOf(RecaptureCancelled)
+    expect(heard).toEqual(['setup'])
+    expect(ctl.lastWindow!.isDestroyed()).toBe(true)
+    await renderGoesOnToThePrint()
+    expect(ctl.savedPaths.filter((path) => existsSync(path))).toEqual([])
+    expect(streamsOnTempFiles()).toEqual([])
+  }, 30_000)
+
+  it.each([
+    {
+      ending: 'the deadline',
+      arrange: () => {
+        ctl.loadUrlShouldHang = true
+      },
+      timeoutMs: 50,
+      error: RecaptureTimeout
+    },
+    {
+      ending: 'a refused hop',
+      arrange: () => {
+        ctl.hop = { event: 'will-redirect', url: 'http://127.0.0.1:8080/', isMainFrame: true }
+      },
+      timeoutMs: 30_000,
+      error: RefusedAddressError
+    },
+    {
+      ending: 'its own failure',
+      arrange: () => {
+        ctl.loadUrlShouldReject = true
+      },
+      timeoutMs: 30_000,
+      error: Error
+    }
+  ])(
+    'tells onEnd once when $ending ends it, and keeps that error through a later abort',
+    async ({ arrange, timeoutMs, error }) => {
+      arrange()
+      const controller = new AbortController()
+      const onEnd = vi.fn(() => controller.abort())
+      const render = renderPageInHiddenWindow('https://example.test/', {
+        timeoutMs,
+        ...IDS,
+        signal: controller.signal,
+        onEnd
+      })
+      await expect(render).rejects.toBeInstanceOf(error)
+      await expect(render).rejects.not.toBeInstanceOf(RecaptureCancelled)
+      expect(onEnd).toHaveBeenCalledTimes(1)
+    },
+    30_000
+  )
+
+  it('does not tell onEnd of a render that returns its page', async () => {
+    const onEnd = vi.fn()
+    const result = await renderPageInHiddenWindow('https://example.test/', {
+      timeoutMs: 30_000,
+      ...IDS,
+      onEnd
+    })
+    for await (const _chunk of result.mhtmlStream) void _chunk
+    await result.cleanup()
+    expect(onEnd).not.toHaveBeenCalled()
+  }, 30_000)
+
+  it('returns its page as before when its signal is not aborted', async () => {
+    const controller = new AbortController()
+    const result = await renderPageInHiddenWindow('https://example.test/', {
+      timeoutMs: 30_000,
+      ...IDS,
+      signal: controller.signal
+    })
+    const chunks: Uint8Array[] = []
+    for await (const chunk of result.mhtmlStream) chunks.push(chunk)
+    expect(Buffer.concat(chunks).toString()).toContain('MHTML body')
+    expect(ctl.lastWindow!.isDestroyed()).toBe(false)
+    await result.cleanup()
   }, 30_000)
 
   it.each([
@@ -2026,6 +2229,9 @@ describe('renderPageInHiddenWindow, the Transaction Record', () => {
     ctl.bodyHangs = false
     ctl.writerThrows = false
     ctl.writerHangs = false
+    ctl.writerDelayMs = 0
+    ctl.duringWrite = null
+    ctl.savedPaths = []
     ctl.isPackaged = false
     ctl.lateEvent = false
     resetPrint()
@@ -2856,6 +3062,102 @@ describe('a Recapture of a rendered page, through ingest, and its PDF', () => {
       failureKind: 'render',
       step: 'images'
     })
+  }, 30_000)
+
+  // Slice 4 of the same design: the phases a job's view moves through, and cancel.
+  function serviceWithJobs(onJob: (job: BackgroundJobView) => void = () => {}) {
+    const jobs: BackgroundJobView[] = []
+    const service = createRecaptureService({
+      renderPage: renderPageInHiddenWindow,
+      captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
+      emitEvent: (event) => events.push(event),
+      emitNewCapture: () => {},
+      emitJob: (job) => {
+        jobs.push(job)
+        onJob(job)
+      },
+      timeoutMs: 30_000
+    })
+    return { service, jobs }
+  }
+
+  it('moves a stored job through the seven phases, in order', async () => {
+    const { service, jobs } = serviceWithJobs()
+    service.enqueue([{ url: 'https://example.test/', caseId }])
+    await service.idle()
+    expect(events.map(({ type }) => type)).toEqual(['queued', 'received', 'stored'])
+    expect(jobs.filter(({ phase }) => phase).map(({ phase }) => phase)).toEqual([
+      'loading',
+      'scrolling',
+      'settling',
+      'artifacts',
+      'transaction-record',
+      'pdf',
+      'ingesting'
+    ])
+    expect(jobs.at(-1)).toMatchObject({ state: 'stored' })
+    expect(jobs.at(-1)).not.toHaveProperty('phase')
+  }, 30_000)
+
+  it('keeps a refused hop as the ending of a job cancelled after the hop ended its render', async () => {
+    ctl.hop = { event: 'will-redirect', url: 'http://127.0.0.1:8080/', isMainFrame: true }
+    const cancels: unknown[] = []
+    const jobs: BackgroundJobView[] = []
+    const service = createRecaptureService({
+      renderPage: (url, opts) =>
+        renderPageInHiddenWindow(url, {
+          ...opts,
+          onEnd: () => {
+            opts.onEnd?.()
+            cancels.push(service.cancel({ batchId: jobs[0].batchId }))
+          }
+        }),
+      captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
+      emitEvent: (event) => events.push(event),
+      emitNewCapture: () => {},
+      emitJob: (job) => jobs.push(job),
+      timeoutMs: 30_000
+    })
+    service.enqueue([{ url: 'https://example.test/', caseId }])
+    await service.idle()
+
+    expect(cancels).toEqual([{ cancelled: 0, refused: 1 }])
+    expect(jobs.at(-1)).toMatchObject({
+      state: 'skipped',
+      failureKind: 'refused-address',
+      error: 'Redirects to a loopback address'
+    })
+    expect(events.at(-1)).toMatchObject({
+      type: 'skipped',
+      skipReason: 'Redirects to a loopback address'
+    })
+  }, 30_000)
+
+  it('leaves no Capture, no manifest entry and no temp file when a job is cancelled before its ingest', async () => {
+    const { service } = serviceWithJobs(({ jobId, phase }) => {
+      // After the save, so the temp file exists when the cancel lands.
+      if (phase === 'transaction-record') service.cancel({ jobId })
+    })
+    const {
+      jobIds: [id]
+    } = service.enqueue([{ url: 'https://example.test/', caseId }])
+    await service.idle()
+
+    expect(service.listJobs({ caseId })).toEqual([
+      expect.objectContaining({ jobId: id, state: 'cancelled', error: CANCELLED_JOB_ERROR })
+    ])
+    expect(events.map(({ type, skipReason }) => [type, skipReason])).toEqual([
+      ['queued', undefined],
+      ['received', undefined],
+      ['skipped', CANCELLED_JOB_ERROR]
+    ])
+    expect(listCaptures(caseId)).toEqual([])
+    const manifest = join(getStorageRoot(), caseId, MANIFEST_FILENAME)
+    const written = existsSync(manifest) ? readFileSync(manifest, 'utf-8') : ''
+    expect(written).not.toContain('"type":"capture"')
+    expect(ctl.savedPaths).toHaveLength(1)
+    expect(existsSync(ctl.savedPaths[0])).toBe(false)
+    expect(ctl.lastWindow!.isDestroyed()).toBe(true)
   }, 30_000)
 })
 

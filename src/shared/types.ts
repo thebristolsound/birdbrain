@@ -1075,14 +1075,18 @@ export const LOG_CODES = [
   'backgroundRenderer.render_completed',
   'backgroundRenderer.render_failed',
   // How each Background Job ended (#2127): stored, with its ingest time unless
-  // the row was settled after the job had gone, skipped by a rule, or failed
-  // with the step it reached, or as `interrupted` when the app closed or the
-  // queue stopped during it, or a restore removed its Capture. The app window
-  // hears of each as an event; these lines and the job's `background_jobs` row
-  // outlast the session.
+  // the row was settled after the job had gone, skipped by a rule, failed with
+  // the step it reached, or as `interrupted` when the app closed or the queue
+  // stopped during it, or a restore removed its Capture, or cancelled by the
+  // Operator. The app window hears of each as an event; these lines and the
+  // job's `background_jobs` row outlast the session.
   'backgroundRenderer.job_stored',
   'backgroundRenderer.job_skipped',
   'backgroundRenderer.job_failed',
+  'backgroundRenderer.job_cancelled',
+  // A running job's phase could not be written to its row, as while a restore has the database
+  // closed. The render goes on; logged once per job.
+  'backgroundRenderer.job_phase_failed',
   // The background job queue stopped on a throw, between a job's claim and the write of its end
   // or while it reported the rows it settled as it started: a row it could not read or write, as
   // while a restore has the database closed, or an event or log call that threw. The next
@@ -1367,9 +1371,11 @@ export const ERROR_NAMES = [
   'ProtocolError',
   'PeerByeError',
   'PeerUnreachableError',
-  // A Background Job that ran out of time, and the Transaction Record bound
-  // that expired (#2121): the log drops messages, so the name is what says which.
+  // A Background Job that ran out of time or was cancelled, and the Transaction
+  // Record bound that expired (#2121): the log drops messages, so the name is
+  // what says which.
   'RecaptureTimeout',
+  'RecaptureCancelled',
   'TransactionRecordCollectTimeout',
   'TransactionRecordWriteTimeout',
   // Thrown before a render's first step, so the name is all its failed line says of the cause.

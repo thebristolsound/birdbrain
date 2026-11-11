@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join, resolve } from 'path'
 import { tmpdir } from 'os'
 
@@ -24,12 +24,17 @@ import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/stora
 import { initSettings, getSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSigningKey, resetSigningKey } from '@main/services/signingKey'
+import { runExhibitBackfill } from '@main/services/exhibitBackfill'
 import {
   deleteDemoCase,
   getDemoCaseArchivePath,
   seedDemoCaseIfNeeded
 } from '@main/services/demoCase'
-import { DEMO_CASE_ARCHIVE_FILENAME, DEMO_CASE_OPERATOR_NAME } from '@shared/constants'
+import {
+  DEMO_CASE_ARCHIVE_FILENAME,
+  DEMO_CASE_OPERATOR_NAME,
+  MANIFEST_FILENAME
+} from '@shared/constants'
 
 const FIXTURE = resolve(__dirname, '../../../resources', DEMO_CASE_ARCHIVE_FILENAME)
 
@@ -140,6 +145,23 @@ describe('demo case seeding', () => {
 
     expect(result.seeded).toBe(true)
     expect(getSettings().operatorName).toBe('')
+  })
+
+  // The chain a fresh install writes (X47, #1332): the seed, then the startup backfill with no
+  // name configured, leave no entry that names nobody.
+  it('leaves no entry with an empty operator name when the backfill follows the seed', async () => {
+    updateSettings({ isFreshInstall: true, operatorName: '' })
+    const { caseId } = await seedDemoCaseIfNeeded()
+
+    const [result] = await runExhibitBackfill({ toolVersion: '1.0.0-test' })
+
+    const names = readFileSync(join(getStorageRoot(), caseId!, MANIFEST_FILENAME), 'utf-8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => (JSON.parse(line) as { operatorName?: unknown }).operatorName)
+    expect(names.length).toBeGreaterThan(0)
+    expect(names.filter((name) => typeof name !== 'string' || name.trim() === '')).toEqual([])
+    expect(result.skipped).toBe('operator_name_required')
   })
 
   it('never re-imports once the latch is set', async () => {

@@ -81,11 +81,33 @@ and a fifth Claude pass rules on Codex's. `.github/scripts/review-fleet/fleet.mj
 keeps one state comment per head with the findings and rulings.
 
 - **Red** means a blocking finding the other family confirmed, a pass that did not finish, Codex
-  not answering within the timeout, or a finding Codex did not rule on. Push a fix, or apply
-  `break-glass` to merge over it.
+  not answering within the timeout, a finding Codex did not rule on, or a blocking Codex finding
+  the Claude check ruled unclear. Push a fix, or apply `break-glass` to merge over it. The
+  override also needs its dedicated workflow-token stamp on the exact head. The stamp lands a
+  few seconds after the label, so a `merge-gate` run the same label event started can read the
+  head first and go red. The fleet re-runs red `merge-gate` runs when it posts the override
+  status; re-run the check by hand if it stays red.
 - **Pending** means a pass is running, Codex has not answered yet, or the daily cap is holding
   the head. A sweep every 15 minutes times out what Codex never answered and restarts work whose
   event was dropped.
+- **Source completion** requires every assigned source check and input under ADR-0057. New
+  outputs use contract version 2, `source_review_complete`, and `not_checked` for unfinished
+  source work. Missing issues or referenced review text fail before the paid call. Every
+  `https://github.com/` issue or pull request link and every `comment <number>` pointer of
+  eight or more digits in the description, and in each source fetched from it, counts as
+  referenced review text. A pointer is read as an issue comment first, and as an inline review
+  comment when that read is a 404. A comment link copied from the Files changed view
+  (`/files#r<id>`) reads as that inline comment. A link to another repository fails, because
+  the pass reads only this one, and so do a link whose fragment ADR-0057 defines as malformed
+  and a linked issue, comment or review with an empty body. An
+  unfinished caller, race, fixture or count trace still fails; do not call it a runtime limit.
+- **Runtime limitations** appear separately in the saved record and public report. Tests,
+  builds, CI reads and external/editor observations the reviewer did not perform remain
+  unverified. Fleet success does not certify them or waive required CI checks. Never clear or
+  reinterpret an older mixed unchecked list. Old records require a fresh source review.
+- **Retry** a head by deleting its state comment. The next plan claims the head as new, counts
+  it against the daily cap, runs the passes again and posts a new relay. The earlier relay and
+  Codex's rulings on it no longer count.
 - **Controls** are repository variables, changed with `gh variable set <name> --body <value>`:
   `REVIEW_FLEET_ENABLED=false` stops the fleet and lifts the `merge-gate` requirement,
   `REVIEW_FLEET_DAILY_CAP` sets the heads reviewed per 24 hours (default 40), and

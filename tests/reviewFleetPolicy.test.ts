@@ -713,6 +713,17 @@ describe('comments on a source by the maintainer and the machine account', () =>
     expect(withComments([source('issues/12')], answer).run).toThrow(message)
   })
 
+  it('applies the limit of 200 comments when the caller names none', () => {
+    const many = (n: number) =>
+      Array.from({ length: n }, (_, id) => comment(id, 'thebristolsound', 'Text.'))
+    const run = (n: number) => () =>
+      trustedComments([source('issues/1')], repo, () => many(n), trusted)
+    expect(run(MAX_COMMENTS)()[0].comments).toHaveLength(MAX_COMMENTS)
+    expect(run(MAX_COMMENTS + 1)).toThrow(
+      'too many comments on the referenced sources: the limit is 200'
+    )
+  })
+
   it('fails over the comment limit, naming it, instead of dropping some', () => {
     expect(MAX_COMMENTS).toBe(200)
     const three = [1, 2, 3].map((id) => comment(id, 'thebristolsound', 'Text.'))
@@ -738,6 +749,14 @@ describe('the accounts and the size the inputs are held to', () => {
     [{ MAINTAINER: 'thebristolsound', MACHINE: ' ' }]
   ])('fails when either account is unset: %j', (env) => {
     expect(() => trustedAccounts(env)).toThrow('MAINTAINER and MACHINE must both be set')
+  })
+
+  it('applies the limit of one mebibyte when the caller names none', () => {
+    const sized = (bytes: number) => [{ path: 'issues/1', title: '', body: 'x'.repeat(bytes) }]
+    expect(sourcesFile(sized(1024)).length).toBeGreaterThan(1024)
+    expect(() => sourcesFile(sized(MAX_SOURCES_BYTES))).toThrow(
+      /^sources\.json would be \d+ bytes: the limit is 1048576$/
+    )
   })
 
   it('fails over the size limit, naming it, instead of cutting the sources', () => {

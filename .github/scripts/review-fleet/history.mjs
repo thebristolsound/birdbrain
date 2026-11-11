@@ -176,10 +176,12 @@ function autoMerge(git, id, parents, objects) {
 
 // The regular files of a commit's tree, with what was left out. A symbolic link is not made,
 // because the pass would read whatever it points at, and a submodule has no files here. A path
-// that could leave the directory, or name a repository inside it, fails.
+// that could leave the directory, or name a repository inside it, fails, and so does a path the
+// tree names twice, whose second entry would replace the first.
 function treeFiles(git, commit, limit) {
   const files = []
   const skipped = []
+  const named = new Set()
   let bytes = 0
   for (const row of git.text(['ls-tree', '-r', '-l', '-z', '--full-tree', commit]).split('\0')) {
     if (!row) continue
@@ -188,6 +190,9 @@ function treeFiles(git, commit, limit) {
     const path = row.slice(tab + 1)
     if (path.split('/').some((part) => ['', '.', '..'].includes(part) || /^\.git$/i.test(part)))
       throw new Error(`unsafe path in the tree of ${commit}: ${JSON.stringify(path)}`)
+    if (named.has(path))
+      throw new Error(`the tree at ${commit} names a path twice: ${JSON.stringify(path)}`)
+    named.add(path)
     if (mode === '120000') skipped.push({ path, kind: 'symbolic link' })
     else if (mode === '160000') skipped.push({ path, kind: 'submodule' })
     else {
@@ -228,7 +233,7 @@ function writeTree(git, { files }, dest) {
         throw new Error(`git cat-file gave no blob for ${JSON.stringify(path)}`)
       const file = join(dest, path)
       mkdirSync(dirname(file), { recursive: true })
-      writeFileSync(file, out.subarray(end + 1, end + 1 + length), { flag: 'wx', mode: 0o644 })
+      writeFileSync(file, out.subarray(end + 1, end + 1 + length), { mode: 0o644 })
       at = end + 1 + length + 1
     }
     from = to
@@ -287,6 +292,13 @@ export function prepareHistory({
   maxCommits = MAX_COMMITS,
   maxTreeBytes = MAX_TREE_BYTES
 }) {
+  // A limit that is not a number would compare false against every size, which is no limit.
+  for (const [what, limit] of [
+    ['commit', maxCommits],
+    ['tree size', maxTreeBytes]
+  ])
+    if (!Number.isInteger(limit) || limit < 0)
+      throw new Error(`the ${what} limit is not a whole number`)
   if (!Array.isArray(pulls)) throw new Error('no list of open pull requests')
   if (!Array.isArray(closed)) throw new Error('no list of recently closed pull requests')
   const mine = pulls.find((p) => p?.number === number)

@@ -1099,6 +1099,8 @@ exit "$CLAUDE_EXIT"
       'stack.json'
     ])
     for (const name of r.files ?? []) expect(r.prompt).toContain(`/${name}`)
+    // The directory of patches has a line of its own, which `/commits.json` would also match.
+    expect(r.prompt).toMatch(/\/commits\/`: one patch per commit against its first parent/)
     expect(r.commits.map((c: { oid: string }) => c.oid)).toEqual([r.lower, r.head])
     expect(r.stack).toMatchObject({
       pull_request: 7,

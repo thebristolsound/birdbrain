@@ -721,6 +721,38 @@ exec ${real} "$@"
     expect(existsSync(join(s.out, 'base-tree', 'base.txt'))).toBe(false)
   })
 
+  // Git lists both entries of a tree that names one path twice; the second would overwrite the
+  // first.
+  it('fails on a tree that names one path twice, before it writes anything', () => {
+    const s = keep(scratch())
+    const normal = s.commit('base.txt', 'base\n', 'normal')
+    const one = s.git('rev-parse', `${normal}:base.txt`)
+    const two = spawnSync('git', ['-C', s.dir, 'hash-object', '-w', '--stdin'], {
+      encoding: 'utf8',
+      input: 'the other contents\n'
+    }).stdout.trim()
+    const made = spawnSync('git', ['-C', s.dir, 'mktree'], {
+      encoding: 'utf8',
+      input: `100644 blob ${one}\tdup.txt\n100644 blob ${two}\tdup.txt\n`
+    })
+    expect(made.status, made.stderr).toBe(0)
+    const base = s.git('commit-tree', made.stdout.trim(), '-m', 'crafted base')
+    const head = s.git('commit-tree', `${normal}^{tree}`, '-p', base, '-m', 'the change')
+    s.git('checkout', '-q', '--detach', head)
+    s.origin('main', base)
+    expect(() =>
+      prepareHistory({
+        dir: s.dir,
+        out: s.out,
+        number: 7,
+        repo,
+        pulls: [pull(7, head, 'crafted', 'main')],
+        closed: []
+      })
+    ).toThrow(`the tree at ${base} names a path twice: "dup.txt"`)
+    expect(readdirSync(s.out)).toEqual([])
+  })
+
   it('fails over the tree size limit, naming it, before it writes anything', () => {
     const s = keep(stacked())
     expect(MAX_TREE_BYTES).toBe(512 * 1024 * 1024)
@@ -835,6 +867,39 @@ exec ${real} "$@"
     expect(() => s.prepare()).toThrow(
       `the tree at ${s.m1} names a blob the checkout does not hold: "main.txt"`
     )
+    expect(readdirSync(s.out)).toEqual([])
+  })
+
+  // 301 empty commits past main, written in one pass by git fast-import.
+  it('applies the limit of 300 commits when the caller names none', () => {
+    const s = keep(stacked())
+    const stream = Array.from(
+      { length: MAX_COMMITS + 1 },
+      (_, i) =>
+        `commit refs/heads/many\nmark :${i + 1}\ncommitter t <t@example.com> ${1794000000 + i} +0000\ndata 2\nc\n\nfrom ${i ? `:${i}` : s.m1}\n\n`
+    ).join('')
+    const made = spawnSync('git', ['-C', s.dir, 'fast-import', '--quiet'], {
+      encoding: 'utf8',
+      input: stream
+    })
+    expect(made.status, made.stderr).toBe(0)
+    s.git('checkout', '-q', '--detach', 'many')
+    const head = s.git('rev-parse', 'HEAD')
+    expect(() => s.prepare({ pulls: [pull(11, head, 'many', 'main')] })).toThrow(
+      '301 commits past main, over the limit of 300'
+    )
+    expect(readdirSync(s.out)).toEqual([])
+  })
+
+  it.each([
+    ['maxCommits', null, 'the commit limit is not a whole number'],
+    ['maxCommits', Infinity, 'the commit limit is not a whole number'],
+    ['maxTreeBytes', null, 'the tree size limit is not a whole number'],
+    ['maxTreeBytes', '9', 'the tree size limit is not a whole number'],
+    ['maxTreeBytes', -1, 'the tree size limit is not a whole number']
+  ])('refuses to run with %s set to %j, which would be no limit', (name, value, message) => {
+    const s = keep(stacked())
+    expect(() => s.prepare({ [name]: value })).toThrow(message)
     expect(readdirSync(s.out)).toEqual([])
   })
 

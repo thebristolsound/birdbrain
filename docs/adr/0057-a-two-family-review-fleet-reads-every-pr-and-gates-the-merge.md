@@ -122,8 +122,8 @@ Three facts shaped the design:
      another commit, `base-branch-tree/` holds every file at that commit. The step writes each
      file from its stored blob, so no checkout, filter or hook runs; it makes no symbolic link
      and no submodule, lists each one it left out, and fails on a path that would leave the
-     directory or name a repository inside it. The passes check a "before this change" or
-     "on main" citation there.
+     directory or name a repository inside it, and on a path the tree names twice. The passes
+     check a "before this change" or "on main" citation there.
    - Every diff, the one against `main` included, and the merge check take their attributes
      from an empty tree, so a `.gitattributes` in the pull request can neither mark a file as
      binary, which would empty its hunks, nor name a merge driver.

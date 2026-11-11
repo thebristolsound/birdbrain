@@ -6,7 +6,7 @@ import type { ReactNode } from 'react'
 import type { Capture, CaptureEvent } from '@shared/types'
 import { useAppStore } from '@renderer/stores/appStore'
 import { notify } from '@renderer/lib/notify'
-import { CaptureLog } from '@renderer/components/status/CaptureHealth'
+import { CaptureLog, useSelfTest } from '@renderer/components/status/CaptureHealth'
 import { fakeBridge, quietVpnWarning } from '../renderer/fakeBridge'
 
 const navigate = vi.hoisted(() => vi.fn())
@@ -45,7 +45,11 @@ function renderHealth() {
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  return render(<CaptureLog />, { wrapper: Wrapper })
+  // The status group owns the self-test state; this stands in for it.
+  function Log() {
+    return <CaptureLog selfTest={useSelfTest()} />
+  }
+  return render(<Log />, { wrapper: Wrapper })
 }
 
 beforeEach(() => {

@@ -15,14 +15,15 @@ import {
   type Severity,
   type Signal
 } from '@renderer/components/status/statusGroupModel'
-import { CaptureLog } from '@renderer/components/status/CaptureHealth'
+import { CaptureLog, useSelfTest } from '@renderer/components/status/CaptureHealth'
 
 // The top bar's one status control (docs/design-handoff/2026-11-08-top-bar/, Option B): the
 // Egress, the extension connection and Capture Health as three faint dots in a neutral pill.
 // Nothing in the chrome paints a status background. Off nominal, the worst signal's icon joins
 // its dot and both take that signal's colour, with one short word; the pill itself stays
-// unfilled. The button's accessible name is the whole state in one sentence, and a polite live
-// region announces severity changes only, never each count. Click opens the three rows.
+// unfilled. The button's accessible name is the whole state (statusGroupModel's summary), and a
+// polite live region announces severity changes only, never each count. Click opens the three
+// rows.
 
 const FG: Record<Severity, string> = {
   nominal: 'text-text-faint',
@@ -42,6 +43,7 @@ export function StatusGroup() {
   const matchRoute = useMatchRoute()
   const [open, setOpen] = useState(false)
   const [showLog, setShowLog] = useState(false)
+  const selfTest = useSelfTest()
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
   const captureStats = useAppStore((s) => s.captureStats)
   const sessionActive = useAppStore((s) => s.sessionActive)
@@ -177,7 +179,8 @@ export function StatusGroup() {
           Status
         </div>
         <Row icon={Puzzle} signal={extension} />
-        <Row icon={iconEgress ? egressIcon(iconEgress, vpnSeen) : Activity} signal={egressSignal} />
+        {/* An Egress still being read takes the unknown Egress's icon, as a failed read does. */}
+        <Row icon={egressIcon(iconEgress ?? UNREAD_EGRESS, vpnSeen)} signal={egressSignal} />
         <Row icon={Activity} signal={health} />
         <div className="flex gap-2 border-t border-border px-2.5 py-2">
           <Button
@@ -206,7 +209,7 @@ export function StatusGroup() {
         </div>
         {showLog && (
           <div className="border-t border-border">
-            <CaptureLog />
+            <CaptureLog selfTest={selfTest} />
           </div>
         )}
       </PopoverContent>

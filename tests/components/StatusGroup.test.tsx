@@ -43,12 +43,14 @@ function renderWithSettings(
 function renderGroup(
   getSettings: () => Promise<{ egress: EgressSetting }>,
   vpnStatus: () => Promise<Partial<VpnStatus>>,
-  queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => ({ pending: 0, activeUrl: null }))
+  queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => ({ pending: 0, activeUrl: null })),
+  bridge: Record<string, unknown> = {}
 ) {
   fakeBridge({
     settings: { get: vi.fn(getSettings) },
     egress: { vpnStatus },
-    recapture: { queueStatus }
+    recapture: { queueStatus },
+    ...bridge
   })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   function Wrapper({ children }: { children: ReactNode }) {
@@ -174,6 +176,15 @@ describe('StatusGroup before the Egress is read', () => {
     expect(button.getAttribute('aria-label')).not.toContain('all nominal')
   })
 
+  it('gives the Egress row the unknown-Egress icon, not the Capture Health one, while loading', async () => {
+    renderWithSettings(() => new Promise(() => {}))
+    fireEvent.click(await screen.findByTestId('status-group'))
+    const row = await screen.findByTestId('status-row-egress')
+    expect(row.textContent).toContain('Reading…')
+    expect(row.querySelector('svg')?.getAttribute('class')).toContain('shield-question')
+    expect(row.querySelector('svg')?.getAttribute('class')).not.toContain('lucide-activity')
+  })
+
   it('shows a problem, with the unknown-Egress icon and word, when the settings read fails', async () => {
     renderWithSettings(async () => {
       throw new Error('settings unreadable')
@@ -281,6 +292,66 @@ describe('StatusGroup announcements and popover', () => {
     fireEvent.click(button)
     await screen.findByRole('dialog', { name: 'Status' })
     expect(screen.queryByTestId('capture-log')).toBeNull()
+  })
+
+  // The log unmounts with the popover, so a test started in it reports to the group.
+  it('shows a self-test result that arrived while the popover was closed', async () => {
+    let finish: (result: { success: boolean; durationMs: number }) => void = () => {}
+    const testHttp = vi.fn(
+      () => new Promise<{ success: boolean; durationMs: number }>((resolve) => (finish = resolve))
+    )
+    renderGroup(
+      async () => ({ egress: { kind: 'direct' } }),
+      async () => ({ vpnSeen: true }),
+      undefined,
+      { testHttp }
+    )
+    const button = await screen.findByTestId('status-group')
+    fireEvent.click(button)
+    fireEvent.click(await screen.findByRole('button', { name: 'Capture log' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Test HTTP' }))
+    expect(testHttp).toHaveBeenCalledTimes(1)
+
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Status' }), { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Status' })).toBeNull())
+    await act(async () => finish({ success: true, durationMs: 12 }))
+
+    fireEvent.click(button)
+    fireEvent.click(await screen.findByRole('button', { name: 'Capture log' }))
+    expect((await screen.findByRole('status')).textContent).toBe('HTTP OK, verified in 12ms')
+  })
+
+  // The event menu renders in a portal of its own: choosing one of its items leaves the status
+  // popover and the log it was opened from on screen.
+  it('stays open when an item of a capture event menu is chosen', async () => {
+    const writeText = vi.fn(async () => undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const event: CaptureEvent = {
+      type: 'stored',
+      captureId: 'saved-capture',
+      source: 'manual',
+      url: 'https://example.org/page',
+      timestamp: '2026-11-09T03:48:00Z'
+    }
+    useAppStore.setState({ captureEvents: [event] })
+    const button = await renderNominal()
+    fireEvent.click(button)
+    fireEvent.click(await screen.findByRole('button', { name: 'Capture log' }))
+    fireEvent.contextMenu(await screen.findByText(event.url))
+    await screen.findByRole('menu')
+    const item = screen.getByTestId('context-menu-item-event-copy-url')
+    fireEvent.pointerDown(item)
+    fireEvent.mouseDown(item)
+    fireEvent.click(item)
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(event.url))
+    expect(screen.getByRole('dialog', { name: 'Status' })).toBeTruthy()
+    expect(screen.getByTestId('capture-log')).toBeTruthy()
+
+    // The control: the same press outside both does close the popover.
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+    fireEvent.pointerDown(document.body)
+    fireEvent.click(document.body)
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Status' })).toBeNull())
   })
 
   // Design rule "No fills in the chrome": in the bar a dot takes a colour only for the worst

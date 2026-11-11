@@ -106,38 +106,46 @@ function EventRow({ event }: { event: CaptureEvent }) {
   )
 }
 
+type SelfTestRun = () => Promise<{ success: boolean; durationMs: number; error?: string }>
+
+export interface SelfTest {
+  testing: boolean
+  result: { check: string; success: boolean; durationMs: number; error?: string } | null
+  run: (check: string, test: SelfTestRun) => Promise<void>
+}
+
+// The pipeline and HTTP tests' state. The log's owner holds it, since the log unmounts with the
+// status popover and a test still running then must show its result when the log reopens.
+export function useSelfTest(): SelfTest {
+  const [result, setResult] = useState<SelfTest['result']>(null)
+  const [testing, setTesting] = useState(false)
+
+  async function run(check: string, test: SelfTestRun) {
+    setTesting(true)
+    setResult(null)
+    try {
+      setResult({ check, ...(await test()) })
+    } catch (err) {
+      setResult({ check, success: false, durationMs: 0, error: String(err) })
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  return { testing, result, run }
+}
+
 // The capture log, the body of what was the Capture Health pill's popover: the counts, the last
 // error, the event list with its context menu, and the two pipeline tests. The status group
 // (StatusGroup.tsx) shows it inside its own popover behind Capture log.
-export function CaptureLog() {
-  const [testResult, setTestResult] = useState<{
-    check: string
-    success: boolean
-    durationMs: number
-    error?: string
-  } | null>(null)
-  const [testing, setTesting] = useState(false)
+export function CaptureLog({ selfTest }: { selfTest: SelfTest }) {
+  const { testing, result: testResult, run: runTest } = selfTest
   const captureEvents = useAppStore((s) => s.captureEvents)
   const captureStats = useAppStore((s) => s.captureStats)
   const clearCaptureEvents = useAppStore((s) => s.clearCaptureEvents)
   const sessionActive = useAppStore((s) => s.sessionActive)
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
   const { data: queue } = useQuery({ ...recaptureQueueQueryOptions, refetchInterval: 2000 })
-
-  async function runTest(
-    check: string,
-    run: () => Promise<{ success: boolean; durationMs: number; error?: string }>
-  ) {
-    setTesting(true)
-    setTestResult(null)
-    try {
-      setTestResult({ check, ...(await run()) })
-    } catch (err) {
-      setTestResult({ check, success: false, durationMs: 0, error: String(err) })
-    } finally {
-      setTesting(false)
-    }
-  }
 
   return (
     <div data-testid="capture-log">

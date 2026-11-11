@@ -6,6 +6,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  truncateSync,
   writeFileSync
 } from 'fs'
 import type { FileHandle } from 'fs/promises'
@@ -829,6 +830,32 @@ describe('readMhtmlParts', () => {
       reason: 'too-large',
       size: FIXTURE_SIZE + 2,
       limit: FIXTURE_SIZE + 1
+    })
+  })
+
+  // The file grew past the limit, then shrank before it was measured again. The read still took
+  // more than the limit, so the refusal reports the bytes read, not the smaller size now.
+  it('reports the bytes read when the file shrank after growing past the limit', async () => {
+    const { root, store } = caseDir()
+    const path = join(root, 'c1.mhtml')
+    watchNextOpen((handle) => {
+      const stat = handle.stat.bind(handle)
+      vi.spyOn(handle, 'stat')
+        .mockImplementationOnce(async () => {
+          const measured = await stat()
+          appendFileSync(path, Buffer.alloc(4096, 0x41))
+          return measured
+        })
+        .mockImplementationOnce(async () => {
+          truncateSync(path, 10)
+          return stat()
+        })
+    })
+    const limits = { ...MHTML_PARTS_LIMITS, maxFileBytes: FIXTURE_SIZE + 100 }
+    expect(refusal(await readMhtmlParts(stored, store, limits))).toEqual({
+      reason: 'too-large',
+      size: FIXTURE_SIZE + 101,
+      limit: FIXTURE_SIZE + 100
     })
   })
 

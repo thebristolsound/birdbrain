@@ -153,7 +153,7 @@ describe('backgroundJobRepo', () => {
 
   it('writes back a running job whose restored row is in another state, as the process knows it', () => {
     const a = attemptOf('a')
-    const states = ['queued', 'held', 'failed', 'cancelled', 'stored']
+    const states = ['queued', 'held', 'failed', 'skipped', 'cancelled', 'stored']
     // Claimed first, then given the state a restored copy could hold them in.
     const others = states.map((state) => attemptOf(`in-${state}`))
     others.forEach(({ job: { jobId } }, i) =>

@@ -359,3 +359,12 @@ Every pull request the fleet covers fails its check for the policy reason that p
 - The recapture series draft 2135 targets main and now conflicts with it after the 2133 merge. It is a draft, so the sweep leaves it alone.
 - Next: fleet slots free from about 09:22 UTC. Then the MHTML stack 2176, 2177 and 2178 in order, needing Matt's approval label at each head, and the signing tail 2179 to 2182 in order.
 - Matt asked for the review fleet's daily cap to be raised, in this sweep session at 05:12 UTC on November 11, 2026. Set the repository variable `REVIEW_FLEET_DAILY_CAP` to 80 (it was unset, so the default of 40 applied). The fleet's 15-minute sweep starts runs for the held heads; set it back with `gh variable delete REVIEW_FLEET_DAILY_CAP`.
+
+## New coordinating thread
+
+- Matt asked for a new, clean coordinating thread at about 05:15 UTC on November 11, 2026, in the old sweep session. This thread owns every open pull request; the old one owns nothing. 41 are open, all linked here.
+- The carried-forward review status was missing at the main-merged heads of 2142, 2143, 2155 and 2165: only the automated pending status sat on each, although `done.txt` records them as carried. Reposted success on each with the existing carry-forward comment.
+- Closed the scratch tree for 2133 after locking it to this session; it was clean and its commit is squashed into main.
+- 2148 conflicted with main in one `package.json` hunk, where main moved `react-resizable-panels` on the line beside `sharp`. Resolved it in a scratch tree, keeping main's version and the exact `sharp` pin. Frozen install, typecheck, lint and `tests/sharpPin.test.ts` (3) passed, the last after rebuilding the test image library. Pushed as `e8b6f43e7816`, a fast-forward of `13bd83ecadda`; its diff against main is the same four files. Posted a note and carried the review status forward. It still needs a fleet review and Matt's evidence approval.
+- 2120 conflicts with main. 2125 is the takeover of the same change, so 2120 stays as is; whether to close it once 2125 lands is Matt's question.
+- Fleet runs started by hand for 2176 to 2182 are in flight; the 15-minute scheduled sweep runs as well.

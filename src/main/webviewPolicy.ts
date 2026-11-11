@@ -26,7 +26,7 @@ export { LEGACY_HTML_PARTITION, MHTML_PARTITION, WAYBACK_PARTITION, WAYBACK_REPL
 export interface WebviewPartitionPolicy {
   partition: string
   /**
-   * URL prefixes a guest on this partition may load or navigate to. A `file://`
+   * URL prefixes a guest on this partition may load or navigate to. A `file:///`
    * entry names the *local* file scheme only: the remote-authority form is refused
    * by `matchesPrefix` before the list is consulted (#904).
    */
@@ -57,7 +57,10 @@ export interface WebviewPartitionPolicy {
 
 const MHTML_POLICY: WebviewPartitionPolicy = {
   partition: MHTML_PARTITION,
-  allowedPrefixes: ['file://'],
+  // Three slashes, as on LEGACY_HTML_POLICY (#1205): one rule for both evidence
+  // viewers. `file://localhost/`, which `isRemoteFileUrl` reads as local, fails this
+  // prefix; `pathToFileURL` never emits it, so no artefact load is lost.
+  allowedPrefixes: ['file:///'],
   allowSubsequentNavigation: false,
   javascript: false,
   allowedPermissions: [],
@@ -360,9 +363,9 @@ export function decideWebviewDownload(): WebviewDownloadDecision {
  * locked to `data:`/`blob:`/`about:` and to `https:` respectively. So one refusal
  * covers attach, navigation and request at once, and a decision function added later
  * that consults the allow-list inherits it rather than having to remember it. It is
- * not a policy smuggled into a match, either: the `file://` entry on the evidence
- * viewer's list has always meant the local file scheme, and `startsWith` cannot say
- * so, because `file://` is a prefix of the remote form too.
+ * not a policy smuggled into a match, either: the `file:///` entry on each evidence
+ * viewer's list means the local file scheme, and `startsWith` cannot say so, because
+ * `file:///` is a prefix of the four-slash remote form `file:////host/` too.
  *
  * Reordering the host test in front of the prefix test in `decideWebviewRequest`
  * would not do instead: `requestHost` returns null for every non-`https` scheme, so
@@ -391,8 +394,9 @@ function matchesPrefix(policy: WebviewPartitionPolicy, url: string | null | unde
  *   cannot resolve is one it cannot vouch for, so it is denied rather than waved
  *   through on a `startsWith` that does not care whether it parsed.
  *
- * `file://localhost/tmp/x` needs no exception: `URL` normalises that authority away
- * to the empty one, so it arrives here already in the local form.
+ * `file://localhost/tmp/x` passes this test, because `URL` normalises that authority
+ * away to the empty one. The `file:///` prefix both evidence partitions list refuses
+ * it in `matchesPrefix` instead (#1205).
  */
 function isRemoteFileUrl(url: string): boolean {
   if (!/^file:/i.test(url)) return false

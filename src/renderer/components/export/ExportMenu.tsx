@@ -119,6 +119,10 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
   }
 
   const isExporting = exportingCaseId === caseId
+  const progressLabel =
+    isExporting && archiveProgress
+      ? `${archiveProgress.step} — ${Math.round(archiveProgress.percent)}%`
+      : null
 
   return (
     <div className="relative" data-tour="export">
@@ -136,7 +140,7 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
-        title="Export"
+        title={progressLabel ?? 'Export'}
         className="gap-1.5 aria-disabled:opacity-50"
       >
         {isExporting ? (
@@ -145,12 +149,12 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
           <FileOutput className="h-3 w-3" strokeWidth={1.8} />
         )}
         {/* In the Case action bar the label folds to the icon below lg and stays the button's
-            accessible name. No chevron: the format choice is the menu this opens, not a split
-            control (docs/design-handoff/2026-11-08-top-bar/). */}
-        <span className="sr-only lg:not-sr-only">
-          {isExporting && archiveProgress
-            ? `${archiveProgress.step} — ${Math.round(archiveProgress.percent)}%`
-            : 'Export'}
+            accessible name. not-sr-only resets white-space, so truncate comes with it or a long
+            step wraps out of the 28px button; the title carries the full step. No chevron: the
+            format choice is the menu this opens, not a split control
+            (docs/design-handoff/2026-11-08-top-bar/). */}
+        <span className="sr-only lg:not-sr-only lg:max-w-44 lg:truncate">
+          {progressLabel ?? 'Export'}
         </span>
       </Button>
 

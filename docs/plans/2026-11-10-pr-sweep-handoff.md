@@ -358,3 +358,4 @@ Every pull request the fleet covers fails its check for the policy reason that p
 - Merging closed issue 2127, so it was reopened with a comment naming the open item: its first criterion asks for the job's URL host in the failed and skipped log line, which 2133 left out on purpose.
 - The recapture series draft 2135 targets main and now conflicts with it after the 2133 merge. It is a draft, so the sweep leaves it alone.
 - Next: fleet slots free from about 09:22 UTC. Then the MHTML stack 2176, 2177 and 2178 in order, needing Matt's approval label at each head, and the signing tail 2179 to 2182 in order.
+- Matt asked for the review fleet's daily cap to be raised, in this sweep session at 05:12 UTC on November 11, 2026. Set the repository variable `REVIEW_FLEET_DAILY_CAP` to 80 (it was unset, so the default of 40 applied). The fleet's 15-minute sweep starts runs for the held heads; set it back with `gh variable delete REVIEW_FLEET_DAILY_CAP`.

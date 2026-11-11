@@ -147,6 +147,9 @@ test.describe('Background job pool', () => {
         expect(entry, url).toBeDefined()
         expect(entry!.url, url).toBe(url)
         const { inventory, scrollToLoad, consentSuppression } = entry!
+        // Both are optional in the entry schema, and two absent values would compare equal.
+        expect(inventory, url).toBeDefined()
+        expect(scrollToLoad, url).toBeDefined()
         recorded[new URL(url).hostname] = { inventory, scrollToLoad, consentSuppression }
       }
       return { recorded, jobs, concurrency }

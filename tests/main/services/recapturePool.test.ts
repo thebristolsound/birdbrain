@@ -29,10 +29,15 @@ import {
 } from '@main/services/recapture'
 import { logger } from '@main/services/logger'
 
-// The real repository, with `finishJob` replaceable for one call.
+// The real repository, with three of its calls replaceable for one call each.
 vi.mock('@main/services/db/backgroundJobRepo', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@main/services/db/backgroundJobRepo')>()
-  return { ...actual, finishJob: vi.fn(actual.finishJob) }
+  return {
+    ...actual,
+    finishJob: vi.fn(actual.finishJob),
+    hasRunnableQueued: vi.fn(actual.hasRunnableQueued),
+    settleRunningJobs: vi.fn(actual.settleRunningJobs)
+  }
 })
 
 vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
@@ -293,6 +298,9 @@ describe('the background job pool', () => {
 
   it('looks at free memory again after the retry interval, not in a loop, and starts the held job once it is back', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const info = vi.spyOn(logger, 'info')
+    const heldLines = () =>
+      info.mock.calls.filter(([, code]) => code === 'backgroundRenderer.job_memory_held')
     const { renderPage, rendering, finish } = heldRenders()
     let free = MIN_FREE_MEMORY_BYTES - 1
     const freeMemory = vi.fn(() => free)
@@ -310,16 +318,58 @@ describe('the background job pool', () => {
     vi.advanceTimersByTime(1)
     expect(freeMemory).toHaveBeenCalledTimes(2)
     expect(rendering).toEqual(['https://example.com/a'])
+    // Logged once for the hold, not again at each recheck (second review, finding 5).
+    vi.advanceTimersByTime(MEMORY_GATE_RETRY_MS)
+    expect(freeMemory).toHaveBeenCalledTimes(3)
+    expect(heldLines()).toHaveLength(1)
 
     free = MIN_FREE_MEMORY_BYTES
     vi.advanceTimersByTime(MEMORY_GATE_RETRY_MS)
-    expect(freeMemory).toHaveBeenCalledTimes(3)
+    expect(freeMemory).toHaveBeenCalledTimes(4)
     expect(rendering).toEqual(['https://example.com/a', 'https://example.org/b'])
     vi.useRealTimers()
     finish('https://example.com/a')
     finish('https://example.org/b')
     await svc.idle()
   })
+
+  // Second review, finding 4: a recheck runs on a timer, where a throw would be an uncaught
+  // exception, which closes the app with a capture still running.
+  it.each(['hasRunnableQueued', 'settleRunningJobs'] as const)(
+    'logs and stops the slot, throwing nothing, when %s throws on a memory recheck',
+    async (call) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      const error = vi.spyOn(logger, 'error')
+      const queueFailures = () =>
+        error.mock.calls.filter(([, code]) => code === 'backgroundRenderer.job_queue_failed')
+      const { renderPage, rendering, finish } = heldRenders()
+      const svc = makeService(renderPage, { freeMemory: () => MIN_FREE_MEMORY_BYTES - 1 })
+      const {
+        jobIds: [, second]
+      } = svc.enqueue([
+        { url: 'https://example.com/a', caseId },
+        { url: 'https://example.org/b', caseId }
+      ])
+      expect(rendering).toEqual(['https://example.com/a'])
+
+      // As while a restore has the database closed.
+      vi.mocked(backgroundJobRepo[call]).mockImplementationOnce(() => {
+        throw new Error('Database not initialized')
+      })
+      expect(() => vi.advanceTimersByTime(MEMORY_GATE_RETRY_MS)).not.toThrow()
+      expect(queueFailures()).toHaveLength(1)
+      expect(rendering).toEqual(['https://example.com/a'])
+      expect(stateOf(second)).toBe('queued')
+
+      // The running job goes on, and its end fills the slot again.
+      vi.useRealTimers()
+      finish('https://example.com/a')
+      await vi.waitFor(() => expect(rendering).toEqual(['https://example.org/b']))
+      finish('https://example.org/b')
+      await svc.idle()
+      expect(stateOf(second)).toBe('stored')
+    }
+  )
 
   it('reads free memory only when a job could start beside the running one', async () => {
     const info = vi.spyOn(logger, 'info')
@@ -454,13 +504,18 @@ describe('the background job pool', () => {
   it('cancels both running jobs of a Batch, and retries both', async () => {
     let attempt = 0
     const rendering: string[] = []
-    const renderPage: RenderPage = (url, { onStep, signal }) => {
+    // As the renderer does, each render reports its end the moment the abort lands and rejects
+    // after its wind-down, so the second cancel below meets two jobs that are ending.
+    const renderPage: RenderPage = (url, { onStep, signal, onEnd }) => {
       attempt++
       if (attempt > 2) return Promise.resolve(page(url))
       rendering.push(url)
       return new Promise((_, reject) => {
         onStep?.('load')
-        signal?.addEventListener('abort', () => reject(new RecaptureCancelled()))
+        signal?.addEventListener('abort', () => {
+          onEnd?.()
+          setTimeout(() => reject(new RecaptureCancelled()), 20)
+        })
       })
     }
     const svc = makeService(renderPage)

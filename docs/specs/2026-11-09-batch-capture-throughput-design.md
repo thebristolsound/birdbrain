@@ -2,9 +2,9 @@
 
 **Date:** 2026-11-09
 
-**Status:** Draft, grilled with the maintainer on 2026-11-09; awaiting maintainer review. All six
-slices are built on stacked draft pull requests (#2133, #2135, #2141, #2146, #2147 and #2152), none
-merged yet.
+**Status:** Draft, grilled with the maintainer on 2026-11-09; awaiting maintainer review. The six
+slices are built on stacked pull requests (#2133, #2135, #2141, #2146, #2147 and #2152), which
+merge in that order.
 
 **Frame of reference:** `origin/main` at `c1ed8ed8`. This spec cites code by symbol, per
 [`docs/README.md`](../README.md). The measured figures come from one batch on 2026-11-09 and from
@@ -246,7 +246,11 @@ At startup, before the queue runs:
 
 Restoring a database snapshot or a backup file can bring back rows from the past. A restore
 re-opens the database in the running app, so the same pass runs right after a restore that
-succeeds, before the queue can claim a restored row.
+succeeds, before the queue can claim a restored row. The restored copy can hold a job the app is
+still rendering in any state, or not at all, so the pass first writes that job's row back as
+`running` under its attempt's Capture id; the job then ends as it would have, and a resume cannot
+render it a second time. A job whose Case the restored copy lacks gets no row, and its ingest fails
+as it does after a Case delete.
 
 Deleting a Case deletes its jobs through the foreign key. A running job whose Case is deleted
 fails at ingest, as it does today.
@@ -277,7 +281,7 @@ table is not added to `ALLOWED_TABLES` in `dbAdmin.ts`, so Settings -> Database 
 
 #### Resume order build note
 
-**Build note, 2026-11-10:** unmerged slice 3 (#2141 at `0165b0b0`) adds nullable `resumed_at` to
+**Build note, 2026-11-10:** slice 3 (#2141) adds nullable `resumed_at` to
 `background_jobs`. Resuming a Batch sets it to the resume time. Claims use
 `COALESCE(resumed_at, queued_at)`, then `queued_at` and insertion order. The resumed Batch follows
 jobs already queued at resume time; jobs queued later can follow it. This records the built

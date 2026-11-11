@@ -13,6 +13,8 @@ import type {
   UrlLookupResult
 } from '@shared/schemas'
 import type { PopupPageStatus, SelectionActionResponse } from '@extension/messages'
+import { plainTextToNoteDoc } from '@shared/noteDoc'
+import { SELECTION_QUOTE_MAX_LENGTH } from '@shared/selectionKind'
 
 vi.mock('@extension/utils/api', () => ({
   getStatus: vi.fn(),
@@ -314,7 +316,8 @@ describe('SELECTION_ACTION: tag and quote ride the #392 attach endpoints', () =>
     const response = (await dispatchWithResponse({
       type: 'SELECTION_ACTION',
       action: 'quote',
-      text: 'The quoted passage.'
+      text: 'The quoted passage.',
+      rawText: 'The quoted passage.'
     })) as SelectionActionResponse
 
     expect(response.ok).toBe(true)
@@ -332,7 +335,8 @@ describe('SELECTION_ACTION: tag and quote ride the #392 attach endpoints', () =>
     await dispatchWithResponse({
       type: 'SELECTION_ACTION',
       action: 'quote',
-      text: 'The quoted passage.'
+      text: 'The quoted passage.',
+      rawText: 'The quoted passage.'
     })
 
     expect(vi.mocked(createNoteOnUrl).mock.calls[0][0].noteTitle).toBe(`Quote - ${TAB.url}`)
@@ -366,7 +370,8 @@ describe('SELECTION_ACTION: tag and quote ride the #392 attach endpoints', () =>
     const response = (await dispatchWithResponse({
       type: 'SELECTION_ACTION',
       action: 'quote',
-      text: '  The quoted passage.  '
+      text: '  The quoted passage.  ',
+      rawText: '  The quoted passage.  '
     })) as SelectionActionResponse
 
     expect(response).toEqual({ ok: true, detail: 'Quote saved to case notes', captured: true })
@@ -374,6 +379,69 @@ describe('SELECTION_ACTION: tag and quote ride the #392 attach endpoints', () =>
     expect(call.noteTitle).toBe('Quote - Example')
     expect(call.noteText).toBe('The quoted passage.')
     expect(call.payload.mhtml).toBeInstanceOf(Blob)
+  })
+
+  it("keeps a multi-line quote's lines, which the note stores as separate blocks (#1003)", async () => {
+    const response = (await dispatchWithResponse({
+      type: 'SELECTION_ACTION',
+      action: 'quote',
+      text: 'Acme Holdings Ltd 12 Harbour Road Bristol BS1 4AA',
+      rawText: 'Acme Holdings Ltd\n12 Harbour Road\n\nBristol BS1 4AA'
+    })) as SelectionActionResponse
+
+    expect(response.ok).toBe(true)
+    const { noteText } = vi.mocked(createNoteOnUrl).mock.calls[0][0]
+    expect(noteText).toBe('Acme Holdings Ltd\n12 Harbour Road\n\nBristol BS1 4AA')
+    expect(plainTextToNoteDoc(noteText).content).toEqual([
+      { type: 'paragraph', content: [{ type: 'text', text: 'Acme Holdings Ltd' }] },
+      { type: 'paragraph', content: [{ type: 'text', text: '12 Harbour Road' }] },
+      { type: 'paragraph' },
+      { type: 'paragraph', content: [{ type: 'text', text: 'Bristol BS1 4AA' }] }
+    ])
+  })
+
+  it.each([
+    ['is missing', undefined],
+    ['is a different passage', 'Acme Holdings Ltd\nSomewhere else'],
+    ['is over the cap', `Acme${'\n'.repeat(SELECTION_QUOTE_MAX_LENGTH)}Holdings`]
+  ])('refuses a quote whose line-kept text %s, creating nothing', async (_case, rawText) => {
+    const response = (await dispatchWithResponse({
+      type: 'SELECTION_ACTION',
+      action: 'quote',
+      text: 'Acme Holdings',
+      rawText
+    })) as SelectionActionResponse
+
+    expect(response).toEqual({
+      ok: false,
+      error: 'Could not read the selected passage; select it again'
+    })
+    expect(vi.mocked(lookupCaptureByUrl)).not.toHaveBeenCalled()
+    expect(vi.mocked(createNoteOnUrl)).not.toHaveBeenCalled()
+  })
+
+  it('derives tag and selector identity from the collapsed passage, not the line-kept one', async () => {
+    vi.mocked(lookupCaptureByUrl)
+      .mockResolvedValueOnce(LOOKUP_HIT)
+      .mockResolvedValueOnce(LOOKUP_HIT)
+    const send = (action: string, rawText?: string): Promise<unknown> =>
+      dispatchWithResponse({
+        type: 'SELECTION_ACTION',
+        action,
+        text: 'wire transfer 4471',
+        rawText
+      })
+
+    await send('tag')
+    await send('tag', 'wire\n  transfer\n4471')
+    await send('selector')
+    await send('selector', 'wire\n  transfer\n4471')
+
+    const [flat, multiLine] = vi.mocked(applyTagToUrl).mock.calls.map(([call]) => call.tagName)
+    expect(multiLine).toBe(flat)
+    expect(flat).toBe('wire-transfer-4471')
+    const patterns = vi.mocked(createSelector).mock.calls.map(([call]) => call.pattern)
+    expect(patterns).toEqual(['wire transfer 4471', 'wire transfer 4471'])
   })
 
   it('a failed auto-capture creates nothing and still releases the latch', async () => {
@@ -481,7 +549,8 @@ describe('SELECTION_ACTION: tag and quote ride the #392 attach endpoints', () =>
     const response = (await dispatchWithResponse({
       type: 'SELECTION_ACTION',
       action: 'quote',
-      text: 'evil@example.com'
+      text: 'evil@example.com',
+      rawText: 'evil@example.com'
     })) as SelectionActionResponse
 
     expect(response).toEqual({
@@ -587,7 +656,8 @@ describe('SELECTION_ACTION: tag and quote ride the #392 attach endpoints', () =>
     const response = (await dispatchWithResponse({
       type: 'SELECTION_ACTION',
       action: 'quote',
-      text: 'evil@example.com'
+      text: 'evil@example.com',
+      rawText: 'evil@example.com'
     })) as SelectionActionResponse
 
     expect(response).toEqual({
@@ -649,7 +719,8 @@ describe('SELECTION_ACTION: tag and quote ride the #392 attach endpoints', () =>
     const response = (await dispatchWithResponse({
       type: 'SELECTION_ACTION',
       action: 'quote',
-      text: 'The quoted passage.'
+      text: 'The quoted passage.',
+      rawText: 'The quoted passage.'
     })) as SelectionActionResponse
 
     expect(response).toEqual({ ok: true, detail: 'Quote saved to case notes', captured: false })
@@ -750,7 +821,8 @@ describe('SELECTION_ACTION: tag and quote ride the #392 attach endpoints', () =>
     await dispatchWithResponse({
       type: 'SELECTION_ACTION',
       action: 'quote',
-      text: 'The quoted passage.'
+      text: 'The quoted passage.',
+      rawText: 'The quoted passage.'
     })
 
     vi.mocked(lookupCaptureByUrl).mockRejectedValueOnce(new Error('offline'))

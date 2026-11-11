@@ -16,7 +16,7 @@ import { removeInjectedBirdbrainUi } from '@extension/captureHygiene'
 import { CaptureUiSuppressionError, createCaptureSuppression } from '@extension/captureSuppression'
 import { MAX_SCREENSHOT_BITMAP_BYTES } from '@shared/constants'
 import { matchIgnoredUrl } from '@shared/urlPatterns'
-import { selectionToTagName } from '@shared/selectionKind'
+import { isQuoteTextOf, selectionToTagName } from '@shared/selectionKind'
 import { canonicalizeUrl } from '@shared/urlCanonicalize'
 import { extensionVersionOf } from '@shared/extensionVersion'
 import type {
@@ -1064,7 +1064,8 @@ async function handleSelectionAction(
   tabId: number,
   url: string,
   action: SelectionActionKind,
-  rawText: string
+  requestText: string,
+  requestRawText: string
 ): Promise<SelectionActionResponse> {
   const caseId = activeCaseId
   if (!connected || !caseId) {
@@ -1072,8 +1073,12 @@ async function handleSelectionAction(
     // between its render and the click; the answer of record is taken now.
     return { ok: false, error: 'Not connected to Birdbrain with an active case' }
   }
-  const text = rawText.trim()
+  const text = requestText.trim()
   if (!text) return { ok: false, error: 'Nothing selected' }
+  const quoteText = requestRawText.trim()
+  if (action === 'quote' && !isQuoteTextOf(quoteText, text)) {
+    return { ok: false, error: 'Could not read the selected passage; select it again' }
+  }
 
   if (action === 'selector') {
     try {
@@ -1111,7 +1116,7 @@ async function handleSelectionAction(
       caseId,
       url,
       noteTitle: quoteNoteTitle(pageTitle, url),
-      noteText: text,
+      noteText: quoteText,
       payload
     })
     recordSelectionCapture(tabId, url, result.captured)
@@ -1515,7 +1520,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       } satisfies SelectionActionResponse)
       return true
     }
-    handleSelectionAction(tabId, url, message.action, String(message.text ?? '')).then(sendResponse)
+    handleSelectionAction(
+      tabId,
+      url,
+      message.action,
+      String(message.text ?? ''),
+      String(message.rawText ?? '')
+    ).then(sendResponse)
     return true
   }
 

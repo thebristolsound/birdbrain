@@ -60,6 +60,38 @@ export function normalizeSelection(raw: string): string {
   return (raw || '').replace(/\s+/g, ' ').trim()
 }
 
+/**
+ * Cap on a Quote's body (#1003). `SELECTION_MAX_LENGTH` measures the collapsed
+ * passage, so the raw one it came from is otherwise unbounded: every run of
+ * whitespace counts once there and in full here.
+ */
+export const SELECTION_QUOTE_MAX_LENGTH = 1000
+
+/**
+ * A Quote's body: the selection trimmed and otherwise as the page laid it out,
+ * so an address or code block keeps its lines (#1003). Over the cap it falls
+ * back to the collapsed passage, never a truncated one.
+ */
+export function selectionQuoteText(raw: string): string {
+  const trimmed = (raw || '').trim()
+  return trimmed.length <= SELECTION_QUOTE_MAX_LENGTH ? trimmed : normalizeSelection(trimmed)
+}
+
+/**
+ * Whether `quoteText` is a well-formed Quote body for the passage `text`: what
+ * `selectionQuoteText` returns for it, so trimmed, within the cap, and the same
+ * passage once whitespace is collapsed. An empty pair is not a match.
+ */
+export function isQuoteTextOf(quoteText: string, text: string): boolean {
+  const passage = normalizeSelection(text)
+  return (
+    passage !== '' &&
+    quoteText === quoteText.trim() &&
+    quoteText.length <= SELECTION_QUOTE_MAX_LENGTH &&
+    normalizeSelection(quoteText) === passage
+  )
+}
+
 /** Whether a passage is worth offering an action bar for at all. */
 export function isActionableSelection(raw: string): boolean {
   const text = normalizeSelection(raw)

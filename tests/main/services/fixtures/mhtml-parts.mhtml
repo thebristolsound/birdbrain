@@ -1,0 +1,51 @@
+From: <Saved by Blink>
+Snapshot-Content-Location: https://example.com/report
+MIME-Version: 1.0
+Content-Type: multipart/related;
+	type="text/html";
+	boundary="----PartsFixtureBoundary"
+
+This is a multi-part message in MIME format.
+
+------PartsFixtureBoundary
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+Content-Location: https://example.com/report
+
+<html><head><title>Quarterly widget report</title></head><body><p>Widgets =E2=80=94 =
+up 4%</p><a href=3D"https://example.org/notes">notes</a></body></html>
+------PartsFixtureBoundary
+Content-Type: text/css
+Content-Transfer-Encoding: 8bit
+Content-Location: https://example.org/style.css
+
+body { color: #333; }
+------PartsFixtureBoundary
+Content-Type: image/png
+Content-Transfer-Encoding: base64
+Content-Location: https://example.com/pixel.png
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=
+------PartsFixtureBoundary
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: base64
+Content-ID: <frame-1@widgets.example>
+Content-Location: https://widgets.example/
+ embed/frame.html
+
+PGh0bWw+PGJvZHk+PHA+V2lkZ2V0IGZyYW1lIMOp
+PC9wPjwvYm9keT48L2h0bWw+
+------PartsFixtureBoundary
+Content-Type: image/gif
+Content-Transfer-Encoding: base64
+Content-ID: <badge@example.org>
+
+R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7
+------PartsFixtureBoundary
+Content-Type: text/html; charset=iso-8859-1
+Content-Transfer-Encoding: binary
+Content-Location: cid:frame-2@widgets.example
+
+<html><body><p>Second frame, café</p></body></html>
+------PartsFixtureBoundary--
+Epilogue text after the closing boundary.

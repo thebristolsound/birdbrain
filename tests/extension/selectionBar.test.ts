@@ -18,6 +18,7 @@ import {
   SELECTION_BAR_SELECTOR
 } from '../../extension/src/selectionBar'
 import type { SelectionActionResponse } from '@extension/messages'
+import { SELECTION_QUOTE_MAX_LENGTH } from '@shared/selectionKind'
 import { installTrustedInput, operatorClick, operatorMouseUp } from './trustedInput'
 
 type SendResponse = (response?: unknown) => void
@@ -30,7 +31,7 @@ const sendMessageMock = vi.fn()
 let stateResponse: unknown = { connected: true, activeCaseId: 'case-1' }
 let stateRejects = false
 let actionResponse: unknown = { ok: true, detail: 'Selector created', captured: false }
-const actionRequests: Array<{ action: string; text: string }> = []
+const actionRequests: Array<{ action: string; text: string; rawText: string }> = []
 
 function dispatch(message: unknown): unknown[] {
   const responses: unknown[] = []
@@ -106,8 +107,8 @@ beforeAll(async () => {
       return stateResponse
     }
     if (message.type === 'SELECTION_ACTION') {
-      const request = message as unknown as { action: string; text: string }
-      actionRequests.push({ action: request.action, text: request.text })
+      const request = message as unknown as { action: string; text: string; rawText: string }
+      actionRequests.push({ action: request.action, text: request.text, rawText: request.rawText })
       return actionResponse
     }
     return {}
@@ -248,9 +249,43 @@ describe('running an action', () => {
     await clicked
 
     expect(actionRequests).toEqual([
-      { action: 'tag', text: 'Report abuse to evil@example.com immediately.' }
+      {
+        action: 'tag',
+        text: 'Report abuse to evil@example.com immediately.',
+        rawText: 'Report abuse to evil@example.com immediately.'
+      }
     ])
     expect(barMessage()).toBe('Tagged "evil-example-com"')
+  })
+
+  it("sends a multi-line selection's line breaks beside the collapsed passage (#1003)", async () => {
+    setPageHtml(
+      '<main><p>\n  Acme Holdings Ltd\n  12 Harbour Road\n\n  Bristol BS1 4AA\n</p></main>'
+    )
+    selectParagraph()
+    await mouseUp()
+
+    await clickAction('quote')
+
+    expect(actionRequests).toEqual([
+      {
+        action: 'quote',
+        text: 'Acme Holdings Ltd 12 Harbour Road Bristol BS1 4AA',
+        rawText: 'Acme Holdings Ltd\n  12 Harbour Road\n\n  Bristol BS1 4AA'
+      }
+    ])
+  })
+
+  it('sends the collapsed passage as quote text when the raw one is over the cap', async () => {
+    setPageHtml(`<main><p>Acme${'\n'.repeat(SELECTION_QUOTE_MAX_LENGTH)}Holdings</p></main>`)
+    selectParagraph()
+    await mouseUp()
+
+    await clickAction('quote')
+
+    expect(actionRequests).toEqual([
+      { action: 'quote', text: 'Acme Holdings', rawText: 'Acme Holdings' }
+    ])
   })
 
   it('shows the failure inline, verbatim', async () => {
@@ -435,6 +470,36 @@ describe('capture suppression round trip (#386)', () => {
     expect(bar()).toBeNull()
   })
 
+  it('a restored ready bar quotes the line breaks of the selection it comes back to (#1003)', async () => {
+    setPageHtml(
+      '<main><p>Acme Holdings Ltd\n12 Harbour Road</p>' +
+        '<p id="second">Acme Holdings Ltd 12   Harbour\nRoad</p></main>'
+    )
+    selectParagraph()
+    await mouseUp()
+    expect(bar()).not.toBeNull()
+
+    dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+    const range = document.createRange()
+    range.selectNodeContents(document.getElementById('second')!)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    // Same collapsed passage, so the offer survives the capture
+    dispatch({ type: 'RELEASE_CAPTURE_UI' })
+    expect(bar()).not.toBeNull()
+
+    await clickAction('quote')
+    expect(actionRequests).toEqual([
+      {
+        action: 'quote',
+        text: 'Acme Holdings Ltd 12 Harbour Road',
+        rawText: 'Acme Holdings Ltd 12   Harbour\nRoad'
+      }
+    ])
+  })
+
   it('is removed by the orphaned-content-script fallback strip', async () => {
     selectParagraph()
     await mouseUp()
@@ -555,5 +620,47 @@ describe('a slow service worker cannot strand the bar on stale text', () => {
     // Dropped, not adopted: the mouseup that produced the new selection runs
     // its own pass rather than this continuation inheriting it
     expect(bar()).toBeNull()
+  })
+
+  it('still raises when the same passage is re-selected with other line breaks (#1003)', async () => {
+    setPageHtml(
+      '<main><p>Acme Holdings Ltd\n12 Harbour Road</p>' +
+        '<p id="second">Acme Holdings Ltd 12   Harbour\nRoad</p></main>'
+    )
+    let resolveState: ((value: unknown) => void) | null = null
+    sendMessageMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveState = resolve
+        })
+    )
+
+    selectParagraph()
+    operatorMouseUp()
+    await flushTimers()
+
+    const range = document.createRange()
+    range.selectNodeContents(document.getElementById('second')!)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    resolveState!({ connected: true, activeCaseId: 'case-1' })
+    await flushTimers()
+
+    // The stale check compares collapsed passages, so a layout difference
+    // alone is the same offer
+    expect(bar()).not.toBeNull()
+
+    // The offer is against the selection on screen now, so a Quote carries
+    // that selection's line breaks, not those of the one it replaced
+    await clickAction('quote')
+    expect(actionRequests).toEqual([
+      {
+        action: 'quote',
+        text: 'Acme Holdings Ltd 12 Harbour Road',
+        rawText: 'Acme Holdings Ltd 12   Harbour\nRoad'
+      }
+    ])
   })
 })

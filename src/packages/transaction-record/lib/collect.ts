@@ -25,6 +25,7 @@ interface ResponseExtra {
 
 interface Hop {
   sent: RequestWillBeSent
+  beforeCut: boolean
   response?: CdpResponse
   servedFromCache: boolean
   finished: boolean
@@ -161,7 +162,8 @@ const toExchanges = (
       (finishedOn !== undefined && (input.durableSessions?.has(finishedOn) ?? false)))
       ? returned
       : undefined
-  return hops.map((hop, index) => {
+  return hops.flatMap((hop, index) => {
+    if (!hop.beforeCut) return []
     const next = hops[index + 1]
     const { sent, failure, requestExtra, responseExtra } = hop
     const { request, frameId, type, wallTime } = sent
@@ -260,7 +262,7 @@ export const collectExchanges = (input: CollectorInput): CollectedExchanges => {
   // frame's document request also starts there, later, under its own frame id.
   let mainFrameId: string | undefined
 
-  for (const event of input.events) {
+  for (const [index, event] of input.events.entries()) {
     const { method, params } = event
     if (method === 'Target.attachedToTarget') {
       const { sessionId, targetInfo } = params as AttachedToTarget
@@ -282,6 +284,7 @@ export const collectExchanges = (input: CollectorInput): CollectedExchanges => {
         const chain = chainOf(requestId)
         const hop: Hop = {
           sent: params as RequestWillBeSent,
+          beforeCut: input.requestCutIndex === undefined || index < input.requestCutIndex,
           servedFromCache: false,
           finished: false
         }
@@ -308,7 +311,7 @@ export const collectExchanges = (input: CollectorInput): CollectedExchanges => {
 
   let mainDocument: Exchange | undefined
   const exchanges = [...chains.values()]
-    .filter((chain) => chain.hops.length > 0)
+    .filter((chain) => chain.hops.some((hop) => hop.beforeCut))
     .sort(byStart)
     .flatMap((chain) => {
       const written = toExchanges(chain, input, mainFrameId)

@@ -2,8 +2,9 @@
 
 **Date:** 2026-11-09
 
-**Status:** Draft, grilled with the maintainer on 2026-11-09; awaiting maintainer review. Nothing
-in it is implemented.
+**Status:** Draft, grilled with the maintainer on 2026-11-09; awaiting maintainer review. All six
+slices are built on stacked draft pull requests (#2133, #2135, #2141, #2146, #2147 and #2152), none
+merged yet.
 
 **Frame of reference:** `origin/main` at `c1ed8ed8`. This spec cites code by symbol, per
 [`docs/README.md`](../README.md). The measured figures come from one batch on 2026-11-09 and from
@@ -24,7 +25,8 @@ queue for the queue and keeps the code's names for symbols.
 
 ## Problem
 
-On 2026-11-09 the maintainer pasted 25 URLs into **Capture -> Paste URLs** (`AddUrlsBox`). The
+On 2026-11-09 the maintainer pasted 25 URLs into **Capture -> Paste URLs to capture…**
+(`AddUrlsBox`). The
 Captures arrived one at a time over 11 minutes, and nothing in the app showed that the batch was
 still running. 22 Captures were stored. The three that were not left no trace: the background job
 queue emits a `failed` event to the renderer and logs nothing, so neither the log nor the database
@@ -33,7 +35,7 @@ says what happened to them.
 Four properties of the current queue produce this:
 
 - **Serial.** `createRecaptureService` in `src/main/services/recapture.ts` runs one job at a time
-  (`drain()`), as the Recapture design chose for predictable resource use.
+  (`drain()`), as the Recapture design chose for predictable resource use and honest timestamps.
 - **Held in memory.** Queued jobs live in an array and are lost when the app closes.
 - **Invisible until it starts.** `runJob` emits the `received` event when a job starts, not when it
   is queued, so a queued job has no row anywhere in the app. `status()` returns only
@@ -66,14 +68,15 @@ start to stored row. This section reproduces no URL from that database.
 
 The 360.1 s gap is three times the 120 s Recapture timeout (`DEFAULT_TIMEOUT_MS`), and three
 Captures were not stored. The likeliest reading is that three jobs ran to the timeout, back to
-back. Because failed jobs are not logged, this is an inference, not a measurement. **Three timed-out
-jobs used 53% of the batch's wall time and produced nothing.**
+back. Because failed jobs are not logged, this is an inference, not a measurement. **The gap with
+no stored Capture accounts for about 53% of the batch's wall time; three consecutive timeouts are
+one explanation.**
 
-Two further facts bear on #2121. The three Captures stored without a Transaction Record took
-16.5 s, 13.5 s and 19.8 s from start to row. Each finished far inside its 120 s, so the time left
-before the deadline (`timeLeftMs` in `finishTransactionRecord`) was not what cut them short. The
-fixed bound of one of the two end phases expired: `BODY_COLLECT_TIMEOUT_MS` (5 s) or
-`RECORD_WRITE_TIMEOUT_MS` (10 s). The log does not say which.
+The three Captures stored without a Transaction Record took 16.5 s, 13.5 s and 19.8 s from start
+to row. These durations do not indicate that the overall 120 s render deadline was exhausted.
+Expiration of `BODY_COLLECT_TIMEOUT_MS` (5 s) or `RECORD_WRITE_TIMEOUT_MS` (10 s) is a hypothesis;
+recording setup, collection, writing and schema validation can also fail. The retained log does
+not establish which cause occurred.
 
 A list-scheduling model of the same 25 jobs, run in arrival order with the three timeouts at
 120 s, reproduces the serial wall time (674 s against 673 s measured). Its estimates for more
@@ -113,8 +116,9 @@ stops growing. The floor is the time the step takes when nothing on the page hol
 | PDF print | `PRINT_TIMEOUT_MS` 5 s | under 2 s | measured on fixtures |
 | Ingest: hash, TLS Cert Chain fetch, files, manifest entry, row | the TLS fetch only, 10 s (`DEFAULT_TIMEOUT_MS` in `tlsCertChain.ts`) | under 1 s plus the TLS fetch | estimate |
 
-The floors sum to about 6 s to 8 s, which matches the fastest measured jobs (5.7 s to 6.7 s). The
-pre-artifact phases share 80 s, because each is clipped to the time left less
+The floors sum to about 6 s to 15 s, plus the TLS fetch. The fastest measured jobs (5.7 s to 6.7 s)
+sit at the low end of that range, and the fastest is just under it, so at least one estimated floor
+is slightly high. The pre-artifact phases share 80 s, because each is clipped to the time left less
 `FINAL_ARTIFACT_RESERVE_MS` (40 s); the last 40 s are held for the artifacts, the Transaction Record
 and the PDF.
 
@@ -197,7 +201,7 @@ CREATE INDEX idx_background_jobs_batch ON background_jobs(batch_id);
 | `batch_id` | The job's Batch: one per `recapture:enqueue` or `recapture:enqueueCaptures` call, so #2124 can group a paste. A retry keeps it. |
 | `supersedes_capture_id`, `linked_from_capture_id`, `link_href` | The `RecaptureJob` fields today, so a job read back after a restart runs exactly as it was queued. `linked_from_capture_id` has no foreign key: `readLinkSource` already refuses a job whose source is gone. |
 | `phase` | The last progress phase while `running`; see [Events](#events-and-the-renderer-contract). |
-| `attempts` | Renders started for this job. A retry adds one. |
+| `attempts` | Attempts the worker has claimed for this job. Each claim adds one, the claim after a retry included; the retry itself adds nothing. |
 | `capture_id` | Set when the attempt starts, to the id `runJob` generates and the Transaction Record's `warcinfo` names. It names a stored Capture only in state `stored`. No foreign key, so deleting the Capture keeps the job's history. |
 | `failure_kind` | For `failed`: `timeout`, `render`, `ingest`, or `interrupted`. For `skipped`: `excluded`, `refused-address`, or `link-source`. |
 | `error`, `warning` | The message the terminal event carries today (`error`, `skipReason`, `warning`). |
@@ -212,7 +216,7 @@ queued -> held                   (startup, for a job queued in an earlier sessio
 held -> queued                   (Operator resumes the job's Batch)
 queued | held -> cancelled
 running -> cancelled             (Operator cancel before ingest starts)
-failed | cancelled -> queued     (Operator retry; attempts + 1)
+failed | cancelled -> queued     (Operator retry)
 ```
 
 `stored`, `skipped`, `failed` and `cancelled` are terminal until the Operator retries. A job in
@@ -224,18 +228,23 @@ observation at a later time and a page that hung once usually hangs again.
 
 At startup, before the queue runs:
 
-1. Every `running` row becomes `failed` with `failure_kind = 'interrupted'`. The app closed during
-   its render or ingest. The ingest's write-ahead seam (`withManifestEntry`) already rolls back a
-   manifest entry whose row never landed, so an interrupted job leaves no partial Capture. It is
+1. A `running` row whose `capture_id` names a Capture in the row's Case becomes `stored`: the app
+   closed after the ingest committed and before the row was finished. Every other `running` row
+   becomes `failed` with `failure_kind = 'interrupted'`. The app closed during its render or
+   ingest. The ingest's write-ahead seam (`withManifestEntry`) rolls a manifest entry back only
+   when its callback throws or rejects, and a process that stops runs no rollback. A stop during
+   the ingest can therefore leave files in the Case directory with no Capture row, and a stop
+   between the manifest append and the row insert also leaves a signed `capture` entry with no
+   row. This pass settles the job row only; it does not look for either. An interrupted job is
    not re-run without the Operator, because a re-run is a new observation at a later time.
 2. Every `queued` row becomes `held`. A held job runs only after the Operator resumes its Batch.
    Between sessions the Egress setting, the network, or the Operator's intent can change, and a
    held job sends no request the Operator did not start in this session. The hold is per Batch,
-   not on the queue: a Batch queued in this session runs at once, ahead of held ones, so a fresh
-   paste never waits behind work from an earlier session.
+   not on the queue: a fresh Batch does not wait behind jobs that remain held.
 
-Restoring a database snapshot (`restoreSnapshotFile`) can bring back rows from the past. The same
-startup pass handles them, because a restore takes effect at the next start.
+Restoring a database snapshot or a backup file can bring back rows from the past. A restore
+re-opens the database in the running app, so the same pass runs right after a restore that
+succeeds, before the queue can claim a restored row.
 
 Deleting a Case deletes its jobs through the foreign key. A running job whose Case is deleted
 fails at ingest, as it does today.
@@ -264,16 +273,25 @@ table is not added to `ALLOWED_TABLES` in `dbAdmin.ts`, so Settings -> Database 
 
 ### Bounded parallel workers
 
+#### Resume order build note
+
+**Build note, 2026-11-10:** unmerged slice 3 (#2141 at `0165b0b0`) adds nullable `resumed_at` to
+`background_jobs`. Resuming a Batch sets it to the resume time. Claims use
+`COALESCE(resumed_at, queued_at)`, then `queued_at` and insertion order. The resumed Batch follows
+jobs already queued at resume time; jobs queued later can follow it. This records the built
+ordering rule, not a guarantee that every future paste takes priority over resumed work.
+
 #### Shape
 
-`drain()` becomes a pool of up to `concurrency` worker loops. Each loop claims the oldest `queued`
-row in one synchronous statement (better-sqlite3 runs in the main process, so two loops cannot
-claim the same row), sets it `running`, and calls `runJob`. Each job keeps its own hidden window
-and its own in-memory partition, as the Recapture design requires; nothing is shared between
-renders.
+`drain()` becomes a pool of up to `concurrency` worker loops. Each loop claims the first eligible
+`queued` row in the claim order above in one synchronous statement (better-sqlite3 runs in the
+main process, so two loops cannot claim the same row), sets it `running`, and calls `runJob`.
+Each job keeps its own hidden window and its own in-memory partition, as the Recapture design
+requires; nothing is shared between renders.
 
-**One running job per site.** A loop claims the oldest `queued` row whose site has no job
-`running`, so a Batch with several pages on one site never loads that site twice at once.
+**One running job per site.** A loop claims the first eligible `queued` row in claim order whose
+site has no job `running`, so a Batch with several pages on one site never loads that site twice
+at once.
 Concurrent requests to one server can trip rate limits or bot checks, which changes what a Capture
 holds. The site is the registrable domain from `tldts` (already a dependency), so
 `www.example.com` and `example.com` share a slot; an IP address or a host with no registrable
@@ -304,10 +322,10 @@ The comment on `cleanup` in `renderPageInHiddenWindow` records that
 `ElectronBlocker.enableBlockingInSession` registers global `ipcMain` handlers, and that a second
 session enabling them while they are registered throws. The render catches that throw, logs
 `backgroundRenderer.consent_blocker_enable_failed`, and continues without Consent Suppression. With
-two concurrent renders, the second would store a Capture with no Consent Suppression and a consent
-wall in its screenshot, and nothing would fail.
+two concurrent renders, the second would store a Capture that records no Consent Suppression, and
+nothing would fail.
 
-Before concurrency rises above 1, the pool slice confirms the behaviour against the pinned
+Before concurrency rises above 1, slice 5 confirms the behaviour against the pinned
 `@ghostery/adblocker-electron` (`^2.20.3`) and either:
 
 - enables the blocker in more than one session at a time, if the pinned version supports it, with
@@ -315,7 +333,7 @@ Before concurrency rises above 1, the pool slice confirms the behaviour against 
 - holds a process-wide lease on the blocker, so a second render waits for it before loading its
   page. That lease serializes the load phase of renders, and would remove most of the gain.
 
-If neither works, concurrency stays at 1 and this spec's pool slice stops at that finding.
+If neither works, concurrency stays at 1 and slice 6 does not turn on the pool.
 
 #### Concurrency
 
@@ -362,9 +380,8 @@ contention stretches both phases without moving their bounds:
   50,000,000-byte cap on an idle machine, it has about 7 times headroom. Two workers are unlikely
   to use that; four rendering heavy pages could.
 - **Body collection** (5 s) waits on the network and on CDP messages the main process handles.
-  The 2026-11-09 failures happened at concurrency 1 in jobs that had plenty of time left, so this
-  bound already expires without contention. Contention adds delay to every message the collector
-  waits on.
+  The missing Transaction Records at concurrency 1 do not establish whether a fixed bound
+  expired. Contention can add delay to the messages collection waits on.
 
 This design does not change either bound. It orders the work so that the evidence comes first:
 
@@ -416,7 +433,8 @@ A second channel, `RECAPTURE_JOB`, sends a `BackgroundJobView` whenever a job's 
 changes. This is the state model #2124 reads:
 
 ```ts
-type BackgroundJobState = 'queued' | 'running' | 'stored' | 'skipped' | 'failed' | 'cancelled'
+type BackgroundJobState =
+  'queued' | 'held' | 'running' | 'stored' | 'skipped' | 'failed' | 'cancelled'
 
 type BackgroundJobPhase =
   | 'loading' // window setup, loadURL, document complete, first network idle
@@ -459,8 +477,8 @@ phase to the row and emits the view; it does not write timing into the row.
 | `recapture:enqueue`, `recapture:enqueueCaptures` | `EnqueueResult` gains `batchId` and the accepted `jobIds`. |
 | `recapture:queueStatus` | `RecaptureQueueStatus` gains the counts `queued`, `running` and `held`, and `concurrency`. `pending` stays `queued + running`, which #2122 reads. `activeUrl` stays, as the first running job's URL, until its readers move. `e2e/vpn-warning.spec.ts` asserts the exact status object with `toEqual`, so slice 2 updates that assertion. |
 | `recapture:listJobs` (new) | Returns `BackgroundJobView[]` for a Case or a batch, so the renderer can load state after a reload or a restart. |
-| `recapture:cancel` (new) | Takes a `jobId` or a `batchId`. A queued job becomes `cancelled`. A running job is aborted through its `AbortSignal`, which takes the render's existing deadline path (window destroyed, temp file removed, nothing stored). A job already ingesting finishes; cancel does not interrupt the manifest seam. |
-| `recapture:retry` (new) | Takes a `jobId` in `failed` or `cancelled`, or a `batchId`, which retries that Batch's `failed` and `cancelled` jobs. Sets each `queued` and adds one to `attempts`. Each attempt generates a new `capture_id`. |
+| `recapture:cancel` (new) | Takes a `jobId` or a `batchId`. A queued or held job becomes `cancelled`. A running job is aborted through its `AbortSignal`, which takes the render's existing deadline path (window destroyed, temp file removed, nothing stored). A job already ingesting finishes; cancel does not interrupt the manifest seam. |
+| `recapture:retry` (new) | Takes a `jobId` in `failed` or `cancelled`, or a `batchId`, which retries that Batch's `failed` and `cancelled` jobs. Sets each `queued`. The claim of the next attempt adds one to `attempts` and generates a new `capture_id`. |
 | `recapture:resume` (new) | Takes a `batchId` and sets its `held` jobs `queued`. |
 | `recapture:dismiss` (new) | Takes a `jobId` or a `batchId` and deletes `failed`, `skipped` and `cancelled` rows. It never deletes a `stored`, `queued`, `held` or `running` row. |
 
@@ -506,8 +524,8 @@ What each Evidence impact section has to answer:
 
 ## Alternatives rejected
 
-- **Keep the queue serial and shorten the steps.** The fixed waits add about 6 s per job; the batch
-  lost 360 s to three timeouts. Shortening the waits also shortens what the page has to load lazy
+- **Keep the queue serial and shorten the steps.** The fixed waits add about 5 s per job; the batch
+  has an unexplained 360 s gap. Shortening the waits also shortens what the page has to load lazy
   content, which changes Captures.
 - **One worker per logical CPU.** Uncapped renders compete for the main process and the libuv pool,
   stretching the #2121 bounds and the artifact reserve on the machines least able to absorb it.
@@ -542,12 +560,12 @@ Each slice ships on its own and leaves the app working.
    same-URL rows clearing each other. Blocking tier (`recapture.ts`), no evidence change.
 3. **Stored job table.** The migration, `backgroundJobRepo.ts`, the service reading and writing
    rows, the startup pass with per-Batch holds and retention, `recapture:listJobs`,
-   `recapture:resume`, `recapture:dismiss`, the job channel, and a minimal resume control for held
-   Batches on the capture status button. Concurrency stays 1. Blocking tier
-   (`db/**`).
+   `recapture:resume`, `recapture:dismiss`, the job channel, the pre-render exclusion check, and a
+   minimal resume control for held Batches on the capture status button. The check comes here
+   because this is the first slice where a job can wait across a session while the list changes.
+   Concurrency stays 1. Blocking tier (`db/**`).
 4. **Progress, cancel and retry.** The phase, mapped from slice 1's `onStep` steps, the
-   `AbortSignal`, `recapture:cancel`, `recapture:retry` for a job or a Batch, and the pre-render
-   exclusion check. Blocking tier.
+   `AbortSignal`, `recapture:cancel`, and `recapture:retry` for a job or a Batch. Blocking tier.
 5. **Make parallel renders safe at concurrency 1.** The per-Case ingest slot and the consent blocker
    fix, each with its test, while the pool still runs one worker. Blocking tier.
 6. **Turn on the pool.** Concurrency from the formula, the `BIRDBRAIN_BACKGROUND_WORKERS`

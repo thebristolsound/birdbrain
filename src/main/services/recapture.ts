@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto'
+import { Readable } from 'stream'
+import { finished } from 'stream/promises'
 import * as captureRepo from '@main/services/db/captureRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
 import {
@@ -14,7 +16,7 @@ import type { CaptureEgress } from '@main/services/egress'
 import { getInstallationId } from '@main/services/installationId'
 import { RefusedAddressError, refusedAddressClass } from '@main/services/localAddressPolicy'
 import { authorChainOf, readCaseChains } from '@main/services/manifest'
-import { getSettings } from '@main/services/settings'
+import { OperatorNameRequiredError, trimmedOperatorName } from '@main/services/operatorName'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import { logger } from '@main/services/logger'
 import { ident, tag } from '@main/services/logSafe'
@@ -322,6 +324,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     // under unless it ran out of time. Everything after the render returns counts as the ingest.
     let step: BackgroundJobStep | undefined
     let stage: 'link-source-error' | 'render' | 'ingest' = 'render'
+    let stored: { ms: number; ingestMs: number } | undefined
     try {
       let linkSource: LinkSource | undefined
       if (job.linkedFrom) {
@@ -408,7 +411,8 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         return
       }
 
-      const settings = getSettings()
+      const operatorName = trimmedOperatorName()
+      if (!operatorName) throw new OperatorNameRequiredError()
       const ingestStartedAt = Date.now()
       const result = await deps.captureLifecycle.ingest({
         captureId,
@@ -430,7 +434,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         // nothing is written, because there is no redirect to record.
         finalUrl: redirectedFinalUrl(job.url, rendered.finalUrl),
         operatorId: getInstallationId(),
-        operatorName: settings.operatorName ?? '',
+        operatorName,
         toolVersion,
         screenshot: rendered.screenshot,
         method: 'background',
@@ -489,10 +493,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         durationMs: Date.now() - started,
         warning
       })
-      logger.info('backgroundRenderer', 'backgroundRenderer.job_stored', {
-        ...jobContext(),
-        ingestMs
-      })
+      stored = { ms: Date.now() - started, ingestMs }
     } catch (err) {
       if (err instanceof RefusedAddressError) {
         emitEvent({
@@ -525,7 +526,38 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         err
       )
     } finally {
-      await rendered?.cleanup().catch(() => {})
+      // Ingest can reject before it starts reading, leaving the renderer's file open.
+      const stream = rendered?.mhtmlStream
+      const closed =
+        stream instanceof Readable
+          ? finished(stream, { cleanup: true }).catch((err: unknown) => {
+              if (
+                err instanceof Error &&
+                'code' in err &&
+                err.code === 'ERR_STREAM_PREMATURE_CLOSE'
+              ) {
+                return
+              }
+              logger.error(
+                'backgroundRenderer',
+                'backgroundRenderer.cleanup_failed',
+                undefined,
+                err
+              )
+            })
+          : undefined
+      stream?.destroy?.()
+      await closed
+      await rendered?.cleanup().catch((err) => {
+        logger.error('backgroundRenderer', 'backgroundRenderer.cleanup_failed', undefined, err)
+      })
+    }
+    // Logged outside the `try`, so a log call that throws cannot report a stored job failed.
+    if (stored) {
+      logger.info('backgroundRenderer', 'backgroundRenderer.job_stored', {
+        ...jobContext(),
+        ...stored
+      })
     }
   }
 
@@ -545,6 +577,17 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
   const service: RecaptureService = {
     enqueue(requests) {
       const batchId = randomUUID()
+      // The operator gate (X47), first as at admission: a job that cannot be signed is refused
+      // before its render contacts the site. Ingest checks again for a name cleared meanwhile.
+      if (!trimmedOperatorName()) {
+        const { message: reason } = new OperatorNameRequiredError()
+        return {
+          batchId,
+          accepted: 0,
+          jobIds: [],
+          rejected: requests.map(({ url }) => ({ url, reason }))
+        }
+      }
       const rejected: Array<{ url: string; reason: string }> = []
       const accepted: RecaptureJob[] = []
       for (const request of requests) {

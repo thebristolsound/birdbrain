@@ -888,7 +888,19 @@ export type BatchDeleteOutcome =
   | { captureId: string; status: 'deleted_unmanifested' }
   | { captureId: string; status: 'rolled_back'; stage: 'artifacts' | 'db'; error: string }
   | { captureId: string; status: 'not_attempted' }
-  | { captureId: string; status: 'rejected'; reason: 'not_found' | 'duplicate' | 'not_author' }
+  | {
+      captureId: string
+      status: 'rejected'
+      // operator_name_required: no operator name is set, so no `deletion` entry can be
+      // signed (X47). Nothing was written and the Capture is intact.
+      reason: 'not_found' | 'duplicate' | 'not_author' | 'operator_name_required'
+    }
+
+// A single delete (`captures:delete`). `deleted` false with no reason: there was no row to
+// delete, or the Capture is another member's. With `operator_name_required`: refused before
+// anything was written, as `BatchDeleteOutcome` states it.
+export type CaptureDeleteResult =
+  { deleted: true } | { deleted: false; reason?: 'operator_name_required' }
 
 // What a Case search field pass did with each Exhibit: built fields from its stored
 // files, did not find its stored page, or failed.
@@ -1049,7 +1061,7 @@ export interface IpcInvokeContract {
 
   'captures:list': { args: [caseId: string]; result: Capture[] }
   'captures:get': { args: [id: string]; result: Capture | undefined }
-  'captures:delete': { args: [id: string]; result: boolean }
+  'captures:delete': { args: [id: string]; result: CaptureDeleteResult }
   'captures:getContent': {
     args: [captureId: string, type: 'html' | 'png' | 'txt']
     result: string | null

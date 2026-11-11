@@ -1745,7 +1745,8 @@ export const BirdbrainSettingsSchema = z.object({
   // by `seedDemoCaseIfNeeded` and nowhere else, and that has one caller —
   // startup. Replaying the tour imports nothing. Not the only thing standing
   // between an install and a second copy either: this write can fail, and the
-  // `is_demo` probe in the database is what holds when it does (#1301).
+  // two database probes in `seedDemoCaseIfNeeded` are what hold when it does
+  // (#1301, #1333).
   demoCaseSeeded: z.boolean().optional().default(false),
   // Lenient: a value that does not parse reads as none, rather than failing the whole file
   // over to the defaults.

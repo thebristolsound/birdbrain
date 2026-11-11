@@ -694,10 +694,9 @@ export interface BirdbrainSettings {
   isFreshInstall: boolean
   // Latched once the bundled demonstration Case Archive has been offered to
   // this install (#405). Not a guarantee on its own: the settings write can
-  // fail, and what holds then is the `is_demo` probe in the database — a probe
-  // of the current state, not a second latch, so on such an install deleting
-  // the demo case brings a fresh one back next launch, and again after each
-  // later deletion (#1301). The full statement is on `seedDemoCaseIfNeeded`.
+  // fail, and what holds then are the two database probes in
+  // `seedDemoCaseIfNeeded` (#1301, #1333), which read the current state and
+  // are not a second latch. What they leave open is stated there, once.
   demoCaseSeeded: boolean
   // The launched browser (#1831). The executable the Operator chose, '' for none, and the
   // version `Browser.getVersion` reported at each executable's last launch, since discovery

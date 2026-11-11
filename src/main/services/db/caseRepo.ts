@@ -132,10 +132,11 @@ export function setCaseDemo(id: string, isDemo: boolean): void {
 /**
  * Whether any case row carries `is_demo`, archived ones included.
  *
- * The database half of the demo-seeding latch (#1301). The other half lives in
- * settings.json, where the write can fail, so this is the check that still
- * holds on an unwritable userData directory. Archived rows count: an archived
- * demo case is one the operator already has.
+ * One of the two database probes `seedDemoCaseIfNeeded` runs behind its
+ * settings latch (#1301); the other, and what the pair leaves open, is stated
+ * there. The latch lives in settings.json, where the write can fail, and this
+ * still answers when it has. Archived rows count: an archived demo case is one
+ * the operator already has.
  */
 export function hasDemoCase(): boolean {
   return getDb().prepare('SELECT 1 FROM cases WHERE is_demo = 1 LIMIT 1').get() !== undefined

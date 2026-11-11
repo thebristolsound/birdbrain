@@ -185,6 +185,11 @@ describe('useServerStatus', () => {
     // An open Data screen refetches its inventory and ledger (#1552).
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.exhibitInventory('case-1') })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.manifestSnapshot('case-1') })
+    // Its selector matches are written at ingest, so an active selector filter
+    // re-resolves rather than leaving the new capture out of its list (#1203).
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: queryKeys.selectorMatchingCapturesAll('case-1')
+    })
   })
 
   it('seeds a fresh list when no captures were cached', () => {

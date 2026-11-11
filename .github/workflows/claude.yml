@@ -27,9 +27,11 @@ jobs:
     # Spend guard (#1310): the mention must be the maintainer's, and so must whoever
     # started this attempt, because anyone with write access can re-run a workflow
     # and a re-run keeps github.actor from the first attempt.
+    # The review fleet's relay is posted with the maintainer's token and quotes text a
+    # model wrote (ADR-0057), so a comment carrying the relay marker never starts this job.
     if: |
       github.triggering_actor == 'thebristolsound' && (
-        (github.event_name == 'issue_comment' && github.event.comment.user.login == 'thebristolsound' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'issue_comment' && github.event.comment.user.login == 'thebristolsound' && contains(github.event.comment.body, '@claude') && !contains(github.event.comment.body, '<!-- review-fleet:relay ')) ||
         (github.event_name == 'issues' && github.event.issue.user.login == 'thebristolsound' && contains(github.event.issue.body, '@claude'))
       )
     environment: paid-runs

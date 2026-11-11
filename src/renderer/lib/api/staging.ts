@@ -1,6 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { StagingCommitResult, StagingDiscardResult, StagingFile } from '@shared/types'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { notify } from '@renderer/lib/notify'
+
+const COMMIT_NEEDS_OPERATOR = 'Set an operator name in Settings before committing a pooled file'
 
 // The Staging Pool's three writes (ADR-0024, #1148). Upload and discard touch
 // the pool only, so they invalidate the inventory; commit anchors bytes, so it
@@ -22,9 +25,13 @@ export function useStagingMutations(caseId: string) {
 
   const commit = useMutation<StagingCommitResult, unknown, string[]>({
     mutationFn: (stagingIds) => window.birdbrain.staging.commit(caseId, stagingIds),
-    onSuccess: () => {
+    onSuccess: ({ outcomes }) => {
       invalidateInventory()
       queryClient.invalidateQueries({ queryKey: queryKeys.manifestSnapshot(caseId) })
+      // The refusal names something the operator can act on, so it is said (X47).
+      if (outcomes.some((o) => o.status === 'refused' && o.reason === 'operator_name_required')) {
+        notify.warn(COMMIT_NEEDS_OPERATOR)
+      }
     },
     meta: { action: 'commit pooled files' }
   })

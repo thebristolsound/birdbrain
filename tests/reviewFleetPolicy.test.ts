@@ -520,7 +520,18 @@ describe('bare references in the description', () => {
     ['Before\n```\n#31 in a fence\n```\nafter #32', [32]],
     ['~~~\n#41\n~~~\n#42\n```sh\n#43 never closed', [42]],
     ['````\n```\n#51 inside the longer fence\n```\n````\n#52', [52]],
-    ['```#61``` is a span on one line, so #62 is read', [62]]
+    ['```#61``` is a span on one line, so #62 is read', [62]],
+    // A description edited in the browser is saved with CRLF line endings.
+    ['Intro #71\r\n\r\n```\r\ncode #72\r\n```\r\n\r\nSee #73', [71, 73]],
+    ['~~~\r\n#74\r\n~~~\r\n#75\r', [75]],
+    ['a `tick\r\n\r\nSee #76 and ` done #77', [76, 77]],
+    ['a `tick\n\nSee #78 and ` done #79', [78, 79]],
+    ['old Mac endings #80\r```\r#81\r```\r#82', [80, 82]],
+    // A link to an anchor on the page and a comment GitHub does not render name no issue.
+    ['See [the details](#999999) and [more](#12), then #83', [83]],
+    ['<!-- Closes #84, or "No issue" -->\nKept #85 <!-- #86\nstill hidden --> and #87', [85, 87]],
+    ['A comment that never closes <!-- #88\n#89', []],
+    ['`<!--` is code, so #90 is read, and <!-- ` --> #91 too `', [90, 91]]
   ])('finds the numbers GitHub would link in: %j', (text, numbers) => {
     expect(bareReferences(text)).toEqual(numbers)
   })

@@ -68,13 +68,15 @@ export function referencedSources(text, repo) {
   return [...paths]
 }
 
-// The text GitHub looks for `#<n>` in: a fenced block and a code span are not prose. A fence
-// that never closes runs to the end, as it renders. A backtick fence opens only on a line with
-// no later backtick, so three backticks around words on one line are a code span.
+// The text GitHub looks for `#<n>` in: a fenced block, a code span and an HTML comment are not
+// prose. A fence or a comment that never closes runs to the end, as it renders. A backtick
+// fence opens only on a line with no later backtick, so three backticks around words on one
+// line are a code span. A description edited in the browser is saved with CRLF line endings,
+// which are read as line feeds: a carriage return left on a line would keep a fence open.
 function prose(text) {
   const lines = []
   let fence = null
-  for (const line of String(text).split('\n')) {
+  for (const line of String(text).replace(/\r\n?/g, '\n').split('\n')) {
     if (!fence) {
       const [, ticks, tildes] = /^ {0,3}(?:(`{3,})[^`]*|(~{3,}).*)$/.exec(line) ?? []
       fence = ticks ?? tildes ?? null
@@ -84,14 +86,18 @@ function prose(text) {
       if (close?.[0] === fence[0] && close.length >= fence.length) fence = null
     }
   }
-  return lines.join('\n').replace(/(`+)(?!`)(?:(?!\n[ \t]*\n)[\s\S])*?(?<!`)\1(?!`)/g, ' ')
+  // One pattern, so whichever of a comment and a code span opens first hides the other.
+  return lines
+    .join('\n')
+    .replace(/<!--[\s\S]*?(?:-->|$)|(`+)(?!`)(?:(?!\n[ \t]*\n)[\s\S])*?(?<!`)\1(?!`)/g, ' ')
 }
 
 // The issues and pull requests a text names as `#<n>`, the way GitHub links one: not inside a
-// word, a path, an entity or a link's fragment. `owner/repo#<n>` is not one.
+// word, a path, an entity or a link's fragment, and not as the target of a Markdown link, which
+// is an anchor on the page. `owner/repo#<n>` is not one.
 export function bareReferences(text) {
   const numbers = new Set()
-  for (const m of prose(text).matchAll(/(?<![\w/&#.-])#([1-9]\d*)(?![\w-])/g))
+  for (const m of prose(text).matchAll(/(?<![\w/&#.-]|\]\()#([1-9]\d*)(?![\w-])/g))
     numbers.add(Number(m[1]))
   return [...numbers]
 }

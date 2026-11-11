@@ -127,8 +127,10 @@ Three facts shaped the design:
    - Each source carries its author and creation time. Each issue and pull request among the
      sources carries the comments the maintainer or the machine account wrote on it, without
      the fleet's own state and relay comments. No other author's comment is read.
-   - A bare `#<n>` in the description, outside a code span or fenced block, is read as this
-     repository's issue or pull request `<n>`. What that source cites is not followed.
+   - A bare `#<n>` in the description is read as this repository's issue or pull request
+     `<n>`, unless it sits in a code span, a fenced block or an HTML comment, or is the target
+     of a Markdown link. Line endings saved as CRLF are read as line feeds. What that source
+     cites is not followed.
 
    The limits are 60 sources, 200 such comments, 1 MiB of `sources.json`, 300 commits and
    512 MiB for one tree. Going over one fails the pass before the paid call with the limit in

@@ -49,6 +49,7 @@ import {
   verifyCapture
 } from '@main/services/captureLifecycle'
 import type { AdmissionRequest } from '@main/services/captureLifecycle'
+import { OperatorNameRequiredError } from '@main/services/operatorName'
 import { createSessionService } from '@main/services/session'
 import type { SessionService } from '@main/services/session'
 import { setAutoCapturePolicy, updateCase } from '@main/services/db/caseRepo'
@@ -2359,6 +2360,130 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
     await expect(lifecycle.deleteMany(caseId, [a.id])).rejects.toThrow()
     expect(getCapture(a.id)).toBeDefined()
     expect(mhtmlExists(a)).toBe(true)
+  })
+})
+
+// Known-answer test for the refused deletion (X47, #1332): with no operator name, a delete
+// signs nothing and removes nothing, and once a name is saved the same delete signs under it.
+describe('createCaptureLifecycle deletion without an operator name (X47)', () => {
+  let tempDir: string
+  let caseId: string
+  let caseDir: string
+  let selectorStub: SelectorLifecycle
+
+  beforeEach(async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-lifecycle-unnamed-'))
+    initStorage(join(tempDir, 'captures'))
+    await initDatabase(':memory:')
+    initSettings(tempDir)
+    updateSettings({ operatorName: 'Test Operator' })
+    resetInstallationId()
+    initInstallationId(tempDir)
+    caseId = createCase({ name: 'Unnamed' }).id
+    ensureCaseDir(caseId)
+    caseDir = join(tempDir, 'captures', caseId)
+    initManifest(caseDir)
+    selectorStub = { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    resetInstallationId()
+    rmSync(tempDir, { recursive: true, force: true })
+    vi.restoreAllMocks()
+  })
+
+  function chainBytes(): string {
+    return readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+  }
+
+  async function ingestOne(
+    lifecycle: ReturnType<typeof createCaptureLifecycle>,
+    n: number
+  ): Promise<Capture> {
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from(`unnamed-body-${n}`), {
+        url: `https://example.com/unnamed-${n}`
+      })
+    )
+    return capture
+  }
+
+  for (const blank of ['', '   ']) {
+    it(`deleteMany refuses with operator_name_required and appends nothing (${JSON.stringify(blank)})`, async () => {
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      const a = await ingestOne(lifecycle, 1)
+      const b = await ingestOne(lifecycle, 2)
+      updateSettings({ operatorName: blank })
+      const before = chainBytes()
+
+      const result = await lifecycle.deleteMany(caseId, [a.id, b.id])
+
+      expect(result.outcomes).toEqual([
+        { captureId: a.id, status: 'rejected', reason: 'operator_name_required' },
+        { captureId: b.id, status: 'rejected', reason: 'operator_name_required' }
+      ])
+      expect(result.deletedIds).toEqual([])
+      expect(result.failedIds).toEqual([])
+      expect(result.manifest.committedEntries).toBe(0)
+      expect(chainBytes()).toBe(before)
+      for (const capture of [a, b]) {
+        expect(getCapture(capture.id)).toBeDefined()
+        expect(existsSync(join(getStorageRoot(), capture.mhtmlPath!))).toBe(true)
+      }
+    })
+
+    it(`delete refuses with OperatorNameRequiredError and appends nothing (${JSON.stringify(blank)})`, async () => {
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      const a = await ingestOne(lifecycle, 1)
+      updateSettings({ operatorName: blank })
+      const before = chainBytes()
+
+      await expect(lifecycle.delete(a.id)).rejects.toBeInstanceOf(OperatorNameRequiredError)
+
+      expect(chainBytes()).toBe(before)
+      expect(getCapture(a.id)).toBeDefined()
+      expect(existsSync(join(getStorageRoot(), a.mhtmlPath!))).toBe(true)
+    })
+  }
+
+  it('signs the deletion under the name once one is saved, trimmed as ingest trims it', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const a = await ingestOne(lifecycle, 1)
+    const b = await ingestOne(lifecycle, 2)
+    updateSettings({ operatorName: '' })
+    await expect(lifecycle.delete(a.id)).rejects.toBeInstanceOf(OperatorNameRequiredError)
+
+    updateSettings({ operatorName: '  Saved Operator  ' })
+    expect(await lifecycle.delete(a.id)).toBe(true)
+    const batch = await lifecycle.deleteMany(caseId, [b.id])
+
+    expect(batch.deletedIds).toEqual([b.id])
+    const deletions = chainBytes()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((entry) => entry.type === 'deletion')
+    expect(deletions.map((entry) => [entry.captureId, entry.operatorName])).toEqual([
+      [a.id, 'Saved Operator'],
+      [b.id, 'Saved Operator']
+    ])
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+  })
+
+  it('still removes a legacy html capture, which signs no entry', async () => {
+    const legacy = insertCapture({
+      caseId,
+      url: 'https://legacy.example.com',
+      title: 'Legacy',
+      hash: 'y'.repeat(64),
+      timestamp: '2026-04-05T12:00:00.000Z'
+    })
+    updateSettings({ operatorName: '' })
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+
+    expect(await lifecycle.delete(legacy.id)).toBe(true)
+    expect(getCapture(legacy.id)).toBeUndefined()
   })
 })
 

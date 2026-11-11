@@ -809,6 +809,11 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       const input = document.querySelector('input')!
       input.focus()
       input.setSelectionRange(2, 6, 'backward')
+      // jsdom keeps a field's selection apart from the document's. Chromium reports a focused
+      // field's caret or selection to the document as a point just before the field, through
+      // every click, key and selection the operator makes in it.
+      const parent = input.parentNode!
+      window.getSelection()!.collapse(parent, Array.from(parent.childNodes).indexOf(input))
       return input
     }
 
@@ -877,6 +882,22 @@ describe("the operator's selection stays out of the frames (#993)", () => {
 
       expect(input.value).toBe('HelloXwide world')
       expect(fieldEnds(input).slice(0, 2)).toEqual([6, 6])
+    })
+
+    // The background runs the fallback strip after a live script reports a failed teardown. Its
+    // clear empties the document's selection, and in Chromium that drops the focused field's own
+    // selection to its start, which jsdom does not do, so the test sets it.
+    it("puts the field's selection back when the fallback strip ran after the hold", () => {
+      const input = focusedInput()
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      removeInjectedBirdbrainUi()
+      expect(window.getSelection()!.rangeCount).toBe(0)
+      input.setSelectionRange(0, 0)
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(fieldEnds(input)).toEqual([2, 6, 'backward'])
+      expect(document.activeElement).toBe(input)
     })
 
     it('finds the field inside a web component', () => {

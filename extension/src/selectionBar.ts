@@ -565,7 +565,13 @@ function restoreField(): void {
   // Put back only over what the strip left. A selection made, a caret moved or text typed in the
   // field during the capture is newer than the held one. A caret put back on the same offset
   // reads the same as the strip's own, so the held selection returns over it.
-  if (field.value !== value || field.selectionStart !== end || field.selectionEnd !== end) return
+  if (field.value !== value) return
+  const untouched = field.selectionStart === end && field.selectionEnd === end
+  // A caret or selection in a focused field always shows in the document's selection. An empty
+  // one was emptied after the hold, by the fallback strip, which also drops the field's caret to
+  // its start, or by the page: the held selection returns, as it does over a page's clear below.
+  const emptied = focusedTextField() === field && window.getSelection()?.rangeCount === 0
+  if (!untouched && !emptied) return
   field.setSelectionRange(start, end, direction)
 }
 

@@ -1102,6 +1102,9 @@ export const LOG_CODES = [
   // settings.json at startup failed. Init swallows it and retries next launch;
   // this is the record that the key may still be on disk.
   'settings.retired_fields_cleanup_failed',
+  // The global ignored-URL list holds patterns stored before edits were
+  // validated (#724). They are kept, and Settings marks each one.
+  'settings.ignore_patterns_invalid',
   // First-launch seeding of the bundled demonstration Case Archive (#405).
   // Every outcome is recorded: an operator whose first launch produced no demo
   // case has no other way to tell a missing fixture from a refused import.
@@ -1655,7 +1658,9 @@ export interface ExtractedDataSearchResult {
 export type CaptureSource = 'auto' | 'manual' | 'selector' | 'recapture' | 'launched'
 
 export interface CaptureEvent {
-  type: 'received' | 'stored' | 'failed' | 'skipped'
+  // `queued` is a background job accepted at enqueue, before its render starts. It is not a
+  // Capture, so it counts toward no capture statistic.
+  type: 'queued' | 'received' | 'stored' | 'failed' | 'skipped'
   captureId?: string
   source: CaptureSource
   url: string
@@ -1673,6 +1678,10 @@ export interface CaptureEvent {
   // The source and link address of a Capture link job, on every event emitted while it runs, so
   // the viewer's notice can tell its job from another of the same address (ADR-0040).
   linkedFrom?: { captureId: string; linkHref: string }
+  // The background job and its Batch, on every event a background job emits. The extension and
+  // the launched browser run no job, so their events carry neither.
+  jobId?: string
+  batchId?: string
 }
 
 export interface OperatorIdentity {

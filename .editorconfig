@@ -1,0 +1,23 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Two trailing spaces are a Markdown line break.
+[*.{md,mdx}]
+trim_trailing_whitespace = false
+
+# The byte-exact known-answer fixtures .gitattributes marks -text, the files under
+# tests/fixtures and the design exports are stored as received: an editor must not rewrite them.
+[{tests/shared/verify/fixtures/**,tests/main/services/fixtures/thumbnails/*.png,tests/main/services/fixtures/*.mhtml,tests/fixtures/**,docs/design-handoff/**}]
+charset = unset
+end_of_line = unset
+indent_style = unset
+indent_size = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset

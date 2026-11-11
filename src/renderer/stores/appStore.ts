@@ -73,7 +73,7 @@ interface AppState {
   // The notice of how the last launched browser closed that the Operator dismissed. Main keeps
   // its notice until the next launch.
   dismissedLaunchNotice: LaunchedBrowserNotice | null
-  // The Share mark is on screen, so the top bar's pill wears its ring.
+  // The Share mark is on screen, so the Case action bar's pill wears its ring.
   shareMarkOpen: boolean
   // A tour chapter is running, so the Share mark stays off screen.
   tourRunning: boolean

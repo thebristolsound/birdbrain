@@ -3,7 +3,7 @@ import type { EnqueueResult, LinkedFrom } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { requireContact } from '@renderer/lib/vpnWarning'
 
-// CaptureHealth is the only reader and decides when to poll, so the interval
+// The status group and the capture log each decide when to poll, so the interval
 // stays at the call site.
 export const recaptureQueueQueryOptions = queryOptions({
   queryKey: queryKeys.recaptureQueue,

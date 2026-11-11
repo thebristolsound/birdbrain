@@ -1014,8 +1014,9 @@ export const LOG_CODES = [
   'backgroundRenderer.job_stored',
   'backgroundRenderer.job_skipped',
   'backgroundRenderer.job_failed',
-  // The background job queue stopped because it could not read or write a job's row, as while
-  // a restore has the database closed. The next enqueue or resume starts it again.
+  // The background job queue stopped on a throw between a job's claim and the write of its end:
+  // a row it could not read or write, as while a restore has the database closed, or an event or
+  // log call that threw. The next enqueue or resume starts it again.
   'backgroundRenderer.job_queue_failed',
   'consentBlocker.filter_engine_failed',
   'selectorLifecycle.retroactive_match_failed',

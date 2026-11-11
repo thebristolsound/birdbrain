@@ -1880,6 +1880,9 @@ export function registerIpcHandlers(deps: {
           'DB_RESTORE_REJECTED'
         )
       case 'replace_failed':
+        // The session's own database is open again with its queued jobs, and the close may have
+        // stopped the queue.
+        if (outcome.databaseIntact) recaptureService.restartQueue()
         // Not "restart" when the file is damaged: startup has no intact check
         // and would migrate it, while a restore works with no database open.
         throw new IpcFailure(
@@ -1971,8 +1974,10 @@ export function registerIpcHandlers(deps: {
 
     // The restored copy is open in this session, so its jobs from an earlier one go through the
     // startup pass now, before anything awaits: a `queued` row would otherwise run without the
-    // Operator resuming it. Not after a failed restore, whose database holds this session's jobs.
-    if (!restoreErr) recaptureService.finishRestore(jobsBefore)
+    // Operator resuming it. Not after a failed restore, whose database holds this session's jobs:
+    // its queue starts again instead, since the close may have stopped it.
+    if (restoreErr) recaptureService.restartQueue()
+    else recaptureService.finishRestore(jobsBefore)
 
     // A snapshot older than a persona brings back a database without its row,
     // leaving that persona's cookies where nothing else can clear them.

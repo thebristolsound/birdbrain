@@ -428,6 +428,28 @@ describe('listMhtmlParts on malformed input', () => {
     expect(result.parts[3]).toMatchObject({ offset: 1159, size: 21 })
   })
 
+  // The walk stops at the first closing delimiter. Parts after one are not counted or flagged:
+  // the only trace is the gap between the last span and the end of the file.
+  it('lists only the parts before a closing delimiter that comes early', () => {
+    const buffer = replaceOnce(
+      fixture(),
+      '\r\nbody { color: #333; }\r\n',
+      '\r\nbody { color: #333; }\r\n------PartsFixtureBoundary--\r\n'
+    )
+    const result = listed(listMhtmlParts(buffer, MHTML_PARTS_LIMITS, READ_AT))
+    expect(result).toMatchObject({
+      fileSize: 1721,
+      closed: true,
+      totalParts: 2,
+      unterminatedParts: 0,
+      truncated: false
+    })
+    expect(result.parts.map(({ position, offset, size }) => [position, offset, size])).toEqual([
+      [1, 401, 157],
+      [2, 696, 21]
+    ])
+  })
+
   it('flags a part whose headers never end and keeps the HTML-part numbering', () => {
     const buffer = replaceOnce(fixture(), '\r\n\r\nbody { color', '\r\nbody { color')
     const result = listed(listMhtmlParts(buffer, MHTML_PARTS_LIMITS, READ_AT))

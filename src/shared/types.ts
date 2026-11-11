@@ -409,7 +409,11 @@ export type MhtmlPartsListing =
       fieldsTruncated: boolean
       /** The walk ended at a closing delimiter rather than at the end of the file. */
       closed: boolean
-      /** Every part in the file, including those past the row ceiling. */
+      /**
+       * Every part up to the first closing delimiter, or to the end of the file when there is
+       * none, including those past the row ceiling. Parts after a closing delimiter are not
+       * walked, so they are not counted here or flagged anywhere.
+       */
       totalParts: number
       /** Parts, among all of them, whose headers have no terminating blank line. */
       unterminatedParts: number

@@ -2,7 +2,8 @@ import type { MhtmlPartRow, MhtmlPartsListing, MhtmlPartsRefusal } from '@shared
 
 // The words of the Data screen's MHTML Parts tab (#991). A part is a view inside one
 // Exhibit's bytes, not an Exhibit (ADR-0023), so nothing here calls a part's hash anything
-// but computed now: ruling R6 rules out a shield, a success color and the word "verified".
+// but computed now: ruling R6 (docs/plans/2026-08-24-wave3-phase2-intake-rulings.md) rules out
+// a shield and the word "verified".
 
 export type ListedParts = Extract<MhtmlPartsListing, { status: 'listed' }>
 
@@ -44,9 +45,9 @@ export const COPY_LABELS = {
   byteRange: 'byte range'
 } as const
 
-// The walker decodes headers as latin1, so every character is at most U+00FF. These are the
-// ones in that range that render as nothing or move the text, plus the backslash, so a value
-// that holds a literal `\x0a` cannot read as an escaped line feed.
+// The walker decodes header values as latin1, so each of their characters is at most U+00FF.
+// These are the ones in that range that render as nothing or move the text, plus the backslash,
+// so a value that holds a literal `\x0a` cannot read as an escaped line feed.
 function escapes(code: number): boolean {
   return code < 0x20 || (code >= 0x7f && code <= 0xa0) || code === 0xad || code === 0x5c
 }

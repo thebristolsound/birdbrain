@@ -101,6 +101,19 @@ keeps one state comment per head with the findings and rulings.
   the pass reads only this one, and so do a link whose fragment ADR-0057 defines as malformed
   and a linked issue, comment or review with an empty body. An
   unfinished caller, race, fixture or count trace still fails; do not call it a runtime limit.
+- **History and stack inputs** come as files, because the passes have no git (ADR-0057,
+  decision 5): `commits.json` with a patch per commit, `stack.json`, `base-tree/` with every
+  file as it stood at the merge base with `main`, and, for a pull request whose base branch is
+  not `main`, `diff-base.patch`, which is that pull request's review scope. A review of that
+  narrower scope posts a success that begins `stacked change only:`, which `merge-gate` does
+  not count. Once the base is `main`, the next plan run or sweep either confirms that `main`
+  holds everything below the change and posts a plain success, or starts a review of the whole
+  diff.
+  A bare `#<n>` in the description is read as this repository's issue or pull request. Each
+  issue or pull request among the sources brings the conversation comments the maintainer or
+  the machine account wrote on it, so a ruling posted as a comment is read when the description
+  names its issue. Past 60 sources, 200 such comments, 1 MiB of sources, 300 commits or 512 MiB
+  in one tree, the pass fails before the paid call and names the limit.
 - **Runtime limitations** appear separately in the saved record and public report. Tests,
   builds, CI reads and external/editor observations the reviewer did not perform remain
   unverified. Fleet success does not certify them or waive required CI checks. Never clear or

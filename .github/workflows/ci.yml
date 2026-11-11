@@ -52,9 +52,14 @@ env:
   #
   # Rewrite rather than delete the line: the file may list Azure alone, and an empty
   # mirrorlist breaks apt outright. A duplicated archive.ubuntu.com entry is inert.
+  #
+  # Probe archive.ubuntu.com first and keep Azure when it does not answer: on
+  # 2026-11-11 the runners could not reach it for hours, and with Azure rewritten
+  # away every apt step timed out on main and on every open PR.
   DROP_AZURE_MIRROR: >-
-    sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g'
-    /etc/apt/apt-mirrors.txt 2>/dev/null || true
+    if curl -fsS --max-time 10 -o /dev/null http://archive.ubuntu.com/ubuntu/dists/;
+    then sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g'
+    /etc/apt/apt-mirrors.txt 2>/dev/null || true; fi
 
 # Draft PRs are gated at the `changes` job below, which every other job needs — its
 # gate step leaves the job's outputs empty, which skips the five code jobs and

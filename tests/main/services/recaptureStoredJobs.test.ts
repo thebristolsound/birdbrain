@@ -761,6 +761,43 @@ describe('stored background jobs', () => {
       }
     )
 
+    // Review of #2146, second verdict, finding 5: the row goes back with the phase the job has
+    // reached, not the phase the claim read.
+    it('writes the running job back with the phase it has reached', async () => {
+      const gate: Array<() => void> = []
+      const svc = makeService(async (url, opts) => {
+        opts.onStep?.('setup')
+        opts.onStep?.('scroll')
+        await new Promise<void>((resolve) => gate.push(resolve))
+        return render(url, opts)
+      })
+      const {
+        jobIds: [running]
+      } = svc.enqueue([{ url: 'https://example.com/x', caseId }])
+      await vi.waitFor(() => expect(gate).toHaveLength(1))
+      expect(backgroundJobRepo.getJob(running)?.phase).toBe('scrolling')
+      // The row as a backup taken before the claim holds it: queued, with no phase.
+      getDb()
+        .prepare(
+          `UPDATE background_jobs
+              SET state = 'queued', phase = NULL, attempts = 0, started_at = NULL,
+                  capture_id = NULL
+            WHERE id = ?`
+        )
+        .run(running)
+      takeBackup()
+
+      await restore(svc)
+      expect(backgroundJobRepo.getJob(running)).toMatchObject({
+        state: 'running',
+        phase: 'scrolling'
+      })
+
+      gate.shift()!()
+      await svc.idle()
+      expect(stateOf(running)).toBe('stored')
+    })
+
     // Review of #2141, second verdict, finding 1: after a restore that left the file unreadable
     // the app tells the Operator to restore a backup with no database open.
     it('restores with no database open, reading no job and leaving no staging copy', async () => {
@@ -1088,12 +1125,17 @@ describe('stored background jobs', () => {
   })
 
   describe('cancel', () => {
-    // A render that ends only when its signal is aborted, as the renderer's deadline path does.
-    const abortableRender: RenderPage = (_url, { onStep, signal }) =>
+    // A render that ends only when its signal is aborted. As the renderer does, it reports its
+    // end the moment the abort lands and rejects after its wind-down, so a cancel in between
+    // meets a job that is ending.
+    const abortableRender: RenderPage = (_url, { onStep, signal, onEnd }) =>
       new Promise((_, reject) => {
         onStep?.('setup')
         onStep?.('load')
-        signal?.addEventListener('abort', () => reject(new RecaptureCancelled()))
+        signal?.addEventListener('abort', () => {
+          onEnd?.()
+          setTimeout(() => reject(new RecaptureCancelled()), 20)
+        })
       })
 
     it('cancels a queued job, which sends no request', async () => {

@@ -551,8 +551,8 @@ describe('StatusGroup background captures', () => {
   })
 })
 
-// Jobs an earlier session queued wait for the Operator (#2129): the count on the closed button,
-// and one Resume per Batch in the popover, without opening the capture log.
+// Jobs an earlier session or a restore left queued wait for the Operator (#2129): the count on
+// the closed button, and one Resume per Batch in the popover, without opening the capture log.
 describe('StatusGroup held background captures', () => {
   const batches: HeldBatch[] = [
     { batchId: 'batch-a', caseId: 'case-a', caseName: 'Harbour Lane', held: 2 },

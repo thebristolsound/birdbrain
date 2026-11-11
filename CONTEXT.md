@@ -233,7 +233,7 @@ Operations that create, update, or delete a Selector and asynchronously reconcil
 _Avoid_: selector service, selector manager.
 
 **Persisted Match**:
-A row in `selector_matches` recording that a Selector's pattern hit a specific Capture's stored text. The source of truth for case-wide counts, dashboard badges, and CSV export. Eventually consistent with the Selector definition (async re-match window).
+A row in `selector_matches` recording that a Selector's pattern hit a specific Capture's stored text. The source of truth for case-wide counts, dashboard badges, and CSV export. Eventually consistent with the Selector definition (async re-match window). Records when it was found (`matched_at`) and which pass found it (`match_origin`: `capture-time`, `create`, `update` or `rescan`); a later pass that finds it again keeps the first values, except that an edit to the Selector's pattern deletes its matches and finds them again as `update`. Both are null on a row from before migration 46 and on one imported from a Case Archive older than version 16, and the import leaves null any value that is not one Birdbrain writes: a null makes no claim about when or why that match was found.
 _Avoid_: selector hit, match record.
 
 **Foreground Match Preview**:

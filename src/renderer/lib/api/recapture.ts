@@ -116,6 +116,10 @@ export function useRetryBackgroundJobs() {
       await requireContact({ caseId }, 'site')
       return window.birdbrain.recapture.retry(target)
     },
+    // The queue refuses a retry while no operator name is set, as it refuses a resume.
+    onSuccess: ({ reason }) => {
+      if (reason) notify.warn(`Retry rejected: ${reason}`)
+    },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.recaptureQueue })
     },

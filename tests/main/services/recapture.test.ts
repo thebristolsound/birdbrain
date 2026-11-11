@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   createReadStream,
+  unlinkSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -842,6 +843,65 @@ describe('recapture service', () => {
     await svc.idle()
   })
 
+  // X47 (#1332): a recapture signs a `capture` entry, so it passes the operator gate like
+  // every other signing path, and is refused before it contacts the site.
+  describe('without an operator name (X47)', () => {
+    const URL = 'https://example.com/page'
+    const chainPath = (): string => join(getStorageRoot(), caseId, MANIFEST_FILENAME)
+
+    for (const blank of ['', '   ']) {
+      it(`refuses the job at enqueue and renders nothing (${JSON.stringify(blank)})`, async () => {
+        updateSettings({ operatorName: blank })
+        const render = vi.fn(fakeRender())
+        const svc = makeService(render)
+
+        const res = svc.enqueue([{ url: URL, caseId }])
+
+        expect(res).toEqual({
+          batchId: expect.any(String),
+          accepted: 0,
+          jobIds: [],
+          rejected: [{ url: URL, reason: 'Operator name required' }]
+        })
+        await svc.idle()
+        expect(render).not.toHaveBeenCalled()
+        expect(newCaptures).toEqual([])
+        expect(existsSync(chainPath())).toBe(false)
+      })
+    }
+
+    it('fails a queued job whose name was cleared before it was stored, signing nothing', async () => {
+      const svc = makeService(async (url, opts) => {
+        updateSettings({ operatorName: ' ' })
+        return fakeRender()(url, opts)
+      })
+
+      expect(svc.enqueue([{ url: URL, caseId }]).accepted).toBe(1)
+      await svc.idle()
+
+      expect(newCaptures).toEqual([])
+      expect(listCaptures(caseId)).toEqual([])
+      expect(events.find((e) => e.type === 'failed')?.error).toBe('Operator name required')
+      expect(existsSync(chainPath())).toBe(false)
+    })
+
+    it('signs the trimmed name', async () => {
+      updateSettings({ operatorName: '  Op  ' })
+      const svc = makeService(fakeRender())
+
+      svc.enqueue([{ url: URL, caseId }])
+      await svc.idle()
+
+      expect(newCaptures).toHaveLength(1)
+      const [entry] = readFileSync(chainPath(), 'utf-8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line) as { type: string; operatorName: string })
+        .filter((line) => line.type === 'capture')
+      expect(entry.operatorName).toBe('Op')
+    })
+  })
+
   // #400: the per-case exclusion list blocks every capture route, manual
   // included. Recapture is a producer the capture server never sees, so it
   // enforces the list itself — at enqueue for the requested URL, and again
@@ -887,6 +947,105 @@ describe('recapture service', () => {
   // A real ReadStream rather than a spy: what leaks is an open fd, and the
   // renderer's cleanup unlinks the temp file without closing it, so an
   // abandoned stream pins the deleted file's blocks (#766).
+  it('closes and unlinks a render accepted before the operator name was cleared', async () => {
+    const tmpFile = join(tempDir, 'held-render.mhtml')
+    writeFileSync(tmpFile, 'held render bytes')
+    const mhtmlStream = createReadStream(tmpFile)
+    await once(mhtmlStream, 'ready')
+    let finish!: (value: RenderedPage) => void
+    const render: RenderPage = () =>
+      new Promise((resolve) => {
+        finish = resolve
+      })
+    const cleanup = vi.fn(async () => {
+      expect(mhtmlStream.closed).toBe(true)
+      unlinkSync(tmpFile)
+    })
+    const svc = makeService(render)
+    expect(svc.enqueue([{ url: 'https://example.com/held', caseId }]).accepted).toBe(1)
+    updateSettings({ operatorName: '' })
+    finish(
+      await fakeRender({ mhtmlStream, cleanup })(
+        'https://example.com/held',
+        {} as Parameters<RenderPage>[1]
+      )
+    )
+    await svc.idle()
+    expect(events.find((event) => event.type === 'failed')).toMatchObject({
+      error: 'Operator name required'
+    })
+    expect(newCaptures).toEqual([])
+    expect(cleanup).toHaveBeenCalledOnce()
+    expect(existsSync(tmpFile)).toBe(false)
+    expect(mhtmlStream.destroyed).toBe(true)
+    if (!mhtmlStream.closed) await once(mhtmlStream, 'close')
+    expect(mhtmlStream.closed).toBe(true)
+  })
+
+  it('closes an unread stream on ingest errors and reports cleanup errors', async () => {
+    const tmpFile = join(tempDir, 'failed-ingest.mhtml')
+    writeFileSync(tmpFile, 'failed ingest bytes')
+    const mhtmlStream = createReadStream(tmpFile)
+    await once(mhtmlStream, 'ready')
+    const ingestError = new Error('ingest refused before reading')
+    const cleanupError = new Error('cleanup failed')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle })
+    vi.spyOn(lifecycle, 'ingest').mockRejectedValue(ingestError)
+    const logged = vi.spyOn(logger, 'error').mockImplementation(() => 'log-id')
+    const svc = createRecaptureService({
+      renderPage: fakeRender({
+        mhtmlStream,
+        cleanup: async () => {
+          throw cleanupError
+        }
+      }),
+      captureLifecycle: lifecycle,
+      emitEvent: (event) => events.push(event),
+      emitNewCapture: (capture) => newCaptures.push(capture)
+    })
+    svc.enqueue([{ url: 'https://example.com/failed', caseId }])
+    await svc.idle()
+    expect(events.find((event) => event.type === 'failed')).toMatchObject({
+      error: ingestError.message
+    })
+    expect(newCaptures).toEqual([])
+    expect(mhtmlStream.destroyed).toBe(true)
+    if (!mhtmlStream.closed) await once(mhtmlStream, 'close')
+    expect(mhtmlStream.closed).toBe(true)
+    expect(logged).toHaveBeenCalledWith(
+      'backgroundRenderer',
+      'backgroundRenderer.cleanup_failed',
+      undefined,
+      cleanupError
+    )
+    logged.mockRestore()
+  })
+
+  it('logs a genuine stream-open error while cleaning up an ingest refusal', async () => {
+    const mhtmlStream = createReadStream(join(tempDir, 'missing-render.mhtml'))
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle })
+    vi.spyOn(lifecycle, 'ingest').mockRejectedValue(new Error('ingest refused'))
+    const logged = vi.spyOn(logger, 'error').mockImplementation(() => 'log-id')
+    const cleanup = vi.fn(async () => undefined)
+    const svc = createRecaptureService({
+      renderPage: fakeRender({ mhtmlStream, cleanup }),
+      captureLifecycle: lifecycle,
+      emitEvent: (event) => events.push(event),
+      emitNewCapture: vi.fn()
+    })
+    svc.enqueue([{ url: 'https://example.com/missing-render', caseId }])
+    await svc.idle()
+    expect(mhtmlStream.closed).toBe(true)
+    expect(cleanup).toHaveBeenCalledOnce()
+    expect(logged).toHaveBeenCalledWith(
+      'backgroundRenderer',
+      'backgroundRenderer.cleanup_failed',
+      undefined,
+      expect.objectContaining({ code: 'ENOENT' })
+    )
+    logged.mockRestore()
+  })
+
   it('releases the rendered stream when the redirect is blocked', async () => {
     setAutoCapturePolicy(caseId, { exclusions: ['blocked.example'], mode: 'stack' })
     const tmpFile = join(tempDir, 'rendered.mhtml')
@@ -1217,6 +1376,21 @@ describe('recapture service', () => {
           error
         ]
       ])
+    })
+
+    // Review of #2133, finding 7: a development build's log call can throw (logSafe.ts).
+    it('reports no failure for a stored job whose stored line throws', async () => {
+      info.mockImplementation((_source: unknown, code: unknown) => {
+        if (code === 'backgroundRenderer.job_stored') throw new Error('log call threw')
+        return 'log-id'
+      })
+      const cleanup = vi.fn(async () => {})
+      const svc = makeService(fakeRender({ cleanup }))
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await expect(svc.idle()).rejects.toThrow('log call threw')
+      expect(events.map(({ type }) => type)).toEqual(['queued', 'received', 'stored'])
+      expect(jobLines(warn)).toEqual([])
+      expect(cleanup).toHaveBeenCalledTimes(1)
     })
   })
 })

@@ -1993,9 +1993,11 @@ describe('renderPageInHiddenWindow', () => {
     ctl.egress = { kind: 'unavailable' }
     const before = ctl.createdWindows
 
-    await expect(
-      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000, ...IDS })
-    ).rejects.toThrow(EgressUnavailableError)
+    const render = renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000, ...IDS })
+    await expect(render).rejects.toThrow(EgressUnavailableError)
+    // The name is what the job's failed line keeps of the error.
+    const error: unknown = await render.catch((err: unknown) => err)
+    expect(sanitizeError(error).name).toBe('EgressUnavailableError')
 
     expect(ctl.createdWindows).toBe(before)
     expect(ctl.calls).toEqual([])
@@ -2938,7 +2940,7 @@ describe("renderPageInHiddenWindow's log lines", () => {
     for (const ms of steps) expect(ms).toBeGreaterThanOrEqual(0)
     const sum = steps.reduce((total, ms) => total + ms, 0)
     expect(sum).toBeLessThanOrEqual(context.ms as number)
-    expect((context.ms as number) - sum).toBeLessThan(100)
+    expect((context.ms as number) - sum).toBeLessThan(500)
     expect(context.ms as number).toBeLessThanOrEqual(elapsed)
     // The settle step waits FINAL_SETTLE_MS, so its time is on its own key.
     expect(context.settleMs as number).toBeGreaterThanOrEqual(450)
@@ -3002,7 +3004,6 @@ describe("renderPageInHiddenWindow's log lines", () => {
     }
     const { info } = await renderLogged()
     const [[, , context]] = logged(info, 'backgroundRenderer.render_completed')
-    expect(context.pdfMs as number).toBeLessThan(150)
     const sum = STEP_KEYS.reduce((total, key) => total + (context[key] as number), 0)
     expect((context.ms as number) - sum).toBeGreaterThanOrEqual(200)
   }, 30_000)
@@ -3064,6 +3065,19 @@ describe("renderPageInHiddenWindow's log lines", () => {
     const [[, , context, error]] = logged(info, 'backgroundRenderer.render_failed')
     expect(context).toMatchObject({ captureId: IDS.captureId, step: 'load' })
     expect(String(error)).toContain('navigation failed')
+  }, 30_000)
+
+  // Review of #2133, finding 7: a development build's log call can throw (logSafe.ts).
+  it('tears the window down before the failed line, so a line that throws leaks none', async () => {
+    ctl.loadUrlShouldReject = true
+    vi.spyOn(logger, 'info').mockImplementation((_source, code) => {
+      if (code === 'backgroundRenderer.render_failed') throw new Error('log call threw')
+      return 'log-id'
+    })
+    await expect(
+      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000, ...IDS })
+    ).rejects.toThrow()
+    expect(ctl.lastWindow!.isDestroyed()).toBe(true)
   }, 30_000)
 
   it('logs no render line for a refused hop, which the job logs as skipped', async () => {

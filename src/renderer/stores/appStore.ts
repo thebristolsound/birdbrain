@@ -175,15 +175,17 @@ function selectedCaptureState(
 
 const MAX_CAPTURE_EVENTS = 50
 
-// The feed keeps the newest 50 rows, but a 'received' row goes last: the Recapture controls read
-// it as the job still running, and a large batch's 'queued' rows would otherwise push it out.
-// Received rows go too, oldest first, only when nothing else is left to drop.
+// The feed keeps the newest 50 rows, but a running background job's 'received' row goes last: the
+// Recapture controls read it as the job still running, and a large batch's 'queued' rows would
+// otherwise push it out. Those rows go too, oldest first, only when nothing else is left to
+// drop. The event just added, at index 0, always stays.
 function capCaptureEvents(events: CaptureEvent[]): CaptureEvent[] {
   let excess = events.length - MAX_CAPTURE_EVENTS
   if (excess <= 0) return events
   const kept = [...events]
-  for (let i = kept.length - 1; i >= 0 && excess > 0; i--) {
-    if (kept[i].type === 'received') continue
+  for (let i = kept.length - 1; i > 0 && excess > 0; i--) {
+    const { type, source, jobId } = kept[i]
+    if (type === 'received' && source === 'recapture' && jobId !== undefined) continue
     kept.splice(i, 1)
     excess--
   }

@@ -7,7 +7,7 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { notify } from '@renderer/lib/notify'
 import { ContactStoppedError } from '@renderer/lib/vpnWarning'
 import { copyValue } from '@renderer/components/data/copy'
-import type { LinkMenuTarget } from '@renderer/components/contextmenu/entityMenu'
+import { linkCopyText, type LinkMenuTarget } from '@renderer/components/contextmenu/entityMenu'
 import type { GuestLinkHit } from '@renderer/components/captures/guestLink'
 import { isWebHref } from '@renderer/components/captures/linksTabModel'
 import { openSnapshot } from '@renderer/components/captures/linkWayback'
@@ -18,7 +18,10 @@ import {
 import { captureLinkBlockReason } from '@shared/localAddress'
 import { resolveCaptureForUrl } from '@shared/urlCanonicalize'
 
-export type LinkHit = Pick<GuestLinkHit, 'linkUrl' | 'linkText' | 'imageUrl' | 'selectionText'>
+export type LinkHit = Pick<
+  GuestLinkHit,
+  'linkUrl' | 'linkText' | 'altText' | 'imageUrl' | 'selectionText'
+>
 
 function messageOf(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause)
@@ -48,12 +51,13 @@ export function useLinkMenuTarget(
 
   return useCallback(
     (hit: LinkHit): LinkMenuTarget => {
-      const { linkUrl, linkText, imageUrl, selectionText } = hit
+      const { linkUrl, linkText, altText = '', imageUrl, selectionText } = hit
       const capturedCopy = linkUrl ? resolveCaptureForUrl(linkUrl, captures) : null
       return {
         kind: 'link',
         linkUrl,
         linkText,
+        altText,
         imageUrl,
         selectionText,
         hasCapturedCopy: capturedCopy !== null,
@@ -61,7 +65,7 @@ export function useLinkMenuTarget(
         captureBlockedReason: captureLinkBlockReason(linkUrl),
         actions: {
           copyLinkAddress: () => void copyValue(linkUrl, 'link address'),
-          copyLinkText: () => void copyValue(linkText, 'link text'),
+          copyLinkText: () => void copyValue(linkCopyText({ linkText, altText }), 'link text'),
           copyImageAddress: () => void copyValue(imageUrl, 'image address'),
           copyText: () => void copyValue(selectionText, 'text'),
           openCapturedCopy: () => {

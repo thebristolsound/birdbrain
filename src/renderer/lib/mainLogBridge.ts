@@ -29,7 +29,8 @@ const SEEN_LIMIT = 200
 // and contradict the second. The imported-path repair retries an unrepaired
 // row at every launch and the operator has no action to take on it, so the
 // replay would raise the same toast at every start. A failed Background Job
-// already shows in the capture activity feed through its `failed` event.
+// already shows in the capture activity feed through its `failed` event when a
+// window is open.
 const LOG_ONLY: ReadonlySet<LogCode> = new Set<LogCode>([
   'ipc.request_refused',
   'ipc.request_threw',

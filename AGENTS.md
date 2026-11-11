@@ -100,13 +100,16 @@ Single-context layout: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/ag
 
 ### Background jobs (project-local carve-out)
 
-Scheduled Dispatch runs every hour with two slots, under the spend cap; Scheduled PR review
-reviews one maintainer PR an hour under its own cap (ADR-0046); Doc curator is paused. Before
-restarting Doc curator or adding automation machinery, read
+Scheduled Dispatch runs every hour with two slots, under the spend cap; Doc curator is paused.
+The review fleet runs four Claude passes and a Codex review on every non-draft PR the maintainer
+or the machine account opens, on each push, has each model family check the other's findings,
+and posts the `review/fleet` status that `merge-gate` requires
+([ADR-0057](docs/adr/0057-a-two-family-review-fleet-reads-every-pr-and-gates-the-merge.md)). Its
+limits are the `REVIEW_FLEET_*` repository variables. PR review now runs only when the
+maintainer applies `review:requested` (ADR-0046). Before restarting Doc curator or adding
+automation machinery, read
 [ADR-0029](docs/adr/0029-measure-before-expanding-agent-automation.md): verify basic spending
-limits and obtain explicit maintainer authorization. The cross-model review reads a PR the maintainer
-labels `cross-model-review` with an OpenAI model, from his machine, as an advisory comment
-([ADR-0056](docs/adr/0056-cross-model-review-is-advisory-and-runs-on-the-maintainers-machine.md)).
+limits and obtain explicit maintainer authorization.
 
 Unattended jobs working a `ready-for-agent` issue, and any session that opens or labels an agent
 PR, follow [Background jobs](docs/agents/background-jobs.md): the wait-for-confirmation opt-out,
@@ -149,7 +152,9 @@ in a skill: `.claude/skills/post-commit-message/`, `post-pr-body/`, `post-commen
 text to a file, run the skill's `scripts/check.sh <file>`, then pass the file (`git commit -F`,
 `--body-file`, `--input`). The maintainer merges by applying the `merge` label, which enables
 auto-merge with the composed message once the `merge-gate` check passes; an `evidence-affecting`
-PR also needs the maintainer's approving review or `approved` label at head (ADR-0041). Scripted
+PR also needs the maintainer's approving review or `approved` label at head (ADR-0041), and a
+PR the review fleet covers needs `review/fleet` success at head or the maintainer's
+`break-glass` label (ADR-0057). Scripted
 merges, the dispatcher's included, go through `.claude/skills/merge-pr/scripts/merge.sh <n>`
 (ADR-0022).
 
@@ -201,3 +206,13 @@ Codex's GitHub reviewer reads this section; every reviewer applies it.
 - The PR description describes the diff at its head commit (ADR-0018). Flag a sentence the diff
   does not support: a fix, guard or test said to be present that is absent, or a count that
   does not match. Safe path: correct the sentence, or land the change it describes.
+
+### Workflow trust
+
+- A workflow that runs on `pull_request_target`, `issue_comment` or `workflow_run`, or that names
+  the `paid-runs` or `codex-relay` environment, holds credentials while a PR's author controls
+  its input. Flag a step that runs code from the PR's tree (installing its dependencies, running
+  its scripts or tests, loading its `.claude/` settings) in a job that holds a secret, or that
+  interpolates PR text such as a title, body, branch name or comment into a `run:` script. Safe
+  path: scripts come from the default branch, the PR's tree is only read, and PR text reaches a
+  script through an environment variable.

@@ -194,7 +194,7 @@ describe('report citation invariants', () => {
       httpStatus: 200,
       extensionVersion: '',
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0'
     })
   }

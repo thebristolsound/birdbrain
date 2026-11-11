@@ -476,6 +476,36 @@ describe('capture suppression round trip (#386)', () => {
     expect(window.getSelection()!.toString()).toBe('A different passage entirely.')
   })
 
+  it('a restored ready bar quotes the line breaks of the selection it comes back to (#1003)', async () => {
+    setPageHtml(
+      '<main><p>Acme Holdings Ltd\n12 Harbour Road</p>' +
+        '<p id="second">Acme Holdings Ltd 12   Harbour\nRoad</p></main>'
+    )
+    selectParagraph()
+    await mouseUp()
+    expect(bar()).not.toBeNull()
+
+    dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+    const range = document.createRange()
+    range.selectNodeContents(document.getElementById('second')!)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    // Same collapsed passage, so the offer survives the capture
+    dispatch({ type: 'RELEASE_CAPTURE_UI' })
+    expect(bar()).not.toBeNull()
+
+    await clickAction('quote')
+    expect(actionRequests).toEqual([
+      {
+        action: 'quote',
+        text: 'Acme Holdings Ltd 12 Harbour Road',
+        rawText: 'Acme Holdings Ltd 12   Harbour\nRoad'
+      }
+    ])
+  })
+
   it('is removed by the orphaned-content-script fallback strip', async () => {
     selectParagraph()
     await mouseUp()
@@ -578,6 +608,25 @@ describe("the operator's selection stays out of the frames (#993)", () => {
 
       expect(selectionEnds()).toEqual([text, anchor, text, focus])
     })
+
+    // The anchor is retargeted out of a shadow tree the composed start can sit in, so comparing
+    // the two would call such a forward selection backward: the reported direction decides.
+    it.each([
+      ['backward', [7, 30], [30, 7]],
+      ['forward', [30, 7], [7, 30]]
+    ])(
+      'puts a %s selection back that way, whatever the anchor suggests',
+      (reported, [anchor, focus], restored) => {
+        direction = reported
+        const text = document.querySelector('p')!.firstChild!
+        window.getSelection()!.setBaseAndExtent(text, anchor, text, focus)
+
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+        expect(selectionEnds()).toEqual([text, restored[0], text, restored[1]])
+      }
+    )
   })
 
   it('stays collapsed through every per-frame strip, and the passage still takes a second action', async () => {
@@ -665,6 +714,20 @@ describe("the operator's selection stays out of the frames (#993)", () => {
     selectParagraph()
     removeInjectedBirdbrainUi()
     expect(window.getSelection()!.rangeCount).toBe(0)
+  })
+
+  // The background also runs the fallback strip after a live script reports a failed teardown,
+  // and that script still gets the release.
+  it('puts the held selection back when the fallback strip ran after the hold', () => {
+    selectParagraph()
+    const before = selectionEnds()
+
+    dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+    removeInjectedBirdbrainUi()
+    expect(window.getSelection()!.rangeCount).toBe(0)
+    dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+    expect(selectionEnds()).toEqual(before)
   })
 
   // Wired the way background.ts wires it: suppress strips the page, and restore sends the release
@@ -762,14 +825,58 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       expect(document.activeElement).toBe(input)
     })
 
-    it('keeps a selection the operator made in the field during the capture', () => {
+    // The last two start or end on the caret the strip left, as shift and an arrow key would.
+    it.each([
+      [0, 5],
+      [3, 6],
+      [6, 9]
+    ])(
+      'keeps a selection the operator made in the field during the capture (%i to %i)',
+      (start, end) => {
+        const input = focusedInput()
+
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        input.setSelectionRange(start, end)
+        dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+        expect(fieldEnds(input).slice(0, 2)).toEqual([start, end])
+      }
+    )
+
+    it('keeps a caret the operator moved in the field during the capture', () => {
       const input = focusedInput()
 
       dispatch({ type: 'PREPARE_FOR_CAPTURE' })
-      input.setSelectionRange(0, 5)
+      // A click elsewhere in the field: still collapsed, but not where the strip left it.
+      input.setSelectionRange(11, 11)
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
       dispatch({ type: 'RELEASE_CAPTURE_UI' })
 
-      expect(fieldEnds(input).slice(0, 2)).toEqual([0, 5])
+      expect(fieldEnds(input).slice(0, 2)).toEqual([11, 11])
+    })
+
+    it('keeps the caret after text the operator typed in the field during the capture', () => {
+      const input = focusedInput()
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      input.setRangeText('!!', 6, 6, 'end')
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(input.value).toBe('Hello !!wide world')
+      expect(fieldEnds(input).slice(0, 2)).toEqual([8, 8])
+    })
+
+    it('selects nothing in a field whose text changed under a caret that did not move', () => {
+      const input = focusedInput()
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      // One character deleted and one typed: the caret is back where the strip left it, and the
+      // held offsets now name other text.
+      input.setRangeText('X', 5, 6, 'end')
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(input.value).toBe('HelloXwide world')
+      expect(fieldEnds(input).slice(0, 2)).toEqual([6, 6])
     })
 
     it('finds the field inside a web component', () => {
@@ -861,6 +968,26 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       } finally {
         removeAllRanges.mockRestore()
       }
+    })
+
+    // The caret was never held, so nothing puts it back.
+    it('loses a caret to the fallback strip run after a failed teardown', () => {
+      const [first] = twoParagraphs()
+      composed = () =>
+        new StaticRange({
+          startContainer: first,
+          startOffset: 5,
+          endContainer: first,
+          endOffset: 5
+        })
+      window.getSelection()!.collapse(first, 5)
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      expect(window.getSelection()!.rangeCount).toBe(1)
+      removeInjectedBirdbrainUi()
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(window.getSelection()!.rangeCount).toBe(0)
     })
 
     // Chromium's getRangeAt reports a selection that crosses a shadow boundary as collapsed; the
@@ -1066,5 +1193,16 @@ describe('a slow service worker cannot strand the bar on stale text', () => {
     // The stale check compares collapsed passages, so a layout difference
     // alone is the same offer
     expect(bar()).not.toBeNull()
+
+    // The offer is against the selection on screen now, so a Quote carries
+    // that selection's line breaks, not those of the one it replaced
+    await clickAction('quote')
+    expect(actionRequests).toEqual([
+      {
+        action: 'quote',
+        text: 'Acme Holdings Ltd 12 Harbour Road',
+        rawText: 'Acme Holdings Ltd 12   Harbour\nRoad'
+      }
+    ])
   })
 })

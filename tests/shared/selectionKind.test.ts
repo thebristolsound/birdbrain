@@ -303,6 +303,12 @@ describe('isQuoteTextOf', () => {
     ).toBe(false)
   })
 
+  it('accepts quote text exactly at the cap', () => {
+    const atCap = `a${'\n'.repeat(SELECTION_QUOTE_MAX_LENGTH - 2)}b`
+    expect(atCap).toHaveLength(SELECTION_QUOTE_MAX_LENGTH)
+    expect(isQuoteTextOf(atCap, 'a b')).toBe(true)
+  })
+
   it('rejects quote text over the cap even when it collapses to the passage', () => {
     const overCap = `a${'\n'.repeat(SELECTION_QUOTE_MAX_LENGTH - 1)}b`
     expect(isQuoteTextOf(overCap, 'a b')).toBe(false)

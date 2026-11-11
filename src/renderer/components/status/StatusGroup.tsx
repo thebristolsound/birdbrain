@@ -23,7 +23,8 @@ import { CaptureLog, useSelfTest } from '@renderer/components/status/CaptureHeal
 // its dot and both take that signal's colour, with one short word; the pill itself stays
 // unfilled. The button's accessible name is the whole state (statusGroupModel's summary), and a
 // polite live region announces severity changes only, never each count. Click opens the three
-// rows, and above the buttons the Batches an earlier session left held, each with its Resume.
+// rows, and above the buttons the held Batches, which an earlier session or a restore left
+// waiting, each with its Resume.
 
 const FG: Record<Severity, string> = {
   nominal: 'text-text-faint',

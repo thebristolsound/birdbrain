@@ -5,7 +5,7 @@ import { tmpdir } from 'os'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { getCase, listCases } from '@main/services/db/caseRepo'
 import { listCaptures } from '@main/services/db/captureRepo'
-import { listSelectors } from '@main/services/db/selectorRepo'
+import { collectSelectorMatchesForCase, listSelectors } from '@main/services/db/selectorRepo'
 import { listNotes } from '@main/services/db/noteRepo'
 import { initStorage, getStorageRoot } from '@main/services/storage'
 import { initSettings, updateSettings } from '@main/services/settings'
@@ -121,6 +121,23 @@ describe('bundled demo case archive', () => {
     expect(listCaptures(newCaseId).length).toBeGreaterThanOrEqual(3)
     expect(listSelectors(newCaseId).length).toBeGreaterThanOrEqual(1)
     expect(listNotes(newCaseId).length).toBeGreaterThanOrEqual(1)
+  })
+
+  // #1069. The fixture is a real archive from before version 16, the kind the version bump
+  // has to keep importing. A fixture regenerated at 16 or later carries provenance: assert
+  // what it carries here in the commit that regenerates it.
+  it('imports its selector matches with no provenance, as an archive from before version 16', async () => {
+    expect(inspectCaseArchive(FIXTURE).schemaVersion).toBeLessThan(16)
+
+    const { newCaseId } = await importCaseArchive(FIXTURE, {
+      operatorName: DEMO_CASE_OPERATOR_NAME
+    })
+
+    const matches = collectSelectorMatchesForCase(newCaseId)
+    expect(matches.length).toBeGreaterThan(0)
+    for (const match of matches) {
+      expect(match).toMatchObject({ matched_at: null, match_origin: null })
+    }
   })
 
   it('lands with a chain that still verifies after the import entry is appended', async () => {

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   INCLUDE_LIST_DOC,
@@ -55,6 +56,31 @@ describe('parseIncludeList', () => {
     expect(INCLUDE_LIST_DOC).toMatch(/evidence-affecting-paths-assessment/)
     expect(entries.length).toBeGreaterThan(50)
     expect(entries.every((e) => e.tier === 'blocking' || e.tier === 'advisory')).toBe(true)
+  })
+
+  it('matches the paths registered on 2026-11-09, and leaves the two exclusions off', () => {
+    const entries: Entry[] = loadIncludeList()
+    const tierOf = (path: string) => matchEntry(entries, path)?.tier
+    expect(tierOf('extension/src/selectionBar.ts')).toBe('blocking')
+    expect(tierOf('extension/src/captureSuppression.ts')).toBe('blocking')
+    expect(tierOf('extension/src/captureHygiene.ts')).toBe('blocking')
+    expect(tierOf('src/main/webviewPolicy.ts')).toBe('blocking')
+    expect(tierOf('src/main/services/captureLinks.ts')).toBe('blocking')
+    expect(tierOf('src/main/services/htmlParts.ts')).toBe('blocking')
+    expect(tierOf('src/renderer/components/captures/LinksTab.tsx')).toBe('blocking')
+    expect(tierOf('src/renderer/components/captures/useLinkMenuTarget.ts')).toBe('blocking')
+    expect(tierOf('src/renderer/components/captures/guestLink.ts')).toBe('blocking')
+    expect(matchEntry(entries, 'src/main/windowReveal.ts')).toBeNull()
+    expect(matchEntry(entries, 'src/renderer/components/signals/AutoCaptureCard.tsx')).toBeNull()
+  })
+
+  it('records the two carve-outs left off the include list on the exclusion list', () => {
+    const markdown = readFileSync(INCLUDE_LIST_DOC, 'utf8')
+    const start = markdown.indexOf('\n## Notable exclusions')
+    const exclusions = markdown.slice(start, markdown.indexOf('\n## ', start + 1))
+    expect(exclusions.length).toBeGreaterThan(0)
+    expect(exclusions).toContain('| `src/main/windowReveal.ts` |')
+    expect(exclusions).toContain('| `src/renderer/components/signals/**` |')
   })
 })
 

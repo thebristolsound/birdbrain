@@ -57,6 +57,7 @@ function installBirdbrainMock() {
       create: fn(),
       update: fn(),
       delete: fn(),
+      deleteDemo: fn(),
       getAutoCapturePolicy: fn(),
       setAutoCapturePolicy: fn()
     },
@@ -305,6 +306,20 @@ describe('useCasesMutations', () => {
     })
     expect(invalidatedKeys(invalidate)).toContainEqual(['cases'])
     // A Case's held background jobs go with it, so the status control's held count is read again.
+    expect(invalidatedKeys(invalidate)).toContainEqual(['recaptureQueue'])
+  })
+
+  // The tour's delete takes the demonstration Case's held background jobs with it too.
+  it('reads the queue again when the demonstration Case is deleted', async () => {
+    const { invalidate, wrapper } = setup()
+    api.cases.deleteDemo.mockResolvedValue(true)
+    const { result } = renderHook(() => useCasesMutations(), { wrapper })
+
+    await act(async () => {
+      await result.current.removeDemo.mutateAsync('demo')
+    })
+    expect(invalidatedKeys(invalidate)).toContainEqual(['cases'])
+    expect(invalidatedKeys(invalidate)).toContainEqual(['tags'])
     expect(invalidatedKeys(invalidate)).toContainEqual(['recaptureQueue'])
   })
 })

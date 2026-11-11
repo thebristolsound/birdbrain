@@ -101,6 +101,11 @@ import type {
   CaseArchiveCounts
 } from '@shared/types'
 
+// 16 since selector match provenance (#1069, schema v46): data.json's
+// selectorMatches carry `matched_at` and `match_origin`, and the import keeps
+// both. A Birdbrain from before them drops both columns without an error, so
+// the imported match no longer says when or how it was found. The gate refuses
+// instead. An archive written before this bump imports with both NULL.
 // 15 since the Persona columns (#1498, schema v45): data.json's captures carry
 // `persona_id` and `persona_label`, copied as they are. A Birdbrain from before
 // them drops both columns without an error, so the imported row no longer
@@ -192,7 +197,7 @@ import type {
 // anchor_json, which a pre-v27 import would silently drop. Bump this whenever a
 // Case Archive gains data an older release would silently discard or reject
 // opaquely.
-export const CASE_ARCHIVE_SCHEMA_VERSION = 15
+export const CASE_ARCHIVE_SCHEMA_VERSION = 16
 
 export interface CaseArchiveData {
   case: Record<string, unknown>

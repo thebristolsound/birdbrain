@@ -279,8 +279,9 @@ Capture, so it stays until the Operator dismisses it, retries it, or deletes its
 
 The table is one new schema version, scaffolded with `pnpm db:migration:new background-jobs`,
 which appends a fail-closed `if (version < N)` block to `src/main/services/db/migrations.ts` and
-bumps `LATEST_SCHEMA_VERSION` in `src/main/services/db/core.ts` (45 at the frame of reference, so
-46 unless another migration lands first). The block creates the table and indexes inside
+bumps `LATEST_SCHEMA_VERSION` in `src/main/services/db/core.ts` (45 at the frame of reference). The
+table is version 47: version 46 went to the selector match provenance columns, which merged
+first. The block creates the table and indexes inside
 `db.transaction`, uses `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS` so that a
 restored copy marked one version back can run it again (the precedent of the v43 to v45 blocks),
 and sets `user_version`. It reads and alters no existing table, so it carries no data migration.
@@ -323,9 +324,9 @@ lands after another job's append would remove that job's entry while its row sur
 lifecycle therefore runs the step from `nextExhibitNumber` through the row insert under a per-Case
 slot, the pattern `withCaseSlot` already applies to deletes (#394). The hashing and the TLS Cert
 Chain fetch before it, which can take up to 10 s, stay outside the slot. The section inside it
-writes files and one row, so the slot costs little. Slice 5 moved `withCaseSlot` to module scope in
-`captureLifecycle.ts`, so an ingest into a Case also waits for that Case's deletes and duplicates,
-and they wait for it. The ingest's callback into the seam is synchronous, so a failed ingest
+writes files and one row, so the slot costs little. Slice 5 puts the ingest on the Case's manifest
+slot, `withManifestSlot` in `manifest.ts`, which that Case's deletes, duplicates and the timestamp
+worker's stamps also take, so an ingest into a Case waits for them and they wait for it. The ingest's callback into the seam is synchronous, so a failed ingest
 truncates in the same turn that it appended.
 
 With parallel renders, Manifest order is ingest order, and a Capture's `timestamp` is its job's

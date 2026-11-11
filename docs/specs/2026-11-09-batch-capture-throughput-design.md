@@ -420,7 +420,7 @@ Slice 6 built the pool with these choices:
   whose site matches one of the jobs this process is running, and claims the first row that does
   not, in one transaction. The running set comes from the process rather than the rows, because a
   restore can replace the rows while a render goes on. No column is added, so a database already
-  at version 46 needs nothing more. `tldts` reads the public suffix list's ICANN section only, so
+  at version 47 needs nothing more. `tldts` reads the public suffix list's ICANN section only, so
   `a.github.io` and `b.github.io` share one site.
 - **The memory floor holds only a second job.** The first job of an idle queue always starts, as a
   single worker's would; otherwise a machine with less than 1.5 GiB available would never capture

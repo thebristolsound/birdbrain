@@ -211,7 +211,7 @@ export interface BirdbrainAPI {
     resume(payload: { batchId: string }): Promise<{ resumed: number; reason?: string }>
     dismiss(target: RecaptureJobTarget): Promise<{ dismissed: number }>
     cancel(target: RecaptureJobTarget): Promise<RecaptureCancelResult>
-    retry(target: RecaptureJobTarget): Promise<{ retried: number }>
+    retry(target: RecaptureJobTarget): Promise<{ retried: number; reason?: string }>
   }
   tags: {
     list(): Promise<Tag[]>

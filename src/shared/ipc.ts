@@ -1157,7 +1157,10 @@ export interface IpcInvokeContract {
   }
   'recapture:dismiss': { args: [target: RecaptureJobTarget]; result: { dismissed: number } }
   'recapture:cancel': { args: [target: RecaptureJobTarget]; result: RecaptureCancelResult }
-  'recapture:retry': { args: [target: RecaptureJobTarget]; result: { retried: number } }
+  'recapture:retry': {
+    args: [target: RecaptureJobTarget]
+    result: { retried: number; reason?: string }
+  }
 
   'tags:list': { args: []; result: Tag[] }
   'tags:create': { args: [params: CreateTagParams]; result: Tag }

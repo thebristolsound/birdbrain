@@ -196,8 +196,9 @@ export interface RecaptureService {
   // job is past the cut-off: its render has returned its page, and the job ends as the ingest
   // does, or something else has already ended its render. `refused` counts such a job.
   cancel: (target: RecaptureJobTarget) => RecaptureCancelResult
-  // Queues the target's failed and cancelled jobs again, behind the jobs already queued.
-  retry: (target: RecaptureJobTarget) => { retried: number }
+  // Queues the target's failed and cancelled jobs again, behind the jobs already queued. Refused,
+  // with the reason enqueue gives, while no operator name is set; the rows stay as they ended.
+  retry: (target: RecaptureJobTarget) => { retried: number; reason?: string }
   // resolves when the queue drains — used by tests only
   idle: () => Promise<void>
 }
@@ -1055,6 +1056,11 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       return { cancelled: ended.length + 1, refused: 0 }
     },
     retry(target) {
+      // The operator gate (X47), as at enqueue and resume: a retry that cannot be signed is not
+      // rendered.
+      if (!trimmedOperatorName()) {
+        return { retried: 0, reason: new OperatorNameRequiredError().message }
+      }
       const retriedAt = new Date().toISOString()
       const retried = backgroundJobRepo.retryJobs(target, retriedAt)
       for (const view of retried) {

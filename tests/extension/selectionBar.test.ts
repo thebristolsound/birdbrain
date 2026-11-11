@@ -681,7 +681,9 @@ describe("the operator's selection stays out of the frames (#993)", () => {
     const warn = vi.spyOn(console, 'warn')
 
     try {
-      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      // A strip that threw on the empty selection would answer a failed teardown, and the
+      // background would then run the fallback strip for every page with nothing selected.
+      expect(dispatch({ type: 'PREPARE_FOR_CAPTURE' })).toEqual([{ ok: true }])
       dispatch({ type: 'RELEASE_CAPTURE_UI' })
 
       expect(window.getSelection()!.rangeCount).toBe(0)
@@ -906,6 +908,19 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       expect(document.activeElement).toBe(input)
     })
 
+    // An emptied document selection says nothing about a field the operator has left since.
+    it('keeps a selection made in the field and then left, when the selection is emptied', () => {
+      const input = focusedInput()
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      input.setSelectionRange(0, 3)
+      input.blur()
+      window.getSelection()!.removeAllRanges()
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(fieldEnds(input).slice(0, 2)).toEqual([0, 3])
+    })
+
     // A page can change a held input's type during the capture. A number input takes no offsets,
     // so setSelectionRange would throw out of the release listener and the bar would stay away.
     it('puts nothing back into an input the page turned into one that takes no offsets', async () => {
@@ -1032,8 +1047,13 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       moves = []
     }
 
-    function focusedInputOf(type: keyof typeof VALUES, anchor = 0, focus = anchor): void {
-      setPageHtml(`${PAGE_HTML}<input type="${type}" value="${VALUES[type]}">`)
+    function focusedInputOf(
+      type: keyof typeof VALUES,
+      anchor = 0,
+      focus = anchor,
+      value = VALUES[type]
+    ): void {
+      setPageHtml(`${PAGE_HTML}<input type="${type}" value="${value}">`)
       const control = document.querySelector('input')!
       control.focus()
       expect(control.selectionStart).toBeNull()
@@ -1102,7 +1122,11 @@ describe("the operator's selection stays out of the frames (#993)", () => {
                 : Math.min(anchor, focus)
               return
             }
-            inner.focus = Math.max(0, Math.min(input.value.length, focus + (forward ? 1 : -1)))
+            // One step covers a whole emoji, which is two units of the value.
+            const next = input.value.codePointAt(forward ? focus : Math.max(0, focus - 2)) ?? 0
+            const step = next > 0xffff ? 2 : 1
+            const to = focus + (forward ? step : -step)
+            inner.focus = Math.max(0, Math.min(input.value.length, to))
             if (alter === 'move') inner.anchor = inner.focus
           }
         },
@@ -1258,13 +1282,19 @@ describe("the operator's selection stays out of the frames (#993)", () => {
     // selection back into an input that takes no offsets.
     it('selects nothing in the input after the fallback strip ran on top of the hold', () => {
       focusedInputOf('email', 0, 7)
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
-      removeInjectedBirdbrainUi()
-      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+      try {
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        removeInjectedBirdbrainUi()
+        dispatch({ type: 'RELEASE_CAPTURE_UI' })
 
-      expect(window.getSelection()!.rangeCount).toBe(0)
-      expect(moves).toEqual(['move backward'])
+        expect(warn).not.toHaveBeenCalledWith(RELEASE_FAILED, expect.anything())
+        expect(window.getSelection()!.rangeCount).toBe(0)
+        expect(moves).toEqual(['move backward'])
+      } finally {
+        warn.mockRestore()
+      }
     })
 
     it('selects nothing in the input once the selection has moved to the page', () => {
@@ -1279,6 +1309,33 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       expect(selectionEnds()).toEqual([text, 5, text, 5])
       // The page's caret is not extended either.
       expect(moves).toEqual(['move backward'])
+    })
+
+    // Chromium reports an input selected as a node as a selection that is not collapsed, and
+    // paints it.
+    it('strips an input selected as a node while it has the focus, as a page selection', () => {
+      focusedInputOf('email', 3)
+      window.getSelection()!.setBaseAndExtent(point[0], point[1], point[0], point[1] + 1)
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      expect(window.getSelection()!.rangeCount).toBe(0)
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(selectionEnds()).toEqual([point[0], point[1], point[0], point[1] + 1])
+      expect(moves).toEqual([])
+    })
+
+    it('puts back a selection that holds an emoji, and no more than was held', () => {
+      focusedInputOf('email', 0, 4, 'a\u{1F600}b\u{1F600}c@example.com')
+      expect(window.getSelection()!.toString()).toBe('a\u{1F600}b')
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      expect(inner).toEqual({ anchor: 0, focus: 0 })
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(inner).toEqual({ anchor: 0, focus: 4 })
+      // Three steps for four units of text.
+      expect(moves).toEqual(['move backward', ...Array.from('123', () => 'extend forward')])
     })
 
     describe('inside a web component', () => {

@@ -319,7 +319,6 @@ async function showFromSelection(): Promise<void> {
   if (isCaptureUiSuppressed()) return
 
   const text = normalizeSelection(raw)
-  const rawText = selectionQuoteText(raw)
   const barState = await queryBarState()
   // Fail closed on an unreachable worker: no bar at all, not a disabled one.
   if (barState === null) return
@@ -336,7 +335,11 @@ async function showFromSelection(): Promise<void> {
   // rather than adopted: the mouseup that produced it runs its own pass.
   const settled = window.getSelection()
   if (!settled || settled.rangeCount === 0 || settled.isCollapsed) return
-  if (normalizeSelection(settled.toString()) !== text) return
+  const settledRaw = settled.toString()
+  if (normalizeSelection(settledRaw) !== text) return
+  // The same passage can come back laid out differently, and the stale check
+  // above cannot see that, so a Quote's line breaks are read here (#1003).
+  const rawText = selectionQuoteText(settledRaw)
 
   const enabled = barState.connected && barState.activeCaseId !== null
   const { x, y } = barPosition(settled.getRangeAt(0).getBoundingClientRect())
@@ -445,15 +448,18 @@ export function initSelectionBar(): void {
     // they describe an action already taken, not one on offer.
     if (state.phase === 'ready') {
       const selection = window.getSelection()
+      const raw = selection ? selection.toString() : ''
       if (
         !selection ||
         selection.rangeCount === 0 ||
         selection.isCollapsed ||
-        normalizeSelection(selection.toString()) !== state.text
+        normalizeSelection(raw) !== state.text
       ) {
         hide()
         return
       }
+      // As in showFromSelection: the passage matched, its layout may not.
+      state = { ...state, rawText: selectionQuoteText(raw) }
     }
     render()
     // A restored result chip re-arms its auto-hide: the strip cleared the

@@ -470,6 +470,36 @@ describe('capture suppression round trip (#386)', () => {
     expect(bar()).toBeNull()
   })
 
+  it('a restored ready bar quotes the line breaks of the selection it comes back to (#1003)', async () => {
+    setPageHtml(
+      '<main><p>Acme Holdings Ltd\n12 Harbour Road</p>' +
+        '<p id="second">Acme Holdings Ltd 12   Harbour\nRoad</p></main>'
+    )
+    selectParagraph()
+    await mouseUp()
+    expect(bar()).not.toBeNull()
+
+    dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+    const range = document.createRange()
+    range.selectNodeContents(document.getElementById('second')!)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    // Same collapsed passage, so the offer survives the capture
+    dispatch({ type: 'RELEASE_CAPTURE_UI' })
+    expect(bar()).not.toBeNull()
+
+    await clickAction('quote')
+    expect(actionRequests).toEqual([
+      {
+        action: 'quote',
+        text: 'Acme Holdings Ltd 12 Harbour Road',
+        rawText: 'Acme Holdings Ltd 12   Harbour\nRoad'
+      }
+    ])
+  })
+
   it('is removed by the orphaned-content-script fallback strip', async () => {
     selectParagraph()
     await mouseUp()
@@ -621,5 +651,16 @@ describe('a slow service worker cannot strand the bar on stale text', () => {
     // The stale check compares collapsed passages, so a layout difference
     // alone is the same offer
     expect(bar()).not.toBeNull()
+
+    // The offer is against the selection on screen now, so a Quote carries
+    // that selection's line breaks, not those of the one it replaced
+    await clickAction('quote')
+    expect(actionRequests).toEqual([
+      {
+        action: 'quote',
+        text: 'Acme Holdings Ltd 12 Harbour Road',
+        rawText: 'Acme Holdings Ltd 12   Harbour\nRoad'
+      }
+    ])
   })
 })

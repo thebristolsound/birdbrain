@@ -35,6 +35,8 @@ export interface StatusInput {
   sessionActive: boolean
   /** Background captures queued or running (recapture queue). */
   pending?: number
+  /** Background captures an earlier session queued, which wait for the Operator to resume them. */
+  held?: number
 }
 
 export interface StatusModel {
@@ -51,6 +53,8 @@ export interface StatusModel {
   count: number | null
   /** The background-capture line, or null while the queue is empty. */
   queued: string | null
+  /** The held-capture line, or null while nothing is held. */
+  held: string | null
   /** The whole state, for the button's accessible name: a lead, then each signal's text. */
   summary: string
 }
@@ -142,9 +146,16 @@ export function statusModel(input: StatusInput): StatusModel {
     pending > 0
       ? `${pending} background capture${pending === 1 ? '' : 's'} queued or running`
       : null
+  // Held is a state to act on, not a fault: it colours nothing and joins the summary.
+  const heldCount = input.held ?? 0
+  const held =
+    heldCount > 0
+      ? `${heldCount} background capture${heldCount === 1 ? ' is' : 's are'} held`
+      : null
   const summary =
     `Status: ${lead}. Egress: ${egressSignal.text}. Extension: ${extension.text}. ${health.text}.` +
-    (queued ? ` ${queued}.` : '')
+    (queued ? ` ${queued}.` : '') +
+    (held ? ` ${held}.` : '')
 
   return {
     signals: [extension, egressSignal, health],
@@ -153,6 +164,7 @@ export function statusModel(input: StatusInput): StatusModel {
     word,
     count,
     queued,
+    held,
     summary
   }
 }

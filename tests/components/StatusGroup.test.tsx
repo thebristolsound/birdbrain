@@ -4,9 +4,10 @@ import { render, screen, cleanup, fireEvent, waitFor, act, within } from '@testi
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { CaptureEvent, EgressSetting } from '@shared/types'
-import type { RecaptureQueueStatus, VpnStatus } from '@shared/ipc'
+import type { HeldBatch, RecaptureQueueStatus, VpnStatus } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { useAppStore } from '@renderer/stores/appStore'
+import { settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { stubResizeObserver } from './resizeObserverStub'
 
@@ -546,5 +547,100 @@ describe('StatusGroup background captures', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(queueStatus).toHaveBeenCalledTimes(1)
+  })
+})
+
+// Jobs an earlier session queued wait for the Operator (#2129): the count on the closed button,
+// and one Resume per Batch in the popover, without opening the capture log.
+describe('StatusGroup held background captures', () => {
+  const batches: HeldBatch[] = [
+    { batchId: 'batch-a', caseId: 'case-a', caseName: 'Harbour Lane', held: 2 },
+    { batchId: 'batch-b', caseId: 'case-b', caseName: 'Quay Street', held: 1 }
+  ]
+  const heldQueue: RecaptureQueueStatus = { ...idleQueue, held: 3, heldBatches: batches }
+
+  function renderHeld(warn = false) {
+    const queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => heldQueue)
+    const resume = vi.fn(async () => ({ resumed: 1 }))
+    const checkVpnWarning = vi.fn(async (target: { caseId: string }) => ({
+      caseId: target.caseId,
+      warn,
+      canMute: false
+    }))
+    renderGroup(
+      async () => ({ egress: { kind: 'direct' } }),
+      vi.fn(async () => ({ vpnSeen: true })),
+      queueStatus,
+      {
+        egress: { vpnStatus: vi.fn(async () => ({ vpnSeen: true })), checkVpnWarning },
+        recapture: { queueStatus, resume }
+      }
+    )
+    return { queueStatus, resume, checkVpnWarning }
+  }
+
+  it('shows the held count on the closed button and names it in the accessible name', async () => {
+    renderHeld()
+
+    const indicator = await screen.findByTestId('recapture-held-indicator')
+    expect(indicator.textContent).toBe('3')
+    expect(indicator.getAttribute('title')).toBe('3 background captures are held')
+    expect(indicator.querySelector('svg')?.getAttribute('class')).not.toContain('animate-spin')
+    const button = screen.getByTestId('status-group')
+    expect(button.getAttribute('aria-label')).toMatch(/ 3 background captures are held\.$/)
+    // Held work is no fault: it colours nothing.
+    expect(button.dataset.severity).toBe('nominal')
+    expect(screen.queryByTestId('recapture-pending-indicator')).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Status' })).toBeNull()
+  })
+
+  it('lists each held Batch with its Case in the popover and resumes only the one chosen', async () => {
+    const { queueStatus, resume, checkVpnWarning } = renderHeld()
+    fireEvent.click(await screen.findByTestId('status-group'))
+
+    const section = await screen.findByTestId('recapture-held')
+    expect(section.textContent).toContain('3 background captures are held')
+    expect(section.textContent).toContain('Nothing is sent until you resume them.')
+    expect(screen.getByText('2 in Harbour Lane')).toBeDefined()
+    expect(screen.getByText('1 in Quay Street')).toBeDefined()
+    // In the popover itself: the capture log stays closed.
+    expect(screen.queryByTestId('capture-log')).toBeNull()
+    const reads = queueStatus.mock.calls.length
+
+    const buttons = within(section).getAllByRole('button', { name: 'Resume' })
+    expect(buttons).toHaveLength(2)
+    fireEvent.click(buttons[1])
+
+    await waitFor(() => expect(resume).toHaveBeenCalledWith({ batchId: 'batch-b' }))
+    expect(resume).toHaveBeenCalledTimes(1)
+    expect(checkVpnWarning).toHaveBeenCalledWith({ caseId: 'case-b' }, 'site')
+    await waitFor(() => expect(queueStatus.mock.calls.length).toBeGreaterThan(reads))
+  })
+
+  it('sends no resume when the Operator stops at the VPN warning', async () => {
+    const { resume, checkVpnWarning } = renderHeld(true)
+    fireEvent.click(await screen.findByTestId('status-group'))
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Resume' }))[0])
+
+    await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
+    act(() => settleVpnWarning('dismiss'))
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: 'Resume' })[0].hasAttribute('disabled')).toBe(
+        false
+      )
+    )
+    expect(checkVpnWarning).toHaveBeenCalledWith({ caseId: 'case-a' }, 'site')
+    expect(resume).not.toHaveBeenCalled()
+  })
+
+  it('shows no held count and no held section when nothing is held', async () => {
+    const queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => idleQueue)
+    renderWith({ kind: 'direct' }, true, queueStatus)
+    fireEvent.click(await screen.findByTestId('status-group'))
+
+    await screen.findByRole('dialog', { name: 'Status' })
+    await waitFor(() => expect(queueStatus).toHaveBeenCalled())
+    expect(screen.queryByTestId('recapture-held')).toBeNull()
+    expect(screen.queryByTestId('recapture-held-indicator')).toBeNull()
   })
 })

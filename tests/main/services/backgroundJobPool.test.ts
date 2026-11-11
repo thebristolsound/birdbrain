@@ -1,10 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { jobSite, resolveBackgroundWorkers, workersForCpus } from '@main/services/backgroundJobPool'
+import {
+  MEMORY_GATE_RETRY_MS,
+  MIN_FREE_MEMORY_BYTES,
+  jobSite,
+  resolveBackgroundWorkers,
+  workersForCpus
+} from '@main/services/backgroundJobPool'
 
 // The pool's concurrency and its site rule (docs/specs/2026-11-09-batch-capture-throughput-
 // design.md, "Bounded parallel workers").
 
 describe('background job pool rules', () => {
+  // By value: the pool's own tests read both constants by name, so they hold for any value.
+  it('sets the free memory floor at 1.5 GiB and the recheck at 2 seconds', () => {
+    expect(MIN_FREE_MEMORY_BYTES).toBe(1_610_612_736)
+    expect(MEMORY_GATE_RETRY_MS).toBe(2_000)
+  })
+
   it('runs one worker per four logical CPUs, at least one and at most two', () => {
     expect([1, 4, 7, 8, 11, 12, 18, 64].map(workersForCpus)).toEqual([1, 1, 1, 2, 2, 2, 2, 2])
   })

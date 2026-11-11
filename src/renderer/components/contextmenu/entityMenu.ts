@@ -276,6 +276,8 @@ export interface LinkMenuTarget {
   kind: 'link'
   linkUrl: string
   linkText: string
+  /** The hit image's alternative text, which Copy link text falls back to (`linkCopyText`). */
+  altText: string
   imageUrl: string
   selectionText: string
   /** Whether the Case already holds a Capture of `linkUrl`. */
@@ -865,6 +867,17 @@ export function eventMenuEntries(target: EventMenuTarget): MenuEntry[] {
 }
 
 /**
+ * What Copy link text copies: the link's text, else the alternative text of the image it
+ * holds (#1727). Empty means the item is turned off, so it never copies an empty string.
+ */
+export function linkCopyText({
+  linkText,
+  altText
+}: Pick<LinkMenuTarget, 'linkText' | 'altText'>): string {
+  return linkText || altText
+}
+
+/**
  * Links, images and selections in a stored page (#1708). Nothing here opens the
  * link: a click-through or an external browser would send the Operator to the
  * page's author's choice of URL outside the Case. Capture link queues a background
@@ -904,7 +917,7 @@ export function linkMenuEntries(target: LinkMenuTarget): MenuEntry[] {
         id: 'link-copy-text',
         label: 'Copy link text',
         icon: Clipboard,
-        disabled: !target.linkText,
+        disabled: !linkCopyText(target),
         run: actions.copyLinkText
       }
     )

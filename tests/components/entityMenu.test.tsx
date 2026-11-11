@@ -7,6 +7,7 @@ import {
   entityMenuHeader,
   exhibitMenuEntries,
   isSubmenu,
+  linkCopyText,
   linkMenuEntries,
   nodeMenuEntries,
   noteMenuEntries,
@@ -569,6 +570,7 @@ describe('link menu', () => {
       kind: 'link',
       linkUrl,
       linkText: 'Example',
+      altText: '',
       imageUrl: '',
       selectionText: '',
       hasCapturedCopy: false,
@@ -729,6 +731,32 @@ describe('link menu', () => {
     actionById(entries, 'link-copy-image').run()
     expect(target.actions.copyImageAddress).toHaveBeenCalledOnce()
     expect(entityMenuHeader(target).ariaLabel).toBe('Link actions: https://example.com/a')
+  })
+
+  // Electron leaves linkText empty when a link's content is an image (plan D5, #1727).
+  describe('Copy link text', () => {
+    const image = 'https://example.com/i.png'
+
+    it('copies the link text when the link has some, over the alternative text', () => {
+      const target = linkTarget({ imageUrl: image, linkText: 'Example', altText: 'Logo' })
+      expect(actionById(linkMenuEntries(target), 'link-copy-text').disabled).toBe(false)
+      expect(linkCopyText(target)).toBe('Example')
+    })
+
+    it('copies the alternative text of an image link that has no text', () => {
+      const target = linkTarget({ imageUrl: image, linkText: '', altText: 'Company logo' })
+      const entries = linkMenuEntries(target)
+      expect(actionById(entries, 'link-copy-text').disabled).toBe(false)
+      expect(linkCopyText(target)).toBe('Company logo')
+      actionById(entries, 'link-copy-text').run()
+      expect(target.actions.copyLinkText).toHaveBeenCalledOnce()
+    })
+
+    it('is turned off when the link has neither text nor alternative text', () => {
+      const target = linkTarget({ imageUrl: image, linkText: '', altText: '' })
+      expect(actionById(linkMenuEntries(target), 'link-copy-text').disabled).toBe(true)
+      expect(linkCopyText(target)).toBe('')
+    })
   })
 
   it('offers only Copy image address for an image outside a link', () => {

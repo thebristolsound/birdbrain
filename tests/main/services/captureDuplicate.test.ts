@@ -14,7 +14,9 @@ import { createCaptureStore } from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import type { CaptureLifecycle, IngestParams } from '@main/services/captureLifecycle'
+import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
+import { createSelector } from '@main/services/db/selectorRepo'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSigningKey, resetSigningKey } from '@main/services/signingKey'
 import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
@@ -824,6 +826,68 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
       textHash: createHash('sha256').update(Buffer.from(TEXT, 'utf-8')).digest('hex'),
       outcome: 'built'
     })
+  })
+
+  // A copy is matched against the case's active selectors like an ingested capture, and
+  // its matches carry the capture-time origin (#1082).
+  it("matches the copy's own text against the active selectors on the next tick", async () => {
+    const selector = createSelector({ caseId, pattern: 'only this page' })
+    createSelector({ caseId, pattern: 'drifted mirror' })
+    // A drifted source mirror matches only the second selector, so a row for the first and none
+    // for the second shows the copy was matched on its copied .txt bytes.
+    getDb()
+      .prepare('UPDATE capture_texts SET content = ? WHERE capture_id = ?')
+      .run('drifted mirror text', source.id)
+    const matching = createCaptureLifecycle({
+      selectorLifecycle: createSelectorLifecycle({ emitRematched: vi.fn() })
+    })
+
+    const result = await matching.duplicate(source.id)
+    if (result.status !== 'duplicated') throw new Error('expected a duplicate')
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    const rows = getDb()
+      .prepare(
+        'SELECT selector_id, matched_at, match_origin FROM selector_matches WHERE capture_id = ?'
+      )
+      .all(result.capture.id) as Array<{
+      selector_id: string
+      matched_at: string | null
+      match_origin: string | null
+    }>
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ selector_id: selector.id, match_origin: 'capture-time' })
+    expect(rows[0].matched_at).toEqual(expect.any(String))
+  })
+
+  // Pins runPostCaptureWork's shared no-text guard as duplicate reaches it.
+  it('runs no selectors for a copy whose source has no text', async () => {
+    const runActiveSelectorsForCapture = vi.fn()
+    const stubbed = createCaptureLifecycle({
+      selectorLifecycle: { runActiveSelectorsForCapture } as unknown as SelectorLifecycle
+    })
+    const { capture: textless } = await stubbed.ingest({
+      caseId,
+      url: 'https://example.com/no-text',
+      title: 'No text',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      stream: Readable.from([Buffer.from(MHTML_BODY)]) as unknown as ReadableStream<Uint8Array>,
+      textContent: '',
+      headers: {},
+      browserVersion: 'Chrome/120',
+      userAgent: 'Mozilla/5.0',
+      httpStatus: 200,
+      operatorId: 'op-source',
+      operatorName: 'Original Operator',
+      toolVersion: '0.1.0'
+    })
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    const result = await stubbed.duplicate(textless.id)
+    if (result.status !== 'duplicated') throw new Error('expected a duplicate')
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    expect(runActiveSelectorsForCapture).not.toHaveBeenCalled()
   })
 
   it('keeps the committed entry, row and files when the post-commit mirror write fails', async () => {

@@ -2288,10 +2288,29 @@ describe('renderPageInHiddenWindow, the PDF', () => {
     expect(errorOf(result.pdf)).toMatch(/The print did not settle within (1\d{3}|2000)ms/)
   }, 30_000)
 
+  // The clock is faked from the writer's call on. A real timer can fire a few milliseconds
+  // before Date.now() says its delay has passed, and the print then starts with those
+  // milliseconds as its bound.
   it('does not start the print when the record phases used the time left', async () => {
+    const { writeTransactionRecord } =
+      await import('../../../src/packages/transaction-record/writer')
     ctl.printHangs = true
-    ctl.writerHangs = true
-    const result = await render(3_000)
+    const writerCalled = new Promise<void>((resolve) => {
+      vi.mocked(writeTransactionRecord).mockImplementationOnce(() => {
+        ctl.order.push('writeTransactionRecord')
+        vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] })
+        resolve()
+        return new Promise<never>(() => {})
+      })
+    })
+    const rendering = render(3_000)
+    try {
+      await writerCalled
+      await vi.advanceTimersByTimeAsync(3_000)
+    } finally {
+      vi.useRealTimers()
+    }
+    const result = await rendering
     expect(result.transactionRecord).toMatchObject({ present: false, reason: 'failed' })
     expect(result.pdf).toMatchObject({ present: false, reason: 'failed' })
     expect(errorOf(result.pdf)).toBe('Error: The Recapture timeout left no time for the print')

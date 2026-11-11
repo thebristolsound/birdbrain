@@ -67,7 +67,7 @@ async function ingest(caseId: string, payload: string, url: string, title: strin
     httpStatus: 200,
     extensionVersion: '',
     operatorId: 'op',
-    operatorName: '',
+    operatorName: 'Test Operator',
     toolVersion: '0.1.0'
   })
 }

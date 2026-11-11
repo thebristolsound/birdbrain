@@ -84,7 +84,7 @@ describe('ingestMhtmlCapture', () => {
       httpStatus: 200,
       extensionVersion: '',
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0'
     })
 
@@ -109,7 +109,7 @@ describe('ingestMhtmlCapture', () => {
       httpStatus: 200,
       extensionVersion: '',
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0'
     })
 
@@ -134,7 +134,7 @@ describe('ingestMhtmlCapture', () => {
       httpStatus: 200,
       extensionVersion: '',
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0',
       screenshot: screenshotData
     })
@@ -163,7 +163,7 @@ describe('ingestMhtmlCapture', () => {
       httpStatus: 200,
       extensionVersion: '',
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0'
     })
 
@@ -198,7 +198,7 @@ describe('ingestMhtmlCapture', () => {
         httpStatus: 200,
         extensionVersion: '',
         operatorId: '',
-        operatorName: '',
+        operatorName: 'Test Operator',
         toolVersion: '',
         screenshot: Buffer.from('fake-png')
       })
@@ -242,7 +242,7 @@ describe('ingestMhtmlCapture', () => {
         httpStatus: 200,
         extensionVersion: '',
         operatorId: '',
-        operatorName: '',
+        operatorName: 'Test Operator',
         toolVersion: '',
         screenshot: Buffer.from('fake-png')
       })
@@ -284,7 +284,7 @@ describe('ingestMhtmlCapture', () => {
           httpStatus: 200,
           extensionVersion: '',
           operatorId: '',
-          operatorName: '',
+          operatorName: 'Test Operator',
           toolVersion: '',
           screenshot: Buffer.from('fake-png')
         },
@@ -335,7 +335,7 @@ describe('verifyCapture', () => {
       httpStatus: 200,
       extensionVersion: '',
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0'
     })
     const r = await verifyCapture(capture.id)
@@ -358,7 +358,7 @@ describe('verifyCapture', () => {
       httpStatus: 200,
       extensionVersion: '',
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0'
     })
     const absPath = join(tempDir, 'captures', capture.mhtmlPath!)
@@ -416,7 +416,7 @@ describe('deletion manifest entry', () => {
       httpStatus: 200,
       extensionVersion: '',
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0'
     })
 
@@ -427,7 +427,7 @@ describe('deletion manifest entry', () => {
       timestamp: '2026-04-05T13:00:00.000Z',
       contentHash: capture.hash,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0'
     })
 

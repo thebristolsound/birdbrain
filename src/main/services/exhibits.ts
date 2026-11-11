@@ -19,6 +19,8 @@ import {
   type ChainVerifyResult
 } from '@main/services/manifest'
 import { getPublicKeyPem } from '@main/services/signingKey'
+import { awaitingRenumber, hasRenumberEntry } from '@main/services/exhibitNumbering'
+import { trimmedOperatorName } from '@main/services/operatorName'
 import { defaultCaptureStore, type CaptureStore } from '@main/services/captureStore'
 import { entryDescribesRow, rowDescriber, verifyCapture } from '@main/services/captureLifecycle'
 import {
@@ -60,8 +62,10 @@ export function getCaseInventory(
 ): CaseInventory {
   const rows: InventoryRow[] = []
   const cite = exhibitCitationResolver(caseId, 'app')
+  const exhibits = listExhibits(caseId)
+  const unsignable = unsignableNumbers(exhibits, store.caseDir(caseId))
 
-  for (const exhibit of listExhibits(caseId)) {
+  for (const exhibit of exhibits) {
     const row: InventoryExhibitRow = {
       rowType: 'anchored',
       entity: 'exhibit',
@@ -78,7 +82,8 @@ export function getCaseInventory(
       committedAt: exhibit.committedAt,
       manifestSeq: exhibit.manifestSeq,
       anchored: exhibit.manifestSeq !== null,
-      exists: store.existsRelative(exhibit.path)
+      exists: store.existsRelative(exhibit.path),
+      ...(unsignable.has(exhibit.id) ? { unnumberedReason: 'operator_name_required' } : {})
     }
     rows.push(row)
   }
@@ -126,6 +131,16 @@ export function getCaseInventory(
   }
 
   return { caseId, rows }
+}
+
+// The Exhibits still waiting on the `renumber` entry while no operator name is
+// set, so the backfill cannot sign it (X47). Derived from the chain and the
+// setting at read time, so nothing records the skip.
+function unsignableNumbers(exhibits: Exhibit[], caseDir: string): Set<string> {
+  if (trimmedOperatorName() || exhibits.length === 0) return new Set()
+  const { entries } = readManifestSnapshot(caseDir)
+  if (hasRenumberEntry(entries)) return new Set()
+  return new Set(awaitingRenumber(exhibits, entries).map(({ id }) => id))
 }
 
 // SHA-256 of a PEM public key's DER SubjectPublicKeyInfo. Fingerprinting the

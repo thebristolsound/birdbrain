@@ -6,6 +6,7 @@ import type { ReactNode } from 'react'
 import { ProvenanceBadge } from '@renderer/components/captures/ProvenanceBadge'
 import type { Capture, HashVerification } from '@shared/types'
 import { fakeBridge } from '../renderer/fakeBridge'
+import { pinNonUtcTimeZone } from './timeZoneStub'
 
 // An un-stamped capture, hydrated from the persisted verification columns so the
 // badge renders without a verify round trip. Every capture looks like this while
@@ -116,5 +117,30 @@ describe('ProvenanceBadge changed since capture (#1662)', () => {
     expect(await screen.findByText('Changed since capture')).toBeDefined()
     expect(screen.queryByText(/tamper/i)).toBeNull()
     expect(screen.queryByText('Chain broken')).toBeNull()
+  })
+})
+
+// The TSA's asserted time is evidence, so it reads in UTC like the capture times (#1051).
+describe('ProvenanceBadge trusted time in UTC', () => {
+  pinNonUtcTimeZone()
+
+  it('names the stamped time in UTC beside the TSA', async () => {
+    const fresh: HashVerification = {
+      captureId: capture.id,
+      url: capture.url,
+      title: capture.title,
+      storedHash: 'h',
+      computedHash: 'h',
+      status: 'verified',
+      trustedTime: 'rfc3161',
+      tsaName: 'Example TSA',
+      stampedAt: '2026-09-01T21:04:05.000Z'
+    }
+    mount(true, {}, vi.fn().mockResolvedValue(fresh))
+    fireEvent.click(await screen.findByText(/^Verified/))
+
+    expect((await screen.findByText('Timestamped')).closest('span')?.getAttribute('title')).toBe(
+      'Example TSA — Sep 1, 2026 21:04:05 UTC'
+    )
   })
 })

@@ -1,6 +1,6 @@
 import type { CheerioAPI } from 'cheerio'
 import type { CaptureLink, CaptureLinks } from '@shared/types'
-import { listHtmlPartsInMhtml } from '@main/services/mhtmlDecoder'
+import { listHtmlPartsInMhtml, mainHtmlPartIndex } from '@main/services/mhtmlDecoder'
 
 // Reading a stored page's HTML parts under fixed ceilings, and resolving the links in
 // them. Shared by the Links tab (captureLinks.ts) and the Case search field index
@@ -80,13 +80,9 @@ export function readHtmlParts(
   budgets: CaptureLinkBudgets = CAPTURE_LINK_BUDGETS
 ): HtmlPartsRead {
   const { snapshotLocation, parts } = listHtmlPartsInMhtml(buffer)
-  const snapshotIndex =
-    snapshotLocation === null
-      ? -1
-      : parts.findIndex((part) => part.contentLocation === snapshotLocation)
-  const mainIndex = snapshotIndex === -1 ? 0 : snapshotIndex
+  const mainIndex = mainHtmlPartIndex(snapshotLocation, parts)
   const ordered =
-    parts.length === 0 ? [] : [mainIndex, ...parts.map((_, i) => i).filter((i) => i !== mainIndex)]
+    mainIndex === null ? [] : [mainIndex, ...parts.map((_, i) => i).filter((i) => i !== mainIndex)]
 
   const read: HtmlPartInput[] = []
   const skippedParts: CaptureLinks['skippedParts'] = {

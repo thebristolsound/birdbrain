@@ -194,6 +194,37 @@ describe('DataExplorer (#1149)', () => {
     await waitFor(() => expect(screen.queryByTestId('artifact-tabs')).toBeNull())
   })
 
+  // X47 (#1332): a row main marks as waiting on an operator name shows no number anywhere on
+  // the Data screen, and the Properties tab says why.
+  it('shows a row waiting on an operator name as unnumbered, with the reason', async () => {
+    vi.mocked(window.birdbrain.exhibits.inventory).mockResolvedValue({
+      caseId: 'case1',
+      rows: INVENTORY.map((row) =>
+        row.id === 'cap-a' ? { ...row, unnumberedReason: 'operator_name_required' } : row
+      )
+    })
+    renderExplorer()
+    const table = within(await screen.findByTestId('artifact-table'))
+    const row = table.getByTestId('artifact-row-cap-a')
+    expect(text(row)).toContain('Unnumbered')
+    expect(text(row)).not.toContain('Exhibit 1')
+
+    fireEvent.click(row)
+    const strip = within(await screen.findByTestId('artifact-tabs'))
+    expect(text(strip.getByTestId('artifact-tabs-subtitle'))).toBe('Unnumbered / raw')
+    const props = within(strip.getByTestId('properties-tab'))
+    expect(text(props.getByText('Exhibit Number').nextSibling)).toContain(
+      'Unnumbered until an operator name is set in Settings'
+    )
+
+    const rail = await tree()
+    fireEvent.click(rail.getByLabelText('Expand Captures'))
+    fireEvent.click(
+      rail.getByTestId('data-tree-node-exhibit:cap-a').querySelector('button:last-of-type')!
+    )
+    expect(screen.getByTestId('data-node-subtitle').textContent).toBe('Unnumbered')
+  })
+
   it('selecting a row opens the strip with the Properties tab', async () => {
     renderExplorer()
     fireEvent.click(await screen.findByTestId('artifact-row-cap-a'))

@@ -39,7 +39,7 @@ in a hidden window and feeds the same lifecycle ingest.
 | Exclusion policy | `src/main/services/exclusionPolicy.ts`, `src/shared/urlPatterns.ts` | Global and per-case ignored-URL matching |
 | IPC channels / preload | `src/shared/ipc.ts`, `src/preload/index.ts` | Typed events to the renderer |
 | Zustand store | `src/renderer/stores/appStore.ts` | Capture-event ring buffer and stats |
-| Health dashboard | `src/renderer/components/status/CaptureHealth.tsx` | Pipeline observability UI |
+| Capture log | `src/renderer/components/status/CaptureHealth.tsx` | Pipeline observability UI, opened from the top bar's status popover |
 
 ## 2. Capture sources
 
@@ -403,9 +403,10 @@ interface CaptureEvent {
 
 Events flow over the `CAPTURE_ACTIVITY` IPC channel through the preload bridge into the Zustand
 store, which keeps a ring buffer of the 50 most recent events (aggregate success/fail/skip
-counters accumulate independently). The `CaptureHealth` component in the top bar renders the
-counters, connection and session state, the last error, the activity list, and the two self-test
-buttons. A separate `NEW_CAPTURE` event carries the full capture row so the renderer prepends it
+counters accumulate independently). The top bar's status control (`StatusGroup`) reads the
+counters and the connection state, and its popover's **Capture log** button opens the
+`CaptureLog` component from `CaptureHealth.tsx`: the counters, connection and session state, the
+last error, the activity list, and the two self-test buttons. A separate `NEW_CAPTURE` event carries the full capture row so the renderer prepends it
 to the list without a refetch.
 
 ### Self-tests

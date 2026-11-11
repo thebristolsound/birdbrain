@@ -694,10 +694,9 @@ export interface BirdbrainSettings {
   isFreshInstall: boolean
   // Latched once the bundled demonstration Case Archive has been offered to
   // this install (#405). Not a guarantee on its own: the settings write can
-  // fail, and what holds then is the `is_demo` probe in the database — a probe
-  // of the current state, not a second latch, so on such an install deleting
-  // the demo case brings a fresh one back next launch, and again after each
-  // later deletion (#1301). The full statement is on `seedDemoCaseIfNeeded`.
+  // fail, and what holds then are the two database probes in
+  // `seedDemoCaseIfNeeded` (#1301, #1333), which read the current state and
+  // are not a second latch. What they leave open is stated there, once.
   demoCaseSeeded: boolean
   // The launched browser (#1831). The executable the Operator chose, '' for none, and the
   // version `Browser.getVersion` reported at each executable's last launch, since discovery
@@ -956,10 +955,19 @@ export const LOG_CODES = [
   'captureServer.selector_create_failed',
   'captureServer.tag_apply_failed',
   'captureServer.note_create_failed',
-  // The capture-pipeline self-test failed to tear its sandbox down (#614).
-  // Nothing left behind is evidence — the sandbox holds only the sentinel — so
-  // the route reports its own result and this is the record that residue exists.
+  // The capture-pipeline self-test failed to tear its sandbox down (#614), or
+  // the startup sweep failed to remove a temp root (#1183). The route reports
+  // its own result, and this is the record that residue exists.
   'captureServer.self_test_cleanup_failed',
+  // Teardown kept the sandbox because something other than the self-test wrote
+  // to it (#1196); deleting the case would have cascaded over that write.
+  'captureServer.self_test_sandbox_kept',
+  // Teardown kept the sandbox because the storage root could not be listed, so
+  // whether it holds a folder for the case is not known.
+  'captureServer.self_test_storage_unavailable',
+  // The startup sweep removed a temp root an earlier self-test left (#1183).
+  // It removes no case.
+  'captureServer.self_test_temp_root_removed',
   // The capture server's listener failed (#513) — at boot usually EADDRINUSE
   // on 19845, held by another program or by a Birdbrain running against its
   // own data directory, since the single-instance lock stops a plain second
@@ -1102,6 +1110,9 @@ export const LOG_CODES = [
   // settings.json at startup failed. Init swallows it and retries next launch;
   // this is the record that the key may still be on disk.
   'settings.retired_fields_cleanup_failed',
+  // The global ignored-URL list holds patterns stored before edits were
+  // validated (#724). They are kept, and Settings marks each one.
+  'settings.ignore_patterns_invalid',
   // First-launch seeding of the bundled demonstration Case Archive (#405).
   // Every outcome is recorded: an operator whose first launch produced no demo
   // case has no other way to tell a missing fixture from a refused import.
@@ -1417,6 +1428,23 @@ export function isSelectorOrigin(value: unknown): value is SelectorOrigin {
   return SELECTOR_ORIGINS.includes(value as SelectorOrigin)
 }
 
+// Which pass wrote a Persisted Match (#1069): the one that runs when a Capture
+// is added to the Case, a Selector's creation, an edit to its pattern, or an
+// operator's rescan. Named apart from `origin` because a Case Archive carries
+// selectors and their matches side by side, and the two mean different things.
+// Recorded when the row is written. A matching pass never changes it on a row
+// that exists; the Database Admin hatch can, by hand. Absent means no recorded
+// value: the row predates provenance recording, or it was imported from an
+// archive whose value the import does not keep. Legacy rows are not backfilled,
+// because guessing a value would be a false provenance claim.
+export const MATCH_ORIGINS = ['capture-time', 'create', 'update', 'rescan'] as const
+export type MatchOrigin = (typeof MATCH_ORIGINS)[number]
+
+// Plain TEXT, hand-editable from the Database Admin hatch, as with Selector origin.
+export function isMatchOrigin(value: unknown): value is MatchOrigin {
+  return MATCH_ORIGINS.includes(value as MatchOrigin)
+}
+
 export interface Selector {
   id: string
   caseId: string
@@ -1476,8 +1504,7 @@ export interface Note {
 // --- Cross-case recent activity (#403) ---
 // One row of the dashboard's recent-activity feed. Derived read-only from the
 // captures/notes/cases tables — nothing persists it. Selector hits are absent
-// deliberately: `selector_matches` carries no timestamp, so a hit event has no
-// honest time to order by (maintainer ruling 2026-08-20, #403).
+// deliberately; activityRepo.ts says why.
 interface RecentActivityBase {
   caseId: string
   caseName: string
@@ -1639,7 +1666,9 @@ export interface ExtractedDataSearchResult {
 export type CaptureSource = 'auto' | 'manual' | 'selector' | 'recapture' | 'launched'
 
 export interface CaptureEvent {
-  type: 'received' | 'stored' | 'failed' | 'skipped'
+  // `queued` is a background job accepted at enqueue, before its render starts. It is not a
+  // Capture, so it counts toward no capture statistic.
+  type: 'queued' | 'received' | 'stored' | 'failed' | 'skipped'
   captureId?: string
   source: CaptureSource
   url: string
@@ -1657,6 +1686,10 @@ export interface CaptureEvent {
   // The source and link address of a Capture link job, on every event emitted while it runs, so
   // the viewer's notice can tell its job from another of the same address (ADR-0040).
   linkedFrom?: { captureId: string; linkHref: string }
+  // The background job and its Batch, on every event a background job emits. The extension and
+  // the launched browser run no job, so their events carry neither.
+  jobId?: string
+  batchId?: string
 }
 
 export interface OperatorIdentity {

@@ -49,6 +49,50 @@ describe('DbTables accessible names (#1537)', () => {
   })
 })
 
+// #1069. The row controls show on a table with a column outside its key. Two such columns
+// reached selector_matches with match provenance; dbAdmin.test.ts pins that column shape.
+describe('DbTables row controls', () => {
+  const key = [
+    { name: 'selector_id', type: 'TEXT', pk: true },
+    { name: 'capture_id', type: 'TEXT', pk: true }
+  ]
+  const row = { selector_id: 'sel-1', capture_id: 'cap-1' }
+
+  it('offers edit and delete for the columns selector_matches has, with both provenance values in the editor', async () => {
+    const tableRows = vi.fn().mockResolvedValue({
+      rows: [{ ...row, matched_at: '2026-04-06T09:30:00.000Z', match_origin: 'rescan' }],
+      total: 1,
+      columns: [
+        ...key,
+        { name: 'matched_at', type: 'TEXT', pk: false },
+        { name: 'match_origin', type: 'TEXT', pk: false }
+      ]
+    })
+    fakeBridge({ db: { tableRows } })
+    renderTables()
+    await screen.findByText('rescan')
+
+    expect(screen.getByRole('button', { name: 'Delete row' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit row' }))
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByLabelText(/^match_origin/)).toHaveProperty('value', 'rescan')
+    expect(within(dialog).getByLabelText(/^matched_at/)).toHaveProperty(
+      'value',
+      '2026-04-06T09:30:00.000Z'
+    )
+  })
+
+  it('offers neither on a table whose every column is in its key', async () => {
+    const tableRows = vi.fn().mockResolvedValue({ rows: [row], total: 1, columns: key })
+    fakeBridge({ db: { tableRows } })
+    renderTables()
+    await screen.findByText('sel-1')
+
+    expect(screen.queryByRole('button', { name: 'Edit row' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Delete row' })).toBeNull()
+  })
+})
+
 describe('DbTables', () => {
   it('keeps the previous page of rows on screen while the next page is loading', async () => {
     // total: 51 with PAGE_SIZE 50 makes a second page reachable, so the Next

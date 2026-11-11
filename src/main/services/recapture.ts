@@ -386,7 +386,9 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
 
   // A throw between a job's claim and the write of its end stops the loop and leaves the row
   // `running` with no job behind it. Such rows are settled when the loop stops and again when it
-  // next starts, so a database that refused the first write gets a second.
+  // next starts, so a database that refused the first write gets a second. `exceptJobIds` is
+  // always empty in this loop, which holds no job when it settles; the worker pool passes the
+  // jobs its other slots are running.
   function settleOrphans(): void {
     reportSettled(
       backgroundJobRepo.settleRunningJobs({
@@ -691,8 +693,9 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
   }
 
   // One job at a time, each claimed from its row as the last one ends. Any throw between a claim
-  // and the write of the job's end stops the loop: a database it cannot read or write (a restore
-  // closes it), or an event or log call that throws. The next enqueue or resume starts it again.
+  // and the write of the job's end stops the loop, as does one while the loop reports the rows
+  // it settled as it starts: a database it cannot read or write (a restore closes it), or an
+  // event or log call that throws. The next enqueue, resume or `restartQueue` starts it again.
   function drain(): void {
     if (draining) return
     draining = (async () => {

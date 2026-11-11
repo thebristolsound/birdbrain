@@ -1007,16 +1007,19 @@ export const LOG_CODES = [
   // (#2127). Both carry the job's capture id, which the job lines below share.
   'backgroundRenderer.render_completed',
   'backgroundRenderer.render_failed',
-  // How each Background Job ended (#2127): stored with its ingest time, skipped
-  // by a rule, or failed with the step it reached, or as `interrupted` at the
-  // next start when the app closed during it. The app window hears of each as an
-  // event; these lines and the job's `background_jobs` row outlast the session.
+  // How each Background Job ended (#2127): stored, with its ingest time unless
+  // the row was settled after the job had gone, skipped by a rule, or failed
+  // with the step it reached, or as `interrupted` when the app closed or the
+  // queue stopped during it, or a restore removed its Capture. The app window
+  // hears of each as an event; these lines and the job's `background_jobs` row
+  // outlast the session.
   'backgroundRenderer.job_stored',
   'backgroundRenderer.job_skipped',
   'backgroundRenderer.job_failed',
-  // The background job queue stopped on a throw between a job's claim and the write of its end:
-  // a row it could not read or write, as while a restore has the database closed, or an event or
-  // log call that threw. The next enqueue or resume starts it again.
+  // The background job queue stopped on a throw, between a job's claim and the write of its end
+  // or while it reported the rows it settled as it started: a row it could not read or write, as
+  // while a restore has the database closed, or an event or log call that threw. The next
+  // enqueue or resume starts it again, as the restore handlers do after a failed restore.
   'backgroundRenderer.job_queue_failed',
   'consentBlocker.filter_engine_failed',
   'selectorLifecycle.retroactive_match_failed',

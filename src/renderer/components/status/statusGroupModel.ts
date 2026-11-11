@@ -35,7 +35,7 @@ export interface StatusInput {
   sessionActive: boolean
   /** Background captures queued or running (recapture queue). */
   pending?: number
-  /** Background captures an earlier session queued, which wait for the Operator to resume them. */
+  /** Background captures an earlier session or a restore left queued, held until resumed. */
   held?: number
 }
 

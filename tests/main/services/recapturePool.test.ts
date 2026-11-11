@@ -407,8 +407,9 @@ describe('the background job pool', () => {
         'backgroundRenderer.job_queue_failed'
       )
     )
-    // a's row stays `running`, for the next start to mark interrupted; b goes on alone.
-    expect([a, b, c].map(stateOf)).toEqual(['running', 'running', 'queued'])
+    // a's end could not be written, so its slot stops. The settling that follows the stop finds
+    // a's Capture in its Case and marks the row stored; b goes on alone.
+    expect([a, b, c].map(stateOf)).toEqual(['stored', 'running', 'queued'])
     expect(rendering).toEqual(['https://example.org/b'])
 
     finish('https://example.org/b')

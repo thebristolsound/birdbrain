@@ -522,9 +522,11 @@ export async function ingestMhtmlCapture(
   // both the pre-callback manifest failure (only the mhtml written) and a failure inside
   // the callback (sidecars written too). The store never touches manifest.jsonl.
   try {
-    // From the number through the row insert or the rollback, under the Case's slot:
-    // a rollback truncates to its anchor, which would drop an entry another ingest
-    // appended after it. The stream write and the TLS re-fetch above stay outside.
+    // From the number through the row insert or the rollback, under the Case's slot, so
+    // an ingest waits for a delete, a batch delete or a duplicate that holds it across
+    // awaits. Between two ingests the synchronous seam callback below is what keeps a
+    // rollback from dropping the other's entry. The stream write and the TLS re-fetch
+    // above stay outside.
     return await withCaseSlot(params.caseId, async () => {
       const exhibitNumber = nextExhibitNumber(params.caseId, store)
       return await withCaptureEntry(

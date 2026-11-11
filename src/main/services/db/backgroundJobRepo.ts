@@ -1,4 +1,4 @@
-import { getDb } from '@main/services/db/core'
+import { getDb, isDatabaseOpen } from '@main/services/db/core'
 import type {
   BackgroundJobPhase,
   BackgroundJobState,
@@ -171,8 +171,8 @@ export function setJobPhase(id: string, phase: BackgroundJobPhase): BackgroundJo
   return row ? toView(row) : undefined
 }
 
-// Ends a `running` row. A row that is no longer `running` is left as it is: its Case was
-// deleted, or a restore brought back an earlier copy of it.
+// Ends a `running` row. A row that is no longer `running`, or is gone, is left as it is: its
+// Case was deleted, or the queue settled it when its loop stopped.
 export function finishJob(id: string, end: JobEnd): BackgroundJobView | undefined {
   const row = getDb()
     .prepare(
@@ -202,7 +202,10 @@ export function listJobs(query: RecaptureListJobsQuery): BackgroundJobView[] {
 }
 
 // The jobs this session has queued or is running: after the startup pass, every such row is one.
+// None when no database is open: a restore can start in that state, after one that left the file
+// unreadable, and there is then no row to read.
 export function listActiveJobs(): BackgroundJobView[] {
+  if (!isDatabaseOpen()) return []
   const rows = getDb()
     .prepare(`SELECT * FROM background_jobs WHERE state IN ('queued', 'running') ${QUEUE_ORDER}`)
     .all() as JobRow[]
@@ -297,23 +300,84 @@ export interface RunningAttempt {
   captureId: string
 }
 
-export interface StartupRecovery {
-  // After a restore, the rows of the jobs this process is still running, written back as running.
-  running: BackgroundJobView[]
+export interface SettledJobs {
   // The rows that were `running` whose attempt's Capture is in their Case, now `stored`.
   stored: BackgroundJobView[]
   // The other rows that were `running`, now `failed` as `interrupted`, each with the id its
   // attempt named, which the job's log lines carry.
   interrupted: Array<{ job: BackgroundJobView; captureId: string | null }>
+}
+
+export interface StartupRecovery extends SettledJobs {
+  // After a restore, the rows of the jobs this process is still running, written back as running.
+  running: BackgroundJobView[]
   held: BackgroundJobView[]
   deletedStored: number
 }
 
+interface SettleParams {
+  now: string
+  interruptedError: string
+  exceptJobIds: string[]
+}
+
+// Settles every `running` row but those named: no job of this process stands behind it. The
+// ingest inserts the Capture row last, after the manifest append and the files, and each claim
+// names a new Capture id, so a Capture under the row's id in the row's Case is this attempt's,
+// whole, and the row is `stored`. Any other row is `failed` as `interrupted`. The caller holds the
+// transaction.
+function settleRunning(
+  db: ReturnType<typeof getDb>,
+  { now, interruptedError, exceptJobIds }: SettleParams
+): { stored: JobRow[]; interrupted: JobRow[] } {
+  const except = JSON.stringify(exceptJobIds)
+  const stored = db
+    .prepare(
+      `UPDATE background_jobs
+          SET state = 'stored', phase = NULL, finished_at = ?
+        WHERE state = 'running' AND id NOT IN (SELECT value FROM json_each(?))
+          AND EXISTS (
+            SELECT 1 FROM captures c
+             WHERE c.id = background_jobs.capture_id AND c.case_id = background_jobs.case_id
+          )
+        RETURNING *`
+    )
+    .all(now, except) as JobRow[]
+  const interrupted = db
+    .prepare(
+      `UPDATE background_jobs
+          SET state = 'failed', phase = NULL, failure_kind = 'interrupted', error = ?,
+              finished_at = ?
+        WHERE state = 'running' AND id NOT IN (SELECT value FROM json_each(?))
+        RETURNING *`
+    )
+    .all(interruptedError, now, except) as JobRow[]
+  return { stored, interrupted }
+}
+
+const settledViews = ({
+  stored,
+  interrupted
+}: {
+  stored: JobRow[]
+  interrupted: JobRow[]
+}): SettledJobs => ({
+  stored: stored.map(toView),
+  interrupted: interrupted.map((row) => ({ job: toView(row), captureId: row.capture_id }))
+})
+
+// The same settling while the app runs: the queue calls it when its loop stops on a throw and
+// when the loop next starts, for a row the stop left `running`. `exceptJobIds` are the jobs the
+// process is running.
+export function settleRunningJobs(params: SettleParams): SettledJobs {
+  const db = getDb()
+  return settledViews(db.transaction(() => settleRunning(db, params))())
+}
+
 // The pass before the queue runs ("Restart and snapshot restore" in the design), in one
-// transaction. A running job whose Capture row is in its Case ended with the process after its
-// ingest committed, so it is `stored`; any other running job's render or ingest ended with the
-// process. A queued job waits for the Operator, and a stored row past retention goes, because
-// its Capture is the lasting record.
+// transaction: a running job ended with the process, stored if its Capture landed and
+// interrupted otherwise, a queued job waits for the Operator, and a stored row past retention
+// goes, because its Capture is the lasting record.
 // After a restore, `running` are the jobs this process is still running. The restored copy can
 // hold each one's row in any state or not at all, so each is written back first as the process
 // knows it, `running` under its attempt's Capture id, and `finishJob` then records its end as it
@@ -327,7 +391,6 @@ export function recoverJobsAtStartup(params: {
 }): StartupRecovery {
   const db = getDb()
   const attempts = params.running ?? []
-  const except = JSON.stringify(attempts.map(({ job }) => job.jobId))
   const restoreRunning = db.prepare(
     `INSERT INTO background_jobs
        (id, batch_id, case_id, url, supersedes_capture_id, linked_from_capture_id, link_href,
@@ -360,27 +423,11 @@ export function recoverJobsAtStartup(params: {
       ) as JobRow | undefined
       if (row) running.push(row)
     }
-    const stored = db
-      .prepare(
-        `UPDATE background_jobs
-            SET state = 'stored', phase = NULL, finished_at = ?
-          WHERE state = 'running' AND id NOT IN (SELECT value FROM json_each(?))
-            AND EXISTS (
-              SELECT 1 FROM captures c
-               WHERE c.id = background_jobs.capture_id AND c.case_id = background_jobs.case_id
-            )
-          RETURNING *`
-      )
-      .all(params.now, except) as JobRow[]
-    const interrupted = db
-      .prepare(
-        `UPDATE background_jobs
-            SET state = 'failed', phase = NULL, failure_kind = 'interrupted', error = ?,
-                finished_at = ?
-          WHERE state = 'running' AND id NOT IN (SELECT value FROM json_each(?))
-          RETURNING *`
-      )
-      .all(params.interruptedError, params.now, except) as JobRow[]
+    const settled = settleRunning(db, {
+      now: params.now,
+      interruptedError: params.interruptedError,
+      exceptJobIds: attempts.map(({ job }) => job.jobId)
+    })
     const held = db
       .prepare(`UPDATE background_jobs SET state = 'held' WHERE state = 'queued' RETURNING *`)
       .all() as JobRow[]
@@ -392,8 +439,7 @@ export function recoverJobsAtStartup(params: {
       .run(params.storedBefore).changes
     return {
       running: running.map(toView),
-      stored: stored.map(toView),
-      interrupted: interrupted.map((row) => ({ job: toView(row), captureId: row.capture_id })),
+      ...settledViews(settled),
       held: held.map(toView),
       deletedStored
     }

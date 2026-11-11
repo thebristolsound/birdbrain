@@ -11,12 +11,14 @@ import {
   getJob,
   hasRunnableQueued,
   insertQueuedJobs,
+  listActiveJobs,
   listHeldBatches,
   listJobs,
   recoverJobsAtStartup,
   resumeBatch,
   retryJobs,
   setJobPhase,
+  settleRunningJobs,
   type NewBackgroundJob
 } from '@main/services/db/backgroundJobRepo'
 
@@ -268,6 +270,77 @@ describe('backgroundJobRepo', () => {
     expect(dismissJobs({ jobId: 'a' })).toBe(0)
     expect(dismissJobs({ batchId: 'batch-1' })).toBe(0)
     expect(listJobs({ batchId: 'batch-1' })).toHaveLength(2)
+  })
+
+  const landedCapture = (id: string, captureCase = caseId) =>
+    insertCapture({
+      id,
+      caseId: captureCase,
+      url: 'https://example.com/',
+      title: 'T',
+      hash: 'a'.repeat(64),
+      timestamp: '2026-11-09T11:00:00.000Z',
+      format: 'mhtml',
+      method: 'background'
+    })
+
+  // The ingest inserts the Capture row last and each claim names a new Capture id, so only a
+  // Capture under the row's own id, in its own Case, shows that this attempt was stored.
+  it('does not mark a running job stored for a Capture under another id, or with no id of its own', () => {
+    insertQueuedJobs([job('other-attempt'), job('no-id')])
+    landedCapture('cap-earlier')
+    claim('cap-this-attempt')
+    claim('cap-unused')
+    getDb().prepare("UPDATE background_jobs SET capture_id = NULL WHERE id = 'no-id'").run()
+
+    const { stored, interrupted } = recoverJobsAtStartup({
+      now: '2026-11-09T12:00:00.000Z',
+      storedBefore: '2026-11-02T12:00:00.000Z',
+      interruptedError: 'closed'
+    })
+
+    expect(stored).toEqual([])
+    expect(interrupted.map(({ job: { jobId } }) => jobId)).toEqual(['other-attempt', 'no-id'])
+  })
+
+  // Review of #2141, second verdict, finding 4: the same settling while the app runs, for rows
+  // the queue left `running` when it stopped.
+  it('settles the running rows it is not told to leave, and holds or deletes nothing', () => {
+    insertQueuedJobs([job('landed'), job('orphan'), job('kept'), job('queued')])
+    landedCapture('cap-landed')
+    for (const id of ['landed', 'orphan', 'kept']) claim(`cap-${id}`)
+
+    const settled = settleRunningJobs({
+      now: '2026-11-09T12:00:00.000Z',
+      interruptedError: 'stopped',
+      exceptJobIds: ['kept']
+    })
+
+    expect(settled.stored.map(({ jobId, state, captureId }) => [jobId, state, captureId])).toEqual([
+      ['landed', 'stored', 'cap-landed']
+    ])
+    expect(
+      settled.interrupted.map(({ job: { jobId, failureKind, error }, captureId }) => [
+        jobId,
+        failureKind,
+        error,
+        captureId
+      ])
+    ).toEqual([['orphan', 'interrupted', 'stopped', 'cap-orphan']])
+    expect(['landed', 'orphan', 'kept', 'queued'].map((id) => getJob(id)?.state)).toEqual([
+      'stored',
+      'failed',
+      'running',
+      'queued'
+    ])
+  })
+
+  // A restore can start with no database open, after one that left the file unreadable.
+  it('reads no active job when no database is open', () => {
+    insertQueuedJobs([job('a')])
+    expect(listActiveJobs().map(({ jobId }) => jobId)).toEqual(['a'])
+    closeDatabase()
+    expect(listActiveJobs()).toEqual([])
   })
 
   it('recovers at startup in one pass: landed, interrupted, held, and stored rows past the cutoff', () => {

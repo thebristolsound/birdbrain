@@ -867,6 +867,8 @@ describe('recapture service', () => {
         expect(render).not.toHaveBeenCalled()
         expect(newCaptures).toEqual([])
         expect(existsSync(chainPath())).toBe(false)
+        // No `queued` event either, so the refused batch adds no waiting row to the capture log.
+        expect(events).toEqual([])
       })
     }
 

@@ -26,6 +26,7 @@ import { CaptureDetailsPanel } from '@renderer/components/captures/CaptureDetail
 import { settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { stubMatchMedia } from './matchMediaStub'
+import { pinNonUtcTimeZone } from './timeZoneStub'
 import { MAC_PLATFORM, restorePlatform, stubPlatform } from '../renderer/platformStub'
 
 const capture: Capture = {
@@ -275,5 +276,18 @@ describe('CaptureDetailsPanel relative times', () => {
       vi.advanceTimersByTime(60_000)
     })
     expect(screen.getByText(/1 minute ago/)).toBeTruthy()
+  })
+})
+
+// #1520: the hover behind the relative time names the capture time in UTC, as the viewer does.
+describe('CaptureDetailsPanel capture time', () => {
+  pinNonUtcTimeZone()
+
+  it('names the full capture time in UTC behind the relative one', async () => {
+    renderPanel({ capture: { ...capture, timestamp: '2026-08-01T21:04:05.000Z' } })
+
+    expect((await screen.findByText(/MHTML Archive/)).getAttribute('title')).toBe(
+      'Aug 1, 2026 21:04:05 UTC'
+    )
   })
 })

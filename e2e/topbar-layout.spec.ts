@@ -6,7 +6,9 @@ type Page = import('@playwright/test').Page
 
 // The top-bar search used to sit at the window's centre on its own layer, so on
 // a window about 1400px wide it covered the Capture Session switch and the REC
-// indicator. It now takes its place between the two side groups.
+// indicator. It now takes its place between the two side groups. Since the 2026-11-08
+// top bar, the Case's actions (Share, Export, Launch browser, the switch and the recording
+// mark) live in the Case action bar under it; the top bar keeps the status group and Settings.
 
 const NAMES = ['Kestrel', 'Operation Kestrel Harbour Review of subject accounts and linked domains']
 
@@ -33,26 +35,32 @@ test.describe('Top bar layout', () => {
     const input = page.getByTestId('global-search-input')
     const caseName = page.getByTestId('topbar-case-name')
     const controls = page.getByTestId('topbar-controls')
+    const actionBar = page.getByTestId('case-action-bar')
 
     for (const name of NAMES) {
       const caseId = await createCase(page, name)
 
       // Stand in for a connected extension and a running session: the switch only
-      // renders with an extension attached, and the REC pill only while recording.
-      await electronApp.evaluate(({ BrowserWindow }, id) => {
-        const { webContents } = BrowserWindow.getAllWindows()[0]
-        webContents.send('event:extensionConnection', { connected: true })
-        webContents.send('event:sessionStateChanged', { sessionActive: true, activeCaseId: id })
-      }, caseId)
-      await expect(page.getByTestId('topbar-rec')).toBeVisible({ timeout: 10000 })
-
-      // The session switch sits in the case action bar, so the top bar's right side does
-      // not grow toward the native window controls while recording. Export stays in the
-      // top bar and folds to its icon on narrow windows.
-      const actionBar = page.getByTestId('case-action-bar')
+      // renders with an extension attached, and the recording mark only while recording.
+      // The app's own session update can land after the stand-in one, so send it until it holds.
+      await expect(async () => {
+        await electronApp.evaluate(({ BrowserWindow }, id) => {
+          const { webContents } = BrowserWindow.getAllWindows()[0]
+          webContents.send('event:extensionConnection', { connected: true })
+          webContents.send('event:sessionStateChanged', { sessionActive: true, activeCaseId: id })
+        }, caseId)
+        // The Case's actions sit in the case action bar, so the top bar's right side does not
+        // grow toward the native window controls while recording: the switch, the recording
+        // mark, Export (which folds to its icon on narrow windows) and the Share pill.
+        await expect(actionBar.getByTestId('topbar-rec')).toBeVisible({ timeout: 1000 })
+      }).toPass({ timeout: 10000 })
       await expect(actionBar.getByRole('switch', { name: 'Capture Session' })).toBeVisible()
-      await expect(controls.getByRole('button', { name: /Export/ })).toBeVisible()
+      await expect(actionBar.getByRole('button', { name: /Export/ })).toBeVisible()
+      await expect(actionBar.getByTestId('case-action-bar-section')).toHaveText('Overview')
       await expect(controls.getByRole('switch', { name: 'Capture Session' })).toHaveCount(0)
+      await expect(controls.getByRole('button', { name: /Export/ })).toHaveCount(0)
+      await expect(controls.getByTestId('topbar-rec')).toHaveCount(0)
+      await expect(controls.getByTestId('status-group')).toBeVisible()
 
       // 1,200 is the width where the design review of 2026-11-04 saw the name cut to "F.".
       for (const width of [1400, 1200, 1100, 1000, 900]) {
@@ -73,8 +81,9 @@ test.describe('Top bar layout', () => {
           expect(overlapWidth(searchBox, rightBox)).toBeLessThanOrEqual(0)
         }).toPass({ timeout: 5000 })
 
-        // The case name shortens to about eight characters before the search gives up width, and
-        // hides below 1,000 pixels with the full name in the tooltip; never one letter.
+        // The case name's track keeps 160 pixels, and the name at least 64 of them, before the
+        // search gives up width. Below 1,000 pixels the name hides with the full name in the
+        // tooltip; never one letter.
         const nameText = caseName.getByTestId('topbar-case-name-text')
         if (width >= 1000) {
           // The text keeps its 64 pixels inside its own slot, clear of the search.
@@ -103,8 +112,8 @@ test.describe('Top bar layout', () => {
         expect(scrollWidth).toBeLessThanOrEqual(width)
 
         // The Share pill keeps its label from 1,024px up and folds to the icon below that
-        // (docs/design-handoff/2026-10-28-share-a-case/, frame G).
-        const pill = controls.getByTestId('share-pill')
+        // (docs/design-handoff/2026-10-28-share-a-case/, frame G), now in the action bar.
+        const pill = actionBar.getByTestId('share-pill')
         await expect(pill).toHaveAttribute('data-state', 'share')
         const { width: pillWidth } = (await pill.boundingBox())!
         if (width >= 1024) expect(pillWidth).toBeGreaterThan(40)
@@ -153,6 +162,120 @@ test.describe('Top bar layout', () => {
     expect(await page.evaluate(() => window.location.hash)).toMatch(/#\/cases\/[^/]+\/settings$/)
   })
 
+  // With a launched browser and the extension both recording, the action bar carries the
+  // recording mark between Launch browser and the switch; the switch's source line gives way,
+  // not the row.
+  test('fits the Case action bar while a launched browser records', async ({
+    electronApp,
+    page
+  }) => {
+    const caseId = await createCase(page, NAMES[1])
+    const actionBar = page.getByTestId('case-action-bar')
+    // The app's own session update can land after the stand-in one, so each check sends the
+    // stand-in again and confirms it holds; a bar with no session would fit trivially.
+    const holdRecording = async () => {
+      await electronApp.evaluate(({ BrowserWindow }, id) => {
+        const { webContents } = BrowserWindow.getAllWindows()[0]
+        webContents.send('event:extensionConnection', { connected: true })
+        webContents.send('event:sessionStateChanged', { sessionActive: true, activeCaseId: id })
+        webContents.send('event:launchedBrowserStatus', {
+          state: 'open',
+          browser: {
+            family: 'chrome',
+            label: 'Google Chrome',
+            caseId: id,
+            version: '149.0.7827.55',
+            extensionWarnings: [],
+            sessionStartedAt: Date.now() - 3_754_000,
+            tabs: [{ targetId: 't1', title: 'Harbor notices', url: 'https://ferry.test/' }]
+          }
+        })
+      }, caseId)
+      await expect(actionBar.getByTestId('topbar-rec')).toContainText('Launched Google Chrome', {
+        timeout: 1000
+      })
+      await expect(actionBar.getByTestId('session-source-line')).toContainText(
+        'and the extension',
+        { timeout: 1000 }
+      )
+    }
+    const launch = actionBar.getByRole('button', { name: 'Launch browser' })
+    const row = [
+      actionBar.getByTestId('share-pill'),
+      actionBar.getByRole('button', { name: /Export/ }),
+      launch,
+      actionBar.getByTestId('topbar-rec'),
+      actionBar.getByRole('switch', { name: 'Capture Session' })
+    ]
+
+    for (const width of [1440, 1280, 1100, 1024]) {
+      await electronApp.windows()[0].setViewportSize({ width, height: 800 })
+      await expect(async () => {
+        await holdRecording()
+        const overflow = await actionBar.evaluate((el) => el.scrollWidth - el.clientWidth)
+        expect(overflow).toBeLessThanOrEqual(0)
+        const pageOverflow = await page.evaluate(
+          () => document.documentElement.scrollWidth - window.innerWidth
+        )
+        expect(pageOverflow).toBeLessThanOrEqual(0)
+        // Left to right with no overlap: Share, Export, Launch browser, the mark, the switch.
+        let edge = 0
+        for (const item of row) {
+          const { x, width: itemWidth } = (await item.boundingBox())!
+          expect(x).toBeGreaterThanOrEqual(edge)
+          edge = x + itemWidth
+        }
+        // One line. The button's height is fixed, so count the lines its label is laid out on.
+        const labelLines = await launch.evaluate((el) => {
+          const range = document.createRange()
+          range.selectNodeContents(el)
+          return new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top))).size
+        })
+        expect(labelLines).toBe(1)
+        await expect(actionBar.getByRole('switch', { name: 'Capture Session' })).toBeInViewport({
+          ratio: 1
+        })
+      }).toPass({ timeout: 5000 })
+    }
+  })
+
+  // A long Egress label used to squeeze the row's name to nothing, print over it and run past
+  // the popover's edge. The label gives way now, and the value's title holds it whole.
+  test('keeps a long Egress label inside its status popover row', async ({ page }) => {
+    const label = 'Field office relay through the harbour authority gateway, floor three'
+    await page.evaluate(() => {
+      window.location.hash = '/settings'
+    })
+    await page.getByRole('tab', { name: 'Network' }).click()
+    await page.locator('input[name="egressKind"][value="proxy"]').check()
+    await page.fill('#egress-proxy', 'socks5://127.0.0.1:9')
+    await page.press('#egress-proxy', 'Tab')
+    // Each field saves as it loses focus, so wait for one save before starting the next.
+    const egressText = page.getByTestId('egress-indicator')
+    await expect(egressText).toHaveAttribute('title', 'Egress: Proxy')
+    await page.fill('#egress-label', label)
+    await page.press('#egress-label', 'Tab')
+    await expect(egressText).toHaveAttribute('title', `Egress: Proxy: ${label}`)
+    await createCase(page, NAMES[0])
+
+    await page.getByTestId('status-group').click()
+    const popover = page.getByRole('dialog', { name: 'Status' })
+    const row = popover.getByTestId('status-row-egress')
+    await expect(row).toContainText(`Proxy: ${label}`)
+    const name = row.locator(':scope > span').first()
+    const value = row.locator(':scope > span').last()
+    await expect(name).toHaveText('Egress')
+    const nameBox = (await name.boundingBox())!
+    const valueBox = (await value.boundingBox())!
+    const popoverBox = (await popover.boundingBox())!
+    // The name is whole, the value starts after it and ends inside the popover.
+    expect(await name.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0)
+    expect(nameBox.width).toBeGreaterThan(20)
+    expect(valueBox.x).toBeGreaterThanOrEqual(nameBox.x + nameBox.width)
+    expect(valueBox.x + valueBox.width).toBeLessThanOrEqual(popoverBox.x + popoverBox.width)
+    await expect(value).toHaveAttribute('title', `Proxy: ${label}`)
+  })
+
   test('the Export dialog covers the narrow-window details overlay', async ({
     electronApp,
     page
@@ -169,7 +292,7 @@ test.describe('Top bar layout', () => {
     await expect(overlay).toBeVisible()
 
     await page
-      .getByTestId('topbar-controls')
+      .getByTestId('case-action-bar')
       .getByRole('button', { name: /Export/ })
       .click()
     await page.getByRole('menuitem', { name: 'Export evidence report' }).click()

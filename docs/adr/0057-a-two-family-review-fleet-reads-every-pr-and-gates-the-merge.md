@@ -44,8 +44,8 @@ Three facts shaped the design:
    repository rules, and tests that cannot fail. Each runs in the PR's checkout with only user
    settings loaded, so a PR's own `.claude/` settings and hooks never load next to the
    credential, and may read, grep and glob files, nothing else. It gets no shell, because even
-   `git diff --no-index` can print the job's credentials; the diff, commits and linked issue
-   come in as files.
+   `git diff --no-index` can print the job's credentials; the diff, the commit history and the
+   sources come in as files, which decision 5 lists.
 3. **Codex finds, and checks Claude.** A relay comment asks `@codex review` at the head and
    lists Claude's blocking findings, asking for one `F<n>: CONFIRMED` or `F<n>: REFUTED` line
    each. Codex's inline findings at the head, with their P0 to P3 badges, are its findings.
@@ -93,6 +93,69 @@ Three facts shaped the design:
    and then has a digit or ends; any other fragment reads as the issue or pull request. A link
    to another repository, a link with a malformed fragment, or a link to an issue, comment or
    review with an empty body, is a missing source input: the pass fails before the paid call.
+
+   On 2026-11-11, in the PR sweep's coordinating session, the maintainer asked for the passes
+   to be handed the facts they had been listing as unchecked, with the policy unchanged: git
+   history, the stack a pull request sits on, rulings posted as issue comments, sources a
+   description names by number, and who wrote each source and when. The trusted step writes
+   them before the paid call (`history.mjs`, `inputs.mjs`):
+
+   - `commits.json` lists every commit from the merge base with `main` to the head, parents
+     first: its parents, author date, subject, the files it changed against its first parent,
+     the pull request it belongs to, whether the base branch has it, and, for a merge of two
+     parents, whether its tree is the one `git merge-tree --write-tree` produces for them. One
+     patch per commit, against its first parent, comes with it, cut at 256 KiB with the cut
+     recorded.
+   - `stack.json` names the base branch and lists the pull requests of this repository below
+     the head, bottom first: an open one whose head the head contains, an open one on the
+     chain of base branches, since a parent that has moved on is no longer an ancestor, and,
+     among the 100 most recently updated closed ones, one whose head the head contains, since
+     a parent merged by squash leaves its commits behind. A commit belongs to the lowest of
+     them whose head contains it, and to this pull request when none does.
+   - `diff-base.patch`, written when the base branch is not `main`, is the diff from the merge
+     base with that branch to the head. It is the pull request's own change and the assigned
+     review scope, and it also shows a commit the head merged from `main` that the base branch
+     lacks. The diff against `main` stays as context, because the pull requests below are
+     reviewed on their own.
+   - `base-tree/` holds every file at the merge base with `main`: the repository as it stood
+     before the change. When the base branch is not `main` and its merge base with the head is
+     another commit, `base-branch-tree/` holds every file at that commit. The step writes each
+     file from its stored blob, so no checkout, filter or hook runs; it makes no symbolic link
+     and no submodule, lists each one it left out, and fails on a path that would leave the
+     directory or name a repository inside it, and on a path the tree names twice. The passes
+     check a "before this change" or "on main" citation there.
+   - Every diff, the one against `main` included, and the merge check take their attributes
+     from an empty tree, so a `.gitattributes` in the pull request can neither mark a file as
+     binary, which would empty its hunks, nor name a merge driver.
+   - Each source carries its author and creation time. Each issue and pull request among the
+     sources carries the conversation comments the maintainer or the machine account wrote on
+     it, without the fleet's own state and relay comments. No other author's comment is added
+     this way, and a pull request's reviews and inline review comments are not listed. A
+     comment or review the description links is still read as its own source, whoever wrote
+     it.
+   - A bare `#<n>` in the description is read as this repository's issue or pull request
+     `<n>`, unless it sits in a code span, a fenced block or an HTML comment, or is the target
+     of a Markdown link. Line endings saved as CRLF are read as line feeds. What that source
+     cites is not followed.
+
+   A review that read only `diff-base.patch` counts only for what it read. Each pass's output
+   says which base branch it ran against and which commit its scope starts from, and the saved
+   state keeps both; a pass that says neither, or another scope than the first pass, fails.
+   While the base is not `main`, the fleet's success begins `stacked change only:` and
+   `merge-gate` does not count it. Once the base is `main`, the fleet reads from the API the
+   trees of the head, of `main`, of their merge base and of the commit the scope starts from.
+   The review covers the merge when, for every file the head changed that differs from `main`,
+   `main` holds the file exactly as it was where the scope starts; the status then becomes a
+   plain success. Otherwise, and when a tree cannot be read, the head is owed a review of the
+   whole diff. A state saved before scopes were recorded has none, and read the whole diff
+   against `main`.
+
+   The limits are 60 sources, 200 such comments, 1 MiB of `sources.json`, 300 commits and
+   512 MiB for one tree. Going over one fails the pass before the paid call with the limit in
+   the message; no source, comment, commit or file is dropped to fit. An unset `MAINTAINER` or
+   `MACHINE` fails the same way. An unfinished source check still fails, and nothing moved from
+   `not_checked` to `runtime_limitations`: a claim these files do not settle, such as what an
+   old release tag contains, is still unchecked.
 
    New schema version 2 outputs attest source completion with `source_review_complete`, keep
    unfinished source checks in `not_checked`, and record prohibited or unperformed runtime and
@@ -151,5 +214,8 @@ Three facts shaped the design:
 - One push costs four Claude passes, a Codex review, and one more Claude pass when Codex finds
   anything. At the October rate of about 2.4 qualifying PRs a day plus agent PRs and their fix
   rounds, the default cap of 40 heads a day is not the limit on a normal day.
+- Each pass reads more from the API than the sources alone: the open pull requests, one page
+  of closed ones, and the comments of each issue or pull request among the sources that
+  reports any.
 - Retire the fleet, move the GPT check to an API key, or restore a hard cap by amending this
   record.

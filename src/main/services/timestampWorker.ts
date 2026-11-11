@@ -15,6 +15,7 @@ import {
 import { requestTimestamp } from '@main/services/timestamp'
 import { parseTimestampToken, type MergeReceipt } from '@shared/verify'
 import { getSettings } from '@main/services/settings'
+import { trimmedOperatorName } from '@main/services/operatorName'
 import { getStorageRoot } from '@main/services/storage'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import { getInstallationId } from '@main/services/installationId'
@@ -71,7 +72,8 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
   // Stamps a single capture: request a token over its content hash, verify the
   // returned imprint actually attests THOSE bytes, append the timestamp manifest
   // entry, and flip the mirror to rfc3161. Returns false (capture stays pending)
-  // on any failure so the retry loop can try again later.
+  // on any failure so the retry loop can try again later. So does every stamp
+  // here while no operator name is set (X47), with no TSA request spent on it.
   async function stampCapture(captureId: string): Promise<boolean> {
     if (!timestampingEnabled()) return false
     const capture = captureRepo.getCapture(captureId)
@@ -88,6 +90,7 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
       if (reconcileCaptureTrustedTime(capture).trustedTime === 'rfc3161') return true
       // Another member's Capture is stamped by its author alone (#1811).
       if (typeof getExhibit(captureId)?.authorInstallationId === 'string') return false
+      if (!trimmedOperatorName()) return false
       const token = await requestToken(capture.hash, tsaUrl)
       const parsed = parseTimestampToken(token)
       if (parsed.messageImprintHex !== capture.hash) {
@@ -100,6 +103,9 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
       if (reconcileCaptureTrustedTime(capture).trustedTime === 'rfc3161') {
         return true
       }
+      // Read again after the request: a name cleared while it was in flight holds the stamp.
+      const operatorName = trimmedOperatorName()
+      if (!operatorName) return false
       initManifest(caseDir)
       appendManifestEntry(caseDir, {
         type: 'timestamp',
@@ -108,7 +114,7 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
         timestamp: new Date().toISOString(),
         tsaToken: token.toString('base64'),
         operatorId: getInstallationId(),
-        operatorName: settings.operatorName ?? '',
+        operatorName,
         toolVersion: resolveToolVersion()
       })
       captureRepo.setCaptureTrustedTime(captureId, 'rfc3161')
@@ -141,6 +147,7 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
     const caseDir = join(getStorageRoot(), exhibit.caseId)
 
     try {
+      if (!trimmedOperatorName()) return false
       const token = await requestToken(exhibit.contentHash, tsaUrl)
       const parsed = parseTimestampToken(token)
       if (parsed.messageImprintHex !== exhibit.contentHash) {
@@ -152,6 +159,8 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
       ) {
         return true
       }
+      const operatorName = trimmedOperatorName()
+      if (!operatorName) return false
       initManifest(caseDir)
       appendManifestEntry(
         caseDir,
@@ -162,7 +171,7 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
           timestamp: new Date().toISOString(),
           tsaToken: token.toString('base64'),
           operatorId: getInstallationId(),
-          operatorName: settings.operatorName ?? '',
+          operatorName,
           toolVersion: resolveToolVersion()
         },
         { minReaderSchemaVersion: 3 }
@@ -219,6 +228,7 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
       const merge = receiptOf()
       if (!merge) return false
       if (merge.stamp) return true
+      if (!trimmedOperatorName()) return false
       const token = await requestToken(merge.entryHash, tsaUrl)
       const parsed = parseTimestampToken(token)
       if (parsed.messageImprintHex !== merge.entryHash) {
@@ -228,6 +238,8 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
       // for a Capture: a stamp that landed while this request was in flight
       // means no second entry.
       if (receiptOf()?.stamp) return true
+      const operatorName = trimmedOperatorName()
+      if (!operatorName) return false
       appendManifestEntry(caseDir, {
         type: 'timestamp',
         caseId,
@@ -236,7 +248,7 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
         timestamp: new Date().toISOString(),
         tsaToken: token.toString('base64'),
         operatorId: getInstallationId(),
-        operatorName: settings.operatorName ?? '',
+        operatorName,
         toolVersion: resolveToolVersion()
       })
       return true

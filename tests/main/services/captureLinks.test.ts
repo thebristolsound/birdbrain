@@ -214,6 +214,17 @@ describe('linksFromMhtml', () => {
     expect(link).toMatchObject({ href: 'http://[broken', rawHref: 'http://[broken', kind: 'other' })
   })
 
+  // The parser decodes the attribute, so rawHref holds the decoded value, not the stored
+  // spelling (plan D13, #1727).
+  it('decodes a character reference in href before the row records it', () => {
+    const [link] = linksOf('<a href="https://exa&#109;ple.com/p&amp;q">X</a>')
+    expect(link).toMatchObject({
+      href: 'https://example.com/p&q',
+      rawHref: 'https://example.com/p&q',
+      kind: 'http'
+    })
+  })
+
   describe('text and host mismatch', () => {
     it.each([
       ['https://bank.example/login', 'https://evil.example/login', true],
@@ -235,6 +246,14 @@ describe('linksFromMhtml', () => {
       )
       expect(deceptive).toMatchObject({ kind: 'same-page', textHostMismatch: true })
       expect(honest).toMatchObject({ kind: 'same-page', textHostMismatch: false })
+    })
+
+    // The flag reads the markup's text, not what the page's CSS showed (plan D13, #1727).
+    it('still flags a hostname the page hid with display: none', () => {
+      const [link] = linksOf(
+        '<a href="https://evil.example/"><span style="display: none">bank.example</span></a>'
+      )
+      expect(link).toMatchObject({ text: 'bank.example', textHostMismatch: true })
     })
 
     it('does not flag a link that has no host to compare', () => {

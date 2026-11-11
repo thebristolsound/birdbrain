@@ -315,11 +315,11 @@ describe('demo case seeding', () => {
       await expectSeededBeside(sandboxId)
     })
 
-    // The boot sweep deletes a leftover only on a storage root confirmed since
-    // before the Case was made (pipelineSelfTest.ts), and a launch with no
-    // record of the root confirms nothing. The seed asks only what the Case
-    // holds, so a leftover the sweep kept still does not count.
-    it('does not count a leftover the boot sweep kept on an unconfirmed storage root', async () => {
+    // The boot sweep deletes a leftover only when it carries the stamp of the
+    // mark found in the storage root (pipelineSelfTest.ts), and this one has
+    // no stamp. The seed asks only what the Case holds, so a leftover the
+    // sweep kept still does not count.
+    it('does not count a leftover the boot sweep kept for unconfirmed storage', async () => {
       const sandboxId = leaveSandbox()
       loseSettings()
       sweepPipelineSelfTestResidue()

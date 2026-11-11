@@ -413,7 +413,7 @@ export type MhtmlPartsListing =
       totalParts: number
       /** Parts, among all of them, whose headers have no terminating blank line. */
       unterminatedParts: number
-      /** The row ceiling was reached: parts past it are counted but not listed or hashed. */
+      /** More parts than the row ceiling: those past it are counted but not listed or hashed. */
       truncated: boolean
       parts: MhtmlPartRow[]
     }

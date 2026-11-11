@@ -28,6 +28,9 @@ schema="$here/schemas/findings.json"
 
 in="$(mktemp -d)"
 mkdir -p "$OUT"
+# The pass's name travels with its output. A lone artifact is downloaded with no directory of
+# its own, so collect.sh places each output by this file, not by where it landed.
+printf '%s\n' "$leg" > "$OUT/pass"
 head="$(git -C "$PR_DIR" rev-parse HEAD)"
 [ "$head" = "$SHA" ] || { echo "checked out $head, expected $SHA" >&2; exit 1; }
 base="$(git -C "$PR_DIR" merge-base origin/main HEAD)"

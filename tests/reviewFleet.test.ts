@@ -1003,6 +1003,10 @@ exit "$CLAUDE_EXIT"
         return {
           status: result.status,
           outputExists: existsSync(join(dir, 'out', 'findings.json')),
+          // The name leg.sh writes into its output, for the record step to place it by.
+          passFile: existsSync(join(dir, 'out', 'pass'))
+            ? readFileSync(join(dir, 'out', 'pass'), 'utf8')
+            : null,
           stderr: result.stderr,
           prompt,
           head,
@@ -1130,6 +1134,17 @@ exit "$CLAUDE_EXIT"
     expect(r.status).toBe(1)
     expect(r.outputExists).toBe(false)
     expect(r.stderr).toContain('claude exited 1')
+  })
+
+  it('names its pass in its output, whether or not the pass finished', () => {
+    const done = leg('No issue: source contract.')
+    expect(done.status, done.stderr).toBe(0)
+    expect(done.outputExists).toBe(true)
+    expect(done.passFile).toBe('correctness\n')
+    const early = leg('')
+    expect(early.status).toBe(1)
+    expect(early.outputExists).toBe(false)
+    expect(early.passFile).toBe('correctness\n')
   })
 
   it('fails before the paid call when referenced review text cannot be read', () => {

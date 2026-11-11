@@ -679,7 +679,7 @@ function publish(repo, n, g, state, verdict) {
   if (!same && verdict.status === 'success') rerunRedGates(repo, g.sha)
 }
 
-function readLeg(dir, leg) {
+export function readLeg(dir, leg) {
   const file = join(dir, leg, 'findings.json')
   if (!existsSync(file)) return null
   try {

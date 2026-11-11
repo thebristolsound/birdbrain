@@ -169,8 +169,8 @@ export const INTERRUPTED_JOB_ERROR = 'Birdbrain closed while this job was runnin
 
 export const RESTORE_REMOVED_JOB_ERROR = 'A database restore removed this job'
 
-// How a job ended, as its row records it.
-type JobOutcome = Omit<JobEnd, 'finishedAt'>
+// How a job ended, as its row records it. `logStored` writes a stored job's log line.
+type JobOutcome = Omit<JobEnd, 'finishedAt'> & { logStored?: () => void }
 
 function jobOf({
   jobId,
@@ -389,8 +389,6 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     // under unless it ran out of time. Everything after the render returns counts as the ingest.
     let step: BackgroundJobStep | undefined
     let stage: 'link-source-error' | 'render' | 'ingest' = 'render'
-    let stored: { ms: number; ingestMs: number } | undefined
-    let storedOutcome: JobOutcome = { state: 'stored' }
     try {
       // The list can change while a job waits, held across a restart included, so the check
       // `enqueue` made on the job's own address (#400) is made again before anything is sent.
@@ -577,8 +575,16 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         durationMs: Date.now() - started,
         warning
       })
-      stored = { ms: Date.now() - started, ingestMs }
-      storedOutcome = { state: 'stored', warning }
+      // The queue loop logs the stored line once the row is written, outside this `try`, so a
+      // log call that throws cannot change how a stored job ends.
+      const stored = { ...jobContext(), ingestMs }
+      return {
+        state: 'stored',
+        warning,
+        logStored: () => {
+          logger.info('backgroundRenderer', 'backgroundRenderer.job_stored', stored)
+        }
+      }
     } catch (err) {
       if (err instanceof RefusedAddressError) {
         emitEvent({
@@ -639,14 +645,6 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         logger.error('backgroundRenderer', 'backgroundRenderer.cleanup_failed', undefined, err)
       })
     }
-    // Logged outside the `try`, so a log call that throws cannot report a stored job failed.
-    if (stored) {
-      logger.info('backgroundRenderer', 'backgroundRenderer.job_stored', {
-        ...jobContext(),
-        ...stored
-      })
-    }
-    return storedOutcome
   }
 
   // One job at a time, each claimed from its row as the last one ends. A database the loop
@@ -665,12 +663,13 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         emitJob(claimed)
         active = jobOf(claimed)
         try {
-          const outcome = await runJob(active, attempt)
+          const { logStored, ...outcome } = await runJob(active, attempt)
           const ended = backgroundJobRepo.finishJob(claimed.jobId, {
             ...outcome,
             finishedAt: new Date().toISOString()
           })
           if (ended) emitJob(ended)
+          logStored?.()
         } finally {
           active = null
         }

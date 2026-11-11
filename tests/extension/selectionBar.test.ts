@@ -697,6 +697,20 @@ describe("the operator's selection stays out of the frames (#993)", () => {
     expect(window.getSelection()!.rangeCount).toBe(0)
   })
 
+  // The background also runs the fallback strip after a live script reports a failed teardown,
+  // and that script still gets the release.
+  it('puts the held selection back when the fallback strip ran after the hold', () => {
+    selectParagraph()
+    const before = selectionEnds()
+
+    dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+    removeInjectedBirdbrainUi()
+    expect(window.getSelection()!.rangeCount).toBe(0)
+    dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+    expect(selectionEnds()).toEqual(before)
+  })
+
   // Wired the way background.ts wires it: suppress strips the page, and restore sends the release
   // only once no capture on the tab is collecting frames.
   describe("through the background's capture bracket", () => {
@@ -935,6 +949,26 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       } finally {
         removeAllRanges.mockRestore()
       }
+    })
+
+    // The caret was never held, so nothing puts it back.
+    it('loses a caret to the fallback strip run after a failed teardown', () => {
+      const [first] = twoParagraphs()
+      composed = () =>
+        new StaticRange({
+          startContainer: first,
+          startOffset: 5,
+          endContainer: first,
+          endOffset: 5
+        })
+      window.getSelection()!.collapse(first, 5)
+
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      expect(window.getSelection()!.rangeCount).toBe(1)
+      removeInjectedBirdbrainUi()
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+      expect(window.getSelection()!.rangeCount).toBe(0)
     })
 
     // Chromium's getRangeAt reports a selection that crosses a shadow boundary as collapsed; the

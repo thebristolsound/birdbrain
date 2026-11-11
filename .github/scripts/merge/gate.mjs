@@ -48,6 +48,39 @@ export function approvalStamp(statuses) {
   return stamp ? stamp.state : 'absent'
 }
 
+// All readers require a dedicated workflow-token stamp for this exact head as well as the
+// live label and its maintainer actor. Status payloads omit the SHA, so the trusted stamp
+// description also names it. Evidence approval never authorizes a review override.
+export function breakGlassAuthorized(labels, statuses, labeler, maintainer, sha) {
+  const stamp = statuses.find(
+    (s) => s.context === 'merge/break-glass' && s.creator?.login === 'github-actions[bot]'
+  )
+  return (
+    labels.includes('break-glass') &&
+    labeler === maintainer &&
+    stamp?.state === 'success' &&
+    stamp.description === `Review override by ${maintainer} on ${sha}`
+  )
+}
+
+// The newest review/fleet state the machine account posted (ADR-0057). A success the fleet posted
+// for a break-glass override is no review: this gate checks the label itself, so the override
+// ends when the label is removed, even before the fleet replaces that status.
+export function fleetVerdict(statuses, machine) {
+  const mine = statuses.find((s) => s.context === 'review/fleet' && s.creator?.login === machine)
+  if (!mine) return 'absent'
+  if (mine.state === 'success' && (mine.description ?? '').startsWith('break-glass ')) {
+    return 'override'
+  }
+  return mine.state
+}
+
+// The PRs the review fleet reads: same-repository heads the maintainer or the machine opened.
+// Forks and Dependabot get no fleet run, so requiring one would block them for good.
+export function fleetCovers({ enabled, author, maintainer, machine, sameRepo }) {
+  return enabled && sameRepo && (author === maintainer || author === machine)
+}
+
 // The maintainer's effective review: the newest that approves, requests changes or was
 // dismissed. A comment-only review changes nothing.
 export function effectiveReview(reviews, maintainer) {
@@ -83,6 +116,11 @@ export function decide(f) {
       `changes ${credential.join(', ')}, which reach the release credentials, with no sign-off at head: ${needs}`
     )
   }
+  if (f.fleetRequired && f.fleet !== 'success' && !f.breakGlass) {
+    reasons.push(
+      `review/fleet is ${f.fleet} at head: it must succeed, or ${f.maintainer} applies break-glass`
+    )
+  }
   return {
     pass: reasons.length === 0,
     agent,
@@ -93,8 +131,19 @@ export function decide(f) {
   }
 }
 
+export function lastLabeler(repo, n, name) {
+  const events = api(`repos/${repo}/issues/${n}/events?per_page=100`).filter(
+    (e) => e.event === 'labeled' && e.label?.name === name
+  )
+  return events[events.length - 1]?.actor?.login ?? ''
+}
+
+// Every reader asks for a PR's whole event history, which outgrows Node's 1 MiB default.
 function api(path) {
-  const out = execFileSync('gh', ['api', '--paginate', '--slurp', path], { encoding: 'utf8' })
+  const out = execFileSync('gh', ['api', '--paginate', '--slurp', path], {
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024
+  })
   return JSON.parse(out).flat()
 }
 
@@ -127,6 +176,21 @@ function main([repo, n]) {
       maintainer,
       issueEvidence,
       prepass: trustedPrepass(statuses, [maintainer, machine]),
+      fleet: fleetVerdict(statuses, machine),
+      fleetRequired: fleetCovers({
+        enabled: (process.env.REVIEW_FLEET_ENABLED ?? '').trim().toLowerCase() !== 'false',
+        author: pr.user?.login,
+        maintainer,
+        machine,
+        sameRepo: pr.head.repo?.full_name === repo
+      }),
+      breakGlass: breakGlassAuthorized(
+        labels,
+        statuses,
+        lastLabeler(repo, n, 'break-glass'),
+        maintainer,
+        headSha
+      ),
       approvalStamp: approvalStamp(statuses),
       reviews: api(`repos/${repo}/pulls/${n}/reviews?per_page=100`).map((r) => ({
         state: r.state,

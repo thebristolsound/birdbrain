@@ -1514,6 +1514,38 @@ describe('stored background jobs', () => {
       ])
     })
 
+    // The operator gate (X47), as at enqueue and resume: a retry that cannot be signed renders
+    // nothing.
+    it.each(['', '  '])(
+      'refuses a retry while the operator name is %j, renders nothing and leaves the row as it ended',
+      async (blank) => {
+        const failing = new Set(['https://example.com/a'])
+        const rendered: string[] = []
+        const svc = makeService(steeredRender(failing, rendered))
+        const {
+          jobIds: [id]
+        } = svc.enqueue([{ url: 'https://example.com/a', caseId }])
+        await svc.idle()
+        const ended = backgroundJobRepo.getJob(id)
+        expect(ended).toMatchObject({ state: 'failed', attempts: 1 })
+        const seen = { events: events.length, jobs: jobs.length }
+        failing.clear()
+        updateSettings({ operatorName: blank })
+
+        expect(svc.retry({ jobId: id })).toEqual({ retried: 0, reason: 'Operator name required' })
+        await svc.idle()
+        expect(rendered).toEqual(['https://example.com/a'])
+        expect(backgroundJobRepo.getJob(id)).toEqual(ended)
+        expect(events).toHaveLength(seen.events)
+        expect(jobs).toHaveLength(seen.jobs)
+
+        updateSettings({ operatorName: 'Op' })
+        expect(svc.retry({ jobId: id })).toEqual({ retried: 1 })
+        await svc.idle()
+        expect(stateOf(id)).toBe('stored')
+      }
+    )
+
     it("retries a Batch's failed and cancelled jobs, and never its skipped or stored ones", async () => {
       const failing = new Set(['https://example.com/fail'])
       const rendered: string[] = []

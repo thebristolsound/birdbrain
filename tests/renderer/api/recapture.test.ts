@@ -13,6 +13,7 @@ import {
   useRetryBackgroundJobs
 } from '@renderer/lib/api/recapture'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { notify } from '@renderer/lib/notify'
 import { ContactStoppedError, settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
 
 describe('recaptureQueueQueryOptions', () => {
@@ -132,6 +133,29 @@ describe('cancel and retry of background jobs', () => {
     expect(checkVpnWarning).toHaveBeenCalledWith({ caseId: 'case-a' }, 'site')
     expect(retry).toHaveBeenCalledWith({ jobId: 'job-1' })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.recaptureQueue })
+  })
+
+  it('shows the reason when the queue refuses a retry, and nothing when it accepts one', async () => {
+    const warn = vi.spyOn(notify, 'warn').mockImplementation(() => {})
+    const checkVpnWarning = vi.fn(async () => ({ caseId: 'case-a', warn: false, canMute: false }))
+    const retry = vi
+      .fn<() => Promise<{ retried: number; reason?: string }>>()
+      .mockResolvedValueOnce({ retried: 0, reason: 'Operator name required' })
+      .mockResolvedValueOnce({ retried: 1 })
+    fakeBridge({ recapture: { retry }, egress: { checkVpnWarning } })
+    const { wrapper } = withClient()
+    const { result } = renderHook(() => useRetryBackgroundJobs(), { wrapper })
+
+    await act(async () => {
+      await result.current.mutateAsync({ caseId: 'case-a', target: { jobId: 'job-1' } })
+    })
+    expect(warn).toHaveBeenCalledWith('Retry rejected: Operator name required')
+
+    await act(async () => {
+      await result.current.mutateAsync({ caseId: 'case-a', target: { jobId: 'job-1' } })
+    })
+    expect(warn).toHaveBeenCalledTimes(1)
+    warn.mockRestore()
   })
 
   it('retries nothing when the Operator stops at the warning', async () => {

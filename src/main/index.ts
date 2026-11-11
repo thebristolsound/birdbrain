@@ -698,7 +698,7 @@ if (!gotSingleInstanceLock) {
       // the residue check reads; before the capture server, so no self-test can
       // be running, and before the demo seed, which then never sees a case the
       // sweep removes. A sandbox-named case the sweep keeps is still there.
-      sweepPipelineSelfTestResidue(userDataPath)
+      sweepPipelineSelfTestResidue()
 
       // Seed the bundled demonstration case (#405). Strictly after the storage
       // root and the signing key, because it imports a real Case Archive and

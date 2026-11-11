@@ -25,7 +25,7 @@ import { execFileSync } from 'node:child_process'
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { breakGlassAuthorized, lastLabeler } from '../merge/gate.mjs'
+import { STACKED_REVIEW, breakGlassAuthorized, lastLabeler } from '../merge/gate.mjs'
 import { validOutput } from './output.mjs'
 
 export const CODEX = 'chatgpt-codex-connector[bot]'
@@ -237,6 +237,43 @@ const listMap = (value) =>
 
 const minutesSince = (at, now) => (Date.parse(now) - Date.parse(at)) / 60000
 
+// What a review read: the pull request's base branch when the passes ran, and the commit their
+// review scope starts from, which is the merge base of the head with that branch. A base other
+// than main means the passes read only the change above it.
+const COMMIT = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/
+export const validScope = (scope) =>
+  Boolean(scope) &&
+  typeof scope === 'object' &&
+  typeof scope.base === 'string' &&
+  scope.base.length > 0 &&
+  scope.base.length <= 255 &&
+  typeof scope.from === 'string' &&
+  COMMIT.test(scope.from)
+
+// The files of a commit by path, from GitHub's recursive tree listing, or null when the listing
+// was cut short or is not one.
+export function treeEntries(listing) {
+  if (!listing || listing.truncated !== false || !Array.isArray(listing.tree)) return null
+  return new Map(
+    listing.tree.filter((e) => e.type !== 'tree').map((e) => [e.path, `${e.mode} ${e.sha}`])
+  )
+}
+
+// Whether a merge of the head into main would land only what a review that started at `from`
+// read. `fork` is the merge base of main and the head. A file lands a change when the head
+// differs from main there and the head itself changed it since the fork; that change is the one
+// the review read only if main holds the file exactly as `from` did. Any tree that could not be
+// read means no.
+export function scopeCovers({ fork, main, head, from }) {
+  if (![fork, main, head, from].every((tree) => tree instanceof Map)) return false
+  for (const path of new Set([...head.keys(), ...main.keys()])) {
+    if (head.get(path) === main.get(path)) continue
+    if (head.get(path) === fork.get(path)) continue
+    if (main.get(path) !== from.get(path)) return false
+  }
+  return true
+}
+
 // The whole decision. Missing input is its own failure: a pass that did not report, Codex never
 // answering, a relayed finding Codex did not rule on and a blocking Codex finding the Claude
 // check could not decide all read red, never green.
@@ -263,11 +300,26 @@ export function decide(f) {
     (state.claude &&
       (!Array.isArray(state.claude.findings) ||
         !listMap(state.claude.runtimeLimitations) ||
-        (state.claude.notChecked !== undefined && !listMap(state.claude.notChecked)))) ||
+        (state.claude.notChecked !== undefined && !listMap(state.claude.notChecked)) ||
+        (state.claude.scope !== undefined && !validScope(state.claude.scope)))) ||
     (state.verifyRuntimeLimitations !== undefined && !stringList(state.verifyRuntimeLimitations)) ||
     (state.verifyNotChecked !== undefined && !stringList(state.verifyNotChecked))
   )
     return out('failure', 'the saved source review is malformed')
+  // A review of a stacked head read only the change above its base branch. It counts for a
+  // merge into main only once main holds everything below that change: until then the status
+  // says so, and when main does not hold it, the head is owed a review of the whole diff. A
+  // review saved before scopes were recorded has none: it read the whole diff against main.
+  const scope = state.claude?.scope
+  const narrowed = scope !== undefined && scope.base !== 'main'
+  const stacked = narrowed && typeof f.base === 'string' && f.base !== '' && f.base !== 'main'
+  if (narrowed && !stacked && f.covers !== true) {
+    return out(
+      'pending',
+      'owed a review: the base is now main and the earlier review read only the change above its old base',
+      'review'
+    )
+  }
   const legs = state.claude?.legs ?? {}
   if (state.claude && Object.keys(legs).length === 0)
     return out('failure', 'the saved source review has no pass results')
@@ -355,7 +407,10 @@ export function decide(f) {
   }
   if (reasons.length) return out('failure', reasons.join('; '), null, reasons)
   const refuted = claudeBlocking.length + f.codexFindings.filter(codexBlocks).length
-  return out('success', `no confirmed blocking finding (${refuted} blocking raised and refuted)`)
+  return out(
+    'success',
+    `${stacked ? STACKED_REVIEW : ''}no confirmed blocking finding (${refuted} blocking raised and refuted)`
+  )
 }
 
 // Model-written text as the comments print it: an HTML comment opener is spelled out, so the
@@ -493,17 +548,23 @@ function renderBody(state, verdict, extra, details) {
 
 // Merge leg outputs into a state. A pass that lists work it did not check is incomplete, which
 // fails. Blocking findings come first, each group in FINDER_LEGS order, numbered after the cap.
-export function mergeFinders(state, outputs) {
+// `scopes` is what each pass says it read. A pass that does not say, or that read another scope
+// than the first pass did, has not reviewed this head's scope and fails.
+export function mergeFinders(state, outputs, scopes = {}) {
+  let scope = null
   const legs = {}
   const notChecked = {}
   const runtimeLimitations = {}
   const all = []
   for (const leg of FINDER_LEGS) {
     const o = outputs[leg]
-    if (!validOutput('findings', o)) {
+    const read = validScope(scopes[leg]) ? scopes[leg] : null
+    const other = read && scope && (read.base !== scope.base || read.from !== scope.from)
+    if (!validOutput('findings', o) || !read || other) {
       legs[leg] = 'failed'
       continue
     }
+    scope ??= { base: read.base, from: read.from }
     const skipped = o.not_checked
     legs[leg] = skipped.length || !o.source_review_complete ? 'incomplete' : 'done'
     if (skipped.length) notChecked[leg] = skipped
@@ -524,6 +585,7 @@ export function mergeFinders(state, outputs) {
   const ordered = [...blocking, ...all.filter((x) => x.severity !== 'BLOCKING')]
   const findings = ordered.slice(0, MAX_FINDINGS).map((x, i) => ({ id: `F${i + 1}`, ...x }))
   const claude = { contractVersion: 2, legs, findings, runtimeLimitations }
+  if (scope) claude.scope = scope
   if (Object.keys(notChecked).length) claude.notChecked = notChecked
   if (ordered.length > MAX_FINDINGS) claude.dropped = ordered.length - MAX_FINDINGS
   if (blocking.length > MAX_FINDINGS) claude.droppedBlocking = blocking.length - MAX_FINDINGS
@@ -591,11 +653,35 @@ function env() {
 }
 
 // Everything the decision reads about PR n at commit sha (its head unless given).
+// GitHub CLI ends its error line with the HTTP status; only a 404 means the path has nothing.
+function readOne(path) {
+  try {
+    return JSON.parse(gh(['api', path]))
+  } catch (error) {
+    if (/\(HTTP 404\)/.test(String(error.stderr ?? ''))) return null
+    throw error
+  }
+}
+
+// Whether main, as it is now, holds everything below a review that started at scope.from.
+function covers(repo, sha, scope) {
+  const compared = readOne(`repos/${repo}/compare/main...${sha}?per_page=1`)
+  const ids = [compared?.merge_base_commit?.sha, compared?.base_commit?.sha, sha, scope.from]
+  if (!ids.every((id) => COMMIT.test(id ?? ''))) return false
+  const [fork, main, head, from] = ids.map((id) =>
+    treeEntries(readOne(`repos/${repo}/git/trees/${id}?recursive=1`))
+  )
+  return scopeCovers({ fork, main, head, from })
+}
+
 function gather(repo, n, e, pr, sha = pr.head.sha) {
   const comments = api(`repos/${repo}/issues/${n}/comments?per_page=100`)
   const reviews = api(`repos/${repo}/pulls/${n}/reviews?per_page=100`)
   const reviewComments = api(`repos/${repo}/pulls/${n}/comments?per_page=100`)
   const relay = relayFor(comments, e.maintainer, sha)
+  const found = readState(comments, e.machine, sha)
+  const scope = found?.state?.claude?.scope
+  const base = pr.base?.ref
   const statuses = api(`repos/${repo}/commits/${sha}/statuses?per_page=100`)
   const breakGlass = breakGlassAuthorized(
     pr.labels.map((l) => l.name),
@@ -606,7 +692,7 @@ function gather(repo, n, e, pr, sha = pr.head.sha) {
   )
   return {
     sha,
-    found: readState(comments, e.machine, sha),
+    found,
     status: statuses.find((st) => st.context === CONTEXT && st.creator?.login === e.machine),
     relay,
     breakGlass,
@@ -614,7 +700,13 @@ function gather(repo, n, e, pr, sha = pr.head.sha) {
     rulings: relay
       ? parseRulings(codexTexts({ reviews, comments, reviewComments }, sha, relay.at))
       : {},
-    codexFindings: codexFindings(reviewComments, sha)
+    codexFindings: codexFindings(reviewComments, sha),
+    base,
+    // Read only when it decides something: a narrow review of a head whose base is now main.
+    covers:
+      validScope(scope) && scope.base !== 'main' && base === 'main'
+        ? covers(repo, sha, scope)
+        : null
   }
 }
 
@@ -679,8 +771,8 @@ function publish(repo, n, g, state, verdict) {
   if (!same && verdict.status === 'success') rerunRedGates(repo, g.sha)
 }
 
-function readLeg(dir, leg) {
-  const file = join(dir, leg, 'findings.json')
+export function readLeg(dir, leg, name = 'findings.json') {
+  const file = join(dir, leg, name)
   if (!existsSync(file)) return null
   try {
     return JSON.parse(readFileSync(file, 'utf8'))
@@ -746,7 +838,8 @@ function record(repo, n, sha, dir, kind) {
       g.codexFindings.map((x) => x.id)
     )
   } else if (kind === 'review') {
-    state = mergeFinders(state, Object.fromEntries(FINDER_LEGS.map((l) => [l, readLeg(dir, l)])))
+    const each = (name) => Object.fromEntries(FINDER_LEGS.map((l) => [l, readLeg(dir, l, name)]))
+    state = mergeFinders(state, each('findings.json'), each('scope.json'))
   } else {
     throw new Error(`record: unknown kind ${kind}`)
   }

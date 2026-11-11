@@ -1,5 +1,13 @@
 import { spawnSync } from 'child_process'
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync
+} from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { describe, expect, it } from 'vitest'
@@ -55,8 +63,12 @@ const blocking = {
   detail: 'src/a.ts:3 drops the error.',
   failure_scenario: 'A missing file reads as a pass.'
 }
+// Every pass read the whole diff against main.
+const wholeDiff = Object.fromEntries(
+  FINDER_LEGS.map((l: string) => [l, { base: 'main', from: 'c'.repeat(40) }])
+)
 const reviewed = (outputs: Record<string, unknown> = allDone) =>
-  mergeFinders({ v: 1, sha: SHA, startedAt: '2026-11-10T11:00:00Z' }, outputs)
+  mergeFinders({ v: 1, sha: SHA, startedAt: '2026-11-10T11:00:00Z' }, outputs, wholeDiff)
 
 const facts = (over: Record<string, unknown> = {}) => ({
   state: reviewed(),
@@ -863,14 +875,20 @@ exit 0
 })
 
 // leg.sh up to and including a stubbed `claude`: `gh pr view` answers from `pr` through its
-// --jq filter, `gh issue view` exits with `issueExit`, and `claude` records the prompt it got.
+// --jq filter, `gh api` answers an issue, its comments and the open pull requests, or exits with
+// `issueExit`, and `claude` records the prompt it got.
 describe.skipIf(!HAS_JQ)('leg.sh inputs', () => {
   const LEG = join(__dirname, '..', '.github', 'scripts', 'review-fleet', 'leg.sh')
   const GH = `#!/usr/bin/env bash
 set -euo pipefail
 if [ "$1" = api ]; then
   [ "$ISSUE_EXIT" = 0 ] || { echo "stub gh: HTTP 502" >&2; exit "$ISSUE_EXIT"; }
-  printf '%s\\n' '{"title":"The contract","body":"Do the thing."}'
+  case "$2" in
+    */pulls\\?state=open*) cat "$PULLS_JSON" ;;
+    */pulls\\?state=closed*) echo '[]' ;;
+    */comments\\?per_page=100) cat "$COMMENTS_JSON" ;;
+    *) printf '%s\\n' '{"title":"The contract","body":"Do the thing.","user":{"login":"${MAINTAINER}"},"created_at":"2026-08-20T10:00:00Z","comments":2}' ;;
+  esac
   exit 0
 fi
 [ "$1 $2" = "pr view" ] || { echo "stub gh: unsupported $*" >&2; exit 2; }
@@ -882,7 +900,27 @@ printf '%s' "$2" > "$PROMPT_OUT"
 echo '{"type":"result","structured_output":{"contract_version":2,"source_review_complete":true,"findings":[],"not_checked":[],"runtime_limitations":[]}}'
 exit "$CLAUDE_EXIT"
 `
-  const leg = (body: string | null, issueExit = 0, claudeExit = 0) => {
+  const ruling = {
+    id: 5,
+    user: { login: MAINTAINER },
+    created_at: '2026-11-09T21:56:02Z',
+    body: 'A ruling.'
+  }
+  const stranger = { ...ruling, id: 6, user: { login: 'someone-else' }, body: 'Not read.' }
+  // The checkout: `base` on main, `lower change` on the branch `lower`, `own change` at the head.
+  // `more.base` is the pull request's base branch, `more.pulls` the open pull requests gh lists
+  // (given the head), and `more.env` overrides the environment.
+  const leg = (
+    body: string | null,
+    issueExit = 0,
+    claudeExit = 0,
+    more: {
+      base?: string
+      pulls?: (head: string) => unknown[]
+      env?: Record<string, string>
+      attributes?: string
+    } = {}
+  ) => {
     const dir = mkdtempSync(join(tmpdir(), 'fleet-leg-'))
     try {
       for (const [name, text] of [
@@ -902,34 +940,66 @@ exit "$CLAUDE_EXIT"
         expect(r.status, r.stderr).toBe(0)
         return r.stdout.trim()
       }
+      const commit = (file: string | null, subject: string) => {
+        if (file) {
+          writeFileSync(join(dir, 'pr', file), `${subject}\n`)
+          git('add', '--', file)
+        }
+        git(
+          '-c',
+          'user.name=t',
+          '-c',
+          'user.email=t@example.com',
+          'commit',
+          '-q',
+          '--allow-empty',
+          '-m',
+          subject
+        )
+        return git('rev-parse', 'HEAD')
+      }
       spawnSync('git', ['init', '-q', join(dir, 'pr')], { env })
-      git(
-        '-c',
-        'user.name=t',
-        '-c',
-        'user.email=t@example.com',
-        'commit',
-        '-q',
-        '--allow-empty',
-        '-m',
-        'base'
+      git('update-ref', 'refs/remotes/origin/main', commit(null, 'base'))
+      const lower = commit('lower.txt', 'lower change')
+      git('update-ref', 'refs/remotes/origin/lower', lower)
+      if (more.attributes) {
+        writeFileSync(join(dir, 'pr', '.gitattributes'), more.attributes)
+        git('add', '--', '.gitattributes')
+      }
+      const head = commit('own.txt', 'own change')
+      const mine = {
+        number: 7,
+        title: 't',
+        user: { login: MAINTAINER },
+        head: { sha: head, ref: 'own', repo: { full_name: REPO } },
+        base: { ref: more.base ?? 'main' }
+      }
+      const below = { ...mine, number: 6, head: { ...mine.head, sha: lower, ref: 'lower' } }
+      writeFileSync(
+        join(dir, 'pulls.json'),
+        JSON.stringify([more.pulls ? more.pulls(head) : [below, mine]])
       )
-      git('update-ref', 'refs/remotes/origin/main', 'HEAD')
+      writeFileSync(join(dir, 'comments.json'), JSON.stringify([[ruling, stranger]]))
       writeFileSync(join(dir, 'pr.json'), JSON.stringify({ title: 't', body, commits: [] }))
       const result = spawnSync('bash', [LEG, 'correctness'], {
         encoding: 'utf8',
         env: {
           ...env,
           PR: '7',
-          SHA: git('rev-parse', 'HEAD'),
+          SHA: head,
           PR_DIR: join(dir, 'pr'),
           OUT: join(dir, 'out'),
           GITHUB_REPOSITORY: REPO,
           GITHUB_STEP_SUMMARY: join(dir, 'summary'),
+          MAINTAINER,
+          MACHINE,
           PR_JSON: join(dir, 'pr.json'),
+          PULLS_JSON: join(dir, 'pulls.json'),
+          COMMENTS_JSON: join(dir, 'comments.json'),
           PROMPT_OUT: join(dir, 'prompt'),
           ISSUE_EXIT: String(issueExit),
-          CLAUDE_EXIT: String(claudeExit)
+          CLAUDE_EXIT: String(claudeExit),
+          ...more.env
         }
       })
       const prompt = existsSync(join(dir, 'prompt'))
@@ -937,13 +1007,39 @@ exit "$CLAUDE_EXIT"
         : null
       // leg.sh writes its inputs to a directory of its own and names each file in the prompt.
       const inputs = /`(\S+)\/sources\.json`/.exec(prompt ?? '')?.[1]
+      const json = (name: string) => JSON.parse(readFileSync(join(inputs ?? '', name), 'utf8'))
       try {
         return {
           status: result.status,
           outputExists: existsSync(join(dir, 'out', 'findings.json')),
+          // The name leg.sh writes into its output, for the record step to place it by.
+          passFile: existsSync(join(dir, 'out', 'pass'))
+            ? readFileSync(join(dir, 'out', 'pass'), 'utf8')
+            : null,
+          // What the pass read, which leg.sh moves from the inputs into its output.
+          scope: existsSync(join(dir, 'out', 'scope.json'))
+            ? JSON.parse(readFileSync(join(dir, 'out', 'scope.json'), 'utf8'))
+            : null,
           stderr: result.stderr,
           prompt,
-          sources: inputs ? JSON.parse(readFileSync(join(inputs, 'sources.json'), 'utf8')) : null
+          head,
+          lower,
+          files: inputs ? readdirSync(inputs).sort() : null,
+          diff: inputs ? readFileSync(join(inputs, 'diff.patch'), 'utf8') : null,
+          sources: inputs ? json('sources.json') : null,
+          stack: inputs ? json('stack.json') : null,
+          commits: inputs ? json('commits.json').commits : null,
+          ownDiff:
+            inputs && existsSync(join(inputs, 'diff-base.patch'))
+              ? readFileSync(join(inputs, 'diff-base.patch'), 'utf8')
+              : null,
+          // The files of each tree the step wrote for the repository before the change.
+          before: Object.fromEntries(
+            ['base-tree', 'base-branch-tree'].map((name) => [
+              name,
+              inputs && existsSync(join(inputs, name)) ? readdirSync(join(inputs, name)) : null
+            ])
+          )
         }
       } finally {
         if (inputs) rmSync(inputs, { recursive: true, force: true })
@@ -970,11 +1066,102 @@ exit "$CLAUDE_EXIT"
     expect(r.prompt).toContain('sources.json')
   })
 
-  it('lists the issue the PR closes as an input', () => {
+  it('lists the issue the PR closes as an input, with who wrote it and the trusted comments', () => {
     const r = leg('Closes #12\n\nSummary.')
     expect(r.status, r.stderr).toBe(0)
     expect(r.prompt).toContain('sources.json')
-    expect(r.sources).toEqual([{ path: 'issues/12', title: 'The contract', body: 'Do the thing.' }])
+    expect(r.sources).toEqual([
+      {
+        path: 'issues/12',
+        title: 'The contract',
+        author: MAINTAINER,
+        created_at: '2026-08-20T10:00:00Z',
+        body: 'Do the thing.',
+        comments_total: 2,
+        comments: [
+          { id: 5, author: MAINTAINER, created_at: '2026-11-09T21:56:02Z', body: 'A ruling.' }
+        ]
+      }
+    ])
+  })
+
+  it('hands over the commit history and the stack, and names each file in the prompt', () => {
+    const r = leg('No issue: source contract.')
+    expect(r.status, r.stderr).toBe(0)
+    expect(r.files).toEqual([
+      'base-tree',
+      'commits',
+      'commits.json',
+      'diff.patch',
+      'pr.json',
+      'rules.md',
+      'sources.json',
+      'stack.json'
+    ])
+    for (const name of r.files ?? []) expect(r.prompt).toContain(`/${name}`)
+    // The directory of patches has a line of its own, which `/commits.json` would also match.
+    expect(r.prompt).toMatch(/\/commits\/`: one patch per commit against its first parent/)
+    expect(r.commits.map((c: { oid: string }) => c.oid)).toEqual([r.lower, r.head])
+    expect(r.stack).toMatchObject({
+      pull_request: 7,
+      base: 'main',
+      commits: [r.head],
+      below: [{ number: 6, commits: [r.lower] }]
+    })
+    expect(r.scope).toEqual({ base: 'main', from: r.commits[0].parents[0] })
+    // The base is main: the prompt names diff.patch as the scope and offers no base diff.
+    expect(r.prompt).toContain('The base branch is `main`, so `diff.patch` is your review scope')
+    expect(r.prompt).not.toMatch(/\/diff-base\.patch`: /)
+    // The repository before the change is the tree at the merge base with main, which holds
+    // neither commit's file.
+    expect(r.before).toEqual({ 'base-tree': [], 'base-branch-tree': null })
+    expect(r.prompt).toMatch(
+      /\/base-tree\/`: the repository as it stood before this change: every file at the merge base with `main`\. Check a "before this change" or "on main" citation there\./
+    )
+    expect(r.prompt).not.toContain('base-branch-tree/`: ')
+  })
+
+  it('scopes a stacked pull request to its own change, and tells the pass so', () => {
+    const r = leg('No issue: source contract.', 0, 0, { base: 'lower' })
+    expect(r.status, r.stderr).toBe(0)
+    expect(r.files).toContain('diff-base.patch')
+    expect(r.ownDiff).toContain('+++ b/own.txt')
+    expect(r.ownDiff).not.toContain('lower.txt')
+    expect(r.stack).toMatchObject({ base: 'lower', commits: [r.head] })
+    expect(r.scope).toEqual({ base: 'lower', from: r.lower })
+    expect(r.prompt).toMatch(
+      /\/diff-base\.patch`: the diff from the merge base with the base branch to the head\. The base branch is not `main`, so this is the pull request's own change and your review scope\./
+    )
+    expect(r.prompt).not.toContain('so `diff.patch` is your review scope')
+    // Before this change the repository had the lower pull request's file; main had neither.
+    expect(r.before).toEqual({ 'base-tree': [], 'base-branch-tree': ['lower.txt'] })
+    expect(r.prompt).toMatch(
+      /\/base-branch-tree\/`: the repository as it stood before this change: every file at the merge base with the base branch\. Check a "before this change" citation there\./
+    )
+    expect(r.prompt).toMatch(/\/base-tree\/`: the repository as it stood on `main`, below this/)
+    expect(r.prompt).toContain(
+      '**The repository as it stood before this change is in the inputs.**'
+    )
+    // The shared prompt carries the rule the files serve.
+    expect(r.prompt).toContain("is this pull\nrequest's own change and your review scope")
+    // The pass is told its review does not clear what lies below the change.
+    expect(r.prompt).toContain(
+      'does not count for a merge into `main` until `main`\nholds everything below'
+    )
+    expect(r.prompt).toContain('What they do not settle stays in\nnot_checked')
+  })
+
+  // A `.gitattributes` in the pull request must not empty a file's hunks from the diff the
+  // pass is told to review.
+  it('writes the whole diff against main whatever attributes the pull request sets', () => {
+    const plain = leg('No issue: source contract.')
+    const marked = leg('No issue: source contract.', 0, 0, { attributes: '*.txt -diff\n' })
+    expect(marked.status, marked.stderr).toBe(0)
+    for (const r of [plain, marked]) {
+      expect(r.diff).toContain('+own change')
+      expect(r.diff).toContain('+lower change')
+      expect(r.diff).not.toContain('Binary files')
+    }
   })
 
   it('rejects a failed model process even when it prints structured output', () => {
@@ -982,6 +1169,17 @@ exit "$CLAUDE_EXIT"
     expect(r.status).toBe(1)
     expect(r.outputExists).toBe(false)
     expect(r.stderr).toContain('claude exited 1')
+  })
+
+  it('names its pass in its output, whether or not the pass finished', () => {
+    const done = leg('No issue: source contract.')
+    expect(done.status, done.stderr).toBe(0)
+    expect(done.outputExists).toBe(true)
+    expect(done.passFile).toBe('correctness\n')
+    const early = leg('')
+    expect(early.status).toBe(1)
+    expect(early.outputExists).toBe(false)
+    expect(early.passFile).toBe('correctness\n')
   })
 
   it('fails before the paid call when referenced review text cannot be read', () => {
@@ -995,6 +1193,27 @@ exit "$CLAUDE_EXIT"
     const r = leg('Closes #12\n\nSummary.', 1)
     expect(r.status).toBe(1)
     expect(r.stderr).toContain('HTTP 502')
+    expect(r.prompt).toBeNull()
+  })
+
+  it('fails before the paid call when the history cannot be prepared', () => {
+    const r = leg('No issue: source contract.', 0, 0, { pulls: () => [] })
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('pull request #7 is not among the open pull requests')
+    expect(r.prompt).toBeNull()
+  })
+
+  it('fails before the paid call when the base branch is not in the checkout', () => {
+    const r = leg('No issue: source contract.', 0, 0, { base: 'absent' })
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('the checkout has no refs/remotes/origin/absent')
+    expect(r.prompt).toBeNull()
+  })
+
+  it('fails before the paid call when the machine account is not named', () => {
+    const r = leg('No issue: source contract.', 0, 0, { env: { MACHINE: '' } })
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('MAINTAINER and MACHINE must both be set')
     expect(r.prompt).toBeNull()
   })
 })

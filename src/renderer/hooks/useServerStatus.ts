@@ -59,6 +59,11 @@ export function useServerStatus() {
       // are the main process's account, not this event's.
       queryClient.invalidateQueries({ queryKey: queryKeys.exhibitInventory(capture.caseId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.manifestSnapshot(capture.caseId) })
+      // An active selector filter re-resolves, so a new capture that matches
+      // it is not left out of the list under the filter's label (#1203).
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.selectorMatchingCapturesAll(capture.caseId)
+      })
     })
 
     // The extension attach routes write Tags and Notes through the repos, so

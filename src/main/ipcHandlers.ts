@@ -51,7 +51,7 @@ import type {
 import * as dbAdmin from '@main/services/db/dbAdmin'
 import * as dbSnapshots from '@main/services/db/dbSnapshots'
 import { restoreDatabase, type RestoreRejection } from '@main/services/db/dbRestore'
-import { existsSync } from 'fs'
+import { existsSync, statSync } from 'fs'
 import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
 import * as activityRepo from '@main/services/db/activityRepo'
@@ -184,6 +184,16 @@ function validateBatchPayload(payload: unknown): CaptureBatchPayload {
     throw new IpcFailure('Invalid batch payload', 'INVALID_BATCH_PAYLOAD')
   }
   return { caseId: p.caseId, captureIds: p.captureIds }
+}
+
+// An absent recapture link is a first-time capture; a present one that names
+// nothing would be signed as written, so it fails here, before anything is
+// queued (#1000).
+function refuseBlankRecaptureLink(link: unknown): void {
+  if (link === undefined) return
+  if (typeof link !== 'string' || link.trim() === '') {
+    throw new IpcFailure('Invalid recapture link', 'INVALID_RECAPTURE_LINK')
+  }
 }
 
 // Same-case snapshot for the metadata batches (#394): ids whose row lives in
@@ -1269,7 +1279,14 @@ export function registerIpcHandlers(deps: {
     const capture = captureRepo.getCapture(captureId)
     if (!capture || !capture.mhtmlPath) return null
     const abs = defaultCaptureStore.resolveAbsolute(capture.mhtmlPath)
-    if (!existsSync(abs)) return null
+    // The Page tab reports null as a missing archive (#1128), so a file that is not
+    // there is the only null; existsSync would read any failed stat as absent.
+    try {
+      statSync(abs)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+      throw err
+    }
     return pathToFileURL(abs).toString()
   })
 
@@ -1298,6 +1315,7 @@ export function registerIpcHandlers(deps: {
     if (!payload || !Array.isArray(payload.urls) || typeof payload.caseId !== 'string') {
       throw new IpcFailure('Invalid recapture payload', 'INVALID_RECAPTURE_PAYLOAD')
     }
+    refuseBlankRecaptureLink(payload.supersedesCaptureId)
     if (payload.linkedFrom !== undefined) return recaptureService.enqueueLink(payload)
     return recaptureService.enqueue(
       payload.urls.map((url) => ({
@@ -1318,6 +1336,7 @@ export function registerIpcHandlers(deps: {
       caseId,
       supersedesCaptureId: capture.id
     }))
+    for (const { supersedesCaptureId } of jobs) refuseBlankRecaptureLink(supersedesCaptureId)
     return recaptureService.enqueue(jobs)
   })
 

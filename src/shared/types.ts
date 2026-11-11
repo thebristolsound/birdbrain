@@ -1002,7 +1002,8 @@ export const LOG_CODES = [
   // The Transaction Record of a background render failed or ran out of time
   // (open question E of docs/plans/2026-10-10-capture-engine-first-slice.md).
   // Logged by the Recapture queue once the Capture is stored; its inventory
-  // records the record absent as `failed`.
+  // records the record absent as `failed`. It names the job's capture id and,
+  // when the end phases ran, the time they had left (#2121).
   'backgroundRenderer.transaction_record_failed',
   // The PDF of a background render failed, ran out of time, was over a size
   // bound, or was refused because the page navigated after the save, which its
@@ -1012,6 +1013,17 @@ export const LOG_CODES = [
   'backgroundRenderer.cleanup_failed',
   'backgroundRenderer.consent_blocker_disable_failed',
   'backgroundRenderer.consent_blocker_enable_failed',
+  // How long each step of a background render took, one line per render that
+  // returned a page, and the step a render that threw or timed out had reached
+  // (#2127). Both carry the job's capture id, which the job lines below share.
+  'backgroundRenderer.render_completed',
+  'backgroundRenderer.render_failed',
+  // How each Background Job ended (#2127): stored with its ingest time, skipped
+  // by a rule, or failed with the step it reached. The app window hears of each
+  // as an event, kept in memory; these lines are what outlasts the session.
+  'backgroundRenderer.job_stored',
+  'backgroundRenderer.job_skipped',
+  'backgroundRenderer.job_failed',
   'consentBlocker.filter_engine_failed',
   'selectorLifecycle.retroactive_match_failed',
   'serverToken.token_invalid',
@@ -1236,7 +1248,24 @@ export const LOG_CONTEXT_KEYS = [
   'domain',
   'boundary',
   'channel',
-  'attempt'
+  'attempt',
+  // A Background Job's lines (#2127): the step it reached, why it left no
+  // Capture, the time its render had left, less the end margin, when the
+  // Transaction Record's end phases started, and the duration of each step.
+  'step',
+  'failureKind',
+  'timeLeftMs',
+  'setupMs',
+  'loadMs',
+  'networkIdleMs',
+  'scrollMs',
+  'postScrollIdleMs',
+  'settleMs',
+  'imagesMs',
+  'artifactsMs',
+  'transactionRecordMs',
+  'pdfMs',
+  'ingestMs'
 ] as const
 export type LogContextKey = (typeof LOG_CONTEXT_KEYS)[number]
 
@@ -1270,7 +1299,14 @@ export const ERROR_NAMES = [
   'SharingError',
   'ProtocolError',
   'PeerByeError',
-  'PeerUnreachableError'
+  'PeerUnreachableError',
+  // A Background Job that ran out of time, and the Transaction Record bound
+  // that expired (#2121): the log drops messages, so the name is what says which.
+  'RecaptureTimeout',
+  'TransactionRecordCollectTimeout',
+  'TransactionRecordWriteTimeout',
+  // Thrown before a render's first step, so the name is all its failed line says of the cause.
+  'EgressUnavailableError'
 ] as const
 
 export interface LoggedError {

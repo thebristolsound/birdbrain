@@ -547,6 +547,38 @@ describe('context', () => {
     })
   })
 
+  // #2127: a Background Job's lines carry its step, its failure kind and durations, never prose.
+  it("accepts a Background Job's step, failure kind and durations, and refuses anything else", () => {
+    const durations = {
+      timeLeftMs: 1,
+      setupMs: 2,
+      loadMs: 3,
+      networkIdleMs: 4,
+      scrollMs: 5,
+      postScrollIdleMs: 6,
+      settleMs: 7,
+      imagesMs: 8,
+      artifactsMs: 9,
+      transactionRecordMs: 10,
+      pdfMs: 11,
+      ingestMs: 12
+    }
+    const job = {
+      step: tag('network-idle', 'backgroundJobStep'),
+      failureKind: tag('refused-address', 'backgroundJobFailureKind'),
+      ...durations
+    }
+    expect(context(job)).toEqual({
+      step: 'network-idle',
+      failureKind: 'refused-address',
+      ...durations
+    })
+    expect(() => tag('example.com', 'backgroundJobStep')).toThrow(/failed validation/)
+    expect(() => tag('Blacklisted: example.com', 'backgroundJobFailureKind')).toThrow()
+    expect(() => context({ step: ident('loading') })).toThrow(/disallowed value/)
+    expect(() => context({ failureKind: ident('timeout'), loadMs: ident('3') })).toThrow()
+  })
+
   it('rejects a value under a key whose format it does not match', () => {
     // Each of these is a legal LogValue somewhere — just not under this key.
     const wrong: Array<Record<string, LogValue>> = [

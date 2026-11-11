@@ -248,6 +248,137 @@ describe('listMhtmlParts known answers', () => {
   })
 })
 
+// A part may carry no header lines (RFC 2046): its delimiter line is followed at once by the
+// blank line that ends its headers, and its span starts after that blank line like any other
+// part's. Each archive below was also written to a file with `printf`. Offsets were read from
+// `grep -boa '^.*' <file>`, and each hash was computed on 2026-11-11 outside the code under test
+// with `tail -c +$((offset+1)) <file> | head -c <size> | sha256sum`. The first hash also equals
+// `printf x | sha256sum`.
+describe('listMhtmlParts on a part with an empty header block', () => {
+  const TOP = 'Content-Type: multipart/related; boundary=B'
+  const NO_HEADERS = {
+    contentType: null,
+    transferEncoding: null,
+    contentLocation: null,
+    contentId: null,
+    headersTerminated: true,
+    endsAtEndOfFile: false,
+    fieldsTruncated: false
+  }
+
+  it.each([
+    {
+      name: 'CRLF line breaks',
+      eol: '\r\n',
+      body: ['x'],
+      offset: 54,
+      size: 1,
+      sha256: '2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881'
+    },
+    {
+      name: 'LF line breaks',
+      eol: '\n',
+      body: ['x'],
+      offset: 50,
+      size: 1,
+      sha256: '2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881'
+    },
+    {
+      name: 'CRLF line breaks and a blank line in the body',
+      eol: '\r\n',
+      body: ['line one', '', 'line two'],
+      offset: 54,
+      size: 20,
+      sha256: '11d1c19558c8e42fa0865afdb074d28035be8e8b3721218c89051540ad7605ec'
+    },
+    {
+      name: 'LF line breaks and a blank line in the body',
+      eol: '\n',
+      body: ['line one', '', 'line two'],
+      offset: 50,
+      size: 18,
+      sha256: 'e986ba083c7c1a9361143d2d8ccd8477d1d5eeef8b94b67c6ad4693f8f7b942a'
+    },
+    {
+      name: 'CRLF line breaks and no body',
+      eol: '\r\n',
+      body: [],
+      offset: 54,
+      size: 0,
+      sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+    }
+  ])('lists the body alone, with $name', ({ eol, body, offset, size, sha256 }) => {
+    const buffer = Buffer.from([TOP, '', '--B', '', ...body, '--B--'].join(eol), 'latin1')
+    const result = listed(listMhtmlParts(buffer, MHTML_PARTS_LIMITS, READ_AT))
+    expect(result).toMatchObject({ closed: true, totalParts: 1, unterminatedParts: 0 })
+    expect(result.parts).toEqual([
+      { position: 1, htmlPart: null, mainDocument: false, ...NO_HEADERS, offset, size, sha256 }
+    ])
+  })
+
+  it('lists it between two parts that have headers, and keeps their numbering', () => {
+    const buffer = Buffer.from(
+      [
+        TOP,
+        '',
+        '--B',
+        'Content-Type: text/html',
+        'Content-Location: https://example.com/one',
+        '',
+        '<p>one</p>',
+        '--B',
+        '',
+        'bare',
+        '',
+        'more',
+        '--B',
+        'Content-Type: text/html',
+        'Content-Location: https://example.com/two',
+        '',
+        '<p>two</p>',
+        '--B--',
+        ''
+      ].join('\r\n'),
+      'latin1'
+    )
+    expect(buffer.length).toBe(249)
+    const result = listed(listMhtmlParts(buffer, MHTML_PARTS_LIMITS, READ_AT))
+    expect(result).toMatchObject({ closed: true, totalParts: 3, unterminatedParts: 0 })
+    const html = { ...NO_HEADERS, contentType: 'text/html' }
+    expect(result.parts).toEqual([
+      {
+        ...html,
+        position: 1,
+        htmlPart: 0,
+        mainDocument: true,
+        contentLocation: 'https://example.com/one',
+        offset: 122,
+        size: 10,
+        sha256: '8454f8f6a627398ff88dd131300df5b0e6a4d0140c940a677abb21439c1ea2f3'
+      },
+      {
+        ...NO_HEADERS,
+        position: 2,
+        htmlPart: null,
+        mainDocument: false,
+        offset: 141,
+        size: 12,
+        sha256: '68a14446323922d95d49333ffd41b7207489c8367fb7417c6269018cb9bcb1f4'
+      },
+      {
+        ...html,
+        position: 3,
+        htmlPart: 1,
+        mainDocument: false,
+        contentLocation: 'https://example.com/two',
+        offset: 230,
+        size: 10,
+        sha256: '95482e1757145624cdab7d9446ad00bd9714f0d1531dad96215cf1491369285a'
+      }
+    ])
+  })
+})
+
 describe('listMhtmlParts on malformed input', () => {
   it('reports a file cut short inside part 4 as not closed, with part 4 running to the end', () => {
     const result = listed(listMhtmlParts(fixture().subarray(0, 1180), MHTML_PARTS_LIMITS, READ_AT))
@@ -386,6 +517,11 @@ describe('listMhtmlParts ceilings', () => {
     expect(longSnapshot.topContentType).toBe('multipart/related; boundary=B')
     expect(longSnapshot.snapshotLocation).toBe('https://example.com/a-path-longer-than-f')
     expect(longSnapshot.fieldsTruncated).toBe(true)
+    // The helper's one part has an empty header block, which is not damage.
+    expect(longSnapshot.unterminatedParts).toBe(0)
+    expect(longSnapshot.parts).toEqual([
+      expect.objectContaining({ headersTerminated: true, size: 1, fieldsTruncated: false })
+    ])
 
     const narrow = { ...MHTML_PARTS_LIMITS, maxFieldChars: 34 }
     const longBoundary = listed(listMhtmlParts(archive('a', 'BBBBBB'), narrow, READ_AT))
@@ -606,6 +742,14 @@ describe('readMhtmlParts', () => {
     expect(result.fileSize).toBe(big.length)
     expect(result.totalParts).toBe(3000)
     expect(result.closed).toBe(true)
+    // Each part has an empty header block. The first part's hash is `printf 'part 0' | sha256sum`.
+    expect(result.unterminatedParts).toBe(0)
+    expect(result.parts.every(({ headersTerminated }) => headersTerminated)).toBe(true)
+    expect(result.parts[0]).toMatchObject({
+      offset: 54,
+      size: 6,
+      sha256: '36b6f0204a800e7b687febe46ef87ebf43b5dc22f5f9741d78342964f9e656e0'
+    })
   })
 
   it('keeps the default limit at the stored-page cap', () => {

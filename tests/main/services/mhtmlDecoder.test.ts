@@ -599,6 +599,65 @@ describe('walkMhtml', () => {
     ])
   })
 
+  // A part with no header lines: the blank line that ends its headers follows the delimiter line
+  // at once. Offsets are counted from the archive text: the top header line is 43 bytes.
+  it.each([
+    ['CRLF', '\r\n', 52, 54],
+    ['LF', '\n', 49, 50]
+  ])('reads a part that opens on a blank line as having no headers (%s)', (_, eol, start, body) => {
+    const buffer = Buffer.from(
+      [...MULTIPART_TOP, '--B', '', 'line one', '', 'line two', '--B--'].join(eol),
+      'latin1'
+    )
+    const { summary, parts } = walk(buffer)
+    expect(summary).toMatchObject({ status: 'walked', closed: true, totalParts: 1 })
+    expect(parts).toEqual([
+      {
+        partStart: start,
+        partEnd: buffer.length - '--B--'.length,
+        bodyStart: body,
+        bodyEnd: buffer.length - '--B--'.length - eol.length,
+        headersTerminated: true,
+        html: false,
+        contentType: null,
+        transferEncoding: null,
+        contentLocation: null,
+        contentId: null
+      }
+    ])
+    expect(buffer.subarray(parts[0].bodyStart, parts[0].bodyEnd).toString('latin1')).toBe(
+      ['line one', '', 'line two'].join(eol)
+    )
+  })
+
+  // The lines after that blank line are the body, whatever they look like, so the HTML readers
+  // do not take this part for a page. Before the walk knew an empty header block, they did.
+  it('does not read header-looking lines after an opening blank line as headers', () => {
+    const buffer = mhtml([
+      ...MULTIPART_TOP,
+      '--B',
+      '',
+      'Content-Type: text/html',
+      'Content-Location: https://example.com/late',
+      '',
+      '<title>late</title>',
+      '--B--'
+    ])
+    const { parts } = walk(buffer)
+    expect(parts).toHaveLength(1)
+    expect(parts[0]).toMatchObject({ headersTerminated: true, html: false, contentType: null })
+    expect(buffer.subarray(parts[0].bodyStart, parts[0].bodyEnd).toString('latin1')).toBe(
+      [
+        'Content-Type: text/html',
+        'Content-Location: https://example.com/late',
+        '',
+        '<title>late</title>'
+      ].join('\r\n')
+    )
+    expect(listHtmlPartsInMhtml(buffer).parts).toEqual([])
+    expect(readMhtmlTitle(buffer)).toBeNull()
+  })
+
   it('reports an archive with no closing delimiter as not closed, its last part at the end', () => {
     const buffer = MALFORMED['no closing delimiter']
     const { summary, parts } = walk(buffer)

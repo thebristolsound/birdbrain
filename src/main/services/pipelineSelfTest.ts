@@ -104,7 +104,7 @@ export function isPipelineSelfTestResidue(caseId: string): boolean {
 // is not when boot fell back from the configured root (src/main/index.ts), or
 // when `initStorage` had to create the root. A case from an earlier launch has
 // no directory under such a root whatever it holds on the real one.
-export function storageRootHoldsEarlierLaunches(): boolean {
+function storageRootHoldsEarlierLaunches(): boolean {
   const { storagePath } = getSettings()
   if (storagePath && storagePath !== getStorageRoot()) return false
   return !storageRootCreatedAtInit()

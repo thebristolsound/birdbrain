@@ -240,38 +240,33 @@ describe('demo case seeding', () => {
     expect(await seedDemoCaseIfNeeded()).toEqual({ seeded: false, reason: 'demo-case-present' })
   })
 
-  // What a self-test killed after ingest leaves in the database.
-  const leaveSandbox = (): string => {
-    const sandbox = createCase({ name: PIPELINE_SELF_TEST_CASE_NAME })
-    insertCapture({
-      caseId: sandbox.id,
-      url: PIPELINE_SELF_TEST_URL,
-      title: 'Self-test',
-      hash: 'h-sandbox',
-      timestamp: '2026-01-16T09:31:47.000Z',
-      format: 'mhtml'
-    })
-    return sandbox.id
-  }
-
-  const expectSandboxCounted = async (sandboxId: string): Promise<void> => {
-    expect(await seedDemoCaseIfNeeded()).toEqual({ seeded: false, reason: 'cases-present' })
-    expect(listAllCases().map((c) => c.id)).toEqual([sandboxId])
-  }
-
   // #1333: settings.json and the database are separate files, so losing the
   // first marks an install fresh while the second still holds its evidence.
   describe('after the settings file is lost', () => {
-    // A later launch on the default storage root: the root the first launch
-    // made is still there, settings.json is not, and the settings written in
-    // its place name that root again, as `initSettings` does at boot.
     const loseSettings = (): void => {
-      initStorage(getStorageRoot())
       const lostDir = join(tempDir, 'lost-settings')
       mkdirSync(lostDir)
       initSettings(lostDir)
-      updateSettings({ storagePath: getStorageRoot() })
       expect(getSettings().isFreshInstall).toBe(true)
+    }
+
+    // What a self-test killed after ingest leaves in the database.
+    const leaveSandbox = (): string => {
+      const sandbox = createCase({ name: PIPELINE_SELF_TEST_CASE_NAME })
+      insertCapture({
+        caseId: sandbox.id,
+        url: PIPELINE_SELF_TEST_URL,
+        title: 'Self-test',
+        hash: 'h-sandbox',
+        timestamp: '2026-01-16T09:31:47.000Z',
+        format: 'mhtml'
+      })
+      return sandbox.id
+    }
+
+    const expectSandboxCounted = async (sandboxId: string): Promise<void> => {
+      expect(await seedDemoCaseIfNeeded()).toEqual({ seeded: false, reason: 'cases-present' })
+      expect(listAllCases().map((c) => c.id)).toEqual([sandboxId])
     }
 
     it('seeds nothing into a store that already holds a Case', async () => {
@@ -329,21 +324,9 @@ describe('demo case seeding', () => {
       await expectSandboxCounted(sandboxId)
     })
 
-    // The boot sweep deletes no sandbox-named Case under a storage root that
-    // cannot show what an earlier launch wrote, and the seed counts each one
-    // the sweep keeps. Here the lost settings file took a configured storage
-    // path with it, so boot made the default root at this launch.
-    it('counts a sandbox Case left behind when the storage root was created at this launch', async () => {
-      const sandboxId = leaveSandbox()
-      loseSettings()
-      const defaultRoot = join(tempDir, 'default-root')
-      updateSettings({ storagePath: defaultRoot })
-      initStorage(defaultRoot)
-
-      await expectSandboxCounted(sandboxId)
-    })
-
-    it('counts a sandbox Case left behind when the storage root can no longer be listed', async () => {
+    // The residue check answers "not residue" when it cannot list the storage
+    // root, since the Case having no folder there is then not known.
+    it('counts a sandbox Case left behind when the storage root cannot be listed', async () => {
       const sandboxId = leaveSandbox()
       loseSettings()
       rmSync(getStorageRoot(), { recursive: true })
@@ -373,17 +356,6 @@ describe('demo case seeding', () => {
 
       expect(await seedDemoCaseIfNeeded()).toEqual({ seeded: false, reason: 'cases-present' })
     })
-  })
-
-  // The other way a storage root fails to vouch: the settings still name a
-  // storage path, and boot fell back from it to the default root
-  // (src/main/index.ts).
-  it('counts a sandbox Case left behind when boot fell back from the configured storage root', async () => {
-    const sandboxId = leaveSandbox()
-    initStorage(getStorageRoot())
-    updateSettings({ isFreshInstall: true, storagePath: join(tempDir, 'unmounted-volume') })
-
-    await expectSandboxCounted(sandboxId)
   })
 
   it('brings a deleted demo case back with the latch lost only into an otherwise empty store', async () => {

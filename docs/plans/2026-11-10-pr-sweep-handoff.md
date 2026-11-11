@@ -286,3 +286,11 @@ Every pull request the fleet covers fails its check for the policy reason that p
 - What merging changes, from the reviewer's read-only run over the live queue: no open pull request moves from passing to failing. The 31 with a saved review already read failed and will read failed for a new reason, needing a new completed source review. Four have no saved review and stay pending. Five are drafts. None carries the override label, and a label applied before the merge would have to be removed and applied again.
 - Landing 2160 does not by itself turn the queue green. Each of the 31 needs a new commit or a deleted saved record before the fleet reviews it again, and each new review uses one of 40 daily slots. Deleting saved records, raising the limit and overriding individual pull requests are all Matt's decisions.
 - Advisories left open on 2160: a single failed network read fails a pass with no retry, and one such failure occurred in 51 reads during the review; three reader outcomes lack a test.
+
+## Fleet repair merged by the maintainer
+
+- Matt applied the override label to 2160 at 00:34 UTC on November 11 and merged it one minute later as `751e9841bd0d`. The coordinator did neither. The merged tree is identical to the reviewed head `38d707d05458`, and the squash body is the reviewed Summary; no change was dropped.
+- Main now carries the repaired fleet scripts and merge workflows. 39 pull requests are open. No implementer was in flight at the merge; the 2133 screenshot task builds fixed commits and is unaffected.
+- The fleet check on the remaining pull requests has not changed yet. Pull requests with a saved review still read failed, and 2175, 2177 and 2178 still wait behind the daily limit. Most saved reviews ran near 09:22 UTC on November 10, so their slots in the 24-hour limit free near that time on November 11.
+- How the 31 saved reviews get redone is still Matt's decision: a merge of main into each branch, a higher daily limit, deleted saved records, or the override on individual pull requests. Do not push merge commits to the queue for this purpose without his answer.
+- Watch main's CI once, at the final merge of the sweep, not at this one.

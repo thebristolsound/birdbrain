@@ -67,6 +67,29 @@ const walkNumbers = (value: unknown, found: number[] = []): number[] => {
 }
 
 describe('collectExchanges on the step 0 streams', () => {
+  it('keeps only pre-cut hops while using a later redirect to close its predecessor', () => {
+    const first = 'https://a.test/before'
+    const next = 'https://a.test/after'
+    const { exchanges, counts } = collect({
+      requestCutIndex: 1,
+      events: [
+        sent('r', first),
+        sent('r', next, { redirectResponse: response(first, { status: 302 }) }),
+        received('r', next),
+        finished('r'),
+        sent('later', 'https://a.test/new')
+      ]
+    })
+    expect(exchanges).toHaveLength(1)
+    expect(exchanges[0]).toMatchObject({
+      hop: 0,
+      request: { url: first },
+      state: 'redirected',
+      response: { status: 302 }
+    })
+    expect(counts).toMatchObject({ exchanges: 1, inFlight: 0, bodiesOmitted: 0 })
+  })
+
   it('makes each redirect hop its own exchange under the reused request id', () => {
     const { exchanges, counts } = collectSpike('q4-cross-port-redirect')
     const [first, second, image] = exchanges

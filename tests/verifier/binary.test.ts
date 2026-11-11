@@ -112,7 +112,7 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
       httpStatus: 200,
       extensionVersion: '',
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0',
       screenshot
     })
@@ -150,7 +150,7 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
       httpStatus: 200,
       extensionVersion: '',
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0'
     })
     unselectedCaptureId = unselected.id

@@ -694,10 +694,8 @@ if (!gotSingleInstanceLock) {
         initStorage(defaultCapturesDir)
       }
 
-      // What a self-test killed mid-run left (#1183). After storage init, which
-      // the residue check reads; before the capture server, so no self-test can
-      // be running, and before the demo seed, which then never sees a case the
-      // sweep removes. A sandbox-named case the sweep keeps is still there.
+      // The temp roots earlier self-tests left (#1183). Before the capture
+      // server, so no self-test can be running. It removes no case.
       sweepPipelineSelfTestResidue()
 
       // Seed the bundled demonstration case (#405). Strictly after the storage

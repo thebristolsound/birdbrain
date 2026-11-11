@@ -419,26 +419,25 @@ to the list without a refetch.
   attempted whether or not the row went. A failure is reported to the operator rather than
   swallowed, so a failed teardown — or a process killed mid-run — can leave the case row, the
   temporary directory, or both. Teardown also keeps both on purpose, in the cases the Teardown
-  entry below lists. A leftover case is named
-  `Birdbrain pipeline self-test (temporary)`; until it is deleted, its sentinel capture verifies
-  as missing, because a capture row's files are resolved against the configured storage root and
-  the sandbox's files were never written there. Because the sandbox root is a temporary
-  directory, a green result does not prove the configured storage volume is writable.
-- **Sandbox residue** (`isPipelineSelfTestResidue`, `sweepPipelineSelfTestResidue` in
-  `src/main/services/pipelineSelfTest.ts`): a case counts as residue only when all of these hold.
-  Its row is as the self-test created it: the sandbox name, a description that is empty or the
-  stamp described below, and no case number, other case type, exclusion policy, archive, demo or
-  sharing mark. Every capture row in it has the sentinel URL, and every exhibit row belongs to
-  one of those captures. No table holds a row for the case, its captures or its exhibits, other
-  than eight: `captures`, `capture_texts`,
-  `exhibits`, `case_revisions` and `case_change_log`, which creating the case and ingesting the
-  sentinel capture fill, and `exhibit_search_builds`, `exhibit_search_fields` and
-  `extracted_data`, which the app derives from a capture without being asked. A table is read
-  when a foreign key leads from it to the case, through any number of tables, or when it has a
-  `case_id`, `capture_id` or `exhibit_id` column; a table that names a case by neither is not
-  read. Because `case_revisions` and `case_change_log` are among the eight, a row that was added
-  and then deleted does not by itself keep the case. The storage root in use can be listed and
-  has no directory for the case, because the sandbox never writes there.
+  entry below lists. A leftover case is named `Birdbrain pipeline self-test (temporary)` and
+  stays until an operator deletes it; until then its sentinel capture verifies as missing,
+  because a capture row's files are resolved against the configured storage root and the
+  sandbox's files were never written there. Because the sandbox root is a temporary directory,
+  a green result does not prove the configured storage volume is writable.
+- **Sandbox residue** (`isPipelineSelfTestResidue` in `src/main/services/pipelineSelfTest.ts`): the
+  check teardown runs before it deletes the sandbox case. A case counts as residue only when all
+  of these hold. Its row is as the self-test created it: the sandbox name, and no description,
+  case number, other case type, exclusion policy, archive, demo or sharing mark. Every capture
+  row in it has the sentinel URL, and every exhibit row belongs to one of those captures. No
+  table holds a row for the case, its captures or its exhibits, other than eight: `captures`,
+  `capture_texts`, `exhibits`, `case_revisions` and `case_change_log`, which creating the case
+  and ingesting the sentinel capture fill, and `exhibit_search_builds`, `exhibit_search_fields`
+  and `extracted_data`, which the app derives from a capture without being asked. A table is
+  read when a foreign key leads from it to the case, through any number of tables, or when it
+  has a `case_id`, `capture_id` or `exhibit_id` column; a table that names a case by neither is
+  not read. Because `case_revisions` and `case_change_log` are among the eight, a row that was
+  added and then deleted does not by itself keep the case. The storage root in use can be
+  listed and has no directory for the case, because the sandbox never writes there.
 - **Teardown** checks the case first, because while the self-test runs the sandbox is an ordinary
   case that the capture server's routes accept, so a client holding the token can upload into
   it. When the case holds something else, teardown keeps the case and its temporary directory and
@@ -446,37 +445,19 @@ to the list without a refetch.
   case. When the storage root cannot be listed, teardown keeps both and logs
   `captureServer.self_test_storage_unavailable` at warn. When the case is already gone, teardown
   removes the temporary directory and logs nothing.
-- **Startup sweep**: straight after the storage root is set, and before the demo seed and the
-  capture server, a sweep reads each unarchived case with the sandbox name. It deletes a case,
-  with every temporary directory that holds a folder named for it, only when the case passes the
-  residue check and its stamp equals the mark the sweep finds in the storage root. Every other
-  case it reads is kept and logged: `captureServer.self_test_residue_kept` at info when the case
-  holds something the self-test did not write, `captureServer.self_test_storage_unavailable` at
-  warn when the root cannot be listed, and `captureServer.self_test_storage_unconfirmed` when
-  the stamp is missing or differs from the mark, at warn for a stamp that differs and at info
-  for a case with no stamp. A removal is logged as `captureServer.self_test_residue_removed` at
-  info. No route hides the sandbox from any listing.
-- **Storage mark and stamp** (`renewStorageRootMark` in `src/main/services/storage.ts`, the stamp
-  in `src/main/services/pipelineSelfTest.ts`): what lets the sweep take a missing folder as
-  proof. Every launch ends its sweep by clearing the stamp of every case, archived ones
-  included, and writing a new random mark to `.birdbrain-storage-root.json` in the storage root.
-  A sandbox made during that launch is created with the stamp as its description,
-  `Pipeline self-test sandbox (storage mark <mark>)`, in the same insert as the case, and only
-  while the root still holds the mark that launch wrote. A stamp equal to the mark the next
-  sweep finds therefore says that no launch has finished a sweep since the case was made, and
-  that the root in use holds the mark the case's own launch wrote: the case has existed during
-  one launch, on this root. A case is read this way once. A case kept at that launch, and a case
-  with no stamp, is kept at every later launch until an operator deletes it; that includes every
-  leftover made before this check existed.
-  - What a failed write does. The mark cannot be written: the launch has no mark, so a sandbox
-    it makes carries no stamp and is kept. The stamp cannot be written: it is part of the insert
-    that creates the case, so there is no case. A stamp cannot be cleared: the sweep throws and
-    startup fails, so that launch never accepts a capture. No clock is read.
-  - Four states are not told apart. A copy of the root taken during the launch that made the
-    case, and put in its place before the next launch, holds that launch's mark. A launch by a
-    build without this check neither clears stamps nor writes a mark. A root that changes under
-    its path after the case is made, and is back at the next launch, holds the mark again. A
-    database restored from a copy brings back the stamps that copy held.
+- **Startup sweep** (`sweepPipelineSelfTestResidue`): at startup, before the capture server, the
+  app removes every `birdbrain-pipeline-test-*` directory in the temporary directory that holds
+  a folder named for a case in the database, and logs each as
+  `captureServer.self_test_temp_root_removed` at info. That includes the directory teardown kept
+  beside a case something else wrote to. It removes no case and changes no case row, whatever
+  the case is named and whatever it holds, and it writes nothing under the storage root
+  ([decision](https://github.com/thebristolsound/birdbrain/pull/2181#issuecomment-6799450693)).
+  A leftover case from a killed run therefore stays listed until an operator deletes it: on the
+  dashboard, open the actions menu on its card, choose Delete and confirm. Two kinds of
+  temporary directory are left: one that holds no case folder, from a run killed before its
+  first store write; and one whose case folder names no case in this database, because the case
+  is gone or another installation made it. A directory that cannot be removed is logged as
+  `captureServer.self_test_cleanup_failed` at error. No route hides the sandbox from any listing.
 - **Test HTTP** (`captures:testHttp` IPC): a `fetch` of `GET /api/status` from the main process,
   proving the listener independently of the extension.
 

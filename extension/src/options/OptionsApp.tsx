@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { BASE_URL, getStatus, getServerToken } from '@extension/utils/api'
 import { openInApp } from '@extension/utils/appLink'
 import { applyExtensionTheme } from '@extension/utils/theme'
+import { extensionVersionOf } from '@shared/extensionVersion'
 
 // This page reads. It renders the connection, the pairing token and the app's
 // screenshot setting, and it writes nothing back — every control the operator
@@ -124,7 +125,7 @@ export function OptionsPage() {
   const [token, setToken] = useState<string | null>(null)
   const [captureScreenshots, setCaptureScreenshots] = useState(false)
 
-  const version = chrome.runtime.getManifest().version
+  const version = extensionVersionOf(chrome.runtime.getManifest())
 
   const refresh = useCallback(async (): Promise<void> => {
     try {

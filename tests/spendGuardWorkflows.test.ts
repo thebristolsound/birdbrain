@@ -25,11 +25,13 @@ const NO_ENVIRONMENT = ['jev-lens.yml hunks']
 // The maintainer's ruling of 2026-11-10 (ADR-0057): the review fleet starts on events other
 // accounts cause, so each of its secret-reading jobs must instead carry, as a top-level
 // conjunct, either the named actors' guard or the scheduled-first-attempt test. Its relay job
-// alone holds the maintainer's relay token, in an environment of its own.
+// alone holds the maintainer's relay token, in an environment of its own. The machine account is
+// named by the variable the fleet's identity step already reads, so the two cannot disagree; an
+// unset variable matches no actor.
 const FLEET = 'review-fleet.yml'
 const FLEET_GUARD =
   "(github.triggering_actor == 'thebristolsound'" +
-  " || github.triggering_actor == 'birdbrain-agent'" +
+  ' || github.triggering_actor == vars.BIRDBRAIN_AGENT_GH_LOGIN' +
   " || github.triggering_actor == 'chatgpt-codex-connector[bot]'" +
   " || github.triggering_actor == 'github-actions[bot]')"
 const FLEET_SCHEDULED = ["github.event_name == 'schedule'", "github.run_attempt == '1'"]

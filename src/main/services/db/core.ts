@@ -108,6 +108,12 @@ export function getDb(): Database.Database {
   return db
 }
 
+// False between a restore's close and its re-open, and after a restore that left the file
+// unreadable, when the app runs on with no database until another restore.
+export function isDatabaseOpen(): boolean {
+  return db !== null
+}
+
 export function closeDatabase(): void {
   if (db) {
     db.close()

@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import { Readable } from 'stream'
 import { finished } from 'stream/promises'
 import * as backgroundJobRepo from '@main/services/db/backgroundJobRepo'
-import type { JobEnd, RunningAttempt } from '@main/services/db/backgroundJobRepo'
+import type { JobEnd, RunningAttempt, SettledJobs } from '@main/services/db/backgroundJobRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import { getCase } from '@main/services/db/caseRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
@@ -178,14 +178,19 @@ export interface RecaptureService {
   // The pass before the queue runs at startup. `finishRestore` runs it after a restore too.
   recoverStoredJobs: () => void
   // Read before a restore closes the database: the jobs this session has queued or is running.
+  // None when no database is open, as after a restore that left the file unreadable.
   beginRestore: () => BackgroundJobView[]
   // After a restore re-opens the database: the startup pass, which first writes back the row of
   // the job this process is still running, so it ends as it would have, and a `failed` event for
   // each job read by `beginRestore` that the restored copy does not hold.
   finishRestore: (before: BackgroundJobView[]) => void
+  // Starts the queue loop again. The restore handlers call it after a restore that failed and
+  // left the session's own database open: the close may have stopped the loop with jobs queued.
+  restartQueue: () => void
   listJobs: (query: RecaptureListJobsQuery) => BackgroundJobView[]
-  // Sets the Batch's `held` jobs `queued`, behind the jobs already queued at the resume.
-  resume: (batchId: string) => { resumed: number }
+  // Sets the Batch's `held` jobs `queued`, behind the jobs already queued at the resume. Refused,
+  // with the reason enqueue gives, while no operator name is set; the jobs stay held.
+  resume: (batchId: string) => { resumed: number; reason?: string }
   dismiss: (target: RecaptureJobTarget) => { dismissed: number }
   // Ends the target's queued and held jobs `cancelled`, and aborts its running job unless that
   // job is past the cut-off: its render has returned its page, and the job ends as the ingest
@@ -207,6 +212,8 @@ export const INTERRUPTED_JOB_ERROR = 'Birdbrain closed while this job was runnin
 
 export const RESTORE_REMOVED_JOB_ERROR = 'A database restore removed this job'
 export const RESTORE_REMOVED_CAPTURE_ERROR = "A database restore removed this job's Capture"
+
+export const QUEUE_STOPPED_JOB_ERROR = 'The background queue stopped while this job was running'
 
 // How a job ended, as its row records it. `logStored` writes a stored job's log line.
 type JobOutcome = Omit<JobEnd, 'finishedAt'> & { logStored?: () => void }
@@ -435,10 +442,14 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       interruptedError: INTERRUPTED_JOB_ERROR,
       running
     })
-    const { stored, interrupted, held } = restored
     for (const job of restored.running) emitJob(job)
-    // Stored, not interrupted: the Capture landed before the app closed, and a retry of the job
-    // would take a second observation of the page.
+    reportSettled(restored)
+    for (const job of restored.held) emitJob(job)
+  }
+
+  function reportSettled({ stored, interrupted }: SettledJobs): void {
+    // Stored, not interrupted: the Capture landed before the job's row was ended, and a second
+    // run of the job would take a second observation of the page.
     for (const job of stored) {
       logger.info('backgroundRenderer', 'backgroundRenderer.job_stored', {
         ...(job.captureId ? { captureId: ident(job.captureId) } : {}),
@@ -454,7 +465,19 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       })
       emitJob(job)
     }
-    for (const job of held) emitJob(job)
+  }
+
+  // A throw between a job's claim and the write of its end stops the loop and leaves the row
+  // `running` with no job behind it. Such rows are settled when the loop stops and again when it
+  // next starts, so a database that refused the first write gets a second.
+  function settleOrphans(): void {
+    reportSettled(
+      backgroundJobRepo.settleRunningJobs({
+        now: new Date().toISOString(),
+        interruptedError: QUEUE_STOPPED_JOB_ERROR,
+        exceptJobIds: active ? [active.job.jobId] : []
+      })
+    )
   }
 
   // `captureId` is the id the attempt's row names, and `timestamp` the Capture's, both taken as
@@ -783,12 +806,13 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     }
   }
 
-  // One job at a time, each claimed from its row as the last one ends. A database the loop
-  // cannot read or write (a restore closes it) stops the loop; the next enqueue or resume starts
-  // it again, and a row it left `running` is `interrupted` at the next start.
+  // One job at a time, each claimed from its row as the last one ends. Any throw between a claim
+  // and the write of the job's end stops the loop: a database it cannot read or write (a restore
+  // closes it), or an event or log call that throws. The next enqueue or resume starts it again.
   function drain(): void {
     if (draining) return
     draining = (async () => {
+      settleOrphans()
       for (;;) {
         const attempt = { captureId: randomUUID(), timestamp: new Date().toISOString() }
         const claimed = backgroundJobRepo.claimNextQueued({
@@ -840,6 +864,12 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     })()
       .catch((err: unknown) => {
         logger.error('backgroundRenderer', 'backgroundRenderer.job_queue_failed', undefined, err)
+        try {
+          settleOrphans()
+        } catch {
+          // The database refused this write as well, or the report of it threw. The stop is
+          // logged above, and the loop settles the row when it next starts.
+        }
       })
       .finally(() => {
         draining = null
@@ -963,6 +993,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     },
     recoverStoredJobs: () => recover(),
     beginRestore: () => backgroundJobRepo.listActiveJobs(),
+    restartQueue: () => drain(),
     finishRestore(before) {
       const running = active
       // The row is written back with the phase the job has reached since the claim.
@@ -993,6 +1024,10 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     },
     listJobs: (query) => backgroundJobRepo.listJobs(query),
     resume(batchId) {
+      // The operator gate (X47), as at enqueue: a held job that cannot be signed is not rendered.
+      if (!trimmedOperatorName()) {
+        return { resumed: 0, reason: new OperatorNameRequiredError().message }
+      }
       const resumed = backgroundJobRepo.resumeBatch(batchId, new Date().toISOString())
       for (const view of resumed) emitJob(view)
       if (resumed.length > 0) drain()

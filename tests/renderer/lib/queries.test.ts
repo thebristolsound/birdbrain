@@ -304,6 +304,8 @@ describe('useCasesMutations', () => {
       await result.current.remove.mutateAsync('c1')
     })
     expect(invalidatedKeys(invalidate)).toContainEqual(['cases'])
+    // A Case's held background jobs go with it, so the status control's held count is read again.
+    expect(invalidatedKeys(invalidate)).toContainEqual(['recaptureQueue'])
   })
 })
 

@@ -72,7 +72,7 @@ describe('manifest append', () => {
     contentHash: 'a'.repeat(64),
     sizeBytes: 1234,
     operatorId: 'op-1',
-    operatorName: '',
+    operatorName: 'Test Operator',
     toolVersion: '0.1.0'
   }
 
@@ -236,7 +236,7 @@ describe('manifest verifyManifestChain', () => {
     contentHash: 'a'.repeat(64),
     sizeBytes: 1,
     operatorId: 'op',
-    operatorName: '',
+    operatorName: 'Test Operator',
     toolVersion: '0.1.0'
   }
 
@@ -289,7 +289,7 @@ describe('manifest verifyManifestChain', () => {
         contentHash: 'b'.repeat(64),
         sizeBytes: 2,
         operatorId: 'op',
-        operatorName: '',
+        operatorName: 'Test Operator',
         toolVersion: '0.1.0',
         index: 1,
         prevHash: 'wrong-hash',
@@ -335,7 +335,7 @@ describe('manifest x annotations forensic invariants', () => {
       contentHash: 'a'.repeat(64),
       sizeBytes: 1,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0'
     })
 
@@ -363,7 +363,7 @@ describe('withDeletionEntry', () => {
     caseId: 'case-1',
     contentHash: 'a'.repeat(64),
     operatorId: 'op-1',
-    operatorName: '',
+    operatorName: 'Test Operator',
     toolVersion: '0.1.0'
   }
 
@@ -504,7 +504,7 @@ describe('withCaptureEntry', () => {
     contentHash: 'a'.repeat(64),
     sizeBytes: 1234,
     operatorId: 'op-1',
-    operatorName: '',
+    operatorName: 'Test Operator',
     toolVersion: '0.1.0'
   }
 
@@ -914,7 +914,7 @@ describe('manifest schema v2 + grandfathering', () => {
       contentHash: 'a'.repeat(64),
       sizeBytes: 10,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.0.9',
       schemaVersion: 1
     })
@@ -939,7 +939,7 @@ describe('manifest schema v2 + grandfathering', () => {
       contentHash: 'a'.repeat(64),
       sizeBytes: 10,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.0.9',
       schemaVersion: 1
     })
@@ -953,7 +953,7 @@ describe('manifest schema v2 + grandfathering', () => {
       contentHash: 'b'.repeat(64),
       sizeBytes: 20,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0'
     })
     const lines = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim().split('\n')
@@ -972,7 +972,7 @@ describe('manifest schema v2 + grandfathering', () => {
       contentHash: 'a'.repeat(64),
       sizeBytes: 1,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0'
     })
     const entry = JSON.parse(readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim())
@@ -999,7 +999,7 @@ describe('manifest schema v2 + grandfathering', () => {
       contentHash: 'c'.repeat(64),
       sizeBytes: 5,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0'
     })
     const path = join(tempDir, 'manifest.jsonl')
@@ -1016,7 +1016,7 @@ describe('manifest schema v2 + grandfathering', () => {
       captureContentHash: 'a'.repeat(64),
       timestamp: '2026-05-01T00:00:00.000Z',
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0',
       index: 0,
       prevHash: '',
@@ -1038,7 +1038,7 @@ describe('manifest schema v2 + grandfathering', () => {
       contentHash: captureHash,
       sizeBytes: 1,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0'
     })
     appendRawEntry({
@@ -1047,7 +1047,7 @@ describe('manifest schema v2 + grandfathering', () => {
       captureContentHash: captureHash,
       timestamp: '2026-05-01T00:01:00.000Z',
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0',
       schemaVersion: 2
     })
@@ -1064,7 +1064,7 @@ describe('manifest schema v2 + grandfathering', () => {
       contentHash: 'a'.repeat(64),
       sizeBytes: 10,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.0.9',
       schemaVersion: 1
     })
@@ -1089,7 +1089,7 @@ describe('manifest schema v2 + grandfathering', () => {
       contentHash: 'a'.repeat(64),
       sizeBytes: 1,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0',
       index: 0,
       prevHash: '',
@@ -1110,7 +1110,7 @@ describe('manifest schema v2 + grandfathering', () => {
       contentHash: 'a'.repeat(64),
       sizeBytes: 1,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0',
       index: 0,
       prevHash: '',
@@ -1234,7 +1234,7 @@ describe('manifest signing enforcement (G2)', () => {
     contentHash: 'a'.repeat(64),
     sizeBytes: 1,
     operatorId: 'op',
-    operatorName: '',
+    operatorName: 'Test Operator',
     toolVersion: '0.1.0'
   }
 
@@ -1339,7 +1339,7 @@ describe('manifest export audit entry (#124)', () => {
       contentHash: 'a'.repeat(64),
       sizeBytes: 100,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.4.0'
     })
     const head = getManifestHead(tempDir)

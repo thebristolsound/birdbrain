@@ -48,7 +48,7 @@ _Avoid_: backup, dump, case file.
 
 ### Acquisition
 
-Clauses marked _Planned_ describe decisions in [`ADR-0034`](docs/adr/0034-the-app-acquires-and-the-extension-is-a-companion.md), [`ADR-0035`](docs/adr/0035-one-transaction-record-per-capture.md), and [`ADR-0037`](docs/adr/0037-passive-capture-returns-in-the-launched-browser.md) that no build implements yet. Until they ship, the extension acquires every operator-witnessed Capture itself.
+Clauses marked _Planned_ describe decisions in [`ADR-0034`](docs/adr/0034-the-app-acquires-and-the-extension-is-a-companion.md), [`ADR-0035`](docs/adr/0035-one-transaction-record-per-capture.md), and [`ADR-0037`](docs/adr/0037-passive-capture-returns-in-the-launched-browser.md) that no build implements yet. Until they ship, the extension acquires every operator-witnessed Capture itself. Under **Background Job** and **Batch**, and in the relationship that names them, _Planned_ marks what the [batch capture throughput design](docs/specs/2026-11-09-batch-capture-throughput-design.md) adds and no build implements yet.
 
 **Capture**:
 The primary artifacts taken from one observation of a single web page, stored on disk under its Case directory and indexed in the database: MHTML and, as available, a screenshot today, and for a `background` Capture a Transaction Record, unless recording it failed, and a PDF of the page, printed after everything else, unless the print failed, was over a size limit, or would have shown a page the window navigated to after the save. Legacy Captures may be HTML only. A `background` Capture's Manifest Entry carries an inventory: which artifacts the Capture holds and why any is absent, what the Transaction Record lacks, the Image Source Pinning counts, and the screenshot's size and whether it was scaled down, cut short, or trimmed. A `launched` Capture carries the same inventory, with a Transaction Record when recording began before the page's document request and a PDF unless the print failed; a launched browser pins no image, so its Image Source Pinning counts are zero. A `duplicate` of one carries its source's inventory and copies its Transaction Record and PDF. _Planned:_ Captures acquired by the other Capture Methods carry the inventory and a PDF too.
@@ -91,11 +91,11 @@ A fresh background Capture of an existing Capture's URL, stored as a linked sibl
 _Avoid_: refresh, re-fetch, update.
 
 **Background Job**:
-One URL the Operator asked Birdbrain to render in the background into a Case, held from the moment it is accepted until it ends: stored as a `background` Capture, skipped by a rule that refuses it, failed, or cancelled. A Recapture, a pasted URL and a link Capture are each a Background Job. Its record is the job's state, never evidence: it stays out of the Manifest, and nothing that verifies a Capture reads it.
+One URL the Operator asked Birdbrain to render in the background into a Case, held from the moment it is accepted until it ends: stored as a `background` Capture, skipped by a rule that refuses it, or failed. A Recapture, a pasted URL's Capture and a link Capture each come from a Background Job. Today the queue lives in memory and is lost when the app closes. _Planned:_ a Background Job can also end cancelled, and it has a stored record that survives a restart. That record is the job's state, never evidence: it stays out of the Manifest, and nothing that verifies a Capture reads it.
 _Avoid_: task, queue item, recapture (for a job that supersedes nothing).
 
 **Batch**:
-The Background Jobs one Operator action queued, always into one Case. A single Recapture from the Capture menu is a Batch of one, and a retried Background Job stays in the Batch that first queued it.
+_Planned._ The Background Jobs one Operator action queued, always into one Case. A single Recapture from the Capture menu is a Batch of one, and a retried Background Job stays in the Batch that first queued it.
 _Avoid_: run, bulk job.
 
 **Duplicate**:
@@ -357,7 +357,7 @@ _Avoid_: risky change, core change, forensic change.
 - A **Capture**'s **Content Hash** may be attested by one **Timestamp Token** from a **TSA**, moving its **Trusted Time** from `pending` to `rfc3161`
 - **Trusted Time** and **Integrity Status** are orthogonal: a byte-perfect **Capture** is integrity-verified whether or not it carries a trusted timestamp
 - A **Recapture** produces a new **Capture** that supersedes an existing one; both remain visible and neither is overwritten
-- A **Background Job** ends with at most one **Capture**; a **Recapture** is a **Background Job** that supersedes an existing **Capture**, and every **Background Job** in a **Batch** targets the **Batch**'s one **Case**
+- A **Background Job** ends with at most one **Capture**; a **Recapture** is the **Capture** of a **Background Job** that supersedes an existing **Capture**. _Planned:_ every **Background Job** in a **Batch** targets the **Batch**'s one **Case**
 - A **Duplicate** is a new **Capture** that links to its source and shares its **Content Hash**; unlike a **Recapture** it observed nothing
 - A link **Capture** observed its destination afresh, so unlike a **Duplicate** it is a new sighting; it names the **Capture** whose stored page held the link (ADR-0040)
 - A **TLS Cert Chain** and a **Wayback Ref** attach to a **Capture** as corroboration only, and bind nothing about the captured transaction
@@ -431,10 +431,10 @@ _Avoid_: risky change, core change, forensic change.
 
 - "batch" is two things: a **Batch** of Background Jobs, and a batch delete, which removes several Captures in one Capture Lifecycle operation. The defined term means only the first; say "batch delete" for the second.
 
-- "recapture" is wider in code than in the domain: every **Background Job**'s events and its `CaptureSource` say `recapture`, a pasted URL's and a link Capture's included, though neither supersedes anything. In prose, say **Recapture** only for a job that supersedes an existing Capture, and **Background Job** for the rest.
+- "recapture" is wider in code than in the domain: every **Background Job**'s events and its `CaptureSource` say `recapture`, a pasted URL's and a link Capture's included, though neither supersedes anything. In prose, say **Recapture** only for a Capture that supersedes an existing one, and **Background Job** for the job that renders any background Capture.
 
 - "route" is the Capture Server's HTTP route (a handler that parses a request and hands it to the Capture Lifecycle). The path outbound traffic takes is the **Egress**; never call it a route.
 
-- "session" is four things: a **Capture Session**; one app launch, which the crash-recovery prompt tracks through a lock file; the last Case and screen the app restores on launch ("session restore"); and the browser profile a webview or a background **Recapture** renders in, which for a **Persona** is its persona session. Unqualified "session" means Capture Session; qualify the other three.
+- "session" is four things: a **Capture Session**; one app launch, which the crash-recovery prompt tracks through a lock file; the last Case and screen the app restores on launch ("session restore"); and the browser profile a webview or a **Background Job** renders in, which for a **Persona** is its persona session. Unqualified "session" means Capture Session; qualify the other three.
 
 - "staging" and "derivation" are domain terms (**Staging Pool**, **Derivation**) that code comments also use casually: the scratch directory an archive import unpacks into, the scratch file a database snapshot writes through, and any computed value. In prose, reserve both words for the domain terms and say "scratch" or "computed" for the rest.

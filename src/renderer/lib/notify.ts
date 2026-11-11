@@ -176,6 +176,7 @@ const CODE_LABELS: Record<LogCode, string> = {
   'backgroundRenderer.scroll_reset_failed': "Couldn't scroll the page back after loading it",
   'backgroundRenderer.transaction_record_failed':
     "The capture was stored without its record of the page's network exchanges",
+  'backgroundRenderer.cleanup_failed': "Couldn't clean up the background capture",
   'backgroundRenderer.pdf_failed': 'The capture was stored without its PDF',
   'backgroundRenderer.consent_blocker_disable_failed':
     "Couldn't turn off the cookie-notice blocker",
@@ -230,6 +231,8 @@ const CODE_LABELS: Record<LogCode, string> = {
   'demoCase.artifact_cleanup_failed':
     "The demonstration case was removed, but its files couldn't be deleted",
   'exhibits.backfill_failed': "Couldn't finish the exhibit migration for a case",
+  'exhibits.backfill_deferred':
+    "Held back a case's exhibit migration until an operator name is set in Settings",
   'exhibits.path_unrepaired': "Couldn't repair the file location of an imported exhibit",
   'staging.path_unrepaired': "Couldn't repair the file location of an imported pooled file",
   'staging.commit_failed': "Couldn't commit a pooled file to the case",

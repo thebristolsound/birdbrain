@@ -44,7 +44,11 @@ const judge = (s: unknown) =>
     rulings: {},
     codexFindings: []
   })
-const review = (o: unknown = output) => mergeFinders(state, { ...outputs, contract: o })
+// Every pass read the whole diff against main.
+const wholeDiff = Object.fromEntries(
+  Object.keys(outputs).map((leg) => [leg, { base: 'main', from: 'c'.repeat(40) }])
+)
+const review = (o: unknown = output) => mergeFinders(state, { ...outputs, contract: o }, wholeDiff)
 
 describe('completed source review contract', () => {
   it('preserves runtime limits in storage and the public report while source work succeeds', () => {

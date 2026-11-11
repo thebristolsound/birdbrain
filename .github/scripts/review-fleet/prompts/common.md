@@ -40,13 +40,16 @@ source_review_complete=false. A missing source contract is never a runtime limit
 **Review scope.** `stack.json` names the pull request's base branch. When it is `main`,
 `diff.patch` is your review scope. When it is another branch, the pull request is stacked:
 `diff-base.patch`, the diff from the merge base with that branch to the head, is this pull
-request's own change and your review scope. `diff.patch` then also carries the changes of the
-pull requests below this one, which `stack.json` lists and which are reviewed in their own pull
-requests; read it as context for how this change sits on `main`. Hold the title, the body and
-the tests to this pull request's own change. Raise a finding against code that only
-`diff.patch` shows when this change is what makes that code wrong, not when the code was wrong
-before it. A commit this head merged from `main` that its base branch does not have yet shows
-in `diff-base.patch` too; `commits.json` lists that merge and the files it brought.
+request's own change and your review scope. `diff.patch` then also carries what lies below
+this change: the pull requests `stack.json` lists, each reviewed on its own, and any commit of
+the base branch that belongs to none of them. Read it as context for how this change sits on
+`main`. Your review does not clear what lies below: the fleet records that it read this pull
+request's own change only, and that record does not count for a merge into `main` until `main`
+holds everything below. Hold the title, the body and the tests to this pull request's own
+change. Raise a finding against code that only `diff.patch` shows when this change is what
+makes that code wrong, not when the code was wrong before it. A commit this head merged from
+`main` that its base branch does not have yet shows in `diff-base.patch` too; `commits.json`
+lists that merge and the files it brought.
 
 **History and authorship are in the inputs.** Check a claim about commits against
 `commits.json` and the patches under `commits/`, never against a commit message alone: which

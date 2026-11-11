@@ -326,6 +326,7 @@ describe('whether a merge commit is the automatic merge', () => {
       'base-tree',
       'commits',
       'commits.json',
+      'scope.json',
       'stack.json'
     ])
   })
@@ -490,6 +491,15 @@ describe('the stack below the head and the diff against the base branch', () => 
     ])
     // Nothing below claims a commit, so each stays with this pull request.
     expect(s.commits().commits.map((c) => c.pull_request)).toEqual([11, 11, 11, 11, 11])
+  })
+
+  it('says what the review reads: the base branch and the commit the scope starts from', () => {
+    const s = keep(stacked())
+    s.prepare()
+    expect(JSON.parse(s.read('scope.json'))).toEqual({ base: 'parent', from: s.p2 })
+    const whole = keep(stacked())
+    whole.prepare({ number: 10, pulls: [pull(10, whole.c2, 'child', 'main')] })
+    expect(JSON.parse(whole.read('scope.json'))).toEqual({ base: 'main', from: whole.m1 })
   })
 
   it("writes the pull request's own change when its base is not main", () => {
@@ -1001,6 +1011,7 @@ esac
       'commits',
       'commits.json',
       'diff-base.patch',
+      'scope.json',
       'stack.json'
     ])
     expect(readFileSync(join(s.root, 'gh.log'), 'utf8').trim().split('\n')).toEqual([

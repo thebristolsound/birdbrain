@@ -104,7 +104,11 @@ keeps one state comment per head with the findings and rulings.
 - **History and stack inputs** come as files, because the passes have no git (ADR-0057,
   decision 5): `commits.json` with a patch per commit, `stack.json`, `base-tree/` with every
   file as it stood at the merge base with `main`, and, for a pull request whose base branch is
-  not `main`, `diff-base.patch`, which is that pull request's review scope.
+  not `main`, `diff-base.patch`, which is that pull request's review scope. A review of that
+  narrower scope posts a success that begins `stacked change only:`, which `merge-gate` does
+  not count. Once the base is `main`, the next plan run or sweep either confirms that `main`
+  holds everything below the change and posts a plain success, or starts a review of the whole
+  diff.
   A bare `#<n>` in the description is read as this repository's issue or pull request. Each
   issue or pull request among the sources brings the comments the maintainer or the machine
   account wrote on it, so a ruling posted as a comment is read when the description names its

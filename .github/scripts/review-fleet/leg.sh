@@ -48,6 +48,8 @@ node "$here/inputs.mjs" "$R" "$in"
 # The commits past main, a patch for each, the pull requests below the head, the diff against a
 # base branch other than main, and the repository's files before the change.
 node "$here/history.mjs" "$R" "$PR" "$PR_DIR" "$in"
+# The scope this pass reads goes with its output, so the head's record says what was reviewed.
+mv "$in/scope.json" "$OUT/scope.json"
 if [ "$leg" = verify-codex ]; then
   node "$here/fleet.mjs" codex-findings "$R" "$PR" "$SHA" > "$in/codex.json"
 fi

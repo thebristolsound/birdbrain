@@ -51,6 +51,7 @@ const output = (dir: string, pass: string | null, json: unknown = findings) => {
   writeFileSync(join(dir, 'findings.json'), JSON.stringify(json))
   writeFileSync(join(dir, 'transcript.jsonl'), '{}\n')
   writeFileSync(join(dir, 'claude.err'), '')
+  writeFileSync(join(dir, 'scope.json'), JSON.stringify({ base: 'main', from: 'c'.repeat(40) }))
   if (pass !== null) writeFileSync(join(dir, 'pass'), `${pass}\n`)
 }
 
@@ -69,7 +70,9 @@ const files = (dir: string) =>
     .map((entry) => relative(dir, join(entry.parentPath, entry.name)))
     .sort()
 const of = (pass: string) =>
-  ['claude.err', 'findings.json', 'pass', 'transcript.jsonl'].map((name) => `${pass}/${name}`)
+  ['claude.err', 'findings.json', 'pass', 'scope.json', 'transcript.jsonl'].map(
+    (name) => `${pass}/${name}`
+  )
 
 describe('collecting the passes whatever layout the download left', () => {
   // actions/download-artifact puts each of several artifacts in a directory named for it.
@@ -84,7 +87,13 @@ describe('collecting the passes whatever layout the download left', () => {
   // It extracts a lone artifact straight into the directory, with no directory of its own.
   it('puts a lone artifact, extracted with no directory, under the pass it names', () => {
     const r = collect((dir) => output(dir, VERIFY_LEG, rulings))
-    expect(r.before).toEqual(['claude.err', 'findings.json', 'pass', 'transcript.jsonl'])
+    expect(r.before).toEqual([
+      'claude.err',
+      'findings.json',
+      'pass',
+      'scope.json',
+      'transcript.jsonl'
+    ])
     expect(r.status, r.stderr).toBe(0)
     expect(r.after).toEqual(of(VERIFY_LEG))
   })
@@ -114,10 +123,9 @@ describe('collecting the passes whatever layout the download left', () => {
       expect(r.status, r.stderr).toBe(0)
       expect(r.after).toEqual(of(pass))
       const state = { v: 1, sha: 'a'.repeat(40), startedAt: '2026-11-11T05:00:00Z' }
-      const merged = mergeFinders(
-        state,
-        Object.fromEntries((FINDER_LEGS as string[]).map((l) => [l, readLeg(r.dir, l)]))
-      )
+      const each = (name: string) =>
+        Object.fromEntries((FINDER_LEGS as string[]).map((l) => [l, readLeg(r.dir, l, name)]))
+      const merged = mergeFinders(state, each('findings.json'), each('scope.json'))
       expect(merged.claude.legs).toEqual(
         Object.fromEntries(
           (FINDER_LEGS as string[]).map((l) => [l, l === pass ? 'done' : 'failed'])

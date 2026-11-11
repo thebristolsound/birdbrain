@@ -135,6 +135,18 @@ Three facts shaped the design:
      of a Markdown link. Line endings saved as CRLF are read as line feeds. What that source
      cites is not followed.
 
+   A review that read only `diff-base.patch` counts only for what it read. Each pass's output
+   says which base branch it ran against and which commit its scope starts from, and the saved
+   state keeps both; a pass that says neither, or another scope than the first pass, fails.
+   While the base is not `main`, the fleet's success begins `stacked change only:` and
+   `merge-gate` does not count it. Once the base is `main`, the fleet reads from the API the
+   trees of the head, of `main`, of their merge base and of the commit the scope starts from.
+   The review covers the merge when, for every file the head changed that differs from `main`,
+   `main` holds the file exactly as it was where the scope starts; the status then becomes a
+   plain success. Otherwise, and when a tree cannot be read, the head is owed a review of the
+   whole diff. A state saved before scopes were recorded has none, and read the whole diff
+   against `main`.
+
    The limits are 60 sources, 200 such comments, 1 MiB of `sources.json`, 300 commits and
    512 MiB for one tree. Going over one fails the pass before the paid call with the limit in
    the message; no source, comment, commit or file is dropped to fit. An unset `MAINTAINER` or

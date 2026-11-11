@@ -63,8 +63,12 @@ const blocking = {
   detail: 'src/a.ts:3 drops the error.',
   failure_scenario: 'A missing file reads as a pass.'
 }
+// Every pass read the whole diff against main.
+const wholeDiff = Object.fromEntries(
+  FINDER_LEGS.map((l: string) => [l, { base: 'main', from: 'c'.repeat(40) }])
+)
 const reviewed = (outputs: Record<string, unknown> = allDone) =>
-  mergeFinders({ v: 1, sha: SHA, startedAt: '2026-11-10T11:00:00Z' }, outputs)
+  mergeFinders({ v: 1, sha: SHA, startedAt: '2026-11-10T11:00:00Z' }, outputs, wholeDiff)
 
 const facts = (over: Record<string, unknown> = {}) => ({
   state: reviewed(),
@@ -1012,6 +1016,10 @@ exit "$CLAUDE_EXIT"
           passFile: existsSync(join(dir, 'out', 'pass'))
             ? readFileSync(join(dir, 'out', 'pass'), 'utf8')
             : null,
+          // What the pass read, which leg.sh moves from the inputs into its output.
+          scope: existsSync(join(dir, 'out', 'scope.json'))
+            ? JSON.parse(readFileSync(join(dir, 'out', 'scope.json'), 'utf8'))
+            : null,
           stderr: result.stderr,
           prompt,
           head,
@@ -1098,6 +1106,7 @@ exit "$CLAUDE_EXIT"
       commits: [r.head],
       below: [{ number: 6, commits: [r.lower] }]
     })
+    expect(r.scope).toEqual({ base: 'main', from: r.commits[0].parents[0] })
     // The base is main: the prompt names diff.patch as the scope and offers no base diff.
     expect(r.prompt).toContain('The base branch is `main`, so `diff.patch` is your review scope')
     expect(r.prompt).not.toMatch(/\/diff-base\.patch`: /)
@@ -1117,6 +1126,7 @@ exit "$CLAUDE_EXIT"
     expect(r.ownDiff).toContain('+++ b/own.txt')
     expect(r.ownDiff).not.toContain('lower.txt')
     expect(r.stack).toMatchObject({ base: 'lower', commits: [r.head] })
+    expect(r.scope).toEqual({ base: 'lower', from: r.lower })
     expect(r.prompt).toMatch(
       /\/diff-base\.patch`: the diff from the merge base with the base branch to the head\. The base branch is not `main`, so this is the pull request's own change and your review scope\./
     )
@@ -1132,6 +1142,10 @@ exit "$CLAUDE_EXIT"
     )
     // The shared prompt carries the rule the files serve.
     expect(r.prompt).toContain("is this pull\nrequest's own change and your review scope")
+    // The pass is told its review does not clear what lies below the change.
+    expect(r.prompt).toContain(
+      'does not count for a merge into `main` until `main`\nholds everything below'
+    )
     expect(r.prompt).toContain('What they do not settle stays in\nnot_checked')
   })
 

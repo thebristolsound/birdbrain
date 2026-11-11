@@ -422,6 +422,8 @@ export function prepareHistory({
     }))
   }
   writeFileSync(join(out, 'stack.json'), `${JSON.stringify(stack, null, 2)}\n`)
+  // What this review reads, for the record of the head: leg.sh moves it into the pass's output.
+  writeFileSync(join(out, 'scope.json'), `${JSON.stringify({ base, from: fromBase })}\n`)
   return { commits: commits.length, below: below.length, stacked: base !== 'main' }
 }
 

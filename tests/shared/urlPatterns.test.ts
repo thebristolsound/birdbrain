@@ -191,6 +191,24 @@ const ROWS: Row[] = [
     patterns: [],
     url: 'https://www.facebook.com/some/page',
     expected: null
+  },
+
+  // --- the empty pattern (#724) ---
+  // Both write seams refuse it, so a list holds one only if it was stored before they did or
+  // the settings file was edited by hand. As a substring it is in every URL: the extension,
+  // which tests the answer against null, refused every page, and the server, which tests it
+  // for truth, read '' as no match.
+  {
+    name: 'an empty pattern is skipped, so alone it matches nothing',
+    patterns: [''],
+    url: 'https://example.com/page',
+    expected: null
+  },
+  {
+    name: 'an empty pattern does not hide the patterns listed after it',
+    patterns: ['', 'facebook.com'],
+    url: 'https://www.facebook.com/some/page',
+    expected: 'facebook.com'
   }
 ]
 

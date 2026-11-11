@@ -76,6 +76,10 @@ export function matchIgnoredUrl(
   regexTest: RegexTest = testWithRegExp
 ): string | null {
   for (const pattern of patterns) {
+    // An empty pattern is a substring of every URL. Returned as the match, '' refused every
+    // capture in the extension, which tests the answer against null, and read as no match on
+    // the server, which tests it for truth, after ending the search before any later pattern.
+    if (pattern === '') continue
     try {
       if (pattern.startsWith('/') && pattern.lastIndexOf('/') > 0) {
         const lastSlash = pattern.lastIndexOf('/')

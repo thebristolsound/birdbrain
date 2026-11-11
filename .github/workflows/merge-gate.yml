@@ -53,4 +53,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
           BIRDBRAIN_AGENT_GH_LOGIN: ${{ vars.BIRDBRAIN_AGENT_GH_LOGIN }}
+          REVIEW_FLEET_ENABLED: ${{ vars.REVIEW_FLEET_ENABLED }}
         run: node .github/scripts/merge/gate.mjs "$GITHUB_REPOSITORY" "$PR"

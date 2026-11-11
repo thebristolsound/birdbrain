@@ -217,6 +217,11 @@ prove and what they do not.
 - The Data screen lists every file in a case with its properties, extracted text, headers,
   TLS details, and manifest entries, and verifies any branch of the tree. Local files can be
   staged and then added to the evidence record or discarded.
+- The Data screen's MHTML Parts tab lists the parts inside a capture's stored MHTML file, with
+  each part's offset, size, and a SHA-256 computed when the tab reads the file. A part has no
+  manifest entry of its own, so its hash is not anchored, even when the whole file is. To check a
+  part outside Birdbrain, run `tail -c +$((offset+1)) <file> | head -c <size> | sha256sum` with
+  its offset and size.
 - Indicators have their own group in the Data screen's rail, with an entry for each category
   and subcategory. Picking one in the rail or in the indicator browser selects it in both.
 - Unreviewed Captures, under Views in the Data screen's rail, lists the captures that no note

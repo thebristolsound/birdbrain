@@ -225,8 +225,13 @@ test.describe('Top bar layout', () => {
           expect(x).toBeGreaterThanOrEqual(edge)
           edge = x + itemWidth
         }
-        // One line: a wrapped label would double the button's height.
-        expect((await launch.boundingBox())!.height).toBeLessThanOrEqual(32)
+        // One line. The button's height is fixed, so count the lines its label is laid out on.
+        const labelLines = await launch.evaluate((el) => {
+          const range = document.createRange()
+          range.selectNodeContents(el)
+          return new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top))).size
+        })
+        expect(labelLines).toBe(1)
         await expect(actionBar.getByRole('switch', { name: 'Capture Session' })).toBeInViewport({
           ratio: 1
         })

@@ -69,6 +69,17 @@ describe('mainLogBridge', () => {
     expect(toastFns.warning).not.toHaveBeenCalled()
   })
 
+  it('does not toast a failed background job, which the capture activity already shows', async () => {
+    const { subscribeToMainLog } = await import('@renderer/lib/mainLogBridge')
+    subscribeToMainLog()
+    listener?.({
+      ...entry('warn'),
+      source: 'backgroundRenderer',
+      code: 'backgroundRenderer.job_failed'
+    })
+    expect(toastFns.warning).not.toHaveBeenCalled()
+  })
+
   it('ignores renderer-originated entries so they do not toast twice', async () => {
     const { subscribeToMainLog } = await import('@renderer/lib/mainLogBridge')
     subscribeToMainLog()

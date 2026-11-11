@@ -133,6 +133,36 @@ const INSTALL_FORMATS = ['dev', 'nsis', 'mac', 'appimage', 'deb', 'archive', 'un
 // formatted sentence (which carries the measured/max sizes and can never be a
 // vocabulary member — see captureServer.ts's screenshot-too-large call site).
 const SCREENSHOT_DROP_REASONS = ['too_large'] as const
+// The steps of a Background Job in the order they run: the background render's,
+// then the ingest (#2127).
+export const BACKGROUND_JOB_STEPS = [
+  'setup',
+  'load',
+  'network-idle',
+  'scroll',
+  'post-scroll-idle',
+  'settle',
+  'images',
+  'artifacts',
+  'transaction-record',
+  'pdf',
+  'ingest'
+] as const
+export type BackgroundJobStep = (typeof BACKGROUND_JOB_STEPS)[number]
+// Why a Background Job ended `failed` or `skipped`, standing in for the skip
+// reason or the error message, which can name an address or an exclusion
+// pattern. The first four end a job `failed`, the last three `skipped`.
+// `ingest` covers everything after the render, so the Capture may exist.
+export const BACKGROUND_JOB_FAILURE_KINDS = [
+  'timeout',
+  'render',
+  'ingest',
+  'link-source-error',
+  'link-source',
+  'excluded',
+  'refused-address'
+] as const
+export type BackgroundJobFailureKind = (typeof BACKGROUND_JOB_FAILURE_KINDS)[number]
 
 // Fixed vocabularies `tag()` may select from. `allowed` as a caller-supplied
 // parameter would let a call site mint its own allowlist —
@@ -147,7 +177,9 @@ const TAG_VOCABULARIES = {
   captureFormat: CAPTURE_FORMATS,
   platform: PLATFORMS,
   installFormat: INSTALL_FORMATS,
-  screenshotDropReason: SCREENSHOT_DROP_REASONS
+  screenshotDropReason: SCREENSHOT_DROP_REASONS,
+  backgroundJobStep: BACKGROUND_JOB_STEPS,
+  backgroundJobFailureKind: BACKGROUND_JOB_FAILURE_KINDS
 } as const
 
 export function tag(value: string, vocabulary: keyof typeof TAG_VOCABULARIES): LogSafe {
@@ -281,7 +313,21 @@ const CONTEXT_FORMATS: Record<LogContextKey, ContextFormat> = {
   // trusted. An unlisted value records as [invalid] and the entry survives.
   domain: QUERY_DOMAINS,
   boundary: ERROR_BOUNDARIES,
-  channel: IPC_CHANNEL_NAMES
+  channel: IPC_CHANNEL_NAMES,
+  step: BACKGROUND_JOB_STEPS,
+  failureKind: BACKGROUND_JOB_FAILURE_KINDS,
+  timeLeftMs: 'number',
+  setupMs: 'number',
+  loadMs: 'number',
+  networkIdleMs: 'number',
+  scrollMs: 'number',
+  postScrollIdleMs: 'number',
+  settleMs: 'number',
+  imagesMs: 'number',
+  artifactsMs: 'number',
+  transactionRecordMs: 'number',
+  pdfMs: 'number',
+  ingestMs: 'number'
 }
 
 function matchesFormat(value: unknown, format: ContextFormat): boolean {

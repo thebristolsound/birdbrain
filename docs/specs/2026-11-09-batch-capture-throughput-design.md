@@ -325,7 +325,10 @@ lands after another job's append would remove that job's entry while its row sur
 lifecycle therefore runs the step from `nextExhibitNumber` through the row insert under a per-Case
 slot, the pattern `withCaseSlot` already applies to deletes (#394). The hashing and the TLS Cert
 Chain fetch before it, which can take up to 10 s, stay outside the slot. The section inside it
-writes files and one row, so the slot costs little.
+writes files and one row, so the slot costs little. Slice 5 puts the ingest on the Case's manifest
+slot, `withManifestSlot` in `manifest.ts`, which that Case's deletes, duplicates and the timestamp
+worker's stamps also take, so an ingest into a Case waits for them and they wait for it. The ingest's callback into the seam is synchronous, so a failed ingest
+truncates in the same turn that it appended.
 
 With parallel renders, Manifest order is ingest order, and a Capture's `timestamp` is its job's
 start. Two adjacent entries can therefore carry timestamps out of order: job B starts after job A
@@ -352,6 +355,30 @@ Before concurrency rises above 1, slice 5 confirms the behaviour against the pin
   page. That lease serializes the load phase of renders, and would remove most of the gain.
 
 If neither works, concurrency stays at 1 and slice 6 does not turn on the pool.
+
+Slice 5 checked the pinned version (2.20.3) and took the first option. `BlockingContext.enable`
+registers a preload script and the network filters on the session, and two handlers on the global
+`ipcMain`; `disable` removes all of them. The two handlers forward to the engine and answer the
+frame that called them, so one registration serves every session. `enableConsentBlocking` and
+`disableConsentBlocking` in `consentBlocker.ts` own that registration: they remove it before the
+library registers it again for a second session, and register it again after a disable while
+another session is still enabled. A render whose engine differs from the one already enabled is
+refused, and records no suppression.
+
+A one-off probe on 2026-11-09, a script run once in Electron 45.2.1 and not kept in the repository,
+showed what that second render held. Two offscreen windows in two sessions loaded a local page with
+an element a cosmetic filter hides and a script a network filter blocks. With the library alone, the
+second session's enable threw after its preload script was registered and before its network
+filters were: its cosmetic filters still applied through the first render's handlers, its network
+filter did not, and the render would have recorded no Consent Suppression. With the two functions
+above, both kinds of filter applied in both sessions, and in the second after the first ended. The
+unit tests that pin this behaviour run the pinned library against a test double of `ipcMain`.
+
+If the library's undo of a failed enable also fails, the session may keep some filters, so the
+render ends with `ConsentBlockingUndoFailed` rather than storing a Capture that records none.
+
+The lease was not needed. Had it been, it would have serialized more than the load phase: the
+render keeps the blocker enabled until its cleanup, after the PDF.
 
 #### Concurrency
 
@@ -512,7 +539,7 @@ by [ADR-0014](../adr/0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot
 | --- | --- | --- |
 | `src/main/services/recapture.ts` | blocking | Job ids, the stored queue, the worker pool, per-Case ingest slots, cancel, retry, the pre-render exclusion check |
 | `src/main/services/backgroundRenderer.ts` | blocking | Phase callback, abort signal, phase-duration logging, the consent blocker lease or multi-session enable |
-| `src/main/services/consentBlocker.ts` | blocking | Only if the multi-session fix lives there |
+| `src/main/services/consentBlocker.ts` | blocking | The multi-session enable and disable (slice 5) |
 | `src/main/services/transactionRecorder.ts` | blocking | Slice 1 only: name the bound that expired in its error. No bound changes |
 | `src/main/services/captureLifecycle.ts` | blocking | The per-Case slot around the manifest append and row insert in the ingest |
 | `src/main/services/db/**` | blocking | The migration, `core.ts`, and `backgroundJobRepo.ts` |

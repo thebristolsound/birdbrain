@@ -188,6 +188,7 @@ import {
 import Database from 'better-sqlite3'
 import { closeDatabase, getDb, initDatabase, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
 import { createPreMigrationSnapshot } from '@main/services/db/dbSnapshots'
+import { scratchPathFor } from '@main/services/db/dbRestore'
 import type { RestoreOutcome, RestoreRejection } from '@main/services/db/dbRestore'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
@@ -3335,13 +3336,31 @@ describe('ipcHandlers — database admin', () => {
       await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Recorded after the backup' })
     )
 
+    // The session's jobs are read once the copy is prepared, as the database closes: a job queued
+    // while the file was copied is among them (review of #2141, finding 3).
+    const copyPrepared: boolean[] = []
+    const jobsBefore = [
+      {
+        jobId: 'queued-during-the-copy',
+        batchId: 'batch',
+        caseId: afterBackup.id,
+        url: 'https://example.com/',
+        state: 'queued' as const,
+        attempts: 0,
+        queuedAt: '2026-11-11T00:00:00.000Z'
+      }
+    ]
+    recaptureService.beginRestore.mockImplementationOnce(() => {
+      copyPrepared.push(existsSync(scratchPathFor(dbPath)))
+      return jobsBefore
+    })
     showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [backupPath] })
     const res = expectOk<{ restored: boolean }>(await invoke(IPC_CHANNELS.DB_RESTORE))
 
     expect(res.restored).toBe(true)
     expect(clearOrphanedPartitions).toHaveBeenCalledWith(userDataPath)
-    expect(recaptureService.beginRestore).toHaveBeenCalledTimes(1)
-    expect(recaptureService.finishRestore).toHaveBeenCalledTimes(1)
+    expect(copyPrepared).toEqual([true])
+    expect(recaptureService.finishRestore.mock.calls).toEqual([[jobsBefore]])
     // Re-opened on the other side, and holding the backup rather than the
     // database that was running when it was chosen.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))

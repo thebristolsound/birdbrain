@@ -1853,10 +1853,17 @@ export function registerIpcHandlers(deps: {
     if (canceled || filePaths.length === 0) return { restored: false }
 
     const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
-    const jobsBefore = recaptureService.beginRestore()
+    // Read as the restore closes the database, not before it copies the file: the queue takes
+    // jobs while the copy is prepared, and each one the restored copy lacks is owed its end.
+    let jobsBefore: ReturnType<typeof recaptureService.beginRestore> = []
     const outcome = await restoreDatabase(
       { kind: 'file', path: filePaths[0] },
-      { dbPath: join(userDataPath, 'birdbrain.db') }
+      {
+        dbPath: join(userDataPath, 'birdbrain.db'),
+        beforeClose: () => {
+          jobsBefore = recaptureService.beginRestore()
+        }
+      }
     )
 
     switch (outcome.status) {

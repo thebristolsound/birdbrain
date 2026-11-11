@@ -1281,6 +1281,60 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       expect(moves).toEqual(['move backward'])
     })
 
+    describe('inside a web component', () => {
+      function focusedInputInComponent(anchor = 0, focus = anchor): void {
+        setPageHtml(`${PAGE_HTML}<div id="host"></div>`)
+        const host = document.getElementById('host')!
+        host.attachShadow({ mode: 'open' }).innerHTML =
+          '<input type="email" value="someone@example.com">'
+        const control = host.shadowRoot!.querySelector('input')!
+        control.focus()
+        expect(document.activeElement).toBe(host)
+        reportIn(control, anchor, focus)
+        expect(point).not.toEqual(spanned)
+      }
+
+      // A Chrome without composed ranges has no Selection.direction either.
+      function withoutComposedRanges(): void {
+        Reflect.deleteProperty(Selection.prototype, 'getComposedRanges')
+        Reflect.deleteProperty(Selection.prototype, 'direction')
+      }
+
+      function expectSelectionHeldAndPutBack(): void {
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        expect(inner).toEqual({ anchor: 0, focus: 0 })
+        expect(window.getSelection()!.rangeCount).toBe(1)
+        dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+        expect(inner).toEqual({ anchor: 0, focus: 7 })
+        expect(selectionEnds()).toEqual([...point, ...point])
+      }
+
+      it('leaves a caret in a focused email input alone', () => {
+        focusedInputInComponent(3)
+        expectCaretLeftAlone()
+      })
+
+      it('takes a selection inside the input out of every frame and puts it back', () => {
+        focusedInputInComponent(0, 7)
+        expectSelectionHeldAndPutBack()
+      })
+
+      // There the point before the component is all the document reports of the input.
+      it('leaves that caret alone where composed ranges are unavailable too', () => {
+        withoutComposedRanges()
+        focusedInputInComponent(3)
+        expectCaretLeftAlone()
+      })
+
+      it('puts that selection back where composed ranges are unavailable too', () => {
+        withoutComposedRanges()
+        focusedInputInComponent(0, 7)
+        expectSelectionHeldAndPutBack()
+      })
+    })
+
     // After the operator leaves a text control for a button, a checkbox, a link or an area that
     // takes no selection, Chromium still reports the control's caret or selection as above, and
     // in this round's probe drew neither. Clearing it fired the page's selectionchange before

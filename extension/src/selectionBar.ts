@@ -502,9 +502,16 @@ function nodeAtPoint(selection: Selection, range: AbstractRange): Node | undefin
 }
 
 // An email, number or date input reports no offsets, so only the selected text tells its caret
-// from its selection.
+// from its selection. Without composed ranges the point is before the web component that holds
+// the input, not before the input.
 function sitsInInput(selection: Selection, range: AbstractRange, input: Element): boolean {
-  return nodeAtPoint(selection, range) === input
+  const at = nodeAtPoint(selection, range)
+  let node: Node | null = input
+  while (node && node !== at) {
+    const root = node.getRootNode()
+    node = root instanceof ShadowRoot ? root.host : null
+  }
+  return node !== null
 }
 
 // A move by one character collapses a selection onto the end it moves towards. collapseToStart

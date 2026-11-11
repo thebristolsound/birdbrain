@@ -35,6 +35,13 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
     return captureRepo.getCaptureTextContent(captureId)
   }
 
+  // Counts the edits that changed what each Selector matches. A pass scheduled
+  // before such an edit stops writing for that Selector: its queued chunks would
+  // test the edited pattern and record their own origin, and INSERT OR IGNORE
+  // would keep that origin over the `update` the edit's own pass writes (#1069).
+  const semanticsEdits = new Map<string, number>()
+  const semanticsEditsOf = (selectorId: string): number => semanticsEdits.get(selectorId) ?? 0
+
   function scheduleRetroactiveMatch(
     selectors: Selector[],
     caseId: string,
@@ -42,6 +49,7 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
     options?: { unbounded?: boolean }
   ): void {
     if (selectors.length === 0) return
+    const scheduledAt = new Map(selectors.map((s) => [s.id, semanticsEditsOf(s.id)]))
     const allCaptures = captureRepo.listCaptures(caseId)
     // create / bulk-create cap recent captures to keep the first pass snappy on
     // high-volume cases. updateSelector with changed semantics passes
@@ -61,6 +69,10 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
 
     const processChunk = (index: number): void => {
       try {
+        const current = selectors.filter((s) => semanticsEditsOf(s.id) === scheduledAt.get(s.id))
+        // Every Selector was edited since: the edits' own passes report for them.
+        if (current.length === 0) return
+
         const end = Math.min(index + RETRO_CHUNK_SIZE, captures.length)
         const captureTexts: Array<{ captureId: string; text: string }> = []
         for (let i = index; i < end; i++) {
@@ -70,7 +82,7 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
         }
 
         if (captureTexts.length > 0) {
-          for (const sel of selectors) {
+          for (const sel of current) {
             selectorRepo.matchSelectorAgainstCaptures(sel.id, captureTexts, origin)
           }
         }
@@ -125,6 +137,7 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
       if (!updated) return undefined
 
       if (matchSemanticsChanged) {
+        semanticsEdits.set(updated.id, semanticsEditsOf(updated.id) + 1)
         selectorRepo.clearSelectorMatches(updated.id)
         scheduleRetroactiveMatch([updated], updated.caseId, 'update', { unbounded: true })
       }

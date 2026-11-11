@@ -707,6 +707,83 @@ describe('selectorLifecycle', () => {
       expect(rows).toMatchObject([{ capture_id: cap.id, match_origin: 'capture-time' }])
       expectStampedBetween(rows[0], from, new Date().toISOString())
     })
+
+    // 120 captures is three chunks of 50, so a pass that has run one chunk still
+    // has two queued when the edit lands between them.
+    describe('a pattern edit while a pass is in flight', () => {
+      const CAPTURES = 120
+      const tick = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
+
+      function seed(caseId: string, text: string): void {
+        for (let i = 0; i < CAPTURES; i++) captureWithText(caseId, `c${i}`, text)
+      }
+
+      // No pass here is longer than three chunks, so ten turns after the first
+      // report outlast every pass still queued, whichever reports first.
+      async function settle(expectedEvents: number): Promise<void> {
+        await waitFor(events, expectedEvents)
+        for (let i = 0; i < 10; i++) await tick()
+      }
+
+      function origins(selectorId: string): string[] {
+        return provenance(selectorId).map((row) => row.match_origin)
+      }
+
+      it('stops the create-time pass, so every match is recorded as update', async () => {
+        const c = createCase({ name: 'C' })
+        seed(c.id, 'alpha and beta')
+        const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
+        await tick()
+        const written = provenance(sel.id).length
+        expect(written).toBeGreaterThan(0)
+        expect(written).toBeLessThan(CAPTURES)
+
+        lifecycle.updateSelector({ id: sel.id, pattern: 'beta' })
+        await settle(1)
+
+        expect(origins(sel.id)).toEqual(Array(CAPTURES).fill('update'))
+        expect(events).toEqual([{ selectorIds: [sel.id], caseId: c.id, status: 'done' }])
+      })
+
+      it('stops a rescan, so every match is recorded as update', async () => {
+        const c = createCase({ name: 'C' })
+        seed(c.id, 'alpha and beta')
+        const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'gamma' })
+        await waitFor(events, 1)
+        expect(provenance(sel.id)).toEqual([])
+
+        lifecycle.rescanSelector(sel.id)
+        await tick()
+        lifecycle.updateSelector({ id: sel.id, pattern: 'beta' })
+        await settle(2)
+
+        expect(origins(sel.id)).toEqual(Array(CAPTURES).fill('update'))
+        expect(events).toHaveLength(2)
+      })
+
+      it('leaves the other selectors of a bulk-create pass running', async () => {
+        const c = createCase({ name: 'C' })
+        seed(c.id, 'alpha and beta and gamma')
+        const [edited, untouched] = lifecycle.bulkCreateSelectors({
+          caseId: c.id,
+          selectors: [
+            { pattern: 'alpha', isRegex: false },
+            { pattern: 'beta', isRegex: false }
+          ]
+        })
+        await tick()
+
+        lifecycle.updateSelector({ id: edited.id, pattern: 'gamma' })
+        await settle(1)
+
+        expect(origins(edited.id)).toEqual(Array(CAPTURES).fill('update'))
+        expect(origins(untouched.id)).toEqual(Array(CAPTURES).fill('create'))
+        expect(events).toEqual([
+          { selectorIds: [edited.id, untouched.id], caseId: c.id, status: 'done' },
+          { selectorIds: [edited.id], caseId: c.id, status: 'done' }
+        ])
+      })
+    })
   })
 
   describe('chunked retroactive matching', () => {

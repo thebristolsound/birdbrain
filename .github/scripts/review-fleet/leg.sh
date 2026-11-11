@@ -8,9 +8,10 @@
 # The session runs in the PR's tree with only user settings loaded (--setting-sources user), so
 # a PR's own .claude/ settings and hooks never load next to the credential. It may read, grep and
 # glob files, and nothing else. It gets no shell, not even git: `git diff --no-index` can print
-# the process environment and `--output` writes files. The diff, commits and issue come in as
-# files instead. No file is written: the answer comes back as structured output, checked against
-# the pass's schema.
+# the process environment and `--output` writes files. The diff, the commit history, the stack
+# below the head and the sources come in as files instead, written here before the paid call. No
+# file is written by the session: the answer comes back as structured output, checked against the
+# pass's schema.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,10 +35,19 @@ git -C "$PR_DIR" diff "$base" HEAD > "$in/diff.patch"
 gh pr view "$PR" -R "$R" --json title,body,commits \
   --jq '{title, body, commits: [.commits[] | {oid, messageHeadline, messageBody}]}' > "$in/pr.json"
 cp "$here/../../../CLAUDE.md" "$in/rules.md"
-# Required issues and explicitly referenced review contracts are fetched before paid work.
+# Required issues, referenced review contracts and the maintainer's and machine account's
+# comments on them are fetched before paid work.
 node "$here/inputs.mjs" "$R" "$in"
+# The commits past main, a patch for each, the pull requests below the head, and the diff
+# against a base branch other than main.
+node "$here/history.mjs" "$R" "$PR" "$PR_DIR" "$in"
 if [ "$leg" = verify-codex ]; then
   node "$here/fleet.mjs" codex-findings "$R" "$PR" "$SHA" > "$in/codex.json"
+fi
+if [ -f "$in/diff-base.patch" ]; then
+  scope="- \`$in/diff-base.patch\`: the diff from the merge base with the base branch to the head. The base branch is not \`main\`, so this is the pull request's own change and your review scope."
+else
+  scope="- The base branch is \`main\`, so \`diff.patch\` is your review scope and there is no \`diff-base.patch\`."
 fi
 
 prompt="$(cat "$here/prompts/common.md" "$prompt_file")
@@ -46,9 +56,13 @@ prompt="$(cat "$here/prompts/common.md" "$prompt_file")
 
 - The pull request's head commit \`$SHA\` is checked out in the working directory.
 - \`$in/diff.patch\`: the diff from the merge base with \`main\` to the head.
+$scope
 - \`$in/pr.json\`: the title, body and commits.
 - \`$in/rules.md\`: this repository's \`CLAUDE.md\` from \`main\`.
-- \`$in/sources.json\`: all closed issues and referenced review contracts; read every entry.
+- \`$in/sources.json\`: all closed issues and referenced issues, pull requests and review contracts, each with its author, its date and the comments the maintainer and the machine account wrote on it; read every entry.
+- \`$in/commits.json\`: every commit from the merge base with \`main\` to the head, oldest first, with its parents, author date, subject, the files it changed against its first parent, the pull request it belongs to, whether the base branch has it, and for a merge whether it is git's automatic merge.
+- \`$in/commits/\`: one patch per commit against its first parent, at the path \`commits.json\` gives.
+- \`$in/stack.json\`: the base branch, the commits that are this pull request's own, and the pull requests below it, open or recently closed, with the commits of each.
 $( [ -f "$in/codex.json" ] && echo "- \`$in/codex.json\`: Codex's findings, the claims you check." || true )"
 
 cd "$PR_DIR"

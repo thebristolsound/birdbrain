@@ -45,7 +45,7 @@ export const CaseCard = memo(function CaseCard({
   // nothing to read.
   const shared = Boolean(caseData.sharedAt)
   const { data: members } = useQuery({ ...membersQueryOptions(caseData.id), enabled: shared })
-  // "Shared · n" from the first approved join, as the top bar's pill turns to
+  // "Shared · n" from the first approved join, as the Case action bar's pill turns to
   // its sync state then; Recording and Active outrank it, and the role line
   // still says the Case is shared when the badge yields.
   const sharedCount = shared && members ? memberCount(members.members) : 0

@@ -39,6 +39,7 @@ import {
   seedDemoCaseIfNeeded
 } from '@main/services/demoCase'
 import {
+  isPipelineSelfTestResidue,
   PIPELINE_SELF_TEST_CASE_NAME,
   PIPELINE_SELF_TEST_URL,
   sweepPipelineSelfTestResidue
@@ -241,6 +242,25 @@ describe('demo case seeding', () => {
     expect(await seedDemoCaseIfNeeded()).toEqual({ seeded: false, reason: 'demo-case-present' })
   })
 
+  // What a self-test killed after ingest leaves in the database.
+  const leaveSandbox = (): string => {
+    const sandbox = createCase({ name: PIPELINE_SELF_TEST_CASE_NAME })
+    insertCapture({
+      caseId: sandbox.id,
+      url: PIPELINE_SELF_TEST_URL,
+      title: 'Self-test',
+      hash: 'h-sandbox',
+      timestamp: '2026-01-16T09:31:47.000Z',
+      format: 'mhtml'
+    })
+    return sandbox.id
+  }
+
+  const caseIds = (): string[] =>
+    listAllCases()
+      .map((c) => c.id)
+      .sort()
+
   // #1333: settings.json and the database are separate files, so losing the
   // first marks an install fresh while the second still holds its evidence.
   describe('after the settings file is lost', () => {
@@ -249,20 +269,6 @@ describe('demo case seeding', () => {
       mkdirSync(lostDir)
       initSettings(lostDir)
       expect(getSettings().isFreshInstall).toBe(true)
-    }
-
-    // What a self-test killed after ingest leaves in the database.
-    const leaveSandbox = (): string => {
-      const sandbox = createCase({ name: PIPELINE_SELF_TEST_CASE_NAME })
-      insertCapture({
-        caseId: sandbox.id,
-        url: PIPELINE_SELF_TEST_URL,
-        title: 'Self-test',
-        hash: 'h-sandbox',
-        timestamp: '2026-01-16T09:31:47.000Z',
-        format: 'mhtml'
-      })
-      return sandbox.id
     }
 
     const expectSandboxCounted = async (sandboxId: string): Promise<void> => {
@@ -301,11 +307,7 @@ describe('demo case seeding', () => {
     const expectSeededBeside = async (sandboxId: string): Promise<void> => {
       const result = await seedDemoCaseIfNeeded()
       expect(result.seeded).toBe(true)
-      expect(
-        listAllCases()
-          .map((c) => c.id)
-          .sort()
-      ).toEqual([sandboxId, result.caseId].sort())
+      expect(caseIds()).toEqual([sandboxId, result.caseId].sort())
     }
 
     it('does not count a self-test sandbox Case left behind', async () => {
@@ -315,15 +317,32 @@ describe('demo case seeding', () => {
       await expectSeededBeside(sandboxId)
     })
 
-    // The boot sweep deletes a leftover only when it carries the stamp of the
-    // mark found in the storage root (pipelineSelfTest.ts), and this one has
-    // no stamp. The seed asks only what the Case holds, so a leftover the
-    // sweep kept still does not count.
-    it('does not count a leftover the boot sweep kept for unconfirmed storage', async () => {
+    // No launch deletes a Case (#1183): the launch sweep removes temp folders
+    // only, so the leftover is in the store at this launch and the next. With
+    // a latch that persists, the seed passes over it once.
+    it('seeds beside a leftover the launch sweep left in place, once', async () => {
       const sandboxId = leaveSandbox()
       loseSettings()
       sweepPipelineSelfTestResidue()
       expect(getCase(sandboxId)?.name).toBe(PIPELINE_SELF_TEST_CASE_NAME)
+
+      await expectSeededBeside(sandboxId)
+
+      sweepPipelineSelfTestResidue()
+      expect(await seedDemoCaseIfNeeded()).toEqual({ seeded: false, reason: 'already-seeded' })
+      expect(caseIds()).toHaveLength(2)
+      expect(caseIds()).toContain(sandboxId)
+    })
+
+    // A limit, not a goal. The residue check lists the storage root in use, so
+    // it refuses a Case with a folder there and does not see a folder under
+    // the root an earlier launch ran on.
+    it('reads a sandbox-named Case as a leftover when its folder is under another storage root', async () => {
+      const sandboxId = leaveSandbox()
+      ensureCaseDir(sandboxId)
+      loseSettings()
+      expect(isPipelineSelfTestResidue(sandboxId)).toBe(false)
+      initStorage(join(tempDir, 'another-root'))
 
       await expectSeededBeside(sandboxId)
     })
@@ -366,7 +385,7 @@ describe('demo case seeding', () => {
       expect(await seedDemoCaseIfNeeded()).toEqual({ seeded: false, reason: 'cases-present' })
     })
 
-    it('counts an archived self-test sandbox Case, which the boot sweep leaves alone', async () => {
+    it('counts an archived self-test sandbox Case', async () => {
       const sandbox = createCase({ name: PIPELINE_SELF_TEST_CASE_NAME })
       updateCase({ id: sandbox.id, archived: true })
       loseSettings()
@@ -389,6 +408,22 @@ describe('demo case seeding', () => {
     createCase({ name: 'Real evidence' })
     expect(deleteDemoCase(second.caseId!)).toBe(true)
     expect(await seedDemoCaseIfNeeded()).toEqual({ seeded: false, reason: 'cases-present' })
+  })
+
+  it('brings a deleted demo case back beside a leftover self-test Case while the latch is lost', async () => {
+    // A leftover is not a Case that counts, and it stays in the store. So on
+    // an install whose settings write keeps failing, the bound above holds at
+    // every launch for as long as the leftover is there.
+    initSettings(join(tempDir, 'never-created'))
+    const sandboxId = leaveSandbox()
+
+    const first = await seedDemoCaseIfNeeded()
+    expect(first.seeded).toBe(true)
+    expect(deleteDemoCase(first.caseId!)).toBe(true)
+    const second = await seedDemoCaseIfNeeded()
+
+    expect(second.seeded).toBe(true)
+    expect(caseIds()).toEqual([sandboxId, second.caseId].sort())
   })
 
   it('does not throw when the latch write itself fails', async () => {

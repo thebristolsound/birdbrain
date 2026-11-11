@@ -95,19 +95,20 @@ function storeHoldsCases(): boolean {
  * archived ones included (#1333), keeps the demo case and its signed import
  * entry out of a store that already holds evidence. The one Case that does not
  * count is what a killed self-test left: a Case `isPipelineSelfTestResidue`
- * accepts. The boot sweep deletes fewer than that. It also wants proof that
- * the storage root in use is the one the Case was made on, since a delete
- * cannot be undone, and a leftover it keeps for want of that proof still does
- * not count here.
+ * accepts. No launch deletes such a Case (#1183), so it stays until an
+ * operator deletes it, and every launch that reaches this guard passes over
+ * it. The check lists the storage root in use, as teardown needs; a folder for
+ * the Case under a root an earlier launch ran on is not seen.
  *
  * What the database guards do NOT hold: they are probes of the current state,
  * not latches. On an install whose settings write fails, deleting the demo case
- * from a store holding no other Case brings a fresh one back on the next
- * launch, and again after each later deletion. Nothing here counts deletions.
- * Making that impossible would need a latch surviving a failed settings write;
- * keeping the probes and stating the bound is the choice on #1301, narrowed on
- * #1333 to a store with no other Case. Every other route a demo case takes in
- * is the operator's own Import Case dialog (#405).
+ * from a store holding no other Case that counts brings a fresh one back on
+ * the next launch, and again after each later deletion. Nothing here counts
+ * deletions. Making that impossible would need a latch surviving a failed
+ * settings write; keeping the probes and stating the bound is the choice on
+ * #1301, narrowed on #1333 to a store with no other Case that counts. Every
+ * other route a demo case takes in is the operator's own Import Case dialog
+ * (#405).
  *
  * Never throws: a demonstration case failing to arrive must not stop the app
  * from starting.

@@ -8,10 +8,10 @@ import { createCaptureStore, type CaptureStore } from '@main/services/captureSto
 import { logger } from '@main/services/logger'
 import { ident } from '@main/services/logSafe'
 import {
-  confirmStorageRoot,
   getStorageRoot,
-  STORAGE_ROOT_RECORD,
-  type StorageRootContinuity
+  readStorageRootMark,
+  renewStorageRootMark,
+  storageRootMarkOfThisLaunch
 } from '@main/services/storage'
 import type { Case } from '@shared/types'
 
@@ -45,12 +45,24 @@ const SANDBOX_TABLES: ReadonlySet<string> = new Set([
   'extracted_data'
 ])
 
-// The case row as `createCase({ name })` leaves it.
+// The description a sandbox is created with when this launch has marked the
+// storage root: the stamp. It is written by the insert that creates the case,
+// so a stamped case exists only with its stamp, and it records which root, at
+// which launch, the case was made under.
+const STAMP = /^Pipeline self-test sandbox \(storage mark ([0-9a-f]{16})\)$/
+const stampFor = (mark: string): string => `Pipeline self-test sandbox (storage mark ${mark})`
+
+function storageMarkOf({ description }: Case): string | null {
+  return description?.match(STAMP)?.[1] ?? null
+}
+
+// The case row as `createPipelineSelfTestSandbox` leaves it: the sandbox name,
+// and a description that is empty or a stamp.
 function isUntouchedSandboxRow(found: Case): boolean {
   const { exclusions, mode } = caseRepo.getAutoCapturePolicy(found.id)
   return (
     found.name === PIPELINE_SELF_TEST_CASE_NAME &&
-    !found.description &&
+    (!found.description || storageMarkOf(found) !== null) &&
     !found.caseNumber &&
     found.type === 'custom' &&
     !found.archived &&
@@ -91,29 +103,35 @@ function inspectSandboxCase(caseId: string): SandboxVerdict {
 
 /**
  * Whether a case holds nothing but what a self-test sandbox writes (#1183,
- * #1196). All of these hold: the case row is as `createCase` left it under the
- * sandbox name; every capture row has the sentinel URL and every exhibit row
- * belongs to one of those captures; no table outside `SANDBOX_TABLES` has a row
- * that `listCaseDependentTables` finds for the case; and the storage root in
- * use can be listed and has no directory for the case. The sandbox writes its
- * files under its own temp root, never there, so a directory there means
+ * #1196). All of these hold: the case row is as the sandbox was created under
+ * the sandbox name; every capture row has the sentinel URL and every exhibit
+ * row belongs to one of those captures; no table outside `SANDBOX_TABLES` has a
+ * row that `listCaseDependentTables` finds for the case; and the storage root
+ * in use can be listed and has no directory for the case. The sandbox writes
+ * its files under its own temp root, never there, so a directory there means
  * something else wrote into the case, whatever URL its row carries or whether
  * the row survives. A case that does not exist is not residue.
  *
- * The directory condition reads the root in use and nothing more. That is
- * enough at teardown, where the case was made after this launch set the root.
- * The sweep reads cases from earlier launches and adds `madeOnThisRoot`.
+ * The directory condition reads the root in use and nothing more. Teardown
+ * asks no more, because its case was made after this launch set the root. The
+ * sweep reads cases from earlier launches and also requires the case's stamp
+ * to equal the mark it finds in the root.
  */
 export function isPipelineSelfTestResidue(caseId: string): boolean {
   return inspectSandboxCase(caseId) === 'residue'
 }
 
-// Whether every launch since the case was made ran on the storage root in use,
-// as far as `confirmStorageRoot` can tell: its run of launches is unbroken and
-// began before the case was made, by the clock readings on both. Only then
-// does the case having no directory under the root say anything about it.
-function madeOnThisRoot({ createdAt }: Case, { since }: StorageRootContinuity): boolean {
-  return since !== null && Date.parse(createdAt) > Date.parse(since)
+// Clears the stamp of every case that carries one, archived cases included, so
+// a stamp is read by one launch only: the first after the one that wrote it.
+// Not caught: a launch that cannot clear a stamp must not go on, because a
+// later launch on the stamped root would still find the stamp and the mark
+// equal, whatever this launch wrote for the case elsewhere.
+function clearStamps(): void {
+  for (const found of caseRepo.listAllCases()) {
+    if (found.name === PIPELINE_SELF_TEST_CASE_NAME && storageMarkOf(found) !== null) {
+      caseRepo.updateCase({ id: found.id, description: '' })
+    }
+  }
 }
 
 // A sandbox root holds `{caseId}/` (captureStore.ts), which is the only link
@@ -129,25 +147,35 @@ function removeSandboxRoots(caseId: string): void {
 
 /**
  * Deletes what a self-test killed mid-run left behind: each unarchived case
- * that `isPipelineSelfTestResidue` and `madeOnThisRoot` both accept, and every
- * temp root holding a directory named for it. A run killed before its first
- * store write leaves a temp root with no such directory, which the sweep
- * cannot match and leaves.
+ * that `isPipelineSelfTestResidue` accepts and whose stamp equals the mark
+ * found in the storage root, and every temp root holding a directory named for
+ * it. A run killed before its first store write leaves a temp root with no
+ * such directory, which the sweep cannot match and leaves.
+ *
+ * Why the stamp makes a missing directory mean something. A stamp is written
+ * with the case, from the mark that launch wrote to its root, and every launch
+ * ends this function by clearing every stamp and writing a new mark. So a
+ * stamp equal to the mark found here says two things: no launch has completed
+ * this function since the case was made, and the root in use holds the mark
+ * the case's own launch wrote. The case has then existed during one launch
+ * only, on this root, which is where every file written for it went. The four
+ * states this cannot tell apart are listed under Self-tests in
+ * docs/agents/capture-pipeline.md.
+ *
+ * Every other case carrying the sandbox name is kept and logged: under
+ * `self_test_residue_kept` when it holds something the self-test did not
+ * write, under `self_test_storage_unconfirmed` when its stamp is missing or
+ * differs from the mark, and under `self_test_storage_unavailable` when the
+ * root cannot be listed. A kept case loses its stamp here, so it is never
+ * swept later; a case with no stamp includes every leftover made before this
+ * check existed. Archived cases are not read: archiving is something an
+ * operator did to the case.
  *
  * Runs once at boot, before the capture server can start another self-test,
- * so it cannot take a live sandbox, and calls `confirmStorageRoot` on every
- * launch, with or without a case to read. Every other case carrying the
- * sandbox name is kept and logged: under `self_test_residue_kept` when it
- * holds something the self-test did not write, under
- * `self_test_storage_unconfirmed` when `madeOnThisRoot` refuses it, and under
- * `self_test_storage_unavailable` when the root cannot be listed. A case made
- * before the current run of launches began is therefore never swept, which
- * includes every leftover an install held before its first launch with this
- * record. Archived cases are not read: archiving is something an operator did
- * to the case.
+ * so it cannot take a live sandbox.
  */
-export function sweepPipelineSelfTestResidue(userDataPath: string): void {
-  const continuity = confirmStorageRoot(join(userDataPath, STORAGE_ROOT_RECORD))
+export function sweepPipelineSelfTestResidue(): void {
+  const mark = readStorageRootMark()
   for (const found of caseRepo.listCases()) {
     const { id, name } = found
     if (name !== PIPELINE_SELF_TEST_CASE_NAME) continue
@@ -158,10 +186,11 @@ export function sweepPipelineSelfTestResidue(userDataPath: string): void {
         logger.info('captureServer', 'captureServer.self_test_residue_kept', context)
         continue
       }
-      if (!madeOnThisRoot(found, continuity)) {
-        // A warning at the launch that could not continue the run; after that
-        // the kept case is a standing state, not news.
-        const level = continuity.continued && continuity.since !== null ? 'info' : 'warn'
+      const stamp = storageMarkOf(found)
+      if (mark === null || stamp !== mark) {
+        // A stamp that does not match is news about this launch's storage root.
+        // A case with no stamp is a standing state, logged without a notice.
+        const level = stamp === null ? 'info' : 'warn'
         logger[level]('captureServer', 'captureServer.self_test_storage_unconfirmed', context)
         continue
       }
@@ -176,6 +205,8 @@ export function sweepPipelineSelfTestResidue(userDataPath: string): void {
       logger.error('captureServer', 'captureServer.self_test_cleanup_failed', context, err)
     }
   }
+  clearStamps()
+  renewStorageRootMark()
 }
 
 /**
@@ -225,7 +256,11 @@ export function createPipelineSelfTestSandbox(): PipelineSelfTestSandbox {
   const root = mkdtempSync(join(tmpdir(), SANDBOX_ROOT_PREFIX))
   let caseId: string
   try {
-    caseId = caseRepo.createCase({ name: PIPELINE_SELF_TEST_CASE_NAME }).id
+    const mark = storageRootMarkOfThisLaunch()
+    caseId = caseRepo.createCase({
+      name: PIPELINE_SELF_TEST_CASE_NAME,
+      ...(mark === null ? {} : { description: stampFor(mark) })
+    }).id
   } catch (err) {
     // This throws before the caller has a sandbox to dispose, so its `finally`
     // covers nothing: a database that keeps failing would leak one temp
@@ -251,8 +286,8 @@ export function createPipelineSelfTestSandbox(): PipelineSelfTestSandbox {
     // Two verdicts keep both the case and the root, each under its own warn.
     // A case holding something the self-test did not write (#1196) stays whole
     // beside what it took in. A storage root that cannot be listed leaves that
-    // question open, so nothing is deleted. The sweep's `madeOnThisRoot` is
-    // not asked here: this case was made after this launch set the root.
+    // question open, so nothing is deleted. The stamp is not read here: this
+    // case was made after this launch set the root.
     //
     // A case already gone, deleted by the operator mid-run, was not kept: only
     // the root is left to remove, and nothing is reported.

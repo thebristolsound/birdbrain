@@ -322,7 +322,7 @@ describe('demo case seeding', () => {
     it('does not count a leftover the boot sweep kept on an unconfirmed storage root', async () => {
       const sandboxId = leaveSandbox()
       loseSettings()
-      sweepPipelineSelfTestResidue(tempDir)
+      sweepPipelineSelfTestResidue()
       expect(getCase(sandboxId)?.name).toBe(PIPELINE_SELF_TEST_CASE_NAME)
 
       await expectSeededBeside(sandboxId)

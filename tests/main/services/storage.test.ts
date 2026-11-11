@@ -1,22 +1,23 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
   chmodSync,
-  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync
 } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import {
-  confirmStorageRoot,
   ensureCaseDir,
   getCaseStorageSize,
   initStorage,
-  STORAGE_ROOT_RECORD
+  readStorageRootMark,
+  renewStorageRootMark,
+  storageRootMarkOfThisLaunch
 } from '@main/services/storage'
 
 describe('storage', () => {
@@ -51,108 +52,94 @@ describe('storage', () => {
     expect(getCaseStorageSize('nonexistent')).toBe(0)
   })
 
-  describe('confirmStorageRoot', () => {
+  describe('the storage root mark', () => {
     let root: string
-    let recordPath: string
     const marker = (): string => join(root, '.birdbrain-storage-root.json')
-    const nonceIn = (path: string): unknown => JSON.parse(readFileSync(path, 'utf-8')).nonce
 
     beforeEach(() => {
       root = join(tempDir, 'captures')
-      recordPath = join(tempDir, STORAGE_ROOT_RECORD)
       initStorage(root)
     })
 
-    it('starts a run on a root with no marker and writes the same value to both files', () => {
-      const before = Date.now()
-      const { since, continued } = confirmStorageRoot(recordPath)
-
-      expect(continued).toBe(false)
-      expect(Date.parse(since ?? '')).toBeGreaterThanOrEqual(before)
-      expect(typeof nonceIn(marker())).toBe('string')
-      expect(nonceIn(recordPath)).toBe(nonceIn(marker()))
+    it('reads no mark from a root that holds none', () => {
+      expect(readStorageRootMark()).toBeNull()
+      expect(storageRootMarkOfThisLaunch()).toBeNull()
     })
 
-    it('continues the run on the next launch, keeps its start and writes a new value', () => {
-      const first = confirmStorageRoot(recordPath)
-      const firstNonce = nonceIn(marker())
-      const second = confirmStorageRoot(recordPath)
+    it('writes a mark of sixteen hex digits that the root then holds', () => {
+      renewStorageRootMark()
 
-      expect(second).toEqual({ since: first.since, continued: true })
-      expect(nonceIn(marker())).not.toBe(firstNonce)
-      expect(nonceIn(recordPath)).toBe(nonceIn(marker()))
+      const mark = readStorageRootMark()
+      expect(mark).toMatch(/^[0-9a-f]{16}$/)
+      expect(JSON.parse(readFileSync(marker(), 'utf-8'))).toEqual({ mark })
+      expect(storageRootMarkOfThisLaunch()).toBe(mark)
     })
 
-    it('starts a new run on a root that holds no marker', () => {
-      confirmStorageRoot(recordPath)
-      rmSync(marker())
+    it('writes a different mark each time', () => {
+      renewStorageRootMark()
+      const first = readStorageRootMark()
+      renewStorageRootMark()
 
-      expect(confirmStorageRoot(recordPath).continued).toBe(false)
+      expect(readStorageRootMark()).not.toBe(first)
+      expect(storageRootMarkOfThisLaunch()).toBe(readStorageRootMark())
     })
 
-    it('starts a new run on another root', () => {
-      confirmStorageRoot(recordPath)
-      initStorage(join(tempDir, 'elsewhere'))
+    // The next launch reads what the last one wrote, and has written nothing yet.
+    it('gives a launch no mark of its own until it writes one', () => {
+      renewStorageRootMark()
+      const written = readStorageRootMark()
+      initStorage(root)
 
-      expect(confirmStorageRoot(recordPath).continued).toBe(false)
+      expect(readStorageRootMark()).toBe(written)
+      expect(storageRootMarkOfThisLaunch()).toBeNull()
     })
 
-    it('starts a new run on a copy of the root from before the last marker was written', () => {
-      confirmStorageRoot(recordPath)
-      const copy = join(tempDir, 'copy')
-      cpSync(root, copy, { recursive: true })
-      confirmStorageRoot(recordPath)
-      rmSync(root, { recursive: true })
-      cpSync(copy, root, { recursive: true })
+    it('gives no mark once the root no longer holds the one this launch wrote', () => {
+      renewStorageRootMark()
+      renameSync(root, `${root}-unmounted`)
+      mkdirSync(root)
+      expect(storageRootMarkOfThisLaunch()).toBeNull()
 
-      expect(confirmStorageRoot(recordPath).continued).toBe(false)
-    })
-
-    // The limit the function documents: such a copy carries the last marker.
-    it('continues the run on a copy of the root taken after the last marker was written', () => {
-      const first = confirmStorageRoot(recordPath)
-      const copy = join(tempDir, 'copy')
-      cpSync(root, copy, { recursive: true })
-      rmSync(root, { recursive: true })
-      cpSync(copy, root, { recursive: true })
-
-      expect(confirmStorageRoot(recordPath)).toEqual({ since: first.since, continued: true })
+      writeFileSync(marker(), JSON.stringify({ mark: '0123456789abcdef' }))
+      expect(readStorageRootMark()).toBe('0123456789abcdef')
+      expect(storageRootMarkOfThisLaunch()).toBeNull()
     })
 
     it.each([
-      ['is missing', (): void => rmSync(recordPath)],
-      ['is not JSON', (): void => writeFileSync(recordPath, 'not json')],
-      ['is not an object', (): void => writeFileSync(recordPath, 'null')],
-      [
-        'has no start time',
-        (): void => writeFileSync(recordPath, JSON.stringify({ nonce: nonceIn(marker()) }))
-      ],
-      ['has no value', (): void => writeFileSync(recordPath, JSON.stringify({ since: 'x' }))]
-    ])('starts a new run when the record %s', (_label, damage) => {
-      confirmStorageRoot(recordPath)
-      damage()
+      ['is not JSON', 'not json'],
+      ['is not an object', 'null'],
+      ['holds no mark', '{}'],
+      ['holds a mark that is not a string', '{"mark":7}'],
+      ['holds a mark of another shape', '{"mark":"0123456789ABCDEF"}']
+    ])('reads no mark when the file %s', (_label, contents) => {
+      writeFileSync(marker(), contents)
 
-      expect(confirmStorageRoot(recordPath).continued).toBe(false)
-    })
-
-    it('reports no start when the record cannot be written', () => {
-      expect(confirmStorageRoot(join(tempDir, 'no-such-folder', STORAGE_ROOT_RECORD))).toEqual({
-        since: null,
-        continued: false
-      })
-      expect(existsSync(marker())).toBe(false)
+      expect(readStorageRootMark()).toBeNull()
     })
 
     it.skipIf(process.getuid?.() === 0)(
-      'reports no start when the marker cannot be written, and starts a new run next time',
+      'leaves the launch with no mark when the file cannot be written',
       () => {
-        confirmStorageRoot(recordPath)
+        renewStorageRootMark()
+        const held = readStorageRootMark()
         chmodSync(marker(), 0o400)
-        expect(confirmStorageRoot(recordPath)).toEqual({ since: null, continued: true })
 
-        chmodSync(marker(), 0o600)
-        expect(confirmStorageRoot(recordPath).continued).toBe(false)
+        renewStorageRootMark()
+
+        expect(readStorageRootMark()).toBe(held)
+        expect(storageRootMarkOfThisLaunch()).toBeNull()
       }
     )
+
+    // A directory where the file should be: the write fails for any user.
+    it('leaves the launch with no mark when the marker path is a directory', () => {
+      mkdirSync(marker())
+
+      renewStorageRootMark()
+
+      expect(readStorageRootMark()).toBeNull()
+      expect(storageRootMarkOfThisLaunch()).toBeNull()
+      expect(existsSync(marker())).toBe(true)
+    })
   })
 })

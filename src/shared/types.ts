@@ -970,8 +970,7 @@ export const LOG_CODES = [
   // could not be listed, so whether it holds a folder for the case is not known.
   'captureServer.self_test_storage_unavailable',
   // The sweep kept a sandbox-named case that otherwise reads as residue,
-  // because `confirmStorageRoot` has no unbroken run of launches on the root
-  // in use that began before the case was made.
+  // because its stamp is missing or is not the mark the storage root holds.
   'captureServer.self_test_storage_unconfirmed',
   // The capture server's listener failed (#513) — at boot usually EADDRINUSE
   // on 19845, held by another program or by a Birdbrain running against its

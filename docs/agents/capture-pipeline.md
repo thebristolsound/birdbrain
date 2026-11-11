@@ -426,10 +426,11 @@ to the list without a refetch.
   directory, a green result does not prove the configured storage volume is writable.
 - **Sandbox residue** (`isPipelineSelfTestResidue`, `sweepPipelineSelfTestResidue` in
   `src/main/services/pipelineSelfTest.ts`): a case counts as residue only when all of these hold.
-  Its row is as the self-test created it: the sandbox name, and no description, case number,
-  other case type, exclusion policy, archive, demo or sharing mark. Every capture row in it has
-  the sentinel URL, and every exhibit row belongs to one of those captures. No table holds a row
-  for the case, its captures or its exhibits, other than eight: `captures`, `capture_texts`,
+  Its row is as the self-test created it: the sandbox name, a description that is empty or the
+  stamp described below, and no case number, other case type, exclusion policy, archive, demo or
+  sharing mark. Every capture row in it has the sentinel URL, and every exhibit row belongs to
+  one of those captures. No table holds a row for the case, its captures or its exhibits, other
+  than eight: `captures`, `capture_texts`,
   `exhibits`, `case_revisions` and `case_change_log`, which creating the case and ingesting the
   sentinel capture fill, and `exhibit_search_builds`, `exhibit_search_fields` and
   `extracted_data`, which the app derives from a capture without being asked. A table is read
@@ -448,26 +449,34 @@ to the list without a refetch.
 - **Startup sweep**: straight after the storage root is set, and before the demo seed and the
   capture server, a sweep reads each unarchived case with the sandbox name. It deletes a case,
   with every temporary directory that holds a folder named for it, only when the case passes the
-  residue check and was made after the storage record's current run began. Every other case it
-  reads is kept and logged: `captureServer.self_test_residue_kept` at info when the case holds
-  something the self-test did not write, `captureServer.self_test_storage_unavailable` at warn
-  when the root cannot be listed, and `captureServer.self_test_storage_unconfirmed` when the case
-  was not made after the run began, at warn on a launch that started a run or could not write
-  the marker or the record, and at info on later launches. A removal is logged as
-  `captureServer.self_test_residue_removed` at info. No route hides the sandbox from any listing.
-- **Storage record** (`confirmStorageRoot` in `src/main/services/storage.ts`): what lets the sweep
-  take a missing folder as proof. Every launch writes a new random value to
-  `.birdbrain-storage-root.json` in the storage root and to `storage-root.json` in the user-data
-  folder. A launch that finds the two equal continues a run of launches on one directory; a
-  launch that finds either missing, unreadable or different starts a new run at that moment. A
-  case made before the current run began is therefore kept at every launch. That covers a root
-  the app created or fell back to while a drive was absent, an empty folder at the configured
-  path, a storage path changed to another folder, a root restored from a copy older than the
-  last marker, and every leftover an install held before its first launch with the record. The
-  record has four limits. A copy of the root taken after the last marker was written carries
-  that marker. A launch by a build without the record leaves both files as they were, so it does
-  not end a run. The root is checked once per launch, at startup. "Made after" compares the
-  case's creation time with the start of the run, both read from the system clock.
+  residue check and its stamp equals the mark the sweep finds in the storage root. Every other
+  case it reads is kept and logged: `captureServer.self_test_residue_kept` at info when the case
+  holds something the self-test did not write, `captureServer.self_test_storage_unavailable` at
+  warn when the root cannot be listed, and `captureServer.self_test_storage_unconfirmed` when
+  the stamp is missing or differs from the mark, at warn for a stamp that differs and at info
+  for a case with no stamp. A removal is logged as `captureServer.self_test_residue_removed` at
+  info. No route hides the sandbox from any listing.
+- **Storage mark and stamp** (`renewStorageRootMark` in `src/main/services/storage.ts`, the stamp
+  in `src/main/services/pipelineSelfTest.ts`): what lets the sweep take a missing folder as
+  proof. Every launch ends its sweep by clearing the stamp of every case, archived ones
+  included, and writing a new random mark to `.birdbrain-storage-root.json` in the storage root.
+  A sandbox made during that launch is created with the stamp as its description,
+  `Pipeline self-test sandbox (storage mark <mark>)`, in the same insert as the case, and only
+  while the root still holds the mark that launch wrote. A stamp equal to the mark the next
+  sweep finds therefore says that no launch has finished a sweep since the case was made, and
+  that the root in use holds the mark the case's own launch wrote: the case has existed during
+  one launch, on this root. A case is read this way once. A case kept at that launch, and a case
+  with no stamp, is kept at every later launch until an operator deletes it; that includes every
+  leftover made before this check existed.
+  - What a failed write does. The mark cannot be written: the launch has no mark, so a sandbox
+    it makes carries no stamp and is kept. The stamp cannot be written: it is part of the insert
+    that creates the case, so there is no case. A stamp cannot be cleared: the sweep throws and
+    startup fails, so that launch never accepts a capture. No clock is read.
+  - Four states are not told apart. A copy of the root taken during the launch that made the
+    case, and put in its place before the next launch, holds that launch's mark. A launch by a
+    build without this check neither clears stamps nor writes a mark. A root that changes under
+    its path after the case is made, and is back at the next launch, holds the mark again. A
+    database restored from a copy brings back the stamps that copy held.
 - **Test HTTP** (`captures:testHttp` IPC): a `fetch` of `GET /api/status` from the main process,
   proving the listener independently of the extension.
 

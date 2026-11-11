@@ -100,15 +100,29 @@ afterEach(() => {
 })
 
 // A `sleep` beside the gh stub that logs each duration it was asked for before sleeping.
+// When the test left routes for after the first sleep, it installs them and returns at once.
 const SLEEP = `#!/usr/bin/env bash
-echo "$1" >> "$(dirname "$0")/sleeps.log"
+dir="$(dirname "$0")"
+echo "$1" >> "$dir/sleeps.log"
+if [ -f "$dir/routes.after-sleep.json" ]; then
+  mv "$dir/routes.after-sleep.json" "$dir/routes.json"
+  exit 0
+fi
 exec /bin/sleep "$1"
 `
 
-const checks = (r: GhRoutes, args: string[] = [], env: Record<string, string> = {}) => {
+const checks = (
+  r: GhRoutes,
+  args: string[] = [],
+  env: Record<string, string> = {},
+  afterSleep?: GhRoutes
+) => {
   stub = makeGhStub(r)
   writeFileSync(join(stub.dir, 'sleep'), SLEEP)
   chmodSync(join(stub.dir, 'sleep'), 0o755)
+  if (afterSleep) {
+    writeFileSync(join(stub.dir, 'routes.after-sleep.json'), JSON.stringify(afterSleep))
+  }
   const result = spawnSync('bash', [SCRIPT, ...args, '7'], {
     encoding: 'utf8',
     env: {
@@ -364,11 +378,19 @@ describe.skipIf(!HAS_JQ)('checks.sh --wait', () => {
   })
 
   it('never sleeps past the deadline, so the command returns within the wait plus one read', () => {
+    // The checks settle during the first sleep, so the one duration logged is the time left
+    // after the first read, however long that read took on a busy machine.
     const r = routes({ checkRuns: [{ id: 1, name: 'lint', status: 'in_progress' }] })
-    const result = checks(r, ['--wait', '2'], { CHECKS_POLL_SECONDS: '30' })
-    expect(result.status).toBe(124)
-    expect(sleeps().length).toBeGreaterThan(0)
-    expect(sleeps().every((seconds) => seconds > 0 && seconds <= 2)).toBe(true)
+    const { status, stderr } = checks(
+      r,
+      ['--wait', '600'],
+      { CHECKS_POLL_SECONDS: '900' },
+      routes({})
+    )
+    expect(status, stderr).toBe(0)
+    expect(sleeps()).toHaveLength(1)
+    expect(sleeps()[0]).toBeGreaterThan(0)
+    expect(sleeps()[0]).toBeLessThanOrEqual(600)
   })
 
   it('fails when a read fails', () => {

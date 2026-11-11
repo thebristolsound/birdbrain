@@ -74,7 +74,7 @@ prompt="$(cat "$here/prompts/common.md" "$prompt_file")
 $scope
 - \`$in/pr.json\`: the title, body and commits.
 - \`$in/rules.md\`: this repository's \`CLAUDE.md\` from \`main\`.
-- \`$in/sources.json\`: all closed issues and referenced issues, pull requests and review contracts, each with its author, its date and the comments the maintainer and the machine account wrote on it; read every entry.
+- \`$in/sources.json\`: all closed issues and referenced issues, pull requests and review contracts, each with its author, its date and the conversation comments the maintainer and the machine account wrote on it; read every entry.
 - \`$in/commits.json\`: every commit from the merge base with \`main\` to the head, oldest first, with its parents, author date, subject, the files it changed against its first parent, the pull request it belongs to, whether the base branch has it, and for a merge whether it is git's automatic merge.
 - \`$in/commits/\`: one patch per commit against its first parent, at the path \`commits.json\` gives.
 - \`$in/stack.json\`: the base branch, the commits that are this pull request's own, and the pull requests below it, open or recently closed, with the commits of each.

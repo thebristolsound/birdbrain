@@ -128,8 +128,11 @@ Three facts shaped the design:
      from an empty tree, so a `.gitattributes` in the pull request can neither mark a file as
      binary, which would empty its hunks, nor name a merge driver.
    - Each source carries its author and creation time. Each issue and pull request among the
-     sources carries the comments the maintainer or the machine account wrote on it, without
-     the fleet's own state and relay comments. No other author's comment is read.
+     sources carries the conversation comments the maintainer or the machine account wrote on
+     it, without the fleet's own state and relay comments. No other author's comment is added
+     this way, and a pull request's reviews and inline review comments are not listed. A
+     comment or review the description links is still read as its own source, whoever wrote
+     it.
    - A bare `#<n>` in the description is read as this repository's issue or pull request
      `<n>`, unless it sits in a code span, a fenced block or an HTML comment, or is the target
      of a Markdown link. Line endings saved as CRLF are read as line feeds. What that source

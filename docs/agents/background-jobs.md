@@ -110,10 +110,10 @@ keeps one state comment per head with the findings and rulings.
   holds everything below the change and posts a plain success, or starts a review of the whole
   diff.
   A bare `#<n>` in the description is read as this repository's issue or pull request. Each
-  issue or pull request among the sources brings the comments the maintainer or the machine
-  account wrote on it, so a ruling posted as a comment is read when the description names its
-  issue. Past 60 sources, 200 such comments, 1 MiB of sources, 300 commits or 512 MiB in one
-  tree, the pass fails before the paid call and names the limit.
+  issue or pull request among the sources brings the conversation comments the maintainer or
+  the machine account wrote on it, so a ruling posted as a comment is read when the description
+  names its issue. Past 60 sources, 200 such comments, 1 MiB of sources, 300 commits or 512 MiB
+  in one tree, the pass fails before the paid call and names the limit.
 - **Runtime limitations** appear separately in the saved record and public report. Tests,
   builds, CI reads and external/editor observations the reviewer did not perform remain
   unverified. Fleet success does not certify them or waive required CI checks. Never clear or

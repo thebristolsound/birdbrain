@@ -294,3 +294,12 @@ Every pull request the fleet covers fails its check for the policy reason that p
 - The fleet check on the remaining pull requests has not changed yet. Pull requests with a saved review still read failed, and 2175, 2177 and 2178 still wait behind the daily limit. Most saved reviews ran near 09:22 UTC on November 10, so their slots in the 24-hour limit free near that time on November 11.
 - How the 31 saved reviews get redone is still Matt's decision: a merge of main into each branch, a higher daily limit, deleted saved records, or the override on individual pull requests. Do not push merge commits to the queue for this purpose without his answer.
 - Watch main's CI once, at the final merge of the sweep, not at this one.
+
+## Logging candidate published
+
+- The second capture task took the Diagnostics Log pair under the shared lock in one 15 second hold. On main the five rows show only source and time; at the candidate they show the five new labels. The pair proves the label mapping in the running app only, from five invented log entries.
+- Pushed the verified candidate `836b6c55d5d5` to 2133 as a fast-forward of `5edd154ce905`. Its locked full verification had passed before the handover: 9,852 tests passed, 66 skipped, all 72 scored changed lines covered. The branch contains main `3029954ee`, not the later fleet repair merge, and merges cleanly with it.
+- Posted the [screenshot pair](https://github.com/thebristolsound/birdbrain/pull/2133#issuecomment-6783379808) after matching both digests to the capture manifest. Replaced the description: visual change declared with uploaded links, the passing verification block, a main integration bullet, and the design bullet naming the reviewed copy. Checked two claims against git first: the design file is the same blob as pull request 2158's at `e77e1224b2bc`, and the seven source files the change edits are identical to `5edd154ce905`. Sol's note said eight; git shows seven.
+- Answered the four open design threads, set the review status to pending, and started a delta review against `5edd154ce905`.
+- The approval label Sol applied at the old head no longer shows on 2133. Apply it again at merge time, at the reviewed head.
+- After a merge, reopen issue 2127 with its remaining first criterion, the job's address host in logs, as recorded earlier.

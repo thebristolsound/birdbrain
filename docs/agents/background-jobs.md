@@ -71,14 +71,59 @@ second reviewer on the same head: run 37235446754 (2026-10-04) found #1721 with 
 pre-pass status posted 27 seconds before the run was created, and its pre-gate started the cycle
 anyway, because a pending status is not a claim.
 
-## The scheduled PR review
+## The review fleet
 
-`.github/workflows/pr-review.yml` reviews one PR the maintainer opened each hour, under its own
-cap of 4 reviews a day (ADR-0046). The machine account posts the verdict as a comment and sets
-one `review:` state label: `passed`, `changes`, `stale` after a later push, `failed`, or
-`skipped`. It never pushes, merges, or writes a status the merge gate reads. Apply
-`review:skipped` to a PR to keep the job off it. Apply `review:requested` to have a PR reviewed
-now, without the one-hour wait; the post step removes the label.
+`.github/workflows/review-fleet.yml` reads every non-draft PR the maintainer or the machine
+account opens from this repository, on each push (ADR-0057). Four Claude passes (correctness,
+claims, contract, tests) and Codex review the head, Codex rules on Claude's blocking findings,
+and a fifth Claude pass rules on Codex's. `.github/scripts/review-fleet/fleet.mjs` decides the
+`review/fleet` status from the rulings, and `merge-gate` requires it at head. The machine account
+keeps one state comment per head with the findings and rulings.
+
+- **Red** means a blocking finding the other family confirmed, a pass that did not finish, Codex
+  not answering within the timeout, a finding Codex did not rule on, or a blocking Codex finding
+  the Claude check ruled unclear. Push a fix, or apply `break-glass` to merge over it. The
+  override also needs its dedicated workflow-token stamp on the exact head. The stamp lands a
+  few seconds after the label, so a `merge-gate` run the same label event started can read the
+  head first and go red. The fleet re-runs red `merge-gate` runs when it posts the override
+  status; re-run the check by hand if it stays red.
+- **Pending** means a pass is running, Codex has not answered yet, or the daily cap is holding
+  the head. A sweep every 15 minutes times out what Codex never answered and restarts work whose
+  event was dropped.
+- **Source completion** requires every assigned source check and input under ADR-0057. New
+  outputs use contract version 2, `source_review_complete`, and `not_checked` for unfinished
+  source work. Missing issues or referenced review text fail before the paid call. Every
+  `https://github.com/` issue or pull request link and every `comment <number>` pointer of
+  eight or more digits in the description, and in each source fetched from it, counts as
+  referenced review text. A pointer is read as an issue comment first, and as an inline review
+  comment when that read is a 404. A comment link copied from the Files changed view
+  (`/files#r<id>`) reads as that inline comment. A link to another repository fails, because
+  the pass reads only this one, and so do a link whose fragment ADR-0057 defines as malformed
+  and a linked issue, comment or review with an empty body. An
+  unfinished caller, race, fixture or count trace still fails; do not call it a runtime limit.
+- **Runtime limitations** appear separately in the saved record and public report. Tests,
+  builds, CI reads and external/editor observations the reviewer did not perform remain
+  unverified. Fleet success does not certify them or waive required CI checks. Never clear or
+  reinterpret an older mixed unchecked list. Old records require a fresh source review.
+- **Retry** a head by deleting its state comment. The next plan claims the head as new, counts
+  it against the daily cap, runs the passes again and posts a new relay. The earlier relay and
+  Codex's rulings on it no longer count.
+- **Controls** are repository variables, changed with `gh variable set <name> --body <value>`:
+  `REVIEW_FLEET_ENABLED=false` stops the fleet and lifts the `merge-gate` requirement,
+  `REVIEW_FLEET_DAILY_CAP` sets the heads reviewed per 24 hours (default 40), and
+  `REVIEW_FLEET_CODEX_TIMEOUT_MINUTES` sets how long Codex has (default 45).
+
+The relay comment that asks Codex is posted with the maintainer's token, `CODEX_RELAY_TOKEN` in
+the `codex-relay` environment, because Codex answers only an account connected to it. It carries
+a `review-fleet:relay` marker, and dispatch does not count it, or the state comment, as activity.
+
+## The on-request PR review
+
+`.github/workflows/pr-review.yml` reviews a PR the maintainer opened when he applies
+`review:requested` (ADR-0046); since ADR-0057 it has no schedule. The machine account posts the
+verdict as a comment and sets one `review:` state label: `passed`, `changes`, `stale` after a
+later push, `failed`, or `skipped`. It never pushes, merges, or writes a status the merge gate
+reads. The post step removes the request label.
 
 ## Jev shadow lenses
 

@@ -9,9 +9,13 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import {
   approvalStamp,
+  breakGlassAuthorized,
   closedIssues,
   decide as gate,
   effectiveReview,
+  fleetCovers,
+  fleetVerdict,
+  lastLabeler,
   maintainerOf,
   trustedPrepass
 } from '../merge/gate.mjs'
@@ -43,7 +47,7 @@ export const LABELS = {
   wait: [
     'next: wait',
     WAIT_GREY,
-    'Nobody: checks, the pre-pass or a scheduled review are still running'
+    'Nobody: checks, the pre-pass, the review fleet or a requested review are still running'
   ],
   merging: [
     'next: merging',
@@ -61,10 +65,6 @@ const REVIEW_STATES = [
   'review:failed',
   'review:skipped'
 ]
-// The scheduled review takes a maintainer PR after its first hour, four a day; past this age a
-// PR it has not reached is the maintainer's to read.
-const REVIEW_DUE_HOURS = 6
-
 const PASSED = ['SUCCESS', 'SKIPPED', 'NEUTRAL']
 const PENDING_STATES = ['PENDING', 'EXPECTED']
 
@@ -113,6 +113,9 @@ export function decideNext(f) {
   const fromMachine = f.gate.agent && f.author === f.machine
   const reviewState = REVIEW_STATES.find((l) => f.labels.includes(l))
   const review = effectiveReview(f.reviews, f.maintainer)
+  // merge-gate's own test (ADR-0057): the fleet's status must be success at head on a PR it
+  // covers, unless the maintainer's break-glass label stands.
+  const fleetOwed = f.fleetRequired && !f.breakGlass && f.fleet !== 'success'
 
   // GitHub's list already marks a draft, so it carries no next label.
   if (f.draft) return { label: null, reason: 'draft' }
@@ -123,17 +126,17 @@ export function decideNext(f) {
   if (review?.state === 'CHANGES_REQUESTED')
     return answer('fix', `${f.maintainer} requested changes`)
   if (reviewState === 'review:changes')
-    return answer('fix', 'the scheduled review found a blocking issue; see its verdict comment')
+    return answer('fix', 'the requested review found a blocking issue; see its verdict comment')
+  if (fleetOwed && ['failure', 'error'].includes(f.fleet))
+    return answer('fix', 'the review fleet failed; its state comment says why')
   if (f.crossRepo && missing.length)
     return answer('review', `outside PR whose checks have not started; approve its workflow runs`)
   if (pending.length) return answer('wait', `waiting on ${list(pending)}`)
   if (fromMachine && f.prepass !== 'success')
     return answer('wait', 'waiting on the reviewer pre-pass')
-  if (f.labels.includes('review:requested') || reviewState === 'review:stale')
-    return answer('wait', 'a scheduled review is queued')
+  if (f.labels.includes('review:requested')) return answer('wait', 'a requested review is queued')
+  if (fleetOwed) return answer('wait', 'waiting on the review fleet')
   const ownPr = f.author === f.maintainer && !f.crossRepo && !f.labels.includes('agent-pr')
-  if (ownPr && !reviewState && f.ageHours < REVIEW_DUE_HOURS)
-    return answer('wait', 'the scheduled review has not reached it yet')
   if ((f.gate.evidence || f.gate.credential) && !f.gate.signedOff) {
     const what = f.gate.evidence ? 'evidence-affecting' : 'changes release-credential paths'
     return answer('approve', `${what}; needs your sign-off at ${f.headSha.slice(0, 7)}`)
@@ -141,8 +144,7 @@ export function decideNext(f) {
   if (!ownPr && !fromMachine && !f.gate.signedOff)
     return answer('review', `opened by ${f.author}; nobody has approved it at head`)
   if (reviewState === 'review:failed')
-    return answer('review', 'the scheduled review ended without a verdict')
-  if (ownPr && !reviewState) return answer('review', 'no scheduled review has run')
+    return answer('review', 'the requested review ended without a verdict')
   if (!f.mergeLabel) return answer('merge', 'everything is green; apply the merge label')
   if (!f.autoMerge)
     return answer('unstick', 'merge requested but auto-merge is off; read the Merge on label run')
@@ -203,7 +205,7 @@ function readFacts(repo, n, ctx) {
       '-R',
       repo,
       '--json',
-      'state,isDraft,author,labels,headRefOid,mergeStateStatus,autoMergeRequest,createdAt,body,reviews,statusCheckRollup,isCrossRepository'
+      'state,isDraft,author,labels,headRefOid,mergeStateStatus,autoMergeRequest,body,reviews,statusCheckRollup,isCrossRepository'
     ])
   )
   const headSha = pr.headRefOid
@@ -228,6 +230,21 @@ function readFacts(repo, n, ctx) {
       api(`repos/${repo}/issues/${i}/labels`).some((l) => l.name === 'evidence-affecting')
     ),
     prepass: trustedPrepass(statuses, [ctx.maintainer, ctx.machine]),
+    fleet: fleetVerdict(statuses, ctx.machine),
+    fleetRequired: fleetCovers({
+      enabled: ctx.fleetEnabled,
+      author,
+      maintainer: ctx.maintainer,
+      machine: ctx.machine,
+      sameRepo: !pr.isCrossRepository
+    }),
+    breakGlass: breakGlassAuthorized(
+      labels,
+      statuses,
+      lastLabeler(repo, n, 'break-glass'),
+      ctx.maintainer,
+      headSha
+    ),
     approvalStamp: approvalStamp(statuses),
     reviews: pr.reviews.map((r) => ({
       state: r.state,
@@ -243,7 +260,6 @@ function readFacts(repo, n, ctx) {
     mergeLabel: labels.includes('merge'),
     autoMerge: pr.autoMergeRequest != null,
     mergeState: pr.mergeStateStatus,
-    ageHours: (Date.now() - Date.parse(pr.createdAt)) / 36e5,
     required: ctx.required,
     checks: latestChecks(pr.statusCheckRollup),
     gate: gate(gateFacts),
@@ -307,6 +323,7 @@ function main(argv) {
     dryRun,
     maintainer,
     machine: process.env.BIRDBRAIN_AGENT_GH_LOGIN || 'birdbrain-agent',
+    fleetEnabled: (process.env.REVIEW_FLEET_ENABLED ?? '').trim().toLowerCase() !== 'false',
     required: api(`repos/${repo}/rules/branches/main`)
       .filter((r) => r.type === 'required_status_checks')
       .flatMap((r) => r.parameters.required_status_checks.map((c) => c.context))

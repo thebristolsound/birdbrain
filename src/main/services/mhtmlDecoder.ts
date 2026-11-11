@@ -80,7 +80,8 @@ export interface MhtmlWalkPart {
   bodyEnd: number
   /**
    * False when no blank line ends the headers inside the part. Its headers are then not read:
-   * `html` is false and the header fields below are null.
+   * `html` is false and the header fields below are null. A part that opens on a blank line has
+   * no header lines and is terminated.
    */
   headersTerminated: boolean
   html: boolean
@@ -164,7 +165,7 @@ export function walkMhtml(buffer: Buffer, onPart: (part: MhtmlWalkPart) => void)
     const nextAt = buffer.indexOf(delimiter, partStart)
     const partEnd = nextAt === -1 ? buffer.length : nextAt
 
-    const partHeaderEnd = findHeaderEndBuf(buffer, partStart, partEnd)
+    const partHeaderEnd = findPartHeaderEnd(buffer, partStart, partEnd)
     const headersTerminated = partHeaderEnd !== -1
     // Decode headers as latin1 (header bytes are ASCII per RFC 2045); cheap.
     const headers = headersTerminated
@@ -216,7 +217,7 @@ export function mainHtmlPartIndex(
 export function readMhtmlTitle(buffer: Buffer): string | null {
   const topHeaderEnd = findHeaderEndBuf(buffer, 0)
   if (topHeaderEnd === -1) return null
-  const subject = headerOnItsLine(buffer.slice(0, topHeaderEnd).toString('latin1'), 'subject')
+  const subject = parseHeader(buffer.slice(0, topHeaderEnd).toString('latin1'), 'subject')
   const decoded = subject ? collapseWhitespace(decodeEncodedWords(subject)) : ''
   if (decoded) return decoded
 
@@ -225,14 +226,6 @@ export function readMhtmlTitle(buffer: Buffer): string | null {
   const content = firstTitleContent(first.decode())
   const title = content === null ? '' : collapseWhitespace(decodeXmlEntities(content))
   return title ? title : null
-}
-
-// A header's value, read from its own line only, so a header written with no value is absent.
-// parseHeader's `\s*` crosses the line break and returns the next header line instead.
-function headerOnItsLine(headers: string, name: string): string | null {
-  const m = unfoldHeaders(headers).match(new RegExp('^' + name + ':[ \\t]*([^\\r\\n]*)', 'im'))
-  const value = m ? m[1].trim() : ''
-  return value ? value : null
 }
 
 // The text of the first `<title>` element: the first `<title` tag, the `>` that ends it, then
@@ -312,6 +305,15 @@ function findHeaderEndBuf(buf: Buffer, from: number, to: number = buf.length): n
   return from + (crlf < lf ? crlf + 4 : lf + 2)
 }
 
+// A part that opens on a line break has an empty header block, which RFC 2046 allows. The
+// delimiter line's own break is already consumed, so the pair search would miss that blank line
+// and end the headers at a blank line inside the body, or nowhere.
+function findPartHeaderEnd(buf: Buffer, from: number, to: number): number {
+  if (to - from >= 2 && buf[from] === 0x0d && buf[from + 1] === 0x0a) return from + 2
+  if (to - from >= 1 && buf[from] === 0x0a) return from + 1
+  return findHeaderEndBuf(buf, from, to)
+}
+
 function stripTrailingNewlineEnd(buf: Buffer, start: number, end: number): number {
   if (end - start >= 2 && buf[end - 2] === 0x0d && buf[end - 1] === 0x0a) return end - 2
   if (end - start >= 1 && buf[end - 1] === 0x0a) return end - 1
@@ -344,11 +346,12 @@ function unfoldHeaders(headers: string): string {
   return headers.replace(/\r?\n[ \t]+/g, ' ')
 }
 
+// A header's value, read from its own line only, so a header written with no value is absent.
+// A `\s*` after the colon would cross the line break and return the next header line instead.
 function parseHeader(headers: string, name: string): string | null {
-  const unfolded = unfoldHeaders(headers)
-  const re = new RegExp('^' + name + ':\\s*([^\\r\\n]+)', 'im')
-  const m = unfolded.match(re)
-  return m ? m[1].trim() : null
+  const m = unfoldHeaders(headers).match(new RegExp('^' + name + ':[ \\t]*([^\\r\\n]*)', 'im'))
+  const value = m ? m[1].trim() : ''
+  return value ? value : null
 }
 
 function parseBoundary(ct: string | null): string | null {

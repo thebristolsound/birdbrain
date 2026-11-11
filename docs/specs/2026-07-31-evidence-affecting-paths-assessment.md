@@ -121,6 +121,12 @@ of `src/main/index.ts`. The call differs from #515's: window geometry enters no 
 these rules decide which pages render side by side and when, which can change what a render
 observes, so the file is an inclusion rather than an exclusion.
 
+On 2026-11-10 `src/main/services/mhtmlParts.ts` was added to the Capture lifecycle table at
+blocking tier with #991, in the change that creates it. It reads a Capture's stored MHTML and
+reports what is inside it, so a wrong part boundary or span is a wrong statement about a Capture.
+No entry or glob names the file, so without the row a later edit touching only it would match no
+entry.
+
 On 2026-11-09 the rows that stale-closed issues had left unwritten were added. The selection
 bar (`extension/src/selectionBar.ts`, ruling W25 on #967) and the two files of the capture
 interface suppression protocol (`captureSuppression.ts`, `captureHygiene.ts`) joined Acquisition
@@ -334,6 +340,7 @@ independent of the Operator who holds it.
 | `src/main/services/thumbnails.ts` | blocking | Renders the thumbnail bytes the backfill hashes into a signed `derivation` entry; those Derived Files ship in evidence packages and the package verifier binds them. Moved from the exclusions on 2026-10-01 |
 | `src/main/services/storage.ts` | blocking | Storage root and case directory layout |
 | `src/main/services/mhtmlDecoder.ts` | blocking | MHTML parsing feeding text extraction |
+| `src/main/services/mhtmlParts.ts` | blocking | Reads a Capture's stored MHTML and states its parts: the boundaries, types, byte offsets, sizes and per-part SHA-256 it returns over IPC, for the MHTML Parts tab planned in #991. Added 2026-11-10 with #991 |
 | `src/main/services/dataExtractor.ts` | blocking | IOC extraction pipeline entry |
 | `src/main/services/extraction/**` | blocking | Source selection, sanitizer, IOC adapter, validators — determine extracted results |
 | `src/main/services/db/**` | blocking | All evidentiary records: schema, repos, dbAdmin row edit/restore/purge |

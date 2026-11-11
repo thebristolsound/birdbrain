@@ -466,10 +466,12 @@ describe('two background jobs ingesting into one Case', () => {
     rmSync(tempDir, { recursive: true, force: true })
   })
 
-  // Pinned by the same-turn rollback, not by the Case's slot: this passes with the slot removed
-  // from the ingest. The slot is pinned in captureDuplicate.test.ts, where an ingest waits for a
-  // duplicate that holds it.
-  it("keeps the second job's entry when the first job's failed ingest rolls back in its own turn", async () => {
+  // Two guards keep this green, and either is enough: the Case's slot, which queues the second
+  // ingest behind the first, and the rollback running in the turn the seam body threw. The
+  // same-turn rollback alone is pinned by "rolls a failed ingest back before an appender outside
+  // the slot resumes" below. The slot is pinned in captureDuplicate.test.ts, where an ingest
+  // waits for a duplicate that holds it.
+  it("keeps the second job's entry when the first job's failed ingest rolls back", async () => {
     const firstId = randomUUID()
     const secondId = randomUUID()
     // The first job's seam body fails after its entry is appended, before its row.

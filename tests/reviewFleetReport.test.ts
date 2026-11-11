@@ -54,6 +54,11 @@ it.each(['oversized', 'unwritable'])(
       }
       for (const leg of ['correctness', 'claims', 'contract', 'tests']) {
         mkdirSync(join(dir, leg))
+        // Each pass says what it read; without that the record would fail before the report.
+        writeFileSync(
+          join(dir, leg, 'scope.json'),
+          JSON.stringify({ base: 'main', from: 'c'.repeat(40) })
+        )
         writeFileSync(
           join(dir, leg, 'findings.json'),
           JSON.stringify({

@@ -138,6 +138,7 @@ import type {
   LaunchedBrowserPopOutEvent,
   CaptureBatchPayload,
   BatchDeleteResult,
+  CaptureDeleteResult,
   BatchCountResult,
   DuplicateCaptureResult,
   FieldBuildSummary,
@@ -178,7 +179,7 @@ export interface BirdbrainAPI {
   captures: {
     list(caseId: string): Promise<Capture[]>
     get(id: string): Promise<Capture | undefined>
-    delete(id: string): Promise<boolean>
+    delete(id: string): Promise<CaptureDeleteResult>
     getContent(captureId: string, type: 'html' | 'png' | 'txt'): Promise<string | null>
     getThumbnail(captureId: string): Promise<string | null>
     getMatchingSelectors(captureId: string): Promise<Selector[]>

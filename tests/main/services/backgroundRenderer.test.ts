@@ -23,11 +23,12 @@ import {
   trimTrailingBackground
 } from '@main/services/backgroundRenderer'
 import { logger } from '@main/services/logger'
+import { sanitizeError } from '@main/services/logSafe'
 import { ManifestEntrySchema, ScrollToLoadRecordSchema } from '@shared/schemas'
 import { RefusedAddressError } from '@main/services/localAddressPolicy'
 import { EgressUnavailableError } from '@main/services/egress'
 import { E2E_TRUSTED_CERT_SWITCH } from '@main/services/testCertificateAllowance'
-import { createRecaptureService, type PdfOutcome } from '@main/services/recapture'
+import { RecaptureTimeout, createRecaptureService, type PdfOutcome } from '@main/services/recapture'
 import { createCaptureLifecycle, verifyCapture } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
@@ -1992,9 +1993,11 @@ describe('renderPageInHiddenWindow', () => {
     ctl.egress = { kind: 'unavailable' }
     const before = ctl.createdWindows
 
-    await expect(
-      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000, ...IDS })
-    ).rejects.toThrow(EgressUnavailableError)
+    const render = renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000, ...IDS })
+    await expect(render).rejects.toThrow(EgressUnavailableError)
+    // The name is what the job's failed line keeps of the error.
+    const error: unknown = await render.catch((err: unknown) => err)
+    expect(sanitizeError(error).name).toBe('EgressUnavailableError')
 
     expect(ctl.createdWindows).toBe(before)
     expect(ctl.calls).toEqual([])
@@ -2815,4 +2818,276 @@ describe('a Recapture of a rendered page, through ingest, and its PDF', () => {
     },
     30_000
   )
+
+  // #2127: the render's line and the job's share the id the Capture is stored under.
+  it("logs the render's steps and the job's end under the stored Capture's id", async () => {
+    const info = vi.spyOn(logger, 'info')
+    const { id } = await recaptureOnce()
+    const lines = info.mock.calls.filter(([, code]) =>
+      ['backgroundRenderer.render_completed', 'backgroundRenderer.job_stored'].includes(code)
+    )
+    expect(lines.map(([, code, context]) => [code, context?.captureId])).toEqual([
+      ['backgroundRenderer.render_completed', id],
+      ['backgroundRenderer.job_stored', id]
+    ])
+    expect(JSON.stringify(info.mock.calls)).not.toContain('example.test')
+  }, 30_000)
+
+  it('logs the step a failed render reached on its line and on the job line', async () => {
+    ctl.pinThrows = true
+    const info = vi.spyOn(logger, 'info')
+    const warn = vi.spyOn(logger, 'warn')
+    const service = createRecaptureService({
+      renderPage: renderPageInHiddenWindow,
+      captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
+      emitEvent: (event) => events.push(event),
+      emitNewCapture: () => {},
+      timeoutMs: 30_000
+    })
+    service.enqueue([{ url: 'https://example.test/', caseId }])
+    await service.idle()
+    const [render] = info.mock.calls.filter(
+      ([, code]) => code === 'backgroundRenderer.render_failed'
+    )
+    const [job] = warn.mock.calls.filter(([, code]) => code === 'backgroundRenderer.job_failed')
+    expect(render[2]).toMatchObject({ step: 'images' })
+    expect(job[2]).toMatchObject({
+      captureId: render[2]?.captureId,
+      failureKind: 'render',
+      step: 'images'
+    })
+  }, 30_000)
+})
+
+// Slice 1 of docs/specs/2026-11-09-batch-capture-throughput-design.md (#2127).
+describe("renderPageInHiddenWindow's log lines", () => {
+  const RENDER_STEPS = [
+    'setup',
+    'load',
+    'network-idle',
+    'scroll',
+    'post-scroll-idle',
+    'settle',
+    'images',
+    'artifacts',
+    'transaction-record',
+    'pdf'
+  ]
+  const STEP_KEYS = [
+    'setupMs',
+    'loadMs',
+    'networkIdleMs',
+    'scrollMs',
+    'postScrollIdleMs',
+    'settleMs',
+    'imagesMs',
+    'artifactsMs',
+    'transactionRecordMs',
+    'pdfMs'
+  ]
+  type Line = [string, string, Record<string, unknown>, unknown]
+
+  beforeAll(async () => {
+    const png = await sharp({ create: { width: 100, height: 100, channels: 3, background: WHITE } })
+      .png()
+      .toBuffer()
+    ctl.pngBase64 = png.toString('base64')
+  })
+
+  beforeEach(() => {
+    resetRender()
+    ctl.navigatesTo = null
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  function logged(spy: { mock: { calls: unknown[][] } }, code: string): Line[] {
+    return spy.mock.calls.filter(([, c]) => c === code) as Line[]
+  }
+
+  async function renderLogged(timeoutMs = 30_000) {
+    const info = vi.spyOn(logger, 'info')
+    const heard: string[] = []
+    const result = await renderPageInHiddenWindow('https://example.test/', {
+      timeoutMs,
+      ...IDS,
+      onStep: (step) => heard.push(step)
+    })
+    for await (const _chunk of result.mhtmlStream) void _chunk
+    await result.cleanup()
+    return { info, heard, result }
+  }
+
+  it('logs one line for a completed render, with the duration of each step it heard', async () => {
+    const startedAt = Date.now()
+    // Past the end reserve, so the waits before the artifacts get time.
+    const { info, heard } = await renderLogged(60_000)
+    const elapsed = Date.now() - startedAt
+    expect(heard).toEqual(RENDER_STEPS)
+    expect(logged(info, 'backgroundRenderer.render_failed')).toEqual([])
+    const lines = logged(info, 'backgroundRenderer.render_completed')
+    expect(lines).toHaveLength(1)
+    const [[source, , context, error]] = lines
+    expect(source).toBe('backgroundRenderer')
+    expect(error).toBeUndefined()
+    expect(Object.keys(context).sort()).toEqual(['captureId', 'ms', ...STEP_KEYS].sort())
+    expect(context.captureId).toBe(IDS.captureId)
+    // The steps follow each other with no gap, so together they are the render's time.
+    const steps = STEP_KEYS.map((key) => context[key] as number)
+    for (const ms of steps) expect(ms).toBeGreaterThanOrEqual(0)
+    const sum = steps.reduce((total, ms) => total + ms, 0)
+    expect(sum).toBeLessThanOrEqual(context.ms as number)
+    expect((context.ms as number) - sum).toBeLessThan(500)
+    expect(context.ms as number).toBeLessThanOrEqual(elapsed)
+    // The settle step waits FINAL_SETTLE_MS, so its time is on its own key.
+    expect(context.settleMs as number).toBeGreaterThanOrEqual(450)
+  }, 30_000)
+
+  it.each([
+    {
+      name: 'the body fetches',
+      arrange: () => {
+        ctl.bodyHangs = true
+      },
+      errorName: 'TransactionRecordCollectTimeout',
+      message: /The body fetches did not settle within (\d+)ms/
+    },
+    {
+      name: 'the writer',
+      arrange: () => {
+        ctl.writerHangs = true
+      },
+      errorName: 'TransactionRecordWriteTimeout',
+      message: /The Transaction Record writer did not settle within (\d+)ms/
+    }
+  ])(
+    'names the bound that expired when $name run out, and keeps the time left at the start',
+    async ({ arrange, errorName, message }) => {
+      arrange()
+      // Under the 40 s end reserve, so the record's bounds are cut to the time left.
+      const { info, result } = await renderLogged(3_000)
+      const { transactionRecord } = result
+      if (transactionRecord.present) throw new Error('expected the record to fail')
+      const { error } = transactionRecord
+      expect(error).toMatchObject({ name: errorName })
+      // The name is what the log keeps of the error.
+      expect(sanitizeError(error).name).toBe(errorName)
+      const boundMs = Number(String(error).match(message)?.[1])
+      const { timeLeftMs } = transactionRecord
+      expect(timeLeftMs).toBeGreaterThan(0)
+      expect(timeLeftMs).toBeLessThanOrEqual(2_000)
+      // The bound is the time left, read as the end phases start (less the collect, for the writer).
+      // 100 ms of slack absorbs timer drift on a loaded machine; a bound from any other source
+      // (the 5 s or 10 s constants) would miss by seconds.
+      expect(Math.abs((timeLeftMs as number) - boundMs)).toBeLessThanOrEqual(100)
+      const [[, , context]] = logged(info, 'backgroundRenderer.render_completed')
+      expect(context).not.toHaveProperty('timeLeftMs')
+    },
+    30_000
+  )
+
+  // Review of #2127, finding 7: the teardown after the print is no step's time.
+  it('stops timing the PDF step when the print ends, before the teardown', async () => {
+    ctl.blocker = {
+      enableBlockingInSession: vi.fn(),
+      isBlockingEnabled: vi.fn(() => true),
+      // Released in the teardown; a slow release would land on the last step timed.
+      disableBlockingInSession: vi.fn(() => {
+        const until = Date.now() + 200
+        while (Date.now() < until) {
+          // busy: the release is synchronous
+        }
+      })
+    }
+    const { info } = await renderLogged()
+    const [[, , context]] = logged(info, 'backgroundRenderer.render_completed')
+    const sum = STEP_KEYS.reduce((total, key) => total + (context[key] as number), 0)
+    expect((context.ms as number) - sum).toBeGreaterThanOrEqual(200)
+  }, 30_000)
+
+  it('logs the step a timed-out render reached, and the time of each step up to it', async () => {
+    ctl.loadUrlShouldHang = true
+    const info = vi.spyOn(logger, 'info')
+    const heard: string[] = []
+    const render = renderPageInHiddenWindow('https://example.test/hang', {
+      timeoutMs: 50,
+      ...IDS,
+      onStep: (step) => heard.push(step)
+    })
+    await expect(render).rejects.toBeInstanceOf(RecaptureTimeout)
+    await expect(render).rejects.toThrow('Recapture timed out after 50ms')
+    expect(heard).toEqual(['setup', 'load'])
+    expect(logged(info, 'backgroundRenderer.render_completed')).toEqual([])
+    const lines = logged(info, 'backgroundRenderer.render_failed')
+    expect(lines).toHaveLength(1)
+    const [[, , context, error]] = lines
+    expect(error).toBeInstanceOf(RecaptureTimeout)
+    expect(context).toEqual({
+      captureId: IDS.captureId,
+      ms: expect.any(Number),
+      setupMs: expect.any(Number),
+      loadMs: expect.any(Number),
+      step: 'load'
+    })
+  }, 30_000)
+
+  it('hears no step after the deadline, though the render goes on to its next', async () => {
+    // The proxy setup outlasts the deadline, and the render then goes on to the load.
+    ctl.egress = { kind: 'proxy', proxyUrl: 'socks5://127.0.0.1:1080', label: '' }
+    ctl.setProxyDelayMs = 200
+    ctl.loadUrlShouldHang = true
+    const info = vi.spyOn(logger, 'info')
+    const heard: string[] = []
+    await expect(
+      renderPageInHiddenWindow('https://example.test/', {
+        timeoutMs: 50,
+        ...IDS,
+        onStep: (step) => heard.push(step)
+      })
+    ).rejects.toBeInstanceOf(RecaptureTimeout)
+    expect(ctl.calls).toContain('loadURL https://example.test/')
+    expect(heard).toEqual(['setup'])
+    expect(logged(info, 'backgroundRenderer.render_completed')).toEqual([])
+    expect(logged(info, 'backgroundRenderer.render_failed').map(([, , c]) => c.step)).toEqual([
+      'setup'
+    ])
+  }, 30_000)
+
+  it('logs the step a render that threw reached, with its error', async () => {
+    ctl.loadUrlShouldReject = true
+    const info = vi.spyOn(logger, 'info')
+    await expect(
+      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000, ...IDS })
+    ).rejects.toThrow('navigation failed')
+    const [[, , context, error]] = logged(info, 'backgroundRenderer.render_failed')
+    expect(context).toMatchObject({ captureId: IDS.captureId, step: 'load' })
+    expect(String(error)).toContain('navigation failed')
+  }, 30_000)
+
+  // Review of #2133, finding 7: a development build's log call can throw (logSafe.ts).
+  it('tears the window down before the failed line, so a line that throws leaks none', async () => {
+    ctl.loadUrlShouldReject = true
+    vi.spyOn(logger, 'info').mockImplementation((_source, code) => {
+      if (code === 'backgroundRenderer.render_failed') throw new Error('log call threw')
+      return 'log-id'
+    })
+    await expect(
+      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000, ...IDS })
+    ).rejects.toThrow()
+    expect(ctl.lastWindow!.isDestroyed()).toBe(true)
+  }, 30_000)
+
+  it('logs no render line for a refused hop, which the job logs as skipped', async () => {
+    ctl.hop = { event: 'will-redirect', url: 'http://127.0.0.1:8080/admin', isMainFrame: true }
+    const info = vi.spyOn(logger, 'info')
+    await expect(
+      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000, ...IDS })
+    ).rejects.toThrow(RefusedAddressError)
+    expect(
+      info.mock.calls.filter(([, code]) => String(code).startsWith('backgroundRenderer.'))
+    ).toEqual([])
+  }, 30_000)
 })

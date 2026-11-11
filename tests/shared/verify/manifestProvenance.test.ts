@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { createHash } from 'crypto'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { getPublicKeyPem } from '@main/services/signingKey'
@@ -27,12 +28,18 @@ import {
 // contradict each other, at every schema version. The answers frozen here:
 //   1. each contradicting shape is refused with its own message, at every
 //      version, and a shape breaking two rules carries both messages;
-//   2. a recapture or duplicate link that is the empty string names no
-//      Capture and no time, and is refused at every version;
-//   3. every shape the app writes still parses at every version it can carry,
-//      and a chain and a package holding them still verify at each signed
-//      schema version;
-//   4. the app and package verifiers fail a chain holding a contradicting
+//   2. a duplicate link that is the empty string names no Capture and no time,
+//      and is refused at every version;
+//   3. an empty recapture link reads as no link and is accepted under any
+//      method, because a hand-typed console call made v1.0.1-beta.12 to
+//      beta.26 sign one (the tag check in
+//      https://github.com/thebristolsound/birdbrain/pull/2180#issuecomment-6801348456,
+//      tolerated by the maintainer's decision of 2026-11-11), and the chain
+//      beta.26 signed that way still verifies;
+//   4. the shapes the extension ingest, Add URLs, Recapture, that console call
+//      and Duplicate write parse at every version, and a chain and a package
+//      holding them verify at each signed schema version;
+//   5. the app and package verifiers fail a chain holding a contradicting
 //      entry, and verify.sh, which reads none of these fields, still passes it.
 
 const SUPERSEDES_MESSAGE = '`supersedesCaptureId` requires method `background`'
@@ -52,16 +59,25 @@ const VERSIONS = Array.from({ length: MANIFEST_SCHEMA_VERSION }, (_, i) => i + 1
 // The signed versions: the chain verifier checks signatures from schema 2 on.
 const SIGNED_VERSIONS = VERSIONS.filter((version) => version >= 2)
 
-// The shapes the extension ingest, Add URLs, Recapture and Duplicate write on
-// a capture entry: no method, a background method with no recapture link, a
-// background method with one, and the duplicate method with both halves of
-// its pair. The launched browser's two methods carry no link and need schema
-// 7; they are accepted below.
+// The shapes the extension ingest, Add URLs, Recapture, a hand-typed console
+// recapture call and Duplicate write on a capture entry: no method, a
+// background method with no recapture link, a background method with one or
+// with an empty one, and the duplicate method with both halves of its pair.
+// The launched browser's two methods carry no link and need schema 7; they
+// are accepted below.
 const WRITTEN_SHAPES: Array<[string, Record<string, unknown>]> = [
   ['an extension capture, which names no method', {}],
   ['a first-time background capture from Add URLs', { method: 'background' }],
   ['a recapture', { method: 'background', supersedesCaptureId: SOURCE_ID }],
-  ['a duplicate', { method: 'duplicate', ...DUPLICATE_PAIR }]
+  ['a duplicate', { method: 'duplicate', ...DUPLICATE_PAIR }],
+  ['a console-made recapture with an empty link', { method: 'background', supersedesCaptureId: '' }]
+]
+
+// An empty recapture link under each other method, read as no link.
+const EMPTY_RECAPTURE_LINK_SHAPES: Array<[string, Record<string, unknown>]> = [
+  ['with no method', { supersedesCaptureId: '' }],
+  ['on an extension capture', { method: 'extension', supersedesCaptureId: '' }],
+  ['on a duplicate', { method: 'duplicate', ...DUPLICATE_PAIR, supersedesCaptureId: '' }]
 ]
 
 // One shape per rule, each breaking that rule alone.
@@ -100,13 +116,9 @@ const ONE_RULE_SHAPES: Array<[string, Record<string, unknown>, string]> = [
   ]
 ]
 
-// Links that are present but empty, with the field each one is refused on.
-const EMPTY_LINK_SHAPES: Array<[string, Record<string, unknown>, string[]]> = [
-  [
-    'a recapture link naming no Capture',
-    { method: 'background', supersedesCaptureId: '' },
-    ['supersedesCaptureId']
-  ],
+// Duplicate links that are present but empty, with the field each one is
+// refused on.
+const EMPTY_DUPLICATE_SHAPES: Array<[string, Record<string, unknown>, string[]]> = [
   [
     'a duplicate naming no source',
     { method: 'duplicate', ...DUPLICATE_PAIR, duplicateOfCaptureId: '' },
@@ -160,7 +172,7 @@ describe('capture entry provenance invariants — the schema', () => {
     )
   })
 
-  for (const [label, fields, paths] of EMPTY_LINK_SHAPES) {
+  for (const [label, fields, paths] of EMPTY_DUPLICATE_SHAPES) {
     it(`refuses ${label}, at every schema version`, () => {
       for (const version of VERSIONS) {
         const found = issues(body(fields, version)).map(({ code, path }) => ({ code, path }))
@@ -183,6 +195,12 @@ describe('capture entry provenance invariants — the schema', () => {
 
   for (const [label, fields] of WRITTEN_SHAPES) {
     it(`accepts ${label}, at every schema version`, () => {
+      for (const version of VERSIONS) expect(messages(fields, version), `v${version}`).toEqual([])
+    })
+  }
+
+  for (const [label, fields] of EMPTY_RECAPTURE_LINK_SHAPES) {
+    it(`reads an empty recapture link ${label} as no link, at every schema version`, () => {
       for (const version of VERSIONS) expect(messages(fields, version), `v${version}`).toEqual([])
     })
   }
@@ -234,7 +252,7 @@ describe('capture entry provenance invariants — the verifiers', () => {
     })
   }
 
-  for (const [label, fields] of [...ONE_RULE_SHAPES, ...EMPTY_LINK_SHAPES]) {
+  for (const [label, fields] of [...ONE_RULE_SHAPES, ...EMPTY_DUPLICATE_SHAPES]) {
     it(`breaks the chain at ${label}`, () => {
       const result = verifyChain([
         body({}, 2),
@@ -300,4 +318,48 @@ describe('capture entry provenance invariants — the verifiers', () => {
       }
     )
   }
+})
+
+// A one-entry chain that v1.0.1-beta.26's own recapture queue, capture
+// lifecycle, manifest writer and signing code signed in that tag's test
+// runner, handed `supersedesCaptureId: ''` as a hand-typed console call would
+// hand it (the tag check linked above). The bytes are frozen: regenerating
+// them would make the chain this code wrote, not one a release wrote.
+const BETA_26_FIXTURE_DIR = join(__dirname, 'fixtures', 'beta26-empty-recapture-link')
+const BETA_26_MANIFEST_SHA256 = 'eac26ca9f5fb631109eb13845603c379b0052788c1f9ac1575ba73f63fe86672'
+const BETA_26_PUBLIC_KEY_SHA256 = 'a7721b5f0717d85f1289bc7f20a39983b435d0e85ad4630b2b8ef9a62ded5bbf'
+
+describe('capture entry provenance invariants — a chain v1.0.1-beta.26 signed', () => {
+  const read = (name: string) => readFileSync(join(BETA_26_FIXTURE_DIR, name))
+  const sha256 = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex')
+
+  it('is byte-for-byte the frozen chain and key', () => {
+    expect(sha256(read('manifest.jsonl'))).toBe(BETA_26_MANIFEST_SHA256)
+    expect(sha256(read('signing-public-key.pem'))).toBe(BETA_26_PUBLIC_KEY_SHA256)
+  })
+
+  it('holds a signed background capture whose recapture link is empty', () => {
+    const [entry] = read('manifest.jsonl')
+      .toString('utf-8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+    expect(entry).toMatchObject({
+      type: 'capture',
+      method: 'background',
+      supersedesCaptureId: '',
+      toolVersion: '1.0.1-beta.26',
+      schemaVersion: 6
+    })
+    expect(typeof entry.signature).toBe('string')
+    expect(ManifestEntrySchema.safeParse(entry).error?.issues ?? []).toEqual([])
+  })
+
+  it('verifies', () => {
+    const result = verifyManifestChainText(read('manifest.jsonl').toString('utf-8'), {
+      publicKeyPem: read('signing-public-key.pem').toString('utf-8')
+    })
+    expect(result.reason).toBeUndefined()
+    expect(result.valid).toBe(true)
+  })
 })

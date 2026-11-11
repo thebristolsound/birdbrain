@@ -130,6 +130,16 @@ function replaceOnce(buffer: Buffer, from: string, to: string): Buffer {
   return Buffer.from(text.slice(0, at) + to + text.slice(at + from.length), 'latin1')
 }
 
+const PART_FOUR_LOCATION = 'https://widgets.example/embed/frame.html'
+
+function snapshotOnPartFour(): Buffer {
+  return replaceOnce(
+    fixture(),
+    'Snapshot-Content-Location: https://example.com/report',
+    `Snapshot-Content-Location: ${PART_FOUR_LOCATION}`
+  )
+}
+
 describe('listMhtmlParts known answers', () => {
   it('lists every part of the fixture with its span, hash and HTML-part number', () => {
     const buffer = fixture()
@@ -177,6 +187,53 @@ describe('listMhtmlParts known answers', () => {
       ({ frame }) => frame === 'main'
     )
     expect(marked[0].htmlPart).toBe(main?.part)
+  })
+
+  // The main document is the HTML part saved from the snapshot address, not the first one.
+  // In the fixture as stored they are the same part, so these three move the address to part 4,
+  // the second HTML part. The answers are read off the fixture, not computed.
+  it('marks the part saved from the snapshot address when it is not the first HTML part', () => {
+    const buffer = snapshotOnPartFour()
+    const result = listed(listMhtmlParts(buffer, MHTML_PARTS_LIMITS, READ_AT))
+    expect(result.snapshotLocation).toBe(PART_FOUR_LOCATION)
+    expect(result.parts.map(({ mainDocument }) => mainDocument)).toEqual([
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ])
+    expect(result.parts[3]).toMatchObject({ position: 4, htmlPart: 1 })
+    const main = readHtmlParts(buffer, 'https://example.com/').parts.find(
+      ({ frame }) => frame === 'main'
+    )
+    expect(main?.part).toBe(1)
+  })
+
+  it('finds it by the full address when two HTML parts show the same cut address', () => {
+    const buffer = replaceOnce(
+      snapshotOnPartFour(),
+      '\r\nContent-Location: https://example.com/report',
+      '\r\nContent-Location: https://widgets.example/embed/first.html'
+    )
+    const limits = { ...MHTML_PARTS_LIMITS, maxFieldChars: 30 }
+    const result = listed(listMhtmlParts(buffer, limits, READ_AT))
+    expect(result.snapshotLocation).toBe('https://widgets.example/embed/')
+    expect(result.parts[0].contentLocation).toBe('https://widgets.example/embed/')
+    expect(result.parts[3].contentLocation).toBe('https://widgets.example/embed/')
+    expect(result.parts.filter(({ mainDocument }) => mainDocument)).toEqual([
+      expect.objectContaining({ position: 4, htmlPart: 1 })
+    ])
+  })
+
+  it('marks no listed part when the main document is past the row ceiling', () => {
+    const limits = { ...MHTML_PARTS_LIMITS, maxRows: 3 }
+    const result = listed(listMhtmlParts(snapshotOnPartFour(), limits, READ_AT))
+    expect(result.parts.map(({ position }) => position)).toEqual([1, 2, 3])
+    expect(result.parts.map(({ htmlPart }) => htmlPart)).toEqual([0, null, null])
+    expect(result.parts.map(({ mainDocument }) => mainDocument)).toEqual([false, false, false])
+    expect(result.truncated).toBe(true)
   })
 
   it('marks no part as the main document when the archive holds no HTML part', () => {
@@ -299,8 +356,6 @@ describe('listMhtmlParts ceilings', () => {
       false,
       false
     ])
-    // The cut is for display: the main document is still found by the full address.
-    expect(result.parts[0].mainDocument).toBe(true)
     expect(result.topContentType).toBe('multipart/related; type="text/')
     expect(result.boundary).toBe('----PartsFixtureBoundary')
     expect(result.fieldsTruncated).toBe(true)

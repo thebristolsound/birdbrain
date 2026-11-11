@@ -7,6 +7,7 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 printf '{"labels":["merge"]}' >"$tmp/merge.json"
 printf '{"labels":["merge-gate"]}' >"$tmp/gate.json"
+printf '{"labels":["break-glass"]}' >"$tmp/glass.json"
 fails=0
 
 expect() {
@@ -33,8 +34,15 @@ expect 2 'gh api -X POST repos/o/r/issues/12/labels -f labels[]=agent-pr -f labe
 expect 2 'gh api repos/o/r/issues/12/labels --input merge.json'
 expect 2 'gh api repos/o/r/issues/12/labels --input - <<< x'
 expect 2 'OTHER=1 gh pr edit 12 --add-label merge'
+expect 2 'gh pr edit 12 --add-label break-glass'
+expect 2 'agh pr edit 12 --add-label "agent-pr,Break-Glass"'
+expect 2 'gh api repos/o/r/issues/12/labels -f "labels[]=break-glass"'
+expect 2 'gh api repos/o/r/issues/12/labels --input glass.json'
 expect 0 'BIRDBRAIN_MAINTAINER_LABEL_OK=1 gh pr edit 12 --add-label merge'
 expect 0 'BIRDBRAIN_MAINTAINER_LABEL_OK=1 gh api repos/o/r/issues/12/labels -f labels[]=approved'
+expect 0 'BIRDBRAIN_MAINTAINER_LABEL_OK=1 gh pr edit 12 --add-label break-glass'
+expect 0 'gh pr edit 12 --remove-label break-glass'
+expect 0 'gh pr edit 12 --add-label break-glass-drill'
 expect 0 'gh pr edit 12 --remove-label merge'
 expect 0 'gh pr edit 12 --add-label agent-pr --remove-label merge,approved'
 expect 0 'gh pr edit 12 --add-label merge-gate'

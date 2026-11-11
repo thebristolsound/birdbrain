@@ -121,6 +121,20 @@ describe('StatusGroup', () => {
     expect(vpnStatus).not.toHaveBeenCalled()
   })
 
+  it('keeps a long Egress label whole in the title and the accessible name', async () => {
+    const label = 'Field office relay through the harbour authority gateway, floor three'
+    renderWith({ kind: 'proxy', proxyUrl: 'socks5://127.0.0.1:1080', label }, undefined)
+    await waitFor(() =>
+      expect(screen.getByTestId('egress-indicator').getAttribute('title')).toBe(
+        `Egress: Proxy: ${label}`
+      )
+    )
+    expect(screen.getByTestId('egress-indicator').textContent).toBe(`Proxy: ${label}`)
+    expect(screen.getByTestId('status-group').getAttribute('aria-label')).toContain(
+      `Egress: Proxy: ${label}.`
+    )
+  })
+
   it('shows the count while a session runs, and failures always', async () => {
     useAppStore.setState({
       sessionActive: true,
@@ -380,12 +394,18 @@ describe('StatusGroup announcements and popover', () => {
     expect(dots[2]).toContain('bg-text-faint')
   })
 
+  // Both are off nominal here, so the icon has an Egress icon to lose to.
   it('shows the Capture Health icon, not the Egress icon, when failures are the worst', async () => {
     useAppStore.setState({ captureStats: { successCount: 1, failCount: 1, skipCount: 0 } })
-    const button = await renderNominal()
-    await waitFor(() => expect(button.dataset.severity).toBe('danger'))
-    const icon = button.querySelector('svg')
-    expect(icon?.getAttribute('class')).toContain('lucide-activity')
+    renderWith({ kind: 'direct' }, false)
+    const button = await screen.findByTestId('status-group')
+    await waitFor(() =>
+      expect(button.getAttribute('aria-label')).toContain('Egress: Direct · VPN not seen')
+    )
+    expect(button.dataset.severity).toBe('danger')
+    const icons = button.querySelectorAll('svg')
+    expect(icons).toHaveLength(1)
+    expect(icons[0].getAttribute('class')).toContain('lucide-activity')
   })
 })
 

@@ -159,6 +159,8 @@ describe('the breadcrumb chip', () => {
     expect(chip.dataset.hue).toBe('accent')
     const switcher = screen.getByTestId('topbar-case-name')
     expect(switcher.contains(chip)).toBe(true)
+    // The chip and the chevron share the name's track, which gives way down to 160 pixels.
+    expect(switcher.parentElement!.className).toContain('minmax(10rem,max-content)')
     expect(switcher.title).toMatch(
       /^Operation Kestrel · Switch case \(.+\) · You are AR in this Case$/
     )

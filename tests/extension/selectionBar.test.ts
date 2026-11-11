@@ -1369,7 +1369,7 @@ describe("the operator's selection stays out of the frames (#993)", () => {
         expect(selectionEnds()).toEqual([...point, ...point])
       }
 
-      it('leaves a caret in a focused email input alone', () => {
+      it("leaves a caret in the component's email input alone", () => {
         focusedInputInComponent(3)
         expectCaretLeftAlone()
       })
@@ -1380,13 +1380,13 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       })
 
       // There the point before the component is all the document reports of the input.
-      it('leaves that caret alone where composed ranges are unavailable too', () => {
+      it('leaves the caret alone there without composed ranges', () => {
         withoutComposedRanges()
         focusedInputInComponent(3)
         expectCaretLeftAlone()
       })
 
-      it('puts that selection back where composed ranges are unavailable too', () => {
+      it('puts the selection back there without composed ranges', () => {
         withoutComposedRanges()
         focusedInputInComponent(0, 7)
         expectSelectionHeldAndPutBack()
@@ -1478,24 +1478,27 @@ describe("the operator's selection stays out of the frames (#993)", () => {
         }
       }
 
-      describe.each(Object.keys(TARGETS) as Target[])('to %s', (target) => {
-        it.each(Object.keys(CONTROLS) as Kind[])(
-          'leaves the %s control as the page had it',
-          async (kind) => {
-            // Its caret, then a selection in it.
-            await expectLeftAlone(leftControl(kind, target, 'the page', 3, 3))
-            await expectLeftAlone(leftControl(kind, target, 'the page', 2, 6))
-          }
+      const each = (kinds: Kind[]): Array<[Kind, Target]> =>
+        (Object.keys(TARGETS) as Target[]).flatMap((target) =>
+          kinds.map((kind): [Kind, Target] => [kind, target])
         )
 
-        it.each(['text', 'email'] as Kind[])(
-          'leaves the %s control inside a web component as the page had it',
-          async (kind) => {
-            await expectLeftAlone(leftControl(kind, target, 'a web component', 3, 3))
-            await expectLeftAlone(leftControl(kind, target, 'a web component', 6, 2))
-          }
-        )
-      })
+      it.each(each(Object.keys(CONTROLS) as Kind[]))(
+        'leaves the %s control as the page had it, with the focus on %s',
+        async (kind, target) => {
+          // Its caret, then a selection in it.
+          await expectLeftAlone(leftControl(kind, target, 'the page', 3, 3))
+          await expectLeftAlone(leftControl(kind, target, 'the page', 2, 6))
+        }
+      )
+
+      it.each(each(['text', 'email']))(
+        'leaves the %s control of a web component as the page had it, with the focus on %s',
+        async (kind, target) => {
+          await expectLeftAlone(leftControl(kind, target, 'a web component', 3, 3))
+          await expectLeftAlone(leftControl(kind, target, 'a web component', 6, 2))
+        }
+      )
 
       it('leaves it alone where composed ranges are unavailable too', async () => {
         Reflect.deleteProperty(Selection.prototype, 'getComposedRanges')

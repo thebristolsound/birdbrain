@@ -186,6 +186,16 @@ function validateBatchPayload(payload: unknown): CaptureBatchPayload {
   return { caseId: p.caseId, captureIds: p.captureIds }
 }
 
+// An absent recapture link is a first-time capture; a present one that names
+// nothing would be signed as written, so it fails here, before anything is
+// queued (#1000).
+function refuseBlankRecaptureLink(link: unknown): void {
+  if (link === undefined) return
+  if (typeof link !== 'string' || link.trim() === '') {
+    throw new IpcFailure('Invalid recapture link', 'INVALID_RECAPTURE_LINK')
+  }
+}
+
 // Same-case snapshot for the metadata batches (#394): ids whose row lives in
 // another case fail the whole call before any write, stale ids are dropped so
 // `affected` tells the truth. These batches touch no manifest and no lifecycle
@@ -1312,6 +1322,7 @@ export function registerIpcHandlers(deps: {
     if (!payload || !Array.isArray(payload.urls) || typeof payload.caseId !== 'string') {
       throw new IpcFailure('Invalid recapture payload', 'INVALID_RECAPTURE_PAYLOAD')
     }
+    refuseBlankRecaptureLink(payload.supersedesCaptureId)
     if (payload.linkedFrom !== undefined) return recaptureService.enqueueLink(payload)
     return recaptureService.enqueue(
       payload.urls.map((url) => ({
@@ -1332,6 +1343,7 @@ export function registerIpcHandlers(deps: {
       caseId,
       supersedesCaptureId: capture.id
     }))
+    for (const { supersedesCaptureId } of jobs) refuseBlankRecaptureLink(supersedesCaptureId)
     return recaptureService.enqueue(jobs)
   })
 

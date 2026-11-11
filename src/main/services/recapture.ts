@@ -168,6 +168,7 @@ export const STORED_JOB_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
 export const INTERRUPTED_JOB_ERROR = 'Birdbrain closed while this job was running'
 
 export const RESTORE_REMOVED_JOB_ERROR = 'A database restore removed this job'
+export const RESTORE_REMOVED_CAPTURE_ERROR = "A database restore removed this job's Capture"
 
 // How a job ended, as its row records it. `logStored` writes a stored job's log line.
 type JobOutcome = Omit<JobEnd, 'finishedAt'> & { logStored?: () => void }
@@ -673,9 +674,28 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         emitJob(claimed)
         active = { job: jobOf(claimed), claimed, captureId: attempt.captureId }
         try {
-          const { logStored, ...outcome } = await runJob(active.job, attempt)
+          let outcome = await runJob(active.job, attempt)
+          // A restore can replace the database after the ingest committed and before the job's
+          // cleanup returns. The copy then holds no such Capture, and nothing corrects a `stored`
+          // row.
+          if (
+            outcome.state === 'stored' &&
+            captureRepo.getCapture(attempt.captureId)?.caseId !== claimed.caseId
+          ) {
+            logger.warn('backgroundRenderer', 'backgroundRenderer.job_failed', {
+              captureId: ident(attempt.captureId),
+              caseId: ident(claimed.caseId),
+              failureKind: tag('interrupted', 'backgroundJobFailureKind')
+            })
+            outcome = {
+              state: 'failed',
+              failureKind: 'interrupted',
+              error: RESTORE_REMOVED_CAPTURE_ERROR
+            }
+          }
+          const { logStored, ...end } = outcome
           const ended = backgroundJobRepo.finishJob(claimed.jobId, {
-            ...outcome,
+            ...end,
             finishedAt: new Date().toISOString()
           })
           if (ended) emitJob(ended)

@@ -1,6 +1,6 @@
 # Cross-model review is advisory and runs on the maintainer's machine
 
-**Status:** Accepted
+**Status:** Superseded by [ADR-0057](0057-a-two-family-review-fleet-reads-every-pr-and-gates-the-merge.md)
 
 **Date:** 2026-11-08
 

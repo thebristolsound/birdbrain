@@ -1099,6 +1099,16 @@ describe('database', () => {
       expect(rows[0].captureTitle).toBe('Page B')
       expect(rows[0].captureTimestamp).toBe('2026-01-02T00:00:00.000Z')
       expect(rows[1].captureUrl).toBe('https://example.com/a')
+      // The CSV is built from these rows alone, so it carries neither matched_at nor
+      // match_origin (#1069); the docs say so.
+      expect(Object.keys(rows[0]).sort()).toEqual([
+        'captureTimestamp',
+        'captureTitle',
+        'captureUrl',
+        'isRegex',
+        'selectorLabel',
+        'selectorPattern'
+      ])
       // Other case's match must not leak in.
       expect(rows.find((r) => r.captureUrl === 'https://other.com')).toBeUndefined()
     })

@@ -1377,12 +1377,15 @@ export function isSelectorOrigin(value: unknown): value is SelectorOrigin {
   return SELECTOR_ORIGINS.includes(value as SelectorOrigin)
 }
 
-// Which pass wrote a Persisted Match (#1069): ingest, a Selector's creation, an
-// edit to its pattern, or an operator's rescan. Named apart from `origin` because
-// a Case Archive carries selectors and their matches side by side, and the two
-// mean different things. Recorded when the row is written and never edited
-// after. Absent means the row predates provenance recording; legacy rows are not
-// backfilled, because guessing a value would be a false provenance claim.
+// Which pass wrote a Persisted Match (#1069): the one that runs when a Capture
+// is added to the Case, a Selector's creation, an edit to its pattern, or an
+// operator's rescan. Named apart from `origin` because a Case Archive carries
+// selectors and their matches side by side, and the two mean different things.
+// Recorded when the row is written. A matching pass never changes it on a row
+// that exists; the Database Admin hatch can, by hand. Absent means no recorded
+// value: the row predates provenance recording, or it was imported from an
+// archive whose value the import does not keep. Legacy rows are not backfilled,
+// because guessing a value would be a false provenance claim.
 export const MATCH_ORIGINS = ['capture-time', 'create', 'update', 'rescan'] as const
 export type MatchOrigin = (typeof MATCH_ORIGINS)[number]
 

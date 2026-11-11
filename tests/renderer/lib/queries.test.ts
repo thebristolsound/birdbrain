@@ -484,7 +484,7 @@ describe('useTagsMutations', () => {
 })
 
 describe('useSelectorsMutations', () => {
-  it('invalidates selector list, match counts and coverage on every op', async () => {
+  it('invalidates selector list, match counts, coverage and matching captures on every op', async () => {
     const { invalidate, wrapper } = setup()
     const { result } = renderHook(() => useSelectorsMutations('c1'), { wrapper })
 
@@ -502,6 +502,8 @@ describe('useSelectorsMutations', () => {
       expect(keys).toContainEqual(['selectors', 'c1'])
       expect(keys).toContainEqual(['selectors', 'matchCounts', 'c1'])
       expect(keys).toContainEqual(['selectors', 'coverage', 'c1'])
+      // Not a prefix of ['selectors', 'c1'], so it needs its own line (#1203).
+      expect(keys).toContainEqual(['selectors', 'matchingCaptures', 'c1'])
     }
   })
 })
@@ -575,15 +577,17 @@ describe('useAnnotationsMutations', () => {
 })
 
 describe('useSettingsMutations', () => {
+  // A save of the operator name also rereads the inventories (X47); tests/renderer/api/settings
+  // pins that. Every other setting writes the cache and nothing else.
   it('writes the settings cache without invalidating anything', async () => {
     const { invalidate, setQueryData, wrapper } = setup()
-    api.settings.update.mockResolvedValue({ operatorName: 'A' })
+    api.settings.update.mockResolvedValue({ theme: 'dark' })
     const { result } = renderHook(() => useSettingsMutations(), { wrapper })
 
     await act(async () => {
-      await result.current.update.mutateAsync({ operatorName: 'A' })
+      await result.current.update.mutateAsync({ theme: 'dark' })
     })
-    expect(setQueryData).toHaveBeenCalledWith(['settings'], { operatorName: 'A' })
+    expect(setQueryData).toHaveBeenCalledWith(['settings'], { theme: 'dark' })
     expect(invalidate).not.toHaveBeenCalled()
   })
 })

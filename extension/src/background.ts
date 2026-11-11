@@ -18,6 +18,7 @@ import { MAX_SCREENSHOT_BITMAP_BYTES } from '@shared/constants'
 import { matchIgnoredUrl } from '@shared/urlPatterns'
 import { selectionToTagName } from '@shared/selectionKind'
 import { canonicalizeUrl } from '@shared/urlCanonicalize'
+import { extensionVersionOf } from '@shared/extensionVersion'
 import type {
   CaptureCardDetails,
   ActiveSelectorsResult,
@@ -46,7 +47,7 @@ function captureMhtml(tabId: number): Promise<Blob> {
 }
 
 function getExtensionVersion(): string {
-  return chrome.runtime.getManifest().version
+  return extensionVersionOf(chrome.runtime.getManifest())
 }
 
 function getUserAgentString(): string {

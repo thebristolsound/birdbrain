@@ -99,6 +99,20 @@ describe('NoteCard', () => {
     expect(className).not.toContain('p-4')
   })
 
+  // The stored thumbnail is 4:3 and this box is wider, so object-cover crops it
+  // vertically; the top is the part of the page worth showing (#1317).
+  it('anchors the thumbnail crop to the top', async () => {
+    fakeBridge({ captures: { openExternal, getThumbnail: vi.fn(async () => 'thumb') } })
+    renderCard(false, { ...note, captureId: 'cap1' })
+
+    const { className } = await waitFor(() => {
+      const img = screen.getByTestId('note-card-note1').querySelector('img')
+      expect(img).not.toBeNull()
+      return img!
+    })
+    expect(className.split(' ')).toEqual(expect.arrayContaining(['object-cover', 'object-top']))
+  })
+
   it('says nothing when the source URL opens successfully', async () => {
     openExternal.mockResolvedValue(undefined)
     renderCard()

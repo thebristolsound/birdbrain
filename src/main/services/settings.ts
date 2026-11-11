@@ -8,6 +8,7 @@ import {
 } from '@shared/schemas'
 import { DEFAULT_DEDUPE_WINDOW_SECONDS, DEFAULT_TSA_URL } from '@shared/constants'
 import { logger } from '@main/services/logger'
+import { validateIgnorePatternAsStored } from '@shared/urlPatterns'
 
 let _app: typeof import('electron').app | null = null
 try {
@@ -107,7 +108,28 @@ export function initSettings(userDataPath: string): void {
     }
   } else {
     removeRetiredSettings()
+    logInvalidIgnorePatterns()
   }
+}
+
+// An edit can no longer store an ignored URL pattern that validateIgnorePatternAsStored
+// refuses (#724), but one stored before that is kept rather than dropped. The count, never the
+// patterns, is logged once per launch so the log shows the list holds such a rule. A file
+// the schema rejects loads as defaults, so its patterns are not in force and are not counted.
+function logInvalidIgnorePatterns(): void {
+  let saved: unknown
+  try {
+    saved = JSON.parse(readFileSync(settingsPath, 'utf-8'))
+  } catch {
+    return
+  }
+  const parsed = PartialBirdbrainSettingsSchema.safeParse(saved)
+  if (!parsed.success) return
+  const { ignoredUrlPatterns = [] } = parsed.data
+  const count = ignoredUrlPatterns.filter(
+    (pattern) => !validateIgnorePatternAsStored(pattern).ok
+  ).length
+  if (count > 0) logger.warn('settings', 'settings.ignore_patterns_invalid', { count })
 }
 
 // Rewrites settings.json without the retired keys, leaving every other key as
@@ -284,7 +306,32 @@ export function updateSettings(partial: Partial<BirdbrainSettings>): BirdbrainSe
       `Invalid settings: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`
     )
   }
+  const refused = refusedIgnorePatterns(parsed.data.ignoredUrlPatterns)
+  if (refused.length > 0) throw new InvalidSettingsError(`Invalid settings: ${refused.join('; ')}`)
   return writeSettings(suppliedKeysOnly(partial, parsed.data))
+}
+
+// The global ignore list gets the per-case list's check (#724; see validateIgnorePattern for
+// why), plus surrounding whitespace (validateIgnorePatternAsStored). It applies only to
+// entries the stored list does not already hold, counted per entry, so a second copy of a
+// stored pattern is a new one. A pattern stored before the check is kept, and exempting it
+// is what lets a list holding several be edited at all: every removal but the last leaves
+// one in the list.
+function refusedIgnorePatterns(patterns: string[] | undefined): string[] {
+  if (!patterns) return []
+  const stored = new Map<string, number>()
+  for (const pattern of getSettings().ignoredUrlPatterns) {
+    stored.set(pattern, (stored.get(pattern) ?? 0) + 1)
+  }
+  return patterns.flatMap((pattern, i) => {
+    const left = stored.get(pattern) ?? 0
+    if (left > 0) {
+      stored.set(pattern, left - 1)
+      return []
+    }
+    const result = validateIgnorePatternAsStored(pattern)
+    return result.ok ? [] : [`ignoredUrlPatterns.${i}: ${result.reason}`]
+  })
 }
 
 // The launched browser keys, which the settings edit above strips (SettingsUpdateSchema).

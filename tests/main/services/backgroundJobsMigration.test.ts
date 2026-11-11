@@ -6,7 +6,7 @@ import { closeDatabase, getDb, initDatabase, LATEST_SCHEMA_VERSION } from '@main
 import { createCase } from '@main/services/db/caseRepo'
 import { insertQueuedJobs, listJobs } from '@main/services/db/backgroundJobRepo'
 
-// Migration 46: the background job queue's table (docs/specs/2026-11-09-batch-capture-throughput-
+// Migration 47: the background job queue's table (docs/specs/2026-11-09-batch-capture-throughput-
 // design.md, "Migration"). It adds one table and two indexes and alters nothing that exists.
 
 type ColumnInfo = { name: string; type: string; notnull: number; dflt_value: unknown; pk: number }
@@ -42,13 +42,13 @@ function otherObjects(): Array<{ type: string; name: string; sql: string | null 
     .all() as Array<{ type: string; name: string; sql: string | null }>
 }
 
-describe('migration v46 (background_jobs)', () => {
+describe('migration v47 (background_jobs)', () => {
   let root: string
   let dbPath: string
   let caseId: string
 
   beforeEach(async () => {
-    root = mkdtempSync(join(tmpdir(), 'bb-migration-46-'))
+    root = mkdtempSync(join(tmpdir(), 'bb-migration-47-'))
     dbPath = join(root, 'birdbrain.db')
     await initDatabase(dbPath)
     caseId = createCase({ name: 'Background jobs' }).id
@@ -106,9 +106,11 @@ describe('migration v46 (background_jobs)', () => {
     expect(listJobs({ batchId: 'batch' })).toEqual([])
   })
 
-  it('upgrades v45 by adding the table and leaving every existing object as it was', async () => {
+  // A database a build without this table has opened: version 46, which the selector match
+  // provenance migration set, and no `background_jobs`.
+  it('upgrades v46 by adding the table and leaving every existing object as it was', async () => {
     getDb().exec('DROP TABLE background_jobs')
-    getDb().pragma('user_version = 45')
+    getDb().pragma('user_version = 46')
     const before = otherObjects()
     closeDatabase()
     await initDatabase(dbPath)
@@ -122,7 +124,7 @@ describe('migration v46 (background_jobs)', () => {
     queue('kept')
     const before = otherObjects()
     for (let run = 0; run < 2; run++) {
-      getDb().pragma('user_version = 45')
+      getDb().pragma('user_version = 46')
       closeDatabase()
       await initDatabase(dbPath)
       expect(getDb().pragma('user_version', { simple: true })).toBe(LATEST_SCHEMA_VERSION)

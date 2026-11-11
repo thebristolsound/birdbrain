@@ -14,6 +14,10 @@ merge flow of [ADR-0041](0041-merges-are-requested-by-label.md).
 one-hour wait and the other-reviewer rule. The spend cap is unchanged. Decision 6 has the
 detail; [the plan](../plans/2026-10-12-review-on-request-label.md) has the implementation.
 
+**Amended 2026-11-10:** [ADR-0057](0057-a-two-family-review-fleet-reads-every-pr-and-gates-the-merge.md)
+replaces the hourly schedule with the review fleet, which reads every PR on each push. The
+`review:requested` label path of decision 6 stays; nothing else here runs on its own.
+
 ## Context
 
 The `pr-sweep` skill reviews, fixes and merges the open PRs, and it does so on the strength of
@@ -71,7 +75,9 @@ machine-account PRs. The 61 PRs he opened that merged on 2026-10-01 or later, re
    slots. It skips the one-hour wait, the other-reviewer rule, the two-failure stop and the
    process-doc skip, and a maintainer-applied `review:skipped` comes off. The post step removes the label on every
    outcome. A PR already reviewed at its head loses the label without a new review. When the
-   spend cap holds a request, the label stays and a later scheduled fire takes it.
+   spend cap holds a request, the label stays. Since ADR-0057 removed the schedule, no later
+   fire takes it: the maintainer removes and re-applies the label, or starts a manual run, once
+   the cap has room.
 
 ## Consequences
 

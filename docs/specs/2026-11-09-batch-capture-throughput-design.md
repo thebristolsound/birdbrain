@@ -302,14 +302,15 @@ ordering rule, not a guarantee that every future paste takes priority over resum
 #### Shape
 
 `drain()` becomes a pool of up to `concurrency` worker loops. Each loop claims the first eligible
-`queued` row in the claim order above in one synchronous statement (better-sqlite3 runs in the
+`queued` row in the claim order above in one synchronous transaction (better-sqlite3 runs in the
 main process, so two loops cannot claim the same row), sets it `running`, and calls `runJob`.
 Each job keeps its own hidden window and its own in-memory partition, as the Recapture design
 requires; nothing is shared between renders.
 
 **One running job per site.** A loop claims the first eligible `queued` row in claim order whose
-site has no job `running`, so a Batch with several pages on one site never loads that site twice
-at once.
+site has no job `running`, so a Batch with several pages on one site does not start two of them
+at once. The rule reads the address each job was queued with, not where it lands: two short-link
+hosts that redirect to one site can still load it twice at once.
 Concurrent requests to one server can trip rate limits or bot checks, which changes what a Capture
 holds. The site is the registrable domain from `tldts` (already a dependency), so
 `www.example.com` and `example.com` share a slot; an IP address or a host with no registrable
@@ -384,8 +385,8 @@ render keeps the blocker enabled until its cleanup, after the PDF.
 
 **Recommended default: 2.** Computed at startup as
 `clamp(floor(os.availableParallelism() / 4), 1, 2)`, so a machine with fewer than 8 logical CPUs
-runs 1. A worker does not start another job while `os.freemem()` is under 1.5 GB. The 4-CPUs-per-
-render ratio and the 1.5 GB floor are estimates to check against slice 1's timings, not
+runs 1. A worker does not start another job while `os.freemem()` is under 1.5 GiB. The 4-CPUs-per-
+render ratio and the 1.5 GiB floor are estimates to check against slice 1's timings, not
 measurements. Settings has no control for it. `BIRDBRAIN_BACKGROUND_WORKERS`, clamped to 1 and 2,
 overrides the formula, as `BIRDBRAIN_CONSENT_LISTS` and `BIRDBRAIN_WINDOW_SIZE` override their
 defaults; slice 6 uses it for its comparison, and support can use it to force 1.
@@ -414,6 +415,52 @@ Reasons for 2 rather than more:
   unless `UV_THREADPOOL_SIZE` changes it.
 - **The #2121 bounds are wall-clock.** See the next section.
 
+Slice 6 built the pool with these choices:
+
+- **The site is worked out at claim time**, not stored with the row. A slot skips a queued row
+  whose site matches one of the jobs this process is running, and claims the first row that does
+  not, in one transaction. The running set comes from the process rather than the rows, because a
+  restore can replace the rows while a render goes on. No column is added, so a database already
+  at version 47 needs nothing more. `tldts` reads the public suffix list's ICANN section only, so
+  `a.github.io` and `b.github.io` share one site.
+- **The memory floor holds only a second job.** The first job of an idle queue always starts, as a
+  single worker's would; otherwise a machine with less than 1.5 GiB available would never capture
+  in the background. A held slot looks again every 2 s and whenever a running job ends. On Linux,
+  `os.freemem()` under the bundled Node 24.22 returns MemAvailable, which counts reclaimable page
+  cache, not MemFree. On macOS it may count free pages only, so the floor may hold the second job
+  more often there: the queue runs slower, not less safely.
+
+Slice 6 ran the comparison on 2026-11-09 on the built app, on a machine with 18 logical CPUs. Each
+pair ran back to back, once with 1 first and once with 2 first. The 1-minute load average stayed
+under 3 during every run. Neither batch nor the script that ran them is in the repository.
+
+- **The fixture batch** is 10 pages served from one local server, each on its own `*.localhost`
+  host: two lazy-loading pages that grow to 5 and 8 chunks, a page behind a consent overlay with a
+  scroll lock, a two-pane page, a page of 24 images, a page of 1,500 paragraphs, a page that waits
+  1.5 s on a script, a page with an iframe, and two plain pages, with a local filter list that
+  names the overlay.
+- **The public batch** is 20 pages on 20 sites, with the default filter lists:
+  `en.wikipedia.org/wiki/Bristol`, `www.mozilla.org/en-US/about/`, `www.ietf.org/about/`,
+  `www.rfc-editor.org/rfc/rfc2119.html`, `www.gov.uk/government/organisations`,
+  `www.nist.gov/about-nist`, `www.un.org/en/about-us`, `www.who.int/about`, `www.loc.gov/about/`,
+  `www.archives.gov/about`, `www.python.org/about/`, `www.gnu.org/philosophy/free-sw.html`,
+  `www.kernel.org/`, `www.debian.org/intro/about`, `www.apache.org/foundation/`,
+  `www.unicode.org/main.html`, `www.iana.org/about`,
+  `www.icann.org/resources/pages/welcome-2012-02-25-en`, `ecma-international.org/`, and
+  `european-union.europa.eu/index_en`, each over HTTPS.
+
+| Batch | Workers | Wall time, first start to last end | Stored / failed / skipped | Transaction Record `failed` |
+| --- | --- | --- | --- | --- |
+| 10 local fixture pages | 1 | 54.9 s, 54.8 s | 10 / 0 / 0 | 0 of 10 |
+| 10 local fixture pages | 2 | 31.2 s, 31.2 s | 10 / 0 / 0 | 0 of 10 |
+| 20 public pages on 20 sites | 1 | 218.4 s, 215.8 s | 20 / 0 / 0 | 0 of 20 |
+| 20 public pages on 20 sites | 2 | 110.7 s, 110.1 s | 20 / 0 / 0 | 0 of 20 |
+
+Two workers took 57% of the serial wall time on the fixture batch and 51% on the public batch,
+inside the two-thirds goal, and each job took within 1.5 s of its serial time. No Transaction
+Record was absent as `failed` in either run, so the default stays the formula. With no failures at
+either concurrency, the runs cannot show a small rise in the rate; the per-job logging from slice 1
+is what would show one in use.
 
 #### Effect on the #2121 time bounds
 

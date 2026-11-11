@@ -1028,8 +1028,8 @@ export type RecaptureListJobsQuery = { caseId: string } | { batchId: string }
 // `cancelled` rows, and `recapture:retry` queues only its `failed` and `cancelled` ones.
 export type RecaptureJobTarget = { jobId: string } | { batchId: string }
 
-// `cancelled` counts the jobs cancel ended or is ending; `refused` counts the running job it named
-// but could not stop, because its render had already returned its page or already been ended.
+// `cancelled` counts the jobs cancel ended or is ending; `refused` counts the running jobs it named
+// but could not stop, because each one's render had already returned its page or been ended.
 export interface RecaptureCancelResult {
   cancelled: number
   refused: number

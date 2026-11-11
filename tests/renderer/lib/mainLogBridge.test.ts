@@ -91,6 +91,22 @@ describe('mainLogBridge', () => {
     expect(toastFns.warning).not.toHaveBeenCalled()
   })
 
+  // With two workers the code is logged when one slot stops and the other still captures, so
+  // the notice says what failed, not that captures stopped.
+  it('toasts a stopped queue slot with wording that holds while a capture still runs', async () => {
+    const { subscribeToMainLog } = await import('@renderer/lib/mainLogBridge')
+    subscribeToMainLog()
+    listener?.({
+      ...entry('error'),
+      source: 'backgroundRenderer',
+      code: 'backgroundRenderer.job_queue_failed'
+    })
+    expect(toastFns.error).toHaveBeenCalledWith(
+      "Couldn't read or update the background capture queue",
+      expect.objectContaining({ id: 'm:backgroundRenderer:backgroundRenderer.job_queue_failed' })
+    )
+  })
+
   it('ignores renderer-originated entries so they do not toast twice', async () => {
     const { subscribeToMainLog } = await import('@renderer/lib/mainLogBridge')
     subscribeToMainLog()

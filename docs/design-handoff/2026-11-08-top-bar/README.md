@@ -28,7 +28,9 @@ Design mock for the app chrome's top bar and Case action bar, built in the same 
   the count of Captures stored since the app started or the capture log was cleared shows once
   it is above zero, with the word beside it; with no count, the word shows from the `xl` width. The popover's Capture Health row always names the
   failures. The button's accessible name carries the whole state: a lead, then the Egress, the
-  extension and Capture Health, and the queued background captures when there are some. While
+  extension and Capture Health, and the queued and the held background captures when there are
+  some. Batches an earlier session or a restore left held list in the popover, under the three rows, each with
+  its Resume; held work colours nothing. While
   the settings or a Direct Egress's VPN check are still being read, the lead says so and does not
   say "all nominal". A polite live region announces severity changes only. App-wide, not per
   Case.

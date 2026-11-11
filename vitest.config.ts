@@ -154,6 +154,9 @@ export default defineConfig({
           // call counts across the `it`s of one file were written against the
           // old default, so hold it rather than re-scope those assertions here.
           clearMocks: false,
+          // Loaded through Vitest rather than Node, so a test's `electron` mock reaches its
+          // `ipcMain` and the pinned consent blocker runs as it does in the app.
+          server: { deps: { inline: ['@ghostery/adblocker-electron'] } },
           include: ['tests/**/*.test.ts', 'src/packages/**/tests/**/*.test.{ts,mts,cts}'],
           exclude: ['tests/renderer/**', 'tests/hooks/**'],
           globalSetup: ['./tests/setup/tmpdir.ts'],

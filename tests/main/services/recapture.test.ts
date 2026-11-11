@@ -785,7 +785,15 @@ describe('recapture service', () => {
         await new Promise<void>((resolve) => gate.push(resolve))
         return fakeRender()(url, opts)
       })
-      const idle = { pending: 0, queued: 0, running: 0, held: 0, concurrency: 1, activeUrl: null }
+      const idle = {
+        pending: 0,
+        queued: 0,
+        running: 0,
+        held: 0,
+        heldBatches: [],
+        concurrency: 1,
+        activeUrl: null
+      }
       expect(svc.status()).toEqual(idle)
 
       svc.enqueue([
@@ -1372,19 +1380,29 @@ describe('recapture service', () => {
       ])
     })
 
-    // Review of #2133, finding 7: a development build's log call can throw (logSafe.ts).
-    it('reports no failure for a stored job whose stored line throws', async () => {
+    // Review of #2133, finding 7: a development build's log call can throw (logSafe.ts). The
+    // job's row is how it ends, so the row is written before the line is logged.
+    it('ends a stored job stored, and reports no failure, when its stored line throws', async () => {
       info.mockImplementation((_source: unknown, code: unknown) => {
         if (code === 'backgroundRenderer.job_stored') throw new Error('log call threw')
         return 'log-id'
       })
+      const error = vi.spyOn(logger, 'error')
       const cleanup = vi.fn(async () => {})
       const svc = makeService(fakeRender({ cleanup }))
-      svc.enqueue([{ url: 'https://example.com/page', caseId }])
-      await expect(svc.idle()).rejects.toThrow('log call threw')
+      const { batchId } = svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+      expect(svc.listJobs({ batchId })).toEqual([
+        expect.objectContaining({ state: 'stored', captureId: newCaptures[0].id })
+      ])
+      expect(svc.status()).toMatchObject({ pending: 0, running: 0 })
       expect(events.map(({ type }) => type)).toEqual(['queued', 'received', 'stored'])
       expect(jobLines(warn)).toEqual([])
       expect(cleanup).toHaveBeenCalledTimes(1)
+      // The throw stops the queue loop, which logs it.
+      expect(
+        error.mock.calls.map(([, code, , err]) => [code, (err as Error).message])
+      ).toContainEqual(['backgroundRenderer.job_queue_failed', 'log call threw'])
     })
   })
 })

@@ -116,6 +116,19 @@ describe('statusModel', () => {
     expect(m.summary).toContain('a problem')
   })
 
+  it('names held background captures in the summary, after the queued ones, and colours nothing', () => {
+    expect(statusModel({ ...base, held: 0 }).held).toBeNull()
+    expect(statusModel(base).held).toBeNull()
+    const one = statusModel({ ...base, held: 1 })
+    expect(one.held).toBe('1 background capture is held')
+    expect(one.severity).toBe('nominal')
+    expect(one.summary).toMatch(/No captures logged\. 1 background capture is held\.$/)
+    const both = statusModel({ ...base, pending: 2, held: 3 })
+    expect(both.summary).toMatch(
+      /2 background captures queued or running\. 3 background captures are held\.$/
+    )
+  })
+
   it('names queued background captures in the summary only when there are some', () => {
     expect(statusModel({ ...base, pending: 0 }).queued).toBeNull()
     const one = statusModel({ ...base, pending: 1 })

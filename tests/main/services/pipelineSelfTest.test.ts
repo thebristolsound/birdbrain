@@ -675,7 +675,8 @@ describe('capture-pipeline self-test sandbox (#614)', () => {
     [
       'a case_id column and no foreign key',
       {
-        ddl: 'CREATE TABLE background_jobs (case_id TEXT)',
+        // Not a name any migration uses: version 47 creates the real `background_jobs`.
+        ddl: 'CREATE TABLE later_case_rows (case_id TEXT)',
         column: 'case_id',
         names: ({ caseId }) => caseId,
         elsewhere: ({ caseId }) => caseId

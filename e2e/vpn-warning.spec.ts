@@ -236,12 +236,15 @@ test.describe('VPN warning', () => {
       }
       return w.birdbrain.recapture.queueStatus()
     })
-    expect(queue).toEqual({
+    // 1 or 2 by the host's CPU count (backgroundJobPool.ts).
+    const { concurrency, ...idle } = queue
+    expect([1, 2]).toContain(concurrency)
+    expect(idle).toEqual({
       pending: 0,
       queued: 0,
       running: 0,
       held: 0,
-      concurrency: 1,
+      heldBatches: [],
       activeUrl: null
     })
     expect(requested).not.toContain('/c2')

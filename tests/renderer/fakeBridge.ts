@@ -49,6 +49,7 @@ const EVENTS = [
   'onExtensionConnection',
   'onExtensionAttach',
   'onCaptureActivity',
+  'onRecaptureJob',
   'onLogEntry',
   'onSelectorRematched',
   'onDeepLinkNavigate',

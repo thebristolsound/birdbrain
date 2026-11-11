@@ -113,6 +113,7 @@ const ROOT_LEVEL_LEAVES = new Set([
   // Landed at the root in #1038, while the allowlist still gated invokes only.
   'onExtensionAttach',
   'onCaptureActivity',
+  'onRecaptureJob',
   'onLogEntry',
   'onSelectorRematched',
   'onDeepLinkNavigate',

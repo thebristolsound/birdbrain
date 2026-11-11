@@ -1074,12 +1074,30 @@ export const LOG_CODES = [
   // (#2127). Both carry the job's capture id, which the job lines below share.
   'backgroundRenderer.render_completed',
   'backgroundRenderer.render_failed',
-  // How each Background Job ended (#2127): stored with its ingest time, skipped
-  // by a rule, or failed with the step it reached. The app window hears of each
-  // as an event, kept in memory; these lines are what outlasts the session.
+  // How each Background Job ended (#2127): stored, with its ingest time unless
+  // the row was settled after the job had gone, skipped by a rule, failed with
+  // the step it reached, or as `interrupted` when the app closed or the queue
+  // stopped during it, or a restore removed its Capture, or cancelled by the
+  // Operator. The app window hears of each as an event; these lines and the
+  // job's `background_jobs` row outlast the session.
   'backgroundRenderer.job_stored',
   'backgroundRenderer.job_skipped',
   'backgroundRenderer.job_failed',
+  'backgroundRenderer.job_cancelled',
+  // A running job's phase could not be written to its row, as while a restore has the database
+  // closed. The render goes on; logged once per job.
+  'backgroundRenderer.job_phase_failed',
+  // A worker slot of the background job queue stopped on a throw, between a job's claim and the
+  // write of its end or while it settled and reported rows before looking for work: a row it
+  // could not read or write, as while a restore has the database closed, or an event or log call
+  // that threw. The next enqueue, resume or retry, or another job's end, starts it again, as the
+  // restore handlers do after a failed restore.
+  'backgroundRenderer.job_queue_failed',
+  // A queued job waits to start beside a running one because free memory is under the floor
+  // (`bytes` free, `count` running). Logged once each time the floor begins to hold one.
+  'backgroundRenderer.job_memory_held',
+  // A job's view could not be sent to the window. The job goes on, and its row keeps its state.
+  'backgroundRenderer.job_view_failed',
   'consentBlocker.filter_engine_failed',
   'selectorLifecycle.retroactive_match_failed',
   'serverToken.token_invalid',
@@ -1359,9 +1377,11 @@ export const ERROR_NAMES = [
   'ProtocolError',
   'PeerByeError',
   'PeerUnreachableError',
-  // A Background Job that ran out of time, and the Transaction Record bound
-  // that expired (#2121): the log drops messages, so the name is what says which.
+  // A Background Job that ran out of time or was cancelled, and the Transaction
+  // Record bound that expired (#2121): the log drops messages, so the name is
+  // what says which.
   'RecaptureTimeout',
+  'RecaptureCancelled',
   'TransactionRecordCollectTimeout',
   'TransactionRecordWriteTimeout',
   // Thrown before a render's first step, so the name is all its failed line says of the cause.

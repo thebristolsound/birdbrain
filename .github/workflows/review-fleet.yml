@@ -1,0 +1,299 @@
+name: Review fleet
+
+# Every non-draft PR the maintainer or the machine account opens from this repository gets four
+# adversarial Claude passes and a Codex review, each family checks the other's findings, and
+# .github/scripts/review-fleet/fleet.mjs decides the `review/fleet` status from the checked
+# findings (ADR-0057). merge-gate requires that status at head. No model writes to the PR.
+#
+#   plan    decides what the head is owed and posts the status. Owed a review, it posts the
+#           head's state comment first, which claims the head and is what the daily cap counts.
+#   legs    one job per Claude pass, with the job's read-only token. Each returns JSON only.
+#   record  merges the passes into the state comment and posts the status.
+#   relay   posts `@codex review` with Claude's blocking findings for Codex to rule on. Codex
+#           answers only an account connected to it, so this job alone holds the maintainer's
+#           token (CODEX_RELAY_TOKEN, environment codex-relay) and runs no model and no PR code.
+#   gate    posts the status after the relay.
+#   sweep   every 15 minutes: times out what Codex never answered, and starts a run for each
+#           PR owed paid work whose event was dropped (one pending run per concurrency group).
+#
+# Codex's answer is an issue comment from its app, which starts the next run: the Claude check
+# of Codex's findings, then the final status. pull_request_target and issue_comment both run
+# main's workflow and scripts, never the PR's; the PR's head is only read.
+#
+# Controls are repository variables, changed without a PR: REVIEW_FLEET_ENABLED (`false` stops
+# every job before any paid step), REVIEW_FLEET_DAILY_CAP (heads reviewed per 24 hours, default
+# 40), REVIEW_FLEET_CODEX_TIMEOUT_MINUTES (default 45), REVIEW_FLEET_MODEL, REVIEW_FLEET_EFFORT.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled]
+  issue_comment:
+    types: [created, edited]
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'The PR to advance'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+concurrency:
+  group: review-fleet-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr || 'sweep' }}
+  cancel-in-progress: false
+
+env:
+  PR: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr }}
+  MAINTAINER: thebristolsound
+  MACHINE: ${{ vars.BIRDBRAIN_AGENT_GH_LOGIN }}
+  REVIEW_FLEET_ENABLED: ${{ vars.REVIEW_FLEET_ENABLED }}
+  REVIEW_FLEET_DAILY_CAP: ${{ vars.REVIEW_FLEET_DAILY_CAP }}
+  REVIEW_FLEET_CODEX_TIMEOUT_MINUTES: ${{ vars.REVIEW_FLEET_CODEX_TIMEOUT_MINUTES }}
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+jobs:
+  plan:
+    # The spend guard (#1310, as ADR-0057 amends it for this workflow): every job that reads a
+    # secret names who may start its attempt, so a re-run by anyone else runs nothing paid. A
+    # label event counts only for break-glass, and an issue comment only from Codex, on a PR.
+    if: >-
+      vars.REVIEW_FLEET_ENABLED != 'false'
+      && (github.triggering_actor == 'thebristolsound'
+        || github.triggering_actor == vars.BIRDBRAIN_AGENT_GH_LOGIN
+        || github.triggering_actor == 'chatgpt-codex-connector[bot]'
+        || github.triggering_actor == 'github-actions[bot]')
+      && ((github.event_name == 'pull_request_target'
+          && ((github.event.action != 'labeled' && github.event.action != 'unlabeled')
+            || github.event.label.name == 'break-glass'))
+        || (github.event_name == 'issue_comment' && github.event.issue.pull_request
+          && github.event.comment.user.login == 'chatgpt-codex-connector[bot]')
+        || github.event_name == 'workflow_dispatch')
+    environment: paid-runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      action: ${{ steps.plan.outputs.action }}
+      legs: ${{ steps.plan.outputs.legs }}
+      sha: ${{ steps.plan.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Identity
+        id: identity
+        env:
+          BIRDBRAIN_AGENT_GH_TOKEN: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}
+          BIRDBRAIN_AGENT_GH_LOGIN: ${{ vars.BIRDBRAIN_AGENT_GH_LOGIN }}
+          BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES: ${{ vars.BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES }}
+        run: bash .github/scripts/dispatch/identity.sh
+      - name: Plan
+        id: plan
+        env:
+          GH_TOKEN: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}
+          MACHINE: ${{ steps.identity.outputs.login }}
+        run: node .github/scripts/review-fleet/fleet.mjs plan "$GITHUB_REPOSITORY" "$PR"
+
+  legs:
+    needs: plan
+    if: >-
+      (needs.plan.outputs.action == 'review' || needs.plan.outputs.action == 'verify')
+      && (github.triggering_actor == 'thebristolsound'
+        || github.triggering_actor == vars.BIRDBRAIN_AGENT_GH_LOGIN
+        || github.triggering_actor == 'chatgpt-codex-connector[bot]'
+        || github.triggering_actor == 'github-actions[bot]')
+    environment: paid-runs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: ${{ fromJSON(needs.plan.outputs.legs) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      # The PR's head, read and never run. fetch-depth 0 for the merge base with main.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          path: pr
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      # Pinned with dispatch.yml and pr-review.yml; bump them together.
+      - name: Claude credential
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN_EXPIRES: ${{ vars.CLAUDE_CODE_OAUTH_TOKEN_EXPIRES }}
+        run: |
+          npm install -g @anthropic-ai/claude-code@2.1.288
+          bash .github/scripts/health/claude-token.sh
+      - name: Review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          SHA: ${{ needs.plan.outputs.sha }}
+          PR_DIR: ${{ github.workspace }}/pr
+          OUT: ${{ runner.temp }}/fleet/${{ matrix.leg }}
+          REVIEW_FLEET_MODEL: ${{ vars.REVIEW_FLEET_MODEL }}
+          REVIEW_FLEET_EFFORT: ${{ vars.REVIEW_FLEET_EFFORT }}
+        run: bash .github/scripts/review-fleet/leg.sh "${{ matrix.leg }}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: leg-${{ matrix.leg }}
+          path: ${{ runner.temp }}/fleet/${{ matrix.leg }}/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  record:
+    needs: [plan, legs]
+    if: >-
+      always()
+      && (needs.plan.outputs.action == 'review' || needs.plan.outputs.action == 'verify')
+      && (github.triggering_actor == 'thebristolsound'
+        || github.triggering_actor == vars.BIRDBRAIN_AGENT_GH_LOGIN
+        || github.triggering_actor == 'chatgpt-codex-connector[bot]'
+        || github.triggering_actor == 'github-actions[bot]')
+    environment: paid-runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      relay: ${{ steps.record.outputs.relay }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Identity
+        id: identity
+        env:
+          BIRDBRAIN_AGENT_GH_TOKEN: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}
+          BIRDBRAIN_AGENT_GH_LOGIN: ${{ vars.BIRDBRAIN_AGENT_GH_LOGIN }}
+          BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES: ${{ vars.BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES }}
+        run: bash .github/scripts/dispatch/identity.sh
+      # A pass that failed before uploading has no directory, and record reads it as failed.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: leg-*
+          path: ${{ runner.temp }}/fleet
+      - name: Record
+        id: record
+        env:
+          GH_TOKEN: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}
+          MACHINE: ${{ steps.identity.outputs.login }}
+          SHA: ${{ needs.plan.outputs.sha }}
+          ACTION: ${{ needs.plan.outputs.action }}
+          DIR: ${{ runner.temp }}/fleet
+        run: |
+          mkdir -p "$DIR"
+          for d in "$DIR"/leg-*; do [ -d "$d" ] && mv "$d" "$DIR/$(basename "$d" | sed 's/^leg-//')"; done
+          node .github/scripts/review-fleet/fleet.mjs record "$GITHUB_REPOSITORY" "$PR" "$SHA" "$DIR" "$ACTION"
+
+  relay:
+    needs: [plan, record]
+    if: >-
+      always()
+      && (needs.plan.outputs.action == 'relay' || needs.record.outputs.relay == 'true')
+      && (github.triggering_actor == 'thebristolsound'
+        || github.triggering_actor == vars.BIRDBRAIN_AGENT_GH_LOGIN
+        || github.triggering_actor == 'chatgpt-codex-connector[bot]'
+        || github.triggering_actor == 'github-actions[bot]')
+    environment: codex-relay
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Compose
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.plan.outputs.sha }}
+        run: node .github/scripts/review-fleet/fleet.mjs relay-body "$GITHUB_REPOSITORY" "$PR" "$SHA" > "$RUNNER_TEMP/relay.md"
+      - name: Ask Codex
+        env:
+          GH_TOKEN: ${{ secrets.CODEX_RELAY_TOKEN }}
+        run: |
+          [ -n "$GH_TOKEN" ] || { echo "::error::CODEX_RELAY_TOKEN is not set in the codex-relay environment"; exit 1; }
+          gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@"$RUNNER_TEMP/relay.md" --jq .html_url
+
+  gate:
+    needs: [plan, relay]
+    if: >-
+      always() && needs.relay.result != 'skipped' && needs.plan.result == 'success'
+      && (github.triggering_actor == 'thebristolsound'
+        || github.triggering_actor == vars.BIRDBRAIN_AGENT_GH_LOGIN
+        || github.triggering_actor == 'chatgpt-codex-connector[bot]'
+        || github.triggering_actor == 'github-actions[bot]')
+    environment: paid-runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Identity
+        id: identity
+        env:
+          BIRDBRAIN_AGENT_GH_TOKEN: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}
+          BIRDBRAIN_AGENT_GH_LOGIN: ${{ vars.BIRDBRAIN_AGENT_GH_LOGIN }}
+          BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES: ${{ vars.BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES }}
+        run: bash .github/scripts/dispatch/identity.sh
+      - name: Gate
+        env:
+          GH_TOKEN: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}
+          MACHINE: ${{ steps.identity.outputs.login }}
+        run: node .github/scripts/review-fleet/fleet.mjs gate "$GITHUB_REPOSITORY" "$PR"
+
+  sweep:
+    if: >-
+      github.event_name == 'schedule' && github.run_attempt == '1'
+      && vars.REVIEW_FLEET_ENABLED != 'false'
+    environment: paid-runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Identity
+        id: identity
+        env:
+          BIRDBRAIN_AGENT_GH_TOKEN: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}
+          BIRDBRAIN_AGENT_GH_LOGIN: ${{ vars.BIRDBRAIN_AGENT_GH_LOGIN }}
+          BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES: ${{ vars.BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES }}
+        run: bash .github/scripts/dispatch/identity.sh
+      - name: Sweep
+        id: sweep
+        env:
+          GH_TOKEN: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}
+          MACHINE: ${{ steps.identity.outputs.login }}
+        run: node .github/scripts/review-fleet/fleet.mjs sweep "$GITHUB_REPOSITORY"
+      # The workflow token: a workflow_dispatch it creates starts a run, and plan admits it.
+      - name: Start owed runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWED: ${{ steps.sweep.outputs.owed }}
+        run: |
+          for n in $(jq -r '.[]' <<<"$OWED"); do
+            gh workflow run review-fleet.yml -R "$GITHUB_REPOSITORY" --ref "${{ github.event.repository.default_branch }}" -f pr="$n"
+            echo "started a run for #$n"
+          done

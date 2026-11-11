@@ -48,7 +48,7 @@ body="$(jq -c --arg k "$endpoint" '.[$k] // error("stub gh: no fixture for \\($k
 if [ -n "$expr" ]; then jq -r "$expr" <<<"$body"; else printf '%s\\n' "$body"; fi
 `
 
-type Comment = { login: string; at: string; type?: 'User' | 'Bot' }
+type Comment = { login: string; at: string; type?: 'User' | 'Bot'; body?: string }
 
 const HEAD_AT = '2026-09-20T10:00:00Z'
 const VERDICT_AT = '2026-09-20T11:00:00Z'
@@ -232,7 +232,8 @@ const fixtures = ({
   ],
   [`repos/${REPO}/issues/${PR}/comments?per_page=100`]: comments.map((c) => ({
     user: user(c),
-    created_at: c.at
+    created_at: c.at,
+    body: c.body ?? ''
   })),
   [`repos/${REPO}/pulls/${PR}/comments?per_page=100`]: reviewComments.map((c) => ({
     user: user(c),
@@ -491,6 +492,33 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
       reason: `PR #${PR} has activity at ${VERDICT_AT} newer than its head (${HEAD_AT})`
     })
   })
+
+  it.each([
+    ['state comment', PIPELINE, '<!-- review-fleet:state {"v":1} -->'],
+    ['relay comment', MAINTAINER, '@codex review\n\n<!-- review-fleet:relay abc -->']
+  ] as const)("does not count the review fleet's %s as activity", (_, login, body) => {
+    const counted = run(fixtures({ labels: UNPARKED, comments: [{ login, at: VERDICT_AT }] }))
+    const fleet = run(fixtures({ labels: UNPARKED, comments: [{ login, at: VERDICT_AT, body }] }))
+    expect(counted.outputs.run).toBe('true')
+    expect(fleet.status, fleet.stderr).toBe(0)
+    expect(fleet.outputs.run).toBe('false')
+  })
+
+  // A marker only marks a fleet comment from the account that posts that kind: anyone can
+  // type one, and a comment hidden from the activity read would never wake a cycle.
+  it.each([
+    ['state marker', MAINTAINER, '<!-- review-fleet:state {"v":1} -->'],
+    ['relay marker', PIPELINE, '@codex review\n\n<!-- review-fleet:relay abc -->']
+  ] as const)(
+    'counts a comment quoting a %s from the other account as activity',
+    (_, login, body) => {
+      const quoted = run(
+        fixtures({ labels: UNPARKED, comments: [{ login, at: VERDICT_AT, body }] })
+      )
+      expect(quoted.status, quoted.stderr).toBe(0)
+      expect(quoted.outputs.run).toBe('true')
+    }
+  )
 
   // Parked by the pipeline after its request-changes verdict, then unlabelled by `by`.
   const removedBy = (by: string | null): Args => ({

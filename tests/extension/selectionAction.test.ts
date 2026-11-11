@@ -305,6 +305,39 @@ describe('SELECTION_ACTION: tag and quote ride the #392 attach endpoints', () =>
     expect(call.payload.mhtml).toBeUndefined()
   })
 
+  it('titles a quote from the resolved capture when the tab navigates during the lookup (#1007)', async () => {
+    vi.mocked(lookupCaptureByUrl).mockImplementationOnce(async () => {
+      tabAfterFrames = { ...TAB, url: 'https://example.test/somewhere-else', title: 'Elsewhere' }
+      return { ...LOOKUP_HIT, capture: { ...LOOKUP_HIT.capture!, title: 'Captured Example' } }
+    })
+
+    const response = (await dispatchWithResponse({
+      type: 'SELECTION_ACTION',
+      action: 'quote',
+      text: 'The quoted passage.'
+    })) as SelectionActionResponse
+
+    expect(response.ok).toBe(true)
+    const call = vi.mocked(createNoteOnUrl).mock.calls[0][0]
+    expect(call.noteTitle).toBe('Quote - Captured Example')
+    expect(call.url).toBe(TAB.url)
+  })
+
+  it('falls back to the URL when the resolved capture has no title (#1007)', async () => {
+    vi.mocked(lookupCaptureByUrl).mockResolvedValueOnce({
+      ...LOOKUP_HIT,
+      capture: { ...LOOKUP_HIT.capture!, title: '' }
+    })
+
+    await dispatchWithResponse({
+      type: 'SELECTION_ACTION',
+      action: 'quote',
+      text: 'The quoted passage.'
+    })
+
+    expect(vi.mocked(createNoteOnUrl).mock.calls[0][0].noteTitle).toBe(`Quote - ${TAB.url}`)
+  })
+
   it('auto-captures inside the suppression bracket, attaching only after the frames', async () => {
     const response = (await dispatchWithResponse({
       type: 'SELECTION_ACTION',

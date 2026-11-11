@@ -608,6 +608,25 @@ describe("the operator's selection stays out of the frames (#993)", () => {
 
       expect(selectionEnds()).toEqual([text, anchor, text, focus])
     })
+
+    // The anchor is retargeted out of a shadow tree the composed start can sit in, so comparing
+    // the two would call such a forward selection backward: the reported direction decides.
+    it.each([
+      ['backward', [7, 30], [30, 7]],
+      ['forward', [30, 7], [7, 30]]
+    ])(
+      'puts a %s selection back that way, whatever the anchor suggests',
+      (reported, [anchor, focus], restored) => {
+        direction = reported
+        const text = document.querySelector('p')!.firstChild!
+        window.getSelection()!.setBaseAndExtent(text, anchor, text, focus)
+
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        dispatch({ type: 'RELEASE_CAPTURE_UI' })
+
+        expect(selectionEnds()).toEqual([text, restored[0], text, restored[1]])
+      }
+    )
   })
 
   it('stays collapsed through every per-frame strip, and the passage still takes a second action', async () => {

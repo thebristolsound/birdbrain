@@ -303,3 +303,18 @@ Every pull request the fleet covers fails its check for the policy reason that p
 - Answered the four open design threads, set the review status to pending, and started a delta review against `5edd154ce905`.
 - The approval label Sol applied at the old head no longer shows on 2133. Apply it again at merge time, at the reviewed head.
 - After a merge, reopen issue 2127 with its remaining first criterion, the job's address host in logs, as recorded earlier.
+
+## Signing tail handed over
+
+- The recovery thread opened the four signing tail pull requests on the settled 2175 head and handed them over. It has finished its work and runs nothing. The sweep owns the whole stack, linked all four to the coordinating session, and owns any later rebase. 43 pull requests are open, more than the fleet's daily limit of 40 heads.
+
+  | Pull request | Head | Base | Next requirement |
+  | --- | --- | --- | --- |
+  | [#2179](https://github.com/thebristolsound/birdbrain/pull/2179) | `83e6d6e8da1c` | `fix/signing-refuses-empty-operator-name` | Land 2175 first; fleet check held by its daily limit; does not close 639 |
+  | [#2180](https://github.com/thebristolsound/birdbrain/pull/2180) | `1226a7bbdfce` | `fix/timestamp-worker-takes-case-slot` | Land 2179 first; fleet check held |
+  | [#2181](https://github.com/thebristolsound/birdbrain/pull/2181) | `1e134a64a7f1` | `fix/manifest-provenance-invariants` | Land 2180 first; fleet check held |
+  | [#2182](https://github.com/thebristolsound/birdbrain/pull/2182) | `516a05b32d37` | `fix/self-test-teardown-guard` | Land 2181 first; fleet check not yet reported |
+
+- Each carries a successful review status at head from the recovery thread's reviewer, the evidence label and its author's passing verification. None has the maintainer's evidence approval. The author reports one hand-resolved import conflict on 2182 and one verification rerun on 2180 after the known polling-test failure.
+- Keep the first line of 2179 as written, so the merge does not close issue 639.
+- Two more choices wait for Matt before these merge. On 2181: a new notice saying the self-test case was kept because something else wrote to it, a new documentation bullet, and the launch sweep of an empty, unarchived case that an operator named exactly like the self-test sandbox. On 2182: a narrower demo-seed guard than the one ruled under issues 1301 and 1297.

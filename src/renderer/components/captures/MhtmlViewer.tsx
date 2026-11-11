@@ -24,6 +24,8 @@ interface Props {
    * where moving the selection would swap out the page being compared.
    */
   linkClicks: boolean
+  /** Copy for the missing-archive state, worded per mount as LegacyHtmlViewer's is. */
+  emptyLabel?: string
 }
 
 const NO_HIT: LinkHit = { linkUrl: '', linkText: '', imageUrl: '', selectionText: '' }
@@ -53,7 +55,12 @@ function closeOpenMenu(): void {
 // document, as it did before #1735: nothing is fetched, and the frame-changed notice
 // below offers a reload (e2e/mhtml-link-interactivity.spec.ts records each case). With
 // `linkClicks` on, a left click on a link also selects the Case's Capture of it.
-export function MhtmlViewer({ captureId, caseId, linkClicks }: Props) {
+export function MhtmlViewer({
+  captureId,
+  caseId,
+  linkClicks,
+  emptyLabel = 'No MHTML available'
+}: Props) {
   const { data: fileUrl, error } = useQuery(captureMhtmlUrlQueryOptions(captureId))
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
   const followCaptureLink = useAppStore((s) => s.followCaptureLink)
@@ -189,6 +196,10 @@ export function MhtmlViewer({ captureId, caseId, linkClicks }: Props) {
 
   if (error) {
     return <div className="p-4 text-sm text-danger-fg">{String(error)}</div>
+  }
+  // `captures:getMhtmlUrl` answers null only once it has found no file (#1128).
+  if (fileUrl === null) {
+    return <div className="p-4 text-text-muted">{emptyLabel}</div>
   }
   if (!fileUrl) {
     return <div className="p-4 text-text-muted">Loading MHTML...</div>

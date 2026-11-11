@@ -72,6 +72,7 @@ import * as annotations from '@main/services/annotations'
 import { applyTagToNote, NoteNotFoundError } from '@main/services/noteTags'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import { readCaptureLinks } from '@main/services/captureLinks'
+import { readMhtmlParts } from '@main/services/mhtmlParts'
 import { ensureCaseFields, rebuildAllFields } from '@main/services/search/fieldIndex'
 import * as searchFieldRepo from '@main/services/db/searchFieldRepo'
 import { checkFieldHit } from '@main/services/investigation/claimCheck'
@@ -1323,6 +1324,11 @@ export function registerIpcHandlers(deps: {
   // The stored page's links for the Links tab (#1708): derived on demand, never stored.
   handle(IPC_CHANNELS.CAPTURES_GET_LINKS, (_, captureId: string) =>
     readCaptureLinks(captureRepo.getCapture(captureId))
+  )
+
+  // The stored MHTML's parts for the MHTML Parts tab (#991): read on demand, writes nothing.
+  handle(IPC_CHANNELS.CAPTURES_LIST_MHTML_PARTS, (_, captureId: string) =>
+    readMhtmlParts(captureRepo.getCapture(captureId))
   )
 
   handle(IPC_CHANNELS.CAPTURES_VERIFY, (_, captureId: string) => captureLifecycle.verify(captureId))

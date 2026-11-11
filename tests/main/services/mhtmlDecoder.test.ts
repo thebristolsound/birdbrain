@@ -71,7 +71,7 @@ type Malformed = keyof typeof MALFORMED
 // `[contentLocation, encodedSize, decoded]` per HTML part, as the decoder at a1762414 read them.
 const MALFORMED_HTML_PARTS: Record<
   Malformed,
-  { snapshotLocation: string | null; parts: unknown[] }
+  { snapshotLocation: string | null; parts: [string | null, number, string][] }
 > = {
   'an empty buffer': { snapshotLocation: null, parts: [] },
   'no boundary': { snapshotLocation: 'https://example.com/a', parts: [] },
@@ -321,7 +321,80 @@ describe('listHtmlPartsInMhtml and extractHtmlPartsFromMhtml', () => {
 
 // What text extraction, the claim check, the Links tab and the received-evidence title read.
 // Every value below was taken from the decoder at a1762414, before the walker that lists every
-// part existed, so a change to the walk that moves any of them fails here.
+// part existed, so a change to the walk that moves any of them fails here. Each row is a
+// fixture, its snapshot location, `[contentLocation, encodedSize, sha256 of the decoded text]`
+// per HTML part, and its title.
+const FIXTURE_HTML_PARTS: [string, string, [string, number, string][], string | null][] = [
+  [
+    'fixtures/multi-part.mhtml',
+    'https://example.com/page',
+    [
+      [
+        'https://example.com/page',
+        107,
+        '81a2668c098c7a868a0110578eed301d5979aad9ebba2f085bafb3924a5c276e'
+      ],
+      [
+        'https://widgets.example/frame/one.html',
+        62,
+        'e1aedc6ce0a803af5c27e059caf7d47cdc071a0abf41699fa705b12a939a562f'
+      ],
+      [
+        'cid:frame-2@mhtml.blink',
+        47,
+        '980a80b777fada3192bdd03dbcbad49e4fd475dbe2cf1d62b4e85c9167660827'
+      ]
+    ],
+    null
+  ],
+  [
+    'fixtures/mhtml-parts.mhtml',
+    'https://example.com/report',
+    [
+      [
+        'https://example.com/report',
+        157,
+        '77688eb16da1d4735e485e8da79a7539f1b364ff0a975dcc198caf6ef77460e0'
+      ],
+      [
+        'https://widgets.example/embed/frame.html',
+        66,
+        'ca3adae7c817f71979e1a5db8dc9bfb76c0a48d866a726eea5fc376e267cd6de'
+      ],
+      [
+        'cid:frame-2@widgets.example',
+        51,
+        'c859751b8b3b5b1bcceb37accbe80a1ddae74299c5327a5dd7882e298f3eb488'
+      ]
+    ],
+    'Quarterly widget report'
+  ],
+  [
+    'extraction/fixtures/cnn-iran-synthetic.mhtml',
+    'https://www.cnn.com/2024/04/19/world/iran-nuclear-cyber',
+    [
+      [
+        'https://www.cnn.com/2024/04/19/world/iran-nuclear-cyber',
+        1911,
+        'c2be71c4ac61e29d2b9e31356f739f4370635134557d427c5e3bc0c2ebe076fe'
+      ]
+    ],
+    'Iran-Linked Threat Actor Targets Nuclear Negotiators'
+  ],
+  [
+    'extraction/fixtures/cnn-pope-synthetic.mhtml',
+    'https://www.cnn.com/2024/04/19/tech/pope-cybersecurity',
+    [
+      [
+        'https://www.cnn.com/2024/04/19/tech/pope-cybersecurity',
+        1705,
+        '11c2c2c3fe095342afe1ae5cf03ef12b71b6003d12d10be91dfa6efa98476abf'
+      ]
+    ],
+    'Pope Addresses Global Cybersecurity Summit at Vatican'
+  ]
+]
+
 describe('what the HTML part readers see', () => {
   const read = (buffer: Buffer): { snapshotLocation: string | null; parts: unknown[] } => {
     const { snapshotLocation, parts } = listHtmlPartsInMhtml(buffer)
@@ -335,80 +408,14 @@ describe('what the HTML part readers see', () => {
     }
   }
 
-  it.each([
-    [
-      'fixtures/multi-part.mhtml',
-      'https://example.com/page',
-      [
-        [
-          'https://example.com/page',
-          107,
-          '81a2668c098c7a868a0110578eed301d5979aad9ebba2f085bafb3924a5c276e'
-        ],
-        [
-          'https://widgets.example/frame/one.html',
-          62,
-          'e1aedc6ce0a803af5c27e059caf7d47cdc071a0abf41699fa705b12a939a562f'
-        ],
-        [
-          'cid:frame-2@mhtml.blink',
-          47,
-          '980a80b777fada3192bdd03dbcbad49e4fd475dbe2cf1d62b4e85c9167660827'
-        ]
-      ],
-      null
-    ],
-    [
-      'fixtures/mhtml-parts.mhtml',
-      'https://example.com/report',
-      [
-        [
-          'https://example.com/report',
-          157,
-          '77688eb16da1d4735e485e8da79a7539f1b364ff0a975dcc198caf6ef77460e0'
-        ],
-        [
-          'https://widgets.example/embed/frame.html',
-          66,
-          'ca3adae7c817f71979e1a5db8dc9bfb76c0a48d866a726eea5fc376e267cd6de'
-        ],
-        [
-          'cid:frame-2@widgets.example',
-          51,
-          'c859751b8b3b5b1bcceb37accbe80a1ddae74299c5327a5dd7882e298f3eb488'
-        ]
-      ],
-      'Quarterly widget report'
-    ],
-    [
-      'extraction/fixtures/cnn-iran-synthetic.mhtml',
-      'https://www.cnn.com/2024/04/19/world/iran-nuclear-cyber',
-      [
-        [
-          'https://www.cnn.com/2024/04/19/world/iran-nuclear-cyber',
-          1911,
-          'c2be71c4ac61e29d2b9e31356f739f4370635134557d427c5e3bc0c2ebe076fe'
-        ]
-      ],
-      'Iran-Linked Threat Actor Targets Nuclear Negotiators'
-    ],
-    [
-      'extraction/fixtures/cnn-pope-synthetic.mhtml',
-      'https://www.cnn.com/2024/04/19/tech/pope-cybersecurity',
-      [
-        [
-          'https://www.cnn.com/2024/04/19/tech/pope-cybersecurity',
-          1705,
-          '11c2c2c3fe095342afe1ae5cf03ef12b71b6003d12d10be91dfa6efa98476abf'
-        ]
-      ],
-      'Pope Addresses Global Cybersecurity Summit at Vatican'
-    ]
-  ])('%s keeps its HTML parts and title', (fixture, snapshotLocation, parts, title) => {
-    const buffer = readFileSync(join(__dirname, fixture))
-    expect(read(buffer)).toEqual({ snapshotLocation, parts })
-    expect(readMhtmlTitle(buffer)).toBe(title)
-  })
+  it.each(FIXTURE_HTML_PARTS)(
+    '%s keeps its HTML parts and title',
+    (fixture, snapshotLocation, parts, title) => {
+      const buffer = readFileSync(join(__dirname, fixture))
+      expect(read(buffer)).toEqual({ snapshotLocation, parts })
+      expect(readMhtmlTitle(buffer)).toBe(title)
+    }
+  )
 
   it.each(Object.entries(MALFORMED_HTML_PARTS))('%s keeps its HTML parts', (name, expected) => {
     const { snapshotLocation, parts } = listHtmlPartsInMhtml(MALFORMED[name as Malformed])
@@ -508,41 +515,32 @@ describe('walkMhtml', () => {
     ])
   })
 
+  // The walk's own record of each HTML part, checked against the values pinned above from the
+  // a1762414 decoder. The HTML part list is this walk filtered, so comparing the walk with that
+  // list would move both sides together.
+  const htmlRows = (parts: MhtmlWalkPart[]): [string | null, number][] =>
+    parts
+      .filter(({ headersTerminated, html }) => headersTerminated && html)
+      .map(({ contentLocation, bodyStart, bodyEnd }) => [contentLocation, bodyEnd - bodyStart])
+
   it.each([
     ['fixtures/multi-part.mhtml', 4],
     ['fixtures/mhtml-parts.mhtml', 6],
     ['extraction/fixtures/cnn-iran-synthetic.mhtml', 3],
     ['extraction/fixtures/cnn-pope-synthetic.mhtml', 3]
-  ])('%s: its HTML parts line up one to one with the HTML part list', (fixture, totalParts) => {
-    const buffer = readFileSync(join(__dirname, fixture))
-    const { summary, parts } = walk(buffer)
+  ])('%s: its HTML parts are the ones the a1762414 decoder read', (fixture, totalParts) => {
+    const { summary, parts } = walk(readFileSync(join(__dirname, fixture)))
     expect(summary.totalParts).toBe(totalParts)
     expect(parts).toHaveLength(totalParts)
-    expect(
-      parts
-        .filter(({ headersTerminated, html }) => headersTerminated && html)
-        .map(({ contentLocation, bodyStart, bodyEnd }) => [contentLocation, bodyEnd - bodyStart])
-    ).toEqual(
-      listHtmlPartsInMhtml(buffer).parts.map(({ contentLocation, encodedSize }) => [
-        contentLocation,
-        encodedSize
-      ])
-    )
+    const pinned = FIXTURE_HTML_PARTS.find(([name]) => name === fixture)
+    expect(htmlRows(parts)).toEqual(pinned?.[2].map(([location, size]) => [location, size]))
   })
 
   it.each(Object.keys(MALFORMED))(
-    '%s: its HTML parts line up one to one with the HTML part list',
+    '%s: its HTML parts are the ones the a1762414 decoder read',
     (name) => {
-      const buffer = MALFORMED[name as Malformed]
-      expect(
-        walk(buffer)
-          .parts.filter(({ headersTerminated, html }) => headersTerminated && html)
-          .map(({ contentLocation, bodyStart, bodyEnd }) => [contentLocation, bodyEnd - bodyStart])
-      ).toEqual(
-        listHtmlPartsInMhtml(buffer).parts.map(({ contentLocation, encodedSize }) => [
-          contentLocation,
-          encodedSize
-        ])
+      expect(htmlRows(walk(MALFORMED[name as Malformed]).parts)).toEqual(
+        MALFORMED_HTML_PARTS[name as Malformed].parts.map(([location, size]) => [location, size])
       )
     }
   )
@@ -599,6 +597,65 @@ describe('walkMhtml', () => {
     ])
   })
 
+  // A part with no header lines: the blank line that ends its headers follows the delimiter line
+  // at once. Offsets are counted from the archive text: the top header line is 43 bytes.
+  it.each([
+    ['CRLF', '\r\n', 52, 54],
+    ['LF', '\n', 49, 50]
+  ])('reads a part that opens on a blank line as having no headers (%s)', (_, eol, start, body) => {
+    const buffer = Buffer.from(
+      [...MULTIPART_TOP, '--B', '', 'line one', '', 'line two', '--B--'].join(eol),
+      'latin1'
+    )
+    const { summary, parts } = walk(buffer)
+    expect(summary).toMatchObject({ status: 'walked', closed: true, totalParts: 1 })
+    expect(parts).toEqual([
+      {
+        partStart: start,
+        partEnd: buffer.length - '--B--'.length,
+        bodyStart: body,
+        bodyEnd: buffer.length - '--B--'.length - eol.length,
+        headersTerminated: true,
+        html: false,
+        contentType: null,
+        transferEncoding: null,
+        contentLocation: null,
+        contentId: null
+      }
+    ])
+    expect(buffer.subarray(parts[0].bodyStart, parts[0].bodyEnd).toString('latin1')).toBe(
+      ['line one', '', 'line two'].join(eol)
+    )
+  })
+
+  // The lines after that blank line are the body, whatever they look like, so the HTML readers
+  // do not take this part for a page. Before the walk knew an empty header block, they did.
+  it('does not read header-looking lines after an opening blank line as headers', () => {
+    const buffer = mhtml([
+      ...MULTIPART_TOP,
+      '--B',
+      '',
+      'Content-Type: text/html',
+      'Content-Location: https://example.com/late',
+      '',
+      '<title>late</title>',
+      '--B--'
+    ])
+    const { parts } = walk(buffer)
+    expect(parts).toHaveLength(1)
+    expect(parts[0]).toMatchObject({ headersTerminated: true, html: false, contentType: null })
+    expect(buffer.subarray(parts[0].bodyStart, parts[0].bodyEnd).toString('latin1')).toBe(
+      [
+        'Content-Type: text/html',
+        'Content-Location: https://example.com/late',
+        '',
+        '<title>late</title>'
+      ].join('\r\n')
+    )
+    expect(listHtmlPartsInMhtml(buffer).parts).toEqual([])
+    expect(readMhtmlTitle(buffer)).toBeNull()
+  })
+
   it('reports an archive with no closing delimiter as not closed, its last part at the end', () => {
     const buffer = MALFORMED['no closing delimiter']
     const { summary, parts } = walk(buffer)
@@ -628,14 +685,15 @@ describe('walkMhtml', () => {
     )
   })
 
-  // Only two hyphens after the boundary close the archive; the a1762414 decoder read on past one.
-  it('does not close the archive at a delimiter followed by a single hyphen', () => {
+  // Only two hyphens straight after the boundary close the archive; the a1762414 decoder read on
+  // past one. `--B-x` fails a check of the first hyphen alone, `--Bx-` one of the second alone.
+  it.each(['--B-x', '--Bx-'])('does not close the archive at %s inside a body', (inBody) => {
     const buffer = mhtml([
       ...MULTIPART_TOP,
       '--B',
       'Content-Type: text/html',
       '',
-      '<p>one --B-x</p>',
+      `<p>one ${inBody}</p>`,
       '--B',
       'Content-Type: text/html',
       '',
@@ -695,6 +753,33 @@ describe('walkMhtml', () => {
     const started = performance.now()
     expect(walkMhtml(buffer, () => {}).totalParts).toBe(20_000)
     expect(performance.now() - started).toBeLessThan(2_000)
+  })
+
+  // A header written with no value is absent. A `\s*` after the colon crossed the line break and
+  // read the next header line as the value.
+  it.each([
+    ['Content-Type', 'contentType'],
+    ['Content-Transfer-Encoding', 'transferEncoding'],
+    ['Content-Location', 'contentLocation'],
+    ['Content-ID', 'contentId']
+  ])('reads a part %s written with no value as absent', (header, field) => {
+    const { parts } = walk(
+      mhtml([...MULTIPART_TOP, '--B', `${header}:`, 'X-Note: after', '', 'x', '--B--'])
+    )
+    expect(parts).toHaveLength(1)
+    expect(parts[0]).toMatchObject({ headersTerminated: true, html: false, [field]: null })
+  })
+
+  it('reads a top-level header written with no value as absent', () => {
+    const top = (lines: string[]) =>
+      walk(mhtml([...lines, '', '--B', 'Content-Type: text/css', '', 'x', '--B--'])).summary
+    expect(
+      top(['Snapshot-Content-Location:', 'Content-Type: multipart/related; boundary=B'])
+    ).toMatchObject({ status: 'walked', snapshotLocation: null, totalParts: 1 })
+    expect(top(['Content-Type:', 'X-Note: multipart/related; boundary=B'])).toMatchObject({
+      status: 'no-boundary',
+      topContentType: null
+    })
   })
 })
 

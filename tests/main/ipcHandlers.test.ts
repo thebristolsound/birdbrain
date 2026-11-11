@@ -923,6 +923,26 @@ describe('ipcHandlers — captures', () => {
     expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, captureId))).toBeNull()
   })
 
+  // #1128. The Page tab reads null as a missing archive, so only a file that is not
+  // there answers null; a lookup that fails for any other reason rejects.
+  it('answers the mhtml url, null for a missing file, and rejects a failed lookup', async () => {
+    const rel = `${caseId}/archive-1128.mhtml`
+    const abs = defaultCaptureStore.resolveAbsolute(rel)
+    const { id } = seedCapture({ format: 'mhtml', mhtmlPath: rel })
+    writeFileSync(abs, 'mhtml-bytes')
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, id))).toBe(
+      pathToFileURL(abs).toString()
+    )
+
+    unlinkSync(abs)
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, id))).toBeNull()
+
+    // A path through a regular file fails with ENOTDIR, not ENOENT.
+    writeFileSync(abs, 'mhtml-bytes')
+    const through = seedCapture({ format: 'mhtml', mhtmlPath: `${rel}/inner.mhtml` })
+    await expect(invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, through.id)).rejects.toThrow(/ENOTDIR/)
+  })
+
   // #1708. The parser has its own known answers; this pins the channel's wiring.
   it('answers null links for a capture with no MHTML and for an unknown one', async () => {
     expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_LINKS, captureId))).toBeNull()
@@ -4190,6 +4210,47 @@ describe('ipcHandlers — recapture', () => {
       expect(res.ok).toBe(false)
       expect(res.code).toBe('INVALID_RECAPTURE_PAYLOAD')
     }
+    expect(recaptureService.enqueue).not.toHaveBeenCalled()
+  })
+
+  // Missing input fails: an absent link is a first-time capture, but a link that is present
+  // and names nothing would be signed as `supersedesCaptureId: ''`.
+  it('recapture:enqueue refuses a recapture link that names no Capture, queueing nothing', async () => {
+    const urls = ['https://a.com/page']
+    const linkedFrom = { captureId: 'cap-1', linkHref: 'https://a.com/page' }
+    for (const payload of [
+      { urls, caseId: 'case-1', supersedesCaptureId: '' },
+      { urls, caseId: 'case-1', supersedesCaptureId: '   ' },
+      { urls, caseId: 'case-1', supersedesCaptureId: null },
+      { urls, caseId: 'case-1', supersedesCaptureId: 42 },
+      { urls, caseId: 'case-1', supersedesCaptureId: '', linkedFrom }
+    ]) {
+      const res = (await invoke(IPC_CHANNELS.RECAPTURE_ENQUEUE, payload)) as {
+        ok: boolean
+        code?: string
+      }
+      expect(res.ok, JSON.stringify(payload)).toBe(false)
+      expect(res.code, JSON.stringify(payload)).toBe('INVALID_RECAPTURE_LINK')
+    }
+    expect(recaptureService.enqueue).not.toHaveBeenCalled()
+    expect(recaptureService.enqueueLink).not.toHaveBeenCalled()
+  })
+
+  it('recapture:enqueueCaptures refuses a Capture whose id names nothing, queueing nothing', async () => {
+    const blank = captureRepo.insertCapture({
+      id: '   ',
+      caseId,
+      url: 'https://example.com/blank',
+      title: 'Blank id',
+      hash: 'seedhash',
+      timestamp: '2026-04-05T12:00:00.000Z'
+    })
+    const res = (await invoke(IPC_CHANNELS.RECAPTURE_ENQUEUE_CAPTURES, {
+      caseId,
+      captureIds: [captureId, blank.id]
+    })) as { ok: boolean; code?: string }
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('INVALID_RECAPTURE_LINK')
     expect(recaptureService.enqueue).not.toHaveBeenCalled()
   })
 

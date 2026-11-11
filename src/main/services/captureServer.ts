@@ -8,6 +8,7 @@ import type { Server } from 'http'
 import type { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import { sendEvent } from '@main/ipcWrap'
+import { withTransaction } from '@main/services/db/core'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import * as noteRepo from '@main/services/db/noteRepo'
@@ -591,16 +592,13 @@ function createApp(deps: CaptureServerDeps): Hono {
       const target = await resolveOrIngestCapture(c, input)
       if (!target.ok) return target.response
       try {
-        // Exact name wins before the case-insensitive fallback: `tags.name` is
-        // case-sensitive, so `Evidence` and `evidence` can both exist (the IPC
-        // path permits it) and the insensitive lookup could return either,
-        // attaching a tag with a different identity and colour than the one
-        // the request named (PR #835 review).
-        const exactId = tagRepo.findTagIdByNameExact(input.tagName)
-        const foundId = exactId ?? tagRepo.findTagIdByNameInsensitive(input.tagName)
-        const found = foundId ? tagRepo.getTag(foundId) : undefined
-        const applied = found ?? tagRepo.createTag({ name: input.tagName })
-        tagRepo.addTagToCapture({ captureId: target.captureId, tagId: applied.id })
+        // One transaction, so a failed attach rolls back a tag it just created
+        // rather than leaving it in the case attached to nothing (#1045).
+        const applied = withTransaction(() => {
+          const tag = tagRepo.findOrCreateTagByName(input.tagName)
+          tagRepo.addTagToCapture({ captureId: target.captureId, tagId: tag.id })
+          return tag
+        })
         emitExtensionAttach({ kind: 'tag', caseId: input.caseId, captureId: target.captureId })
         return c.json({
           status: 'ok',

@@ -681,9 +681,10 @@ const ManifestCaptureEntrySchema = z
     finalUrl: z.string().min(1).optional(),
     tls: TlsCertChainResultSchema.optional(),
     method: z.enum(CAPTURE_METHODS).optional(),
-    // The three links are never '': an empty link names no Capture and no
-    // time, so the method rules below would read it as present (#1000).
-    supersedesCaptureId: z.string().min(1).optional(),
+    // An empty recapture link reads as no link (see hasRecaptureLink). The
+    // duplicate pair is never '': an empty half names no Capture and no time,
+    // so the method rules below would read it as present (#1000).
+    supersedesCaptureId: z.string().optional(),
     // Duplication provenance (#827), carried by entries whose method is
     // 'duplicate': the capture whose bytes were copied, and when the copy was
     // made. Both optional and omitted from every other entry, so legacy and
@@ -861,13 +862,13 @@ const ManifestCaptureEntrySchema = z
   .refine(personaFieldsNeedSchema7.check, personaFieldsNeedSchema7.issue)
   .refine(personaLabelNeedsId.check, personaLabelNeedsId.issue)
   // The recapture and duplicate links name the method that makes them (#1000),
-  // at every schema version. They are ungated because a survey of every `v*`
-  // tag, recorded in pull request 2180, found no released writer that put
-  // `supersedesCaptureId` off a background Capture, the duplicate pair
-  // anywhere but whole on a Duplicate, or any of the three links as ''. A
-  // background Capture without the link is a first-time one, from Add URLs,
-  // and is not refused.
-  .refine((entry) => entry.supersedesCaptureId === undefined || entry.method === 'background', {
+  // at every schema version. They are ungated because no release writes a
+  // refused shape on any path it takes on its own (the survey and tag check in
+  // pull request 2180). The one shape a release could sign through a
+  // hand-typed console call, an empty recapture link, reads as no link and
+  // still verifies. A background Capture without a link is a first-time one
+  // (Add URLs, a Link Capture) and is not refused.
+  .refine((entry) => !hasRecaptureLink(entry) || entry.method === 'background', {
     message: '`supersedesCaptureId` requires method `background`',
     path: ['supersedesCaptureId']
   })
@@ -883,6 +884,12 @@ const ManifestCaptureEntrySchema = z
     message: 'method `duplicate` requires `duplicateOfCaptureId` and `duplicatedAt`',
     path: ['duplicateOfCaptureId']
   })
+
+// v1.0.1-beta.12 to beta.26 signed `supersedesCaptureId: ''` when a console
+// call handed the recapture queue one, so '' is no link rather than a refusal.
+function hasRecaptureLink(entry: { supersedesCaptureId?: string }): boolean {
+  return entry.supersedesCaptureId !== undefined && entry.supersedesCaptureId !== ''
+}
 
 function duplicateFieldCount(entry: {
   duplicateOfCaptureId?: unknown

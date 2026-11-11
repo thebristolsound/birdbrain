@@ -24,9 +24,9 @@ Design mock for the app chrome's top bar and Case action bar, built in the same 
   an unfilled pill. Off nominal, the most severe indicator's icon joins its dot and both take
   that indicator's colour, with one short word: "Egress unknown", the failure count, "VPN not
   seen" or "VPN check failed". Ranking: Egress unknown, capture failures, then a VPN not seen or
-  a failed VPN check. A disconnected extension never colours anything. While a session runs and
-  has stored a Capture, the count of stored Captures shows with the word beside it; with no
-  count, the word shows from the `xl` width. The popover's Capture Health row always names the
+  a failed VPN check. A disconnected extension never colours anything. While a session runs,
+  the count of Captures stored since the app started or the capture log was cleared shows once
+  it is above zero, with the word beside it; with no count, the word shows from the `xl` width. The popover's Capture Health row always names the
   failures. The button's accessible name carries the whole state: a lead, then the Egress, the
   extension and Capture Health, and the queued background captures when there are some. While
   the settings or a Direct Egress's VPN check are still being read, the lead says so and does not

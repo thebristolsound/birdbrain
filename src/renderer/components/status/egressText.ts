@@ -28,9 +28,10 @@ export function egressIndicatorText(egress: EgressSetting, vpnSeen: boolean | un
   }
 }
 
-// Each Egress, and each VPN state while Direct, keeps an icon of its own: the status group shows
-// it when the Egress is the worst signal, so the state reads without colour. A new Egress kind
-// fails the typecheck here until it has one.
+// Each Egress, and a VPN seen or not seen while Direct, keeps an icon of its own: the status group
+// shows it when the Egress is the worst signal, so the state reads without colour. A VPN check
+// that has not answered or has failed keeps the Direct shield, which the bar draws only for a
+// failed check. A new Egress kind fails the typecheck here until it has one.
 const ICONS: Record<EgressSetting['kind'] | 'vpnSeen' | 'vpnNotSeen', LucideIcon> = {
   direct: Shield,
   vpnSeen: ShieldCheck,

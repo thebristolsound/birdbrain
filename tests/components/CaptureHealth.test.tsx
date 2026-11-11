@@ -186,7 +186,7 @@ describe('pipeline event context menu', () => {
     expect(get).toHaveBeenCalledWith('saved-capture')
   })
 
-  it('copies the full event URL and keeps the parent popover open when selecting a portal item', async () => {
+  it('copies the full event URL and keeps the log on screen when a portal item is chosen', async () => {
     const event = { ...storedEvent, url: 'https://example.org/a/very/long/path/that/is/truncated' }
     useAppStore.setState({ captureEvents: [event] })
     renderHealth()

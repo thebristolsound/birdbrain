@@ -6,9 +6,10 @@ import { getDb } from '@main/services/db/core'
 // spans captures, notes and cases, so it fits no single-aggregate repo;
 // diagnosticsRepo is the precedent for a read-only module of this shape.
 //
-// Capture and note events only. `selector_matches` carries no timestamp — a
-// hit event has no independent time to order by — so hits stay out until a
-// `matched_at` column exists (maintainer ruling 2026-08-20, #403).
+// Capture and note events only. Hits stayed out because `selector_matches`
+// carried no timestamp (maintainer ruling 2026-08-20, #403). Its `matched_at`
+// (#1069) is NULL on every row from before migration 46, and how hits enter the
+// feed is #675's to rule.
 
 interface ActivityRow {
   kind: 'capture' | 'note'

@@ -316,9 +316,16 @@ beforeEach(async () => {
   const selectorLifecycle = createSelectorLifecycle({ emitRematched: vi.fn() })
   const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
   recaptureService = {
-    enqueue: vi.fn(() => ({ accepted: 1, rejected: [] })),
-    enqueueLink: vi.fn(() => ({ accepted: 1, rejected: [] })),
-    status: vi.fn(() => ({ pending: 0, activeUrl: null })),
+    enqueue: vi.fn(() => ({ batchId: 'batch', accepted: 1, jobIds: ['job'], rejected: [] })),
+    enqueueLink: vi.fn(() => ({ batchId: 'batch', accepted: 1, jobIds: ['job'], rejected: [] })),
+    status: vi.fn(() => ({
+      pending: 0,
+      queued: 0,
+      running: 0,
+      held: 0,
+      concurrency: 1,
+      activeUrl: null
+    })),
     idle: vi.fn()
   }
   updaterService = {
@@ -2323,6 +2330,23 @@ describe('ipcHandlers — settings', () => {
     expect(stored.tsaUrl).toBe('https://custom.example/tsr')
   })
 
+  // #724, the global list's counterpart of the per-case refusal (#750): a pattern
+  // written past the Settings panel is refused at the seam, and nothing is stored.
+  it.each([
+    ['does not compile', '/[/'],
+    ['has a space at one end', ' example.com']
+  ])('refuses a global ignored URL pattern that %s', async (_name, pattern) => {
+    expectOk(await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { ignoredUrlPatterns: ['a.com'] }))
+    const refused = await invoke(IPC_CHANNELS.SETTINGS_UPDATE, {
+      ignoredUrlPatterns: ['a.com', pattern]
+    })
+    expect(refused).toMatchObject({ ok: false, code: 'INVALID_SETTINGS' })
+    const stored = expectOk<{ ignoredUrlPatterns: string[] }>(
+      await invoke(IPC_CHANNELS.SETTINGS_GET)
+    )
+    expect(stored.ignoredUrlPatterns).toEqual(['a.com'])
+  })
+
   it('still rejects a settings failure that is not a validation refusal', async () => {
     const boom = new Error('disk gone')
     const spy = vi.spyOn(settings, 'updateSettings').mockImplementationOnce(() => {
@@ -4256,7 +4280,14 @@ describe('ipcHandlers — recapture', () => {
 
   it('recapture:queueStatus reads the service status', async () => {
     const status = expectOk(await invoke(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS))
-    expect(status).toEqual({ pending: 0, activeUrl: null })
+    expect(status).toEqual({
+      pending: 0,
+      queued: 0,
+      running: 0,
+      held: 0,
+      concurrency: 1,
+      activeUrl: null
+    })
     expect(recaptureService.status).toHaveBeenCalled()
   })
 })

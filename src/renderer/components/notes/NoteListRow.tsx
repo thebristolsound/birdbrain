@@ -53,7 +53,7 @@ export function NoteListRow({
           <img
             src={`data:image/jpeg;base64,${thumbnail}`}
             alt=""
-            className="h-full w-full object-cover"
+            className="h-full w-full object-cover object-top"
           />
         ) : (
           <StickyNote className="h-3 w-3 text-text-faint" />

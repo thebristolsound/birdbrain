@@ -16,16 +16,22 @@ Design mock for the app chrome's top bar and Case action bar, built in the same 
   itself can shorten to 64px), search, the status group, Settings at 28px, the OS buttons. Below
   1,000px the name hides. The theme toggle leaves the chrome; Settings → Appearance holds it.
 - **Case action bar**: what you can do to this Case. The section name on the left; Share, Export
-  (a plain button whose menu holds the formats), Launch browser, and while a session runs the
-  recording mark and the Capture Session switch.
+  (a plain button whose menu holds the formats), Launch browser, the recording mark while a
+  session runs, and the Capture Session switch, in that order. The switch shows while the
+  extension is connected, a launched browser is open, or one has exited with its Capture Session
+  still running.
 - **Status group**: the Egress, the extension connection and Capture Health as three faint dots in
   an unfilled pill. Off nominal, the most severe indicator's icon joins its dot and both take
-  that indicator's colour, with one short word. Ranking: Egress unknown, capture failures, VPN not seen. A
-  disconnected extension never colours anything. The count stays visible while a session runs.
-  A failure count shows beside it; with no count beside it, the failure count shows from the
-  `xl` width, and "Egress unknown" takes its place while the Egress is the worst indicator. The
-  popover's Capture Health row always names the failures. The button's accessible name is the whole state in one sentence;
-  a polite live region announces severity changes only. App-wide, not per Case.
+  that indicator's colour, with one short word: "Egress unknown", the failure count, "VPN not
+  seen" or "VPN check failed". Ranking: Egress unknown, capture failures, then a VPN not seen or
+  a failed VPN check. A disconnected extension never colours anything. While a session runs and
+  has stored a Capture, the count of stored Captures shows with the word beside it; with no
+  count, the word shows from the `xl` width. The popover's Capture Health row always names the
+  failures. The button's accessible name carries the whole state: a lead, then the Egress, the
+  extension and Capture Health, and the queued background captures when there are some. While
+  the settings or a Direct Egress's VPN check are still being read, the lead says so and does not
+  say "all nominal". A polite live region announces severity changes only. App-wide, not per
+  Case.
 - **Recording mark**: a 6px danger dot, a mono elapsed timer (a launched browser's session start)
   or the word Recording, and the source. No pill, fill, pulse or "REC". On the dashboard and in
   Settings, which have no action bar, it is the Capture Session popover's trigger while that popover

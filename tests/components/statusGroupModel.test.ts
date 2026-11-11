@@ -13,7 +13,7 @@ const base: StatusInput = {
 }
 
 describe('statusModel', () => {
-  it('is neutral with nothing to say, and says so in one sentence', () => {
+  it('is neutral with nothing to say, and its summary says so', () => {
     const m = statusModel(base)
     expect(m.severity).toBe('nominal')
     expect(m.worst).toBeNull()

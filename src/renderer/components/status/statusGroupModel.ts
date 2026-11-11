@@ -51,7 +51,7 @@ export interface StatusModel {
   count: number | null
   /** The background-capture line, or null while the queue is empty. */
   queued: string | null
-  /** The whole state in one sentence, for the button's accessible name. */
+  /** The whole state, for the button's accessible name: a lead, then each signal's text. */
   summary: string
 }
 

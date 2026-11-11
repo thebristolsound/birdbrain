@@ -76,6 +76,10 @@ export function matchIgnoredUrl(
   regexTest: RegexTest = testWithRegExp
 ): string | null {
   for (const pattern of patterns) {
+    // An empty pattern is a substring of every URL. Returned as the match, '' refused every
+    // capture in the extension, which tests the answer against null, and read as no match on
+    // the server, which tests it for truth, after ending the search before any later pattern.
+    if (pattern === '') continue
     try {
       if (pattern.startsWith('/') && pattern.lastIndexOf('/') > 0) {
         const lastSlash = pattern.lastIndexOf('/')
@@ -125,6 +129,22 @@ export function validateIgnorePattern(
     }
   }
   return { ok: true }
+}
+
+/**
+ * `validateIgnorePattern` for a list that is matched as stored. The per-case list is trimmed
+ * before it is stored, so trimming in its check is harmless. The global list is not, and
+ * `matchIgnoredUrl` does not trim, so there a pattern with a space at either end is one more
+ * kind that can never match (#724).
+ */
+export function validateIgnorePatternAsStored(
+  pattern: string
+): ReturnType<typeof validateIgnorePattern> {
+  const result = validateIgnorePattern(pattern)
+  if (result.ok && pattern !== pattern.trim()) {
+    return { ok: false, reason: 'Pattern has leading or trailing whitespace' }
+  }
+  return result
 }
 
 /**

@@ -30,6 +30,7 @@ import {
   readSharedCaseSnapshot,
   withCaptureEntry,
   withDeletionEntry,
+  withManifestSlot,
   ManifestRollback
 } from '@main/services/manifest'
 import type { AuthorChain, CaptureChainEntry, ManifestImportEntry } from '@main/services/manifest'
@@ -418,30 +419,6 @@ function carriesCaptureEngineField(params: IngestParams): boolean {
   )
 }
 
-// Per-case serialisation for ingests, delete/deleteMany and duplicate (#394): the
-// manifest is one append-only file per case and a rollback is a truncation, so two
-// writers interleaving on the same chain could truncate each other's entries.
-// Callers queue in memory; there is no busy error. Module-wide, so every ingest
-// into a Case shares one slot with that Case's deletes.
-const caseSlots = new Map<string, Promise<void>>()
-
-async function withCaseSlot<T>(caseId: string, fn: () => Promise<T>): Promise<T> {
-  const prev = caseSlots.get(caseId) ?? Promise.resolve()
-  let release: () => void = () => {}
-  const mine = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  const tail = prev.then(() => mine)
-  caseSlots.set(caseId, tail)
-  await prev
-  try {
-    return await fn()
-  } finally {
-    release()
-    if (caseSlots.get(caseId) === tail) caseSlots.delete(caseId)
-  }
-}
-
 // End-to-end MHTML ingest:
 // 1. Stream-write + hash to disk (through the Capture Store)
 // 2. Inside withCaptureEntry's write-ahead seam: write sidecar files (.txt, .png) and insert the
@@ -522,12 +499,13 @@ export async function ingestMhtmlCapture(
   // both the pre-callback manifest failure (only the mhtml written) and a failure inside
   // the callback (sidecars written too). The store never touches manifest.jsonl.
   try {
-    // From the number through the row insert or the rollback, under the Case's slot, so
-    // an ingest waits for a delete, a batch delete or a duplicate that holds it across
-    // awaits. Between two ingests the synchronous seam callback below is what keeps a
-    // rollback from dropping the other's entry. The stream write and the TLS re-fetch
-    // above stay outside.
-    return await withCaseSlot(params.caseId, async () => {
+    // From the number through the row insert or the rollback, on the Case's manifest slot
+    // (`withManifestSlot`), the one a delete, a batch delete, a duplicate and the timestamp
+    // worker's stamps take, so an ingest waits for whichever holds it across awaits. Between
+    // two ingests the synchronous seam callback below is what keeps a rollback from dropping
+    // the other's entry. The stream write and the TLS re-fetch above stay outside. Nothing in
+    // this body waits on the slot again, which is not reentrant.
+    return await withManifestSlot(caseDir, async () => {
       const exhibitNumber = nextExhibitNumber(params.caseId, store)
       return await withCaptureEntry(
         caseDir,
@@ -1211,6 +1189,13 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
       if (deps.extraction) void runCaptureProcessing(captureId, caseId, url)
       else runFieldBuild(captureId, url)
     })
+  }
+
+  // Per-case serialisation for delete, deleteMany and duplicate (#394), on the manifest's slot so
+  // the timestamp worker queues on the same one (#639). An ingest takes that slot too, in
+  // `ingestMhtmlCapture`. Callers queue in memory; there is no busy error.
+  function withCaseSlot<T>(caseId: string, fn: () => Promise<T>): Promise<T> {
+    return withManifestSlot(store.caseDir(caseId), fn)
   }
 
   // The single-capture delete body, shared by `delete` and `deleteMany`.

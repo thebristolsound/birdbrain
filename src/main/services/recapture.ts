@@ -499,6 +499,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
   // A throw between a job's claim and the write of its end stops that job's slot and leaves the
   // row `running` with no job behind it. Such rows are settled when the slot stops and again each
   // time a slot looks for work, so a database that refused the first write gets a second.
+  // `exceptJobIds` names the jobs the slots are running, whose rows stay as they are.
   function settleOrphans(): void {
     reportSettled(
       backgroundJobRepo.settleRunningJobs({
@@ -840,8 +841,9 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
   // rows, which a restore can replace while a render goes on. A job does not start beside another
   // while free memory is under the floor; the slot looks again after `MEMORY_GATE_RETRY_MS`, and
   // when a running job ends. Any throw between a claim and the write of the job's end stops that
-  // slot: a database it cannot read or write (a restore closes it), or an event or log call that
-  // throws. The next enqueue, resume or retry, or another job's end, starts it again.
+  // slot, as does one while a slot settles and reports rows before it looks for work: a database
+  // it cannot read or write (a restore closes it), or an event or log call that throws. The next
+  // enqueue, resume, retry or `restartQueue`, or another job's end, starts it again.
   function drain(): void {
     clearTimeout(memoryRetry)
     memoryRetry = undefined

@@ -531,6 +531,27 @@ describe('per-case exclusion mirror (#400)', () => {
     await restore()
   })
 
+  // #724. A list stored before edits were checked can hold an empty pattern, and the app
+  // mirrors the list as stored. The matcher skips it; returned as the match, '' is not null,
+  // so this side refused every page under a rule with no text.
+  it('does not block a page for an empty pattern, and still applies the ones after it', async () => {
+    tabUrlById.set(44, CLEAN_URL)
+    tabUrlById.set(45, USER_IGNORED_URL)
+    await poll({
+      ...STATUS,
+      ignoredUrlPatterns: ['', IGNORE_PATTERN],
+      effectiveIgnoredUrlPatterns: ['', IGNORE_PATTERN]
+    })
+
+    const clean = await ask<PopupPageStatus>({ type: 'GET_PAGE_STATUS', tabId: 44 })
+    const ignored = await ask<PopupPageStatus>({ type: 'GET_PAGE_STATUS', tabId: 45 })
+
+    expect(clean?.rulesLoaded).toBe(true)
+    expect(clean?.blocked).toBeNull()
+    expect(ignored?.blocked).toEqual({ reason: 'user', pattern: IGNORE_PATTERN })
+    await restore()
+  })
+
   it('falls back to the global list when the server sends no effective list', async () => {
     tabUrlById.set(43, USER_IGNORED_URL)
     // An older server against a newer extension: global-only advisory

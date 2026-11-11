@@ -829,8 +829,9 @@ if (!gotSingleInstanceLock) {
           availableParallelism()
         )
       })
-      // Before any IPC handler or the capture server can queue a job: jobs from an earlier
-      // session are held or marked interrupted, and old stored rows go.
+      // Before any IPC handler or the capture server can queue a job: a job an earlier session
+      // left running is marked stored when its Capture landed and interrupted when it did not,
+      // its queued jobs are held, and old stored rows go.
       recaptureService.recoverStoredJobs()
 
       // Update-delivery service (notify/check-only). Broadcasts status transitions

@@ -1007,12 +1007,12 @@ export const LOG_CODES = [
   // (#2127). Both carry the job's capture id, which the job lines below share.
   'backgroundRenderer.render_completed',
   'backgroundRenderer.render_failed',
-  // How each Background Job ended (#2127): stored with its ingest time (or at the
-  // next start, with none, when the app closed after its ingest), skipped by a
-  // rule, failed with the step it reached, or as `interrupted` at the next start
-  // when the app closed during it, or cancelled by the Operator. The app
-  // window hears of each as an event; these lines and the job's
-  // `background_jobs` row outlast the session.
+  // How each Background Job ended (#2127): stored, with its ingest time unless
+  // the row was settled after the job had gone, skipped by a rule, failed with
+  // the step it reached, or as `interrupted` when the app closed or the queue
+  // stopped during it, or a restore removed its Capture, or cancelled by the
+  // Operator. The app window hears of each as an event; these lines and the
+  // job's `background_jobs` row outlast the session.
   'backgroundRenderer.job_stored',
   'backgroundRenderer.job_skipped',
   'backgroundRenderer.job_failed',
@@ -1020,10 +1020,11 @@ export const LOG_CODES = [
   // A running job's phase could not be written to its row, as while a restore has the database
   // closed. The render goes on; logged once per job.
   'backgroundRenderer.job_phase_failed',
-  // A worker slot of the background job queue stopped on a throw between a job's claim and the
-  // write of its end: a row it could not read or write, as while a restore has the database
-  // closed, or an event or log call that threw. The next enqueue, resume or retry, or another
-  // job's end, starts it again.
+  // A worker slot of the background job queue stopped on a throw, between a job's claim and the
+  // write of its end or while it settled and reported rows before looking for work: a row it
+  // could not read or write, as while a restore has the database closed, or an event or log call
+  // that threw. The next enqueue, resume or retry, or another job's end, starts it again, as the
+  // restore handlers do after a failed restore.
   'backgroundRenderer.job_queue_failed',
   // A queued job waits to start beside a running one because free memory is under the floor
   // (`bytes` free, `count` running). Logged once each time the floor begins to hold one.
@@ -1119,6 +1120,9 @@ export const LOG_CODES = [
   // settings.json at startup failed. Init swallows it and retries next launch;
   // this is the record that the key may still be on disk.
   'settings.retired_fields_cleanup_failed',
+  // The global ignored-URL list holds patterns stored before edits were
+  // validated (#724). They are kept, and Settings marks each one.
+  'settings.ignore_patterns_invalid',
   // First-launch seeding of the bundled demonstration Case Archive (#405).
   // Every outcome is recorded: an operator whose first launch produced no demo
   // case has no other way to tell a missing fixture from a refused import.
@@ -1436,6 +1440,23 @@ export function isSelectorOrigin(value: unknown): value is SelectorOrigin {
   return SELECTOR_ORIGINS.includes(value as SelectorOrigin)
 }
 
+// Which pass wrote a Persisted Match (#1069): the one that runs when a Capture
+// is added to the Case, a Selector's creation, an edit to its pattern, or an
+// operator's rescan. Named apart from `origin` because a Case Archive carries
+// selectors and their matches side by side, and the two mean different things.
+// Recorded when the row is written. A matching pass never changes it on a row
+// that exists; the Database Admin hatch can, by hand. Absent means no recorded
+// value: the row predates provenance recording, or it was imported from an
+// archive whose value the import does not keep. Legacy rows are not backfilled,
+// because guessing a value would be a false provenance claim.
+export const MATCH_ORIGINS = ['capture-time', 'create', 'update', 'rescan'] as const
+export type MatchOrigin = (typeof MATCH_ORIGINS)[number]
+
+// Plain TEXT, hand-editable from the Database Admin hatch, as with Selector origin.
+export function isMatchOrigin(value: unknown): value is MatchOrigin {
+  return MATCH_ORIGINS.includes(value as MatchOrigin)
+}
+
 export interface Selector {
   id: string
   caseId: string
@@ -1495,8 +1516,7 @@ export interface Note {
 // --- Cross-case recent activity (#403) ---
 // One row of the dashboard's recent-activity feed. Derived read-only from the
 // captures/notes/cases tables — nothing persists it. Selector hits are absent
-// deliberately: `selector_matches` carries no timestamp, so a hit event has no
-// honest time to order by (maintainer ruling 2026-08-20, #403).
+// deliberately; activityRepo.ts says why.
 interface RecentActivityBase {
   caseId: string
   caseName: string

@@ -1945,6 +1945,26 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 46) {
     db.transaction(() => {
+      // When a Persisted Match was found and what found it (#1069): an ISO 8601 time and one
+      // of MATCH_ORIGINS. Existing rows stay NULL in both, with no default: no value is known
+      // for them, and a guessed one would be a false provenance claim.
+      //
+      // Skips a column already present, as v43 does, because a restored copy marked one
+      // version back runs this block again.
+      const present = new Set(
+        (db.pragma('table_info(selector_matches)') as Array<{ name: string }>).map(
+          ({ name }) => name
+        )
+      )
+      for (const column of ['matched_at', 'match_origin']) {
+        if (!present.has(column)) db.exec(`ALTER TABLE selector_matches ADD COLUMN ${column} TEXT`)
+      }
+      db.pragma('user_version = 46')
+    })()
+  }
+
+  if (version < 47) {
+    db.transaction(() => {
       // The background job queue's state, one row per accepted URL (docs/specs/2026-11-09-batch-
       // capture-throughput-design.md, "Stored job table"). A row is not evidence: no Manifest,
       // Case Archive, export or verifier reads it. No foreign key on capture_id or
@@ -1979,7 +1999,7 @@ export function runMigrations(db: Database.Database): void {
         CREATE INDEX IF NOT EXISTS idx_background_jobs_state ON background_jobs(state, queued_at);
         CREATE INDEX IF NOT EXISTS idx_background_jobs_batch ON background_jobs(batch_id);
       `)
-      db.pragma('user_version = 46')
+      db.pragma('user_version = 47')
     })()
   }
 }

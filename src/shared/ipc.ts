@@ -974,8 +974,8 @@ export interface RecaptureQueueStatus {
   pending: number
   queued: number
   running: number
-  // Jobs from an earlier session waiting for the Operator to resume their Batch, in total and by
-  // Batch, oldest Batch first.
+  // Jobs waiting for the Operator to resume their Batch, in total and by Batch, oldest Batch
+  // first: those an earlier session left queued, and those a restore brought back queued.
   held: number
   heldBatches: HeldBatch[]
   concurrency: number
@@ -990,7 +990,8 @@ export interface HeldBatch {
 }
 
 // The states of a `background_jobs` row (docs/specs/2026-11-09-batch-capture-throughput-design.md,
-// "States"). `held` is a job queued in an earlier session, which runs only once its Batch resumes.
+// "States"). `held` is a job an earlier session or a restored copy left queued, which runs only
+// once its Batch resumes.
 export type BackgroundJobState =
   'queued' | 'held' | 'running' | 'stored' | 'skipped' | 'failed' | 'cancelled'
 

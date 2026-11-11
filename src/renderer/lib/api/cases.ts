@@ -124,11 +124,13 @@ export function useCasesMutations() {
     },
     // Tags too, unlike the ordinary delete: this path also drops the demo's own
     // tag rows, and tags are global, so a picker still holding the cached list
-    // would offer one whose row is gone and fail its foreign-key write.
+    // would offer one whose row is gone and fail its foreign-key write. The queue
+    // as for the ordinary delete: the Case's held background jobs go with it.
     onSuccess: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.cases }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.tags })
+        queryClient.invalidateQueries({ queryKey: queryKeys.tags }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.recaptureQueue })
       ]),
     meta: { action: 'delete demo case' }
   })

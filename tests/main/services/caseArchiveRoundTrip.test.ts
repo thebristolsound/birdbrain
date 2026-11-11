@@ -537,6 +537,59 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
       { selector_id: sel.id, capture_id: oldEpoch.id, matched_at: null, match_origin: null }
     ])
   })
+
+  // #1069: the time is checked like the origin. Only the form the app writes is kept, and
+  // each value is judged on its own, so an unreadable one does not cost the row the other.
+  it('a selector match time the app does not write imports as null, and the origin beside it is kept', async () => {
+    await initDatabase(':memory:')
+    const target = createCase({ name: 'Target', description: '', type: 'custom' })
+    const sel = createSelector({ caseId: target.id, pattern: 'x' })
+    const identity: ImportCtx = { ...ctx, newCaseId: target.id, mapId: (id) => id }
+    const WRITTEN = '2026-04-06T09:30:00.000Z'
+    const archived: Array<[string, unknown, unknown]> = [
+      ['a-prose', 'yesterday', 'rescan'],
+      ['b-empty', '', 'rescan'],
+      ['c-date-only', '2026-04-06', 'rescan'],
+      ['d-no-milliseconds', '2026-04-06T09:30:00Z', 'rescan'],
+      ['e-written', WRITTEN, 'rescan'],
+      ['f-unknown-origin', WRITTEN, 'imported']
+    ]
+    for (const [id] of archived) {
+      insertCapture({
+        id,
+        caseId: target.id,
+        url: `https://${id}`,
+        title: id,
+        hash: id,
+        timestamp: '2026-01-01T00:00:00Z'
+      })
+    }
+
+    withTransaction(() => {
+      importSelectorMatchRows(
+        archived.map(([capture_id, matched_at, match_origin]) => ({
+          selector_id: sel.id,
+          capture_id,
+          matched_at,
+          match_origin
+        })),
+        identity
+      )
+    })
+
+    expect(
+      collectSelectorMatchesForCase(target.id)
+        .sort((a, b) => byId({ id: a.capture_id }, { id: b.capture_id }))
+        .map(({ capture_id, matched_at, match_origin }) => [capture_id, matched_at, match_origin])
+    ).toEqual([
+      ['a-prose', null, 'rescan'],
+      ['b-empty', null, 'rescan'],
+      ['c-date-only', null, 'rescan'],
+      ['d-no-milliseconds', null, 'rescan'],
+      ['e-written', WRITTEN, 'rescan'],
+      ['f-unknown-origin', WRITTEN, null]
+    ])
+  })
 })
 
 // #1813: the archive itself, not the repo bulk ops. A Derived File the source

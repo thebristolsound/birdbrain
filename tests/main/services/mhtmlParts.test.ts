@@ -140,6 +140,40 @@ function snapshotOnPartFour(): Buffer {
   )
 }
 
+const ROW_HEADERS = {
+  contentType: 'Content-Type',
+  transferEncoding: 'Content-Transfer-Encoding',
+  contentLocation: 'Content-Location',
+  contentId: 'Content-ID'
+} as const
+type RowField = keyof typeof ROW_HEADERS
+const ROW_FIELDS = Object.keys(ROW_HEADERS) as RowField[]
+const ROW_VALUES: Record<RowField, string> = {
+  contentType: 'text/css',
+  transferEncoding: '8bit',
+  contentLocation: 'https://example.com/a.css',
+  contentId: '<a@example.com>'
+}
+
+// An archive of one part carrying the four headers a row reports, each followed by another
+// header line, with `values` in place of the short ones above.
+function onePart(values: Partial<Record<RowField, string>>): Buffer {
+  return Buffer.from(
+    [
+      'Content-Type: multipart/related; boundary=B',
+      '',
+      '--B',
+      ...ROW_FIELDS.map((field) =>
+        `${ROW_HEADERS[field]}: ${values[field] ?? ROW_VALUES[field]}`.trimEnd()
+      ),
+      'X-Note: after',
+      '',
+      'x',
+      '--B--'
+    ].join('\r\n')
+  )
+}
+
 describe('listMhtmlParts known answers', () => {
   it('lists every part of the fixture with its span, hash and HTML-part number', () => {
     const buffer = fixture()
@@ -490,6 +524,33 @@ describe('listMhtmlParts ceilings', () => {
     expect(result.topContentType).toBe('multipart/related; type="text/')
     expect(result.boundary).toBe('----PartsFixtureBoundary')
     expect(result.fieldsTruncated).toBe(true)
+  })
+
+  // One part with one header over the cap at a time, so each field's share of the row flag is
+  // pinned apart from the other three.
+  describe.each(ROW_FIELDS)('with only %s over the field cap', (field) => {
+    const limits = { ...MHTML_PARTS_LIMITS, maxFieldChars: 40 }
+
+    it('cuts that value and flags the row', () => {
+      const result = listed(listMhtmlParts(onePart({ [field]: 'v'.repeat(41) }), limits, READ_AT))
+      expect(result.parts).toHaveLength(1)
+      expect(result.parts[0]).toMatchObject({
+        ...ROW_VALUES,
+        [field]: 'v'.repeat(40),
+        fieldsTruncated: true
+      })
+      // The archive's own flag covers the top-level header values, none of which is cut here.
+      expect(result.fieldsTruncated).toBe(false)
+    })
+
+    it('leaves a value exactly at the cap whole and the row unflagged', () => {
+      const result = listed(listMhtmlParts(onePart({ [field]: 'v'.repeat(40) }), limits, READ_AT))
+      expect(result.parts[0]).toMatchObject({
+        ...ROW_VALUES,
+        [field]: 'v'.repeat(40),
+        fieldsTruncated: false
+      })
+    })
   })
 
   it('cuts each header field it reports, and the archive fields one by one', () => {

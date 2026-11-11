@@ -2,8 +2,8 @@
 // relays every server call for the content script (which never fetches), and
 // the Tag/Quote auto-capture rides the same suppression bracket as every
 // other capture — strip before frames, attach only after ingest material is
-// collected, release the page-side latch when the bracket settles, on the
-// failure path too.
+// collected, release the page-side latch once the frames are in (#1002) and
+// when the bracket settles, on the failure path too.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import type {
   ActiveSelectorsResult,
@@ -351,15 +351,17 @@ describe('SELECTION_ACTION: tag and quote ride the #392 attach endpoints', () =>
 
     expect(response).toEqual({ ok: true, detail: 'Tagged "evil-example-com"', captured: true })
     // Strip before any frame; attach strictly after the frames; latch released
-    // only once the bracket settles
+    // once the frames are in, so the bar shows progress during the attach (#1002)
     const prepare = events.indexOf('PREPARE_FOR_CAPTURE')
     const mhtml = events.indexOf('saveAsMHTML')
     const attach = events.indexOf('applyTag')
     const release = events.indexOf('RELEASE_CAPTURE_UI')
     expect(prepare).toBeGreaterThan(-1)
     expect(prepare).toBeLessThan(mhtml)
-    expect(mhtml).toBeLessThan(attach)
-    expect(attach).toBeLessThan(release)
+    expect(mhtml).toBeLessThan(release)
+    expect(events.lastIndexOf('CAPTURE_FULL_PAGE')).toBeGreaterThan(prepare)
+    expect(events.lastIndexOf('CAPTURE_FULL_PAGE')).toBeLessThan(release)
+    expect(release).toBeLessThan(attach)
     const call = vi.mocked(applyTagToUrl).mock.calls[0][0]
     expect(call.payload.mhtml).toBeInstanceOf(Blob)
     expect(call.payload.screenshot).toBeInstanceOf(Blob)

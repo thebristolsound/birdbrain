@@ -220,6 +220,17 @@ describe('buildPdfMetadataRows — verification (#1662)', () => {
   })
 })
 
+describe('buildPdfMetadataRows — extension version (#726)', () => {
+  it('prints the release string the capture recorded, unchanged', () => {
+    const rows = buildPdfMetadataRows(
+      { ...CAPTURE, extensionVersion: '1.0.1-beta.26' },
+      { trustedTime: 'none' }
+    )
+
+    expect(rowValue(rows, 'Extension version')).toBe('1.0.1-beta.26')
+  })
+})
+
 describe('renderCapturePdf — cover injection (#509)', () => {
   beforeEach(() => {
     electronFake.loadURL.mockResolvedValue(undefined)

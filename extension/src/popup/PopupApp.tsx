@@ -3,6 +3,7 @@ import { getStatus, getCases, activateCase, stopSession } from '@extension/utils
 import { openInApp } from '@extension/utils/appLink'
 import { applyExtensionTheme } from '@extension/utils/theme'
 import type { CaptureServerCase, CaptureServerCaseRef } from '@shared/schemas'
+import { extensionVersionOf } from '@shared/extensionVersion'
 import type { ManualCaptureResponse, PopupPageStatus } from '@extension/messages'
 import { derivePageStatus, deriveMatchSummary } from '@extension/popup/pageStatus'
 
@@ -274,7 +275,7 @@ export function Popup(): React.JSX.Element {
   const menuRef = useRef<HTMLDivElement | null>(null)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
 
-  const version = chrome.runtime.getManifest().version
+  const version = extensionVersionOf(chrome.runtime.getManifest())
 
   const refreshPageStatus = useCallback(async (): Promise<void> => {
     const tab = await currentTab()

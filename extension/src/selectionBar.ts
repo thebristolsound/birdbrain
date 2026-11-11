@@ -492,17 +492,26 @@ function composedRange(selection: Selection): AbstractRange | undefined {
   return selection.getComposedRanges({ shadowRoots: shadowRootsUnder(document) })[0]
 }
 
-// An email, number or date input reports no offsets, and the browser keeps its caret and
-// selection out of reach: the document reports either as a point just before the input, and the
-// composed range as the input itself. Only the selected text tells the two apart.
-function sitsInInput(selection: Selection, range: AbstractRange, input: Element): boolean {
+// Chromium keeps the caret and selection of a text control out of the document's reach: it
+// reports either as a point just before the control, and the composed range as the control
+// itself. This is the node at that point, if the selection has that shape.
+function nodeAtPoint(selection: Selection, range: AbstractRange): Node | undefined {
   const { startContainer, startOffset, endContainer, endOffset } = range
-  return (
-    selection.isCollapsed &&
-    startContainer.childNodes[startOffset] === input &&
-    endContainer === startContainer &&
-    endOffset - startOffset <= 1
-  )
+  if (!selection.isCollapsed || endContainer !== startContainer) return undefined
+  return endOffset - startOffset <= 1 ? startContainer.childNodes[startOffset] : undefined
+}
+
+// An email, number or date input reports no offsets, so only the selected text tells its caret
+// from its selection. Without composed ranges the point is before the web component that holds
+// the input, not before the input.
+function sitsInInput(selection: Selection, range: AbstractRange, input: Element): boolean {
+  const at = nodeAtPoint(selection, range)
+  let node: Node | null = input
+  while (node && node !== at) {
+    const root = node.getRootNode()
+    node = root instanceof ShadowRoot ? root.host : null
+  }
+  return node !== null
 }
 
 // A move by one character collapses a selection onto the end it moves towards. collapseToStart
@@ -539,6 +548,11 @@ function holdSelection(): void {
     holdInput(active, selection)
     return
   }
+  // A text control the operator left for a button or a link keeps the document's selection, and
+  // in the Chromium probe drew neither its caret nor its selected text. Nothing is in the frame
+  // to take out, and emptying it would fire the page's selectionchange before the frame.
+  const at = nodeAtPoint(selection, range)
+  if (at instanceof HTMLInputElement || at instanceof HTMLTextAreaElement) return
   // A caret paints no highlight, and clearing it would fire the page's selectionchange on every
   // capture taken after a click. Only the composed range can tell a caret from a shadow-crossing
   // selection, which getRangeAt reports as collapsed, so without it both are cleared.
@@ -567,9 +581,10 @@ function restoreField(): void {
   // reads the same as the strip's own, so the held selection returns over it.
   if (field.value !== value) return
   const untouched = field.selectionStart === end && field.selectionEnd === end
-  // A caret or selection in a focused field always shows in the document's selection. An empty
-  // one was emptied after the hold, by the fallback strip, which also drops the field's caret to
-  // its start, or by the page: the held selection returns, as it does over a page's clear below.
+  // None of the operator actions probed in a focused field left the document's selection empty.
+  // An empty one is read as emptied after the hold, by the fallback strip, which also drops the
+  // field's caret to its start, or by the page: the held selection returns, as it does over a
+  // page's clear below.
   const emptied = focusedTextField() === field && window.getSelection()?.rangeCount === 0
   if (!untouched && !emptied) return
   field.setSelectionRange(start, end, direction)

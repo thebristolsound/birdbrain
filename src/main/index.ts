@@ -18,6 +18,7 @@ import { removeOrphanedPartitions } from '@main/services/persona/personaSessions
 import { PreMigrationSnapshotError } from '@main/services/db/dbSnapshots'
 import { initStorage } from '@main/services/storage'
 import { seedDemoCaseIfNeeded } from '@main/services/demoCase'
+import { sweepPipelineSelfTestResidue } from '@main/services/pipelineSelfTest'
 import { syncPackagedExtension } from '@main/services/extensionPath'
 import {
   CaptureServerBindError,
@@ -692,6 +693,10 @@ if (!gotSingleInstanceLock) {
         logger.warn('app', 'app.storage_init_failed', undefined, err)
         initStorage(defaultCapturesDir)
       }
+
+      // The temp roots earlier self-tests left (#1183). Before the capture
+      // server, so no self-test can be running. It removes no case.
+      sweepPipelineSelfTestResidue()
 
       // Seed the bundled demonstration case (#405). Strictly after the storage
       // root and the signing key, because it imports a real Case Archive and

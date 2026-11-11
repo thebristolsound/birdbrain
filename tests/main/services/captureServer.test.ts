@@ -750,6 +750,25 @@ describe('captureServer', () => {
     expect(rows[0].format).toBe('mhtml')
   })
 
+  it('stores the extension version the upload carries, release string and all (#726)', async () => {
+    const c = createCase({ name: 'Version Test' })
+    const res = await postCapture(
+      {
+        source: 'manual',
+        caseId: c.id,
+        url: 'https://example.com/version',
+        title: 'Version Page',
+        timestamp: new Date().toISOString(),
+        textContent: 'version test',
+        extensionVersion: '1.0.1-beta.26'
+      },
+      '<html><body>version test</body></html>'
+    )
+
+    expect(res.status).toBe(200)
+    expect(listCaptures(c.id)[0].extensionVersion).toBe('1.0.1-beta.26')
+  })
+
   it('round-trips a headers form field into the stored capture (#119)', async () => {
     const c = createCase({ name: 'Headers Test' })
     const headers = { server: 'nginx', date: 'Wed, 21 Jun 2026 12:00:00 GMT' }

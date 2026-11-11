@@ -9,6 +9,10 @@ import { ident } from '@main/services/logSafe'
 // The stored preview box, ~4:3. Every consumer draws it with object-cover
 // anchored to the top into a box of its own, so what is stored has to be one
 // fixed size rather than a fit of whatever shape a screenshot happens to be.
+// Each of those boxes is wider than 4:3, so each discards a bottom band of the
+// stored image. That is deliberate (#1317): these dimensions decide the
+// bytes `exhibitBackfill.ts` anchors in a signed `derivation` entry, so they
+// are not free to change to match a display box.
 export const THUMB_WIDTH = 160
 export const THUMB_HEIGHT = 120
 

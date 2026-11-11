@@ -156,8 +156,9 @@ export interface RecaptureService {
   // left the session's own database open: the close may have stopped the loop with jobs queued.
   restartQueue: () => void
   listJobs: (query: RecaptureListJobsQuery) => BackgroundJobView[]
-  // Sets the Batch's `held` jobs `queued`, behind the jobs already queued at the resume.
-  resume: (batchId: string) => { resumed: number }
+  // Sets the Batch's `held` jobs `queued`, behind the jobs already queued at the resume. Refused,
+  // with the reason enqueue gives, while no operator name is set; the jobs stay held.
+  resume: (batchId: string) => { resumed: number; reason?: string }
   dismiss: (target: RecaptureDismissTarget) => { dismissed: number }
   // resolves when the queue drains — used by tests only
   idle: () => Promise<void>
@@ -889,6 +890,10 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     },
     listJobs: (query) => backgroundJobRepo.listJobs(query),
     resume(batchId) {
+      // The operator gate (X47), as at enqueue: a held job that cannot be signed is not rendered.
+      if (!trimmedOperatorName()) {
+        return { resumed: 0, reason: new OperatorNameRequiredError().message }
+      }
       const resumed = backgroundJobRepo.resumeBatch(batchId, new Date().toISOString())
       for (const view of resumed) emitJob(view)
       if (resumed.length > 0) drain()

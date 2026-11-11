@@ -207,7 +207,7 @@ export interface BirdbrainAPI {
     queueStatus(): Promise<RecaptureQueueStatus>
     enqueueCaptures(payload: CaptureBatchPayload): Promise<EnqueueResult>
     listJobs(query: RecaptureListJobsQuery): Promise<BackgroundJobView[]>
-    resume(payload: { batchId: string }): Promise<{ resumed: number }>
+    resume(payload: { batchId: string }): Promise<{ resumed: number; reason?: string }>
     dismiss(target: RecaptureDismissTarget): Promise<{ dismissed: number }>
   }
   tags: {

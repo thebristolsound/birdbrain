@@ -1135,7 +1135,10 @@ export interface IpcInvokeContract {
   'recapture:queueStatus': { args: []; result: RecaptureQueueStatus }
   'recapture:enqueueCaptures': { args: [payload: CaptureBatchPayload]; result: EnqueueResult }
   'recapture:listJobs': { args: [query: RecaptureListJobsQuery]; result: BackgroundJobView[] }
-  'recapture:resume': { args: [payload: { batchId: string }]; result: { resumed: number } }
+  'recapture:resume': {
+    args: [payload: { batchId: string }]
+    result: { resumed: number; reason?: string }
+  }
   'recapture:dismiss': { args: [target: RecaptureDismissTarget]; result: { dismissed: number } }
 
   'tags:list': { args: []; result: Tag[] }

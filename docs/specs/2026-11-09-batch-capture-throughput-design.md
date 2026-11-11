@@ -248,9 +248,10 @@ Restoring a database snapshot or a backup file can bring back rows from the past
 re-opens the database in the running app, so the same pass runs right after a restore that
 succeeds, before the queue can claim a restored row. The restored copy can hold a job the app is
 still rendering in any state, or not at all, so the pass first writes that job's row back as
-`running` under its attempt's Capture id; the job then ends as it would have, and a resume cannot
-render it a second time. A job whose Case the restored copy lacks gets no row, and its ingest fails
-as it does after a Case delete.
+`running` under its attempt's Capture id; the job then ends as it would have, and a resume does not
+render it a second time, unless the job ended while the restore had the database closed, when no row
+is written back. A job whose Case the restored copy lacks gets no row, and its ingest fails as it
+does after a Case delete.
 
 A restore can also start with no database open, after one that left the file unreadable. The
 session's jobs cannot be read then, so none of them is sent a `failed` event.

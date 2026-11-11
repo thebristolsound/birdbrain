@@ -416,14 +416,49 @@ to the list without a refetch.
   into a throwaway sandbox, which is a temporary storage root carrying its own manifest plus a
   case row created for that one request. No investigation's chain gains an entry and no
   investigation gains a capture row, whatever happens next. The sandbox itself is torn down when
-  the request ends, best-effort in two independent halves that report a failure to the operator
-  rather than swallowing it, so a failed teardown — or a process killed mid-run — can leave the
-  case row, the temporary directory, or both. A leftover case is named
-  `Birdbrain pipeline self-test (temporary)` and is safe to delete like any other; until it is
-  deleted, its sentinel capture verifies as missing, because a capture row's files are resolved
-  against the configured storage root and the sandbox's files were never written there. Because
-  the sandbox root is a temporary directory, a green result does not prove the configured storage
-  volume is writable.
+  the request ends, best-effort: the case row first, then the temporary directory, which is
+  attempted whether or not the row went. A failure is reported to the operator rather than
+  swallowed, so a failed teardown — or a process killed mid-run — can leave the case row, the
+  temporary directory, or both. Teardown also keeps both on purpose, in the cases the Teardown
+  entry below lists. A leftover case is named `Birdbrain pipeline self-test (temporary)` and
+  stays until an operator deletes it; until then its sentinel capture verifies as missing,
+  because a capture row's files are resolved against the configured storage root and the
+  sandbox's files were never written there. Because the sandbox root is a temporary directory,
+  a green result does not prove the configured storage volume is writable.
+- **Sandbox residue** (`isPipelineSelfTestResidue` in `src/main/services/pipelineSelfTest.ts`): the
+  check teardown runs before it deletes the sandbox case. A case counts as residue only when all
+  of these hold. Its row is as the self-test created it: the sandbox name, and no description,
+  case number, other case type, exclusion policy, archive, demo or sharing mark. Every capture
+  row in it has the sentinel URL, and every exhibit row belongs to one of those captures. No
+  table holds a row for the case, its captures or its exhibits, other than eight: `captures`,
+  `capture_texts`, `exhibits`, `case_revisions` and `case_change_log`, which creating the case
+  and ingesting the sentinel capture fill, and `exhibit_search_builds`, `exhibit_search_fields`
+  and `extracted_data`, which the app derives from a capture without being asked. A table is
+  read when a foreign key leads from it to the case, through any number of tables, or when it
+  has a `case_id`, `capture_id` or `exhibit_id` column; a table that names a case by neither is
+  not read. Because `case_revisions` and `case_change_log` are among the eight, a row that was
+  added and then deleted does not by itself keep the case. The storage root in use can be
+  listed and has no directory for the case, because the sandbox never writes there.
+- **Teardown** checks the case first, because while the self-test runs the sandbox is an ordinary
+  case that the capture server's routes accept, so a client holding the token can upload into
+  it. When the case holds something else, teardown keeps the case and its temporary directory and
+  logs `captureServer.self_test_sandbox_kept` at warn, rather than deleting that write with the
+  case. When the storage root cannot be listed, teardown keeps both and logs
+  `captureServer.self_test_storage_unavailable` at warn. When the case is already gone, teardown
+  removes the temporary directory and logs nothing.
+- **Startup sweep** (`sweepPipelineSelfTestResidue`): at startup, before the capture server, the
+  app removes every `birdbrain-pipeline-test-*` directory in the temporary directory that holds
+  a folder named for a case in the database, and logs each as
+  `captureServer.self_test_temp_root_removed` at info. That includes the directory teardown kept
+  beside a case something else wrote to. It removes no case and changes no case row, whatever
+  the case is named and whatever it holds, and it writes nothing under the storage root
+  ([decision](https://github.com/thebristolsound/birdbrain/pull/2181#issuecomment-6799450693)).
+  A leftover case from a killed run therefore stays listed until an operator deletes it: on the
+  dashboard, open the actions menu on its card, choose Delete and confirm. Two kinds of
+  temporary directory are left: one that holds no case folder, from a run killed before its
+  first store write; and one whose case folder names no case in this database, because the case
+  is gone or another installation made it. A directory that cannot be removed is logged as
+  `captureServer.self_test_cleanup_failed` at error. No route hides the sandbox from any listing.
 - **Test HTTP** (`captures:testHttp` IPC): a `fetch` of `GET /api/status` from the main process,
   proving the listener independently of the extension.
 

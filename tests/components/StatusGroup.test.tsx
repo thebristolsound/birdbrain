@@ -4,7 +4,8 @@ import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-libra
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { CaptureEvent, EgressSetting } from '@shared/types'
-import type { RecaptureQueueStatus } from '@shared/ipc'
+import type { RecaptureQueueStatus, VpnStatus } from '@shared/ipc'
+import { queryKeys } from '@renderer/lib/api/keys'
 import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { stubResizeObserver } from './resizeObserverStub'
@@ -35,6 +36,15 @@ function renderWithSettings(
   queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => ({ pending: 0, activeUrl: null }))
 ) {
   const vpnStatus = vi.fn(async () => ({ vpnSeen }))
+  renderGroup(getSettings, vpnStatus, queueStatus)
+  return vpnStatus
+}
+
+function renderGroup(
+  getSettings: () => Promise<{ egress: EgressSetting }>,
+  vpnStatus: () => Promise<Partial<VpnStatus>>,
+  queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => ({ pending: 0, activeUrl: null }))
+) {
   fakeBridge({
     settings: { get: vi.fn(getSettings) },
     egress: { vpnStatus },
@@ -45,7 +55,7 @@ function renderWithSettings(
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
   render(<StatusGroup />, { wrapper: Wrapper })
-  return vpnStatus
+  return client
 }
 
 beforeEach(() => {
@@ -178,6 +188,52 @@ describe('StatusGroup before the Egress is read', () => {
     expect(document.querySelector('[aria-live="polite"]')?.textContent).toBe(
       button.getAttribute('aria-label')
     )
+  })
+})
+
+// The VPN check is an input too: a Direct Egress nobody has checked is not a nominal one.
+describe('StatusGroup before the VPN check answers', () => {
+  const direct = async () => ({ egress: { kind: 'direct' as const } })
+
+  it('does not say all nominal while the check is in flight', async () => {
+    renderGroup(direct, () => new Promise(() => {}))
+    const button = await screen.findByTestId('status-group')
+    await waitFor(() =>
+      expect(button.getAttribute('aria-label')).toMatch(
+        /^Status: checking for a VPN\. Egress: Direct\. /
+      )
+    )
+    expect(button.dataset.severity).toBe('nominal')
+  })
+
+  it('warns, with a word of its own, when the check fails', async () => {
+    renderGroup(direct, async () => {
+      throw new Error('route unreadable')
+    })
+    const button = await screen.findByTestId('status-group')
+    await waitFor(() => expect(button.dataset.severity).toBe('warning'))
+    expect(button.getAttribute('aria-label')).toMatch(
+      /^Status: a warning\. Egress: Direct · VPN check failed\. /
+    )
+    expect(button.textContent).toContain('VPN check failed')
+  })
+
+  // A VPN drops outside Birdbrain, so the reading before a failed check says nothing.
+  it('drops the last reading when a later check fails', async () => {
+    let failing = false
+    const client = renderGroup(direct, async () => {
+      if (failing) throw new Error('route unreadable')
+      return { vpnSeen: true }
+    })
+    const button = await screen.findByTestId('status-group')
+    await waitFor(() =>
+      expect(button.getAttribute('aria-label')).toContain('Egress: Direct · VPN seen')
+    )
+    failing = true
+    await act(() => client.refetchQueries({ queryKey: queryKeys.vpnStatus }))
+    await waitFor(() => expect(button.dataset.severity).toBe('warning'))
+    expect(button.getAttribute('aria-label')).toContain('Egress: Direct · VPN check failed')
+    expect(button.getAttribute('aria-label')).not.toContain('VPN seen')
   })
 })
 

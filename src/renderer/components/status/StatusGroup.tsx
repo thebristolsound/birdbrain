@@ -51,8 +51,11 @@ export function StatusGroup() {
   const egressReadFailed = settingsFailed && !egress
   const iconEgress = egress ?? (egressReadFailed ? UNREAD_EGRESS : undefined)
   const direct = egress?.kind === 'direct'
-  const { data: vpn } = useQuery({ ...vpnStatusQueryOptions, enabled: direct })
-  const vpnSeen = direct ? vpn?.vpnSeen : undefined
+  const { data: vpn, isError: vpnFailed } = useQuery({ ...vpnStatusQueryOptions, enabled: direct })
+  // A VPN connects and drops outside Birdbrain, so a failed check leaves the route unknown and
+  // the reading before it is not shown in its place.
+  const vpnReadFailed = direct && vpnFailed
+  const vpnSeen = direct && !vpnFailed ? vpn?.vpnSeen : undefined
   // The button shows queued background captures while closed. A job that starts or ends emits a
   // recapture event, so the queue is re-read on each one, then polled while something is pending.
   const latestRecaptureEvent = useAppStore((s) =>
@@ -71,6 +74,7 @@ export function StatusGroup() {
     egress,
     egressReadFailed,
     vpnSeen,
+    vpnReadFailed,
     connectedToExtension,
     successCount: captureStats.successCount,
     failCount: captureStats.failCount,

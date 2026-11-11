@@ -5,6 +5,7 @@ const base: StatusInput = {
   egress: { kind: 'direct' },
   egressReadFailed: false,
   vpnSeen: true,
+  vpnReadFailed: false,
   connectedToExtension: true,
   successCount: 0,
   failCount: 0,
@@ -73,6 +74,34 @@ describe('statusModel', () => {
     expect(m.word).toBe('Egress unknown')
     expect(m.signals[1]).toMatchObject({ text: 'Egress unknown', severity: 'danger' })
     expect(m.summary).toMatch(/^Status: a problem\. Egress: Egress unknown\./)
+  })
+
+  // The VPN check is an input too: a Direct Egress nobody has checked is not a nominal one.
+  it('does not call a Direct Egress nominal before the VPN check answers', () => {
+    const m = statusModel({ ...base, vpnSeen: undefined })
+    expect(m.severity).toBe('nominal')
+    expect(m.summary).toMatch(/^Status: checking for a VPN\. Egress: Direct\./)
+    expect(m.summary).not.toContain('all nominal')
+  })
+
+  it('warns that the VPN check failed, whatever the last reading was', () => {
+    const m = statusModel({ ...base, vpnSeen: true, vpnReadFailed: true })
+    expect(m.severity).toBe('warning')
+    expect(m.worst?.key).toBe('egress')
+    expect(m.word).toBe('VPN check failed')
+    expect(m.signals[1]).toMatchObject({ text: 'Direct · VPN check failed', severity: 'warning' })
+    expect(m.summary).toMatch(/^Status: a warning\. Egress: Direct · VPN check failed\./)
+  })
+
+  it('asks nothing of the VPN check while the Egress is not Direct', () => {
+    const m = statusModel({
+      ...base,
+      egress: { kind: 'proxy', proxyUrl: 'socks5://127.0.0.1:1080', label: 'Lab' },
+      vpnSeen: undefined,
+      vpnReadFailed: true
+    })
+    expect(m.severity).toBe('nominal')
+    expect(m.summary).toMatch(/^Status: all nominal\. Egress: Proxy: Lab\./)
   })
 
   it('shows the stored count only while a session runs, whatever the colour', () => {

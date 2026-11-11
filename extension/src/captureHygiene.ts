@@ -35,7 +35,8 @@ export function removeInjectedBirdbrainUi(): void {
     .forEach((node) => node.remove())
   // The operator's selection highlight (#993), which selectionBar.ts holds and puts back on
   // release. This strip runs when that script is orphaned, and never gets the release, or when a
-  // teardown in it failed. Nothing is held here, so the selection is emptied, a caret included,
-  // and only what selectionBar.ts held before this ran comes back.
+  // teardown in it failed. Nothing is held here, so the selection is emptied, a caret included.
+  // Of what selectionBar.ts held before this ran, a page selection and a text field's selection
+  // come back on release; a selection inside an email or number input does not.
   window.getSelection()?.removeAllRanges()
 }

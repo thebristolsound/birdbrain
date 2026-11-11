@@ -3,7 +3,7 @@ import * as captureRepo from '@main/services/db/captureRepo'
 import * as caseRepo from '@main/services/db/caseRepo'
 import { listCaseMembers } from '@main/services/db/caseMemberRepo'
 import { getExhibit, listExhibits } from '@main/services/db/exhibitRepo'
-import { appendManifestEntry, initManifest } from '@main/services/manifest'
+import { appendManifestEntry, initManifest, withManifestSlot } from '@main/services/manifest'
 import {
   buildTrustedTimeIndex,
   pendingReceiptStamp,
@@ -96,29 +96,35 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
       if (parsed.messageImprintHex !== capture.hash) {
         throw new Error('TSA token imprint does not match capture content hash')
       }
-      // Guard against a concurrent enqueue + processPending both stamping the
-      // same capture: if it was anchored while our request was in flight, don't
-      // append a duplicate timestamp entry (or burn a second TSA hit). Reconcile
-      // refreshes the mirror from the manifest as it checks.
-      if (reconcileCaptureTrustedTime(capture).trustedTime === 'rfc3161') {
+      // The re-checks and the append run on the Case's manifest slot (#639), so the entry
+      // cannot land inside a batch delete's range.
+      return await withManifestSlot(caseDir, () => {
+        // A batch this waited behind may have deleted the Capture: no stamp for it.
+        if (!captureRepo.getCapture(captureId)) return false
+        // Guard against a concurrent enqueue + processPending both stamping the
+        // same capture: if it was anchored while our request was in flight, don't
+        // append a duplicate timestamp entry (or burn a second TSA hit). Reconcile
+        // refreshes the mirror from the manifest as it checks.
+        if (reconcileCaptureTrustedTime(capture).trustedTime === 'rfc3161') {
+          return true
+        }
+        // Read again after the request: a name cleared while it was in flight holds the stamp.
+        const operatorName = trimmedOperatorName()
+        if (!operatorName) return false
+        initManifest(caseDir)
+        appendManifestEntry(caseDir, {
+          type: 'timestamp',
+          caseId: capture.caseId,
+          captureContentHash: capture.hash,
+          timestamp: new Date().toISOString(),
+          tsaToken: token.toString('base64'),
+          operatorId: getInstallationId(),
+          operatorName,
+          toolVersion: resolveToolVersion()
+        })
+        captureRepo.setCaptureTrustedTime(captureId, 'rfc3161')
         return true
-      }
-      // Read again after the request: a name cleared while it was in flight holds the stamp.
-      const operatorName = trimmedOperatorName()
-      if (!operatorName) return false
-      initManifest(caseDir)
-      appendManifestEntry(caseDir, {
-        type: 'timestamp',
-        caseId: capture.caseId,
-        captureContentHash: capture.hash,
-        timestamp: new Date().toISOString(),
-        tsaToken: token.toString('base64'),
-        operatorId: getInstallationId(),
-        operatorName,
-        toolVersion: resolveToolVersion()
       })
-      captureRepo.setCaptureTrustedTime(captureId, 'rfc3161')
-      return true
     } catch (err) {
       logger.error(
         'timestampWorker',
@@ -154,29 +160,31 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
         throw new Error('TSA token imprint does not match exhibit content hash')
       }
       const { contentHash, authorInstallationId } = exhibit
-      if (
-        resolveTrustedTime(caseDir, contentHash, authorInstallationId).trustedTime === 'rfc3161'
-      ) {
+      return await withManifestSlot(caseDir, () => {
+        if (
+          resolveTrustedTime(caseDir, contentHash, authorInstallationId).trustedTime === 'rfc3161'
+        ) {
+          return true
+        }
+        const operatorName = trimmedOperatorName()
+        if (!operatorName) return false
+        initManifest(caseDir)
+        appendManifestEntry(
+          caseDir,
+          {
+            type: 'timestamp',
+            caseId: exhibit.caseId,
+            captureContentHash: exhibit.contentHash,
+            timestamp: new Date().toISOString(),
+            tsaToken: token.toString('base64'),
+            operatorId: getInstallationId(),
+            operatorName,
+            toolVersion: resolveToolVersion()
+          },
+          { minReaderSchemaVersion: 3 }
+        )
         return true
-      }
-      const operatorName = trimmedOperatorName()
-      if (!operatorName) return false
-      initManifest(caseDir)
-      appendManifestEntry(
-        caseDir,
-        {
-          type: 'timestamp',
-          caseId: exhibit.caseId,
-          captureContentHash: exhibit.contentHash,
-          timestamp: new Date().toISOString(),
-          tsaToken: token.toString('base64'),
-          operatorId: getInstallationId(),
-          operatorName,
-          toolVersion: resolveToolVersion()
-        },
-        { minReaderSchemaVersion: 3 }
-      )
-      return true
+      })
     } catch (err) {
       logger.error(
         'timestampWorker',
@@ -237,21 +245,23 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
       // The session's hand-off and a retry tick can race for one `merge`, as
       // for a Capture: a stamp that landed while this request was in flight
       // means no second entry.
-      if (receiptOf()?.stamp) return true
-      const operatorName = trimmedOperatorName()
-      if (!operatorName) return false
-      appendManifestEntry(caseDir, {
-        type: 'timestamp',
-        caseId,
-        captureContentHash: merge.entryHash,
-        subject: 'entry',
-        timestamp: new Date().toISOString(),
-        tsaToken: token.toString('base64'),
-        operatorId: getInstallationId(),
-        operatorName,
-        toolVersion: resolveToolVersion()
+      return await withManifestSlot(caseDir, () => {
+        if (receiptOf()?.stamp) return true
+        const operatorName = trimmedOperatorName()
+        if (!operatorName) return false
+        appendManifestEntry(caseDir, {
+          type: 'timestamp',
+          caseId,
+          captureContentHash: merge.entryHash,
+          subject: 'entry',
+          timestamp: new Date().toISOString(),
+          tsaToken: token.toString('base64'),
+          operatorId: getInstallationId(),
+          operatorName,
+          toolVersion: resolveToolVersion()
+        })
+        return true
       })
-      return true
     } catch (err) {
       logger.error(
         'timestampWorker',

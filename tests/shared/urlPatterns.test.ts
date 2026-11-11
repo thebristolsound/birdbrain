@@ -5,6 +5,7 @@ import {
   matchIgnoredUrl,
   resolveEffectiveIgnorePatterns,
   validateIgnorePattern,
+  validateIgnorePatternAsStored,
   type RegexTest
 } from '@shared/urlPatterns'
 import { safeRegexTest } from '@main/services/safeRegex'
@@ -191,6 +192,24 @@ const ROWS: Row[] = [
     patterns: [],
     url: 'https://www.facebook.com/some/page',
     expected: null
+  },
+
+  // --- the empty pattern (#724) ---
+  // Both write seams refuse it, so a list holds one only if it was stored before they did or
+  // the settings file was edited by hand. As a substring it is in every URL: the extension,
+  // which tests the answer against null, refused every page, and the server, which tests it
+  // for truth, read '' as no match.
+  {
+    name: 'an empty pattern is skipped, so alone it matches nothing',
+    patterns: [''],
+    url: 'https://example.com/page',
+    expected: null
+  },
+  {
+    name: 'an empty pattern does not hide the patterns listed after it',
+    patterns: ['', 'facebook.com'],
+    url: 'https://www.facebook.com/some/page',
+    expected: 'facebook.com'
   }
 ]
 
@@ -416,6 +435,49 @@ describe('validateIgnorePattern', () => {
   it('accepts a pattern that compiles but backtracks catastrophically', () => {
     expect(validateIgnorePattern('/(a+)+$/').ok).toBe(true)
   })
+})
+
+// The global list is matched as stored, where the per-case list is trimmed before it is
+// stored, so the global list's check cannot trim either (#724).
+describe('validateIgnorePatternAsStored', () => {
+  const PADDED = [
+    ['a regex with a trailing space', '/example/ ', 'https://example.com/page'],
+    ['a regex with a leading space', ' /example/', 'https://example.com/page'],
+    ['a substring with a leading space', ' example.com', 'https://example.com/page'],
+    ['a substring with a trailing space', 'example.com ', 'https://example.com/page'],
+    ['a glob with a trailing space', '*.example.com* ', 'https://www.example.com/page']
+  ] as const
+
+  it.each(PADDED)('refuses %s', (_name, pattern) => {
+    expect(validateIgnorePattern(pattern)).toEqual({ ok: true })
+    expect(validateIgnorePatternAsStored(pattern)).toEqual({
+      ok: false,
+      reason: 'Pattern has leading or trailing whitespace'
+    })
+  })
+
+  // What the refusal is for: each one matches a URL once trimmed and nothing as stored.
+  it.each(PADDED)('%s excludes nothing as stored', (_name, pattern, url) => {
+    expect(matchIgnoredUrl(url, [pattern.trim()])).toBe(pattern.trim())
+    expect(matchIgnoredUrl(url, [pattern])).toBeNull()
+    expect(matchIgnoredUrl(url, [pattern], safeRegexTest)).toBeNull()
+  })
+
+  it.each(['', '   ', '/[/', '/some/path'])(
+    'gives %j the reason validateIgnorePattern gives',
+    (p) => {
+      const expected = validateIgnorePattern(p)
+      expect(expected.ok).toBe(false)
+      expect(validateIgnorePatternAsStored(p)).toEqual(expected)
+    }
+  )
+
+  it.each(['facebook.com', '*.bank.com*', 'exa?ple.com', '/^https:/i', 'a b.com'])(
+    'accepts %j',
+    (pattern) => {
+      expect(validateIgnorePatternAsStored(pattern)).toEqual({ ok: true })
+    }
+  )
 })
 
 describe('resolveEffectiveIgnorePatterns', () => {

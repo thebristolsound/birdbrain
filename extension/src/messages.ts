@@ -52,8 +52,14 @@ export type SelectionActionKind = 'selector' | 'tag' | 'quote'
 export interface SelectionActionRequest {
   type: 'SELECTION_ACTION'
   action: SelectionActionKind
-  /** The selected passage, as the page handed it over. */
+  /** The selected passage, whitespace collapsed: what a Selector and a Tag derive from. */
   text: string
+  /**
+   * The same passage with its line breaks kept, from `selectionQuoteText`: a
+   * Quote's body (#1003). The background trims both fields and refuses a Quote
+   * whose `rawText` then fails `isQuoteTextOf(rawText, text)`.
+   */
+  rawText: string
 }
 
 /**

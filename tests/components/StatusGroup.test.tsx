@@ -22,10 +22,19 @@ vi.mock('@tanstack/react-router', () => ({
 
 import { StatusGroup } from '@renderer/components/status/StatusGroup'
 
+const idleQueue: RecaptureQueueStatus = {
+  pending: 0,
+  queued: 0,
+  running: 0,
+  held: 0,
+  concurrency: 1,
+  activeUrl: null
+}
+
 function renderWith(
   egress: EgressSetting,
   vpnSeen: boolean | undefined,
-  queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => ({ pending: 0, activeUrl: null }))
+  queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => idleQueue)
 ) {
   return renderWithSettings(async () => ({ egress }), vpnSeen, queueStatus)
 }
@@ -33,7 +42,7 @@ function renderWith(
 function renderWithSettings(
   getSettings: () => Promise<{ egress: EgressSetting }>,
   vpnSeen: boolean | undefined = undefined,
-  queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => ({ pending: 0, activeUrl: null }))
+  queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => idleQueue)
 ) {
   const vpnStatus = vi.fn(async () => ({ vpnSeen }))
   renderGroup(getSettings, vpnStatus, queueStatus)
@@ -43,7 +52,7 @@ function renderWithSettings(
 function renderGroup(
   getSettings: () => Promise<{ egress: EgressSetting }>,
   vpnStatus: () => Promise<Partial<VpnStatus>>,
-  queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => ({ pending: 0, activeUrl: null })),
+  queueStatus = vi.fn(async (): Promise<RecaptureQueueStatus> => idleQueue),
   bridge: Record<string, unknown> = {}
 ) {
   fakeBridge({
@@ -454,7 +463,10 @@ describe('StatusGroup announcements and popover', () => {
 describe('StatusGroup background captures', () => {
   const queued = (pending: number) =>
     vi.fn(async (): Promise<RecaptureQueueStatus> => ({
+      ...idleQueue,
       pending,
+      queued: Math.max(pending - 1, 0),
+      running: Math.min(pending, 1),
       activeUrl: pending ? 'https://example.org/queued' : null
     }))
   const started: CaptureEvent = {
@@ -490,11 +502,11 @@ describe('StatusGroup background captures', () => {
     renderWith({ kind: 'direct' }, true, queueStatus)
     await waitFor(() => expect(queueStatus).toHaveBeenCalledTimes(1))
 
-    queueStatus.mockResolvedValue({ pending: 1, activeUrl: started.url })
+    queueStatus.mockResolvedValue({ ...idleQueue, pending: 1, running: 1, activeUrl: started.url })
     act(() => useAppStore.getState().addCaptureEvent(started))
     expect((await screen.findByTestId('recapture-pending-indicator')).textContent).toBe('1')
 
-    queueStatus.mockResolvedValue({ pending: 0, activeUrl: null })
+    queueStatus.mockResolvedValue(idleQueue)
     act(() =>
       useAppStore
         .getState()
@@ -512,7 +524,7 @@ describe('StatusGroup background captures', () => {
       renderWith({ kind: 'direct' }, true, queueStatus)
       expect((await screen.findByTestId('recapture-pending-indicator')).textContent).toBe('1')
 
-      queueStatus.mockResolvedValue({ pending: 0, activeUrl: null })
+      queueStatus.mockResolvedValue(idleQueue)
       await act(() => vi.advanceTimersByTimeAsync(2000))
       await waitFor(() => expect(screen.queryByTestId('recapture-pending-indicator')).toBeNull())
 

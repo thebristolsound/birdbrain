@@ -965,12 +965,22 @@ export type DuplicateCaptureResult =
 // --- Recapture (background capture queue) ---
 
 export interface RecaptureQueueStatus {
+  // `queued + running`, which the capture status button reads.
   pending: number
+  queued: number
+  running: number
+  // Jobs from an earlier session waiting for the Operator to resume their Batch. The queue holds
+  // no job across a restart yet, so it is always 0.
+  held: number
+  concurrency: number
   activeUrl: string | null
 }
 
+// `batchId` names the call; `jobIds` are its accepted jobs, in the order they were queued.
 export interface EnqueueResult {
+  batchId: string
   accepted: number
+  jobIds: string[]
   rejected: Array<{ url: string; reason: string }>
 }
 

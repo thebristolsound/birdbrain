@@ -2680,7 +2680,7 @@ describe('a Recapture of a rendered page, through ingest, and its PDF', () => {
     })
     service.enqueue([{ url: 'https://example.test/', caseId }])
     await service.idle()
-    expect(events.map(({ type }) => type)).toEqual(['received', 'stored'])
+    expect(events.map(({ type }) => type)).toEqual(['queued', 'received', 'stored'])
     const stored = events.find((event) => event.type === 'stored') as { captureId: string }
     const entry = readFileSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
       .trim()
@@ -2729,7 +2729,7 @@ describe('a Recapture of a rendered page, through ingest, and its PDF', () => {
     service.enqueue([{ url: 'https://example.test/', caseId }])
     await service.idle()
 
-    expect(events.map(({ type }) => type)).toEqual(['received', 'failed'])
+    expect(events.map(({ type }) => type)).toEqual(['queued', 'received', 'failed'])
     expect(events.at(-1)).toMatchObject({ error: 'the page navigated away during the pin' })
     const manifest = join(getStorageRoot(), caseId, MANIFEST_FILENAME)
     const written = existsSync(manifest) ? readFileSync(manifest, 'utf-8') : ''

@@ -43,6 +43,7 @@ import type {
   SelfTestResult,
   SessionStateEvent,
   CaptureBatchPayload,
+  CaptureDeleteResult,
   VpnWarningAnswer,
   VpnWarningOccasion,
   VpnWarningTarget
@@ -108,6 +109,7 @@ import { getServerToken } from '@main/services/serverToken'
 import { getStorageRoot } from '@main/services/storage'
 import { resolveTrustedTime } from '@main/services/trustedTime'
 import { BatchCrossCaseError } from '@main/services/captureLifecycle'
+import { OperatorNameRequiredError, trimmedOperatorName } from '@main/services/operatorName'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import type { RecaptureService } from '@main/services/recapture'
@@ -286,6 +288,10 @@ export function registerIpcHandlers(deps: {
   // Hand-off for a freshly committed Exhibit to the trusted-timestamp worker
   // (X26). Optional so tests without a worker can register the handlers.
   enqueueExhibitTimestamp?: (exhibitId: string) => void
+  // Run after a save takes the operator name from blank to set: the signing paths that held
+  // work for want of a name (X47) do it now rather than at the next launch. Optional so tests
+  // can register the handlers without one.
+  onOperatorNameSet?: () => Promise<void>
   // The VPN check behind the indicator and the warning (ADR-0032). Optional so tests can
   // pass a stub; the default reads this computer's routing table.
   vpnWarning?: VpnWarningService
@@ -554,7 +560,16 @@ export function registerIpcHandlers(deps: {
   // Captures
   handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => captureRepo.listCaptures(caseId))
   handle(IPC_CHANNELS.CAPTURES_GET, (_, id: string) => captureRepo.getCapture(id))
-  handle(IPC_CHANNELS.CAPTURES_DELETE, (_, id: string) => captureLifecycle.delete(id))
+  handle(IPC_CHANNELS.CAPTURES_DELETE, async (_, id: string): Promise<CaptureDeleteResult> => {
+    try {
+      return (await captureLifecycle.delete(id)) ? { deleted: true } : { deleted: false }
+    } catch (err) {
+      if (err instanceof OperatorNameRequiredError) {
+        return { deleted: false, reason: 'operator_name_required' }
+      }
+      throw err
+    }
+  })
   handle(IPC_CHANNELS.CAPTURES_DELETE_MANY, async (_, payload) => {
     const { caseId, captureIds } = validateBatchPayload(payload)
     try {
@@ -1326,7 +1341,8 @@ export function registerIpcHandlers(deps: {
 
   // Settings
   handle(IPC_CHANNELS.SETTINGS_GET, () => settings.getSettings())
-  handle(IPC_CHANNELS.SETTINGS_UPDATE, (_, partial: Partial<BirdbrainSettings>) => {
+  handle(IPC_CHANNELS.SETTINGS_UPDATE, async (_, partial: Partial<BirdbrainSettings>) => {
+    const hadOperatorName = trimmedOperatorName() !== ''
     let updated: BirdbrainSettings
     try {
       updated = settings.updateSettings(partial)
@@ -1338,6 +1354,9 @@ export function registerIpcHandlers(deps: {
     }
     // A channel switch or auto-check toggle must reconfigure the live updater.
     updaterService.applySettingsChange(partial)
+    // Await the backfill attempt before answering so refetches see its completed writes.
+    // Trusted-time retries start in the background and may finish after the answer.
+    if (!hadOperatorName && trimmedOperatorName() !== '') await deps.onOperatorNameSet?.()
     return updated
   })
   handle(IPC_CHANNELS.SETTINGS_RESET, () => {

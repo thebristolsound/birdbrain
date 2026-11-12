@@ -779,13 +779,93 @@ describe("the operator's selection stays out of the frames (#993)", () => {
     it('leaves the area without a selection when the focus is on a button outside it', () => {
       setPageHtml(EDITOR_HTML)
       makeEditable(document.getElementById('editor')!)
-      const outside = document.getElementById('outside')!
-      outside.focus()
+      document.getElementById('outside')!.focus()
       selectWord()
 
       captureRoundTrip()
       expect(window.getSelection()!.rangeCount).toBe(0)
-      expect(document.activeElement).toBe(outside)
+    })
+
+    // Chromium moves the focus only in the frame that has it.
+    it('puts the selection back when the focus is in an embedded frame', () => {
+      setPageHtml(EDITOR_HTML + '<iframe></iframe>')
+      makeEditable(document.getElementById('editor')!)
+      document.querySelector('iframe')!.focus()
+      expect(document.activeElement).toBe(document.querySelector('iframe'))
+      selectWord()
+
+      captureRoundTrip()
+      expect(window.getSelection()!.toString()).toBe('reply')
+    })
+
+    // jsdom keeps no selection inside a shadow tree: the composed range stands in for what
+    // Chromium reports, and the call that would set the selection is what is checked.
+    describe('in a web component', () => {
+      let word: HTMLElement
+      let inside: HTMLElement
+
+      beforeEach(() => {
+        setPageHtml(EDITOR_HTML + '<section id="component"></section>')
+        const component = document.getElementById('component')!
+        const root = component.attachShadow({ mode: 'open' })
+        root.innerHTML = '<div id="inside" tabindex="0">Shadow <i>draft</i></div>'
+        inside = root.getElementById('inside')!
+        word = root.querySelector('i')!
+        makeEditable(inside)
+        Object.defineProperty(Selection.prototype, 'getComposedRanges', {
+          configurable: true,
+          value: () => [
+            new StaticRange({
+              startContainer: word,
+              startOffset: 0,
+              endContainer: word,
+              endOffset: 1
+            })
+          ]
+        })
+      })
+
+      afterEach(() => {
+        delete (Selection.prototype as Partial<Selection>).getComposedRanges
+      })
+
+      function setsSelectionOnRelease(): boolean {
+        window.getSelection()!.collapse(document.getElementById('component'), 0)
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        expect(window.getSelection()!.rangeCount).toBe(0)
+        const set = vi.spyOn(Selection.prototype, 'setBaseAndExtent')
+        try {
+          dispatch({ type: 'RELEASE_CAPTURE_UI' })
+          return set.mock.calls.some(([anchor]) => anchor === word)
+        } finally {
+          set.mockRestore()
+        }
+      }
+
+      it('leaves its editable area without a selection when the focus is outside it', () => {
+        document.getElementById('outside')!.focus()
+        expect(setsSelectionOnRelease()).toBe(false)
+      })
+
+      it('puts the selection back while its editable area has the focus', () => {
+        inside.focus()
+        expect(setsSelectionOnRelease()).toBe(true)
+      })
+    })
+
+    // An editable element inside a part that cannot be edited is an area of its own.
+    it('leaves a nested area without a selection while the focus is on the area around it', () => {
+      setPageHtml(
+        '<main><div id="editor" tabindex="0">Draft <span id="fixed">' +
+          '<span id="island" tabindex="0">Caption <b>reply</b></span></span></div></main>'
+      )
+      const editor = document.getElementById('editor')!
+      makeEditable(editor, [document.getElementById('fixed')!])
+      editor.focus()
+      selectWord()
+
+      captureRoundTrip()
+      expect(window.getSelection()!.rangeCount).toBe(0)
     })
 
     it('leaves the area without a selection when the focus is on a button inside it', () => {

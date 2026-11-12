@@ -584,9 +584,13 @@ function editingHost(node: Node): HTMLElement | null {
   return host
 }
 
+// Chromium moves the focus only in the frame that has it, so with the focus in an embedded frame
+// a selection set here leaves it there.
 function keepsFocus(node: Node): boolean {
+  const active = focusedElement()
+  if (active instanceof HTMLIFrameElement || active instanceof HTMLFrameElement) return true
   const host = editingHost(node)
-  return host === null || host === focusedElement()
+  return host === null || host === active
 }
 
 function restoreField(): void {
@@ -639,8 +643,8 @@ function restoreSelection(): void {
   const { startContainer, startOffset, endContainer, endOffset } = held.range
   // A composed range does not follow DOM changes; ends the page cut away are not put back.
   if (!fitsNode(startContainer, startOffset) || !fitsNode(endContainer, endOffset)) return
-  // Putting it back would take the focus off the element the operator is on, and their next key
-  // would then replace the selected text, so the editable area stays without a selection (#2188).
+  // Chromium would move the focus into an editable area the operator has left, and their next key
+  // would then replace the selected text, so that area stays without a selection (#2188).
   if (!keepsFocus(startContainer) || !keepsFocus(endContainer)) return
   if (held.backward) {
     selection.setBaseAndExtent(endContainer, endOffset, startContainer, startOffset)

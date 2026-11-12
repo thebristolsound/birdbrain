@@ -18,6 +18,7 @@ import {
   releaseCaptureUiSuppression
 } from '../../extension/src/captureSuppression'
 import { SELECTION_BAR_SELECTOR } from '../../extension/src/selectionBar'
+import { TOAST_SELECTOR } from '../../extension/src/toast'
 import { installTrustedInput, operatorClick, operatorMouseUp } from './trustedInput'
 
 vi.mock('@extension/utils/api', () => ({
@@ -94,6 +95,14 @@ function barMessage(): string {
   return barRoot()?.querySelector('.message')?.textContent ?? ''
 }
 
+function toastMessage(): string | null {
+  const host = document.querySelector(TOAST_SELECTOR)
+  return host ? (shadowRoots.get(host)?.querySelector('.message')?.textContent ?? null) : null
+}
+
+type ContextMenuListener = (info: { menuItemId: string }, tab: typeof TAB) => Promise<void>
+let contextMenuListener: ContextMenuListener | undefined
+
 function selectParagraph(): void {
   const range = document.createRange()
   range.selectNodeContents(document.querySelector('p')!)
@@ -110,13 +119,16 @@ async function clickTag(): Promise<void> {
   await flush()
 }
 
-function startManualCapture(): void {
-  void deliver(
+function startManualCapture(): Promise<unknown> {
+  return deliver(
     workerListeners,
     { type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-a' },
     { id: EXTENSION_ID }
   )
 }
+
+// #963: a capture of this tab is already running, so the popup's request is refused.
+const MANUAL_REFUSED = { started: false, blocked: null, notReady: false, alreadyRunning: true }
 
 const STATUS: CaptureServerStatus = {
   running: true,
@@ -143,14 +155,6 @@ const TAG_RESULT: ExtensionTagApplyResult = {
   captured: true,
   screenshotStatus: 'none',
   tag: { id: 'tag-1', name: 'evil-example-com' }
-}
-
-const UPLOAD_RESULT: CaptureUploadResult = {
-  captureId: 'cap-2',
-  hash: 'deadbeef',
-  status: 'ok',
-  source: 'manual',
-  screenshotStatus: 'none'
 }
 
 beforeAll(async () => {
@@ -211,7 +215,11 @@ beforeAll(async () => {
     contextMenus: {
       create: () => {},
       update: () => Promise.resolve(),
-      onClicked: { addListener: () => {} }
+      onClicked: {
+        addListener: (fn: ContextMenuListener) => {
+          contextMenuListener = fn
+        }
+      }
     },
     alarms: {
       get: (_name: string, callback: (alarm?: unknown) => void) => callback(undefined),
@@ -266,7 +274,7 @@ beforeEach(async () => {
 })
 
 describe('a selection attach shows its progress during the POST (#1002)', () => {
-  it('releases once its frames are in, and a later capture re-holds the latch', async () => {
+  it('releases once its frames are in, and a manual capture during the POST leaves it down', async () => {
     await clickTag()
     // The attach's own bracket strips the busy bar before its frames
     expect(mhtmlCallbacks).toHaveLength(1)
@@ -285,63 +293,58 @@ describe('a selection attach shows its progress during the POST (#1002)', () => 
     // The operator's selection, held out of the frames (#993), is back too
     expect(window.getSelection()!.toString()).toContain('evil@example.com')
 
-    // A manual capture of the same tab starts while the POST is still in flight
-    startManualCapture()
+    // A manual capture of the same tab is asked for while the POST is in
+    // flight: refused (#963), so no second bracket strips the bar
+    expect(await startManualCapture()).toEqual(MANUAL_REFUSED)
     await flush()
-    expect(mhtmlCallbacks).toHaveLength(2)
-    expect(isCaptureUiSuppressed()).toBe(true)
-    expect(bar()).toBeNull()
-    expect(bodyAtFrame[1]).toBe(PAGE_HTML)
+    expect(mhtmlCallbacks).toHaveLength(1)
+    expect(sentToPage('PREPARE_FOR_CAPTURE')).toBe(1)
+    expect(isCaptureUiSuppressed()).toBe(false)
+    expect(barMessage()).toBe('Tagging page...')
 
-    // The attach settles mid-frame: its result waits, and the latch stays up
     attachResolvers[0](TAG_RESULT)
     await flush()
-    expect(sentToPage('RELEASE_CAPTURE_UI')).toBe(1)
-    expect(isCaptureUiSuppressed()).toBe(true)
-    expect(bar()).toBeNull()
-    expect(document.body.innerHTML).toBe(PAGE_HTML)
-
-    // The manual capture is unchanged: its upload runs with the latch still up...
-    mhtmlCallbacks[1](new Blob(['mhtml-manual']))
-    await flush()
-    expect(uploadResolvers).toHaveLength(1)
-    expect(sentToPage('RELEASE_CAPTURE_UI')).toBe(1)
-    expect(isCaptureUiSuppressed()).toBe(true)
-
-    // ...and its settling releases it, when the attach's result reaches the operator
-    uploadResolvers[0](UPLOAD_RESULT)
-    await flush()
-    expect(sentToPage('RELEASE_CAPTURE_UI')).toBe(2)
     expect(isCaptureUiSuppressed()).toBe(false)
     expect(barMessage()).toBe('Tagged "evil-example-com"')
+    expect(uploadResolvers).toHaveLength(0)
   })
 
-  it('keeps the latch up through the POST while another capture is still collecting', async () => {
+  it('refuses a manual capture while the attach is still collecting frames', async () => {
     await clickTag()
-    startManualCapture()
+    expect(await startManualCapture()).toEqual(MANUAL_REFUSED)
     await flush()
-    expect(mhtmlCallbacks).toHaveLength(2)
-
-    // The attach's frames finish first; the manual capture is still mid-frame
-    mhtmlCallbacks[0](new Blob(['mhtml-selection']))
-    await flush()
-    expect(attachResolvers).toHaveLength(1)
-    expect(sentToPage('RELEASE_CAPTURE_UI')).toBe(0)
+    expect(mhtmlCallbacks).toHaveLength(1)
     expect(isCaptureUiSuppressed()).toBe(true)
     expect(bar()).toBeNull()
 
-    mhtmlCallbacks[1](new Blob(['mhtml-manual']))
+    mhtmlCallbacks[0](new Blob(['mhtml-selection']))
     await flush()
-    expect(bodyAtFrame).toEqual([PAGE_HTML, PAGE_HTML])
-
-    // The attach's bracket is the first to settle with no capture collecting
-    attachResolvers[0](TAG_RESULT)
-    await flush()
+    expect(bodyAtFrame).toEqual([PAGE_HTML])
     expect(sentToPage('RELEASE_CAPTURE_UI')).toBe(1)
     expect(isCaptureUiSuppressed()).toBe(false)
-    expect(barMessage()).toBe('Tagged "evil-example-com"')
 
-    uploadResolvers[0](UPLOAD_RESULT)
+    attachResolvers[0](TAG_RESULT)
     await flush()
+    expect(barMessage()).toBe('Tagged "evil-example-com"')
+    expect(uploadResolvers).toHaveLength(0)
+  })
+
+  it("shows a refused context-menu capture's notice once the frames are in, not inside them", async () => {
+    await clickTag()
+    await contextMenuListener?.({ menuItemId: 'birdbrain-capture-full-page' }, TAB)
+    await flush()
+    expect(mhtmlCallbacks).toHaveLength(1)
+    expect(toastMessage()).toBeNull()
+
+    mhtmlCallbacks[0](new Blob(['mhtml-selection']))
+    await flush()
+    expect(bodyAtFrame).toEqual([PAGE_HTML])
+    // Shown during the attach POST, not held until the attach settles
+    expect(attachResolvers).toHaveLength(1)
+    expect(toastMessage()).toBe('Not captured — a capture of this page is already running')
+
+    attachResolvers[0](TAG_RESULT)
+    await flush()
+    expect(uploadResolvers).toHaveLength(0)
   })
 })

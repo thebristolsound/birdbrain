@@ -571,8 +571,8 @@ function fitsNode(node: Node, offset: number): boolean {
   return node.isConnected && offset <= length
 }
 
-// The element Chromium focuses when a script sets a selection at the node: the outermost of the
-// editable elements around it, and none for text that cannot be edited.
+// The element Chromium focuses when a script sets a selection at the node: the last editable
+// element on the way up before one that cannot be edited, and none for text that cannot be edited.
 function editingHost(node: Node): HTMLElement | null {
   let host: HTMLElement | null = null
   for (let at: Node | null = node; at; at = at.parentNode) {

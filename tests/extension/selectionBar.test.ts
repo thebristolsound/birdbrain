@@ -959,10 +959,11 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       setPageHtml(EDITOR_HTML)
       makeEditable(document.getElementById('editor')!)
       document.getElementById('outside')!.focus()
-      window.getSelection()!.selectAllChildren(document.querySelector('p')!)
+      const text = document.querySelector('p')!.firstChild!
+      window.getSelection()!.setBaseAndExtent(text, 0, text, 9)
 
       captureRoundTrip()
-      expect(window.getSelection()!.toString()).toBe('Page text here.')
+      expect(window.getSelection()!.toString()).toBe('Page text')
     })
 
     it('puts the selection back in a page that is editable as a whole, focused on its body', () => {
@@ -976,8 +977,9 @@ describe("the operator's selection stays out of the frames (#993)", () => {
         captureRoundTrip()
         expect(window.getSelection()!.toString()).toBe('reply')
       } finally {
-        delete (document.documentElement as { isContentEditable?: boolean }).isContentEditable
-        delete (document.body as { isContentEditable?: boolean }).isContentEditable
+        for (const element of [document.documentElement, document.head, document.body]) {
+          delete (element as { isContentEditable?: boolean }).isContentEditable
+        }
       }
     })
   })

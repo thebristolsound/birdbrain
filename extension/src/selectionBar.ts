@@ -571,6 +571,24 @@ function fitsNode(node: Node, offset: number): boolean {
   return node.isConnected && offset <= length
 }
 
+// The element Chromium focuses when a script sets a selection at the node: the outermost of the
+// editable elements around it, and none for text that cannot be edited.
+function editingHost(node: Node): HTMLElement | null {
+  let host: HTMLElement | null = null
+  for (let at: Node | null = node; at; at = at.parentNode) {
+    if (!(at instanceof HTMLElement)) continue
+    if (!at.isContentEditable) break
+    host = at
+    if (at === document.body) break
+  }
+  return host
+}
+
+function keepsFocus(node: Node): boolean {
+  const host = editingHost(node)
+  return host === null || host === focusedElement()
+}
+
 function restoreField(): void {
   const held = heldField
   heldField = null
@@ -621,6 +639,9 @@ function restoreSelection(): void {
   const { startContainer, startOffset, endContainer, endOffset } = held.range
   // A composed range does not follow DOM changes; ends the page cut away are not put back.
   if (!fitsNode(startContainer, startOffset) || !fitsNode(endContainer, endOffset)) return
+  // Putting it back would take the focus off the element the operator is on, and their next key
+  // would then replace the selected text, so the editable area stays without a selection (#2188).
+  if (!keepsFocus(startContainer) || !keepsFocus(endContainer)) return
   if (held.backward) {
     selection.setBaseAndExtent(endContainer, endOffset, startContainer, startOffset)
   } else {

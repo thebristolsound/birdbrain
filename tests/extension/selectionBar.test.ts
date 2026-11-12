@@ -738,6 +738,118 @@ describe("the operator's selection stays out of the frames (#993)", () => {
     expect(selectionEnds()).toEqual(before)
   })
 
+  // Chromium focuses the editable area of a selection a script sets, which jsdom does not model:
+  // these tests pin when the selection is put back, and the probe in the PR shows the focus.
+  // jsdom also collapses the selection when a button takes the focus, so the focus moves first.
+  describe('in an editable area (#2188)', () => {
+    const EDITOR_HTML =
+      '<main><h2>Thread title</h2><div id="editor" tabindex="0">Draft <b>reply</b> text' +
+      '<button id="inner">Send</button></div><p>Page text here.</p>' +
+      '<button id="outside">Capture</button></main>'
+
+    // jsdom has no isContentEditable: the editor and what it holds report true, as in Chromium.
+    function makeEditable(editor: HTMLElement, except: HTMLElement[] = []): void {
+      for (const element of [editor, ...editor.querySelectorAll<HTMLElement>('*')]) {
+        const value = !except.includes(element)
+        Object.defineProperty(element, 'isContentEditable', { value, configurable: true })
+      }
+    }
+
+    function selectWord(): void {
+      window.getSelection()!.selectAllChildren(document.querySelector('b')!)
+    }
+
+    function captureRoundTrip(): void {
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      expect(window.getSelection()!.rangeCount).toBe(0)
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+    }
+
+    it('puts the selection back while the editable area has the focus', () => {
+      setPageHtml(EDITOR_HTML)
+      const editor = document.getElementById('editor')!
+      makeEditable(editor)
+      editor.focus()
+      selectWord()
+
+      captureRoundTrip()
+      expect(window.getSelection()!.toString()).toBe('reply')
+    })
+
+    it('leaves the area without a selection when the focus is on a button outside it', () => {
+      setPageHtml(EDITOR_HTML)
+      makeEditable(document.getElementById('editor')!)
+      const outside = document.getElementById('outside')!
+      outside.focus()
+      selectWord()
+
+      captureRoundTrip()
+      expect(window.getSelection()!.rangeCount).toBe(0)
+      expect(document.activeElement).toBe(outside)
+    })
+
+    it('leaves the area without a selection when the focus is on a button inside it', () => {
+      setPageHtml(EDITOR_HTML)
+      const inner = document.getElementById('inner')!
+      makeEditable(document.getElementById('editor')!, [inner])
+      inner.focus()
+      selectWord()
+
+      captureRoundTrip()
+      expect(window.getSelection()!.rangeCount).toBe(0)
+    })
+
+    it('leaves it without a selection that starts in the area and ends in page text', () => {
+      setPageHtml(EDITOR_HTML)
+      makeEditable(document.getElementById('editor')!)
+      document.getElementById('outside')!.focus()
+      const text = document.querySelector('p')!.firstChild!
+      window.getSelection()!.setBaseAndExtent(document.querySelector('b')!, 0, text, 4)
+
+      captureRoundTrip()
+      expect(window.getSelection()!.rangeCount).toBe(0)
+    })
+
+    // Chromium keeps the focus for this one and cuts the selection off at the area's edge. The
+    // rule is the same for both ends, so no selection is set that reaches into the area.
+    it('leaves it without a selection that starts in page text and ends in the area', () => {
+      setPageHtml(EDITOR_HTML)
+      makeEditable(document.getElementById('editor')!)
+      document.getElementById('outside')!.focus()
+      const title = document.querySelector('h2')!.firstChild!
+      window.getSelection()!.setBaseAndExtent(title, 7, document.querySelector('b')!, 1)
+
+      captureRoundTrip()
+      expect(window.getSelection()!.rangeCount).toBe(0)
+    })
+
+    it('puts back a selection in page text beside the area, with the focus on a button', () => {
+      setPageHtml(EDITOR_HTML)
+      makeEditable(document.getElementById('editor')!)
+      document.getElementById('outside')!.focus()
+      window.getSelection()!.selectAllChildren(document.querySelector('p')!)
+
+      captureRoundTrip()
+      expect(window.getSelection()!.toString()).toBe('Page text here.')
+    })
+
+    it('puts the selection back in a page that is editable as a whole, focused on its body', () => {
+      setPageHtml(EDITOR_HTML)
+      // Design mode: every element reports editable, the root element included.
+      makeEditable(document.documentElement)
+      try {
+        selectWord()
+        expect(document.activeElement).toBe(document.body)
+
+        captureRoundTrip()
+        expect(window.getSelection()!.toString()).toBe('reply')
+      } finally {
+        delete (document.documentElement as { isContentEditable?: boolean }).isContentEditable
+        delete (document.body as { isContentEditable?: boolean }).isContentEditable
+      }
+    })
+  })
+
   // Wired the way background.ts wires it: suppress strips the page, and restore sends the release
   // only once no capture on the tab is collecting frames.
   describe("through the background's capture bracket", () => {

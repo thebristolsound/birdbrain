@@ -738,6 +738,252 @@ describe("the operator's selection stays out of the frames (#993)", () => {
     expect(selectionEnds()).toEqual(before)
   })
 
+  // Chromium focuses the editable area of a selection a script sets, which jsdom does not model:
+  // these tests pin when the selection is put back. The focus itself was checked by hand in
+  // Chromium, with the results in the description of pull request 2195 and no script committed.
+  // jsdom also collapses the selection when a button takes the focus, so the focus moves first.
+  describe('in an editable area (#2188)', () => {
+    const EDITOR_HTML =
+      '<main><h2>Thread title</h2><div id="editor" tabindex="0">Draft <b>reply</b> text' +
+      '<button id="inner">Send</button></div><p>Page text here.</p>' +
+      '<button id="outside">Capture</button></main>'
+
+    // jsdom has no isContentEditable: the editor and what it holds report true, as in Chromium.
+    function makeEditable(editor: HTMLElement, except: HTMLElement[] = []): void {
+      for (const element of [editor, ...editor.querySelectorAll<HTMLElement>('*')]) {
+        const value = !except.includes(element)
+        Object.defineProperty(element, 'isContentEditable', { value, configurable: true })
+      }
+    }
+
+    // Ends inside the text, as a double click or a drag leaves them.
+    function selectWord(): void {
+      const text = document.querySelector('b')!.firstChild!
+      window.getSelection()!.setBaseAndExtent(text, 0, text, 5)
+    }
+
+    // A release listener that throws is logged and swallowed, and would also set no selection.
+    function release(): void {
+      const warn = vi.spyOn(console, 'warn')
+      try {
+        dispatch({ type: 'RELEASE_CAPTURE_UI' })
+        expect(warn).not.toHaveBeenCalledWith(RELEASE_FAILED, expect.anything())
+      } finally {
+        warn.mockRestore()
+      }
+    }
+
+    function captureRoundTrip(): void {
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      expect(window.getSelection()!.rangeCount).toBe(0)
+      release()
+    }
+
+    it('puts the selection back while the editable area has the focus', () => {
+      setPageHtml(EDITOR_HTML)
+      const editor = document.getElementById('editor')!
+      makeEditable(editor)
+      editor.focus()
+      selectWord()
+
+      captureRoundTrip()
+      expect(window.getSelection()!.toString()).toBe('reply')
+    })
+
+    it('leaves the area without a selection when the focus is on a button outside it', () => {
+      setPageHtml(EDITOR_HTML)
+      makeEditable(document.getElementById('editor')!)
+      document.getElementById('outside')!.focus()
+      selectWord()
+
+      captureRoundTrip()
+      expect(window.getSelection()!.rangeCount).toBe(0)
+    })
+
+    it('does not raise the bar again for a selection it left out', async () => {
+      setPageHtml(EDITOR_HTML)
+      makeEditable(document.getElementById('editor')!)
+      document.getElementById('outside')!.focus()
+      selectWord()
+      await mouseUp()
+      expect(bar()).not.toBeNull()
+
+      captureRoundTrip()
+      expect(bar()).toBeNull()
+    })
+
+    // Chromium moves the focus only in the frame that has it. The page's focused element is then
+    // the element that holds the embedded document, which jsdom does not report for all of them.
+    describe('with the focus in an embedded document', () => {
+      function roundTripFocusedOn(holder: HTMLElement): string {
+        document.body.append(holder)
+        const active = vi.spyOn(document, 'activeElement', 'get').mockReturnValue(holder)
+        try {
+          selectWord()
+          captureRoundTrip()
+          return window.getSelection()!.toString()
+        } finally {
+          active.mockRestore()
+        }
+      }
+
+      beforeEach(() => {
+        setPageHtml(EDITOR_HTML)
+        makeEditable(document.getElementById('editor')!)
+      })
+
+      it.each(['iframe', 'frame'])('puts the selection back for an %s', (tag) => {
+        expect(roundTripFocusedOn(document.createElement(tag))).toBe('reply')
+      })
+
+      it('puts the selection back for an object that holds a document', () => {
+        const holder = document.createElement('object')
+        Object.defineProperty(holder, 'contentWindow', { value: window })
+        expect(roundTripFocusedOn(holder)).toBe('reply')
+      })
+
+      it('leaves the area without a selection for a focused object that holds none', () => {
+        const holder = document.createElement('object')
+        Object.defineProperty(holder, 'contentWindow', { value: null })
+        expect(roundTripFocusedOn(holder)).toBe('')
+      })
+    })
+
+    // jsdom keeps no selection inside a shadow tree: the composed range stands in for what
+    // Chromium reports, and the call that would set the selection is what is checked.
+    describe('in a web component', () => {
+      let word: Text
+      let inside: HTMLElement
+
+      beforeEach(() => {
+        setPageHtml(EDITOR_HTML + '<section id="component"></section>')
+        const component = document.getElementById('component')!
+        const root = component.attachShadow({ mode: 'open' })
+        root.innerHTML = '<div id="inside" tabindex="0">Shadow <i>draft</i></div>'
+        inside = root.getElementById('inside')!
+        word = root.querySelector('i')!.firstChild as Text
+        makeEditable(inside)
+        Object.defineProperty(Selection.prototype, 'getComposedRanges', {
+          configurable: true,
+          value: () => [
+            new StaticRange({
+              startContainer: word,
+              startOffset: 0,
+              endContainer: word,
+              endOffset: 5
+            })
+          ]
+        })
+      })
+
+      afterEach(() => {
+        delete (Selection.prototype as Partial<Selection>).getComposedRanges
+      })
+
+      function selectionsSetOnRelease(): unknown[][] {
+        window.getSelection()!.collapse(document.getElementById('component'), 0)
+        dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+        expect(window.getSelection()!.rangeCount).toBe(0)
+        const set = vi.spyOn(Selection.prototype, 'setBaseAndExtent')
+        try {
+          release()
+          return set.mock.calls
+        } finally {
+          set.mockRestore()
+        }
+      }
+
+      it('leaves its editable area without a selection when the focus is outside it', () => {
+        document.getElementById('outside')!.focus()
+        expect(selectionsSetOnRelease()).toEqual([])
+      })
+
+      it('puts the selection back while its editable area has the focus', () => {
+        inside.focus()
+        // The stand-in's anchor is outside the range, which reads as a backward selection.
+        expect(selectionsSetOnRelease()).toEqual([[word, 5, word, 0]])
+      })
+    })
+
+    // An editable element inside a part that cannot be edited is an area of its own.
+    it('leaves a nested area without a selection while the focus is on the area around it', () => {
+      setPageHtml(
+        '<main><div id="editor" tabindex="0">Draft <span id="fixed">' +
+          '<span id="island" tabindex="0">Caption <b>reply</b></span></span></div></main>'
+      )
+      const editor = document.getElementById('editor')!
+      makeEditable(editor, [document.getElementById('fixed')!])
+      editor.focus()
+      selectWord()
+
+      captureRoundTrip()
+      expect(window.getSelection()!.rangeCount).toBe(0)
+    })
+
+    it('leaves the area without a selection when the focus is on a button inside it', () => {
+      setPageHtml(EDITOR_HTML)
+      const inner = document.getElementById('inner')!
+      makeEditable(document.getElementById('editor')!, [inner])
+      inner.focus()
+      selectWord()
+
+      captureRoundTrip()
+      expect(window.getSelection()!.rangeCount).toBe(0)
+    })
+
+    it('leaves it without a selection that starts in the area and ends in page text', () => {
+      setPageHtml(EDITOR_HTML)
+      makeEditable(document.getElementById('editor')!)
+      document.getElementById('outside')!.focus()
+      const text = document.querySelector('p')!.firstChild!
+      window.getSelection()!.setBaseAndExtent(document.querySelector('b')!.firstChild!, 2, text, 4)
+
+      captureRoundTrip()
+      expect(window.getSelection()!.rangeCount).toBe(0)
+    })
+
+    // Chromium keeps the focus for this one and cuts the selection off at the area's edge. The
+    // rule is the same for both ends, so no selection is set that reaches into the area.
+    it('leaves it without a selection that starts in page text and ends in the area', () => {
+      setPageHtml(EDITOR_HTML)
+      makeEditable(document.getElementById('editor')!)
+      document.getElementById('outside')!.focus()
+      const title = document.querySelector('h2')!.firstChild!
+      window.getSelection()!.setBaseAndExtent(title, 7, document.querySelector('b')!.firstChild!, 3)
+
+      captureRoundTrip()
+      expect(window.getSelection()!.rangeCount).toBe(0)
+    })
+
+    it('puts back a selection in page text beside the area, with the focus on a button', () => {
+      setPageHtml(EDITOR_HTML)
+      makeEditable(document.getElementById('editor')!)
+      document.getElementById('outside')!.focus()
+      const text = document.querySelector('p')!.firstChild!
+      window.getSelection()!.setBaseAndExtent(text, 0, text, 9)
+
+      captureRoundTrip()
+      expect(window.getSelection()!.toString()).toBe('Page text')
+    })
+
+    it('puts the selection back in a page that is editable as a whole, focused on its body', () => {
+      setPageHtml(EDITOR_HTML)
+      // Design mode: every element reports editable, the root element included.
+      makeEditable(document.documentElement)
+      try {
+        selectWord()
+        expect(document.activeElement).toBe(document.body)
+
+        captureRoundTrip()
+        expect(window.getSelection()!.toString()).toBe('reply')
+      } finally {
+        for (const element of [document.documentElement, document.head, document.body]) {
+          delete (element as { isContentEditable?: boolean }).isContentEditable
+        }
+      }
+    })
+  })
+
   // Wired the way background.ts wires it: suppress strips the page, and restore sends the release
   // only once no capture on the tab is collecting frames.
   describe("through the background's capture bracket", () => {

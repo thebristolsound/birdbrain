@@ -584,11 +584,16 @@ function editingHost(node: Node): HTMLElement | null {
   return host
 }
 
-// Chromium moves the focus only in the frame that has it, so with the focus in an embedded frame
-// a selection set here leaves it there.
+function holdsDocument(element: Element | null): boolean {
+  if (element instanceof HTMLIFrameElement || element instanceof HTMLFrameElement) return true
+  return element instanceof HTMLObjectElement && Boolean(element.contentWindow)
+}
+
+// Chromium moves the focus only in the frame that has it, so with the focus in an embedded
+// document a selection set here leaves it there.
 function keepsFocus(node: Node): boolean {
   const active = focusedElement()
-  if (active instanceof HTMLIFrameElement || active instanceof HTMLFrameElement) return true
+  if (holdsDocument(active)) return true
   const host = editingHost(node)
   return host === null || host === active
 }

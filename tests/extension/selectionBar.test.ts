@@ -739,7 +739,8 @@ describe("the operator's selection stays out of the frames (#993)", () => {
   })
 
   // Chromium focuses the editable area of a selection a script sets, which jsdom does not model:
-  // these tests pin when the selection is put back, and the probe in the PR shows the focus.
+  // these tests pin when the selection is put back. The focus itself was checked by hand in
+  // Chromium, with the results in the description of pull request 2195 and no script committed.
   // jsdom also collapses the selection when a button takes the focus, so the focus moves first.
   describe('in an editable area (#2188)', () => {
     const EDITOR_HTML =
@@ -755,14 +756,27 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       }
     }
 
+    // Ends inside the text, as a double click or a drag leaves them.
     function selectWord(): void {
-      window.getSelection()!.selectAllChildren(document.querySelector('b')!)
+      const text = document.querySelector('b')!.firstChild!
+      window.getSelection()!.setBaseAndExtent(text, 0, text, 5)
+    }
+
+    // A release listener that throws is logged and swallowed, and would also set no selection.
+    function release(): void {
+      const warn = vi.spyOn(console, 'warn')
+      try {
+        dispatch({ type: 'RELEASE_CAPTURE_UI' })
+        expect(warn).not.toHaveBeenCalledWith(RELEASE_FAILED, expect.anything())
+      } finally {
+        warn.mockRestore()
+      }
     }
 
     function captureRoundTrip(): void {
       dispatch({ type: 'PREPARE_FOR_CAPTURE' })
       expect(window.getSelection()!.rangeCount).toBe(0)
-      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+      release()
     }
 
     it('puts the selection back while the editable area has the focus', () => {
@@ -786,22 +800,59 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       expect(window.getSelection()!.rangeCount).toBe(0)
     })
 
-    // Chromium moves the focus only in the frame that has it.
-    it('puts the selection back when the focus is in an embedded frame', () => {
-      setPageHtml(EDITOR_HTML + '<iframe></iframe>')
+    it('does not raise the bar again for a selection it left out', async () => {
+      setPageHtml(EDITOR_HTML)
       makeEditable(document.getElementById('editor')!)
-      document.querySelector('iframe')!.focus()
-      expect(document.activeElement).toBe(document.querySelector('iframe'))
+      document.getElementById('outside')!.focus()
       selectWord()
+      await mouseUp()
+      expect(bar()).not.toBeNull()
 
       captureRoundTrip()
-      expect(window.getSelection()!.toString()).toBe('reply')
+      expect(bar()).toBeNull()
+    })
+
+    // Chromium moves the focus only in the frame that has it. The page's focused element is then
+    // the element that holds the embedded document, which jsdom does not report for all of them.
+    describe('with the focus in an embedded document', () => {
+      function roundTripFocusedOn(holder: HTMLElement): string {
+        document.body.append(holder)
+        const active = vi.spyOn(document, 'activeElement', 'get').mockReturnValue(holder)
+        try {
+          selectWord()
+          captureRoundTrip()
+          return window.getSelection()!.toString()
+        } finally {
+          active.mockRestore()
+        }
+      }
+
+      beforeEach(() => {
+        setPageHtml(EDITOR_HTML)
+        makeEditable(document.getElementById('editor')!)
+      })
+
+      it.each(['iframe', 'frame'])('puts the selection back for an %s', (tag) => {
+        expect(roundTripFocusedOn(document.createElement(tag))).toBe('reply')
+      })
+
+      it('puts the selection back for an object that holds a document', () => {
+        const holder = document.createElement('object')
+        Object.defineProperty(holder, 'contentWindow', { value: window })
+        expect(roundTripFocusedOn(holder)).toBe('reply')
+      })
+
+      it('leaves the area without a selection for a focused object that holds none', () => {
+        const holder = document.createElement('object')
+        Object.defineProperty(holder, 'contentWindow', { value: null })
+        expect(roundTripFocusedOn(holder)).toBe('')
+      })
     })
 
     // jsdom keeps no selection inside a shadow tree: the composed range stands in for what
     // Chromium reports, and the call that would set the selection is what is checked.
     describe('in a web component', () => {
-      let word: HTMLElement
+      let word: Text
       let inside: HTMLElement
 
       beforeEach(() => {
@@ -810,7 +861,7 @@ describe("the operator's selection stays out of the frames (#993)", () => {
         const root = component.attachShadow({ mode: 'open' })
         root.innerHTML = '<div id="inside" tabindex="0">Shadow <i>draft</i></div>'
         inside = root.getElementById('inside')!
-        word = root.querySelector('i')!
+        word = root.querySelector('i')!.firstChild as Text
         makeEditable(inside)
         Object.defineProperty(Selection.prototype, 'getComposedRanges', {
           configurable: true,
@@ -819,7 +870,7 @@ describe("the operator's selection stays out of the frames (#993)", () => {
               startContainer: word,
               startOffset: 0,
               endContainer: word,
-              endOffset: 1
+              endOffset: 5
             })
           ]
         })
@@ -829,14 +880,14 @@ describe("the operator's selection stays out of the frames (#993)", () => {
         delete (Selection.prototype as Partial<Selection>).getComposedRanges
       })
 
-      function setsSelectionOnRelease(): boolean {
+      function selectionsSetOnRelease(): unknown[][] {
         window.getSelection()!.collapse(document.getElementById('component'), 0)
         dispatch({ type: 'PREPARE_FOR_CAPTURE' })
         expect(window.getSelection()!.rangeCount).toBe(0)
         const set = vi.spyOn(Selection.prototype, 'setBaseAndExtent')
         try {
-          dispatch({ type: 'RELEASE_CAPTURE_UI' })
-          return set.mock.calls.some(([anchor]) => anchor === word)
+          release()
+          return set.mock.calls
         } finally {
           set.mockRestore()
         }
@@ -844,12 +895,13 @@ describe("the operator's selection stays out of the frames (#993)", () => {
 
       it('leaves its editable area without a selection when the focus is outside it', () => {
         document.getElementById('outside')!.focus()
-        expect(setsSelectionOnRelease()).toBe(false)
+        expect(selectionsSetOnRelease()).toEqual([])
       })
 
       it('puts the selection back while its editable area has the focus', () => {
         inside.focus()
-        expect(setsSelectionOnRelease()).toBe(true)
+        // The stand-in's anchor is outside the range, which reads as a backward selection.
+        expect(selectionsSetOnRelease()).toEqual([[word, 5, word, 0]])
       })
     })
 
@@ -884,7 +936,7 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       makeEditable(document.getElementById('editor')!)
       document.getElementById('outside')!.focus()
       const text = document.querySelector('p')!.firstChild!
-      window.getSelection()!.setBaseAndExtent(document.querySelector('b')!, 0, text, 4)
+      window.getSelection()!.setBaseAndExtent(document.querySelector('b')!.firstChild!, 2, text, 4)
 
       captureRoundTrip()
       expect(window.getSelection()!.rangeCount).toBe(0)
@@ -897,7 +949,7 @@ describe("the operator's selection stays out of the frames (#993)", () => {
       makeEditable(document.getElementById('editor')!)
       document.getElementById('outside')!.focus()
       const title = document.querySelector('h2')!.firstChild!
-      window.getSelection()!.setBaseAndExtent(title, 7, document.querySelector('b')!, 1)
+      window.getSelection()!.setBaseAndExtent(title, 7, document.querySelector('b')!.firstChild!, 3)
 
       captureRoundTrip()
       expect(window.getSelection()!.rangeCount).toBe(0)

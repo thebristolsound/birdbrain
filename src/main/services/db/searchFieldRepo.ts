@@ -219,12 +219,17 @@ export function searchCaseFields(caseId: string, query: string): FieldSearchResu
   // The query is one phrase, so punctuation is matched as typed. A trigram index
   // cannot match under three characters, so a shorter query scans `norm`, as
   // searchExtractedData does.
+  //
+  // Each CROSS JOIN here and in the hits query fixes the loop order as written: the
+  // match first, then one lookup by key for each table after it. Left to choose, a
+  // planner holding statistics from when these tables were small ran the match once
+  // for every field row.
   const [matched, term] =
     trimmed.length >= 3
       ? [
           `SELECT f.id, f.exhibit_id, f.field, f.norm
              FROM exhibit_search_fields_fts
-             JOIN exhibit_search_fields f ON f.id = exhibit_search_fields_fts.rowid
+             CROSS JOIN exhibit_search_fields f ON f.id = exhibit_search_fields_fts.rowid
             WHERE exhibit_search_fields_fts MATCH ? AND f.case_id = ?`,
           `"${trimmed.replace(/"/g, '""')}"`
         ]
@@ -250,10 +255,10 @@ export function searchCaseFields(caseId: string, query: string): FieldSearchResu
               e.exhibit_number AS exhibitNumber, e.member_code AS memberCode,
               e.author_installation_id AS authorInstallationId, c.title
          FROM firsts
-         JOIN exhibit_search_fields f ON f.id = firsts.id
-         JOIN exhibit_search_builds b ON b.exhibit_id = f.exhibit_id
-         JOIN exhibits e ON e.id = f.exhibit_id
-         JOIN captures c ON c.id = f.exhibit_id
+         CROSS JOIN exhibit_search_fields f ON f.id = firsts.id
+         CROSS JOIN exhibit_search_builds b ON b.exhibit_id = f.exhibit_id
+         CROSS JOIN exhibits e ON e.id = f.exhibit_id
+         CROSS JOIN captures c ON c.id = f.exhibit_id
         WHERE b.content_hash = e.content_hash
         ORDER BY c.timestamp DESC, f.id
         LIMIT ?`

@@ -3,14 +3,21 @@ import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync, mkdirSync }
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
+import { randomUUID } from 'crypto'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { ingestMhtmlCapture, verifyCapture } from '@main/services/captureLifecycle'
 import { defaultCaptureStore } from '@main/services/captureStore'
+import type { CaptureStore } from '@main/services/captureStore'
 import { fetchCertChain } from '@main/services/tlsCertChain'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { getCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
-import { initManifest, appendManifestEntry, verifyManifestChain } from '@main/services/manifest'
+import {
+  initManifest,
+  appendManifestEntry,
+  verifyManifestChain,
+  withManifestSlot
+} from '@main/services/manifest'
 
 // Keep ingest hermetic: the corroboration-only TLS re-fetch (#123) would
 // otherwise open a real socket to https://example.com on every ingest. Default
@@ -436,5 +443,210 @@ describe('deletion manifest entry', () => {
     const lines = raw.trim().split('\n')
     expect(lines).toHaveLength(2)
     expect(JSON.parse(lines[1]).type).toBe('deletion')
+  })
+})
+
+describe('two background jobs ingesting into one Case', () => {
+  let tempDir: string
+  let caseId: string
+  let caseDir: string
+
+  beforeEach(async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-ingest-slot-'))
+    initStorage(join(tempDir, 'captures'))
+    await initDatabase(':memory:')
+    caseId = createCase({ name: 'Batch' }).id
+    caseDir = join(tempDir, 'captures', caseId)
+    ensureCaseDir(caseId)
+    initManifest(caseDir)
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  // Two guards keep this green, and either is enough: the Case's slot, which queues the second
+  // ingest behind the first, and the rollback running in the turn the seam body threw. The
+  // same-turn rollback alone is pinned by "rolls a failed ingest back before an appender outside
+  // the slot resumes" below. The slot is pinned in captureDuplicate.test.ts, where an ingest
+  // waits for a duplicate that holds it.
+  it("keeps the second job's entry when the first job's failed ingest rolls back", async () => {
+    const firstId = randomUUID()
+    const secondId = randomUUID()
+    // The first job's seam body fails after its entry is appended, before its row.
+    const store: CaptureStore = {
+      ...defaultCaptureStore,
+      writeText: (writeCaseId, captureId, text) => {
+        if (captureId === firstId) throw new Error('disk full')
+        return defaultCaptureStore.writeText(writeCaseId, captureId, text)
+      }
+    }
+    // Both renders have finished and both jobs wait on the TLS re-fetch, which then answers
+    // both in one turn. The first job's seam callback is synchronous, so its rollback truncates
+    // in the turn of its append, before the second job appends, with or without the Case's slot.
+    let answerRefetch: (result: null) => void = () => {}
+    const refetch = new Promise<null>((resolve) => {
+      answerRefetch = resolve
+    })
+    const fetchTls = vi.fn(() => refetch)
+    const ingestJob = (captureId: string, url: string) =>
+      ingestMhtmlCapture(
+        {
+          captureId,
+          caseId,
+          url,
+          title: url,
+          timestamp: '2026-11-09T12:00:00.000Z',
+          stream: Readable.from([
+            Buffer.from(`MHTML of ${url}`)
+          ]) as unknown as ReadableStream<Uint8Array>,
+          textContent: `text of ${url}`,
+          headers: {},
+          browserVersion: 'Chrome/140',
+          userAgent: 'Mozilla/5.0',
+          httpStatus: 200,
+          operatorId: 'op-1',
+          operatorName: 'Smith',
+          toolVersion: '0.1.0',
+          method: 'background',
+          consentSuppression: 'filter-list'
+        },
+        fetchTls,
+        store
+      )
+
+    const first = ingestJob(firstId, 'https://example.com/first')
+    await vi.waitFor(() => expect(fetchTls).toHaveBeenCalledTimes(1))
+    const second = ingestJob(secondId, 'https://example.com/second')
+    await vi.waitFor(() => expect(fetchTls).toHaveBeenCalledTimes(2))
+    answerRefetch(null)
+
+    await expect(first).rejects.toThrow('disk full')
+    const { capture } = await second
+
+    const entries = readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((line) => line !== '')
+      .map((line) => JSON.parse(line) as { captureId: string; index: number })
+    expect(entries.map(({ captureId }) => captureId)).toEqual([secondId])
+    expect(capture.manifestIndex).toBe(entries[0].index)
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+    expect((await verifyCapture(secondId)).status).toBe('verified')
+    expect(getCapture(firstId)).toBeUndefined()
+  })
+
+  // The ingest's slot is the manifest's own (`withManifestSlot`), which the timestamp worker's
+  // stamps and a batch delete take (#639). With a queue of its own, the ingest would append
+  // while another writer holds that slot.
+  it("waits for the Case's manifest slot, the one a timestamp stamp takes", async () => {
+    const captureId = randomUUID()
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let holding: () => void = () => {}
+    const taken = new Promise<void>((resolve) => {
+      holding = resolve
+    })
+    const holder = withManifestSlot(caseDir, async () => {
+      holding()
+      await held
+    })
+    await taken
+
+    const fetchTls = vi.fn(async () => null)
+    let settled = false
+    const ingest = ingestMhtmlCapture(
+      {
+        captureId,
+        caseId,
+        url: 'https://example.com/waits',
+        title: 'Waits',
+        timestamp: '2026-11-09T12:00:00.000Z',
+        stream: Readable.from([Buffer.from('MHTML')]) as unknown as ReadableStream<Uint8Array>,
+        textContent: 'text',
+        headers: {},
+        browserVersion: '',
+        userAgent: '',
+        httpStatus: 200,
+        operatorId: 'op-1',
+        operatorName: 'Smith',
+        toolVersion: '0.1.0'
+      },
+      fetchTls,
+      defaultCaptureStore
+    ).finally(() => {
+      settled = true
+    })
+    // The stream write and the TLS re-fetch are done; only the slot is left to wait for.
+    await vi.waitFor(() => expect(fetchTls).toHaveBeenCalledTimes(1))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(settled).toBe(false)
+    expect(readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')).toBe('')
+    expect(getCapture(captureId)).toBeUndefined()
+
+    release()
+    await holder
+    const { capture } = await ingest
+    expect(capture.id).toBe(captureId)
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+  })
+
+  // An appender that does not take the slot can resume in the microtask after a failed
+  // ingest's seam body throws.
+  it('rolls a failed ingest back before an appender outside the slot resumes', async () => {
+    const failedId = randomUUID()
+    const appendedHash = 'a'.repeat(64)
+    const store: CaptureStore = {
+      ...defaultCaptureStore,
+      writeText: () => {
+        queueMicrotask(() =>
+          appendManifestEntry(caseDir, {
+            type: 'deletion',
+            captureId: randomUUID(),
+            caseId,
+            timestamp: '2026-11-09T12:00:01.000Z',
+            contentHash: appendedHash,
+            operatorId: 'op-1',
+            operatorName: 'Smith',
+            toolVersion: '0.1.0'
+          })
+        )
+        throw new Error('disk full')
+      }
+    }
+
+    await expect(
+      ingestMhtmlCapture(
+        {
+          captureId: failedId,
+          caseId,
+          url: 'https://example.com/failed',
+          title: 'Failed',
+          timestamp: '2026-11-09T12:00:00.000Z',
+          stream: Readable.from([Buffer.from('MHTML')]) as unknown as ReadableStream<Uint8Array>,
+          textContent: 'text',
+          headers: {},
+          browserVersion: '',
+          userAgent: '',
+          httpStatus: 200,
+          operatorId: 'op-1',
+          operatorName: 'Smith',
+          toolVersion: '0.1.0'
+        },
+        async () => null,
+        store
+      )
+    ).rejects.toThrow('disk full')
+
+    const entries = readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((line) => line !== '')
+      .map((line) => JSON.parse(line) as { type: string; contentHash: string })
+    expect(entries.map(({ type, contentHash }) => [type, contentHash])).toEqual([
+      ['deletion', appendedHash]
+    ])
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
   })
 })

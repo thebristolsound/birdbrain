@@ -6,6 +6,7 @@ import { initManifest, getManifestHead } from '@main/services/manifest'
 import { appendManifestEntry, rollbackManifestEntry } from '@main/services/manifest'
 import { verifyManifestChain, MIN_READER_SCHEMA_VERSION } from '@main/services/manifest'
 import { withDeletionEntry, withCaptureEntry, ManifestRollback } from '@main/services/manifest'
+import { withManifestSlot } from '@main/services/manifest'
 import type { AppendResult } from '@main/services/manifest'
 import { createHash } from 'crypto'
 import { canonicalStringify } from '@shared/verify'
@@ -1134,6 +1135,58 @@ describe('manifest schema v2 + grandfathering', () => {
 // The bare `rollbackManifestEntry(caseDir, anchorBytes)` API is the seam
 // that ingest paths (e.g. captureLifecycle.ingestMhtmlCapture) use directly
 // after a DB insert or sidecar write fails, so it gets its own coverage here.
+describe('withManifestSlot (#639)', () => {
+  // Resolves when the test releases it, and records when each holder starts and ends.
+  function holder(log: string[], name: string) {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((done) => {
+      release = done
+    })
+    const fn = async (): Promise<string> => {
+      log.push(`${name}:start`)
+      await gate
+      log.push(`${name}:end`)
+      return name
+    }
+    return { fn, release }
+  }
+
+  it('runs a second holder of one directory only after the first ends, whatever the spelling', async () => {
+    const log: string[] = []
+    const first = holder(log, 'first')
+    const second = holder(log, 'second')
+    const a = withManifestSlot('/cases/one', first.fn)
+    const b = withManifestSlot('/cases/./one/', second.fn)
+    await new Promise((done) => setImmediate(done))
+    expect(log).toEqual(['first:start'])
+
+    second.release()
+    first.release()
+    expect(await Promise.all([a, b])).toEqual(['first', 'second'])
+    expect(log).toEqual(['first:start', 'first:end', 'second:start', 'second:end'])
+  })
+
+  it('does not hold one directory behind another', async () => {
+    const log: string[] = []
+    const held = holder(log, 'held')
+    const pending = withManifestSlot('/cases/one', held.fn)
+
+    expect(await withManifestSlot('/cases/two', () => 'other')).toBe('other')
+
+    held.release()
+    await pending
+  })
+
+  it('releases the slot when the holder throws', async () => {
+    await expect(
+      withManifestSlot('/cases/one', () => {
+        throw new Error('boom')
+      })
+    ).rejects.toThrow('boom')
+    expect(await withManifestSlot('/cases/one', () => 'next')).toBe('next')
+  })
+})
+
 describe('rollbackManifestEntry (direct API)', () => {
   let tempDir: string
   const capEntry = (i: number) => ({

@@ -61,6 +61,7 @@ const sentMessages: Array<{
   tabId: number
   type: string
   status?: string
+  message?: string
   card?: CaptureCardDetails
 }> = []
 let rejectPrepare = false
@@ -90,6 +91,19 @@ function dispatch(message: unknown): void {
     listener(message, { id: EXTENSION_ID }, () => {})
   }
 }
+
+function dispatchWithResponse(message: unknown): Promise<unknown> {
+  return new Promise((resolve) => {
+    for (const listener of runtimeListeners) listener(message, { id: EXTENSION_ID }, resolve)
+  })
+}
+
+const ALREADY_RUNNING = 'Not captured — a capture of this page is already running'
+
+const runningNotices = (tabId: number): number =>
+  sentMessages.filter(
+    (m) => m.tabId === tabId && m.type === 'UPDATE_CAPTURE_TOAST' && m.message === ALREADY_RUNNING
+  ).length
 
 // Flush enough macrotask turns for the capture pipeline's awaits to settle
 async function flush(turns = 5): Promise<void> {
@@ -250,22 +264,30 @@ beforeAll(async () => {
   await flush()
 })
 
-describe('concurrent manual captures on one tab (#379)', () => {
-  it('defers highlight restore and toasts until the last capture finishes', async () => {
+// #963. One capture per tab: a second capture that overlaps a running one,
+// from any route and for any case, refuses and says so rather than storing a
+// second Capture of the page or being dropped without a word.
+describe('one capture per tab (#379, #963)', () => {
+  it('refuses a second capture of the tab, and injects nothing while the first collects frames', async () => {
     // Capture 1 (case-a) starts and blocks on saveAsMHTML
     dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-a' })
     await flush()
     expect(sentOfType('PREPARE_FOR_CAPTURE')).toBe(1)
     expect(mhtmlCallbacks.length).toBe(1)
 
-    // Capture 2 (case-b) starts on the same tab while capture 1 is mid-frame
-    dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-b' })
+    // The popup asks for the same page again: refused, and the popup is told why
+    expect(
+      await dispatchWithResponse({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-a' })
+    ).toEqual({ started: false, blocked: null, notReady: false, alreadyRunning: true })
+    // The context menu asks too. Its notice is an in-page toast, which would
+    // be in capture 1's frames if it were shown now.
+    await contextMenuListener?.({ menuItemId: 'birdbrain-capture-full-page' }, TAB)
     await flush()
-    expect(sentOfType('PREPARE_FOR_CAPTURE')).toBe(2)
-    expect(mhtmlCallbacks.length).toBe(2)
+    expect(sentOfType('PREPARE_FOR_CAPTURE')).toBe(1)
+    expect(mhtmlCallbacks.length).toBe(1)
 
     // Creating a selector is another in-page toast route. It must remain
-    // suppressed while either capture is collecting evidence.
+    // suppressed while the capture is collecting evidence.
     await contextMenuListener?.(
       { menuItemId: 'birdbrain-create-selector', selectionText: 'evil@example.com' },
       TAB
@@ -274,31 +296,24 @@ describe('concurrent manual captures on one tab (#379)', () => {
     expect(sentOfType('SHOW_CAPTURE_TOAST')).toBe(0)
     expect(sentOfType('UPDATE_CAPTURE_TOAST')).toBe(0)
 
-    // Capture 1 finishes frames while capture 2 is still collecting: nothing
-    // may be injected into the page — no highlight restore, no toast
+    // Frames in: the held notice reaches the page while the upload runs
     mhtmlCallbacks[0](new Blob(['mhtml-1']))
     await flush()
-    expect(sentOfType('CHECK_SELECTORS')).toBe(0)
-    expect(sentOfType('SHOW_CAPTURE_TOAST')).toBe(0)
-    expect(sentOfType('UPDATE_CAPTURE_TOAST')).toBe(0)
-
-    // Capture 2 finishes frames while both uploads remain pending. Frame
-    // suppression ends now, and the last frame collector owns the toast.
-    mhtmlCallbacks[1](new Blob(['mhtml-2']))
-    await flush()
     expect(sentOfType('SHOW_CAPTURE_TOAST')).toBe(1)
-    expect(sentOfType('UPDATE_CAPTURE_TOAST')).toBe(0)
+    expect(runningNotices(TAB.id)).toBe(1)
     expect(sentOfType('CHECK_SELECTORS')).toBe(0)
 
     uploadResolvers[0](UPLOAD_RESULT)
-    uploadResolvers[1](UPLOAD_RESULT)
     await flush()
-    expect(sentOfType('UPDATE_CAPTURE_TOAST')).toBe(1)
-    expect(sentOfType('CHECK_SELECTORS')).toBe(2)
-    expect(vi.mocked(sendMhtmlCapture)).toHaveBeenCalledTimes(2)
+    expect(sentOfType('UPDATE_CAPTURE_TOAST')).toBe(2)
+    expect(sentOfType('CHECK_SELECTORS')).toBe(1)
+    expect(vi.mocked(sendMhtmlCapture)).toHaveBeenCalledTimes(1)
   })
 
   it('falls back to direct DOM cleanup when an orphaned content script cannot be messaged', async () => {
+    const cb = mhtmlCallbacks.length
+    const up = uploadResolvers.length
+    const uploadCalls = vi.mocked(sendMhtmlCapture).mock.calls.length
     rejectPrepare = true
     dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-a' })
     await flush()
@@ -308,13 +323,13 @@ describe('concurrent manual captures on one tab (#379)', () => {
     )
     expect(fallbackCalls).toHaveLength(1)
     expect(fallbackCalls[0].target.tabId).toBe(TAB.id)
-    expect(mhtmlCallbacks.length).toBe(3)
+    expect(mhtmlCallbacks.length).toBe(cb + 1)
 
-    mhtmlCallbacks[2](new Blob(['mhtml-3']))
+    mhtmlCallbacks[cb](new Blob(['mhtml-3']))
     await flush()
-    uploadResolvers[2](UPLOAD_RESULT)
+    uploadResolvers[up](UPLOAD_RESULT)
     await flush()
-    expect(vi.mocked(sendMhtmlCapture)).toHaveBeenCalledTimes(3)
+    expect(vi.mocked(sendMhtmlCapture)).toHaveBeenCalledTimes(uploadCalls + 1)
     rejectPrepare = false
   })
 
@@ -362,44 +377,48 @@ describe('concurrent manual captures on one tab (#379)', () => {
     expect(sentOfTypeTo('CHECK_SELECTORS', TAB.id)).toBe(baselineCheck + 1)
   })
 
-  it("holds a failed capture's error toast until the tab is idle instead of dropping it", async () => {
+  it('refuses a capture for another case while one runs, and runs both when they do not overlap', async () => {
     const cbBase = mhtmlCallbacks.length
     const upBase = uploadResolvers.length
-    const errorToasts = (): number =>
-      sentMessages.filter(
-        (m) => m.tabId === TAB.id && m.type === 'UPDATE_CAPTURE_TOAST' && m.status === 'error'
-      ).length
-    const baselineErrors = errorToasts()
-
+    const uploadCalls = vi.mocked(sendMhtmlCapture).mock.calls.length
+    const baselineNotices = runningNotices(TAB.id)
     const baselineRelease = sentOfTypeTo('RELEASE_CAPTURE_UI', TAB.id)
 
     dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-a' })
     await flush()
-    dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-b' })
-    await flush()
-    expect(mhtmlCallbacks.length).toBe(cbBase + 2)
-
-    // Capture A finishes frames and then fails its upload while capture B is
-    // still collecting: the error toast cannot be shown now — it would be
-    // injected into B's frames — but it must not be lost either
     mhtmlCallbacks[cbBase](new Blob(['mhtml-a']))
     await flush()
+
+    // Case A's capture is uploading, so no frames are being taken: the
+    // notice for a context-menu capture is shown at once
+    await contextMenuListener?.({ menuItemId: 'birdbrain-capture-full-page' }, TAB)
+    await flush()
+    expect(runningNotices(TAB.id)).toBe(baselineNotices + 1)
+    // The guard is the tab's, not the case's: case B is refused as well
+    expect(
+      await dispatchWithResponse({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-b' })
+    ).toEqual({ started: false, blocked: null, notReady: false, alreadyRunning: true })
+    expect(mhtmlCallbacks.length).toBe(cbBase + 1)
+
+    // A failed upload settles the capture and frees the tab
     uploadRejecters[upBase](new Error('server exploded'))
     await flush()
-    expect(errorToasts()).toBe(baselineErrors)
-    // A's restore ran while B was mid-frame: the page-side suppression latch
-    // (#393) must not be released under B's frames
-    expect(sentOfTypeTo('RELEASE_CAPTURE_UI', TAB.id)).toBe(baselineRelease)
+    expect(sentOfTypeTo('RELEASE_CAPTURE_UI', TAB.id)).toBe(baselineRelease + 1)
 
-    // B finishes: the tab goes idle and A's failure finally reaches the operator
+    // Case B, asked again after A settled, runs
+    expect(
+      await dispatchWithResponse({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-b' })
+    ).toEqual({ started: true, blocked: null, notReady: false })
+    await flush()
     mhtmlCallbacks[cbBase + 1](new Blob(['mhtml-b']))
     await flush()
     uploadResolvers[upBase + 1](UPLOAD_RESULT)
     await flush()
-    expect(errorToasts()).toBe(baselineErrors + 1)
-    // ...and only now, with no capture on the tab collecting frames, is the
-    // latch released
-    expect(sentOfTypeTo('RELEASE_CAPTURE_UI', TAB.id)).toBe(baselineRelease + 1)
+    expect(vi.mocked(sendMhtmlCapture)).toHaveBeenCalledTimes(uploadCalls + 2)
+    expect(vi.mocked(sendMhtmlCapture).mock.calls[uploadCalls + 1][0]).toMatchObject({
+      caseId: 'case-b'
+    })
+    expect(runningNotices(TAB.id)).toBe(baselineNotices + 1)
   })
 
   it('skips highlight restore when the tab navigated to an ignored URL mid-capture', async () => {

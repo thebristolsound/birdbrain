@@ -1023,7 +1023,12 @@ describe('report.html for a Capture taken in a launched browser', () => {
 
   it("reads a Duplicate's browser from the entry it copies", () => {
     const duplicate = engineCaptureEntry(
-      { ...LAUNCHED, method: 'duplicate', duplicateOfCaptureId: SOURCE_ID },
+      {
+        ...LAUNCHED,
+        method: 'duplicate',
+        duplicateOfCaptureId: SOURCE_ID,
+        duplicatedAt: '2026-10-31T12:30:00.000Z'
+      },
       7
     )
     const ofLaunched = launchedFacts([

@@ -46,11 +46,13 @@ function status(overrides: Partial<CaptureServerStatus> = {}): CaptureServerStat
 
 const createdTabs: string[] = []
 
-function stubChrome(): void {
+function stubChrome(
+  manifest: { version: string; version_name?: string } = { version: '1.2.3' }
+): void {
   vi.stubGlobal('chrome', {
     runtime: {
       lastError: undefined,
-      getManifest: () => ({ version: '1.2.3' })
+      getManifest: () => manifest
     },
     tabs: {
       create: ({ url }: { url: string }) => createdTabs.push(url)
@@ -186,6 +188,13 @@ describe('extension options page', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Open Birdbrain settings' }))
 
     expect(createdTabs).toEqual(['birdbrain://settings'])
+  })
+
+  it('shows the full release string the build stamped into the manifest', async () => {
+    stubChrome({ version: '1.0.1.26', version_name: '1.0.1-beta.26' })
+    await renderPage()
+
+    expect(await screen.findByText(/v1\.0\.1-beta\.26$/)).toBeTruthy()
   })
 
   it('applies the app theme so the page does not fight the popup', async () => {

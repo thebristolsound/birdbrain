@@ -2,9 +2,9 @@
 
 **Date:** 2026-11-09
 
-**Status:** Draft, grilled with the maintainer on 2026-11-09; awaiting maintainer review. All six
-slices are built on stacked draft pull requests (#2133, #2135, #2141, #2146, #2147 and #2152), none
-merged yet.
+**Status:** Draft, grilled with the maintainer on 2026-11-09; awaiting maintainer review. The six
+slices are built on stacked pull requests (#2133, #2135, #2141, #2146, #2147 and #2152), which
+merge in that order.
 
 **Frame of reference:** `origin/main` at `c1ed8ed8`. This spec cites code by symbol, per
 [`docs/README.md`](../README.md). The measured figures come from one batch on 2026-11-09 and from
@@ -183,6 +183,7 @@ CREATE TABLE background_jobs (
   phase TEXT,
   attempts INTEGER NOT NULL DEFAULT 0,
   queued_at TEXT NOT NULL,
+  resumed_at TEXT,
   started_at TEXT,
   finished_at TEXT,
   capture_id TEXT,
@@ -202,8 +203,9 @@ CREATE INDEX idx_background_jobs_batch ON background_jobs(batch_id);
 | `supersedes_capture_id`, `linked_from_capture_id`, `link_href` | The `RecaptureJob` fields today, so a job read back after a restart runs exactly as it was queued. `linked_from_capture_id` has no foreign key: `readLinkSource` already refuses a job whose source is gone. |
 | `phase` | The last progress phase while `running`; see [Events](#events-and-the-renderer-contract). |
 | `attempts` | Attempts the worker has claimed for this job. Each claim adds one, the claim after a retry included; the retry itself adds nothing. |
+| `queued_at`, `resumed_at` | When the job was accepted, and when the Operator last resumed its Batch or retried the job. The worker claims by `resumed_at` when set, otherwise `queued_at`, so a resumed or retried job runs after the jobs already queued at that moment and ahead of later ones; `queued_at` never changes. |
 | `capture_id` | Set when the attempt starts, to the id `runJob` generates and the Transaction Record's `warcinfo` names. It names a stored Capture only in state `stored`. No foreign key, so deleting the Capture keeps the job's history. |
-| `failure_kind` | For `failed`: `timeout`, `render`, `ingest`, or `interrupted`. For `skipped`: `excluded`, `refused-address`, or `link-source`. |
+| `failure_kind` | For `failed`: `timeout`, `render`, `ingest`, `link-source-error` (the link source check threw), or `interrupted`. For `skipped`: `excluded`, `refused-address`, or `link-source`. |
 | `error`, `warning` | The message the terminal event carries today (`error`, `skipReason`, `warning`). |
 
 #### States
@@ -244,7 +246,22 @@ At startup, before the queue runs:
 
 Restoring a database snapshot or a backup file can bring back rows from the past. A restore
 re-opens the database in the running app, so the same pass runs right after a restore that
-succeeds, before the queue can claim a restored row.
+succeeds, before the queue can claim a restored row. The restored copy can hold a job the app is
+still rendering in any state, or not at all, so the pass first writes that job's row back as
+`running` under its attempt's Capture id; the job then ends as it would have, and a resume does not
+render it a second time, unless the job ended while the restore had the database closed, when no row
+is written back. A job whose Case the restored copy lacks gets no row, and its ingest fails as it
+does after a Case delete.
+
+A restore can also start with no database open, after one that left the file unreadable. The
+session's jobs cannot be read then, so none of them is sent a `failed` event.
+
+The rule of step 1 also runs while the app is open. A throw between a job's claim and the write of
+its end stops the queue loop and leaves the row `running`. When the loop stops, and again when it
+next starts, each `running` row with no job behind it becomes `stored` if its Capture is in its
+Case and `failed` as `interrupted` otherwise. A row whose end the database refused stays `running`
+until then. After a restore that failed and left the session's own database open, the restore
+handlers start the loop again.
 
 Deleting a Case deletes its jobs through the foreign key. A running job whose Case is deleted
 fails at ingest, as it does today.
@@ -263,8 +280,9 @@ Capture, so it stays until the Operator dismisses it, retries it, or deletes its
 
 The table is one new schema version, scaffolded with `pnpm db:migration:new background-jobs`,
 which appends a fail-closed `if (version < N)` block to `src/main/services/db/migrations.ts` and
-bumps `LATEST_SCHEMA_VERSION` in `src/main/services/db/core.ts` (45 at the frame of reference, so
-46 unless another migration lands first). The block creates the table and indexes inside
+bumps `LATEST_SCHEMA_VERSION` in `src/main/services/db/core.ts` (45 at the frame of reference). The
+table is version 47: version 46 went to the selector match provenance columns, which merged
+first. The block creates the table and indexes inside
 `db.transaction`, uses `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS` so that a
 restored copy marked one version back can run it again (the precedent of the v43 to v45 blocks),
 and sets `user_version`. It reads and alters no existing table, so it carries no data migration.
@@ -275,7 +293,7 @@ table is not added to `ALLOWED_TABLES` in `dbAdmin.ts`, so Settings -> Database 
 
 #### Resume order build note
 
-**Build note, 2026-11-10:** unmerged slice 3 (#2141 at `0165b0b0`) adds nullable `resumed_at` to
+**Build note, 2026-11-10:** slice 3 (#2141) adds nullable `resumed_at` to
 `background_jobs`. Resuming a Batch sets it to the resume time. Claims use
 `COALESCE(resumed_at, queued_at)`, then `queued_at` and insertion order. The resumed Batch follows
 jobs already queued at resume time; jobs queued later can follow it. This records the built
@@ -284,14 +302,15 @@ ordering rule, not a guarantee that every future paste takes priority over resum
 #### Shape
 
 `drain()` becomes a pool of up to `concurrency` worker loops. Each loop claims the first eligible
-`queued` row in the claim order above in one synchronous statement (better-sqlite3 runs in the
+`queued` row in the claim order above in one synchronous transaction (better-sqlite3 runs in the
 main process, so two loops cannot claim the same row), sets it `running`, and calls `runJob`.
 Each job keeps its own hidden window and its own in-memory partition, as the Recapture design
 requires; nothing is shared between renders.
 
 **One running job per site.** A loop claims the first eligible `queued` row in claim order whose
-site has no job `running`, so a Batch with several pages on one site never loads that site twice
-at once.
+site has no job `running`, so a Batch with several pages on one site does not start two of them
+at once. The rule reads the address each job was queued with, not where it lands: two short-link
+hosts that redirect to one site can still load it twice at once.
 Concurrent requests to one server can trip rate limits or bot checks, which changes what a Capture
 holds. The site is the registrable domain from `tldts` (already a dependency), so
 `www.example.com` and `example.com` share a slot; an IP address or a host with no registrable
@@ -307,7 +326,10 @@ lands after another job's append would remove that job's entry while its row sur
 lifecycle therefore runs the step from `nextExhibitNumber` through the row insert under a per-Case
 slot, the pattern `withCaseSlot` already applies to deletes (#394). The hashing and the TLS Cert
 Chain fetch before it, which can take up to 10 s, stay outside the slot. The section inside it
-writes files and one row, so the slot costs little.
+writes files and one row, so the slot costs little. Slice 5 puts the ingest on the Case's manifest
+slot, `withManifestSlot` in `manifest.ts`, which that Case's deletes, duplicates and the timestamp
+worker's stamps also take, so an ingest into a Case waits for them and they wait for it. The ingest's callback into the seam is synchronous, so a failed ingest
+truncates in the same turn that it appended.
 
 With parallel renders, Manifest order is ingest order, and a Capture's `timestamp` is its job's
 start. Two adjacent entries can therefore carry timestamps out of order: job B starts after job A
@@ -335,12 +357,36 @@ Before concurrency rises above 1, slice 5 confirms the behaviour against the pin
 
 If neither works, concurrency stays at 1 and slice 6 does not turn on the pool.
 
+Slice 5 checked the pinned version (2.20.3) and took the first option. `BlockingContext.enable`
+registers a preload script and the network filters on the session, and two handlers on the global
+`ipcMain`; `disable` removes all of them. The two handlers forward to the engine and answer the
+frame that called them, so one registration serves every session. `enableConsentBlocking` and
+`disableConsentBlocking` in `consentBlocker.ts` own that registration: they remove it before the
+library registers it again for a second session, and register it again after a disable while
+another session is still enabled. A render whose engine differs from the one already enabled is
+refused, and records no suppression.
+
+A one-off probe on 2026-11-09, a script run once in Electron 45.2.1 and not kept in the repository,
+showed what that second render held. Two offscreen windows in two sessions loaded a local page with
+an element a cosmetic filter hides and a script a network filter blocks. With the library alone, the
+second session's enable threw after its preload script was registered and before its network
+filters were: its cosmetic filters still applied through the first render's handlers, its network
+filter did not, and the render would have recorded no Consent Suppression. With the two functions
+above, both kinds of filter applied in both sessions, and in the second after the first ended. The
+unit tests that pin this behaviour run the pinned library against a test double of `ipcMain`.
+
+If the library's undo of a failed enable also fails, the session may keep some filters, so the
+render ends with `ConsentBlockingUndoFailed` rather than storing a Capture that records none.
+
+The lease was not needed. Had it been, it would have serialized more than the load phase: the
+render keeps the blocker enabled until its cleanup, after the PDF.
+
 #### Concurrency
 
 **Recommended default: 2.** Computed at startup as
 `clamp(floor(os.availableParallelism() / 4), 1, 2)`, so a machine with fewer than 8 logical CPUs
-runs 1. A worker does not start another job while `os.freemem()` is under 1.5 GB. The 4-CPUs-per-
-render ratio and the 1.5 GB floor are estimates to check against slice 1's timings, not
+runs 1. A worker does not start another job while `os.freemem()` is under 1.5 GiB. The 4-CPUs-per-
+render ratio and the 1.5 GiB floor are estimates to check against slice 1's timings, not
 measurements. Settings has no control for it. `BIRDBRAIN_BACKGROUND_WORKERS`, clamped to 1 and 2,
 overrides the formula, as `BIRDBRAIN_CONSENT_LISTS` and `BIRDBRAIN_WINDOW_SIZE` override their
 defaults; slice 6 uses it for its comparison, and support can use it to force 1.
@@ -369,6 +415,52 @@ Reasons for 2 rather than more:
   unless `UV_THREADPOOL_SIZE` changes it.
 - **The #2121 bounds are wall-clock.** See the next section.
 
+Slice 6 built the pool with these choices:
+
+- **The site is worked out at claim time**, not stored with the row. A slot skips a queued row
+  whose site matches one of the jobs this process is running, and claims the first row that does
+  not, in one transaction. The running set comes from the process rather than the rows, because a
+  restore can replace the rows while a render goes on. No column is added, so a database already
+  at version 47 needs nothing more. `tldts` reads the public suffix list's ICANN section only, so
+  `a.github.io` and `b.github.io` share one site.
+- **The memory floor holds only a second job.** The first job of an idle queue always starts, as a
+  single worker's would; otherwise a machine with less than 1.5 GiB available would never capture
+  in the background. A held slot looks again every 2 s and whenever a running job ends. On Linux,
+  `os.freemem()` under the bundled Node 24.22 returns MemAvailable, which counts reclaimable page
+  cache, not MemFree. On macOS it may count free pages only, so the floor may hold the second job
+  more often there: the queue runs slower, not less safely.
+
+Slice 6 ran the comparison on 2026-11-09 on the built app, on a machine with 18 logical CPUs. Each
+pair ran back to back, once with 1 first and once with 2 first. The 1-minute load average stayed
+under 3 during every run. Neither batch nor the script that ran them is in the repository.
+
+- **The fixture batch** is 10 pages served from one local server, each on its own `*.localhost`
+  host: two lazy-loading pages that grow to 5 and 8 chunks, a page behind a consent overlay with a
+  scroll lock, a two-pane page, a page of 24 images, a page of 1,500 paragraphs, a page that waits
+  1.5 s on a script, a page with an iframe, and two plain pages, with a local filter list that
+  names the overlay.
+- **The public batch** is 20 pages on 20 sites, with the default filter lists:
+  `en.wikipedia.org/wiki/Bristol`, `www.mozilla.org/en-US/about/`, `www.ietf.org/about/`,
+  `www.rfc-editor.org/rfc/rfc2119.html`, `www.gov.uk/government/organisations`,
+  `www.nist.gov/about-nist`, `www.un.org/en/about-us`, `www.who.int/about`, `www.loc.gov/about/`,
+  `www.archives.gov/about`, `www.python.org/about/`, `www.gnu.org/philosophy/free-sw.html`,
+  `www.kernel.org/`, `www.debian.org/intro/about`, `www.apache.org/foundation/`,
+  `www.unicode.org/main.html`, `www.iana.org/about`,
+  `www.icann.org/resources/pages/welcome-2012-02-25-en`, `ecma-international.org/`, and
+  `european-union.europa.eu/index_en`, each over HTTPS.
+
+| Batch | Workers | Wall time, first start to last end | Stored / failed / skipped | Transaction Record `failed` |
+| --- | --- | --- | --- | --- |
+| 10 local fixture pages | 1 | 54.9 s, 54.8 s | 10 / 0 / 0 | 0 of 10 |
+| 10 local fixture pages | 2 | 31.2 s, 31.2 s | 10 / 0 / 0 | 0 of 10 |
+| 20 public pages on 20 sites | 1 | 218.4 s, 215.8 s | 20 / 0 / 0 | 0 of 20 |
+| 20 public pages on 20 sites | 2 | 110.7 s, 110.1 s | 20 / 0 / 0 | 0 of 20 |
+
+Two workers took 57% of the serial wall time on the fixture batch and 51% on the public batch,
+inside the two-thirds goal, and each job took within 1.5 s of its serial time. No Transaction
+Record was absent as `failed` in either run, so the default stays the formula. With no failures at
+either concurrency, the runs cannot show a small rise in the rate; the per-job logging from slice 1
+is what would show one in use.
 
 #### Effect on the #2121 time bounds
 
@@ -477,9 +569,9 @@ phase to the row and emits the view; it does not write timing into the row.
 | `recapture:enqueue`, `recapture:enqueueCaptures` | `EnqueueResult` gains `batchId` and the accepted `jobIds`. |
 | `recapture:queueStatus` | `RecaptureQueueStatus` gains the counts `queued`, `running` and `held`, and `concurrency`. `pending` stays `queued + running`, which #2122 reads. `activeUrl` stays, as the first running job's URL, until its readers move. `e2e/vpn-warning.spec.ts` asserts the exact status object with `toEqual`, so slice 2 updates that assertion. |
 | `recapture:listJobs` (new) | Returns `BackgroundJobView[]` for a Case or a batch, so the renderer can load state after a reload or a restart. |
-| `recapture:cancel` (new) | Takes a `jobId` or a `batchId`. A queued or held job becomes `cancelled`. A running job is aborted through its `AbortSignal`, which takes the render's existing deadline path (window destroyed, temp file removed, nothing stored). A job already ingesting finishes; cancel does not interrupt the manifest seam. |
-| `recapture:retry` (new) | Takes a `jobId` in `failed` or `cancelled`, or a `batchId`, which retries that Batch's `failed` and `cancelled` jobs. Sets each `queued`. The claim of the next attempt adds one to `attempts` and generates a new `capture_id`. |
-| `recapture:resume` (new) | Takes a `batchId` and sets its `held` jobs `queued`. |
+| `recapture:cancel` (new) | Takes a `jobId` or a `batchId`. A queued or held job becomes `cancelled`. A running job is aborted through its `AbortSignal`, which takes the render's existing deadline path (window destroyed, temp file removed, nothing stored), and ends `cancelled`. A job is ingesting from the moment its render returns its page, when its phase becomes `ingesting`; a cancel from then on is refused and the job ends as the ingest does, so cancel never interrupts the manifest seam. A cancel that arrives after the deadline or a refused hop has already ended the render is refused too, and the job ends as that ending decided. The result counts the jobs cancelled and the running job refused. A cancelled job's feed row ends with a `skipped` event whose reason is `Cancelled`. |
+| `recapture:retry` (new) | Takes a `jobId` in `failed` or `cancelled`, or a `batchId`, which retries that Batch's `failed` and `cancelled` jobs. Sets each `queued`, behind the jobs already queued, and clears the last attempt's fields. The claim of the next attempt adds one to `attempts` and generates a new `capture_id`. Refused, with the reason `recapture:enqueue` gives, while no operator name is set; the rows stay as they ended. |
+| `recapture:resume` (new) | Takes a `batchId`, sets its `held` jobs `queued` and records the resume in `resumed_at`. Refused, with the reason `recapture:enqueue` gives, while no operator name is set; the jobs stay `held`. |
 | `recapture:dismiss` (new) | Takes a `jobId` or a `batchId` and deletes `failed`, `skipped` and `cancelled` rows. It never deletes a `stored`, `queued`, `held` or `running` row. |
 
 Retries are Operator-initiated only; see [States](#states).
@@ -494,7 +586,7 @@ by [ADR-0014](../adr/0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot
 | --- | --- | --- |
 | `src/main/services/recapture.ts` | blocking | Job ids, the stored queue, the worker pool, per-Case ingest slots, cancel, retry, the pre-render exclusion check |
 | `src/main/services/backgroundRenderer.ts` | blocking | Phase callback, abort signal, phase-duration logging, the consent blocker lease or multi-session enable |
-| `src/main/services/consentBlocker.ts` | blocking | Only if the multi-session fix lives there |
+| `src/main/services/consentBlocker.ts` | blocking | The multi-session enable and disable (slice 5) |
 | `src/main/services/transactionRecorder.ts` | blocking | Slice 1 only: name the bound that expired in its error. No bound changes |
 | `src/main/services/captureLifecycle.ts` | blocking | The per-Case slot around the manifest append and row insert in the ingest |
 | `src/main/services/db/**` | blocking | The migration, `core.ts`, and `backgroundJobRepo.ts` |

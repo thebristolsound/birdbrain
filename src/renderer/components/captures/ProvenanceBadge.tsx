@@ -10,6 +10,7 @@ import {
 import { useQuery } from '@tanstack/react-query'
 import type { Capture, HashVerification } from '@shared/types'
 import { settingsQueryOptions, useVerifyCapture } from '@renderer/lib/queries'
+import { formatUtcTimestamp } from '@renderer/components/captures/waybackPanelModel'
 
 interface Props {
   capture: Capture
@@ -26,7 +27,7 @@ function TrustedTimeChip({
   timestampingEnabled: boolean
 }) {
   if (result.trustedTime === 'rfc3161') {
-    const detail = [result.tsaName, result.stampedAt && new Date(result.stampedAt).toLocaleString()]
+    const detail = [result.tsaName, result.stampedAt && formatUtcTimestamp(result.stampedAt)]
       .filter(Boolean)
       .join(' — ')
     return (

@@ -32,8 +32,9 @@ import {
 // carry only what those blocks need: `selectors` is here because v29 alters
 // it, not because anything below reads it, and `tags`/`capture_tags` plus the
 // four later `captures` columns are here because v34 rebuilds and reads them,
-// and `annotation_pins` because v39 alters it. Every one of those exists in a
-// real v24 database (v11, v17, v23).
+// and `annotation_pins` because v39 alters it, and `selector_matches` because
+// v46 alters it. Every one of those exists in a real v24 database (v5, v11,
+// v17, v23).
 function seedLegacyDb(dbPath: string): void {
   const raw = new Database(dbPath)
   raw.exec(`
@@ -60,6 +61,8 @@ function seedLegacyDb(dbPath: string): void {
     CREATE TABLE extracted_data (id TEXT PRIMARY KEY, capture_id TEXT NOT NULL,
       case_id TEXT NOT NULL, category TEXT NOT NULL, subcategory TEXT NOT NULL,
       value TEXT NOT NULL, source_url TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE selector_matches (selector_id TEXT NOT NULL, capture_id TEXT NOT NULL,
+      PRIMARY KEY (selector_id, capture_id));
     CREATE VIRTUAL TABLE captures_fts USING fts5(title, url, content);
   `)
   raw

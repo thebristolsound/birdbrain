@@ -41,7 +41,8 @@ import {
   appendManifestEntry,
   initManifest,
   verifyManifestChain,
-  withManifestEntry
+  withManifestEntry,
+  withManifestSlot
 } from '@main/services/manifest'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
@@ -623,6 +624,41 @@ describe('staging pool', () => {
       })
       expect(await worker.processPending()).toEqual({ stamped: 0, failed: 1 })
       expect(manifestLines(caseDir).filter((line) => line.type === 'timestamp')).toHaveLength(0)
+    })
+
+    it("appends an attachment's stamp only once the Case's manifest slot is free (#639)", async () => {
+      const [staged] = await uploadToStaging(caseId, [sourceFile('bundle.zip', ZIP)])
+      const [committed] = (await commitStagedFiles(caseId, [staged.id])).outcomes
+      if (committed.status !== 'committed') throw new Error('commit failed')
+      const requester = granting()
+      let answered: () => void = () => {}
+      const tokenReturned = new Promise<void>((done) => {
+        answered = done
+      })
+      const worker = createTimestampWorker({
+        requestToken: async (contentHash) => {
+          const token = await requester(contentHash)
+          answered()
+          return token
+        }
+      })
+      const stamps = (): number =>
+        manifestLines(caseDir).filter((line) => line.type === 'timestamp').length
+
+      let stamping: Promise<boolean> | undefined
+      let whileHeld = -1
+      await withManifestSlot(caseDir, async () => {
+        stamping = worker.stampExhibit(committed.exhibitId)
+        // From the token on, the worker's path to its append is microtasks only, so one
+        // macrotask later it has either appended or queued on the slot.
+        await tokenReturned
+        await new Promise((resolve) => setImmediate(resolve))
+        whileHeld = stamps()
+      })
+
+      expect(whileHeld).toBe(0)
+      expect(await stamping).toBe(true)
+      expect(stamps()).toBe(1)
     })
 
     it('holds an attachment stamp while no operator name is set and signs it once one is saved (X47)', async () => {

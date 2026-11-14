@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import type { FieldHit } from '@shared/types'
+import type { CaptureEvent, FieldHit } from '@shared/types'
 import { useAppStore } from '@renderer/stores/appStore'
 
 describe('appStore', () => {
@@ -574,6 +574,154 @@ describe('appStore', () => {
       })
       const events = useAppStore.getState().captureEvents
       expect(events).toHaveLength(2)
+    })
+
+    // Slice 2 of docs/specs/2026-11-09-batch-capture-throughput-design.md (#2128).
+    describe('background jobs', () => {
+      const url = 'https://example.com/same'
+      const jobEvent = (jobId: string, type: CaptureEvent['type']): CaptureEvent => ({
+        type,
+        source: 'recapture',
+        url,
+        timestamp: new Date().toISOString(),
+        jobId,
+        batchId: 'batch-1'
+      })
+      const add = (event: CaptureEvent) => useAppStore.getState().addCaptureEvent(event)
+      const rows = () =>
+        useAppStore.getState().captureEvents.map(({ jobId, type }) => [jobId, type])
+
+      it('keeps one row per job, replaced by each of its events', () => {
+        add(jobEvent('job-a', 'queued'))
+        add(jobEvent('job-b', 'queued'))
+        expect(rows()).toEqual([
+          ['job-b', 'queued'],
+          ['job-a', 'queued']
+        ])
+
+        add(jobEvent('job-a', 'received'))
+        expect(rows()).toEqual([
+          ['job-a', 'received'],
+          ['job-b', 'queued']
+        ])
+      })
+
+      it('clears only its own row when two jobs for one address end', () => {
+        add(jobEvent('job-a', 'queued'))
+        add(jobEvent('job-b', 'queued'))
+        add(jobEvent('job-a', 'received'))
+        add(jobEvent('job-a', 'stored'))
+        expect(rows()).toEqual([
+          ['job-a', 'stored'],
+          ['job-b', 'queued']
+        ])
+
+        add(jobEvent('job-b', 'received'))
+        expect(rows()).toEqual([
+          ['job-b', 'received'],
+          ['job-a', 'stored']
+        ])
+        add(jobEvent('job-b', 'failed'))
+        expect(rows()).toEqual([
+          ['job-b', 'failed'],
+          ['job-a', 'stored']
+        ])
+      })
+
+      it('leaves a job row to an event with no job, and a row with no job to a job', () => {
+        // The enqueue-time exclusion skip is from the queue's source and names no job.
+        const noJob: CaptureEvent = {
+          type: 'received',
+          source: 'recapture',
+          url,
+          timestamp: new Date().toISOString()
+        }
+        add(jobEvent('job-a', 'received'))
+        add({ ...noJob, type: 'skipped', skipReason: 'Blacklisted: example.com' })
+        expect(rows()).toEqual([
+          [undefined, 'skipped'],
+          ['job-a', 'received']
+        ])
+
+        useAppStore.setState({ captureEvents: [noJob] })
+        add(jobEvent('job-b', 'stored'))
+        expect(rows()).toEqual([
+          ['job-b', 'stored'],
+          [undefined, 'received']
+        ])
+      })
+
+      it('keeps a running job in the feed past the cap, dropping the oldest other rows', () => {
+        const running = { ...jobEvent('job-a', 'received'), supersedesCaptureId: 'cap-a' }
+        add(jobEvent('job-a', 'queued'))
+        add(running)
+        for (let i = 0; i < 60; i++) {
+          add({ ...jobEvent(`job-b${i}`, 'queued'), url: `https://example.com/${i}` })
+        }
+
+        const events = useAppStore.getState().captureEvents
+        expect(events).toHaveLength(50)
+        expect(events).toContain(running)
+        expect(events.filter(({ type }) => type === 'queued').map(({ jobId }) => jobId)).toEqual(
+          Array.from({ length: 49 }, (_, i) => `job-b${59 - i}`)
+        )
+      })
+
+      it('drops the oldest running rows once the feed holds nothing else', () => {
+        for (let i = 0; i < 55; i++) {
+          add({ ...jobEvent(`job-${i}`, 'received'), url: `https://example.com/${i}` })
+        }
+        expect(useAppStore.getState().captureEvents.map(({ url }) => url)).toEqual(
+          Array.from({ length: 50 }, (_, i) => `https://example.com/${54 - i}`)
+        )
+      })
+
+      it('lets a received row that belongs to no job age out with the other rows', () => {
+        // The pipeline self-test emits 'received' and, when it fails, no terminal event.
+        const selfTest: CaptureEvent = {
+          type: 'received',
+          source: 'manual',
+          url: 'https://example.com/self-test',
+          timestamp: ''
+        }
+        add(selfTest)
+        for (let i = 0; i < 50; i++) {
+          add({ type: 'stored', source: 'auto', url: `https://example.com/${i}`, timestamp: '' })
+        }
+
+        const events = useAppStore.getState().captureEvents
+        expect(events).toHaveLength(50)
+        expect(events).not.toContain(selfTest)
+      })
+
+      it('keeps the event just added when every row in the feed is a running job', () => {
+        for (let i = 0; i < 50; i++) {
+          add({ ...jobEvent(`job-${i}`, 'received'), url: `https://example.com/${i}` })
+        }
+        const stored: CaptureEvent = {
+          type: 'stored',
+          source: 'auto',
+          url: 'https://example.com/other',
+          timestamp: ''
+        }
+        add(stored)
+
+        const events = useAppStore.getState().captureEvents
+        expect(events).toHaveLength(50)
+        expect(events[0]).toBe(stored)
+        expect(events.map(({ jobId }) => jobId)).not.toContain('job-0')
+        expect(useAppStore.getState().captureStats.successCount).toBe(1)
+      })
+
+      // A guard on the statistics for the type this slice adds, not a change to how they count.
+      it('leaves the capture statistics unchanged for a queued event', () => {
+        add(jobEvent('job-a', 'queued'))
+        expect(useAppStore.getState().captureStats).toEqual({
+          successCount: 0,
+          failCount: 0,
+          skipCount: 0
+        })
+      })
     })
 
     it('clears events and stats', () => {

@@ -681,13 +681,16 @@ const ManifestCaptureEntrySchema = z
     finalUrl: z.string().min(1).optional(),
     tls: TlsCertChainResultSchema.optional(),
     method: z.enum(CAPTURE_METHODS).optional(),
+    // An empty recapture link reads as no link (see hasRecaptureLink). The
+    // duplicate pair is never '': an empty half names no Capture and no time,
+    // so the method rules below would read it as present (#1000).
     supersedesCaptureId: z.string().optional(),
     // Duplication provenance (#827), carried by entries whose method is
     // 'duplicate': the capture whose bytes were copied, and when the copy was
     // made. Both optional and omitted from every other entry, so legacy and
     // ordinary capture bodies — and their chain hashes — are unchanged.
-    duplicateOfCaptureId: z.string().optional(),
-    duplicatedAt: z.string().optional(),
+    duplicateOfCaptureId: z.string().min(1).optional(),
+    duplicatedAt: z.string().min(1).optional(),
     consentSuppression: z.enum(CONSENT_SUPPRESSIONS).optional(),
     // The Capture's Exhibit Number, recorded on the entry that anchors its
     // bytes (X18, X46). Optional because entries written before X46 carry
@@ -788,7 +791,9 @@ const ManifestCaptureEntrySchema = z
   // The four shapes across the capture engine's fields that contradict
   // themselves; the MHTML counts and the Scroll-to-load record each carry one
   // more refine of their own. A released verifier cannot be recalled, so no
-  // other rule is added: none ties a field to a Capture Method, for one.
+  // other rule is added: none ties a capture engine field to a Capture Method.
+  // The recapture and duplicate links are tied to theirs, at the end of this
+  // schema, which says why that is safe.
   .refine(
     (entry) =>
       (entry.transactionRecordHash !== undefined) ===
@@ -856,6 +861,43 @@ const ManifestCaptureEntrySchema = z
   )
   .refine(personaFieldsNeedSchema7.check, personaFieldsNeedSchema7.issue)
   .refine(personaLabelNeedsId.check, personaLabelNeedsId.issue)
+  // The recapture and duplicate links name the method that makes them (#1000),
+  // at every schema version. They are ungated because no release writes a
+  // refused shape on any path it takes on its own (the survey and tag check in
+  // pull request 2180). The one shape a release could sign through a
+  // hand-typed console call, an empty recapture link, reads as no link and
+  // still verifies. A background Capture without a link is a first-time one
+  // (Add URLs, a Link Capture) and is not refused.
+  .refine((entry) => !hasRecaptureLink(entry) || entry.method === 'background', {
+    message: '`supersedesCaptureId` requires method `background`',
+    path: ['supersedesCaptureId']
+  })
+  .refine((entry) => duplicateFieldCount(entry) === 0 || entry.method === 'duplicate', {
+    message: '`duplicateOfCaptureId` and `duplicatedAt` require method `duplicate`',
+    path: ['method']
+  })
+  .refine((entry) => duplicateFieldCount(entry) !== 1, {
+    message: '`duplicateOfCaptureId` and `duplicatedAt` must be present together',
+    path: ['duplicateOfCaptureId']
+  })
+  .refine((entry) => entry.method !== 'duplicate' || duplicateFieldCount(entry) !== 0, {
+    message: 'method `duplicate` requires `duplicateOfCaptureId` and `duplicatedAt`',
+    path: ['duplicateOfCaptureId']
+  })
+
+// v1.0.1-beta.12 to beta.26 signed `supersedesCaptureId: ''` when a console
+// call handed the recapture queue one, so '' is no link rather than a refusal.
+function hasRecaptureLink(entry: { supersedesCaptureId?: string }): boolean {
+  return entry.supersedesCaptureId !== undefined && entry.supersedesCaptureId !== ''
+}
+
+function duplicateFieldCount(entry: {
+  duplicateOfCaptureId?: unknown
+  duplicatedAt?: unknown
+}): number {
+  const { duplicateOfCaptureId, duplicatedAt } = entry
+  return [duplicateOfCaptureId, duplicatedAt].filter((field) => field !== undefined).length
+}
 
 const SCHEMA_6_ABSENCE_REASONS: ReadonlySet<string> = new Set(INVENTORY_ABSENCE_REASONS)
 const LAUNCHED_METHODS: ReadonlySet<string> = new Set(LAUNCHED_CAPTURE_METHODS)
@@ -1703,7 +1745,8 @@ export const BirdbrainSettingsSchema = z.object({
   // by `seedDemoCaseIfNeeded` and nowhere else, and that has one caller —
   // startup. Replaying the tour imports nothing. Not the only thing standing
   // between an install and a second copy either: this write can fail, and the
-  // `is_demo` probe in the database is what holds when it does (#1301).
+  // two database probes in `seedDemoCaseIfNeeded` are what hold when it does
+  // (#1301, #1333).
   demoCaseSeeded: z.boolean().optional().default(false),
   // Lenient: a value that does not parse reads as none, rather than failing the whole file
   // over to the defaults.

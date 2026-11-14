@@ -32,7 +32,10 @@ async function stored(page: Page, url: string): Promise<void> {
   const handle = await page.waitForFunction(
     (target) => {
       const w = window as unknown as { activity: ActivityEvent[] }
-      return w.activity.find((e) => e.url === target && e.type !== 'received') ?? null
+      return (
+        w.activity.find((e) => e.url === target && e.type !== 'queued' && e.type !== 'received') ??
+        null
+      )
     },
     url,
     { timeout: 90000 }
@@ -233,7 +236,17 @@ test.describe('VPN warning', () => {
       }
       return w.birdbrain.recapture.queueStatus()
     })
-    expect(queue).toEqual({ pending: 0, activeUrl: null })
+    // 1 or 2 by the host's CPU count (backgroundJobPool.ts).
+    const { concurrency, ...idle } = queue
+    expect([1, 2]).toContain(concurrency)
+    expect(idle).toEqual({
+      pending: 0,
+      queued: 0,
+      running: 0,
+      held: 0,
+      heldBatches: [],
+      activeUrl: null
+    })
     expect(requested).not.toContain('/c2')
 
     // Starting a Capture Session warns, and says the browser's route is not seen, in a Case

@@ -8,7 +8,7 @@ import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { upsertCaseMember } from '@main/services/db/caseMemberRepo'
 import { insertCapture, getCapture, setCaptureTrustedTime } from '@main/services/db/captureRepo'
-import { initManifest, appendManifestEntry } from '@main/services/manifest'
+import { initManifest, appendManifestEntry, withManifestSlot } from '@main/services/manifest'
 import { resolveReceiptStamps, resolveTrustedTime } from '@main/services/trustedTime'
 import { initSettings, updateSettings } from '@main/services/settings'
 import {
@@ -377,6 +377,37 @@ describe('timestampWorker', () => {
         worker.stampMerge(caseId, merge.index)
       ])
 
+      expect(receiptEntries()).toHaveLength(1)
+    })
+
+    it("appends a receipt stamp only once the Case's manifest slot is free (#639)", async () => {
+      const merge = appendMerge()
+      const granting = grantingRequester()
+      let answered: () => void = () => {}
+      const tokenReturned = new Promise<void>((done) => {
+        answered = done
+      })
+      const worker = createTimestampWorker({
+        requestToken: async (contentHash) => {
+          const token = await granting(contentHash)
+          answered()
+          return token
+        }
+      })
+
+      let stamping: Promise<boolean> | undefined
+      let whileHeld = -1
+      await withManifestSlot(caseDir, async () => {
+        stamping = worker.stampMerge(caseId, merge.index)
+        // From the token on, the worker's path to its append is microtasks only, so one
+        // macrotask later it has either appended or queued on the slot.
+        await tokenReturned
+        await new Promise((resolve) => setImmediate(resolve))
+        whileHeld = receiptEntries().length
+      })
+
+      expect(whileHeld).toBe(0)
+      expect(await stamping).toBe(true)
       expect(receiptEntries()).toHaveLength(1)
     })
 

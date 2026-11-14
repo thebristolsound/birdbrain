@@ -1942,4 +1942,64 @@ export function runMigrations(db: Database.Database): void {
       db.pragma('user_version = 45')
     })()
   }
+
+  if (version < 46) {
+    db.transaction(() => {
+      // When a Persisted Match was found and what found it (#1069): an ISO 8601 time and one
+      // of MATCH_ORIGINS. Existing rows stay NULL in both, with no default: no value is known
+      // for them, and a guessed one would be a false provenance claim.
+      //
+      // Skips a column already present, as v43 does, because a restored copy marked one
+      // version back runs this block again.
+      const present = new Set(
+        (db.pragma('table_info(selector_matches)') as Array<{ name: string }>).map(
+          ({ name }) => name
+        )
+      )
+      for (const column of ['matched_at', 'match_origin']) {
+        if (!present.has(column)) db.exec(`ALTER TABLE selector_matches ADD COLUMN ${column} TEXT`)
+      }
+      db.pragma('user_version = 46')
+    })()
+  }
+
+  if (version < 47) {
+    db.transaction(() => {
+      // The background job queue's state, one row per accepted URL (docs/specs/2026-11-09-batch-
+      // capture-throughput-design.md, "Stored job table"). A row is not evidence: no Manifest,
+      // Case Archive, export or verifier reads it. No foreign key on capture_id or
+      // linked_from_capture_id, so deleting a Capture keeps the job's history. `resumed_at` puts a
+      // resumed Batch behind the jobs already queued; `queued_at` keeps when it was accepted.
+      //
+      // IF NOT EXISTS, because a restored copy marked one version back runs this block again.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS background_jobs (
+          id TEXT PRIMARY KEY,
+          batch_id TEXT NOT NULL,
+          case_id TEXT NOT NULL,
+          url TEXT NOT NULL,
+          supersedes_capture_id TEXT,
+          linked_from_capture_id TEXT,
+          link_href TEXT,
+          state TEXT NOT NULL CHECK (state IN (
+            'queued', 'held', 'running', 'stored', 'skipped', 'failed', 'cancelled'
+          )),
+          phase TEXT,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          queued_at TEXT NOT NULL,
+          resumed_at TEXT,
+          started_at TEXT,
+          finished_at TEXT,
+          capture_id TEXT,
+          failure_kind TEXT,
+          error TEXT,
+          warning TEXT,
+          FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_background_jobs_state ON background_jobs(state, queued_at);
+        CREATE INDEX IF NOT EXISTS idx_background_jobs_batch ON background_jobs(batch_id);
+      `)
+      db.pragma('user_version = 47')
+    })()
+  }
 }

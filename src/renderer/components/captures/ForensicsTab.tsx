@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import type { Capture } from '@shared/types'
 import { useVerifyCapture } from '@renderer/lib/queries'
 import { getProvenanceColor } from '@renderer/components/captures/getProvenanceColor'
+import { formatUtcTimestamp } from '@renderer/components/captures/waybackPanelModel'
 
 interface Props {
   capture: Capture
@@ -56,8 +57,8 @@ export function ForensicsTab({ capture, caseId }: Props) {
       <Section title="Identity">
         <Row label="URL" value={capture.url} />
         <Row label="Title" value={capture.title} />
-        <Row label="Captured at" value={new Date(capture.timestamp).toLocaleString()} />
-        <Row label="Created at" value={new Date(capture.createdAt).toLocaleString()} />
+        <Row label="Captured at" value={formatUtcTimestamp(capture.timestamp)} />
+        <Row label="Created at" value={formatUtcTimestamp(capture.createdAt)} />
         {!isMhtml && <Row label="Hash (SHA-256)" value={capture.hash} />}
       </Section>
 

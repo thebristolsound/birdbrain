@@ -47,6 +47,17 @@ export const captureLinksQueryOptions = (captureId: string) =>
     gcTime: 0
   })
 
+// The parts of a stored MHTML (#991), for the Data screen's MHTML Parts tab. Not cached, for
+// the Links tab's reason, which also keeps each part's hash computed at the read it labels.
+export const captureMhtmlPartsQueryOptions = (captureId: string) =>
+  queryOptions({
+    queryKey: queryKeys.captureMhtmlParts(captureId),
+    queryFn: () => window.birdbrain.captures.listMhtmlParts(captureId),
+    enabled: !!captureId,
+    staleTime: 0,
+    gcTime: 0
+  })
+
 // Whether any Case holds a Capture, for a note link its own Case does not list
 // (#1877). staleTime 0: deleting the Capture from another Case invalidates only
 // that Case's list.

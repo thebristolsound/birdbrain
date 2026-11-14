@@ -81,7 +81,7 @@ export function useLinkMenuTarget(
             let settled = false
             const stop = window.birdbrain.onCaptureActivity((event) => {
               const { type, source, linkedFrom, skipReason, error } = event
-              if (source !== 'recapture' || type === 'received') return
+              if (source !== 'recapture' || type === 'queued' || type === 'received') return
               if (linkedFrom?.captureId !== captureId || linkedFrom.linkHref !== linkUrl) return
               stop()
               settled = true

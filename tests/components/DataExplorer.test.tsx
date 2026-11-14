@@ -4,7 +4,7 @@ import { render, screen, fireEvent, waitFor, cleanup, within, act } from '@testi
 import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
-import type { Capture } from '@shared/types'
+import type { Capture, MhtmlPartsListing } from '@shared/types'
 
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ caseId: 'case1' }),
@@ -15,6 +15,7 @@ vi.mock('@renderer/lib/notify', () => ({
 }))
 
 import { DataExplorer } from '@renderer/components/dashboard/cases/DataExplorer'
+import { PARTS_CAPTION, UNANCHORED_PARTS_CAPTION } from '@renderer/components/data/mhtmlPartsModel'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { queryClient as appQueryClient } from '@renderer/lib/queryClient'
 import { fakeBridge } from '../renderer/fakeBridge'
@@ -226,12 +227,16 @@ describe('DataExplorer (#1149)', () => {
   })
 
   it('selecting a row opens the strip with the Properties tab', async () => {
-    renderExplorer()
+    const client = renderExplorer()
     fireEvent.click(await screen.findByTestId('artifact-row-cap-a'))
     const strip = within(await screen.findByTestId('artifact-tabs'))
+    await waitFor(() =>
+      expect(client.getQueryState(queryKeys.captureContent('cap-a', 'txt'))?.status).toBe('success')
+    )
     // No extracted text and no headers are stubbed, and the stubbed snapshot's
-    // only line is unreadable, so no entry names the row: Properties alone
-    // (#1150, a tab with no data is absent).
+    // only line is unreadable, so no entry names the row, and the Capture has no
+    // stored MHTML path, so it has no MHTML Parts: Properties alone (#1150, a
+    // tab with no data is absent).
     expect(strip.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Properties'])
     const props = within(strip.getByTestId('properties-tab'))
     expect(text(props.getByText('Exhibit Number').nextSibling)).toContain('Exhibit 1')
@@ -609,5 +614,209 @@ describe('DataExplorer failed reads (#1656)', () => {
     expect(screen.queryAllByTestId('chain-verdict')).toEqual([])
     expect(screen.queryByTestId('manifest-ledger-view')).toBeNull()
     expect(screen.queryByTestId('data-tree-count-manifest-ledger')).toBeNull()
+  })
+})
+
+// The MHTML Parts tab (#991): present for a Capture with a stored MHTML, read only while it
+// shows, and only once the text read has settled, so a tab that would lead for a moment never
+// starts a read the strip then drops.
+describe('DataExplorer MHTML Parts tab (#991)', () => {
+  const STORED: Capture[] = CAPTURES.map((capture) => ({
+    ...capture,
+    mhtmlPath: `case1/${capture.id}.mhtml`
+  }))
+  const LISTING: MhtmlPartsListing = {
+    status: 'listed',
+    readAt: '2026-11-10T09:00:00.000Z',
+    fileSize: 1086,
+    topContentType: 'multipart/related',
+    boundary: '----b',
+    snapshotLocation: 'https://example.com/page',
+    fieldsTruncated: false,
+    closed: true,
+    totalParts: 1,
+    unterminatedParts: 0,
+    truncated: false,
+    parts: [
+      {
+        position: 1,
+        htmlPart: 0,
+        mainDocument: true,
+        contentType: 'text/html',
+        transferEncoding: 'binary',
+        contentLocation: 'https://example.com/page',
+        contentId: null,
+        offset: 343,
+        size: 107,
+        sha256: HASH_A,
+        headersTerminated: true,
+        endsAtEndOfFile: false,
+        fieldsTruncated: false
+      }
+    ]
+  }
+
+  function stub(text: () => Promise<string | null> = async () => null) {
+    window.birdbrain.captures.list = vi.fn(async () => STORED)
+    window.birdbrain.captures.getContent = vi.fn(text)
+    const listMhtmlParts = vi.fn<(captureId: string) => Promise<MhtmlPartsListing>>(
+      async () => LISTING
+    )
+    window.birdbrain.captures.listMhtmlParts = listMhtmlParts
+    return listMhtmlParts
+  }
+
+  async function stripTabs(expected: string[]) {
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId('artifact-tabs'))
+          .getAllByRole('tab')
+          .map((tab) => tab.textContent)
+      ).toEqual(expected)
+    )
+  }
+
+  it('leads with the tab for a Capture with no text, and reads it as it shows', async () => {
+    const listMhtmlParts = stub()
+    renderExplorer()
+    await screen.findByTestId('artifact-tabs')
+    await stripTabs(['MHTML Parts', 'Properties'])
+    expect(await screen.findByTestId('mhtml-parts-table')).toBeTruthy()
+    expect(listMhtmlParts).toHaveBeenCalledWith('cap-a')
+    expect(text(screen.getByTestId('artifact-tabs'))).toContain('read when shown')
+  })
+
+  it('gives no tab to a Capture stored as HTML', async () => {
+    const listMhtmlParts = stub()
+    const client = renderExplorer()
+    fireEvent.click(await screen.findByTestId('artifact-row-cap-legacy'))
+    await waitFor(() =>
+      expect(text(screen.getByTestId('artifact-tabs-subtitle'))).toBe('Exhibit 2 / raw')
+    )
+    // The tab waits for the text read, so its absence counts only once that read has settled.
+    await waitFor(() =>
+      expect(client.getQueryState(queryKeys.captureContent('cap-legacy', 'txt'))?.status).toBe(
+        'success'
+      )
+    )
+    await stripTabs(['Properties'])
+    expect(listMhtmlParts).not.toHaveBeenCalledWith('cap-legacy')
+  })
+
+  it('says nothing is anchored for an MHTML Capture the row shows as unanchored', async () => {
+    stub()
+    window.birdbrain.captures.list = vi.fn(async () =>
+      STORED.map((capture) => ({ ...capture, format: 'mhtml' as const }))
+    )
+    renderExplorer()
+    fireEvent.click(await screen.findByTestId('artifact-row-cap-legacy'))
+    await waitFor(() =>
+      expect(text(screen.getByTestId('artifact-tabs-subtitle'))).toBe('Exhibit 2 / raw')
+    )
+    await stripTabs(['MHTML Parts', 'Properties'])
+    expect(text(await screen.findByTestId('mhtml-parts-caption'))).toBe(UNANCHORED_PARTS_CAPTION)
+  })
+
+  it('says only the whole file is anchored for an MHTML Capture the row shows as anchored', async () => {
+    stub()
+    renderExplorer()
+    fireEvent.click(await screen.findByTestId('artifact-row-cap-a'))
+    await waitFor(() =>
+      expect(text(screen.getByTestId('artifact-tabs-subtitle'))).toBe('Exhibit 1 / raw')
+    )
+    await stripTabs(['MHTML Parts', 'Properties'])
+    expect(text(await screen.findByTestId('mhtml-parts-caption'))).toBe(PARTS_CAPTION)
+  })
+
+  it('with extracted text, leads with the text and reads the parts only when picked', async () => {
+    const listMhtmlParts = stub(async () => 'line one\nline two')
+    // The app's client keeps a read fresh for 30 s, so only the tab's own query options make
+    // each showing read the file again.
+    renderExplorer(new QueryClient({ defaultOptions: appQueryClient.getDefaultOptions() }))
+    await screen.findByTestId('artifact-tabs')
+    await stripTabs(['Extracted Text', 'MHTML Parts', 'Properties'])
+    expect(listMhtmlParts).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MHTML Parts' }))
+    expect(await screen.findByTestId('mhtml-parts-table')).toBeTruthy()
+    expect(listMhtmlParts).toHaveBeenCalledTimes(1)
+    expect(listMhtmlParts).toHaveBeenCalledWith('cap-a')
+
+    // Nothing is kept between showings, so showing the tab again reads the file again, and the
+    // earlier listing is not shown while that read runs.
+    fireEvent.click(screen.getByRole('tab', { name: 'Properties' }))
+    await screen.findByTestId('properties-tab')
+    // A query with gcTime 0 is dropped on the next timer tick after its tab unmounts.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)))
+    let resolveReread!: (listing: MhtmlPartsListing) => void
+    listMhtmlParts.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveReread = resolve
+      })
+    )
+    fireEvent.click(screen.getByRole('tab', { name: 'MHTML Parts' }))
+    expect(await screen.findByText('Reading the stored MHTML…')).toBeTruthy()
+    expect(screen.queryByTestId('mhtml-parts-table')).toBeNull()
+    expect(listMhtmlParts).toHaveBeenCalledTimes(2)
+    await act(async () => resolveReread(LISTING))
+    expect(await screen.findByTestId('mhtml-parts-table')).toBeTruthy()
+  })
+
+  it('places the tab between Extracted Text and Headers & TLS', async () => {
+    stub(async () => 'line one')
+    window.birdbrain.captures.list = vi.fn(async () =>
+      STORED.map((capture) => ({ ...capture, headers: '{"content-type":"text/html"}' }))
+    )
+    renderExplorer()
+    await screen.findByTestId('artifact-tabs')
+    await stripTabs(['Extracted Text', 'MHTML Parts', 'Headers & TLS', 'Properties'])
+  })
+
+  it('adds no tab and starts no read while the text is loading', async () => {
+    let resolveText!: (value: string | null) => void
+    const pending = new Promise<string | null>((resolve) => {
+      resolveText = resolve
+    })
+    const listMhtmlParts = stub(() => pending)
+    renderExplorer()
+    await screen.findByTestId('artifact-tabs')
+    await stripTabs(['Properties'])
+    expect(listMhtmlParts).not.toHaveBeenCalled()
+
+    await act(async () => resolveText(null))
+    await stripTabs(['MHTML Parts', 'Properties'])
+    await waitFor(() => expect(listMhtmlParts).toHaveBeenCalledWith('cap-a'))
+  })
+
+  it('counts a failed text read as settled', async () => {
+    const listMhtmlParts = stub(async () => {
+      throw new Error('sidecar unreadable')
+    })
+    renderExplorer()
+    await screen.findByTestId('artifact-tabs')
+    await stripTabs(['MHTML Parts', 'Properties'])
+    await waitFor(() => expect(listMhtmlParts).toHaveBeenCalledWith('cap-a'))
+  })
+
+  it('shows a failed read with a Retry that reads again', async () => {
+    const listMhtmlParts = stub()
+    listMhtmlParts.mockRejectedValueOnce(new Error('EACCES: permission denied'))
+    renderExplorer()
+    expect(
+      await screen.findByText('Failed to load the MHTML parts: EACCES: permission denied')
+    ).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByTestId('mhtml-parts-table')).toBeTruthy()
+    expect(listMhtmlParts).toHaveBeenCalledTimes(2)
+  })
+
+  it('copies a part’s hash to the clipboard as listed', async () => {
+    const writeText = vi.fn<(value: string) => Promise<void>>(async () => undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    stub()
+    renderExplorer()
+    fireEvent.click(await screen.findByTestId('mhtml-part-copy-sha256'))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(HASH_A))
   })
 })

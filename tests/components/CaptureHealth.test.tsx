@@ -128,7 +128,8 @@ describe('pipeline event colors', () => {
         }),
         event('failed', { error: 'server refused' }),
         event('skipped', { skipReason: 'ignored host' }),
-        event('received')
+        event('received'),
+        event('queued')
       ]
     })
     renderHealth()
@@ -143,6 +144,9 @@ describe('pipeline event colors', () => {
     expect(iconClass('failed')).toContain('text-danger-fg')
     expect(iconClass('skipped')).toContain('text-warning-fg')
     expect(iconClass('received')).toContain('text-accent')
+    // A job waiting its turn: no spinner, as nothing is running for it yet.
+    expect(iconClass('queued')).toContain('text-text-muted')
+    expect(iconClass('queued')).not.toContain('animate-spin')
     expect(screen.getByText('server refused').className).toBe('text-danger-fg')
     expect(screen.getByText('ignored host').className).toBe('text-text-secondary')
     expect(screen.getByText('Page looks like a login wall').className).toBe('text-warning-fg')

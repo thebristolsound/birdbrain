@@ -29,7 +29,7 @@ import { useAnnotationEditor } from '@renderer/components/captures/annotation/us
 import { useZoomPan } from '@renderer/components/captures/annotation/useZoomPan'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 import { CAPTURE_METHOD_LABELS } from '@renderer/components/captures/captureMethodLabel'
-import { formatCaptureTimestampFull } from '@renderer/lib/formatRelativeTime'
+import { formatUtcTimestamp } from '@renderer/components/captures/waybackPanelModel'
 
 // Source is gone: Page *is* the MHTML, so the two tabs rendered the same
 // artifact twice. The raw file is still one click away in the download menu.
@@ -218,7 +218,7 @@ export function CaptureViewer() {
               className="min-w-0 truncate text-xs text-accent underline underline-offset-2"
               onClick={() => useAppStore.getState().setSelectedCaptureId(duplicateOf.id)}
             >
-              ← Duplicate of {new Date(duplicateOf.timestamp).toLocaleString()}
+              ← Duplicate of {formatUtcTimestamp(duplicateOf.timestamp)}
             </button>
           )}
           {linkedFrom && (
@@ -236,7 +236,7 @@ export function CaptureViewer() {
               className="min-w-0 truncate text-xs text-accent underline underline-offset-2"
               onClick={() => useAppStore.getState().setSelectedCaptureId(supersededOriginal.id)}
             >
-              ← Recapture of {new Date(supersededOriginal.timestamp).toLocaleString()}
+              ← Recapture of {formatUtcTimestamp(supersededOriginal.timestamp)}
             </button>
           )}
           {recaptureOf && (
@@ -245,7 +245,7 @@ export function CaptureViewer() {
               className="min-w-0 truncate text-xs text-accent underline underline-offset-2"
               onClick={() => useAppStore.getState().setSelectedCaptureId(recaptureOf.id)}
             >
-              Recaptured {new Date(recaptureOf.timestamp).toLocaleString()} →
+              Recaptured {formatUtcTimestamp(recaptureOf.timestamp)} →
             </button>
           )}
         </div>
@@ -421,7 +421,7 @@ function ArchivedCopyBanner({ timestamp }: { timestamp: string }) {
         Archived copy
       </span>
       <span className="min-w-0 flex-1 truncate text-xs text-text-muted">
-        Captured {formatCaptureTimestampFull(timestamp)}
+        Captured {formatUtcTimestamp(timestamp)}
       </span>
     </div>
   )

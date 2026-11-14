@@ -49,6 +49,7 @@ import {
   verifyCapture
 } from '@main/services/captureLifecycle'
 import type { AdmissionRequest } from '@main/services/captureLifecycle'
+import { createTimestampWorker } from '@main/services/timestampWorker'
 import { OperatorNameRequiredError } from '@main/services/operatorName'
 import { createSessionService } from '@main/services/session'
 import type { SessionService } from '@main/services/session'
@@ -2024,6 +2025,84 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
         .map((e) => e.captureId)
     ).toEqual(ids)
     expect(verifyManifestChain(caseDir).valid).toBe(true)
+  })
+
+  // #639: a timestamp worker whose TSA answer arrives mid-batch. The token is released from inside
+  // the first item's staging, after the batch's first deletion entry is on disk; without the
+  // shared slot the worker's entry lands between two of the batch's entries.
+  describe('with the timestamp worker answering mid-batch (#639)', () => {
+    function workerReleasedMidBatch(): {
+      worker: ReturnType<typeof createTimestampWorker>
+      store: CaptureStore
+    } {
+      let release: () => void = () => {}
+      const answered = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const worker = createTimestampWorker({
+        requestToken: async (contentHash) => {
+          await answered
+          return buildSyntheticToken({ contentHash, genTime: new Date('2026-05-30T09:05:00Z') })
+        }
+      })
+      const real = createCaptureStore({ getRoot: getStorageRoot })
+      let staged = 0
+      const store: CaptureStore = {
+        ...real,
+        stageArtifacts: (cid, capId, names) => {
+          if (++staged === 1) release()
+          real.stageArtifacts(cid, capId, names)
+        }
+      }
+      return { worker, store }
+    }
+
+    it("appends the worker's entry after the batch's last entry, and both finish", async () => {
+      const probe = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      const caps = await ingestN(probe, 4)
+      const batchIds = caps.slice(0, 3).map(({ id }) => id)
+      const { worker, store } = workerReleasedMidBatch()
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub, store })
+
+      const stamping = worker.stampCapture(caps[3].id)
+      const [stamped, batch] = await Promise.all([stamping, lifecycle.deleteMany(caseId, batchIds)])
+
+      expect(stamped).toBe(true)
+      expect(batch.manifest).toEqual({ baseIndex: 4, committedEntries: 3 })
+      const tail = manifestEntries().slice(4)
+      expect(tail.map(({ type }) => type)).toEqual([
+        'deletion',
+        'deletion',
+        'deletion',
+        'timestamp'
+      ])
+      expect(tail.slice(0, 3).map(({ captureId }) => captureId)).toEqual(batchIds)
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
+      expect(getCapture(caps[3].id)?.trustedTimeStatus).toBe('rfc3161')
+    })
+
+    it('appends no stamp for a Capture the batch it waited behind deleted', async () => {
+      const probe = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      const caps = await ingestN(probe, 2)
+      const ids = caps.map(({ id }) => id)
+      const { worker, store } = workerReleasedMidBatch()
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub, store })
+
+      const [stamped, batch] = await Promise.all([
+        worker.stampCapture(ids[1]),
+        lifecycle.deleteMany(caseId, ids)
+      ])
+
+      expect(stamped).toBe(false)
+      expect(batch.deletedIds).toEqual(ids)
+      expect(manifestEntries().map(({ type }) => type)).toEqual([
+        'capture',
+        'capture',
+        'deletion',
+        'deletion'
+      ])
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
+    })
   })
 
   it('single delete still surfaces an unlink fault as a throw, with the entry rolled back (#394 hoist keeps delete() semantics)', async () => {

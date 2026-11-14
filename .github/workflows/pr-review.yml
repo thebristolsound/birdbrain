@@ -52,8 +52,9 @@ concurrency:
 env:
   APT_OPTS: -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15
   DROP_AZURE_MIRROR: >-
-    sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g'
-    /etc/apt/apt-mirrors.txt
+    if curl -fsS --max-time 10 -o /dev/null https://archive.ubuntu.com/ubuntu/dists/;
+    then sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g'
+    /etc/apt/apt-mirrors.txt; fi
   MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'review' }}
   TARGET_PR: ${{ github.event_name == 'workflow_dispatch' && inputs.pr || github.event.pull_request.number || '' }}
   DISPATCH_MODEL: claude-opus-5-5

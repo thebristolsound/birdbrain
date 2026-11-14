@@ -7,6 +7,7 @@ import type {
 } from '@shared/types'
 import {
   bucketForRow,
+  exhibitLabel,
   capturedTitle,
   filterRows,
   formatBytes,
@@ -57,6 +58,27 @@ describe('toArtifactRow', () => {
     expect(toArtifactRow(stated, INVENTORY, FACTS).sourceDetail).toBe('https://drive.example/x')
     const unparsed = { ...STAGED_PDF, sourceUrl: 'not a url' }
     expect(toArtifactRow(unparsed, INVENTORY, FACTS).source).toBe('not a url')
+  })
+
+  // X47 (#1332): main marks a row whose number no entry records yet because no operator name
+  // is set; the table shows it unnumbered with the reason, never the database's number.
+  it('shows an Exhibit waiting on a name as unnumbered, with the reason, and its Derived Files too', () => {
+    const waiting: InventoryExhibitRow = {
+      ...CAPTURE_A,
+      unnumberedReason: 'operator_name_required'
+    }
+    const inventory = INVENTORY.map((row) => (row.id === CAPTURE_A.id ? waiting : row))
+
+    const exhibit = toArtifactRow(waiting, inventory, FACTS)
+    expect(exhibit).toMatchObject({
+      source: 'Unnumbered',
+      sourceDetail: 'Unnumbered until an operator name is set in Settings',
+      exhibitNumber: null,
+      citation: null
+    })
+    expect(toArtifactRow(THUMB_A, inventory, FACTS).source).toBe('Unnumbered')
+    expect(filterRows([exhibit], '1')).toEqual([])
+    expect(exhibitLabel(CAPTURE_A)).toBe('Exhibit 1')
   })
 
   it('carries anchoring and pooled state separately from kind', () => {

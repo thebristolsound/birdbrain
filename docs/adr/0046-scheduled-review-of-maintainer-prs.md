@@ -75,7 +75,9 @@ machine-account PRs. The 61 PRs he opened that merged on 2026-10-01 or later, re
    slots. It skips the one-hour wait, the other-reviewer rule, the two-failure stop and the
    process-doc skip, and a maintainer-applied `review:skipped` comes off. The post step removes the label on every
    outcome. A PR already reviewed at its head loses the label without a new review. When the
-   spend cap holds a request, the label stays and a later scheduled fire takes it.
+   spend cap holds a request, the label stays. Since ADR-0057 removed the schedule, no later
+   fire takes it: the maintainer removes and re-applies the label, or starts a manual run, once
+   the cap has room.
 
 ## Consequences
 

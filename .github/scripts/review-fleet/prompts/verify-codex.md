@@ -7,6 +7,9 @@ to decide, and rule:
   reason names the line that shows it.
 - `UNCLEAR`: deciding needs a run you cannot make. Your reason says which.
 
-This pass returns `rulings`, not `findings`: one entry per Codex finding, with its `id` from
-`codex.json` and a one-sentence `reason`. The "Output" section above describes `findings` for
-the other passes; ignore it here. Rule on every finding in the file.
+Return `contract_version`, `source_review_complete`, `not_checked` and `runtime_limitations` as
+the "Output" section above defines them. A run you cannot make goes in `runtime_limitations`,
+and the finding it would decide rules `UNCLEAR`. This pass returns `rulings`, not `findings`: one
+entry per Codex finding, with its `id` from `codex.json` and a one-sentence `reason`. The
+`findings` bullet of the "Output" section is for the other passes; ignore that bullet only. Rule
+on every finding in the file.

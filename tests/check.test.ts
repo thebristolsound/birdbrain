@@ -7,6 +7,7 @@ import {
   DEFAULT_OUT,
   LEFT_TO_PREFLIGHT,
   formatSummary,
+  liveLines,
   parseChanges,
   planChecks,
   staleInstallProblem,
@@ -174,6 +175,23 @@ describe('planChecks', () => {
     const test = find(plan(changed(path)), 'test')
     expect(test?.scope).toBe(`whole suite, ${path} changed`)
     expect(test?.args.slice(-1)).toEqual(['run'])
+    expect(test?.args.slice(0, 2)).toEqual([
+      join('scripts', 'test-suite-lock.mjs'),
+      process.execPath
+    ])
+  })
+
+  it('passes the suite lock lines through as they arrive, whole, and holds back the rest', () => {
+    const written: string[] = []
+    const relay = liveLines((line: string) => written.push(line))
+    relay('test-suite-lock: waiting for the run')
+    expect(written).toEqual([])
+    relay(' in /w\nvitest noise\ntest-suite')
+    relay('-lock: lock acquired; starting\n')
+    expect(written).toEqual([
+      'test-suite-lock: waiting for the run in /w\n',
+      'test-suite-lock: lock acquired; starting\n'
+    ])
   })
 
   it('checks ADR numbers for a change under docs/adr/', () => {

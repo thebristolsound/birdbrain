@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { readFileSync, existsSync, mkdtempSync, rmSync } from 'fs'
+import { readFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
@@ -180,6 +180,50 @@ describe('per-case auto-capture exclusions (#400)', () => {
 
     expect(res.status).toBe(403)
     expect((await readJson(res)).pattern).toBe(pattern)
+  })
+
+  // #724. Edits refuse an empty pattern, so one is written into the file here, as a list
+  // stored before that check holds it. The matcher skips it: returned as the match, '' is
+  // falsy, so the check above read it as no match and never reached the patterns after it.
+  describe('an empty pattern in the stored global list', () => {
+    function storeGlobalList(patterns: string[]): void {
+      const file = join(tempDir, 'settings.json')
+      const stored: Record<string, unknown> = JSON.parse(readFileSync(file, 'utf-8'))
+      writeFileSync(file, JSON.stringify({ ...stored, ignoredUrlPatterns: patterns }), 'utf-8')
+    }
+
+    it('does not stop the global pattern after it, or the case list, from blocking', async () => {
+      const caseId = await seedCase('Empty Before Others')
+      storeGlobalList(['', 'globalonly.com'])
+      setAutoCapturePolicy(caseId, { exclusions: ['caseonly.com'], mode: 'stack' })
+
+      for (const blocked of ['globalonly.com', 'caseonly.com']) {
+        const res = await postCapture({
+          source: 'manual',
+          caseId,
+          url: `https://${blocked}/page`,
+          title: 'T'
+        })
+        expect(res.status).toBe(403)
+        expect((await readJson(res)).pattern).toBe(blocked)
+      }
+      expect(listCaptures(caseId)).toHaveLength(0)
+    })
+
+    it('blocks nothing itself', async () => {
+      const caseId = await seedCase('Empty Alone')
+      storeGlobalList([''])
+
+      const res = await postCapture({
+        source: 'manual',
+        caseId,
+        url: 'https://example.com/ok',
+        title: 'T'
+      })
+
+      expect(res.status).toBe(200)
+      expect(listCaptures(caseId)).toHaveLength(1)
+    })
   })
 
   it('a URL on neither list is captured', async () => {

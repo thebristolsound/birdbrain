@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   createReadStream,
+  unlinkSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -25,6 +27,7 @@ import { initSettings, updateSettings } from '@main/services/settings'
 import { createCaptureLifecycle, verifyCapture } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import {
+  RecaptureTimeout,
   createRecaptureService,
   looksLikeLoginWall,
   redirectedFinalUrl,
@@ -37,6 +40,7 @@ import { getExhibit } from '@main/services/db/exhibitRepo'
 import { resetSigningKey } from '@main/services/signingKey'
 import { resetSyncStateMemory } from '@main/services/sharing/syncState'
 import { logger } from '@main/services/logger'
+import { sanitizeError } from '@main/services/logSafe'
 import { ManifestEntrySchema, type BoundTls, type ScrollToLoadRecord } from '@shared/schemas'
 import type { CaptureEvent, Capture } from '@shared/types'
 import {
@@ -347,7 +351,7 @@ describe('recapture service', () => {
       svc.enqueue([{ url: 'https://example.com/page', caseId }])
       await svc.idle()
 
-      expect(events.map(({ type }) => type)).toEqual(['received', 'stored'])
+      expect(events.map(({ type }) => type)).toEqual(['queued', 'received', 'stored'])
       const [entry] = captureEntries()
       const parsed = ManifestEntrySchema.safeParse(entry)
       expect(parsed.success ? [] : parsed.error.issues).toEqual([])
@@ -392,7 +396,7 @@ describe('recapture service', () => {
       svc.enqueue([{ url: 'https://example.com/page', caseId }])
       await svc.idle()
 
-      expect(events.map(({ type }) => type)).toEqual(['received', 'stored'])
+      expect(events.map(({ type }) => type)).toEqual(['queued', 'received', 'stored'])
       const [entry] = captureEntries()
       const parsed = ManifestEntrySchema.safeParse(entry)
       expect(parsed.success ? [] : parsed.error.issues).toEqual([])
@@ -451,7 +455,14 @@ describe('recapture service', () => {
         })
         svc.enqueue([{ url: 'https://example.com/other', caseId }])
         await svc.idle()
-        expect(events.map(({ type }) => type)).toEqual(['received', 'stored', 'received', 'failed'])
+        expect(events.map(({ type }) => type)).toEqual([
+          'queued',
+          'received',
+          'stored',
+          'queued',
+          'received',
+          'failed'
+        ])
         expect(notices(spy)).toEqual([])
       })
     })
@@ -461,7 +472,8 @@ describe('recapture service', () => {
       const FAILED: RenderedPage['transactionRecord'] = {
         present: false,
         reason: 'failed',
-        error: new Error('The body fetches did not settle within 5000ms')
+        error: new Error('The body fetches did not settle within 5000ms'),
+        timeLeftMs: 4_321
       }
       const notices = (spy: { mock: { calls: unknown[][] } }) =>
         spy.mock.calls.filter(([, code]) => code === 'backgroundRenderer.transaction_record_failed')
@@ -489,11 +501,32 @@ describe('recapture service', () => {
           [
             'backgroundRenderer',
             'backgroundRenderer.transaction_record_failed',
-            undefined,
+            { captureId: newCaptures[0].id, timeLeftMs: 4_321 },
             FAILED.error
           ]
         ])
         expect(storedWhenLogged).toBe(true)
+        // The time left reaches the log, not the signed inventory part.
+        const entry = readFileSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
+        expect(entry).toContain('"transactionRecord":{"present":false,"reason":"failed"}')
+      })
+
+      it('names no time left when the end phases never ran', async () => {
+        const spy = vi.spyOn(logger, 'error')
+        const svc = makeService(
+          fakeRender({
+            transactionRecord: {
+              present: false,
+              reason: 'failed',
+              error: new Error('Network.enable failed or did not answer on the page')
+            }
+          })
+        )
+        svc.enqueue([{ url: 'https://example.com/page', caseId }])
+        await svc.idle()
+        expect(notices(spy).map(([, , context]) => context)).toEqual([
+          { captureId: newCaptures[0].id }
+        ])
       })
 
       it('is not logged when the job then refuses the final URL', async () => {
@@ -503,7 +536,7 @@ describe('recapture service', () => {
         )
         svc.enqueue([{ url: 'https://example.com/page', caseId }])
         await svc.idle()
-        expect(events.map(({ type }) => type)).toEqual(['received', 'skipped'])
+        expect(events.map(({ type }) => type)).toEqual(['queued', 'received', 'skipped'])
         expect(notices(spy)).toEqual([])
       })
 
@@ -521,7 +554,7 @@ describe('recapture service', () => {
         })
         svc.enqueue([{ url: 'https://example.com/page', caseId }])
         await svc.idle()
-        expect(events.map(({ type }) => type)).toEqual(['received', 'failed'])
+        expect(events.map(({ type }) => type)).toEqual(['queued', 'received', 'failed'])
         expect(notices(spy)).toEqual([])
       })
     })
@@ -669,6 +702,132 @@ describe('recapture service', () => {
     expect(newCaptures).toHaveLength(2)
   })
 
+  // Slice 2 of docs/specs/2026-11-09-batch-capture-throughput-design.md (#2128).
+  describe('job identity', () => {
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+    const eventsOf = (jobId: string) => events.filter((e) => e.jobId === jobId)
+
+    it('names each job and its Batch on every event, one Batch per call', async () => {
+      const svc = makeService(fakeRender())
+      const url = 'https://example.com/same'
+      const first = svc.enqueue([
+        { url, caseId },
+        { url, caseId }
+      ])
+      const second = svc.enqueue([{ url, caseId }])
+      await svc.idle()
+
+      const jobIds = [...first.jobIds, ...second.jobIds]
+      expect(jobIds).toHaveLength(3)
+      expect(new Set(jobIds).size).toBe(3)
+      for (const id of [...jobIds, first.batchId, second.batchId]) expect(id).toMatch(UUID)
+      expect(second.batchId).not.toBe(first.batchId)
+      expect(events.every((e) => e.jobId !== undefined)).toBe(true)
+      for (const [jobId, batchId] of [
+        [first.jobIds[0], first.batchId],
+        [first.jobIds[1], first.batchId],
+        [second.jobIds[0], second.batchId]
+      ]) {
+        expect(eventsOf(jobId).map(({ type, batchId }) => [type, batchId])).toEqual([
+          ['queued', batchId],
+          ['received', batchId],
+          ['stored', batchId]
+        ])
+      }
+    })
+
+    it('emits one queued event per accepted job before the first render, and none for a refused URL', () => {
+      setAutoCapturePolicy(caseId, { exclusions: ['secret.example.com'], mode: 'stack' })
+      const seenAtRender: string[][] = []
+      const svc = makeService(async (url, opts) => {
+        seenAtRender.push(events.map(({ type }) => type))
+        return fakeRender()(url, opts)
+      })
+      const original = 'capture-being-recaptured'
+      const res = svc.enqueue([
+        { url: 'https://example.com/a', caseId, supersedesCaptureId: original },
+        { url: 'not-a-url', caseId },
+        { url: 'https://secret.example.com/page', caseId },
+        { url: 'https://example.com/b', caseId }
+      ])
+
+      expect(res.accepted).toBe(2)
+      expect(res.rejected.map(({ url }) => url)).toEqual([
+        'not-a-url',
+        'https://secret.example.com/page'
+      ])
+      const queued = events.filter(({ type }) => type === 'queued')
+      expect(queued).toEqual([
+        expect.objectContaining({
+          source: 'recapture',
+          url: 'https://example.com/a',
+          jobId: res.jobIds[0],
+          batchId: res.batchId,
+          supersedesCaptureId: original
+        }),
+        expect.objectContaining({
+          source: 'recapture',
+          url: 'https://example.com/b',
+          jobId: res.jobIds[1],
+          batchId: res.batchId
+        })
+      ])
+      // The refused URL is no job: its skip names neither a job nor a Batch.
+      expect(events.find(({ type }) => type === 'skipped')).not.toHaveProperty('jobId')
+      // Both jobs are queued, in order, before the first one starts.
+      expect(seenAtRender[0]).toEqual(['skipped', 'queued', 'queued', 'received'])
+      return svc.idle()
+    })
+
+    it('reports queued and running jobs, with pending their sum', async () => {
+      const gate: Array<() => void> = []
+      const svc = makeService(async (url, opts) => {
+        await new Promise<void>((resolve) => gate.push(resolve))
+        return fakeRender()(url, opts)
+      })
+      const idle = {
+        pending: 0,
+        queued: 0,
+        running: 0,
+        held: 0,
+        heldBatches: [],
+        concurrency: 1,
+        activeUrl: null
+      }
+      expect(svc.status()).toEqual(idle)
+
+      svc.enqueue([
+        { url: 'https://example.com/1', caseId },
+        { url: 'https://example.com/2', caseId },
+        { url: 'https://example.com/3', caseId }
+      ])
+      await vi.waitFor(() => expect(gate).toHaveLength(1))
+      expect(svc.status()).toEqual({
+        ...idle,
+        pending: 3,
+        queued: 2,
+        running: 1,
+        activeUrl: 'https://example.com/1'
+      })
+
+      gate.shift()!()
+      await vi.waitFor(() => expect(gate).toHaveLength(1))
+      expect(svc.status()).toEqual({
+        ...idle,
+        pending: 2,
+        queued: 1,
+        running: 1,
+        activeUrl: 'https://example.com/2'
+      })
+
+      gate.shift()!()
+      await vi.waitFor(() => expect(gate).toHaveLength(1))
+      gate.shift()!()
+      await svc.idle()
+      expect(svc.status()).toEqual(idle)
+    })
+  })
+
   it('rejects invalid URLs at enqueue with per-URL reasons', async () => {
     const svc = makeService(fakeRender())
     const res = svc.enqueue([
@@ -682,6 +841,67 @@ describe('recapture service', () => {
     // The one accepted URL still triggers a background job — drain it before the
     // test ends so it doesn't leak into the next test's shared db/storage fixtures.
     await svc.idle()
+  })
+
+  // X47 (#1332): a recapture signs a `capture` entry, so it passes the operator gate like
+  // every other signing path, and is refused before it contacts the site.
+  describe('without an operator name (X47)', () => {
+    const URL = 'https://example.com/page'
+    const chainPath = (): string => join(getStorageRoot(), caseId, MANIFEST_FILENAME)
+
+    for (const blank of ['', '   ']) {
+      it(`refuses the job at enqueue and renders nothing (${JSON.stringify(blank)})`, async () => {
+        updateSettings({ operatorName: blank })
+        const render = vi.fn(fakeRender())
+        const svc = makeService(render)
+
+        const res = svc.enqueue([{ url: URL, caseId }])
+
+        expect(res).toEqual({
+          batchId: expect.any(String),
+          accepted: 0,
+          jobIds: [],
+          rejected: [{ url: URL, reason: 'Operator name required' }]
+        })
+        await svc.idle()
+        expect(render).not.toHaveBeenCalled()
+        expect(newCaptures).toEqual([])
+        expect(existsSync(chainPath())).toBe(false)
+        // No `queued` event either, so the refused batch adds no waiting row to the capture log.
+        expect(events).toEqual([])
+      })
+    }
+
+    it('fails a queued job whose name was cleared before it was stored, signing nothing', async () => {
+      const svc = makeService(async (url, opts) => {
+        updateSettings({ operatorName: ' ' })
+        return fakeRender()(url, opts)
+      })
+
+      expect(svc.enqueue([{ url: URL, caseId }]).accepted).toBe(1)
+      await svc.idle()
+
+      expect(newCaptures).toEqual([])
+      expect(listCaptures(caseId)).toEqual([])
+      expect(events.find((e) => e.type === 'failed')?.error).toBe('Operator name required')
+      expect(existsSync(chainPath())).toBe(false)
+    })
+
+    it('signs the trimmed name', async () => {
+      updateSettings({ operatorName: '  Op  ' })
+      const svc = makeService(fakeRender())
+
+      svc.enqueue([{ url: URL, caseId }])
+      await svc.idle()
+
+      expect(newCaptures).toHaveLength(1)
+      const [entry] = readFileSync(chainPath(), 'utf-8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line) as { type: string; operatorName: string })
+        .filter((line) => line.type === 'capture')
+      expect(entry.operatorName).toBe('Op')
+    })
   })
 
   // #400: the per-case exclusion list blocks every capture route, manual
@@ -729,6 +949,105 @@ describe('recapture service', () => {
   // A real ReadStream rather than a spy: what leaks is an open fd, and the
   // renderer's cleanup unlinks the temp file without closing it, so an
   // abandoned stream pins the deleted file's blocks (#766).
+  it('closes and unlinks a render accepted before the operator name was cleared', async () => {
+    const tmpFile = join(tempDir, 'held-render.mhtml')
+    writeFileSync(tmpFile, 'held render bytes')
+    const mhtmlStream = createReadStream(tmpFile)
+    await once(mhtmlStream, 'ready')
+    let finish!: (value: RenderedPage) => void
+    const render: RenderPage = () =>
+      new Promise((resolve) => {
+        finish = resolve
+      })
+    const cleanup = vi.fn(async () => {
+      expect(mhtmlStream.closed).toBe(true)
+      unlinkSync(tmpFile)
+    })
+    const svc = makeService(render)
+    expect(svc.enqueue([{ url: 'https://example.com/held', caseId }]).accepted).toBe(1)
+    updateSettings({ operatorName: '' })
+    finish(
+      await fakeRender({ mhtmlStream, cleanup })(
+        'https://example.com/held',
+        {} as Parameters<RenderPage>[1]
+      )
+    )
+    await svc.idle()
+    expect(events.find((event) => event.type === 'failed')).toMatchObject({
+      error: 'Operator name required'
+    })
+    expect(newCaptures).toEqual([])
+    expect(cleanup).toHaveBeenCalledOnce()
+    expect(existsSync(tmpFile)).toBe(false)
+    expect(mhtmlStream.destroyed).toBe(true)
+    if (!mhtmlStream.closed) await once(mhtmlStream, 'close')
+    expect(mhtmlStream.closed).toBe(true)
+  })
+
+  it('closes an unread stream on ingest errors and reports cleanup errors', async () => {
+    const tmpFile = join(tempDir, 'failed-ingest.mhtml')
+    writeFileSync(tmpFile, 'failed ingest bytes')
+    const mhtmlStream = createReadStream(tmpFile)
+    await once(mhtmlStream, 'ready')
+    const ingestError = new Error('ingest refused before reading')
+    const cleanupError = new Error('cleanup failed')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle })
+    vi.spyOn(lifecycle, 'ingest').mockRejectedValue(ingestError)
+    const logged = vi.spyOn(logger, 'error').mockImplementation(() => 'log-id')
+    const svc = createRecaptureService({
+      renderPage: fakeRender({
+        mhtmlStream,
+        cleanup: async () => {
+          throw cleanupError
+        }
+      }),
+      captureLifecycle: lifecycle,
+      emitEvent: (event) => events.push(event),
+      emitNewCapture: (capture) => newCaptures.push(capture)
+    })
+    svc.enqueue([{ url: 'https://example.com/failed', caseId }])
+    await svc.idle()
+    expect(events.find((event) => event.type === 'failed')).toMatchObject({
+      error: ingestError.message
+    })
+    expect(newCaptures).toEqual([])
+    expect(mhtmlStream.destroyed).toBe(true)
+    if (!mhtmlStream.closed) await once(mhtmlStream, 'close')
+    expect(mhtmlStream.closed).toBe(true)
+    expect(logged).toHaveBeenCalledWith(
+      'backgroundRenderer',
+      'backgroundRenderer.cleanup_failed',
+      undefined,
+      cleanupError
+    )
+    logged.mockRestore()
+  })
+
+  it('logs a genuine stream-open error while cleaning up an ingest refusal', async () => {
+    const mhtmlStream = createReadStream(join(tempDir, 'missing-render.mhtml'))
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle })
+    vi.spyOn(lifecycle, 'ingest').mockRejectedValue(new Error('ingest refused'))
+    const logged = vi.spyOn(logger, 'error').mockImplementation(() => 'log-id')
+    const cleanup = vi.fn(async () => undefined)
+    const svc = createRecaptureService({
+      renderPage: fakeRender({ mhtmlStream, cleanup }),
+      captureLifecycle: lifecycle,
+      emitEvent: (event) => events.push(event),
+      emitNewCapture: vi.fn()
+    })
+    svc.enqueue([{ url: 'https://example.com/missing-render', caseId }])
+    await svc.idle()
+    expect(mhtmlStream.closed).toBe(true)
+    expect(cleanup).toHaveBeenCalledOnce()
+    expect(logged).toHaveBeenCalledWith(
+      'backgroundRenderer',
+      'backgroundRenderer.cleanup_failed',
+      undefined,
+      expect.objectContaining({ code: 'ENOENT' })
+    )
+    logged.mockRestore()
+  })
+
   it('releases the rendered stream when the redirect is blocked', async () => {
     setAutoCapturePolicy(caseId, { exclusions: ['blocked.example'], mode: 'stack' })
     const tmpFile = join(tempDir, 'rendered.mhtml')
@@ -794,7 +1113,7 @@ describe('recapture service', () => {
     expect(svc.enqueue([{ url: 'https://public.example/r', caseId }]).accepted).toBe(1)
     await svc.idle()
 
-    expect(events.filter((e) => e.type !== 'received')).toEqual([
+    expect(events.filter(({ type }) => type !== 'queued' && type !== 'received')).toEqual([
       expect.objectContaining({
         type: 'skipped',
         source: 'recapture',
@@ -864,6 +1183,227 @@ describe('recapture service', () => {
     expect(newCaptures).toHaveLength(1)
     const stored = events.find((e) => e.type === 'stored')
     expect(stored?.warning).toMatch(/login/i)
+  })
+
+  // Slice 1 of docs/specs/2026-11-09-batch-capture-throughput-design.md (#2127).
+  describe("the job's log line", () => {
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+    type Spy = { mock: { calls: unknown[][] } }
+    const JOB_CODES = [
+      'backgroundRenderer.job_stored',
+      'backgroundRenderer.job_skipped',
+      'backgroundRenderer.job_failed'
+    ]
+    const jobLines = (...spies: Spy[]) =>
+      spies
+        .flatMap((spy) => spy.mock.calls)
+        .filter(([, code]) => JOB_CODES.includes(code as string))
+
+    let info: ReturnType<typeof vi.spyOn>
+    let warn: ReturnType<typeof vi.spyOn>
+
+    beforeEach(() => {
+      info = vi.spyOn(logger, 'info')
+      warn = vi.spyOn(logger, 'warn')
+    })
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    // The log is handed over in bug reports, so no line of a job names its address.
+    function expectNoAddress(...hosts: string[]): void {
+      const logged = JSON.stringify([...info.mock.calls, ...warn.mock.calls])
+      for (const host of hosts) expect(logged).not.toContain(host)
+    }
+
+    it('is one info line for a stored job, under the Capture id, with the ingest time', async () => {
+      const svc = makeService(fakeRender())
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+      expect(jobLines(info, warn)).toEqual([
+        [
+          'backgroundRenderer',
+          'backgroundRenderer.job_stored',
+          {
+            captureId: newCaptures[0].id,
+            caseId,
+            ms: expect.any(Number),
+            ingestMs: expect.any(Number)
+          }
+        ]
+      ])
+      const [[, , { ms, ingestMs }]] = jobLines(info) as Array<
+        [string, string, Record<string, number>]
+      >
+      expect(ingestMs).toBeLessThanOrEqual(ms)
+      expectNoAddress('example.com')
+    })
+
+    it.each([
+      {
+        name: 'the render ends at a private address',
+        failureKind: 'refused-address',
+        render: fakeRender({ finalUrl: 'http://192.168.0.10/router' }),
+        hosts: ['192.168.0.10']
+      },
+      {
+        name: 'the render redirects into an excluded address',
+        failureKind: 'excluded',
+        exclusions: ['blocked.example'],
+        render: fakeRender({ finalUrl: 'https://blocked.example/landing' }),
+        hosts: ['blocked.example']
+      },
+      {
+        name: 'the renderer refuses a hop',
+        failureKind: 'refused-address',
+        render: (async () => {
+          throw new RefusedAddressError('a loopback address')
+        }) as RenderPage,
+        hosts: []
+      }
+    ])(
+      'is one info line naming the kind, not the reason, when $name',
+      async ({ failureKind, render, exclusions, hosts }) => {
+        if (exclusions) setAutoCapturePolicy(caseId, { exclusions, mode: 'stack' })
+        const svc = makeService(render)
+        svc.enqueue([{ url: 'https://public.example/r', caseId }])
+        await svc.idle()
+        expect(events.map(({ type }) => type)).toEqual(['queued', 'received', 'skipped'])
+        expect(jobLines(info, warn)).toEqual([
+          [
+            'backgroundRenderer',
+            'backgroundRenderer.job_skipped',
+            { captureId: expect.stringMatching(UUID), caseId, ms: expect.any(Number), failureKind }
+          ]
+        ])
+        expectNoAddress('public.example', ...hosts)
+      }
+    )
+
+    it('is one warn line with the error and the step the render reached, when the render throws', async () => {
+      const error = new Error('net::ERR_NAME_NOT_RESOLVED')
+      const svc = makeService(async (_url, { onStep }) => {
+        onStep?.('setup')
+        onStep?.('load')
+        onStep?.('scroll')
+        throw error
+      })
+      svc.enqueue([{ url: 'https://nope.example/', caseId }])
+      await svc.idle()
+      expect(jobLines(info, warn)).toEqual([
+        [
+          'backgroundRenderer',
+          'backgroundRenderer.job_failed',
+          {
+            captureId: expect.stringMatching(UUID),
+            caseId,
+            ms: expect.any(Number),
+            failureKind: 'render',
+            step: 'scroll'
+          },
+          error
+        ]
+      ])
+      expect(jobLines(warn)).toHaveLength(1)
+      expectNoAddress('nope.example')
+    })
+
+    it('names no step when the render throws before its first', async () => {
+      const svc = makeService(async () => {
+        throw new Error('the Egress could not be read')
+      })
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+      const [[, , context]] = jobLines(warn) as Array<[string, string, Record<string, unknown>]>
+      expect(context).toMatchObject({ failureKind: 'render' })
+      expect(context).not.toHaveProperty('step')
+    })
+
+    it('names a timeout, and the step the render last reached, when the render hangs', async () => {
+      const svc = makeService(async (_url, { onStep }) => {
+        onStep?.('setup')
+        onStep?.('load')
+        return new Promise<RenderedPage>(() => {})
+      }, 50)
+      svc.enqueue([{ url: 'https://slow.example/', caseId }])
+      await svc.idle()
+      const [[, , context, error]] = jobLines(warn) as Array<
+        [string, string, Record<string, unknown>, unknown]
+      >
+      expect(context).toMatchObject({ failureKind: 'timeout', step: 'load' })
+      expect(error).toBeInstanceOf(RecaptureTimeout)
+      // The log keeps an error's name only when it is a known one.
+      expect(sanitizeError(error).name).toBe('RecaptureTimeout')
+      expect(events.at(-1)).toMatchObject({
+        type: 'failed',
+        error: 'Recapture timed out after 50ms'
+      })
+    })
+
+    it("names a timeout when the renderer's own deadline ends the render", async () => {
+      const svc = makeService(async (_url, { onStep }) => {
+        onStep?.('setup')
+        onStep?.('artifacts')
+        throw new RecaptureTimeout(120_000)
+      })
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+      const [[, , context]] = jobLines(warn) as Array<[string, string, Record<string, unknown>]>
+      expect(context).toMatchObject({ failureKind: 'timeout', step: 'artifacts' })
+    })
+
+    it('names the ingest when the ingest fails, and logs no stored line', async () => {
+      const failing = createCaptureLifecycle({ selectorLifecycle })
+      const error = new Error('disk full')
+      const svc = createRecaptureService({
+        renderPage: fakeRender(),
+        captureLifecycle: { ...failing, ingest: () => Promise.reject(error) },
+        emitEvent: (e) => events.push(e),
+        emitNewCapture: (c) => newCaptures.push(c)
+      })
+      svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+      expect(jobLines(info, warn)).toEqual([
+        [
+          'backgroundRenderer',
+          'backgroundRenderer.job_failed',
+          {
+            captureId: expect.stringMatching(UUID),
+            caseId,
+            ms: expect.any(Number),
+            failureKind: 'ingest',
+            step: 'ingest'
+          },
+          error
+        ]
+      ])
+    })
+
+    // Review of #2133, finding 7: a development build's log call can throw (logSafe.ts). The
+    // job's row is how it ends, so the row is written before the line is logged.
+    it('ends a stored job stored, and reports no failure, when its stored line throws', async () => {
+      info.mockImplementation((_source: unknown, code: unknown) => {
+        if (code === 'backgroundRenderer.job_stored') throw new Error('log call threw')
+        return 'log-id'
+      })
+      const error = vi.spyOn(logger, 'error')
+      const cleanup = vi.fn(async () => {})
+      const svc = makeService(fakeRender({ cleanup }))
+      const { batchId } = svc.enqueue([{ url: 'https://example.com/page', caseId }])
+      await svc.idle()
+      expect(svc.listJobs({ batchId })).toEqual([
+        expect.objectContaining({ state: 'stored', captureId: newCaptures[0].id })
+      ])
+      expect(svc.status()).toMatchObject({ pending: 0, running: 0 })
+      expect(events.map(({ type }) => type)).toEqual(['queued', 'received', 'stored'])
+      expect(jobLines(warn)).toEqual([])
+      expect(cleanup).toHaveBeenCalledTimes(1)
+      // The throw stops the queue loop, which logs it.
+      expect(
+        error.mock.calls.map(([, code, , err]) => [code, (err as Error).message])
+      ).toContainEqual(['backgroundRenderer.job_queue_failed', 'log call threw'])
+    })
   })
 })
 
@@ -975,6 +1515,7 @@ describe('Capture link jobs (ADR-0040)', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     closeDatabase()
     rmSync(tempDir, { recursive: true, force: true })
   })
@@ -1005,7 +1546,12 @@ describe('Capture link jobs (ADR-0040)', () => {
 
   it('signs the source, its Content Hash from the entry, and the link address', async () => {
     const source = await sourceCapture()
-    expect(svc.enqueueLink(linkPayload(source.id))).toEqual({ accepted: 1, rejected: [] })
+    expect(svc.enqueueLink(linkPayload(source.id))).toEqual({
+      batchId: expect.any(String),
+      accepted: 1,
+      jobIds: [expect.any(String)],
+      rejected: []
+    })
     await svc.idle()
 
     const linked = getCapture(newCaptures[1].id)!
@@ -1087,7 +1633,9 @@ describe('Capture link jobs (ADR-0040)', () => {
     const source = await sourceCapture()
     const before = entries().length
     expect(svc.enqueueLink(linkPayload(source.id, urls))).toEqual({
+      batchId: expect.any(String),
       accepted: 0,
+      jobIds: [],
       rejected: [{ url: LINK, reason: 'Capture link takes exactly the link address' }]
     })
     await expectNothingWritten(before, 1)
@@ -1098,13 +1646,22 @@ describe('Capture link jobs (ADR-0040)', () => {
     const before = entries().length
     expect(
       svc.enqueueLink({ urls: [LINK], caseId, linkedFrom: { captureId: '', linkHref: LINK } })
-    ).toEqual({ accepted: 0, rejected: [{ url: LINK, reason: 'Invalid link source' }] })
-    expect(svc.enqueueLink({ urls: [LINK], caseId })).toEqual({
+    ).toEqual({
+      batchId: expect.any(String),
       accepted: 0,
+      jobIds: [],
+      rejected: [{ url: LINK, reason: 'Invalid link source' }]
+    })
+    expect(svc.enqueueLink({ urls: [LINK], caseId })).toEqual({
+      batchId: expect.any(String),
+      accepted: 0,
+      jobIds: [],
       rejected: [{ url: '', reason: 'Invalid link source' }]
     })
     expect(svc.enqueueLink({ ...linkPayload(source.id), supersedesCaptureId: source.id })).toEqual({
+      batchId: expect.any(String),
       accepted: 0,
+      jobIds: [],
       rejected: [{ url: LINK, reason: 'A link capture supersedes nothing' }]
     })
     await expectNothingWritten(before, 1)
@@ -1160,6 +1717,7 @@ describe('Capture link jobs (ADR-0040)', () => {
 
     const linkedFrom = { captureId: source.id, linkHref: LINK }
     expect(events.slice(before)).toMatchObject([
+      { type: 'queued', url: LINK, linkedFrom },
       { type: 'received', url: LINK, linkedFrom },
       { type: 'skipped', url: LANDED, linkedFrom }
     ])
@@ -1207,7 +1765,12 @@ describe('Capture link jobs (ADR-0040)', () => {
       caseId: newCaseId,
       linkedFrom: { captureId: renamed.id, linkHref: LINK }
     }
-    expect(svc.enqueueLink(payload)).toEqual({ accepted: 1, rejected: [] })
+    expect(svc.enqueueLink(payload)).toEqual({
+      batchId: expect.any(String),
+      accepted: 1,
+      jobIds: [expect.any(String)],
+      rejected: []
+    })
     await svc.idle()
 
     const linked = getCapture(newCaptures[1].id)!
@@ -1254,6 +1817,72 @@ describe('Capture link jobs (ADR-0040)', () => {
     expect(events.at(-1)).toMatchObject({
       type: 'skipped',
       skipReason: 'Link source has no manifest entry'
+    })
+  })
+
+  // #2127: the line names the kind, not the refusal.
+  it('logs a refused source as a skipped job of kind link-source', async () => {
+    const info = vi.spyOn(logger, 'info')
+    const legacy = insertCapture({
+      caseId,
+      url: 'https://example.com/legacy',
+      title: 'Legacy',
+      hash: 'a'.repeat(64),
+      timestamp: '2026-01-01T00:00:00.000Z'
+    })
+    svc.enqueueLink(linkPayload(legacy.id))
+    await svc.idle()
+    const skipped = info.mock.calls.filter(([, code]) => code === 'backgroundRenderer.job_skipped')
+    expect(skipped).toEqual([
+      [
+        'backgroundRenderer',
+        'backgroundRenderer.job_skipped',
+        {
+          captureId: expect.any(String),
+          caseId,
+          ms: expect.any(Number),
+          failureKind: 'link-source'
+        }
+      ]
+    ])
+  })
+
+  it('logs a link job whose source read and whose render then threw as kind render', async () => {
+    const source = await sourceCapture()
+    const warn = vi.spyOn(logger, 'warn')
+    const linkSvc = createRecaptureService({
+      renderPage: async () => {
+        throw new Error('net::ERR_CONNECTION_RESET')
+      },
+      captureLifecycle,
+      emitEvent: (e) => events.push(e),
+      emitNewCapture: (c) => newCaptures.push(c),
+      timeoutMs: 45_000
+    })
+    linkSvc.enqueueLink(linkPayload(source.id))
+    await linkSvc.idle()
+    const failed = warn.mock.calls.filter(([, code]) => code === 'backgroundRenderer.job_failed')
+    expect(failed.map(([, , context]) => context)).toEqual([
+      { captureId: expect.any(String), caseId, ms: expect.any(Number), failureKind: 'render' }
+    ])
+  })
+
+  it('logs a source check that throws as a failed job of kind link-source-error', async () => {
+    const source = await sourceCapture()
+    const manifest = join(getStorageRoot(), caseId, MANIFEST_FILENAME)
+    rmSync(manifest)
+    mkdirSync(manifest)
+    const warn = vi.spyOn(logger, 'warn')
+    svc.enqueueLink(linkPayload(source.id))
+    await svc.idle()
+    expect(events.at(-1)).toMatchObject({ type: 'failed' })
+    const failed = warn.mock.calls.filter(([, code]) => code === 'backgroundRenderer.job_failed')
+    expect(failed).toHaveLength(1)
+    expect(failed[0][2]).toEqual({
+      captureId: expect.any(String),
+      caseId,
+      ms: expect.any(Number),
+      failureKind: 'link-source-error'
     })
   })
 
@@ -1348,7 +1977,9 @@ describe("Capture link from a teammate's Capture (ADR-0040)", () => {
     })
     const linkedFrom = { captureId: source.captureId, linkHref: LINK }
     expect(svc.enqueueLink({ urls: [LINK], caseId: CASE_ID, linkedFrom })).toEqual({
+      batchId: expect.any(String),
       accepted: 1,
+      jobIds: [expect.any(String)],
       rejected: []
     })
     await svc.idle()

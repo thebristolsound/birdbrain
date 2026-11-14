@@ -75,6 +75,16 @@ function hostOf(url: string | undefined): string {
   }
 }
 
+// Why an Exhibit row shows no number, as the Data screen states it (X47).
+export const UNNUMBERED_NO_OPERATOR = 'Unnumbered until an operator name is set in Settings'
+
+// An Exhibit as the Data screen cites it: by number, or as unnumbered when the
+// chain records none for it yet (X47). The database's number is not shown then,
+// because no entry vouches for it.
+export function exhibitLabel({ citation, unnumberedReason }: InventoryExhibitRow): string {
+  return unnumberedReason ? 'Unnumbered' : `Exhibit ${citation}`
+}
+
 // The acquisition instant of an Exhibit: its capture time when it is a
 // Capture whose facts are loaded, and otherwise the commit time, named as such.
 function exhibitInstant(
@@ -104,16 +114,19 @@ export function toArtifactRow(
   }
   if (row.entity === 'exhibit') {
     const facts = captures.get(row.id)
+    const unnumbered = row.unnumberedReason !== undefined
     return {
       ...common,
-      source: `Exhibit ${row.citation}`,
-      sourceDetail: (row.kind === 'capture' && facts?.url) || row.origin,
+      source: exhibitLabel(row),
+      sourceDetail: unnumbered
+        ? UNNUMBERED_NO_OPERATOR
+        : (row.kind === 'capture' && facts?.url) || row.origin,
       kind: row.kind,
       ...exhibitInstant(row, captures),
       anchored: row.anchored,
       staged: false,
-      exhibitNumber: row.exhibitNumber,
-      citation: row.citation
+      exhibitNumber: unnumbered ? null : row.exhibitNumber,
+      citation: unnumbered ? null : row.citation
     }
   }
   if (row.entity === 'derived-file') {
@@ -122,7 +135,7 @@ export function toArtifactRow(
     )
     return {
       ...common,
-      source: parent ? `Exhibit ${parent.citation}` : row.parentExhibitId,
+      source: parent ? exhibitLabel(parent) : row.parentExhibitId,
       sourceDetail: parent?.name ?? row.parentExhibitId,
       kind: row.derivation,
       ...(parent

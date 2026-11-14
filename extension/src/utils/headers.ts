@@ -1,3 +1,5 @@
+import { canonicalizeUrl } from '@shared/urlCanonicalize'
+
 // Normalizes Chrome webRequest responseHeaders into a deterministic
 // Record<string, string>: keys are lowercased; values for a repeated header are
 // joined with ', '. Determinism matters because these headers are anchored into
@@ -33,14 +35,17 @@ export interface CachedResponse {
 // Both facts come from the SAME cached main-frame response and are handed over
 // only when that response's URL is still the URL being captured, so a tab that
 // navigated between onHeadersReceived and the capture contributes nothing
-// rather than another page's status.
+// rather than another page's status. "Still the URL" is canonical URL identity
+// (#1008): webRequest reports main-frame URLs without the fragment, while the
+// tab URL being captured keeps it.
 //
 // The status is sent so the app can anchor it into the signed manifest entry
 // instead of the constant 200 every capture request used to carry. A capture
 // whose response was never seen — the extension started after the page loaded,
-// or a same-document navigation served no new response — sends no status at
-// all, and the app records the status as unknown. That is the honest reading:
-// an absent status means this build could not observe one.
+// or a same-document navigation to a different canonical URL served no new
+// response — sends no status at all, and the app records the status as
+// unknown. That is the honest reading: an absent status means this build
+// could not observe one.
 export interface CaptureResponseFacts {
   headers?: Record<string, string>
   httpStatus?: number
@@ -50,7 +55,7 @@ export function responseFactsForCapture(
   cached: CachedResponse | undefined,
   url: string
 ): CaptureResponseFacts {
-  if (!cached || cached.url !== url) return {}
+  if (!cached || canonicalizeUrl(cached.url) !== canonicalizeUrl(url)) return {}
   const facts: CaptureResponseFacts = {}
   if (Object.keys(cached.headers).length > 0) facts.headers = cached.headers
   if (typeof cached.status === 'number' && Number.isInteger(cached.status)) {

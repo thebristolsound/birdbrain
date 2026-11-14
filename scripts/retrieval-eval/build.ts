@@ -279,7 +279,7 @@ async function build(size: number): Promise<CaseRecord> {
     label: 'Open day',
     isRegex: false
   })
-  selectorRepo.matchSelectorAgainstCaptures(selector.id, texts)
+  selectorRepo.matchSelectorAgainstCaptures(selector.id, texts, 'create')
 
   const pooledPath = join(scratch, POOLED_FILE.name)
   writeFileSync(pooledPath, POOLED_FILE.text)

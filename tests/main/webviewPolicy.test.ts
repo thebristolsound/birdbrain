@@ -61,15 +61,17 @@ const REMOTE_FILE_URLS: readonly string[] = [
 
 /**
  * The one `file:` authority `isRemoteFileUrl` does not refuse: `URL` normalises
- * `localhost` away to the empty host, so the string reaches the prefix test still
+ * `localhost`, upper-cased or percent-encoded too, away to the empty host, so the string reaches the prefix test still
  * carrying the name while parsing as local. `file://` matches it and `file:///` does
- * not, which makes it the only shape the legacy partition's third slash decides on
- * its own — and therefore the case that fails if that narrowing is reverted (#939).
- * `pathToFileURL` never emits this form, so nothing in the app reaches either answer.
+ * not, which makes it the only shape the evidence partitions' third slash decides on
+ * its own — and therefore the case that fails if that narrowing is reverted on either
+ * partition (#939, #1205). `pathToFileURL` never emits this form, so refusing it costs
+ * the app no load.
  */
 const LOCALHOST_FILE_URLS: readonly string[] = [
   'file://localhost/tmp/cap.html',
   'file://LOCALHOST/tmp/cap.html',
+  'file://%6Cocalhost/tmp/cap.html',
   'file://localhost/C:/case/cap.html'
 ]
 
@@ -117,15 +119,6 @@ interface PartitionExpectation {
    * of these has broken the viewer rather than hardened it.
    */
   ownArtefacts: readonly string[]
-  /**
-   * The answer for `LOCALHOST_FILE_URLS`. The two evidence partitions disagree, and
-   * that is deliberate rather than a drift the table papers over: `mhtml-sandbox`
-   * lists `file://` and relies on `isRemoteFileUrl` (#926 asserts the allow), while
-   * `legacy-html-sandbox` lists `file:///` because its content is the one class an
-   * investigated site chooses the bytes of (#939). The row records the divergence in
-   * one place so a partition added later has to choose, not inherit.
-   */
-  localhostFileForm: 'allow' | 'block'
 }
 
 /**
@@ -138,24 +131,21 @@ const PARTITION_EXPECTATIONS: ReadonlyMap<string, PartitionExpectation> = new Ma
     MHTML_PARTITION,
     {
       allowedRequestHosts: [],
-      ownArtefacts: ['file:///c/a.mhtml', 'file:///local/path/artifact.mhtml'],
-      localhostFileForm: 'allow'
+      ownArtefacts: ['file:///c/a.mhtml', 'file:///local/path/artifact.mhtml']
     }
   ],
   [
     LEGACY_HTML_PARTITION,
     {
       allowedRequestHosts: [],
-      ownArtefacts: ['file:///c/case/cap.html'],
-      localhostFileForm: 'block'
+      ownArtefacts: ['file:///c/case/cap.html']
     }
   ],
   [
     WAYBACK_PARTITION,
     {
       allowedRequestHosts: ['web.archive.org'],
-      ownArtefacts: [REPLAY_URL],
-      localhostFileForm: 'block'
+      ownArtefacts: [REPLAY_URL]
     }
   ]
 ])
@@ -243,13 +233,14 @@ describe.each(WEBVIEW_PARTITIONS)('per-partition answers on %s', (partition) => 
     expect(decideWebviewRequest({ partition, url })).toBe('block')
   })
 
-  it.each(LOCALHOST_FILE_URLS)('answers %s as its row says, on every decision surface', (url) => {
-    const { localhostFileForm } = expectationFor(partition)
-    expect(decideWebviewAttach({ partition, src: url }).allowed).toBe(localhostFileForm === 'allow')
-    expect(decideWebviewNavigation({ partition, url, initialLoadDone: false })).toBe(
-      localhostFileForm
-    )
-    expect(decideWebviewRequest({ partition, url })).toBe(localhostFileForm)
+  it.each(LOCALHOST_FILE_URLS)('refuses %s on attach, first navigation and request', (url) => {
+    expectationFor(partition)
+    expect(decideWebviewAttach({ partition, src: url })).toEqual({
+      allowed: false,
+      reason: 'src-not-allowed'
+    })
+    expect(decideWebviewNavigation({ partition, url, initialLoadDone: false })).toBe('block')
+    expect(decideWebviewRequest({ partition, url })).toBe('block')
   })
 
   it.each(LIVE_SUBRESOURCES)('blocks %s (%s)', (url) => {
@@ -641,9 +632,11 @@ describe('permissions and downloads', () => {
   })
 })
 
-// The legacy partition lists `file:///`, not `file://`, and this is what that third
-// slash buys: `file://host/share/x` is a network fetch wearing a local scheme, on the
-// one content class an investigated site chooses the bytes of.
+// Both evidence partitions list `file:///`, not `file://`: the legacy one since #939,
+// the MHTML one since #1205, which ruled one rule for both viewers over a documented
+// divergence. On the legacy partition this is what that third slash buys:
+// `file://host/share/x` is a network fetch wearing a local scheme, on the one content
+// class an investigated site chooses the bytes of.
 //
 // It is not free. `captures:getHtmlUrl` builds the guest's src with `pathToFileURL`,
 // which emits the empty-authority form for a local storage root and an authority
@@ -657,12 +650,12 @@ describe('permissions and downloads', () => {
 // Every remote-authority string in REMOTE_FILE_URLS is refused by `isRemoteFileUrl`
 // before the prefix list is read, so the per-partition cases above stay green with
 // `allowedPrefixes: ['file://']`. The falsifier for the narrowing itself is the
-// `localhostFileForm: 'block'` row, asserted above on LOCALHOST_FILE_URLS. #939's
-// round-four pass measured Chromium handing that form to the decision points
-// unchanged, unlike `file:////…`, which it collapses first.
-describe('the legacy HTML partition’s local-file narrowing', () => {
-  it('lists the three-slash prefix, so the row above is deciding what it says it is', () => {
+// LOCALHOST_FILE_URLS case above, asserted on every partition. #939's round-four pass
+// measured Chromium handing that form to the decision points unchanged, unlike
+// `file:////…`, which it collapses first.
+describe('the evidence partitions’ local-file narrowing', () => {
+  it('lists the three-slash prefix, so the localhost case above decides what it says', () => {
     expect(webviewPolicyFor(LEGACY_HTML_PARTITION)?.allowedPrefixes).toEqual(['file:///'])
-    expect(webviewPolicyFor(MHTML_PARTITION)?.allowedPrefixes).toEqual(['file://'])
+    expect(webviewPolicyFor(MHTML_PARTITION)?.allowedPrefixes).toEqual(['file:///'])
   })
 })

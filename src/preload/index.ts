@@ -102,6 +102,7 @@ const birdbrain = {
     getMhtmlUrl: bridge(IPC_CHANNELS.CAPTURES_GET_MHTML_URL),
     getHtmlUrl: bridge(IPC_CHANNELS.CAPTURES_GET_HTML_URL),
     getLinks: bridge(IPC_CHANNELS.CAPTURES_GET_LINKS),
+    listMhtmlParts: bridge(IPC_CHANNELS.CAPTURES_LIST_MHTML_PARTS),
     deleteMany: bridge(IPC_CHANNELS.CAPTURES_DELETE_MANY),
     duplicate: bridge(IPC_CHANNELS.CAPTURES_DUPLICATE),
     setFavoriteMany: bridge(IPC_CHANNELS.CAPTURES_SET_FAVORITE_MANY)
@@ -109,7 +110,12 @@ const birdbrain = {
   recapture: {
     enqueue: bridge(IPC_CHANNELS.RECAPTURE_ENQUEUE),
     queueStatus: bridge(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS),
-    enqueueCaptures: bridge(IPC_CHANNELS.RECAPTURE_ENQUEUE_CAPTURES)
+    enqueueCaptures: bridge(IPC_CHANNELS.RECAPTURE_ENQUEUE_CAPTURES),
+    listJobs: bridge(IPC_CHANNELS.RECAPTURE_LIST_JOBS),
+    resume: bridge(IPC_CHANNELS.RECAPTURE_RESUME),
+    dismiss: bridge(IPC_CHANNELS.RECAPTURE_DISMISS),
+    cancel: bridge(IPC_CHANNELS.RECAPTURE_CANCEL),
+    retry: bridge(IPC_CHANNELS.RECAPTURE_RETRY)
   },
   tags: {
     list: bridge(IPC_CHANNELS.TAGS_LIST),
@@ -347,6 +353,8 @@ const birdbrain = {
   onExtensionAttach: subscribe(IPC_CHANNELS.EXTENSION_ATTACH),
 
   onCaptureActivity: subscribe(IPC_CHANNELS.CAPTURE_ACTIVITY),
+
+  onRecaptureJob: subscribe(IPC_CHANNELS.RECAPTURE_JOB),
 
   onLogEntry: subscribe(IPC_CHANNELS.LOG_ENTRY),
 

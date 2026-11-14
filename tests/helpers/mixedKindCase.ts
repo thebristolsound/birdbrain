@@ -123,7 +123,7 @@ export async function seedMixedKindCase(options: {
     httpStatus: 200,
     extensionVersion: '',
     operatorId: 'op',
-    operatorName: '',
+    operatorName: 'Test Operator',
     toolVersion: '0.1.0',
     screenshot: png
   })

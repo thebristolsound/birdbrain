@@ -219,6 +219,71 @@ describe('renderThumbnail parameters', () => {
   })
 })
 
+// Golden thumbnails (#1432). The backfill anchors a thumbnail's sha256 in a signed `derivation`
+// entry, so a sharp bump that moves rendered bytes has to fail here, in the bump's own pull
+// request, rather than at an Exhibit verification. Each input is an invented page, checked in,
+// sized to take one branch of `renderThumbnail`: crop, exact fit and pad.
+//
+// The hashes pin the prebuilt @img/sharp-linux-x64 addon, sharp 0.35.5 with libvips 8.18.7,
+// which is what CI's unit tests load. The system-libvips build `BIRDBRAIN_TEST_SYSTEM_SHARP=1`
+// swaps in rendered the same bytes on the machine that took them, but another machine's libvips
+// may not, so the failure names the addon that ran. No other platform's addon was checked, so
+// the test skips there rather than report a platform difference as a sharp bump.
+const GOLDEN_PROVENANCE = 'sharp 0.35.5, libvips 8.18.7, prebuilt @img/sharp-linux-x64'
+const goldenRuntime = process.platform === 'linux' && process.arch === 'x64'
+const runningAddon =
+  process.env.BIRDBRAIN_TEST_SYSTEM_SHARP === '1' ? 'system-libvips test build' : 'prebuilt addon'
+
+const GOLDEN = [
+  {
+    file: 'crop-1000x1200.png',
+    inputSha256: '1503de9eaca5d1d5f583b8b7a75c2e13f3c3dbd771f2c0d04c824a88abc30a44',
+    scaledHeight: 192,
+    paddedRows: 0,
+    outputSha256: 'bed1911afb5b8508b35e3c0c3636c217a119b472d86694efdb4e98ff2836d08c'
+  },
+  {
+    file: 'exact-1000x750.png',
+    inputSha256: 'e95b01beaed752c0ea48a239270f25a8aa023b3654e36cfa24f3f461a2fbe722',
+    scaledHeight: 120,
+    paddedRows: 0,
+    outputSha256: 'e419e1d2851c7c8f22b8eae9217aab1680ff6cca6620f31b6bf3c3a689d32db5'
+  },
+  {
+    file: 'pad-1000x300.png',
+    inputSha256: 'd17fb0d980ca744c652509027b3abf24caa2d6ee013e9e216cb40e99a3c7db0b',
+    scaledHeight: 48,
+    paddedRows: 72,
+    outputSha256: '5ab627031891cf54dc0ca4e6573c41ed88e7c4e3c87b7e83293a3b7c7c7231af'
+  }
+]
+
+describe.skipIf(!goldenRuntime)('renderThumbnail golden output', () => {
+  const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
+
+  for (const golden of GOLDEN) {
+    it(`renders ${golden.file} to its golden bytes`, async () => {
+      const input = readFileSync(join(__dirname, 'fixtures/thumbnails', golden.file))
+      expect(sha256(input), `fixture ${golden.file} itself changed`).toBe(golden.inputSha256)
+
+      const { bytes, parameters } = await renderThumbnail(input)
+
+      expect({
+        scaledHeight: parameters.scaledHeight,
+        paddedRows: parameters.paddedRows
+      }).toEqual({ scaledHeight: golden.scaledHeight, paddedRows: golden.paddedRows })
+      expect(
+        sha256(bytes),
+        `A sharp bump changed thumbnail bytes: ${golden.file} no longer renders to the hash ` +
+          `taken under ${GOLDEN_PROVENANCE}; running sharp ${sharp.versions.sharp}, ` +
+          `libvips ${sharp.versions.vips}, ${runningAddon}. A thumbnail rendered now would not match one ` +
+          'anchored under the old build. Decide re-rendering and re-anchoring (#1316) before ' +
+          'updating this hash and its provenance.'
+      ).toBe(golden.outputSha256)
+    })
+  }
+})
+
 describe('getThumbnail', () => {
   let tempDir: string
   let store: CaptureStore

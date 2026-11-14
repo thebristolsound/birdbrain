@@ -15,7 +15,7 @@ import {
   sharePillModel
 } from '@renderer/components/sharing/memberModel'
 
-// The top bar's sharing control (docs/design-handoff/2026-10-28-share-a-case/,
+// The Case action bar's sharing control (docs/design-handoff/2026-10-28-share-a-case/,
 // frames B and G): one button whose label follows the Case from "Share" to its
 // sync state, every state opening Members. Below `lg` the label folds to the
 // icon or the dot and the tooltip carries it, as the Export button's does.

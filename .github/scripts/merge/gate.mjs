@@ -48,14 +48,38 @@ export function approvalStamp(statuses) {
   return stamp ? stamp.state : 'absent'
 }
 
+// All readers require a dedicated workflow-token stamp for this exact head as well as the
+// live label and its maintainer actor. Status payloads omit the SHA, so the trusted stamp
+// description also names it. Evidence approval never authorizes a review override.
+export function breakGlassAuthorized(labels, statuses, labeler, maintainer, sha) {
+  const stamp = statuses.find(
+    (s) => s.context === 'merge/break-glass' && s.creator?.login === 'github-actions[bot]'
+  )
+  return (
+    labels.includes('break-glass') &&
+    labeler === maintainer &&
+    stamp?.state === 'success' &&
+    stamp.description === `Review override by ${maintainer} on ${sha}`
+  )
+}
+
+// How the fleet's success begins when the review read only a stacked pull request's own change,
+// the diff against its base branch (ADR-0057, decision 5). That review does not cover a merge
+// into main; the fleet posts a success without this once main holds everything below the change.
+export const STACKED_REVIEW = 'stacked change only: '
+
 // The newest review/fleet state the machine account posted (ADR-0057). A success the fleet posted
 // for a break-glass override is no review: this gate checks the label itself, so the override
-// ends when the label is removed, even before the fleet replaces that status.
+// ends when the label is removed, even before the fleet replaces that status. A success for a
+// stacked change only is not a review of what a merge into main lands.
 export function fleetVerdict(statuses, machine) {
   const mine = statuses.find((s) => s.context === 'review/fleet' && s.creator?.login === machine)
   if (!mine) return 'absent'
   if (mine.state === 'success' && (mine.description ?? '').startsWith('break-glass ')) {
     return 'override'
+  }
+  if (mine.state === 'success' && (mine.description ?? '').startsWith(STACKED_REVIEW)) {
+    return 'stacked'
   }
   return mine.state
 }
@@ -103,7 +127,9 @@ export function decide(f) {
   }
   if (f.fleetRequired && f.fleet !== 'success' && !f.breakGlass) {
     reasons.push(
-      `review/fleet is ${f.fleet} at head: it must succeed, or ${f.maintainer} applies break-glass`
+      f.fleet === 'stacked'
+        ? `review/fleet read only this change above its base branch: it counts once the base is main and the fleet has confirmed main holds everything below, or reviewed the head again, or ${f.maintainer} applies break-glass`
+        : `review/fleet is ${f.fleet} at head: it must succeed, or ${f.maintainer} applies break-glass`
     )
   }
   return {
@@ -116,15 +142,19 @@ export function decide(f) {
   }
 }
 
-function lastLabeler(repo, n, name) {
+export function lastLabeler(repo, n, name) {
   const events = api(`repos/${repo}/issues/${n}/events?per_page=100`).filter(
     (e) => e.event === 'labeled' && e.label?.name === name
   )
   return events[events.length - 1]?.actor?.login ?? ''
 }
 
+// Every reader asks for a PR's whole event history, which outgrows Node's 1 MiB default.
 function api(path) {
-  const out = execFileSync('gh', ['api', '--paginate', '--slurp', path], { encoding: 'utf8' })
+  const out = execFileSync('gh', ['api', '--paginate', '--slurp', path], {
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024
+  })
   return JSON.parse(out).flat()
 }
 
@@ -165,8 +195,13 @@ function main([repo, n]) {
         machine,
         sameRepo: pr.head.repo?.full_name === repo
       }),
-      breakGlass:
-        labels.includes('break-glass') && lastLabeler(repo, n, 'break-glass') === maintainer,
+      breakGlass: breakGlassAuthorized(
+        labels,
+        statuses,
+        lastLabeler(repo, n, 'break-glass'),
+        maintainer,
+        headSha
+      ),
       approvalStamp: approvalStamp(statuses),
       reviews: api(`repos/${repo}/pulls/${n}/reviews?per_page=100`).map((r) => ({
         state: r.state,

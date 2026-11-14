@@ -1,9 +1,17 @@
 import { createHash } from 'crypto'
 import { existsSync } from 'fs'
-import { readFile, writeFile } from 'fs/promises'
+import { readFile, writeFile, rm } from 'fs/promises'
 import { listAllCaseIds } from '@main/services/db/caseRepo'
-import { backfillExhibitsForCaptures, listExhibits } from '@main/services/db/exhibitRepo'
-import { nextExhibitNumber } from '@main/services/exhibitNumbering'
+import {
+  backfillExhibitsForCaptures,
+  getExhibit,
+  listExhibits
+} from '@main/services/db/exhibitRepo'
+import {
+  awaitingRenumber,
+  hasRenumberEntry,
+  nextExhibitNumber
+} from '@main/services/exhibitNumbering'
 import { hasDerivation, insertDerivedFile } from '@main/services/db/derivedFileRepo'
 import {
   appendManifestEntry,
@@ -16,7 +24,7 @@ import {
 } from '@main/services/manifest'
 import { rowDescriber } from '@main/services/captureLifecycle'
 import { defaultCaptureStore, type CaptureStore } from '@main/services/captureStore'
-import { getSettings } from '@main/services/settings'
+import { trimmedOperatorName } from '@main/services/operatorName'
 import { getInstallationId } from '@main/services/installationId'
 import { renderThumbnail } from '@main/services/thumbnails'
 import { logger } from '@main/services/logger'
@@ -63,6 +71,10 @@ export interface ExhibitBackfillCaseResult {
   // Derived-file rows created, split by whether the chain covers them.
   thumbnailsAnchored: number
   thumbnailsUnanchored: number
+  // Set when the Case needed a signed entry and none could be signed (X47): its chain is left
+  // as it was, and it is backfilled again once a name is saved. The thumbnail counts are 0
+  // unless a screenshot began to verify after rows that sign nothing were recorded.
+  skipped?: 'operator_name_required'
 }
 
 interface Operator {
@@ -71,38 +83,8 @@ interface Operator {
   toolVersion: string
 }
 
-function operator(toolVersion: string): Operator {
-  return {
-    operatorId: getInstallationId(),
-    operatorName: getSettings().operatorName ?? '',
-    toolVersion
-  }
-}
-
-// Whether this Case's chain already carries its `renumber` entry. Read from the
-// raw lines rather than from a verified read on purpose: the question is "has
-// one been written", and a Case whose chain is broken must not have a second
-// one appended on top of the first.
-function hasRenumberEntry(entries: Record<string, unknown>[]): boolean {
-  return entries.some((entry) => entry.type === 'renumber')
-}
-
-// The Exhibits the `renumber` entry has to number: this installation's own
-// whose anchoring entry carries no number. A Capture ingested since X46 and
-// every committed Exhibit of another kind already has its number on its own
-// entry, and listing it again would give one Exhibit two assignments. Another
-// member's Exhibit is numbered in that member's chain (decision 7), and its
-// `manifestSeq` indexes that chain, not this one. Read from the raw lines for
-// the reason `hasRenumberEntry` is: the question is what was written.
-function awaitingRenumber(exhibits: Exhibit[], entries: Record<string, unknown>[]): Exhibit[] {
-  return exhibits.filter((exhibit) => {
-    if (exhibit.authorInstallationId !== null) return false
-    const anchoring = exhibit.manifestSeq === null ? undefined : entries[exhibit.manifestSeq]
-    const numbered =
-      (anchoring?.type === 'capture' || anchoring?.type === 'exhibit') &&
-      typeof anchoring.exhibitNumber === 'number'
-    return !numbered
-  })
+function operator(operatorName: string, toolVersion: string): Operator {
+  return { operatorId: getInstallationId(), operatorName, toolVersion }
 }
 
 // Appends the Case's single `renumber` entry (X18), listing the Exhibits
@@ -231,14 +213,75 @@ function signedParentId(
   return describes({ caseId, rowId: captureId }, exhibit) ? captureId : exhibit.id
 }
 
-async function backfillThumbnail(
-  exhibit: Exhibit,
-  parentId: string,
-  store: CaptureStore,
-  who: Operator,
-  chainEntry: CaptureChainEntry | undefined,
+// One Capture whose thumbnail has no `derived_files` row yet, with what its
+// `derivation` entry would be written against.
+interface PendingThumbnail {
+  exhibit: Exhibit
+  parentId: string
+  chainEntry: CaptureChainEntry | undefined
   prior: PriorDerivation | undefined
-): Promise<'anchored' | 'unanchored' | 'skipped'> {
+}
+
+// The Case's Captures still owed a thumbnail row. Called after any renumber
+// append: the verified read then covers the entry this run wrote, and a
+// `derivation` entry an earlier run appended before its row landed is visible
+// rather than duplicated. A broken chain yields no entries, so nothing is
+// anchored, which is the right outcome: there is no signed screenshot hash to
+// check a regeneration against.
+function thumbnailsPending(
+  exhibits: Exhibit[],
+  store: CaptureStore,
+  caseDir: string
+): PendingThumbnail[] {
+  const own = readCaseChains(caseDir).own
+  const prior = priorDerivations(caseDir)
+  const describes = rowDescriber(caseDir, own)
+  const pending: PendingThumbnail[] = []
+  for (const exhibit of exhibits) {
+    if (exhibit.kind !== 'capture') continue
+    // Another member's Capture: its `manifestSeq` indexes its author's chain, not this one, and
+    // only its author signs a derivation for it (#1811).
+    if (exhibit.authorInstallationId !== null) continue
+    // Checked before the signed id is resolved, so a launch spends nothing on
+    // a row that is already recorded.
+    if (hasDerivation(exhibit.id, THUMBNAIL_DERIVATION)) continue
+    const chainEntry =
+      exhibit.manifestSeq === null
+        ? undefined
+        : own.chain.captureEntriesByIndex.get(exhibit.manifestSeq)
+    const parentId = signedParentId(exhibit, own, describes)
+    const { rel } = store.thumbnailPaths(exhibit.caseId, exhibit.id)
+    pending.push({
+      exhibit,
+      parentId,
+      chainEntry,
+      // An entry for the row's own file, under either id: the signed one is what
+      // this build writes, the row's own is what a build before #1814 wrote.
+      prior:
+        prior.get(derivationKey(parentId, THUMBNAIL_DERIVATION, rel)) ??
+        prior.get(derivationKey(exhibit.id, THUMBNAIL_DERIVATION, rel))
+    })
+  }
+  return pending
+}
+
+// Whether `backfillThumbnail` would sign a `derivation` entry for one of them:
+// it has no entry on the chain yet and a parent the signed chain vouches for.
+function wouldSignDerivation(
+  { exhibit, chainEntry, prior }: PendingThumbnail,
+  store: CaptureStore
+): boolean {
+  return (
+    prior === undefined &&
+    verifiedParent(exhibit.caseId, exhibit.id, store, chainEntry) !== undefined
+  )
+}
+
+async function backfillThumbnail(
+  { exhibit, parentId, chainEntry, prior }: PendingThumbnail,
+  store: CaptureStore,
+  who: Operator
+): Promise<'anchored' | 'unanchored' | 'skipped' | 'deferred'> {
   const paths = store.thumbnailPaths(exhibit.caseId, exhibit.id)
 
   if (prior !== undefined) {
@@ -250,6 +293,7 @@ async function backfillThumbnail(
     // overwriting them would only make a second entry look necessary.
     if (!existsSync(paths.abs)) return 'skipped'
     const bytes = await readFile(paths.abs)
+    if (!getExhibit(exhibit.id)) return 'skipped'
     const contentHash = createHash('sha256').update(bytes).digest('hex')
     const anchored = contentHash === prior.outputHash
     insertDerivedFile({
@@ -272,6 +316,7 @@ async function backfillThumbnail(
     // there is not invented.
     if (!existsSync(paths.abs)) return 'skipped'
     const bytes = await readFile(paths.abs)
+    if (!getExhibit(exhibit.id)) return 'skipped'
     insertDerivedFile({
       exhibitId: exhibit.id,
       derivation: THUMBNAIL_DERIVATION,
@@ -284,58 +329,79 @@ async function backfillThumbnail(
     return 'unanchored'
   }
 
+  // The operator gate (X47), at the branch that signs: the Case-wide check ran on an earlier
+  // read of this screenshot, and one that verifies only now was not counted there.
+  if (!who.operatorName) return 'deferred'
+
   // The same renderer `getThumbnail` uses, not a second copy of the pipeline:
   // the entry appended below anchors these bytes, so a later regeneration from
   // the same parent screenshot has to reproduce them.
   const { bytes, parameters } = await renderThumbnail(parent.screenshot)
-  await writeFile(paths.abs, bytes)
-  const outputHash = createHash('sha256').update(bytes).digest('hex')
-  const timestamp = new Date().toISOString()
+  if (!getExhibit(exhibit.id)) return 'skipped'
+  try {
+    await writeFile(paths.abs, bytes)
+    if (!getExhibit(exhibit.id)) {
+      await rm(paths.abs, { force: true })
+      return 'skipped'
+    }
+    const outputHash = createHash('sha256').update(bytes).digest('hex')
+    const timestamp = new Date().toISOString()
 
-  // Through the write-ahead seam, not a bare append: if `insertDerivedFile`
-  // throws, the entry is truncated back off the chain rather than left
-  // describing a Derived File the database has no record of — which the next
-  // launch would answer by signing a second entry for the same file.
-  //
-  // Dated at migration with the migration as the tool (X34): the bytes were
-  // produced now, by this build, and dating them at the Capture's ingest would
-  // be a claim about a file that did not exist then.
-  await withManifestEntry(
-    store.caseDir(exhibit.caseId),
-    {
-      type: 'derivation',
-      caseId: exhibit.caseId,
-      parentExhibitId: parentId,
-      parentContentHash: parent.contentHash,
-      derivation: THUMBNAIL_DERIVATION,
-      derivationToolVersion: who.toolVersion,
-      derivationParameters: parameters,
-      outputHash,
-      outputPath: paths.rel,
-      timestamp,
-      ...who
-    },
-    (appended) => {
-      insertDerivedFile({
-        exhibitId: exhibit.id,
+    // Through the write-ahead seam, not a bare append: if `insertDerivedFile`
+    // throws, the entry is truncated back off the chain rather than left
+    // describing a Derived File the database has no record of — which the next
+    // launch would answer by signing a second entry for the same file.
+    //
+    // Dated at migration with the migration as the tool (X34): the bytes were
+    // produced now, by this build, and dating them at the Capture's ingest would
+    // be a claim about a file that did not exist then.
+    await withManifestEntry(
+      store.caseDir(exhibit.caseId),
+      {
+        type: 'derivation',
+        caseId: exhibit.caseId,
+        parentExhibitId: parentId,
+        parentContentHash: parent.contentHash,
         derivation: THUMBNAIL_DERIVATION,
-        toolVersion: who.toolVersion,
-        contentHash: outputHash,
-        path: paths.rel,
-        createdAt: timestamp,
-        manifestSeq: appended.index
+        derivationToolVersion: who.toolVersion,
+        derivationParameters: parameters,
+        outputHash,
+        outputPath: paths.rel,
+        timestamp,
+        ...who
+      },
+      (appended) => {
+        insertDerivedFile({
+          exhibitId: exhibit.id,
+          derivation: THUMBNAIL_DERIVATION,
+          toolVersion: who.toolVersion,
+          contentHash: outputHash,
+          path: paths.rel,
+          createdAt: timestamp,
+          manifestSeq: appended.index
+        })
+      }
+    )
+  } catch (err) {
+    try {
+      await rm(paths.abs, { force: true })
+    } catch (cleanupErr) {
+      throw new AggregateError([err, cleanupErr], 'Thumbnail backfill and cleanup failed', {
+        cause: cleanupErr
       })
     }
-  )
+    throw err
+  }
   return 'anchored'
 }
 
-export async function backfillCase(
+async function backfillCaseInSlot(
   caseId: string,
   deps: ExhibitBackfillDeps
 ): Promise<ExhibitBackfillCaseResult> {
   const store = deps.store ?? defaultCaptureStore
-  const who = operator(deps.toolVersion)
+  const operatorName = trimmedOperatorName()
+  const who = operator(operatorName, deps.toolVersion)
   const caseDir = store.caseDir(caseId)
   const result: ExhibitBackfillCaseResult = {
     caseId,
@@ -354,60 +420,69 @@ export async function backfillCase(
   if (exhibits.length === 0) return result
 
   const { entries } = readManifestSnapshot(caseDir)
-  if (!hasRenumberEntry(entries)) {
-    // At most one per Case, and none when every Exhibit's own entry carries
-    // its number: a Case begun since X46 has nothing to renumber.
-    const unnumbered = awaitingRenumber(exhibits, entries)
-    if (unnumbered.length > 0) {
-      appendRenumberEntry(caseId, caseDir, unnumbered, who)
-      result.renumbered = true
+  // At most one per Case, and none when every Exhibit's own entry carries its
+  // number: a Case begun since X46 has nothing to renumber.
+  const unnumbered = hasRenumberEntry(entries) ? [] : awaitingRenumber(exhibits, entries)
+  if (!operatorName) {
+    // A Case that needs a signed entry gets no thumbnail rows either, signed or
+    // not, so the run once a name is saved does the Case in one pass. Any other
+    // Case goes on below, where every row it has left signs nothing.
+    const toSign =
+      unnumbered.length > 0 ||
+      thumbnailsPending(exhibits, store, caseDir).some((pending) =>
+        wouldSignDerivation(pending, store)
+      )
+    if (toSign) {
+      logger.warn('exhibits', 'exhibits.backfill_deferred', { caseId: ident(caseId) })
+      return { ...result, skipped: 'operator_name_required' }
     }
   }
+  if (unnumbered.length > 0) {
+    appendRenumberEntry(caseId, caseDir, unnumbered, who)
+    result.renumbered = true
+  }
 
-  // One verified read for the whole Case, taken AFTER the renumber append so
-  // the entry this run wrote is part of what was verified. A broken chain
-  // yields no entries, so nothing is anchored — which is the right outcome:
-  // there is no signed screenshot hash to check a regeneration against.
-  const own = readCaseChains(caseDir).own
-  // Read after the renumber append too, so a `derivation` entry an earlier run
-  // appended before its row landed is visible here rather than duplicated.
-  const prior = priorDerivations(caseDir)
-  const describes = rowDescriber(caseDir, own)
-  for (const exhibit of exhibits) {
-    if (exhibit.kind !== 'capture') continue
-    // Another member's Capture: its `manifestSeq` indexes its author's chain, not this one, and
-    // only its author signs a derivation for it (#1811).
-    if (exhibit.authorInstallationId !== null) continue
-    // Checked before the signed id is resolved, so a launch spends nothing on
-    // a row that is already recorded.
-    if (hasDerivation(exhibit.id, THUMBNAIL_DERIVATION)) continue
-    const chainEntry =
-      exhibit.manifestSeq === null
-        ? undefined
-        : own.chain.captureEntriesByIndex.get(exhibit.manifestSeq)
-    const parentId = signedParentId(exhibit, own, describes)
-    const { rel } = store.thumbnailPaths(exhibit.caseId, exhibit.id)
-    // An entry for the row's own file, under either id: the signed one is what
-    // this build writes, the row's own is what a build before #1814 wrote.
-    const outcome = await backfillThumbnail(
-      exhibit,
-      parentId,
-      store,
-      who,
-      chainEntry,
-      prior.get(derivationKey(parentId, THUMBNAIL_DERIVATION, rel)) ??
-        prior.get(derivationKey(exhibit.id, THUMBNAIL_DERIVATION, rel))
-    )
+  for (const pending of thumbnailsPending(exhibits, store, caseDir)) {
+    const outcome = await backfillThumbnail(pending, store, who)
+    if (outcome === 'deferred') {
+      // The rows left wait with it for the run once a name is saved.
+      logger.warn('exhibits', 'exhibits.backfill_deferred', { caseId: ident(caseId) })
+      return { ...result, skipped: 'operator_name_required' }
+    }
     if (outcome === 'anchored') result.thumbnailsAnchored += 1
     if (outcome === 'unanchored') result.thumbnailsUnanchored += 1
   }
   return result
 }
 
+// Queue every caller, including startup and repeated name saves, before taking snapshots.
+const caseSlots = new Map<string, Promise<void>>()
+
+export async function backfillCase(
+  caseId: string,
+  deps: ExhibitBackfillDeps
+): Promise<ExhibitBackfillCaseResult> {
+  const prev = caseSlots.get(caseId) ?? Promise.resolve()
+  let release: () => void = () => {}
+  const mine = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const tail = prev.then(() => mine)
+  caseSlots.set(caseId, tail)
+  await prev
+  try {
+    return await backfillCaseInSlot(caseId, deps)
+  } finally {
+    release()
+    if (caseSlots.get(caseId) === tail) caseSlots.delete(caseId)
+  }
+}
+
 // Runs the backfill over every Case, including archived ones — an archived Case
 // is still evidence and still gets its numbers. A failure on one Case is logged
 // and the rest continue: this runs during startup, and a single unreadable case
-// directory must not stop the app from opening.
+// directory must not stop the app from opening. It runs again when a save takes
+// the operator name from blank to set, for the Cases a blank name skipped (X47).
 export async function runExhibitBackfill(
   deps: ExhibitBackfillDeps
 ): Promise<ExhibitBackfillCaseResult[]> {
@@ -420,4 +495,22 @@ export async function runExhibitBackfill(
     }
   }
   return results
+}
+
+// The work a blank operator name held (X47), run when a save first sets one: the
+// backfill over the Cases it skipped, then the stamps the trusted-time worker kept
+// pending, which wait on the network and so are started, not awaited. A failure is
+// logged rather than thrown, because the name is saved by then and the save must
+// not report that it was not.
+export async function runHeldSigningWork(
+  deps: ExhibitBackfillDeps & { processPendingTimestamps: () => Promise<unknown> }
+): Promise<void> {
+  try {
+    await runExhibitBackfill(deps)
+  } catch (err) {
+    logger.error('exhibits', 'exhibits.backfill_failed', undefined, err)
+  }
+  void deps.processPendingTimestamps().catch((err) => {
+    logger.error('timestampWorker', 'timestampWorker.stamp_failed', undefined, err)
+  })
 }

@@ -9,6 +9,7 @@ import {
   formatRangeLabel,
   formatUtcDate,
   formatUtcTime,
+  formatUtcTimestamp,
   monthGrid,
   monthLabel,
   nextMonth,
@@ -76,6 +77,15 @@ describe('UTC formatting', () => {
   it('prints nothing for an unparseable timestamp', () => {
     expect(formatUtcDate('nope')).toBe('')
     expect(formatUtcTime('nope')).toBe('')
+  })
+
+  it('joins date and time with the zone named, the form every capture time takes', () => {
+    expect(formatUtcTimestamp('2026-02-02T16:09:51.000Z')).toBe('Feb 2, 2026 16:09:51 UTC')
+  })
+
+  // A record row that vanished, or read "Invalid Date", would hide what is actually stored.
+  it('returns an unparseable timestamp as stored rather than nothing', () => {
+    expect(formatUtcTimestamp('nope')).toBe('nope')
   })
 
   it('labels months and steps between them across year boundaries', () => {

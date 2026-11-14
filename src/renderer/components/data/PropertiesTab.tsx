@@ -1,5 +1,9 @@
 import type { Capture, InventoryRow } from '@shared/types'
-import { formatBytes } from '@renderer/components/data/dataTableModel'
+import {
+  exhibitLabel,
+  formatBytes,
+  UNNUMBERED_NO_OPERATOR
+} from '@renderer/components/data/dataTableModel'
 import { kindSingular } from '@renderer/components/data/dataTreeModel'
 
 interface PropertiesTabProps {
@@ -29,7 +33,10 @@ export function propertiesFor(row: InventoryRow, rows: InventoryRow[], capture?:
   if (row.entity === 'exhibit') {
     props.push({ label: 'Kind', value: kindSingular(row.kind) })
     props.push({ label: 'Origin', value: row.origin })
-    props.push({ label: 'Exhibit Number', value: `Exhibit ${row.citation}` })
+    props.push({
+      label: 'Exhibit Number',
+      value: row.unnumberedReason ? UNNUMBERED_NO_OPERATOR : exhibitLabel(row)
+    })
     props.push({
       label: 'Anchoring',
       value:

@@ -8,13 +8,14 @@ import type { Capture } from '@shared/types'
 // Hoisted: the factories run while the route's import graph is still loading,
 // which is before a plain top-level const would be initialised.
 const notifyError = vi.hoisted(() => vi.fn())
+const notifyWarn = vi.hoisted(() => vi.fn())
 // Whether the Capture Session rail is docked beside the screen, which CaptureSessionDock tells it.
 const railDocked = vi.hoisted(() => ({ value: false }))
 // The minimum each resizable column is given, by panel id.
 const panelMinSizes = vi.hoisted(() => new Map<string, unknown>())
 
 vi.mock('@renderer/lib/notify', () => ({
-  notify: { error: notifyError, warn: vi.fn(), success: vi.fn(), info: vi.fn() }
+  notify: { error: notifyError, warn: notifyWarn, success: vi.fn(), info: vi.fn() }
 }))
 
 vi.mock('@tanstack/react-router', () => ({
@@ -206,6 +207,7 @@ afterEach(() => {
   panelMinSizes.clear()
   window.innerWidth = NARROW_WIDTH
   notifyError.mockReset()
+  notifyWarn.mockReset()
   useAppStore.getState().setSelectedCaptureId(null)
   useAppStore.setState({ activeViewerTab: 'screenshot', viewerTabs: {} })
   useAppStore.getState().clearCaptureSelection()
@@ -346,6 +348,40 @@ describe('CapturesRoute', () => {
     ).toBeDefined()
   })
 
+  // X47 (#1332): main refuses to sign a `deletion` entry with no operator name.
+  describe('single delete', () => {
+    async function confirmDelete(remove: ReturnType<typeof vi.fn>) {
+      fakeBridge({
+        captures: { list: vi.fn(async () => [capture]), delete: remove },
+        settings: { get: vi.fn(async () => ({ detailsPanelCollapsed: false })) }
+      })
+      renderRoute()
+      fireEvent.click(await screen.findByText(EXPAND_CONTROL))
+      fireEvent.click(await screen.findByText(DELETE_CONTROL))
+      const dialog = await screen.findByRole('dialog')
+      fireEvent.click(within(dialog).getByText('Delete'))
+      await waitFor(() => expect(remove).toHaveBeenCalledWith('cap1'))
+    }
+
+    it('says why a delete was refused for want of an operator name and keeps the selection', async () => {
+      await confirmDelete(vi.fn(async () => ({ deleted: false, reason: 'operator_name_required' })))
+
+      await waitFor(() =>
+        expect(notifyWarn).toHaveBeenCalledWith(
+          'Set an operator name in Settings before deleting a capture'
+        )
+      )
+      expect(useAppStore.getState().selectedCaptureId).toBe('cap1')
+    })
+
+    it('moves the selection off a deleted capture and says nothing', async () => {
+      await confirmDelete(vi.fn(async () => ({ deleted: true })))
+
+      await waitFor(() => expect(useAppStore.getState().selectedCaptureId).toBeNull())
+      expect(notifyWarn).not.toHaveBeenCalled()
+    })
+  })
+
   // #396. The bar hands its ids up to the route, which owns both dialogs so
   // they outlive the bar once the selection empties.
   describe('batch delete', () => {
@@ -427,6 +463,29 @@ describe('CapturesRoute', () => {
         within(result).getByText(/1 was kept: only the member who captured it can delete it/)
       ).toBeDefined()
       expect(within(result).queryByText(/All selected captures were removed/)).toBeNull()
+    })
+
+    it('says the captures were kept for want of an operator name (X47)', async () => {
+      deleteMany.mockResolvedValue({
+        outcomes: [
+          { captureId: 'cap1', status: 'rejected', reason: 'operator_name_required' },
+          { captureId: 'cap2', status: 'rejected', reason: 'operator_name_required' }
+        ],
+        deletedIds: [],
+        failedIds: [],
+        manifest: { baseIndex: 4, committedEntries: 0 }
+      } satisfies BatchDeleteResult)
+
+      const result = await runBatchDelete()
+
+      expect(within(result).getByText('Deleted 0 of 2')).toBeDefined()
+      expect(
+        within(result).getByText(
+          /2 were kept: set an operator name in Settings before deleting a capture/
+        )
+      ).toBeDefined()
+      expect(within(result).queryByText(/All selected captures were removed/)).toBeNull()
+      expect(within(result).queryByText(/Retry/)).toBeNull()
     })
 
     it('names the artifact stage when the files themselves could not be removed', async () => {

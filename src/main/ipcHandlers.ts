@@ -40,9 +40,11 @@ import type {
   ExportResult,
   ArchiveExportResult,
   RecaptureEnqueuePayload,
+  RecaptureJobTarget,
   SelfTestResult,
   SessionStateEvent,
   CaptureBatchPayload,
+  CaptureDeleteResult,
   VpnWarningAnswer,
   VpnWarningOccasion,
   VpnWarningTarget
@@ -50,7 +52,7 @@ import type {
 import * as dbAdmin from '@main/services/db/dbAdmin'
 import * as dbSnapshots from '@main/services/db/dbSnapshots'
 import { restoreDatabase, type RestoreRejection } from '@main/services/db/dbRestore'
-import { existsSync } from 'fs'
+import { existsSync, statSync } from 'fs'
 import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
 import * as activityRepo from '@main/services/db/activityRepo'
@@ -70,6 +72,7 @@ import * as annotations from '@main/services/annotations'
 import { applyTagToNote, NoteNotFoundError } from '@main/services/noteTags'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import { readCaptureLinks } from '@main/services/captureLinks'
+import { readMhtmlParts } from '@main/services/mhtmlParts'
 import { ensureCaseFields, rebuildAllFields } from '@main/services/search/fieldIndex'
 import * as searchFieldRepo from '@main/services/db/searchFieldRepo'
 import { checkFieldHit } from '@main/services/investigation/claimCheck'
@@ -107,6 +110,7 @@ import { getServerToken } from '@main/services/serverToken'
 import { getStorageRoot } from '@main/services/storage'
 import { resolveTrustedTime } from '@main/services/trustedTime'
 import { BatchCrossCaseError } from '@main/services/captureLifecycle'
+import { OperatorNameRequiredError, trimmedOperatorName } from '@main/services/operatorName'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import type { RecaptureService } from '@main/services/recapture'
@@ -184,6 +188,16 @@ function validateBatchPayload(payload: unknown): CaptureBatchPayload {
   return { caseId: p.caseId, captureIds: p.captureIds }
 }
 
+// An absent recapture link is a first-time capture; a present one that names
+// nothing would be signed as written, so it fails here, before anything is
+// queued (#1000).
+function refuseBlankRecaptureLink(link: unknown): void {
+  if (link === undefined) return
+  if (typeof link !== 'string' || link.trim() === '') {
+    throw new IpcFailure('Invalid recapture link', 'INVALID_RECAPTURE_LINK')
+  }
+}
+
 // Same-case snapshot for the metadata batches (#394): ids whose row lives in
 // another case fail the whole call before any write, stale ids are dropped so
 // `affected` tells the truth. These batches touch no manifest and no lifecycle
@@ -212,6 +226,22 @@ function validateIds(ids: unknown): string[] {
     throw new IpcFailure('Invalid id list', 'INVALID_BATCH_PAYLOAD')
   }
   return ids
+}
+
+// A non-empty string field of a job channel's payload, or undefined for anything else.
+function idField(payload: unknown, key: string): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined
+  const value = (payload as Record<string, unknown>)[key]
+  return typeof value === 'string' && value !== '' ? value : undefined
+}
+
+// A job or a Batch, never both or neither.
+function jobTarget(payload: unknown, refusal: string): RecaptureJobTarget {
+  const jobId = idField(payload, 'jobId')
+  const batchId = idField(payload, 'batchId')
+  if (jobId !== undefined && batchId === undefined) return { jobId }
+  if (batchId !== undefined && jobId === undefined) return { batchId }
+  throw new IpcFailure(refusal, 'INVALID_RECAPTURE_PAYLOAD')
 }
 
 function isVpnWarningOccasion(value: unknown): value is VpnWarningOccasion {
@@ -285,6 +315,10 @@ export function registerIpcHandlers(deps: {
   // Hand-off for a freshly committed Exhibit to the trusted-timestamp worker
   // (X26). Optional so tests without a worker can register the handlers.
   enqueueExhibitTimestamp?: (exhibitId: string) => void
+  // Run after a save takes the operator name from blank to set: the signing paths that held
+  // work for want of a name (X47) do it now rather than at the next launch. Optional so tests
+  // can register the handlers without one.
+  onOperatorNameSet?: () => Promise<void>
   // The VPN check behind the indicator and the warning (ADR-0032). Optional so tests can
   // pass a stub; the default reads this computer's routing table.
   vpnWarning?: VpnWarningService
@@ -553,7 +587,16 @@ export function registerIpcHandlers(deps: {
   // Captures
   handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => captureRepo.listCaptures(caseId))
   handle(IPC_CHANNELS.CAPTURES_GET, (_, id: string) => captureRepo.getCapture(id))
-  handle(IPC_CHANNELS.CAPTURES_DELETE, (_, id: string) => captureLifecycle.delete(id))
+  handle(IPC_CHANNELS.CAPTURES_DELETE, async (_, id: string): Promise<CaptureDeleteResult> => {
+    try {
+      return (await captureLifecycle.delete(id)) ? { deleted: true } : { deleted: false }
+    } catch (err) {
+      if (err instanceof OperatorNameRequiredError) {
+        return { deleted: false, reason: 'operator_name_required' }
+      }
+      throw err
+    }
+  })
   handle(IPC_CHANNELS.CAPTURES_DELETE_MANY, async (_, payload) => {
     const { caseId, captureIds } = validateBatchPayload(payload)
     try {
@@ -1254,7 +1297,14 @@ export function registerIpcHandlers(deps: {
     const capture = captureRepo.getCapture(captureId)
     if (!capture || !capture.mhtmlPath) return null
     const abs = defaultCaptureStore.resolveAbsolute(capture.mhtmlPath)
-    if (!existsSync(abs)) return null
+    // The Page tab reports null as a missing archive (#1128), so a file that is not
+    // there is the only null; existsSync would read any failed stat as absent.
+    try {
+      statSync(abs)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+      throw err
+    }
     return pathToFileURL(abs).toString()
   })
 
@@ -1276,6 +1326,11 @@ export function registerIpcHandlers(deps: {
     readCaptureLinks(captureRepo.getCapture(captureId))
   )
 
+  // The stored MHTML's parts for the MHTML Parts tab (#991): read on demand, writes nothing.
+  handle(IPC_CHANNELS.CAPTURES_LIST_MHTML_PARTS, (_, captureId: string) =>
+    readMhtmlParts(captureRepo.getCapture(captureId))
+  )
+
   handle(IPC_CHANNELS.CAPTURES_VERIFY, (_, captureId: string) => captureLifecycle.verify(captureId))
 
   // Recapture
@@ -1283,6 +1338,7 @@ export function registerIpcHandlers(deps: {
     if (!payload || !Array.isArray(payload.urls) || typeof payload.caseId !== 'string') {
       throw new IpcFailure('Invalid recapture payload', 'INVALID_RECAPTURE_PAYLOAD')
     }
+    refuseBlankRecaptureLink(payload.supersedesCaptureId)
     if (payload.linkedFrom !== undefined) return recaptureService.enqueueLink(payload)
     return recaptureService.enqueue(
       payload.urls.map((url) => ({
@@ -1303,10 +1359,39 @@ export function registerIpcHandlers(deps: {
       caseId,
       supersedesCaptureId: capture.id
     }))
+    for (const { supersedesCaptureId } of jobs) refuseBlankRecaptureLink(supersedesCaptureId)
     return recaptureService.enqueue(jobs)
   })
 
   handle(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS, () => recaptureService.status())
+
+  // A Case or a Batch, never both: the renderer reloads a job list it lost to a reload or a restart.
+  handle(IPC_CHANNELS.RECAPTURE_LIST_JOBS, (_, query: unknown) => {
+    const caseId = idField(query, 'caseId')
+    const batchId = idField(query, 'batchId')
+    if (caseId !== undefined && batchId === undefined) return recaptureService.listJobs({ caseId })
+    if (batchId !== undefined && caseId === undefined) return recaptureService.listJobs({ batchId })
+    throw new IpcFailure('Invalid job query', 'INVALID_RECAPTURE_PAYLOAD')
+  })
+
+  handle(IPC_CHANNELS.RECAPTURE_RESUME, (_, payload: unknown) => {
+    const batchId = idField(payload, 'batchId')
+    if (batchId === undefined) throw new IpcFailure('Invalid batch', 'INVALID_RECAPTURE_PAYLOAD')
+    return recaptureService.resume(batchId)
+  })
+
+  handle(IPC_CHANNELS.RECAPTURE_DISMISS, (_, target: unknown) =>
+    recaptureService.dismiss(jobTarget(target, 'Invalid dismiss target'))
+  )
+
+  handle(IPC_CHANNELS.RECAPTURE_CANCEL, (_, target: unknown) =>
+    recaptureService.cancel(jobTarget(target, 'Invalid cancel target'))
+  )
+
+  // The renderer passes the VPN warning before it asks, as for an enqueue: a retry sends requests.
+  handle(IPC_CHANNELS.RECAPTURE_RETRY, (_, target: unknown) =>
+    recaptureService.retry(jobTarget(target, 'Invalid retry target'))
+  )
 
   // Search
   handle(IPC_CHANNELS.SEARCH, (_, caseId: string, query: string) => {
@@ -1320,7 +1405,8 @@ export function registerIpcHandlers(deps: {
 
   // Settings
   handle(IPC_CHANNELS.SETTINGS_GET, () => settings.getSettings())
-  handle(IPC_CHANNELS.SETTINGS_UPDATE, (_, partial: Partial<BirdbrainSettings>) => {
+  handle(IPC_CHANNELS.SETTINGS_UPDATE, async (_, partial: Partial<BirdbrainSettings>) => {
+    const hadOperatorName = trimmedOperatorName() !== ''
     let updated: BirdbrainSettings
     try {
       updated = settings.updateSettings(partial)
@@ -1332,6 +1418,9 @@ export function registerIpcHandlers(deps: {
     }
     // A channel switch or auto-check toggle must reconfigure the live updater.
     updaterService.applySettingsChange(partial)
+    // Await the backfill attempt before answering so refetches see its completed writes.
+    // Trusted-time retries start in the background and may finish after the answer.
+    if (!hadOperatorName && trimmedOperatorName() !== '') await deps.onOperatorNameSet?.()
     return updated
   })
   handle(IPC_CHANNELS.SETTINGS_RESET, () => {
@@ -1797,14 +1886,24 @@ export function registerIpcHandlers(deps: {
     if (canceled || filePaths.length === 0) return { restored: false }
 
     const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
+    // Read as the restore closes the database, not before it copies the file: the queue takes
+    // jobs while the copy is prepared, and each one the restored copy lacks is owed its end.
+    let jobsBefore: ReturnType<typeof recaptureService.beginRestore> = []
     const outcome = await restoreDatabase(
       { kind: 'file', path: filePaths[0] },
-      { dbPath: join(userDataPath, 'birdbrain.db') }
+      {
+        dbPath: join(userDataPath, 'birdbrain.db'),
+        beforeClose: () => {
+          jobsBefore = recaptureService.beginRestore()
+        }
+      }
     )
 
     switch (outcome.status) {
       case 'restored':
-        // As for a snapshot restore below: an older file drops newer personas.
+        // As for a snapshot restore below: the restored jobs go through the startup pass, and
+        // an older file drops newer personas.
+        recaptureService.finishRestore(jobsBefore)
         await personaSessions.clearOrphanedPartitions(userDataPath)
         return { restored: true }
       case 'rejected':
@@ -1814,6 +1913,9 @@ export function registerIpcHandlers(deps: {
           'DB_RESTORE_REJECTED'
         )
       case 'replace_failed':
+        // The session's own database is open again with its queued jobs, and the close may have
+        // stopped the queue.
+        if (outcome.databaseIntact) recaptureService.restartQueue()
         // Not "restart" when the file is damaged: startup has no intact check
         // and would migrate it, while a restore works with no database open.
         throw new IpcFailure(
@@ -1851,6 +1953,7 @@ export function registerIpcHandlers(deps: {
     }
     if (!emptyWalBeforeReplace()) throw new IpcFailure(DB_IN_USE_MESSAGE, 'DB_IN_USE')
 
+    const jobsBefore = recaptureService.beginRestore()
     closeDatabase()
     let restoreErr: unknown = null
     try {
@@ -1901,6 +2004,13 @@ export function registerIpcHandlers(deps: {
         'DB_REOPEN_FAILED'
       )
     }
+
+    // The restored copy is open in this session, so its jobs from an earlier one go through the
+    // startup pass now, before anything awaits: a `queued` row would otherwise run without the
+    // Operator resuming it. Not after a failed restore, whose database holds this session's jobs:
+    // its queue starts again instead, since the close may have stopped it.
+    if (restoreErr) recaptureService.restartQueue()
+    else recaptureService.finishRestore(jobsBefore)
 
     // A snapshot older than a persona brings back a database without its row,
     // leaving that persona's cookies where nothing else can clear them.

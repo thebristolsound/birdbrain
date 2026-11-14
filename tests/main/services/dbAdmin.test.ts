@@ -130,6 +130,17 @@ describe('dbAdmin', () => {
     it('throws for an invalid table name', () => {
       expect(() => getTableColumns('evil_table')).toThrow('not allowed')
     })
+
+    // #1069. Settings > Database shows the row controls on a table that has a column
+    // outside its key, so these two columns are what put them on selector_matches.
+    it('reports the two provenance columns of selector_matches as outside its key', () => {
+      expect(getTableColumns('selector_matches').map(({ name, pk }) => [name, pk])).toEqual([
+        ['selector_id', true],
+        ['capture_id', true],
+        ['matched_at', false],
+        ['match_origin', false]
+      ])
+    })
   })
 
   describe('getTableRows', () => {
@@ -644,6 +655,36 @@ describe('dbAdmin', () => {
     it('returns false for non-existent row', () => {
       const result = updateRow('tags', { id: 'nope' }, { name: 'x' })
       expect(result).toBe(false)
+    })
+
+    // #1069. The hatch checks neither value, which is why the archive import does.
+    it('writes a selector match time and origin as typed', () => {
+      const c = createCase({ name: 'C' })
+      const capture = insertCapture({
+        caseId: c.id,
+        url: 'https://a',
+        title: 'A',
+        hash: 'h1',
+        timestamp: '2026-01-01T00:00:00.000Z'
+      })
+      const db = getDb()
+      db.prepare(
+        "INSERT INTO selectors (id, case_id, pattern, created_at) VALUES ('sel-1', ?, 'x', 'now')"
+      ).run(c.id)
+      db.prepare(
+        `INSERT INTO selector_matches (selector_id, capture_id, matched_at, match_origin)
+         VALUES ('sel-1', ?, '2026-04-06T09:30:00.000Z', 'create')`
+      ).run(capture.id)
+
+      const pk = { selector_id: 'sel-1', capture_id: capture.id }
+      expect(
+        updateRow('selector_matches', pk, { matched_at: 'yesterday', match_origin: 'me' })
+      ).toBe(true)
+
+      expect(db.prepare('SELECT matched_at, match_origin FROM selector_matches').get()).toEqual({
+        matched_at: 'yesterday',
+        match_origin: 'me'
+      })
     })
 
     it('returns false when no fields are provided', () => {

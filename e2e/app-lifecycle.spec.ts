@@ -17,13 +17,17 @@ test.describe('App Lifecycle', () => {
     await expect(page.locator('[data-testid="onboarding-tour"]')).toBeHidden()
   })
 
-  test('theme toggle persists between reloads', async ({ page }) => {
+  test('theme choice persists between reloads', async ({ page }) => {
     // Should start in dark mode (Chromium profile is fresh per test via --user-data-dir).
     await page.waitForFunction(() => document.documentElement.classList.contains('dark'))
 
-    // Click the theme toggle and wait for the dark class to go
-    const themeToggle = page.locator('button[title="Toggle theme"]')
-    await themeToggle.click()
+    // The theme is chosen in Settings → Appearance; the chrome carries no toggle
+    // (2026-11-08 top bar).
+    await page.evaluate(() => {
+      window.location.hash = '/settings'
+    })
+    await page.getByRole('tab', { name: 'Appearance' }).click()
+    await page.getByRole('button', { name: 'Light', exact: true }).click()
     await page.waitForFunction(() => !document.documentElement.classList.contains('dark'))
 
     // Reload and verify persistence

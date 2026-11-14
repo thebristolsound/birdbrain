@@ -8,7 +8,7 @@ import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { upsertCaseMember } from '@main/services/db/caseMemberRepo'
 import { insertCapture, getCapture, setCaptureTrustedTime } from '@main/services/db/captureRepo'
-import { initManifest, appendManifestEntry } from '@main/services/manifest'
+import { initManifest, appendManifestEntry, withManifestSlot } from '@main/services/manifest'
 import { resolveReceiptStamps, resolveTrustedTime } from '@main/services/trustedTime'
 import { initSettings, updateSettings } from '@main/services/settings'
 import {
@@ -380,6 +380,37 @@ describe('timestampWorker', () => {
       expect(receiptEntries()).toHaveLength(1)
     })
 
+    it("appends a receipt stamp only once the Case's manifest slot is free (#639)", async () => {
+      const merge = appendMerge()
+      const granting = grantingRequester()
+      let answered: () => void = () => {}
+      const tokenReturned = new Promise<void>((done) => {
+        answered = done
+      })
+      const worker = createTimestampWorker({
+        requestToken: async (contentHash) => {
+          const token = await granting(contentHash)
+          answered()
+          return token
+        }
+      })
+
+      let stamping: Promise<boolean> | undefined
+      let whileHeld = -1
+      await withManifestSlot(caseDir, async () => {
+        stamping = worker.stampMerge(caseId, merge.index)
+        // From the token on, the worker's path to its append is microtasks only, so one
+        // macrotask later it has either appended or queued on the slot.
+        await tokenReturned
+        await new Promise((resolve) => setImmediate(resolve))
+        whileHeld = receiptEntries().length
+      })
+
+      expect(whileHeld).toBe(0)
+      expect(await stamping).toBe(true)
+      expect(receiptEntries()).toHaveLength(1)
+    })
+
     it('enqueueReceiptStamp stamps the merge off the caller’s path', async () => {
       const merge = appendMerge()
       const worker = createTimestampWorker({ requestToken: grantingRequester() })
@@ -481,6 +512,95 @@ describe('timestampWorker', () => {
         expect(receiptEntries()).toHaveLength(1)
         expect(receiptEntries()[0].captureContentHash).toBe(merge.entryHash)
       })
+    })
+
+    it('holds a receipt stamp while no operator name is set and signs it once one is saved (X47)', async () => {
+      shareCase()
+      const merge = appendMerge()
+      updateSettings({ operatorName: '' })
+      const requestToken = grantingRequester()
+      const worker = createTimestampWorker({ requestToken })
+
+      expect(await worker.stampMerge(caseId, merge.index)).toBe(false)
+      expect(requestToken).not.toHaveBeenCalled()
+      expect(receiptEntries()).toHaveLength(0)
+
+      updateSettings({ operatorName: 'Saved Operator' })
+      expect(await worker.processPending()).toEqual({ stamped: 1, failed: 0 })
+      expect(receiptEntries().map((entry) => entry.operatorName)).toEqual(['Saved Operator'])
+    })
+
+    it('holds a receipt stamp when the name is cleared while the request is in flight (X47)', async () => {
+      shareCase()
+      const merge = appendMerge()
+      const granting = grantingRequester()
+      const requestToken = vi.fn(async (contentHash: string) => {
+        updateSettings({ operatorName: '' })
+        return granting(contentHash)
+      })
+      const worker = createTimestampWorker({ requestToken })
+
+      expect(await worker.stampMerge(caseId, merge.index)).toBe(false)
+
+      expect(requestToken).toHaveBeenCalledTimes(1)
+      expect(receiptEntries()).toHaveLength(0)
+    })
+  })
+
+  // Trusted-time entries are signed like every other entry (X47, #1332): with no operator
+  // name the stamp is held, the Capture stays pending, and no TSA request is spent on it.
+  describe('with no operator name set', () => {
+    for (const blank of ['', '   ']) {
+      it(`holds a Capture's stamp pending and issues no request (${JSON.stringify(blank)})`, async () => {
+        const { id, hash } = seedCapture('unnamed-bytes')
+        updateSettings({ operatorName: blank })
+        const requestToken = grantingRequester()
+        const worker = createTimestampWorker({ requestToken })
+
+        expect(await worker.stampCapture(id)).toBe(false)
+        expect(await worker.processPending()).toEqual({ stamped: 0, failed: 1 })
+
+        expect(requestToken).not.toHaveBeenCalled()
+        expect(getCapture(id)?.trustedTimeStatus).toBe('pending')
+        expect(resolveTrustedTime(caseDir, hash).trustedTime).toBe('pending')
+      })
+    }
+
+    it('holds the stamp when the name is cleared while the request is in flight', async () => {
+      const { id, hash } = seedCapture('cleared-in-flight-bytes')
+      const granting = grantingRequester()
+      const requestToken = vi.fn(async (contentHash: string) => {
+        updateSettings({ operatorName: '' })
+        return granting(contentHash)
+      })
+      const worker = createTimestampWorker({ requestToken })
+
+      expect(await worker.stampCapture(id)).toBe(false)
+
+      expect(requestToken).toHaveBeenCalledTimes(1)
+      expect(getCapture(id)?.trustedTimeStatus).toBe('pending')
+      expect(resolveTrustedTime(caseDir, hash).trustedTime).toBe('pending')
+    })
+
+    it('stamps the held Capture under the name once one is saved', async () => {
+      const { id, hash } = seedCapture('named-later-bytes')
+      updateSettings({ operatorName: '' })
+      const requestToken = grantingRequester()
+      const worker = createTimestampWorker({ requestToken })
+      await worker.processPending()
+
+      updateSettings({ operatorName: '  Saved Operator  ' })
+      expect(await worker.processPending()).toEqual({ stamped: 1, failed: 0 })
+
+      expect(getCapture(id)?.trustedTimeStatus).toBe('rfc3161')
+      const stamps = readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as Record<string, unknown>)
+        .filter((entry) => entry.type === 'timestamp')
+      expect(stamps.map((entry) => [entry.captureContentHash, entry.operatorName])).toEqual([
+        [hash, 'Saved Operator']
+      ])
     })
   })
 

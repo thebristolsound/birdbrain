@@ -7,7 +7,15 @@ import { fakeBridge } from '../fakeBridge'
 import { useStagingMutations } from '@renderer/lib/api/staging'
 import { queryKeys } from '@renderer/lib/api/keys'
 
-afterEach(() => cleanup())
+const notifyWarn = vi.hoisted(() => vi.fn())
+vi.mock('@renderer/lib/notify', () => ({
+  notify: { error: vi.fn(), warn: notifyWarn, success: vi.fn(), info: vi.fn() }
+}))
+
+afterEach(() => {
+  cleanup()
+  notifyWarn.mockReset()
+})
 
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -45,6 +53,33 @@ describe('useStagingMutations', () => {
       expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.manifestSnapshot('case1') })
     )
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.exhibitInventory('case1') })
+  })
+
+  it('says a commit refused for want of an operator name was refused, once per batch (X47)', async () => {
+    const commit = vi.fn(async () => ({
+      outcomes: [
+        { stagingId: 's1', status: 'refused', reason: 'operator_name_required' },
+        { stagingId: 's2', status: 'refused', reason: 'operator_name_required' }
+      ]
+    }))
+    fakeBridge({ staging: { commit } })
+    const { result } = setup()
+    result.current.commit.mutate(['s1', 's2'])
+    await waitFor(() => expect(result.current.commit.isSuccess).toBe(true))
+    expect(notifyWarn.mock.calls).toEqual([
+      ['Set an operator name in Settings before committing a pooled file']
+    ])
+  })
+
+  it('says nothing about a commit no operator check refused', async () => {
+    const commit = vi.fn(async () => ({
+      outcomes: [{ stagingId: 's1', status: 'refused', reason: 'changed' }]
+    }))
+    fakeBridge({ staging: { commit } })
+    const { result } = setup()
+    result.current.commit.mutate(['s1'])
+    await waitFor(() => expect(result.current.commit.isSuccess).toBe(true))
+    expect(notifyWarn).not.toHaveBeenCalled()
   })
 
   it('discard refreshes the inventory', async () => {

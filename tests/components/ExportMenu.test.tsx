@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { ArchiveExportResult } from '@shared/ipc'
@@ -197,6 +197,21 @@ describe('ExportMenu', () => {
     expect(screen.queryByRole('menu')).toBeNull()
     await waitFor(() => expect(exportArchive).toHaveBeenCalled())
     await waitFor(() => expect(trigger.getAttribute('aria-disabled')).toBe('false'))
+  })
+
+  // A long step wrapped out of the 28px button (#2159). The label shows from lg in the Case
+  // action bar, so it stays on one line from there and the title carries the whole step.
+  it("keeps a running export's step on one line and gives the whole step in the title", async () => {
+    exportArchive.mockReturnValue(new Promise(() => {}))
+    renderMenu()
+    const trigger = screen.getByRole('button', { name: 'Export' })
+    fireEvent.click(trigger)
+    fireEvent.click(screen.getByRole('menuitem', { name: /export case file/i }))
+    await waitFor(() => expect(trigger.getAttribute('title')).toBe('Preparing archive… — 0%'))
+    const label = within(trigger).getByText('Preparing archive… — 0%')
+    expect(label.className).toContain('lg:not-sr-only')
+    expect(label.className).toContain('lg:truncate')
+    expect(label.className).toContain('lg:max-w-44')
   })
 
   it('closes on Escape and returns focus to the trigger', () => {

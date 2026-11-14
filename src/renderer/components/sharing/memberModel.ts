@@ -843,7 +843,7 @@ export function syncPillModel(state: SyncState | undefined): SyncPill | null {
 
 // --- Share pill ------------------------------------------------------------------
 
-// The top bar's one sharing control (docs/design-handoff/2026-10-28-share-a-case/,
+// The Case action bar's one sharing control (docs/design-handoff/2026-10-28-share-a-case/,
 // frame B): "Share" on a Case nobody has shared, what it waits on once an
 // invite is out, the shipped sync pill from the first approved join, and a
 // dashed form where sharing is unavailable. Every state opens Members.

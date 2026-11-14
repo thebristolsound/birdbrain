@@ -274,7 +274,8 @@ async function build(): Promise<void> {
     })
     selectorRepo.matchSelectorAgainstCaptures(
       selector.id,
-      captures.map((c) => ({ captureId: c.id, text: c.text }))
+      captures.map((c) => ({ captureId: c.id, text: c.text })),
+      'create'
     )
   }
 

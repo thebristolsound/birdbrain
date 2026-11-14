@@ -6,6 +6,7 @@ import { initManifest, getManifestHead } from '@main/services/manifest'
 import { appendManifestEntry, rollbackManifestEntry } from '@main/services/manifest'
 import { verifyManifestChain, MIN_READER_SCHEMA_VERSION } from '@main/services/manifest'
 import { withDeletionEntry, withCaptureEntry, ManifestRollback } from '@main/services/manifest'
+import { withManifestSlot } from '@main/services/manifest'
 import type { AppendResult } from '@main/services/manifest'
 import { createHash } from 'crypto'
 import { canonicalStringify } from '@shared/verify'
@@ -72,7 +73,7 @@ describe('manifest append', () => {
     contentHash: 'a'.repeat(64),
     sizeBytes: 1234,
     operatorId: 'op-1',
-    operatorName: '',
+    operatorName: 'Test Operator',
     toolVersion: '0.1.0'
   }
 
@@ -236,7 +237,7 @@ describe('manifest verifyManifestChain', () => {
     contentHash: 'a'.repeat(64),
     sizeBytes: 1,
     operatorId: 'op',
-    operatorName: '',
+    operatorName: 'Test Operator',
     toolVersion: '0.1.0'
   }
 
@@ -289,7 +290,7 @@ describe('manifest verifyManifestChain', () => {
         contentHash: 'b'.repeat(64),
         sizeBytes: 2,
         operatorId: 'op',
-        operatorName: '',
+        operatorName: 'Test Operator',
         toolVersion: '0.1.0',
         index: 1,
         prevHash: 'wrong-hash',
@@ -335,7 +336,7 @@ describe('manifest x annotations forensic invariants', () => {
       contentHash: 'a'.repeat(64),
       sizeBytes: 1,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0'
     })
 
@@ -363,7 +364,7 @@ describe('withDeletionEntry', () => {
     caseId: 'case-1',
     contentHash: 'a'.repeat(64),
     operatorId: 'op-1',
-    operatorName: '',
+    operatorName: 'Test Operator',
     toolVersion: '0.1.0'
   }
 
@@ -504,7 +505,7 @@ describe('withCaptureEntry', () => {
     contentHash: 'a'.repeat(64),
     sizeBytes: 1234,
     operatorId: 'op-1',
-    operatorName: '',
+    operatorName: 'Test Operator',
     toolVersion: '0.1.0'
   }
 
@@ -914,7 +915,7 @@ describe('manifest schema v2 + grandfathering', () => {
       contentHash: 'a'.repeat(64),
       sizeBytes: 10,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.0.9',
       schemaVersion: 1
     })
@@ -939,7 +940,7 @@ describe('manifest schema v2 + grandfathering', () => {
       contentHash: 'a'.repeat(64),
       sizeBytes: 10,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.0.9',
       schemaVersion: 1
     })
@@ -953,7 +954,7 @@ describe('manifest schema v2 + grandfathering', () => {
       contentHash: 'b'.repeat(64),
       sizeBytes: 20,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0'
     })
     const lines = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim().split('\n')
@@ -972,7 +973,7 @@ describe('manifest schema v2 + grandfathering', () => {
       contentHash: 'a'.repeat(64),
       sizeBytes: 1,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0'
     })
     const entry = JSON.parse(readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim())
@@ -999,7 +1000,7 @@ describe('manifest schema v2 + grandfathering', () => {
       contentHash: 'c'.repeat(64),
       sizeBytes: 5,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0'
     })
     const path = join(tempDir, 'manifest.jsonl')
@@ -1016,7 +1017,7 @@ describe('manifest schema v2 + grandfathering', () => {
       captureContentHash: 'a'.repeat(64),
       timestamp: '2026-05-01T00:00:00.000Z',
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0',
       index: 0,
       prevHash: '',
@@ -1038,7 +1039,7 @@ describe('manifest schema v2 + grandfathering', () => {
       contentHash: captureHash,
       sizeBytes: 1,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0'
     })
     appendRawEntry({
@@ -1047,7 +1048,7 @@ describe('manifest schema v2 + grandfathering', () => {
       captureContentHash: captureHash,
       timestamp: '2026-05-01T00:01:00.000Z',
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0',
       schemaVersion: 2
     })
@@ -1064,7 +1065,7 @@ describe('manifest schema v2 + grandfathering', () => {
       contentHash: 'a'.repeat(64),
       sizeBytes: 10,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.0.9',
       schemaVersion: 1
     })
@@ -1089,7 +1090,7 @@ describe('manifest schema v2 + grandfathering', () => {
       contentHash: 'a'.repeat(64),
       sizeBytes: 1,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0',
       index: 0,
       prevHash: '',
@@ -1110,7 +1111,7 @@ describe('manifest schema v2 + grandfathering', () => {
       contentHash: 'a'.repeat(64),
       sizeBytes: 1,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0',
       index: 0,
       prevHash: '',
@@ -1134,6 +1135,58 @@ describe('manifest schema v2 + grandfathering', () => {
 // The bare `rollbackManifestEntry(caseDir, anchorBytes)` API is the seam
 // that ingest paths (e.g. captureLifecycle.ingestMhtmlCapture) use directly
 // after a DB insert or sidecar write fails, so it gets its own coverage here.
+describe('withManifestSlot (#639)', () => {
+  // Resolves when the test releases it, and records when each holder starts and ends.
+  function holder(log: string[], name: string) {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((done) => {
+      release = done
+    })
+    const fn = async (): Promise<string> => {
+      log.push(`${name}:start`)
+      await gate
+      log.push(`${name}:end`)
+      return name
+    }
+    return { fn, release }
+  }
+
+  it('runs a second holder of one directory only after the first ends, whatever the spelling', async () => {
+    const log: string[] = []
+    const first = holder(log, 'first')
+    const second = holder(log, 'second')
+    const a = withManifestSlot('/cases/one', first.fn)
+    const b = withManifestSlot('/cases/./one/', second.fn)
+    await new Promise((done) => setImmediate(done))
+    expect(log).toEqual(['first:start'])
+
+    second.release()
+    first.release()
+    expect(await Promise.all([a, b])).toEqual(['first', 'second'])
+    expect(log).toEqual(['first:start', 'first:end', 'second:start', 'second:end'])
+  })
+
+  it('does not hold one directory behind another', async () => {
+    const log: string[] = []
+    const held = holder(log, 'held')
+    const pending = withManifestSlot('/cases/one', held.fn)
+
+    expect(await withManifestSlot('/cases/two', () => 'other')).toBe('other')
+
+    held.release()
+    await pending
+  })
+
+  it('releases the slot when the holder throws', async () => {
+    await expect(
+      withManifestSlot('/cases/one', () => {
+        throw new Error('boom')
+      })
+    ).rejects.toThrow('boom')
+    expect(await withManifestSlot('/cases/one', () => 'next')).toBe('next')
+  })
+})
+
 describe('rollbackManifestEntry (direct API)', () => {
   let tempDir: string
   const capEntry = (i: number) => ({
@@ -1234,7 +1287,7 @@ describe('manifest signing enforcement (G2)', () => {
     contentHash: 'a'.repeat(64),
     sizeBytes: 1,
     operatorId: 'op',
-    operatorName: '',
+    operatorName: 'Test Operator',
     toolVersion: '0.1.0'
   }
 
@@ -1339,7 +1392,7 @@ describe('manifest export audit entry (#124)', () => {
       contentHash: 'a'.repeat(64),
       sizeBytes: 100,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.4.0'
     })
     const head = getManifestHead(tempDir)

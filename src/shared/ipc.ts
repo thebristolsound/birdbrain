@@ -14,6 +14,7 @@ import type {
   BugReportResult,
   Capture,
   CaptureLinks,
+  MhtmlPartsListing,
   CaptureAnnotations,
   CaptureEvent,
   Case,
@@ -132,6 +133,7 @@ export const IPC_CHANNELS = {
   CAPTURES_GET_MHTML_URL: 'captures:getMhtmlUrl',
   CAPTURES_GET_HTML_URL: 'captures:getHtmlUrl',
   CAPTURES_GET_LINKS: 'captures:getLinks',
+  CAPTURES_LIST_MHTML_PARTS: 'captures:listMhtmlParts',
   CAPTURES_DELETE_MANY: 'captures:deleteMany',
   CAPTURES_DUPLICATE: 'captures:duplicate',
   CAPTURES_SET_FAVORITE_MANY: 'captures:setFavoriteMany',
@@ -140,6 +142,13 @@ export const IPC_CHANNELS = {
   RECAPTURE_ENQUEUE: 'recapture:enqueue',
   RECAPTURE_QUEUE_STATUS: 'recapture:queueStatus',
   RECAPTURE_ENQUEUE_CAPTURES: 'recapture:enqueueCaptures',
+  RECAPTURE_LIST_JOBS: 'recapture:listJobs',
+  RECAPTURE_RESUME: 'recapture:resume',
+  RECAPTURE_DISMISS: 'recapture:dismiss',
+  RECAPTURE_CANCEL: 'recapture:cancel',
+  RECAPTURE_RETRY: 'recapture:retry',
+  // A Background Job's state, sent each time it changes.
+  RECAPTURE_JOB: 'event:recaptureJob',
 
   // Tags
   TAGS_LIST: 'tags:list',
@@ -888,7 +897,19 @@ export type BatchDeleteOutcome =
   | { captureId: string; status: 'deleted_unmanifested' }
   | { captureId: string; status: 'rolled_back'; stage: 'artifacts' | 'db'; error: string }
   | { captureId: string; status: 'not_attempted' }
-  | { captureId: string; status: 'rejected'; reason: 'not_found' | 'duplicate' | 'not_author' }
+  | {
+      captureId: string
+      status: 'rejected'
+      // operator_name_required: no operator name is set, so no `deletion` entry can be
+      // signed (X47). Nothing was written and the Capture is intact.
+      reason: 'not_found' | 'duplicate' | 'not_author' | 'operator_name_required'
+    }
+
+// A single delete (`captures:delete`). `deleted` false with no reason: there was no row to
+// delete, or the Capture is another member's. With `operator_name_required`: refused before
+// anything was written, as `BatchDeleteOutcome` states it.
+export type CaptureDeleteResult =
+  { deleted: true } | { deleted: false; reason?: 'operator_name_required' }
 
 // What a Case search field pass did with each Exhibit: built fields from its stored
 // files, did not find its stored page, or failed.
@@ -951,12 +972,74 @@ export type DuplicateCaptureResult =
 // --- Recapture (background capture queue) ---
 
 export interface RecaptureQueueStatus {
+  // `queued + running`, which the capture status button reads.
   pending: number
+  queued: number
+  running: number
+  // Jobs waiting for the Operator to resume their Batch, in total and by Batch, oldest Batch
+  // first: those an earlier session left queued, and those a restore brought back queued.
+  held: number
+  heldBatches: HeldBatch[]
+  concurrency: number
   activeUrl: string | null
 }
 
+export interface HeldBatch {
+  batchId: string
+  caseId: string
+  caseName: string
+  held: number
+}
+
+// The states of a `background_jobs` row (docs/specs/2026-11-09-batch-capture-throughput-design.md,
+// "States"). `held` is a job an earlier session or a restored copy left queued, which runs only
+// once its Batch resumes.
+export type BackgroundJobState =
+  'queued' | 'held' | 'running' | 'stored' | 'skipped' | 'failed' | 'cancelled'
+
+// The part of a running job's work it is in, from the render's steps and then the ingest.
+export type BackgroundJobPhase =
+  'loading' | 'scrolling' | 'settling' | 'artifacts' | 'transaction-record' | 'pdf' | 'ingesting'
+
+export interface BackgroundJobView {
+  jobId: string
+  batchId: string
+  caseId: string
+  url: string
+  state: BackgroundJobState
+  // Only while `running`.
+  phase?: BackgroundJobPhase
+  attempts: number
+  queuedAt: string
+  startedAt?: string
+  finishedAt?: string
+  // Only when `stored`: the id names a Capture only once one was stored under it.
+  captureId?: string
+  failureKind?: string
+  error?: string
+  warning?: string
+  supersedesCaptureId?: string
+  linkedFrom?: LinkedFrom
+}
+
+export type RecaptureListJobsQuery = { caseId: string } | { batchId: string }
+
+// One job or one Batch. `recapture:dismiss` deletes only the target's `failed`, `skipped` and
+// `cancelled` rows, and `recapture:retry` queues only its `failed` and `cancelled` ones.
+export type RecaptureJobTarget = { jobId: string } | { batchId: string }
+
+// `cancelled` counts the jobs cancel ended or is ending; `refused` counts the running jobs it named
+// but could not stop, because each one's render had already returned its page or been ended.
+export interface RecaptureCancelResult {
+  cancelled: number
+  refused: number
+}
+
+// `batchId` names the call; `jobIds` are its accepted jobs, in the order they were queued.
 export interface EnqueueResult {
+  batchId: string
   accepted: number
+  jobIds: string[]
   rejected: Array<{ url: string; reason: string }>
 }
 
@@ -1039,7 +1122,7 @@ export interface IpcInvokeContract {
 
   'captures:list': { args: [caseId: string]; result: Capture[] }
   'captures:get': { args: [id: string]; result: Capture | undefined }
-  'captures:delete': { args: [id: string]; result: boolean }
+  'captures:delete': { args: [id: string]; result: CaptureDeleteResult }
   'captures:getContent': {
     args: [captureId: string, type: 'html' | 'png' | 'txt']
     result: string | null
@@ -1058,6 +1141,7 @@ export interface IpcInvokeContract {
   'captures:getMhtmlUrl': { args: [captureId: string]; result: string | null }
   'captures:getHtmlUrl': { args: [captureId: string]; result: string | null }
   'captures:getLinks': { args: [captureId: string]; result: CaptureLinks | null }
+  'captures:listMhtmlParts': { args: [captureId: string]; result: MhtmlPartsListing | null }
   'captures:testPipeline': { args: []; result: SelfTestResult }
   'captures:testHttp': { args: []; result: SelfTestResult }
   'captures:deleteMany': { args: [payload: CaptureBatchPayload]; result: BatchDeleteResult }
@@ -1070,6 +1154,17 @@ export interface IpcInvokeContract {
   'recapture:enqueue': { args: [payload: RecaptureEnqueuePayload]; result: EnqueueResult }
   'recapture:queueStatus': { args: []; result: RecaptureQueueStatus }
   'recapture:enqueueCaptures': { args: [payload: CaptureBatchPayload]; result: EnqueueResult }
+  'recapture:listJobs': { args: [query: RecaptureListJobsQuery]; result: BackgroundJobView[] }
+  'recapture:resume': {
+    args: [payload: { batchId: string }]
+    result: { resumed: number; reason?: string }
+  }
+  'recapture:dismiss': { args: [target: RecaptureJobTarget]; result: { dismissed: number } }
+  'recapture:cancel': { args: [target: RecaptureJobTarget]; result: RecaptureCancelResult }
+  'recapture:retry': {
+    args: [target: RecaptureJobTarget]
+    result: { retried: number; reason?: string }
+  }
 
   'tags:list': { args: []; result: Tag[] }
   'tags:create': { args: [params: CreateTagParams]; result: Tag }
@@ -1373,6 +1468,7 @@ export interface IpcEventContract {
   'event:extensionConnection': ExtensionConnectionEvent
   'event:extensionAttach': ExtensionAttachEvent
   'event:captureActivity': CaptureEvent
+  'event:recaptureJob': BackgroundJobView
   'event:selector:rematched': SelectorRematchedEvent
   'event:deepLinkNavigate': DeepLinkTarget
   'event:updateStatus': UpdateStatus

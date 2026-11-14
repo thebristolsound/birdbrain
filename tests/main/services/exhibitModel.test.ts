@@ -51,8 +51,10 @@ import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive
 import {
   backfillCase,
   runExhibitBackfill,
+  runHeldSigningWork,
   THUMBNAIL_DERIVATION
 } from '@main/services/exhibitBackfill'
+import * as thumbnails from '@main/services/thumbnails'
 import { getThumbnail, renderThumbnail } from '@main/services/thumbnails'
 import { logger } from '@main/services/logger'
 import {
@@ -706,6 +708,68 @@ describe('exhibit model', () => {
       expect(chain.captureEntriesByIndex.get(0)?.contentHash).toBe(entry.parentContentHash)
     })
 
+    it('serializes repeated blank-to-set backfills while rendering is held', async () => {
+      const capture = await ingestInto(caseId, {
+        url: 'https://example.com/overlap',
+        title: 'Overlap',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot: await screenshotPng({ r: 15, g: 90, b: 15 })
+      })
+      let release!: () => void
+      const held = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const original = thumbnails.renderThumbnail
+      const render = vi.spyOn(thumbnails, 'renderThumbnail').mockImplementation(async (bytes) => {
+        await held
+        return original(bytes)
+      })
+      const deps = { toolVersion: TOOL_VERSION, processPendingTimestamps: async () => undefined }
+      const first = runHeldSigningWork(deps)
+      await vi.waitFor(() => expect(render).toHaveBeenCalledOnce())
+      updateSettings({ operatorName: '' })
+      updateSettings({ operatorName: 'Second Operator' })
+      const second = runHeldSigningWork(deps)
+      await new Promise((resolve) => setImmediate(resolve))
+      release()
+      await Promise.all([first, second])
+      render.mockRestore()
+      expect(listDerivedFilesForExhibit(capture.id)).toHaveLength(1)
+      expect(manifestLines(caseDir).filter((line) => line.type === 'derivation')).toHaveLength(1)
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
+    })
+
+    it('leaves no thumbnail when its capture is deleted during rendering', async () => {
+      const capture = await ingestInto(caseId, {
+        url: 'https://example.com/deleted-while-rendering',
+        title: 'Deleted',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot: await screenshotPng({ r: 15, g: 90, b: 15 })
+      })
+      let release!: () => void
+      const held = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const original = thumbnails.renderThumbnail
+      const render = vi.spyOn(thumbnails, 'renderThumbnail').mockImplementation(async (bytes) => {
+        await held
+        return original(bytes)
+      })
+      const pending = backfillCase(caseId, { toolVersion: TOOL_VERSION })
+      await vi.waitFor(() => expect(render).toHaveBeenCalledOnce())
+      const lifecycle = createCaptureLifecycle({
+        selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle
+      })
+      await lifecycle.delete(capture.id, 'delete during held backfill')
+      release()
+      await pending
+      render.mockRestore()
+      expect(existsSync(defaultCaptureStore.thumbnailPaths(caseId, capture.id).abs)).toBe(false)
+      expect(listDerivedFilesForExhibit(capture.id)).toEqual([])
+      expect(manifestLines(caseDir).filter((line) => line.type === 'derivation')).toEqual([])
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
+    })
+
     it('rolls the derivation entry back when its derived-file row cannot be written', async () => {
       await ingestInto(caseId, {
         url: 'https://example.com/rollback',
@@ -725,6 +789,9 @@ describe('exhibit model', () => {
 
       expect(manifestLines(caseDir).filter((line) => line.type === 'derivation')).toHaveLength(0)
       expect(listDerivedFilesForCase(caseId)).toEqual([])
+      expect(
+        existsSync(defaultCaptureStore.thumbnailPaths(caseId, listExhibits(caseId)[0].id).abs)
+      ).toBe(false)
       expect(verifyManifestChain(caseDir).valid).toBe(true)
 
       getDb().exec('DROP TRIGGER block_derived_insert')
@@ -1093,6 +1160,245 @@ describe('exhibit model', () => {
         expect.anything()
       )
       logged.mockRestore()
+    })
+  })
+
+  // Known-answer test for the deferred-then-saved sequence (X47, #1332): with no operator
+  // name the backfill signs nothing for a Case that needs a `renumber` or a `derivation`
+  // entry, the inventory says why those rows have no number, and once a name is saved the
+  // same backfill numbers the Case under that name.
+  describe('backfill without an operator name (X47)', () => {
+    async function seedCaseNeedingBoth(): Promise<{ legacyId: string; shotId: string }> {
+      const shot = await ingestInto(caseId, {
+        url: 'https://example.com/unnamed-shot',
+        title: 'Shot',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot: await screenshotPng({ r: 40, g: 90, b: 160 })
+      })
+      return { legacyId: ingestPreX46(caseId, caseDir, 2), shotId: shot.id }
+    }
+
+    for (const blank of ['', '   ']) {
+      it(`skips the Case, signs nothing and logs why (${JSON.stringify(blank)})`, async () => {
+        await seedCaseNeedingBoth()
+        updateSettings({ operatorName: blank })
+        const before = readFileSync(join(caseDir, MANIFEST_FILENAME), 'utf-8')
+        const warned = vi.spyOn(logger, 'warn').mockImplementation(() => 'log-id')
+
+        const [result] = await runExhibitBackfill({ toolVersion: TOOL_VERSION })
+
+        expect(result).toMatchObject({
+          caseId,
+          skipped: 'operator_name_required',
+          renumbered: false,
+          thumbnailsAnchored: 0,
+          thumbnailsUnanchored: 0
+        })
+        expect(readFileSync(join(caseDir, MANIFEST_FILENAME), 'utf-8')).toBe(before)
+        expect(listDerivedFilesForCase(caseId)).toEqual([])
+        expect(warned).toHaveBeenCalledWith('exhibits', 'exhibits.backfill_deferred', {
+          caseId: expect.anything()
+        })
+        warned.mockRestore()
+      })
+    }
+
+    it('shows the rows awaiting a number as unnumbered for want of a name, and no others', async () => {
+      const { legacyId, shotId } = await seedCaseNeedingBoth()
+      updateSettings({ operatorName: '' })
+      await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      const reasons = (): Array<[string, string | undefined]> =>
+        getCaseInventory(caseId)
+          .rows.filter((row): row is InventoryExhibitRow => row.entity === 'exhibit')
+          .map((row) => [row.id, row.unnumberedReason])
+
+      // The ingested Capture carries its number on its own entry (X46); only the pre-X46 one
+      // waits on the `renumber` entry the backfill could not sign.
+      expect(reasons()).toEqual([
+        [shotId, undefined],
+        [legacyId, 'operator_name_required']
+      ])
+      updateSettings({ operatorName: 'Saved Operator' })
+      expect(reasons()).toEqual([
+        [shotId, undefined],
+        [legacyId, undefined]
+      ])
+    })
+
+    it('shows no row unnumbered once the renumber entry is signed, with the name cleared after', async () => {
+      await seedCaseNeedingBoth()
+      await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+      updateSettings({ operatorName: '' })
+
+      const reasons = getCaseInventory(caseId)
+        .rows.filter((row): row is InventoryExhibitRow => row.entity === 'exhibit')
+        .map((row) => row.unnumberedReason)
+
+      expect(reasons).toEqual([undefined, undefined])
+    })
+
+    it('skips and logs a Case whose only unsigned entry is a thumbnail derivation', async () => {
+      await ingestInto(caseId, {
+        url: 'https://example.com/unnamed-derivation-only',
+        title: 'Shot',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot: await screenshotPng({ r: 160, g: 90, b: 40 })
+      })
+      updateSettings({ operatorName: '' })
+      const warned = vi.spyOn(logger, 'warn').mockImplementation(() => 'log-id')
+
+      const result = await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      expect(result.skipped).toBe('operator_name_required')
+      expect(result.renumbered).toBe(false)
+      expect(listDerivedFilesForCase(caseId)).toEqual([])
+      expect(warned).toHaveBeenCalledWith('exhibits', 'exhibits.backfill_deferred', {
+        caseId: expect.anything()
+      })
+      warned.mockRestore()
+    })
+
+    it('numbers the skipped Case under the name once one is saved', async () => {
+      const { legacyId, shotId } = await seedCaseNeedingBoth()
+      updateSettings({ operatorName: '' })
+      await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      updateSettings({ operatorName: '  Saved Operator  ' })
+      const result = await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      expect(result.skipped).toBeUndefined()
+      expect(result.renumbered).toBe(true)
+      expect(result.thumbnailsAnchored).toBe(1)
+      const signed = manifestLines(caseDir).filter(
+        (line) => line.type === 'renumber' || line.type === 'derivation'
+      )
+      expect(signed.map((line) => [line.type, line.operatorName])).toEqual([
+        ['renumber', 'Saved Operator'],
+        ['derivation', 'Saved Operator']
+      ])
+      expect(signed[0].assignments).toEqual([
+        { exhibitId: legacyId, exhibitNumber: 2, manifestIndex: 1 }
+      ])
+      expect(signed[1].parentExhibitId).toBe(shotId)
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
+    })
+
+    it('neither skips nor logs a Case that has nothing left to sign', async () => {
+      await seedCaseNeedingBoth()
+      await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+      updateSettings({ operatorName: '' })
+      const warned = vi.spyOn(logger, 'warn').mockImplementation(() => 'log-id')
+
+      const result = await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      expect(result.skipped).toBeUndefined()
+      expect(warned).not.toHaveBeenCalled()
+      warned.mockRestore()
+    })
+
+    // Neither row needs a signature: one re-records against an entry already signed, the
+    // other has no parent the chain vouches for. A blank name holds neither back.
+    it('still records the thumbnail rows that sign nothing', async () => {
+      const killed = await ingestInto(caseId, {
+        url: 'https://example.com/unnamed-killed',
+        title: 'Killed',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot: await screenshotPng({ r: 70, g: 20, b: 120 })
+      })
+      await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+      const [entry] = manifestLines(caseDir).filter((line) => line.type === 'derivation')
+      getDb().prepare('DELETE FROM derived_files WHERE exhibit_id = ?').run(killed.id)
+      const swapped = await ingestInto(caseId, {
+        url: 'https://example.com/unnamed-swapped',
+        title: 'Swapped',
+        timestamp: '2026-04-05T12:01:00.000Z',
+        screenshot: await screenshotPng({ r: 120, g: 70, b: 20 })
+      })
+      writeFileSync(
+        defaultCaptureStore.artifactPaths(caseId, swapped.id, 'png').abs,
+        await screenshotPng({ r: 20, g: 120, b: 70 })
+      )
+      writeFileSync(
+        defaultCaptureStore.thumbnailPaths(caseId, swapped.id).abs,
+        Buffer.from('legacy thumbnail bytes')
+      )
+      updateSettings({ operatorName: '' })
+      const before = readFileSync(join(caseDir, MANIFEST_FILENAME), 'utf-8')
+
+      const result = await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      expect(result).toMatchObject({ thumbnailsAnchored: 1, thumbnailsUnanchored: 1 })
+      expect(result.skipped).toBeUndefined()
+      expect(readFileSync(join(caseDir, MANIFEST_FILENAME), 'utf-8')).toBe(before)
+      const rows = new Map(listDerivedFilesForCase(caseId).map((row) => [row.exhibitId, row]))
+      expect(rows.get(killed.id)?.manifestSeq).toBe(entry.index)
+      expect(rows.get(swapped.id)?.manifestSeq).toBeNull()
+    })
+
+    // The pass reads each screenshot twice: once to decide whether the Case needs a
+    // signature, once to render. One that verifies only on the second read signs nothing.
+    it('signs nothing when a screenshot verifies again during a blank-name pass', async () => {
+      const parked = await ingestInto(caseId, {
+        url: 'https://example.com/unnamed-parked',
+        title: 'Parked',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot: await screenshotPng({ r: 200, g: 30, b: 30 })
+      })
+      writeFileSync(
+        defaultCaptureStore.artifactPaths(caseId, parked.id, 'png').abs,
+        await screenshotPng({ r: 30, g: 30, b: 200 })
+      )
+      writeFileSync(
+        defaultCaptureStore.thumbnailPaths(caseId, parked.id).abs,
+        Buffer.from('legacy thumbnail bytes')
+      )
+      const signedScreenshot = await screenshotPng({ r: 10, g: 200, b: 10 })
+      const restored = await ingestInto(caseId, {
+        url: 'https://example.com/unnamed-restored',
+        title: 'Restored',
+        timestamp: '2026-04-05T12:01:00.000Z',
+        screenshot: signedScreenshot
+      })
+      const restoredPng = defaultCaptureStore.artifactPaths(caseId, restored.id, 'png').abs
+      writeFileSync(restoredPng, await screenshotPng({ r: 1, g: 2, b: 3 }))
+      updateSettings({ operatorName: '' })
+      const before = readFileSync(join(caseDir, MANIFEST_FILENAME), 'utf-8')
+      const warned = vi.spyOn(logger, 'warn').mockImplementation(() => 'log-id')
+
+      const pass = backfillCase(caseId, { toolVersion: TOOL_VERSION })
+      // Microtasks only: the pass makes its blank-name check, finds nothing to sign and parks
+      // on the first thumbnail's file read. The signed screenshot then comes back on disk.
+      for (let i = 0; i < 5; i += 1) await Promise.resolve()
+      writeFileSync(restoredPng, signedScreenshot)
+      const result = await pass
+
+      expect(readFileSync(join(caseDir, MANIFEST_FILENAME), 'utf-8')).toBe(before)
+      // The unanchored row proves the pass was past its blank-name check when the file changed.
+      expect(result).toMatchObject({
+        skipped: 'operator_name_required',
+        thumbnailsAnchored: 0,
+        thumbnailsUnanchored: 1
+      })
+      expect(
+        listDerivedFilesForCase(caseId).map((row) => [row.exhibitId, row.manifestSeq])
+      ).toEqual([[parked.id, null]])
+      expect(existsSync(defaultCaptureStore.thumbnailPaths(caseId, restored.id).abs)).toBe(false)
+      expect(warned).toHaveBeenCalledWith('exhibits', 'exhibits.backfill_deferred', {
+        caseId: expect.anything()
+      })
+      warned.mockRestore()
+
+      updateSettings({ operatorName: 'Saved Operator' })
+      const named = await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      expect(named.skipped).toBeUndefined()
+      expect(named.thumbnailsAnchored).toBe(1)
+      const derivations = manifestLines(caseDir).filter((line) => line.type === 'derivation')
+      expect(derivations.map((line) => [line.parentExhibitId, line.operatorName])).toEqual([
+        [restored.id, 'Saved Operator']
+      ])
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
     })
   })
 

@@ -124,7 +124,7 @@ export async function seedMcpCase(tempDir: string): Promise<McpCase> {
     httpStatus: 200,
     extensionVersion: '',
     operatorId: 'op',
-    operatorName: '',
+    operatorName: 'Test Operator',
     toolVersion: '0.1.0'
   })
 

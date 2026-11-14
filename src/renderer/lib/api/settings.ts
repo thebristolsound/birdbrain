@@ -11,8 +11,14 @@ export const settingsQueryOptions = queryOptions({
 export function settingsUpdateMutationOptions(queryClient: QueryClient) {
   return {
     mutationFn: (partial: Partial<BirdbrainSettings>) => window.birdbrain.settings.update(partial),
-    onSuccess: (data: BirdbrainSettings) => {
+    onSuccess: (data: BirdbrainSettings, partial: Partial<BirdbrainSettings>) => {
       queryClient.setQueryData(queryKeys.settings, data)
+      // Refetch inventories and manifests after the held backfill attempt.
+      // Trusted-time retries may still be running when these reads finish.
+      if (partial.operatorName !== undefined) {
+        queryClient.invalidateQueries({ queryKey: ['exhibits'] })
+        queryClient.invalidateQueries({ queryKey: ['manifest'] })
+      }
     },
     meta: { action: 'save settings' }
   }

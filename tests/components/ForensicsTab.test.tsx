@@ -8,6 +8,7 @@ vi.mock('@renderer/lib/queries', () => ({
 }))
 
 import { ForensicsTab } from '@renderer/components/captures/ForensicsTab'
+import { pinNonUtcTimeZone } from './timeZoneStub'
 
 const legacyCapture: Capture = {
   id: 'cap1',
@@ -29,5 +30,30 @@ describe('ForensicsTab', () => {
     render(<ForensicsTab capture={legacyCapture} caseId="case1" />)
 
     expect(screen.getByTestId('forensics-legacy-banner').className).toContain('text-warning-fg')
+  })
+})
+
+// #1051: the record shows the attested time, so it must read the same on every machine.
+describe('ForensicsTab capture times', () => {
+  pinNonUtcTimeZone()
+
+  it('renders Captured at and Created at in UTC, each from its own field', () => {
+    render(
+      <ForensicsTab
+        capture={{
+          ...legacyCapture,
+          timestamp: '2026-08-01T21:04:05.000Z',
+          createdAt: '2026-08-01T21:04:07.000Z'
+        }}
+        caseId="case1"
+      />
+    )
+
+    expect(screen.getByText('Captured at').nextElementSibling?.textContent).toBe(
+      'Aug 1, 2026 21:04:05 UTC'
+    )
+    expect(screen.getByText('Created at').nextElementSibling?.textContent).toBe(
+      'Aug 1, 2026 21:04:07 UTC'
+    )
   })
 })

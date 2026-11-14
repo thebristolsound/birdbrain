@@ -155,6 +155,12 @@ const CODE_LABELS: Record<LogCode, string> = {
   'captureServer.tag_apply_failed': "Couldn't apply the tag",
   'captureServer.note_create_failed': "Couldn't create the note",
   'captureServer.self_test_cleanup_failed': "Couldn't clean up after the pipeline self-test",
+  'captureServer.self_test_sandbox_kept':
+    'Kept the pipeline self-test case: something other than the self-test wrote to it',
+  'captureServer.self_test_storage_unavailable':
+    'Kept a pipeline self-test case: the capture storage folder could not be read',
+  'captureServer.self_test_temp_root_removed':
+    'Removed a temporary folder left by the pipeline self-test',
   // Errno-neutral on purpose: one label serves two surfaces. In the Log tab it
   // reads a boot EADDRINUSE entry; as a toast it can only follow a successful
   // bind, because boot fails before setLoggerWindow and exits — so a label
@@ -176,10 +182,22 @@ const CODE_LABELS: Record<LogCode, string> = {
   'backgroundRenderer.scroll_reset_failed': "Couldn't scroll the page back after loading it",
   'backgroundRenderer.transaction_record_failed':
     "The capture was stored without its record of the page's network exchanges",
+  'backgroundRenderer.cleanup_failed': "Couldn't clean up the background capture",
   'backgroundRenderer.pdf_failed': 'The capture was stored without its PDF',
   'backgroundRenderer.consent_blocker_disable_failed':
     "Couldn't turn off the cookie-notice blocker",
   'backgroundRenderer.consent_blocker_enable_failed': "Couldn't turn on the cookie-notice blocker",
+  'backgroundRenderer.render_completed': 'Rendered a page in the background',
+  'backgroundRenderer.render_failed': 'A background render stopped before it finished',
+  'backgroundRenderer.job_stored': 'Stored a background capture',
+  'backgroundRenderer.job_skipped':
+    'Skipped a background capture: its address or its link source was refused',
+  'backgroundRenderer.job_failed': 'A background capture failed',
+  'backgroundRenderer.job_cancelled': 'Cancelled a background capture',
+  'backgroundRenderer.job_phase_failed': "Couldn't record a background capture's progress",
+  'backgroundRenderer.job_queue_failed': "Couldn't read or update the background capture queue",
+  'backgroundRenderer.job_memory_held': 'A background capture is waiting for free memory',
+  'backgroundRenderer.job_view_failed': "Couldn't show a background capture's state",
   'consentBlocker.filter_engine_failed': "Couldn't load the cookie-notice filter lists",
   'selectorLifecycle.retroactive_match_failed':
     "Couldn't match the new selector against existing captures",
@@ -214,6 +232,8 @@ const CODE_LABELS: Record<LogCode, string> = {
   'settings.fresh_install_seed_failed': "Couldn't save initial settings",
   'settings.retired_fields_cleanup_failed':
     "Couldn't remove retired AI settings from the settings file",
+  'settings.ignore_patterns_invalid':
+    'Saved ignored URL patterns include invalid ones — see Settings → Capture',
   'demoCase.seeded': 'Added the demonstration case',
   'demoCase.fixture_missing': 'The demonstration case is not bundled with this build',
   'demoCase.seed_failed': "Couldn't add the demonstration case",
@@ -221,6 +241,8 @@ const CODE_LABELS: Record<LogCode, string> = {
   'demoCase.artifact_cleanup_failed':
     "The demonstration case was removed, but its files couldn't be deleted",
   'exhibits.backfill_failed': "Couldn't finish the exhibit migration for a case",
+  'exhibits.backfill_deferred':
+    "Held back a case's exhibit migration until an operator name is set in Settings",
   'exhibits.path_unrepaired': "Couldn't repair the file location of an imported exhibit",
   'staging.path_unrepaired': "Couldn't repair the file location of an imported pooled file",
   'staging.commit_failed': "Couldn't commit a pooled file to the case",

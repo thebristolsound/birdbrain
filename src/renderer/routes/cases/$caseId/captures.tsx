@@ -67,13 +67,17 @@ function BatchDeleteSummary({ result }: { result: BatchDeleteResult }) {
   const rejectedNotAuthor = result.outcomes.filter(
     (o) => o.status === 'rejected' && o.reason === 'not_author'
   ).length
+  const rejectedNoOperator = result.outcomes.filter(
+    (o) => o.status === 'rejected' && o.reason === 'operator_name_required'
+  ).length
   const { committedEntries } = result.manifest
   const clean =
     !rolledBack &&
     notAttempted === 0 &&
     rejectedGone === 0 &&
     rejectedDuplicate === 0 &&
-    rejectedNotAuthor === 0
+    rejectedNotAuthor === 0 &&
+    rejectedNoOperator === 0
   return (
     <>
       {clean && <span>All selected captures were removed from this machine.</span>}
@@ -117,9 +121,18 @@ function BatchDeleteSummary({ result }: { result: BatchDeleteResult }) {
           {rejectedNotAuthor === 1 ? 'it' : 'them'}.
         </span>
       )}
+      {rejectedNoOperator > 0 && (
+        <span className="mt-1.5 block">
+          {rejectedNoOperator} {rejectedNoOperator === 1 ? 'was' : 'were'} kept: set an operator
+          name in Settings before deleting a capture.
+        </span>
+      )}
     </>
   )
 }
+
+// The single delete's refusal, worded as the batch summary words it (X47).
+const DELETE_NEEDS_OPERATOR = 'Set an operator name in Settings before deleting a capture'
 
 export function CapturesRoute() {
   const { caseId } = useParams({ from: '/cases/$caseId/captures' })
@@ -241,8 +254,12 @@ export function CapturesRoute() {
   async function handleDelete() {
     if (!selectedCaptureId) return
     const id = selectedCaptureId
-    await removeCapture.mutateAsync(id)
+    const result = await removeCapture.mutateAsync(id)
     setShowDeleteConfirm(false)
+    if (!result.deleted && result.reason === 'operator_name_required') {
+      notify.warn(DELETE_NEEDS_OPERATOR)
+      return
+    }
     const remaining = captures.filter((c) => c.id !== id)
     if (remaining.length > 0) {
       selectCapture(remaining[0].id)

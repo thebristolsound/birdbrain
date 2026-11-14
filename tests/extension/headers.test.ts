@@ -58,6 +58,37 @@ describe('responseFactsForCapture (#797)', () => {
     expect(responseFactsForCapture(cached, 'https://example.test/other')).toEqual({})
   })
 
+  it('hands over the facts when the captured URL carries a fragment (#1008)', () => {
+    expect(responseFactsForCapture(cached, 'https://example.test/page#section')).toEqual({
+      headers: { server: 'nginx' },
+      httpStatus: 404
+    })
+  })
+
+  it('matches on the canonical URL: slash, port, credentials, scheme and host case (#1008)', () => {
+    const expected = { headers: { server: 'nginx' }, httpStatus: 404 }
+    expect(responseFactsForCapture(cached, 'HTTPS://Example.TEST/page')).toEqual(expected)
+    expect(responseFactsForCapture(cached, 'https://example.test/page/')).toEqual(expected)
+    expect(responseFactsForCapture(cached, 'https://example.test:443/page')).toEqual(expected)
+    expect(responseFactsForCapture(cached, 'https://user:pw@example.test/page')).toEqual(expected)
+  })
+
+  it('canonicalizes the cached URL too, not only the captured one (#1008)', () => {
+    // The cache holds the raw webRequest URL, which may itself be non-canonical.
+    const slashed = { url: 'https://example.test/docs/', headers: { server: 'nginx' }, status: 200 }
+    expect(responseFactsForCapture(slashed, 'https://example.test/docs/#intro')).toEqual({
+      headers: { server: 'nginx' },
+      httpStatus: 200
+    })
+  })
+
+  it('still hands over nothing for a genuinely different URL (#1008)', () => {
+    expect(responseFactsForCapture(cached, 'https://example.test/page?q=1#section')).toEqual({})
+    expect(responseFactsForCapture(cached, 'http://example.test/page')).toEqual({})
+    expect(responseFactsForCapture(cached, 'https://www.example.test/page')).toEqual({})
+    expect(responseFactsForCapture(cached, 'https://example.test/other#page')).toEqual({})
+  })
+
   it('hands over nothing when no response was seen for the tab', () => {
     expect(responseFactsForCapture(undefined, 'https://example.test/page')).toEqual({})
   })

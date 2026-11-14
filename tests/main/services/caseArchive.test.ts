@@ -31,7 +31,12 @@ import {
   getTagsForCapture,
   getTagsForNote
 } from '@main/services/db/tagRepo'
-import { createSelector, listSelectors } from '@main/services/db/selectorRepo'
+import {
+  collectSelectorMatchesForCase,
+  createSelector,
+  listSelectors,
+  matchSelectorAgainstCaptures
+} from '@main/services/db/selectorRepo'
 import { createNote, getNote, listNotes } from '@main/services/db/noteRepo'
 import { referencesForNote } from '@main/services/db/noteReferenceRepo'
 import { getDb } from '@main/services/db/core'
@@ -273,8 +278,9 @@ describe('caseArchive export', () => {
   // under the source id.
   // 14 since link Capture provenance (ADR-0040): a pre-14 build drops the three columns.
   // 15 since the Persona columns (#1498): a pre-15 build drops persona_id and persona_label.
-  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 15 since the Persona columns travel', () => {
-    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(15)
+  // 16 since selector match provenance (#1069): a pre-16 build drops matched_at and match_origin.
+  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 16 since selector match provenance travels', () => {
+    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(16)
   })
 
   it('exports a .birdbrain archive with header, data, manifest, and files', async () => {
@@ -841,6 +847,68 @@ describe('caseArchive import', () => {
 
     // FTS works for imported content (from the staged .txt sidecar)
     expect(searchCaptures(distinctiveText).length).toBeGreaterThan(0)
+  })
+
+  // #1069. Back-dated, so a match the import stamped with its own time would show.
+  describe('selector match provenance', () => {
+    const FOUND_AT = '2026-04-06T09:30:00.000Z'
+    let withMatch: string
+
+    beforeEach(async () => {
+      const [{ id: selectorId }] = listSelectors(caseId)
+      matchSelectorAgainstCaptures(
+        selectorId,
+        [{ captureId: mhtmlCaptureId, text: 'foo' }],
+        'rescan'
+      )
+      getDb().prepare('UPDATE selector_matches SET matched_at = ?').run(FOUND_AT)
+      withMatch = join(tempDir, 'with-match.birdbrain')
+      await exportCaseArchive(caseId, withMatch)
+    })
+
+    const archivedMatches = (path: string): Array<Record<string, unknown>> =>
+      JSON.parse(readStoredZip(readFileSync(path)).get('data.json')!.toString('utf-8'))
+        .selectorMatches
+
+    it('carries when and how each match was found, and the import keeps both', async () => {
+      expect(archivedMatches(withMatch)).toEqual([
+        {
+          selector_id: listSelectors(caseId)[0].id,
+          capture_id: mhtmlCaptureId,
+          matched_at: FOUND_AT,
+          match_origin: 'rescan'
+        }
+      ])
+
+      const { newCaseId } = await importCaseArchive(withMatch)
+
+      expect(collectSelectorMatchesForCase(newCaseId)).toEqual([
+        {
+          selector_id: listSelectors(newCaseId)[0].id,
+          capture_id: listCaptures(newCaseId).find((c) => c.url === taggedCaptureUrl)!.id,
+          matched_at: FOUND_AT,
+          match_origin: 'rescan'
+        }
+      ])
+    })
+
+    it('imports a version-15 archive, which records neither, with both null', async () => {
+      rewriteArchive(withMatch, (entries, header) => {
+        const data = JSON.parse(entries.get('data.json')!.toString('utf-8'))
+        data.selectorMatches = data.selectorMatches.map(
+          ({ selector_id, capture_id }: Record<string, unknown>) => ({ selector_id, capture_id })
+        )
+        entries.set('data.json', Buffer.from(JSON.stringify(data, null, 2)))
+        header.schemaVersion = 15
+      })
+
+      const { newCaseId, report } = await importCaseArchive(withMatch)
+
+      expect(report.schemaVersion).toBe(15)
+      expect(collectSelectorMatchesForCase(newCaseId)).toEqual([
+        expect.objectContaining({ matched_at: null, match_origin: null })
+      ])
+    })
   })
 
   // Case search field records are a cache outside the archive (ADR-0044): the export

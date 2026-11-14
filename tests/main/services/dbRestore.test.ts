@@ -167,6 +167,58 @@ describe('restoreDatabase from a file', () => {
     expect(existsSync(backup)).toBe(true)
   })
 
+  // Review of #2141, finding 3: a caller reads the live database's last state here, not before
+  // the copy is prepared.
+  it('runs the before-close hook on the live database, after writes made while the copy was prepared', async () => {
+    const backup = await backupTo('backup.db')
+    const seen: Array<string | undefined> = []
+    let during = ''
+    const pending = restoreDatabase(
+      { kind: 'file', path: backup },
+      { dbPath, beforeClose: () => seen.push(getCase(during)?.name) }
+    )
+    during = createCase({ name: 'Written during the copy' }).id
+
+    expect(await pending).toEqual({ status: 'restored' })
+    expect(seen).toEqual(['Written during the copy'])
+    expect(getCase(during)).toBeUndefined()
+  })
+
+  it('leaves no staging copy, and the database open, when the before-close hook throws', async () => {
+    const kept = createCase({ name: 'Kept' })
+    const backup = await backupTo('backup.db')
+
+    await expect(
+      restoreDatabase(
+        { kind: 'file', path: backup },
+        {
+          dbPath,
+          beforeClose: () => {
+            throw new Error('hook threw')
+          }
+        }
+      )
+    ).rejects.toThrow('hook threw')
+
+    expect(dottedSiblings()).toEqual([])
+    expect(getCase(kept.id)).toMatchObject({ name: 'Kept' })
+    // The in-progress flag is cleared, so a restore can follow.
+    expect(await restoreDatabase({ kind: 'file', path: backup }, { dbPath })).toEqual({
+      status: 'restored'
+    })
+  })
+
+  it('does not run the before-close hook for a file it refuses', async () => {
+    const notDb = join(dir, 'notes.db')
+    writeFileSync(notDb, 'Meeting notes, not a database.\n'.repeat(200))
+    const beforeClose = vi.fn()
+
+    const outcome = await restoreDatabase({ kind: 'file', path: notDb }, { dbPath, beforeClose })
+
+    expect(outcome).toEqual({ status: 'rejected', reason: 'not_a_database' })
+    expect(beforeClose).not.toHaveBeenCalled()
+  })
+
   it("brings across rows that exist only in the chosen copy's -wal", async () => {
     const source = await backupTo('source.db')
     const writer = new Database(source)

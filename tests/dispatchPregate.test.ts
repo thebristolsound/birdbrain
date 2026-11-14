@@ -504,6 +504,22 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
     expect(fleet.outputs.run).toBe('false')
   })
 
+  // A marker only marks a fleet comment from the account that posts that kind: anyone can
+  // type one, and a comment hidden from the activity read would never wake a cycle.
+  it.each([
+    ['state marker', MAINTAINER, '<!-- review-fleet:state {"v":1} -->'],
+    ['relay marker', PIPELINE, '@codex review\n\n<!-- review-fleet:relay abc -->']
+  ] as const)(
+    'counts a comment quoting a %s from the other account as activity',
+    (_, login, body) => {
+      const quoted = run(
+        fixtures({ labels: UNPARKED, comments: [{ login, at: VERDICT_AT, body }] })
+      )
+      expect(quoted.status, quoted.stderr).toBe(0)
+      expect(quoted.outputs.run).toBe('true')
+    }
+  )
+
   // Parked by the pipeline after its request-changes verdict, then unlabelled by `by`.
   const removedBy = (by: string | null): Args => ({
     labels: UNPARKED,

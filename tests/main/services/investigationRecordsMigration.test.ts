@@ -370,7 +370,7 @@ describe('migration v40 (investigation records and the Case revision)', () => {
         ...SYNCED_TABLES,
         'investigation_runs'
       ])
-      expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(15)
+      expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(16)
       const caseId = createCase({ name: 'Archived' }).id
       insert('subjects', rows.subject('s-1', caseId))
       const keys = Object.keys(collectCaseData(caseId)).map((key) =>

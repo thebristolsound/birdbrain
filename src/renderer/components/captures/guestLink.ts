@@ -12,6 +12,11 @@ import {
 export interface GuestLinkHit {
   linkUrl: string
   linkText: string
+  /**
+   * Electron's `altText`. Optional so a hit built by hand, such as the Links tab's, can
+   * omit it; Electron leaves `linkText` empty when a link's content is an image (#1727).
+   */
+  altText?: string
   /** The image's address when the right-click hit one, else empty. */
   imageUrl: string
   selectionText: string
@@ -39,6 +44,7 @@ export function readGuestContextMenu(event: unknown): GuestLinkHit | null {
   const hit: GuestLinkHit = {
     linkUrl: text(params.linkURL),
     linkText: text(params.linkText).trim(),
+    altText: text(params.altText).trim(),
     imageUrl: params.mediaType === 'image' ? text(params.srcURL) : '',
     selectionText: text(params.selectionText),
     x: coordinate(params.x),

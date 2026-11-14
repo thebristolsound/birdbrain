@@ -198,7 +198,7 @@ async function ingest(
     httpStatus: 200,
     extensionVersion: '',
     operatorId: 'op',
-    operatorName: '',
+    operatorName: 'Test Operator',
     toolVersion: '0.1.0'
   })
 }
@@ -927,7 +927,7 @@ describe('export', () => {
       httpStatus: 200,
       extensionVersion: '',
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0',
       screenshot
     })
@@ -993,7 +993,7 @@ describe('export', () => {
       httpStatus: 200,
       extensionVersion: '',
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0',
       screenshot
     }
@@ -1075,7 +1075,7 @@ describe('export', () => {
       httpStatus: 200,
       extensionVersion: '',
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0',
       screenshot
     })
@@ -1197,7 +1197,7 @@ describe('export', () => {
       httpStatus: 200,
       extensionVersion: '',
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0',
       screenshot
     })
@@ -1562,7 +1562,7 @@ describe('export', () => {
       userAgent: '',
       httpStatus: 200,
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0',
       method: 'background',
       linkSource: { signed, rowId: source.id }
@@ -3281,7 +3281,7 @@ describe('export', () => {
       httpStatus: 200,
       extensionVersion: '',
       operatorId: 'op',
-      operatorName: '',
+      operatorName: 'Test Operator',
       toolVersion: '0.1.0',
       screenshot
     }
@@ -3618,7 +3618,7 @@ describe('export', () => {
         httpStatus: 200,
         extensionVersion: '',
         operatorId: 'op',
-        operatorName: '',
+        operatorName: 'Test Operator',
         toolVersion: '0.1.0',
         screenshot
       })

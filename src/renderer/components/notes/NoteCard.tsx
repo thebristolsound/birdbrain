@@ -168,7 +168,7 @@ export function NoteCard({ note, caseId, selected = false }: NoteCardProps) {
             <img
               src={thumbSrc}
               alt=""
-              className="h-20 w-28 rounded-lg border border-border object-cover"
+              className="h-20 w-28 rounded-lg border border-border object-cover object-top"
             />
           ) : (
             <div className="flex h-20 w-28 items-center justify-center rounded-lg border border-border bg-elevated text-text-muted">

@@ -7,6 +7,7 @@ import { stubResizeObserver } from './resizeObserverStub'
 
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ caseId: 'case-1' }),
+  useNavigate: () => vi.fn(),
   useSearch: () => ({}),
   useMatchRoute:
     () =>

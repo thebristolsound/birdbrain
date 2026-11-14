@@ -3,6 +3,7 @@ import type {
   CaseAutoCapturePolicy,
   Capture,
   CaptureLinks,
+  MhtmlPartsListing,
   FieldHitCheck,
   FieldSearchResult,
   Tag,
@@ -133,11 +134,16 @@ import type {
   RecaptureEnqueuePayload,
   EnqueueResult,
   RecaptureQueueStatus,
+  RecaptureListJobsQuery,
+  RecaptureJobTarget,
+  RecaptureCancelResult,
+  BackgroundJobView,
   RendererLogPayload,
   SessionStateEvent,
   LaunchedBrowserPopOutEvent,
   CaptureBatchPayload,
   BatchDeleteResult,
+  CaptureDeleteResult,
   BatchCountResult,
   DuplicateCaptureResult,
   FieldBuildSummary,
@@ -178,7 +184,7 @@ export interface BirdbrainAPI {
   captures: {
     list(caseId: string): Promise<Capture[]>
     get(id: string): Promise<Capture | undefined>
-    delete(id: string): Promise<boolean>
+    delete(id: string): Promise<CaptureDeleteResult>
     getContent(captureId: string, type: 'html' | 'png' | 'txt'): Promise<string | null>
     getThumbnail(captureId: string): Promise<string | null>
     getMatchingSelectors(captureId: string): Promise<Selector[]>
@@ -194,6 +200,7 @@ export interface BirdbrainAPI {
     getMhtmlUrl(captureId: string): Promise<string | null>
     getHtmlUrl(captureId: string): Promise<string | null>
     getLinks(captureId: string): Promise<CaptureLinks | null>
+    listMhtmlParts(captureId: string): Promise<MhtmlPartsListing | null>
     deleteMany(payload: CaptureBatchPayload): Promise<BatchDeleteResult>
     duplicate(captureId: string): Promise<DuplicateCaptureResult>
     setFavoriteMany(payload: CaptureBatchPayload & { favorite: boolean }): Promise<BatchCountResult>
@@ -202,6 +209,11 @@ export interface BirdbrainAPI {
     enqueue(payload: RecaptureEnqueuePayload): Promise<EnqueueResult>
     queueStatus(): Promise<RecaptureQueueStatus>
     enqueueCaptures(payload: CaptureBatchPayload): Promise<EnqueueResult>
+    listJobs(query: RecaptureListJobsQuery): Promise<BackgroundJobView[]>
+    resume(payload: { batchId: string }): Promise<{ resumed: number; reason?: string }>
+    dismiss(target: RecaptureJobTarget): Promise<{ dismissed: number }>
+    cancel(target: RecaptureJobTarget): Promise<RecaptureCancelResult>
+    retry(target: RecaptureJobTarget): Promise<{ retried: number; reason?: string }>
   }
   tags: {
     list(): Promise<Tag[]>
@@ -427,6 +439,7 @@ export interface BirdbrainAPI {
   onExtensionConnection(callback: (data: { connected: boolean }) => void): () => void
   onExtensionAttach(callback: (event: ExtensionAttachEvent) => void): () => void
   onCaptureActivity(callback: (event: CaptureEvent) => void): () => void
+  onRecaptureJob(callback: (job: BackgroundJobView) => void): () => void
   onLogEntry(callback: (entry: LogEntry) => void): () => void
   onSelectorRematched(callback: (event: SelectorRematchedEvent) => void): () => void
   onDeepLinkNavigate(callback: (target: DeepLinkTarget) => void): () => void

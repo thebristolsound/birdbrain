@@ -49,6 +49,8 @@ import {
   verifyCapture
 } from '@main/services/captureLifecycle'
 import type { AdmissionRequest } from '@main/services/captureLifecycle'
+import { createTimestampWorker } from '@main/services/timestampWorker'
+import { OperatorNameRequiredError } from '@main/services/operatorName'
 import { createSessionService } from '@main/services/session'
 import type { SessionService } from '@main/services/session'
 import { setAutoCapturePolicy, updateCase } from '@main/services/db/caseRepo'
@@ -2025,6 +2027,84 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
     expect(verifyManifestChain(caseDir).valid).toBe(true)
   })
 
+  // #639: a timestamp worker whose TSA answer arrives mid-batch. The token is released from inside
+  // the first item's staging, after the batch's first deletion entry is on disk; without the
+  // shared slot the worker's entry lands between two of the batch's entries.
+  describe('with the timestamp worker answering mid-batch (#639)', () => {
+    function workerReleasedMidBatch(): {
+      worker: ReturnType<typeof createTimestampWorker>
+      store: CaptureStore
+    } {
+      let release: () => void = () => {}
+      const answered = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const worker = createTimestampWorker({
+        requestToken: async (contentHash) => {
+          await answered
+          return buildSyntheticToken({ contentHash, genTime: new Date('2026-05-30T09:05:00Z') })
+        }
+      })
+      const real = createCaptureStore({ getRoot: getStorageRoot })
+      let staged = 0
+      const store: CaptureStore = {
+        ...real,
+        stageArtifacts: (cid, capId, names) => {
+          if (++staged === 1) release()
+          real.stageArtifacts(cid, capId, names)
+        }
+      }
+      return { worker, store }
+    }
+
+    it("appends the worker's entry after the batch's last entry, and both finish", async () => {
+      const probe = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      const caps = await ingestN(probe, 4)
+      const batchIds = caps.slice(0, 3).map(({ id }) => id)
+      const { worker, store } = workerReleasedMidBatch()
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub, store })
+
+      const stamping = worker.stampCapture(caps[3].id)
+      const [stamped, batch] = await Promise.all([stamping, lifecycle.deleteMany(caseId, batchIds)])
+
+      expect(stamped).toBe(true)
+      expect(batch.manifest).toEqual({ baseIndex: 4, committedEntries: 3 })
+      const tail = manifestEntries().slice(4)
+      expect(tail.map(({ type }) => type)).toEqual([
+        'deletion',
+        'deletion',
+        'deletion',
+        'timestamp'
+      ])
+      expect(tail.slice(0, 3).map(({ captureId }) => captureId)).toEqual(batchIds)
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
+      expect(getCapture(caps[3].id)?.trustedTimeStatus).toBe('rfc3161')
+    })
+
+    it('appends no stamp for a Capture the batch it waited behind deleted', async () => {
+      const probe = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      const caps = await ingestN(probe, 2)
+      const ids = caps.map(({ id }) => id)
+      const { worker, store } = workerReleasedMidBatch()
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub, store })
+
+      const [stamped, batch] = await Promise.all([
+        worker.stampCapture(ids[1]),
+        lifecycle.deleteMany(caseId, ids)
+      ])
+
+      expect(stamped).toBe(false)
+      expect(batch.deletedIds).toEqual(ids)
+      expect(manifestEntries().map(({ type }) => type)).toEqual([
+        'capture',
+        'capture',
+        'deletion',
+        'deletion'
+      ])
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
+    })
+  })
+
   it('single delete still surfaces an unlink fault as a throw, with the entry rolled back (#394 hoist keeps delete() semantics)', async () => {
     const probe = createCaptureLifecycle({ selectorLifecycle: selectorStub })
     const [cap] = await ingestN(probe, 1)
@@ -2359,6 +2439,130 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
     await expect(lifecycle.deleteMany(caseId, [a.id])).rejects.toThrow()
     expect(getCapture(a.id)).toBeDefined()
     expect(mhtmlExists(a)).toBe(true)
+  })
+})
+
+// Known-answer test for the refused deletion (X47, #1332): with no operator name, a delete
+// signs nothing and removes nothing, and once a name is saved the same delete signs under it.
+describe('createCaptureLifecycle deletion without an operator name (X47)', () => {
+  let tempDir: string
+  let caseId: string
+  let caseDir: string
+  let selectorStub: SelectorLifecycle
+
+  beforeEach(async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-lifecycle-unnamed-'))
+    initStorage(join(tempDir, 'captures'))
+    await initDatabase(':memory:')
+    initSettings(tempDir)
+    updateSettings({ operatorName: 'Test Operator' })
+    resetInstallationId()
+    initInstallationId(tempDir)
+    caseId = createCase({ name: 'Unnamed' }).id
+    ensureCaseDir(caseId)
+    caseDir = join(tempDir, 'captures', caseId)
+    initManifest(caseDir)
+    selectorStub = { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    resetInstallationId()
+    rmSync(tempDir, { recursive: true, force: true })
+    vi.restoreAllMocks()
+  })
+
+  function chainBytes(): string {
+    return readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+  }
+
+  async function ingestOne(
+    lifecycle: ReturnType<typeof createCaptureLifecycle>,
+    n: number
+  ): Promise<Capture> {
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from(`unnamed-body-${n}`), {
+        url: `https://example.com/unnamed-${n}`
+      })
+    )
+    return capture
+  }
+
+  for (const blank of ['', '   ']) {
+    it(`deleteMany refuses with operator_name_required and appends nothing (${JSON.stringify(blank)})`, async () => {
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      const a = await ingestOne(lifecycle, 1)
+      const b = await ingestOne(lifecycle, 2)
+      updateSettings({ operatorName: blank })
+      const before = chainBytes()
+
+      const result = await lifecycle.deleteMany(caseId, [a.id, b.id])
+
+      expect(result.outcomes).toEqual([
+        { captureId: a.id, status: 'rejected', reason: 'operator_name_required' },
+        { captureId: b.id, status: 'rejected', reason: 'operator_name_required' }
+      ])
+      expect(result.deletedIds).toEqual([])
+      expect(result.failedIds).toEqual([])
+      expect(result.manifest.committedEntries).toBe(0)
+      expect(chainBytes()).toBe(before)
+      for (const capture of [a, b]) {
+        expect(getCapture(capture.id)).toBeDefined()
+        expect(existsSync(join(getStorageRoot(), capture.mhtmlPath!))).toBe(true)
+      }
+    })
+
+    it(`delete refuses with OperatorNameRequiredError and appends nothing (${JSON.stringify(blank)})`, async () => {
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      const a = await ingestOne(lifecycle, 1)
+      updateSettings({ operatorName: blank })
+      const before = chainBytes()
+
+      await expect(lifecycle.delete(a.id)).rejects.toBeInstanceOf(OperatorNameRequiredError)
+
+      expect(chainBytes()).toBe(before)
+      expect(getCapture(a.id)).toBeDefined()
+      expect(existsSync(join(getStorageRoot(), a.mhtmlPath!))).toBe(true)
+    })
+  }
+
+  it('signs the deletion under the name once one is saved, trimmed as ingest trims it', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const a = await ingestOne(lifecycle, 1)
+    const b = await ingestOne(lifecycle, 2)
+    updateSettings({ operatorName: '' })
+    await expect(lifecycle.delete(a.id)).rejects.toBeInstanceOf(OperatorNameRequiredError)
+
+    updateSettings({ operatorName: '  Saved Operator  ' })
+    expect(await lifecycle.delete(a.id)).toBe(true)
+    const batch = await lifecycle.deleteMany(caseId, [b.id])
+
+    expect(batch.deletedIds).toEqual([b.id])
+    const deletions = chainBytes()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((entry) => entry.type === 'deletion')
+    expect(deletions.map((entry) => [entry.captureId, entry.operatorName])).toEqual([
+      [a.id, 'Saved Operator'],
+      [b.id, 'Saved Operator']
+    ])
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+  })
+
+  it('still removes a legacy html capture, which signs no entry', async () => {
+    const legacy = insertCapture({
+      caseId,
+      url: 'https://legacy.example.com',
+      title: 'Legacy',
+      hash: 'y'.repeat(64),
+      timestamp: '2026-04-05T12:00:00.000Z'
+    })
+    updateSettings({ operatorName: '' })
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+
+    expect(await lifecycle.delete(legacy.id)).toBe(true)
+    expect(getCapture(legacy.id)).toBeUndefined()
   })
 })
 

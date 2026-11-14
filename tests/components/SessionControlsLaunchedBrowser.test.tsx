@@ -204,7 +204,7 @@ describe('the source line after the switch', () => {
     mount({ state: 'closed', browser: BROWSER })
     expect(await line()).toEqual({ text: 'Harbor Desk', title: 'Harbor Desk' })
   })
-  // Settings has the switch and the REC pill beside it; the label shows on Case screens only.
+  // Settings has the switch and the recording mark beside it; the label shows on Case screens only.
   it('shows no label off a Case screen while a session runs', async () => {
     route.caseId = undefined
     useAppStore.setState({

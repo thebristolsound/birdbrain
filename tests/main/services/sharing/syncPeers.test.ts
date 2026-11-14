@@ -115,6 +115,21 @@ describe('sync session between peers (#1512)', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
+  it.each(['', '   '])('refuses a new merge with a blank operator name (%j)', async (name) => {
+    await activate(A)
+    addDocument(CASE_ID, A, 1)
+    const source = recordSource(CASE_ID, A)
+    await activate(B)
+    const before = ownChainText(CASE_ID)
+    updateSettings({ operatorName: name })
+    await expect(pull(CASE_ID, source)).rejects.toThrow('Operator name required')
+    expect(ownChainText(CASE_ID)).toBe(before)
+    expect(mergeEntries(CASE_ID)).toEqual([])
+    updateSettings({ operatorName: '  Bob Member  ' })
+    await pull(CASE_ID, source)
+    expect(mergeEntries(CASE_ID).map((entry) => entry.operatorName)).toEqual(['Bob Member'])
+  })
+
   it('first sync copies the Owner chain byte for byte and writes exactly one merge', async () => {
     await activate(A)
     const doc = addDocument(CASE_ID, A, 1)

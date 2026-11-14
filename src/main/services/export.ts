@@ -1579,7 +1579,8 @@ function buildEvidenceZip(
         signingKeyFingerprint: sha256(Buffer.from(publicKeyPem, 'utf-8')),
         signingKeyRanges: signingKeyRanges(manifest.entries, publicKeyPem),
         contents: {
-          captureCount: data.captures.length,
+          captureCount: data.captures.filter(({ method }) => method !== 'duplicate').length,
+          duplicateCount: data.captures.filter(({ method }) => method === 'duplicate').length,
           // Captures whose screenshot the package encloses, which with
           // screenshots off is more than the report reproduces.
           screenshotCount: data.captures.filter(({ id }) => data.packagedPaths.get(id)?.screenshot)
@@ -1596,6 +1597,12 @@ function buildEvidenceZip(
         tsaEnabled: data.tsaEnabled,
         captures: pairCapturesWithTrustedTime(data.captures, data.trustedTimeByCaptureId),
         entrySignatureByCaptureId: data.entrySignatureByCaptureId,
+        // Numbered Captures only, the rule report.html cites by.
+        exhibitCitationByCaptureId: new Map(
+          [...data.exhibitCitationByCaptureId].filter(
+            ([id]) => (data.exhibitNumberByCaptureId.get(id) ?? 0) > 0
+          )
+        ),
         // The same single resolution the report renders, so the two documents
         // cannot report different states for one Exhibit (#492, #611).
         exhibits: data.fileExhibits.map((exhibit) => ({

@@ -363,6 +363,65 @@ export interface CaptureLinks {
   mainDocumentSkipped: boolean
 }
 
+/** One part of a Capture's stored MHTML, as the MHTML Parts tab lists it (#991). */
+export interface MhtmlPartRow {
+  /** 1-based, in file order, counting every part. */
+  position: number
+  /** The index among text/html parts, as the HTML readers number them; null for other parts. */
+  htmlPart: number | null
+  mainDocument: boolean
+  contentType: string | null
+  transferEncoding: string | null
+  contentLocation: string | null
+  contentId: string | null
+  /** The byte offset in the file where the hashed span starts. */
+  offset: number
+  /** The span's length in bytes as stored, before transfer decoding. */
+  size: number
+  /** SHA-256 over the span, computed when the file was read. Not anchored in the manifest. */
+  sha256: string
+  /** False when no blank line ends the part's headers; its header fields are then null. */
+  headersTerminated: boolean
+  /** No delimiter follows the part, so it runs to the end of the file. */
+  endsAtEndOfFile: boolean
+  /** A header value in this row was cut at the field cap. */
+  fieldsTruncated: boolean
+}
+
+export type MhtmlPartsRefusal =
+  | { reason: 'file-missing'; path: string }
+  | { reason: 'too-large'; size: number; limit: number }
+  | { reason: 'no-mime-header' }
+  | { reason: 'no-boundary'; contentType: string | null; fieldsTruncated: boolean }
+  | { reason: 'no-parts'; boundary: string; fieldsTruncated: boolean }
+
+export type MhtmlPartsListing =
+  | { status: 'refused'; refusal: MhtmlPartsRefusal; readAt: string }
+  | {
+      status: 'listed'
+      readAt: string
+      /** Bytes in the file as read, not as recorded at capture. */
+      fileSize: number
+      topContentType: string | null
+      boundary: string
+      snapshotLocation: string | null
+      /** An archive header value above was cut at the field cap. */
+      fieldsTruncated: boolean
+      /** The walk ended at a closing delimiter rather than at the end of the file. */
+      closed: boolean
+      /**
+       * Every part up to the first closing delimiter, or to the end of the file when there is
+       * none, including those past the row ceiling. Parts after a closing delimiter are not
+       * walked, so they are not counted here or flagged anywhere.
+       */
+      totalParts: number
+      /** Parts, among all of them, whose headers have no terminating blank line. */
+      unterminatedParts: number
+      /** More parts than the row ceiling: those past it are counted but not listed or hashed. */
+      truncated: boolean
+      parts: MhtmlPartRow[]
+    }
+
 // A Case search field hit (docs/plans/2026-10-09-case-retrieval-first-slice.md, D6): one
 // record for each field and value in an Exhibit, the first in the stored file, with the
 // span it came from.
@@ -694,10 +753,9 @@ export interface BirdbrainSettings {
   isFreshInstall: boolean
   // Latched once the bundled demonstration Case Archive has been offered to
   // this install (#405). Not a guarantee on its own: the settings write can
-  // fail, and what holds then is the `is_demo` probe in the database — a probe
-  // of the current state, not a second latch, so on such an install deleting
-  // the demo case brings a fresh one back next launch, and again after each
-  // later deletion (#1301). The full statement is on `seedDemoCaseIfNeeded`.
+  // fail, and what holds then are the two database probes in
+  // `seedDemoCaseIfNeeded` (#1301, #1333), which read the current state and
+  // are not a second latch. What they leave open is stated there, once.
   demoCaseSeeded: boolean
   // The launched browser (#1831). The executable the Operator chose, '' for none, and the
   // version `Browser.getVersion` reported at each executable's last launch, since discovery
@@ -956,10 +1014,19 @@ export const LOG_CODES = [
   'captureServer.selector_create_failed',
   'captureServer.tag_apply_failed',
   'captureServer.note_create_failed',
-  // The capture-pipeline self-test failed to tear its sandbox down (#614).
-  // Nothing left behind is evidence — the sandbox holds only the sentinel — so
-  // the route reports its own result and this is the record that residue exists.
+  // The capture-pipeline self-test failed to tear its sandbox down (#614), or
+  // the startup sweep failed to remove a temp root (#1183). The route reports
+  // its own result, and this is the record that residue exists.
   'captureServer.self_test_cleanup_failed',
+  // Teardown kept the sandbox because something other than the self-test wrote
+  // to it (#1196); deleting the case would have cascaded over that write.
+  'captureServer.self_test_sandbox_kept',
+  // Teardown kept the sandbox because the storage root could not be listed, so
+  // whether it holds a folder for the case is not known.
+  'captureServer.self_test_storage_unavailable',
+  // The startup sweep removed a temp root an earlier self-test left (#1183).
+  // It removes no case.
+  'captureServer.self_test_temp_root_removed',
   // The capture server's listener failed (#513) — at boot usually EADDRINUSE
   // on 19845, held by another program or by a Birdbrain running against its
   // own data directory, since the single-instance lock stops a plain second
@@ -991,15 +1058,46 @@ export const LOG_CODES = [
   // The Transaction Record of a background render failed or ran out of time
   // (open question E of docs/plans/2026-10-10-capture-engine-first-slice.md).
   // Logged by the Recapture queue once the Capture is stored; its inventory
-  // records the record absent as `failed`.
+  // records the record absent as `failed`. It names the job's capture id and,
+  // when the end phases ran, the time they had left (#2121).
   'backgroundRenderer.transaction_record_failed',
   // The PDF of a background render failed, ran out of time, was over a size
   // bound, or was refused because the page navigated after the save, which its
   // error names (step 10 of the same plan). Logged once the Capture is stored;
   // its inventory records the PDF absent as `failed`.
   'backgroundRenderer.pdf_failed',
+  'backgroundRenderer.cleanup_failed',
   'backgroundRenderer.consent_blocker_disable_failed',
   'backgroundRenderer.consent_blocker_enable_failed',
+  // How long each step of a background render took, one line per render that
+  // returned a page, and the step a render that threw or timed out had reached
+  // (#2127). Both carry the job's capture id, which the job lines below share.
+  'backgroundRenderer.render_completed',
+  'backgroundRenderer.render_failed',
+  // How each Background Job ended (#2127): stored, with its ingest time unless
+  // the row was settled after the job had gone, skipped by a rule, failed with
+  // the step it reached, or as `interrupted` when the app closed or the queue
+  // stopped during it, or a restore removed its Capture, or cancelled by the
+  // Operator. The app window hears of each as an event; these lines and the
+  // job's `background_jobs` row outlast the session.
+  'backgroundRenderer.job_stored',
+  'backgroundRenderer.job_skipped',
+  'backgroundRenderer.job_failed',
+  'backgroundRenderer.job_cancelled',
+  // A running job's phase could not be written to its row, as while a restore has the database
+  // closed. The render goes on; logged once per job.
+  'backgroundRenderer.job_phase_failed',
+  // A worker slot of the background job queue stopped on a throw, between a job's claim and the
+  // write of its end or while it settled and reported rows before looking for work: a row it
+  // could not read or write, as while a restore has the database closed, or an event or log call
+  // that threw. The next enqueue, resume or retry, or another job's end, starts it again, as the
+  // restore handlers do after a failed restore.
+  'backgroundRenderer.job_queue_failed',
+  // A queued job waits to start beside a running one because free memory is under the floor
+  // (`bytes` free, `count` running). Logged once each time the floor begins to hold one.
+  'backgroundRenderer.job_memory_held',
+  // A job's view could not be sent to the window. The job goes on, and its row keeps its state.
+  'backgroundRenderer.job_view_failed',
   'consentBlocker.filter_engine_failed',
   'selectorLifecycle.retroactive_match_failed',
   'serverToken.token_invalid',
@@ -1089,6 +1187,9 @@ export const LOG_CODES = [
   // settings.json at startup failed. Init swallows it and retries next launch;
   // this is the record that the key may still be on disk.
   'settings.retired_fields_cleanup_failed',
+  // The global ignored-URL list holds patterns stored before edits were
+  // validated (#724). They are kept, and Settings marks each one.
+  'settings.ignore_patterns_invalid',
   // First-launch seeding of the bundled demonstration Case Archive (#405).
   // Every outcome is recorded: an operator whose first launch produced no demo
   // case has no other way to tell a missing fixture from a refused import.
@@ -1103,6 +1204,9 @@ export const LOG_CODES = [
   // over the remaining Cases, so this line is the only record that a Case did
   // not get its numbers or its anchored thumbnails.
   'exhibits.backfill_failed',
+  // The same backfill holding a Case back because no operator name is set (X47): it signs
+  // nothing for that Case and runs again once a name is saved.
+  'exhibits.backfill_deferred',
   // An imported row whose path the startup repair (#1610) could not point at
   // a file: none or several carry its id, or the directory could not be read.
   // The row keeps the bare Case id as its path and is retried next launch.
@@ -1221,7 +1325,24 @@ export const LOG_CONTEXT_KEYS = [
   'domain',
   'boundary',
   'channel',
-  'attempt'
+  'attempt',
+  // A Background Job's lines (#2127): the step it reached, why it left no
+  // Capture, the time its render had left, less the end margin, when the
+  // Transaction Record's end phases started, and the duration of each step.
+  'step',
+  'failureKind',
+  'timeLeftMs',
+  'setupMs',
+  'loadMs',
+  'networkIdleMs',
+  'scrollMs',
+  'postScrollIdleMs',
+  'settleMs',
+  'imagesMs',
+  'artifactsMs',
+  'transactionRecordMs',
+  'pdfMs',
+  'ingestMs'
 ] as const
 export type LogContextKey = (typeof LOG_CONTEXT_KEYS)[number]
 
@@ -1255,7 +1376,16 @@ export const ERROR_NAMES = [
   'SharingError',
   'ProtocolError',
   'PeerByeError',
-  'PeerUnreachableError'
+  'PeerUnreachableError',
+  // A Background Job that ran out of time or was cancelled, and the Transaction
+  // Record bound that expired (#2121): the log drops messages, so the name is
+  // what says which.
+  'RecaptureTimeout',
+  'RecaptureCancelled',
+  'TransactionRecordCollectTimeout',
+  'TransactionRecordWriteTimeout',
+  // Thrown before a render's first step, so the name is all its failed line says of the cause.
+  'EgressUnavailableError'
 ] as const
 
 export interface LoggedError {
@@ -1377,6 +1507,23 @@ export function isSelectorOrigin(value: unknown): value is SelectorOrigin {
   return SELECTOR_ORIGINS.includes(value as SelectorOrigin)
 }
 
+// Which pass wrote a Persisted Match (#1069): the one that runs when a Capture
+// is added to the Case, a Selector's creation, an edit to its pattern, or an
+// operator's rescan. Named apart from `origin` because a Case Archive carries
+// selectors and their matches side by side, and the two mean different things.
+// Recorded when the row is written. A matching pass never changes it on a row
+// that exists; the Database Admin hatch can, by hand. Absent means no recorded
+// value: the row predates provenance recording, or it was imported from an
+// archive whose value the import does not keep. Legacy rows are not backfilled,
+// because guessing a value would be a false provenance claim.
+export const MATCH_ORIGINS = ['capture-time', 'create', 'update', 'rescan'] as const
+export type MatchOrigin = (typeof MATCH_ORIGINS)[number]
+
+// Plain TEXT, hand-editable from the Database Admin hatch, as with Selector origin.
+export function isMatchOrigin(value: unknown): value is MatchOrigin {
+  return MATCH_ORIGINS.includes(value as MatchOrigin)
+}
+
 export interface Selector {
   id: string
   caseId: string
@@ -1436,8 +1583,7 @@ export interface Note {
 // --- Cross-case recent activity (#403) ---
 // One row of the dashboard's recent-activity feed. Derived read-only from the
 // captures/notes/cases tables — nothing persists it. Selector hits are absent
-// deliberately: `selector_matches` carries no timestamp, so a hit event has no
-// honest time to order by (maintainer ruling 2026-08-20, #403).
+// deliberately; activityRepo.ts says why.
 interface RecentActivityBase {
   caseId: string
   caseName: string
@@ -1599,7 +1745,9 @@ export interface ExtractedDataSearchResult {
 export type CaptureSource = 'auto' | 'manual' | 'selector' | 'recapture' | 'launched'
 
 export interface CaptureEvent {
-  type: 'received' | 'stored' | 'failed' | 'skipped'
+  // `queued` is a background job accepted at enqueue, before its render starts. It is not a
+  // Capture, so it counts toward no capture statistic.
+  type: 'queued' | 'received' | 'stored' | 'failed' | 'skipped'
   captureId?: string
   source: CaptureSource
   url: string
@@ -1617,6 +1765,10 @@ export interface CaptureEvent {
   // The source and link address of a Capture link job, on every event emitted while it runs, so
   // the viewer's notice can tell its job from another of the same address (ADR-0040).
   linkedFrom?: { captureId: string; linkHref: string }
+  // The background job and its Batch, on every event a background job emits. The extension and
+  // the launched browser run no job, so their events carry neither.
+  jobId?: string
+  batchId?: string
 }
 
 export interface OperatorIdentity {
@@ -1779,6 +1931,10 @@ export interface InventoryExhibitRow extends InventoryRowCommon {
   // manifestSeq !== null. Stated as its own field so a consumer never has to
   // re-derive the anchoring claim from a nullable column.
   anchored: boolean
+  // Present when the chain records no number for this row yet and the backfill
+  // cannot sign one, because no operator name is set (X47). `exhibitNumber` is
+  // then the database's number only, which no entry vouches for.
+  unnumberedReason?: 'operator_name_required'
 }
 
 export interface InventoryDerivedFileRow extends InventoryRowCommon {
@@ -1878,7 +2034,13 @@ export type StagingCommitOutcome =
   | { stagingId: string; status: 'committed'; exhibitId: string; exhibitNumber: number }
   // `changed`: the bytes on disk no longer hash to the arrival hash (X13).
   // `missing`: the pooled file is gone. `not_found`: no such row in this Case.
-  | { stagingId: string; status: 'refused'; reason: 'changed' | 'missing' | 'not_found' }
+  // `operator_name_required`: no operator name is set, so no `exhibit` entry can be
+  // signed (X47); the file stays in the pool.
+  | {
+      stagingId: string
+      status: 'refused'
+      reason: 'changed' | 'missing' | 'not_found' | 'operator_name_required'
+    }
   // The manifest append or the row insert threw; the entry was rolled back and
   // the file put back in the pool. `error` is the error's name only.
   | { stagingId: string; status: 'failed'; error: string }

@@ -11,6 +11,7 @@ import {
   webContents as electronWebContents,
   webFrameMain
 } from 'electron'
+import { availableParallelism } from 'os'
 import { join, resolve } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
@@ -18,6 +19,7 @@ import { removeOrphanedPartitions } from '@main/services/persona/personaSessions
 import { PreMigrationSnapshotError } from '@main/services/db/dbSnapshots'
 import { initStorage } from '@main/services/storage'
 import { seedDemoCaseIfNeeded } from '@main/services/demoCase'
+import { sweepPipelineSelfTestResidue } from '@main/services/pipelineSelfTest'
 import { syncPackagedExtension } from '@main/services/extensionPath'
 import {
   CaptureServerBindError,
@@ -82,10 +84,11 @@ import {
   type SyncService
 } from '@main/services/sharing/syncService'
 import { createTimestampWorker } from '@main/services/timestampWorker'
-import { runExhibitBackfill } from '@main/services/exhibitBackfill'
+import { runExhibitBackfill, runHeldSigningWork } from '@main/services/exhibitBackfill'
 import { runImportedPathRepair } from '@main/services/importedPathRepair'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createRecaptureService } from '@main/services/recapture'
+import { resolveBackgroundWorkers } from '@main/services/backgroundJobPool'
 import { createSessionService } from '@main/services/session'
 import {
   createLaunchedBrowserService,
@@ -693,6 +696,10 @@ if (!gotSingleInstanceLock) {
         initStorage(defaultCapturesDir)
       }
 
+      // The temp roots earlier self-tests left (#1183). Before the capture
+      // server, so no self-test can be running. It removes no case.
+      sweepPipelineSelfTestResidue()
+
       // Seed the bundled demonstration case (#405). Strictly after the storage
       // root and the signing key, because it imports a real Case Archive and
       // signs an import custody entry for it; awaited so the case exists before
@@ -816,8 +823,21 @@ if (!gotSingleInstanceLock) {
           if (mainWindow && !mainWindow.isDestroyed()) {
             sendEvent(mainWindow.webContents, IPC_CHANNELS.NEW_CAPTURE, capture)
           }
-        }
+        },
+        emitJob: (job) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            sendEvent(mainWindow.webContents, IPC_CHANNELS.RECAPTURE_JOB, job)
+          }
+        },
+        concurrency: resolveBackgroundWorkers(
+          process.env.BIRDBRAIN_BACKGROUND_WORKERS,
+          availableParallelism()
+        )
       })
+      // Before any IPC handler or the capture server can queue a job: a job an earlier session
+      // left running is marked stored when its Capture landed and interrupted when it did not,
+      // its queued jobs are held, and old stored rows go.
+      recaptureService.recoverStoredJobs()
 
       // Update-delivery service (notify/check-only). Broadcasts status transitions
       // to the renderer; reads the release channel + auto-check policy from settings.
@@ -887,7 +907,12 @@ if (!gotSingleInstanceLock) {
         checkLeftoverBrowsers,
         popOut: { open: openPopOut, show: showPopOut, dock: dockPopOut, isOpen: popOutIsOpen },
         sharingService,
-        enqueueExhibitTimestamp: (exhibitId) => timestampWorker.enqueueExhibit(exhibitId)
+        enqueueExhibitTimestamp: (exhibitId) => timestampWorker.enqueueExhibit(exhibitId),
+        onOperatorNameSet: () =>
+          runHeldSigningWork({
+            toolVersion: app.getVersion(),
+            processPendingTimestamps: () => timestampWorker.processPending()
+          })
       })
 
       // Start capture server and extension connection monitor. A failed bind

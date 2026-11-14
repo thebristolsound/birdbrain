@@ -26,6 +26,7 @@ import { CaptureDetailsPanel } from '@renderer/components/captures/CaptureDetail
 import { settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { stubMatchMedia } from './matchMediaStub'
+import { pinNonUtcTimeZone } from './timeZoneStub'
 import { MAC_PLATFORM, restorePlatform, stubPlatform } from '../renderer/platformStub'
 
 const capture: Capture = {
@@ -194,7 +195,12 @@ describe('CaptureDetailsPanel actions menu', () => {
 describe('CaptureDetailsPanel Recapture at the VPN warning', () => {
   it('shows no Recapture error when the Operator stops at the warning', async () => {
     useVpnWarningStore.setState({ open: false, request: null, settle: null })
-    const enqueue = vi.fn(async () => ({ accepted: 1, rejected: [] }))
+    const enqueue = vi.fn(async () => ({
+      batchId: 'batch',
+      accepted: 1,
+      jobIds: ['job'],
+      rejected: []
+    }))
     window.birdbrain.recapture.enqueue = enqueue
     window.birdbrain.egress.checkVpnWarning = vi.fn(async () => ({
       caseId: 'case1',
@@ -275,5 +281,18 @@ describe('CaptureDetailsPanel relative times', () => {
       vi.advanceTimersByTime(60_000)
     })
     expect(screen.getByText(/1 minute ago/)).toBeTruthy()
+  })
+})
+
+// #1520: the hover behind the relative time names the capture time in UTC, as the viewer does.
+describe('CaptureDetailsPanel capture time', () => {
+  pinNonUtcTimeZone()
+
+  it('names the full capture time in UTC behind the relative one', async () => {
+    renderPanel({ capture: { ...capture, timestamp: '2026-08-01T21:04:05.000Z' } })
+
+    expect((await screen.findByText(/MHTML Archive/)).getAttribute('title')).toBe(
+      'Aug 1, 2026 21:04:05 UTC'
+    )
   })
 })

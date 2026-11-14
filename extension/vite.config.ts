@@ -3,6 +3,7 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 import { copyFileSync, mkdirSync, cpSync, readFileSync, writeFileSync, rmSync } from 'fs'
+import { assertManifestMatchesPackage, stampManifestVersion } from '../src/shared/extensionVersion'
 
 // Content script must be built as IIFE (Chrome content_scripts don't support ES modules).
 // Background + popup can use ES modules (background declares "type": "module" in manifest).
@@ -38,15 +39,33 @@ const contentConfig = defineConfig({
   }
 })
 
+// The plugin writes to the resolved outDir rather than a fixed path, so a test can
+// run its closeBundle against a scratch directory (tests/extensionManifestBuild.test.ts).
+let dist = resolve(__dirname, 'dist')
+
 const mainConfig = defineConfig({
   plugins: [
     tailwindcss(),
     react(),
     {
       name: 'copy-extension-assets',
+      configResolved({ root, build: { outDir } }) {
+        dist = resolve(root, outDir)
+      },
       closeBundle() {
-        const dist = resolve(__dirname, 'dist')
-        copyFileSync(resolve(__dirname, 'manifest.json'), resolve(dist, 'manifest.json'))
+        const { version: packageVersion } = JSON.parse(
+          readFileSync(resolve(__dirname, '../package.json'), 'utf-8')
+        )
+        const source = JSON.parse(readFileSync(resolve(__dirname, 'manifest.json'), 'utf-8'))
+        const distManifest = resolve(dist, 'manifest.json')
+        writeFileSync(
+          distManifest,
+          JSON.stringify(stampManifestVersion(source, packageVersion), null, 2) + '\n'
+        )
+        assertManifestMatchesPackage(
+          JSON.parse(readFileSync(distManifest, 'utf-8')),
+          packageVersion
+        )
         copyFileSync(resolve(__dirname, 'theme-preinit.js'), resolve(dist, 'theme-preinit.js'))
         copyFileSync(
           resolve(__dirname, 'THIRD_PARTY_NOTICES.txt'),

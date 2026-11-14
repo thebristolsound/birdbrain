@@ -61,11 +61,13 @@ let backgroundReplies: Record<string, unknown> = {}
 const createdTabs: string[] = []
 const openOptionsPage = vi.fn()
 
-function stubChrome(): void {
+function stubChrome(
+  manifest: { version: string; version_name?: string } = { version: '1.2.3' }
+): void {
   vi.stubGlobal('chrome', {
     runtime: {
       lastError: undefined,
-      getManifest: () => ({ version: '1.2.3' }),
+      getManifest: () => manifest,
       openOptionsPage,
       sendMessage: (message: Record<string, unknown>, callback?: (response: unknown) => void) => {
         sentMessages.push(message)
@@ -106,6 +108,13 @@ afterEach(() => {
 })
 
 describe('popup case select', () => {
+  it('shows the full release string the build stamped into the manifest', async () => {
+    stubChrome({ version: '1.0.1.26', version_name: '1.0.1-beta.26' })
+    await renderPopup()
+
+    expect(await screen.findByText('v1.0.1-beta.26')).toBeTruthy()
+  })
+
   it('fronts with the active case and offers the full list under "Set active case"', async () => {
     await renderPopup()
 
@@ -352,6 +361,26 @@ describe('popup page status', () => {
     expect(
       await screen.findByText('Not captured — ignored by your rule: secret.example.*')
     ).toBeTruthy()
+  })
+
+  it('says so when a capture of the page is already running (#963)', async () => {
+    backgroundReplies = {
+      GET_PAGE_STATUS: pageStatus(),
+      MANUAL_CAPTURE: {
+        started: false,
+        blocked: null,
+        notReady: false,
+        alreadyRunning: true
+      } satisfies ManualCaptureResponse
+    }
+    await renderPopup()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Capture now' }))
+
+    expect(
+      await screen.findByText('Not captured — a capture of this page is already running.')
+    ).toBeTruthy()
+    expect(screen.queryByText('Not captured — this tab has no page to capture.')).toBeNull()
   })
 
   it('shows the capture in flight once the background accepts it', async () => {

@@ -41,7 +41,8 @@ import {
   appendManifestEntry,
   initManifest,
   verifyManifestChain,
-  withManifestEntry
+  withManifestEntry,
+  withManifestSlot
 } from '@main/services/manifest'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
@@ -298,6 +299,53 @@ describe('staging pool', () => {
         status: 'refused',
         reason: 'not_found'
       })
+    })
+
+    for (const blank of ['', '   ']) {
+      it(`refuses every file with operator_name_required when the name is ${JSON.stringify(blank)} (X47)`, async () => {
+        const staged = await uploadToStaging(caseId, [
+          sourceFile('report.pdf', PDF),
+          sourceFile('bundle.zip', ZIP)
+        ])
+        updateSettings({ operatorName: blank })
+        const before = readFileSync(join(caseDir, MANIFEST_FILENAME), 'utf-8')
+        const enqueueTimestamp = vi.fn()
+
+        const result = await commitStagedFiles(
+          caseId,
+          staged.map((row) => row.id),
+          { enqueueTimestamp }
+        )
+
+        expect(result.outcomes).toEqual(
+          staged.map((row) => ({
+            stagingId: row.id,
+            status: 'refused',
+            reason: 'operator_name_required'
+          }))
+        )
+        expect(readFileSync(join(caseDir, MANIFEST_FILENAME), 'utf-8')).toBe(before)
+        expect(listExhibits(caseId)).toHaveLength(0)
+        expect(enqueueTimestamp).not.toHaveBeenCalled()
+        for (const row of staged) {
+          expect(getStagingFile(row.id)).toBeDefined()
+          expect(existsSync(join(storageRoot, row.path))).toBe(true)
+        }
+      })
+    }
+
+    it('commits the refused file under the name once one is saved (X47)', async () => {
+      const [staged] = await uploadToStaging(caseId, [sourceFile('report.pdf', PDF)])
+      updateSettings({ operatorName: '' })
+      await commitStagedFiles(caseId, [staged.id])
+
+      updateSettings({ operatorName: '  Saved Operator  ' })
+      const result = await commitStagedFiles(caseId, [staged.id])
+
+      expect(result.outcomes[0]).toMatchObject({ stagingId: staged.id, status: 'committed' })
+      const [entry] = manifestLines(caseDir).filter((line) => line.type === 'exhibit')
+      expect(entry.operatorName).toBe('Saved Operator')
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
     })
 
     it('rolls the entry back and returns the file to the pool when the row insert throws', async () => {
@@ -575,6 +623,80 @@ describe('staging pool', () => {
         })
       })
       expect(await worker.processPending()).toEqual({ stamped: 0, failed: 1 })
+      expect(manifestLines(caseDir).filter((line) => line.type === 'timestamp')).toHaveLength(0)
+    })
+
+    it("appends an attachment's stamp only once the Case's manifest slot is free (#639)", async () => {
+      const [staged] = await uploadToStaging(caseId, [sourceFile('bundle.zip', ZIP)])
+      const [committed] = (await commitStagedFiles(caseId, [staged.id])).outcomes
+      if (committed.status !== 'committed') throw new Error('commit failed')
+      const requester = granting()
+      let answered: () => void = () => {}
+      const tokenReturned = new Promise<void>((done) => {
+        answered = done
+      })
+      const worker = createTimestampWorker({
+        requestToken: async (contentHash) => {
+          const token = await requester(contentHash)
+          answered()
+          return token
+        }
+      })
+      const stamps = (): number =>
+        manifestLines(caseDir).filter((line) => line.type === 'timestamp').length
+
+      let stamping: Promise<boolean> | undefined
+      let whileHeld = -1
+      await withManifestSlot(caseDir, async () => {
+        stamping = worker.stampExhibit(committed.exhibitId)
+        // From the token on, the worker's path to its append is microtasks only, so one
+        // macrotask later it has either appended or queued on the slot.
+        await tokenReturned
+        await new Promise((resolve) => setImmediate(resolve))
+        whileHeld = stamps()
+      })
+
+      expect(whileHeld).toBe(0)
+      expect(await stamping).toBe(true)
+      expect(stamps()).toBe(1)
+    })
+
+    it('holds an attachment stamp while no operator name is set and signs it once one is saved (X47)', async () => {
+      const [staged] = await uploadToStaging(caseId, [sourceFile('bundle.zip', ZIP)])
+      const [committed] = (await commitStagedFiles(caseId, [staged.id])).outcomes
+      if (committed.status !== 'committed') throw new Error('commit failed')
+      updateSettings({ operatorName: '   ' })
+      const requestToken = granting()
+      const worker = createTimestampWorker({ requestToken })
+
+      expect(await worker.stampExhibit(committed.exhibitId)).toBe(false)
+      expect(await worker.processPending()).toEqual({ stamped: 0, failed: 1 })
+      expect(requestToken).not.toHaveBeenCalled()
+      expect(manifestLines(caseDir).filter((line) => line.type === 'timestamp')).toHaveLength(0)
+
+      updateSettings({ operatorName: 'Saved Operator' })
+      expect(await worker.processPending()).toEqual({ stamped: 1, failed: 0 })
+      const stamps = manifestLines(caseDir).filter((line) => line.type === 'timestamp')
+      expect(stamps.map((stamp) => [stamp.captureContentHash, stamp.operatorName])).toEqual([
+        [sha256(ZIP), 'Saved Operator']
+      ])
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
+    })
+
+    it('holds an attachment stamp when the name is cleared while the request is in flight (X47)', async () => {
+      const [staged] = await uploadToStaging(caseId, [sourceFile('bundle.zip', ZIP)])
+      const [committed] = (await commitStagedFiles(caseId, [staged.id])).outcomes
+      if (committed.status !== 'committed') throw new Error('commit failed')
+      const grant = granting()
+      const requestToken = vi.fn(async (contentHash: string) => {
+        updateSettings({ operatorName: '' })
+        return grant(contentHash)
+      })
+      const worker = createTimestampWorker({ requestToken })
+
+      expect(await worker.stampExhibit(committed.exhibitId)).toBe(false)
+
+      expect(requestToken).toHaveBeenCalledTimes(1)
       expect(manifestLines(caseDir).filter((line) => line.type === 'timestamp')).toHaveLength(0)
     })
   })

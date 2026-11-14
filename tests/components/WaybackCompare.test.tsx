@@ -17,8 +17,12 @@ vi.mock('@renderer/lib/notify', () => ({
 // The MHTML viewer's own <webview> is covered by its own surface; here it stands
 // in so the assertions are about the compare, not about the file: URL query.
 vi.mock('@renderer/components/captures/MhtmlViewer', () => ({
-  MhtmlViewer: ({ linkClicks }: { linkClicks: boolean }) => (
-    <div data-testid="mhtml-viewer-stub" data-link-clicks={String(linkClicks)} />
+  MhtmlViewer: ({ linkClicks, emptyLabel }: { linkClicks: boolean; emptyLabel?: string }) => (
+    <div
+      data-testid="mhtml-viewer-stub"
+      data-link-clicks={String(linkClicks)}
+      data-empty-label={emptyLabel}
+    />
   )
 }))
 
@@ -277,5 +281,15 @@ describe('WaybackCompare', () => {
     renderCompare({ ...capture, format: 'html' })
 
     expect(await screen.findByText('No stored page archive available')).toBeDefined()
+  })
+
+  // #1128. Both stored-page viewers word a missing archive the same way in this pane.
+  it('gives the MHTML viewer the same missing-archive wording as the legacy one', () => {
+    select()
+    renderCompare()
+
+    expect(screen.getByTestId('mhtml-viewer-stub').dataset.emptyLabel).toBe(
+      'No stored page archive available'
+    )
   })
 })

@@ -19,7 +19,7 @@ import {
 import { COPY } from '@renderer/components/sharing/memberModel'
 
 // The one-time Share mark (docs/design-handoff/2026-10-28-share-a-case/,
-// frame A): a card under the top bar's Share pill the first time a Case is
+// frame A): a card under the Case action bar's Share pill the first time a Case is
 // opened after the pill arrives. A feature mark, not a tour chapter: no
 // counter, no skip link, no spotlight, and the rest of the screen stays
 // usable. The pill wears a ring while it shows (SharePill reads the store

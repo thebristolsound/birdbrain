@@ -158,7 +158,7 @@ vi.mock('@main/services/db/dbRestore', async (importActual) => {
 
 // --- Real services ----------------------------------------------------------
 import { IPC_CHANNELS } from '@shared/ipc'
-import { MAX_BATCH_CAPTURE_IDS } from '@shared/constants'
+import { MANIFEST_FILENAME, MAX_BATCH_CAPTURE_IDS } from '@shared/constants'
 import type { BatchCountResult, BatchDeleteResult, SelfTestResult } from '@shared/ipc'
 import { registerIpcHandlers, type PopOutWindowControls } from '@main/ipcHandlers'
 import type {
@@ -172,6 +172,7 @@ import type {
   LaunchedBrowserOption,
   LaunchedBrowserStatus,
   LogEntry,
+  MhtmlPartsListing,
   RecentActivityEvent,
   SessionRecord,
   TrustedTime
@@ -182,11 +183,14 @@ import {
   getLogDir,
   getLogPath,
   initLogger,
+  logger,
   readRecentEntries
 } from '@main/services/logger'
 import Database from 'better-sqlite3'
 import { closeDatabase, getDb, initDatabase, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
 import { createPreMigrationSnapshot } from '@main/services/db/dbSnapshots'
+import { listActiveJobs } from '@main/services/db/backgroundJobRepo'
+import { scratchPathFor } from '@main/services/db/dbRestore'
 import type { RestoreOutcome, RestoreRejection } from '@main/services/db/dbRestore'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
@@ -203,6 +207,9 @@ import { initInstallationId } from '@main/services/installationId'
 import { initServerToken } from '@main/services/serverToken'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
+import type { CaptureLifecycle } from '@main/services/captureLifecycle'
+import { OperatorNameRequiredError } from '@main/services/operatorName'
+import { runExhibitBackfill, runHeldSigningWork } from '@main/services/exhibitBackfill'
 import { createSessionService, type SessionService } from '@main/services/session'
 import {
   createLaunchedBrowserService,
@@ -312,9 +319,26 @@ beforeEach(async () => {
   const selectorLifecycle = createSelectorLifecycle({ emitRematched: vi.fn() })
   const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
   recaptureService = {
-    enqueue: vi.fn(() => ({ accepted: 1, rejected: [] })),
-    enqueueLink: vi.fn(() => ({ accepted: 1, rejected: [] })),
-    status: vi.fn(() => ({ pending: 0, activeUrl: null })),
+    enqueue: vi.fn(() => ({ batchId: 'batch', accepted: 1, jobIds: ['job'], rejected: [] })),
+    enqueueLink: vi.fn(() => ({ batchId: 'batch', accepted: 1, jobIds: ['job'], rejected: [] })),
+    status: vi.fn(() => ({
+      pending: 0,
+      queued: 0,
+      running: 0,
+      held: 0,
+      heldBatches: [],
+      concurrency: 1,
+      activeUrl: null
+    })),
+    recoverStoredJobs: vi.fn(),
+    beginRestore: vi.fn(() => []),
+    finishRestore: vi.fn(),
+    restartQueue: vi.fn(),
+    listJobs: vi.fn(() => []),
+    resume: vi.fn(() => ({ resumed: 2 })),
+    dismiss: vi.fn(() => ({ dismissed: 1 })),
+    cancel: vi.fn(() => ({ cancelled: 3, refused: 1 })),
+    retry: vi.fn(() => ({ retried: 2 })),
     idle: vi.fn()
   }
   updaterService = {
@@ -919,10 +943,52 @@ describe('ipcHandlers — captures', () => {
     expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, captureId))).toBeNull()
   })
 
+  // #1128. The Page tab reads null as a missing archive, so only a file that is not
+  // there answers null; a lookup that fails for any other reason rejects.
+  it('answers the mhtml url, null for a missing file, and rejects a failed lookup', async () => {
+    const rel = `${caseId}/archive-1128.mhtml`
+    const abs = defaultCaptureStore.resolveAbsolute(rel)
+    const { id } = seedCapture({ format: 'mhtml', mhtmlPath: rel })
+    writeFileSync(abs, 'mhtml-bytes')
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, id))).toBe(
+      pathToFileURL(abs).toString()
+    )
+
+    unlinkSync(abs)
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, id))).toBeNull()
+
+    // A path through a regular file fails with ENOTDIR, not ENOENT.
+    writeFileSync(abs, 'mhtml-bytes')
+    const through = seedCapture({ format: 'mhtml', mhtmlPath: `${rel}/inner.mhtml` })
+    await expect(invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, through.id)).rejects.toThrow(/ENOTDIR/)
+  })
+
   // #1708. The parser has its own known answers; this pins the channel's wiring.
   it('answers null links for a capture with no MHTML and for an unknown one', async () => {
     expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_LINKS, captureId))).toBeNull()
     expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_LINKS, 'missing'))).toBeNull()
+  })
+
+  // #991. The reader has its own known answers; this pins the channel's wiring.
+  it('answers null MHTML parts for an unknown capture and for one with no MHTML', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_LIST_MHTML_PARTS, 'missing'))).toBeNull()
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_LIST_MHTML_PARTS, captureId))).toBeNull()
+  })
+
+  it('lists the parts of the stored MHTML a capture names', async () => {
+    const mhtmlPath = join(caseId, 'parts-fixture.mhtml')
+    const cap = seedCapture({ format: 'mhtml', mhtmlPath })
+    writeFileSync(
+      defaultCaptureStore.resolveAbsolute(mhtmlPath),
+      readFileSync(join(__dirname, 'services/fixtures/mhtml-parts.mhtml'))
+    )
+
+    const listing = expectOk<MhtmlPartsListing | null>(
+      await invoke(IPC_CHANNELS.CAPTURES_LIST_MHTML_PARTS, cap.id)
+    )
+    if (listing?.status !== 'listed') throw new Error(`expected a listing, got ${listing?.status}`)
+    expect(listing.totalParts).toBe(6)
+    expect(listing.snapshotLocation).toBe('https://example.com/report')
   })
 
   // #906. The legacy viewer is a <webview> that loads the artefact by file URL, so
@@ -1272,6 +1338,8 @@ describe('ipcHandlers — captures', () => {
   // handler, so a cancel is an empty list; commit and discard take an id list
   // that is shape-checked before anything reaches the pool.
   it('uploads, commits and discards pooled files, and treats a cancelled dialog as empty', async () => {
+    // The commit signs an `exhibit` entry, which needs a name (X47).
+    settings.updateSettings({ operatorName: 'Operator One' })
     expect(expectOk(await invoke(IPC_CHANNELS.STAGING_UPLOAD, caseId))).toEqual([])
 
     const source = join(userDataPath, 'bundle.zip')
@@ -1311,8 +1379,37 @@ describe('ipcHandlers — captures', () => {
     )
     expect(verification.status).toBeDefined()
 
-    expectOk(await invoke(IPC_CHANNELS.CAPTURES_DELETE, captureId))
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_DELETE, captureId))).toEqual({
+      deleted: true
+    })
     expect(expectOk<Capture[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST, caseId))).toHaveLength(0)
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_DELETE, captureId))).toEqual({
+      deleted: false
+    })
+  })
+
+  // The lifecycle's refusal itself is pinned in captureLifecycle.test.ts; this is the mapping.
+  it('answers a delete the lifecycle refuses for want of a name as a refusal (X47)', async () => {
+    const fault = new Error('disk gone')
+    const remove = vi
+      .fn<CaptureLifecycle['delete']>()
+      .mockRejectedValueOnce(new OperatorNameRequiredError())
+      .mockRejectedValueOnce(fault)
+    const selectorLifecycle = createSelectorLifecycle({ emitRematched: vi.fn() })
+    registerIpcHandlers({
+      selectorLifecycle,
+      captureLifecycle: { ...createCaptureLifecycle({ selectorLifecycle }), delete: remove },
+      recaptureService,
+      updaterService,
+      sessionService,
+      sharingService
+    })
+
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_DELETE, captureId))).toEqual({
+      deleted: false,
+      reason: 'operator_name_required'
+    })
+    await expect(invoke(IPC_CHANNELS.CAPTURES_DELETE, captureId)).rejects.toBe(fault)
   })
 
   // #462. This test used to assert that nothing answers CAPTURE_SERVER_PORT,
@@ -2268,6 +2365,23 @@ describe('ipcHandlers — settings', () => {
     expect(stored.tsaUrl).toBe('https://custom.example/tsr')
   })
 
+  // #724, the global list's counterpart of the per-case refusal (#750): a pattern
+  // written past the Settings panel is refused at the seam, and nothing is stored.
+  it.each([
+    ['does not compile', '/[/'],
+    ['has a space at one end', ' example.com']
+  ])('refuses a global ignored URL pattern that %s', async (_name, pattern) => {
+    expectOk(await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { ignoredUrlPatterns: ['a.com'] }))
+    const refused = await invoke(IPC_CHANNELS.SETTINGS_UPDATE, {
+      ignoredUrlPatterns: ['a.com', pattern]
+    })
+    expect(refused).toMatchObject({ ok: false, code: 'INVALID_SETTINGS' })
+    const stored = expectOk<{ ignoredUrlPatterns: string[] }>(
+      await invoke(IPC_CHANNELS.SETTINGS_GET)
+    )
+    expect(stored.ignoredUrlPatterns).toEqual(['a.com'])
+  })
+
   it('still rejects a settings failure that is not a validation refusal', async () => {
     const boom = new Error('disk gone')
     const spy = vi.spyOn(settings, 'updateSettings').mockImplementationOnce(() => {
@@ -2275,6 +2389,138 @@ describe('ipcHandlers — settings', () => {
     })
     await expect(invoke(IPC_CHANNELS.SETTINGS_UPDATE, { theme: 'light' })).rejects.toBe(boom)
     spy.mockRestore()
+  })
+
+  // X47 (#1332): the work a blank name held runs when a save first sets one, and the save
+  // answers only once it has.
+  it('runs the held signing work when a save takes the operator name from blank to set', async () => {
+    const order: string[] = []
+    let release = (): void => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const onOperatorNameSet = vi.fn(async () => {
+      await held
+      order.push('held work')
+    })
+    const selectorLifecycle = createSelectorLifecycle({ emitRematched: vi.fn() })
+    registerIpcHandlers({
+      selectorLifecycle,
+      captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
+      recaptureService,
+      updaterService,
+      sessionService,
+      sharingService,
+      onOperatorNameSet
+    })
+    settings.updateSettings({ operatorName: '' })
+
+    expectOk(await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { operatorName: '   ' }))
+    expectOk(await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { theme: 'light' }))
+    expect(onOperatorNameSet).not.toHaveBeenCalled()
+
+    const saved = invoke(IPC_CHANNELS.SETTINGS_UPDATE, { operatorName: 'Agent Smith' }).then(() =>
+      order.push('answered')
+    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(onOperatorNameSet).toHaveBeenCalledTimes(1)
+    expect(order).toEqual([])
+    release()
+    await saved
+    expect(order).toEqual(['held work', 'answered'])
+
+    expectOk(await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { operatorName: 'Agent Jones' }))
+    expect(onOperatorNameSet).toHaveBeenCalledTimes(1)
+  })
+
+  // The same save through the hook the app wires, with the real backfill behind it: the seeded
+  // Capture has no entry, so its Case owes a `renumber` entry the blank name held back.
+  describe('with the held signing work the app runs', () => {
+    const renumberNames = (): unknown[] =>
+      readFileSync(join(storage.getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as { type: string; operatorName: string })
+        .filter((entry) => entry.type === 'renumber')
+        .map((entry) => entry.operatorName)
+
+    function registerWithHeldWork(processPendingTimestamps: () => Promise<unknown>): void {
+      const selectorLifecycle = createSelectorLifecycle({ emitRematched: vi.fn() })
+      registerIpcHandlers({
+        selectorLifecycle,
+        captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
+        recaptureService,
+        updaterService,
+        sessionService,
+        sharingService,
+        onOperatorNameSet: () =>
+          runHeldSigningWork({ toolVersion: '1.2.3', processPendingTimestamps })
+      })
+    }
+
+    it('numbers the held Case under the saved name before the save answers', async () => {
+      const processPendingTimestamps = vi.fn(async () => undefined)
+      registerWithHeldWork(processPendingTimestamps)
+      settings.updateSettings({ operatorName: '' })
+      const [skipped] = await runExhibitBackfill({ toolVersion: '1.2.3' })
+      expect(skipped.skipped).toBe('operator_name_required')
+      expect(renumberNames()).toEqual([])
+
+      expectOk(await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { operatorName: 'Agent Smith' }))
+
+      expect(renumberNames()).toEqual(['Agent Smith'])
+      expect(processPendingTimestamps).toHaveBeenCalledTimes(1)
+    })
+
+    it('answers without waiting for timestamps and logs a later retry rejection', async () => {
+      let reject!: (error: Error) => void
+      const pending = new Promise<never>((_resolve, fail) => {
+        reject = fail
+      })
+      registerWithHeldWork(() => pending)
+      settings.updateSettings({ operatorName: '' })
+      const logged = vi.spyOn(logger, 'error').mockImplementation(() => 'log-id')
+      const saved = expectOk<{ operatorName: string }>(
+        await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { operatorName: 'Agent Smith' })
+      )
+      expect(saved.operatorName).toBe('Agent Smith')
+      expect(renumberNames()).toEqual(['Agent Smith'])
+      const error = new Error('timestamp queue enumeration failed')
+      reject(error)
+      await vi.waitFor(() =>
+        expect(logged).toHaveBeenCalledWith(
+          'timestampWorker',
+          'timestampWorker.stamp_failed',
+          undefined,
+          error
+        )
+      )
+      logged.mockRestore()
+    })
+
+    it('saves the name and logs, rather than failing the save, when the backfill throws', async () => {
+      const processPendingTimestamps = vi.fn(async () => undefined)
+      registerWithHeldWork(processPendingTimestamps)
+      settings.updateSettings({ operatorName: '' })
+      const logged = vi.spyOn(logger, 'error').mockImplementation(() => 'log-id')
+      // The case list is read outside the backfill's per-Case catch; afterEach closes again.
+      closeDatabase()
+
+      const saved = expectOk<{ operatorName: string }>(
+        await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { operatorName: 'Agent Smith' })
+      )
+
+      expect(saved.operatorName).toBe('Agent Smith')
+      expect(settings.getSettings().operatorName).toBe('Agent Smith')
+      expect(logged).toHaveBeenCalledWith(
+        'exhibits',
+        'exhibits.backfill_failed',
+        undefined,
+        expect.anything()
+      )
+      expect(processPendingTimestamps).toHaveBeenCalledTimes(1)
+      logged.mockRestore()
+    })
   })
 
   it('returns null when the storage-path picker is cancelled and a path otherwise', async () => {
@@ -3110,6 +3356,11 @@ describe('ipcHandlers — database admin', () => {
     )
     expect(restored.restored).toBe(true)
     expect(clearOrphanedPartitions).toHaveBeenCalledWith(userDataPath)
+    // The restored copy's jobs go through the startup pass in this session, with the jobs read
+    // before the restore closed the database.
+    expect(recaptureService.finishRestore.mock.calls).toEqual([
+      [recaptureService.beginRestore.mock.results[0].value]
+    ])
     expect(expectOk(await invoke(IPC_CHANNELS.CASES_GET, afterSnapshot.id))).toBeUndefined()
     // The database is open again on the other side of the restore.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
@@ -3129,11 +3380,31 @@ describe('ipcHandlers — database admin', () => {
       await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Recorded after the backup' })
     )
 
+    // The session's jobs are read once the copy is prepared, as the database closes: a job queued
+    // while the file was copied is among them (review of #2141, finding 3).
+    const copyPrepared: boolean[] = []
+    const jobsBefore = [
+      {
+        jobId: 'queued-during-the-copy',
+        batchId: 'batch',
+        caseId: afterBackup.id,
+        url: 'https://example.com/',
+        state: 'queued' as const,
+        attempts: 0,
+        queuedAt: '2026-11-11T00:00:00.000Z'
+      }
+    ]
+    recaptureService.beginRestore.mockImplementationOnce(() => {
+      copyPrepared.push(existsSync(scratchPathFor(dbPath)))
+      return jobsBefore
+    })
     showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [backupPath] })
     const res = expectOk<{ restored: boolean }>(await invoke(IPC_CHANNELS.DB_RESTORE))
 
     expect(res.restored).toBe(true)
     expect(clearOrphanedPartitions).toHaveBeenCalledWith(userDataPath)
+    expect(copyPrepared).toEqual([true])
+    expect(recaptureService.finishRestore.mock.calls).toEqual([[jobsBefore]])
     // Re-opened on the other side, and holding the backup rather than the
     // database that was running when it was chosen.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
@@ -3310,21 +3581,25 @@ describe('ipcHandlers — database admin', () => {
     {
       outcome: { status: 'replace_failed', databaseIntact: true },
       code: 'DB_RESTORE_FAILED',
-      says: 'Your database is still open, as it was before.'
+      says: 'Your database is still open, as it was before.',
+      // The session's database is open again with its queued jobs, so the queue starts again.
+      restarts: 1
     },
     {
       outcome: { status: 'replace_failed', databaseIntact: false },
       code: 'DB_RESTORE_FAILED',
-      says: 'Do not restart Birdbrain: restore a backup now.'
+      says: 'Do not restart Birdbrain: restore a backup now.',
+      restarts: 0
     },
     {
       outcome: { status: 'reopen_failed' },
       code: 'DB_REOPEN_FAILED',
-      says: 'could not be re-opened after the restore. Restart Birdbrain.'
+      says: 'could not be re-opened after the restore. Restart Birdbrain.',
+      restarts: 0
     }
-  ] satisfies Array<{ outcome: RestoreOutcome; code: string; says: string }>)(
+  ] satisfies Array<{ outcome: RestoreOutcome; code: string; says: string; restarts: number }>)(
     'maps a $outcome.status outcome to $code',
-    async ({ outcome, code, says }) => {
+    async ({ outcome, code, says, restarts }) => {
       restoreOutcomes.next.push(outcome)
       showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [dbPath] })
 
@@ -3336,8 +3611,52 @@ describe('ipcHandlers — database admin', () => {
       expect(res.error).toContain(says)
       expect(res.error).not.toContain(userDataPath)
       expect(clearOrphanedPartitions).not.toHaveBeenCalled()
+      expect(recaptureService.finishRestore).not.toHaveBeenCalled()
+      expect(recaptureService.restartQueue).toHaveBeenCalledTimes(restarts)
     }
   )
+
+  // After a restore that left the file unreadable the app says "restore a backup now", with no
+  // database open (review of #2141, second verdict, finding 1). Both handlers read the session's
+  // jobs through the repository's real read here, which the service's `beginRestore` is.
+  it('restores a chosen file with no database open', async () => {
+    const backupPath = join(userDataPath, 'chosen-backup.db')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: backupPath })
+    expectOk(await invoke(IPC_CHANNELS.DB_BACKUP))
+    recaptureService.beginRestore.mockImplementationOnce(() => listActiveJobs())
+    closeDatabase()
+
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [backupPath] })
+    const res = expectOk<{ restored: boolean }>(await invoke(IPC_CHANNELS.DB_RESTORE))
+
+    expect(res.restored).toBe(true)
+    expect(recaptureService.finishRestore.mock.calls).toEqual([[[]]])
+    expect(recaptureService.restartQueue).not.toHaveBeenCalled()
+    expectOk(await invoke(IPC_CHANNELS.DB_STATS))
+    expect(readdirSync(userDataPath).filter((f) => f.startsWith('birdbrain.db.'))).toEqual([])
+  })
+
+  it('restores a snapshot with no database open', async () => {
+    const conn = new Database(dbPath)
+    try {
+      await createPreMigrationSnapshot(conn, dbPath, LATEST_SCHEMA_VERSION, LATEST_SCHEMA_VERSION)
+    } finally {
+      conn.close()
+    }
+    const [{ fileName }] = expectOk<Array<{ fileName: string }>>(
+      await invoke(IPC_CHANNELS.DB_SNAPSHOTS)
+    )
+    recaptureService.beginRestore.mockImplementationOnce(() => listActiveJobs())
+    closeDatabase()
+
+    const res = expectOk<{ restored: boolean }>(
+      await invoke(IPC_CHANNELS.DB_RESTORE_SNAPSHOT, { fileName })
+    )
+
+    expect(res.restored).toBe(true)
+    expect(recaptureService.finishRestore.mock.calls).toEqual([[[]]])
+    expectOk(await invoke(IPC_CHANNELS.DB_STATS))
+  })
 
   it('refuses both restores while another connection is mid-read, keeping the database', async () => {
     const conn = new Database(dbPath)
@@ -3405,6 +3724,10 @@ describe('ipcHandlers — database admin', () => {
     expect(res.error).not.toContain(userDataPath)
     // The database is back — the restore stopped before it moved anything.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
+    // It holds this session's jobs, which the startup pass would hold or mark interrupted.
+    expect(recaptureService.finishRestore).not.toHaveBeenCalled()
+    // Its queue starts again instead: the close may have stopped it with jobs still queued.
+    expect(recaptureService.restartQueue).toHaveBeenCalledTimes(1)
   })
 
   it('does not migrate a truncated database forward when the restore failed', async () => {
@@ -4026,11 +4349,132 @@ describe('ipcHandlers — recapture', () => {
     expect(recaptureService.enqueue).not.toHaveBeenCalled()
   })
 
+  // Missing input fails: an absent link is a first-time capture, but a link that is present
+  // and names nothing would be signed as `supersedesCaptureId: ''`.
+  it('recapture:enqueue refuses a recapture link that names no Capture, queueing nothing', async () => {
+    const urls = ['https://a.com/page']
+    const linkedFrom = { captureId: 'cap-1', linkHref: 'https://a.com/page' }
+    for (const payload of [
+      { urls, caseId: 'case-1', supersedesCaptureId: '' },
+      { urls, caseId: 'case-1', supersedesCaptureId: '   ' },
+      { urls, caseId: 'case-1', supersedesCaptureId: null },
+      { urls, caseId: 'case-1', supersedesCaptureId: 42 },
+      { urls, caseId: 'case-1', supersedesCaptureId: '', linkedFrom }
+    ]) {
+      const res = (await invoke(IPC_CHANNELS.RECAPTURE_ENQUEUE, payload)) as {
+        ok: boolean
+        code?: string
+      }
+      expect(res.ok, JSON.stringify(payload)).toBe(false)
+      expect(res.code, JSON.stringify(payload)).toBe('INVALID_RECAPTURE_LINK')
+    }
+    expect(recaptureService.enqueue).not.toHaveBeenCalled()
+    expect(recaptureService.enqueueLink).not.toHaveBeenCalled()
+  })
+
+  it('recapture:enqueueCaptures refuses a Capture whose id names nothing, queueing nothing', async () => {
+    const blank = captureRepo.insertCapture({
+      id: '   ',
+      caseId,
+      url: 'https://example.com/blank',
+      title: 'Blank id',
+      hash: 'seedhash',
+      timestamp: '2026-04-05T12:00:00.000Z'
+    })
+    const res = (await invoke(IPC_CHANNELS.RECAPTURE_ENQUEUE_CAPTURES, {
+      caseId,
+      captureIds: [captureId, blank.id]
+    })) as { ok: boolean; code?: string }
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('INVALID_RECAPTURE_LINK')
+    expect(recaptureService.enqueue).not.toHaveBeenCalled()
+  })
+
   it('recapture:queueStatus reads the service status', async () => {
     const status = expectOk(await invoke(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS))
-    expect(status).toEqual({ pending: 0, activeUrl: null })
+    expect(status).toEqual({
+      pending: 0,
+      queued: 0,
+      running: 0,
+      held: 0,
+      heldBatches: [],
+      concurrency: 1,
+      activeUrl: null
+    })
     expect(recaptureService.status).toHaveBeenCalled()
   })
+
+  it('recapture:listJobs takes a Case or a Batch, never both or neither', async () => {
+    expectOk(await invoke(IPC_CHANNELS.RECAPTURE_LIST_JOBS, { caseId: 'case-1' }))
+    expectOk(await invoke(IPC_CHANNELS.RECAPTURE_LIST_JOBS, { batchId: 'batch-1' }))
+    expect(recaptureService.listJobs.mock.calls).toEqual([
+      [{ caseId: 'case-1' }],
+      [{ batchId: 'batch-1' }]
+    ])
+    for (const query of [undefined, {}, { caseId: 'c', batchId: 'b' }, { caseId: 7 }]) {
+      const res = (await invoke(IPC_CHANNELS.RECAPTURE_LIST_JOBS, query)) as { code?: string }
+      expect(res.code).toBe('INVALID_RECAPTURE_PAYLOAD')
+    }
+    expect(recaptureService.listJobs).toHaveBeenCalledTimes(2)
+  })
+
+  it('recapture:resume hands the Batch id to the queue', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.RECAPTURE_RESUME, { batchId: 'batch-1' }))).toEqual({
+      resumed: 2
+    })
+    expect(recaptureService.resume).toHaveBeenCalledWith('batch-1')
+    for (const payload of [undefined, {}, { batchId: '' }, 'batch-1']) {
+      const res = (await invoke(IPC_CHANNELS.RECAPTURE_RESUME, payload)) as { code?: string }
+      expect(res.code).toBe('INVALID_RECAPTURE_PAYLOAD')
+    }
+    expect(recaptureService.resume).toHaveBeenCalledTimes(1)
+  })
+
+  it('recapture:dismiss takes a job or a Batch, never both or neither', async () => {
+    expectOk(await invoke(IPC_CHANNELS.RECAPTURE_DISMISS, { jobId: 'job-1' }))
+    expectOk(await invoke(IPC_CHANNELS.RECAPTURE_DISMISS, { batchId: 'batch-1' }))
+    expect(recaptureService.dismiss.mock.calls).toEqual([
+      [{ jobId: 'job-1' }],
+      [{ batchId: 'batch-1' }]
+    ])
+    for (const target of [null, {}, { jobId: 'j', batchId: 'b' }]) {
+      const res = (await invoke(IPC_CHANNELS.RECAPTURE_DISMISS, target)) as { code?: string }
+      expect(res.code).toBe('INVALID_RECAPTURE_PAYLOAD')
+    }
+    expect(recaptureService.dismiss).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([
+    {
+      channel: IPC_CHANNELS.RECAPTURE_CANCEL,
+      method: 'cancel',
+      result: { cancelled: 3, refused: 1 }
+    },
+    { channel: IPC_CHANNELS.RECAPTURE_RETRY, method: 'retry', result: { retried: 2 } }
+  ] as const)(
+    '$channel takes a job or a Batch, never both or neither',
+    async ({ channel, method, result }) => {
+      expect(expectOk(await invoke(channel, { jobId: 'job-1' }))).toEqual(result)
+      expectOk(await invoke(channel, { batchId: 'batch-1' }))
+      expect(recaptureService[method].mock.calls).toEqual([
+        [{ jobId: 'job-1' }],
+        [{ batchId: 'batch-1' }]
+      ])
+      for (const target of [
+        undefined,
+        null,
+        'job-1',
+        {},
+        { jobId: '' },
+        { batchId: 7 },
+        { jobId: 'j', batchId: 'b' }
+      ]) {
+        const res = (await invoke(channel, target)) as { code?: string }
+        expect(res.code).toBe('INVALID_RECAPTURE_PAYLOAD')
+      }
+      expect(recaptureService[method]).toHaveBeenCalledTimes(2)
+    }
+  )
 })
 
 describe('ipcHandlers — diagnostics logging', () => {

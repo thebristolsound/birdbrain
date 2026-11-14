@@ -133,6 +133,8 @@ function EmptyPane({ captureId }: { captureId: string }) {
   )
 }
 
+const NO_STORED_PAGE = 'No stored page archive available'
+
 // The stored side of the comparison. Both formats go through an evidence viewer on
 // a no-network partition: MHTML through MhtmlViewer, the pre-v11 HTML format through
 // LegacyHtmlViewer, which replaced the Page tab's sandboxed srcDoc frame in #906.
@@ -143,6 +145,13 @@ function EmptyPane({ captureId }: { captureId: string }) {
 function CapturePane({ capture }: { capture: Capture }) {
   if (capture.format === 'mhtml')
     // A link click here would move the selection and swap out the page being compared.
-    return <MhtmlViewer captureId={capture.id} caseId={capture.caseId} linkClicks={false} />
-  return <LegacyHtmlViewer captureId={capture.id} emptyLabel="No stored page archive available" />
+    return (
+      <MhtmlViewer
+        captureId={capture.id}
+        caseId={capture.caseId}
+        linkClicks={false}
+        emptyLabel={NO_STORED_PAGE}
+      />
+    )
+  return <LegacyHtmlViewer captureId={capture.id} emptyLabel={NO_STORED_PAGE} />
 }

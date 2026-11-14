@@ -38,7 +38,9 @@ async function enqueue(page: Page, caseId: string, urls: string[]) {
         birdbrain: {
           recapture: {
             enqueue: (payload: { caseId: string; urls: string[] }) => Promise<{
+              batchId: string
               accepted: number
+              jobIds: string[]
               rejected: Array<{ url: string; reason: string }>
             }>
           }
@@ -54,7 +56,10 @@ async function endOf(page: Page, url: string): Promise<ActivityEvent> {
   const handle = await page.waitForFunction(
     (target) => {
       const w = window as unknown as { activity: ActivityEvent[] }
-      return w.activity.find((e) => e.url === target && e.type !== 'received') ?? null
+      return (
+        w.activity.find((e) => e.url === target && e.type !== 'queued' && e.type !== 'received') ??
+        null
+      )
     },
     url,
     { timeout: 60000 }
@@ -114,7 +119,12 @@ test.describe('Recapture refuses a redirect to a local address', () => {
     const redirect = `${baseUrl}/redirect-private`
     const navigate = `${baseUrl}/navigate-private`
     const result = await enqueue(page, caseId, [redirect, navigate])
-    expect(result).toEqual({ accepted: 2, rejected: [] })
+    expect(result).toEqual({
+      batchId: expect.any(String),
+      accepted: 2,
+      jobIds: [expect.any(String), expect.any(String)],
+      rejected: []
+    })
 
     expect(await endOf(page, redirect)).toMatchObject({
       type: 'skipped',
@@ -143,7 +153,9 @@ test.describe('Recapture without the e2e loopback switch', () => {
     const caseId = await createCase(page, 'Loopback Refused E2E')
     const result = await enqueue(page, caseId, ['http://127.0.0.1:9/'])
     expect(result).toEqual({
+      batchId: expect.any(String),
       accepted: 0,
+      jobIds: [],
       rejected: [{ url: 'http://127.0.0.1:9/', reason: 'Points at a loopback address' }]
     })
   })

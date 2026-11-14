@@ -1,5 +1,16 @@
 import { randomUUID } from 'crypto'
+import { freemem } from 'os'
+import { Readable } from 'stream'
+import { finished } from 'stream/promises'
+import {
+  MEMORY_GATE_RETRY_MS,
+  MIN_FREE_MEMORY_BYTES,
+  jobSite
+} from '@main/services/backgroundJobPool'
+import * as backgroundJobRepo from '@main/services/db/backgroundJobRepo'
+import type { JobEnd, RunningAttempt, SettledJobs } from '@main/services/db/backgroundJobRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
+import { getCase } from '@main/services/db/caseRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
 import {
   entryDescribesRow,
@@ -14,17 +25,28 @@ import type { CaptureEgress } from '@main/services/egress'
 import { getInstallationId } from '@main/services/installationId'
 import { RefusedAddressError, refusedAddressClass } from '@main/services/localAddressPolicy'
 import { authorChainOf, readCaseChains } from '@main/services/manifest'
-import { getSettings } from '@main/services/settings'
+import { OperatorNameRequiredError, trimmedOperatorName } from '@main/services/operatorName'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import { logger } from '@main/services/logger'
+import { ident, tag } from '@main/services/logSafe'
+import type {
+  BackgroundJobFailureKind,
+  BackgroundJobStep,
+  LogContext
+} from '@main/services/logSafe'
 import type { TransactionRecordOutcome } from '@main/services/transactionRecorder'
 import { ManifestEntrySchema } from '@shared/schemas'
 import type { CaptureInventory, ScrollToLoadRecord } from '@shared/schemas'
 import type { Capture, CaptureEvent, ConsentSuppression } from '@shared/types'
 import type {
+  BackgroundJobPhase,
+  BackgroundJobView,
   EnqueueResult,
   LinkedFrom,
+  RecaptureCancelResult,
+  RecaptureJobTarget,
   RecaptureEnqueuePayload,
+  RecaptureListJobsQuery,
   RecaptureQueueStatus
 } from '@shared/ipc'
 
@@ -76,14 +98,65 @@ export interface RenderedPage {
   cleanup: () => Promise<void>
 }
 
+export type RenderStep = Exclude<BackgroundJobStep, 'ingest'>
+
 // `captureId` is the id the Capture is stored under, which the Transaction
 // Record's `warcinfo` names; `toolVersion` is the Birdbrain version it names.
+// `onStep` hears each step as the render starts it, and nothing after the render
+// ends, so the last step it heard is the one a failed render reached. Aborting
+// `signal` ends the render as its deadline does, with `RecaptureCancelled`, unless
+// something else ended it first. `onEnd` hears, once, that the render will return
+// no page; the render can take up to 2 s more to wind down before it rejects.
 export type RenderPage = (
   url: string,
-  opts: { timeoutMs: number; captureId: string; toolVersion: string }
+  opts: {
+    timeoutMs: number
+    captureId: string
+    toolVersion: string
+    onStep?: (step: RenderStep) => void
+    signal?: AbortSignal
+    onEnd?: () => void
+  }
 ) => Promise<RenderedPage>
 
+// The renderer's deadline and the queue's fallback both throw it, so a job's log
+// line can tell a timeout from a render that threw.
+export class RecaptureTimeout extends Error {
+  constructor(ms: number) {
+    super(`Recapture timed out after ${ms}ms`)
+    this.name = 'RecaptureTimeout'
+  }
+}
+
+export const CANCELLED_JOB_ERROR = 'Cancelled'
+
+// The renderer throws it when the job's signal ends the render.
+export class RecaptureCancelled extends Error {
+  constructor() {
+    super(CANCELLED_JOB_ERROR)
+    this.name = 'RecaptureCancelled'
+  }
+}
+
+// The phase each render step belongs to (docs/specs/2026-11-09-batch-capture-throughput-design.md,
+// "Job state for #2124"). The ingest is the seventh, which the queue enters itself.
+const PHASE_OF_STEP: Record<RenderStep, BackgroundJobPhase> = {
+  setup: 'loading',
+  load: 'loading',
+  'network-idle': 'loading',
+  scroll: 'scrolling',
+  'post-scroll-idle': 'scrolling',
+  settle: 'settling',
+  images: 'settling',
+  artifacts: 'artifacts',
+  'transaction-record': 'transaction-record',
+  pdf: 'pdf'
+}
+
 export interface RecaptureJob {
+  // Set by `enqueue`, on every event the job emits: a new id per job, one Batch id per call.
+  jobId: string
+  batchId: string
   url: string
   caseId: string
   supersedesCaptureId?: string
@@ -91,24 +164,99 @@ export interface RecaptureJob {
   linkedFrom?: LinkedFrom
 }
 
+export type RecaptureJobRequest = Omit<RecaptureJob, 'jobId' | 'batchId'>
+
 export interface RecaptureDeps {
   renderPage: RenderPage
   captureLifecycle: CaptureLifecycle
   emitEvent: (event: CaptureEvent) => void
   emitNewCapture: (capture: Capture) => void
+  // Hears every change of a job's state, with the row as it now reads.
+  emitJob?: (job: BackgroundJobView) => void
   timeoutMs?: number
+  // How many jobs run at once, 1 unless given; `resolveBackgroundWorkers` gives the app's.
+  concurrency?: number
+  // Free memory in bytes, `os.freemem()` unless given.
+  freeMemory?: () => number
 }
 
 export interface RecaptureService {
-  enqueue: (jobs: RecaptureJob[]) => EnqueueResult
+  enqueue: (jobs: RecaptureJobRequest[]) => EnqueueResult
   // Capture link's route (ADR-0040): one job, whose URL is the link address.
   enqueueLink: (payload: RecaptureEnqueuePayload) => EnqueueResult
   status: () => RecaptureQueueStatus
+  // The pass before the queue runs at startup. `finishRestore` runs it after a restore too.
+  recoverStoredJobs: () => void
+  // Read before a restore closes the database: the jobs this session has queued or is running.
+  // None when no database is open, as after a restore that left the file unreadable.
+  beginRestore: () => BackgroundJobView[]
+  // After a restore re-opens the database: the startup pass, which first writes back the rows of
+  // the jobs this process is still running, so each ends as it would have, and a `failed` event
+  // for each job read by `beginRestore` that the restored copy does not hold.
+  finishRestore: (before: BackgroundJobView[]) => void
+  // Starts the queue loop again. The restore handlers call it after a restore that failed and
+  // left the session's own database open: the close may have stopped the loop with jobs queued.
+  restartQueue: () => void
+  listJobs: (query: RecaptureListJobsQuery) => BackgroundJobView[]
+  // Sets the Batch's `held` jobs `queued`, behind the jobs already queued at the resume. Refused,
+  // with the reason enqueue gives, while no operator name is set; the jobs stay held.
+  resume: (batchId: string) => { resumed: number; reason?: string }
+  dismiss: (target: RecaptureJobTarget) => { dismissed: number }
+  // Ends the target's queued and held jobs `cancelled`, and aborts each of its running jobs unless
+  // that job is past the cut-off: its render has returned its page, and the job ends as the ingest
+  // does, or something else has already ended its render. `refused` counts such jobs.
+  cancel: (target: RecaptureJobTarget) => RecaptureCancelResult
+  // Queues the target's failed and cancelled jobs again, behind the jobs already queued. Refused,
+  // with the reason enqueue gives, while no operator name is set; the rows stay as they ended.
+  retry: (target: RecaptureJobTarget) => { retried: number; reason?: string }
   // resolves when the queue drains — used by tests only
   idle: () => Promise<void>
 }
 
 const DEFAULT_TIMEOUT_MS = 120_000
+
+// A `stored` row repeats its Capture's address outside the Manifest, so it goes after a week. A
+// row that ended without a Capture stays until the Operator dismisses it or deletes its Case.
+export const STORED_JOB_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
+
+export const INTERRUPTED_JOB_ERROR = 'Birdbrain closed while this job was running'
+
+export const RESTORE_REMOVED_JOB_ERROR = 'A database restore removed this job'
+export const RESTORE_REMOVED_CAPTURE_ERROR = "A database restore removed this job's Capture"
+
+export const QUEUE_STOPPED_JOB_ERROR = 'The background queue stopped while this job was running'
+
+// How a job ended, as its row records it. `logStored` writes a stored job's log line.
+type JobOutcome = Omit<JobEnd, 'finishedAt'> & { logStored?: () => void }
+
+// A job a worker slot is running, which cancel reads. `ended` is set once its render will return
+// no page, and `ingesting` once the job holds the page: the queue sets it, and the phase
+// `ingesting`, as soon as the render's promise resolves, before anything else of the job runs.
+interface ActiveJob {
+  job: RecaptureJob
+  // The row as the claim read it, which a restore writes back.
+  claimed: BackgroundJobView
+  captureId: string
+  controller: AbortController
+  ended: boolean
+  ingesting: boolean
+  phase?: BackgroundJobPhase
+  phaseWriteFailed: boolean
+}
+
+const targets = (target: RecaptureJobTarget, { jobId, batchId }: RecaptureJob): boolean =>
+  'jobId' in target ? target.jobId === jobId : target.batchId === batchId
+
+function jobOf({
+  jobId,
+  batchId,
+  url,
+  caseId,
+  supersedesCaptureId,
+  linkedFrom
+}: BackgroundJobView): RecaptureJob {
+  return { jobId, batchId, url, caseId, supersedesCaptureId, linkedFrom }
+}
 
 const LOGIN_TITLE_RE = /\b(log ?in|sign ?in|sign ?up|authenticate|two-factor|verification)\b/i
 const LOGIN_PATH_RE = /(^|\/)(login|signin|sign-in|auth|sso|accounts?\/(login|signin))([/?#]|$)/i
@@ -250,17 +398,127 @@ function validateUrl(raw: string): string | null {
 
 export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS
-  const queue: RecaptureJob[] = []
-  let activeUrl: string | null = null
-  let draining: Promise<void> | null = null
+  const concurrency = deps.concurrency ?? 1
+  const freeMemory = deps.freeMemory ?? freemem
+  // The running jobs by job id, in the order they started, and the promise of each.
+  const runs = new Map<string, ActiveJob>()
+  const workers = new Set<Promise<void>>()
+  let memoryRetry: NodeJS.Timeout | undefined
+  let memoryHeld = false
 
-  async function runJob(job: RecaptureJob): Promise<void> {
-    // A Capture link job names itself on every event, because the exclusion skip names the final
-    // address rather than `job.url`, and another job can share the address (ADR-0040).
-    const { linkedFrom } = job
-    const emitEvent = (event: CaptureEvent): void =>
-      deps.emitEvent(linkedFrom ? { ...event, linkedFrom } : event)
-    const timestamp = new Date().toISOString()
+  // Every event names its job and Batch, so the renderer can tell two jobs for one address apart.
+  // A Capture link job also names its source, because the exclusion skip names the final address
+  // rather than `job.url` (ADR-0040).
+  function emitJobEvent({ jobId, batchId, linkedFrom }: RecaptureJob, event: CaptureEvent): void {
+    deps.emitEvent({ ...event, jobId, batchId, ...(linkedFrom ? { linkedFrom } : {}) })
+  }
+
+  // A view the window cannot take is logged and dropped: the job's row and render go on, and a
+  // throw here would otherwise reach the IPC call that queued the job, or end its worker slot.
+  function emitJob(view: BackgroundJobView): void {
+    try {
+      deps.emitJob?.(view)
+    } catch (err) {
+      logger.warn(
+        'backgroundRenderer',
+        'backgroundRenderer.job_view_failed',
+        { caseId: ident(view.caseId) },
+        err
+      )
+    }
+  }
+
+  // The phase is progress, not the job's end, so a row the database cannot take, as while a
+  // restore has it closed, does not end the render; `finishJob` records the end. The first such
+  // failure of a job is logged.
+  function enterPhase(run: ActiveJob, phase: BackgroundJobPhase): void {
+    if (run.phase === phase) return
+    run.phase = phase
+    let view: BackgroundJobView | undefined
+    try {
+      view = backgroundJobRepo.setJobPhase(run.job.jobId, phase)
+    } catch (err) {
+      if (!run.phaseWriteFailed) {
+        run.phaseWriteFailed = true
+        logger.warn(
+          'backgroundRenderer',
+          'backgroundRenderer.job_phase_failed',
+          { captureId: ident(run.captureId), caseId: ident(run.job.caseId) },
+          err
+        )
+      }
+      return
+    }
+    if (view) emitJob(view)
+  }
+
+  // A cancelled job ends with a `skipped` event, which replaces its row in the activity feed.
+  function emitCancelled(job: RecaptureJob): void {
+    emitJobEvent(job, {
+      type: 'skipped',
+      source: 'recapture',
+      url: job.url,
+      timestamp: new Date().toISOString(),
+      skipReason: CANCELLED_JOB_ERROR
+    })
+  }
+
+  function recover(running?: RunningAttempt[]): void {
+    const now = Date.now()
+    const restored = backgroundJobRepo.recoverJobsAtStartup({
+      now: new Date(now).toISOString(),
+      storedBefore: new Date(now - STORED_JOB_RETENTION_MS).toISOString(),
+      interruptedError: INTERRUPTED_JOB_ERROR,
+      running
+    })
+    for (const job of restored.running) emitJob(job)
+    reportSettled(restored)
+    for (const job of restored.held) emitJob(job)
+  }
+
+  function reportSettled({ stored, interrupted }: SettledJobs): void {
+    // Stored, not interrupted: the Capture landed before the job's row was ended, and a second
+    // run of the job would take a second observation of the page.
+    for (const job of stored) {
+      logger.info('backgroundRenderer', 'backgroundRenderer.job_stored', {
+        ...(job.captureId ? { captureId: ident(job.captureId) } : {}),
+        caseId: ident(job.caseId)
+      })
+      emitJob(job)
+    }
+    for (const { job, captureId } of interrupted) {
+      logger.warn('backgroundRenderer', 'backgroundRenderer.job_failed', {
+        ...(captureId ? { captureId: ident(captureId) } : {}),
+        caseId: ident(job.caseId),
+        failureKind: tag('interrupted', 'backgroundJobFailureKind')
+      })
+      emitJob(job)
+    }
+  }
+
+  // A throw between a job's claim and the write of its end stops that job's slot and leaves the
+  // row `running` with no job behind it. Such rows are settled when the slot stops and again each
+  // time a slot looks for work, so a database that refused the first write gets a second.
+  // `exceptJobIds` names the jobs the slots are running, whose rows stay as they are.
+  function settleOrphans(): void {
+    reportSettled(
+      backgroundJobRepo.settleRunningJobs({
+        now: new Date().toISOString(),
+        interruptedError: QUEUE_STOPPED_JOB_ERROR,
+        exceptJobIds: [...runs.keys()]
+      })
+    )
+  }
+
+  // `captureId` is the id the attempt's row names, and `timestamp` the Capture's, both taken as
+  // the row is claimed.
+  async function runJob(
+    run: ActiveJob,
+    { captureId, timestamp }: { captureId: string; timestamp: string }
+  ): Promise<JobOutcome> {
+    const { job } = run
+    const { signal } = run.controller
+    const emitEvent = (event: CaptureEvent): void => emitJobEvent(job, event)
     emitEvent({
       type: 'received',
       source: 'recapture',
@@ -271,12 +529,55 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
 
     let rendered: RenderedPage | undefined
     const started = Date.now()
-    const captureId = randomUUID()
     const toolVersion = resolveToolVersion()
+    // The job's log lines name it by the id its render's lines carry, and its Case, never by its
+    // address (logSafe.ts), and say how long it ran, as its terminal event does.
+    const jobContext = (): LogContext => ({
+      captureId: ident(captureId),
+      caseId: ident(job.caseId),
+      ms: Date.now() - started
+    })
+    const logSkipped = (failureKind: BackgroundJobFailureKind): void => {
+      logger.info('backgroundRenderer', 'backgroundRenderer.job_skipped', {
+        ...jobContext(),
+        failureKind: tag(failureKind, 'backgroundJobFailureKind')
+      })
+    }
+    // Where a throw would leave the job: the step it reached, and the failure kind it is logged
+    // under unless it ran out of time. Everything after the render returns counts as the ingest.
+    let step: BackgroundJobStep | undefined
+    let stage: 'link-source-error' | 'render' | 'ingest' = 'render'
+    const endCancelled = (): JobOutcome => {
+      emitCancelled(job)
+      logger.info('backgroundRenderer', 'backgroundRenderer.job_cancelled', {
+        ...jobContext(),
+        ...(step ? { step: tag(step, 'backgroundJobStep') } : {})
+      })
+      return { state: 'cancelled', error: CANCELLED_JOB_ERROR }
+    }
     try {
+      // The list can change while a job waits, held across a restart included, so the check
+      // `enqueue` made on the job's own address (#400) is made again before anything is sent.
+      const excluded = matchCaseExclusion(job.url, job.caseId)
+      if (excluded) {
+        const skipReason = blockedSkipReason(excluded)
+        emitEvent({
+          type: 'skipped',
+          source: 'recapture',
+          url: job.url,
+          timestamp: new Date().toISOString(),
+          skipReason
+        })
+        logSkipped('excluded')
+        return { state: 'skipped', failureKind: 'excluded', error: skipReason }
+      }
+
       let linkSource: LinkSource | undefined
       if (job.linkedFrom) {
+        stage = 'link-source-error'
         const read = await readLinkSource(job, job.linkedFrom)
+        // Cancelled while the link source was checked: nothing has been sent.
+        if (signal.aborted) return endCancelled()
         if ('refused' in read) {
           emitEvent({
             type: 'skipped',
@@ -285,29 +586,54 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
             timestamp: new Date().toISOString(),
             skipReason: read.refused
           })
-          return
+          logSkipped('link-source')
+          return { state: 'skipped', failureKind: 'link-source', error: read.refused }
         }
         linkSource = read.source
+        stage = 'render'
       }
 
       // The renderer honors timeoutMs itself; race defensively so a hung
-      // implementation can never wedge the serial queue.
+      // implementation can never hold a worker slot.
       let fallbackTimer: NodeJS.Timeout | undefined
       const fallbackTimeout = new Promise<never>((_, reject) => {
-        fallbackTimer = setTimeout(
-          () => reject(new Error(`Recapture timed out after ${timeoutMs}ms`)),
-          timeoutMs
-        )
+        fallbackTimer = setTimeout(() => {
+          run.ended = true
+          reject(new RecaptureTimeout(timeoutMs))
+        }, timeoutMs)
       })
 
       try {
         rendered = await Promise.race([
-          deps.renderPage(job.url, { timeoutMs, captureId, toolVersion }),
+          deps.renderPage(job.url, {
+            timeoutMs,
+            captureId,
+            toolVersion,
+            signal,
+            onStep: (reached) => {
+              step = reached
+              enterPhase(run, PHASE_OF_STEP[reached])
+            },
+            onEnd: () => {
+              run.ended = true
+            }
+          }),
           fallbackTimeout
         ])
       } finally {
         clearTimeout(fallbackTimer)
       }
+      // A render that went on to return its page after a cancel stores nothing.
+      if (signal.aborted) {
+        rendered.mhtmlStream.destroy?.()
+        return endCancelled()
+      }
+      // From here cancel is refused: the job ends as the ingest decides, and the manifest seam
+      // inside it is never interrupted.
+      run.ingesting = true
+      stage = 'ingest'
+      step = 'ingest'
+      enterPhase(run, 'ingesting')
 
       // `enqueue` refused a link that points at a local address; a redirect the renderer
       // did not see as a hop still lands here (#1726). Nothing reaches the database or the
@@ -315,14 +641,16 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       const refused = refusedAddressClass(rendered.finalUrl)
       if (refused) {
         rendered.mhtmlStream.destroy?.()
+        const skipReason = `Redirects to ${refused}`
         emitEvent({
           type: 'skipped',
           source: 'recapture',
           url: job.url,
           timestamp: new Date().toISOString(),
-          skipReason: `Redirects to ${refused}`
+          skipReason
         })
-        return
+        logSkipped('refused-address')
+        return { state: 'skipped', failureKind: 'refused-address', error: skipReason }
       }
 
       // Second enforcement point (#400). `enqueue` could only judge the URL the
@@ -338,17 +666,21 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         // process. Batch recapture fans out one job per capture, so that is one
         // fd and one multi-megabyte file per blocked job (#766).
         rendered.mhtmlStream.destroy?.()
+        const skipReason = blockedSkipReason(blocked)
         emitEvent({
           type: 'skipped',
           source: 'recapture',
           url: rendered.finalUrl,
           timestamp: new Date().toISOString(),
-          skipReason: blockedSkipReason(blocked)
+          skipReason
         })
-        return
+        logSkipped('excluded')
+        return { state: 'skipped', failureKind: 'excluded', error: skipReason }
       }
 
-      const settings = getSettings()
+      const operatorName = trimmedOperatorName()
+      if (!operatorName) throw new OperatorNameRequiredError()
+      const ingestStartedAt = Date.now()
       const result = await deps.captureLifecycle.ingest({
         captureId,
         caseId: job.caseId,
@@ -369,7 +701,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         // nothing is written, because there is no redirect to record.
         finalUrl: redirectedFinalUrl(job.url, rendered.finalUrl),
         operatorId: getInstallationId(),
-        operatorName: settings.operatorName ?? '',
+        operatorName,
         toolVersion,
         screenshot: rendered.screenshot,
         method: 'background',
@@ -387,6 +719,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         ...transactionRecordFields(rendered.transactionRecord),
         pdf: rendered.pdf.present ? rendered.pdf.bytes : undefined
       })
+      const ingestMs = Date.now() - ingestStartedAt
 
       const warning = looksLikeLoginWall({
         requestedUrl: job.url,
@@ -399,11 +732,12 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       // Said only once the Capture is stored, so a job that then fails or is skipped
       // never reports a stored Capture.
       if (!rendered.transactionRecord.present) {
+        const { error, timeLeftMs } = rendered.transactionRecord
         logger.error(
           'backgroundRenderer',
           'backgroundRenderer.transaction_record_failed',
-          undefined,
-          rendered.transactionRecord.error
+          { captureId: ident(captureId), ...(timeLeftMs === undefined ? {} : { timeLeftMs }) },
+          error
         )
       }
       if (!rendered.pdf.present) {
@@ -426,7 +760,21 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         durationMs: Date.now() - started,
         warning
       })
+      // The queue loop logs the stored line once the row is written, outside this `try`, so a
+      // log call that throws cannot change how a stored job ends.
+      const stored = { ...jobContext(), ingestMs }
+      return {
+        state: 'stored',
+        warning,
+        logStored: () => {
+          logger.info('backgroundRenderer', 'backgroundRenderer.job_stored', stored)
+        }
+      }
     } catch (err) {
+      // A cancel that `cancel` accepted ends the job cancelled whatever its wind-down threw: it
+      // aborts only before the ingest, so nothing was stored. Once the deadline or a refused hop
+      // has ended the render, `cancel` refuses the job and the render keeps that error.
+      if (err instanceof RecaptureCancelled || signal.aborted) return endCancelled()
       if (err instanceof RefusedAddressError) {
         emitEvent({
           type: 'skipped',
@@ -435,41 +783,193 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
           timestamp: new Date().toISOString(),
           skipReason: err.message
         })
-        return
+        logSkipped('refused-address')
+        return { state: 'skipped', failureKind: 'refused-address', error: err.message }
       }
+      const error = err instanceof Error ? err.message : String(err)
       emitEvent({
         type: 'failed',
         source: 'recapture',
         url: job.url,
         timestamp: new Date().toISOString(),
         durationMs: Date.now() - started,
-        error: err instanceof Error ? err.message : String(err)
+        error
       })
+      const failureKind = err instanceof RecaptureTimeout ? 'timeout' : stage
+      logger.warn(
+        'backgroundRenderer',
+        'backgroundRenderer.job_failed',
+        {
+          ...jobContext(),
+          failureKind: tag(failureKind, 'backgroundJobFailureKind'),
+          ...(step ? { step: tag(step, 'backgroundJobStep') } : {})
+        },
+        err
+      )
+      return { state: 'failed', failureKind, error }
     } finally {
-      await rendered?.cleanup().catch(() => {})
+      // Ingest can reject before it starts reading, leaving the renderer's file open.
+      const stream = rendered?.mhtmlStream
+      const closed =
+        stream instanceof Readable
+          ? finished(stream, { cleanup: true }).catch((err: unknown) => {
+              if (
+                err instanceof Error &&
+                'code' in err &&
+                err.code === 'ERR_STREAM_PREMATURE_CLOSE'
+              ) {
+                return
+              }
+              logger.error(
+                'backgroundRenderer',
+                'backgroundRenderer.cleanup_failed',
+                undefined,
+                err
+              )
+            })
+          : undefined
+      stream?.destroy?.()
+      await closed
+      await rendered?.cleanup().catch((err) => {
+        logger.error('backgroundRenderer', 'backgroundRenderer.cleanup_failed', undefined, err)
+      })
     }
   }
 
+  // Up to `concurrency` jobs at once, each slot claiming its next row as its last job ends. A slot
+  // claims only a job whose site has none running, read from this process's runs rather than the
+  // rows, which a restore can replace while a render goes on. A job does not start beside another
+  // while free memory is under the floor; the slot looks again after `MEMORY_GATE_RETRY_MS`, and
+  // when a running job ends. Any throw between a claim and the write of the job's end stops that
+  // slot, as does one while a slot settles and reports rows before it looks for work: a database
+  // it cannot read or write (a restore closes it), or an event or log call that throws. The next
+  // enqueue, resume, retry or `restartQueue`, or another job's end, starts it again.
   function drain(): void {
-    if (draining) return
-    draining = (async () => {
-      while (queue.length > 0) {
-        const job = queue.shift()!
-        activeUrl = job.url
-        await runJob(job)
-        activeUrl = null
+    clearTimeout(memoryRetry)
+    memoryRetry = undefined
+    try {
+      settleOrphans()
+    } catch (err) {
+      logger.error('backgroundRenderer', 'backgroundRenderer.job_queue_failed', undefined, err)
+      return
+    }
+    while (runs.size < concurrency) {
+      const busy = new Set([...runs.values()].map(({ job }) => jobSite(job.url)))
+      const runnable = (url: string): boolean => !busy.has(jobSite(url))
+      const attempt = { captureId: randomUUID(), timestamp: new Date().toISOString() }
+      let claimed: BackgroundJobView | undefined
+      try {
+        // The first job always starts, as a single worker's would.
+        if (runs.size > 0 && backgroundJobRepo.hasRunnableQueued(runnable)) {
+          const free = freeMemory()
+          if (free < MIN_FREE_MEMORY_BYTES) {
+            if (!memoryHeld) {
+              memoryHeld = true
+              logger.info('backgroundRenderer', 'backgroundRenderer.job_memory_held', {
+                bytes: free,
+                count: runs.size
+              })
+            }
+            memoryRetry = setTimeout(drain, MEMORY_GATE_RETRY_MS)
+            return
+          }
+        }
+        memoryHeld = false
+        claimed = backgroundJobRepo.claimNextQueued(
+          { startedAt: attempt.timestamp, captureId: attempt.captureId },
+          runnable
+        )
+      } catch (err) {
+        logger.error('backgroundRenderer', 'backgroundRenderer.job_queue_failed', undefined, err)
+        return
       }
-    })().finally(() => {
-      draining = null
-    })
+      if (!claimed) return
+      start(claimed, attempt)
+    }
+  }
+
+  function start(
+    claimed: BackgroundJobView,
+    attempt: { captureId: string; timestamp: string }
+  ): void {
+    emitJob(claimed)
+    const run: ActiveJob = {
+      job: jobOf(claimed),
+      claimed,
+      captureId: attempt.captureId,
+      controller: new AbortController(),
+      ended: false,
+      ingesting: false,
+      phaseWriteFailed: false
+    }
+    runs.set(claimed.jobId, run)
+    const worker: Promise<void> = (async () => {
+      try {
+        let outcome = await runJob(run, attempt)
+        // A restore can replace the database after the ingest committed and before the job's
+        // cleanup returns. The copy then holds no such Capture, and nothing corrects a `stored` row.
+        if (
+          outcome.state === 'stored' &&
+          captureRepo.getCapture(attempt.captureId)?.caseId !== claimed.caseId
+        ) {
+          logger.warn('backgroundRenderer', 'backgroundRenderer.job_failed', {
+            captureId: ident(attempt.captureId),
+            caseId: ident(claimed.caseId),
+            failureKind: tag('interrupted', 'backgroundJobFailureKind')
+          })
+          outcome = {
+            state: 'failed',
+            failureKind: 'interrupted',
+            error: RESTORE_REMOVED_CAPTURE_ERROR
+          }
+        }
+        const { logStored, ...end } = outcome
+        const ended = backgroundJobRepo.finishJob(claimed.jobId, {
+          ...end,
+          finishedAt: new Date().toISOString()
+        })
+        if (ended) emitJob(ended)
+        logStored?.()
+      } finally {
+        runs.delete(claimed.jobId)
+      }
+      drain()
+    })()
+      .catch((err: unknown) => {
+        logger.error('backgroundRenderer', 'backgroundRenderer.job_queue_failed', undefined, err)
+        try {
+          settleOrphans()
+        } catch {
+          // The database refused this write as well, or the report of it threw. The stop is
+          // logged above, and the loop settles the row when it next starts.
+        }
+      })
+      .finally(() => {
+        workers.delete(worker)
+      })
+    workers.add(worker)
   }
 
   const service: RecaptureService = {
-    enqueue(jobs) {
+    enqueue(requests) {
+      const batchId = randomUUID()
+      // The operator gate (X47), first as at admission: a job that cannot be signed is refused
+      // before its render contacts the site. Ingest checks again for a name cleared meanwhile.
+      if (!trimmedOperatorName()) {
+        const { message: reason } = new OperatorNameRequiredError()
+        return {
+          batchId,
+          accepted: 0,
+          jobIds: [],
+          rejected: requests.map(({ url }) => ({ url, reason }))
+        }
+      }
       const rejected: Array<{ url: string; reason: string }> = []
-      let accepted = 0
-      for (const job of jobs) {
-        const reason = validateUrl(job.url)
+      const accepted: RecaptureJob[] = []
+      for (const request of requests) {
+        const job = { ...request, jobId: randomUUID(), batchId }
+        // A job's row names its Case through a foreign key, so a Case that is gone refuses here.
+        const reason = validateUrl(job.url) ?? (getCase(job.caseId) ? null : 'Case not found')
         if (reason) {
           rejected.push({ url: job.url, reason })
           continue
@@ -495,11 +995,40 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
           rejected.push({ url: job.url, reason: blockedSkipReason(blocked) })
           continue
         }
-        queue.push(job)
-        accepted++
+        accepted.push(job)
       }
-      if (accepted > 0) drain()
-      return { accepted, rejected }
+      const queuedAt = new Date().toISOString()
+      backgroundJobRepo.insertQueuedJobs(
+        accepted.map(({ jobId, batchId, caseId, url, supersedesCaptureId, linkedFrom }) => ({
+          id: jobId,
+          batchId,
+          caseId,
+          url,
+          supersedesCaptureId,
+          linkedFrom,
+          queuedAt
+        }))
+      )
+      // Every `queued` event goes out before `drain` starts the first job and emits its `received`.
+      for (const job of accepted) {
+        emitJobEvent(job, {
+          type: 'queued',
+          source: 'recapture',
+          url: job.url,
+          timestamp: queuedAt,
+          supersedesCaptureId: job.supersedesCaptureId
+        })
+      }
+      if (accepted.length > 0) {
+        for (const view of backgroundJobRepo.listJobs({ batchId })) emitJob(view)
+        drain()
+      }
+      return {
+        batchId,
+        accepted: accepted.length,
+        jobIds: accepted.map(({ jobId }) => jobId),
+        rejected
+      }
     },
     // The checks the payload alone can answer, so the menu reports them at once. The source's
     // entry and bytes are checked when the job runs, before the render: a source deleted or
@@ -507,7 +1036,9 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     enqueueLink({ urls, caseId, supersedesCaptureId, linkedFrom }) {
       const { captureId, linkHref } = linkedFrom ?? {}
       const refuse = (reason: string): EnqueueResult => ({
+        batchId: randomUUID(),
         accepted: 0,
+        jobIds: [],
         rejected: [{ url: typeof linkHref === 'string' ? linkHref : '', reason }]
       })
       if (typeof captureId !== 'string' || typeof linkHref !== 'string' || !captureId) {
@@ -523,10 +1054,108 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       return service.enqueue([{ url: linkHref, caseId, linkedFrom: { captureId, linkHref } }])
     },
     status() {
-      return { pending: queue.length + (activeUrl ? 1 : 0), activeUrl }
+      const { queued, running, held } = backgroundJobRepo.countActiveJobs()
+      return {
+        pending: queued + running,
+        queued,
+        running,
+        held,
+        heldBatches: backgroundJobRepo.listHeldBatches(),
+        concurrency,
+        // The first running job's address, until its readers move to the job view.
+        activeUrl: runs.values().next().value?.job.url ?? null
+      }
+    },
+    recoverStoredJobs: () => recover(),
+    beginRestore: () => backgroundJobRepo.listActiveJobs(),
+    restartQueue: () => drain(),
+    finishRestore(before) {
+      recover(
+        [...runs.values()].map(({ claimed, phase, captureId }) => ({
+          job: { ...claimed, ...(phase ? { phase } : {}) },
+          captureId
+        }))
+      )
+      const finishedAt = new Date().toISOString()
+      for (const view of before) {
+        // A running job's row was written back above, so it reports its own end; a job the
+        // restored copy holds was handled above.
+        if (runs.has(view.jobId) || backgroundJobRepo.getJob(view.jobId)) continue
+        emitJobEvent(jobOf(view), {
+          type: 'failed',
+          source: 'recapture',
+          url: view.url,
+          timestamp: finishedAt,
+          error: RESTORE_REMOVED_JOB_ERROR
+        })
+        emitJob({ ...view, state: 'failed', error: RESTORE_REMOVED_JOB_ERROR, finishedAt })
+      }
+    },
+    listJobs: (query) => backgroundJobRepo.listJobs(query),
+    resume(batchId) {
+      // The operator gate (X47), as at enqueue: a held job that cannot be signed is not rendered.
+      if (!trimmedOperatorName()) {
+        return { resumed: 0, reason: new OperatorNameRequiredError().message }
+      }
+      const resumed = backgroundJobRepo.resumeBatch(batchId, new Date().toISOString())
+      for (const view of resumed) emitJob(view)
+      if (resumed.length > 0) drain()
+      return { resumed: resumed.length }
+    },
+    dismiss: (target) => ({ dismissed: backgroundJobRepo.dismissJobs(target) }),
+    cancel(target) {
+      const ended = backgroundJobRepo.cancelWaitingJobs(target, {
+        error: CANCELLED_JOB_ERROR,
+        finishedAt: new Date().toISOString()
+      })
+      for (const view of ended) {
+        emitCancelled(jobOf(view))
+        logger.info('backgroundRenderer', 'backgroundRenderer.job_cancelled', {
+          caseId: ident(view.caseId)
+        })
+        emitJob(view)
+      }
+      let cancelled = ended.length
+      let refused = 0
+      for (const run of runs.values()) {
+        if (!targets(target, run.job)) continue
+        // A job an earlier cancel aborted is ending cancelled.
+        if (run.controller.signal.aborted) {
+          cancelled++
+          continue
+        }
+        if (run.ingesting || run.ended) {
+          refused++
+          continue
+        }
+        run.controller.abort()
+        cancelled++
+      }
+      return { cancelled, refused }
+    },
+    retry(target) {
+      // The operator gate (X47), as at enqueue and resume: a retry that cannot be signed is not
+      // rendered.
+      if (!trimmedOperatorName()) {
+        return { retried: 0, reason: new OperatorNameRequiredError().message }
+      }
+      const retriedAt = new Date().toISOString()
+      const retried = backgroundJobRepo.retryJobs(target, retriedAt)
+      for (const view of retried) {
+        emitJobEvent(jobOf(view), {
+          type: 'queued',
+          source: 'recapture',
+          url: view.url,
+          timestamp: retriedAt,
+          supersedesCaptureId: view.supersedesCaptureId
+        })
+      }
+      for (const view of retried) emitJob(view)
+      if (retried.length > 0) drain()
+      return { retried: retried.length }
     },
     async idle() {
-      while (draining) await draining
+      while (workers.size > 0) await Promise.all(workers)
     }
   }
   return service

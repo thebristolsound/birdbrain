@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# PreToolUse hook on Bash: blocks adding the `merge` or `approved` label through gh or agh.
-# Only the maintainer applies those labels (docs/agents/triage-labels.md, ADR-0041); an agent
-# applied `merge` by mistake during the 2026-10-08 sweep (#1775).
+# PreToolUse hook on Bash: blocks adding the `merge`, `approved` or `break-glass` label through
+# gh or agh. Only the maintainer applies those labels (docs/agents/triage-labels.md, ADR-0041,
+# ADR-0057); an agent applied `merge` by mistake during the 2026-10-08 sweep (#1775).
 # Override, only when the maintainer asked for the label in this session: prefix the command
 # with BIRDBRAIN_MAINTAINER_LABEL_OK=1.
 # Hook exit codes: 0 allows the command, 2 blocks it and feeds stderr back to the agent.
@@ -14,7 +14,7 @@ let j = {}
 try { j = JSON.parse(fs.readFileSync(0, "utf8")) } catch {}
 const cmd = (j.tool_input && j.tool_input.command) || ""
 const cwd = j.cwd || process.cwd()
-const guarded = new Set(["merge", "approved"])
+const guarded = new Set(["merge", "approved", "break-glass"])
 
 // Shell-ish tokenizer: quotes, backslashes, and separators (; & | newline) as their own tokens.
 function tokenize(s) {
@@ -111,7 +111,8 @@ if (hits.length && !override) {
   const list = [...new Set(hits)].join(", ")
   process.stderr.write(
     "guard-maintainer-labels: this command adds a maintainer-only label (" + list + "). " +
-    "Only the maintainer applies `merge` and `approved` (docs/agents/triage-labels.md, ADR-0041). " +
+    "Only the maintainer applies `merge`, `approved` and `break-glass` " +
+    "(docs/agents/triage-labels.md, ADR-0041, ADR-0057). " +
     "If the maintainer asked you to apply it in this session, re-run the same command prefixed " +
     "with BIRDBRAIN_MAINTAINER_LABEL_OK=1. Otherwise leave the label for the maintainer.\n"
   )

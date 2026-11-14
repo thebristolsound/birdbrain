@@ -37,6 +37,22 @@ function isEmptySchema(conn: Database.Database): boolean {
   return row.count === 0
 }
 
+// Nothing here keeps planner statistics current, so any a database carries describe it
+// at the size it was when ANALYZE last ran, and the planner trusts them: a search
+// planned for a three-row table did not return in 25 seconds over twelve thousand rows,
+// holding the main process. Emptying the tables leaves the copy this connection has
+// loaded, which `ANALYZE sqlite_schema` reads again. That statement creates the tables
+// in a database without them, so it runs only after rows were removed.
+function discardPlannerStatistics(conn: Database.Database): void {
+  const tables = conn
+    .prepare("SELECT name FROM sqlite_master WHERE name IN ('sqlite_stat1', 'sqlite_stat4')")
+    .pluck()
+    .all() as string[]
+  let removed = 0
+  for (const table of tables) removed += conn.prepare(`DELETE FROM ${table}`).run().changes
+  if (removed > 0) conn.exec('ANALYZE sqlite_schema')
+}
+
 async function openMigrated(
   dbPath: string,
   options?: Database.Options
@@ -48,6 +64,7 @@ async function openMigrated(
   try {
     await snapshotBeforeMigrations(conn, dbPath)
     runMigrations(conn)
+    discardPlannerStatistics(conn)
   } catch (err) {
     conn.close()
     throw err

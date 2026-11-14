@@ -566,7 +566,6 @@ export function vacuumDb(dbPath: string): { freedBytes: number } {
   }
 
   db.exec('VACUUM')
-  db.pragma('optimize')
 
   let sizeAfter = 0
   if (dbPath !== ':memory:') {

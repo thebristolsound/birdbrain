@@ -3,6 +3,7 @@ import { copyFileSync, mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import Database from 'better-sqlite3'
+import { replaceExhibitFields } from '@main/services/db/searchFieldRepo'
 import { initDatabase, closeDatabase, getDb, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
 import {
   listCases,
@@ -2494,5 +2495,111 @@ describe('a Capture delete in a Case never shared, against the v40 keys (#1877)'
 
     expect(byApp).toEqual(byKeys)
     expect(byApp.log.map((row) => row.kind).sort()).toEqual(['exhibit', 'note', 'note'])
+  })
+})
+
+// Nothing keeps planner statistics current, so a database that carries them has its
+// queries planned for the size it was when they were taken.
+describe('planner statistics', () => {
+  let tempDir: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'bb-planner-statistics-'))
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  const statisticsRows = (): number =>
+    (getDb().prepare('SELECT COUNT(*) AS n FROM sqlite_stat1').get() as { n: number }).n +
+    (getDb().prepare('SELECT COUNT(*) AS n FROM sqlite_stat4').get() as { n: number }).n
+
+  it('discards the statistics a database carries when it opens', async () => {
+    const dbPath = join(tempDir, 'app.db')
+    await initDatabase(dbPath)
+    createCase({ name: 'Case' })
+    getDb().exec('ANALYZE')
+    expect(statisticsRows()).toBeGreaterThan(0)
+    closeDatabase()
+
+    await initDatabase(dbPath)
+
+    expect(statisticsRows()).toBe(0)
+  })
+
+  // The planner orders this join by its statistics: from the field table while it
+  // holds a row count of three for it, from the subquery once it holds none.
+  const scansFieldTable = (caseId: string): boolean =>
+    (
+      getDb()
+        .prepare(
+          `EXPLAIN QUERY PLAN
+           WITH firsts AS (
+             SELECT MIN(id) AS id FROM exhibit_search_fields
+              WHERE case_id = ? GROUP BY exhibit_id, field, norm
+           )
+           SELECT f.id FROM firsts
+             JOIN exhibit_search_fields f ON f.id = firsts.id
+             JOIN exhibit_search_builds b ON b.exhibit_id = f.exhibit_id`
+        )
+        .all(caseId) as Array<{ detail: string }>
+    ).some(({ detail }) => /^SCAN [fb]\b/.test(detail))
+
+  it('plans without them on the connection that discarded them', async () => {
+    const dbPath = join(tempDir, 'app.db')
+    await initDatabase(dbPath)
+    const caseId = createCase({ name: 'Case' }).id
+    const [exhibitId] = ['a', 'b', 'c'].map(
+      (hash) =>
+        insertCapture({
+          caseId,
+          url: 'https://example.com',
+          title: 'Example',
+          hash,
+          timestamp: '2026-09-01T00:00:00.000Z'
+        }).id
+    )
+    replaceExhibitFields(
+      {
+        exhibitId,
+        caseId,
+        contentHash: 'a',
+        textHash: null,
+        extractor: 'fields/test',
+        builtAt: '2026-09-01T00:00:00.000Z',
+        outcome: 'built',
+        skippedJson: null
+      },
+      ['x', 'y', 'z'].map((norm) => ({
+        field: 'link.href',
+        value: norm,
+        norm,
+        source: 'html-part' as const,
+        part: 0,
+        startOffset: 0,
+        endOffset: 1
+      }))
+    )
+    getDb().exec('ANALYZE')
+    expect(scansFieldTable(caseId)).toBe(true)
+    closeDatabase()
+
+    await initDatabase(dbPath)
+
+    expect(scansFieldTable(caseId)).toBe(false)
+  })
+
+  it('adds no statistics tables to a database that has none', async () => {
+    const dbPath = join(tempDir, 'app.db')
+    await initDatabase(dbPath)
+    closeDatabase()
+
+    await initDatabase(dbPath)
+
+    expect(
+      getDb().prepare("SELECT name FROM sqlite_master WHERE name LIKE 'sqlite_stat%'").all()
+    ).toEqual([])
   })
 })

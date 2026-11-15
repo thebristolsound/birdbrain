@@ -1788,13 +1788,14 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
 // and the package encloses no root, so every receipt fails here; the passing case, with
 // tokens from the local test authority, is in sharedCaseExport.test.ts.
 describe("the runbook's receipt block under a plain shell", () => {
-  const [receiptBlock] = extractRunbookBlocks(
+  const receiptBlocks = extractRunbookBlocks(
     buildVerifyRunbook({
       requiredSchemaVersion: MANIFEST_SCHEMA_VERSION,
       readerSchemaVersion: MANIFEST_SCHEMA_VERSION,
       appVersion: '0.0.0'
     })
   ).filter((block) => block.code.includes('receipt=$(mktemp)'))
+  const [receiptBlock] = receiptBlocks
   let dir = ''
 
   beforeEach(() => {
@@ -1806,12 +1807,12 @@ describe("the runbook's receipt block under a plain shell", () => {
   })
 
   it('finds the one receipt block', () => {
-    expect(receiptBlock).toBeDefined()
+    expect(receiptBlocks).toHaveLength(1)
     expect(receiptBlock.placeholders).toEqual([])
   })
 
   for (const shell of ['sh', 'bash'] as const) {
-    it.skipIf(!RUNS)(`exits non-zero under ${shell} on a token over another hash`, () => {
+    it.skipIf(!RUNS)(`exits non-zero under ${shell} on a receipt that does not verify`, () => {
       const { mergeIndex } = writeReceiptPackage(dir, { wrongImprint: true })
       // The member's chain, read after the Owner's, holds no receipt to reset the status.
       const memberChain = join(dir, memberChainPath(RECEIPT_MEMBER_ID))

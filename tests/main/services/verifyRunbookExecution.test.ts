@@ -56,10 +56,12 @@ import {
   ENGINE_SCROLL_TO_LOAD
 } from '../../helpers/captureEnginePackage'
 import {
+  memberChainPath,
   pdfPath,
   screenshotPath,
   transactionRecordPath
 } from '../../../src/packages/evidence-package-layout/index'
+import { RECEIPT_MEMBER_ID, writeReceiptPackage } from '../../helpers/receiptPackage'
 import { CaptureInventorySchema, ScrollToLoadRecordSchema } from '@shared/schemas'
 
 // 60 s, not the 15 s in vitest.config.ts: this suite crosses 15 s when several agent
@@ -1780,6 +1782,53 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       rmSync(dir, { recursive: true, force: true })
     }
   })
+})
+
+// #2084: the receipt block on the hand-written receipt package. Its tokens are synthetic
+// and the package encloses no root, so every receipt fails here; the passing case, with
+// tokens from the local test authority, is in sharedCaseExport.test.ts.
+describe("the runbook's receipt block under a plain shell", () => {
+  const [receiptBlock] = extractRunbookBlocks(
+    buildVerifyRunbook({
+      requiredSchemaVersion: MANIFEST_SCHEMA_VERSION,
+      readerSchemaVersion: MANIFEST_SCHEMA_VERSION,
+      appVersion: '0.0.0'
+    })
+  ).filter((block) => block.code.includes('receipt=$(mktemp)'))
+  let dir = ''
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'bb-runbook-receipt-'))
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('finds the one receipt block', () => {
+    expect(receiptBlock).toBeDefined()
+    expect(receiptBlock.placeholders).toEqual([])
+  })
+
+  for (const shell of ['sh', 'bash'] as const) {
+    it.skipIf(!RUNS)(`exits non-zero under ${shell} on a token over another hash`, () => {
+      const { mergeIndex } = writeReceiptPackage(dir, { wrongImprint: true })
+      // The member's chain, read after the Owner's, holds no receipt to reset the status.
+      expect(existsSync(join(dir, memberChainPath(RECEIPT_MEMBER_ID)))).toBe(true)
+      const plain = runPlain([receiptBlock], dir, shell)
+      expect(plain.stdout.trim()).toBe(`RECEIPT FAIL: merge #${mergeIndex} of manifest.jsonl`)
+      expect(plain.status).not.toBe(0)
+    })
+
+    it.skipIf(!RUNS)(`exits non-zero under ${shell} on a receipt naming no merge`, () => {
+      const { receiptIndex } = writeReceiptPackage(dir, { namesNoMerge: true })
+      const plain = runPlain([receiptBlock], dir, shell)
+      expect(plain.stdout.trim()).toBe(
+        `RECEIPT NAMES NO MERGE: entry ${receiptIndex} of manifest.jsonl`
+      )
+      expect(plain.status).not.toBe(0)
+    })
+  }
 })
 
 describe('runbook block extraction', () => {

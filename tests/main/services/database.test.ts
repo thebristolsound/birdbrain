@@ -3,8 +3,13 @@ import { copyFileSync, mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import Database from 'better-sqlite3'
-import { replaceExhibitFields } from '@main/services/db/searchFieldRepo'
-import { initDatabase, closeDatabase, getDb, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
+import {
+  initDatabase,
+  closeDatabase,
+  getDb,
+  migrateFile,
+  LATEST_SCHEMA_VERSION
+} from '@main/services/db/core'
 import {
   listCases,
   listAllCases,
@@ -2529,66 +2534,51 @@ describe('planner statistics', () => {
     expect(statisticsRows()).toBe(0)
   })
 
-  // The planner orders this join by its statistics: from the field table while it
-  // holds a row count of three for it, from the subquery once it holds none.
-  const scansFieldTable = (caseId: string): boolean =>
-    (
-      getDb()
-        .prepare(
-          `EXPLAIN QUERY PLAN
-           WITH firsts AS (
-             SELECT MIN(id) AS id FROM exhibit_search_fields
-              WHERE case_id = ? GROUP BY exhibit_id, field, norm
-           )
-           SELECT f.id FROM firsts
-             JOIN exhibit_search_fields f ON f.id = firsts.id
-             JOIN exhibit_search_builds b ON b.exhibit_id = f.exhibit_id`
-        )
-        .all(caseId) as Array<{ detail: string }>
-    ).some(({ detail }) => /^SCAN [fb]\b/.test(detail))
-
-  it('plans without them on the connection that discarded them', async () => {
+  // Two tables with no index between them, so the planner orders their join from its row
+  // estimates alone. Emptying the statistics tables leaves those estimates on the
+  // connection that had loaded them, and `ANALYZE sqlite_schema` does not clear them.
+  it('hands back a connection that plans as one that never read them', async () => {
     const dbPath = join(tempDir, 'app.db')
     await initDatabase(dbPath)
-    const caseId = createCase({ name: 'Case' }).id
-    const [exhibitId] = ['a', 'b', 'c'].map(
-      (hash) =>
-        insertCapture({
-          caseId,
-          url: 'https://example.com',
-          title: 'Example',
-          hash,
-          timestamp: '2026-09-01T00:00:00.000Z'
-        }).id
-    )
-    replaceExhibitFields(
-      {
-        exhibitId,
-        caseId,
-        contentHash: 'a',
-        textHash: null,
-        extractor: 'fields/test',
-        builtAt: '2026-09-01T00:00:00.000Z',
-        outcome: 'built',
-        skippedJson: null
-      },
-      ['x', 'y', 'z'].map((norm) => ({
-        field: 'link.href',
-        value: norm,
-        norm,
-        source: 'html-part' as const,
-        part: 0,
-        startOffset: 0,
-        endOffset: 1
-      }))
-    )
+    getDb().exec(`
+      CREATE TABLE probe_small (k TEXT);
+      CREATE TABLE probe_big (k TEXT);
+      INSERT INTO probe_small VALUES ('a'), ('b'), ('c');
+      WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 5000)
+      INSERT INTO probe_big SELECT 'k' || i FROM n;
+    `)
+    const plan = (): string[] =>
+      (
+        getDb()
+          .prepare('EXPLAIN QUERY PLAN SELECT 1 FROM probe_big b JOIN probe_small s ON s.k = b.k')
+          .all() as Array<{ detail: string }>
+      ).map(({ detail }) => detail)
+    const withoutStatistics = plan()
     getDb().exec('ANALYZE')
-    expect(scansFieldTable(caseId)).toBe(true)
+    expect(plan()).not.toEqual(withoutStatistics)
     closeDatabase()
 
     await initDatabase(dbPath)
 
-    expect(scansFieldTable(caseId)).toBe(false)
+    expect(plan()).toEqual(withoutStatistics)
+  })
+
+  it('discards them from a file brought to the current schema for a restore', async () => {
+    const dbPath = join(tempDir, 'app.db')
+    await initDatabase(dbPath)
+    createCase({ name: 'Case' })
+    getDb().exec('ANALYZE')
+    closeDatabase()
+
+    await migrateFile(dbPath)
+
+    const file = new Database(dbPath, { readonly: true })
+    const rows = file
+      .prepare('SELECT (SELECT COUNT(*) FROM sqlite_stat1) + (SELECT COUNT(*) FROM sqlite_stat4)')
+      .pluck()
+      .get()
+    file.close()
+    expect(rows).toBe(0)
   })
 
   it('adds no statistics tables to a database that has none', async () => {

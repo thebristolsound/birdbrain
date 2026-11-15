@@ -288,11 +288,7 @@ export function DbUtilities() {
 
   return (
     <div className="space-y-3">
-      <UtilCard
-        id="vacuum"
-        title="Vacuum"
-        description="Reclaim unused space."
-      >
+      <UtilCard id="vacuum" title="Vacuum" description="Reclaim unused space.">
         <Button variant="outline" size="sm" onClick={handleVacuum} disabled={loading !== null}>
           {loading === 'vacuum' ? 'Running...' : 'Run Vacuum'}
         </Button>

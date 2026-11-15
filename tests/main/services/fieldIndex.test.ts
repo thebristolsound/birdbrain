@@ -751,10 +751,11 @@ describe('searchCaseFields', () => {
     expect(truncated).toBe(true)
   })
 
-  // Statistics taken while the tables were small made the planner run the match once
-  // for every field row: about seven seconds over these 2,400 rows, and past a 25 second
-  // cutoff over the 12,000 of a real Case, with the main process held throughout. The
-  // limit is far above what the search needs and far below that.
+  // Statistics taken while the tables were small, here at six field rows, made the
+  // planner run the match once for every field row: about seven seconds over these 2,454
+  // rows, and past a 25 second cutoff over the 12,000 of a real Case, with the main
+  // process held throughout. The limit is far above what the search needs and far below
+  // that.
   it('answers at once when the planner statistics predate most of the records', () => {
     capture(caseId, '2026-09-01T00:00:00.000Z')
     capture(caseId, '2026-09-02T00:00:00.000Z')
@@ -781,5 +782,40 @@ describe('searchCaseFields', () => {
     expect(phrase.truncated).toBe(true)
     expect(substring.hits).toHaveLength(200)
     expect(elapsed).toBeLessThan(1000)
+  })
+
+  // The tables each query visits, outermost loop first, read from its plan.
+  function loopOrders(query: string): string[][] {
+    const prepare = vi.spyOn(getDb(), 'prepare')
+    searchCaseFields(caseId, query)
+    const statements = prepare.mock.calls.map(([sql]) => sql).filter((sql) => /matched/.test(sql))
+    prepare.mockRestore()
+    return statements.map((sql) =>
+      (
+        getDb()
+          .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+          .all(...Array.from({ length: sql.split('?').length - 1 }, () => 'x')) as Array<{
+          detail: string
+        }>
+      ).flatMap(({ detail }) => /^(?:SCAN|SEARCH) (\w+)/.exec(detail)?.[1] ?? [])
+    )
+  }
+
+  it('runs the match first and reaches each later table by key, with statistics or none', () => {
+    const lookups = ['firsts', 'f', 'b', 'e', 'c']
+    const expectPinned = (): void => {
+      const [phraseHits, phraseChanged] = loopOrders('tollgate')
+      expect(phraseHits).toEqual(['exhibit_search_fields_fts', 'f', ...lookups])
+      expect(phraseChanged.indexOf('exhibit_search_fields_fts')).toBeLessThan(
+        phraseChanged.indexOf('f')
+      )
+      expect(loopOrders('to')[0]).toEqual(['exhibit_search_fields', ...lookups])
+    }
+    build(capture(caseId))
+    expectPinned()
+
+    getDb().exec('ANALYZE')
+
+    expectPinned()
   })
 })

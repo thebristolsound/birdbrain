@@ -1071,6 +1071,14 @@ loose_json() {
   [ "$(printf '%s' "$1" | jq -Rr "$strict_filter")" != true ]
 }
 
+# loose_json over the whole of file $1, which jq reads as one string.
+# ${stepRef(5)} holds ${ROOT.exportEntry} in a variable with its newlines deleted,
+# which joins tru and e into true, and a shell variable drops NUL bytes, so
+# this reads the file itself.
+loose_json_file() {
+  [ "$(jq -Rrs "$strict_filter" "$1")" != true ]
+}
+
 # A whole-file read that jq did not finish: the entries after the point it
 # stopped were never read, so this is never a pass.
 unread() {
@@ -1289,7 +1297,7 @@ if [ -f "$EXPORT_ENTRY_FILE" ]; then
   [ "$(field "$export_entry" '.prevHash')" = "$head_hash" ] || entry_ok=0
   # The checks above read the record through jq, which accepts what the
   # Birdbrain verifier's JSON.parse rejects, as loose_json describes.
-  if loose_json "$export_entry"; then
+  if loose_json_file "$EXPORT_ENTRY_FILE"; then
     fail "$EXPORT_ENTRY_FILE is not valid JSON: it holds a value spelled outside the JSON grammar, or more than one value, so its declared scope cannot be trusted"
   elif [ "$entry_ok" -eq 0 ]; then
     fail "$EXPORT_ENTRY_FILE does not verify against the enclosed key and the chain head, so its declared scope cannot be trusted"

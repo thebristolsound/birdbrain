@@ -933,6 +933,25 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       )
     ),
     looseEntryRow('a second value after the first', (entry) => `${entry.trimEnd()}{"b":2}`),
+    // Step 5 reads the entry with its newlines deleted and its NUL bytes
+    // dropped, so each of these read as the signed entry. jq skips the mark.
+    looseEntryRow('a newline inside true', (entry) => entry.replace(':true', ':tru\ne')),
+    looseEntryRow('a NUL byte after its opening brace', (entry) => `{\u0000${entry.slice(1)}`),
+    looseEntryRow('a leading byte-order mark', (entry) => `\ufeff${entry}`),
+    {
+      // JSON.parse reads a newline between two tokens as whitespace.
+      name: 'an export entry with a newline after its opening brace',
+      build: () => {
+        const dir = corruptedCopy('entry-newline-between-tokens')
+        const path = join(dir, 'export-entry.json')
+        writeFileSync(path, `{\n${readFileSync(path, 'utf-8').slice(1)}`)
+        return dir
+      },
+      binary: 'pass',
+      script: 'pass',
+      steps: [],
+      saysNot: ['FAIL']
+    },
     {
       name: 'an export entry whose strings hold 04, NaN, Infinity and {}{} as text',
       build: async () => {

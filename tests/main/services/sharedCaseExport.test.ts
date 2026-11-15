@@ -1658,6 +1658,38 @@ describe('Shared Case export, import and fork (#1511)', () => {
       }
     )
 
+    // A chain holds one receipt per merge, so a block that kept only the last receipt's
+    // result in a chain would pass the cases above, where each chain holds one.
+    it.skipIf(!RUNS)(
+      "fails the Owner's first receipt when a second in the same chain verifies",
+      async () => {
+        ownerReplica((owner) => {
+          const { heads } = JSON.parse(owner.lines[3]) as { heads: unknown[] }
+          owner.append(
+            receiptStamp(owner.hashes[3], otherTsa!.issueToken(owner.hashes[3]), LOCAL())
+          )
+          owner.append({
+            type: 'merge',
+            caseId,
+            heads,
+            timestamp: TIME,
+            ...LOCAL(),
+            schemaVersion: 4
+          })
+          owner.append(receiptStamp(owner.hashes[5], tsa!.issueToken(owner.hashes[5]), LOCAL()))
+        })
+        const { dir, zip } = await exportPackage()
+        expect(receiptsIn(zip, 'manifest.jsonl')).toHaveLength(2)
+        expectReceiptBlock(zip, dir, {
+          passes: false,
+          lines: [
+            'RECEIPT FAIL: merge #3 of manifest.jsonl',
+            'receipt OK: merge #5 of manifest.jsonl'
+          ]
+        })
+      }
+    )
+
     it.skipIf(!RUNS)(
       'encloses the certificates the receipt token embeds in tsa-intermediates.pem',
       async () => {

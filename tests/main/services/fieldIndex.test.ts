@@ -784,8 +784,9 @@ describe('searchCaseFields', () => {
     expect(elapsed).toBeLessThan(1000)
   })
 
-  // The tables each query visits, outermost loop first, read from its plan.
-  function loopOrders(query: string): string[][] {
+  // Each query's loops, outermost first, read from its plan: SCAN reads a whole table,
+  // SEARCH reaches rows by a key.
+  function loops(query: string): string[][] {
     const prepare = vi.spyOn(getDb(), 'prepare')
     searchCaseFields(caseId, query)
     const statements = prepare.mock.calls.map(([sql]) => sql).filter((sql) => /matched/.test(sql))
@@ -797,19 +798,22 @@ describe('searchCaseFields', () => {
           .all(...Array.from({ length: sql.split('?').length - 1 }, () => 'x')) as Array<{
           detail: string
         }>
-      ).flatMap(({ detail }) => /^(?:SCAN|SEARCH) (\w+)/.exec(detail)?.[1] ?? [])
+      ).flatMap(({ detail }) => /^(?:SCAN|SEARCH) \w+/.exec(detail)?.[0] ?? [])
     )
   }
 
-  it('runs the match first and reaches each later table by key, with statistics or none', () => {
-    const lookups = ['firsts', 'f', 'b', 'e', 'c']
+  const tables = (steps: string[]): string[] => steps.map((step) => step.split(' ')[1])
+
+  it('runs the match first and the later tables in the order written, with statistics or none', () => {
+    const later = ['firsts', 'f', 'b', 'e', 'c']
     const expectPinned = (): void => {
-      const [phraseHits, phraseChanged] = loopOrders('tollgate')
-      expect(phraseHits).toEqual(['exhibit_search_fields_fts', 'f', ...lookups])
+      const [phraseHits, phraseChanged] = loops('tollgate').map(tables)
+      expect(phraseHits).toEqual(['exhibit_search_fields_fts', 'f', ...later])
+      expect(phraseChanged).toContain('exhibit_search_fields_fts')
       expect(phraseChanged.indexOf('exhibit_search_fields_fts')).toBeLessThan(
         phraseChanged.indexOf('f')
       )
-      expect(loopOrders('to')[0]).toEqual(['exhibit_search_fields', ...lookups])
+      expect(tables(loops('to')[0])).toEqual(['exhibit_search_fields', ...later])
     }
     build(capture(caseId))
     expectPinned()
@@ -817,5 +821,21 @@ describe('searchCaseFields', () => {
     getDb().exec('ANALYZE')
 
     expectPinned()
+  })
+
+  // With statistics that call a table small, SQLite may read it in full for each hit, so
+  // this holds for the state the app runs in: none.
+  it('reaches each table after the match by key when the database has no statistics', () => {
+    build(capture(caseId))
+
+    expect(loops('tollgate')[0]).toEqual([
+      'SCAN exhibit_search_fields_fts',
+      'SEARCH f',
+      'SCAN firsts',
+      'SEARCH f',
+      'SEARCH b',
+      'SEARCH e',
+      'SEARCH c'
+    ])
   })
 })

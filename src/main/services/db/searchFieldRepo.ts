@@ -221,9 +221,10 @@ export function searchCaseFields(caseId: string, query: string): FieldSearchResu
   // searchExtractedData does.
   //
   // Each CROSS JOIN here and in the hits query fixes the loop order as written: the
-  // match first, then one lookup by key for each table after it. Left to choose, a
+  // match first, then each later table once for every row before it. Left to choose, a
   // planner holding statistics from when these tables were small ran the match once
-  // for every field row.
+  // for every field row. The order is all it fixes: with such statistics SQLite may
+  // still read a table it takes for small in full where a key would do.
   const [matched, term] =
     trimmed.length >= 3
       ? [

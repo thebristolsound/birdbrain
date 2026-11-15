@@ -2581,6 +2581,28 @@ describe('planner statistics', () => {
     expect(rows).toBe(0)
   })
 
+  // The tables stay once ANALYZE has made them. While another connection holds the write
+  // lock, a write here would wait out the busy timeout and fail the open.
+  it('opens a database whose statistics tables are empty without writing to it', async () => {
+    const dbPath = join(tempDir, 'app.db')
+    await initDatabase(dbPath)
+    createCase({ name: 'Case' })
+    getDb().exec('ANALYZE')
+    closeDatabase()
+    await initDatabase(dbPath)
+    closeDatabase()
+    const writer = new Database(dbPath)
+    writer.exec('BEGIN IMMEDIATE')
+
+    try {
+      await initDatabase(dbPath)
+
+      expect(listCases()).toHaveLength(1)
+    } finally {
+      writer.close()
+    }
+  })
+
   it('adds no statistics tables to a database that has none', async () => {
     const dbPath = join(tempDir, 'app.db')
     await initDatabase(dbPath)

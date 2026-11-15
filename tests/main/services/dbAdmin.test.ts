@@ -745,6 +745,18 @@ describe('dbAdmin', () => {
       expect(result).toHaveProperty('freedBytes')
       expect(typeof result.freedBytes).toBe('number')
     })
+
+    // Statistics written here were current only until the tables next grew, and the
+    // planner went on trusting them.
+    it('writes no planner statistics', () => {
+      createCase({ name: 'Test' })
+
+      vacuumDb(':memory:')
+
+      expect(
+        getDb().prepare("SELECT name FROM sqlite_master WHERE name LIKE 'sqlite_stat%'").all()
+      ).toEqual([])
+    })
   })
 
   describe('rebuildFts', () => {

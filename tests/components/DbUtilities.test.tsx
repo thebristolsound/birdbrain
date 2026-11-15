@@ -187,3 +187,14 @@ describe('DbUtilities — search index rebuild', () => {
     expect(rebuildFts).toHaveBeenCalledOnce()
   })
 })
+
+describe('DbUtilities — Vacuum card', () => {
+  // Vacuum no longer writes planner statistics, so the card promises no faster queries.
+  it('says only that Vacuum reclaims space', () => {
+    fakeBridge({ db: { snapshots: vi.fn().mockResolvedValue([]) } })
+    renderUtilities()
+
+    expect(screen.getByText('Reclaim unused space.')).toBeDefined()
+    expect(screen.queryByText(/optimi/i)).toBeNull()
+  })
+})

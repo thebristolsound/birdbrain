@@ -750,4 +750,92 @@ describe('searchCaseFields', () => {
     expect(hits).toHaveLength(200)
     expect(truncated).toBe(true)
   })
+
+  // Statistics taken while the tables were small, here at six field rows, made the
+  // planner run the match once for every field row: about seven seconds over these 2,454
+  // rows, and past a 25 second cutoff over the 12,000 of a real Case, with the main
+  // process held throughout. The limit is far above what the search needs and far below
+  // that.
+  it('answers at once when the planner statistics predate most of the records', () => {
+    capture(caseId, '2026-09-01T00:00:00.000Z')
+    capture(caseId, '2026-09-02T00:00:00.000Z')
+    build(
+      capture(caseId, '2026-09-03T00:00:00.000Z'),
+      mhtml('<a href="/a">A</a><a href="/b">B</a><a href="/c">C</a>')
+    )
+    getDb().exec('ANALYZE')
+    for (let page = 0; page < 16; page++) {
+      const links = Array.from(
+        { length: 150 },
+        (_, i) => `<a href="https://grown-${page}-${i}.example.org/">${i}</a>`
+      )
+      const timestamp = new Date(Date.UTC(2026, 9, 1, page)).toISOString()
+      build(capture(caseId, timestamp), mhtml(links.join('')))
+    }
+
+    const started = performance.now()
+    const phrase = searchCaseFields(caseId, 'grown-')
+    const substring = searchCaseFields(caseId, 'gr')
+    const elapsed = performance.now() - started
+
+    expect(phrase.hits).toHaveLength(200)
+    expect(phrase.truncated).toBe(true)
+    expect(substring.hits).toHaveLength(200)
+    expect(elapsed).toBeLessThan(1000)
+  })
+
+  // Each query's loops, outermost first, read from its plan: SCAN reads a whole table,
+  // SEARCH reaches rows by a key.
+  function loops(query: string): string[][] {
+    const prepare = vi.spyOn(getDb(), 'prepare')
+    searchCaseFields(caseId, query)
+    const statements = prepare.mock.calls.map(([sql]) => sql).filter((sql) => /matched/.test(sql))
+    prepare.mockRestore()
+    return statements.map((sql) =>
+      (
+        getDb()
+          .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+          .all(...Array.from({ length: sql.split('?').length - 1 }, () => 'x')) as Array<{
+          detail: string
+        }>
+      ).flatMap(({ detail }) => /^(?:SCAN|SEARCH) \w+/.exec(detail)?.[0] ?? [])
+    )
+  }
+
+  const tables = (steps: string[]): string[] => steps.map((step) => step.split(' ')[1])
+
+  it('runs the match first and the later tables in the order written, with statistics or none', () => {
+    const later = ['firsts', 'f', 'b', 'e', 'c']
+    const expectPinned = (): void => {
+      const [phraseHits, phraseChanged] = loops('tollgate').map(tables)
+      expect(phraseHits).toEqual(['exhibit_search_fields_fts', 'f', ...later])
+      expect(phraseChanged).toContain('exhibit_search_fields_fts')
+      expect(phraseChanged.indexOf('exhibit_search_fields_fts')).toBeLessThan(
+        phraseChanged.indexOf('f')
+      )
+      expect(tables(loops('to')[0])).toEqual(['exhibit_search_fields', ...later])
+    }
+    build(capture(caseId))
+    expectPinned()
+
+    getDb().exec('ANALYZE')
+
+    expectPinned()
+  })
+
+  // With statistics that call a table small, SQLite may read it in full for each hit, so
+  // this holds for the state the app runs in: none.
+  it('reaches each table after the match by key when the database has no statistics', () => {
+    build(capture(caseId))
+
+    expect(loops('tollgate')[0]).toEqual([
+      'SCAN exhibit_search_fields_fts',
+      'SEARCH f',
+      'SCAN firsts',
+      'SEARCH f',
+      'SEARCH b',
+      'SEARCH e',
+      'SEARCH c'
+    ])
+  })
 })

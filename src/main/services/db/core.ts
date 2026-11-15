@@ -37,17 +37,46 @@ function isEmptySchema(conn: Database.Database): boolean {
   return row.count === 0
 }
 
-async function openMigrated(
-  dbPath: string,
-  options?: Database.Options
-): Promise<Database.Database> {
+// Nothing here keeps planner statistics current, so any a database carries describe it
+// at the size it was when ANALYZE last ran, and the planner trusts them: a search
+// planned for a three-row table did not return in 25 seconds over twelve thousand rows,
+// holding the main process. Returns whether it removed any. A database whose statistics
+// tables are empty or absent is only read.
+function discardPlannerStatistics(conn: Database.Database): boolean {
+  const tables = conn
+    .prepare("SELECT name FROM sqlite_master WHERE name IN ('sqlite_stat1', 'sqlite_stat4')")
+    .pluck()
+    .all() as string[]
+  const holding = tables.filter(
+    (table) => conn.prepare(`SELECT 1 FROM ${table} LIMIT 1`).get() !== undefined
+  )
+  for (const table of holding) conn.exec(`DELETE FROM ${table}`)
+  return holding.length > 0
+}
+
+function connect(dbPath: string, options?: Database.Options): Database.Database {
   const conn = new Database(dbPath, options)
   conn.pragma('journal_mode = WAL')
   conn.pragma('foreign_keys = ON')
   conn.pragma('busy_timeout = 5000')
+  return conn
+}
+
+async function openMigrated(
+  dbPath: string,
+  options?: Database.Options
+): Promise<Database.Database> {
+  let conn = connect(dbPath, options)
   try {
     await snapshotBeforeMigrations(conn, dbPath)
     runMigrations(conn)
+    // The connection that removed the statistics had loaded them, and keeps the row
+    // estimates even after `ANALYZE sqlite_schema`. One opened afterwards never reads
+    // them. An in-memory database is new, so it holds none to remove.
+    if (discardPlannerStatistics(conn)) {
+      conn.close()
+      conn = connect(dbPath, options)
+    }
   } catch (err) {
     conn.close()
     throw err

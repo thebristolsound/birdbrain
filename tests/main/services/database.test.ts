@@ -3,7 +3,13 @@ import { copyFileSync, mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import Database from 'better-sqlite3'
-import { initDatabase, closeDatabase, getDb, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
+import {
+  initDatabase,
+  closeDatabase,
+  getDb,
+  migrateFile,
+  LATEST_SCHEMA_VERSION
+} from '@main/services/db/core'
 import {
   listCases,
   listAllCases,
@@ -2494,5 +2500,118 @@ describe('a Capture delete in a Case never shared, against the v40 keys (#1877)'
 
     expect(byApp).toEqual(byKeys)
     expect(byApp.log.map((row) => row.kind).sort()).toEqual(['exhibit', 'note', 'note'])
+  })
+})
+
+// Nothing keeps planner statistics current, so a database that carries them has its
+// queries planned for the size it was when they were taken.
+describe('planner statistics', () => {
+  let tempDir: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'bb-planner-statistics-'))
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  const statisticsRows = (): number =>
+    (getDb().prepare('SELECT COUNT(*) AS n FROM sqlite_stat1').get() as { n: number }).n +
+    (getDb().prepare('SELECT COUNT(*) AS n FROM sqlite_stat4').get() as { n: number }).n
+
+  it('discards the statistics a database carries when it opens', async () => {
+    const dbPath = join(tempDir, 'app.db')
+    await initDatabase(dbPath)
+    createCase({ name: 'Case' })
+    getDb().exec('ANALYZE')
+    expect(statisticsRows()).toBeGreaterThan(0)
+    closeDatabase()
+
+    await initDatabase(dbPath)
+
+    expect(statisticsRows()).toBe(0)
+  })
+
+  // Two tables with no index between them, so the planner orders their join from its row
+  // estimates alone. Emptying the statistics tables leaves those estimates on the
+  // connection that had loaded them, and `ANALYZE sqlite_schema` does not clear them.
+  it('hands back a connection that plans as one that never read them', async () => {
+    const dbPath = join(tempDir, 'app.db')
+    await initDatabase(dbPath)
+    getDb().exec(`
+      CREATE TABLE probe_small (k TEXT);
+      CREATE TABLE probe_big (k TEXT);
+      INSERT INTO probe_small VALUES ('a'), ('b'), ('c');
+      WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 5000)
+      INSERT INTO probe_big SELECT 'k' || i FROM n;
+    `)
+    const plan = (): string[] =>
+      (
+        getDb()
+          .prepare('EXPLAIN QUERY PLAN SELECT 1 FROM probe_big b JOIN probe_small s ON s.k = b.k')
+          .all() as Array<{ detail: string }>
+      ).map(({ detail }) => detail)
+    const withoutStatistics = plan()
+    getDb().exec('ANALYZE')
+    expect(plan()).not.toEqual(withoutStatistics)
+    closeDatabase()
+
+    await initDatabase(dbPath)
+
+    expect(plan()).toEqual(withoutStatistics)
+  })
+
+  it('discards them from a file brought to the current schema for a restore', async () => {
+    const dbPath = join(tempDir, 'app.db')
+    await initDatabase(dbPath)
+    createCase({ name: 'Case' })
+    getDb().exec('ANALYZE')
+    closeDatabase()
+
+    await migrateFile(dbPath)
+
+    const file = new Database(dbPath, { readonly: true })
+    const rows = file
+      .prepare('SELECT (SELECT COUNT(*) FROM sqlite_stat1) + (SELECT COUNT(*) FROM sqlite_stat4)')
+      .pluck()
+      .get()
+    file.close()
+    expect(rows).toBe(0)
+  })
+
+  // The tables stay once ANALYZE has made them. While another connection holds the write
+  // lock, a write here would wait out the busy timeout and fail the open.
+  it('opens a database whose statistics tables are empty without writing to it', async () => {
+    const dbPath = join(tempDir, 'app.db')
+    await initDatabase(dbPath)
+    createCase({ name: 'Case' })
+    getDb().exec('ANALYZE')
+    closeDatabase()
+    await initDatabase(dbPath)
+    closeDatabase()
+    const writer = new Database(dbPath)
+    writer.exec('BEGIN IMMEDIATE')
+
+    try {
+      await initDatabase(dbPath)
+
+      expect(listCases()).toHaveLength(1)
+    } finally {
+      writer.close()
+    }
+  })
+
+  it('adds no statistics tables to a database that has none', async () => {
+    const dbPath = join(tempDir, 'app.db')
+    await initDatabase(dbPath)
+    closeDatabase()
+
+    await initDatabase(dbPath)
+
+    expect(
+      getDb().prepare("SELECT name FROM sqlite_master WHERE name LIKE 'sqlite_stat%'").all()
+    ).toEqual([])
   })
 })

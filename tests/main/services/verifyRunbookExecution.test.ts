@@ -634,6 +634,38 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     binaryFails: { name: 'manifest chain', reason: 'Invalid JSON (at index 1)' }
   })
 
+  const ENTRY_LOOSE_JSON =
+    'FAIL [step 5] export-entry.json is not valid JSON: it holds a value spelled outside the ' +
+    'JSON grammar, or more than one value'
+
+  /**
+   * #2088: a row for export-entry.json respelled into text JSON.parse rejects.
+   * evidence.json does not list the file, so step 1 still passes.
+   */
+  const looseEntryRow = (name: string, respell: (entry: string) => string): ConformanceRow => ({
+    name: `an export entry that holds ${name}`,
+    build: () => {
+      const dir = corruptedCopy(`loose-entry-${name.replace(/\W+/g, '-')}`)
+      const path = join(dir, 'export-entry.json')
+      const entry = readFileSync(path, 'utf-8')
+      const respelled = respell(entry)
+      expect(respelled).not.toBe(entry)
+      writeFileSync(path, respelled)
+      return dir
+    },
+    binary: 'fail',
+    script: 'fail',
+    steps: [5],
+    says: [ENTRY_LOOSE_JSON],
+    binaryFails: { name: 'export entry', reason: 'export-entry.json is not valid JSON' }
+  })
+
+  /** The export entry with its index, N, spelled as `literal(N)`. */
+  const entryIndexAs =
+    (literal: (index: string) => string) =>
+    (entry: string): string =>
+      entry.replace(/"index":(\d+)(?=[,}])/, (_, index: string) => `"index":${literal(index)}`)
+
   // jq 1.7 reads a lowercase nan as null. jq 1.6 rejects it, so steps 2 and 6
   // fail on that line as well.
   const jqReadsNan = ((): boolean => {
@@ -874,6 +906,40 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
         const dir = await exportPackage('loose-spellings-as-text')
         expect(readFileSync(join(dir, 'manifest.jsonl'), 'utf-8')).toContain(
           '"Operator \\"01\\" +1 .5 NaN Infinity -nan 1.e5 {}{} \\\\"'
+        )
+        return dir
+      },
+      binary: 'pass',
+      script: 'pass',
+      steps: [],
+      saysNot: ['FAIL']
+    },
+    // #2088: jq reads 0N, +N and N. as N, so the export entry's hash and
+    // signature still verified, and before the fix verify.sh passed a package
+    // the binary failed.
+    ...(
+      [
+        ['with a leading zero', (index: string) => `0${index}`],
+        ['with a plus sign', (index: string) => `+${index}`],
+        ['with a trailing point', (index: string) => `${index}.`]
+      ] as const
+    ).map(([label, literal]) => looseEntryRow(`its index spelled ${label}`, entryIndexAs(literal))),
+    // jq reads these as another value, or two, so the entry already failed
+    // before the fix, under the message that it does not verify.
+    ...['NaN', 'Infinity'].map((literal) =>
+      looseEntryRow(
+        `its index spelled ${literal}`,
+        entryIndexAs(() => literal)
+      )
+    ),
+    looseEntryRow('a second value after the first', (entry) => `${entry.trimEnd()}{"b":2}`),
+    {
+      name: 'an export entry whose strings hold 04, NaN, Infinity and {}{} as text',
+      build: async () => {
+        updateSettings({ operatorName: 'Operator "04" NaN Infinity {}{}' })
+        const dir = await exportPackage('loose-entry-spellings-as-text')
+        expect(readFileSync(join(dir, 'export-entry.json'), 'utf-8')).toContain(
+          '"operatorName":"Operator \\"04\\" NaN Infinity {}{}"'
         )
         return dir
       },

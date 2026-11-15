@@ -1287,7 +1287,11 @@ if [ -f "$EXPORT_ENTRY_FILE" ]; then
   verify_line_signature "$export_entry" "$SIGNING_KEY_FILE" || entry_ok=0
   [ "$(recompute_entry_hash "$export_entry")" = "$(field "$export_entry" '.entryHash')" ] || entry_ok=0
   [ "$(field "$export_entry" '.prevHash')" = "$head_hash" ] || entry_ok=0
-  if [ "$entry_ok" -eq 0 ]; then
+  # The checks above read the record through jq, which accepts what the
+  # Birdbrain verifier's JSON.parse rejects, as loose_json describes.
+  if loose_json "$export_entry"; then
+    fail "$EXPORT_ENTRY_FILE is not valid JSON: it holds a value spelled outside the JSON grammar, or more than one value, so its declared scope cannot be trusted"
+  elif [ "$entry_ok" -eq 0 ]; then
     fail "$EXPORT_ENTRY_FILE does not verify against the enclosed key and the chain head, so its declared scope cannot be trusted"
   elif [ "$(field "$export_entry" '.scope // empty')" = 'selection' ]; then
     selection=$(field "$export_entry" '.captureIds[]')

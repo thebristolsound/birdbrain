@@ -1296,9 +1296,13 @@ if [ -f "$EXPORT_ENTRY_FILE" ]; then
   [ "$(recompute_entry_hash "$export_entry")" = "$(field "$export_entry" '.entryHash')" ] || entry_ok=0
   [ "$(field "$export_entry" '.prevHash')" = "$head_hash" ] || entry_ok=0
   # The checks above read the record through jq, which accepts what the
-  # Birdbrain verifier's JSON.parse rejects, as loose_json describes.
+  # Birdbrain verifier's JSON.parse rejects, as loose_json describes. They
+  # also ignore jq's exit status, and loose_json_file checks spelling, not
+  # structure, so a stray }, ] or , after the record reaches the jq parse.
   if loose_json_file "$EXPORT_ENTRY_FILE"; then
     fail "$EXPORT_ENTRY_FILE is not valid JSON: it holds a value spelled outside the JSON grammar, or more than one value, so its declared scope cannot be trusted"
+  elif ! jq empty "$EXPORT_ENTRY_FILE" 2>/dev/null; then
+    fail "$EXPORT_ENTRY_FILE is not valid JSON: jq cannot parse it, so its declared scope cannot be trusted"
   elif [ "$entry_ok" -eq 0 ]; then
     fail "$EXPORT_ENTRY_FILE does not verify against the enclosed key and the chain head, so its declared scope cannot be trusted"
   elif [ "$(field "$export_entry" '.scope // empty')" = 'selection' ]; then

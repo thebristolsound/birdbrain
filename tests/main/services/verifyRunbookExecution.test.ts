@@ -637,12 +637,19 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
   const ENTRY_LOOSE_JSON =
     'FAIL [step 5] export-entry.json is not valid JSON: it holds a value spelled outside the ' +
     'JSON grammar, or more than one value'
+  const ENTRY_UNPARSED =
+    'FAIL [step 5] export-entry.json is not valid JSON: jq cannot parse it, so its declared ' +
+    'scope cannot be trusted'
 
   /**
    * #2088: a row for export-entry.json respelled into text JSON.parse rejects.
    * evidence.json does not list the file, so step 1 still passes.
    */
-  const looseEntryRow = (name: string, respell: (entry: string) => string): ConformanceRow => ({
+  const looseEntryRow = (
+    name: string,
+    respell: (entry: string) => string,
+    says = ENTRY_LOOSE_JSON
+  ): ConformanceRow => ({
     name: `an export entry that holds ${name}`,
     build: () => {
       const dir = corruptedCopy(`loose-entry-${name.replace(/\W+/g, '-')}`)
@@ -656,7 +663,7 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     binary: 'fail',
     script: 'fail',
     steps: [5],
-    says: [ENTRY_LOOSE_JSON],
+    says: [says],
     binaryFails: { name: 'export entry', reason: 'export-entry.json is not valid JSON' }
   })
 
@@ -938,6 +945,22 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     looseEntryRow('a newline inside true', (entry) => entry.replace(':true', ':tru\ne')),
     looseEntryRow('a NUL byte after its opening brace', (entry) => `{\u0000${entry.slice(1)}`),
     looseEntryRow('a leading byte-order mark', (entry) => `\ufeff${entry}`),
+    // The spelling check counts one value in each, and jq prints every field
+    // step 5 reads before it stops at the stray character, so before the jq
+    // parse check verify.sh passed these.
+    ...(
+      [
+        ['a closing brace', '}'],
+        ['a closing bracket', ']'],
+        ['a comma', ',']
+      ] as const
+    ).map(([label, stray]) =>
+      looseEntryRow(
+        `${label} after the record`,
+        (entry) => `${entry.trimEnd()}${stray}`,
+        ENTRY_UNPARSED
+      )
+    ),
     {
       // JSON.parse reads a newline between two tokens as whitespace.
       name: 'an export entry with a newline after its opening brace',

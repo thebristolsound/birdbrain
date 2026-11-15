@@ -976,12 +976,12 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       saysNot: ['FAIL']
     },
     {
-      name: 'an export entry whose strings hold 04, NaN, Infinity and {}{} as text',
+      name: 'an export entry whose strings hold its loose spellings and stray characters as text',
       build: async () => {
-        updateSettings({ operatorName: 'Operator "04" NaN Infinity {}{}' })
+        updateSettings({ operatorName: 'Operator "04" +4 4. NaN Infinity \ufeff {}{} } ] ,' })
         const dir = await exportPackage('loose-entry-spellings-as-text')
         expect(readFileSync(join(dir, 'export-entry.json'), 'utf-8')).toContain(
-          '"operatorName":"Operator \\"04\\" NaN Infinity {}{}"'
+          '"operatorName":"Operator \\"04\\" +4 4. NaN Infinity \ufeff {}{} } ] ,"'
         )
         return dir
       },

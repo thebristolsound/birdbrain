@@ -1419,6 +1419,16 @@ describe('Shared Case export, import and fork (#1511)', () => {
           b.code.includes('receipt')
       )
 
+    // The receipt stamps (`subject` entry, with or without a token) a packaged chain holds.
+    const receiptsIn = (zip: Map<string, Buffer>, path: string) =>
+      zip
+        .get(path)!
+        .toString('utf-8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line) as { type: string; subject?: string })
+        .filter((entry) => entry.type === 'timestamp' && entry.subject === 'entry')
+
     // #2084: runs the receipt block under the harness, and under plain sh and
     // bash, which have no errexit and no pipefail, so a failure must leave the
     // block as its own status. Each run prints `lines`; only `passes` exits 0.
@@ -1615,6 +1625,7 @@ describe('Shared Case export, import and fork (#1511)', () => {
       )
       // The member's chain, read after the Owner's, holds no receipt.
       expect(zip.has(peerChain)).toBe(true)
+      expect(receiptsIn(zip, peerChain)).toEqual([])
       expectReceiptBlock(zip, dir, {
         passes: false,
         lines: ['RECEIPT FAIL: merge #3 of manifest.jsonl']

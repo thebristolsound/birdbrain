@@ -1814,7 +1814,14 @@ describe("the runbook's receipt block under a plain shell", () => {
     it.skipIf(!RUNS)(`exits non-zero under ${shell} on a token over another hash`, () => {
       const { mergeIndex } = writeReceiptPackage(dir, { wrongImprint: true })
       // The member's chain, read after the Owner's, holds no receipt to reset the status.
-      expect(existsSync(join(dir, memberChainPath(RECEIPT_MEMBER_ID)))).toBe(true)
+      const memberChain = join(dir, memberChainPath(RECEIPT_MEMBER_ID))
+      expect(existsSync(memberChain)).toBe(true)
+      const memberReceipts = readFileSync(memberChain, 'utf-8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line) as { type: string; subject?: string })
+        .filter((entry) => entry.type === 'timestamp' && entry.subject === 'entry')
+      expect(memberReceipts).toEqual([])
       const plain = runPlain([receiptBlock], dir, shell)
       expect(plain.stdout.trim()).toBe(`RECEIPT FAIL: merge #${mergeIndex} of manifest.jsonl`)
       expect(plain.status).not.toBe(0)

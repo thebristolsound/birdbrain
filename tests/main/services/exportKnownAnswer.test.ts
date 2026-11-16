@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
-import { dirname, join } from 'path'
+import { dirname, join, sep } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
 import { closeDatabase, getDb, initDatabase } from '@main/services/db/core'
@@ -52,13 +52,15 @@ import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 // One Case is written through the app's own writers and three shared test helpers. Seven
 // answers export it, and an eighth exports the copy an archive import makes of it, whose rows
 // the import renamed. The other is a Shared Case whose two chains this file writes by hand,
-// and one answer exports that. The helpers' bytes are part of the answers:
-// `seedEngineCapture` and its `ENGINE_FILES`, `seedUnanchoredDerivedFile` and
-// `buildSyntheticToken`. A change to any of them moves every answer of the first Case.
+// and one answer exports that. What the helpers write is part of each answer that encloses
+// or reports it: `seedEngineCapture` with the `ENGINE_FILES` and `ENGINE_CAPTURE_ID` of
+// tests/helpers/captureEnginePackage.ts, `seedUnanchoredDerivedFile` and
+// `buildSyntheticToken`. A change to one of them moves those answers.
 //
-// To change an answer on purpose, run
+// To change an answer on purpose, run the whole file with
 //   BIRDBRAIN_UPDATE_EXPORT_KNOWN_ANSWER=1 pnpm test tests/main/services/exportKnownAnswer.test.ts
-// and commit answers.json with the change that moved it. The file's diff then lists the
+// and commit answers.json with the change that moved it. The update writes the answers that
+// run produced and no other, so an answer whose test is gone leaves the file. The file's diff then lists the
 // members that moved, which the pull request has to account for.
 //
 // The outputs are fixed by fixing every input the export reads from its machine:
@@ -72,6 +74,10 @@ import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 //     each release;
 //   - the time zone and the operator-local date text, which report.html prints with
 //     `toLocaleString()` and the zip writes into its DOS timestamps.
+//
+// The answers are those of a platform whose paths use `/`. The Staging Pool commit signs each
+// stored path as the platform spells it, so on Windows the same Case has other, equally valid
+// bytes, and the suite reports itself skipped there.
 //
 // Not covered: burned annotations and thumbnails made at export or ingest, because sharp's
 // encoded bytes differ between the system build some machines test with and the prebuilt
@@ -168,27 +174,13 @@ interface FileAnswer {
 
 type Answer = PackageAnswer | FileAnswer
 
-// Every answer a test below pins. answers.json holds these and no other.
-const ANSWER_NAMES = [
-  'evidence-minimal',
-  'evidence-selection',
-  'evidence-with-screenshots',
-  'evidence-without-screenshots',
-  'renamed-rows',
-  'report-html',
-  'shared-case-exclude',
-  'working-copy',
-  'working-copy-minimal'
-] as const
-type AnswerName = (typeof ANSWER_NAMES)[number]
-
 const pinned: Record<string, Answer> = existsSync(ANSWERS_PATH)
   ? (JSON.parse(readFileSync(ANSWERS_PATH, 'utf-8')) as Record<string, Answer>)
   : {}
-const produced: Partial<Record<AnswerName, Answer>> = {}
+const produced: Record<string, Answer> = {}
 
 /** Compares one output with its pinned answer, or records it when updating. */
-function expectKnownAnswer(name: AnswerName, answer: Answer): void {
+function expectKnownAnswer(name: string, answer: Answer): void {
   produced[name] = answer
   if (UPDATE) return
   // An answer the file does not hold is a failure, never a pass.
@@ -205,7 +197,7 @@ const include = (over: Partial<ExportOptions['include']> = {}): ExportOptions['i
   ...over
 })
 
-describe('export known answers', () => {
+describe.skipIf(sep !== '/')('export known answers', () => {
   let tempDir: string
   const zone = process.env.TZ
   const lifecycle = createCaptureLifecycle({
@@ -225,13 +217,12 @@ describe('export known answers', () => {
     if (zone === undefined) delete process.env.TZ
     else process.env.TZ = zone
     if (!UPDATE) return
-    // An answer this run did not produce keeps its pinned value, and a name no test pins
-    // any more is dropped.
-    const merged: Record<string, Answer> = { ...pinned, ...produced }
-    const kept = Object.fromEntries(
-      ANSWER_NAMES.flatMap((name) => (merged[name] ? [[name, merged[name]]] : []))
+    const sorted = Object.fromEntries(
+      Object.keys(produced)
+        .sort()
+        .map((name) => [name, produced[name]])
     )
-    writeFileSync(ANSWERS_PATH, JSON.stringify(kept, null, 2) + '\n')
+    writeFileSync(ANSWERS_PATH, JSON.stringify(sorted, null, 2) + '\n')
   })
 
   beforeEach(async () => {
@@ -249,10 +240,6 @@ describe('export known answers', () => {
     )
     const verifies = (entryHash: string, signature: string, publicKeyPem: string): boolean =>
       signature === standInSignature(publicKeyPem, entryHash)
-    vi.spyOn(signingKey, 'verifyEntrySignature').mockImplementation(
-      (entryHash, signature, publicKeyPem) =>
-        verifies(entryHash, signature, publicKeyPem ?? LOCAL_PUBLIC_KEY)
-    )
     vi.spyOn(entrySignature, 'verifyEntrySignature').mockImplementation(verifies)
     writeFileSync(join(tempDir, 'installation-id'), LOCAL_ID)
     resetInstallationId()
@@ -809,9 +796,10 @@ describe('export known answers', () => {
     expectKnownAnswer('renamed-rows', answer)
   })
 
-  it('pins no answer that no test checks', () => {
-    // When updating, the file is rewritten after this runs, without such an answer.
+  // Last on purpose: it reads what the tests above produced. A test that was removed or
+  // skipped leaves its answer in the file with nothing checking it, and that fails here.
+  it('pins no answer that no test in this file produced', () => {
     if (UPDATE) return
-    expect(Object.keys(pinned).sort()).toEqual([...ANSWER_NAMES])
+    expect(Object.keys(pinned).sort()).toEqual(Object.keys(produced).sort())
   })
 })

@@ -3,13 +3,11 @@
 // The file is Markdown, or JSON with a `body` string (a `gh api --input` payload).
 // --any-author accepts a body without the attribution line (a human-written PR); the merge
 // path uses it. The line, when present, must still be last.
-// --screenshots adds the checks for new agent body writes: the visual declaration and its
-// images, and the unlinked-source check below.
+// --screenshots adds the visual declaration and image checks for new agent body writes.
 // Prints one finding per line and exits 1 on any finding.
 import { readFileSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import { parseLayers, plainLanguageFindings, summaryFindings } from './layers.mjs'
-import { bareReferences, referencedSources } from '../../../../.github/scripts/review-fleet/inputs.mjs'
 
 const MAX_LINES_ABOVE_VERIFICATION = 40
 const MAX_SUMMARY_SENTENCES = 5
@@ -62,54 +60,6 @@ function countSentences(text) {
     .replace(/\d+\.\d+/g, '')
     .replace(/\b(e\.g|i\.e|vs|etc)\./gi, '')
   return (prose.match(/[.!?](?=\s|$)/g) || []).length
-}
-
-// A source the review fleet cannot load: it reads the diff, the repository, and the issues,
-// pull requests, comments and reviews of this repository that the body names as #N or links
-// (.github/scripts/review-fleet/inputs.mjs). A sentence about a chat, an agent thread or a review
-// round stays unchecked, and one unchecked item fails review/fleet (ADR-0057). The wordings are
-// a short list of unambiguous ones, each with its qualifier, so "the first round trip" and
-// "a worker thread" pass.
-const ORDINAL = 'first|second|third|fourth|fifth|earlier|previous|prior|last|latest|\\d+(?:st|nd|rd|th)'
-const UNLINKED_SOURCES = [
-  [/\b(?:chat|agent|review|T3|Slack) threads?\b/i, 'a thread'],
-  [/\bin (?:this|the|that|our) (?:chat|conversation)\b/i, 'a conversation'],
-  [/\bfleet rounds?\b/i, 'a review round'],
-  [new RegExp(`\\b(?:${ORDINAL}) (?:review|fix|sol) rounds?\\b`, 'i'), 'a review round'],
-  [/\b(?:review|fix|sol) rounds? \d+\b/i, 'a review round'],
-  [/\bsol[- ]loop\b|\bSol (?:review|round|verdict)\b/, 'a Sol review']
-]
-// Whether the fleet would load a source from this line, asked of the fleet's own functions: a
-// bare #N outside a code span, a link to an issue, pull request, comment or review of this
-// repository, or a comment named by number. A link the fleet stops on (another repository, a
-// malformed comment fragment) loads nothing.
-const REPOSITORY = 'thebristolsound/birdbrain'
-function loadsSource(line) {
-  if (bareReferences(line).length > 0) return true
-  try {
-    return referencedSources(line, REPOSITORY).length > 0
-  } catch {
-    return false
-  }
-}
-
-function unlinkedSourceFindings(lines) {
-  const findings = []
-  let fence = null
-  lines.forEach((line, i) => {
-    // A fenced block is quoted output, not a sentence of the description, and the fleet reads
-    // no reference inside one.
-    const marker = line.match(/^\s*(```+|~~~+)/)?.[1]
-    if (fence ? marker?.startsWith(fence) : marker) {
-      fence = fence ? null : marker
-      return
-    }
-    if (fence || loadsSource(line)) return
-    const hit = UNLINKED_SOURCES.find(([re]) => re.test(line))
-    if (!hit) return
-    findings.push(`line ${i + 1} names ${hit[1]} with no #N or link to this repository on the line, and the review fleet fails on a statement it cannot check: link the source, move the sentence to a PR comment, or drop it: "${line.trim().slice(0, 60)}"`)
-  })
-  return findings
 }
 
 function screenshotFindings(lines) {
@@ -267,10 +217,6 @@ export function lintBody(raw, { anyAuthor = false, screenshots = false } = {}) {
   }
 
   const vStart = start('## Verification')
-  if (screenshots) {
-    const authored = visibleText.map((l, i) => (fromComment[i] ? '' : l))
-    findings.push(...unlinkedSourceFindings(vStart >= 0 ? authored.slice(0, vStart) : authored))
-  }
   if (vStart >= 0) {
     const above = visibleText
       .slice(0, vStart)

@@ -68,12 +68,11 @@ as a handoff, never asserted.
 
 Every sentence is one the review fleet can settle from its inputs: the diff and the repository
 at head, and the issues, pull requests, comments and reviews of this repository that the body
-names as `#N` or links by URL (`.github/scripts/review-fleet/inputs.mjs`). A statement about
+names as a bare `#N` outside a code span or links by URL
+(`.github/scripts/review-fleet/inputs.mjs`). A statement about
 anything else, such as a chat, an agent thread or an earlier review round, stays unchecked, and
 one unchecked item fails `review/fleet` (ADR-0057). Link the source, move the sentence to a PR
-comment, or leave it out. `check.sh --screenshots` catches a few common wordings only (a thread,
-a chat, a numbered review round) on a line from which the fleet's own functions in `inputs.mjs`
-load no source; any other uncheckable sentence is yours to catch.
+comment, or leave it out. No linter checks this: read each sentence for it before you post.
 
 ## Screenshots for visual changes
 

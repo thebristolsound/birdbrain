@@ -32,12 +32,6 @@ export const BRIDGE_PATH_EXCEPTIONS = {
 
 type PathExceptions = typeof BRIDGE_PATH_EXCEPTIONS
 
-// The two statements of the rule agree only while no channel name holds a dot:
-// the type would keep `a.b` as one key where buildBridge() nests it. A channel
-// with a dot fails to compile here.
-type AssertNever<T extends never> = T
-export type NoChannelHasADot = AssertNever<Extract<IpcChannel, `${string}.${string}`>>
-
 export type BridgePath<C extends IpcChannel> = C extends keyof PathExceptions
   ? PathExceptions[C]
   : C extends `event:${infer Name}`
@@ -72,6 +66,35 @@ export type BirdbrainAPI = {
 } & {
   [C in IpcEventChannel as BridgePath<C>]: BridgeSubscribe<C>
 }
+
+// The type above and buildBridge() below state the rule separately, and the
+// compiler does not compare what they produce. Each union here is a kind of
+// name or path on which the two are known to part, so one that is not empty
+// fails to compile. tests/preload/bridge.test.ts checks the built object.
+type AssertNever<T extends never> = T
+
+type MisnamedChannel =
+  // No colon: the type drops the channel and bridgePath() still places it.
+  | Exclude<IpcChannel, `${string}:${string}`>
+  // A dot: the type keeps one key where buildBridge() nests.
+  | Extract<IpcChannel, `${string}.${string}`>
+  // The type picks invoke or subscribe by contract, buildBridge() by prefix.
+  | Exclude<IpcEventChannel, `event:${string}`>
+  | Extract<ContractedChannel, `event:${string}`>
+export type ChannelNamesFitTheRule = AssertNever<MisnamedChannel>
+
+type RootKey = {
+  [C in IpcChannel]: BridgePath<C> extends `${string}.${string}` ? never : BridgePath<C>
+}[IpcChannel]
+
+type MisplacedPath =
+  // Two dots, which only an exception can give: buildBridge() nests once.
+  | Extract<BridgePath<IpcChannel>, `${string}.${string}.${string}`>
+  // An event under a namespace: the type would keep its path as one root key.
+  | Extract<BridgePath<IpcEventChannel>, `${string}.${string}`>
+  // A namespace that is also a root-level key: one would replace the other.
+  | Extract<BridgeNamespace, RootKey>
+export type BridgePathsFitTheRule = AssertNever<MisplacedPath>
 
 export function bridgePath<C extends IpcChannel>(channel: C): BridgePath<C>
 export function bridgePath(channel: IpcChannel): string {

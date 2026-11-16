@@ -169,8 +169,9 @@ export type RecaptureJobRequest = Omit<RecaptureJob, 'jobId' | 'batchId'>
 export interface RecaptureDeps {
   renderPage: RenderPage
   captureLifecycle: CaptureLifecycle
-  // The queue's own events: a job queued, started, cancelled, skipped before its render for a
-  // reason that is not admission's, or failed. Admission reports the rest through the lifecycle.
+  // The queue's own events: a job queued, started, cancelled, failed, or skipped for a reason
+  // that is not admission's. Admission reports an excluded address, an archived Case and a
+  // stored Capture through the lifecycle.
   emitEvent: (event: CaptureEvent) => void
   // Hears every change of a job's state, with the row as it now reads.
   emitJob?: (job: BackgroundJobView) => void
@@ -545,9 +546,10 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       })
     }
     // Where a throw would leave the job: the step it reached, and the failure kind it is logged
-    // under unless it ran out of time. Everything after the render returns counts as the ingest.
+    // under unless it ran out of time. Everything after the render returns counts as the ingest,
+    // except a Case that admission could not find.
     let step: BackgroundJobStep | undefined
-    let stage: 'link-source-error' | 'render' | 'ingest' = 'render'
+    let stage: 'link-source-error' | 'render' | 'ingest' | 'case' = 'render'
     const endCancelled = (): JobOutcome => {
       emitCancelled(job)
       logger.info('backgroundRenderer', 'backgroundRenderer.job_cancelled', {
@@ -565,10 +567,13 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     }
     // Admission refused the job. For an excluded address or an archived Case it has told the
     // feed, and the job's row and the log say why. A Case that is gone fails the job, as the
-    // ingest into it always has.
+    // ingest into it always has, and the failure is logged under the Case, not the render.
     const endRefused = (refusal: AdmissionRefusal): JobOutcome => {
       const reason = backgroundRefusalReason(refusal)
-      if (refusal.kind !== 'excluded' && refusal.kind !== 'case_archived') throw new Error(reason)
+      if (refusal.kind !== 'excluded' && refusal.kind !== 'case_archived') {
+        stage = 'case'
+        throw new Error(reason)
+      }
       const failureKind = refusal.kind === 'excluded' ? 'excluded' : 'case'
       logSkipped(failureKind)
       return { state: 'skipped', failureKind, error: reason }

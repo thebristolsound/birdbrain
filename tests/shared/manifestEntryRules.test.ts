@@ -10,7 +10,15 @@ import {
 } from '@shared/manifestEntryRules'
 import type { FieldRule, ManifestEntryType } from '@shared/manifestEntryRules'
 import { MANIFEST_ENTRY_TYPES, ManifestEntrySchema } from '@shared/schemas'
-import { ENGINE_INVENTORY } from '../helpers/captureEnginePackage'
+import { ENGINE_INVENTORY, engineFields } from '../helpers/captureEnginePackage'
+import { EGRESS_FIELDS } from '../helpers/egressPackage'
+import {
+  LAUNCHED_BROWSER_FIELDS,
+  PERSONA_FIELDS,
+  SCHEMA_2_CAPTURE_BODY,
+  SCHEMA_3_EXHIBIT_BODY
+} from '../helpers/launchedBrowser'
+import { LINK_FIELDS } from '../helpers/linkProvenance'
 
 // The rules module is what the writer's stamp and the reader's schema both
 // read, so these tests go through its interface and assert the two halves of
@@ -54,6 +62,42 @@ function inventory(parts: object = {}): unknown {
 // inventory, whose values the launched browser rule reads.
 function carried(field: string): unknown {
   return field === 'inventory' ? inventory() : 'carried'
+}
+
+// An entry body of each type that has a rule, valid without any rule's fields.
+const BODIES: Partial<Record<ManifestEntryType, Record<string, unknown>>> = {
+  capture: SCHEMA_2_CAPTURE_BODY,
+  timestamp: {
+    type: 'timestamp',
+    caseId: SCHEMA_2_CAPTURE_BODY.caseId,
+    captureContentHash: 'a'.repeat(64),
+    timestamp: '2026-06-01T12:00:00.000Z',
+    operatorId: 'op-1',
+    operatorName: 'Casey Operator',
+    toolVersion: '0.4.0',
+    index: 0,
+    prevHash: '',
+    schemaVersion: 2
+  },
+  exhibit: SCHEMA_3_EXHIBIT_BODY
+}
+
+// The fields of each rule that one entry can carry together, with values the
+// entry schema admits, and nothing a later rule reads.
+const CARRYING: Record<string, Record<string, unknown>> = {
+  'capture.exhibitNumber': { exhibitNumber: 7 },
+  'capture.egress': EGRESS_FIELDS,
+  'capture.captureEngine': engineFields(),
+  'capture.linkProvenance': LINK_FIELDS,
+  'capture.launchedBrowser': {
+    ...LAUNCHED_BROWSER_FIELDS,
+    method: 'launched-passive',
+    passiveRule: 'every-page'
+  },
+  'capture.persona': PERSONA_FIELDS,
+  'timestamp.subject': { subject: 'entry' },
+  'exhibit.memberCode': { memberCode: 'AB' },
+  'exhibit.persona': PERSONA_FIELDS
 }
 
 function shapeKeys(type: ManifestEntryType): string[] {
@@ -130,6 +174,29 @@ describe('Manifest Entry rules: the field rules', () => {
       expect(check({ ...entry, schemaVersion: rule.minReader - 1 })).toBe(false)
       expect(check({ ...entry, schemaVersion: rule.minReader })).toBe(true)
       expect(check({ ...entry, schemaVersion: MANIFEST_SCHEMA_VERSION })).toBe(true)
+    })
+
+    it('is enforced by the entry schema, which refuses its fields one version below', () => {
+      // A rule the schema has no refine for would raise the writer's stamp
+      // while the reader went on admitting the fields at any version.
+      const body = BODIES[type]
+      const fields = CARRYING[`${type}.${name}`]
+      expect(body, `no entry body for ${type}`).toBeDefined()
+      expect(fields, `no carried fields for ${type}.${name}`).toBeDefined()
+      const parse = (schemaVersion: number) =>
+        ManifestEntrySchema.safeParse({
+          ...body,
+          ...fields,
+          schemaVersion,
+          entryHash: 'f'.repeat(64)
+        })
+
+      const refused = parse(rule.minReader - 1)
+      expect(refused.success).toBe(false)
+      expect(refused.error?.issues).toEqual([
+        expect.objectContaining({ message: REFUSALS[`${type}.${name}`], path: ['schemaVersion'] })
+      ])
+      expect(parse(rule.minReader).error?.issues).toBeUndefined()
     })
 
     it('leaves an entry without its fields at the type minimum, at any version', () => {

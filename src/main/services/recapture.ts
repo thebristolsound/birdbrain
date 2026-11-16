@@ -52,8 +52,9 @@ import type {
   RecaptureQueueStatus
 } from '@shared/ipc'
 
-// Two parts of `RenderedPage` that the capture-finish package defines. Two test files import
-// them from here along with it, which is all this export is for.
+// Re-exported for two test files, one type each: tests/main/services/recapture.test.ts imports
+// `ScreenshotRecord` from here, and tests/main/services/backgroundRenderer.test.ts imports
+// `PdfOutcome`.
 export type { PdfOutcome, ScreenshotRecord }
 
 export interface RenderedPage {

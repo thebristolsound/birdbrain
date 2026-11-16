@@ -288,7 +288,8 @@ export type AdmissionRefusal =
   | { kind: 'excluded'; pattern: string }
   | { kind: 'duplicate' }
   // The ingest itself threw. Logged and reported on the activity feed here;
-  // the caller only maps it.
+  // the caller only maps it. The background route returns it unreported: the
+  // queue logs and reports a job's failure.
   | { kind: 'failed'; error: unknown }
 
 export type AdmissionOutcome =
@@ -1686,7 +1687,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     },
 
     async ingest(params) {
-      // Admission passes the gate's name already; recapture reaches ingest without admission.
+      // The extension and launched routes pass the gate's name already. The background route
+      // passes the name as it reads, so this check is its operator gate.
       const operatorName = params.operatorName.trim()
       if (!operatorName) throw new OperatorNameRequiredError()
       const egressIsDirect = deps.egressIsDirect ?? (() => currentEgress().kind === 'direct')

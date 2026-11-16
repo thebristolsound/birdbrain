@@ -169,8 +169,8 @@ export type RecaptureJobRequest = Omit<RecaptureJob, 'jobId' | 'batchId'>
 export interface RecaptureDeps {
   renderPage: RenderPage
   captureLifecycle: CaptureLifecycle
-  // The queue's own events: a job queued, started, cancelled, skipped before its render for a
-  // reason that is not admission's, or failed. Admission reports the rest through the lifecycle.
+  // The queue's own events: a job queued, started, cancelled, failed, or skipped for a reason
+  // that is not admission's. Admission reports the rest through the lifecycle.
   emitEvent: (event: CaptureEvent) => void
   // Hears every change of a job's state, with the row as it now reads.
   emitJob?: (job: BackgroundJobView) => void

@@ -8,7 +8,7 @@ blocking tier of the evidence path list, so each pull request after the first ca
 
 ## Decision
 
-One module decides what an export encloses: the Package Contents. It takes the
+One module decides what an export encloses: the Package Contents (`CONTEXT.md`). It takes the
 chain entries the package vouches for, the rows in the export's scope and a byte source, and
 returns which files are enclosed, under which package path, with their bytes. The report, the
 index (`evidence.json`), the Certification and the zip read that one result.
@@ -40,15 +40,22 @@ three chose a new package, one synchronous call, and results that carry their by
    and repeats the first answer, a failed read included.
 4. **The failure rule is in the port's contract.** A non-Capture Exhibit or a Derived File
    that cannot be read is not enclosed, and the export carries on. That is what
-   `createPackageReader` did. Slice 3 adds a Capture's own files, where a file that exists and
-   cannot be read fails the export.
+   `createPackageReader` did. A Capture's own file that exists and cannot be read fails the
+   export, as `CaptureStore.readArtifact` always did.
 5. **Chain names stay an input.** `resolveChainNames` stays in `export.ts`. Entry signatures,
    notes, the signed selection and the Shared Case exclusions read it too, and none of those
    is a contents decision.
 6. **One module for both export classes.** An Evidence Package, a Working Copy and a
    standalone report differ in what they enclose, and that difference is the decision this
    module holds. A Working Copy encloses no Timestamp Token.
-7. **No ADR.** Nothing here reverses a prior decision. The known-answer test is the record.
+7. **One table says which signed field anchors which Capture file.** `CAPTURE_FILE_RULES`
+   lists the page archive, the screenshot, the Transaction Record and the PDF with the field
+   of the `capture` entry that carries each hash, and what an Evidence Package does with a
+   file no entry anchors. A file the entry anchors is always enclosed when the Capture holds
+   it, and no row can say otherwise. The writer once left an anchored screenshot out (#2098).
+8. **The answer names the anchoring field.** Each enclosed Capture file carries `anchoredBy`,
+   so a test can state the rule directly. No document prints it.
+9. **No ADR.** Nothing here reverses a prior decision. The known-answer test is the record.
 
 ## Proof
 
@@ -86,12 +93,23 @@ Each is a difference only when a file changes or fails while an export runs.
   path could read a file that the first row was told was absent.
 - **Slice 2.** A Working Copy no longer computes Timestamp Token paths. It never enclosed a
   token and no Working Copy document printed the path.
+- **Slice 3.** A Capture's file is read once. Before, the report took a page archive's path
+  from a check that the file existed and the zip read the file later, so a file removed in
+  between left a package whose report named a file the zip lacked. Now the report, the index
+  and the zip state the one read. A screenshot was read up to three times and is read once.
+- **Slice 3.** A Capture file that exists and cannot be read still fails the export with the
+  same error and writes no package. The error is now raised when the contents are decided,
+  before the report is rendered. It was raised while the zip was built. Both are before the
+  `export` entry is appended.
+- **Slice 3.** A page archive is hashed once more, because the decision records its SHA-256
+  and the zip writer hashes what it writes.
 
 ## Handoff
 
 - **Shipped:** nothing merged yet.
-- **In flight:** slice 1 and slice 2 are written. Slice 2 is stacked on slice 1.
-- **Next command:** after slice 1 merges,
-  `git rebase origin/main refactor/evidence-package-contents`, then
+- **In flight:** slices 1, 2 and 3 are written, each stacked on the one before: branches
+  `test/export-known-answer-package`, `refactor/evidence-package-contents` and
+  `refactor/package-contents-capture-files`.
+- **Next command:** after a slice merges, rebase the next branch onto `origin/main`, then
   `pnpm test tests/main/services/exportKnownAnswer.test.ts` and `pnpm preflight`.
 - **Open questions:** none.

@@ -2,9 +2,11 @@
 // lib/ is private.
 export { decidePackageContents } from './lib/contents'
 export type {
+  CaptureAnchor,
   CaptureContents,
   DerivedFileAnchoring,
   DerivedFileContents,
+  EnclosedCaptureFile,
   EnclosedFile,
   ExportForm,
   FileExhibitContents,
@@ -12,4 +14,4 @@ export type {
   PackageContentsInput
 } from './lib/contents'
 export { readOnce } from './lib/byteSource'
-export type { PackageByteSource } from './lib/byteSource'
+export type { CaptureFileType, PackageByteSource } from './lib/byteSource'

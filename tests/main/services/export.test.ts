@@ -4862,12 +4862,10 @@ describe('export', () => {
     })
 
     it('refuses the export when a capture artifact is present but unreadable', async () => {
-      // The Capture path is outside the contents decision (its artifacts are
-      // probed and read separately, as they were before #1156), so a read
-      // failure there is an error and not a classification: the export fails
-      // and writes nothing, rather than quietly narrowing the package. Pinned
-      // so that behaviour cannot drift into a silent narrowing, and named in
-      // the PR's findings list as a follow-up candidate.
+      // A Capture's own file that exists and cannot be read is an error and
+      // not a classification: the export fails and writes nothing, rather
+      // than quietly narrowing the package. Pinned so that behaviour cannot
+      // drift into a silent narrowing.
       const mhtml = join(tempDir, 'captures', fixture.caseId, `${fixture.captureId}.mhtml`)
       chmodSync(mhtml, 0o000)
       let stillReadable: boolean
@@ -4907,6 +4905,32 @@ describe('export', () => {
         expect(existsSync(outputPath)).toBe(false)
       } finally {
         chmodSync(mhtml, 0o644)
+      }
+    })
+
+    it("reads a Capture's screenshot once for the report and the package", async () => {
+      // The report reproduces the screenshot and the package encloses it. One
+      // read serves both, so the two cannot be of different bytes. The audit
+      // trail is off because its verification run reads the file on its own.
+      const read = vi.spyOn(defaultCaptureStore, 'readArtifact')
+      try {
+        const entries = await exportMixed('one-read.zip', {
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: false,
+            notes: false,
+            annotations: 'none'
+          }
+        })
+        expect(
+          read.mock.calls.filter(([, id, type]) => id === fixture.captureId && type === 'png')
+        ).toHaveLength(1)
+        expect([...entries.keys()].filter((name) => name.startsWith('screenshots/'))).toHaveLength(
+          1
+        )
+      } finally {
+        read.mockRestore()
       }
     })
 

@@ -5,8 +5,8 @@ import type { AppendResult, CaptureEntryContext } from '@main/services/manifest'
 // The Capture row a signed `capture` entry describes: the one statement of which Manifest Entry
 // fields a row mirrors, and in which columns. The ingest, a Duplicate and the row sync writes
 // for another member's Capture each pass the entry, what no entry signs, and where its row
-// departs from the entry on purpose. A field the row mirrors is added here once and every
-// writer carries it.
+// departs from the entry on purpose. A field the row mirrors is added here once, not once per
+// writer. A received row leaves the six capture engine fields out (#2206).
 
 // The entry fields the row mirrors. A `capture` entry read from a chain has them, and so does
 // the context a writer signs once the append has returned its index and hashes.
@@ -62,15 +62,15 @@ export interface CaptureRowLocal {
   browserVersion?: string
   userAgent?: string
   // True when the writer received a response header set and it was empty. The row then stores
-  // `{}`, as the ingest's always has, where the entry omits the field. A row never holds
-  // headers other than the ones its entry signs.
+  // `{}`, as the ingest's always has, where the entry omits the field. The flag cannot add a
+  // header the entry does not sign.
   emptyHeaderSet?: boolean
   // The row a link Capture's source is held under (ADR-0040), when the writer resolved one.
   // Absent, the row keeps the id the entry signs; the two differ after an import renamed the
   // source's row.
   linkedFromRowId?: string
   // The number a later `renumber` entry gave the Exhibit, used only when its own entry carries
-  // none. A row never holds a number other than the one its entry signs.
+  // none. It never replaces a number the entry signs.
   renumberedTo?: number
   // Another member's Capture, received by sync (#1811), and the `committed_at` its Exhibit row
   // takes.

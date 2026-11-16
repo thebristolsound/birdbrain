@@ -127,6 +127,14 @@ reports what is inside it, so a wrong part boundary or span is a wrong statement
 No entry or glob names the file, so without the row a later edit touching only it would match no
 entry.
 
+On 2026-11-16 `src/packages/capture-finish/**` was added to Acquisition at blocking tier, in the
+change that creates it. The package holds the steps that `transactionRecorder.ts`,
+`backgroundRenderer.ts`, `recapture.ts` and `launchedBrowser/captureTab.ts` each held a copy of:
+the end phases of a Transaction Record with its inventory part and Bound TLS Details, the print
+to PDF with its two limits, and the assembly of the inventory a `capture` entry signs. Those four
+files keep their blocking rows. Without the row, the code that decides those signed parts would
+have left the list by moving.
+
 On 2026-11-09 the rows that stale-closed issues had left unwritten were added. The selection
 bar (`extension/src/selectionBar.ts`, ruling W25 on #967) and the two files of the capture
 interface suppression protocol (`captureSuppression.ts`, `captureHygiene.ts`) joined Acquisition
@@ -294,6 +302,7 @@ that caused it was to record the carved-out file as an exclusion (#515), which i
 | `src/main/services/consentBlocker.ts` | blocking | Suppresses consent overlays during recapture — alters acquired page content |
 | `src/packages/transaction-record/**` | blocking | Turns the browser's network events into the exchanges a Transaction Record holds and the inventory counts of what it lacks, and a main document's `securityDetails` into Bound TLS Details |
 | `src/main/services/transactionRecorder.ts` | blocking | Sets up each debugger session of a background render, decides which events and bodies reach the Transaction Record and under what budget, and whether the record is present or `failed` (#1929). Added 2026-10-26 |
+| `src/packages/capture-finish/**` | blocking | Finishes a `background` or `launched` Capture once its recording has stopped: writes the Transaction Record from what the recording collected and states its inventory part and Bound TLS Details or why they are absent, prints the PDF under its height and size limits, and assembles the inventory the `capture` entry signs. Each Capture Method supplies its own bounds, checks and signed facts. Added 2026-11-16 |
 | `src/main/services/testCertificateAllowance.ts` | blocking | Holds the test-only switch that makes a render accept one TLS leaf, which a packaged build ignores (#1929). Added 2026-10-26 |
 | `src/main/services/launchedBrowser/**` | blocking | Starts the browser the Operator browses in and drives it (#1831): which executable runs, with which switches and browser profile, which commands the engine may send it, and the Egress checks that refuse to start it or close it when its traffic could leave around the proxy. Since #1832 it also records each tab, removes credential values and request bodies, takes clicked Captures and picks the shortcut's tab. Added 2026-11-03, amended 2026-11-05 |
 | `src/renderer/components/launchedBrowser/CaptureControl.tsx` | blocking | Names the tab a clicked Capture in the launched browser takes and sends it, with the Operator's Scroll-to-load choice (#1832). Added 2026-11-05 |

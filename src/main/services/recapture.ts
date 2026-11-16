@@ -16,7 +16,6 @@ import {
   entryDescribesRow,
   verifyCapture,
   type CaptureLifecycle,
-  type IngestParams,
   type LinkSource
 } from '@main/services/captureLifecycle'
 import { defaultCaptureStore } from '@main/services/captureStore'
@@ -35,8 +34,11 @@ import type {
   LogContext
 } from '@main/services/logSafe'
 import type { TransactionRecordOutcome } from '@main/services/transactionRecorder'
+import { finishFields } from '../../packages/capture-finish/inventory'
+import type { ImageSourcePinning, ScreenshotRecord } from '../../packages/capture-finish/inventory'
+import type { PdfOutcome, PresentPdf } from '../../packages/capture-finish/pdf'
 import { ManifestEntrySchema } from '@shared/schemas'
-import type { CaptureInventory, ScrollToLoadRecord } from '@shared/schemas'
+import type { ScrollToLoadRecord } from '@shared/schemas'
 import type { Capture, CaptureEvent, ConsentSuppression } from '@shared/types'
 import type {
   BackgroundJobPhase,
@@ -50,21 +52,9 @@ import type {
   RecaptureQueueStatus
 } from '@shared/ipc'
 
-// What the renderer knows about the screenshot it took: the inventory's
-// screenshot part without `present` (D6 of
-// docs/plans/2026-10-10-capture-engine-first-slice.md).
-export type ScreenshotRecord = Omit<CaptureInventory['screenshot'], 'present'>
-
-// The inventory's MHTML part, with the Image Source Pinning counts (ADR-0055).
-export type ImageSourcePinning = CaptureInventory['mhtml']
-
-export type PresentPdf = Extract<CaptureInventory['pdf'], { present: true }>
-
-// The PDF the render printed, with its inventory part, or why it has none
-// (step 10 of docs/plans/2026-10-10-capture-engine-first-slice.md).
-export type PdfOutcome =
-  | { present: true; bytes: Buffer; inventory: PresentPdf }
-  | { present: false; reason: 'failed'; error: unknown }
+// The parts of a render's result that the capture-finish package defines, named
+// here because `RenderedPage` carries them.
+export type { ImageSourcePinning, PdfOutcome, PresentPdf, ScreenshotRecord }
 
 export interface RenderedPage {
   // The live renderer hands over a Node ReadStream on its temp file, so the fd
@@ -293,35 +283,6 @@ export function looksLikeLoginWall(input: {
 // own text, so the comparison still happens and never throws.
 export function redirectedFinalUrl(requestedUrl: string, finalUrl: string): string | undefined {
   return canonicalizeUrl(finalUrl) === canonicalizeUrl(requestedUrl) ? undefined : finalUrl
-}
-
-// The inventory a background Capture signs (D4 of
-// docs/plans/2026-10-10-capture-engine-first-slice.md).
-function backgroundInventory(
-  imageSourcePinning: ImageSourcePinning,
-  screenshot: ScreenshotRecord,
-  transactionRecord: TransactionRecordOutcome,
-  pdf: PdfOutcome
-): CaptureInventory {
-  return {
-    mhtml: imageSourcePinning,
-    transactionRecord: transactionRecord.present
-      ? transactionRecord.inventory
-      : { present: false, reason: transactionRecord.reason },
-    screenshot: { present: true, ...screenshot },
-    pdf: pdf.present ? pdf.inventory : { present: false, reason: pdf.reason }
-  }
-}
-
-// The ingest fields the Transaction Record outcome sets: the file, and Bound
-// TLS Details or why they are absent (D7). A Capture with no record has them
-// `not-recorded`.
-function transactionRecordFields(
-  outcome: TransactionRecordOutcome
-): Pick<IngestParams, 'transactionRecord' | 'boundTls' | 'boundTlsAbsent'> {
-  if (!outcome.present) return { boundTlsAbsent: 'not-recorded' }
-  const { warcGz, boundTls, boundTlsAbsent } = outcome
-  return { transactionRecord: warcGz, boundTls, boundTlsAbsent }
 }
 
 function canonicalizeUrl(raw: string): string {
@@ -709,15 +670,13 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         consentSuppression: rendered.consentSuppression,
         egress: rendered.egress,
         linkSource,
-        inventory: backgroundInventory(
-          rendered.imageSourcePinning,
-          rendered.screenshotRecord,
-          rendered.transactionRecord,
-          rendered.pdf
-        ),
         scrollToLoad: rendered.scrollToLoad,
-        ...transactionRecordFields(rendered.transactionRecord),
-        pdf: rendered.pdf.present ? rendered.pdf.bytes : undefined
+        ...finishFields({
+          mhtml: rendered.imageSourcePinning,
+          screenshot: rendered.screenshotRecord,
+          transactionRecord: rendered.transactionRecord,
+          pdf: rendered.pdf
+        })
       })
       const ingestMs = Date.now() - ingestStartedAt
 

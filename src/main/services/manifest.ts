@@ -16,7 +16,7 @@ import {
 import { join, resolve } from 'path'
 import { createHash } from 'crypto'
 import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
-import { carriesLaunchedBrowserValue, ManifestEntrySchema } from '@shared/schemas'
+import { ManifestEntrySchema } from '@shared/schemas'
 import type {
   BoundTls,
   CaptureInventory,
@@ -30,6 +30,7 @@ import {
   verifyManifestChainText,
   verifySharedCaseReplica
 } from '@shared/verify'
+import { minReaderSchemaVersion } from '@shared/manifestEntryRules'
 import type { PackagedArtifact } from '@shared/verify/packageHash'
 import type {
   ChainVerifyResult,
@@ -683,18 +684,19 @@ export type ManifestEntryInput =
       // hashes — are unchanged.
       consentSuppression?: ConsentSuppression
       // The Capture's Exhibit Number (X46). A schema-3 field, so an entry
-      // carrying it is stamped 3 (CAPTURE_EXHIBIT_NUMBER_MIN_READER).
+      // carrying it is stamped 3 (FIELD_RULES in manifestEntryRules.ts, as for
+      // every stamp named below).
       exhibitNumber?: number
       // The Egress fields (ADR-0032, #1694), described at the capture entry
       // schema in schemas.ts. Schema-5 fields, so an entry carrying any of them
-      // is stamped 5 (CAPTURE_EGRESS_MIN_READER). Nothing writes them yet.
+      // is stamped 5. Nothing writes them yet.
       egressKind?: EgressKind
       egressLabel?: string
       userAgent?: string
       tlsSkipped?: TlsRefetchSkip
       // The capture engine's fields, described at the capture entry schema in
       // schemas.ts. Schema-6 fields, so an entry carrying any of them is
-      // stamped 6 (CAPTURE_ENGINE_MIN_READER).
+      // stamped 6.
       inventory?: CaptureInventory
       scrollToLoad?: ScrollToLoadRecord
       transactionRecordHash?: string
@@ -703,14 +705,14 @@ export type ManifestEntryInput =
       pdfHash?: string
       // Link Capture provenance (ADR-0040), described at the capture entry
       // schema in schemas.ts. Schema-6 fields, so an entry carrying any of
-      // them is stamped 6 (CAPTURE_LINK_PROVENANCE_MIN_READER).
+      // them is stamped 6.
       linkedFromCaptureId?: string
       linkedFromContentHash?: string
       linkHref?: string
       // The launched browser's fields and the Persona fields, described at the
       // capture entry schema in schemas.ts. Schema-7 fields, so an entry
       // carrying any of them, a launched method, or a stage-2 inventory value
-      // is stamped 7 (LAUNCHED_BROWSER_MIN_READER, PERSONA_MIN_READER).
+      // is stamped 7.
       // A clicked `launched` Capture writes the browser fields (#1832).
       browserProduct?: string
       browserVersion?: string
@@ -742,8 +744,8 @@ export type ManifestEntryInput =
       caseId: string
       captureContentHash: string
       // A receipt stamp (#1515, design decision 15): `captureContentHash` is
-      // then a `merge` entry's Entry Hash, and the entry is stamped 4
-      // (TIMESTAMP_SUBJECT_MIN_READER). Only `entry` is writable here: the
+      // then a `merge` entry's Entry Hash, and the entry is stamped 4. Only
+      // `entry` is writable here: the
       // schema also reads `content`, but nothing ever writes it, so every
       // content stamp keeps its canonical body.
       subject?: 'entry'
@@ -827,11 +829,10 @@ export type ManifestEntryInput =
       // The writer's Member Code in a Shared Case (schema 4). OMITTED by every
       // writer in this build (#1810): a citation takes the code from the
       // writer's `member-add`, and a code that disagreed with the roster
-      // would be a citation collision. An entry carrying one is stamped 4
-      // (EXHIBIT_MEMBER_CODE_MIN_READER).
+      // would be a citation collision. An entry carrying one is stamped 4.
       memberCode?: string
       // The Persona fields (ADR-0030), schema 7: an entry carrying either is
-      // stamped 7 (PERSONA_MIN_READER). Nothing writes them yet.
+      // stamped 7. Nothing writes them yet.
       personaId?: string
       personaLabel?: string
       timestamp: string
@@ -958,48 +959,14 @@ export interface AppendResult {
   line: string
 }
 
-// The MINIMUM manifest schema version a reader needs for each entry type this
-// build writes — not MANIFEST_SCHEMA_VERSION, which is the highest version this
-// build can READ.
-//
-// Stamping the read ceiling on every entry would make every capture written
-// after a version bump unreadable to verifiers already in recipients' hands,
-// for entries whose shape those verifiers understand perfectly (X25: a stale
-// verifier reporting a valid chain as broken is a false accusation, and nothing
-// can recall a distributed copy). So each type declares the oldest verifier
-// that can read it, and the v3 types (ADR-0023) stamp 3. A `capture` entry
-// stamps 3, 5, 6 or 7 only when it carries a schema-3, schema-5, schema-6 or
-// schema-7 field or value (fieldMinReaderSchemaVersion).
-//
-// Typed as a total Record over the input union so adding an entry type without
-// deciding its minimum reader version is a compile error, not a silent 2. That
-// no value exceeds what this build can read is pinned by a test rather than a
-// runtime guard — an unreachable throw here would be untestable code on the
-// evidence path.
-export const MIN_READER_SCHEMA_VERSION: Record<ManifestEntryInput['type'], number> = {
-  capture: 2,
-  deletion: 2,
-  timestamp: 2,
-  export: 2,
-  'archive-export': 2,
-  import: 2,
-  // The v3 types (ADR-0023). No v1 or v2 form exists for either, so a reader
-  // below 3 cannot make sense of one and stamping anything lower would invite
-  // it to try.
-  exhibit: 3,
-  derivation: 3,
-  renumber: 3,
-  // The Shared Case types are schema 4 (#1509); `merge` is the one the sync
-  // session writes (#1512), the other three the Owner's roster writers
-  // (#1810). A 4 is what the 1.0.1-beta.22 verifier reads.
-  merge: 4,
-  'member-add': 4,
-  'member-revoke': 4,
-  exclude: 4
-}
+// The minimum schema version a reader needs for each entry type, and for each
+// field a later schema added to one, is stated in manifestEntryRules.ts, which
+// the reader's schema reads too. Re-exported here so every existing caller
+// keeps importing the type minimums from manifest.ts, which owns the stamp.
+export { MIN_READER_SCHEMA_VERSION } from '@shared/manifestEntryRules'
 
 // Per-entry overrides for the two generalized types (#1180). A `timestamp` or
-// `deletion` entry's shape has a schema-2 form, so the map above says 2 — and
+// `deletion` entry's shape has a schema-2 form, so its type minimum says 2 — and
 // a schema-2 verifier would then parse an entry that binds an attachment as a
 // Capture's and silently fail to apply it. The caller that knows the target is
 // not a Capture says so here, and the writer stamps the higher of the two.
@@ -1008,81 +975,6 @@ export interface AppendOptions {
   // Called with the entry as it will be written, its `entryHash` included, before it is signed;
   // a throw stops the append, so nothing reaches the manifest.
   check?: (entry: Readonly<Record<string, unknown>>) => void
-}
-
-// A `capture` entry's shape has a schema-2 form, but `exhibitNumber` is a
-// schema-3 field (X46): a schema-2 verifier meeting it under a 2 stamp would
-// fail the strict parse and report a broken chain. Decided here from the entry
-// itself rather than by each caller, so every append of the field stamps 3.
-const CAPTURE_EXHIBIT_NUMBER_MIN_READER = 3
-
-// The Egress fields are schema 5 (ADR-0032) on the same reasoning: a schema-4
-// verifier reads an entry carrying one as "verifier too old" only under a 5.
-const CAPTURE_EGRESS_MIN_READER = 5
-
-// The capture engine's fields are schema 6 on the same reasoning.
-const CAPTURE_ENGINE_MIN_READER = 6
-
-// So are the link provenance fields (ADR-0040, "The fields need schema 6").
-const CAPTURE_LINK_PROVENANCE_MIN_READER = 6
-
-// The launched browser's values are schema 7: its two Capture Methods, its
-// fields, and the stage-2 inventory values. The method values are the first
-// values, rather than fields, this function reads: a schema-6 verifier's strict
-// method enum has neither.
-const LAUNCHED_BROWSER_MIN_READER = 7
-
-// The Persona fields are schema 7 on `capture` and `exhibit` entries alike
-// (ADR-0030, amended 2026-10-31).
-const PERSONA_MIN_READER = 7
-
-// A `timestamp` entry's `subject` is a schema-4 field (#1518): the schema
-// itself refuses one stamped lower, and a schema-3 verifier would read it as a
-// broken chain rather than "verifier too old".
-const TIMESTAMP_SUBJECT_MIN_READER = 4
-
-// `memberCode` on an `exhibit` entry is schema 4 (#1509): the schema refuses
-// the field on an entry stamped lower, so an entry carrying it stamps 4 and
-// one without it keeps the type's 3.
-const EXHIBIT_MEMBER_CODE_MIN_READER = 4
-
-function carriesPersonaField(entry: { personaId?: string; personaLabel?: string }): boolean {
-  return entry.personaId !== undefined || entry.personaLabel !== undefined
-}
-
-function fieldMinReaderSchemaVersion(entry: ManifestEntryInput): number {
-  if (entry.type === 'timestamp') {
-    return entry.subject !== undefined ? TIMESTAMP_SUBJECT_MIN_READER : 0
-  }
-  if (entry.type === 'exhibit') {
-    if (carriesPersonaField(entry)) return PERSONA_MIN_READER
-    return entry.memberCode !== undefined ? EXHIBIT_MEMBER_CODE_MIN_READER : 0
-  }
-  if (entry.type !== 'capture') return 0
-  if (carriesLaunchedBrowserValue(entry)) return LAUNCHED_BROWSER_MIN_READER
-  if (carriesPersonaField(entry)) return PERSONA_MIN_READER
-  const { inventory, scrollToLoad, transactionRecordHash, boundTls, boundTlsAbsent, pdfHash } =
-    entry
-  const engineFields = [
-    inventory,
-    scrollToLoad,
-    transactionRecordHash,
-    boundTls,
-    boundTlsAbsent,
-    pdfHash
-  ]
-  if (engineFields.some((field) => field !== undefined)) {
-    return CAPTURE_ENGINE_MIN_READER
-  }
-  const { linkedFromCaptureId, linkedFromContentHash, linkHref } = entry
-  if ([linkedFromCaptureId, linkedFromContentHash, linkHref].some((field) => field !== undefined)) {
-    return CAPTURE_LINK_PROVENANCE_MIN_READER
-  }
-  const { egressKind, egressLabel, userAgent, tlsSkipped, exhibitNumber } = entry
-  if ([egressKind, egressLabel, userAgent, tlsSkipped].some((field) => field !== undefined)) {
-    return CAPTURE_EGRESS_MIN_READER
-  }
-  return exhibitNumber !== undefined ? CAPTURE_EXHIBIT_NUMBER_MIN_READER : 0
 }
 
 // One in-memory queue per case directory (#394, #639). A rollback is a truncation, so two writers
@@ -1125,16 +1017,12 @@ export function appendManifestEntry(
     ...entry,
     index: nextIndex,
     prevHash,
-    // Never below the type's own minimum, never above what this build can
-    // read: an entry stamped past the ceiling would be reported "verifier too
-    // old" by the verifier that wrote it.
+    // Never below what a reader needs for the entry's type and fields, never
+    // above what this build can read: an entry stamped past the ceiling would
+    // be reported "verifier too old" by the verifier that wrote it.
     schemaVersion: Math.min(
       MANIFEST_SCHEMA_VERSION,
-      Math.max(
-        MIN_READER_SCHEMA_VERSION[entry.type],
-        fieldMinReaderSchemaVersion(entry),
-        opts.minReaderSchemaVersion ?? 0
-      )
+      Math.max(minReaderSchemaVersion(entry), opts.minReaderSchemaVersion ?? 0)
     )
   }
   const canonical = canonicalStringify(body)

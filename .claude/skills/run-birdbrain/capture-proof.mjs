@@ -350,7 +350,7 @@ function describeCapture(dir, entry) {
   }
 }
 
-function describeRun(out, label) {
+export function describeRun(out, label) {
   const dir = path.join(out, label, 'case')
   if (!fs.existsSync(dir)) throw new Error(`no run labelled ${label} under ${out}: take it first`)
   const described = {}
@@ -362,7 +362,7 @@ function describeRun(out, label) {
   return described
 }
 
-function compare(a, b, { out }) {
+export function compare(a, b, { out }) {
   const [A, B] = [describeRun(out, a), describeRun(out, b)]
   let different = false
   for (const method of new Set([...Object.keys(A), ...Object.keys(B)])) {

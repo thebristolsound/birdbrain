@@ -1,7 +1,6 @@
 import { toast } from 'sonner'
 import type { LogCode, LogEntry } from '@shared/types'
 import { labelForCode } from '@renderer/lib/notify'
-import { birdbrain } from '@renderer/lib/birdbrain'
 
 // Main already wrote these to disk, so this path toasts ONLY — routing them
 // back through notify.error would write a duplicate entry and, because that
@@ -97,7 +96,7 @@ export function subscribeToMainLog(): () => void {
   // under each deduped id, and filtered through the same `seen` set so an
   // entry present in both paths is handled once.
   try {
-    void birdbrain.diagnostics
+    void window.birdbrain.diagnostics
       .recentEntries(50)
       .then((history) => {
         if (history.length === 0) return

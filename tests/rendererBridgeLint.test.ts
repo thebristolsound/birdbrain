@@ -9,12 +9,14 @@ vi.setConfig({ testTimeout: 60_000 })
 const REPO = join(__dirname, '..')
 const RULE = 'no-restricted-syntax'
 
-// The lines of `code` the repository's own configuration reports the rule on,
-// as if the code sat at `file`.
+// The lines of `code` the repository's own configuration reports the rule on
+// as an error, as if the code sat at `file`. A warning does not fail lint.
 async function restrictedLines(code: string, file: string): Promise<number[]> {
   const eslint = new ESLint({ cwd: REPO })
   const [result] = await eslint.lintText(code, { filePath: join(REPO, file) })
-  return result.messages.filter((message) => message.ruleId === RULE).map((message) => message.line)
+  return result.messages
+    .filter((message) => message.ruleId === RULE && message.severity === 2)
+    .map((message) => message.line)
 }
 
 // A refused invoke call rejects at the raw bridge with a plain object, so the
@@ -43,8 +45,16 @@ describe('the raw bridge lint rule', () => {
     expect(await restrictedLines(CODE, file)).toEqual([1, 2, 3, 4, 5, 6, 7])
   })
 
-  it('leaves the adapter module, which binds the raw bridge, alone', async () => {
-    expect(await restrictedLines(CODE, 'src/renderer/lib/birdbrain.ts')).toEqual([])
+  // The adapter binds the raw bridge; the other four are the error-reporting
+  // path, which stays on it and discards a rejection.
+  it.each([
+    'src/renderer/lib/birdbrain.ts',
+    'src/renderer/lib/queryClient.ts',
+    'src/renderer/lib/mainLogBridge.ts',
+    'src/renderer/lib/notify.ts',
+    'src/renderer/lib/globalErrorLog.ts'
+  ])('leaves %s alone', async (file) => {
+    expect(await restrictedLines(CODE, file)).toEqual([])
   })
 
   it.each(['e2e/probe.spec.ts', 'src/main/probe.ts', 'src/shared/probe.ts'])(

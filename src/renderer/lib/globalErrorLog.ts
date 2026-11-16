@@ -1,5 +1,4 @@
 import type { LogCode } from '@shared/types'
-import { birdbrain } from '@renderer/lib/birdbrain'
 
 // Errors nothing else caught: a throw in an event handler or timer, and a
 // promise no caller awaited. Render errors reach ErrorBoundary instead, and
@@ -10,7 +9,7 @@ import { birdbrain } from '@renderer/lib/birdbrain'
 // that can carry a case name or a URL.
 function report(code: LogCode, cause: unknown): void {
   const error = cause instanceof Error ? cause.name : 'UnknownError'
-  void birdbrain.diagnostics.log({ level: 'error', code, error }).catch(() => undefined)
+  void window.birdbrain.diagnostics.log({ level: 'error', code, error }).catch(() => undefined)
 }
 
 // The browser reports size changes a ResizeObserver could not deliver in one

@@ -21,9 +21,10 @@ What it does:
   hand-marked channels and the marker are gone, including the one the Persona import fix
   added the same day.
 - `adaptBridge` in `src/shared/bridgeAdapter.ts` turns that object back into an Error that
-  carries the code. `src/renderer/lib/birdbrain.ts` binds it to `window.birdbrain`, and every
-  renderer invoke call goes through it. ESLint fails a direct reference to `window.birdbrain`
-  anywhere else under `src/renderer/` except a subscription.
+  carries the code. `src/renderer/lib/birdbrain.ts` binds it to `window.birdbrain`, and renderer
+  invoke calls go through it, apart from the four error-reporting modules under
+  `src/renderer/lib/`. ESLint fails a direct reference to `window.birdbrain` anywhere else
+  under `src/renderer/` except a subscription.
 - `IPC_REFUSALS` in `src/shared/ipc.ts` names the codes that callers of two channels read
   (`persona:import` and `launchedBrowser:launch`), and `refusalCode(err, channel)` reports only
   those, typed per channel. The sharing screens keep `SHARING_ERROR_CODES` and their own
@@ -40,6 +41,9 @@ Decisions taken, with the reason for each:
 - **Subscriptions stay on `window.birdbrain`.** They return no promise, so the adapter has
   nothing to do for them, and leaving them alone keeps this change out of four files on the
   blocking tier of the evidence path list.
+- **The error-reporting modules stay on `window.birdbrain`.** The query layer design exempts
+  them from any extra layer, and they discard a rejection, so its shape does not reach a
+  screen.
 - **The table names only codes that a caller reads through `refusalCode`.** A full inventory
   would be a fifth hand-written statement per channel with no reader, and the launch channel
   passes service codes through, so a list claimed complete could not be checked.

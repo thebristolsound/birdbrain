@@ -1,7 +1,6 @@
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query'
 import { notify } from '@renderer/lib/notify'
 import { ContactStoppedError } from '@renderer/lib/vpnWarning'
-import { birdbrain } from '@renderer/lib/birdbrain'
 
 // Mutations toast; queries only log. With retry:false and services that are
 // not ready at launch, toasting query errors would greet every tester with a
@@ -47,7 +46,7 @@ export const queryClient = new QueryClient({
       // turns one handled query failure into a second, renderer-level
       // unhandledrejection — the logging path manufacturing the very event
       // class it exists to record.
-      birdbrain.diagnostics
+      window.birdbrain.diagnostics
         .log({
           level: 'warn',
           code: 'query.failed',

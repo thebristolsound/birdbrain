@@ -35,10 +35,12 @@ import type { CaptureInventory } from '@shared/schemas'
 // the evidence path.
 //
 // A value here is also the lowest version the reader admits for the type
-// (earliestSchemaVersion), and a rule's `minReader` the lowest it admits for
-// the rule's fields. So neither ever goes up once an entry has been written
-// under it: the reader would refuse every such entry already in a chain. To
-// stamp later entries higher, add a rule for what is new in them, or pass
+// (earliestSchemaVersion; the two types with an unsigned form are admitted
+// from 1), and a rule's `minReader` the lowest it admits for the rule's
+// fields. So neither ever goes up once an entry has been written under it:
+// the reader would refuse such entries already in a chain, or, for those two
+// types, every new entry would lock out verifiers that read the type today.
+// To stamp later entries higher, add a rule for what is new in them, or pass
 // `minReaderSchemaVersion` to the append.
 export const MIN_READER_SCHEMA_VERSION = {
   capture: 2,

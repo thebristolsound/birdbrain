@@ -46,7 +46,8 @@ function bridge<C extends ContractedChannel>(
 }
 
 // A channel whose refusals the renderer tells apart by code: the sharing channels, which the
-// Members screens read, and a browser launch, which the start dialog reads.
+// Members screens read, a browser launch, which the start dialog reads, and a Persona cookie
+// import, whose row shows the refused file's message.
 const refusable = <C extends ContractedChannel>(channel: C) => bridge(channel, 'object')
 
 // Builds a renderer-facing subscribe method for one event channel. The callback
@@ -143,7 +144,7 @@ const birdbrain = {
     create: bridge(IPC_CHANNELS.PERSONAS_CREATE),
     update: bridge(IPC_CHANNELS.PERSONAS_UPDATE),
     delete: bridge(IPC_CHANNELS.PERSONAS_DELETE),
-    import: bridge(IPC_CHANNELS.PERSONAS_IMPORT),
+    import: refusable(IPC_CHANNELS.PERSONAS_IMPORT),
     storageState: bridge(IPC_CHANNELS.PERSONAS_STORAGE_STATE)
   },
   selectors: {

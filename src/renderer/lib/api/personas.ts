@@ -1,6 +1,7 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { CreatePersonaParams, UpdatePersonaParams } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { refusalError } from '@renderer/lib/api/sharing'
 
 export const personasQueryOptions = queryOptions({
   queryKey: queryKeys.personas,
@@ -40,9 +41,16 @@ export function usePersonasMutations() {
   })
 
   // The result carries the counts the row summary shows; the list is
-  // refetched because the import time and count live on the row.
+  // refetched because the import time and count live on the row. A refusal
+  // rejects with an Error that keeps main's code, which the row reads.
   const importCookies = useMutation({
-    mutationFn: (personaId: string) => window.birdbrain.persona.import(personaId),
+    mutationFn: async (personaId: string) => {
+      try {
+        return await window.birdbrain.persona.import(personaId)
+      } catch (err) {
+        throw refusalError(err)
+      }
+    },
     onSuccess: invalidate,
     meta: { action: 'import cookies' }
   })

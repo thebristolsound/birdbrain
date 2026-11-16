@@ -96,6 +96,8 @@ coverage/
 !.claude/skills/jev-severity/
 # Launches and drives the app headless under Xvfb; /run and agents checking UI changes load it.
 !.claude/skills/run-birdbrain/
+# Takes one change to a merged pull request while the maintainer is away.
+!.claude/skills/ship-unit/
 # The SessionStart hook that settings.json runs.
 !.claude/hooks/
 .codex

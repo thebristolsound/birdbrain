@@ -26,10 +26,10 @@ import type { Capture, CaptureEvent } from '@shared/types'
 
 // What a Background Job tells the activity feed, how its job row ends, and the entry and row a
 // stored one writes, for each way a job can be admitted or refused. The answers in the fixture
-// file were recorded from recapture.ts as it stood at origin/main 2128ce07, before the Case
-// check, the exclusion policy and the stored report moved into Capture Lifecycle admission.
-// Two answers are newer, re-recorded with that move: the two archived-Case scenarios, which
-// main stored as Captures and admission now refuses.
+// file were recorded from the queue before the Case check, the exclusion policy and the stored
+// report moved into Capture Lifecycle admission: the commit that added this file and its
+// fixture changed no source. Two answers are newer, re-recorded with that move: the two
+// archived-Case scenarios, which the queue stored as Captures and admission now refuses.
 // The feed takes the lifecycle's events and the queue's on one channel, as main wires them, so
 // the recorded order holds whichever of the two emits an event. Content is invented.
 //

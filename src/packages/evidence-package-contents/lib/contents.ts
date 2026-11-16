@@ -2,8 +2,8 @@
 // Captures and every Derived File: the Package Contents. Decided here, once,
 // from the chain entries, the rows in scope and the bytes the byte source
 // returns. The report, the index, the Certification and the zip all read the
-// result, so for these files none of them can name one another leaves out. A
-// Capture's own files are still decided in `export.ts`.
+// result, so for these files none of them can name a file another leaves out.
+// A Capture's own files are still decided in `export.ts`.
 //
 // Verification never reads this module: Package Verification, `verify.sh` and
 // the Verify Runbook restate what a package must hold on purpose (ADR-0004),

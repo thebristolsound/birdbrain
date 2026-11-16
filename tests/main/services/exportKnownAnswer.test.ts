@@ -42,8 +42,9 @@ import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 // eight packages and one standalone HTML report, with every byte of every output pinned in
 // tests/fixtures/export-known-answer/answers.json. A change that alters any member of any
 // package, the order of the members, or the Package Hash fails here and names the member.
-// The standalone report is pinned once, with every option on. A standalone report with other
-// options is not pinned; the packages pin their `report.html` member under each option set.
+// The standalone report is pinned once, with Captures, screenshots, the audit trail and notes
+// on and annotations not burned. A standalone report with other options is not pinned; each
+// Evidence Package pins its own `report.html` member under the options it was exported with.
 // The Case Archive and the single-Capture PDF are other exports, written by other code, and
 // are not pinned here.
 //

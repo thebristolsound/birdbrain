@@ -3601,8 +3601,9 @@ describe("renderPageInHiddenWindow's log lines", () => {
 
 // Known answers for what a background Capture signs and stores once collection has stopped: the
 // Transaction Record, Bound TLS Details, the PDF and the inventory, through the render, the
-// Recapture queue and the ingest. Every expected value is a literal, so a change to how the finish
-// is put together that alters any of them fails here.
+// Recapture queue and the ingest. The inventory, the details, the PDF's hash and the digests of the
+// written record are literals, and the record's hash is checked against the stored file, so a
+// change to how the finish is put together that alters any of them fails here.
 describe('a background Capture, known answers for the record, the PDF and the inventory', () => {
   let tempDir: string
   let caseId: string
@@ -3764,7 +3765,7 @@ describe('a background Capture, known answers for the record, the PDF and the in
     const { writeTransactionRecord } =
       await import('../../../src/packages/transaction-record/writer')
     vi.mocked(writeTransactionRecord).mockClear()
-    const { id } = await captureOnce()
+    const { id, entry } = await captureOnce()
     const [handed] = vi.mocked(writeTransactionRecord).mock.calls.at(-1)!
     expect(Object.keys(handed).sort()).toEqual([
       'birdbrainVersion',
@@ -3777,6 +3778,7 @@ describe('a background Capture, known answers for the record, the PDF and the in
     ])
     expect(handed).toMatchObject({
       captureId: id,
+      birdbrainVersion: entry.toolVersion,
       browserVersion: `Chrome/${process.versions.chrome}`,
       userAgent: 'MockAgent/1.0',
       egress: 'direct',
@@ -3786,6 +3788,17 @@ describe('a background Capture, known answers for the record, the PDF and the in
     expect(warcinfo).toContain(`\r\ncapture-id: ${id}\r\n`)
     expect(warcinfo).toContain(`\r\nbrowser: Chrome/${process.versions.chrome}\r\n`)
     expect(warcinfo).not.toContain('transport:')
+    expect(warcinfo).toContain(`\r\nsoftware: Birdbrain ${entry.toolVersion}\r\n`)
+    // Every other byte of `warcinfo`: the four values above vary by run, release or Electron, and
+    // the block's length follows them.
+    const fixed = warcinfo
+      .replace(id, 'ID')
+      .replaceAll(process.versions.chrome, 'CHROME')
+      .replace(String(entry.toolVersion), 'VERSION')
+      .replace(/^Content-Length: \d+$/m, 'Content-Length: N')
+    expect(sha256(fixed), fixed).toBe(
+      '3d365f77cf0ee3ef7fee21d4182151f35d618827dec2fef1d61e84db68fbaa2b'
+    )
     // Every byte the writer wrote for the exchanges, apart from each record's random id.
     expect(sha256(exchanges.join('')), exchanges.join('')).toBe(
       '6d5a136feccba21594ea08b333179c8a4b054f8746cf9dad62805e852dc55740'

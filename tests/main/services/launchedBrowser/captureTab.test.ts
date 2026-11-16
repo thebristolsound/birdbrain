@@ -311,8 +311,10 @@ describe('captureTab', () => {
 })
 
 // Known answers for what a clicked Capture signs and writes once the cut is taken: the Transaction
-// Record, Bound TLS Details, the PDF and the inventory. Every expected value is a literal, so a
-// change to how the finish is put together that alters any of them fails here.
+// Record, Bound TLS Details, the PDF and the inventory. The inventory, the details, the status,
+// the PDF and a digest of the written record are literals, and the record's date is checked
+// against the cut, so a change to how the finish is put together that alters any of them fails
+// here.
 describe('captureTab, known answers for the record, the PDF and the inventory', () => {
   const TLS = {
     protocol: 'TLS 1.3',
@@ -479,6 +481,34 @@ describe('captureTab, known answers for the record, the PDF and the inventory', 
     expect(artifacts.httpStatus).toBe(203)
     expect(artifacts.pdf?.toString('latin1')).toBe('%PDF-1.4 page')
     expect(artifacts.errors).toEqual([])
+  })
+
+  it('keeps the order of its fields when Scroll-to-load ran', async () => {
+    const { page, input } = setUp()
+    loadSignedInPage(page)
+    const artifacts = await captureTab(input({ scrollToLoad: true }))
+    expect(Object.keys(artifacts)).toEqual([
+      'capturedAt',
+      'url',
+      'committedUrl',
+      'title',
+      'httpStatus',
+      'mhtml',
+      'screenshot',
+      'text',
+      'inventory',
+      'scrollToLoad',
+      'transactionRecord',
+      'boundTls',
+      'pdf',
+      'errors'
+    ])
+    expect(artifacts.scrollToLoad).toEqual({
+      requested: true,
+      ran: true,
+      outcome: 'nothing-to-scroll',
+      scrollLockLifted: false
+    })
   })
 
   it('writes the same Transaction Record for the same recording', async () => {

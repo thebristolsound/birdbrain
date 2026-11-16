@@ -51,8 +51,9 @@ three chose a new package, one synchronous call, and results that carry their by
 7. **One table says which signed field anchors which Capture file.** `CAPTURE_FILE_RULES`
    lists the page archive, the screenshot, the Transaction Record and the PDF with the field
    of the `capture` entry that carries each hash, and what an Evidence Package does with a
-   file no entry anchors. A file the entry anchors is always enclosed when the Capture holds
-   it, and no row can say otherwise. The writer once left an anchored screenshot out (#2098).
+   file no entry anchors. An Evidence Package always encloses a file the entry anchors when
+   the Capture holds it, and no row can say otherwise. The writer once left an anchored
+   screenshot out (#1986). A Working Copy is not verifiable and does not read the table.
 8. **The answer names the anchoring field.** Each enclosed Capture file carries `anchoredBy`,
    so a test can state the rule directly. No document prints it.
 9. **No ADR.** Nothing here reverses a prior decision. The known-answer test is the record.
@@ -93,14 +94,22 @@ Each is a difference only when a file changes or fails while an export runs.
   path could read a file that the first row was told was absent.
 - **Slice 2.** A Working Copy no longer computes Timestamp Token paths. It never enclosed a
   token and no Working Copy document printed the path.
-- **Slice 3.** A Capture's file is read once. Before, the report took a page archive's path
-  from a check that the file existed and the zip read the file later, so a file removed in
-  between left a package whose report named a file the zip lacked. Now the report, the index
-  and the zip state the one read. A screenshot was read up to three times and is read once.
-- **Slice 3.** A Capture file that exists and cannot be read still fails the export with the
-  same error and writes no package. The error is now raised when the contents are decided,
-  before the report is rendered. It was raised while the zip was built. Both are before the
-  `export` entry is appended.
+- **Slice 3.** The export reads a Capture's file once. Before, the report took a page
+  archive's path from a check that the file existed and the zip read the file later, so a
+  file removed in between left a package whose report named a file the zip lacked. Now the
+  report, the index and the zip state the one read. The export read a screenshot twice, once
+  for the report or the anchored check and once for the zip, and now reads it once. The
+  verification run of the audit trail makes its own read of each file, as before.
+- **Slice 3.** With screenshots on, the screenshot a package encloses is the read the report
+  made of it, which comes before the Manifest snapshot. The zip builder used to read it again
+  after the snapshot. A screenshot that is absent at the first read and back before the zip
+  is written is now left out, and Package Verification fails that package if a signed entry
+  anchors the screenshot.
+- **Slice 3.** A page archive, Transaction Record or PDF that exists and cannot be read still
+  fails the export with the same error and writes no package. The error is now raised when
+  the contents are decided, before the report is rendered. It was raised while the zip was
+  built. An unreadable screenshot already failed before the report. All of these are before
+  the `export` entry is appended.
 - **Slice 3.** A page archive is hashed once more, because the decision records its SHA-256
   and the zip writer hashes what it writes.
 

@@ -1248,8 +1248,9 @@ interface EvidenceZipResult {
  * assembly is what let report.html name a path the zip did not contain.
  *
  * It is not the only read of those bytes: `verifyCaseDerivedFiles` hashes
- * every chain-anchored Derived File on every export, and `verifyExhibit`
- * hashes committed Exhibits when the audit trail is included. A read failure
+ * every chain-anchored Derived File on every export, and when the audit trail
+ * is included `verifyExhibit` hashes committed Exhibits and `verifyCaptures`
+ * hashes each Capture's own files. A read failure
  * there is the `missing` verification status the documents render. What this
  * read decides, and nothing else does, is whether the file is in the package.
  *

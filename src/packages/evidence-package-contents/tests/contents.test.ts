@@ -195,7 +195,7 @@ describe("a Capture's own files in an Evidence Package", () => {
     })
   })
 
-  it('encloses a screenshot a signed entry anchors, whatever was asked for (#2098)', () => {
+  it('encloses a screenshot a signed entry anchors, whatever was asked for (#1986)', () => {
     const contents = decidePackageContents(
       input({
         captures: [page],
@@ -813,9 +813,15 @@ describe('readOnce', () => {
   })
 
   it('keeps a stored path apart from a Capture file of the same name', () => {
-    const once = readOnce(memorySource({ 'cap-1.png': 'pixels' }))
+    // The Capture holds no screenshot and a stored file is spelled the way a screenshot of that
+    // Capture would be, so an answer remembered under the bare name would be the wrong one.
+    const once = readOnce({
+      captureFile: () => null,
+      storedFile: (storedPath) => Buffer.from(`stored ${storedPath}`)
+    })
 
-    expect(once.captureFile({ caseId: CASE, id: 'cap-1' }, 'pdf')).toBeNull()
-    expect(once.storedFile('cap-1.png')).toEqual(Buffer.from('pixels'))
+    expect(once.captureFile({ caseId: CASE, id: 'cap-1' }, 'png')).toBeNull()
+    expect(once.storedFile('cap-1.png')).toEqual(Buffer.from('stored cap-1.png'))
+    expect(once.captureFile({ caseId: CASE, id: 'cap-1' }, 'png')).toBeNull()
   })
 })

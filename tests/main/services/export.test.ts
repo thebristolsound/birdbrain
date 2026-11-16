@@ -4903,6 +4903,17 @@ describe('export', () => {
           )
         ).rejects.toThrow(/EACCES|permission denied/i)
         expect(existsSync(outputPath)).toBe(false)
+        // The read fails before the export is recorded, so the chain holds no
+        // `export` entry for a package that was never written.
+        const entryTypes = readFileSync(
+          join(tempDir, 'captures', fixture.caseId, 'manifest.jsonl'),
+          'utf-8'
+        )
+          .split('\n')
+          .filter((line) => line.trim().length > 0)
+          .map((line) => (JSON.parse(line) as { type: string }).type)
+        expect(entryTypes).toContain('capture')
+        expect(entryTypes).not.toContain('export')
       } finally {
         chmodSync(mhtml, 0o644)
       }

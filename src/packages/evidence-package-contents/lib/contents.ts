@@ -103,7 +103,8 @@ export interface EnclosedCaptureFile {
   sha256: string
   /**
    * The field of the Capture's signed entry that carries this file's hash, or
-   * null when no signed entry anchors the file.
+   * null when no signed entry anchors the file. Always null for a Working
+   * Copy's screenshot, which is the operator's copy and not the signed bytes.
    */
   anchoredBy: CaptureAnchor | null
 }
@@ -139,8 +140,8 @@ export interface PackageContents {
    */
   timestampTokens: readonly EnclosedFile[]
   /**
-   * Every other enclosed file once, in the order the zip writes them, which
-   * is after the package's own documents.
+   * Every other enclosed file once, in the order the zip writes them. An
+   * Evidence Package writes them after its own documents.
    *
    * - Evidence Package: each Capture's page archive, screenshot, Transaction
    *   Record and PDF; then each other Exhibit's file and Derived Files; then
@@ -206,11 +207,12 @@ function decideTimestampTokens(
 
 /**
  * Which signed field anchors which of a Capture's files, and what an Evidence
- * Package does with a file no signed entry anchors. A file whose field the
- * entry carries is always enclosed when the Capture holds it, because Package
- * Verification fails a signed hash whose file the package lacks (#2098; D10
- * of docs/plans/2026-10-10-capture-engine-first-slice.md). No rule can leave
- * an anchored file out.
+ * Package does with a file no signed entry anchors. An Evidence Package always
+ * encloses a file whose field the entry carries when the Capture holds it,
+ * because Package Verification fails a signed hash whose file the package
+ * lacks (#1986; D10 of docs/plans/2026-10-10-capture-engine-first-slice.md).
+ * No rule can leave an anchored file out of one. A Working Copy is not
+ * verifiable and does not read this table (ADR-0010).
  *
  * A screenshot, a Transaction Record and a PDF are named by their SHA-256, so
  * Captures holding the same bytes share one file. The page archive is named

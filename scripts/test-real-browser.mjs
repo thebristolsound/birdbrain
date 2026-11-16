@@ -59,6 +59,39 @@ export const preconditionProblem = (platformKey, exists = existsSync) => {
   return null
 }
 
+// Runs each suite with its own command and returns the exit code: 0 only when every suite
+// passed. `spawn` has spawnSync's shape, so a test can stand in for it.
+export const runSuites = (suites, { root, user, spawn = spawnSync, out = process.stdout }) => {
+  if (suites.length === 0) {
+    out.write(`test:real-browser: no real-browser suite under ${SUITE_DIR}\n`)
+    return 1
+  }
+  const notPassed = []
+  for (const suite of suites) {
+    const [command, ...args] = suiteCommand(suite, readFileSync(join(root, suite), 'utf8'), user)
+    out.write(`\ntest:real-browser: ${suite}\n`)
+    const result = spawn(command, args, {
+      cwd: root,
+      encoding: 'utf8',
+      maxBuffer: 256 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'inherit']
+    })
+    if (result.error) {
+      out.write(`test:real-browser: cannot start ${command}: ${result.error.message}\n`)
+      return 1
+    }
+    out.write(result.stdout)
+    const outcome = suiteOutcome(result.status, result.stdout)
+    if (outcome !== 'passed') notPassed.push(`${suite} (${outcome})`)
+  }
+  out.write(
+    `\ntest:real-browser: ${suites.length - notPassed.length} of ${suites.length} suites passed` +
+      (notPassed.length ? `; not passed: ${notPassed.join(', ')}` : '') +
+      '\n'
+  )
+  return notPassed.length ? 1 : 0
+}
+
 const main = () => {
   const root = process.cwd()
   const problem = preconditionProblem(`${process.platform}-${process.arch}`)
@@ -67,34 +100,7 @@ const main = () => {
     return 1
   }
   const suites = process.argv.length > 2 ? process.argv.slice(2) : realBrowserSuites(root)
-  if (suites.length === 0) {
-    console.error(`test:real-browser: no real-browser suite under ${SUITE_DIR}`)
-    return 1
-  }
-  const user = { uid: process.getuid(), gid: process.getgid() }
-  const notPassed = []
-  for (const suite of suites) {
-    const [command, ...args] = suiteCommand(suite, readFileSync(join(root, suite), 'utf8'), user)
-    console.log(`\ntest:real-browser: ${suite}`)
-    const result = spawnSync(command, args, {
-      cwd: root,
-      encoding: 'utf8',
-      maxBuffer: 256 * 1024 * 1024,
-      stdio: ['ignore', 'pipe', 'inherit']
-    })
-    if (result.error) {
-      console.error(`test:real-browser: cannot start ${command}: ${result.error.message}`)
-      return 1
-    }
-    process.stdout.write(result.stdout)
-    const outcome = suiteOutcome(result.status, result.stdout)
-    if (outcome !== 'passed') notPassed.push(`${suite} (${outcome})`)
-  }
-  console.log(
-    `\ntest:real-browser: ${suites.length - notPassed.length} of ${suites.length} suites passed` +
-      (notPassed.length ? `; not passed: ${notPassed.join(', ')}` : '')
-  )
-  return notPassed.length ? 1 : 0
+  return runSuites(suites, { root, user: { uid: process.getuid(), gid: process.getgid() } })
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

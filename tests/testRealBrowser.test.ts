@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
   SUITE_DIR,
   preconditionProblem,
   realBrowserSuites,
+  runSuites,
   suiteCommand,
   suiteOutcome
   // @ts-expect-error - build script with no type declarations; the tsconfigs exclude scripts/
@@ -37,6 +38,7 @@ describe('realBrowserSuites', () => {
     const suites = realBrowserSuites(join(__dirname, '..'))
     expect(suites).toContain(join(SUITE_DIR, 'captureKnownAnswer.test.ts'))
     expect(suites).toContain(join(SUITE_DIR, 'knownAnswer.test.ts'))
+    expect(suites).toContain(join(SUITE_DIR, 'egressNetns.test.ts'))
   })
 })
 
@@ -108,5 +110,88 @@ describe('suiteOutcome', () => {
 
   it('fails on a non-zero exit whatever the output says', () => {
     expect(suiteOutcome(1, '      Tests  1 failed | 20 passed (21)\n')).toBe('failed')
+  })
+})
+
+describe("this repository's Egress suite", () => {
+  const suite = join(SUITE_DIR, 'egressNetns.test.ts')
+  const source = readFileSync(join(__dirname, '..', suite), 'utf8')
+
+  it('gets the two unshare calls the suite itself names', () => {
+    const [command, flag, shell, option, script] = suiteCommand(suite, source, {
+      uid: 1000,
+      gid: 985
+    })
+    expect([command, flag, shell, option]).toEqual(['unshare', '-rn', 'sh', '-c'])
+    expect(script).toBe(
+      'ip link set lo up && unshare -U --map-user=1000 --map-group=985 ' +
+        `xvfb-run --auto-servernum pnpm test ${suite}`
+    )
+    // The suite prints its own command with $(id -u) and $(id -g) where the runner puts numbers.
+    for (const part of ['unshare -rn sh -c', 'ip link set lo up && unshare -U --map-user=']) {
+      expect(source).toContain(part)
+    }
+    expect(source).toContain('xvfb-run --auto-servernum pnpm test ${FILE}')
+  })
+})
+
+describe('runSuites', () => {
+  const user = { uid: 1000, gid: 985 }
+  const passed = '      Tests  2 passed (2)\n'
+  const drive = (results: Record<string, { status?: number; stdout?: string; error?: Error }>) => {
+    const written: string[] = []
+    const commands: string[][] = []
+    for (const name of Object.keys(results)) {
+      writeFileSync(join(root, SUITE_DIR, name), 'realBrowserSkipReason()')
+    }
+    const code = runSuites(
+      Object.keys(results).map((name) => join(SUITE_DIR, name)),
+      {
+        root,
+        user,
+        out: { write: (text: string) => written.push(text) },
+        spawn: (command: string, args: string[]) => {
+          commands.push([command, ...args])
+          const name = args[args.length - 1].split('/').pop() as string
+          return { status: 0, stdout: '', ...results[name] }
+        }
+      }
+    )
+    return { code, output: written.join(''), commands }
+  }
+
+  it('runs each suite under an xvfb-run of its own and passes when all passed', () => {
+    const { code, output, commands } = drive({
+      'a.test.ts': { stdout: passed },
+      'b.test.ts': { stdout: passed }
+    })
+    expect(code).toBe(0)
+    expect(commands).toEqual([
+      ['xvfb-run', '--auto-servernum', 'pnpm', 'test', join(SUITE_DIR, 'a.test.ts')],
+      ['xvfb-run', '--auto-servernum', 'pnpm', 'test', join(SUITE_DIR, 'b.test.ts')]
+    ])
+    expect(output).toContain('test:real-browser: 2 of 2 suites passed\n')
+  })
+
+  it('fails and names a suite that failed and one that ran no test', () => {
+    const { code, output } = drive({
+      'a.test.ts': { stdout: passed },
+      'b.test.ts': { status: 1, stdout: '      Tests  1 failed (1)\n' },
+      'c.test.ts': { stdout: '      Tests  3 skipped (3)\n' }
+    })
+    expect(code).toBe(1)
+    expect(output).toContain(
+      `1 of 3 suites passed; not passed: ${join(SUITE_DIR, 'b.test.ts')} (failed), ` +
+        `${join(SUITE_DIR, 'c.test.ts')} (ran no test)`
+    )
+  })
+
+  it('fails when the command cannot start, and when there is no suite', () => {
+    const { code, output } = drive({ 'a.test.ts': { error: new Error('spawn xvfb-run ENOENT') } })
+    expect(code).toBe(1)
+    expect(output).toContain('cannot start xvfb-run: spawn xvfb-run ENOENT')
+    const none = drive({})
+    expect(none.code).toBe(1)
+    expect(none.output).toContain('no real-browser suite under')
   })
 })

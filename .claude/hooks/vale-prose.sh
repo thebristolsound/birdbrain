@@ -74,7 +74,8 @@ check_file() {
   # isolated agent worktree, lacks it. This hook's own installer copies it from the per-user
   # cache; it never downloads, so an edit never waits on the network.
   if [ ! -d "$top/.vale/styles/Google" ] && [ -f "$resolver" ]; then
-    bash "$resolver" --styles-from-cache "$top" >/dev/null 2>&1
+    bash "$resolver" --styles-from-cache "$top" >/dev/null 2>&1 ||
+      echo "vale-prose: no cached Google style to copy into $top; run scripts/setup-worktree.sh there" >&2
   fi
 
   report="$(cd "$top" && vale --config "$top/.vale.ini" --output JSON "$rel" 2>&1)"

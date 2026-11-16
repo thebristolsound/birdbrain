@@ -74,7 +74,12 @@ node_major_in() { "$1/node" --version 2>/dev/null | sed -nE 's/^v([0-9]+)\..*/\1
 vale_version_in() { "$1/vale" --version 2>/dev/null | sed -nE 's/^vale version v?([0-9.]+).*/\1/p'; }
 
 # The directory of the command PATH runs now, or nothing.
-path_dir() { command -v "$1" >/dev/null 2>&1 && dirname "$(command -v "$1")"; }
+# A relative PATH entry such as `.` is skipped: it would pick a binary from the working directory.
+path_dir() {
+  local p
+  p="$(command -v "$1" 2>/dev/null)" || return 1
+  case "$p" in /*) dirname "$p" ;; *) return 1 ;; esac
+}
 
 resolve_node() {
   local d
@@ -105,7 +110,7 @@ install_node() {
     awk -v re="^node-v[0-9.]+-${os}-${arch}[.]tar[.]gz\$" '$2 ~ re { print $2; exit }')"
   [ -n "$name" ] || { log "no Node $NODE_MAJOR build listed for $os-$arch"; return 1; }
   log "downloading $name into $TOOLS"
-  tmp="$(mktemp -d "$TOOLS/.node.XXXXXX")"
+  tmp="$(mktemp -d "$TOOLS/.node.XXXXXX")" || return 1
   if fetch_verified "$base/$name" "$tmp/$name" "$name" "$base/SHASUMS256.txt" &&
     tar -xzf "$tmp/$name" -C "$tmp"; then
     # Another worktree may have finished the same install first; either copy will do.
@@ -121,7 +126,7 @@ install_vale() {
   [ -n "$vos" ] && [ -n "$varch" ] || { log "no Vale build for $(uname -sm)"; return 1; }
   name="vale_${VALE_VERSION}_${vos}_${varch}.tar.gz"
   log "downloading $name into $TOOLS"
-  tmp="$(mktemp -d "$TOOLS/.vale.XXXXXX")"
+  tmp="$(mktemp -d "$TOOLS/.vale.XXXXXX")" || return 1
   mkdir "$tmp/out"
   if fetch_verified "$base/$name" "$tmp/$name" "$name" "$base/vale_${VALE_VERSION}_checksums.txt" &&
     tar -xzf "$tmp/$name" -C "$tmp/out" vale; then
@@ -150,12 +155,14 @@ place_style() {
 # Fills an empty cache with `vale sync`, run in a scratch folder so the checkout is untouched.
 sync_cache() {
   local vale_dir="$1" tmp
-  tmp="$(mktemp -d "$TOOLS/.styles.XXXXXX")"
+  # The callers run in an `||` context, where `set -e` is off, so each failure is checked here.
+  tmp="$(mktemp -d "$TOOLS/.styles.XXXXXX" 2>/dev/null)" || return 0
   printf 'StylesPath = styles\nPackages = Google\n' >"$tmp/.vale.ini"
   if (cd "$tmp" && PATH="$vale_dir:$PATH" vale sync >/dev/null 2>&1) &&
     [ -f "$tmp/styles/Google/meta.json" ]; then
-    mkdir -p "$(dirname "$STYLE_CACHE")"
-    [ -d "$STYLE_CACHE" ] || mv "$tmp/styles/Google" "$STYLE_CACHE" || true
+    if mkdir -p "$(dirname "$STYLE_CACHE")" 2>/dev/null && [ ! -d "$STYLE_CACHE" ]; then
+      mv "$tmp/styles/Google" "$STYLE_CACHE" || true
+    fi
   fi
   rm -rf "$tmp"
 }
@@ -163,8 +170,9 @@ sync_cache() {
 sync_styles() {
   local vale_dir="$1" dest="$ROOT/.vale/styles/Google"
   if [ ! -d "$STYLE_CACHE" ] && [ -f "$dest/meta.json" ]; then
-    mkdir -p "$(dirname "$STYLE_CACHE")"
-    place_style "$dest" "$STYLE_CACHE" 2>/dev/null || true
+    if mkdir -p "$(dirname "$STYLE_CACHE")" 2>/dev/null; then
+      place_style "$dest" "$STYLE_CACHE" 2>/dev/null || true
+    fi
   fi
   if [ ! -d "$dest" ] && [ ! -d "$STYLE_CACHE" ] && [ -n "$vale_dir" ]; then
     sync_cache "$vale_dir"
@@ -184,7 +192,8 @@ if [ "$mode" = "--styles-from-cache" ]; then
 fi
 
 if [ "$install" = 1 ]; then
-  mkdir -p "$TOOLS"
+  # Only a download or a style copy needs the cache; tools mise or PATH provide still resolve.
+  mkdir -p "$TOOLS" 2>/dev/null || log "cannot create $TOOLS; nothing can be installed into it"
   if [ -n "$MISE" ]; then
     (cd "$ROOT" && "$MISE" install --quiet node vale >&2) || log "mise install failed; using the cache"
   fi

@@ -38,12 +38,12 @@ import {
 } from '../../helpers/syncPeers'
 
 // The Capture row and the signed `capture` entry each of the three writers produces (the ingest,
-// a Duplicate, and the row sync writes for another member's Capture), for four Captures that
-// between them set every entry field a row mirrors. The values in the fixture file were recorded
-// from the writers as they stood at origin/main 2aac9a32, before the mapping from entry to row
-// moved into one module, so a change to a column or a byte of an entry of these four fails
-// here. Shapes outside the four, such as a row an archive import renamed or a received Capture
-// numbered only by a `renumber` entry, are not pinned. Content is invented.
+// a Duplicate, and the row sync writes for another member's Capture), for four Captures and
+// their Duplicates, which between them set every entry field a row mirrors. The values in the
+// fixture file were recorded from the writers as they stood at origin/main 2aac9a32, before the
+// mapping from entry to row moved into one module, so a change to a column or a byte of an
+// entry of these eight fails here. Other shapes, such as a row an archive import renamed or a
+// received Capture numbered only by a `renumber` entry, are not pinned. Content is invented.
 //
 // Four values differ on every run and are replaced by a name before the comparison: each
 // installation's id, a Duplicate's id, each entry's hash and its signature. Every entry hash is

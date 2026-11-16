@@ -52,12 +52,38 @@ Decisions taken, with the reason for each:
   main-process and renderer code apart, and the test that follows a refusal from `handle()` to
   the adapter needs both.
 
+Change 1 is merged to `main`.
+
+## Change 2: the derived bridge
+
+What it does:
+
+- `src/shared/birdbrainApi.ts` derives the `BirdbrainAPI` type from `IpcInvokeContract` and
+  `IpcEventContract`, and `buildBridge` builds the preload's object from `IPC_CHANNELS` by the
+  same path rule. `BRIDGE_PATH_EXCEPTIONS` places the seven channels the rule does not.
+- `src/preload/index.ts` passes its two leaf makers to `buildBridge` and names no channel.
+- `tests/renderer/fakeBridge.ts` reads its namespace, event and top-level lists from the same
+  rule. The bridge test keeps its own hand-written rule, `METHOD_NAME_EXCEPTIONS` and
+  `ROOT_LEVEL_LEAVES`.
+
+Decisions taken, with the reason for each:
+
+- **A mapped type over the flat contract, not a nested contract or a generated file.** The
+  derived type equals the hand-written one except that `onLaunchedBrowserPickTab` now takes a
+  callback with a `null` payload. Hover text and error messages match, and find-references
+  works. Go-to-definition on a bridge method finds nothing, where it used to land on the
+  duplicate signature.
+- **The contract stays TypeScript-first.** Whether Zod schemas should become its source of
+  truth is an open question this change does not answer.
+- **The comments from the old bridge type moved to the contract entries.**
+
 ## Next
 
-- Change 2 follows change 1. The contract's source of truth stays the TypeScript types, and the
-  `ROOT_LEVEL_LEAVES` list in `tests/preload/bridge.test.ts` stays hand-written.
-- With change 1 in, the preload's own facts are five method-name exceptions and three
-  root-level invokes. The refusal markers no longer count.
+- Change 2 is in review. When it merges, change 3 starts from `main`, one domain per pull
+  request, each merged before the next opens.
+- Change 3 begins by reading `registerIpcHandlers` in `src/main/ipcHandlers.ts` and choosing
+  the first domain to move. `tests/main/ipcHandlers.test.ts` keeps its check that every
+  contracted channel is registered.
 
 ## Open questions
 

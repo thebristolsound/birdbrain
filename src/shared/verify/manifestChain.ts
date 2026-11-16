@@ -1,18 +1,12 @@
 import { createHash } from 'crypto'
 import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
+import { FIELD_RULES } from '@shared/manifestEntryRules'
 import { ManifestEntrySchema, MANIFEST_ENTRY_TYPES } from '@shared/schemas'
-import type { BoundTls, CaptureInventory, ManifestEntry, ScrollToLoadRecord } from '@shared/schemas'
+import type { ManifestEntry } from '@shared/schemas'
 import { canonicalStringify } from '@shared/verify/canonicalJson'
 import { verifyEntrySignature } from '@shared/verify/signature'
 import { buildTrustedTimeIndexFromEntries } from '@shared/verify/trustedTime'
 import type { TrustedTimeResult } from '@shared/verify/trustedTime'
-import type {
-  BoundTlsAbsence,
-  BrowserFamily,
-  EgressKind,
-  PassiveCaptureRule,
-  TlsRefetchSkip
-} from '@shared/types'
 
 // The digests a verified `capture` entry carries, keyed by manifest index
 // (#234). This is what a hash-verified claim rests on: `screenshotHash` /
@@ -23,30 +17,37 @@ import type {
 // The Egress fields (ADR-0032), the capture engine's fields (schema 6), the
 // link provenance fields (ADR-0040), and the launched browser and Persona
 // fields (schema 7) are carried on the same footing, each set only when the
-// verified entry carries it.
-export interface CaptureChainEntry {
-  contentHash: string
-  screenshotHash?: string
-  textHash?: string
-  egressKind?: EgressKind
-  egressLabel?: string
-  userAgent?: string
-  tlsSkipped?: TlsRefetchSkip
-  inventory?: CaptureInventory
-  scrollToLoad?: ScrollToLoadRecord
-  transactionRecordHash?: string
-  boundTls?: BoundTls
-  boundTlsAbsent?: BoundTlsAbsence
-  pdfHash?: string
-  linkedFromCaptureId?: string
-  linkedFromContentHash?: string
-  linkHref?: string
-  browserProduct?: string
-  browserVersion?: string
-  browserFamily?: BrowserFamily
-  passiveRule?: PassiveCaptureRule
-  personaId?: string
-  personaLabel?: string
+// verified entry carries it. Their names come from the rules that give each
+// group its reader schema (manifestEntryRules.ts), in the order below, so a
+// field added to one of these rules is carried too. `exhibitNumber`'s rule is
+// not among them, as it never was, and a new rule is carried only once it is
+// named here.
+const { egress, captureEngine, linkProvenance, launchedBrowser, persona } = FIELD_RULES.capture
+const CAPTURE_CHAIN_FIELDS = [
+  ...egress.fields,
+  ...captureEngine.fields,
+  ...linkProvenance.fields,
+  ...launchedBrowser.fields,
+  ...persona.fields
+]
+
+type CaptureEntry = Extract<ManifestEntry, { type: 'capture' }>
+
+export type CaptureChainEntry = Pick<
+  CaptureEntry,
+  'contentHash' | 'screenshotHash' | 'textHash' | (typeof CAPTURE_CHAIN_FIELDS)[number]
+>
+
+// The fields of `fields` the entry carries, in that order.
+function carriedFields<Entry, Field extends keyof Entry>(
+  entry: Entry,
+  fields: readonly Field[]
+): Partial<Pick<Entry, Field>> {
+  const carried: Partial<Pick<Entry, Field>> = {}
+  for (const field of fields) {
+    if (entry[field] !== undefined) carried[field] = entry[field]
+  }
+  return carried
 }
 
 // The hash fields a `capture` entry anchors, one file each: the page archive,
@@ -484,35 +485,11 @@ export function verifyManifestChainText(
   for (const entry of verifiedEntries) {
     if (entry.type === 'capture') {
       captureHashesByIndex.set(entry.index, entry.contentHash)
-      const { egressKind, egressLabel, userAgent, tlsSkipped } = entry
-      const { inventory, scrollToLoad, transactionRecordHash, boundTls, boundTlsAbsent, pdfHash } =
-        entry
-      const { linkedFromCaptureId, linkedFromContentHash, linkHref } = entry
-      const { browserProduct, browserVersion, browserFamily, passiveRule } = entry
-      const { personaId, personaLabel } = entry
       captureEntriesByIndex.set(entry.index, {
         contentHash: entry.contentHash,
         screenshotHash: entry.screenshotHash,
         textHash: entry.textHash,
-        ...(egressKind !== undefined ? { egressKind } : {}),
-        ...(egressLabel !== undefined ? { egressLabel } : {}),
-        ...(userAgent !== undefined ? { userAgent } : {}),
-        ...(tlsSkipped !== undefined ? { tlsSkipped } : {}),
-        ...(inventory !== undefined ? { inventory } : {}),
-        ...(scrollToLoad !== undefined ? { scrollToLoad } : {}),
-        ...(transactionRecordHash !== undefined ? { transactionRecordHash } : {}),
-        ...(boundTls !== undefined ? { boundTls } : {}),
-        ...(boundTlsAbsent !== undefined ? { boundTlsAbsent } : {}),
-        ...(pdfHash !== undefined ? { pdfHash } : {}),
-        ...(linkedFromCaptureId !== undefined ? { linkedFromCaptureId } : {}),
-        ...(linkedFromContentHash !== undefined ? { linkedFromContentHash } : {}),
-        ...(linkHref !== undefined ? { linkHref } : {}),
-        ...(browserProduct !== undefined ? { browserProduct } : {}),
-        ...(browserVersion !== undefined ? { browserVersion } : {}),
-        ...(browserFamily !== undefined ? { browserFamily } : {}),
-        ...(passiveRule !== undefined ? { passiveRule } : {}),
-        ...(personaId !== undefined ? { personaId } : {}),
-        ...(personaLabel !== undefined ? { personaLabel } : {})
+        ...carriedFields(entry, CAPTURE_CHAIN_FIELDS)
       })
     }
   }

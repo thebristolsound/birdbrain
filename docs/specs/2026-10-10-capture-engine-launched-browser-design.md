@@ -1344,9 +1344,9 @@ commands named below.
 2. **Verifier release step.** `launched`, the browser identity fields, the stage-2 inventory
    reasons, and the passive rule field, per the rulings on decisions D5 and D12, unless CE-5 carries
    them. Each new value and field gets a refine that requires the next schema version, as
-   `exhibitNumber` requires 3 and the Egress fields require 5 (`src/shared/schemas.ts:517-531`), and
-   `fieldMinReaderSchemaVersion` stamps that version on an entry that carries one
-   (`src/main/services/manifest.ts:774-781`), so an older verifier reports itself too old instead of
+   `exhibitNumber` requires 3 and the Egress fields require 5 (`src/shared/schemas.ts`), and
+   `minReaderSchemaVersion` stamps that version on an entry that carries one
+   (`src/shared/manifestEntryRules.ts`), so an older verifier reports itself too old instead of
    reporting a broken chain. `MANIFEST_SCHEMA_VERSION` (`src/shared/constants.ts:81`) takes the next
    number after CE-5's, settled when the step starts against the releases that have shipped, as
    CE-5's is; whatever CE-5 carries shares CE-5's number instead. The roadmap's manifest schema lane

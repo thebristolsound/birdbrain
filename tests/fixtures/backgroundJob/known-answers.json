@@ -1,0 +1,1696 @@
+{
+  "a job that is stored": {
+    "results": [
+      {
+        "batchId": "<uuid 1>",
+        "accepted": 1,
+        "jobIds": [
+          "<uuid 2>"
+        ],
+        "rejected": []
+      }
+    ],
+    "events": [
+      {
+        "type": "queued",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "received",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "stored",
+        "captureId": "<uuid 3>",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "durationMs": 0,
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      }
+    ],
+    "newCaptures": [
+      {
+        "id": "<uuid 3>",
+        "url": "https://example.com/page",
+        "method": "background"
+      }
+    ],
+    "jobs": [
+      {
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>",
+        "caseId": "<case>",
+        "url": "https://example.com/page",
+        "state": "stored",
+        "attempts": 1,
+        "queuedAt": "2026-11-16T10:00:00.000Z",
+        "startedAt": "2026-11-16T10:00:00.000Z",
+        "finishedAt": "2026-11-16T10:00:00.000Z",
+        "captureId": "<uuid 3>"
+      }
+    ],
+    "entries": [
+      "{\"type\":\"capture\",\"captureId\":\"<uuid 3>\",\"caseId\":\"<case>\",\"url\":\"https://example.com/page\",\"timestamp\":\"2026-11-16T10:00:00.000Z\",\"contentHash\":\"6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624\",\"screenshotHash\":\"ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56\",\"textHash\":\"d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e\",\"httpStatus\":200,\"method\":\"background\",\"exhibitNumber\":1,\"inventory\":{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}},\"scrollToLoad\":{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true},\"boundTlsAbsent\":\"not-recorded\",\"sizeBytes\":33,\"operatorId\":\"<installation>\",\"operatorName\":\"Op\",\"toolVersion\":\"1.0.1-beta.25\",\"index\":0,\"prevHash\":\"\",\"schemaVersion\":6,\"entryHash\":\"<hash of entry 0>\",\"signature\":\"<signature of entry 0>\"}"
+    ],
+    "rows": [
+      {
+        "id": "<uuid 3>",
+        "case_id": "<case>",
+        "url": "https://example.com/page",
+        "title": "Page Title",
+        "html_path": null,
+        "screenshot_path": "<case>/<uuid 3>.png",
+        "hash": "6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "headers": "{}",
+        "created_at": "2026-11-16T10:00:00.000Z",
+        "format": "mhtml",
+        "mhtml_path": "<case>/<uuid 3>.mhtml",
+        "size_bytes": 33,
+        "manifest_index": 0,
+        "prev_hash": "",
+        "entry_hash": "<hash of entry 0>",
+        "tool_version": "1.0.1-beta.25",
+        "extension_version": null,
+        "browser_version": "Chrome/130",
+        "user_agent": "HiddenWindow UA",
+        "http_status": 200,
+        "operator_id": "<installation>",
+        "operator_name": "Op",
+        "last_verified_at": null,
+        "last_verified_hash": null,
+        "last_verified_status": null,
+        "trusted_time_status": null,
+        "screenshot_hash": "ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56",
+        "text_hash": "d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e",
+        "tls_cert_chain": null,
+        "method": "background",
+        "supersedes_capture_id": null,
+        "consent_suppression": null,
+        "duplicate_of_capture_id": null,
+        "transaction_record_hash": null,
+        "pdf_hash": null,
+        "inventory": "{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}}",
+        "scroll_to_load": "{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true}",
+        "bound_tls": null,
+        "bound_tls_absent": "not-recorded",
+        "linked_from_capture_id": null,
+        "linked_from_content_hash": null,
+        "link_href": null,
+        "persona_id": null,
+        "persona_label": null
+      }
+    ]
+  },
+  "a job whose render lands on another address of the same site": {
+    "results": [
+      {
+        "batchId": "<uuid 1>",
+        "accepted": 1,
+        "jobIds": [
+          "<uuid 2>"
+        ],
+        "rejected": []
+      }
+    ],
+    "events": [
+      {
+        "type": "queued",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "received",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "stored",
+        "captureId": "<uuid 3>",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "durationMs": 0,
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      }
+    ],
+    "newCaptures": [
+      {
+        "id": "<uuid 3>",
+        "url": "https://example.com/landed",
+        "method": "background"
+      }
+    ],
+    "jobs": [
+      {
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>",
+        "caseId": "<case>",
+        "url": "https://example.com/page",
+        "state": "stored",
+        "attempts": 1,
+        "queuedAt": "2026-11-16T10:00:00.000Z",
+        "startedAt": "2026-11-16T10:00:00.000Z",
+        "finishedAt": "2026-11-16T10:00:00.000Z",
+        "captureId": "<uuid 3>"
+      }
+    ],
+    "entries": [
+      "{\"type\":\"capture\",\"captureId\":\"<uuid 3>\",\"caseId\":\"<case>\",\"url\":\"https://example.com/landed\",\"timestamp\":\"2026-11-16T10:00:00.000Z\",\"contentHash\":\"6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624\",\"screenshotHash\":\"ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56\",\"textHash\":\"d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e\",\"httpStatus\":200,\"finalUrl\":\"https://example.com/landed\",\"method\":\"background\",\"exhibitNumber\":1,\"inventory\":{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}},\"scrollToLoad\":{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true},\"boundTlsAbsent\":\"not-recorded\",\"sizeBytes\":33,\"operatorId\":\"<installation>\",\"operatorName\":\"Op\",\"toolVersion\":\"1.0.1-beta.25\",\"index\":0,\"prevHash\":\"\",\"schemaVersion\":6,\"entryHash\":\"<hash of entry 0>\",\"signature\":\"<signature of entry 0>\"}"
+    ],
+    "rows": [
+      {
+        "id": "<uuid 3>",
+        "case_id": "<case>",
+        "url": "https://example.com/landed",
+        "title": "Page Title",
+        "html_path": null,
+        "screenshot_path": "<case>/<uuid 3>.png",
+        "hash": "6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "headers": "{}",
+        "created_at": "2026-11-16T10:00:00.000Z",
+        "format": "mhtml",
+        "mhtml_path": "<case>/<uuid 3>.mhtml",
+        "size_bytes": 33,
+        "manifest_index": 0,
+        "prev_hash": "",
+        "entry_hash": "<hash of entry 0>",
+        "tool_version": "1.0.1-beta.25",
+        "extension_version": null,
+        "browser_version": "Chrome/130",
+        "user_agent": "HiddenWindow UA",
+        "http_status": 200,
+        "operator_id": "<installation>",
+        "operator_name": "Op",
+        "last_verified_at": null,
+        "last_verified_hash": null,
+        "last_verified_status": null,
+        "trusted_time_status": null,
+        "screenshot_hash": "ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56",
+        "text_hash": "d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e",
+        "tls_cert_chain": null,
+        "method": "background",
+        "supersedes_capture_id": null,
+        "consent_suppression": null,
+        "duplicate_of_capture_id": null,
+        "transaction_record_hash": null,
+        "pdf_hash": null,
+        "inventory": "{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}}",
+        "scroll_to_load": "{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true}",
+        "bound_tls": null,
+        "bound_tls_absent": "not-recorded",
+        "linked_from_capture_id": null,
+        "linked_from_content_hash": null,
+        "link_href": null,
+        "persona_id": null,
+        "persona_label": null
+      }
+    ]
+  },
+  "a job whose page looks like a login wall": {
+    "results": [
+      {
+        "batchId": "<uuid 1>",
+        "accepted": 1,
+        "jobIds": [
+          "<uuid 2>"
+        ],
+        "rejected": []
+      }
+    ],
+    "events": [
+      {
+        "type": "queued",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "received",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "stored",
+        "captureId": "<uuid 3>",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "durationMs": 0,
+        "warning": "Page looks like a login wall — the clean background session is not signed in",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      }
+    ],
+    "newCaptures": [
+      {
+        "id": "<uuid 3>",
+        "url": "https://example.com/login",
+        "method": "background"
+      }
+    ],
+    "jobs": [
+      {
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>",
+        "caseId": "<case>",
+        "url": "https://example.com/page",
+        "state": "stored",
+        "attempts": 1,
+        "queuedAt": "2026-11-16T10:00:00.000Z",
+        "startedAt": "2026-11-16T10:00:00.000Z",
+        "finishedAt": "2026-11-16T10:00:00.000Z",
+        "captureId": "<uuid 3>",
+        "warning": "Page looks like a login wall — the clean background session is not signed in"
+      }
+    ],
+    "entries": [
+      "{\"type\":\"capture\",\"captureId\":\"<uuid 3>\",\"caseId\":\"<case>\",\"url\":\"https://example.com/login\",\"timestamp\":\"2026-11-16T10:00:00.000Z\",\"contentHash\":\"6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624\",\"screenshotHash\":\"ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56\",\"textHash\":\"d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e\",\"httpStatus\":200,\"finalUrl\":\"https://example.com/login\",\"method\":\"background\",\"exhibitNumber\":1,\"inventory\":{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}},\"scrollToLoad\":{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true},\"boundTlsAbsent\":\"not-recorded\",\"sizeBytes\":33,\"operatorId\":\"<installation>\",\"operatorName\":\"Op\",\"toolVersion\":\"1.0.1-beta.25\",\"index\":0,\"prevHash\":\"\",\"schemaVersion\":6,\"entryHash\":\"<hash of entry 0>\",\"signature\":\"<signature of entry 0>\"}"
+    ],
+    "rows": [
+      {
+        "id": "<uuid 3>",
+        "case_id": "<case>",
+        "url": "https://example.com/login",
+        "title": "Sign in",
+        "html_path": null,
+        "screenshot_path": "<case>/<uuid 3>.png",
+        "hash": "6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "headers": "{}",
+        "created_at": "2026-11-16T10:00:00.000Z",
+        "format": "mhtml",
+        "mhtml_path": "<case>/<uuid 3>.mhtml",
+        "size_bytes": 33,
+        "manifest_index": 0,
+        "prev_hash": "",
+        "entry_hash": "<hash of entry 0>",
+        "tool_version": "1.0.1-beta.25",
+        "extension_version": null,
+        "browser_version": "Chrome/130",
+        "user_agent": "HiddenWindow UA",
+        "http_status": 200,
+        "operator_id": "<installation>",
+        "operator_name": "Op",
+        "last_verified_at": null,
+        "last_verified_hash": null,
+        "last_verified_status": null,
+        "trusted_time_status": null,
+        "screenshot_hash": "ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56",
+        "text_hash": "d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e",
+        "tls_cert_chain": null,
+        "method": "background",
+        "supersedes_capture_id": null,
+        "consent_suppression": null,
+        "duplicate_of_capture_id": null,
+        "transaction_record_hash": null,
+        "pdf_hash": null,
+        "inventory": "{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}}",
+        "scroll_to_load": "{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true}",
+        "bound_tls": null,
+        "bound_tls_absent": "not-recorded",
+        "linked_from_capture_id": null,
+        "linked_from_content_hash": null,
+        "link_href": null,
+        "persona_id": null,
+        "persona_label": null
+      }
+    ]
+  },
+  "a Recapture that supersedes the first Capture": {
+    "results": [
+      {
+        "batchId": "<uuid 1>",
+        "accepted": 1,
+        "jobIds": [
+          "<uuid 2>"
+        ],
+        "rejected": []
+      },
+      {
+        "batchId": "<uuid 3>",
+        "accepted": 1,
+        "jobIds": [
+          "<uuid 4>"
+        ],
+        "rejected": []
+      }
+    ],
+    "events": [
+      {
+        "type": "queued",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "received",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "stored",
+        "captureId": "<uuid 5>",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "durationMs": 0,
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "queued",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "supersedesCaptureId": "<uuid 5>",
+        "jobId": "<uuid 4>",
+        "batchId": "<uuid 3>"
+      },
+      {
+        "type": "received",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "supersedesCaptureId": "<uuid 5>",
+        "jobId": "<uuid 4>",
+        "batchId": "<uuid 3>"
+      },
+      {
+        "type": "stored",
+        "captureId": "<uuid 6>",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "durationMs": 0,
+        "jobId": "<uuid 4>",
+        "batchId": "<uuid 3>"
+      }
+    ],
+    "newCaptures": [
+      {
+        "id": "<uuid 5>",
+        "url": "https://example.com/page",
+        "method": "background"
+      },
+      {
+        "id": "<uuid 6>",
+        "url": "https://example.com/page",
+        "method": "background"
+      }
+    ],
+    "jobs": [
+      {
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>",
+        "caseId": "<case>",
+        "url": "https://example.com/page",
+        "state": "stored",
+        "attempts": 1,
+        "queuedAt": "2026-11-16T10:00:00.000Z",
+        "startedAt": "2026-11-16T10:00:00.000Z",
+        "finishedAt": "2026-11-16T10:00:00.000Z",
+        "captureId": "<uuid 5>"
+      },
+      {
+        "jobId": "<uuid 4>",
+        "batchId": "<uuid 3>",
+        "caseId": "<case>",
+        "url": "https://example.com/page",
+        "state": "stored",
+        "attempts": 1,
+        "queuedAt": "2026-11-16T10:00:00.000Z",
+        "startedAt": "2026-11-16T10:00:00.000Z",
+        "finishedAt": "2026-11-16T10:00:00.000Z",
+        "captureId": "<uuid 6>",
+        "supersedesCaptureId": "<uuid 5>"
+      }
+    ],
+    "entries": [
+      "{\"type\":\"capture\",\"captureId\":\"<uuid 5>\",\"caseId\":\"<case>\",\"url\":\"https://example.com/page\",\"timestamp\":\"2026-11-16T10:00:00.000Z\",\"contentHash\":\"6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624\",\"screenshotHash\":\"ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56\",\"textHash\":\"d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e\",\"httpStatus\":200,\"method\":\"background\",\"exhibitNumber\":1,\"inventory\":{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}},\"scrollToLoad\":{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true},\"boundTlsAbsent\":\"not-recorded\",\"sizeBytes\":33,\"operatorId\":\"<installation>\",\"operatorName\":\"Op\",\"toolVersion\":\"1.0.1-beta.25\",\"index\":0,\"prevHash\":\"\",\"schemaVersion\":6,\"entryHash\":\"<hash of entry 0>\",\"signature\":\"<signature of entry 0>\"}",
+      "{\"type\":\"capture\",\"captureId\":\"<uuid 6>\",\"caseId\":\"<case>\",\"url\":\"https://example.com/page\",\"timestamp\":\"2026-11-16T10:00:00.000Z\",\"contentHash\":\"6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624\",\"screenshotHash\":\"ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56\",\"textHash\":\"d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e\",\"httpStatus\":200,\"method\":\"background\",\"supersedesCaptureId\":\"<uuid 5>\",\"exhibitNumber\":2,\"inventory\":{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}},\"scrollToLoad\":{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true},\"boundTlsAbsent\":\"not-recorded\",\"sizeBytes\":33,\"operatorId\":\"<installation>\",\"operatorName\":\"Op\",\"toolVersion\":\"1.0.1-beta.25\",\"index\":1,\"prevHash\":\"<hash of entry 0>\",\"schemaVersion\":6,\"entryHash\":\"<hash of entry 1>\",\"signature\":\"<signature of entry 1>\"}"
+    ],
+    "rows": [
+      {
+        "id": "<uuid 5>",
+        "case_id": "<case>",
+        "url": "https://example.com/page",
+        "title": "Page Title",
+        "html_path": null,
+        "screenshot_path": "<case>/<uuid 5>.png",
+        "hash": "6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "headers": "{}",
+        "created_at": "2026-11-16T10:00:00.000Z",
+        "format": "mhtml",
+        "mhtml_path": "<case>/<uuid 5>.mhtml",
+        "size_bytes": 33,
+        "manifest_index": 0,
+        "prev_hash": "",
+        "entry_hash": "<hash of entry 0>",
+        "tool_version": "1.0.1-beta.25",
+        "extension_version": null,
+        "browser_version": "Chrome/130",
+        "user_agent": "HiddenWindow UA",
+        "http_status": 200,
+        "operator_id": "<installation>",
+        "operator_name": "Op",
+        "last_verified_at": null,
+        "last_verified_hash": null,
+        "last_verified_status": null,
+        "trusted_time_status": null,
+        "screenshot_hash": "ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56",
+        "text_hash": "d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e",
+        "tls_cert_chain": null,
+        "method": "background",
+        "supersedes_capture_id": null,
+        "consent_suppression": null,
+        "duplicate_of_capture_id": null,
+        "transaction_record_hash": null,
+        "pdf_hash": null,
+        "inventory": "{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}}",
+        "scroll_to_load": "{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true}",
+        "bound_tls": null,
+        "bound_tls_absent": "not-recorded",
+        "linked_from_capture_id": null,
+        "linked_from_content_hash": null,
+        "link_href": null,
+        "persona_id": null,
+        "persona_label": null
+      },
+      {
+        "id": "<uuid 6>",
+        "case_id": "<case>",
+        "url": "https://example.com/page",
+        "title": "Page Title",
+        "html_path": null,
+        "screenshot_path": "<case>/<uuid 6>.png",
+        "hash": "6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "headers": "{}",
+        "created_at": "2026-11-16T10:00:00.000Z",
+        "format": "mhtml",
+        "mhtml_path": "<case>/<uuid 6>.mhtml",
+        "size_bytes": 33,
+        "manifest_index": 1,
+        "prev_hash": "<hash of entry 0>",
+        "entry_hash": "<hash of entry 1>",
+        "tool_version": "1.0.1-beta.25",
+        "extension_version": null,
+        "browser_version": "Chrome/130",
+        "user_agent": "HiddenWindow UA",
+        "http_status": 200,
+        "operator_id": "<installation>",
+        "operator_name": "Op",
+        "last_verified_at": null,
+        "last_verified_hash": null,
+        "last_verified_status": null,
+        "trusted_time_status": null,
+        "screenshot_hash": "ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56",
+        "text_hash": "d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e",
+        "tls_cert_chain": null,
+        "method": "background",
+        "supersedes_capture_id": "<uuid 5>",
+        "consent_suppression": null,
+        "duplicate_of_capture_id": null,
+        "transaction_record_hash": null,
+        "pdf_hash": null,
+        "inventory": "{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}}",
+        "scroll_to_load": "{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true}",
+        "bound_tls": null,
+        "bound_tls_absent": "not-recorded",
+        "linked_from_capture_id": null,
+        "linked_from_content_hash": null,
+        "link_href": null,
+        "persona_id": null,
+        "persona_label": null
+      }
+    ]
+  },
+  "a Capture link job": {
+    "results": [
+      {
+        "batchId": "<uuid 1>",
+        "accepted": 1,
+        "jobIds": [
+          "<uuid 2>"
+        ],
+        "rejected": []
+      },
+      {
+        "batchId": "<uuid 3>",
+        "accepted": 1,
+        "jobIds": [
+          "<uuid 4>"
+        ],
+        "rejected": []
+      }
+    ],
+    "events": [
+      {
+        "type": "queued",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "received",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "stored",
+        "captureId": "<uuid 5>",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "durationMs": 0,
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "queued",
+        "source": "recapture",
+        "url": "https://example.com/linked",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 4>",
+        "batchId": "<uuid 3>",
+        "linkedFrom": {
+          "captureId": "<uuid 5>",
+          "linkHref": "https://example.com/linked"
+        }
+      },
+      {
+        "type": "received",
+        "source": "recapture",
+        "url": "https://example.com/linked",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 4>",
+        "batchId": "<uuid 3>",
+        "linkedFrom": {
+          "captureId": "<uuid 5>",
+          "linkHref": "https://example.com/linked"
+        }
+      },
+      {
+        "type": "stored",
+        "captureId": "<uuid 6>",
+        "source": "recapture",
+        "url": "https://example.com/linked",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "durationMs": 0,
+        "jobId": "<uuid 4>",
+        "batchId": "<uuid 3>",
+        "linkedFrom": {
+          "captureId": "<uuid 5>",
+          "linkHref": "https://example.com/linked"
+        }
+      }
+    ],
+    "newCaptures": [
+      {
+        "id": "<uuid 5>",
+        "url": "https://example.com/page",
+        "method": "background"
+      },
+      {
+        "id": "<uuid 6>",
+        "url": "https://example.com/linked",
+        "method": "background"
+      }
+    ],
+    "jobs": [
+      {
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>",
+        "caseId": "<case>",
+        "url": "https://example.com/page",
+        "state": "stored",
+        "attempts": 1,
+        "queuedAt": "2026-11-16T10:00:00.000Z",
+        "startedAt": "2026-11-16T10:00:00.000Z",
+        "finishedAt": "2026-11-16T10:00:00.000Z",
+        "captureId": "<uuid 5>"
+      },
+      {
+        "jobId": "<uuid 4>",
+        "batchId": "<uuid 3>",
+        "caseId": "<case>",
+        "url": "https://example.com/linked",
+        "state": "stored",
+        "attempts": 1,
+        "queuedAt": "2026-11-16T10:00:00.000Z",
+        "startedAt": "2026-11-16T10:00:00.000Z",
+        "finishedAt": "2026-11-16T10:00:00.000Z",
+        "captureId": "<uuid 6>",
+        "linkedFrom": {
+          "captureId": "<uuid 5>",
+          "linkHref": "https://example.com/linked"
+        }
+      }
+    ],
+    "entries": [
+      "{\"type\":\"capture\",\"captureId\":\"<uuid 5>\",\"caseId\":\"<case>\",\"url\":\"https://example.com/page\",\"timestamp\":\"2026-11-16T10:00:00.000Z\",\"contentHash\":\"6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624\",\"screenshotHash\":\"ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56\",\"textHash\":\"d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e\",\"httpStatus\":200,\"method\":\"background\",\"exhibitNumber\":1,\"inventory\":{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}},\"scrollToLoad\":{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true},\"boundTlsAbsent\":\"not-recorded\",\"sizeBytes\":33,\"operatorId\":\"<installation>\",\"operatorName\":\"Op\",\"toolVersion\":\"1.0.1-beta.25\",\"index\":0,\"prevHash\":\"\",\"schemaVersion\":6,\"entryHash\":\"<hash of entry 0>\",\"signature\":\"<signature of entry 0>\"}",
+      "{\"type\":\"capture\",\"captureId\":\"<uuid 6>\",\"caseId\":\"<case>\",\"url\":\"https://example.com/linked\",\"timestamp\":\"2026-11-16T10:00:00.000Z\",\"contentHash\":\"8c8992015ab546dc642a11ed14899f7538211aa0967be86c0b31e97bc5c49ce0\",\"screenshotHash\":\"ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56\",\"textHash\":\"d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e\",\"httpStatus\":200,\"method\":\"background\",\"exhibitNumber\":2,\"inventory\":{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}},\"scrollToLoad\":{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true},\"boundTlsAbsent\":\"not-recorded\",\"linkedFromCaptureId\":\"<uuid 5>\",\"linkedFromContentHash\":\"6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624\",\"linkHref\":\"https://example.com/linked\",\"sizeBytes\":35,\"operatorId\":\"<installation>\",\"operatorName\":\"Op\",\"toolVersion\":\"1.0.1-beta.25\",\"index\":1,\"prevHash\":\"<hash of entry 0>\",\"schemaVersion\":6,\"entryHash\":\"<hash of entry 1>\",\"signature\":\"<signature of entry 1>\"}"
+    ],
+    "rows": [
+      {
+        "id": "<uuid 5>",
+        "case_id": "<case>",
+        "url": "https://example.com/page",
+        "title": "Page Title",
+        "html_path": null,
+        "screenshot_path": "<case>/<uuid 5>.png",
+        "hash": "6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "headers": "{}",
+        "created_at": "2026-11-16T10:00:00.000Z",
+        "format": "mhtml",
+        "mhtml_path": "<case>/<uuid 5>.mhtml",
+        "size_bytes": 33,
+        "manifest_index": 0,
+        "prev_hash": "",
+        "entry_hash": "<hash of entry 0>",
+        "tool_version": "1.0.1-beta.25",
+        "extension_version": null,
+        "browser_version": "Chrome/130",
+        "user_agent": "HiddenWindow UA",
+        "http_status": 200,
+        "operator_id": "<installation>",
+        "operator_name": "Op",
+        "last_verified_at": null,
+        "last_verified_hash": null,
+        "last_verified_status": null,
+        "trusted_time_status": null,
+        "screenshot_hash": "ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56",
+        "text_hash": "d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e",
+        "tls_cert_chain": null,
+        "method": "background",
+        "supersedes_capture_id": null,
+        "consent_suppression": null,
+        "duplicate_of_capture_id": null,
+        "transaction_record_hash": null,
+        "pdf_hash": null,
+        "inventory": "{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}}",
+        "scroll_to_load": "{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true}",
+        "bound_tls": null,
+        "bound_tls_absent": "not-recorded",
+        "linked_from_capture_id": null,
+        "linked_from_content_hash": null,
+        "link_href": null,
+        "persona_id": null,
+        "persona_label": null
+      },
+      {
+        "id": "<uuid 6>",
+        "case_id": "<case>",
+        "url": "https://example.com/linked",
+        "title": "Page Title",
+        "html_path": null,
+        "screenshot_path": "<case>/<uuid 6>.png",
+        "hash": "8c8992015ab546dc642a11ed14899f7538211aa0967be86c0b31e97bc5c49ce0",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "headers": "{}",
+        "created_at": "2026-11-16T10:00:00.000Z",
+        "format": "mhtml",
+        "mhtml_path": "<case>/<uuid 6>.mhtml",
+        "size_bytes": 35,
+        "manifest_index": 1,
+        "prev_hash": "<hash of entry 0>",
+        "entry_hash": "<hash of entry 1>",
+        "tool_version": "1.0.1-beta.25",
+        "extension_version": null,
+        "browser_version": "Chrome/130",
+        "user_agent": "HiddenWindow UA",
+        "http_status": 200,
+        "operator_id": "<installation>",
+        "operator_name": "Op",
+        "last_verified_at": null,
+        "last_verified_hash": null,
+        "last_verified_status": null,
+        "trusted_time_status": null,
+        "screenshot_hash": "ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56",
+        "text_hash": "d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e",
+        "tls_cert_chain": null,
+        "method": "background",
+        "supersedes_capture_id": null,
+        "consent_suppression": null,
+        "duplicate_of_capture_id": null,
+        "transaction_record_hash": null,
+        "pdf_hash": null,
+        "inventory": "{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}}",
+        "scroll_to_load": "{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true}",
+        "bound_tls": null,
+        "bound_tls_absent": "not-recorded",
+        "linked_from_capture_id": "<uuid 5>",
+        "linked_from_content_hash": "6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624",
+        "link_href": "https://example.com/linked",
+        "persona_id": null,
+        "persona_label": null
+      }
+    ]
+  },
+  "a Capture link job whose render lands on an excluded address": {
+    "results": [
+      {
+        "batchId": "<uuid 1>",
+        "accepted": 1,
+        "jobIds": [
+          "<uuid 2>"
+        ],
+        "rejected": []
+      },
+      {
+        "batchId": "<uuid 3>",
+        "accepted": 1,
+        "jobIds": [
+          "<uuid 4>"
+        ],
+        "rejected": []
+      }
+    ],
+    "events": [
+      {
+        "type": "queued",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "received",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "stored",
+        "captureId": "<uuid 5>",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "durationMs": 0,
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "queued",
+        "source": "recapture",
+        "url": "https://example.com/linked",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 4>",
+        "batchId": "<uuid 3>",
+        "linkedFrom": {
+          "captureId": "<uuid 5>",
+          "linkHref": "https://example.com/linked"
+        }
+      },
+      {
+        "type": "received",
+        "source": "recapture",
+        "url": "https://example.com/linked",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 4>",
+        "batchId": "<uuid 3>",
+        "linkedFrom": {
+          "captureId": "<uuid 5>",
+          "linkHref": "https://example.com/linked"
+        }
+      },
+      {
+        "type": "skipped",
+        "source": "recapture",
+        "url": "https://blocked.example/x",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "skipReason": "Blacklisted: blocked.example",
+        "jobId": "<uuid 4>",
+        "batchId": "<uuid 3>",
+        "linkedFrom": {
+          "captureId": "<uuid 5>",
+          "linkHref": "https://example.com/linked"
+        }
+      }
+    ],
+    "newCaptures": [
+      {
+        "id": "<uuid 5>",
+        "url": "https://example.com/page",
+        "method": "background"
+      }
+    ],
+    "jobs": [
+      {
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>",
+        "caseId": "<case>",
+        "url": "https://example.com/page",
+        "state": "stored",
+        "attempts": 1,
+        "queuedAt": "2026-11-16T10:00:00.000Z",
+        "startedAt": "2026-11-16T10:00:00.000Z",
+        "finishedAt": "2026-11-16T10:00:00.000Z",
+        "captureId": "<uuid 5>"
+      },
+      {
+        "jobId": "<uuid 4>",
+        "batchId": "<uuid 3>",
+        "caseId": "<case>",
+        "url": "https://example.com/linked",
+        "state": "skipped",
+        "attempts": 1,
+        "queuedAt": "2026-11-16T10:00:00.000Z",
+        "startedAt": "2026-11-16T10:00:00.000Z",
+        "finishedAt": "2026-11-16T10:00:00.000Z",
+        "failureKind": "excluded",
+        "error": "Blacklisted: blocked.example",
+        "linkedFrom": {
+          "captureId": "<uuid 5>",
+          "linkHref": "https://example.com/linked"
+        }
+      }
+    ],
+    "entries": [
+      "{\"type\":\"capture\",\"captureId\":\"<uuid 5>\",\"caseId\":\"<case>\",\"url\":\"https://example.com/page\",\"timestamp\":\"2026-11-16T10:00:00.000Z\",\"contentHash\":\"6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624\",\"screenshotHash\":\"ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56\",\"textHash\":\"d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e\",\"httpStatus\":200,\"method\":\"background\",\"exhibitNumber\":1,\"inventory\":{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}},\"scrollToLoad\":{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true},\"boundTlsAbsent\":\"not-recorded\",\"sizeBytes\":33,\"operatorId\":\"<installation>\",\"operatorName\":\"Op\",\"toolVersion\":\"1.0.1-beta.25\",\"index\":0,\"prevHash\":\"\",\"schemaVersion\":6,\"entryHash\":\"<hash of entry 0>\",\"signature\":\"<signature of entry 0>\"}"
+    ],
+    "rows": [
+      {
+        "id": "<uuid 5>",
+        "case_id": "<case>",
+        "url": "https://example.com/page",
+        "title": "Page Title",
+        "html_path": null,
+        "screenshot_path": "<case>/<uuid 5>.png",
+        "hash": "6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "headers": "{}",
+        "created_at": "2026-11-16T10:00:00.000Z",
+        "format": "mhtml",
+        "mhtml_path": "<case>/<uuid 5>.mhtml",
+        "size_bytes": 33,
+        "manifest_index": 0,
+        "prev_hash": "",
+        "entry_hash": "<hash of entry 0>",
+        "tool_version": "1.0.1-beta.25",
+        "extension_version": null,
+        "browser_version": "Chrome/130",
+        "user_agent": "HiddenWindow UA",
+        "http_status": 200,
+        "operator_id": "<installation>",
+        "operator_name": "Op",
+        "last_verified_at": null,
+        "last_verified_hash": null,
+        "last_verified_status": null,
+        "trusted_time_status": null,
+        "screenshot_hash": "ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56",
+        "text_hash": "d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e",
+        "tls_cert_chain": null,
+        "method": "background",
+        "supersedes_capture_id": null,
+        "consent_suppression": null,
+        "duplicate_of_capture_id": null,
+        "transaction_record_hash": null,
+        "pdf_hash": null,
+        "inventory": "{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}}",
+        "scroll_to_load": "{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true}",
+        "bound_tls": null,
+        "bound_tls_absent": "not-recorded",
+        "linked_from_capture_id": null,
+        "linked_from_content_hash": null,
+        "link_href": null,
+        "persona_id": null,
+        "persona_label": null
+      }
+    ]
+  },
+  "two jobs queued together, one of them for an excluded address": {
+    "results": [
+      {
+        "batchId": "<uuid 1>",
+        "accepted": 1,
+        "jobIds": [
+          "<uuid 2>"
+        ],
+        "rejected": [
+          {
+            "url": "https://secret.example.com/a",
+            "reason": "Blacklisted: secret.example.com"
+          }
+        ]
+      }
+    ],
+    "events": [
+      {
+        "type": "skipped",
+        "source": "recapture",
+        "url": "https://secret.example.com/a",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "skipReason": "Blacklisted: secret.example.com"
+      },
+      {
+        "type": "queued",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "received",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "stored",
+        "captureId": "<uuid 3>",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "durationMs": 0,
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      }
+    ],
+    "newCaptures": [
+      {
+        "id": "<uuid 3>",
+        "url": "https://example.com/page",
+        "method": "background"
+      }
+    ],
+    "jobs": [
+      {
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>",
+        "caseId": "<case>",
+        "url": "https://example.com/page",
+        "state": "stored",
+        "attempts": 1,
+        "queuedAt": "2026-11-16T10:00:00.000Z",
+        "startedAt": "2026-11-16T10:00:00.000Z",
+        "finishedAt": "2026-11-16T10:00:00.000Z",
+        "captureId": "<uuid 3>"
+      }
+    ],
+    "entries": [
+      "{\"type\":\"capture\",\"captureId\":\"<uuid 3>\",\"caseId\":\"<case>\",\"url\":\"https://example.com/page\",\"timestamp\":\"2026-11-16T10:00:00.000Z\",\"contentHash\":\"6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624\",\"screenshotHash\":\"ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56\",\"textHash\":\"d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e\",\"httpStatus\":200,\"method\":\"background\",\"exhibitNumber\":1,\"inventory\":{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}},\"scrollToLoad\":{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true},\"boundTlsAbsent\":\"not-recorded\",\"sizeBytes\":33,\"operatorId\":\"<installation>\",\"operatorName\":\"Op\",\"toolVersion\":\"1.0.1-beta.25\",\"index\":0,\"prevHash\":\"\",\"schemaVersion\":6,\"entryHash\":\"<hash of entry 0>\",\"signature\":\"<signature of entry 0>\"}"
+    ],
+    "rows": [
+      {
+        "id": "<uuid 3>",
+        "case_id": "<case>",
+        "url": "https://example.com/page",
+        "title": "Page Title",
+        "html_path": null,
+        "screenshot_path": "<case>/<uuid 3>.png",
+        "hash": "6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "headers": "{}",
+        "created_at": "2026-11-16T10:00:00.000Z",
+        "format": "mhtml",
+        "mhtml_path": "<case>/<uuid 3>.mhtml",
+        "size_bytes": 33,
+        "manifest_index": 0,
+        "prev_hash": "",
+        "entry_hash": "<hash of entry 0>",
+        "tool_version": "1.0.1-beta.25",
+        "extension_version": null,
+        "browser_version": "Chrome/130",
+        "user_agent": "HiddenWindow UA",
+        "http_status": 200,
+        "operator_id": "<installation>",
+        "operator_name": "Op",
+        "last_verified_at": null,
+        "last_verified_hash": null,
+        "last_verified_status": null,
+        "trusted_time_status": null,
+        "screenshot_hash": "ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56",
+        "text_hash": "d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e",
+        "tls_cert_chain": null,
+        "method": "background",
+        "supersedes_capture_id": null,
+        "consent_suppression": null,
+        "duplicate_of_capture_id": null,
+        "transaction_record_hash": null,
+        "pdf_hash": null,
+        "inventory": "{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}}",
+        "scroll_to_load": "{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true}",
+        "bound_tls": null,
+        "bound_tls_absent": "not-recorded",
+        "linked_from_capture_id": null,
+        "linked_from_content_hash": null,
+        "link_href": null,
+        "persona_id": null,
+        "persona_label": null
+      }
+    ]
+  },
+  "a job whose address is excluded after it is queued and before it starts": {
+    "results": [
+      {
+        "batchId": "<uuid 1>",
+        "accepted": 2,
+        "jobIds": [
+          "<uuid 2>",
+          "<uuid 3>"
+        ],
+        "rejected": []
+      }
+    ],
+    "events": [
+      {
+        "type": "queued",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "queued",
+        "source": "recapture",
+        "url": "https://later.example/b",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 3>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "received",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "stored",
+        "captureId": "<uuid 4>",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "durationMs": 0,
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "received",
+        "source": "recapture",
+        "url": "https://later.example/b",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 3>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "skipped",
+        "source": "recapture",
+        "url": "https://later.example/b",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "skipReason": "Blacklisted: later.example",
+        "jobId": "<uuid 3>",
+        "batchId": "<uuid 1>"
+      }
+    ],
+    "newCaptures": [
+      {
+        "id": "<uuid 4>",
+        "url": "https://example.com/page",
+        "method": "background"
+      }
+    ],
+    "jobs": [
+      {
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>",
+        "caseId": "<case>",
+        "url": "https://example.com/page",
+        "state": "stored",
+        "attempts": 1,
+        "queuedAt": "2026-11-16T10:00:00.000Z",
+        "startedAt": "2026-11-16T10:00:00.000Z",
+        "finishedAt": "2026-11-16T10:00:00.000Z",
+        "captureId": "<uuid 4>"
+      },
+      {
+        "jobId": "<uuid 3>",
+        "batchId": "<uuid 1>",
+        "caseId": "<case>",
+        "url": "https://later.example/b",
+        "state": "skipped",
+        "attempts": 1,
+        "queuedAt": "2026-11-16T10:00:00.000Z",
+        "startedAt": "2026-11-16T10:00:00.000Z",
+        "finishedAt": "2026-11-16T10:00:00.000Z",
+        "failureKind": "excluded",
+        "error": "Blacklisted: later.example"
+      }
+    ],
+    "entries": [
+      "{\"type\":\"capture\",\"captureId\":\"<uuid 4>\",\"caseId\":\"<case>\",\"url\":\"https://example.com/page\",\"timestamp\":\"2026-11-16T10:00:00.000Z\",\"contentHash\":\"6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624\",\"screenshotHash\":\"ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56\",\"textHash\":\"d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e\",\"httpStatus\":200,\"method\":\"background\",\"exhibitNumber\":1,\"inventory\":{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}},\"scrollToLoad\":{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true},\"boundTlsAbsent\":\"not-recorded\",\"sizeBytes\":33,\"operatorId\":\"<installation>\",\"operatorName\":\"Op\",\"toolVersion\":\"1.0.1-beta.25\",\"index\":0,\"prevHash\":\"\",\"schemaVersion\":6,\"entryHash\":\"<hash of entry 0>\",\"signature\":\"<signature of entry 0>\"}"
+    ],
+    "rows": [
+      {
+        "id": "<uuid 4>",
+        "case_id": "<case>",
+        "url": "https://example.com/page",
+        "title": "Page Title",
+        "html_path": null,
+        "screenshot_path": "<case>/<uuid 4>.png",
+        "hash": "6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "headers": "{}",
+        "created_at": "2026-11-16T10:00:00.000Z",
+        "format": "mhtml",
+        "mhtml_path": "<case>/<uuid 4>.mhtml",
+        "size_bytes": 33,
+        "manifest_index": 0,
+        "prev_hash": "",
+        "entry_hash": "<hash of entry 0>",
+        "tool_version": "1.0.1-beta.25",
+        "extension_version": null,
+        "browser_version": "Chrome/130",
+        "user_agent": "HiddenWindow UA",
+        "http_status": 200,
+        "operator_id": "<installation>",
+        "operator_name": "Op",
+        "last_verified_at": null,
+        "last_verified_hash": null,
+        "last_verified_status": null,
+        "trusted_time_status": null,
+        "screenshot_hash": "ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56",
+        "text_hash": "d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e",
+        "tls_cert_chain": null,
+        "method": "background",
+        "supersedes_capture_id": null,
+        "consent_suppression": null,
+        "duplicate_of_capture_id": null,
+        "transaction_record_hash": null,
+        "pdf_hash": null,
+        "inventory": "{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}}",
+        "scroll_to_load": "{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true}",
+        "bound_tls": null,
+        "bound_tls_absent": "not-recorded",
+        "linked_from_capture_id": null,
+        "linked_from_content_hash": null,
+        "link_href": null,
+        "persona_id": null,
+        "persona_label": null
+      }
+    ]
+  },
+  "a job whose render lands on an excluded address": {
+    "results": [
+      {
+        "batchId": "<uuid 1>",
+        "accepted": 1,
+        "jobIds": [
+          "<uuid 2>"
+        ],
+        "rejected": []
+      }
+    ],
+    "events": [
+      {
+        "type": "queued",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "received",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "skipped",
+        "source": "recapture",
+        "url": "https://blocked.example/landing",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "skipReason": "Blacklisted: blocked.example",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      }
+    ],
+    "newCaptures": [],
+    "jobs": [
+      {
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>",
+        "caseId": "<case>",
+        "url": "https://example.com/page",
+        "state": "skipped",
+        "attempts": 1,
+        "queuedAt": "2026-11-16T10:00:00.000Z",
+        "startedAt": "2026-11-16T10:00:00.000Z",
+        "finishedAt": "2026-11-16T10:00:00.000Z",
+        "failureKind": "excluded",
+        "error": "Blacklisted: blocked.example"
+      }
+    ],
+    "entries": [],
+    "rows": []
+  },
+  "a job whose operator name is cleared while it renders": {
+    "results": [
+      {
+        "batchId": "<uuid 1>",
+        "accepted": 1,
+        "jobIds": [
+          "<uuid 2>"
+        ],
+        "rejected": []
+      }
+    ],
+    "events": [
+      {
+        "type": "queued",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "received",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "failed",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "durationMs": 0,
+        "error": "Operator name required",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      }
+    ],
+    "newCaptures": [],
+    "jobs": [
+      {
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>",
+        "caseId": "<case>",
+        "url": "https://example.com/page",
+        "state": "failed",
+        "attempts": 1,
+        "queuedAt": "2026-11-16T10:00:00.000Z",
+        "startedAt": "2026-11-16T10:00:00.000Z",
+        "finishedAt": "2026-11-16T10:00:00.000Z",
+        "failureKind": "ingest",
+        "error": "Operator name required"
+      }
+    ],
+    "entries": [],
+    "rows": []
+  },
+  "a job whose operator name is cleared and whose render lands on an excluded address": {
+    "results": [
+      {
+        "batchId": "<uuid 1>",
+        "accepted": 1,
+        "jobIds": [
+          "<uuid 2>"
+        ],
+        "rejected": []
+      }
+    ],
+    "events": [
+      {
+        "type": "queued",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "received",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "skipped",
+        "source": "recapture",
+        "url": "https://blocked.example/landing",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "skipReason": "Blacklisted: blocked.example",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      }
+    ],
+    "newCaptures": [],
+    "jobs": [
+      {
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>",
+        "caseId": "<case>",
+        "url": "https://example.com/page",
+        "state": "skipped",
+        "attempts": 1,
+        "queuedAt": "2026-11-16T10:00:00.000Z",
+        "startedAt": "2026-11-16T10:00:00.000Z",
+        "finishedAt": "2026-11-16T10:00:00.000Z",
+        "failureKind": "excluded",
+        "error": "Blacklisted: blocked.example"
+      }
+    ],
+    "entries": [],
+    "rows": []
+  },
+  "jobs queued, resumed and retried with no operator name": {
+    "results": [
+      {
+        "batchId": "<uuid 1>",
+        "accepted": 0,
+        "jobIds": [],
+        "rejected": [
+          {
+            "url": "https://example.com/page",
+            "reason": "Operator name required"
+          },
+          {
+            "url": "not a url",
+            "reason": "Operator name required"
+          }
+        ]
+      },
+      {
+        "resumed": 0,
+        "reason": "Operator name required"
+      },
+      {
+        "retried": 0,
+        "reason": "Operator name required"
+      }
+    ],
+    "events": [],
+    "newCaptures": [],
+    "jobs": [],
+    "entries": [],
+    "rows": []
+  },
+  "a job for a Case that does not exist, and one for an address that is not a URL": {
+    "results": [
+      {
+        "batchId": "<uuid 1>",
+        "accepted": 0,
+        "jobIds": [],
+        "rejected": [
+          {
+            "url": "https://example.com/page",
+            "reason": "Case not found"
+          },
+          {
+            "url": "not a url",
+            "reason": "Invalid URL"
+          },
+          {
+            "url": "not a url",
+            "reason": "Invalid URL"
+          }
+        ]
+      }
+    ],
+    "events": [],
+    "newCaptures": [],
+    "jobs": [],
+    "entries": [],
+    "rows": []
+  },
+  "a job queued into an archived Case": {
+    "results": [
+      {
+        "batchId": "<uuid 1>",
+        "accepted": 1,
+        "jobIds": [
+          "<uuid 2>"
+        ],
+        "rejected": []
+      }
+    ],
+    "events": [
+      {
+        "type": "queued",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "received",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "stored",
+        "captureId": "<uuid 3>",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "durationMs": 0,
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      }
+    ],
+    "newCaptures": [
+      {
+        "id": "<uuid 3>",
+        "url": "https://example.com/page",
+        "method": "background"
+      }
+    ],
+    "jobs": [
+      {
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>",
+        "caseId": "<case>",
+        "url": "https://example.com/page",
+        "state": "stored",
+        "attempts": 1,
+        "queuedAt": "2026-11-16T10:00:00.000Z",
+        "startedAt": "2026-11-16T10:00:00.000Z",
+        "finishedAt": "2026-11-16T10:00:00.000Z",
+        "captureId": "<uuid 3>"
+      }
+    ],
+    "entries": [
+      "{\"type\":\"capture\",\"captureId\":\"<uuid 3>\",\"caseId\":\"<case>\",\"url\":\"https://example.com/page\",\"timestamp\":\"2026-11-16T10:00:00.000Z\",\"contentHash\":\"6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624\",\"screenshotHash\":\"ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56\",\"textHash\":\"d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e\",\"httpStatus\":200,\"method\":\"background\",\"exhibitNumber\":1,\"inventory\":{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}},\"scrollToLoad\":{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true},\"boundTlsAbsent\":\"not-recorded\",\"sizeBytes\":33,\"operatorId\":\"<installation>\",\"operatorName\":\"Op\",\"toolVersion\":\"1.0.1-beta.25\",\"index\":0,\"prevHash\":\"\",\"schemaVersion\":6,\"entryHash\":\"<hash of entry 0>\",\"signature\":\"<signature of entry 0>\"}"
+    ],
+    "rows": [
+      {
+        "id": "<uuid 3>",
+        "case_id": "<case>",
+        "url": "https://example.com/page",
+        "title": "Page Title",
+        "html_path": null,
+        "screenshot_path": "<case>/<uuid 3>.png",
+        "hash": "6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "headers": "{}",
+        "created_at": "2026-11-16T10:00:00.000Z",
+        "format": "mhtml",
+        "mhtml_path": "<case>/<uuid 3>.mhtml",
+        "size_bytes": 33,
+        "manifest_index": 0,
+        "prev_hash": "",
+        "entry_hash": "<hash of entry 0>",
+        "tool_version": "1.0.1-beta.25",
+        "extension_version": null,
+        "browser_version": "Chrome/130",
+        "user_agent": "HiddenWindow UA",
+        "http_status": 200,
+        "operator_id": "<installation>",
+        "operator_name": "Op",
+        "last_verified_at": null,
+        "last_verified_hash": null,
+        "last_verified_status": null,
+        "trusted_time_status": null,
+        "screenshot_hash": "ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56",
+        "text_hash": "d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e",
+        "tls_cert_chain": null,
+        "method": "background",
+        "supersedes_capture_id": null,
+        "consent_suppression": null,
+        "duplicate_of_capture_id": null,
+        "transaction_record_hash": null,
+        "pdf_hash": null,
+        "inventory": "{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}}",
+        "scroll_to_load": "{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true}",
+        "bound_tls": null,
+        "bound_tls_absent": "not-recorded",
+        "linked_from_capture_id": null,
+        "linked_from_content_hash": null,
+        "link_href": null,
+        "persona_id": null,
+        "persona_label": null
+      }
+    ]
+  },
+  "a job whose Case is archived while it renders": {
+    "results": [
+      {
+        "batchId": "<uuid 1>",
+        "accepted": 1,
+        "jobIds": [
+          "<uuid 2>"
+        ],
+        "rejected": []
+      }
+    ],
+    "events": [
+      {
+        "type": "queued",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "received",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      },
+      {
+        "type": "stored",
+        "captureId": "<uuid 3>",
+        "source": "recapture",
+        "url": "https://example.com/page",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "durationMs": 0,
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>"
+      }
+    ],
+    "newCaptures": [
+      {
+        "id": "<uuid 3>",
+        "url": "https://example.com/page",
+        "method": "background"
+      }
+    ],
+    "jobs": [
+      {
+        "jobId": "<uuid 2>",
+        "batchId": "<uuid 1>",
+        "caseId": "<case>",
+        "url": "https://example.com/page",
+        "state": "stored",
+        "attempts": 1,
+        "queuedAt": "2026-11-16T10:00:00.000Z",
+        "startedAt": "2026-11-16T10:00:00.000Z",
+        "finishedAt": "2026-11-16T10:00:00.000Z",
+        "captureId": "<uuid 3>"
+      }
+    ],
+    "entries": [
+      "{\"type\":\"capture\",\"captureId\":\"<uuid 3>\",\"caseId\":\"<case>\",\"url\":\"https://example.com/page\",\"timestamp\":\"2026-11-16T10:00:00.000Z\",\"contentHash\":\"6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624\",\"screenshotHash\":\"ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56\",\"textHash\":\"d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e\",\"httpStatus\":200,\"method\":\"background\",\"exhibitNumber\":1,\"inventory\":{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}},\"scrollToLoad\":{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true},\"boundTlsAbsent\":\"not-recorded\",\"sizeBytes\":33,\"operatorId\":\"<installation>\",\"operatorName\":\"Op\",\"toolVersion\":\"1.0.1-beta.25\",\"index\":0,\"prevHash\":\"\",\"schemaVersion\":6,\"entryHash\":\"<hash of entry 0>\",\"signature\":\"<signature of entry 0>\"}"
+    ],
+    "rows": [
+      {
+        "id": "<uuid 3>",
+        "case_id": "<case>",
+        "url": "https://example.com/page",
+        "title": "Page Title",
+        "html_path": null,
+        "screenshot_path": "<case>/<uuid 3>.png",
+        "hash": "6847742c97f565212ca9360b4492f40561fcfaae1c73e57a3718e88cf9461624",
+        "timestamp": "2026-11-16T10:00:00.000Z",
+        "headers": "{}",
+        "created_at": "2026-11-16T10:00:00.000Z",
+        "format": "mhtml",
+        "mhtml_path": "<case>/<uuid 3>.mhtml",
+        "size_bytes": 33,
+        "manifest_index": 0,
+        "prev_hash": "",
+        "entry_hash": "<hash of entry 0>",
+        "tool_version": "1.0.1-beta.25",
+        "extension_version": null,
+        "browser_version": "Chrome/130",
+        "user_agent": "HiddenWindow UA",
+        "http_status": 200,
+        "operator_id": "<installation>",
+        "operator_name": "Op",
+        "last_verified_at": null,
+        "last_verified_hash": null,
+        "last_verified_status": null,
+        "trusted_time_status": null,
+        "screenshot_hash": "ea80334363eed145dfeee51ebae7dc3f1cd7d0c7879f8bfd2070c061d3c33f56",
+        "text_hash": "d4cc0271e0057eaee30d92c6685e67a4f61b509ece418da5e41af6d04e2ac41e",
+        "tls_cert_chain": null,
+        "method": "background",
+        "supersedes_capture_id": null,
+        "consent_suppression": null,
+        "duplicate_of_capture_id": null,
+        "transaction_record_hash": null,
+        "pdf_hash": null,
+        "inventory": "{\"mhtml\":{\"present\":true,\"pinnedImages\":0,\"pinnedImagesNotLoaded\":0},\"transactionRecord\":{\"present\":false,\"reason\":\"failed\"},\"screenshot\":{\"present\":true,\"scaled\":false,\"truncated\":false,\"trimmed\":false,\"contentWidth\":1280,\"contentHeight\":900,\"width\":1280,\"height\":900},\"pdf\":{\"present\":false,\"reason\":\"failed\"}}",
+        "scroll_to_load": "{\"requested\":true,\"ran\":true,\"outcome\":\"stopped-growing\",\"endHeight\":900,\"scrollLockLifted\":true}",
+        "bound_tls": null,
+        "bound_tls_absent": "not-recorded",
+        "linked_from_capture_id": null,
+        "linked_from_content_hash": null,
+        "link_href": null,
+        "persona_id": null,
+        "persona_label": null
+      }
+    ]
+  }
+}

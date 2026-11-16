@@ -1020,7 +1020,7 @@ describe('stored background jobs', () => {
       expect(stateOf(kept)).toBe('held')
     })
 
-    it('fails a running job at ingest when its Case is deleted during the render', async () => {
+    it('fails a running job before its ingest when its Case is deleted during the render', async () => {
       const { renderPage, gate } = gatedRender()
       const svc = makeService(renderPage)
       svc.enqueue([{ url: 'https://example.com/a', caseId }])

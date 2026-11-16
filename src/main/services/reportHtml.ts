@@ -1473,6 +1473,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
             }, the recorded time is the operator's local system clock only. The export was not
             blocked; the gap is recorded rather than concealed.</p></div>`
           : ''
+      const packaged = isPackagedExport(ctx.options)
 
       return `
 <section class="sheet">
@@ -1480,9 +1481,11 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   <div class="rule-medium"></div>
   <p class="fine">Times are UTC. The digest column shows the first 16 hexadecimal characters of a
   64-character SHA-256 digest and is truncated for layout only; the full digest for every exhibit
-  is printed on that exhibit's page and in <code>evidence.json</code>. Exhibit numbers are the
+  is printed on that exhibit's page${
+    packaged ? ' and in <code>evidence.json</code>' : ''
+  }. Exhibit numbers are the
   ones recorded when each exhibit was committed to the case; they are not positions in this
-  table, and a package covering a selection carries gaps.</p>
+  table, and a ${packaged ? 'package' : 'report'} covering a selection carries gaps.</p>
   ${banner}
   <table class="index">
     <thead>

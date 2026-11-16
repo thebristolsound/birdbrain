@@ -546,10 +546,9 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       })
     }
     // Where a throw would leave the job: the step it reached, and the failure kind it is logged
-    // under unless it ran out of time. Everything after the render returns counts as the ingest,
-    // except a Case that admission could not find.
+    // under unless it ran out of time. Everything after the render returns counts as the ingest.
     let step: BackgroundJobStep | undefined
-    let stage: 'link-source-error' | 'render' | 'ingest' | 'case' = 'render'
+    let stage: 'link-source-error' | 'render' | 'ingest' = 'render'
     const endCancelled = (): JobOutcome => {
       emitCancelled(job)
       logger.info('backgroundRenderer', 'backgroundRenderer.job_cancelled', {
@@ -565,18 +564,13 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       url: job.url,
       ...(job.linkedFrom ? { linkedFrom: job.linkedFrom } : {})
     }
-    // Admission refused the job. For an excluded address or an archived Case it has told the
-    // feed, and the job's row and the log say why. A Case that is gone fails the job, as the
-    // ingest into it always has, and the failure is logged under the Case, not the render.
+    // Admission refused the job, for an excluded address or for its Case. It has told the
+    // feed, and the job's row and the log say why. A job whose Case is gone is not refused:
+    // admission leaves it to fail at its ingest.
     const endRefused = (refusal: AdmissionRefusal): JobOutcome => {
-      const reason = backgroundRefusalReason(refusal)
-      if (refusal.kind !== 'excluded' && refusal.kind !== 'case_archived') {
-        stage = 'case'
-        throw new Error(reason)
-      }
       const failureKind = refusal.kind === 'excluded' ? 'excluded' : 'case'
       logSkipped(failureKind)
-      return { state: 'skipped', failureKind, error: reason }
+      return { state: 'skipped', failureKind, error: backgroundRefusalReason(refusal) }
     }
     try {
       // The Case and the list can change while a job waits, held across a restart included,

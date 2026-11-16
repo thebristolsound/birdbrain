@@ -343,13 +343,14 @@ export interface CaptureLifecycle {
     request: AdmissionRequest | LaunchedAdmissionRequest | BackgroundAdmissionRequest
   ) => Promise<AdmissionOutcome>
   // The background route's checks wherever a job can still be stopped: as it is queued, as it
-  // starts, and, inside `admit`, on the address its render ended on. The Case must exist and
-  // not be archived, and the exclusion policy must admit the address, with the `skipped`
-  // event admit would emit for an exclusion or, once the job is named, for an archived Case.
-  // `job` is absent while the job is being queued: the feed then hears of an exclusion with
-  // no job named and of a Case refusal not at all, and the queue returns the reason to its
-  // caller. A Case that no longer exists is never reported here: the queue ends that job as
-  // failed. The operator gate is not here. The queue refuses to schedule
+  // starts, and, inside `admit`, on the address its render ended on. The Case must not be
+  // archived, and the exclusion policy must admit the address, with the `skipped` event
+  // admit would emit for an exclusion or, once the job is named, for an archived Case.
+  // `job` is absent while the job is being queued: the Case must then exist too, the feed
+  // hears of an exclusion with no job named and of a Case refusal not at all, and the queue
+  // returns the reason to its caller. Once a job is named, a Case that no longer exists is
+  // not refused: the job's ingest fails, as it did before this route existed, and the queue
+  // reports that failure. The operator gate is not here. The queue refuses to schedule
   // without a name, and the ingest refuses to sign without one. Null when the address would
   // be admitted.
   screenBackground: (
@@ -1599,8 +1600,9 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
 
   // The background route's screen: the Case, then the exclusion policy, in the order every
   // route runs them. A job refused for an archived Case is skipped, so the feed hears it here.
-  // A Case that is gone took the job's row with it: the queue reports that end as the job's
-  // failure, and nothing is emitted here.
+  // A Case that is gone refuses a job only while it is being queued. It took a queued job's
+  // row with it, and a job already running is left to fail at its ingest, so the operator
+  // reads the same failure as before.
   function screenBackgroundJob(
     caseId: string,
     url: string,
@@ -1610,7 +1612,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     const source: CaptureSource = 'recapture'
     const resolved = resolveAdmittedCase({ route: 'manual', caseId })
     if ('refusal' in resolved) {
-      if (job && resolved.refusal.kind === 'case_archived') {
+      if (!job) return resolved.refusal
+      if (resolved.refusal.kind === 'case_archived') {
         emitJobEvent(job, {
           type: 'skipped',
           source,
@@ -1618,8 +1621,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           timestamp: now(),
           skipReason: backgroundRefusalReason(resolved.refusal)
         })
+        return resolved.refusal
       }
-      return resolved.refusal
     }
     const blocked = matchCaseExclusion(url, caseId)
     if (!blocked) return null

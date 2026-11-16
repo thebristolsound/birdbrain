@@ -156,10 +156,12 @@ jobs:
             libgtk-3-0 libnotify-dev libnss3 libxss1 \
             libasound2t64 libxtst6 xauth libgbm1 libsecret-1-0
 
+      # The setup script, not a bare install, so the agent session gets Vale (through
+      # GITHUB_PATH) and can run the prose check the hooks and preflight call.
       - name: Install project dependencies
         if: steps.gate.outputs.run == 'true'
         run: |
-          pnpm install
+          bash scripts/setup-worktree.sh
           openssl version
 
       - name: Run one cycle

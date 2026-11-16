@@ -105,6 +105,14 @@ check_file() {
     })'
 }
 
+# A shell that skipped the session-start hook, such as a Codex session or a CI step, may still
+# have the pinned Vale in mise or the per-user cache.
+resolver="$(dirname "${BASH_SOURCE[0]}")/../../scripts/install-tools.sh"
+if ! command -v vale >/dev/null 2>&1 && [ -f "$resolver" ]; then
+  tool_path="$(bash "$resolver" --no-install 2>/dev/null)"
+  [ -n "$tool_path" ] && PATH="$tool_path:$PATH"
+fi
+
 if ! command -v vale >/dev/null 2>&1; then
   for f in "${files[@]}"; do
     case "$f" in *.md | *.mdx)

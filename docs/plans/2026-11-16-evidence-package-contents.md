@@ -64,7 +64,7 @@ encoded bytes differ between machines.
 ## Slices
 
 - [x] **1. Pin the known answers.** Test only.
-- [ ] **2. Move the decision for Timestamp Tokens, non-Capture Exhibits and Derived Files.**
+- [x] **2. Move the decision for Timestamp Tokens, non-Capture Exhibits and Derived Files.**
       These already had one read each, so this is a move behind the new interface.
       `buildTimestampTokenPaths`, `createPackageReader`, `buildDerivedFiles` and
       `addDerivedFiles` leave `export.ts`.
@@ -74,12 +74,14 @@ encoded bytes differ between machines.
       `generateReport` and the Capture pass of `buildEvidenceZip` leave `export.ts`, and the
       zip builders write the module's ordered lists.
 
-Not planned: the five restatements of "a signed hash needs its enclosed file" in the
-verifiers stay, because ADR-0004 asks for them. `caseArchive.ts` is not touched.
+Not planned: Package Verification, the verify script and the Verify Runbook each keep their
+own check that a signed hash has its enclosed file, because ADR-0004 asks for them.
+`caseArchive.ts` is not touched.
 
 ## Behaviour differences
 
-Each is a difference only when a file changes or fails while an export runs.
+The first shows only when a file changes or fails while an export runs. The second changes
+nothing an export writes.
 
 - **Slice 2.** A failed read of a stored path is remembered for the rest of the export.
   `createPackageReader` cached only successful reads, so a second row with the same stored

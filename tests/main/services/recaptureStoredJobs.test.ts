@@ -955,6 +955,23 @@ describe('stored background jobs', () => {
     })
   })
 
+  describe('the stored report', () => {
+    it("counts a stored job's duration from the job's start, its render included", async () => {
+      const { renderPage, gate } = gatedRender()
+      const svc = makeService(renderPage)
+      let clock = Date.now()
+      vi.spyOn(Date, 'now').mockImplementation(() => clock)
+      svc.enqueue([{ url: 'https://example.com/a', caseId }])
+      await vi.waitFor(() => expect(gate).toHaveLength(1))
+
+      clock += 5_000
+      gate.shift()!()
+      await svc.idle()
+
+      expect(events.find(({ type }) => type === 'stored')?.durationMs).toBe(5_000)
+    })
+  })
+
   describe('the exclusion check before the render', () => {
     it('skips a held job whose address the list refuses by the time it resumes, sending no request', async () => {
       const [id] = earlierSession(['https://secret.example.com/page'])
@@ -1052,7 +1069,7 @@ describe('stored background jobs', () => {
       expect(stateOf(kept)).toBe('held')
     })
 
-    it('fails a running job before its ingest when its Case is deleted during the render', async () => {
+    it('fails a running job at ingest when its Case is deleted during the render', async () => {
       const { renderPage, gate } = gatedRender()
       const lifecycle = feedLifecycle()
       const ingest = vi.spyOn(lifecycle, 'ingest')
@@ -1071,15 +1088,16 @@ describe('stored background jobs', () => {
       gate.shift()!()
       await svc.idle()
 
-      expect(ingest).not.toHaveBeenCalled()
+      // Admission does not refuse a job whose Case is gone: the ingest fails it, and the
+      // operator reads the ingest's own error.
+      expect(ingest).toHaveBeenCalledTimes(1)
       expect(events.map(({ type }) => type)).toEqual(['queued', 'received', 'failed'])
-      expect(events[2].error).toBe('Case not found')
-      // Logged under the Case, not as a fault of the render or the ingest.
+      expect(events[2].error).toBe('FOREIGN KEY constraint failed')
       expect(
         warn.mock.calls
           .filter(([, code]) => code === 'backgroundRenderer.job_failed')
           .map(([, , context]) => (context as { failureKind: string }).failureKind)
-      ).toEqual(['case'])
+      ).toEqual(['ingest'])
       expect(listCaptures(caseId)).toEqual([])
       expect(newCaptures).toEqual([])
       // The row went with its Case, so there is no state left to report.

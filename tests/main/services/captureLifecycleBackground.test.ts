@@ -47,12 +47,20 @@ describe('Capture Lifecycle: the background route', () => {
   let caseId: string
   let events: CaptureEvent[]
   let newCaptures: Capture[]
+  // Both sinks in the order they were called.
+  let order: string[]
 
   function buildLifecycle() {
     return createCaptureLifecycle({
       selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle,
-      emitCaptureEvent: (event) => events.push(event),
-      emitNewCapture: (capture) => newCaptures.push(capture),
+      emitCaptureEvent: (event) => {
+        order.push(event.type)
+        events.push(event)
+      },
+      emitNewCapture: (capture) => {
+        order.push('new-capture')
+        newCaptures.push(capture)
+      },
       fetchTlsCertChain: async () => null,
       egressIsDirect: () => true
     })
@@ -103,6 +111,7 @@ describe('Capture Lifecycle: the background route', () => {
     initManifest(caseDir())
     events = []
     newCaptures = []
+    order = []
   })
 
   afterEach(() => {
@@ -200,12 +209,13 @@ describe('Capture Lifecycle: the background route', () => {
       expect(events.map(({ skipReason }) => skipReason)).toEqual(['Case is archived'])
     })
 
-    it('refuses a Case that does not exist and leaves the report to the queue', () => {
+    it('refuses a Case that does not exist only while a job is being queued', () => {
       const lifecycle = buildLifecycle()
       deleteCase(caseId)
       expect(lifecycle.screenBackground(caseId, PAGE)).toEqual({ kind: 'case_not_found' })
-      expect(lifecycle.screenBackground(caseId, PAGE, JOB)).toEqual({ kind: 'case_not_found' })
-      expect(lifecycle.screenBackground('', PAGE, JOB)).toEqual({ kind: 'missing_case_id' })
+      expect(lifecycle.screenBackground('', PAGE)).toEqual({ kind: 'missing_case_id' })
+      // A named job is not refused: its ingest fails it.
+      expect(lifecycle.screenBackground(caseId, PAGE, JOB)).toBeNull()
       expect(events).toEqual([])
     })
   })
@@ -238,6 +248,7 @@ describe('Capture Lifecycle: the background route', () => {
       )
       expect(outcome.ok).toBe(true)
       if (!outcome.ok) return
+      expect(order).toEqual(['new-capture', 'stored'])
       expect(newCaptures.map(({ id, url }) => ({ id, url }))).toEqual([
         { id: outcome.capture.id, url: landed }
       ])
@@ -299,6 +310,15 @@ describe('Capture Lifecycle: the background route', () => {
       expect(events).toEqual([])
       expect(newCaptures).toEqual([])
       expect(listCaptures(caseId)).toEqual([])
+    })
+
+    it('leaves a page for a Case that is gone to fail at the ingest, reporting nothing', async () => {
+      const lifecycle = buildLifecycle()
+      deleteCase(caseId)
+      const outcome = await lifecycle.admit(request())
+      if (outcome.ok || outcome.refusal.kind !== 'failed') throw new Error('expected a failure')
+      expect(outcome.refusal.error).toMatchObject({ message: 'FOREIGN KEY constraint failed' })
+      expect(order).toEqual([])
     })
 
     it('hands back an ingest that throws as a failure and reports nothing itself', async () => {

@@ -100,10 +100,10 @@ adds cost whenever those files are enclosed.
 - **Slice 3.** The export reads a Capture's file once. Before, the report took a page
   archive's path from a check that the file existed and the zip read the file later, so a
   file removed in between left a package whose report named a file the zip lacked. Now the
-  report, the index and the zip state the one read. The export read a screenshot twice, once
-  for the report or the anchored check and once for the zip, and now reads it once. The
-  verification run of the audit trail makes its own read of each file a signed entry anchors,
-  as before.
+  report, the index and the zip state the one read. An Evidence Package export read a
+  screenshot twice, once for the report or the anchored check and once for the zip, and now
+  reads it once, as a Working Copy already did. The verification run of the audit trail makes
+  its own read of each file a signed entry anchors, as before.
 - **Slice 3.** With screenshots on, the screenshot a package encloses is the read the report
   made of it, which comes before the Manifest snapshot. The zip builder used to read it again
   after the snapshot. A screenshot that is absent at the first read and back before the zip
@@ -116,6 +116,11 @@ adds cost whenever those files are enclosed.
   before the report. All of these are before the `export` entry is appended.
 - **Slice 3.** A page archive, and a Working Copy's screenshot copy, is hashed once more,
   because the decision records its SHA-256 and the zip writer hashes what it writes.
+- **Slice 3.** The decision holds the bytes of every file it encloses until the zip is
+  written, so a page archive is in memory while the report is rendered. The zip builder used
+  to read each page archive as it wrote it. A standalone report keeps each screenshot's bytes
+  until the export ends, beside the copy the report embeds, where each was let go once it was
+  embedded. Neither changes what an export writes.
 
 ## Handoff
 

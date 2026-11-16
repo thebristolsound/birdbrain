@@ -4904,10 +4904,11 @@ describe('export', () => {
       }
     })
 
-    it("reads a Capture's screenshot once for the report and the package", async () => {
-      // The report reproduces the screenshot and the package encloses it. One
-      // read serves both, so the two cannot be of different bytes. The audit
-      // trail is off because its verification run reads the file on its own.
+    it("reads a Capture's screenshot and page archive once each", async () => {
+      // The report reproduces the screenshot and names the page archive, and
+      // the package encloses both. One read of each serves the report and the
+      // package, so the two cannot disagree. The audit trail is off because
+      // its verification run reads the files on its own.
       const read = vi.spyOn(defaultCaptureStore, 'readArtifact')
       try {
         const entries = await exportMixed('one-read.zip', {
@@ -4922,9 +4923,13 @@ describe('export', () => {
         expect(
           read.mock.calls.filter(([, id, type]) => id === fixture.captureId && type === 'png')
         ).toHaveLength(1)
+        expect(
+          read.mock.calls.filter(([, id, type]) => id === fixture.captureId && type === 'mhtml')
+        ).toHaveLength(1)
         expect([...entries.keys()].filter((name) => name.startsWith('screenshots/'))).toHaveLength(
           1
         )
+        expect([...entries.keys()].filter((name) => name.endsWith('.mhtml'))).toHaveLength(1)
       } finally {
         read.mockRestore()
       }

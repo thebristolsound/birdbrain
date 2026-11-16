@@ -83,7 +83,7 @@ Decisions taken, with the reason for each:
   request, each merged before the next opens.
 - Change 3 begins by reading `registerIpcHandlers` in `src/main/ipcHandlers.ts` and choosing
   the first domain to move. `tests/main/ipcHandlers.test.ts` keeps its check that every
-  contracted channel is registered.
+  invoke channel in `IPC_CHANNELS` is registered.
 
 ## Open questions
 

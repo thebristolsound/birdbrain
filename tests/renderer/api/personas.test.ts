@@ -27,13 +27,11 @@ describe('usePersonasMutations', () => {
     fakeBridge({ persona: { import: importCookies } })
     const { result } = renderMutations()
 
-    const rejection = await result.current.importCookies
-      .mutateAsync('p-1')
-      .catch((err: unknown) => err)
+    const call = result.current.importCookies.mutateAsync('p-1')
 
+    await expect(call).rejects.toBeInstanceOf(Error)
     expect(importCookies).toHaveBeenCalledWith('p-1')
-    expect(rejection).toBeInstanceOf(Error)
-    expect(rejection).toMatchObject({
+    await expect(call).rejects.toMatchObject({
       message: 'Only a Netscape cookies.txt export can be imported.',
       code: 'PERSONA_COOKIE_FILE_UNSUPPORTED'
     })

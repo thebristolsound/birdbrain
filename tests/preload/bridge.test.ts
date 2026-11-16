@@ -291,9 +291,9 @@ describe('preload refusals', () => {
       code: 'PERSONA_COOKIE_FILE_UNSUPPORTED'
     }
     try {
-      const rejection = await leaf('persona.import')('p-1').catch((err: unknown) => err)
-      expect(rejection).not.toBeInstanceOf(Error)
-      expect(rejection).toEqual({
+      const call = leaf('persona.import')('p-1')
+      await expect(call).rejects.not.toBeInstanceOf(Error)
+      await expect(call).rejects.toEqual({
         message: 'Only a Netscape cookies.txt export can be imported.',
         code: 'PERSONA_COOKIE_FILE_UNSUPPORTED'
       })

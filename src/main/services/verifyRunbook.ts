@@ -486,27 +486,39 @@ for \`${ROOT.manifest}\` and for every member and lineage chain alike:
 
 \`\`\`sh
 receipt=$(mktemp)
+failed=0
 for chain in ${ROOT.manifest} ${memberChainPath('*')} ${lineageChainPath('*', '*')}; do
   [ -e "$chain" ] || continue
-  jq -c '${VERIFY_RECIPES.receiptTokenFilter}' "$chain" | while IFS= read -r r; do
-    hash=$(printf '%s' "$r" | jq -r '.captureContentHash')
-    idx=$(jq -rn --arg h "$hash" \\
-      'first(inputs | select(.type == "merge" and .entryHash == $h) | .index) // empty' "$chain")
-    if [ -z "$idx" ]; then
-      echo "RECEIPT NAMES NO MERGE: entry $(printf '%s' "$r" | jq -r '.index') of $chain"
-      continue
-    fi
-    printf '%s' "$r" | jq -r '.tsaToken' | openssl base64 -d -A >"$receipt"
-    if openssl ts -verify -digest "$hash" -in "$receipt" -token_in \\
-      -CAfile ${ROOT.tsaRoot} -untrusted ${ROOT.tsaIntermediates} >/dev/null 2>&1; then
-      echo "receipt OK: merge #$idx of $chain"
-    else
-      echo "RECEIPT FAIL: merge #$idx of $chain"
-    fi
-  done
+  jq -c '${VERIFY_RECIPES.receiptTokenFilter}' "$chain" | {
+    bad=0
+    while IFS= read -r r; do
+      hash=$(printf '%s' "$r" | jq -r '.captureContentHash')
+      idx=$(jq -rn --arg h "$hash" \\
+        'first(inputs | select(.type == "merge" and .entryHash == $h) | .index) // empty' "$chain")
+      if [ -z "$idx" ]; then
+        echo "RECEIPT NAMES NO MERGE: entry $(printf '%s' "$r" | jq -r '.index') of $chain"
+        bad=1
+        continue
+      fi
+      printf '%s' "$r" | jq -r '.tsaToken' | openssl base64 -d -A >"$receipt"
+      if openssl ts -verify -digest "$hash" -in "$receipt" -token_in \\
+        -CAfile ${ROOT.tsaRoot} -untrusted ${ROOT.tsaIntermediates} >/dev/null 2>&1; then
+        echo "receipt OK: merge #$idx of $chain"
+      else
+        echo "RECEIPT FAIL: merge #$idx of $chain"
+        bad=1
+      fi
+    done
+    # sh and bash run this group in a subshell, so its flag leaves only as its status.
+    [ "$bad" = 0 ]
+  } || failed=1
 done
 rm -f "$receipt"
+[ "$failed" = 0 ]
 \`\`\`
+
+The block exits non-zero on any \`RECEIPT FAIL\` or \`RECEIPT NAMES NO MERGE\`, in any
+chain it reads.
 
 A \`timestamp\` entry whose \`tsaToken\` is present but is not a string, \`null\`
 included, is malformed, whatever its \`subject\`. Both filters above skip it, and

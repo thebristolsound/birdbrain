@@ -70,31 +70,42 @@ export type BirdbrainAPI = {
 // The type above and buildBridge() below state the rule separately, and the
 // compiler does not compare what they produce. Each union here is a kind of
 // name or path on which the two are known to part, so one that is not empty
-// fails to compile. tests/preload/bridge.test.ts checks the built object.
+// fails to compile. They take their inputs as parameters so that
+// tests/shared/birdbrainApi.test.ts can show each clause rejecting a name;
+// tests/preload/bridge.test.ts checks the built object.
 type AssertNever<T extends never> = T
 
-type MisnamedChannel =
+export type MisnamedChannel<All extends string, Invoke extends string, Event extends string> =
   // No colon: the type drops the channel and bridgePath() still places it.
-  | Exclude<IpcChannel, `${string}:${string}`>
+  | Exclude<All, `${string}:${string}`>
   // A dot: the type keeps one key where buildBridge() nests.
-  | Extract<IpcChannel, `${string}.${string}`>
+  | Extract<All, `${string}.${string}`>
   // The type picks invoke or subscribe by contract, buildBridge() by prefix.
-  | Exclude<IpcEventChannel, `event:${string}`>
-  | Extract<ContractedChannel, `event:${string}`>
-export type ChannelNamesFitTheRule = AssertNever<MisnamedChannel>
+  | Exclude<Event, `event:${string}`>
+  | Extract<Invoke, `event:${string}`>
+export type ChannelNamesFitTheRule = AssertNever<
+  MisnamedChannel<IpcChannel, ContractedChannel, IpcEventChannel>
+>
 
 type RootKey = {
   [C in IpcChannel]: BridgePath<C> extends `${string}.${string}` ? never : BridgePath<C>
 }[IpcChannel]
 
-type MisplacedPath =
+export type MisplacedPath<
+  Path extends string,
+  EventPath extends string,
+  Namespace extends string,
+  Root extends string
+> =
   // Two dots, which only an exception can give: buildBridge() nests once.
-  | Extract<BridgePath<IpcChannel>, `${string}.${string}.${string}`>
+  | Extract<Path, `${string}.${string}.${string}`>
   // An event under a namespace: the type would keep its path as one root key.
-  | Extract<BridgePath<IpcEventChannel>, `${string}.${string}`>
+  | Extract<EventPath, `${string}.${string}`>
   // A namespace that is also a root-level key: one would replace the other.
-  | Extract<BridgeNamespace, RootKey>
-export type BridgePathsFitTheRule = AssertNever<MisplacedPath>
+  | Extract<Namespace, Root>
+export type BridgePathsFitTheRule = AssertNever<
+  MisplacedPath<BridgePath<IpcChannel>, BridgePath<IpcEventChannel>, BridgeNamespace, RootKey>
+>
 
 export function bridgePath<C extends IpcChannel>(channel: C): BridgePath<C>
 export function bridgePath(channel: IpcChannel): string {

@@ -5,7 +5,9 @@ import {
   buildBridge,
   isEventChannel,
   type BirdbrainAPI,
-  type BridgePath
+  type BridgePath,
+  type MisnamedChannel,
+  type MisplacedPath
 } from '@shared/birdbrainApi'
 import {
   IPC_CHANNELS,
@@ -96,6 +98,49 @@ describe('BirdbrainAPI', () => {
 
   it('has no namespace for the event channels', () => {
     expectTypeOf<BirdbrainAPI>().not.toHaveProperty('event')
+  })
+})
+
+// The compile-time guards fail the build when their union is not empty. These
+// feed each clause a name or path it exists to reject.
+describe('MisnamedChannel', () => {
+  it('names a channel with no colon, or with a dot', () => {
+    expectTypeOf<MisnamedChannel<'ping', 'ping', never>>().toEqualTypeOf<'ping'>()
+    expectTypeOf<MisnamedChannel<'cases:a.b', 'cases:a.b', never>>().toEqualTypeOf<'cases:a.b'>()
+  })
+
+  it('names a channel whose prefix disagrees with the contract that holds it', () => {
+    expectTypeOf<
+      MisnamedChannel<'tabs:picked', never, 'tabs:picked'>
+    >().toEqualTypeOf<'tabs:picked'>()
+    expectTypeOf<MisnamedChannel<'event:run', 'event:run', never>>().toEqualTypeOf<'event:run'>()
+  })
+
+  it('names nothing when every channel fits', () => {
+    expectTypeOf<
+      MisnamedChannel<'cases:list' | 'event:run', 'cases:list', 'event:run'>
+    >().toBeNever()
+  })
+})
+
+describe('MisplacedPath', () => {
+  it('names a path with two dots, and an event path under a namespace', () => {
+    expectTypeOf<MisplacedPath<'a.b.c', never, 'a', never>>().toEqualTypeOf<'a.b.c'>()
+    expectTypeOf<
+      MisplacedPath<'tabs.onPicked', 'tabs.onPicked', never, never>
+    >().toEqualTypeOf<'tabs.onPicked'>()
+  })
+
+  it('names a namespace that is also a root-level key', () => {
+    expectTypeOf<
+      MisplacedPath<'search' | 'search.suggest', never, 'search', 'search'>
+    >().toEqualTypeOf<'search'>()
+  })
+
+  it('names nothing when every path fits', () => {
+    expectTypeOf<
+      MisplacedPath<'cases.list' | 'search' | 'onRun', 'onRun', 'cases', 'search' | 'onRun'>
+    >().toBeNever()
   })
 })
 

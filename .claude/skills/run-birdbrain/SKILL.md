@@ -106,7 +106,8 @@ xvfb-run -a node $P verify main    # this build verifies what the other build wr
 
 `take` makes one `background` and one `launched` Capture of a page it serves on loopback, so it
 needs `xdotool` and a Chromium the app can launch; it fails, and compares nothing, where the
-app offers no browser. `compare` leaves out ids, times and the hashes of files that embed a
+app offers no browser or either Capture fails. `compare` and `verify` refuse a run that lacks
+either method. `compare` leaves out ids, times and the hashes of files that embed a
 time, and reports the inventory, Bound TLS Details, record structure, PDF page count,
 screenshot and text. `verify` changes one record byte to show the verification read the record.
 Output goes to `.preflight/capture-proof/`; `--port` moves the capture server off 29411.

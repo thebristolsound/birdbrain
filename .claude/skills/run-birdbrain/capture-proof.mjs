@@ -164,10 +164,13 @@ async function take(label, { repo, out, port, keepProfile }) {
     const jobs = await until(
       'the background job',
       () => page.evaluate((caseId) => window.birdbrain.recapture.listJobs({ caseId }), caseId),
-      (list) => list.length > 0 && list.every((job) => !['queued', 'running'].includes(job.state)),
+      (list) =>
+        list.length > 0 && list.every((job) => !['queued', 'held', 'running'].includes(job.state)),
       150_000
     )
     log('background job', JSON.stringify(jobs.map(({ state, error }) => ({ state, error }))))
+    // A job that ended any other way stored no Capture, and the run would compare one method.
+    if (jobs.some((job) => job.state !== 'stored')) throw new Error('the background job failed')
 
     // A launched Capture, in the first browser the app lists. A platform that offers none
     // fails here: a run that skipped a method must not read as one that compared it.
@@ -195,6 +198,7 @@ async function take(label, { repo, out, port, keepProfile }) {
       open.browser.tabs.find((tab) => tab.url === url).targetId
     )
     log('launched capture', JSON.stringify(captured.browser?.capture ?? captured).slice(0, 400))
+    if (captured.browser?.capture?.state !== 'captured') throw new Error('the launched Capture failed')
     await page.evaluate(() => window.birdbrain.launchedBrowser.endSession())
 
     fs.cpSync(caseFolder(userData), path.join(dir, 'case'), { recursive: true })
@@ -225,6 +229,15 @@ const captureEntries = (dir) =>
     .split('\n')
     .map((line) => JSON.parse(line))
     .filter((entry) => entry.type === 'capture')
+
+// Both Capture Methods `take` drives. A run that lacks one proves nothing about it, so every
+// reader of a run refuses it: two runs that both lack a method must not compare as identical.
+const METHODS = ['background', 'launched']
+function requireBothMethods(entries, where) {
+  const missing = METHODS.filter((method) => !entries.some((entry) => entry.method === method))
+  if (missing.length) throw new Error(`${where} holds no ${missing.join(' and no ')} Capture`)
+  return entries
+}
 
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex')
 
@@ -284,8 +297,9 @@ function describeRun(out, label) {
   const dir = path.join(out, label, 'case')
   if (!fs.existsSync(dir)) throw new Error(`no run labelled ${label} under ${out}: take it first`)
   const described = {}
-  for (const entry of captureEntries(dir)) described[entry.method] = describeCapture(dir, entry)
-  if (Object.keys(described).length === 0) throw new Error(`the run ${label} holds no Capture`)
+  for (const entry of requireBothMethods(captureEntries(dir), `the run ${label}`)) {
+    described[entry.method] = describeCapture(dir, entry)
+  }
   fs.writeFileSync(path.join(out, `${label}.json`), JSON.stringify(described, null, 2))
   return described
 }
@@ -319,8 +333,7 @@ async function verify(label, { repo, out, port }) {
     throw new Error(`no kept profile for ${label}: run take ${label} --keep-profile first`)
   }
   const dir = caseFolder(userData)
-  const entries = captureEntries(dir)
-  if (entries.length === 0) throw new Error(`the profile of ${label} holds no Capture`)
+  const entries = requireBothMethods(captureEntries(dir), `the profile of ${label}`)
   const { app, page } = await launchApp(repo, userData, port)
   let failed = false
   try {

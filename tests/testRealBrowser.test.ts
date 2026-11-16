@@ -117,21 +117,31 @@ describe("this repository's Egress suite", () => {
   const suite = join(SUITE_DIR, 'egressNetns.test.ts')
   const source = readFileSync(join(__dirname, '..', suite), 'utf8')
 
-  it('gets the two unshare calls the suite itself names', () => {
+  it('is run by the command the suite itself prints, with the caller as the mapped user', () => {
+    // The suite builds its command from two template literals; read them out of its source.
+    const [, first, second] = /const NETNS_COMMAND =\s*`([^`]*)` \+\s*`([^`]*)`/.exec(source) ?? []
+    expect(first, 'the suite no longer declares NETNS_COMMAND in this shape').toBeDefined()
+    const printed = `${first}${second}`
+      .replace('$(id -u)', '1000')
+      .replace('$(id -g)', '985')
+      .replace('${FILE}', suite)
     const [command, flag, shell, option, script] = suiteCommand(suite, source, {
       uid: 1000,
       gid: 985
     })
-    expect([command, flag, shell, option]).toEqual(['unshare', '-rn', 'sh', '-c'])
-    expect(script).toBe(
+    expect(`${command} ${flag} ${shell} ${option} "${script}"`).toBe(printed)
+  })
+})
+
+describe('a suite file name the shell would split', () => {
+  it('is quoted inside the namespace command and left whole outside it', () => {
+    const user = { uid: 1000, gid: 985 }
+    const odd = "tests/it's here/n.test.ts"
+    expect(suiteCommand(odd, 'namespaceSkipReason', user)[4]).toBe(
       'ip link set lo up && unshare -U --map-user=1000 --map-group=985 ' +
-        `xvfb-run --auto-servernum pnpm test ${suite}`
+        "xvfb-run --auto-servernum pnpm test 'tests/it'\\''s here/n.test.ts'"
     )
-    // The suite prints its own command with $(id -u) and $(id -g) where the runner puts numbers.
-    for (const part of ['unshare -rn sh -c', 'ip link set lo up && unshare -U --map-user=']) {
-      expect(source).toContain(part)
-    }
-    expect(source).toContain('xvfb-run --auto-servernum pnpm test ${FILE}')
+    expect(suiteCommand(odd, 'realBrowserSkipReason', user)[4]).toBe(odd)
   })
 })
 
@@ -184,6 +194,23 @@ describe('runSuites', () => {
       `1 of 3 suites passed; not passed: ${join(SUITE_DIR, 'b.test.ts')} (failed), ` +
         `${join(SUITE_DIR, 'c.test.ts')} (ran no test)`
     )
+  })
+
+  it('reads a suite named by an absolute path where it is', () => {
+    const elsewhere = join(root, 'elsewhere.test.ts')
+    writeFileSync(elsewhere, 'realBrowserSkipReason()')
+    const commands: string[][] = []
+    const code = runSuites([elsewhere], {
+      root: join(root, SUITE_DIR),
+      user,
+      out: { write: () => true },
+      spawn: (command: string, args: string[]) => {
+        commands.push([command, ...args])
+        return { status: 0, stdout: passed }
+      }
+    })
+    expect(code).toBe(0)
+    expect(commands).toEqual([['xvfb-run', '--auto-servernum', 'pnpm', 'test', elsewhere]])
   })
 
   it('fails when the command cannot start, and when there is no suite', () => {

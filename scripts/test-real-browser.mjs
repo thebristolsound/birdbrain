@@ -13,7 +13,7 @@
 
 import { spawnSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { ARCHIVES, CACHE_DIR, CHROME_FOR_TESTING_VERSION } from './fetch-chrome-for-testing.mjs'
 
@@ -32,7 +32,11 @@ export const realBrowserSuites = (root, dir = SUITE_DIR) =>
 export const suiteCommand = (suite, source, { uid, gid }) => {
   const test = ['xvfb-run', '--auto-servernum', 'pnpm', 'test', suite]
   if (!source.includes('namespaceSkipReason')) return test
-  const mapped = `unshare -U --map-user=${uid} --map-group=${gid} ${test.join(' ')}`
+  // The inner command is shell text, so the file name is quoted for the shell that reads it.
+  const quoted = /^[\w@%+=:,./-]+$/.test(suite) ? suite : `'${suite.replaceAll("'", `'\\''`)}'`
+  const mapped =
+    `unshare -U --map-user=${uid} --map-group=${gid} ` +
+    `xvfb-run --auto-servernum pnpm test ${quoted}`
   return ['unshare', '-rn', 'sh', '-c', `ip link set lo up && ${mapped}`]
 }
 
@@ -68,7 +72,9 @@ export const runSuites = (suites, { root, user, spawn = spawnSync, out = process
   }
   const notPassed = []
   for (const suite of suites) {
-    const [command, ...args] = suiteCommand(suite, readFileSync(join(root, suite), 'utf8'), user)
+    // resolve, not join: a suite named by an absolute path stays where it is.
+    const source = readFileSync(resolve(root, suite), 'utf8')
+    const [command, ...args] = suiteCommand(suite, source, user)
     out.write(`\ntest:real-browser: ${suite}\n`)
     const result = spawn(command, args, {
       cwd: root,

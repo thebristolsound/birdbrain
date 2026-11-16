@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { execFileSync } from 'child_process'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 // @ts-expect-error - build script with no type declarations; the tsconfigs exclude scripts/
@@ -206,8 +206,26 @@ describe('verify-before-stop hook', () => {
     writeBlock(measured, 'pass', repo, { head, diffSha256: 'a'.repeat(64) })
     const { code, stderr } = stop(implementer)
     expect(code).toBe(2)
-    expect(stderr).toContain('was carried forward from another commit')
+    expect(stderr).toContain('is marked source=carried')
     expect(stderr).toContain('pnpm preflight')
+  })
+
+  it('holds a block at HEAD that any other source wrote, as it did before sources were read', () => {
+    const head = commit('work.txt')
+    writeBlock(head)
+    const block = join(repo, '.preflight', 'verification.md')
+    for (const source of ['ci', 'manual']) {
+      writeFileSync(
+        block,
+        readFileSync(block, 'utf8').replace(
+          /status=pass( source=[a-z]+)? -->/,
+          `status=pass source=${source} -->`
+        )
+      )
+      const { code, stderr } = stop(implementer)
+      expect(code).toBe(2)
+      expect(stderr).toContain(`is marked source=${source}`)
+    }
   })
 
   it('blocks a carried block that names another head', () => {

@@ -7,10 +7,10 @@
 # practices page (https://code.claude.com/docs/en/best-practices) says "If something has to
 # happen every time, make it a hook, a deny rule, or a managed setting." It runs no tests
 # itself. It reads the stamp line preflight writes,
-# `<!-- preflight vN sha=<sha> status=<pass|fail> -->`, from .preflight/verification.md. A block
-# `pnpm preflight --carry` wrote for HEAD from a run at another commit (ADR-0021) ends
-# ` source=carried -->`. No step ran on the tree at HEAD for it, so it holds the stop as a
-# missing block does.
+# `<!-- preflight vN sha=<sha> status=<pass|fail> -->`, from .preflight/verification.md. A stamp
+# that ends ` source=<word> -->` did not come from a run at HEAD: `source=carried` is a block
+# `pnpm preflight --carry` wrote from a run at another commit (ADR-0021), and `source=ci` is one
+# composed from CI results. Any source holds the stop, as a missing block does.
 #
 # It acts only for the agents named in $bound, read from the payload's agent_type, which
 # SubagentStop always carries and Stop carries in a session started with `--agent`. So a main
@@ -73,8 +73,8 @@ elif [ -z "$stamp" ]; then
   reason="no verification block at .preflight/verification.md"
 elif [ "$sha" != "$head" ]; then
   reason="the verification block is for ${sha:0:12}, not HEAD ${head:0:12}"
-elif [ "$source" = carried ]; then
-  reason="the verification block at HEAD was carried forward from another commit, so no check ran on this tree"
+elif [ -n "$source" ]; then
+  reason="the verification block at HEAD is marked source=$source, so \`pnpm preflight\` did not run on this tree"
 elif [ "$status" != pass ]; then
   [ "$reminded" = 1 ] && exit 0
   printf '%s %s 1\n' "$head" "$count" > "$state"

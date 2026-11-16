@@ -34,7 +34,12 @@ const commit = (name: string) => {
 }
 
 // The block preflight itself writes, so a change to its stamp line breaks these tests.
-const writeBlock = (sha: string, status: 'pass' | 'fail' = 'pass', root = repo) => {
+const writeBlock = (
+  sha: string,
+  status: 'pass' | 'fail' = 'pass',
+  root = repo,
+  carried?: { head: string; diffSha256: string }
+) => {
   mkdirSync(join(root, '.preflight'), { recursive: true })
   writeFileSync(
     join(root, '.preflight', 'verification.md'),
@@ -43,7 +48,8 @@ const writeBlock = (sha: string, status: 'pass' | 'fail' = 'pass', root = repo) 
       nodeVersion: '24.0.0',
       base: 'origin/main',
       mergeBase: sha,
-      steps: [{ command: 'pnpm lint', status, exitCode: status === 'pass' ? 0 : 1 }]
+      steps: [{ command: 'pnpm lint', status, exitCode: status === 'pass' ? 0 : 1 }],
+      carried
     })
   )
 }
@@ -191,6 +197,22 @@ describe('verify-before-stop hook', () => {
   it('lets the implementer stop with a passing block at HEAD', () => {
     writeBlock(commit('work.txt'))
     expect(stop(implementer).code).toBe(0)
+  })
+
+  it('lets the implementer stop with a block carried forward to HEAD', () => {
+    const measured = commit('work.txt')
+    git('commit', '--allow-empty', '-q', '-m', 'merge')
+    const head = git('rev-parse', 'HEAD')
+    writeBlock(measured, 'pass', repo, { head, diffSha256: 'a'.repeat(64) })
+    expect(stop(implementer).code).toBe(0)
+  })
+
+  it('blocks a carried block that names another head', () => {
+    const measured = commit('work.txt')
+    writeBlock(measured, 'pass', repo, { head: 'b'.repeat(40), diffSha256: 'a'.repeat(64) })
+    const { code, stderr } = stop(implementer)
+    expect(code).toBe(2)
+    expect(stderr).toContain('is for bbbbbbbbbbbb, not HEAD')
   })
 
   it('keeps blocking a missing block when the agent stops again', () => {

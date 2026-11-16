@@ -63,6 +63,14 @@ Carrying forward is a set of writes, not a silence. The dispatcher:
 4. Annotates the `## Verification` block rather than regenerating it, recording the sha the block
    was measured at and that the delta to head is a clean merge of `main`.
 
+**Amended 2026-11-16:** step 4 has an instrument. `pnpm preflight --carry` reads the record
+its last passing run left in `.preflight/verification.json` and compares the diff hash at that
+run's sha with the one at head. When they are equal it writes that block again for the new
+head, stamped `source=carried`, with a line naming the sha the block was measured at and the
+shared hash, and runs no step. When they differ, or no passing run is recorded, it says why and
+runs every step. A session outside the dispatcher uses the same command; the required checks at
+the new head stay the precondition.
+
 ### Narrowing the invalidation clause
 
 ADR-0018's "any push invalidates the block" is narrowed to any push that changes authored

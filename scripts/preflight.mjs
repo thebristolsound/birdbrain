@@ -35,10 +35,19 @@
 // The block is written to .preflight/verification.md (gitignored) and belongs
 // in the PR body only: a committed block moves HEAD and is stale by construction.
 //
-// Usage: node scripts/preflight.mjs [--base <ref>] [--out <path>]
+// --carry is the instrument for ADR-0021. A run that finishes also writes
+// .preflight/verification.json, the record of what it measured. With --carry, when that
+// record passed at another commit and `git diff <base>...<that commit>` is byte-identical
+// to `git diff <base>...HEAD` (a clean merge of the base, or the same tree on another
+// lineage), no step runs: the recorded block is written again for HEAD, marked
+// `source=carried`, with a line naming the commit it was measured at and the diff hash.
+// When the diff differs, or there is no passing record, it says why and runs every step.
+//
+// Usage: node scripts/preflight.mjs [--base <ref>] [--out <path>] [--carry]
 
 import { execFileSync, spawn } from 'node:child_process'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -47,13 +56,18 @@ export const REQUIRED_NODE_MAJOR = 24
 export const DEFAULT_OUT = join('.preflight', 'verification.md')
 
 const parseArgs = (argv) => {
-  const args = { base: process.env.COVERAGE_DIFF_BASE || 'origin/main', out: DEFAULT_OUT }
+  const args = {
+    base: process.env.COVERAGE_DIFF_BASE || 'origin/main',
+    out: DEFAULT_OUT,
+    carry: false
+  }
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--base') args.base = argv[(i += 1)]
     else if (argv[i] === '--out') args.out = argv[(i += 1)]
+    else if (argv[i] === '--carry') args.carry = true
     else
       throw new Error(
-        `Unknown argument "${argv[i]}". Usage: preflight [--base <ref>] [--out <path>]`
+        `Unknown argument "${argv[i]}". Usage: preflight [--base <ref>] [--out <path>] [--carry]`
       )
   }
   return args
@@ -113,12 +127,57 @@ export const summarizeDiffCoverage = (result) => {
   )
 }
 
-export const formatVerificationBlock = ({ sha, nodeVersion, base, mergeBase, steps }) => {
+// The record of a finished run sits beside its block: verification.md -> verification.json.
+export const recordPathFor = (outPath) => outPath.replace(/(\.md)?$/, '.json')
+
+// sha256 of `git diff <base>...<sha>`, the pull request's authored content (ADR-0021).
+export const diffHash = (cwd, base, sha) =>
+  createHash('sha256')
+    .update(
+      execFileSync('git', ['diff', `${base}...${sha}`], {
+        cwd,
+        maxBuffer: 1024 * 1024 * 1024,
+        stdio: ['ignore', 'pipe', 'ignore']
+      })
+    )
+    .digest('hex')
+
+// Whether the recorded run still describes `head`. Returns the diff hash both commits share,
+// or the reason the record cannot be carried forward. Absence is a reason, never a pass.
+export const carryForward = (record, head, hashAt) => {
+  if (!record) return { reason: 'no record of an earlier run' }
+  if (record.version !== BLOCK_VERSION || !/^[0-9a-f]{40}$/.test(record.sha ?? '')) {
+    return { reason: 'the record of the earlier run is not one this version wrote' }
+  }
+  if (record.status !== 'pass') return { reason: `the run at ${record.sha} did not pass` }
+  let measured
+  try {
+    measured = hashAt(record.sha)
+  } catch {
+    return { reason: `commit ${record.sha} is no longer in this repository` }
+  }
+  if (measured !== hashAt(head)) {
+    return { reason: `the diff against the base changed since ${record.sha}` }
+  }
+  return { diffSha256: measured }
+}
+
+const readRecord = (path) => {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+export const formatVerificationBlock = ({ sha, nodeVersion, base, mergeBase, steps, carried }) => {
   const status = steps.some((step) => step.status === 'fail') ? 'fail' : 'pass'
   // The step list is collapsed under a plain-language summary line: the PR body's top layer
   // carries no commands, ids or figures (post-pr-body), and the block is pasted verbatim.
+  // A carried block is stamped with the head it now describes; `sha` stays the measured commit.
   const lines = [
-    `<!-- preflight v${BLOCK_VERSION} sha=${sha} status=${status} -->`,
+    `<!-- preflight v${BLOCK_VERSION} sha=${carried ? carried.head : sha} status=${status}` +
+      `${carried ? ' source=carried' : ''} -->`,
     '## Verification',
     '',
     '<details>',
@@ -128,6 +187,15 @@ export const formatVerificationBlock = ({ sha, nodeVersion, base, mergeBase, ste
       `\`${base}\` (merge base \`${mergeBase.slice(0, 9)}\`). Result: **${status}**.`,
     ''
   ]
+  if (carried) {
+    lines.push(
+      `Carried forward to \`${carried.head}\` without a new run (ADR-0021): ` +
+        `\`git diff ${base}...${sha}\` and \`git diff ${base}...${carried.head}\` are ` +
+        `byte-identical (sha256 \`${carried.diffSha256.slice(0, 12)}\`). The steps below ran at ` +
+        `\`${sha}\`; the required checks at \`${carried.head}\` are what cover the tree there.`,
+      ''
+    )
+  }
   for (const step of steps) {
     const result = step.status === 'skipped' ? 'skipped' : `${step.status} (exit ${step.exitCode})`
     lines.push(`- \`${step.command}\` - ${result}${step.detail ? ` - ${step.detail}` : ''}`)
@@ -206,10 +274,12 @@ const main = async () => {
   const cwd = process.cwd()
   const args = parseArgs(process.argv.slice(2))
   const outPath = resolve(cwd, args.out)
+  const recordPath = recordPathFor(outPath)
   const nodeVersion = process.versions.node
 
   // Clear any earlier block first: a refusal must not leave a pasteable block
-  // for a sha this run never checked.
+  // for a sha this run never checked. The record stays: it names the commit it measured,
+  // and only --carry reads it, against the diff at that commit.
   rmSync(outPath, { force: true })
 
   const problems = [dirtyTreeProblem(cwd), nodeVersionProblem(nodeVersion)].filter(Boolean)
@@ -220,6 +290,25 @@ const main = async () => {
   }
 
   const sha = git(cwd, 'rev-parse', 'HEAD').trim()
+  if (args.carry) {
+    const record = readRecord(recordPath)
+    const carried = carryForward(record, sha, (commit) => diffHash(cwd, args.base, commit))
+    if (carried.reason) {
+      console.log(`preflight: not carried forward, ${carried.reason}; running every step`)
+    } else {
+      const block =
+        record.sha === sha
+          ? formatVerificationBlock(record)
+          : formatVerificationBlock({ ...record, carried: { head: sha, ...carried } })
+      mkdirSync(dirname(outPath), { recursive: true })
+      writeFileSync(outPath, block)
+      console.log(`\n${block}`)
+      console.log(
+        `preflight: no step ran; the block measured at ${record.sha} was written to ${args.out}.`
+      )
+      return
+    }
+  }
   let mergeBase
   try {
     mergeBase = git(cwd, 'merge-base', args.base, 'HEAD').trim()
@@ -288,9 +377,15 @@ const main = async () => {
     )
   }
 
-  const block = formatVerificationBlock({ sha, nodeVersion, base: args.base, mergeBase, steps })
+  const measured = { sha, nodeVersion, base: args.base, mergeBase, steps }
+  const block = formatVerificationBlock(measured)
   mkdirSync(dirname(outPath), { recursive: true })
   writeFileSync(outPath, block)
+  const status = steps.some((step) => step.status === 'fail') ? 'fail' : 'pass'
+  writeFileSync(
+    recordPath,
+    JSON.stringify({ version: BLOCK_VERSION, status, ...measured }, null, 2) + '\n'
+  )
   console.log(`\n${block}`)
   console.log(
     `preflight: block written to ${args.out}; paste it as the PR body's Verification section.`

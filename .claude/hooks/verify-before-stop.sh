@@ -7,7 +7,9 @@
 # practices page (https://code.claude.com/docs/en/best-practices) says "If something has to
 # happen every time, make it a hook, a deny rule, or a managed setting." It runs no tests
 # itself. It reads the stamp line preflight writes,
-# `<!-- preflight vN sha=<sha> status=<pass|fail> -->`, from .preflight/verification.md.
+# `<!-- preflight vN sha=<sha> status=<pass|fail> -->`, from .preflight/verification.md. A block
+# `pnpm preflight --carry` wrote for HEAD from a run at another commit (ADR-0021) ends
+# ` source=carried -->` and counts as the block at HEAD.
 #
 # It acts only for the agents named in $bound, read from the payload's agent_type, which
 # SubagentStop always carries and Stop carries in a session started with `--agent`. So a main
@@ -50,7 +52,7 @@ ahead="$(git -C "$root" rev-list --count origin/main..HEAD 2>/dev/null)" || exit
 [ "$ahead" -gt 0 ] || exit 0
 
 block="$root/.preflight/verification.md"
-stamp="$(grep -m1 -oE '<!-- preflight v[0-9]+ sha=[0-9a-f]+ status=[a-z]+ -->' "$block" 2>/dev/null)"
+stamp="$(grep -m1 -oE '<!-- preflight v[0-9]+ sha=[0-9a-f]+ status=[a-z]+( source=[a-z]+)? -->' "$block" 2>/dev/null)"
 sha="$(printf '%s' "$stamp" | sed -nE 's/.* sha=([0-9a-f]+) .*/\1/p')"
 status="$(printf '%s' "$stamp" | sed -nE 's/.* status=([a-z]+) .*/\1/p')"
 give_up="If you are taking the give-up path instead, say so in your report and stop again"

@@ -6,12 +6,14 @@ import { join, resolve } from 'path'
 import {
   BLOCK_VERSION,
   DEFAULT_OUT,
+  carryForward,
   childEnv,
   describeVale,
   dirtyTreeProblem,
   formatVerificationBlock,
   nodeVersionProblem,
   parseVitestSummary,
+  recordPathFor,
   summarizeDiffCoverage,
   touchesExtension
   // @ts-expect-error - build script with no type declarations; the tsconfigs exclude scripts/
@@ -129,6 +131,80 @@ describe('formatVerificationBlock', () => {
       steps: [{ command: 'pnpm build:extension', status: 'pass', exitCode: 0 }]
     })
     expect(block).toContain('- `pnpm build:extension` - pass (exit 0)\n')
+  })
+
+  it('stamps a carried block with the head and names the commit it was measured at', () => {
+    const head = 'f'.repeat(40)
+    const block = formatVerificationBlock({
+      sha: SHA,
+      nodeVersion: '24.1.0',
+      base: 'origin/main',
+      mergeBase: MERGE_BASE,
+      steps: passingSteps,
+      carried: { head, diffSha256: 'abcdef0123456789'.repeat(4) }
+    })
+    const lines = block.split('\n')
+    expect(lines[0]).toBe(
+      `<!-- preflight v${BLOCK_VERSION} sha=${head} status=pass source=carried -->`
+    )
+    expect(lines[6]).toBe(
+      '`pnpm preflight` at `' +
+        SHA +
+        '` on Node v24.1.0; diff scored against `origin/main` (merge base `012345678`). Result: **pass**.'
+    )
+    expect(lines[8]).toBe(
+      `Carried forward to \`${head}\` without a new run (ADR-0021): ` +
+        `\`git diff origin/main...${SHA}\` and \`git diff origin/main...${head}\` are ` +
+        'byte-identical (sha256 `abcdef012345`). The steps below ran at `' +
+        SHA +
+        '`; the required checks at `' +
+        head +
+        '` are what cover the tree there.'
+    )
+    expect(block.match(/^- /gm)).toHaveLength(6)
+  })
+})
+
+describe('carryForward', () => {
+  const head = 'f'.repeat(40)
+  const record = { version: BLOCK_VERSION, sha: SHA, status: 'pass' }
+  const same = () => 'h1'
+
+  it('returns the shared diff hash when the diff at head equals the measured one', () => {
+    expect(carryForward(record, head, same)).toEqual({ diffSha256: 'h1' })
+  })
+
+  it('refuses when the diff changed', () => {
+    const hashAt = (commit: string) => (commit === SHA ? 'h1' : 'h2')
+    expect(carryForward(record, head, hashAt)).toEqual({
+      reason: `the diff against the base changed since ${SHA}`
+    })
+  })
+
+  it('refuses a missing record, a record of another shape and a run that did not pass', () => {
+    expect(carryForward(null, head, same).reason).toBe('no record of an earlier run')
+    expect(carryForward({ ...record, version: 0 }, head, same).reason).toContain('not one this')
+    expect(carryForward({ ...record, sha: undefined }, head, same).reason).toContain('not one this')
+    expect(carryForward({ ...record, status: 'fail' }, head, same).reason).toBe(
+      `the run at ${SHA} did not pass`
+    )
+  })
+
+  it('refuses when the measured commit cannot be read', () => {
+    const hashAt = (commit: string) => {
+      if (commit === SHA) throw new Error('bad object')
+      return 'h1'
+    }
+    expect(carryForward(record, head, hashAt).reason).toBe(
+      `commit ${SHA} is no longer in this repository`
+    )
+  })
+})
+
+describe('recordPathFor', () => {
+  it('puts the record beside the block', () => {
+    expect(recordPathFor('/x/.preflight/verification.md')).toBe('/x/.preflight/verification.json')
+    expect(recordPathFor('/x/block')).toBe('/x/block.json')
   })
 })
 
@@ -327,10 +403,10 @@ process.exit(failed ? 1 : 0)
     git('commit', '-qm', 'fixtures')
   }
 
-  const run = (overrides: Record<string, string> = {}) =>
+  const run = (overrides: Record<string, string> = {}, args = ['--base', 'HEAD']) =>
     // The parent Vitest process uses Electron's Node. Preflight requires the
     // repository's Node 24 toolchain, so resolve node from PATH for this CLI test.
-    spawnSync('node', [SCRIPT, '--base', 'HEAD'], {
+    spawnSync('node', [SCRIPT, ...args], {
       cwd: repo,
       encoding: 'utf8',
       env: {
@@ -377,5 +453,97 @@ process.exit(failed ? 1 : 0)
     expect(result.status, result.stderr).toBe(1)
     expect(result.stderr).toContain('HEAD moved')
     expect(existsSync(join(repo, DEFAULT_OUT))).toBe(false)
+  })
+
+  describe('with --carry', () => {
+    const calls = () =>
+      existsSync(join(repo, 'calls.jsonl'))
+        ? readFileSync(join(repo, 'calls.jsonl'), 'utf8').trim().split('\n').length
+        : 0
+    const block = () => readFileSync(join(repo, DEFAULT_OUT), 'utf8')
+    const carry = (overrides: Record<string, string> = {}) =>
+      run(overrides, ['--base', 'base', '--carry'])
+    // A branch one commit past the tagged base, as a pull request is past main.
+    const branch = () => {
+      prepare()
+      git('tag', 'base')
+      writeFileSync(join(repo, 'a.txt'), 'authored\n')
+      git('commit', '-qam', 'authored')
+      return git('rev-parse', 'HEAD')
+    }
+
+    it('runs every step when no earlier run is recorded, and records the run', () => {
+      const measured = branch()
+      const result = carry()
+      expect(result.status, result.stderr).toBe(0)
+      expect(result.stdout).toContain('not carried forward, no record of an earlier run')
+      expect(calls()).toBeGreaterThan(0)
+      expect(block().split('\n')[0]).toBe(`<!-- preflight v1 sha=${measured} status=pass -->`)
+      const record = JSON.parse(readFileSync(join(repo, '.preflight/verification.json'), 'utf8'))
+      expect(record).toMatchObject({ version: 1, status: 'pass', sha: measured, base: 'base' })
+    })
+
+    it('writes the measured block for a new head whose diff is the same, and runs nothing', () => {
+      const measured = branch()
+      expect(carry().status).toBe(0)
+      const ran = calls()
+      git('commit', '--allow-empty', '-qm', 'same content, new commit')
+      const head = git('rev-parse', 'HEAD')
+      const result = carry()
+      expect(result.status, result.stderr).toBe(0)
+      expect(calls()).toBe(ran)
+      expect(block().split('\n')[0]).toBe(
+        `<!-- preflight v1 sha=${head} status=pass source=carried -->`
+      )
+      expect(block()).toContain(`\`pnpm preflight\` at \`${measured}\``)
+      expect(block()).toContain(`Carried forward to \`${head}\` without a new run (ADR-0021)`)
+      expect(block()).toContain('2 passed (2)')
+    })
+
+    it('runs every step again when the diff changed', () => {
+      branch()
+      expect(carry().status).toBe(0)
+      const ran = calls()
+      writeFileSync(join(repo, 'a.txt'), 'authored again\n')
+      git('commit', '-qam', 'authored again')
+      const result = carry()
+      expect(result.status, result.stderr).toBe(0)
+      expect(result.stdout).toContain('not carried forward, the diff against the base changed')
+      expect(calls()).toBeGreaterThan(ran)
+      expect(block().split('\n')[0]).toBe(
+        `<!-- preflight v1 sha=${git('rev-parse', 'HEAD')} status=pass -->`
+      )
+    })
+
+    it('does not carry a run that failed', () => {
+      branch()
+      expect(carry({ COVERAGE_EXIT: '1' }).status).toBe(1)
+      const ran = calls()
+      git('commit', '--allow-empty', '-qm', 'same content, new commit')
+      const result = carry()
+      expect(result.stdout).toContain('did not pass; running every step')
+      expect(calls()).toBeGreaterThan(ran)
+      expect(block()).not.toContain('source=carried')
+    })
+
+    it('writes the same block again at the commit it measured', () => {
+      const measured = branch()
+      expect(carry().status).toBe(0)
+      const first = block()
+      const ran = calls()
+      expect(carry().status).toBe(0)
+      expect(calls()).toBe(ran)
+      expect(block()).toBe(first)
+      expect(first.split('\n')[0]).toBe(`<!-- preflight v1 sha=${measured} status=pass -->`)
+    })
+
+    it('still refuses a dirty tree', () => {
+      branch()
+      expect(carry().status).toBe(0)
+      writeFileSync(join(repo, 'a.txt'), 'uncommitted\n')
+      const result = carry()
+      expect(result.status).toBe(2)
+      expect(existsSync(join(repo, DEFAULT_OUT))).toBe(false)
+    })
   })
 })

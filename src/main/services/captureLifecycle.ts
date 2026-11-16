@@ -588,7 +588,7 @@ export async function ingestMhtmlCapture(
                 extensionVersion: params.extensionVersion,
                 browserVersion: params.browserVersion,
                 userAgent: params.userAgent,
-                headers: params.headers,
+                emptyHeaderSet: Boolean(params.headers) && anchoredHeaders === undefined,
                 linkedFromRowId: params.linkSource?.rowId
               }
             )

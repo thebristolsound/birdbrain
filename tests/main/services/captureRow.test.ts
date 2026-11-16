@@ -53,11 +53,15 @@ describe('captureRowOf', () => {
     expect(captureRowOf(signed, LOCAL).headers).toBe('{"server":"nginx"}')
   })
 
-  it('keeps the headers a writer passes, an empty set included, over the entry', () => {
-    expect(captureRowOf(ENTRY, { ...LOCAL, headers: {} }).headers).toBe('{}')
+  it('stores an empty header set as {} only when the writer received one', () => {
+    expect(captureRowOf(ENTRY, { ...LOCAL, emptyHeaderSet: true }).headers).toBe('{}')
+    expect(captureRowOf(ENTRY, { ...LOCAL, emptyHeaderSet: false }).headers).toBeUndefined()
+  })
+
+  it('never stores headers other than the ones the entry signs', () => {
     const signed = { ...ENTRY, headers: { server: 'nginx' } }
-    expect(captureRowOf(signed, { ...LOCAL, headers: { via: 'proxy' } }).headers).toBe(
-      '{"via":"proxy"}'
+    expect(captureRowOf(signed, { ...LOCAL, emptyHeaderSet: true }).headers).toBe(
+      '{"server":"nginx"}'
     )
   })
 

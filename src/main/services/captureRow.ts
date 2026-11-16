@@ -3,9 +3,10 @@ import type { ExhibitAuthor } from '@main/services/db/exhibitRepo'
 import type { AppendResult, CaptureEntryContext } from '@main/services/manifest'
 
 // The Capture row a signed `capture` entry describes: the one statement of which Manifest Entry
-// field lands in which column. The ingest, a Duplicate and the row sync writes for another
-// member's Capture each pass the entry, what no entry signs, and where its row departs from the
-// entry on purpose. A field the row mirrors is added here once and every writer carries it.
+// fields a row mirrors, and in which columns. The ingest, a Duplicate and the row sync writes
+// for another member's Capture each pass the entry, what no entry signs, and where its row
+// departs from the entry on purpose. A field the row mirrors is added here once and every
+// writer carries it.
 
 // The entry fields the row mirrors. A `capture` entry read from a chain has them, and so does
 // the context a writer signs once the append has returned its index and hashes.
@@ -52,14 +53,17 @@ export interface CaptureRowLocal {
   textContent?: string
   mhtmlPath: string
   screenshotPath?: string
-  // The acquiring browser as this installation saw it. No entry signs the extension's version,
-  // and an entry signs the user agent only when the Egress was not Direct.
+  // The acquiring browser, as the writer knows it: what this installation saw for the ingest,
+  // the source's row for a Duplicate, and for a received row only the user agent its author's
+  // entry signs. No entry signs the extension's version, and an entry signs the user agent only
+  // when the Egress was not Direct, so none of the three is mirrored.
   extensionVersion?: string
   browserVersion?: string
   userAgent?: string
-  // The response headers as they arrived, which the ingest keeps even when there were none.
-  // Absent, the row mirrors the entry, which omits an empty set.
-  headers?: Record<string, string>
+  // True when the writer received a response header set and it was empty. The row then stores
+  // `{}`, as the ingest's always has, where the entry omits the field. A row never holds
+  // headers other than the ones its entry signs.
+  emptyHeaderSet?: boolean
   // The row a link Capture's source is held under (ADR-0040), when the writer resolved one.
   // Absent, the row keeps the id the entry signs; the two differ after an import renamed the
   // source's row.
@@ -89,7 +93,12 @@ export function captureRowOf(
     timestamp: entry.timestamp,
     htmlPath: undefined,
     screenshotPath: local.screenshotPath,
-    headers: JSON.stringify(local.headers !== undefined ? local.headers : entry.headers),
+    headers:
+      entry.headers !== undefined
+        ? JSON.stringify(entry.headers)
+        : local.emptyHeaderSet
+          ? '{}'
+          : undefined,
     textContent: local.textContent,
     format: 'mhtml' as const,
     mhtmlPath: local.mhtmlPath,

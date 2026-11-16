@@ -33,7 +33,13 @@ import {
   withManifestSlot,
   ManifestRollback
 } from '@main/services/manifest'
-import type { AuthorChain, CaptureChainEntry, ManifestImportEntry } from '@main/services/manifest'
+import type {
+  AuthorChain,
+  CaptureChainEntry,
+  CaptureEntryContext,
+  ManifestImportEntry
+} from '@main/services/manifest'
+import { captureRowOf } from '@main/services/captureRow'
 import { reconcileCaptureTrustedTime, resolveTrustedTime } from '@main/services/trustedTime'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { OperatorNameRequiredError, trimmedOperatorName } from '@main/services/operatorName'
@@ -507,46 +513,47 @@ export async function ingestMhtmlCapture(
     // this body waits on the slot again, which is not reentrant.
     return await withManifestSlot(caseDir, async () => {
       const exhibitNumber = nextExhibitNumber(params.caseId, store)
+      const entry: CaptureEntryContext = {
+        captureId,
+        caseId: params.caseId,
+        url: params.url,
+        timestamp: params.timestamp,
+        contentHash: hash,
+        screenshotHash,
+        textHash,
+        headers: anchoredHeaders,
+        httpStatus: anchoredHttpStatus,
+        finalUrl: anchoredFinalUrl,
+        tls,
+        sizeBytes,
+        method: params.method,
+        supersedesCaptureId: params.supersedesCaptureId,
+        consentSuppression: params.consentSuppression,
+        exhibitNumber,
+        // Omitted for Direct, so those entries keep the canonical body they had.
+        egressKind: params.egress?.kind,
+        egressLabel: params.egress?.label,
+        userAgent: params.egress ? params.userAgent : undefined,
+        tlsSkipped: params.tlsSkipped,
+        ...params.linkSource?.signed,
+        personaId: params.persona?.id,
+        personaLabel: params.persona?.label,
+        inventory: params.inventory,
+        scrollToLoad: params.scrollToLoad,
+        transactionRecordHash,
+        boundTls: params.boundTls,
+        boundTlsAbsent: params.boundTlsAbsent,
+        pdfHash,
+        browserProduct: params.launchedBrowser?.product,
+        browserVersion: params.launchedBrowser?.version,
+        browserFamily: params.launchedBrowser?.family,
+        operatorId: params.operatorId,
+        operatorName: params.operatorName,
+        toolVersion: params.toolVersion
+      }
       return await withCaptureEntry(
         caseDir,
-        {
-          captureId,
-          caseId: params.caseId,
-          url: params.url,
-          timestamp: params.timestamp,
-          contentHash: hash,
-          screenshotHash,
-          textHash,
-          headers: anchoredHeaders,
-          httpStatus: anchoredHttpStatus,
-          finalUrl: anchoredFinalUrl,
-          tls,
-          sizeBytes,
-          method: params.method,
-          supersedesCaptureId: params.supersedesCaptureId,
-          consentSuppression: params.consentSuppression,
-          exhibitNumber,
-          // Omitted for Direct, so those entries keep the canonical body they had.
-          egressKind: params.egress?.kind,
-          egressLabel: params.egress?.label,
-          userAgent: params.egress ? params.userAgent : undefined,
-          tlsSkipped: params.tlsSkipped,
-          ...params.linkSource?.signed,
-          personaId: params.persona?.id,
-          personaLabel: params.persona?.label,
-          inventory: params.inventory,
-          scrollToLoad: params.scrollToLoad,
-          transactionRecordHash,
-          boundTls: params.boundTls,
-          boundTlsAbsent: params.boundTlsAbsent,
-          pdfHash,
-          browserProduct: params.launchedBrowser?.product,
-          browserVersion: params.launchedBrowser?.version,
-          browserFamily: params.launchedBrowser?.family,
-          operatorId: params.operatorId,
-          operatorName: params.operatorName,
-          toolVersion: params.toolVersion
-        },
+        entry,
         // Synchronous, so a throw truncates in the same turn: an async callback would
         // roll back a microtask later, after another appender could have appended.
         (manifestResult) => {
@@ -569,49 +576,23 @@ export async function ingestMhtmlCapture(
             store.writePdf(params.caseId, captureId, params.pdf)
           }
 
-          const capture = captureRepo.insertCapture({
-            id: captureId,
-            caseId: params.caseId,
-            url: params.url,
-            title: params.title,
-            hash,
-            timestamp: params.timestamp,
-            headers: JSON.stringify(params.headers),
-            textContent: params.textContent,
-            format: 'mhtml',
-            mhtmlPath,
-            screenshotPath,
-            screenshotHash,
-            textHash,
-            tlsCertChain: tls !== undefined ? JSON.stringify(tls) : undefined,
-            sizeBytes,
-            manifestIndex: manifestResult.index,
-            prevHash: manifestResult.prevHash,
-            entryHash: manifestResult.entryHash,
-            toolVersion: params.toolVersion,
-            extensionVersion: params.extensionVersion,
-            browserVersion: params.browserVersion,
-            userAgent: params.userAgent,
-            // The row mirrors what the entry anchors: an unrecorded status is
-            // stored as absent, never as the 0 the wire coerced it to.
-            httpStatus: anchoredHttpStatus,
-            operatorId: params.operatorId,
-            operatorName: params.operatorName,
-            method: params.method,
-            supersedesCaptureId: params.supersedesCaptureId,
-            consentSuppression: params.consentSuppression,
-            ...params.linkSource?.signed,
-            linkedFromCaptureId: params.linkSource?.rowId,
-            personaId: params.persona?.id,
-            personaLabel: params.persona?.label,
-            inventory: params.inventory,
-            scrollToLoad: params.scrollToLoad,
-            transactionRecordHash,
-            boundTls: params.boundTls,
-            boundTlsAbsent: params.boundTlsAbsent,
-            pdfHash,
-            exhibitNumber
-          })
+          const capture = captureRepo.insertCapture(
+            captureRowOf(
+              { ...entry, ...manifestResult },
+              {
+                caseId: params.caseId,
+                title: params.title,
+                textContent: params.textContent,
+                mhtmlPath,
+                screenshotPath,
+                extensionVersion: params.extensionVersion,
+                browserVersion: params.browserVersion,
+                userAgent: params.userAgent,
+                emptyHeaderSet: Boolean(params.headers) && anchoredHeaders === undefined,
+                linkedFromRowId: params.linkSource?.rowId
+              }
+            )
+          )
           return { capture, contentHash: hash }
         },
         carriesCaptureEngineField(params) ||
@@ -1892,106 +1873,75 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           // A copy is a new Exhibit and takes a number of its own, with no
           // await before the append below (see nextExhibitNumber).
           const exhibitNumber = nextExhibitNumber(source.caseId, store)
-          const capture = await withCaptureEntry(
-            caseDir,
-            {
-              captureId: duplicateId,
-              caseId: source.caseId,
-              // `url` and `timestamp` describe the observation the bytes came
-              // from, which is the source's — dating them to now would claim
-              // the page was seen again. When the copy was made is
-              // `duplicatedAt`; who made it is `operatorId`/`operatorName`.
-              url: sourceEntry.url,
-              timestamp: sourceEntry.timestamp,
-              contentHash: mhtml.hash,
-              screenshotHash: sourceEntry.screenshotHash,
-              textHash: sourceEntry.textHash,
-              headers: sourceEntry.headers,
-              // Re-anchored from the source's SIGNED entry, never from its row
-              // (R7, #797). A source captured before R7 anchored no status and
-              // no final URL, so the copy's entry states none either — reading
-              // the hand-editable mirror here would give the copy a chain
-              // anchor its source never had.
-              httpStatus: sourceEntry.httpStatus,
-              finalUrl: sourceEntry.finalUrl,
-              tls: sourceEntry.tls,
-              method: 'duplicate',
-              duplicateOfCaptureId: source.id,
-              duplicatedAt,
-              consentSuppression: sourceEntry.consentSuppression,
-              exhibitNumber,
-              // The Egress the source was sent through, re-anchored from its signed
-              // entry like `tls` above (ADR-0032).
-              egressKind: sourceEntry.egressKind,
-              egressLabel: sourceEntry.egressLabel,
-              userAgent: sourceEntry.userAgent,
-              tlsSkipped: sourceEntry.tlsSkipped,
-              // The capture engine's facts about the copied files (D11 of
-              // docs/plans/2026-10-10-capture-engine-first-slice.md). No
-              // `boundTls` or `boundTlsAbsent`: `CONTEXT.md` has Bound TLS
-              // Details absent for `duplicate` Captures.
-              inventory: sourceEntry.inventory,
-              scrollToLoad: sourceEntry.scrollToLoad,
-              transactionRecordHash: sourceEntry.transactionRecordHash,
-              pdfHash: sourceEntry.pdfHash,
-              // The Persona (ruling 4 of 2026-11-05) and the launched browser the source was
-              // taken under (schema 7), re-anchored from its signed entry like `tls` above.
-              personaId: sourceEntry.personaId,
-              personaLabel: sourceEntry.personaLabel,
-              browserProduct: sourceEntry.browserProduct,
-              browserVersion: sourceEntry.browserVersion,
-              browserFamily: sourceEntry.browserFamily,
-              sizeBytes: mhtml.sizeBytes,
-              operatorId: getInstallationId(),
-              operatorName,
-              toolVersion: resolveToolVersion()
-            },
-            (manifestResult) =>
-              captureRepo.insertCapture({
-                id: duplicateId,
-                caseId: source.caseId,
-                url: sourceEntry.url,
-                title: source.title,
-                hash: mhtml.hash,
-                timestamp: sourceEntry.timestamp,
-                headers: sourceEntry.headers ? JSON.stringify(sourceEntry.headers) : undefined,
-                textContent: copiedText,
-                format: 'mhtml',
-                mhtmlPath: mhtml.rel,
-                screenshotPath: artifacts.png?.rel,
-                // The row mirrors the entry, so it too states only what the
-                // chain anchors.
-                screenshotHash: sourceEntry.screenshotHash,
-                textHash: sourceEntry.textHash,
-                tlsCertChain: sourceEntry.tls ? JSON.stringify(sourceEntry.tls) : undefined,
-                sizeBytes: mhtml.sizeBytes,
-                manifestIndex: manifestResult.index,
-                prevHash: manifestResult.prevHash,
-                entryHash: manifestResult.entryHash,
-                // The tool that made the copy, not the one that made the
-                // capture: this is the entry's own provenance.
-                toolVersion: resolveToolVersion(),
-                extensionVersion: source.extensionVersion,
-                browserVersion: source.browserVersion,
-                userAgent: source.userAgent,
-                // Anchored provenance, so the mirror states what the chain
-                // does rather than what the source row happens to hold.
-                httpStatus: sourceEntry.httpStatus,
-                operatorId: getInstallationId(),
-                operatorName,
-                method: 'duplicate',
-                duplicateOfCaptureId: source.id,
-                consentSuppression: sourceEntry.consentSuppression,
-                inventory: sourceEntry.inventory,
-                scrollToLoad: sourceEntry.scrollToLoad,
-                // The row mirrors what the Duplicate's entry re-anchors (D11),
-                // so no Bound TLS Details.
-                transactionRecordHash: sourceEntry.transactionRecordHash,
-                pdfHash: sourceEntry.pdfHash,
-                personaId: sourceEntry.personaId,
-                personaLabel: sourceEntry.personaLabel,
-                exhibitNumber
-              })
+          const entry: CaptureEntryContext = {
+            captureId: duplicateId,
+            caseId: source.caseId,
+            // `url` and `timestamp` describe the observation the bytes came
+            // from, which is the source's — dating them to now would claim
+            // the page was seen again. When the copy was made is
+            // `duplicatedAt`; who made it is `operatorId`/`operatorName`.
+            url: sourceEntry.url,
+            timestamp: sourceEntry.timestamp,
+            contentHash: mhtml.hash,
+            screenshotHash: sourceEntry.screenshotHash,
+            textHash: sourceEntry.textHash,
+            headers: sourceEntry.headers,
+            // Re-anchored from the source's SIGNED entry, never from its row
+            // (R7, #797). A source captured before R7 anchored no status and
+            // no final URL, so the copy's entry states none either — reading
+            // the hand-editable mirror here would give the copy a chain
+            // anchor its source never had.
+            httpStatus: sourceEntry.httpStatus,
+            finalUrl: sourceEntry.finalUrl,
+            tls: sourceEntry.tls,
+            method: 'duplicate',
+            duplicateOfCaptureId: source.id,
+            duplicatedAt,
+            consentSuppression: sourceEntry.consentSuppression,
+            exhibitNumber,
+            // The Egress the source was sent through, re-anchored from its signed
+            // entry like `tls` above (ADR-0032).
+            egressKind: sourceEntry.egressKind,
+            egressLabel: sourceEntry.egressLabel,
+            userAgent: sourceEntry.userAgent,
+            tlsSkipped: sourceEntry.tlsSkipped,
+            // The capture engine's facts about the copied files (D11 of
+            // docs/plans/2026-10-10-capture-engine-first-slice.md). No
+            // `boundTls` or `boundTlsAbsent`: `CONTEXT.md` has Bound TLS
+            // Details absent for `duplicate` Captures.
+            inventory: sourceEntry.inventory,
+            scrollToLoad: sourceEntry.scrollToLoad,
+            transactionRecordHash: sourceEntry.transactionRecordHash,
+            pdfHash: sourceEntry.pdfHash,
+            // The Persona (ruling 4 of 2026-11-05) and the launched browser the source was
+            // taken under (schema 7), re-anchored from its signed entry like `tls` above.
+            personaId: sourceEntry.personaId,
+            personaLabel: sourceEntry.personaLabel,
+            browserProduct: sourceEntry.browserProduct,
+            browserVersion: sourceEntry.browserVersion,
+            browserFamily: sourceEntry.browserFamily,
+            sizeBytes: mhtml.sizeBytes,
+            operatorId: getInstallationId(),
+            operatorName,
+            toolVersion: resolveToolVersion()
+          }
+          const capture = await withCaptureEntry(caseDir, entry, (manifestResult) =>
+            captureRepo.insertCapture(
+              captureRowOf(
+                { ...entry, ...manifestResult },
+                {
+                  caseId: source.caseId,
+                  title: source.title,
+                  textContent: copiedText,
+                  mhtmlPath: mhtml.rel,
+                  screenshotPath: artifacts.png?.rel,
+                  // The acquiring browser as the source's row has it: the copy observed nothing.
+                  extensionVersion: source.extensionVersion,
+                  browserVersion: source.browserVersion,
+                  userAgent: source.userAgent
+                }
+              )
+            )
           )
 
           committed = true

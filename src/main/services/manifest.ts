@@ -966,7 +966,7 @@ export interface AppendResult {
 export { MIN_READER_SCHEMA_VERSION } from '@shared/manifestEntryRules'
 
 // Per-entry overrides for the two generalized types (#1180). A `timestamp` or
-// `deletion` entry's shape has a schema-2 form, so the map above says 2 — and
+// `deletion` entry's shape has a schema-2 form, so its type minimum says 2 — and
 // a schema-2 verifier would then parse an entry that binds an attachment as a
 // Capture's and silently fail to apply it. The caller that knows the target is
 // not a Capture says so here, and the writer stamps the higher of the two.

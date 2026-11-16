@@ -182,6 +182,16 @@ describe('sources the review fleet cannot load', () => {
     ).toEqual([])
   })
 
+  it('does not count a reference the fleet would not load', () => {
+    expect(withBullet('The review thread on `#2201` settled the name.')).toEqual(
+      unlinked('a thread')
+    )
+    expect(withBullet('The review thread in docs/plan.md#2201 settled the name.')).toEqual(
+      unlinked('a thread')
+    )
+    expect(withBullet('The review thread on `main` and #2201 settled the name.')).toEqual([])
+  })
+
   it('leaves ordinary uses of the same words alone', () => {
     expect(withBullet('The worker thread and the round trip are unchanged.')).toEqual([])
     expect(withBullet('Rounds the height up to the next pixel.')).toEqual([])

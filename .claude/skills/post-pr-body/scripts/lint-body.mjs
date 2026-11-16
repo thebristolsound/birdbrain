@@ -76,12 +76,16 @@ const UNLINKED_SOURCES = [
   [/\brounds? \d+\b/i, 'a review round'],
   [/\bsol[- ]loop\b|\bSol (?:review|round|verdict)\b/, 'a Sol review']
 ]
-const SOURCE_LINK = /(?:^|[^\w&])#\d+\b|https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/(?:issues|pull)\/\d+/
+// What the fleet loads from a line, by its own rules (`bareReferences` and `referencedSources` in
+// inputs.mjs): a bare #N, or an issue or pull request URL, outside a code span. A reference
+// inside backticks loads nothing.
+const SOURCE_LINK = /(?<![\w/&#.-]|\]\()#[1-9]\d*(?![\w-])|https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/(?:issues|pull)\/\d+/
+const CODE_SPAN = /(`+)(?!`).*?(?<!`)\1(?!`)/g
 
 function unlinkedSourceFindings(lines) {
   const findings = []
   lines.forEach((line, i) => {
-    if (SOURCE_LINK.test(line)) return
+    if (SOURCE_LINK.test(line.replace(CODE_SPAN, ' '))) return
     const hit = UNLINKED_SOURCES.find(([re]) => re.test(line))
     if (!hit) return
     findings.push(`line ${i + 1} names ${hit[1]} with no #N or link on the line, and the review fleet fails on a statement it cannot check: link the source, move the sentence to a PR comment, or drop it: "${line.trim().slice(0, 60)}"`)

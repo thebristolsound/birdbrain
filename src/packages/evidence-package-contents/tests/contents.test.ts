@@ -111,7 +111,7 @@ describe('Timestamp Tokens', () => {
     expect(contents.ofCapture('cap-2').timestampTokenPath).toBe('timestamps/cap-1.tst')
   })
 
-  it('stamps an Exhibit that is not a Capture, after the Captures and in entry order', () => {
+  it('stamps an Exhibit that is not a Capture, and writes the tokens in entry order', () => {
     const page = capture('cap-1', 'page')
     const statement = document('doc-1', 'statement')
     const contents = decidePackageContents(
@@ -127,6 +127,17 @@ describe('Timestamp Tokens', () => {
       'timestamps/cap-1.tst'
     ])
     expect(contents.ofFileExhibit('doc-1').timestampTokenPath).toBe('timestamps/doc-1.tst')
+  })
+
+  it('names a token a Capture and another Exhibit share after the Capture', () => {
+    const page = capture('cap-1', 'same bytes')
+    const copy = document('doc-1', 'same bytes')
+    const contents = decidePackageContents(
+      input({ captures: [page], fileExhibits: [copy], entries: [stamp(page.hash)] })
+    )
+
+    expect(contents.timestampTokens.map(({ path }) => path)).toEqual(['timestamps/cap-1.tst'])
+    expect(contents.ofFileExhibit('doc-1').timestampTokenPath).toBe('timestamps/cap-1.tst')
   })
 
   it('neither encloses nor cites a token that attests other content', () => {

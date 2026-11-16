@@ -126,6 +126,7 @@ blocking tier with #991, in the change that creates it. It reads a Capture's sto
 reports what is inside it, so a wrong part boundary or span is a wrong statement about a Capture.
 No entry or glob names the file, so without the row a later edit touching only it would match no
 entry.
+
 On 2026-11-16 `src/packages/evidence-package-contents/**` was added to Integrity core at blocking
 tier, in the change that creates it. The decision of which files an export encloses moved there
 out of the already-listed `src/main/services/export.ts`: which Timestamp Tokens, which

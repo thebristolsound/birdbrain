@@ -92,12 +92,12 @@ module.exports = {
       comment:
         'Package Verification, verify.sh and the Verify Runbook work out what a package must ' +
         'hold through a path independent of export code (ADR-0004). The Package Contents are ' +
-        "the writer's decision, so no verifier imports them.",
+        "the writer's decision, so no verifier imports them, directly or through another module.",
       severity: 'error',
       from: {
         path: '^src/(shared/verify/|verifier/|main/services/verify(Script|Runbook|Procedure)\\.ts$)'
       },
-      to: { path: `^${R}/evidence-package-contents/` }
+      to: { path: `^${R}/evidence-package-contents/`, reachable: true }
     }
 
     // --- Layering (optional, off by default) ----------------------------------

@@ -8,7 +8,7 @@ blocking tier of the evidence path list, so each pull request after the first ca
 
 ## Decision
 
-One module decides what an export encloses: the Package Contents (`CONTEXT.md`). It takes the
+One module decides what an export encloses: the Package Contents. It takes the
 chain entries the package vouches for, the rows in the export's scope and a byte source, and
 returns which files are enclosed, under which package path, with their bytes. The report, the
 index (`evidence.json`), the Certification and the zip read that one result.
@@ -29,7 +29,8 @@ three chose a new package, one synchronous call, and results that carry their by
    import that package and must not read the writer's decision (ADR-0004). It does not go
    beside `export.ts`, because the package rules force tests through the interface, which is
    what makes the in-memory byte source exist. The dependency-cruiser rule
-   `verification-does-not-read-package-contents` refuses the import from any verifier.
+   `verification-does-not-read-package-contents` refuses any import that reaches the package
+   from a verifier, directly or through another module.
 2. **The per-Exhibit answer is the source.** The module answers by row id
    (`ofCapture`, `ofFileExhibit`), because three of the four consumers ask about one Exhibit,
    and only a per-Exhibit answer can say that a file was left out. The ordered lists the zip

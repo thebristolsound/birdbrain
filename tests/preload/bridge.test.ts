@@ -283,6 +283,25 @@ describe('preload refusals', () => {
     }
   })
 
+  // The Personas row shows a refused cookie file's message by its code.
+  it('rejects a Persona cookie import with a plain object that keeps the code', async () => {
+    electronStub.result = {
+      ok: false,
+      error: 'Only a Netscape cookies.txt export can be imported.',
+      code: 'PERSONA_COOKIE_FILE_UNSUPPORTED'
+    }
+    try {
+      const rejection = await leaf('persona.import')('p-1').catch((err: unknown) => err)
+      expect(rejection).not.toBeInstanceOf(Error)
+      expect(rejection).toEqual({
+        message: 'Only a Netscape cookies.txt export can be imported.',
+        code: 'PERSONA_COOKIE_FILE_UNSUPPORTED'
+      })
+    } finally {
+      electronStub.result = { ok: true, data: null }
+    }
+  })
+
   it('rejects every other call with an Error', async () => {
     electronStub.result = refusal
     try {

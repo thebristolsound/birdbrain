@@ -77,9 +77,10 @@ const UNLINKED_SOURCES = [
   [/\bsol[- ]loop\b|\bSol (?:review|round|verdict)\b/, 'a Sol review']
 ]
 // What the fleet loads from a line, by its own rules (`bareReferences` and `referencedSources` in
-// inputs.mjs): a bare #N, or an issue or pull request URL, outside a code span. A reference
-// inside backticks loads nothing.
-const SOURCE_LINK = /(?<![\w/&#.-]|\]\()#[1-9]\d*(?![\w-])|https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/(?:issues|pull)\/\d+/
+// inputs.mjs): a bare #N, or the URL of an issue or pull request of this repository, outside a
+// code span. A reference inside backticks loads nothing, and the fleet stops on a link to
+// another repository's issue.
+const SOURCE_LINK = /(?<![\w/&#.-]|\]\()#[1-9]\d*(?![\w-])|https:\/\/github\.com\/thebristolsound\/birdbrain\/(?:issues|pull)\/\d+/
 const CODE_SPAN = /(`+)(?!`).*?(?<!`)\1(?!`)/g
 
 function unlinkedSourceFindings(lines) {
@@ -88,7 +89,7 @@ function unlinkedSourceFindings(lines) {
     if (SOURCE_LINK.test(line.replace(CODE_SPAN, ' '))) return
     const hit = UNLINKED_SOURCES.find(([re]) => re.test(line))
     if (!hit) return
-    findings.push(`line ${i + 1} names ${hit[1]} with no #N or link on the line, and the review fleet fails on a statement it cannot check: link the source, move the sentence to a PR comment, or drop it: "${line.trim().slice(0, 60)}"`)
+    findings.push(`line ${i + 1} names ${hit[1]} with no #N or link to this repository on the line, and the review fleet fails on a statement it cannot check: link the source, move the sentence to a PR comment, or drop it: "${line.trim().slice(0, 60)}"`)
   })
   return findings
 }

@@ -43,7 +43,9 @@ Five sections in a fixed order, a hard cap, and one closing line:
    pasted verbatim including its `<!-- preflight ... -->` marker, generated at the head sha
    under review (ADR-0018). When the new head only merged the base in and the diff against the
    base is byte-identical, `pnpm preflight --carry` writes the earlier block for the new head,
-   marked `source=carried`, without running a step (ADR-0021). The writer already wraps the step list in a `<details>` block
+   marked `source=carried`, without running a step (ADR-0021). No check ran on the merged tree
+   for such a block, so the required checks at the new head must be green before it is relied
+   on. The writer already wraps the step list in a `<details>` block
    under a plain summary line (`All pre-merge checks passed` or `A pre-merge check failed`).
    Test output and coverage figures appear there and nowhere else. A PR nobody preflighted
    locally (dependabot, a human author) gets its block from
@@ -69,8 +71,9 @@ at head, and the issues, pull requests, comments and reviews of this repository 
 names as `#N` or links by URL (`.github/scripts/review-fleet/inputs.mjs`). A statement about
 anything else, such as a chat, an agent thread or an earlier review round, stays unchecked, and
 one unchecked item fails `review/fleet` (ADR-0057). Link the source, move the sentence to a PR
-comment, or leave it out. `check.sh --screenshots` refuses the common wordings on a line that
-carries no `#N` and no link.
+comment, or leave it out. `check.sh --screenshots` catches a few common wordings only (a thread,
+a chat, a numbered review round) on a line that carries no `#N` and no link to an issue or pull
+request of this repository; any other uncheckable sentence is yours to catch.
 
 ## Screenshots for visual changes
 

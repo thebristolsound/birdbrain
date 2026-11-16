@@ -190,6 +190,12 @@ describe('sources the review fleet cannot load', () => {
       unlinked('a thread')
     )
     expect(withBullet('The review thread on `main` and #2201 settled the name.')).toEqual([])
+    expect(
+      withBullet('The review thread at https://github.com/other/repo/pull/7 settled the name.')
+    ).toEqual(unlinked('a thread'))
+    expect(withBullet('The review thread at https://example.com/t/7 settled the name.')).toEqual(
+      unlinked('a thread')
+    )
   })
 
   it('leaves ordinary uses of the same words alone', () => {

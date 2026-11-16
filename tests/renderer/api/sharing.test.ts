@@ -99,6 +99,7 @@ describe('sharing refusals', () => {
     })
     const preview = invitePreviewQueryOptions('bbinvite1abc').queryFn?.({} as never)
     const rejection = await Promise.resolve(preview).catch((err: unknown) => err)
+    expect(rejection).toBeInstanceOf(Error)
     expect(sharingErrorCode(rejection)).toBe('declined')
   })
 })

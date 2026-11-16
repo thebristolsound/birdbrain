@@ -132,10 +132,26 @@ describe('Manifest Entry rules: the entry types', () => {
     expect(MIN_READER_SCHEMA_VERSION[type]).toBeLessThanOrEqual(MANIFEST_SCHEMA_VERSION)
   })
 
-  it.each(TYPES)('%s: reads from the version it is written at, or the unsigned form', (type) => {
-    const unsigned = type === 'capture' || type === 'deletion'
-    expect(earliestSchemaVersion(type)).toBe(unsigned ? 1 : MIN_READER_SCHEMA_VERSION[type])
-    // The writer never stamps below what the reader admits.
+  it('reads each type from the version it is written at, or from its unsigned form', () => {
+    const earliest = Object.fromEntries(TYPES.map((type) => [type, earliestSchemaVersion(type)]))
+    expect(earliest).toEqual({
+      capture: 1,
+      deletion: 1,
+      timestamp: 2,
+      export: 2,
+      'archive-export': 2,
+      import: 2,
+      exhibit: 3,
+      derivation: 3,
+      renumber: 3,
+      merge: 4,
+      'member-add': 4,
+      'member-revoke': 4,
+      exclude: 4
+    })
+  })
+
+  it.each(TYPES)('%s: is never stamped below what the reader admits', (type) => {
     expect(minReaderSchemaVersion({ type })).toBe(MIN_READER_SCHEMA_VERSION[type])
     expect(minReaderSchemaVersion({ type })).toBeGreaterThanOrEqual(earliestSchemaVersion(type))
   })

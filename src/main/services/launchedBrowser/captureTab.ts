@@ -251,6 +251,14 @@ export async function captureTab(input: TabCaptureInput): Promise<TabCaptureArti
   const errors = [record, pdf]
     .map((part) => (part.present ? undefined : part.error))
     .filter((error) => error !== undefined)
+  // A launched Capture runs no Image Source Pinning (ADR-0055 is background renders only), so
+  // the MHTML part counts no pinned image.
+  const { inventory, ...finished } = finishFields({
+    mhtml: { present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 },
+    screenshot: screenshotRecord,
+    transactionRecord: record,
+    pdf
+  })
   return {
     capturedAt: recordedAt,
     url: cut.pageUrl ?? '',
@@ -260,15 +268,9 @@ export async function captureTab(input: TabCaptureInput): Promise<TabCaptureArti
     mhtml: Buffer.from(mhtmlText, 'utf8'),
     screenshot,
     text,
+    inventory,
     ...(scrollToLoad ? { scrollToLoad } : {}),
-    // A launched Capture runs no Image Source Pinning (ADR-0055 is background renders only), so
-    // the MHTML part counts no pinned image.
-    ...finishFields({
-      mhtml: { present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 },
-      screenshot: screenshotRecord,
-      transactionRecord: record,
-      pdf
-    }),
+    ...finished,
     errors
   }
 }

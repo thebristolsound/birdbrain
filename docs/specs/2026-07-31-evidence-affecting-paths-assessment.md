@@ -128,12 +128,13 @@ No entry or glob names the file, so without the row a later edit touching only i
 entry.
 
 On 2026-11-16 `src/packages/capture-finish/**` was added to Acquisition at blocking tier, in the
-change that creates it. The package holds the steps that `transactionRecorder.ts`,
-`backgroundRenderer.ts`, `recapture.ts` and `launchedBrowser/captureTab.ts` each held a copy of:
-the end phases of a Transaction Record with its inventory part and Bound TLS Details, the print
-to PDF with its two limits, and the assembly of the inventory a `capture` entry signs. Those four
-files keep their blocking rows. Without the row, the code that decides those signed parts would
-have left the list by moving.
+change that creates it. The package holds three steps that were written twice. For a
+`background` Capture, `transactionRecorder.ts` held the end phases of a Transaction Record with
+its inventory part and Bound TLS Details, `backgroundRenderer.ts` held the print to PDF with its
+two limits, and `recapture.ts` held the assembly of the inventory a `capture` entry signs. For a
+`launched` Capture, `launchedBrowser/captureTab.ts` held all three. Those four files keep their
+blocking rows. Without the row, the code that decides those signed parts would have left the
+list by moving.
 
 On 2026-11-09 the rows that stale-closed issues had left unwritten were added. The selection
 bar (`extension/src/selectionBar.ts`, ruling W25 on #967) and the two files of the capture

@@ -36,7 +36,7 @@ import type {
 import type { TransactionRecordOutcome } from '@main/services/transactionRecorder'
 import { finishFields } from '../../packages/capture-finish/inventory'
 import type { ImageSourcePinning, ScreenshotRecord } from '../../packages/capture-finish/inventory'
-import type { PdfOutcome, PresentPdf } from '../../packages/capture-finish/pdf'
+import type { PdfOutcome } from '../../packages/capture-finish/pdf'
 import { ManifestEntrySchema } from '@shared/schemas'
 import type { ScrollToLoadRecord } from '@shared/schemas'
 import type { Capture, CaptureEvent, ConsentSuppression } from '@shared/types'
@@ -54,7 +54,7 @@ import type {
 
 // The parts of a render's result that the capture-finish package defines, named
 // here because `RenderedPage` carries them.
-export type { ImageSourcePinning, PdfOutcome, PresentPdf, ScreenshotRecord }
+export type { ImageSourcePinning, PdfOutcome, ScreenshotRecord }
 
 export interface RenderedPage {
   // The live renderer hands over a Node ReadStream on its temp file, so the fd

@@ -1,22 +1,15 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import {
-  launchedBrowserName,
-  launchedBrowserStatusQueryOptions
-} from '@renderer/lib/api/launchedBrowser'
+import { launchedBrowserStatusQueryOptions } from '@renderer/lib/api/launchedBrowser'
 import { useParams } from '@tanstack/react-router'
-import { motion, AnimatePresence } from 'motion/react'
 import { useAppStore } from '@renderer/stores/appStore'
-import { casesQueryOptions, useSessionMutations } from '@renderer/lib/queries'
-import { presets } from '@renderer/lib/motion'
+import { useSessionMutations } from '@renderer/lib/queries'
 import { confirmContact } from '@renderer/lib/vpnWarning'
 
 export function SessionControls() {
   const sessionActive = useAppStore((s) => s.sessionActive)
   const setSessionActive = useAppStore((s) => s.setSessionActive)
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
-  const sessionCaseId = useAppStore((s) => s.activeCaseId)
-  const { data: cases = [] } = useQuery(casesQueryOptions)
   const { data: launched } = useQuery(launchedBrowserStatusQueryOptions)
   const [toggling, setToggling] = useState(false)
   const { activateCase, start, stop } = useSessionMutations()
@@ -29,18 +22,6 @@ export function SessionControls() {
   // Capture Session a launched browser left running on closing still runs.
   const launchedSession = launched?.state === 'open' || launched?.state === 'closed'
   if (!connectedToExtension && !launchedSession) return null
-
-  // The label after the switch names the Capture Session's Active Case, the Case Captures go into,
-  // which need not be the Case on screen: while a launched browser is open it pins the Case, and
-  // main refuses another Case's activation without an update. Once the browser closes the pin
-  // lifts and opening a Case moves the Active Case, so the browser's own Case is not used. It
-  // shows on Case screens only, as before.
-  const intoCase = activeCaseId ? cases.find((c) => c.id === sessionCaseId) : undefined
-  // Then the source (`1i`). As on the recording mark, a closed browser is no longer named.
-  const source =
-    launched?.state === 'open'
-      ? `${launchedBrowserName(launched.browser.label)}${connectedToExtension ? ', and the extension' : ''}`
-      : null
 
   const handleToggleSession = async () => {
     if (toggling) return
@@ -93,24 +74,6 @@ export function SessionControls() {
           />
         </button>
       </label>
-      <AnimatePresence>
-        {sessionActive && intoCase && (
-          <motion.span
-            data-testid="session-source-line"
-            title={source ? `${intoCase.name} · ${source}` : intoCase.name}
-            className="hidden min-w-0 text-xs text-text-muted lg:inline-flex"
-            initial={presets.fadeIn.initial}
-            animate={presets.fadeIn.animate}
-            exit={presets.fadeIn.exit}
-            transition={presets.fadeIn.transition}
-          >
-            <span className="max-w-[140px] truncate">{intoCase.name}</span>
-            {source && (
-              <span className="overflow-hidden text-ellipsis whitespace-pre"> · {source}</span>
-            )}
-          </motion.span>
-        )}
-      </AnimatePresence>
     </div>
   )
 }

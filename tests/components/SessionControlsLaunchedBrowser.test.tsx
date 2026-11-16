@@ -28,17 +28,6 @@ const BROWSER = {
   tabs: []
 }
 
-const FERRY = {
-  id: 'case-1',
-  name: 'Ferry Line',
-  isDemo: false,
-  createdAt: '2026-11-01T10:00:00.000Z',
-  updatedAt: '2026-11-01T10:00:00.000Z',
-  archived: false
-}
-
-const HARBOR = { ...FERRY, id: 'case-2', name: 'Harbor Desk' }
-
 function mount(status: LaunchedBrowserStatus) {
   const stop = vi.fn(async () => ({
     sessionActive: false,
@@ -46,7 +35,6 @@ function mount(status: LaunchedBrowserStatus) {
     captureCount: 0
   }))
   fakeBridge({
-    cases: { list: vi.fn(async () => [FERRY, HARBOR]) },
     session: { stop },
     launchedBrowser: { status: vi.fn(async () => status) }
   })
@@ -57,7 +45,7 @@ function mount(status: LaunchedBrowserStatus) {
       <SessionControls />
     </QueryClientProvider>
   )
-  return { stop, client }
+  return { stop }
 }
 
 afterEach(() => {
@@ -126,96 +114,17 @@ describe('turning the switch off', () => {
   })
 })
 
-// 1i, design review of 2026-11-04: the label after the switch keeps the Active Case, the Case
-// Captures go into, and names the source after it.
-describe('the source line after the switch', () => {
-  async function line() {
-    const el = await screen.findByTestId('session-source-line')
-    return { text: el.textContent, title: el.getAttribute('title') }
-  }
-
-  it('appends the launched browser to the Active Case', async () => {
-    useAppStore.setState({ sessionActive: true, activeCaseId: 'case-1' })
-    mount({ state: 'open', browser: BROWSER })
-    expect(await line()).toEqual({
-      text: 'Ferry Line · Launched Google Chrome',
-      title: 'Ferry Line · Launched Google Chrome'
-    })
-  })
-
-  it('names the extension as well while it is connected', async () => {
+// The switch carries no label after it: the recording mark already names the source, and the
+// breadcrumb names the Case.
+describe('after the switch', () => {
+  it('shows neither the Active Case nor the source while a launched browser records', () => {
     useAppStore.setState({
       sessionActive: true,
       connectedToExtension: true,
       activeCaseId: 'case-1'
     })
     mount({ state: 'open', browser: BROWSER })
-    expect((await line()).text).toBe('Ferry Line · Launched Google Chrome, and the extension')
-  })
-
-  it('keeps the Case alone for the extension, and once the browser has closed', async () => {
-    useAppStore.setState({
-      sessionActive: true,
-      connectedToExtension: true,
-      activeCaseId: 'case-1'
-    })
-    mount({ state: 'none' })
-    expect(await line()).toEqual({ text: 'Ferry Line', title: 'Ferry Line' })
-    cleanup()
-    mount({ state: 'closed', browser: BROWSER })
-    expect((await line()).text).toBe('Ferry Line')
-  })
-  // A launched browser pins the Case it started in, so opening another Case to read it does not
-  // move where Captures go.
-  // The browser's own Case and the Case on screen are both Harbor Desk here, so only the session's
-  // Active Case gives "Ferry Line".
-  it('names the Active Case main announces, not the Case on screen or the browser’s', async () => {
-    route.caseId = 'case-2'
-    useAppStore.setState({
-      sessionActive: true,
-      connectedToExtension: true,
-      activeCaseId: 'case-1'
-    })
-    mount({ state: 'open', browser: { ...BROWSER, caseId: 'case-2' } })
-    expect(await line()).toEqual({
-      text: 'Ferry Line · Launched Google Chrome, and the extension',
-      title: 'Ferry Line · Launched Google Chrome, and the extension'
-    })
-  })
-
-  it("names the extension's Active Case, not the Case on screen", async () => {
-    route.caseId = 'case-2'
-    useAppStore.setState({
-      sessionActive: true,
-      connectedToExtension: true,
-      activeCaseId: 'case-1'
-    })
-    mount({ state: 'none' })
-    expect((await line()).text).toBe('Ferry Line')
-  })
-  // Closing the browser lifts its pin, so opening another Case moves the Active Case with it.
-  it('follows the Active Case once the launched browser has closed, not the Case it started in', async () => {
-    route.caseId = 'case-2'
-    useAppStore.setState({
-      sessionActive: true,
-      connectedToExtension: true,
-      activeCaseId: 'case-2'
-    })
-    mount({ state: 'closed', browser: BROWSER })
-    expect(await line()).toEqual({ text: 'Harbor Desk', title: 'Harbor Desk' })
-  })
-  // Settings has the switch and the recording mark beside it; the label shows on Case screens only.
-  it('shows no label off a Case screen while a session runs', async () => {
-    route.caseId = undefined
-    useAppStore.setState({
-      sessionActive: true,
-      connectedToExtension: true,
-      activeCaseId: 'case-1'
-    })
-    const { client } = mount({ state: 'open', browser: BROWSER })
-    expect(screen.getByRole('switch', { name: 'Capture Session' })).toBeTruthy()
-    // Wait for the Case list, which the label needs, before saying it is absent.
-    await waitFor(() => expect(client.getQueryData(queryKeys.cases)).toHaveLength(2))
-    expect(screen.queryByTestId('session-source-line')).toBeNull()
+    const controls = screen.getByRole('switch', { name: 'Capture Session' }).closest('div')!
+    expect(controls.textContent).toBe('Capture Session')
   })
 })

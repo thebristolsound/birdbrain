@@ -6,9 +6,9 @@ type Page = import('@playwright/test').Page
 
 // The top-bar search used to sit at the window's centre on its own layer, so on
 // a window about 1400px wide it covered the Capture Session switch and the REC
-// indicator. It now takes its place between the two side groups. Since the 2026-11-08
-// top bar, the Case's actions (Share, Export, Launch browser, the switch and the recording
-// mark) live in the Case action bar under it; the top bar keeps the status group and Settings.
+// indicator. It now takes its place between the two side groups. On a Case the top bar's right
+// side carries Share, Export and Launch browser before the status group and Settings; the
+// recording mark and the switch live in the Case action bar under it.
 
 const NAMES = ['Kestrel', 'Operation Kestrel Harbour Review of subject accounts and linked domains']
 
@@ -49,16 +49,17 @@ test.describe('Top bar layout', () => {
           webContents.send('event:extensionConnection', { connected: true })
           webContents.send('event:sessionStateChanged', { sessionActive: true, activeCaseId: id })
         }, caseId)
-        // The Case's actions sit in the case action bar, so the top bar's right side does not
-        // grow toward the native window controls while recording: the switch, the recording
-        // mark, Export (which folds to its icon on narrow windows) and the Share pill.
+        // The switch and the recording mark sit in the case action bar, so the top bar's right
+        // side does not grow toward the native window controls while recording.
         await expect(actionBar.getByTestId('topbar-rec')).toBeVisible({ timeout: 1000 })
       }).toPass({ timeout: 10000 })
       await expect(actionBar.getByRole('switch', { name: 'Capture Session' })).toBeVisible()
-      await expect(actionBar.getByRole('button', { name: /Export/ })).toBeVisible()
+      await expect(controls.getByRole('button', { name: /Export/ })).toBeVisible()
+      await expect(controls.getByRole('button', { name: 'Launch browser' })).toBeVisible()
       await expect(actionBar.getByTestId('case-action-bar-section')).toHaveText('Overview')
       await expect(controls.getByRole('switch', { name: 'Capture Session' })).toHaveCount(0)
-      await expect(controls.getByRole('button', { name: /Export/ })).toHaveCount(0)
+      await expect(actionBar.getByRole('button', { name: /Export/ })).toHaveCount(0)
+      await expect(actionBar.getByRole('button', { name: 'Launch browser' })).toHaveCount(0)
       await expect(controls.getByTestId('topbar-rec')).toHaveCount(0)
       await expect(controls.getByTestId('status-group')).toBeVisible()
 
@@ -112,8 +113,8 @@ test.describe('Top bar layout', () => {
         expect(scrollWidth).toBeLessThanOrEqual(width)
 
         // The Share pill keeps its label from 1,024px up and folds to the icon below that
-        // (docs/design-handoff/2026-10-28-share-a-case/, frame G), now in the action bar.
-        const pill = actionBar.getByTestId('share-pill')
+        // (docs/design-handoff/2026-10-28-share-a-case/, frame G).
+        const pill = controls.getByTestId('share-pill')
         await expect(pill).toHaveAttribute('data-state', 'share')
         const { width: pillWidth } = (await pill.boundingBox())!
         if (width >= 1024) expect(pillWidth).toBeGreaterThan(40)
@@ -141,19 +142,19 @@ test.describe('Top bar layout', () => {
       }
     }
 
-    // With the extension gone the right side is short, and the search sits at the
-    // window's centre again.
+    // With the extension gone, and a window wide enough that Share, Export and Launch browser fit
+    // in the right half, the search sits at the window's centre again.
     await electronApp.evaluate(({ BrowserWindow }) => {
       const { webContents } = BrowserWindow.getAllWindows()[0]
       webContents.send('event:sessionStateChanged', { sessionActive: false, activeCaseId: null })
       webContents.send('event:extensionConnection', { connected: false })
     })
     await expect(page.getByTestId('topbar-rec')).toHaveCount(0)
-    await electronApp.windows()[0].setViewportSize({ width: 1400, height: 800 })
+    await electronApp.windows()[0].setViewportSize({ width: 1600, height: 800 })
     await expect(async () => {
       const { x, width } = (await search.boundingBox())!
       expect(width).toBe(400)
-      expect(Math.abs(x + width / 2 - 700)).toBeLessThanOrEqual(1)
+      expect(Math.abs(x + width / 2 - 800)).toBeLessThanOrEqual(1)
     }).toPass({ timeout: 5000 })
 
     // Every state of the pill opens Members; a Case nobody shared lands on the not-shared card.
@@ -162,15 +163,12 @@ test.describe('Top bar layout', () => {
     expect(await page.evaluate(() => window.location.hash)).toMatch(/#\/cases\/[^/]+\/settings$/)
   })
 
-  // With a launched browser and the extension both recording, the action bar carries the
-  // recording mark between Launch browser and the switch; the switch's source line gives way,
-  // not the row.
-  test('fits the Case action bar while a launched browser records', async ({
-    electronApp,
-    page
-  }) => {
+  // With a launched browser and the extension both recording, the top bar carries Share, Export
+  // and Launch browser, and the action bar the recording mark against the switch.
+  test('fits the Case controls while a launched browser records', async ({ electronApp, page }) => {
     const caseId = await createCase(page, NAMES[1])
     const actionBar = page.getByTestId('case-action-bar')
+    const controls = page.getByTestId('topbar-controls')
     // The app's own session update can land after the stand-in one, so each check sends the
     // stand-in again and confirms it holds; a bar with no session would fit trivially.
     const holdRecording = async () => {
@@ -194,36 +192,41 @@ test.describe('Top bar layout', () => {
       await expect(actionBar.getByTestId('topbar-rec')).toContainText('Launched Google Chrome', {
         timeout: 1000
       })
-      await expect(actionBar.getByTestId('session-source-line')).toContainText(
-        'and the extension',
-        { timeout: 1000 }
-      )
     }
-    const launch = actionBar.getByRole('button', { name: 'Launch browser' })
-    const row = [
-      actionBar.getByTestId('share-pill'),
-      actionBar.getByRole('button', { name: /Export/ }),
-      launch,
-      actionBar.getByTestId('topbar-rec'),
-      actionBar.getByRole('switch', { name: 'Capture Session' })
+    const launch = controls.getByRole('button', { name: 'Launch browser' })
+    const rows = [
+      [
+        controls.getByTestId('share-pill'),
+        controls.getByRole('button', { name: /Export/ }),
+        launch
+      ],
+      [
+        actionBar.getByTestId('topbar-rec'),
+        actionBar.getByRole('switch', { name: 'Capture Session' })
+      ]
     ]
 
     for (const width of [1440, 1280, 1100, 1024]) {
       await electronApp.windows()[0].setViewportSize({ width, height: 800 })
       await expect(async () => {
         await holdRecording()
-        const overflow = await actionBar.evaluate((el) => el.scrollWidth - el.clientWidth)
-        expect(overflow).toBeLessThanOrEqual(0)
+        for (const bar of [actionBar, controls]) {
+          const overflow = await bar.evaluate((el) => el.scrollWidth - el.clientWidth)
+          expect(overflow).toBeLessThanOrEqual(0)
+        }
         const pageOverflow = await page.evaluate(
           () => document.documentElement.scrollWidth - window.innerWidth
         )
         expect(pageOverflow).toBeLessThanOrEqual(0)
-        // Left to right with no overlap: Share, Export, Launch browser, the mark, the switch.
-        let edge = 0
-        for (const item of row) {
-          const { x, width: itemWidth } = (await item.boundingBox())!
-          expect(x).toBeGreaterThanOrEqual(edge)
-          edge = x + itemWidth
+        // Left to right with no overlap: Share, Export, Launch browser in the top bar; the mark
+        // and the switch in the action bar.
+        for (const row of rows) {
+          let edge = 0
+          for (const item of row) {
+            const { x, width: itemWidth } = (await item.boundingBox())!
+            expect(x).toBeGreaterThanOrEqual(edge)
+            edge = x + itemWidth
+          }
         }
         // One line. The button's height is fixed, so count the lines its label is laid out on.
         const labelLines = await launch.evaluate((el) => {
@@ -292,7 +295,7 @@ test.describe('Top bar layout', () => {
     await expect(overlay).toBeVisible()
 
     await page
-      .getByTestId('case-action-bar')
+      .getByTestId('topbar-controls')
       .getByRole('button', { name: /Export/ })
       .click()
     await page.getByRole('menuitem', { name: 'Export evidence report' }).click()

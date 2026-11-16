@@ -11,6 +11,10 @@ import { CaptureSessionButton } from '@renderer/components/launchedBrowser/Captu
 import { SessionControls } from '@renderer/components/status/SessionControls'
 import { StatusGroup } from '@renderer/components/status/StatusGroup'
 import { RecordingMark } from '@renderer/components/status/RecordingMark'
+import { SharePill } from '@renderer/components/status/SharePill'
+import { ExportMenu } from '@renderer/components/export/ExportMenu'
+import { launchedBrowserStatusQueryOptions } from '@renderer/lib/api/launchedBrowser'
+import { busyRefusal } from '@renderer/components/launchedBrowser/startDialogModel'
 import { useCaptureSessionView } from '@renderer/components/launchedBrowser/CaptureSessionPanel'
 import { MemberCodeChip } from '@renderer/components/sharing/MemberCodeChip'
 import { youAreLine } from '@renderer/components/sharing/memberModel'
@@ -45,6 +49,11 @@ export function TopBar() {
   const launchedView = useCaptureSessionView()
   const extensionOnlyRecording = sessionActive && launchedView.kind === 'none'
   const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen)
+  const openStartDialog = useAppStore((s) => s.openStartDialog)
+  const { data: launchedStatus } = useQuery(launchedBrowserStatusQueryOptions)
+  // One launched browser at a time. A disabled button takes no pointer, so the reason sits on
+  // its wrapper.
+  const launchBusy = busyRefusal(launchedStatus)?.title
   const { status: updateStatus } = useUpdateStatus()
   const updateAvailable =
     updateStatus?.state === 'available' || updateStatus?.state === 'downloaded'
@@ -166,9 +175,9 @@ export function TopBar() {
         </div>
       )}
 
-      {/* Right controls: how the app is doing, then Settings. What acts on the Case (Share,
-          Export, Launch browser, the recording mark and the session switch) lives in
-          CaseActionBar, under this bar (docs/design-handoff/2026-11-08-top-bar/, Option B). */}
+      {/* Right controls: on a Case, Share, Export and Launch browser; then how the app is doing,
+          then Settings. The recording mark and the session switch live in CaseActionBar, under
+          this bar. */}
       <div
         data-testid="topbar-controls"
         className="flex flex-1 basis-0 items-center justify-end gap-2"
@@ -177,6 +186,29 @@ export function TopBar() {
             control, and the recording mark while it records, stay up here. */}
         {!activeCaseId && extensionOnlyRecording && <RecordingMark />}
         {!activeCaseId && <CaptureSessionButton showOpenCase={isOnDashboard} />}
+
+        {/* The Case's one sharing control: "Share" until a peer joins, then the sync state. */}
+        {activeCase && (
+          <SharePill
+            caseId={activeCase.id}
+            onOpenMembers={() =>
+              navigate({ to: '/cases/$caseId/settings', params: { caseId: activeCase.id } })
+            }
+          />
+        )}
+        {activeCase && <ExportMenu caseId={activeCase.id} caseName={activeCase.name} />}
+        {activeCaseId && (
+          <span title={launchBusy} className="shrink-0">
+            <Button
+              variant="outline"
+              className="whitespace-nowrap"
+              disabled={launchBusy !== undefined}
+              onClick={() => openStartDialog(activeCaseId)}
+            >
+              Launch browser
+            </Button>
+          </span>
+        )}
 
         <StatusGroup />
 

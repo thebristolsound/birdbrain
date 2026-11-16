@@ -2017,9 +2017,9 @@ function buildPackagedPaths(
     // unreadable). An artifact that disappears between classification and
     // assembly is the pre-existing Capture path: the package is written with
     // the report naming a file the zip lacks, and both verifiers FAIL it on
-    // the missing artifact (evidencePackage.ts:505). The reader closes that
-    // window for non-Capture Exhibits and Derived Files only; closing it for
-    // Captures is the follow-up named in the findings list.
+    // the missing artifact (evidencePackage.ts:505). The contents decision
+    // closes that window for non-Capture Exhibits and Derived Files only; a
+    // Capture's own files are not covered yet.
     const { abs } = defaultCaptureStore.artifactPaths(capture.caseId, capture.id, 'mhtml')
     const screenshotDigest = screenshotDigests.get(capture.id)
     const pageArchive = capturePagePath(data.chainIdByCaptureId.get(capture.id) ?? capture.id)

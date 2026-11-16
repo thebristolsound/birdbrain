@@ -54,9 +54,9 @@ three chose a new package, one synchronous call, and results that carry their by
 
 `tests/main/services/exportKnownAnswer.test.ts` pins every byte of nine exports: an Evidence
 Package with and without screenshots and with every option off, a selection export, a Working
-Copy with every option on and with every option off, a standalone report, a Case whose rows an
-import renamed, and a Shared Case with an `exclude` entry. Each slice after the first leaves
-`tests/fixtures/export-known-answer/answers.json` unchanged.
+Copy with every option on but burned annotations and with every option off, a standalone
+report, a Case whose rows an import renamed, and a Shared Case with an `exclude` entry. Each
+slice after the first leaves `tests/fixtures/export-known-answer/answers.json` unchanged.
 
 The fixture does not cover burned annotations or thumbnails made by the image library, whose
 encoded bytes differ between machines.

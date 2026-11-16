@@ -154,13 +154,19 @@ describe('sources the review fleet cannot load', () => {
   // A bullet in the Changes block, beside the visual declaration every authored body carries.
   const withBullet = (bullet: string) => lint(`${noVisualChange}\n- ${bullet}`)
   const unlinked = (what: string) => [expect.stringContaining(`names ${what} with no #N or link`)]
+  const link = 'https://github.com/thebristolsound/birdbrain/pull/2209'
 
+  // One row per wording pattern, and one for each half of a pattern with two.
   it.each([
-    ['The first fleet round raised five findings and the second raised four.', 'a review round'],
-    ['Findings from rounds 1 and 3 are fixed.', 'a review round'],
     ['Requested in the architecture review thread on 2026-11-16.', 'a thread'],
+    ['The agent threads disagreed.', 'a thread'],
     ['As agreed in this chat, the helper stays.', 'a conversation'],
-    ['The sol-loop review approved the change.', 'a Sol review']
+    ['The fleet round raised five findings.', 'a review round'],
+    ['The second review round raised four findings.', 'a review round'],
+    ['The previous fix round changed the helper.', 'a review round'],
+    ['Findings from review rounds 1 and 3 are fixed.', 'a review round'],
+    ['The sol-loop approved the change.', 'a Sol review'],
+    ['The Sol verdict was to approve.', 'a Sol review']
   ])('refuses "%s"', (bullet, what) => {
     expect(withBullet(bullet)).toEqual(unlinked(what))
   })
@@ -173,34 +179,44 @@ describe('sources the review fleet cannot load', () => {
     expect(lintBody(body, { screenshots: true })).toEqual(unlinked('a thread'))
   })
 
-  it('accepts the wording once the line names or links its source', () => {
+  it('accepts the wording once the line names a source the fleet loads', () => {
     expect(withBullet('The review thread on #2201 settled the name.')).toEqual([])
+    expect(withBullet(`The fleet round is ${link}#issuecomment-1.`)).toEqual([])
+    // The fleet reads a link inside a code span, and the repository's name in any letter case.
+    expect(withBullet(`The review thread at \`${link}\` settled the name.`)).toEqual([])
     expect(
       withBullet(
-        'The first fleet round is https://github.com/thebristolsound/birdbrain/pull/2209#issuecomment-1.'
+        'The review thread at https://github.com/TheBristolSound/Birdbrain/pull/2209 settled it.'
       )
     ).toEqual([])
+    expect(withBullet('The review thread in comment 4590485295 settled the name.')).toEqual([])
+    expect(withBullet('The review thread on `main` and #2201 settled the name.')).toEqual([])
   })
 
   it('does not count a reference the fleet would not load', () => {
-    expect(withBullet('The review thread on `#2201` settled the name.')).toEqual(
-      unlinked('a thread')
-    )
-    expect(withBullet('The review thread in docs/plan.md#2201 settled the name.')).toEqual(
-      unlinked('a thread')
-    )
-    expect(withBullet('The review thread on `main` and #2201 settled the name.')).toEqual([])
-    expect(
-      withBullet('The review thread at https://github.com/other/repo/pull/7 settled the name.')
-    ).toEqual(unlinked('a thread'))
-    expect(withBullet('The review thread at https://example.com/t/7 settled the name.')).toEqual(
-      unlinked('a thread')
-    )
+    const refused = (bullet: string) => expect(withBullet(bullet)).toEqual(unlinked('a thread'))
+    // A bare number in a code span, a path fragment, another repository, another site.
+    refused('The review thread on `#2201` settled the name.')
+    refused('The review thread in docs/plan.md#2201 settled the name.')
+    refused('The review thread at https://github.com/other/repo/pull/7 settled the name.')
+    refused('The review thread at https://example.com/t/7 settled the name.')
+    refused(`The review thread at ${link}#issuecomment-x settled the name.`)
   })
 
   it('leaves ordinary uses of the same words alone', () => {
     expect(withBullet('The worker thread and the round trip are unchanged.')).toEqual([])
     expect(withBullet('Rounds the height up to the next pixel.')).toEqual([])
+    expect(withBullet('Halves the first round trip to the server.')).toEqual([])
+    expect(withBullet('It rounds 2 decimal places and plays the last round again.')).toEqual([])
+  })
+
+  it('reads sentences only: not a fenced block, and no reference inside one', () => {
+    const fenced = (inside: string, after = '') =>
+      lintBody(bodyWith(`${noVisualChange}\n\n\`\`\`text\n${inside}\n\`\`\`\n\n${after}`), {
+        screenshots: true
+      }).filter((finding: string) => finding.includes('names '))
+    expect(fenced('the first fleet round said so')).toEqual([])
+    expect(fenced('#2201', '- The review thread settled the name.')).toEqual(unlinked('a thread'))
   })
 
   it('reads authored lines only: not the Verification block, and not at merge time', () => {

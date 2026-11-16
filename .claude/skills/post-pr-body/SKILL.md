@@ -72,8 +72,8 @@ names as `#N` or links by URL (`.github/scripts/review-fleet/inputs.mjs`). A sta
 anything else, such as a chat, an agent thread or an earlier review round, stays unchecked, and
 one unchecked item fails `review/fleet` (ADR-0057). Link the source, move the sentence to a PR
 comment, or leave it out. `check.sh --screenshots` catches a few common wordings only (a thread,
-a chat, a numbered review round) on a line that carries no `#N` and no link to an issue or pull
-request of this repository; any other uncheckable sentence is yours to catch.
+a chat, a numbered review round) on a line from which the fleet's own functions in `inputs.mjs`
+load no source; any other uncheckable sentence is yours to catch.
 
 ## Screenshots for visual changes
 

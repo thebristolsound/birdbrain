@@ -9,6 +9,7 @@
 import { readFileSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import { parseLayers, plainLanguageFindings, summaryFindings } from './layers.mjs'
+import { bareReferences, referencedSources } from '../../../../.github/scripts/review-fleet/inputs.mjs'
 
 const MAX_LINES_ABOVE_VERIFICATION = 40
 const MAX_SUMMARY_SENTENCES = 5
@@ -66,27 +67,44 @@ function countSentences(text) {
 // A source the review fleet cannot load: it reads the diff, the repository, and the issues,
 // pull requests, comments and reviews of this repository that the body names as #N or links
 // (.github/scripts/review-fleet/inputs.mjs). A sentence about a chat, an agent thread or a review
-// round stays unchecked, and one unchecked item fails review/fleet (ADR-0057).
+// round stays unchecked, and one unchecked item fails review/fleet (ADR-0057). The wordings are
+// a short list of unambiguous ones, each with its qualifier, so "the first round trip" and
+// "a worker thread" pass.
 const ORDINAL = 'first|second|third|fourth|fifth|earlier|previous|prior|last|latest|\\d+(?:st|nd|rd|th)'
 const UNLINKED_SOURCES = [
   [/\b(?:chat|agent|review|T3|Slack) threads?\b/i, 'a thread'],
   [/\bin (?:this|the|that|our) (?:chat|conversation)\b/i, 'a conversation'],
   [/\bfleet rounds?\b/i, 'a review round'],
-  [new RegExp(`\\b(?:${ORDINAL}) (?:(?:review|fix|sol) )?rounds?\\b`, 'i'), 'a review round'],
-  [/\brounds? \d+\b/i, 'a review round'],
+  [new RegExp(`\\b(?:${ORDINAL}) (?:review|fix|sol) rounds?\\b`, 'i'), 'a review round'],
+  [/\b(?:review|fix|sol) rounds? \d+\b/i, 'a review round'],
   [/\bsol[- ]loop\b|\bSol (?:review|round|verdict)\b/, 'a Sol review']
 ]
-// What the fleet loads from a line, by its own rules (`bareReferences` and `referencedSources` in
-// inputs.mjs): a bare #N, or the URL of an issue or pull request of this repository, outside a
-// code span. A reference inside backticks loads nothing, and the fleet stops on a link to
-// another repository's issue.
-const SOURCE_LINK = /(?<![\w/&#.-]|\]\()#[1-9]\d*(?![\w-])|https:\/\/github\.com\/thebristolsound\/birdbrain\/(?:issues|pull)\/\d+/
-const CODE_SPAN = /(`+)(?!`).*?(?<!`)\1(?!`)/g
+// Whether the fleet would load a source from this line, asked of the fleet's own functions: a
+// bare #N outside a code span, a link to an issue, pull request, comment or review of this
+// repository, or a comment named by number. A link the fleet stops on (another repository, a
+// malformed comment fragment) loads nothing.
+const REPOSITORY = 'thebristolsound/birdbrain'
+function loadsSource(line) {
+  if (bareReferences(line).length > 0) return true
+  try {
+    return referencedSources(line, REPOSITORY).length > 0
+  } catch {
+    return false
+  }
+}
 
 function unlinkedSourceFindings(lines) {
   const findings = []
+  let fence = null
   lines.forEach((line, i) => {
-    if (SOURCE_LINK.test(line.replace(CODE_SPAN, ' '))) return
+    // A fenced block is quoted output, not a sentence of the description, and the fleet reads
+    // no reference inside one.
+    const marker = line.match(/^\s*(```+|~~~+)/)?.[1]
+    if (fence ? marker?.startsWith(fence) : marker) {
+      fence = fence ? null : marker
+      return
+    }
+    if (fence || loadsSource(line)) return
     const hit = UNLINKED_SOURCES.find(([re]) => re.test(line))
     if (!hit) return
     findings.push(`line ${i + 1} names ${hit[1]} with no #N or link to this repository on the line, and the review fleet fails on a statement it cannot check: link the source, move the sentence to a PR comment, or drop it: "${line.trim().slice(0, 60)}"`)

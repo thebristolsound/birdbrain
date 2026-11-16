@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createHash } from 'crypto'
-import { mkdtempSync, rmSync } from 'fs'
+import { mkdtempSync, readFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
@@ -303,6 +303,8 @@ describe('the Capture row and signed entry each writer produces', () => {
 
     let text = JSON.stringify({ ingest, duplicate, received }, null, 2) + '\n'
     for (const [value, name] of volatile) text = text.replaceAll(value, name)
-    await expect(text).toMatchFileSnapshot(FIXTURE)
+    // Read and compared, never recorded: a missing or stale fixture fails on every machine.
+    expect(JSON.parse(text)).toEqual(JSON.parse(readFileSync(FIXTURE, 'utf-8')))
+    expect(text).toBe(readFileSync(FIXTURE, 'utf-8'))
   }, 60_000)
 })

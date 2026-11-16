@@ -13,7 +13,12 @@ import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
-import { createCase, deleteCase, setAutoCapturePolicy } from '@main/services/db/caseRepo'
+import {
+  createCase,
+  deleteCase,
+  setAutoCapturePolicy,
+  updateCase
+} from '@main/services/db/caseRepo'
 import { getCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
 import * as backgroundJobRepo from '@main/services/db/backgroundJobRepo'
 import { defaultCaptureStore } from '@main/services/captureStore'
@@ -944,6 +949,29 @@ describe('stored background jobs', () => {
     })
   })
 
+  describe('the Case check before the render', () => {
+    it('skips a held job whose Case is archived by the time it resumes, sending no request', async () => {
+      const url = 'https://example.com/page'
+      const [id] = earlierSession([url])
+      const renderPage = vi.fn(render)
+      const svc = makeService(renderPage)
+      svc.recoverStoredJobs()
+      expect(updateCase({ id: caseId, archived: true })?.archived).toBe(true)
+
+      svc.resume(backgroundJobRepo.getJob(id)!.batchId)
+      await svc.idle()
+
+      expect(renderPage).not.toHaveBeenCalled()
+      expect(backgroundJobRepo.getJob(id)).toMatchObject({
+        state: 'skipped',
+        failureKind: 'case',
+        error: 'Case is archived'
+      })
+      expect(events.map(({ type }) => type)).toEqual(['received', 'skipped'])
+      expect(events[1]).toMatchObject({ jobId: id, url, skipReason: 'Case is archived' })
+    })
+  })
+
   describe('dismiss', () => {
     const STATES = [
       'queued',
@@ -1022,7 +1050,14 @@ describe('stored background jobs', () => {
 
     it('fails a running job before its ingest when its Case is deleted during the render', async () => {
       const { renderPage, gate } = gatedRender()
-      const svc = makeService(renderPage)
+      const lifecycle = feedLifecycle()
+      const ingest = vi.spyOn(lifecycle, 'ingest')
+      const svc = createRecaptureService({
+        renderPage,
+        captureLifecycle: lifecycle,
+        emitEvent: (e) => events.push(e),
+        emitJob: (job) => jobs.push(job)
+      })
       svc.enqueue([{ url: 'https://example.com/a', caseId }])
       await vi.waitFor(() => expect(gate).toHaveLength(1))
       const sent = jobs.length
@@ -1031,7 +1066,9 @@ describe('stored background jobs', () => {
       gate.shift()!()
       await svc.idle()
 
+      expect(ingest).not.toHaveBeenCalled()
       expect(events.map(({ type }) => type)).toEqual(['queued', 'received', 'failed'])
+      expect(events[2].error).toBe('Case not found')
       expect(listCaptures(caseId)).toEqual([])
       expect(newCaptures).toEqual([])
       // The row went with its Case, so there is no state left to report.

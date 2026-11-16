@@ -70,6 +70,21 @@ export default tseslint.config(
     rules: reactCompilerRules
   },
   {
+    // A refused call crosses the context bridge as a plain object. lib/birdbrain.ts turns it
+    // back into an Error that keeps the code, so every renderer call goes through it.
+    files: ['src/renderer/**/*.{ts,tsx}'],
+    ignores: ['src/renderer/lib/birdbrain.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "MemberExpression[object.name='window'][property.name='birdbrain']",
+          message: "Call the bridge through `birdbrain` from '@renderer/lib/birdbrain'."
+        }
+      ]
+    }
+  },
+  {
     files: ['e2e/**/*.ts'],
     rules: {
       'no-empty-pattern': 'off'

@@ -248,9 +248,9 @@ describe('preload refusals', () => {
       ...args: unknown[]
     ) => Promise<unknown>
 
-  // The context bridge keeps only an Error's message, so a sharing refusal
-  // crosses as a plain object the renderer turns back into an Error.
-  it('rejects a sharing call with a plain object that keeps the code', async () => {
+  // The context bridge keeps only an Error's message, so a refusal crosses as
+  // a plain object the renderer turns back into an Error.
+  it('rejects a refused call with a plain object that keeps the code', async () => {
     electronStub.result = refusal
     try {
       const rejection = await leaf('sharing.readInvite')('x').catch((err: unknown) => err)
@@ -262,52 +262,48 @@ describe('preload refusals', () => {
     }
   })
 
-  // The start dialog names a launch refusal by its code.
-  it('rejects a browser launch with a plain object that keeps the code', async () => {
-    electronStub.result = {
-      ok: false,
-      error: 'Chromium is still starting.',
-      code: 'BROWSER_ALREADY_RUNNING'
-    }
-    try {
-      const rejection = await leaf('launchedBrowser.launch')('/usr/bin/x').catch(
-        (err: unknown) => err
-      )
-      expect(rejection).not.toBeInstanceOf(Error)
-      expect(rejection).toEqual({
-        message: 'Chromium is still starting.',
-        code: 'BROWSER_ALREADY_RUNNING'
-      })
-    } finally {
-      electronStub.result = { ok: true, data: null }
-    }
-  })
-
-  // The Personas row shows a refused cookie file's message by its code.
-  it('rejects a Persona cookie import with a plain object that keeps the code', async () => {
+  // No channel is marked by hand: the one refusal shape holds for every invoke leaf.
+  it('rejects a refusal the same way on every invoke channel', async () => {
     electronStub.result = {
       ok: false,
       error: 'Only a Netscape cookies.txt export can be imported.',
       code: 'PERSONA_COOKIE_FILE_UNSUPPORTED'
     }
     try {
-      const call = leaf('persona.import')('p-1')
-      await expect(call).rejects.not.toBeInstanceOf(Error)
-      await expect(call).rejects.toEqual({
-        message: 'Only a Netscape cookies.txt export can be imported.',
-        code: 'PERSONA_COOKIE_FILE_UNSUPPORTED'
-      })
+      const rejections = await Promise.all(
+        invokeLeaves.map((invokeLeaf) => leaf(invokeLeaf.path)().catch((err: unknown) => err))
+      )
+      expect(rejections).toHaveLength(invokeChannels.length)
+      for (const rejection of rejections) {
+        expect(rejection).not.toBeInstanceOf(Error)
+        expect(rejection).toEqual({
+          message: 'Only a Netscape cookies.txt export can be imported.',
+          code: 'PERSONA_COOKIE_FILE_UNSUPPORTED'
+        })
+      }
     } finally {
       electronStub.result = { ok: true, data: null }
     }
   })
 
-  it('rejects every other call with an Error', async () => {
-    electronStub.result = refusal
+  it('rejects a refusal that has no code with its message alone', async () => {
+    electronStub.result = { ok: false, error: 'Case not found' }
+    try {
+      const rejection = await leaf('cases.setAutoCapturePolicy')({}).catch((err: unknown) => err)
+      expect(rejection).not.toBeInstanceOf(Error)
+      expect(rejection).toEqual({ message: 'Case not found', code: undefined })
+    } finally {
+      electronStub.result = { ok: true, data: null }
+    }
+  })
+
+  // A raw registration is a wiring bug, not a refusal, so it stays an Error.
+  it('rejects a result with no envelope with an Error', async () => {
+    electronStub.result = { data: null }
     try {
       const rejection = await leaf('cases.list')().catch((err: unknown) => err)
       expect(rejection).toBeInstanceOf(Error)
-      expect(rejection).toMatchObject({ message: 'Not a Birdbrain invite' })
+      expect(rejection).toMatchObject({ message: 'IPC result is missing its envelope' })
     } finally {
       electronStub.result = { ok: true, data: null }
     }

@@ -7,25 +7,26 @@ import type {
 import type { Selector } from '@shared/types'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { SIGNAL_COVERAGE_CAPTURES } from '@shared/constants'
+import { birdbrain } from '@renderer/lib/birdbrain'
 
 export const selectorsQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.selectors(caseId),
-    queryFn: () => window.birdbrain.selectors.list(caseId),
+    queryFn: () => birdbrain.selectors.list(caseId),
     enabled: !!caseId
   })
 
 export const selectorMatchCountsQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.selectorMatchCounts(caseId),
-    queryFn: () => window.birdbrain.selectors.matchCounts(caseId),
+    queryFn: () => birdbrain.selectors.matchCounts(caseId),
     enabled: !!caseId
   })
 
 export const selectorCoverageQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.selectorCoverage(caseId),
-    queryFn: () => window.birdbrain.selectors.coverage(caseId),
+    queryFn: () => birdbrain.selectors.coverage(caseId),
     enabled: !!caseId
   })
 
@@ -34,7 +35,7 @@ export const selectorCoverageQueryOptions = (caseId: string) =>
 export const selectorCaptureMatrixQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.selectorCaptureMatrix(caseId),
-    queryFn: () => window.birdbrain.selectors.captureMatrix(caseId, SIGNAL_COVERAGE_CAPTURES),
+    queryFn: () => birdbrain.selectors.captureMatrix(caseId, SIGNAL_COVERAGE_CAPTURES),
     enabled: !!caseId
   })
 
@@ -45,15 +46,15 @@ export const selectorCaptureMatrixQueryOptions = (caseId: string) =>
 // a behaviour change the design keeps out of the mechanical move. Converging
 // them is a follow-up candidate, not part of #229 PR 4.
 export function createSelector(params: CreateSelectorParams): Promise<Selector> {
-  return window.birdbrain.selectors.create(params)
+  return birdbrain.selectors.create(params)
 }
 
 export function updateSelector(params: UpdateSelectorParams): Promise<Selector | undefined> {
-  return window.birdbrain.selectors.update(params)
+  return birdbrain.selectors.update(params)
 }
 
 export function deleteSelector(id: string): Promise<boolean> {
-  return window.birdbrain.selectors.delete(id)
+  return birdbrain.selectors.delete(id)
 }
 
 // Writes a CSV outside the database and returns where it went; `exported:
@@ -64,7 +65,7 @@ export function exportSelectorMatches(
   caseId: string,
   selectorId?: string
 ): Promise<{ exported: boolean; path?: string }> {
-  return window.birdbrain.selectors.exportMatches(caseId, selectorId)
+  return birdbrain.selectors.exportMatches(caseId, selectorId)
 }
 
 // The Captures a selector set matched, cached per set: the Data screen's
@@ -74,14 +75,14 @@ export function exportSelectorMatches(
 export const selectorMatchingCapturesQueryOptions = (caseId: string, selectorIds: string[]) =>
   queryOptions({
     queryKey: queryKeys.selectorMatchingCaptures(caseId, selectorIds),
-    queryFn: () => window.birdbrain.selectors.matchingCaptures(caseId, selectorIds),
+    queryFn: () => birdbrain.selectors.matchingCaptures(caseId, selectorIds),
     enabled: !!caseId && selectorIds.length > 0
   })
 
 // Read without a cache identity: the foreground match preview wants the current
 // answer for an ad-hoc selector set, not a cached one keyed by it.
 export function listMatchingCaptureIds(caseId: string, selectorIds: string[]): Promise<string[]> {
-  return window.birdbrain.selectors.matchingCaptures(caseId, selectorIds)
+  return birdbrain.selectors.matchingCaptures(caseId, selectorIds)
 }
 
 export function useSelectorsMutations(caseId: string) {
@@ -96,26 +97,25 @@ export function useSelectorsMutations(caseId: string) {
   }
 
   const create = useMutation({
-    mutationFn: (params: CreateSelectorParams) => window.birdbrain.selectors.create(params),
+    mutationFn: (params: CreateSelectorParams) => birdbrain.selectors.create(params),
     onSuccess: invalidateSelectorQueries,
     meta: { action: 'create selector' }
   })
 
   const update = useMutation({
-    mutationFn: (params: UpdateSelectorParams) => window.birdbrain.selectors.update(params),
+    mutationFn: (params: UpdateSelectorParams) => birdbrain.selectors.update(params),
     onSuccess: invalidateSelectorQueries,
     meta: { action: 'update selector' }
   })
 
   const remove = useMutation({
-    mutationFn: (id: string) => window.birdbrain.selectors.delete(id),
+    mutationFn: (id: string) => birdbrain.selectors.delete(id),
     onSuccess: invalidateSelectorQueries,
     meta: { action: 'delete selector' }
   })
 
   const bulkCreate = useMutation({
-    mutationFn: (params: BulkCreateSelectorsParams) =>
-      window.birdbrain.selectors.bulkCreate(params),
+    mutationFn: (params: BulkCreateSelectorsParams) => birdbrain.selectors.bulkCreate(params),
     onSuccess: invalidateSelectorQueries,
     meta: { action: 'create selectors' }
   })
@@ -125,7 +125,7 @@ export function useSelectorsMutations(caseId: string) {
   // pre-rescan counts. The SELECTOR_REMATCHED event carries the refresh once
   // rows are actually written, the same shape useRecaptureMutations.enqueue uses.
   const rescan = useMutation({
-    mutationFn: (id: string) => window.birdbrain.selectors.rescan(id),
+    mutationFn: (id: string) => birdbrain.selectors.rescan(id),
     meta: { action: 'rescan selector' }
   })
 

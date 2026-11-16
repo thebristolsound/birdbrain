@@ -3,23 +3,24 @@ import type { CreateCaseParams, SetAutoCapturePolicyParams, UpdateCaseParams } f
 import type { ArchiveInspectReport } from '@shared/types'
 import { RECENT_ACTIVITY_LIMIT } from '@shared/constants'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { birdbrain } from '@renderer/lib/birdbrain'
 
 // Opens a file dialog and verifies the chosen archive without importing it;
 // null means the operator cancelled. Nothing is written, so there is nothing
 // to invalidate.
 export function inspectCaseArchive(): Promise<ArchiveInspectReport | null> {
-  return window.birdbrain.cases.inspectArchive()
+  return birdbrain.cases.inspectArchive()
 }
 
 export const casesQueryOptions = queryOptions({
   queryKey: queryKeys.cases,
-  queryFn: () => window.birdbrain.cases.list()
+  queryFn: () => birdbrain.cases.list()
 })
 
 export const caseQueryOptions = (id: string) =>
   queryOptions({
     queryKey: queryKeys.case(id),
-    queryFn: () => window.birdbrain.cases.get(id)
+    queryFn: () => birdbrain.cases.get(id)
   })
 
 // The dashboard's cross-case activity feed (#403). `refetchOnMount: 'always'`
@@ -29,7 +30,7 @@ export const caseQueryOptions = (id: string) =>
 export const recentActivityQueryOptions = (limit: number = RECENT_ACTIVITY_LIMIT) =>
   queryOptions({
     queryKey: queryKeys.recentActivity(limit),
-    queryFn: () => window.birdbrain.cases.recentActivity(limit),
+    queryFn: () => birdbrain.cases.recentActivity(limit),
     refetchOnMount: 'always'
   })
 
@@ -39,7 +40,7 @@ export const recentActivityQueryOptions = (limit: number = RECENT_ACTIVITY_LIMIT
 export const caseAutoCapturePolicyQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.caseAutoCapturePolicy(caseId),
-    queryFn: () => window.birdbrain.cases.getAutoCapturePolicy(caseId),
+    queryFn: () => birdbrain.cases.getAutoCapturePolicy(caseId),
     enabled: !!caseId
   })
 
@@ -48,7 +49,7 @@ export function useCaseAutoCapturePolicyMutation(caseId: string) {
 
   return useMutation({
     mutationFn: (params: SetAutoCapturePolicyParams) =>
-      window.birdbrain.cases.setAutoCapturePolicy(params),
+      birdbrain.cases.setAutoCapturePolicy(params),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: queryKeys.caseAutoCapturePolicy(caseId) }),
     meta: { action: 'save auto-capture exclusions' }
@@ -62,7 +63,7 @@ export function useCaseAutoCapturePolicyMutation(caseId: string) {
 export const unreviewedCapturesQueryOptions = (caseId: string, rareLimit: number) =>
   queryOptions({
     queryKey: queryKeys.caseUnreviewed(caseId, rareLimit),
-    queryFn: () => window.birdbrain.cases.listUnreviewed(caseId, rareLimit),
+    queryFn: () => birdbrain.cases.listUnreviewed(caseId, rareLimit),
     staleTime: 0,
     placeholderData: (previous, previousQuery) =>
       previousQuery?.queryKey[1] === caseId ? previous : undefined
@@ -73,7 +74,7 @@ export const unreviewedCapturesQueryOptions = (caseId: string, rareLimit: number
 // D5). Nothing reads them yet, so there is no cache to invalidate.
 export function useEnsureCaseSearchFieldsMutation() {
   return useMutation({
-    mutationFn: (caseId: string) => window.birdbrain.cases.ensureSearchFields(caseId),
+    mutationFn: (caseId: string) => birdbrain.cases.ensureSearchFields(caseId),
     meta: { action: "index this case's links and headers for search" }
   })
 }
@@ -82,13 +83,13 @@ export function useCasesMutations() {
   const queryClient = useQueryClient()
 
   const create = useMutation({
-    mutationFn: (params: CreateCaseParams) => window.birdbrain.cases.create(params),
+    mutationFn: (params: CreateCaseParams) => birdbrain.cases.create(params),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.cases }),
     meta: { action: 'create case' }
   })
 
   const update = useMutation({
-    mutationFn: (params: UpdateCaseParams) => window.birdbrain.cases.update(params),
+    mutationFn: (params: UpdateCaseParams) => birdbrain.cases.update(params),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.cases })
       queryClient.invalidateQueries({ queryKey: queryKeys.case(vars.id) })
@@ -97,7 +98,7 @@ export function useCasesMutations() {
   })
 
   const remove = useMutation({
-    mutationFn: (id: string) => window.birdbrain.cases.delete(id),
+    mutationFn: (id: string) => birdbrain.cases.delete(id),
     // The queue too: the Case's held background jobs go with it, and the status control reads
     // the held count only on a capture event or while something is pending.
     onSuccess: () =>
@@ -118,7 +119,7 @@ export function useCasesMutations() {
     // completed one — on a path that also removes artifacts from disk. Raised
     // here it takes the ordinary mutation failure toast instead.
     mutationFn: async (id: string) => {
-      const removed = await window.birdbrain.cases.deleteDemo(id)
+      const removed = await birdbrain.cases.deleteDemo(id)
       if (!removed) throw new Error('Not a demonstration case')
       return removed
     },
@@ -136,13 +137,13 @@ export function useCasesMutations() {
   })
 
   const exportArchive = useMutation({
-    mutationFn: (caseId: string) => window.birdbrain.cases.exportArchive(caseId),
+    mutationFn: (caseId: string) => birdbrain.cases.exportArchive(caseId),
     meta: { action: 'export case archive' }
   })
 
   const importArchive = useMutation({
     mutationFn: (params: { archivePath: string; overrideTamper: boolean }) =>
-      window.birdbrain.cases.importArchive(params.archivePath, params.overrideTamper),
+      birdbrain.cases.importArchive(params.archivePath, params.overrideTamper),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.cases }),
     meta: { action: 'import case archive' }
   })

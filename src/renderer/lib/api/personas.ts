@@ -1,11 +1,11 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { CreatePersonaParams, UpdatePersonaParams } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
-import { refusalError } from '@renderer/lib/api/sharing'
+import { birdbrain } from '@renderer/lib/birdbrain'
 
 export const personasQueryOptions = queryOptions({
   queryKey: queryKeys.personas,
-  queryFn: () => window.birdbrain.persona.list()
+  queryFn: () => birdbrain.persona.list()
 })
 
 // Whether safeStorage reports an OS key, which decides whether import asks for
@@ -14,7 +14,7 @@ export const personasQueryOptions = queryOptions({
 // invalidated by a write.
 export const personaStorageStateQueryOptions = queryOptions({
   queryKey: queryKeys.personaStorageState,
-  queryFn: () => window.birdbrain.persona.storageState(),
+  queryFn: () => birdbrain.persona.storageState(),
   staleTime: Infinity
 })
 
@@ -23,19 +23,19 @@ export function usePersonasMutations() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: queryKeys.personas })
 
   const create = useMutation({
-    mutationFn: (params: CreatePersonaParams) => window.birdbrain.persona.create(params),
+    mutationFn: (params: CreatePersonaParams) => birdbrain.persona.create(params),
     onSuccess: invalidate,
     meta: { action: 'create persona' }
   })
 
   const update = useMutation({
-    mutationFn: (params: UpdatePersonaParams) => window.birdbrain.persona.update(params),
+    mutationFn: (params: UpdatePersonaParams) => birdbrain.persona.update(params),
     onSuccess: invalidate,
     meta: { action: 'rename persona' }
   })
 
   const remove = useMutation({
-    mutationFn: (id: string) => window.birdbrain.persona.delete(id),
+    mutationFn: (id: string) => birdbrain.persona.delete(id),
     onSuccess: invalidate,
     meta: { action: 'delete persona' }
   })
@@ -44,13 +44,7 @@ export function usePersonasMutations() {
   // refetched because the import time and count live on the row. A refusal
   // rejects with an Error that keeps main's code, which the row reads.
   const importCookies = useMutation({
-    mutationFn: async (personaId: string) => {
-      try {
-        return await window.birdbrain.persona.import(personaId)
-      } catch (err) {
-        throw refusalError(err)
-      }
-    },
+    mutationFn: (personaId: string) => birdbrain.persona.import(personaId),
     onSuccess: invalidate,
     meta: { action: 'import cookies' }
   })

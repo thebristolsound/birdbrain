@@ -1,6 +1,7 @@
 import { toast } from 'sonner'
 import type { LogCode, LogEntry } from '@shared/types'
 import { labelForCode } from '@renderer/lib/notify'
+import { birdbrain } from '@renderer/lib/birdbrain'
 
 // Main already wrote these to disk, so this path toasts ONLY — routing them
 // back through notify.error would write a duplicate entry and, because that
@@ -85,7 +86,7 @@ export function subscribeToMainLog(): () => void {
     else toast.warning(text, opts)
   }
 
-  const unsubscribe = window.birdbrain.onLogEntry(handle)
+  const unsubscribe = birdbrain.onLogEntry(handle)
 
   // onLogEntry is a one-shot event with no replay. Between setLoggerWindow()
   // and this subscription mounting — on first load, on reload, and on macOS
@@ -96,7 +97,7 @@ export function subscribeToMainLog(): () => void {
   // under each deduped id, and filtered through the same `seen` set so an
   // entry present in both paths is handled once.
   try {
-    void window.birdbrain.diagnostics
+    void birdbrain.diagnostics
       .recentEntries(50)
       .then((history) => {
         if (history.length === 0) return

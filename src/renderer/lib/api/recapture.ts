@@ -3,12 +3,13 @@ import type { EnqueueResult, HeldBatch, LinkedFrom, RecaptureJobTarget } from '@
 import { queryKeys } from '@renderer/lib/api/keys'
 import { notify } from '@renderer/lib/notify'
 import { requireContact } from '@renderer/lib/vpnWarning'
+import { birdbrain } from '@renderer/lib/birdbrain'
 
 // The status group and the capture log each decide when to poll, so the interval
 // stays at the call site.
 export const recaptureQueueQueryOptions = queryOptions({
   queryKey: queryKeys.recaptureQueue,
-  queryFn: () => window.birdbrain.recapture.queueStatus()
+  queryFn: () => birdbrain.recapture.queueStatus()
 })
 
 // Two top-level bridge commands rather than members of the recapture
@@ -19,7 +20,7 @@ export function testCapturePipeline(): Promise<{
   durationMs: number
   error?: string
 }> {
-  return window.birdbrain.testPipeline()
+  return birdbrain.testPipeline()
 }
 
 export function testCaptureHttp(): Promise<{
@@ -27,7 +28,7 @@ export function testCaptureHttp(): Promise<{
   durationMs: number
   error?: string
 }> {
-  return window.birdbrain.testHttp()
+  return birdbrain.testHttp()
 }
 
 // Every recapture and added URL contacts a site, so each passes the VPN warning first
@@ -42,7 +43,7 @@ export function useRecaptureMutations(caseId: string) {
       linkedFrom?: LinkedFrom
     }) => {
       await requireContact({ caseId }, 'site')
-      return window.birdbrain.recapture.enqueue({
+      return birdbrain.recapture.enqueue({
         urls: params.urls,
         caseId,
         supersedesCaptureId: params.supersedesCaptureId,
@@ -58,7 +59,7 @@ export function useRecaptureMutations(caseId: string) {
   const enqueueCaptures = useMutation<EnqueueResult, unknown, string[]>({
     mutationFn: async (captureIds) => {
       await requireContact({ caseId }, 'site')
-      return window.birdbrain.recapture.enqueueCaptures({ caseId, captureIds })
+      return birdbrain.recapture.enqueueCaptures({ caseId, captureIds })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.recaptureQueue })
@@ -73,7 +74,7 @@ export async function enqueueEventRecapture(
   captureId: string
 ): Promise<EnqueueResult> {
   await requireContact({ caseId }, 'site')
-  return window.birdbrain.recapture.enqueueCaptures({ caseId, captureIds: [captureId] })
+  return birdbrain.recapture.enqueueCaptures({ caseId, captureIds: [captureId] })
 }
 
 // A held Batch sends its requests once resumed, so resuming passes the VPN warning first, as
@@ -83,7 +84,7 @@ export function useResumeHeldBatch() {
   return useMutation({
     mutationFn: async ({ caseId, batchId }: HeldBatch) => {
       await requireContact({ caseId }, 'site')
-      return window.birdbrain.recapture.resume({ batchId })
+      return birdbrain.recapture.resume({ batchId })
     },
     // The queue refuses a resume while no operator name is set, as it refuses a new Batch.
     onSuccess: ({ reason }) => {
@@ -100,7 +101,7 @@ export function useResumeHeldBatch() {
 export function useCancelBackgroundJobs() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (target: RecaptureJobTarget) => window.birdbrain.recapture.cancel(target),
+    mutationFn: (target: RecaptureJobTarget) => birdbrain.recapture.cancel(target),
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.recaptureQueue })
     },
@@ -114,7 +115,7 @@ export function useRetryBackgroundJobs() {
   return useMutation({
     mutationFn: async ({ caseId, target }: { caseId: string; target: RecaptureJobTarget }) => {
       await requireContact({ caseId }, 'site')
-      return window.birdbrain.recapture.retry(target)
+      return birdbrain.recapture.retry(target)
     },
     // The queue refuses a retry while no operator name is set, as it refuses a resume.
     onSuccess: ({ reason }) => {

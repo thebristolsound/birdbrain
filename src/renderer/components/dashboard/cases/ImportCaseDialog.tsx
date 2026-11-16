@@ -7,6 +7,7 @@ import { presets } from '@renderer/lib/motion'
 import { useCasesMutations } from '@renderer/lib/queries'
 import { Button, trapTab, useModalEscape, useModalFocus } from '@renderer/components/ui'
 import { ExportProgress } from '@renderer/components/export/ExportProgress'
+import { birdbrain } from '@renderer/lib/birdbrain'
 
 interface ImportCaseDialogProps {
   report: ArchiveInspectReport
@@ -48,7 +49,7 @@ export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
   // immediately after mutateAsync can't be missed. Import events carry no
   // caseId; the dialog only exists while its own import runs.
   useEffect(() => {
-    const unsubscribe = window.birdbrain.onArchiveProgress((event) => {
+    const unsubscribe = birdbrain.onArchiveProgress((event) => {
       if (!event.caseId) setImportProgress({ step: event.step, percent: event.percent })
     })
     return unsubscribe

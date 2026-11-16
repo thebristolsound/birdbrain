@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSelectorsMutations } from '@renderer/lib/api/selectors'
+import { birdbrain } from '@renderer/lib/birdbrain'
 
 export type SelectorRescanStatus = 'idle' | 'running' | 'done' | 'error'
 
@@ -27,7 +28,7 @@ export function useSelectorRescan(caseId: string) {
   const requestToken = useRef(0)
 
   useEffect(() => {
-    return window.birdbrain.onSelectorRematched((event) => {
+    return birdbrain.onSelectorRematched((event) => {
       const pending = pendingId.current
       if (!pending || !event.selectorIds.includes(pending)) return
       pendingId.current = null

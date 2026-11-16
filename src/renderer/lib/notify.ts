@@ -1,6 +1,7 @@
 import { toast } from 'sonner'
 import type { LogCode } from '@shared/types'
 import type { RendererLogPayload } from '@shared/ipc'
+import { birdbrain } from '@renderer/lib/birdbrain'
 
 // The single boundary where a failure becomes both durable and visible.
 // Errors and warnings are logged AND toasted; success and info are toast-only,
@@ -47,7 +48,7 @@ function durable(level: 'error' | 'warn', opts: NotifyOpts): Promise<string | un
   // bug report — breaking the guarantee that every error is both visible and
   // durable, for exactly the call sites that were least careful.
   const code = opts.code ?? 'app.unclassified_error'
-  return window.birdbrain.diagnostics
+  return birdbrain.diagnostics
     .log({ level, code, context: opts.context, error: causeName(opts.cause) })
     .catch(() => undefined)
   // The logger is best-effort; a failed log must not mask the original error.

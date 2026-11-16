@@ -14,6 +14,7 @@ import {
 } from '@renderer/components/captures/guestLink'
 import { useLinkMenuTarget, type LinkHit } from '@renderer/components/captures/useLinkMenuTarget'
 import { MHTML_PARTITION } from '@shared/constants'
+import { birdbrain } from '@renderer/lib/birdbrain'
 
 interface Props {
   captureId: string
@@ -91,12 +92,12 @@ export function MhtmlViewer({
     // The main process reports a stored iframe swapped for another document (it can
     // tell frames apart; this document cannot). A reload commits the main frame
     // again, which clears the notice.
-    const stopFrameReplaced = window.birdbrain.onGuestFrameReplaced(({ guestWebContentsId }) => {
+    const stopFrameReplaced = birdbrain.onGuestFrameReplaced(({ guestWebContentsId }) => {
       if (wv.getWebContentsId() === guestWebContentsId) setFrameChanged(true)
     })
     // A press in the guest closes the menu and the not-in-Case notice. Guest input never
     // reaches this document, so the main process reports it.
-    const stopMouseDown = window.birdbrain.onGuestMouseDown(({ guestWebContentsId, button }) => {
+    const stopMouseDown = birdbrain.onGuestMouseDown(({ guestWebContentsId, button }) => {
       if (wv.getWebContentsId() !== guestWebContentsId) return
       closeOpenMenu()
       setNotInCase(null)
@@ -162,18 +163,16 @@ export function MhtmlViewer({
   useEffect(() => {
     const wv = ref.current as Electron.WebviewTag | null
     if (!wv || !linkClicks) return
-    const stopMouseUp = window.birdbrain.onGuestMouseUp(
-      ({ guestWebContentsId, button, modifiers }) => {
-        if (wv.getWebContentsId() !== guestWebContentsId) return
-        const press = pressRef.current
-        pressRef.current = null
-        clickedRef.current = classifyGuestClick(press, {
-          url: hoverRef.current,
-          button,
-          modifiers
-        })
-      }
-    )
+    const stopMouseUp = birdbrain.onGuestMouseUp(({ guestWebContentsId, button, modifiers }) => {
+      if (wv.getWebContentsId() !== guestWebContentsId) return
+      const press = pressRef.current
+      pressRef.current = null
+      clickedRef.current = classifyGuestClick(press, {
+        url: hoverRef.current,
+        button,
+        modifiers
+      })
+    })
     const onFollow = (e: Event) => {
       const { url } = e as Electron.DidStartNavigationEvent
       if (!url || url !== clickedRef.current) return

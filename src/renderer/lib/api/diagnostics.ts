@@ -4,11 +4,12 @@ import type { BugReportInput, BugReportResult, LogEntry, SessionRecord } from '@
 import { queryKeys } from '@renderer/lib/api/keys'
 import { birdbrain } from '@renderer/lib/birdbrain'
 
-// The diagnostics *components* migrate like any other feature code. The three
-// lib-layer modules that also call this namespace — queryClient.ts,
-// mainLogBridge.ts and notify.ts — stay on the bridge by design: they are the
+// The diagnostics *components* migrate like any other feature code. Four
+// lib-layer modules also call this namespace and stay on the bridge. The
+// design's lib-layer exemption names queryClient.ts, mainLogBridge.ts and
+// notify.ts, and globalErrorLog.ts does the same job: they are the
 // error-reporting path, and routing them through another indirection is what
-// the design's lib-layer exemption exists to avoid.
+// that exemption exists to avoid.
 
 // The panel polls, so the interval belongs to the call site rather than here —
 // nothing else consuming this snapshot wants a 2s refetch.

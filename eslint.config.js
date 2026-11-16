@@ -73,8 +73,10 @@ export default tseslint.config(
     // A refused call crosses the context bridge as a plain object. lib/birdbrain.ts turns it
     // back into an Error that keeps the code, so every invoke call goes through it. A
     // subscription (`window.birdbrain.on...`) returns no promise and may stay on the bridge.
-    // The four error-reporting modules stay on it too: they must not depend on another layer
-    // (docs/specs/2026-07-30-renderer-query-layer-design.md), and they discard a rejection.
+    // The four error-reporting modules stay on it too. The query layer design
+    // (docs/specs/2026-07-30-renderer-query-layer-design.md) keeps error-reporting paths off
+    // any further layer and names three of them; globalErrorLog.ts reports errors the same
+    // way. All four discard a rejection.
     files: ['src/renderer/**/*.{ts,tsx}'],
     ignores: [
       'src/renderer/lib/birdbrain.ts',

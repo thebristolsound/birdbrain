@@ -41,9 +41,10 @@ Decisions taken, with the reason for each:
 - **Subscriptions stay on `window.birdbrain`.** They return no promise, so the adapter has
   nothing to do for them, and leaving them alone keeps this change out of four files on the
   blocking tier of the evidence path list.
-- **The error-reporting modules stay on `window.birdbrain`.** The query layer design exempts
-  them from any extra layer, and they discard a rejection, so its shape does not reach a
-  screen.
+- **The error-reporting modules stay on `window.birdbrain`.** The query layer design keeps
+  error-reporting paths off any extra layer and names three of the four, and
+  `globalErrorLog.ts` reports errors the same way. All four discard a rejection, so its shape
+  does not reach a screen.
 - **The table names only codes that a caller reads through `refusalCode`.** A full inventory
   would be a fifth hand-written statement per channel with no reader, and the launch channel
   passes service codes through, so a list claimed complete could not be checked.

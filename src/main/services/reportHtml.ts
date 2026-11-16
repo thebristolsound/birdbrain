@@ -1485,7 +1485,9 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     packaged ? ' and in <code>evidence.json</code>' : ''
   }. Exhibit numbers are the
   ones recorded when each exhibit was committed to the case; they are not positions in this
-  table, and a ${packaged ? 'package' : 'report'} covering a selection carries gaps.</p>
+  table, and ${
+    packaged ? 'a package covering a selection carries' : 'a report covering a selection may carry'
+  } gaps.</p>
   ${banner}
   <table class="index">
     <thead>

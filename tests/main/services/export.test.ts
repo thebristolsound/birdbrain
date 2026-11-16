@@ -1821,7 +1821,7 @@ describe('export', () => {
         '64-character SHA-256 digest and is truncated for layout only; the full digest for ' +
         "every exhibit is printed on that exhibit's page. Exhibit numbers are the ones recorded " +
         'when each exhibit was committed to the case; they are not positions in this table, and ' +
-        'a report covering a selection carries gaps.'
+        'a report covering a selection may carry gaps.'
     )
     expect(standalone).not.toMatch(/package|evidence\.json/i)
     // A PDF export writes the same single HTML file as an HTML export, with nothing beside it.

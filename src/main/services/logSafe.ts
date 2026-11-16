@@ -164,7 +164,8 @@ export const BACKGROUND_JOB_FAILURE_KINDS = [
   'interrupted',
   'link-source',
   'excluded',
-  'refused-address'
+  'refused-address',
+  'case'
 ] as const
 export type BackgroundJobFailureKind = (typeof BACKGROUND_JOB_FAILURE_KINDS)[number]
 

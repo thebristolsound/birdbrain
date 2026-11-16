@@ -115,7 +115,7 @@ import {
   type IpcEventContract,
   type SelectorRematchedEvent
 } from '@shared/ipc'
-import type { EgressSetting } from '@shared/types'
+import type { CaptureEvent, EgressSetting } from '@shared/types'
 import { sendEvent } from '@main/ipcWrap'
 
 let mainWindow: BrowserWindow | null = null
@@ -764,15 +764,18 @@ if (!gotSingleInstanceLock) {
       // holds the session (Active Case, capture count) and broadcasts capture
       // activity to the (lazily created) main window the way the recapture
       // service below does.
+      // One feed for capture activity, whoever reports it: the lifecycle for every admitted or
+      // refused capture, the recapture queue for a job's progress.
+      const emitCaptureActivity = (event: CaptureEvent): void => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          sendEvent(mainWindow.webContents, IPC_CHANNELS.CAPTURE_ACTIVITY, event)
+        }
+      }
       const captureLifecycle = createCaptureLifecycle({
         selectorLifecycle,
         enqueueTimestamp: (captureId) => timestampWorker.enqueue(captureId),
         sessionService,
-        emitCaptureEvent: (event) => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            sendEvent(mainWindow.webContents, IPC_CHANNELS.CAPTURE_ACTIVITY, event)
-          }
-        },
+        emitCaptureEvent: emitCaptureActivity,
         emitNewCapture: (capture) => {
           if (mainWindow && !mainWindow.isDestroyed()) {
             sendEvent(mainWindow.webContents, IPC_CHANNELS.NEW_CAPTURE, capture)
@@ -814,16 +817,7 @@ if (!gotSingleInstanceLock) {
       const recaptureService = createRecaptureService({
         renderPage: renderPageInHiddenWindow,
         captureLifecycle,
-        emitEvent: (event) => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            sendEvent(mainWindow.webContents, IPC_CHANNELS.CAPTURE_ACTIVITY, event)
-          }
-        },
-        emitNewCapture: (capture) => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            sendEvent(mainWindow.webContents, IPC_CHANNELS.NEW_CAPTURE, capture)
-          }
-        },
+        emitEvent: emitCaptureActivity,
         emitJob: (job) => {
           if (mainWindow && !mainWindow.isDestroyed()) {
             sendEvent(mainWindow.webContents, IPC_CHANNELS.RECAPTURE_JOB, job)

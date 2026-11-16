@@ -54,9 +54,10 @@ Every push costs a full `pnpm preflight`, a review fleet round, and on an
   preflight, push once.
 - **Merge `origin/main` in on a signal** (ADR-0021): GitHub reports a conflict, or a required
   check needs the merged tree. Use `git merge --no-commit --no-ff origin/main` and a
-  `chore(merge): ...` commit. When the diff against `main` is unchanged, `pnpm preflight --carry`
-  writes the block for the new head without a run. Nothing ran on the merged tree locally,
-  so the required checks at the new head must be green before step 6, as for any head.
+  `chore(merge): ...` commit. When the diff against `main` is unchanged, push the merge and
+  wait for the required checks at the new head. Once they are green, `pnpm preflight --carry`
+  writes the block for that head without a run (ADR-0021 makes the green checks the
+  precondition, because nothing ran on the merged tree locally); then update the description.
 - **The description is edited in place.** A wrong sentence in it needs a `PATCH` of the body,
   never a push.
 - **Another open pull request that edits the same files** makes the second to land need

@@ -71,14 +71,10 @@ check_file() {
   rel="${file#"$top"/}"
   git -C "$top" check-ignore -q -- "$rel" && return 0
   # The Google style is gitignored, so a worktree made without the setup script, such as an
-  # isolated agent worktree, lacks it; the checkout's installer copies it from the cache.
-  if [ ! -d "$top/.vale/styles/Google" ] && [ -f "$top/scripts/install-tools.sh" ]; then
-    # Bounded: with no cached copy it falls back to `vale sync`, which a sandbox network can stall.
-    if command -v timeout >/dev/null 2>&1; then
-      timeout 60 bash "$top/scripts/install-tools.sh" --styles-only >/dev/null 2>&1
-    else
-      bash "$top/scripts/install-tools.sh" --styles-only >/dev/null 2>&1
-    fi
+  # isolated agent worktree, lacks it. This hook's own installer copies it from the per-user
+  # cache; it never downloads, so an edit never waits on the network.
+  if [ ! -d "$top/.vale/styles/Google" ] && [ -f "$resolver" ]; then
+    bash "$resolver" --styles-from-cache "$top" >/dev/null 2>&1
   fi
 
   report="$(cd "$top" && vale --config "$top/.vale.ini" --output JSON "$rel" 2>&1)"

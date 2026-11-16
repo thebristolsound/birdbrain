@@ -7,9 +7,11 @@
 # host shares, so Node and Vale are downloaded once per host, and each checkout copies the Google
 # style from the cache, running `vale sync` only when the cache has no copy yet.
 #
-#   scripts/install-tools.sh                 install what is missing, then resolve
-#   scripts/install-tools.sh --no-install    resolve only: no mise install, no download, no writes
-#   scripts/install-tools.sh --styles-only   give this checkout the Google style, nothing else
+#   scripts/install-tools.sh                    install what is missing, then resolve
+#   scripts/install-tools.sh --no-install       resolve only: no mise install, no download, no writes
+#   scripts/install-tools.sh --styles-from-cache <checkout>
+#                                               copy the cached Google style into <checkout> when it
+#                                               has none; no download, and exit 1 with no cached copy
 #
 # Prints one line on stdout: the directories to put first on PATH, colon-joined (possibly
 # empty). A tool already first on PATH is not listed, so a shared folder such as /usr/bin is
@@ -23,9 +25,18 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TOOLS="${BIRDBRAIN_TOOLS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/birdbrain/tools}"
-mode="${1:-install}"
+mode="${1:-}"
 install=1
-[ "$mode" = "--no-install" ] && install=0
+case "$mode" in
+  "") ;;
+  --no-install) install=0 ;;
+  --styles-from-cache) [ $# -eq 2 ] && [ -d "$2" ] || mode=bad ;;
+  *) mode=bad ;;
+esac
+if [ "$mode" = bad ]; then
+  echo "usage: install-tools.sh [--no-install | --styles-from-cache <checkout>]" >&2
+  exit 2
+fi
 
 # A mise shim on PATH installs a missing pinned version when it runs; a lookup must not.
 export MISE_NOT_FOUND_AUTO_INSTALL=0
@@ -121,36 +132,54 @@ install_vale() {
 
 # The Google style is gitignored, so each checkout needs its own copy. The cache holds one that
 # every checkout on the host copies, so only the first needs `vale sync`, which some sandbox
-# networks refuse (#1067).
-sync_styles() {
-  local vale_dir="$1" dest="$ROOT/.vale/styles/Google" cache="$TOOLS/vale-styles/Google"
-  if [ ! -d "$dest" ]; then
-    if [ -d "$cache" ]; then
-      if ! { cp -R "$cache" "$dest.tmp.$$" && mv "$dest.tmp.$$" "$dest"; }; then
-        rm -rf "$dest.tmp.$$"
-        log "could not copy the Google style from $cache"
-        return 1
-      fi
-    elif [ -z "$vale_dir" ] ||
-      ! (cd "$ROOT" && PATH="$vale_dir:$PATH" vale sync >/dev/null 2>&1) || [ ! -d "$dest" ]; then
-      # A failed sync can leave a partial package that later runs would take as complete.
-      rm -rf "$dest"
-      log "vale sync failed and $cache holds no copy"
-      return 1
-    fi
-  fi
-  if [ ! -d "$cache" ]; then
-    mkdir -p "$TOOLS/vale-styles"
-    if ! { cp -R "$dest" "$cache.tmp.$$" && mv "$cache.tmp.$$" "$cache"; } 2>/dev/null; then
-      rm -rf "$cache.tmp.$$"
-    fi
-  fi
-  return 0
+# networks refuse (#1067). Each copy is built beside its destination and renamed into place,
+# so an interrupted sync or copy never leaves a partial package that later runs would trust.
+STYLE_CACHE="$TOOLS/vale-styles/Google"
+
+# Copies $1, a complete package, to $2 when $2 does not exist yet.
+place_style() {
+  local tmp
+  [ -d "$2" ] && return 0
+  tmp="$(dirname "$2")/.Google.tmp.$$"
+  rm -rf "$tmp"
+  if cp -R "$1" "$tmp" && mv "$tmp" "$2"; then return 0; fi
+  rm -rf "$tmp"
+  return 1
 }
 
-if [ "$mode" = "--styles-only" ]; then
-  mkdir -p "$TOOLS"
-  sync_styles "$(resolve_vale || true)"
+# Fills an empty cache with `vale sync`, run in a scratch folder so the checkout is untouched.
+sync_cache() {
+  local vale_dir="$1" tmp
+  tmp="$(mktemp -d "$TOOLS/.styles.XXXXXX")"
+  printf 'StylesPath = styles\nPackages = Google\n' >"$tmp/.vale.ini"
+  if (cd "$tmp" && PATH="$vale_dir:$PATH" vale sync >/dev/null 2>&1) &&
+    [ -f "$tmp/styles/Google/meta.json" ]; then
+    mkdir -p "$(dirname "$STYLE_CACHE")"
+    [ -d "$STYLE_CACHE" ] || mv "$tmp/styles/Google" "$STYLE_CACHE" || true
+  fi
+  rm -rf "$tmp"
+}
+
+sync_styles() {
+  local vale_dir="$1" dest="$ROOT/.vale/styles/Google"
+  if [ ! -d "$STYLE_CACHE" ] && [ -f "$dest/meta.json" ]; then
+    mkdir -p "$(dirname "$STYLE_CACHE")"
+    place_style "$dest" "$STYLE_CACHE" 2>/dev/null || true
+  fi
+  if [ ! -d "$dest" ] && [ ! -d "$STYLE_CACHE" ] && [ -n "$vale_dir" ]; then
+    sync_cache "$vale_dir"
+  fi
+  [ -d "$dest" ] && return 0
+  if [ ! -d "$STYLE_CACHE" ]; then
+    log "vale sync failed and $STYLE_CACHE holds no copy"
+    return 1
+  fi
+  place_style "$STYLE_CACHE" "$dest" || { log "could not copy the Google style from $STYLE_CACHE"; return 1; }
+}
+
+if [ "$mode" = "--styles-from-cache" ]; then
+  [ -d "$STYLE_CACHE" ] || exit 1
+  place_style "$STYLE_CACHE" "$2/.vale/styles/Google"
   exit
 fi
 
@@ -193,6 +222,9 @@ if [ -n "$node_dir" ]; then
     if ! { PATH="$node_dir:$PATH" "$node_dir/corepack" enable pnpm --install-directory "$node_dir" &&
       (cd "$ROOT" && PATH="$node_dir:$PATH" COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
         "$node_dir/corepack" install >&2); }; then
+      # `enable` writes the shim before `install` fetches pnpm; a shim with nothing behind it
+      # would pass the check below.
+      rm -f "$node_dir/pnpm" "$node_dir/pnpx"
       log "corepack could not provide pnpm"
     fi
   fi

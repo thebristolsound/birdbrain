@@ -117,8 +117,8 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   log "pinned tools: node $(node --version 2>/dev/null || echo missing)," \
     "vale $( (vale --version 2>/dev/null || echo missing) | sed 's/^vale version //')"
   if [ "$tools_status" != 0 ]; then
-    log "WARNING: the pinned Node or Vale, or Vale's Google style, is missing or another version is"
-    log "         on PATH, so checks may run the wrong version or skip prose. Run scripts/setup-worktree.sh."
+    log "WARNING: the pinned Node or Vale, pnpm, or Vale's Google style is missing, or another version"
+    log "         is on PATH, so checks may run the wrong version or skip prose. Run scripts/setup-worktree.sh."
   fi
   # Measurement only (ADR-0029): how much the teardown skill could reclaim. Bounded, never fatal.
   TEARDOWN="$PROJECT_DIR/.claude/skills/teardown/scripts/teardown.sh"
@@ -249,7 +249,8 @@ fi
 # .claude/hooks/vale-prose.sh blocks an edit that breaks the writing guide, but it passes
 # when Vale is absent, so a container without Vale has no prose gate at all. The remote
 # image has no mise; scripts/install-tools.sh installs the pinned release into the user cache
-# and syncs the Google style. Never fatal.
+# and syncs the Google style. It also resolves the Node found above and provides pnpm through
+# corepack when the image has none. Never fatal.
 
 vale_status=0
 vale_path="$(bash "$PROJECT_DIR/scripts/install-tools.sh")" || vale_status=$?
@@ -260,7 +261,8 @@ fi
 if [ "$vale_status" = 0 ]; then
   log "$(vale --version)"
 else
-  log "WARNING: vale or its Google style is missing; the prose hook will pass every Markdown edit this session."
+  log "WARNING: the installer reported a missing tool, named in its log above. Without Vale or its"
+  log "         Google style, the prose hook passes every Markdown edit this session."
 fi
 
 # ---------------------------------------------------------------------------

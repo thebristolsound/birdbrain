@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { StagingCommitResult, StagingDiscardResult, StagingFile } from '@shared/types'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { notify } from '@renderer/lib/notify'
+import { birdbrain } from '@renderer/lib/birdbrain'
 
 const COMMIT_NEEDS_OPERATOR = 'Set an operator name in Settings before committing a pooled file'
 
@@ -14,7 +15,7 @@ export function useStagingMutations(caseId: string) {
     queryClient.invalidateQueries({ queryKey: queryKeys.exhibitInventory(caseId) })
 
   const upload = useMutation<StagingFile[], unknown, void>({
-    mutationFn: () => window.birdbrain.staging.upload(caseId),
+    mutationFn: () => birdbrain.staging.upload(caseId),
     // A rejected upload can still have pooled the files before the one that
     // failed, so the inventory is refreshed on error as well as on success.
     onSettled: (staged) => {
@@ -24,7 +25,7 @@ export function useStagingMutations(caseId: string) {
   })
 
   const commit = useMutation<StagingCommitResult, unknown, string[]>({
-    mutationFn: (stagingIds) => window.birdbrain.staging.commit(caseId, stagingIds),
+    mutationFn: (stagingIds) => birdbrain.staging.commit(caseId, stagingIds),
     onSuccess: ({ outcomes }) => {
       invalidateInventory()
       queryClient.invalidateQueries({ queryKey: queryKeys.manifestSnapshot(caseId) })
@@ -37,7 +38,7 @@ export function useStagingMutations(caseId: string) {
   })
 
   const discard = useMutation<StagingDiscardResult, unknown, string[]>({
-    mutationFn: (stagingIds) => window.birdbrain.staging.discard(caseId, stagingIds),
+    mutationFn: (stagingIds) => birdbrain.staging.discard(caseId, stagingIds),
     onSuccess: invalidateInventory,
     meta: { action: 'discard pooled files' }
   })

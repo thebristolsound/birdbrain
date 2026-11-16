@@ -413,9 +413,11 @@ export const IPC_CHANNELS = {
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]
 
-// How a refused call on a sharing channel reaches the renderer: the preload's
-// unwrapIpc rejects with this plain object, because the context bridge drops
-// every property of an Error except its message.
+// How a refused call reaches the renderer, on every invoke channel: the
+// preload's unwrapIpc rejects with this plain object, because the context
+// bridge drops every property of an Error except its message. The renderer's
+// bridge adapter (src/renderer/lib/birdbrain.ts) turns it back into an Error
+// that keeps the code.
 export interface IpcRefusal {
   message: string
   code?: string
@@ -1447,6 +1449,49 @@ export interface IpcInvokeContract {
 }
 
 export type ContractedChannel = keyof IpcInvokeContract
+
+// --- Refusal codes ----------------------------------------------------------
+//
+// The codes a channel's callers read through refusalCode() below. A refusal's
+// code reaches the renderer on every channel (IpcRefusal above), but
+// refusalCode() reports only a code named here, typed as the channel's union,
+// so a branch on its result for a code this table does not name fails to
+// compile. A code no caller reads needs no entry. The sharing channels refuse
+// with SHARING_ERROR_CODES (types.ts), which the sharing screens read with
+// their own sharingErrorCode.
+export const IPC_REFUSALS = {
+  'persona:import': ['PERSONA_COOKIE_FILE_UNSUPPORTED'],
+  'launchedBrowser:launch': [
+    'BROWSER_NOT_FOUND',
+    'BROWSER_UNRECOGNIZED',
+    'BROWSER_BELOW_FLOOR',
+    'BROWSER_NO_CONNECTION',
+    'BROWSER_ALREADY_RUNNING',
+    'BROWSER_LAUNCH_CANCELLED',
+    'EGRESS_PROXY_UNREACHABLE',
+    'EGRESS_PROXY_INVALID',
+    'EGRESS_WEBRTC_CANDIDATE',
+    'EGRESS_WEBRTC_UNCHECKED',
+    'EGRESS_BYPASS',
+    'EGRESS_UNWATCHED',
+    'EGRESS_UNAVAILABLE'
+  ]
+} as const satisfies { readonly [C in ContractedChannel]?: readonly string[] }
+
+export type RefusingChannel = keyof typeof IPC_REFUSALS
+export type RefusalCode<C extends RefusingChannel> = (typeof IPC_REFUSALS)[C][number]
+
+// The code of a refused call, when the table names it for this channel.
+// Undefined for any other rejection, so a caller that names refusals falls
+// back to the message.
+export function refusalCode<C extends RefusingChannel>(
+  err: unknown,
+  channel: C
+): RefusalCode<C> | undefined {
+  const code = (err as { code?: unknown } | null)?.code
+  const named: readonly string[] = IPC_REFUSALS[channel]
+  return typeof code === 'string' && named.includes(code) ? (code as RefusalCode<C>) : undefined
+}
 
 // Every declared channel is either an invoke channel with a contract entry or a
 // main→renderer event. A new IPC_CHANNELS entry that is neither makes this type

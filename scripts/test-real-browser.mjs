@@ -37,9 +37,11 @@ export const suiteCommand = (suite, source, { uid, gid }) => {
 }
 
 // What Vitest's closing Tests line says happened: 'passed', 'failed', or 'ran no test'.
+// Vitest colours that line when CI or FORCE_COLOR is set, so the escape codes go first.
 export const suiteOutcome = (exitCode, output) => {
   if (exitCode !== 0) return 'failed'
-  const tests = /^\s*Tests\s+(.+)$/m.exec(output)
+  // eslint-disable-next-line no-control-regex -- the escape character is what is being removed
+  const tests = /^\s*Tests\s+(.+)$/m.exec(output.replace(/\x1b\[[0-9;]*m/g, ''))
   return tests && /\b[1-9]\d* passed\b/.test(tests[1]) ? 'passed' : 'ran no test'
 }
 

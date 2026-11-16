@@ -91,6 +91,13 @@ describe('suiteOutcome', () => {
     expect(suiteOutcome(0, '      Tests  17 passed | 1 skipped (18)\n')).toBe('passed')
   })
 
+  it('reads a coloured Tests line', () => {
+    const coloured =
+      '\x1b[2m      Tests \x1b[22m \x1b[1m\x1b[32m21 passed\x1b[39m\x1b[22m\x1b[90m (21)\x1b[39m\n'
+    expect(suiteOutcome(0, coloured)).toBe('passed')
+    expect(suiteOutcome(0, coloured.replace('21 passed', '1 skipped'))).toBe('ran no test')
+  })
+
   it('does not pass a suite that skipped every test, or printed no Tests line', () => {
     expect(suiteOutcome(0, ' Test Files  1 skipped (1)\n      Tests  1 skipped (1)\n')).toBe(
       'ran no test'

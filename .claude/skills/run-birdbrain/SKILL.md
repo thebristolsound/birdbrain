@@ -90,6 +90,27 @@ the `env` prefix is what keeps its windows on `Xvfb`; CI needs no prefix. Most m
 changes are covered faster by a unit test than by the driver. The full verify block is
 `pnpm preflight`; see `docs/agents/testing.md`.
 
+## Capture proof
+
+A change to what a Capture writes is proved against a build of `origin/main`, with
+`.claude/skills/run-birdbrain/capture-proof.mjs`. Build `origin/main` in a second worktree and
+this branch here, then:
+
+```bash
+P=.claude/skills/run-birdbrain/capture-proof.mjs
+xvfb-run -a node $P take main --repo <origin/main worktree> --keep-profile
+xvfb-run -a node $P take branch
+node $P compare main branch        # exits 1 on any difference, and names it
+xvfb-run -a node $P verify main    # this build verifies what the other build wrote
+```
+
+`take` makes one `background` and one `launched` Capture of a page it serves on loopback, so it
+needs `xdotool` and a Chromium the app can launch; it fails, and compares nothing, where the
+app offers no browser. `compare` leaves out ids, times and the hashes of files that embed a
+time, and reports the inventory, Bound TLS Details, record structure, PDF page count,
+screenshot and text. `verify` changes one record byte to show the verification read the record.
+Output goes to `.preflight/capture-proof/`; `--port` moves the capture server off 29411.
+
 ## Gotchas
 
 - **An Electron-hosted agent shell sets `ELECTRON_RUN_AS_NODE=1`.** Electron then runs

@@ -142,16 +142,26 @@ export const diffHash = (cwd, base, sha) =>
     )
     .digest('hex')
 
-// Whether the recorded run still describes `head`. Returns the diff hash both commits share,
-// or the reason the record cannot be carried forward. Absence is a reason, never a pass.
-export const carryForward = (record, head, hashAt) => {
+// Whether the recorded run still describes `head` against `base`. Returns the diff hash both
+// commits share, or the reason the record cannot be carried forward. Absence is a reason, never
+// a pass. The record's own scope is checked first: a run scored against another base, or
+// against a merge base the measured commit no longer has, never checked this diff.
+export const carryForward = (record, { head, base }, { hashAt, mergeBaseAt }) => {
   if (!record) return { reason: 'no record of an earlier run' }
   if (record.version !== BLOCK_VERSION || !/^[0-9a-f]{40}$/.test(record.sha ?? '')) {
     return { reason: 'the record of the earlier run is not one this version wrote' }
   }
   if (record.status !== 'pass') return { reason: `the run at ${record.sha} did not pass` }
+  if (record.base !== base) {
+    return {
+      reason: `the run at ${record.sha} scored its diff against ${record.base}, not ${base}`
+    }
+  }
   let measured
   try {
+    if (mergeBaseAt(record.sha) !== record.mergeBase) {
+      return { reason: `${base} no longer meets ${record.sha} where the run scored its diff` }
+    }
     measured = hashAt(record.sha)
   } catch {
     return { reason: `commit ${record.sha} is no longer in this repository` }
@@ -292,7 +302,19 @@ const main = async () => {
   const sha = git(cwd, 'rev-parse', 'HEAD').trim()
   if (args.carry) {
     const record = readRecord(recordPath)
-    const carried = carryForward(record, sha, (commit) => diffHash(cwd, args.base, commit))
+    const carried = carryForward(
+      record,
+      { head: sha, base: args.base },
+      {
+        hashAt: (commit) => diffHash(cwd, args.base, commit),
+        mergeBaseAt: (commit) =>
+          execFileSync('git', ['merge-base', args.base, commit], {
+            cwd,
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'ignore']
+          }).trim()
+      }
+    )
     if (carried.reason) {
       console.log(`preflight: not carried forward, ${carried.reason}; running every step`)
     } else {

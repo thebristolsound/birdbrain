@@ -166,36 +166,60 @@ describe('formatVerificationBlock', () => {
 })
 
 describe('carryForward', () => {
-  const head = 'f'.repeat(40)
-  const record = { version: BLOCK_VERSION, sha: SHA, status: 'pass' }
-  const same = () => 'h1'
+  const now = { head: 'f'.repeat(40), base: 'origin/main' }
+  const record = {
+    version: BLOCK_VERSION,
+    sha: SHA,
+    status: 'pass',
+    base: 'origin/main',
+    mergeBase: MERGE_BASE
+  }
+  const same = { hashAt: () => 'h1', mergeBaseAt: () => MERGE_BASE }
 
   it('returns the shared diff hash when the diff at head equals the measured one', () => {
-    expect(carryForward(record, head, same)).toEqual({ diffSha256: 'h1' })
+    expect(carryForward(record, now, same)).toEqual({ diffSha256: 'h1' })
   })
 
   it('refuses when the diff changed', () => {
     const hashAt = (commit: string) => (commit === SHA ? 'h1' : 'h2')
-    expect(carryForward(record, head, hashAt)).toEqual({
+    expect(carryForward(record, now, { ...same, hashAt })).toEqual({
       reason: `the diff against the base changed since ${SHA}`
     })
   })
 
   it('refuses a missing record, a record of another shape and a run that did not pass', () => {
-    expect(carryForward(null, head, same).reason).toBe('no record of an earlier run')
-    expect(carryForward({ ...record, version: 0 }, head, same).reason).toContain('not one this')
-    expect(carryForward({ ...record, sha: undefined }, head, same).reason).toContain('not one this')
-    expect(carryForward({ ...record, status: 'fail' }, head, same).reason).toBe(
+    expect(carryForward(null, now, same).reason).toBe('no record of an earlier run')
+    expect(carryForward({ ...record, version: 0 }, now, same).reason).toContain('not one this')
+    expect(carryForward({ ...record, sha: undefined }, now, same).reason).toContain('not one this')
+    expect(carryForward({ ...record, status: 'fail' }, now, same).reason).toBe(
       `the run at ${SHA} did not pass`
     )
   })
 
+  it('refuses a run that scored its diff against another base', () => {
+    expect(carryForward({ ...record, base: 'HEAD' }, now, same).reason).toBe(
+      `the run at ${SHA} scored its diff against HEAD, not origin/main`
+    )
+    expect(carryForward({ ...record, base: undefined }, now, same).reason).toContain(
+      'not origin/main'
+    )
+  })
+
+  it('refuses when the base meets the measured commit somewhere else now', () => {
+    const moved = { ...same, mergeBaseAt: () => 'c'.repeat(40) }
+    expect(carryForward(record, now, moved).reason).toBe(
+      `origin/main no longer meets ${SHA} where the run scored its diff`
+    )
+  })
+
   it('refuses when the measured commit cannot be read', () => {
-    const hashAt = (commit: string) => {
-      if (commit === SHA) throw new Error('bad object')
-      return 'h1'
+    const gone = () => {
+      throw new Error('bad object')
     }
-    expect(carryForward(record, head, hashAt).reason).toBe(
+    expect(carryForward(record, now, { ...same, mergeBaseAt: gone }).reason).toBe(
+      `commit ${SHA} is no longer in this repository`
+    )
+    expect(carryForward(record, now, { ...same, hashAt: gone }).reason).toBe(
       `commit ${SHA} is no longer in this repository`
     )
   })
@@ -535,6 +559,19 @@ process.exit(failed ? 1 : 0)
       expect(calls()).toBe(ran)
       expect(block()).toBe(first)
       expect(first.split('\n')[0]).toBe(`<!-- preflight v1 sha=${measured} status=pass -->`)
+    })
+
+    it('runs every step when the earlier run scored its diff against another base', () => {
+      const measured = branch()
+      expect(run({}, ['--base', 'HEAD']).status).toBe(0)
+      const ran = calls()
+      const result = carry()
+      expect(result.status, result.stderr).toBe(0)
+      expect(result.stdout).toContain(
+        `not carried forward, the run at ${measured} scored its diff against HEAD, not base`
+      )
+      expect(calls()).toBeGreaterThan(ran)
+      expect(block()).toContain('diff scored against `base`')
     })
 
     it('still refuses a dirty tree', () => {

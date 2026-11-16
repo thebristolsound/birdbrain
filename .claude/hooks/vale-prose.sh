@@ -13,6 +13,15 @@
 # vale, or without the synced Google package, it says so on stderr and passes.
 set -u
 
+# A shell that skipped the session-start hook, such as a Codex session or a CI step, may still
+# have the pinned Vale, and the Node the hook mode below reads stdin with, in mise or the
+# per-user cache.
+resolver="$(dirname "${BASH_SOURCE[0]}")/../../scripts/install-tools.sh"
+if { ! command -v vale || ! command -v node; } >/dev/null 2>&1 && [ -f "$resolver" ]; then
+  tool_path="$(bash "$resolver" --no-install 2>/dev/null)"
+  [ -n "$tool_path" ] && PATH="$tool_path:$PATH"
+fi
+
 base=""
 files=()
 if [ "${1:-}" = "--base" ]; then
@@ -61,6 +70,16 @@ check_file() {
   [ -f "$top/.vale.ini" ] || return 0
   rel="${file#"$top"/}"
   git -C "$top" check-ignore -q -- "$rel" && return 0
+  # The Google style is gitignored, so a worktree made without the setup script, such as an
+  # isolated agent worktree, lacks it; the checkout's installer copies it from the cache.
+  if [ ! -d "$top/.vale/styles/Google" ] && [ -f "$top/scripts/install-tools.sh" ]; then
+    # Bounded: with no cached copy it falls back to `vale sync`, which a sandbox network can stall.
+    if command -v timeout >/dev/null 2>&1; then
+      timeout 60 bash "$top/scripts/install-tools.sh" --styles-only >/dev/null 2>&1
+    else
+      bash "$top/scripts/install-tools.sh" --styles-only >/dev/null 2>&1
+    fi
+  fi
 
   report="$(cd "$top" && vale --config "$top/.vale.ini" --output JSON "$rel" 2>&1)"
   status=$?
@@ -104,14 +123,6 @@ check_file() {
     }
     })'
 }
-
-# A shell that skipped the session-start hook, such as a Codex session or a CI step, may still
-# have the pinned Vale in mise or the per-user cache.
-resolver="$(dirname "${BASH_SOURCE[0]}")/../../scripts/install-tools.sh"
-if ! command -v vale >/dev/null 2>&1 && [ -f "$resolver" ]; then
-  tool_path="$(bash "$resolver" --no-install 2>/dev/null)"
-  [ -n "$tool_path" ] && PATH="$tool_path:$PATH"
-fi
 
 if ! command -v vale >/dev/null 2>&1; then
   for f in "${files[@]}"; do

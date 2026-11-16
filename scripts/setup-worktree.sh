@@ -51,10 +51,11 @@ for tool in git jq openssl gh; do
   command -v "$tool" >/dev/null 2>&1 || log "WARNING: $tool is not on PATH; install it with the system package manager."
 done
 
-# The edit hook (.claude/hooks/vale-prose.sh) passes without Vale, so a missing binary is an
-# error here: it is the only point where the hook's absence is visible. On an Actions runner,
-# review fires read the install log by hand after this exit to learn the tree was usable, so
-# there it is a warning.
+# The edit hook (.claude/hooks/vale-prose.sh) passes without Vale or its Google style, so a
+# missing binary or style is an error here: it is the only point where the hook's absence is
+# visible. A host whose network refuses `vale sync` needs the style copied into the cache once
+# by hand (scripts/install-tools.sh logs where). On an Actions runner, review fires read the
+# install log by hand after this exit to learn the tree was usable, so there it is a warning.
 if [ "$tools_status" != 0 ] || ! command -v vale >/dev/null 2>&1; then
   if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
     log "WARNING: Vale or its Google style is missing; the prose hook cannot run. Dependencies installed; the tree is usable."

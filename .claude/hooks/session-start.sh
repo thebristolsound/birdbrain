@@ -117,8 +117,8 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   log "pinned tools: node $(node --version 2>/dev/null || echo missing)," \
     "vale $( (vale --version 2>/dev/null || echo missing) | sed 's/^vale version //')"
   if [ "$tools_status" != 0 ]; then
-    log "WARNING: the pinned Node, Vale or Vale's Google style is missing, so 'node --version' may be"
-    log "         wrong and the prose hook passes every edit. Run scripts/setup-worktree.sh."
+    log "WARNING: the pinned Node or Vale, or Vale's Google style, is missing or another version is"
+    log "         on PATH, so checks may run the wrong version or skip prose. Run scripts/setup-worktree.sh."
   fi
   # Measurement only (ADR-0029): how much the teardown skill could reclaim. Bounded, never fatal.
   TEARDOWN="$PROJECT_DIR/.claude/skills/teardown/scripts/teardown.sh"

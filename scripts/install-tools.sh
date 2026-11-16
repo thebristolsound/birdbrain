@@ -1,25 +1,34 @@
 #!/usr/bin/env bash
 #
 # Find, or install, the pinned tools an agent needs to check its own work: Node (major from
-# .nvmrc) and Vale (version from .mise.toml) with its synced Google style. Works the same on a
-# host with mise, without mise, on a GitHub Actions runner and in a cloud container, and never
-# needs root: without mise it installs into a per-user cache that every worktree on the host
-# shares, so only the first worktree downloads anything.
+# .nvmrc) and Vale (version from .mise.toml) with its Google style. Works the same on a Linux or
+# macOS host with mise, without mise, on a GitHub Actions runner and in a cloud container, and
+# never needs root: without mise it installs into a per-user cache that every worktree on the
+# host shares, so Node and Vale are downloaded once per host, and each checkout copies the Google
+# style from the cache, running `vale sync` only when the cache has no copy yet.
 #
-#   scripts/install-tools.sh               install what is missing, then resolve
-#   scripts/install-tools.sh --no-install  resolve only: no mise install, no download, no writes
+#   scripts/install-tools.sh                 install what is missing, then resolve
+#   scripts/install-tools.sh --no-install    resolve only: no mise install, no download, no writes
+#   scripts/install-tools.sh --styles-only   give this checkout the Google style, nothing else
 #
 # Prints one line on stdout: the directories to put first on PATH, colon-joined (possibly
-# empty). Logs go to stderr. Exits 1 when Node, Vale or the Google style is still missing.
+# empty). A tool already first on PATH is not listed, so a shared folder such as /usr/bin is
+# never moved ahead of the caller's own. Logs go to stderr. Exits 1 when Node, pnpm, Vale or
+# the Google style is still missing.
 #
-# BIRDBRAIN_TOOLS_DIR overrides the cache, which defaults to ~/.cache/birdbrain/tools.
+# The cache is $BIRDBRAIN_TOOLS_DIR, else $XDG_CACHE_HOME/birdbrain/tools, else
+# ~/.cache/birdbrain/tools.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TOOLS="${BIRDBRAIN_TOOLS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/birdbrain/tools}"
+mode="${1:-install}"
 install=1
-[ "${1:-}" = "--no-install" ] && install=0
+[ "$mode" = "--no-install" ] && install=0
+
+# A mise shim on PATH installs a missing pinned version when it runs; a lookup must not.
+export MISE_NOT_FOUND_AUTO_INSTALL=0
 
 log() { echo "[install-tools] $*" >&2; }
 
@@ -53,14 +62,15 @@ fetch_verified() {
 node_major_in() { "$1/node" --version 2>/dev/null | sed -nE 's/^v([0-9]+)\..*/\1/p'; }
 vale_version_in() { "$1/vale" --version 2>/dev/null | sed -nE 's/^vale version v?([0-9.]+).*/\1/p'; }
 
+# The directory of the command PATH runs now, or nothing.
+path_dir() { command -v "$1" >/dev/null 2>&1 && dirname "$(command -v "$1")"; }
+
 resolve_node() {
   local d
   d="$(mise_where node || true)"
   if [ -n "$d" ] && [ "$(node_major_in "$d/bin")" = "$NODE_MAJOR" ]; then echo "$d/bin"; return; fi
-  if command -v node >/dev/null 2>&1; then
-    d="$(dirname "$(command -v node)")"
-    if [ "$(node_major_in "$d")" = "$NODE_MAJOR" ]; then echo "$d"; return; fi
-  fi
+  d="$(path_dir node || true)"
+  if [ -n "$d" ] && [ "$(node_major_in "$d")" = "$NODE_MAJOR" ]; then echo "$d"; return; fi
   for d in "$TOOLS"/node-v"$NODE_MAJOR".*/bin; do
     if [ "$(node_major_in "$d")" = "$NODE_MAJOR" ]; then echo "$d"; return; fi
   done
@@ -71,8 +81,7 @@ resolve_node() {
 resolve_vale() {
   local d c
   d="$(mise_where vale || true)"
-  for c in ${d:+"$d" "$d/bin"} "$(dirname "$(command -v vale 2>/dev/null || echo /none/vale)")" \
-    "$TOOLS/vale-$VALE_VERSION"; do
+  for c in ${d:+"$d" "$d/bin"} "$(path_dir vale || echo /none)" "$TOOLS/vale-$VALE_VERSION"; do
     if [ "$(vale_version_in "$c")" = "$VALE_VERSION" ]; then echo "$c"; return; fi
   done
   return 1
@@ -110,24 +119,40 @@ install_vale() {
   rm -rf "$tmp"
 }
 
-# The Google style is gitignored and fetched per checkout. A copy kept in the cache lets a
-# worktree on a host whose network refuses `vale sync` still get it (#1067).
+# The Google style is gitignored, so each checkout needs its own copy. The cache holds one that
+# every checkout on the host copies, so only the first needs `vale sync`, which some sandbox
+# networks refuse (#1067).
 sync_styles() {
-  local vale_dir="$1" cache="$TOOLS/vale-styles/Google"
-  [ -d "$ROOT/.vale/styles/Google" ] && return 0
-  if (cd "$ROOT" && PATH="$vale_dir:$PATH" vale sync >/dev/null 2>&1) &&
-    [ -d "$ROOT/.vale/styles/Google" ]; then
-    mkdir -p "$TOOLS/vale-styles"
-    rm -rf "$cache.tmp.$$"
-    cp -R "$ROOT/.vale/styles/Google" "$cache.tmp.$$" && rm -rf "$cache" && mv "$cache.tmp.$$" "$cache"
-  elif [ -d "$cache" ]; then
-    cp -R "$cache" "$ROOT/.vale/styles/Google"
-    log "vale sync failed; copied the Google style from $cache"
-  else
-    log "vale sync failed and $cache holds no copy"
-    return 1
+  local vale_dir="$1" dest="$ROOT/.vale/styles/Google" cache="$TOOLS/vale-styles/Google"
+  if [ ! -d "$dest" ]; then
+    if [ -d "$cache" ]; then
+      if ! { cp -R "$cache" "$dest.tmp.$$" && mv "$dest.tmp.$$" "$dest"; }; then
+        rm -rf "$dest.tmp.$$"
+        log "could not copy the Google style from $cache"
+        return 1
+      fi
+    elif [ -z "$vale_dir" ] ||
+      ! (cd "$ROOT" && PATH="$vale_dir:$PATH" vale sync >/dev/null 2>&1) || [ ! -d "$dest" ]; then
+      # A failed sync can leave a partial package that later runs would take as complete.
+      rm -rf "$dest"
+      log "vale sync failed and $cache holds no copy"
+      return 1
+    fi
   fi
+  if [ ! -d "$cache" ]; then
+    mkdir -p "$TOOLS/vale-styles"
+    if ! { cp -R "$dest" "$cache.tmp.$$" && mv "$cache.tmp.$$" "$cache"; } 2>/dev/null; then
+      rm -rf "$cache.tmp.$$"
+    fi
+  fi
+  return 0
 }
+
+if [ "$mode" = "--styles-only" ]; then
+  mkdir -p "$TOOLS"
+  sync_styles "$(resolve_vale || true)"
+  exit
+fi
 
 if [ "$install" = 1 ]; then
   mkdir -p "$TOOLS"
@@ -139,13 +164,29 @@ fi
 missing=()
 dirs=()
 
+vale_dir="$(resolve_vale || true)"
+if [ -z "$vale_dir" ] && [ "$install" = 1 ]; then
+  install_vale || true
+  vale_dir="$(resolve_vale || true)"
+fi
+if [ -n "$vale_dir" ]; then
+  [ "$vale_dir" = "$(path_dir vale || true)" ] || dirs+=("$vale_dir")
+  if [ "$install" = 1 ]; then
+    sync_styles "$vale_dir" || missing+=("vale Google style")
+  elif [ ! -d "$ROOT/.vale/styles/Google" ]; then
+    missing+=("vale Google style")
+  fi
+else
+  missing+=("vale $VALE_VERSION")
+fi
+
 node_dir="$(resolve_node || true)"
 if [ -z "$node_dir" ] && [ "$install" = 1 ]; then
   install_node || true
   node_dir="$(resolve_node || true)"
 fi
 if [ -n "$node_dir" ]; then
-  dirs+=("$node_dir")
+  [ "$node_dir" = "$(path_dir node || true)" ] || dirs+=("$node_dir")
   # A cache-installed Node has no pnpm; corepack ships with it and reads packageManager.
   if [ "$install" = 1 ] && ! PATH="$node_dir:$PATH" command -v pnpm >/dev/null 2>&1 &&
     [ -x "$node_dir/corepack" ] && [ -w "$node_dir" ]; then
@@ -155,24 +196,9 @@ if [ -n "$node_dir" ]; then
       log "corepack could not provide pnpm"
     fi
   fi
+  PATH="$node_dir:$PATH" command -v pnpm >/dev/null 2>&1 || missing+=("pnpm")
 else
   missing+=("node $NODE_MAJOR")
-fi
-
-vale_dir="$(resolve_vale || true)"
-if [ -z "$vale_dir" ] && [ "$install" = 1 ]; then
-  install_vale || true
-  vale_dir="$(resolve_vale || true)"
-fi
-if [ -n "$vale_dir" ]; then
-  dirs+=("$vale_dir")
-  if [ "$install" = 1 ]; then
-    sync_styles "$vale_dir" || missing+=("vale Google style")
-  elif [ ! -d "$ROOT/.vale/styles/Google" ]; then
-    missing+=("vale Google style")
-  fi
-else
-  missing+=("vale $VALE_VERSION")
 fi
 
 (

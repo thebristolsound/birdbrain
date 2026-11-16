@@ -134,8 +134,8 @@ jobs:
             libgtk-3-0 libnotify-dev libnss3 libxss1 \
             libasound2t64 libxtst6 xauth libgbm1 libsecret-1-0
 
-      # The setup script, not a bare install, so the agent session gets Vale (through
-      # GITHUB_PATH) and can run the prose check the hooks and preflight call.
+      # The setup script, not a bare install, so the agent session gets Vale on PATH (through
+      # GITHUB_PATH) and the cache holds the Google style the prose hook copies into a worktree.
       - name: Install project dependencies
         if: steps.gate.outputs.run == 'true'
         run: |

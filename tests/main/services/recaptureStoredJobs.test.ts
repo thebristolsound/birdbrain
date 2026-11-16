@@ -935,11 +935,17 @@ describe('stored background jobs', () => {
       const svc = makeService(renderPage)
       svc.recoverStoredJobs()
       expect(updateCase({ id: caseId, archived: true })?.archived).toBe(true)
+      const info = vi.spyOn(logger, 'info')
 
       svc.resume(backgroundJobRepo.getJob(id)!.batchId)
       await svc.idle()
 
       expect(renderPage).not.toHaveBeenCalled()
+      expect(
+        info.mock.calls
+          .filter(([, code]) => code === 'backgroundRenderer.job_skipped')
+          .map(([, , context]) => (context as { failureKind: string }).failureKind)
+      ).toEqual(['case'])
       expect(backgroundJobRepo.getJob(id)).toMatchObject({
         state: 'skipped',
         failureKind: 'case',

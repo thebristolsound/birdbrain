@@ -25,11 +25,13 @@ import { canonicalStringify } from '@shared/verify'
 import type { Capture, CaptureEvent } from '@shared/types'
 
 // What a Background Job tells the activity feed, how its job row ends, and the entry and row a
-// stored one writes, for each way a job can be admitted or refused. The answers in the fixture
-// file were recorded from the queue before the Case check, the exclusion policy and the stored
-// report moved into Capture Lifecycle admission: the commit that added this file and its
-// fixture changed no source. Two answers are newer, re-recorded with that move: the two
-// archived-Case scenarios, which the queue stored as Captures and admission now refuses.
+// stored one writes, for the fifteen scenarios below. Not pinned here: an archived Case at
+// job start, a link source that no longer holds, a refused address, and cancel. The answers
+// in the fixture file were recorded from the queue before the Case check, the exclusion policy
+// and the stored report moved into Capture Lifecycle admission: the commit that added this
+// file and its fixture changed no source. Two answers are newer, re-recorded with that move:
+// the two archived-Case scenarios, which the queue stored as Captures and admission now
+// refuses.
 // The feed takes the lifecycle's events and the queue's on one channel, as main wires them, so
 // the recorded order holds whichever of the two emits an event. Content is invented.
 //

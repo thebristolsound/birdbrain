@@ -186,7 +186,7 @@ describe('Capture Lifecycle: the background route', () => {
       expect(events).toEqual([])
       const landed = 'https://example.com/landed'
       expect(lifecycle.screenBackground(caseId, landed, JOB)).toEqual({ kind: 'case_archived' })
-      // The job's own address, so the event replaces the job's entry in the feed.
+      // The job's own address, not the one the render landed on.
       expect(events).toEqual([
         {
           type: 'skipped',

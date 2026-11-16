@@ -514,6 +514,19 @@ process.exit(failed ? 1 : 0)
       expect(record).toMatchObject({ version: 1, status: 'pass', sha: measured, base: 'base' })
     })
 
+    it('is opt-in: without the flag a recorded pass changes nothing and every step runs', () => {
+      branch()
+      expect(carry().status).toBe(0)
+      const first = calls()
+      git('commit', '--allow-empty', '-qm', 'same content, new commit')
+      const result = run({}, ['--base', 'base'])
+      expect(result.status, result.stderr).toBe(0)
+      expect(calls()).toBe(first * 2)
+      expect(block().split('\n')[0]).toBe(
+        `<!-- preflight v1 sha=${git('rev-parse', 'HEAD')} status=pass -->`
+      )
+    })
+
     it('writes the measured block for a new head whose diff is the same, and runs nothing', () => {
       const measured = branch()
       expect(carry().status).toBe(0)

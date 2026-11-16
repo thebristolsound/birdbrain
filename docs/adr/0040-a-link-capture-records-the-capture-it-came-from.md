@@ -59,7 +59,7 @@ know the fields would read an entry carrying them as a broken chain. The rule `e
 follows at 3 has two halves, and the fields take both. The schema accepts them only on an entry
 whose `schemaVersion` is at least 6, so a schema-5 verifier reports that it is too old, and only
 as a complete set of three, so an entry carrying one or two of them is rejected. The writer's
-`fieldMinReaderSchemaVersion` in `src/main/services/manifest.ts` stamps 6 on an entry that carries
+`minReaderSchemaVersion` in `src/shared/manifestEntryRules.ts` stamps 6 on an entry that carries
 them, as it stamps 3 for `exhibitNumber` and 5 for the Egress fields. When this record was
 proposed, schema 5 was on `main` and no tagged release carried it, so the fields could have joined
 it. `v1.0.1-beta.23` then shipped a schema-5 verifier without them: it passes the too-old check at

@@ -664,7 +664,7 @@ step for each value it adds:
 visible" among its inventory reasons, so the stage-2 verifier step may already give the screenshot
 an absent form, and a launched Capture without Scroll-to-load needs `requested: false` too; this
 step adds whatever that step did not. A refine requires the next schema version on an entry that
-carries any of these values, and `fieldMinReaderSchemaVersion` in `manifest.ts` stamps that
+carries any of these values, and `minReaderSchemaVersion` in `manifestEntryRules.ts` stamps that
 version, so an older verifier reports itself too old instead of reporting a broken chain, as the
 Egress fields require schema 5 (`ManifestCaptureEntrySchema`). The release ships before the writer
 (step 5 of the split) merges, and its release notes tell Shared Case members to upgrade together.

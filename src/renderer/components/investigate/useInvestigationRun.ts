@@ -3,7 +3,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useInvestigationMutations } from '@renderer/lib/api/investigation'
 import { queryKeys } from '@renderer/lib/api/keys'
 import type { RunRequest, RunStatus } from '@shared/investigation'
-import { birdbrain } from '@renderer/lib/birdbrain'
 
 type InquiryRequest = Omit<Extract<RunRequest, { from: 'inquiry' }>, 'caseId'>
 
@@ -38,7 +37,7 @@ export function useInvestigationRun(caseId: string, onEnded: (status: RunStatus)
 
   useEffect(
     () =>
-      birdbrain.onInvestigationProgress((event) => {
+      window.birdbrain.onInvestigationProgress((event) => {
         if (event.caseId !== caseId || event.status === 'running') return
         if (pendingId.current === event.runId) finish(event.status)
         else endedEarly.current.set(event.runId, event.status)

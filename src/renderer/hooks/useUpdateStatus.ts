@@ -6,7 +6,6 @@ import {
   getUpdateStatus,
   installUpdate
 } from '@renderer/lib/api/updates'
-import { birdbrain } from '@renderer/lib/birdbrain'
 
 // Subscribes to update-delivery status. Fetches the current snapshot on mount,
 // then folds in every main→renderer transition. Hook-local by design: only the
@@ -28,7 +27,7 @@ export function useUpdateStatus() {
         // the current version until the next main→renderer transition arrives.
         if (active) console.error('Failed to fetch update status', err)
       })
-    const unsubscribe = birdbrain.onUpdateStatus((s) => setStatus(s))
+    const unsubscribe = window.birdbrain.onUpdateStatus((s) => setStatus(s))
     return () => {
       active = false
       mountedRef.current = false

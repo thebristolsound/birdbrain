@@ -5,7 +5,6 @@ import { cn } from '@renderer/lib/utils'
 import { labelForCode } from '@renderer/lib/notify'
 import { recentLogEntries, revealLogFile } from '@renderer/lib/api/diagnostics'
 import type { LogEntry, LogLevel } from '@shared/types'
-import { birdbrain } from '@renderer/lib/birdbrain'
 
 const MAX_ENTRIES = 200
 const LEVELS: LogLevel[] = ['error', 'warn', 'info']
@@ -29,7 +28,7 @@ export function LogTab() {
   useEffect(() => {
     // Subscribe BEFORE loading history, so an entry arriving mid-load is not
     // dropped in the gap between the two.
-    const unsubscribe = birdbrain.onLogEntry((entry) => {
+    const unsubscribe = window.birdbrain.onLogEntry((entry) => {
       setEntries((prev) => [entry, ...prev].slice(0, MAX_ENTRIES))
     })
 

@@ -5,7 +5,6 @@ import { Button } from '@renderer/components/ui'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
 import { useCasesMutations } from '@renderer/lib/queries'
 import { notifyExportWritten } from '@renderer/components/export/exportNotice'
-import { birdbrain } from '@renderer/lib/birdbrain'
 
 interface ExportMenuProps {
   caseId: string
@@ -64,7 +63,7 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
   }, [caseId])
 
   useEffect(() => {
-    const unsubscribe = birdbrain.onArchiveProgress((event) => {
+    const unsubscribe = window.birdbrain.onArchiveProgress((event) => {
       if (event.caseId === caseId) {
         setArchiveProgress({ step: event.step, percent: event.percent })
       }

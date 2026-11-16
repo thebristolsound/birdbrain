@@ -10,15 +10,14 @@ import {
 } from '@renderer/lib/api/launchedBrowser'
 import { router } from '@renderer/router'
 import type { Capture } from '@shared/types'
-import { birdbrain } from '@renderer/lib/birdbrain'
 
 export function useServerStatus() {
   useEffect(() => {
-    const unsubExtension = birdbrain.onExtensionConnection(({ connected }) => {
+    const unsubExtension = window.birdbrain.onExtensionConnection(({ connected }) => {
       useAppStore.getState().setConnectedToExtension(connected)
     })
 
-    const unsubSession = birdbrain.onSessionStateChanged((state) => {
+    const unsubSession = window.birdbrain.onSessionStateChanged((state) => {
       const { sessionActive: wasActive, setSessionActive, setActiveCaseId } = useAppStore.getState()
       setSessionActive(state.sessionActive)
       setActiveCaseId(state.activeCaseId ?? null)
@@ -42,11 +41,11 @@ export function useServerStatus() {
     const unsubLaunchedBrowser = followLaunchedBrowserStatus(queryClient)
     const unsubPopOut = followLaunchedBrowserPopOut(queryClient)
 
-    const unsubCapture = birdbrain.onCaptureActivity((event) => {
+    const unsubCapture = window.birdbrain.onCaptureActivity((event) => {
       useAppStore.getState().addCaptureEvent(event)
     })
 
-    const unsubNewCapture = birdbrain.onNewCapture((capture: Capture) => {
+    const unsubNewCapture = window.birdbrain.onNewCapture((capture: Capture) => {
       queryClient.setQueryData<Capture[]>(queryKeys.captures(capture.caseId), (old) =>
         old ? [capture, ...old] : [capture]
       )
@@ -72,12 +71,14 @@ export function useServerStatus() {
     // (#852). Refetch rather than seed from the payload: what the operator
     // reads then comes from the database, not from this event's account of
     // what was written.
-    const unsubExtensionAttach = birdbrain.onExtensionAttach(({ kind, caseId, captureId }) => {
-      if (kind === 'tag') invalidateAfterTagApply(queryClient, captureId)
-      else invalidateNoteQueries(queryClient, caseId)
-    })
+    const unsubExtensionAttach = window.birdbrain.onExtensionAttach(
+      ({ kind, caseId, captureId }) => {
+        if (kind === 'tag') invalidateAfterTagApply(queryClient, captureId)
+        else invalidateNoteQueries(queryClient, caseId)
+      }
+    )
 
-    const unsubSelectorRematched = birdbrain.onSelectorRematched(({ caseId }) => {
+    const unsubSelectorRematched = window.birdbrain.onSelectorRematched(({ caseId }) => {
       // Invalidate on both 'done' and 'error': retroactive matching can insert
       // partial results before failing, so caches are stale either way.
       queryClient.invalidateQueries({ queryKey: queryKeys.selectorMatchCounts(caseId) })
@@ -95,7 +96,7 @@ export function useServerStatus() {
     // the Case list or the Case's Captures, and a joined Case would not open
     // until the list went stale. Refetched rather than seeded, as the attach
     // routes are: what the operator reads comes from the database.
-    const unsubSharingChanged = birdbrain.onSharingChanged(({ caseId }) => {
+    const unsubSharingChanged = window.birdbrain.onSharingChanged(({ caseId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.cases })
       queryClient.invalidateQueries({ queryKey: queryKeys.captures(caseId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.captureCounts })
@@ -108,7 +109,7 @@ export function useServerStatus() {
     })
 
     // Deep links (birdbrain://) from the extension popup route the window here.
-    const unsubDeepLink = birdbrain.onDeepLinkNavigate((target) => {
+    const unsubDeepLink = window.birdbrain.onDeepLinkNavigate((target) => {
       if (typeof target === 'object') {
         void router
           .navigate({

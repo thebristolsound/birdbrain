@@ -17,7 +17,6 @@ import {
 } from '@renderer/components/captures/waybackLinkModel'
 import { captureLinkBlockReason } from '@shared/localAddress'
 import { resolveCaptureForUrl } from '@shared/urlCanonicalize'
-import { birdbrain } from '@renderer/lib/birdbrain'
 
 export type LinkHit = Pick<
   GuestLinkHit,
@@ -80,7 +79,7 @@ export function useLinkMenuTarget(
             // The job is matched by its source and address, not the event's `url`, which a
             // redirect into an excluded address replaces with the final address.
             let settled = false
-            const stop = birdbrain.onCaptureActivity((event) => {
+            const stop = window.birdbrain.onCaptureActivity((event) => {
               const { type, source, linkedFrom, skipReason, error } = event
               if (source !== 'recapture' || type === 'queued' || type === 'received') return
               if (linkedFrom?.captureId !== captureId || linkedFrom.linkHref !== linkUrl) return

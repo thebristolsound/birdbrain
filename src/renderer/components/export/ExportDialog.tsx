@@ -20,7 +20,6 @@ import { caseQueryOptions } from '@renderer/lib/api/cases'
 import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContextMenu'
 import { waybackCasePinsQueryOptions, useWaybackMutations } from '@renderer/lib/api/wayback'
 import { formatSnapshotDelta } from '@shared/wayback'
-import { birdbrain } from '@renderer/lib/birdbrain'
 
 interface ExportDialogProps {
   caseId: string
@@ -180,7 +179,7 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
   const exportError = generate.error ? `Error: ${generate.error.message}` : ''
 
   useEffect(() => {
-    const unsubscribe = birdbrain.onExportProgress((event) => {
+    const unsubscribe = window.birdbrain.onExportProgress((event) => {
       if (event.caseId === caseId) setProgress({ step: event.step, percent: event.percent })
     })
     return unsubscribe

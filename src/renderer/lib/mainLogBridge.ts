@@ -86,7 +86,7 @@ export function subscribeToMainLog(): () => void {
     else toast.warning(text, opts)
   }
 
-  const unsubscribe = birdbrain.onLogEntry(handle)
+  const unsubscribe = window.birdbrain.onLogEntry(handle)
 
   // onLogEntry is a one-shot event with no replay. Between setLoggerWindow()
   // and this subscription mounting — on first load, on reload, and on macOS

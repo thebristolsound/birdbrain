@@ -48,7 +48,7 @@ export function useWaybackLinkBatch(captureId: string): WaybackLinkBatch {
 
   useEffect(
     () =>
-      birdbrain.onWaybackLinkProgress((update) => {
+      window.birdbrain.onWaybackLinkProgress((update) => {
         if (update.captureId !== captureId) return
         const { url } = update
         if (update.state === 'answered') {

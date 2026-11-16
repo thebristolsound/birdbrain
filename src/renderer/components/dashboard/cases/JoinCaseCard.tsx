@@ -17,7 +17,6 @@ import {
   joinFailure,
   joinWaitingTitle
 } from '@renderer/components/sharing/memberModel'
-import { birdbrain } from '@renderer/lib/birdbrain'
 
 export function JoinCaseCard({
   onBack,
@@ -49,7 +48,7 @@ export function JoinCaseCard({
   useEffect(() => {
     if (!join.isPending || !preview.data) return
     const { caseId } = preview.data
-    return birdbrain.onSharingJoinProgress((event) => {
+    return window.birdbrain.onSharingJoinProgress((event) => {
       if (event.caseId === caseId) setStep(event.step)
     })
   }, [join.isPending, preview.data])

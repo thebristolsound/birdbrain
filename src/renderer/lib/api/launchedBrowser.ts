@@ -13,7 +13,7 @@ export const launchedBrowserStatusQueryOptions = queryOptions({
 // Main pushes each status change to every Birdbrain window, so the query is kept from the event,
 // not refetched. An open browser has had its version saved, which the found-browsers list shows.
 export function followLaunchedBrowserStatus(client: QueryClient): () => void {
-  return birdbrain.onLaunchedBrowserStatus((status) => {
+  return window.birdbrain.onLaunchedBrowserStatus((status) => {
     client.setQueryData(queryKeys.launchedBrowserStatus, status)
     if (status.state === 'open') {
       void client.invalidateQueries({ queryKey: queryKeys.launchedBrowsers })
@@ -28,7 +28,7 @@ export const launchedBrowserPopOutQueryOptions = queryOptions({
 })
 
 export function followLaunchedBrowserPopOut(client: QueryClient): () => void {
-  return birdbrain.onLaunchedBrowserPopOut(({ poppedOut }) => {
+  return window.birdbrain.onLaunchedBrowserPopOut(({ poppedOut }) => {
     client.setQueryData(queryKeys.launchedBrowserPopOut, poppedOut)
   })
 }
@@ -101,5 +101,5 @@ export function captureLaunchedTab(
 
 // The capture shortcut found more than one tab it could take, or none.
 export function followLaunchedBrowserPickTab(open: () => void): () => void {
-  return birdbrain.onLaunchedBrowserPickTab(open)
+  return window.birdbrain.onLaunchedBrowserPickTab(open)
 }

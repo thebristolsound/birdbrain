@@ -71,15 +71,18 @@ export default tseslint.config(
   },
   {
     // A refused call crosses the context bridge as a plain object. lib/birdbrain.ts turns it
-    // back into an Error that keeps the code, so every renderer call goes through it.
+    // back into an Error that keeps the code, so every invoke call goes through it. A
+    // subscription (`window.birdbrain.on...`) returns no promise and may stay on the bridge.
     files: ['src/renderer/**/*.{ts,tsx}'],
     ignores: ['src/renderer/lib/birdbrain.ts'],
     rules: {
       'no-restricted-syntax': [
         'error',
         {
-          selector: "MemberExpression[object.name='window'][property.name='birdbrain']",
-          message: "Call the bridge through `birdbrain` from '@renderer/lib/birdbrain'."
+          selector:
+            "MemberExpression[property.name='birdbrain']:not(MemberExpression[property.name=/^on[A-Z]/] > MemberExpression)",
+          message:
+            "Call the bridge through `birdbrain` from '@renderer/lib/birdbrain'; only a subscription may use `window.birdbrain`."
         }
       ]
     }

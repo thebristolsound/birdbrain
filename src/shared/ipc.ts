@@ -1456,8 +1456,8 @@ export type ContractedChannel = keyof IpcInvokeContract
 // The codes a channel's callers may branch on. A refusal's code reaches the
 // renderer on every channel (IpcRefusal above), but refusalCode() below
 // reports only a code named here, typed as the channel's union, so a branch on
-// a code this table does not name fails to compile. A code no caller reads
-// needs no entry.
+// its result for a code this table does not name fails to compile. A code no
+// caller reads needs no entry.
 export const IPC_REFUSALS = {
   'persona:import': ['PERSONA_COOKIE_FILE_UNSUPPORTED'],
   'launchedBrowser:launch': [

@@ -28,7 +28,8 @@ const CONSUMERS = [
   'src/main/services/certification.ts',
   'src/main/services/tsaTrust.ts',
   'src/shared/verify/evidencePackage.ts',
-  'src/shared/verify/exhibitBinding.ts'
+  'src/shared/verify/exhibitBinding.ts',
+  'src/packages/evidence-package-contents/lib/contents.ts'
 ]
 
 const directories = [

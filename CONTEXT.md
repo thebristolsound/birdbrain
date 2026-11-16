@@ -334,6 +334,10 @@ _Avoid_: export hash, bundle hash.
 Where each member of an Evidence Package sits and what it is named: the page archive, screenshot and Timestamp Token of a Capture, the file of any other Exhibit, each Derived File, and the fixed root documents. Held once and read by the writer, by Package Verification, and by the Verify Runbook, so no two of them can name the same member differently.
 _Avoid_: package structure, zip layout, file tree.
 
+**Package Contents**:
+The files one export encloses: for each Exhibit in its scope, the Exhibit's own file, its Derived Files and its Timestamp Token, each either enclosed or left out. Decided once for an export, so the report, the index, the Certification and the package cannot state different contents.
+_Avoid_: file list, package manifest, inventory (a Capture's Manifest Entry carries one).
+
 **Evidence Profile**:
 The versioned public specification of Birdbrain's evidence protocol - schemas, package layout, canonicalization, verification statuses, and migration rules. Not yet published; required before general forensic-assurance claims ([`ADR-0004`](docs/adr/0004-adopt-osint-assurance-baseline.md)).
 _Avoid_: evidence spec, format version.
@@ -382,6 +386,7 @@ _Avoid_: risky change, core change, forensic change.
 - A document **Subject** is bound to one **Exhibit**, or, after the investigation engine's first slice, to one message inside an `mbox` **Exhibit**
 - A path between **Subjects** counts only accepted **Joints**
 - The **Package Layout** names where every member of an **Evidence Package** sits; the writer, **Package Verification** and the **Verify Runbook** all read it from one place
+- The **Package Contents** say which files an export encloses and the **Package Layout** says where each sits; only the writer reads the **Package Contents**, because **Package Verification** and the **Verify Runbook** work out what a package must hold from the **Manifest**
 - An **Evidence Package** contains the **Manifest**, a **Certification**, a **Verify Runbook**, and the exported **Exhibits**; **Package Verification** establishes the chain from the **Manifest** and reconciles the unsigned index against it
 
 ## Example dialogue

@@ -126,6 +126,11 @@ blocking tier with #991, in the change that creates it. It reads a Capture's sto
 reports what is inside it, so a wrong part boundary or span is a wrong statement about a Capture.
 No entry or glob names the file, so without the row a later edit touching only it would match no
 entry.
+On 2026-11-16 `src/packages/evidence-package-contents/**` was added to Integrity core at blocking
+tier, in the change that creates it. The decision of which files an export encloses moved there
+out of the already-listed `src/main/services/export.ts`: which Timestamp Tokens, which
+non-Capture Exhibits and which Derived Files, and under which package path. No entry or glob
+named the new directory, so without the row an edit touching only it would match no entry.
 
 On 2026-11-09 the rows that stale-closed issues had left unwritten were added. The selection
 bar (`extension/src/selectionBar.ts`, ruling W25 on #967) and the two files of the capture
@@ -325,6 +330,7 @@ independent of the Operator who holds it.
 | `src/shared/verify/**` | blocking | Verification core: canonical JSON, chain, signature, RFC 3161 token, package verifier |
 | `src/verifier/**` | blocking | Standalone verifier CLI (fs+crypto-only constraint) |
 | `src/packages/evidence-package-layout/**` | blocking | The Package Layout: the exporter, Package Verification and `verify.sh` read every Evidence Package path from it, so changing a name changes where verification looks for that file in every package already exported. It also names the member and lineage chain files in a Case directory, which the manifest, the Shared Case sync modules and Case Archive export and import read. Added 2026-10-26 with #1904, which put the Transaction Record and PDF paths in it |
+| `src/packages/evidence-package-contents/**` | blocking | The Package Contents: decides which files an Evidence Package or a Working Copy encloses for its Timestamp Tokens, non-Capture Exhibits and Derived Files, and the package path of each. `report.html`, `evidence.json`, `certification.html` and the zip are all written from its result, so a wrong decision is a file a signed entry anchors and the package lacks, or a file the documents name and the zip does not hold. Added 2026-11-16, moved out of `src/main/services/export.ts` |
 | `src/main/index.ts` | blocking | Wires the evidence-viewer invariants: sandboxed `webPreferences` on its windows, and the guest hooks (`will-attach-webview`, the window-open and navigation handlers, the guest sessions' permission handlers and request filter) that apply the decisions `src/main/webviewPolicy.ts` takes; boots DB/capture server/installation id |
 | `src/main/webviewPolicy.ts` | blocking | Decides each `<webview>` guest's policy per partition: which URLs and request hosts the MHTML and legacy HTML evidence viewers may load, with scripts off, navigation blocked and no permission granted, and which the Wayback replay pane may. Split out of the included `src/main/index.ts` by #856, and left off both lists until #1409. Added 2026-11-09 |
 

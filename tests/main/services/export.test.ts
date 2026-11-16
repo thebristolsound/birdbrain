@@ -4935,6 +4935,40 @@ describe('export', () => {
       }
     })
 
+    it('names no page archive when the one read of it returns nothing', async () => {
+      // The file stays in the Case directory, so a separate existence check
+      // would still find it. The report and the index take the path from the
+      // read that fills the package, so neither names a member the zip lacks.
+      const originalRead = defaultCaptureStore.readArtifact.bind(defaultCaptureStore)
+      const read = vi
+        .spyOn(defaultCaptureStore, 'readArtifact')
+        .mockImplementation((caseId, id, type) =>
+          id === fixture.captureId && type === 'mhtml' ? null : originalRead(caseId, id, type)
+        )
+      try {
+        const entries = await exportMixed('no-page-archive.zip', {
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: false,
+            notes: false,
+            annotations: 'none'
+          }
+        })
+        const pagePath = `pages/${fixture.captureId}.mhtml`
+        expect(
+          existsSync(
+            defaultCaptureStore.artifactPaths(fixture.caseId, fixture.captureId, 'mhtml').abs
+          )
+        ).toBe(true)
+        expect(entries.has(pagePath)).toBe(false)
+        expect(entries.get('report.html')!.toString('utf-8')).not.toContain(pagePath)
+        expect(entries.get('evidence.json')!.toString('utf-8')).not.toContain(pagePath)
+      } finally {
+        read.mockRestore()
+      }
+    })
+
     it('keeps a screenshot absent when it returns before the manifest snapshot', async () => {
       const path = defaultCaptureStore.artifactPaths(fixture.caseId, fixture.captureId, 'png').abs
       const bytes = readFileSync(path)

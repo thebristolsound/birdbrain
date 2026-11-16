@@ -89,9 +89,12 @@ Each is a difference only when a file changes or fails while an export runs.
 
 ## Handoff
 
-- **Shipped:** nothing merged yet.
-- **In flight:** slice 1 and slice 2 are written. Slice 2 is stacked on slice 1.
-- **Next command:** after slice 1 merges,
-  `git rebase origin/main refactor/evidence-package-contents`, then
+- **Shipped:** slice 1, the known-answer test, is on `main`.
+- **In flight:** slice 2 (this change) has `main` merged in and waits on review and the
+  maintainer's sign-off. Slice 3 is written and stacked on it.
+- **Next command:** after slice 2 merges, on the slice 3 branch, `git merge origin/main` and
+  resolve each conflict to the branch's own version. A squash merge leaves the same files on
+  both sides, and a pushed branch only gains commits, so a rebase is not available. Check that
+  `git diff origin/main HEAD` shows slice 3 alone, then run
   `pnpm test tests/main/services/exportKnownAnswer.test.ts` and `pnpm preflight`.
 - **Open questions:** none.

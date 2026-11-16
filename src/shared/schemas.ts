@@ -9,8 +9,6 @@ import {
   CREDENTIAL_HEADER_NAMES,
   DEFAULT_UI_DENSITY,
   EGRESS_KINDS,
-  INVENTORY_ABSENCE_REASONS,
-  LAUNCHED_CAPTURE_METHODS,
   PASSIVE_CAPTURE_RULES,
   PDF_ABSENCE_REASONS,
   SCROLL_TO_LOAD_OUTCOMES,
@@ -25,6 +23,13 @@ import type {
   Selector,
   SelectorMatch
 } from '@shared/types'
+import {
+  FIELD_RULES,
+  carriedFieldCount,
+  earliestSchemaVersion,
+  readerGate
+} from '@shared/manifestEntryRules'
+import type { ManifestEntryType } from '@shared/manifestEntryRules'
 
 // Shared Zod schemas for Birdbrain's trust boundaries.
 //
@@ -419,16 +424,15 @@ export function formatExtensionAttachError(err: z.core.$ZodError): string {
 // (e.g. a v4 entry parsed by a v3 verifier). Auto-tightens on every version bump.
 // A version ABOVE the bound is not reported as a malformed shape: verify-core
 // screens for it first and reports "verifier too old" (manifestChain.ts, X25).
-const schemaVersionField = z.number().int().min(1).max(MANIFEST_SCHEMA_VERSION)
-
-// The v3 entry types (ADR-0023) have no v1/v2 form, so they are pinned at 3 —
-// the same discipline as the v2-only types below, and it makes them signed by
-// construction (verify-core enforces signatures from v2 up).
-const schemaVersion3Field = z.number().int().min(3).max(MANIFEST_SCHEMA_VERSION)
-
-// The Shared Case entry types (schema 4) have no earlier form either, so they
-// are pinned at 4 by the same discipline.
-const schemaVersion4Field = z.number().int().min(4).max(MANIFEST_SCHEMA_VERSION)
+//
+// The lower bound is the entry type's own, read from manifestEntryRules.ts,
+// which the writer's stamp reads too. A type with no earlier form is pinned at
+// the schema that added it: the v2-only types at 2, the v3 types (ADR-0023) at
+// 3, the Shared Case types at 4. That also makes each signed by construction
+// (verify-core enforces signatures from v2 up).
+function schemaVersionField(type: ManifestEntryType): z.ZodNumber {
+  return z.number().int().min(earliestSchemaVersion(type)).max(MANIFEST_SCHEMA_VERSION)
+}
 
 // A Member Code as the Owner assigns it: one to three characters from
 // `[A-Z0-9]`, unique within the Case (design decision 8). The prefix of every
@@ -643,19 +647,22 @@ export type BoundTls = z.infer<typeof BoundTlsSchema>
 const personaIdField = z.string().min(1)
 const personaLabelField = z.string().min(1)
 
-type PersonaFields = { personaId?: unknown; personaLabel?: unknown; schemaVersion: number }
-
-const personaFieldsNeedSchema7 = {
-  check: (entry: PersonaFields): boolean =>
-    (entry.personaId === undefined && entry.personaLabel === undefined) || entry.schemaVersion >= 7,
-  issue: { message: 'the Persona fields require schemaVersion 7', path: ['schemaVersion'] }
-}
+type PersonaFields = { personaId?: unknown; personaLabel?: unknown }
 
 const personaLabelNeedsId = {
   check: (entry: PersonaFields): boolean =>
     entry.personaLabel === undefined || entry.personaId !== undefined,
   issue: { message: '`personaLabel` requires `personaId`', path: ['personaLabel'] }
 }
+
+// The rules for a field or value a later schema added to an entry type. Each
+// is the reader's half of a rule the writer's stamp reads from the same file,
+// so the two cannot drift apart. A refine below keeps the place it had among
+// the other refines, because the order of the refines is the order of the
+// refusals.
+const CAPTURE_RULES = FIELD_RULES.capture
+const TIMESTAMP_RULES = FIELD_RULES.timestamp
+const EXHIBIT_RULES = FIELD_RULES.exhibit
 
 const ManifestCaptureEntrySchema = z
   .object({
@@ -749,7 +756,7 @@ const ManifestCaptureEntrySchema = z
     toolVersion: z.string(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
-    schemaVersion: schemaVersionField,
+    schemaVersion: schemaVersionField('capture'),
     signature: z.string().optional(),
     entryHash: z.string()
   })
@@ -758,17 +765,11 @@ const ManifestCaptureEntrySchema = z
   // entry carrying one below version 3 would read there as a broken chain
   // rather than "verifier too old" (X25). The same rule `subject` and
   // `memberCode` follow.
-  .refine((entry) => entry.exhibitNumber === undefined || entry.schemaVersion >= 3, {
-    message: '`exhibitNumber` on a capture entry requires schemaVersion 3',
-    path: ['schemaVersion']
-  })
+  .refine(...readerGate(CAPTURE_RULES.exhibitNumber))
   // The same rule for the Egress fields: a schema-4 reader's strict capture
   // shape has none of them, so it meets them as "verifier too old" only under
   // a stamp of 5.
-  .refine((entry) => !carriesEgressField(entry) || entry.schemaVersion >= 5, {
-    message: 'the Egress fields on a capture entry require schemaVersion 5',
-    path: ['schemaVersion']
-  })
+  .refine(...readerGate(CAPTURE_RULES.egress))
   // A label names an Egress, so a label without a kind contradicts itself.
   // `tlsSkipped` deliberately needs no kind: an extension capture's page loads
   // in the Operator's own browser, not through the Egress, while its re-fetch
@@ -784,10 +785,7 @@ const ManifestCaptureEntrySchema = z
   })
   // The same rule for the capture engine's fields: a schema-5 reader's strict
   // capture shape has none of them.
-  .refine((entry) => !carriesCaptureEngineField(entry) || entry.schemaVersion >= 6, {
-    message: 'the capture engine fields on a capture entry require schemaVersion 6',
-    path: ['schemaVersion']
-  })
+  .refine(...readerGate(CAPTURE_RULES.captureEngine))
   // The four shapes across the capture engine's fields that contradict
   // themselves; the MHTML counts and the Scroll-to-load record each carry one
   // more refine of their own. A released verifier cannot be recalled, so no
@@ -819,13 +817,10 @@ const ManifestCaptureEntrySchema = z
     path: ['boundTlsAbsent']
   })
   // The same version rule for the link provenance fields (ADR-0040).
-  .refine((entry) => linkProvenanceFieldCount(entry) === 0 || entry.schemaVersion >= 6, {
-    message: 'the link provenance fields on a capture entry require schemaVersion 6',
-    path: ['schemaVersion']
-  })
+  .refine(...readerGate(CAPTURE_RULES.linkProvenance))
   // All three or none: an id without the hash loses the binding to the
   // source's bytes, and a hash without the address loses what was linked.
-  .refine((entry) => [0, 3].includes(linkProvenanceFieldCount(entry)), {
+  .refine((entry) => [0, 3].includes(carriedFieldCount(CAPTURE_RULES.linkProvenance, entry)), {
     message:
       '`linkedFromCaptureId`, `linkedFromContentHash` and `linkHref` must be present together',
     path: ['linkedFromCaptureId']
@@ -835,10 +830,7 @@ const ManifestCaptureEntrySchema = z
   // strict capture shape has none of them. No refine ties a value to a
   // Capture Method, as for the capture engine's fields, because a Duplicate
   // re-anchors its source's facts under its own method.
-  .refine((entry) => !carriesLaunchedBrowserValue(entry) || entry.schemaVersion >= 7, {
-    message: 'the launched browser values on a capture entry require schemaVersion 7',
-    path: ['schemaVersion']
-  })
+  .refine(...readerGate(CAPTURE_RULES.launchedBrowser))
   // A version names nothing without its product, the rule `egressLabel`
   // follows. A product without a version does not contradict itself, so it is
   // admitted (first-slice D2). The family is the engine's own fact and stands
@@ -859,7 +851,7 @@ const ManifestCaptureEntrySchema = z
       path: ['passiveRule']
     }
   )
-  .refine(personaFieldsNeedSchema7.check, personaFieldsNeedSchema7.issue)
+  .refine(...readerGate(CAPTURE_RULES.persona))
   .refine(personaLabelNeedsId.check, personaLabelNeedsId.issue)
   // The recapture and duplicate links name the method that makes them (#1000),
   // at every schema version. They are ungated because no release writes a
@@ -899,73 +891,6 @@ function duplicateFieldCount(entry: {
   return [duplicateOfCaptureId, duplicatedAt].filter((field) => field !== undefined).length
 }
 
-const SCHEMA_6_ABSENCE_REASONS: ReadonlySet<string> = new Set(INVENTORY_ABSENCE_REASONS)
-const LAUNCHED_METHODS: ReadonlySet<string> = new Set(LAUNCHED_CAPTURE_METHODS)
-
-// Whether a capture entry carries a schema-7 launched browser value: a launched
-// method, a browser or passive rule field, or a stage-2 inventory value (a
-// reason outside the schema-6 pair, or a schema-7 member of the present
-// Transaction Record part). The writer's stamp (fieldMinReaderSchemaVersion in
-// manifest.ts) reads the same predicate, so the two cannot drift apart.
-export function carriesLaunchedBrowserValue(entry: {
-  method?: string
-  browserProduct?: unknown
-  browserVersion?: unknown
-  browserFamily?: unknown
-  passiveRule?: unknown
-  inventory?: CaptureInventory
-}): boolean {
-  const { method, browserProduct, browserVersion, browserFamily, passiveRule, inventory } = entry
-  if (method !== undefined && LAUNCHED_METHODS.has(method)) return true
-  if ([browserProduct, browserVersion, browserFamily, passiveRule].some((f) => f !== undefined)) {
-    return true
-  }
-  if (inventory === undefined) return false
-  const { transactionRecord, pdf } = inventory
-  if (!pdf.present && !SCHEMA_6_ABSENCE_REASONS.has(pdf.reason)) return true
-  if (!transactionRecord.present) return !SCHEMA_6_ABSENCE_REASONS.has(transactionRecord.reason)
-  const { servedByServiceWorker, requestBodiesWithheld, httpCacheDisabled } = transactionRecord
-  return [servedByServiceWorker, requestBodiesWithheld, httpCacheDisabled].some(
-    (member) => member !== undefined
-  )
-}
-
-function linkProvenanceFieldCount(entry: {
-  linkedFromCaptureId?: unknown
-  linkedFromContentHash?: unknown
-  linkHref?: unknown
-}): number {
-  const { linkedFromCaptureId, linkedFromContentHash, linkHref } = entry
-  return [linkedFromCaptureId, linkedFromContentHash, linkHref].filter(
-    (field) => field !== undefined
-  ).length
-}
-
-function carriesCaptureEngineField(entry: {
-  inventory?: unknown
-  scrollToLoad?: unknown
-  transactionRecordHash?: unknown
-  boundTls?: unknown
-  boundTlsAbsent?: unknown
-  pdfHash?: unknown
-}): boolean {
-  const { inventory, scrollToLoad, transactionRecordHash, boundTls, boundTlsAbsent, pdfHash } =
-    entry
-  return [inventory, scrollToLoad, transactionRecordHash, boundTls, boundTlsAbsent, pdfHash].some(
-    (field) => field !== undefined
-  )
-}
-
-function carriesEgressField(entry: {
-  egressKind?: unknown
-  egressLabel?: unknown
-  userAgent?: unknown
-  tlsSkipped?: unknown
-}): boolean {
-  const { egressKind, egressLabel, userAgent, tlsSkipped } = entry
-  return [egressKind, egressLabel, userAgent, tlsSkipped].some((field) => field !== undefined)
-}
-
 // Deletion of an anchored Exhibit. `captureId` and `contentHash` accept ANY
 // Exhibit id and Content Hash from schema v3 on, not only a Capture's
 // (ADR-0023, X29) — a Capture is one kind of Exhibit and its Exhibit id IS its
@@ -985,7 +910,7 @@ const ManifestDeletionEntrySchema = z
     reason: z.string().optional(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
-    schemaVersion: schemaVersionField,
+    schemaVersion: schemaVersionField('deletion'),
     signature: z.string().optional(),
     entryHash: z.string()
   })
@@ -1018,7 +943,7 @@ const ManifestTimestampEntrySchema = z
     toolVersion: z.string(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
-    schemaVersion: z.number().int().min(2).max(MANIFEST_SCHEMA_VERSION),
+    schemaVersion: schemaVersionField('timestamp'),
     signature: z.string().optional(),
     entryHash: z.string()
   })
@@ -1026,10 +951,7 @@ const ManifestTimestampEntrySchema = z
   // A schema-3 reader's strict timestamp shape has no `subject`, so an entry
   // carrying one below version 4 would read there as a broken chain rather
   // than "verifier too old" (ADR-0023, X25). Refused here for the same reason.
-  .refine((entry) => entry.subject === undefined || entry.schemaVersion >= 4, {
-    message: '`subject` requires schemaVersion 4',
-    path: ['schemaVersion']
-  })
+  .refine(...readerGate(TIMESTAMP_RULES.subject))
 
 // Signed audit record of an evidence-package export (#124). schemaVersion is
 // pinned >=2 so the entry MUST carry a signature, matching the timestamp entry.
@@ -1074,7 +996,7 @@ const ManifestExportEntrySchema = z
     exportClass: z.literal('working-copy').optional(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
-    schemaVersion: z.number().int().min(2).max(MANIFEST_SCHEMA_VERSION),
+    schemaVersion: schemaVersionField('export'),
     signature: z.string().optional(),
     entryHash: z.string()
   })
@@ -1106,7 +1028,7 @@ const ManifestArchiveExportEntrySchema = z
     packageHash: z.string(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
-    schemaVersion: z.number().int().min(2).max(MANIFEST_SCHEMA_VERSION),
+    schemaVersion: schemaVersionField('archive-export'),
     signature: z.string().optional(),
     entryHash: z.string()
   })
@@ -1132,7 +1054,7 @@ const ManifestImportEntrySchema = z
     toolVersion: z.string(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
-    schemaVersion: z.number().int().min(2).max(MANIFEST_SCHEMA_VERSION),
+    schemaVersion: schemaVersionField('import'),
     signature: z.string().optional(),
     entryHash: z.string()
   })
@@ -1185,18 +1107,15 @@ const ManifestExhibitEntrySchema = z
     toolVersion: z.string(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
-    schemaVersion: schemaVersion3Field,
+    schemaVersion: schemaVersionField('exhibit'),
     signature: z.string().optional(),
     entryHash: z.string()
   })
   .strict()
   // Same rule as `subject` on a timestamp: a schema-3 reader has no
   // `memberCode`, so the field is only ever valid on an entry stamped 4.
-  .refine((entry) => entry.memberCode === undefined || entry.schemaVersion >= 4, {
-    message: '`memberCode` requires schemaVersion 4',
-    path: ['schemaVersion']
-  })
-  .refine(personaFieldsNeedSchema7.check, personaFieldsNeedSchema7.issue)
+  .refine(...readerGate(EXHIBIT_RULES.memberCode))
+  .refine(...readerGate(EXHIBIT_RULES.persona))
   .refine(personaLabelNeedsId.check, personaLabelNeedsId.issue)
 
 // The parameters that determined a derivation's output bytes (#1319); a
@@ -1245,7 +1164,7 @@ const ManifestDerivationEntrySchema = z
     toolVersion: z.string(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
-    schemaVersion: schemaVersion3Field,
+    schemaVersion: schemaVersionField('derivation'),
     signature: z.string().optional(),
     entryHash: z.string()
   })
@@ -1279,7 +1198,7 @@ const ManifestRenumberEntrySchema = z
     toolVersion: z.string(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
-    schemaVersion: schemaVersion3Field,
+    schemaVersion: schemaVersionField('renumber'),
     signature: z.string().optional(),
     entryHash: z.string()
   })
@@ -1313,7 +1232,7 @@ const ManifestMemberAddEntrySchema = z
     toolVersion: z.string(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
-    schemaVersion: schemaVersion4Field,
+    schemaVersion: schemaVersionField('member-add'),
     signature: z.string().optional(),
     entryHash: z.string()
   })
@@ -1332,7 +1251,7 @@ const ManifestMemberRevokeEntrySchema = z
     toolVersion: z.string(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
-    schemaVersion: schemaVersion4Field,
+    schemaVersion: schemaVersionField('member-revoke'),
     signature: z.string().optional(),
     entryHash: z.string()
   })
@@ -1365,7 +1284,7 @@ const ManifestMergeEntrySchema = z
     toolVersion: z.string(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
-    schemaVersion: schemaVersion4Field,
+    schemaVersion: schemaVersionField('merge'),
     signature: z.string().optional(),
     entryHash: z.string()
   })
@@ -1387,7 +1306,7 @@ const ManifestExcludeEntrySchema = z
     toolVersion: z.string(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
-    schemaVersion: schemaVersion4Field,
+    schemaVersion: schemaVersionField('exclude'),
     signature: z.string().optional(),
     entryHash: z.string()
   })

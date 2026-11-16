@@ -28,10 +28,8 @@ This skill is for a session the maintainer started and handed one change to. A j
    `origin/main`. Done when every changed behaviour has an observation you can quote.
 4. **Open.** Run `pnpm preflight` at head, write the description (`post-pr-body`), push, open
    the pull request non-draft, and label it (`docs/agents/background-jobs.md`, "Label it").
-   Non-draft, because the review fleet reads no draft (ADR-0057). `merge-gate` asks for no
-   reviewer pre-pass on a pull request opened under the maintainer's account (ADR-0041), so the
-   fleet and the maintainer's decision in step 6 are the review it gets. Done when the
-   description's Verification block names the pushed head.
+   Non-draft, because the review fleet reads no draft (ADR-0057). Done when the description's
+   Verification block names the pushed head.
 5. **Review.** Wait for CI, `review/fleet` and Codex with the harness's pull request watcher,
    then sort every finding by the table below. Done when every required check and
    `review/fleet` are green at head, and each finding is fixed, declined on its thread with a
@@ -39,18 +37,22 @@ This skill is for a session the maintainer started and handed one change to. A j
 6. **Hand over.** Ask the maintainer with `AskUserQuestion`: the link, the head sha, what you
    proved, and what is still theirs. On an `evidence-affecting` pull request that is their
    approving review or their `approved` label at head (ADR-0041); on every pull request it is
-   the merge. Done when they have answered.
+   the merge. Say which reviews the pull request had: the review fleet's verdict at head, and
+   that no reviewer pre-pass ran, since `merge-gate` asks for none on a pull request opened
+   under the maintainer's account and nobody was watching this session. Done when they have
+   answered.
 7. **Act on the answer, at the head the question named.** Read the head again before each
    act; a new head voids the answer, so ask again. When the answer tells you to apply
    `approved`, use the override `.claude/hooks/guard-maintainer-labels.sh` documents for a
-   label the maintainer asked for. When it tells you to merge, run
+   label the maintainer asked for, then read the head once more: if it moved while you
+   applied the label, remove the label and ask again. When it tells you to merge, run
    `.claude/skills/merge-pr/scripts/merge.sh <n> --admin` once `merge-gate` and every required
    check are green; the `merge-pr` skill says what the script checks first. When the script
    refuses, or the session cannot run it (`docs/agents/github-access.md`), report its output
    and leave the merge to the maintainer. When they keep either act for themselves, do nothing
    more. Done when the answer is carried out, or the pull request waits on the maintainer alone.
 8. **Report.** The link, the merge commit when there is one, the proof, each decision you took
-   for the maintainer, and each finding you left in place.
+   for the maintainer, and each finding you left in place. Done when the report holds all five.
 
 ## A new head is expensive
 
@@ -67,10 +69,12 @@ Every push costs a full `pnpm preflight`, a review fleet round, and on an
   wait for the required checks at the new head. Once they are green, `pnpm preflight --carry`
   writes the block for that head without a run (ADR-0021 makes the green checks the
   precondition, because nothing ran on the merged tree locally); then update the description.
+  The implementer's stop hook takes no carried block, and that agent does not run this skill.
 - **The description is edited in place.** A wrong sentence in it needs a `PATCH` of the body,
   never a push.
-- **Another open pull request that edits the same files** makes the second to land need
-  `main` merged in and a new approval. Name that in the approval question.
+- **Another open pull request that edits the same files** can leave the second to land in
+  conflict. It then needs `main` merged in, and with the new head a new approval. Name the
+  other pull request in the hand-over question.
 
 ## Sorting a finding
 
@@ -91,10 +95,8 @@ Ask with `AskUserQuestion`, and put everything the answer needs in the question:
 
 - The hand-over in step 6.
 - A required check that only something outside this pull request can turn green.
-- Anything `CLAUDE.md` keeps as an ask under "Interactive sessions: standing approvals", which
-  an absent maintainer does not waive: a new dependency, a destructive or irreversible act,
-  spend or publishing, a wider scope, a blocking-tier file the hand-over did not name, two
-  documented rules that conflict, a product decision with no precedent here.
+- Everything `CLAUDE.md` lists after "Still ask for" under "Interactive sessions: standing
+  approvals". An absent maintainer waives none of it.
 
 Decide the rest yourself, on a repository document, an ADR or an existing pattern, and list
 each decision in the report.

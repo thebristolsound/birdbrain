@@ -230,26 +230,54 @@ const captureEntries = (dir) =>
     .map((line) => JSON.parse(line))
     .filter((entry) => entry.type === 'capture')
 
-// Both Capture Methods `take` drives. A run that lacks one proves nothing about it, so every
-// reader of a run refuses it: two runs that both lack a method must not compare as identical.
+// The two Capture Methods `take` drives, one Capture each. A run that lacks one proves nothing
+// about it, so every reader of a run refuses it: two runs that both lack a method must not
+// compare as identical, and a second Capture of one method would hide the first.
 const METHODS = ['background', 'launched']
 function requireBothMethods(entries, where) {
-  const missing = METHODS.filter((method) => !entries.some((entry) => entry.method === method))
-  if (missing.length) throw new Error(`${where} holds no ${missing.join(' and no ')} Capture`)
+  for (const method of METHODS) {
+    const count = entries.filter((entry) => entry.method === method).length
+    if (count !== 1) throw new Error(`${where} holds ${count} ${method} Captures, not one`)
+  }
+  if (entries.length !== METHODS.length) {
+    throw new Error(`${where} holds a Capture of a method other than ${METHODS.join(' and ')}`)
+  }
   return entries
+}
+
+// The stored MHTML without its boundary, its date and its frame ids: the page it was saved
+// from, and each part's type, location and a digest of its encoded body.
+function describeMhtml(bytes) {
+  const text = bytes.toString('latin1')
+  const boundary = text.match(/boundary="([^"]+)"/)?.[1]
+  if (!boundary) return 'no multipart boundary'
+  const [head, ...parts] = text.split(`--${boundary}`)
+  const field = (block, name) => block.match(new RegExp(`^${name}: (.*)$`, 'm'))?.[1]?.trim()
+  return {
+    snapshot: field(head, 'Snapshot-Content-Location'),
+    subject: field(head, 'Subject'),
+    parts: parts
+      .filter((part) => part.includes('\r\n\r\n'))
+      .map((part) => {
+        const headers = part.slice(0, part.indexOf('\r\n\r\n'))
+        const body = part.slice(part.indexOf('\r\n\r\n') + 4)
+        return `${field(headers, 'Content-Type')} ${field(headers, 'Content-Location')} ${sha(body)}`
+      })
+  }
 }
 
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex')
 
 // One Capture without its ids, times, and the hashes of files that embed a time. What stays:
 // the signed inventory, Bound TLS Details or their absence, whether each stored hash matches
-// its file, and each record's type, request or status line, header names, payload digest and
-// credential header lines.
+// its file, the MHTML's parts, and each record's type, request or status line, header names,
+// payload digest and credential header lines.
 function describeCapture(dir, entry) {
   const file = (ext) => path.join(dir, `${entry.captureId}.${ext}`)
   const read = (ext) => (fs.existsSync(file(ext)) ? fs.readFileSync(file(ext)) : null)
   const warc = read('warc.gz')
   const pdf = read('pdf')
+  const mhtml = read('mhtml')
   const png = fs.readFileSync(file('png'))
   const text = warc ? gunzipSync(warc).toString('latin1') : null
   const records = text?.split(/(?=WARC\/1\.1\r\n)/).map((record) => {
@@ -280,6 +308,10 @@ function describeCapture(dir, entry) {
     scrollToLoad: entry.scrollToLoad ?? null,
     boundTls: entry.boundTls ?? null,
     boundTlsAbsent: entry.boundTlsAbsent ?? null,
+    mhtmlHashMatchesFile: mhtml
+      ? entry.contentHash === sha(mhtml)
+      : `no file, hash ${entry.contentHash}`,
+    mhtml: mhtml ? describeMhtml(mhtml) : null,
     transactionRecordHashMatchesFile: warc
       ? entry.transactionRecordHash === sha(warc)
       : `no file, hash ${entry.transactionRecordHash}`,

@@ -38,14 +38,23 @@ import { ENGINE_CAPTURE_ID } from '../../helpers/captureEnginePackage'
 import { seedUnanchoredDerivedFile } from '../../helpers/mixedKindCase'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 
-// The known answers of an export (ADR-0004, ADR-0014): one fixed Case, exported each way the
-// app can export it, with every byte of every output pinned in
+// The known answers of `generateReport` (ADR-0004, ADR-0014): two fixed Cases, exported each
+// way that function can export them, with every byte of every output pinned in
 // tests/fixtures/export-known-answer/answers.json. A change that alters any member of any
 // package, the order of the members, or the Package Hash fails here and names the member.
+// The Case Archive and the single-Capture PDF are other exports, written by other code, and
+// are not pinned here.
 //
 // Each answer is the SHA-256 and size of every zip member in zip order, the SHA-256 of the
-// zip, the Package Hash the `export` Manifest Entry signs, and the checks Package
-// Verification fails on the unpacked package.
+// zip, the Package Hash the `export` Manifest Entry signs, and what Package Verification
+// says of the unpacked zip: its outcome, and every check it ran with the status it ended in.
+//
+// One Case is written through the app's own writers and three shared test helpers. Seven
+// answers export it, and an eighth exports the copy an archive import makes of it, whose rows
+// the import renamed. The other is a Shared Case whose two chains this file writes by hand,
+// and one answer exports that. The helpers' bytes are part of the answers:
+// `seedEngineCapture` and its `ENGINE_FILES`, `seedUnanchoredDerivedFile` and
+// `buildSyntheticToken`. A change to any of them moves every answer of the first Case.
 //
 // To change an answer on purpose, run
 //   BIRDBRAIN_UPDATE_EXPORT_KNOWN_ANSWER=1 pnpm test tests/main/services/exportKnownAnswer.test.ts
@@ -132,12 +141,22 @@ const sha256 = (bytes: Buffer | string): string => createHash('sha256').update(b
 const standInSignature = (publicKeyPem: string, entryHash: string): string =>
   createHash('sha256').update(`${publicKeyPem}\n${entryHash}`).digest('base64')
 
+/** What Package Verification says of an unpacked zip. */
+interface VerificationAnswer {
+  /**
+   * `verified` only when the verifier ran its checks and none failed. A Working Copy is
+   * `not-verifiable`. A package the verifier declines to judge is `unsupported`, never a pass.
+   */
+  outcome: 'verified' | 'failed' | 'not-verifiable' | 'unsupported'
+  /** `<status> <name>` for every check, in the order the verifier ran them. */
+  checks: string[]
+}
+
 /** One exported zip, as answers.json pins it. */
 interface PackageAnswer {
   zipSha256: string
   packageHash: string
-  /** Checks Package Verification fails on the unpacked zip; absent for a Working Copy. */
-  failedChecks?: string[]
+  verification: VerificationAnswer
   /** `<sha256> <bytes> <name>` for each member, in zip order. */
   members: string[]
 }
@@ -149,13 +168,27 @@ interface FileAnswer {
 
 type Answer = PackageAnswer | FileAnswer
 
+// Every answer a test below pins. answers.json holds these and no other.
+const ANSWER_NAMES = [
+  'evidence-minimal',
+  'evidence-selection',
+  'evidence-with-screenshots',
+  'evidence-without-screenshots',
+  'renamed-rows',
+  'report-html',
+  'shared-case-exclude',
+  'working-copy',
+  'working-copy-minimal'
+] as const
+type AnswerName = (typeof ANSWER_NAMES)[number]
+
 const pinned: Record<string, Answer> = existsSync(ANSWERS_PATH)
   ? (JSON.parse(readFileSync(ANSWERS_PATH, 'utf-8')) as Record<string, Answer>)
   : {}
-const produced: Record<string, Answer> = {}
+const produced: Partial<Record<AnswerName, Answer>> = {}
 
 /** Compares one output with its pinned answer, or records it when updating. */
-function expectKnownAnswer(name: string, answer: Answer): void {
+function expectKnownAnswer(name: AnswerName, answer: Answer): void {
   produced[name] = answer
   if (UPDATE) return
   // An answer the file does not hold is a failure, never a pass.
@@ -192,13 +225,13 @@ describe('export known answers', () => {
     if (zone === undefined) delete process.env.TZ
     else process.env.TZ = zone
     if (!UPDATE) return
-    const merged = { ...pinned, ...produced }
-    const sorted = Object.fromEntries(
-      Object.keys(merged)
-        .sort()
-        .map((key) => [key, merged[key]])
+    // An answer this run did not produce keeps its pinned value, and a name no test pins
+    // any more is dropped.
+    const merged: Record<string, Answer> = { ...pinned, ...produced }
+    const kept = Object.fromEntries(
+      ANSWER_NAMES.flatMap((name) => (merged[name] ? [[name, merged[name]]] : []))
     )
-    writeFileSync(ANSWERS_PATH, JSON.stringify(sorted, null, 2) + '\n')
+    writeFileSync(ANSWERS_PATH, JSON.stringify(kept, null, 2) + '\n')
   })
 
   beforeEach(async () => {
@@ -421,9 +454,10 @@ describe('export known answers', () => {
 
   const TIME = '2026-11-03T10:00:00.000Z'
 
-  // A signed chain built line by line, as appendManifestEntry builds one. The
-  // app writes no schema-4 entry outside sync, so the Shared Case's chains are
-  // written as its two installations would have written them.
+  // A signed chain built line by line, as appendManifestEntry builds one. A
+  // Shared Case holds a chain only another installation writes, which no test
+  // can produce through this installation's writers, so both of its chains
+  // are written here as their two installations would have written them.
   class Chain {
     lines: string[] = []
     hashes: string[] = []
@@ -591,20 +625,28 @@ describe('export known answers', () => {
     ).at(-1)!
     expect(exportEntry.type).toBe('export')
 
+    const dir = join(tempDir, 'unpacked')
+    for (const [name, bytes] of zip) {
+      mkdirSync(dirname(join(dir, name)), { recursive: true })
+      writeFileSync(join(dir, name), bytes)
+    }
+    const verified = verifyEvidencePackage(dir)
     const answer: PackageAnswer = {
       zipSha256: sha256(zipBytes),
       packageHash: String(exportEntry.packageHash),
+      verification: {
+        // `pass` alone is not read: the verifier also answers false with no failed check
+        // when it declines to judge a package, and that is its own outcome here.
+        outcome: verified.notVerifiable
+          ? 'not-verifiable'
+          : verified.unsupported
+            ? 'unsupported'
+            : verified.pass && verified.checks.length > 0
+              ? 'verified'
+              : 'failed',
+        checks: verified.checks.map(({ name, status }) => `${status} ${name}`)
+      },
       members: [...zip].map(([name, bytes]) => `${sha256(bytes)} ${bytes.length} ${name}`)
-    }
-    if (options.exportClass === 'evidence') {
-      const dir = join(tempDir, 'unpacked')
-      for (const [name, bytes] of zip) {
-        mkdirSync(dirname(join(dir, name)), { recursive: true })
-        writeFileSync(join(dir, name), bytes)
-      }
-      answer.failedChecks = verifyEvidencePackage(dir)
-        .checks.filter(({ status }) => status === 'fail')
-        .map(({ name, reason }) => (reason ? `${name}: ${reason}` : name))
     }
     return { answer, zip, exportEntry }
   }
@@ -635,7 +677,7 @@ describe('export known answers', () => {
     expect(names(zip, 'pdfs')).toHaveLength(1)
     expect(names(zip, 'timestamps')).toHaveLength(2)
     expect(zip.has(PACKAGE_ROOT_FILES.notes)).toBe(true)
-    expect(answer.failedChecks).toEqual([])
+    expect(answer.verification.outcome).toBe('verified')
     expectKnownAnswer('evidence-with-screenshots', answer)
   })
 
@@ -648,7 +690,7 @@ describe('export known answers', () => {
 
     // The one screenshot a signed entry anchors is enclosed whatever the option says.
     expect(names(zip, 'screenshots')).toHaveLength(1)
-    expect(answer.failedChecks).toEqual([])
+    expect(answer.verification.outcome).toBe('verified')
     expectKnownAnswer('evidence-without-screenshots', answer)
   })
 
@@ -660,7 +702,7 @@ describe('export known answers', () => {
     })
 
     expect(zip.has(PACKAGE_ROOT_FILES.notes)).toBe(false)
-    expect(answer.failedChecks).toEqual([])
+    expect(answer.verification.outcome).toBe('verified')
     expectKnownAnswer('evidence-minimal', answer)
   })
 
@@ -675,7 +717,7 @@ describe('export known answers', () => {
     expect(exportEntry.scope).toBe('selection')
     expect(exportEntry.captureIds).toEqual([page.id, engine.id, attachment.id])
     expect(evidenceIndex(zip).exhibits).toHaveLength(3)
-    expect(answer.failedChecks).toEqual([])
+    expect(answer.verification.outcome).toBe('verified')
     expectKnownAnswer('evidence-selection', answer)
   })
 
@@ -689,7 +731,24 @@ describe('export known answers', () => {
     expect(exportEntry.exportClass).toBe('working-copy')
     expect(zip.has(WORKING_COPY_MARKER_FILENAME)).toBe(true)
     expect(zip.has(PACKAGE_ROOT_FILES.manifest)).toBe(false)
+    expect(answer.verification.outcome).toBe('not-verifiable')
     expectKnownAnswer('working-copy', answer)
+  })
+
+  it('pins a Working Copy with every include option off', async () => {
+    const { caseId } = await seedLocalCase()
+    const { answer, zip } = await exportZip(caseId, {
+      include: include({ captures: false, screenshots: false, auditTrail: false, notes: false }),
+      exportClass: 'working-copy'
+    })
+
+    // No page archive, no screenshot and no notes: what is left is the marker,
+    // the other Exhibits and the Derived Files.
+    expect(names(zip, 'pages').filter((name) => name.endsWith('.mhtml'))).toEqual([])
+    expect(names(zip, 'screenshots')).toEqual([])
+    expect(zip.has(PACKAGE_ROOT_FILES.notes)).toBe(false)
+    expect(answer.verification.outcome).toBe('not-verifiable')
+    expectKnownAnswer('working-copy-minimal', answer)
   })
 
   it('pins a standalone HTML report', async () => {
@@ -721,7 +780,7 @@ describe('export known answers', () => {
         inExport
       ])
     ).toEqual([[peerDocument, true]])
-    expect(answer.failedChecks).toEqual([])
+    expect(answer.verification.outcome).toBe('verified')
     expectKnownAnswer('shared-case-exclude', answer)
   })
 
@@ -746,7 +805,13 @@ describe('export known answers', () => {
     // The documents name each Capture by the id its inherited entry carries.
     const indexed = evidenceIndex(zip).captures.map(({ id }) => id)
     expect(indexed.sort()).toEqual([source.page.id, source.plain.id, source.engine.id].sort())
-    expect(answer.failedChecks).toEqual([])
+    expect(answer.verification.outcome).toBe('verified')
     expectKnownAnswer('renamed-rows', answer)
+  })
+
+  it('pins no answer that no test checks', () => {
+    // When updating, the file is rewritten after this runs, without such an answer.
+    if (UPDATE) return
+    expect(Object.keys(pinned).sort()).toEqual([...ANSWER_NAMES])
   })
 })

@@ -1,468 +1,104 @@
-import type {
-  Case,
-  CaseAutoCapturePolicy,
-  Capture,
-  CaptureLinks,
-  MhtmlPartsListing,
-  FieldHitCheck,
-  FieldSearchResult,
-  Tag,
-  UnreviewedCaptures,
-  BirdbrainSettings,
-  ExportOptions,
-  ExportPreflight,
-  Selector,
-  ActiveCaseSelectors,
-  CaptureEvent,
-  Note,
-  HashVerification,
-  ExtractedDataCategory,
-  ExtractedDataSubcategory,
-  ExtractedDataItem,
-  ExtractedDataSearchResult,
-  NoteBacklink,
-  NoteBacklinkCount,
-  NoteReference,
-  NoteReferenceEdge,
-  AnnotationsBundle,
-  CaptureAnnotations,
-  AnnotationPin,
-  OperatorIdentity,
-  CaseWaybackRef,
-  WaybackRef,
-  WaybackLookupResult,
-  ArchiveInspectReport,
-  UpdateStatus,
-  DiagnosticsSnapshot,
-  UnreconciledDeletionReport,
-  LogEntry,
-  SessionRecord,
-  BugReportInput,
-  BugReportResult,
-  RecentActivityEvent,
-  CaseInventory,
-  ExhibitVerification,
-  StagingCommitResult,
-  StagingDiscardResult,
-  StagingFile,
-  Persona,
-  PersonaImportResult,
-  PersonaStorageState,
-  LaunchedBrowserLeftover,
-  LaunchedBrowserOption,
-  LaunchedBrowserStatus,
-  SyncState,
-  CaseMember,
-  SharingChangedEvent,
-  SharingInvite,
-  SharingInvitePreview,
-  SharingJoinProgressEvent,
-  SharingJoinResult,
-  SharingMembers,
-  SharingSyncOutcome,
-  SharingExclusion
-} from '@shared/types'
-import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
-import type {
-  AddSubjectParams,
-  CaseChange,
-  CaseRevision,
-  ChooseSubjectParams,
-  ClaimCheck,
-  DecideJointParams,
-  DecideSpanParams,
-  InvestigationView,
-  KeepSubjectParams,
-  MarkOwnIdentifierParams,
-  OwnIdentifierEntry,
-  RunProgressEvent,
-  RunRequest,
-  SetCopyMarkParams,
-  SetSourceClassParams,
-  SetWithheldParams,
-  SpanDetail,
-  UnmarkOwnIdentifierParams
-} from '@shared/investigation'
-import type {
-  CreateCaseParams,
-  UpdateCaseParams,
-  SetAutoCapturePolicyParams,
-  CreateTagParams,
-  UpdateTagParams,
-  CaptureTagParams,
-  NoteTagParams,
-  ApplyTagToNoteParams,
-  ApplyTagToNoteResult,
-  MergeTagsParams,
-  MergeTagsResult,
-  CreatePersonaParams,
-  UpdatePersonaParams,
-  CreateSelectorParams,
-  UpdateSelectorParams,
-  CreateNoteParams,
-  UpdateNoteParams,
-  NoteBacklinksParams,
-  BulkCreateSelectorsParams,
-  DbStats,
-  DbTableRowsParams,
-  DbTableRowsResult,
-  DbCreateRowParams,
-  DbUpdateRowParams,
-  DbRowIdentifier,
-  DbExportTableParams,
-  DbSnapshot,
-  DbRestoreSnapshotParams,
-  OrphanReport,
-  SaveAnnotationsParams,
-  UpsertAnnotationPinParams,
-  SelectorRematchedEvent,
-  GuestFrameReplacedEvent,
-  GuestMouseDownEvent,
-  GuestMouseUpEvent,
-  ExtensionAttachEvent,
-  DeepLinkTarget,
-  ExportProgressEvent,
-  ExportResult,
-  LookupWaybackLinkParams,
-  LookupWaybackLinksParams,
-  WaybackLinkBatchResult,
-  WaybackLinkLookupResult,
-  WaybackLinkProgressEvent,
-  PinWaybackSnapshotParams,
-  ArchiveProgressEvent,
-  ArchiveExportResult,
-  RecaptureEnqueuePayload,
-  EnqueueResult,
-  RecaptureQueueStatus,
-  RecaptureListJobsQuery,
-  RecaptureJobTarget,
-  RecaptureCancelResult,
-  BackgroundJobView,
-  RendererLogPayload,
-  SessionStateEvent,
-  LaunchedBrowserPopOutEvent,
-  CaptureBatchPayload,
-  BatchDeleteResult,
-  CaptureDeleteResult,
-  BatchCountResult,
-  DuplicateCaptureResult,
-  FieldBuildSummary,
-  DbRebuildFtsResult,
-  VpnStatus,
-  VpnWarningTarget,
-  VpnWarningOccasion,
-  VpnWarningCheck,
-  VpnWarningAnswer
+import {
+  IPC_CHANNELS,
+  type ContractedChannel,
+  type IpcChannel,
+  type IpcEventChannel,
+  type IpcEventContract,
+  type IpcInvokeContract
 } from '@shared/ipc'
 
-export interface BirdbrainAPI {
-  cases: {
-    list(): Promise<Case[]>
-    get(id: string): Promise<Case | undefined>
-    create(params: CreateCaseParams): Promise<Case>
-    update(params: UpdateCaseParams): Promise<Case | undefined>
-    delete(id: string): Promise<boolean>
-    // Removes the seeded demonstration case and its artifacts (#405). False
-    // when the case is not flagged as a demonstration case.
-    deleteDemo(id: string): Promise<boolean>
-    exportArchive(caseId: string): Promise<ArchiveExportResult>
-    inspectArchive(): Promise<ArchiveInspectReport | null>
-    importArchive(archivePath: string, overrideTamper: boolean): Promise<{ newCaseId: string }>
-    recentActivity(limit?: number): Promise<RecentActivityEvent[]>
-    getAutoCapturePolicy(caseId: string): Promise<CaseAutoCapturePolicy>
-    setAutoCapturePolicy(params: SetAutoCapturePolicyParams): Promise<CaseAutoCapturePolicy>
-    // Builds link and header search records for the Case's Captures that lack them
-    // (docs/plans/2026-10-09-case-retrieval-first-slice.md, D5).
-    ensureSearchFields(caseId: string): Promise<FieldBuildSummary>
-    // Searches the Case's link and header records (the same plan, D6).
-    searchFields(caseId: string, query: string): Promise<FieldSearchResult>
-    // Checks one field record against the stored files (the same plan, D7).
-    checkFieldHit(fieldId: number): Promise<FieldHitCheck>
-    // The Case's unreviewed Captures in the view's four groups (the same plan, D8).
-    listUnreviewed(caseId: string, rareLimit: number): Promise<UnreviewedCaptures>
+// The shape of `window.birdbrain`, derived from the contract in ipc.ts. An
+// invoke channel `domain:action` sits at `birdbrain.<domain>.<action>`, and an
+// event channel `event:<name>` at `birdbrain.on<Name>`. The type below and
+// bridgePath() state that one rule twice, once for the compiler and once for
+// the preload, and tests/preload/bridge.test.ts checks the bridge they build
+// against its own hand-written lists.
+
+// The channels whose bridge path the rule does not give. A new entry needs a
+// matching one in the bridge test, which is what makes it a reviewed decision:
+// in METHOD_NAME_EXCEPTIONS when the method name differs from the channel's
+// action, and in ROOT_LEVEL_LEAVES when the path has no dot.
+export const BRIDGE_PATH_EXCEPTIONS = {
+  'extension:path': 'extension.getPath',
+  'export:generate': 'export.generateReport',
+  'diagnostics:recent': 'diagnostics.recentEntries',
+  'search:query': 'search',
+  'captures:testPipeline': 'testPipeline',
+  'captures:testHttp': 'testHttp',
+  // The only event channel with two colons, so `on` + its capitalised name is
+  // not an identifier.
+  'event:selector:rematched': 'onSelectorRematched'
+} as const satisfies { readonly [C in IpcChannel]?: string }
+
+type PathExceptions = typeof BRIDGE_PATH_EXCEPTIONS
+
+export type BridgePath<C extends IpcChannel> = C extends keyof PathExceptions
+  ? PathExceptions[C]
+  : C extends `event:${infer Name}`
+    ? `on${Capitalize<Name>}`
+    : C extends `${infer Domain}:${infer Action}`
+      ? `${Domain}.${Action}`
+      : never
+
+export type BridgeInvoke<C extends ContractedChannel> = (
+  ...args: IpcInvokeContract[C]['args']
+) => Promise<IpcInvokeContract[C]['result']>
+
+// Subscribes to one main -> renderer event; the returned function unsubscribes.
+export type BridgeSubscribe<C extends IpcEventChannel> = (
+  callback: (payload: IpcEventContract[C]) => void
+) => () => void
+
+type BridgeNamespace = {
+  [C in ContractedChannel]: BridgePath<C> extends `${infer Namespace}.${string}` ? Namespace : never
+}[ContractedChannel]
+
+export type BirdbrainAPI = {
+  [N in BridgeNamespace]: {
+    [
+      C in ContractedChannel as BridgePath<C> extends `${N}.${infer Method}` ? Method : never
+    ]: BridgeInvoke<C>
   }
-  captures: {
-    list(caseId: string): Promise<Capture[]>
-    get(id: string): Promise<Capture | undefined>
-    delete(id: string): Promise<CaptureDeleteResult>
-    getContent(captureId: string, type: 'html' | 'png' | 'txt'): Promise<string | null>
-    getThumbnail(captureId: string): Promise<string | null>
-    getMatchingSelectors(captureId: string): Promise<Selector[]>
-    download(captureId: string): Promise<string | null>
-    downloadPdf(captureId: string): Promise<string | null>
-    downloadScreenshot(captureId: string): Promise<string | null>
-    openExternal(url: string): Promise<void>
-    countsByCase(): Promise<Record<string, number>>
-    toggleFavorite(captureId: string): Promise<boolean>
-    isFavorite(captureId: string): Promise<boolean>
-    listFavorites(caseId: string): Promise<string[]>
-    verify(captureId: string): Promise<HashVerification>
-    getMhtmlUrl(captureId: string): Promise<string | null>
-    getHtmlUrl(captureId: string): Promise<string | null>
-    getLinks(captureId: string): Promise<CaptureLinks | null>
-    listMhtmlParts(captureId: string): Promise<MhtmlPartsListing | null>
-    deleteMany(payload: CaptureBatchPayload): Promise<BatchDeleteResult>
-    duplicate(captureId: string): Promise<DuplicateCaptureResult>
-    setFavoriteMany(payload: CaptureBatchPayload & { favorite: boolean }): Promise<BatchCountResult>
+} & {
+  [
+    C in ContractedChannel as BridgePath<C> extends `${string}.${string}` ? never : BridgePath<C>
+  ]: BridgeInvoke<C>
+} & {
+  [C in IpcEventChannel as BridgePath<C>]: BridgeSubscribe<C>
+}
+
+export function bridgePath<C extends IpcChannel>(channel: C): BridgePath<C>
+export function bridgePath(channel: IpcChannel): string {
+  const exception = (BRIDGE_PATH_EXCEPTIONS as Partial<Record<IpcChannel, string>>)[channel]
+  if (exception !== undefined) return exception
+  const colon = channel.indexOf(':')
+  const domain = channel.slice(0, colon)
+  const name = channel.slice(colon + 1)
+  if (domain === 'event') return `on${name.charAt(0).toUpperCase()}${name.slice(1)}`
+  return `${domain}.${name}`
+}
+
+export function isEventChannel(channel: IpcChannel): channel is IpcEventChannel {
+  return channel.startsWith('event:')
+}
+
+// Builds the bridge object: one leaf per channel in IPC_CHANNELS and nothing
+// else, each made by the caller. The preload passes the two functions that
+// reach ipcRenderer; a test passes stubs.
+export function buildBridge(leaves: {
+  invoke: <C extends ContractedChannel>(channel: C) => BridgeInvoke<C>
+  subscribe: <C extends IpcEventChannel>(channel: C) => BridgeSubscribe<C>
+}): BirdbrainAPI {
+  const bridge: Record<string, unknown> = {}
+  for (const channel of Object.values(IPC_CHANNELS)) {
+    const leaf = isEventChannel(channel) ? leaves.subscribe(channel) : leaves.invoke(channel)
+    const [first, method] = bridgePath(channel).split('.')
+    if (method === undefined) {
+      bridge[first] = leaf
+    } else {
+      const namespace = (bridge[first] ??= {}) as Record<string, unknown>
+      namespace[method] = leaf
+    }
   }
-  recapture: {
-    enqueue(payload: RecaptureEnqueuePayload): Promise<EnqueueResult>
-    queueStatus(): Promise<RecaptureQueueStatus>
-    enqueueCaptures(payload: CaptureBatchPayload): Promise<EnqueueResult>
-    listJobs(query: RecaptureListJobsQuery): Promise<BackgroundJobView[]>
-    resume(payload: { batchId: string }): Promise<{ resumed: number; reason?: string }>
-    dismiss(target: RecaptureJobTarget): Promise<{ dismissed: number }>
-    cancel(target: RecaptureJobTarget): Promise<RecaptureCancelResult>
-    retry(target: RecaptureJobTarget): Promise<{ retried: number; reason?: string }>
-  }
-  tags: {
-    list(): Promise<Tag[]>
-    create(params: CreateTagParams): Promise<Tag>
-    update(params: UpdateTagParams): Promise<Tag | undefined>
-    delete(id: string): Promise<boolean>
-    addToCapture(params: CaptureTagParams): Promise<void>
-    removeFromCapture(params: CaptureTagParams): Promise<void>
-    getForCapture(captureId: string): Promise<Tag[]>
-    countForCase(caseId: string): Promise<number>
-    usageCountsForCase(caseId: string): Promise<Record<string, number>>
-    captureMatrix(caseId: string, limit: number): Promise<Record<string, string[]>>
-    addToCaptures(payload: CaptureBatchPayload & { tagId: string }): Promise<BatchCountResult>
-    removeFromCaptures(payload: CaptureBatchPayload & { tagId: string }): Promise<BatchCountResult>
-    countsForCaptures(payload: CaptureBatchPayload): Promise<Record<string, number>>
-    findOrCreate(params: CreateTagParams): Promise<Tag>
-    applyToNote(params: ApplyTagToNoteParams): Promise<ApplyTagToNoteResult>
-    removeFromNote(params: NoteTagParams): Promise<void>
-    getForNote(noteId: string): Promise<Tag[]>
-    merge(params: MergeTagsParams): Promise<MergeTagsResult>
-    capturesWithAnyTag(caseId: string, tagIds: string[]): Promise<string[]>
-  }
-  persona: {
-    list(): Promise<Persona[]>
-    create(params: CreatePersonaParams): Promise<Persona>
-    update(params: UpdatePersonaParams): Promise<Persona | undefined>
-    delete(id: string): Promise<boolean>
-    import(personaId: string): Promise<PersonaImportResult | null>
-    storageState(): Promise<PersonaStorageState>
-  }
-  selectors: {
-    list(caseId: string): Promise<Selector[]>
-    get(id: string): Promise<Selector | undefined>
-    create(params: CreateSelectorParams): Promise<Selector>
-    update(params: UpdateSelectorParams): Promise<Selector | undefined>
-    rescan(id: string): Promise<boolean>
-    delete(id: string): Promise<boolean>
-    listActive(): Promise<ActiveCaseSelectors[]>
-    matchCounts(caseId: string): Promise<Record<string, number>>
-    matchingCaptures(caseId: string, selectorIds: string[]): Promise<string[]>
-    coverage(caseId: string): Promise<{ matched: number; total: number }>
-    captureMatrix(caseId: string, limit: number): Promise<Record<string, string[]>>
-    bulkCreate(params: BulkCreateSelectorsParams): Promise<Selector[]>
-    exportMatches(
-      caseId: string,
-      selectorId?: string
-    ): Promise<{ exported: boolean; path?: string }>
-  }
-  notes: {
-    list(caseId: string): Promise<Note[]>
-    get(id: string): Promise<Note | undefined>
-    create(params: CreateNoteParams): Promise<Note>
-    update(params: UpdateNoteParams): Promise<Note | undefined>
-    delete(id: string): Promise<boolean>
-    count(caseId: string): Promise<number>
-    search(caseId: string, query: string): Promise<Note[]>
-    references(noteId: string): Promise<NoteReference[]>
-    backlinks(params: NoteBacklinksParams): Promise<NoteBacklink[]>
-    backlinkCounts(caseId: string): Promise<NoteBacklinkCount[]>
-    referenceEdges(caseId: string): Promise<NoteReferenceEdge[]>
-  }
-  wayback: {
-    lookup(captureId: string): Promise<WaybackLookupResult>
-    lookupLink(params: LookupWaybackLinkParams): Promise<WaybackLinkLookupResult>
-    lookupLinks(params: LookupWaybackLinksParams): Promise<WaybackLinkBatchResult>
-    cancelLookupLinks(captureId: string): Promise<boolean>
-    list(captureId: string): Promise<WaybackRef[]>
-    listForCase(caseId: string): Promise<CaseWaybackRef[]>
-    pin(params: PinWaybackSnapshotParams): Promise<WaybackRef>
-    unpin(refId: string): Promise<boolean>
-  }
-  annotations: {
-    get(captureId: string): Promise<AnnotationsBundle>
-    save(params: SaveAnnotationsParams): Promise<CaptureAnnotations>
-    delete(captureId: string): Promise<void>
-    upsertPin(params: UpsertAnnotationPinParams): Promise<AnnotationPin>
-    deletePin(pinId: string): Promise<void>
-  }
-  extension: {
-    getPath(): Promise<string>
-    openFolder(): Promise<void>
-  }
-  session: {
-    snapshot(): Promise<SessionStateEvent>
-    activateCase(caseId: string): Promise<SessionStateEvent>
-    start(): Promise<SessionStateEvent>
-    stop(): Promise<SessionStateEvent>
-  }
-  launchedBrowser: {
-    list(): Promise<LaunchedBrowserOption[]>
-    chooseExecutable(): Promise<LaunchedBrowserOption | null>
-    status(): Promise<LaunchedBrowserStatus>
-    launch(executablePath: string): Promise<LaunchedBrowserStatus>
-    cancelLaunch(): Promise<LaunchedBrowserStatus>
-    endSession(): Promise<LaunchedBrowserStatus>
-    checkLeftovers(): Promise<LaunchedBrowserLeftover[]>
-    popOut(): Promise<boolean>
-    showPopOut(): Promise<void>
-    dock(): Promise<void>
-    popOutState(): Promise<boolean>
-    capture(targetId: string, request: { scrollToLoad: boolean }): Promise<LaunchedBrowserStatus>
-  }
-  search(caseId: string, query: string): Promise<Capture[]>
-  settings: {
-    get(): Promise<BirdbrainSettings>
-    update(partial: Partial<BirdbrainSettings>): Promise<BirdbrainSettings>
-    reset(): Promise<BirdbrainSettings>
-    getIdentity(): Promise<OperatorIdentity>
-    chooseStoragePath(): Promise<string | null>
-  }
-  export: {
-    preflight(caseId: string, captureIds?: string[]): Promise<ExportPreflight>
-    generateReport(caseId: string, options: ExportOptions): Promise<ExportResult>
-  }
-  shell: {
-    showItemInFolder(path: string): Promise<void>
-    openPath(path: string): Promise<void>
-  }
-  exhibits: {
-    inventory(caseId: string): Promise<CaseInventory>
-    verify(caseId: string, exhibitId: string): Promise<ExhibitVerification>
-  }
-  manifest: {
-    snapshot(caseId: string): Promise<CaseManifestSnapshot>
-  }
-  sharing: {
-    getSyncState(caseId: string): Promise<SyncState>
-    createInvite(caseId: string, ownerMemberCode?: string): Promise<SharingInvite>
-    cancelInvite(caseId: string, inviteId: string): Promise<void>
-    readInvite(invite: string): Promise<SharingInvitePreview>
-    join(invite: string): Promise<SharingJoinResult>
-    approveJoin(caseId: string, requestId: string, memberCode: string): Promise<CaseMember>
-    declineJoin(caseId: string, requestId: string): Promise<void>
-    revoke(caseId: string, installationId: string): Promise<CaseMember>
-    excludeExhibit(caseId: string, exhibitId: string, reason?: string): Promise<SharingExclusion>
-    syncNow(caseId: string): Promise<SharingSyncOutcome[]>
-    getMembers(caseId: string): Promise<SharingMembers>
-    isAvailable(): Promise<boolean>
-    setRelayUrl(relayUrl: string): Promise<void>
-  }
-  // Case investigation (engine plan, E10); served by the fake engine in unpackaged builds.
-  investigation: {
-    getRevision(caseId: string): Promise<CaseRevision>
-    getView(caseId: string): Promise<InvestigationView>
-    getSpan(caseId: string, spanId: string): Promise<SpanDetail>
-    checkSpan(caseId: string, spanId: string): Promise<ClaimCheck>
-    startRun(request: RunRequest): Promise<string>
-    cancelRun(caseId: string, runId: string): Promise<void>
-    getChanges(caseId: string, runId: string): Promise<CaseChange[]>
-    decideJoint(params: DecideJointParams): Promise<CaseRevision>
-    decideSpan(params: DecideSpanParams): Promise<CaseRevision>
-    chooseSubject(params: ChooseSubjectParams): Promise<CaseRevision>
-    addSubject(params: AddSubjectParams): Promise<CaseRevision>
-    keepSubject(params: KeepSubjectParams): Promise<CaseRevision>
-    setSourceClass(params: SetSourceClassParams): Promise<CaseRevision>
-    setCopyMark(params: SetCopyMarkParams): Promise<CaseRevision>
-    setWithheld(params: SetWithheldParams): Promise<CaseRevision>
-    listOwnIdentifiers(caseId: string): Promise<OwnIdentifierEntry[]>
-    markOwnIdentifier(params: MarkOwnIdentifierParams): Promise<CaseRevision>
-    unmarkOwnIdentifier(params: UnmarkOwnIdentifierParams): Promise<CaseRevision>
-  }
-  staging: {
-    upload(caseId: string): Promise<StagingFile[]>
-    commit(caseId: string, stagingIds: string[]): Promise<StagingCommitResult>
-    discard(caseId: string, stagingIds: string[]): Promise<StagingDiscardResult>
-  }
-  app: {
-    getVersion(): Promise<string>
-  }
-  diagnostics: {
-    get(): Promise<DiagnosticsSnapshot>
-    log(payload: RendererLogPayload): Promise<string>
-    recentEntries(limit: number): Promise<LogEntry[]>
-    revealLog(): Promise<void>
-    exportLogs(): Promise<{ path: string } | null>
-    openStorageRoot(): Promise<void>
-    lastSession(): Promise<SessionRecord | null>
-    createReport(input: BugReportInput): Promise<BugReportResult | null>
-    unreconciledDeletions(): Promise<UnreconciledDeletionReport>
-  }
-  updates: {
-    getStatus(): Promise<UpdateStatus>
-    check(): Promise<UpdateStatus>
-    download(): Promise<void>
-    install(): Promise<void>
-  }
-  egress: {
-    vpnStatus(): Promise<VpnStatus>
-    checkVpnWarning(
-      target: VpnWarningTarget,
-      occasion: VpnWarningOccasion
-    ): Promise<VpnWarningCheck>
-    answerVpnWarning(answer: VpnWarningAnswer): Promise<void>
-  }
-  db: {
-    stats(): Promise<DbStats>
-    tableRows(params: DbTableRowsParams): Promise<DbTableRowsResult>
-    createRow(params: DbCreateRowParams): Promise<Record<string, unknown>>
-    updateRow(params: DbUpdateRowParams): Promise<boolean>
-    deleteRow(params: DbRowIdentifier): Promise<boolean>
-    vacuum(): Promise<{ freedBytes: number }>
-    rebuildFts(): Promise<DbRebuildFtsResult>
-    integrityCheck(): Promise<{ ok: boolean; issues: string[] }>
-    purgeArchived(): Promise<{ casesDeleted: number; capturesDeleted: number }>
-    findOrphans(): Promise<OrphanReport>
-    cleanOrphans(report: OrphanReport): Promise<{ dbRecordsRemoved: number; filesRemoved: number }>
-    backup(): Promise<{ path: string } | null>
-    restore(): Promise<{ restored: boolean }>
-    snapshots(): Promise<DbSnapshot[]>
-    restoreSnapshot(params: DbRestoreSnapshotParams): Promise<{ restored: boolean }>
-    exportTable(params: DbExportTableParams): Promise<{ path: string } | null>
-  }
-  onExportProgress(callback: (event: ExportProgressEvent) => void): () => void
-  onArchiveProgress(callback: (event: ArchiveProgressEvent) => void): () => void
-  onNewCapture(callback: (capture: Capture) => void): () => void
-  onSessionStateChanged(
-    callback: (state: {
-      sessionActive: boolean
-      activeCaseId: string | null
-      captureCount: number
-    }) => void
-  ): () => void
-  onExtensionConnection(callback: (data: { connected: boolean }) => void): () => void
-  onExtensionAttach(callback: (event: ExtensionAttachEvent) => void): () => void
-  onCaptureActivity(callback: (event: CaptureEvent) => void): () => void
-  onRecaptureJob(callback: (job: BackgroundJobView) => void): () => void
-  onLogEntry(callback: (entry: LogEntry) => void): () => void
-  onSelectorRematched(callback: (event: SelectorRematchedEvent) => void): () => void
-  onDeepLinkNavigate(callback: (target: DeepLinkTarget) => void): () => void
-  onUpdateStatus(callback: (status: UpdateStatus) => void): () => void
-  onGuestFrameReplaced(callback: (event: GuestFrameReplacedEvent) => void): () => void
-  onGuestMouseDown(callback: (event: GuestMouseDownEvent) => void): () => void
-  onGuestMouseUp(callback: (event: GuestMouseUpEvent) => void): () => void
-  onSharingChanged(callback: (event: SharingChangedEvent) => void): () => void
-  onSharingJoinProgress(callback: (event: SharingJoinProgressEvent) => void): () => void
-  onInvestigationProgress(callback: (event: RunProgressEvent) => void): () => void
-  onWaybackLinkProgress(callback: (event: WaybackLinkProgressEvent) => void): () => void
-  onLaunchedBrowserStatus(callback: (status: LaunchedBrowserStatus) => void): () => void
-  onLaunchedBrowserPopOut(callback: (event: LaunchedBrowserPopOutEvent) => void): () => void
-  // The capture shortcut found more than one tab it could take, or none.
-  onLaunchedBrowserPickTab(callback: () => void): () => void
-  testPipeline(): Promise<{ success: boolean; durationMs: number; error?: string }>
-  testHttp(): Promise<{ success: boolean; durationMs: number; error?: string }>
-  extractedData: {
-    categories(caseId: string): Promise<ExtractedDataCategory[]>
-    subcategories(caseId: string, category: string): Promise<ExtractedDataSubcategory[]>
-    items(caseId: string, category: string, subcategory: string): Promise<ExtractedDataItem[]>
-    count(caseId: string): Promise<number>
-    search(caseId: string, query: string): Promise<ExtractedDataSearchResult[]>
-    reprocess(caseId: string): Promise<{ processed: number }>
-  }
+  return bridge as unknown as BirdbrainAPI
 }

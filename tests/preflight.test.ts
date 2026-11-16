@@ -653,6 +653,32 @@ process.exit(failed ? 1 : 0)
       expect(block()).toContain('diff scored against `base`')
     })
 
+    it('runs every step when the record cannot be read', () => {
+      branch()
+      expect(carry().status).toBe(0)
+      const ran = calls()
+      writeFileSync(join(repo, '.preflight', 'verification.json'), '{ not json')
+      git('commit', '--allow-empty', '-qm', 'same content, new commit')
+      const result = carry()
+      expect(result.stdout).toContain('not carried forward, no record of an earlier run')
+      expect(calls()).toBeGreaterThan(ran)
+      expect(block()).not.toContain('source=carried')
+    })
+
+    it('runs every step when the base no longer meets the measured commit where it did', () => {
+      const measured = branch()
+      expect(carry().status).toBe(0)
+      const ran = calls()
+      // The base ref moves to an earlier commit, so the measured run scored another diff.
+      git('tag', '-f', 'base', 'base~1')
+      git('commit', '--allow-empty', '-qm', 'same content, new commit')
+      const result = carry()
+      expect(result.stdout).toContain(
+        `not carried forward, base no longer meets ${measured} where the run scored its diff`
+      )
+      expect(calls()).toBeGreaterThan(ran)
+    })
+
     it('still refuses a dirty tree', () => {
       branch()
       expect(carry().status).toBe(0)

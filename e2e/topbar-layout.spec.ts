@@ -28,6 +28,15 @@ async function createCase(page: Page, name: string): Promise<string> {
 }
 
 test.describe('Top bar layout', () => {
+  // The status group is widest when it names an issue, as "VPN not seen" does, so the layout is
+  // measured with that label showing rather than the fixture's default VPN.
+  test.beforeAll(() => {
+    process.env.BIRDBRAIN_E2E_VPN = 'not-seen'
+  })
+  test.afterAll(() => {
+    delete process.env.BIRDBRAIN_E2E_VPN
+  })
+
   test('keeps the case search clear of the side controls', async ({ electronApp, page }) => {
     test.setTimeout(120000)
 
@@ -63,6 +72,10 @@ test.describe('Top bar layout', () => {
       await expect(controls.getByTestId('topbar-rec')).toHaveCount(0)
       await expect(controls.getByTestId('status-group')).toBeVisible()
 
+      // The viewport emulation below leaves the native window controls' room at what the window
+      // opened with, so the room Linux's three buttons take is pinned here.
+      await page.addStyleTag({ content: ':root { --window-controls-right: 113px !important; }' })
+
       // 1,200 is the width where the design review of 2026-11-04 saw the name cut to "F.".
       for (const width of [1400, 1200, 1100, 1000, 900]) {
         await electronApp.windows()[0].setViewportSize({ width, height: 800 })
@@ -80,6 +93,11 @@ test.describe('Top bar layout', () => {
           })
           expect(overlapWidth(searchBox, leftBox)).toBeLessThanOrEqual(0)
           expect(overlapWidth(searchBox, rightBox)).toBeLessThanOrEqual(0)
+          // A control can spill out of the group's box, so each one is checked too.
+          for (const control of await controls.locator(':scope > *').all()) {
+            const box = await control.boundingBox()
+            if (box) expect(overlapWidth(searchBox, box)).toBeLessThanOrEqual(0)
+          }
         }).toPass({ timeout: 5000 })
 
         // The case name's track keeps 160 pixels, and the name at least 64 of them, before the
@@ -150,11 +168,11 @@ test.describe('Top bar layout', () => {
       webContents.send('event:extensionConnection', { connected: false })
     })
     await expect(page.getByTestId('topbar-rec')).toHaveCount(0)
-    await electronApp.windows()[0].setViewportSize({ width: 1600, height: 800 })
+    await electronApp.windows()[0].setViewportSize({ width: 1700, height: 800 })
     await expect(async () => {
       const { x, width } = (await search.boundingBox())!
       expect(width).toBe(400)
-      expect(Math.abs(x + width / 2 - 800)).toBeLessThanOrEqual(1)
+      expect(Math.abs(x + width / 2 - 850)).toBeLessThanOrEqual(1)
     }).toPass({ timeout: 5000 })
 
     // Every state of the pill opens Members; a Case nobody shared lands on the not-shared card.

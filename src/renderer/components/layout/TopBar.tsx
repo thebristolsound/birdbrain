@@ -177,10 +177,11 @@ export function TopBar() {
 
       {/* Right controls: on a Case, Share, Export and Launch browser; then how the app is doing,
           then Settings. The recording mark and the session switch live in CaseActionBar, under
-          this bar. */}
+          this bar. The group never narrows below its controls, so the search gives way instead
+          of sitting over Share. */}
       <div
         data-testid="topbar-controls"
-        className="flex flex-1 basis-0 items-center justify-end gap-2"
+        className="flex min-w-max flex-1 basis-0 items-center justify-end gap-2"
       >
         {/* The dashboard and the wizard have no rail and no action bar (`2c`), so the session's
             control, and the recording mark while it records, stay up here. */}

@@ -176,7 +176,11 @@ describe('PersonasSection rows', () => {
   })
 
   it('leaves any other import failure to the toast', async () => {
-    importCookies.mockRejectedValueOnce(new Error('disk full'))
+    // A refusal with another reason, in the shape the preload rejects with.
+    importCookies.mockRejectedValueOnce({
+      message: 'No persona with that id',
+      code: 'PERSONA_NOT_FOUND'
+    })
     renderSection()
     fireEvent.click(await enabledImportButton())
     await waitFor(() => expect(importCookies).toHaveBeenCalled())

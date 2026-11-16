@@ -33,9 +33,11 @@ start the next step when that state holds.
    their `approved` label at head is the gate (ADR-0041). Apply the label yourself only when
    their answer says to, only at the head the question named, with the override
    `.claude/hooks/guard-maintainer-labels.sh` documents. Done when `merge-gate` is green at head.
-7. **Merge.** `.claude/skills/merge-pr/scripts/merge.sh <n> --admin`; the `merge-pr` skill says
-   why the plain call cannot merge and what the script checks first. Done when it prints the
-   merge commit on `main`.
+7. **Merge, when the maintainer asked for the merge.** A request to `full-send`, ship or land
+   the change is that ask; without one, merging stays a human act (ADR-0017), so report the
+   pull request as ready and stop. With it: `.claude/skills/merge-pr/scripts/merge.sh <n> --admin`.
+   The `merge-pr` skill says why the plain call cannot merge and what the script checks first.
+   Done when it prints the merge commit on `main`.
 8. **Report.** The link, the merge commit, the proof, each decision you took for the
    maintainer, and each finding you left in place.
 
@@ -51,7 +53,8 @@ Every push costs a full `pnpm preflight`, a review fleet round, and on an
 - **Merge `origin/main` in on a signal** (ADR-0021): GitHub reports a conflict, or a required
   check needs the merged tree. Use `git merge --no-commit --no-ff origin/main` and a
   `chore(merge): ...` commit. When the diff against `main` is unchanged, `pnpm preflight --carry`
-  writes the block for the new head without a run.
+  writes the block for the new head without a run. Nothing ran on the merged tree locally,
+  so the required checks at the new head must be green before step 7, as for any head.
 - **The description is edited in place.** A wrong sentence in it needs a `PATCH` of the body,
   never a push.
 - **Another open pull request that edits the same files** makes the second to land need

@@ -1781,7 +1781,8 @@ describe('export', () => {
 
   it('names a package and evidence.json in the index sheet only when the export is one (#2095)', async () => {
     await ingest(caseId, '<html><body>Index scope</body></html>', 'https://example.com', 'I')
-    const indexNoteOf = async (format: 'html' | 'zip'): Promise<string> => {
+    // Returns the note's raw markup; `text` reduces it to the words a reader sees.
+    const indexNoteOf = async (format: 'html' | 'pdf' | 'zip'): Promise<string> => {
       const outputPath = join(tempDir, `index.${format}`)
       await generateReport(
         caseId,
@@ -1807,12 +1808,14 @@ describe('export', () => {
         /<h2>Exhibit index and verification results<\/h2>\s*<div class="rule-medium"><\/div>\s*<p class="fine">([\s\S]*?)<\/p>/
       )!
       return note
+    }
+    const text = (note: string): string =>
+      note
         .replace(/<[^>]+>/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
-    }
 
-    const standalone = await indexNoteOf('html')
+    const standalone = text(await indexNoteOf('html'))
     expect(standalone).toBe(
       'Times are UTC. The digest column shows the first 16 hexadecimal characters of a ' +
         '64-character SHA-256 digest and is truncated for layout only; the full digest for ' +
@@ -1821,13 +1824,19 @@ describe('export', () => {
         'a report covering a selection carries gaps.'
     )
     expect(standalone).not.toMatch(/package|evidence\.json/i)
+    // A PDF export writes the same single HTML file as an HTML export, with nothing beside it.
+    expect(text(await indexNoteOf('pdf'))).toBe(standalone)
 
+    // Raw markup, so the package's note stays byte-identical to its wording before #2095.
     expect(await indexNoteOf('zip')).toBe(
-      'Times are UTC. The digest column shows the first 16 hexadecimal characters of a ' +
-        '64-character SHA-256 digest and is truncated for layout only; the full digest for ' +
-        "every exhibit is printed on that exhibit's page and in evidence.json . Exhibit numbers " +
-        'are the ones recorded when each exhibit was committed to the case; they are not ' +
-        'positions in this table, and a package covering a selection carries gaps.'
+      'Times are UTC. The digest column shows the first 16 hexadecimal characters of a\n' +
+        '  64-character SHA-256 digest and is truncated for layout only; the full digest for ' +
+        'every exhibit\n' +
+        "  is printed on that exhibit's page and in <code>evidence.json</code>. Exhibit " +
+        'numbers are the\n' +
+        '  ones recorded when each exhibit was committed to the case; they are not positions ' +
+        'in this\n' +
+        '  table, and a package covering a selection carries gaps.'
     )
   })
 

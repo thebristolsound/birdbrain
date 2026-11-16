@@ -29,7 +29,7 @@ mode="${1:-}"
 install=1
 case "$mode" in
   "") ;;
-  --no-install) install=0 ;;
+  --no-install) install=0; [ $# -eq 1 ] || mode=bad ;;
   --styles-from-cache) [ $# -eq 2 ] && [ -d "$2" ] || mode=bad ;;
   *) mode=bad ;;
 esac
@@ -145,6 +145,7 @@ STYLE_CACHE="$TOOLS/vale-styles/Google"
 place_style() {
   local tmp
   [ -d "$2" ] && return 0
+  # .gitignore covers this name, so a copy killed part-way leaves the tree clean.
   tmp="$(dirname "$2")/.Google.tmp.$$"
   rm -rf "$tmp"
   if cp -R "$1" "$tmp" && mv "$tmp" "$2"; then return 0; fi
@@ -156,13 +157,19 @@ place_style() {
 sync_cache() {
   local vale_dir="$1" tmp
   # The callers run in an `||` context, where `set -e` is off, so each failure is checked here.
-  tmp="$(mktemp -d "$TOOLS/.styles.XXXXXX" 2>/dev/null)" || return 0
+  if ! tmp="$(mktemp -d "$TOOLS/.styles.XXXXXX" 2>/dev/null)"; then
+    log "cannot write $TOOLS, so vale sync did not run"
+    return 0
+  fi
   printf 'StylesPath = styles\nPackages = Google\n' >"$tmp/.vale.ini"
   if (cd "$tmp" && PATH="$vale_dir:$PATH" vale sync >/dev/null 2>&1) &&
     [ -f "$tmp/styles/Google/meta.json" ]; then
-    if mkdir -p "$(dirname "$STYLE_CACHE")" 2>/dev/null && [ ! -d "$STYLE_CACHE" ]; then
-      mv "$tmp/styles/Google" "$STYLE_CACHE" || true
+    if ! { mkdir -p "$(dirname "$STYLE_CACHE")" && { [ -d "$STYLE_CACHE" ] ||
+      mv "$tmp/styles/Google" "$STYLE_CACHE"; }; } 2>/dev/null; then
+      log "vale sync succeeded but the package could not be moved into $STYLE_CACHE"
     fi
+  else
+    log "vale sync failed (network or Vale error)"
   fi
   rm -rf "$tmp"
 }
@@ -179,16 +186,22 @@ sync_styles() {
   fi
   [ -d "$dest" ] && return 0
   if [ ! -d "$STYLE_CACHE" ]; then
-    log "vale sync failed and $STYLE_CACHE holds no copy"
+    log "no Google style in this checkout, and $STYLE_CACHE holds no copy"
     return 1
   fi
   place_style "$STYLE_CACHE" "$dest" || { log "could not copy the Google style from $STYLE_CACHE"; return 1; }
 }
 
 if [ "$mode" = "--styles-from-cache" ]; then
-  [ -d "$STYLE_CACHE" ] || exit 1
-  place_style "$STYLE_CACHE" "$2/.vale/styles/Google"
-  exit
+  if [ ! -d "$STYLE_CACHE" ]; then
+    log "no cached Google style at $STYLE_CACHE; run scripts/setup-worktree.sh once on this host"
+    exit 1
+  fi
+  if ! place_style "$STYLE_CACHE" "$2/.vale/styles/Google" 2>/dev/null; then
+    log "could not copy the cached Google style into $2/.vale/styles"
+    exit 1
+  fi
+  exit 0
 fi
 
 if [ "$install" = 1 ]; then

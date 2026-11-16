@@ -117,8 +117,8 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   log "pinned tools: node $(node --version 2>/dev/null || echo missing)," \
     "vale $( (vale --version 2>/dev/null || echo missing) | sed 's/^vale version //')"
   if [ "$tools_status" != 0 ]; then
-    log "WARNING: the pinned Node or Vale, pnpm, or Vale's Google style is missing, or another version"
-    log "         is on PATH, so checks may run the wrong version or skip prose. Run scripts/setup-worktree.sh."
+    log "WARNING: the pinned Node or Vale, pnpm, or Vale's Google style is missing, so checks may"
+    log "         run another version or skip prose. Run scripts/setup-worktree.sh."
   fi
   # Measurement only (ADR-0029): how much the teardown skill could reclaim. Bounded, never fatal.
   TEARDOWN="$PROJECT_DIR/.claude/skills/teardown/scripts/teardown.sh"
@@ -253,7 +253,11 @@ fi
 # corepack when the image has none. Never fatal.
 
 vale_status=0
-vale_path="$(bash "$PROJECT_DIR/scripts/install-tools.sh")" || vale_status=$?
+# The installer logs to stderr; its lines are repeated on stdout below, where this hook reports.
+vale_err="$(mktemp)"
+vale_path="$(bash "$PROJECT_DIR/scripts/install-tools.sh" 2>"$vale_err")" || vale_status=$?
+while IFS= read -r line; do log "$line"; done <"$vale_err"
+rm -f "$vale_err"
 if [ -n "$vale_path" ]; then
   export PATH="$vale_path:$PATH"
   persist_env "export PATH=\"$vale_path:\$PATH\""
@@ -261,8 +265,8 @@ fi
 if [ "$vale_status" = 0 ]; then
   log "$(vale --version)"
 else
-  log "WARNING: the installer reported a missing tool, named in its log above. Without Vale or its"
-  log "         Google style, the prose hook passes every Markdown edit this session."
+  log "WARNING: the installer reported a missing tool (its 'missing:' line above). Without Vale or"
+  log "         its Google style, the prose hook passes every Markdown edit this session."
 fi
 
 # ---------------------------------------------------------------------------

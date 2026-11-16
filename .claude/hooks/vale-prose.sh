@@ -72,10 +72,12 @@ check_file() {
   git -C "$top" check-ignore -q -- "$rel" && return 0
   # The Google style is gitignored, so a worktree made without the setup script, such as an
   # isolated agent worktree, lacks it. This hook's own installer copies it from the per-user
-  # cache; it never downloads, so an edit never waits on the network.
-  if [ ! -d "$top/.vale/styles/Google" ] && [ -f "$resolver" ]; then
-    bash "$resolver" --styles-from-cache "$top" >/dev/null 2>&1 ||
-      echo "vale-prose: no cached Google style to copy into $top; run scripts/setup-worktree.sh there" >&2
+  # cache; it never downloads, so an edit never waits on the network. Only a Birdbrain checkout,
+  # one that ships the installer, gets the copy.
+  if [ ! -d "$top/.vale/styles/Google" ] && [ -f "$top/scripts/install-tools.sh" ] &&
+    [ -f "$resolver" ]; then
+    copy_err="$(bash "$resolver" --styles-from-cache "$top" 2>&1 >/dev/null)" ||
+      echo "vale-prose: ${copy_err#\[install-tools\] }" >&2
   fi
 
   report="$(cd "$top" && vale --config "$top/.vale.ini" --output JSON "$rel" 2>&1)"

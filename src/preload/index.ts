@@ -14,10 +14,10 @@ import {
 // registered raw — a wiring bug we surface rather than pass through.
 //
 // The context bridge copies only an Error's message into the renderer, so a
-// `code` set here never arrives. A channel whose callers branch on the code
-// rejects with a plain IpcRefusal instead, which crosses whole; the renderer
-// turns it back into an Error (refusalError in src/renderer/lib/api/sharing.ts).
-async function unwrapIpc<T>(promise: Promise<unknown>, refusal: 'error' | 'object'): Promise<T> {
+// `code` set on one never arrives. A refused call therefore rejects with a
+// plain IpcRefusal, which crosses whole; the renderer's bridge adapter
+// (src/renderer/lib/birdbrain.ts) turns it back into an Error.
+async function unwrapIpc<T>(promise: Promise<unknown>): Promise<T> {
   const result = await promise
   if (!result || typeof result !== 'object' || !('ok' in result)) {
     throw new Error('IPC result is missing its envelope')
@@ -25,30 +25,19 @@ async function unwrapIpc<T>(promise: Promise<unknown>, refusal: 'error' | 'objec
   if ((result as { ok: boolean }).ok) {
     return (result as { ok: true; data: T }).data
   }
-  const err = result as { ok: false; error: string; code?: string }
-  if (refusal === 'object') {
-    const refused: IpcRefusal = { message: err.error, code: err.code }
-    throw refused
-  }
-  const error = new Error(err.error)
-  ;(error as unknown as { code?: string }).code = err.code
-  throw error
+  const { error, code } = result as { ok: false; error: string; code?: string }
+  const refused: IpcRefusal = { message: error, code }
+  throw refused
 }
 
 // Builds a renderer-facing method for one invoke channel. Both the argument
 // tuple and the resolved type come from IpcInvokeContract, so a bridge method
 // has no hand-written signature that could drift from its handler.
 function bridge<C extends ContractedChannel>(
-  channel: C,
-  refusal: 'error' | 'object' = 'error'
+  channel: C
 ): (...args: IpcInvokeContract[C]['args']) => Promise<IpcInvokeContract[C]['result']> {
-  return (...args) => unwrapIpc(ipcRenderer.invoke(channel, ...args), refusal)
+  return (...args) => unwrapIpc(ipcRenderer.invoke(channel, ...args))
 }
-
-// A channel whose refusals the renderer tells apart by code: the sharing channels, which the
-// Members screens read, a browser launch, which the start dialog reads, and a Persona cookie
-// import, whose row shows the refused file's message.
-const refusable = <C extends ContractedChannel>(channel: C) => bridge(channel, 'object')
 
 // Builds a renderer-facing subscribe method for one event channel. The callback
 // payload comes from IpcEventContract; the returned function detaches the
@@ -144,7 +133,7 @@ const birdbrain = {
     create: bridge(IPC_CHANNELS.PERSONAS_CREATE),
     update: bridge(IPC_CHANNELS.PERSONAS_UPDATE),
     delete: bridge(IPC_CHANNELS.PERSONAS_DELETE),
-    import: refusable(IPC_CHANNELS.PERSONAS_IMPORT),
+    import: bridge(IPC_CHANNELS.PERSONAS_IMPORT),
     storageState: bridge(IPC_CHANNELS.PERSONAS_STORAGE_STATE)
   },
   selectors: {
@@ -209,7 +198,7 @@ const birdbrain = {
     list: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_LIST),
     chooseExecutable: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_CHOOSE_EXECUTABLE),
     status: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_STATUS),
-    launch: refusable(IPC_CHANNELS.LAUNCHED_BROWSER_LAUNCH),
+    launch: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_LAUNCH),
     cancelLaunch: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_CANCEL_LAUNCH),
     endSession: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_END_SESSION),
     checkLeftovers: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_CHECK_LEFTOVERS),
@@ -217,7 +206,7 @@ const birdbrain = {
     showPopOut: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_SHOW_POP_OUT),
     dock: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_DOCK),
     popOutState: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_POP_OUT_STATE),
-    capture: refusable(IPC_CHANNELS.LAUNCHED_BROWSER_CAPTURE)
+    capture: bridge(IPC_CHANNELS.LAUNCHED_BROWSER_CAPTURE)
   },
 
   search: bridge(IPC_CHANNELS.SEARCH),
@@ -250,19 +239,19 @@ const birdbrain = {
   },
 
   sharing: {
-    getSyncState: refusable(IPC_CHANNELS.SHARING_GET_SYNC_STATE),
-    createInvite: refusable(IPC_CHANNELS.SHARING_CREATE_INVITE),
-    cancelInvite: refusable(IPC_CHANNELS.SHARING_CANCEL_INVITE),
-    readInvite: refusable(IPC_CHANNELS.SHARING_READ_INVITE),
-    join: refusable(IPC_CHANNELS.SHARING_JOIN),
-    approveJoin: refusable(IPC_CHANNELS.SHARING_APPROVE_JOIN),
-    declineJoin: refusable(IPC_CHANNELS.SHARING_DECLINE_JOIN),
-    revoke: refusable(IPC_CHANNELS.SHARING_REVOKE),
-    excludeExhibit: refusable(IPC_CHANNELS.SHARING_EXCLUDE_EXHIBIT),
-    syncNow: refusable(IPC_CHANNELS.SHARING_SYNC_NOW),
-    getMembers: refusable(IPC_CHANNELS.SHARING_GET_MEMBERS),
-    isAvailable: refusable(IPC_CHANNELS.SHARING_IS_AVAILABLE),
-    setRelayUrl: refusable(IPC_CHANNELS.SHARING_SET_RELAY_URL)
+    getSyncState: bridge(IPC_CHANNELS.SHARING_GET_SYNC_STATE),
+    createInvite: bridge(IPC_CHANNELS.SHARING_CREATE_INVITE),
+    cancelInvite: bridge(IPC_CHANNELS.SHARING_CANCEL_INVITE),
+    readInvite: bridge(IPC_CHANNELS.SHARING_READ_INVITE),
+    join: bridge(IPC_CHANNELS.SHARING_JOIN),
+    approveJoin: bridge(IPC_CHANNELS.SHARING_APPROVE_JOIN),
+    declineJoin: bridge(IPC_CHANNELS.SHARING_DECLINE_JOIN),
+    revoke: bridge(IPC_CHANNELS.SHARING_REVOKE),
+    excludeExhibit: bridge(IPC_CHANNELS.SHARING_EXCLUDE_EXHIBIT),
+    syncNow: bridge(IPC_CHANNELS.SHARING_SYNC_NOW),
+    getMembers: bridge(IPC_CHANNELS.SHARING_GET_MEMBERS),
+    isAvailable: bridge(IPC_CHANNELS.SHARING_IS_AVAILABLE),
+    setRelayUrl: bridge(IPC_CHANNELS.SHARING_SET_RELAY_URL)
   },
 
   investigation: {

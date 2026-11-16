@@ -2,15 +2,16 @@ import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query
 import type { QueryClient } from '@tanstack/react-query'
 import type { BirdbrainSettings } from '@shared/types'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { birdbrain } from '@renderer/lib/birdbrain'
 
 export const settingsQueryOptions = queryOptions({
   queryKey: queryKeys.settings,
-  queryFn: () => window.birdbrain.settings.get()
+  queryFn: () => birdbrain.settings.get()
 })
 
 export function settingsUpdateMutationOptions(queryClient: QueryClient) {
   return {
-    mutationFn: (partial: Partial<BirdbrainSettings>) => window.birdbrain.settings.update(partial),
+    mutationFn: (partial: Partial<BirdbrainSettings>) => birdbrain.settings.update(partial),
     onSuccess: (data: BirdbrainSettings, partial: Partial<BirdbrainSettings>) => {
       queryClient.setQueryData(queryKeys.settings, data)
       // Refetch inventories and manifests after the held backfill attempt.
@@ -31,5 +32,5 @@ export function useSettingsMutations() {
 
 export const identityQueryOptions = queryOptions({
   queryKey: queryKeys.identity,
-  queryFn: () => window.birdbrain.settings.getIdentity()
+  queryFn: () => birdbrain.settings.getIdentity()
 })

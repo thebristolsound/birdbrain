@@ -14,6 +14,7 @@ import type {
   UnmarkOwnIdentifierParams
 } from '@shared/investigation'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { birdbrain } from '@renderer/lib/birdbrain'
 
 // The Case investigation reads and writes (engine plan, E10). Until the engine exists the main
 // process answers them from the fake engine, in unpackaged builds only.
@@ -21,42 +22,42 @@ import { queryKeys } from '@renderer/lib/api/keys'
 export const investigationRevisionQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.investigationRevision(caseId),
-    queryFn: () => window.birdbrain.investigation.getRevision(caseId),
+    queryFn: () => birdbrain.investigation.getRevision(caseId),
     enabled: !!caseId
   })
 
 export const investigationViewQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.investigationView(caseId),
-    queryFn: () => window.birdbrain.investigation.getView(caseId),
+    queryFn: () => birdbrain.investigation.getView(caseId),
     enabled: !!caseId
   })
 
 export const investigationSpanQueryOptions = (caseId: string, spanId: string) =>
   queryOptions({
     queryKey: queryKeys.investigationSpan(caseId, spanId),
-    queryFn: () => window.birdbrain.investigation.getSpan(caseId, spanId),
+    queryFn: () => birdbrain.investigation.getSpan(caseId, spanId),
     enabled: !!caseId && !!spanId
   })
 
 export const investigationCheckQueryOptions = (caseId: string, spanId: string) =>
   queryOptions({
     queryKey: queryKeys.investigationCheck(caseId, spanId),
-    queryFn: () => window.birdbrain.investigation.checkSpan(caseId, spanId),
+    queryFn: () => birdbrain.investigation.checkSpan(caseId, spanId),
     enabled: !!caseId && !!spanId
   })
 
 export const investigationChangesQueryOptions = (caseId: string, runId: string) =>
   queryOptions({
     queryKey: queryKeys.investigationChanges(caseId, runId),
-    queryFn: () => window.birdbrain.investigation.getChanges(caseId, runId),
+    queryFn: () => birdbrain.investigation.getChanges(caseId, runId),
     enabled: !!caseId && !!runId
   })
 
 export const ownIdentifiersQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.ownIdentifiers(caseId),
-    queryFn: () => window.birdbrain.investigation.listOwnIdentifiers(caseId),
+    queryFn: () => birdbrain.investigation.listOwnIdentifiers(caseId),
     enabled: !!caseId
   })
 
@@ -85,7 +86,7 @@ export function useInvestigationMutations(caseId: string) {
     meta: { action }
   })
 
-  const api = () => window.birdbrain.investigation
+  const api = () => birdbrain.investigation
 
   return {
     // A run's outcome arrives on its progress events, not here.

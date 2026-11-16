@@ -1,25 +1,26 @@
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import type { CreateNoteParams, UpdateNoteParams } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { birdbrain } from '@renderer/lib/birdbrain'
 
 export const notesQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.notes(caseId),
-    queryFn: () => window.birdbrain.notes.list(caseId),
+    queryFn: () => birdbrain.notes.list(caseId),
     enabled: !!caseId
   })
 
 export const noteCountQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.noteCount(caseId),
-    queryFn: () => window.birdbrain.notes.count(caseId),
+    queryFn: () => birdbrain.notes.count(caseId),
     enabled: !!caseId
   })
 
 export const notesSearchQueryOptions = (caseId: string, query: string) =>
   queryOptions({
     queryKey: queryKeys.notesSearch(caseId, query),
-    queryFn: () => window.birdbrain.notes.search(caseId, query),
+    queryFn: () => birdbrain.notes.search(caseId, query),
     enabled: !!caseId && query.trim().length > 0
   })
 
@@ -27,7 +28,7 @@ export const notesSearchQueryOptions = (caseId: string, query: string) =>
 export const noteReferenceEdgesQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.noteReferenceEdges(caseId),
-    queryFn: () => window.birdbrain.notes.referenceEdges(caseId),
+    queryFn: () => birdbrain.notes.referenceEdges(caseId),
     enabled: !!caseId
   })
 
@@ -51,19 +52,19 @@ export function useNotesMutations(caseId: string) {
   const invalidateForCase = () => invalidateNoteQueries(queryClient, caseId)
 
   const create = useMutation({
-    mutationFn: (params: CreateNoteParams) => window.birdbrain.notes.create(params),
+    mutationFn: (params: CreateNoteParams) => birdbrain.notes.create(params),
     onSuccess: invalidateForCase,
     meta: { action: 'create note' }
   })
 
   const update = useMutation({
-    mutationFn: (params: UpdateNoteParams) => window.birdbrain.notes.update(params),
+    mutationFn: (params: UpdateNoteParams) => birdbrain.notes.update(params),
     onSuccess: invalidateForCase,
     meta: { action: 'save note' }
   })
 
   const remove = useMutation({
-    mutationFn: (id: string) => window.birdbrain.notes.delete(id),
+    mutationFn: (id: string) => birdbrain.notes.delete(id),
     onSuccess: invalidateForCase,
     meta: { action: 'delete note' }
   })

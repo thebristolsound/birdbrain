@@ -137,8 +137,11 @@ const PERSONA = rule({
   refusal: 'the Persona fields require'
 })
 
-// Every field and value a schema after an entry type's own added to it. A
-// type with no key here has none.
+// The fields and values a later schema added to an entry type, where the
+// entry itself shows them. What an entry cannot show, such as a `timestamp`
+// or `deletion` that binds an Exhibit which is not a Capture (schema 3), the
+// caller says with `minReaderSchemaVersion` on the append (AppendOptions in
+// manifest.ts). A type with no key here has no rule.
 export const FIELD_RULES = {
   capture: {
     // X46. A `capture` entry's shape has a schema-2 form, so the type's

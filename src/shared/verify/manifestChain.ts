@@ -18,7 +18,10 @@ import type { TrustedTimeResult } from '@shared/verify/trustedTime'
 // link provenance fields (ADR-0040), and the launched browser and Persona
 // fields (schema 7) are carried on the same footing, each set only when the
 // verified entry carries it. Their names come from the rules that give each
-// group its reader schema (manifestEntryRules.ts), in the order below.
+// group its reader schema (manifestEntryRules.ts), in the order below, so a
+// field added to one of these rules is carried too. `exhibitNumber`'s rule is
+// not among them, as it never was, and a new rule is carried only once it is
+// named here.
 const { egress, captureEngine, linkProvenance, launchedBrowser, persona } = FIELD_RULES.capture
 const CAPTURE_CHAIN_FIELDS = [
   ...egress.fields,

@@ -149,3 +149,54 @@ describe('PR body hook routing', () => {
     ).toBe(1)
   })
 })
+
+describe('sources the review fleet cannot load', () => {
+  // A bullet in the Changes block, beside the visual declaration every authored body carries.
+  const withBullet = (bullet: string) => lint(`${noVisualChange}\n- ${bullet}`)
+  const unlinked = (what: string) => [expect.stringContaining(`names ${what} with no #N or link`)]
+
+  it.each([
+    ['The first fleet round raised five findings and the second raised four.', 'a review round'],
+    ['Findings from rounds 1 and 3 are fixed.', 'a review round'],
+    ['Requested in the architecture review thread on 2026-11-16.', 'a thread'],
+    ['As agreed in this chat, the helper stays.', 'a conversation'],
+    ['The sol-loop review approved the change.', 'a Sol review']
+  ])('refuses "%s"', (bullet, what) => {
+    expect(withBullet(bullet)).toEqual(unlinked(what))
+  })
+
+  it('refuses the same wording on line 1', () => {
+    const body = bodyWith(noVisualChange).replace(
+      /^.*$/m,
+      'No issue: asked for in the agent thread.'
+    )
+    expect(lintBody(body, { screenshots: true })).toEqual(unlinked('a thread'))
+  })
+
+  it('accepts the wording once the line names or links its source', () => {
+    expect(withBullet('The review thread on #2201 settled the name.')).toEqual([])
+    expect(
+      withBullet(
+        'The first fleet round is https://github.com/thebristolsound/birdbrain/pull/2209#issuecomment-1.'
+      )
+    ).toEqual([])
+  })
+
+  it('leaves ordinary uses of the same words alone', () => {
+    expect(withBullet('The worker thread and the round trip are unchanged.')).toEqual([])
+    expect(withBullet('Rounds the height up to the next pixel.')).toEqual([])
+  })
+
+  it('reads authored lines only: not the Verification block, and not at merge time', () => {
+    const body = bodyWith(noVisualChange)
+    const inBlock = body.replace(
+      /(## Verification[\s\S]*?<\/summary>\n)/,
+      '$1\nThe first fleet round ran here.\n'
+    )
+    expect(inBlock).not.toBe(body)
+    expect(lintBody(inBlock, { screenshots: true })).toEqual([])
+    const authored = bodyWith(`${noVisualChange}\n- The first fleet round raised five findings.`)
+    expect(lintBody(authored)).toEqual([])
+    expect(lintBody(authored, { anyAuthor: true })).toEqual([])
+  })
+})

@@ -41,7 +41,9 @@ Five sections in a fixed order, a hard cap, and one closing line:
    `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`.
 5. `## Verification`: the block `pnpm preflight` wrote to `.preflight/verification.md`,
    pasted verbatim including its `<!-- preflight ... -->` marker, generated at the head sha
-   under review (ADR-0018). The writer already wraps the step list in a `<details>` block
+   under review (ADR-0018). When the new head only merged the base in and the diff against the
+   base is byte-identical, `pnpm preflight --carry` writes the earlier block for the new head,
+   marked `source=carried`, without running a step (ADR-0021). The writer already wraps the step list in a `<details>` block
    under a plain summary line (`All pre-merge checks passed` or `A pre-merge check failed`).
    Test output and coverage figures appear there and nowhere else. A PR nobody preflighted
    locally (dependabot, a human author) gets its block from
@@ -61,6 +63,14 @@ The visual-change declaration and evidence appear in the block below. Fenced
 blocks appear only inside a `<details>` block. Claims name only actions you took and states
 you observed after taking them; a label another actor applies or a check CI will run is named
 as a handoff, never asserted.
+
+Every sentence is one the review fleet can settle from its inputs: the diff and the repository
+at head, and the issues, pull requests, comments and reviews of this repository that the body
+names as `#N` or links by URL (`.github/scripts/review-fleet/inputs.mjs`). A statement about
+anything else, such as a chat, an agent thread or an earlier review round, stays unchecked, and
+one unchecked item fails `review/fleet` (ADR-0057). Link the source, move the sentence to a PR
+comment, or leave it out. `check.sh --screenshots` refuses the common wordings on a line that
+carries no `#N` and no link.
 
 ## Screenshots for visual changes
 

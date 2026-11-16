@@ -3,7 +3,8 @@
 // The file is Markdown, or JSON with a `body` string (a `gh api --input` payload).
 // --any-author accepts a body without the attribution line (a human-written PR); the merge
 // path uses it. The line, when present, must still be last.
-// --screenshots adds the visual declaration and image checks for new agent body writes.
+// --screenshots adds the checks for new agent body writes: the visual declaration and its
+// images, and the unlinked-source check below.
 // Prints one finding per line and exits 1 on any finding.
 import { readFileSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
@@ -60,6 +61,32 @@ function countSentences(text) {
     .replace(/\d+\.\d+/g, '')
     .replace(/\b(e\.g|i\.e|vs|etc)\./gi, '')
   return (prose.match(/[.!?](?=\s|$)/g) || []).length
+}
+
+// A source the review fleet cannot load: it reads the diff, the repository, and the issues,
+// pull requests, comments and reviews of this repository that the body names as #N or links
+// (.github/scripts/review-fleet/inputs.mjs). A sentence about a chat, an agent thread or a review
+// round stays unchecked, and one unchecked item fails review/fleet (ADR-0057).
+const ORDINAL = 'first|second|third|fourth|fifth|earlier|previous|prior|last|latest|\\d+(?:st|nd|rd|th)'
+const UNLINKED_SOURCES = [
+  [/\b(?:chat|agent|review|T3|Slack) threads?\b/i, 'a thread'],
+  [/\bin (?:this|the|that|our) (?:chat|conversation)\b/i, 'a conversation'],
+  [/\bfleet rounds?\b/i, 'a review round'],
+  [new RegExp(`\\b(?:${ORDINAL}) (?:(?:review|fix|sol) )?rounds?\\b`, 'i'), 'a review round'],
+  [/\brounds? \d+\b/i, 'a review round'],
+  [/\bsol[- ]loop\b|\bSol (?:review|round|verdict)\b/, 'a Sol review']
+]
+const SOURCE_LINK = /(?:^|[^\w&])#\d+\b|https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/(?:issues|pull)\/\d+/
+
+function unlinkedSourceFindings(lines) {
+  const findings = []
+  lines.forEach((line, i) => {
+    if (SOURCE_LINK.test(line)) return
+    const hit = UNLINKED_SOURCES.find(([re]) => re.test(line))
+    if (!hit) return
+    findings.push(`line ${i + 1} names ${hit[1]} with no #N or link on the line, and the review fleet fails on a statement it cannot check: link the source, move the sentence to a PR comment, or drop it: "${line.trim().slice(0, 60)}"`)
+  })
+  return findings
 }
 
 function screenshotFindings(lines) {
@@ -217,6 +244,10 @@ export function lintBody(raw, { anyAuthor = false, screenshots = false } = {}) {
   }
 
   const vStart = start('## Verification')
+  if (screenshots) {
+    const authored = visibleText.map((l, i) => (fromComment[i] ? '' : l))
+    findings.push(...unlinkedSourceFindings(vStart >= 0 ? authored.slice(0, vStart) : authored))
+  }
   if (vStart >= 0) {
     const above = visibleText
       .slice(0, vStart)

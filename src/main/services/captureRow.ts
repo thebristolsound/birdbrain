@@ -4,8 +4,8 @@ import type { AppendResult, CaptureEntryContext } from '@main/services/manifest'
 
 // The Capture row a signed `capture` entry describes: the one statement of which Manifest Entry
 // field lands in which column. The ingest, a Duplicate and the row sync writes for another
-// member's Capture each pass the entry and state only what no entry signs. A field the row
-// mirrors is added here once and every writer carries it.
+// member's Capture each pass the entry, what no entry signs, and where its row departs from the
+// entry on purpose. A field the row mirrors is added here once and every writer carries it.
 
 // The entry fields the row mirrors. A `capture` entry read from a chain has them, and so does
 // the context a writer signs once the append has returned its index and hashes.
@@ -125,6 +125,7 @@ export function captureRowOf(
     exhibitNumber: local.exhibitNumber ?? entry.exhibitNumber,
     author: local.author,
     committedAt: local.committedAt
-    // Every column named, so a new one cannot be added without deciding where it comes from.
+    // Every insert parameter named, so a new one fails the build until this says where it comes
+    // from. A column added without a parameter is not caught here.
   } satisfies Record<keyof InsertCaptureParams | 'id', unknown>
 }

@@ -256,7 +256,8 @@ export async function applyReceivedEvidence(
         userAgent: entry.userAgent,
         exhibitNumber: n,
         author: { installationId: author, memberCode },
-        // No entry carries the author's ingest time, so the page's timestamp stands in.
+        // The page's timestamp stands in for the author's ingest time, which this writer reads
+        // from no entry, a Duplicate's `duplicatedAt` included.
         committedAt: entry.timestamp,
         captureEngineFields: false
       })

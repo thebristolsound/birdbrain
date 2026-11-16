@@ -1507,6 +1507,13 @@ type UndeclaredChannel = Exclude<IpcChannel, ContractedChannel | IpcEventChannel
 type AssertNever<T extends never> = T
 export type ChannelsAreExhaustive = AssertNever<UndeclaredChannel>
 
+// The other direction: every contract entry has its IPC_CHANNELS constant. The
+// bridge type is built from the contracts and the bridge object from
+// IPC_CHANNELS, so an entry with no constant would be a typed method that does
+// not exist at runtime.
+type ChannelWithNoConstant = Exclude<ContractedChannel | IpcEventChannel, IpcChannel>
+export type ContractIsDeclared = AssertNever<ChannelWithNoConstant>
+
 // --- Event contract ---------------------------------------------------------
 //
 // Main → renderer pushes, kept separate from the invoke map: these carry a

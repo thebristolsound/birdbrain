@@ -60,10 +60,10 @@ function probeBridge(api: Record<string, unknown>): BridgeLeaf[] {
       if (typeof value === 'function') {
         const invokedBefore = electronStub.invoked.length
         const listenedBefore = electronStub.listened.length
-        // Every leaf is either a bridge() (invokes) or a subscribe() (listens);
+        // Every leaf is either an invoke() (invokes) or a subscribe() (listens);
         // one no-op callback argument satisfies both shapes.
         const result = (value as (arg: unknown) => unknown)(() => {})
-        // bridge() resolves through the envelope stub; swallow so a rejection
+        // invoke() resolves through the envelope stub; swallow so a rejection
         // never escapes the probe.
         if (result instanceof Promise) result.catch(() => {})
         if (electronStub.invoked.length > invokedBefore) {

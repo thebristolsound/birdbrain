@@ -32,6 +32,12 @@ export const BRIDGE_PATH_EXCEPTIONS = {
 
 type PathExceptions = typeof BRIDGE_PATH_EXCEPTIONS
 
+// The two statements of the rule agree only while no channel name holds a dot:
+// the type would keep `a.b` as one key where buildBridge() nests it. A channel
+// with a dot fails to compile here.
+type AssertNever<T extends never> = T
+export type NoChannelHasADot = AssertNever<Extract<IpcChannel, `${string}.${string}`>>
+
 export type BridgePath<C extends IpcChannel> = C extends keyof PathExceptions
   ? PathExceptions[C]
   : C extends `event:${infer Name}`

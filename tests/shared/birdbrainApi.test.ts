@@ -16,7 +16,8 @@ import {
 import type { Capture, MhtmlPartsListing } from '@shared/types'
 
 // The bridge's shape is one rule stated twice: BridgePath for the compiler and
-// bridgePath() for the preload. Each known answer below is asserted both ways.
+// bridgePath() for the preload. The known answers in the first three tests are
+// asserted both ways.
 
 describe('bridgePath', () => {
   it('places an invoke channel at its domain and action', () => {
@@ -38,15 +39,24 @@ describe('bridgePath', () => {
     expect(bridgePath('captures:testHttp')).toBe('testHttp')
     expect(bridgePath('event:selector:rematched')).toBe('onSelectorRematched')
     expectTypeOf<BridgePath<'extension:path'>>().toEqualTypeOf<'extension.getPath'>()
+    expectTypeOf<BridgePath<'export:generate'>>().toEqualTypeOf<'export.generateReport'>()
+    expectTypeOf<BridgePath<'diagnostics:recent'>>().toEqualTypeOf<'diagnostics.recentEntries'>()
     expectTypeOf<BridgePath<'search:query'>>().toEqualTypeOf<'search'>()
+    expectTypeOf<BridgePath<'captures:testPipeline'>>().toEqualTypeOf<'testPipeline'>()
+    expectTypeOf<BridgePath<'captures:testHttp'>>().toEqualTypeOf<'testHttp'>()
     expectTypeOf<BridgePath<'event:selector:rematched'>>().toEqualTypeOf<'onSelectorRematched'>()
   })
 
-  it('excepts only channels the contract declares', () => {
-    const channels = new Set<string>(Object.values(IPC_CHANNELS))
-    for (const channel of Object.keys(BRIDGE_PATH_EXCEPTIONS)) {
-      expect(channels.has(channel), channel).toBe(true)
-    }
+  it('has exactly the seven exceptions the test above answers for', () => {
+    expect(Object.keys(BRIDGE_PATH_EXCEPTIONS).sort()).toEqual([
+      'captures:testHttp',
+      'captures:testPipeline',
+      'diagnostics:recent',
+      'event:selector:rematched',
+      'export:generate',
+      'extension:path',
+      'search:query'
+    ])
   })
 
   it('gives every channel a path of its own', () => {
@@ -75,7 +85,16 @@ describe('BirdbrainAPI', () => {
 
   it('has no member at the path an exception moved a channel away from', () => {
     expectTypeOf<BirdbrainAPI['extension']>().not.toHaveProperty('path')
+    expectTypeOf<BirdbrainAPI['export']>().not.toHaveProperty('generate')
+    expectTypeOf<BirdbrainAPI['diagnostics']>().not.toHaveProperty('recent')
     expectTypeOf<BirdbrainAPI['captures']>().not.toHaveProperty('testPipeline')
+    expectTypeOf<BirdbrainAPI['captures']>().not.toHaveProperty('testHttp')
+    // `search` is a function at the root, so it holds no `query` method.
+    expectTypeOf<BirdbrainAPI['search']>().not.toHaveProperty('query')
+    expectTypeOf<BirdbrainAPI>().not.toHaveProperty('onSelector:rematched')
+  })
+
+  it('has no namespace for the event channels', () => {
     expectTypeOf<BirdbrainAPI>().not.toHaveProperty('event')
   })
 })

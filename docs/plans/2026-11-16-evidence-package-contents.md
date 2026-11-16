@@ -124,9 +124,10 @@ adds cost whenever those files are enclosed.
 
 ## Handoff
 
-- **Shipped:** slices 1 and 2 are on `main`: the known-answer test, and the contents decision
-  for Timestamp Tokens, non-Capture Exhibits and Derived Files.
-- **In flight:** slice 3 (this change), the decision for a Capture's own files, has `main`
-  merged in and waits on review and the maintainer's sign-off.
-- **Next command:** none. This change is the last slice.
+- **Shipped:** slice 1 is on `main`: the known-answer test.
+- **In flight:** slice 2, the contents decision for Timestamp Tokens, non-Capture Exhibits and
+  Derived Files, waits on the maintainer's sign-off. Slice 3 (this change), the decision for a
+  Capture's own files, is stacked on slice 2 and waits on review.
+- **Next command:** after slice 2 merges, `git merge origin/main` on this change's branch,
+  resolved to the branch's own version.
 - **Open questions:** none.

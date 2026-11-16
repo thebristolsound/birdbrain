@@ -656,8 +656,9 @@ export async function generateReport(
   // chain covers.
   const derivedVerifications = await verifyCaseDerivedFiles(caseId)
 
-  // Every file this export encloses is read through this, once. The report
-  // reproduces a screenshot from the same read the package encloses it from.
+  // Every Exhibit file and Derived File this export encloses is read through
+  // this, once. The report reproduces a screenshot from the same read the
+  // package encloses it from.
   const source = readOnce(caseDirectoryByteSource())
   // captureId -> sha256 of the raw on-disk screenshot, and whether the copy
   // reproduced in the report had annotations burned into its pixels.
@@ -1250,7 +1251,7 @@ interface EvidenceZipResult {
  * It is not the only read of those bytes: `verifyCaseDerivedFiles` hashes
  * every chain-anchored Derived File on every export, and when the audit trail
  * is included `verifyExhibit` hashes committed Exhibits and `verifyCaptures`
- * hashes each Capture's own files. A read failure
+ * hashes each file a Capture's signed entry anchors. A read failure
  * there is the `missing` verification status the documents render. What this
  * read decides, and nothing else does, is whether the file is in the package.
  *

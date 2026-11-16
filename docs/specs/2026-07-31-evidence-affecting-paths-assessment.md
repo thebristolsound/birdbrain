@@ -130,8 +130,10 @@ entry.
 On 2026-11-16 `src/packages/evidence-package-contents/**` was added to Integrity core at blocking
 tier, in the change that creates it. The decision of which files an export encloses moved there
 out of the already-listed `src/main/services/export.ts`: which Timestamp Tokens, which
-non-Capture Exhibits and which Derived Files, and under which package path. No entry or glob
-named the new directory, so without the row an edit touching only it would match no entry.
+non-Capture Exhibits and which Derived Files, and under which package path. A later change the
+same day moved the decision for a Capture's own files there too: the page archive, the
+screenshot, the Transaction Record and the PDF. No entry or glob named the new directory, so
+without the row an edit touching only it would match no entry.
 
 On 2026-11-09 the rows that stale-closed issues had left unwritten were added. The selection
 bar (`extension/src/selectionBar.ts`, ruling W25 on #967) and the two files of the capture

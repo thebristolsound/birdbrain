@@ -4945,6 +4945,30 @@ describe('export', () => {
       }
     })
 
+    it('asks once for a screenshot the Capture does not hold', async () => {
+      // The report finds no screenshot, and the package is decided from that
+      // same answer: a second look could find a file the report never saw.
+      rmSync(defaultCaptureStore.artifactPaths(fixture.caseId, fixture.captureId, 'png').abs)
+      const read = vi.spyOn(defaultCaptureStore, 'readArtifact')
+      try {
+        const entries = await exportMixed('no-screenshot.zip', {
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: false,
+            notes: false,
+            annotations: 'none'
+          }
+        })
+        expect(
+          read.mock.calls.filter(([, id, type]) => id === fixture.captureId && type === 'png')
+        ).toHaveLength(1)
+        expect([...entries.keys()].filter((name) => name.startsWith('screenshots/'))).toEqual([])
+      } finally {
+        read.mockRestore()
+      }
+    })
+
     it('ships the same exhibits and derived files in a Working Copy', async () => {
       const entries = await exportMixed('mixed-working-copy.zip', {
         exportClass: 'working-copy',

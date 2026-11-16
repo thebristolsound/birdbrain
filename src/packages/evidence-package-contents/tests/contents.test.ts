@@ -311,6 +311,26 @@ describe("a Capture's own files in an Evidence Package", () => {
     ).toThrow(/EACCES: cap-1.mhtml/)
   })
 
+  it.each(['png', 'warc.gz', 'pdf'] as const)(
+    'fails the export on an anchored %s that exists and cannot be read',
+    (type) => {
+      const anchored = captureEntry('cap-1', {
+        screenshotHash: sha256('pixels'),
+        transactionRecordHash: sha256('warc'),
+        pdfHash: sha256('pdf')
+      })
+      expect(() =>
+        decidePackageContents(
+          input({
+            captures: [page],
+            entries: [anchored],
+            source: memorySource({ 'cap-1.mhtml': 'page' }, [`cap-1.${type}`])
+          })
+        )
+      ).toThrow(`EACCES: cap-1.${type}`)
+    }
+  )
+
   it('does not fail on an unreadable file it has no reason to enclose', () => {
     const contents = decidePackageContents(
       input({
@@ -384,6 +404,18 @@ describe("a Capture's own files in a Working Copy", () => {
     'cap-1.warc.gz': 'warc',
     'cap-1.pdf': 'pdf'
   }
+
+  it('fails the export on a page archive that exists and cannot be read', () => {
+    expect(() =>
+      decidePackageContents(
+        input({
+          form: { kind: 'working-copy', pageArchives: true, operatorScreenshots: new Map() },
+          captures: [page],
+          source: memorySource({}, ['cap-1.mhtml'])
+        })
+      )
+    ).toThrow('EACCES: cap-1.mhtml')
+  })
 
   it('encloses the page archive only when page archives were asked for', () => {
     const decide = (pageArchives: boolean) =>

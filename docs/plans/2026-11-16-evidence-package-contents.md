@@ -99,7 +99,8 @@ Each is a difference only when a file changes or fails while an export runs.
   file removed in between left a package whose report named a file the zip lacked. Now the
   report, the index and the zip state the one read. The export read a screenshot twice, once
   for the report or the anchored check and once for the zip, and now reads it once. The
-  verification run of the audit trail makes its own read of each file, as before.
+  verification run of the audit trail makes its own read of each file a signed entry anchors,
+  as before.
 - **Slice 3.** With screenshots on, the screenshot a package encloses is the read the report
   made of it, which comes before the Manifest snapshot. The zip builder used to read it again
   after the snapshot. A screenshot that is absent at the first read and back before the zip
@@ -110,8 +111,8 @@ Each is a difference only when a file changes or fails while an export runs.
   the contents are decided, before the report is rendered. It was raised while the zip was
   built. An unreadable screenshot already failed before the report. All of these are before
   the `export` entry is appended.
-- **Slice 3.** A page archive is hashed once more, because the decision records its SHA-256
-  and the zip writer hashes what it writes.
+- **Slice 3.** A page archive, and a Working Copy's screenshot copy, is hashed once more,
+  because the decision records its SHA-256 and the zip writer hashes what it writes.
 
 ## Handoff
 

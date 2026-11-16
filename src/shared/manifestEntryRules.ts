@@ -9,8 +9,11 @@ import type { CaptureInventory } from '@shared/schemas'
 // writer that stamps below what the reader demands writes a chain its own
 // verifier calls broken; a reader that demands less than the fields need lets
 // an older verifier meet a field its strict shape lacks and report a broken
-// chain where it should say "verifier too old" (X25). Both read this file, so
-// neither can move without the other.
+// chain where it should say "verifier too old" (X25). Both take each version
+// and each field name from this file. What the file cannot do is put a rule
+// into the reader: the schema applies one only where it has a refine built by
+// `readerGate`, and tests/shared/manifestEntryRules.test.ts fails for a rule
+// without one.
 //
 // The shell verifier (verifyScript.ts) and the Verify Runbook do not read it,
 // on purpose: ADR-0004 has them check through a path independent of this code.

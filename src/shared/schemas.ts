@@ -657,9 +657,10 @@ const personaLabelNeedsId = {
 
 // The rules for a field or value a later schema added to an entry type. Each
 // is the reader's half of a rule the writer's stamp reads from the same file,
-// so the two cannot drift apart. A refine below keeps the place it had among
-// the other refines, because the order of the refines is the order of the
-// refusals.
+// so its version and field names are stated once. A rule added there needs a
+// refine here; tests/shared/manifestEntryRules.test.ts fails for one without.
+// A refine below keeps the place it had among the other refines, because the
+// order of the refines is the order of the refusals.
 const CAPTURE_RULES = FIELD_RULES.capture
 const TIMESTAMP_RULES = FIELD_RULES.timestamp
 const EXHIBIT_RULES = FIELD_RULES.exhibit

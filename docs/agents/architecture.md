@@ -15,7 +15,7 @@ Paths in this document are repository-root relative.
 
 ```
 src/main/services/           # Main-process services: captureServer, captureStore, storage, export, pdfExport,
-                             #   settings, manifest, captureLifecycle, selectorLifecycle, recapture,
+                             #   settings, manifest, captureLifecycle, captureRow, selectorLifecycle, recapture,
                              #   annotations, caseArchive, zip/zipRead, timestamp/trustedTime/tsaTrust,
                              #   signingKey, certification, waybackMachine, diagnostics, updater, deepLink,
                              #   noteAnchorResolver, logSafe

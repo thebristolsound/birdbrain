@@ -72,23 +72,25 @@ encoded bytes differ between machines.
 ## Slices
 
 - [x] **1. Pin the known answers.** Test only.
-- [ ] **2. Move the decision for Timestamp Tokens, non-Capture Exhibits and Derived Files.**
+- [x] **2. Move the decision for Timestamp Tokens, non-Capture Exhibits and Derived Files.**
       These already had one read each, so this is a move behind the new interface.
       `buildTimestampTokenPaths`, `createPackageReader`, `buildDerivedFiles` and
       `addDerivedFiles` leave `export.ts`.
-- [ ] **3. Move the decision for a Capture's own files.** The page archive, the screenshot,
+- [x] **3. Move the decision for a Capture's own files.** The page archive, the screenshot,
       the Transaction Record and the PDF, from one table of which signed field anchors which
       file. Each file is read once. `buildPackagedPaths`, the second screenshot digest loop in
       `generateReport` and the Capture pass of `buildEvidenceZip` leave `export.ts`, and the
       zip builders write the module's ordered lists.
 
-Not planned: the five restatements of "a signed hash needs its enclosed file" in the
-verifiers stay, because ADR-0004 asks for them. `caseArchive.ts` is not touched.
+Not planned: Package Verification, the verify script and the Verify Runbook each keep their
+own check that a signed hash has its enclosed file, because ADR-0004 asks for them.
+`caseArchive.ts` is not touched.
 
 ## Behaviour differences
 
-Output differences occur only when a file changes or fails while an export runs. The extra
-hashing listed below adds cost whenever those files are enclosed.
+Output differences occur only when a file changes or fails while an export runs. The Working
+Copy difference under slice 2 changes nothing an export writes. The extra hashing listed below
+adds cost whenever those files are enclosed.
 
 - **Slice 2.** A failed read of a stored path is remembered for the rest of the export.
   `createPackageReader` cached only successful reads, so a second row with the same stored
@@ -117,10 +119,9 @@ hashing listed below adds cost whenever those files are enclosed.
 
 ## Handoff
 
-- **Shipped:** nothing merged yet.
-- **In flight:** slices 1, 2 and 3 are written, each stacked on the one before: branches
-  `test/export-known-answer-package`, `refactor/evidence-package-contents` and
-  `refactor/package-contents-capture-files`.
-- **Next command:** after a slice merges, rebase the next branch onto `origin/main`, then
-  `pnpm test tests/main/services/exportKnownAnswer.test.ts` and `pnpm preflight`.
+- **Shipped:** slices 1 and 2 are on `main`: the known-answer test, and the contents decision
+  for Timestamp Tokens, non-Capture Exhibits and Derived Files.
+- **In flight:** slice 3 (this change), the decision for a Capture's own files, has `main`
+  merged in and waits on review and the maintainer's sign-off.
+- **Next command:** none. This change is the last slice.
 - **Open questions:** none.

@@ -160,10 +160,12 @@ describe('PersonasSection rows', () => {
   })
 
   it('shows the supported-format message on the row when the file is refused', async () => {
-    const refused = Object.assign(new Error('Only a Netscape cookies.txt export ...'), {
+    // The shape the preload rejects with: a plain object, because the context
+    // bridge strips `.code` from an Error (#1949).
+    importCookies.mockRejectedValueOnce({
+      message: 'Only a Netscape cookies.txt export ...',
       code: 'PERSONA_COOKIE_FILE_UNSUPPORTED'
     })
-    importCookies.mockRejectedValueOnce(refused)
     renderSection()
     fireEvent.click(await enabledImportButton())
     const error = await screen.findByTestId('persona-import-error')
@@ -174,7 +176,11 @@ describe('PersonasSection rows', () => {
   })
 
   it('leaves any other import failure to the toast', async () => {
-    importCookies.mockRejectedValueOnce(new Error('disk full'))
+    // A refusal with another reason, in the shape the preload rejects with.
+    importCookies.mockRejectedValueOnce({
+      message: 'No persona with that id',
+      code: 'PERSONA_NOT_FOUND'
+    })
     renderSection()
     fireEvent.click(await enabledImportButton())
     await waitFor(() => expect(importCookies).toHaveBeenCalled())

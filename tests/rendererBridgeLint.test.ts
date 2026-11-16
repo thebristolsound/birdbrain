@@ -33,17 +33,24 @@ describe('the raw bridge lint rule', () => {
     'void [api, cases, raw]'
   ].join('\n')
 
-  it('fails every direct reference to the raw bridge except a subscription', async () => {
-    expect(await restrictedLines(CODE, 'src/renderer/components/Probe.ts')).toEqual([
-      1, 2, 3, 4, 5, 6, 7
-    ])
+  // A screen (.tsx), a query module and a plain component file: the three
+  // kinds of place an invoke call is written.
+  it.each([
+    'src/renderer/components/Probe.ts',
+    'src/renderer/components/settings/Probe.tsx',
+    'src/renderer/lib/api/probe.ts'
+  ])('fails every direct reference except a subscription in %s', async (file) => {
+    expect(await restrictedLines(CODE, file)).toEqual([1, 2, 3, 4, 5, 6, 7])
   })
 
   it('leaves the adapter module, which binds the raw bridge, alone', async () => {
     expect(await restrictedLines(CODE, 'src/renderer/lib/birdbrain.ts')).toEqual([])
   })
 
-  it('applies to the renderer only', async () => {
-    expect(await restrictedLines(CODE, 'e2e/probe.spec.ts')).toEqual([])
-  })
+  it.each(['e2e/probe.spec.ts', 'src/main/probe.ts', 'src/shared/probe.ts'])(
+    'does not apply outside the renderer, in %s',
+    async (file) => {
+      expect(await restrictedLines(CODE, file)).toEqual([])
+    }
+  )
 })

@@ -73,7 +73,6 @@ import type {
   SharingSyncOutcome,
   SharingExclusion
 } from '@shared/types'
-import { SHARING_ERROR_CODES } from '@shared/types'
 import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
 import type {
   AddSubjectParams,
@@ -1453,11 +1452,13 @@ export type ContractedChannel = keyof IpcInvokeContract
 
 // --- Refusal codes ----------------------------------------------------------
 //
-// The codes a channel's callers may branch on. A refusal's code reaches the
-// renderer on every channel (IpcRefusal above), but refusalCode() below
-// reports only a code named here, typed as the channel's union, so a branch on
-// its result for a code this table does not name fails to compile. A code no
-// caller reads needs no entry.
+// The codes a channel's callers read through refusalCode() below. A refusal's
+// code reaches the renderer on every channel (IpcRefusal above), but
+// refusalCode() reports only a code named here, typed as the channel's union,
+// so a branch on its result for a code this table does not name fails to
+// compile. A code no caller reads needs no entry. The sharing channels refuse
+// with SHARING_ERROR_CODES (types.ts), which the sharing screens read with
+// their own sharingErrorCode.
 export const IPC_REFUSALS = {
   'persona:import': ['PERSONA_COOKIE_FILE_UNSUPPORTED'],
   'launchedBrowser:launch': [
@@ -1474,20 +1475,7 @@ export const IPC_REFUSALS = {
     'EGRESS_BYPASS',
     'EGRESS_UNWATCHED',
     'EGRESS_UNAVAILABLE'
-  ],
-  'sharing:getSyncState': SHARING_ERROR_CODES,
-  'sharing:createInvite': SHARING_ERROR_CODES,
-  'sharing:cancelInvite': SHARING_ERROR_CODES,
-  'sharing:readInvite': SHARING_ERROR_CODES,
-  'sharing:join': SHARING_ERROR_CODES,
-  'sharing:approveJoin': SHARING_ERROR_CODES,
-  'sharing:declineJoin': SHARING_ERROR_CODES,
-  'sharing:revoke': SHARING_ERROR_CODES,
-  'sharing:excludeExhibit': SHARING_ERROR_CODES,
-  'sharing:syncNow': SHARING_ERROR_CODES,
-  'sharing:getMembers': SHARING_ERROR_CODES,
-  'sharing:isAvailable': SHARING_ERROR_CODES,
-  'sharing:setRelayUrl': SHARING_ERROR_CODES
+  ]
 } as const satisfies { readonly [C in ContractedChannel]?: readonly string[] }
 
 export type RefusingChannel = keyof typeof IPC_REFUSALS

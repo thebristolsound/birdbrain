@@ -24,8 +24,10 @@ What it does:
   carries the code. `src/renderer/lib/birdbrain.ts` binds it to `window.birdbrain`, and every
   renderer invoke call goes through it. ESLint fails a direct reference to `window.birdbrain`
   anywhere else under `src/renderer/` except a subscription.
-- `IPC_REFUSALS` in `src/shared/ipc.ts` names the codes that renderer code branches on, and
-  `refusalCode(err, channel)` reports only those, typed per channel.
+- `IPC_REFUSALS` in `src/shared/ipc.ts` names the codes that callers of two channels read
+  (`persona:import` and `launchedBrowser:launch`), and `refusalCode(err, channel)` reports only
+  those, typed per channel. The sharing screens keep `SHARING_ERROR_CODES` and their own
+  `sharingErrorCode`.
 
 Decisions taken, with the reason for each:
 
@@ -38,9 +40,9 @@ Decisions taken, with the reason for each:
 - **Subscriptions stay on `window.birdbrain`.** They return no promise, so the adapter has
   nothing to do for them, and leaving them alone keeps this change out of four files on the
   blocking tier of the evidence path list.
-- **The table names only codes that a caller reads.** A full inventory would be a fifth
-  hand-written statement per channel with no reader, and the launch channel passes service
-  codes through, so a list claimed complete could not be checked.
+- **The table names only codes that a caller reads through `refusalCode`.** A full inventory
+  would be a fifth hand-written statement per channel with no reader, and the launch channel
+  passes service codes through, so a list claimed complete could not be checked.
 - **The adapter's logic lives under `src/shared/`.** The two test type projects keep
   main-process and renderer code apart, and the test that follows a refusal from `handle()` to
   the adapter needs both.

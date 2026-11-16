@@ -653,6 +653,24 @@ describe('captureTab, known answers for the record, the PDF and the inventory', 
     }
   )
 
+  it('records the Transaction Record failed when a body fetch outlasts the collection bound', async () => {
+    const { page, input } = setUp()
+    page.replies.set('Network.getResponseBody', () => new Promise(() => {}))
+    loadSignedInPage(page)
+    const artifacts = await captureTab(input({ timings: { ...TIMINGS, collectMs: 20 } }))
+    expect(artifacts.inventory).toEqual({
+      mhtml: MHTML_PART,
+      transactionRecord: { present: false, reason: 'failed' },
+      screenshot: SCREENSHOT_PART,
+      pdf: PDF_PART
+    })
+    expect(artifacts.boundTlsAbsent).toBe('not-recorded')
+    expect(artifacts.httpStatus).toBe(0)
+    expect(artifacts.errors.map(String)).toEqual([
+      'Error: The body fetches did not settle within 20ms'
+    ])
+  })
+
   it.each([
     [
       'the print throws',

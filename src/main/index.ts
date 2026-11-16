@@ -764,8 +764,8 @@ if (!gotSingleInstanceLock) {
       // holds the session (Active Case, capture count) and broadcasts capture
       // activity to the (lazily created) main window the way the recapture
       // service below does.
-      // One feed for capture activity, whoever reports it: the lifecycle for every admitted or
-      // refused capture, the recapture queue for a job's progress.
+      // One feed for capture activity, whoever reports it: the lifecycle's admission events and
+      // the recapture queue's job events.
       const emitCaptureActivity = (event: CaptureEvent): void => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           sendEvent(mainWindow.webContents, IPC_CHANNELS.CAPTURE_ACTIVITY, event)

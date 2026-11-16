@@ -236,8 +236,8 @@ export interface BackgroundJobIdentity {
   jobId: string
   batchId: string
   linkedFrom?: NonNullable<CaptureEvent['linkedFrom']>
-  // The address the job was queued for. The feed's entry for the job is keyed by it, so the
-  // `stored` event and a Case refusal name it whatever address the render ended on.
+  // The address the job was queued for. The `stored` event and a Case refusal name it,
+  // whatever address the render ended on.
   url: string
 }
 
@@ -338,7 +338,9 @@ export interface CaptureLifecycle {
   // Refusals are outcomes, never throws. The transport that calls this maps
   // the outcome to a status code and nothing else. The launched route runs the
   // same operator gate, case resolution and exclusion check, and passes
-  // `method: 'launched'` to the ingest.
+  // `method: 'launched'` to the ingest. The background route runs the checks
+  // `screenBackground` describes, passes `method: 'background'`, and leaves the
+  // operator gate to the ingest.
   admit: (
     request: AdmissionRequest | LaunchedAdmissionRequest | BackgroundAdmissionRequest
   ) => Promise<AdmissionOutcome>
@@ -1638,8 +1640,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     return { kind: 'excluded', pattern: blocked }
   }
 
-  // The background route (#recapture). No dedup window: a Batch may hold one address twice on
-  // purpose. A throw from the ingest, the operator gate's included, comes back as the `failed`
+  // The background route (#recapture). No dedup window: the queue never applied one. A throw
+  // from the ingest, the operator gate's included, comes back as the `failed`
   // refusal with nothing emitted and nothing logged here: the queue reports a job's failure,
   // whose event also covers a render that failed before any page reached admission.
   async function admitBackground(request: BackgroundAdmissionRequest): Promise<AdmissionOutcome> {

@@ -960,8 +960,8 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         // not be archived, and the exclusion list blocks every capture route, manual included.
         // This is the recapture route's first enforcement point, and `enqueue` is its only
         // producer: both IPC handlers funnel through here. A refusal is returned as a rejection
-        // because the four renderer call sites already render `rejected[0].reason` verbatim,
-        // so the operator is told why without a new result state.
+        // because the renderer call sites that queue a recapture already show a rejection's
+        // reason, so the operator is told why without a new result state.
         const invalid = validateUrl(job.url)
         const refusal = invalid ? null : deps.captureLifecycle.screenBackground(job.caseId, job.url)
         const reason = invalid ?? (refusal ? backgroundRefusalReason(refusal) : null)

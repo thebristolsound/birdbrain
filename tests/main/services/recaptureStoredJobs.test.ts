@@ -120,12 +120,21 @@ describe('stored background jobs', () => {
     rmSync(tempDir, { recursive: true, force: true })
   })
 
+  // Admission reports a job it admits or refuses through the lifecycle, and the queue reports
+  // the rest, on one feed: both write to `events`, as both reach the renderer on one channel.
+  function feedLifecycle() {
+    return createCaptureLifecycle({
+      selectorLifecycle,
+      emitCaptureEvent: (e) => events.push(e),
+      emitNewCapture: (c) => newCaptures.push(c)
+    })
+  }
+
   function makeService(renderPage: RenderPage = render, timeoutMs = 45_000) {
     return createRecaptureService({
       renderPage,
-      captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
+      captureLifecycle: feedLifecycle(),
       emitEvent: (e) => events.push(e),
-      emitNewCapture: (c) => newCaptures.push(c),
       emitJob: (job) => jobs.push(job),
       timeoutMs
     })
@@ -264,12 +273,12 @@ describe('stored background jobs', () => {
     })
 
     it('records an ingest that fails as failed with kind ingest', async () => {
-      const lifecycle = createCaptureLifecycle({ selectorLifecycle })
+      const lifecycle = feedLifecycle()
+      lifecycle.ingest = () => Promise.reject(new Error('disk full'))
       const svc = createRecaptureService({
         renderPage: render,
-        captureLifecycle: { ...lifecycle, ingest: () => Promise.reject(new Error('disk full')) },
-        emitEvent: (e) => events.push(e),
-        emitNewCapture: (c) => newCaptures.push(c)
+        captureLifecycle: lifecycle,
+        emitEvent: (e) => events.push(e)
       })
       const { batchId } = svc.enqueue([{ url: 'https://example.com/a', caseId }])
       await svc.idle()
@@ -1274,20 +1283,18 @@ describe('stored background jobs', () => {
     })
 
     it('refuses a cancel from the moment the render hands over its page, and the job ends stored', async () => {
-      const lifecycle = createCaptureLifecycle({ selectorLifecycle })
+      const lifecycle = feedLifecycle()
+      const ingest = lifecycle.ingest
       const ingestGate: Array<() => void> = []
       const refusals: RecaptureCancelResult[] = []
+      lifecycle.ingest = async (params) => {
+        await new Promise<void>((resolve) => ingestGate.push(resolve))
+        return ingest(params)
+      }
       const svc = createRecaptureService({
         renderPage: render,
-        captureLifecycle: {
-          ...lifecycle,
-          ingest: async (params) => {
-            await new Promise<void>((resolve) => ingestGate.push(resolve))
-            return lifecycle.ingest(params)
-          }
-        },
+        captureLifecycle: lifecycle,
         emitEvent: (e) => events.push(e),
-        emitNewCapture: (c) => newCaptures.push(c),
         // The first thing to hear that the job is ingesting asks to cancel it.
         emitJob: (job) => {
           jobs.push(job)

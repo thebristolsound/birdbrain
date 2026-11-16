@@ -192,13 +192,21 @@ describe('recapture service', () => {
     rmSync(tempDir, { recursive: true, force: true })
   })
 
+  // Admission reports a job it admits or refuses through the lifecycle, and the queue reports
+  // the rest, on one feed: both write to `events`, as both reach the renderer on one channel.
+  function feedLifecycle() {
+    return createCaptureLifecycle({
+      selectorLifecycle,
+      emitCaptureEvent: (e) => events.push(e),
+      emitNewCapture: (c) => newCaptures.push(c)
+    })
+  }
+
   function makeService(renderPage: RenderPage, timeoutMs = 45_000) {
-    const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
     return createRecaptureService({
       renderPage,
-      captureLifecycle,
+      captureLifecycle: feedLifecycle(),
       emitEvent: (e) => events.push(e),
-      emitNewCapture: (c) => newCaptures.push(c),
       timeoutMs
     })
   }
@@ -446,12 +454,12 @@ describe('recapture service', () => {
         printed.enqueue([{ url: 'https://example.com/page', caseId }])
         await printed.idle()
 
-        const failing = createCaptureLifecycle({ selectorLifecycle })
+        const failing = feedLifecycle()
+        failing.ingest = () => Promise.reject(new Error('disk full'))
         const svc = createRecaptureService({
           renderPage: fakeRender({ pdf: PRINT_FAILED }),
-          captureLifecycle: { ...failing, ingest: () => Promise.reject(new Error('disk full')) },
-          emitEvent: (e) => events.push(e),
-          emitNewCapture: (c) => newCaptures.push(c)
+          captureLifecycle: failing,
+          emitEvent: (e) => events.push(e)
         })
         svc.enqueue([{ url: 'https://example.com/other', caseId }])
         await svc.idle()
@@ -542,15 +550,12 @@ describe('recapture service', () => {
 
       it('is not logged when the ingest fails', async () => {
         const spy = vi.spyOn(logger, 'error')
-        const failing = createCaptureLifecycle({ selectorLifecycle })
+        const failing = feedLifecycle()
+        failing.ingest = () => Promise.reject(new Error('disk full'))
         const svc = createRecaptureService({
           renderPage: fakeRender({ transactionRecord: FAILED }),
-          captureLifecycle: {
-            ...failing,
-            ingest: () => Promise.reject(new Error('disk full'))
-          },
-          emitEvent: (e) => events.push(e),
-          emitNewCapture: (c) => newCaptures.push(c)
+          captureLifecycle: failing,
+          emitEvent: (e) => events.push(e)
         })
         svc.enqueue([{ url: 'https://example.com/page', caseId }])
         await svc.idle()
@@ -572,12 +577,11 @@ describe('recapture service', () => {
     })
 
     it("re-anchors both on a Duplicate's entry and mirrors them on its row", async () => {
-      const lifecycle = createCaptureLifecycle({ selectorLifecycle })
+      const lifecycle = feedLifecycle()
       const svc = createRecaptureService({
         renderPage: fakeRender(),
         captureLifecycle: lifecycle,
-        emitEvent: (e) => events.push(e),
-        emitNewCapture: (c) => newCaptures.push(c)
+        emitEvent: (e) => events.push(e)
       })
       svc.enqueue([{ url: 'https://example.com/page', caseId }])
       await svc.idle()
@@ -991,7 +995,7 @@ describe('recapture service', () => {
     await once(mhtmlStream, 'ready')
     const ingestError = new Error('ingest refused before reading')
     const cleanupError = new Error('cleanup failed')
-    const lifecycle = createCaptureLifecycle({ selectorLifecycle })
+    const lifecycle = feedLifecycle()
     vi.spyOn(lifecycle, 'ingest').mockRejectedValue(ingestError)
     const logged = vi.spyOn(logger, 'error').mockImplementation(() => 'log-id')
     const svc = createRecaptureService({
@@ -1002,8 +1006,7 @@ describe('recapture service', () => {
         }
       }),
       captureLifecycle: lifecycle,
-      emitEvent: (event) => events.push(event),
-      emitNewCapture: (capture) => newCaptures.push(capture)
+      emitEvent: (event) => events.push(event)
     })
     svc.enqueue([{ url: 'https://example.com/failed', caseId }])
     await svc.idle()
@@ -1025,15 +1028,14 @@ describe('recapture service', () => {
 
   it('logs a genuine stream-open error while cleaning up an ingest refusal', async () => {
     const mhtmlStream = createReadStream(join(tempDir, 'missing-render.mhtml'))
-    const lifecycle = createCaptureLifecycle({ selectorLifecycle })
+    const lifecycle = feedLifecycle()
     vi.spyOn(lifecycle, 'ingest').mockRejectedValue(new Error('ingest refused'))
     const logged = vi.spyOn(logger, 'error').mockImplementation(() => 'log-id')
     const cleanup = vi.fn(async () => undefined)
     const svc = createRecaptureService({
       renderPage: fakeRender({ mhtmlStream, cleanup }),
       captureLifecycle: lifecycle,
-      emitEvent: (event) => events.push(event),
-      emitNewCapture: vi.fn()
+      emitEvent: (event) => events.push(event)
     })
     svc.enqueue([{ url: 'https://example.com/missing-render', caseId }])
     await svc.idle()
@@ -1354,13 +1356,13 @@ describe('recapture service', () => {
     })
 
     it('names the ingest when the ingest fails, and logs no stored line', async () => {
-      const failing = createCaptureLifecycle({ selectorLifecycle })
+      const failing = feedLifecycle()
       const error = new Error('disk full')
+      failing.ingest = () => Promise.reject(error)
       const svc = createRecaptureService({
         renderPage: fakeRender(),
-        captureLifecycle: { ...failing, ingest: () => Promise.reject(error) },
-        emitEvent: (e) => events.push(e),
-        emitNewCapture: (c) => newCaptures.push(c)
+        captureLifecycle: failing,
+        emitEvent: (e) => events.push(e)
       })
       svc.enqueue([{ url: 'https://example.com/page', caseId }])
       await svc.idle()
@@ -1501,15 +1503,17 @@ describe('Capture link jobs (ADR-0040)', () => {
     ensureCaseDir(caseId)
     events = []
     newCaptures = []
+    // The lifecycle and the queue report on one feed, as both reach the renderer on one channel.
     captureLifecycle = createCaptureLifecycle({
-      selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle
+      selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle,
+      emitCaptureEvent: (e) => events.push(e),
+      emitNewCapture: (c) => newCaptures.push(c)
     })
     // The link redirects from http to https, the case where `url` alone loses the address.
     svc = createRecaptureService({
       renderPage: (url, opts) => fakeRender(url === LINK ? { finalUrl: LANDED } : {})(url, opts),
       captureLifecycle,
       emitEvent: (e) => events.push(e),
-      emitNewCapture: (c) => newCaptures.push(c),
       timeoutMs: 45_000
     })
   })
@@ -1856,7 +1860,6 @@ describe('Capture link jobs (ADR-0040)', () => {
       },
       captureLifecycle,
       emitEvent: (e) => events.push(e),
-      emitNewCapture: (c) => newCaptures.push(c),
       timeoutMs: 45_000
     })
     linkSvc.enqueueLink(linkPayload(source.id))
@@ -1969,10 +1972,13 @@ describe("Capture link from a teammate's Capture (ADR-0040)", () => {
     const svc = createRecaptureService({
       renderPage: fakeRender(),
       captureLifecycle: createCaptureLifecycle({
-        selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle
+        selectorLifecycle: {
+          runActiveSelectorsForCapture: vi.fn()
+        } as unknown as SelectorLifecycle,
+        emitCaptureEvent: (e) => events.push(e),
+        emitNewCapture: (c) => newCaptures.push(c)
       }),
       emitEvent: (e) => events.push(e),
-      emitNewCapture: (c) => newCaptures.push(c),
       timeoutMs: 45_000
     })
     const linkedFrom = { captureId: source.captureId, linkHref: LINK }

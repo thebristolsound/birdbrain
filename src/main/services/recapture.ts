@@ -563,11 +563,15 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       url: job.url,
       ...(job.linkedFrom ? { linkedFrom: job.linkedFrom } : {})
     }
-    // Admission refused the job and has told the feed; the job's row and the log say why.
+    // Admission refused the job. For an excluded address or an archived Case it has told the
+    // feed, and the job's row and the log say why. A Case that is gone fails the job, as the
+    // ingest into it always has.
     const endRefused = (refusal: AdmissionRefusal): JobOutcome => {
+      const reason = backgroundRefusalReason(refusal)
+      if (refusal.kind !== 'excluded' && refusal.kind !== 'case_archived') throw new Error(reason)
       const failureKind = refusal.kind === 'excluded' ? 'excluded' : 'case'
       logSkipped(failureKind)
-      return { state: 'skipped', failureKind, error: backgroundRefusalReason(refusal) }
+      return { state: 'skipped', failureKind, error: reason }
     }
     try {
       // The Case and the list can change while a job waits, held across a restart included,

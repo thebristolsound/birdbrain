@@ -102,8 +102,3 @@ fc4a365e1be2cc7f7b4134e4084ae97c47c5cc68:docs/design-handoff/2026-09-14-birdbrai
 #
 # The squash merge of PR #1762 onto main re-tripped the same mock line.
 6edd186bb6f828660cf947ce189041f31ed3429c:docs/design-handoff/2026-10-06-case-investigation-view/Birdbrain.dc.html:generic-api-key:7343
-#
-# A dummy `tsaToken` in the known-answer test of PR #2210: base64 of the words
-# "fixture token", written as a literal in the branch's first commit. The test
-# computes it since, so only that one commit matches.
-f5ea76cbc99d7e1e2f9348e29a73c7715fe83e82:tests/shared/verify/manifestEntryKnownAnswers.test.ts:generic-api-key:80

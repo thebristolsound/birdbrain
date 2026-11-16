@@ -41,7 +41,10 @@
 // to `git diff <base>...HEAD` (a clean merge of the base, or the same tree on another
 // lineage), no step runs: the recorded block is written again for HEAD, marked
 // `source=carried`, with a line naming the commit it was measured at and the diff hash.
-// When the diff differs, or there is no passing record, it says why and runs every step.
+// When the diff differs or is empty, the record was scored against another base, or there is
+// no passing record, it says why and runs every step. A carried block says nothing ran on the
+// tree at HEAD: the required checks there are the precondition ADR-0021 names, and the
+// implementer's stop hook does not take a carried block for a run.
 //
 // Usage: node scripts/preflight.mjs [--base <ref>] [--out <path>] [--carry]
 
@@ -130,6 +133,8 @@ export const summarizeDiffCoverage = (result) => {
 // The record of a finished run sits beside its block: verification.md -> verification.json.
 export const recordPathFor = (outPath) => outPath.replace(/(\.md)?$/, '.json')
 
+const EMPTY_DIFF_SHA256 = createHash('sha256').update('').digest('hex')
+
 // sha256 of `git diff <base>...<sha>`, the pull request's authored content (ADR-0021).
 export const diffHash = (cwd, base, sha) =>
   createHash('sha256')
@@ -165,6 +170,10 @@ export const carryForward = (record, { head, base }, { hashAt, mergeBaseAt }) =>
     measured = hashAt(record.sha)
   } catch {
     return { reason: `commit ${record.sha} is no longer in this repository` }
+  }
+  // Two empty diffs hash alike and say nothing about the code at either commit.
+  if (measured === EMPTY_DIFF_SHA256) {
+    return { reason: `the diff against ${base} is empty at ${record.sha}, so no content matches` }
   }
   if (measured !== hashAt(head)) {
     return { reason: `the diff against the base changed since ${record.sha}` }

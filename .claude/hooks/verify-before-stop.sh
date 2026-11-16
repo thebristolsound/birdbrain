@@ -9,7 +9,8 @@
 # itself. It reads the stamp line preflight writes,
 # `<!-- preflight vN sha=<sha> status=<pass|fail> -->`, from .preflight/verification.md. A block
 # `pnpm preflight --carry` wrote for HEAD from a run at another commit (ADR-0021) ends
-# ` source=carried -->` and counts as the block at HEAD.
+# ` source=carried -->`. No step ran on the tree at HEAD for it, so it holds the stop as a
+# missing block does.
 #
 # It acts only for the agents named in $bound, read from the payload's agent_type, which
 # SubagentStop always carries and Stop carries in a session started with `--agent`. So a main
@@ -55,6 +56,7 @@ block="$root/.preflight/verification.md"
 stamp="$(grep -m1 -oE '<!-- preflight v[0-9]+ sha=[0-9a-f]+ status=[a-z]+( source=[a-z]+)? -->' "$block" 2>/dev/null)"
 sha="$(printf '%s' "$stamp" | sed -nE 's/.* sha=([0-9a-f]+) .*/\1/p')"
 status="$(printf '%s' "$stamp" | sed -nE 's/.* status=([a-z]+) .*/\1/p')"
+source="$(printf '%s' "$stamp" | sed -nE 's/.* source=([a-z]+) .*/\1/p')"
 give_up="If you are taking the give-up path instead, say so in your report and stop again"
 limit="$give_up: this hook lets the stop through after $max_blocks held stops on one commit."
 next="Commit your work, run \`pnpm preflight\`, and fix what it reports before you finish."
@@ -71,6 +73,8 @@ elif [ -z "$stamp" ]; then
   reason="no verification block at .preflight/verification.md"
 elif [ "$sha" != "$head" ]; then
   reason="the verification block is for ${sha:0:12}, not HEAD ${head:0:12}"
+elif [ "$source" = carried ]; then
+  reason="the verification block at HEAD was carried forward from another commit, so no check ran on this tree"
 elif [ "$status" != pass ]; then
   [ "$reminded" = 1 ] && exit 0
   printf '%s %s 1\n' "$head" "$count" > "$state"

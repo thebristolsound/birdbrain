@@ -199,12 +199,15 @@ describe('verify-before-stop hook', () => {
     expect(stop(implementer).code).toBe(0)
   })
 
-  it('lets the implementer stop with a block carried forward to HEAD', () => {
+  it('holds an implementer whose block was carried forward to HEAD from another commit', () => {
     const measured = commit('work.txt')
     git('commit', '--allow-empty', '-q', '-m', 'merge')
     const head = git('rev-parse', 'HEAD')
     writeBlock(measured, 'pass', repo, { head, diffSha256: 'a'.repeat(64) })
-    expect(stop(implementer).code).toBe(0)
+    const { code, stderr } = stop(implementer)
+    expect(code).toBe(2)
+    expect(stderr).toContain('was carried forward from another commit')
+    expect(stderr).toContain('pnpm preflight')
   })
 
   it('blocks a carried block that names another head', () => {

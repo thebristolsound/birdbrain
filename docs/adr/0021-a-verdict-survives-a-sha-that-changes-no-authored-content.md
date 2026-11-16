@@ -67,9 +67,11 @@ Carrying forward is a set of writes, not a silence. The dispatcher:
 its last passing run left in `.preflight/verification.json` and compares the diff hash at that
 run's sha with the one at head. When they are equal it writes that block again for the new
 head, stamped `source=carried`, with a line naming the sha the block was measured at and the
-shared hash, and runs no step. When they differ, or no passing run is recorded, it says why and
-runs every step. A session outside the dispatcher uses the same command; the required checks at
-the new head stay the precondition.
+shared hash, and runs no step. When they differ, the diff is empty, the run was scored against
+another base, or no passing run is recorded, it says why and runs every step. A session outside
+the dispatcher uses the same command. The required checks at the new head stay the
+precondition, which the command does not read, and the implementer's stop hook holds a carried
+block as it holds a missing one.
 
 ### Narrowing the invalidation clause
 

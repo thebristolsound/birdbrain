@@ -205,6 +205,13 @@ describe('carryForward', () => {
     )
   })
 
+  it('refuses two empty diffs, which hash alike and match no content', () => {
+    const empty = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+    expect(carryForward(record, now, { ...same, hashAt: () => empty }).reason).toBe(
+      `the diff against origin/main is empty at ${SHA}, so no content matches`
+    )
+  })
+
   it('refuses when the base meets the measured commit somewhere else now', () => {
     const moved = { ...same, mergeBaseAt: () => 'c'.repeat(40) }
     expect(carryForward(record, now, moved).reason).toBe(
@@ -559,6 +566,65 @@ process.exit(failed ? 1 : 0)
       expect(calls()).toBe(ran)
       expect(block()).toBe(first)
       expect(first.split('\n')[0]).toBe(`<!-- preflight v1 sha=${measured} status=pass -->`)
+    })
+
+    // The case the option exists for: the base moves, the branch merges it in, and the diff
+    // of the branch against the base is the same text as before.
+    const mergedBase = (baseEdit: () => void) => {
+      prepare()
+      git('checkout', '-q', '-b', 'feature')
+      writeFileSync(join(repo, 'a.txt'), 'authored\n')
+      git('commit', '-qam', 'authored')
+      const measured = git('rev-parse', 'HEAD')
+      expect(run({}, ['--base', 'main', '--carry']).status).toBe(0)
+      git('checkout', '-q', 'main')
+      baseEdit()
+      git('commit', '-qm', 'the base moves')
+      git('checkout', '-q', 'feature')
+      git('merge', '-q', '--no-ff', '-m', 'merge the base in', 'main')
+      return measured
+    }
+
+    it('carries the block across a clean merge of a base that moved', () => {
+      const measured = mergedBase(() => {
+        writeFileSync(join(repo, 'b.txt'), 'from the base\n')
+        git('add', 'b.txt')
+      })
+      const ran = calls()
+      const result = run({}, ['--base', 'main', '--carry'])
+      expect(result.status, result.stderr).toBe(0)
+      expect(calls()).toBe(ran)
+      expect(block().split('\n')[0]).toBe(
+        `<!-- preflight v1 sha=${git('rev-parse', 'HEAD')} status=pass source=carried -->`
+      )
+      expect(block()).toContain(`\`pnpm preflight\` at \`${measured}\``)
+    })
+
+    it('runs every step when a hand edit follows the merge', () => {
+      mergedBase(() => {
+        writeFileSync(join(repo, 'c.txt'), 'from the base\n')
+        git('add', 'c.txt')
+      })
+      writeFileSync(join(repo, 'a.txt'), 'authored, then edited by hand\n')
+      git('commit', '-qam', 'a hand edit after the merge')
+      const ran = calls()
+      const result = run({}, ['--base', 'main', '--carry'])
+      expect(result.status, result.stderr).toBe(0)
+      expect(result.stdout).toContain('not carried forward, the diff against the base changed')
+      expect(calls()).toBeGreaterThan(ran)
+    })
+
+    it('runs every step for a branch with no content of its own', () => {
+      prepare()
+      git('tag', 'base')
+      git('commit', '--allow-empty', '-qm', 'nothing authored')
+      expect(carry().status).toBe(0)
+      const ran = calls()
+      git('commit', '--allow-empty', '-qm', 'still nothing')
+      const result = carry()
+      expect(result.stdout).toContain('the diff against base is empty at')
+      expect(calls()).toBeGreaterThan(ran)
+      expect(block()).not.toContain('source=carried')
     })
 
     it('runs every step when the earlier run scored its diff against another base', () => {

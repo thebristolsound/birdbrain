@@ -314,6 +314,7 @@ independent of the Operator who holds it.
 | Path | Tier | Why |
 |---|---|---|
 | `src/main/services/manifest.ts` | blocking | Hash-chained, signed audit manifest append/verify. The chain detects edits made without the installation-local signing key; it is not an Operator-independent guarantee |
+| `src/shared/manifestEntryRules.ts` | blocking | The schema version a reader needs for each Manifest Entry type and for each field a later schema added. `appendManifestEntry` stamps it on the entry and `ManifestEntrySchema` refuses an entry stamped lower, so a wrong value writes entries that an older verifier reports as a broken chain, or that it cannot read at all. The chain result's capture fields take their names from it too. Moved out of `src/main/services/manifest.ts` and `src/shared/schemas.ts`. Added 2026-11-16 |
 | `src/main/services/signingKey.ts` | blocking | Manifest signing keypair generation/storage/signing — the key the chain's assurance is bounded by |
 | `src/main/services/timestamp.ts` | blocking | RFC 3161 `TimeStampReq` construction (message imprint = the capture's `contentHash`) and TSA round-trip. The token dates the content; it does not prove manifest-chain integrity |
 | `src/main/services/timestampWorker.ts` | blocking | Async timestamping worker writing manifest entries |
@@ -333,6 +334,7 @@ independent of the Operator who holds it.
 | Path | Tier | Why |
 |---|---|---|
 | `src/main/services/captureLifecycle.ts` | blocking | Ingest/delete pipeline: hashing, manifest entries, trusted-time reconciliation |
+| `src/main/services/captureRow.ts` | blocking | Maps a signed `capture` entry to the `captures` row the ingest, a Duplicate and the received-row writer insert: which entry field lands in which column, and what each writer states beside the entry. A defect here leaves a row saying something its entry does not. Added 2026-11-16 |
 | `src/main/services/operatorName.ts` | blocking | The operator gate (X47): capture admission, recapture, duplicate, deletion, the Staging Pool commit, the trusted-time worker, the Shared Case pull and the Exhibit backfill refuse to sign an entry when it returns an empty name, so a change here decides whether an entry can name nobody. Added 2026-11-10 (#1332) |
 | `src/main/services/captureStore.ts` | blocking | Owner of capture artifact bytes on disk |
 | `src/main/services/exhibitNumbering.ts` | blocking | Takes the next Exhibit Number from the signed chain (X45), the number new capture and Exhibit entries record and a citation names. Added 2026-10-01; it shipped off the list with #1660 |

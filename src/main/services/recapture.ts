@@ -52,9 +52,9 @@ import type {
   RecaptureQueueStatus
 } from '@shared/ipc'
 
-// The parts of a render's result that the capture-finish package defines, named
-// here because `RenderedPage` carries them.
-export type { ImageSourcePinning, PdfOutcome, ScreenshotRecord }
+// Two parts of `RenderedPage` that the capture-finish package defines, exported
+// from here as well for the code that builds or reads a rendered page.
+export type { PdfOutcome, ScreenshotRecord }
 
 export interface RenderedPage {
   // The live renderer hands over a Node ReadStream on its temp file, so the fd

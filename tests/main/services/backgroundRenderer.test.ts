@@ -3789,8 +3789,8 @@ describe('a background Capture, known answers for the record, the PDF and the in
     expect(warcinfo).toContain(`\r\nbrowser: Chrome/${process.versions.chrome}\r\n`)
     expect(warcinfo).not.toContain('transport:')
     expect(warcinfo).toContain(`\r\nsoftware: Birdbrain ${entry.toolVersion}\r\n`)
-    // Every other byte of `warcinfo`: the four values above vary by run, release or Electron, and
-    // the block's length follows them.
+    // Every other byte of `warcinfo`: the Capture's id, the Chrome version and the tool version
+    // vary by run, Electron or release, and the block's length follows them.
     const fixed = warcinfo
       .replace(id, 'ID')
       .replaceAll(process.versions.chrome, 'CHROME')

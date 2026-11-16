@@ -245,6 +245,32 @@ function requireBothMethods(entries, where) {
   return entries
 }
 
+// Every file an entry declares must be there and hash to the value the entry signs, and a file
+// its inventory declares absent must be absent. Two runs that both lost a file would otherwise
+// describe alike and compare as identical.
+function requireArtifacts(dir, entry, where) {
+  const { inventory } = entry
+  const declared = [
+    ['mhtml', entry.contentHash, true],
+    ['png', entry.screenshotHash, inventory.screenshot.present],
+    ['txt', entry.textHash, entry.textHash !== undefined],
+    ['warc.gz', entry.transactionRecordHash, inventory.transactionRecord.present],
+    ['pdf', entry.pdfHash, inventory.pdf.present]
+  ]
+  for (const [ext, hash, present] of declared) {
+    const file = path.join(dir, `${entry.captureId}.${ext}`)
+    const what = `${where}: the ${entry.method} Capture's ${ext} file`
+    if (!present) {
+      if (fs.existsSync(file)) throw new Error(`${what} is there, and its entry declares none`)
+      continue
+    }
+    if (!fs.existsSync(file)) throw new Error(`${what} is missing, and its entry declares one`)
+    if (!hash || sha(fs.readFileSync(file)) !== hash) {
+      throw new Error(`${what} does not hash to the value its entry signs`)
+    }
+  }
+}
+
 // The stored MHTML without its boundary, its date and its frame ids: the page it was saved
 // from, and each part's type, location and a digest of its encoded body.
 function describeMhtml(bytes) {
@@ -269,16 +295,16 @@ function describeMhtml(bytes) {
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex')
 
 // One Capture without its ids, times, and the hashes of files that embed a time. What stays:
-// the signed inventory, Bound TLS Details or their absence, whether each stored hash matches
-// its file, the MHTML's parts, and each record's type, request or status line, header names,
-// payload digest and credential header lines.
+// the signed inventory, Bound TLS Details or their absence, the MHTML's parts, and each
+// record's type, request or status line, header names, payload digest and credential header
+// lines. `requireArtifacts` has already held every file to the hash its entry signs.
 function describeCapture(dir, entry) {
   const file = (ext) => path.join(dir, `${entry.captureId}.${ext}`)
   const read = (ext) => (fs.existsSync(file(ext)) ? fs.readFileSync(file(ext)) : null)
   const warc = read('warc.gz')
   const pdf = read('pdf')
   const mhtml = read('mhtml')
-  const png = fs.readFileSync(file('png'))
+  const png = read('png')
   const text = warc ? gunzipSync(warc).toString('latin1') : null
   const records = text?.split(/(?=WARC\/1\.1\r\n)/).map((record) => {
     const head = record.slice(0, record.indexOf('\r\n\r\n'))
@@ -308,17 +334,12 @@ function describeCapture(dir, entry) {
     scrollToLoad: entry.scrollToLoad ?? null,
     boundTls: entry.boundTls ?? null,
     boundTlsAbsent: entry.boundTlsAbsent ?? null,
-    mhtmlHashMatchesFile: mhtml
-      ? entry.contentHash === sha(mhtml)
-      : `no file, hash ${entry.contentHash}`,
-    mhtml: mhtml ? describeMhtml(mhtml) : null,
-    transactionRecordHashMatchesFile: warc
-      ? entry.transactionRecordHash === sha(warc)
-      : `no file, hash ${entry.transactionRecordHash}`,
-    pdfHashMatchesFile: pdf ? entry.pdfHash === sha(pdf) : `no file, hash ${entry.pdfHash}`,
+    mhtml: describeMhtml(mhtml),
     pdfPages: pdf ? (pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) ?? []).length : null,
-    screenshot: { width: png.readUInt32BE(16), height: png.readUInt32BE(20), sha: sha(png) },
-    text: fs.readFileSync(file('txt'), 'utf8'),
+    screenshot: png
+      ? { width: png.readUInt32BE(16), height: png.readUInt32BE(20), sha: sha(png) }
+      : null,
+    text: read('txt')?.toString('utf8') ?? null,
     recordHoldsCookieValue: text ? text.includes(SECRET) : null,
     recordHoldsPostBody: text ? text.includes(POST_BODY) : null,
     records: records ?? null
@@ -330,6 +351,7 @@ function describeRun(out, label) {
   if (!fs.existsSync(dir)) throw new Error(`no run labelled ${label} under ${out}: take it first`)
   const described = {}
   for (const entry of requireBothMethods(captureEntries(dir), `the run ${label}`)) {
+    requireArtifacts(dir, entry, `the run ${label}`)
     described[entry.method] = describeCapture(dir, entry)
   }
   fs.writeFileSync(path.join(out, `${label}.json`), JSON.stringify(described, null, 2))

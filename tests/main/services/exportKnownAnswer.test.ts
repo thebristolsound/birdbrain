@@ -38,10 +38,12 @@ import { ENGINE_CAPTURE_ID } from '../../helpers/captureEnginePackage'
 import { seedUnanchoredDerivedFile } from '../../helpers/mixedKindCase'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 
-// The known answers of `generateReport` (ADR-0004, ADR-0014): two fixed Cases, exported each
-// way that function can export them, with every byte of every output pinned in
+// The known answers of `generateReport` (ADR-0004, ADR-0014): two fixed Cases, exported as
+// eight packages and one standalone HTML report, with every byte of every output pinned in
 // tests/fixtures/export-known-answer/answers.json. A change that alters any member of any
 // package, the order of the members, or the Package Hash fails here and names the member.
+// The standalone report is pinned once, with every option on. A standalone report with other
+// options is not pinned; the packages pin their `report.html` member under each option set.
 // The Case Archive and the single-Capture PDF are other exports, written by other code, and
 // are not pinned here.
 //

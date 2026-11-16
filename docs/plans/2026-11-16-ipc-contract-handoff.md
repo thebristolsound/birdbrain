@@ -22,8 +22,8 @@ What it does:
   added the same day.
 - `adaptBridge` in `src/shared/bridgeAdapter.ts` turns that object back into an Error that
   carries the code. `src/renderer/lib/birdbrain.ts` binds it to `window.birdbrain`, and every
-  renderer invoke call goes through it. ESLint fails any other use of `window.birdbrain` under
-  `src/renderer/` except a subscription.
+  renderer invoke call goes through it. ESLint fails a direct reference to `window.birdbrain`
+  anywhere else under `src/renderer/` except a subscription.
 - `IPC_REFUSALS` in `src/shared/ipc.ts` names the codes that renderer code branches on, and
   `refusalCode(err, channel)` reports only those, typed per channel.
 

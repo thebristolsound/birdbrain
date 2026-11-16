@@ -78,12 +78,15 @@ export default tseslint.config(
     rules: {
       'no-restricted-syntax': [
         'error',
-        {
-          selector:
-            "MemberExpression[property.name='birdbrain']:not(MemberExpression[property.name=/^on[A-Z]/] > MemberExpression)",
+        ...[
+          "MemberExpression[property.name='birdbrain']:not(MemberExpression[property.name=/^on[A-Z]/] > MemberExpression)",
+          "MemberExpression[property.value='birdbrain']",
+          "ObjectPattern > Property[key.name='birdbrain']"
+        ].map((selector) => ({
+          selector,
           message:
             "Call the bridge through `birdbrain` from '@renderer/lib/birdbrain'; only a subscription may use `window.birdbrain`."
-        }
+        }))
       ]
     }
   },

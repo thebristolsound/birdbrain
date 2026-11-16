@@ -52,8 +52,8 @@ import type {
   RecaptureQueueStatus
 } from '@shared/ipc'
 
-// Two parts of `RenderedPage` that the capture-finish package defines, exported
-// from here as well for the code that builds or reads a rendered page.
+// Two parts of `RenderedPage` that the capture-finish package defines. Two test files import
+// them from here along with it, which is all this export is for.
 export type { PdfOutcome, ScreenshotRecord }
 
 export interface RenderedPage {

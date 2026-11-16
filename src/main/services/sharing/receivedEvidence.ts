@@ -254,7 +254,7 @@ export async function applyReceivedEvidence(
         screenshotPath: png?.rel,
         // Only what the author's entry signs: nothing here saw the browser.
         userAgent: entry.userAgent,
-        exhibitNumber: n,
+        renumberedTo: renumber,
         author: { installationId: author, memberCode },
         // The page's timestamp stands in for the author's ingest time, which this writer reads
         // from no entry, a Duplicate's `duplicatedAt` included.

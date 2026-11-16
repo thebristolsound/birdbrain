@@ -56,7 +56,8 @@ export interface CaptureRowLocal {
   // The acquiring browser, as the writer knows it: what this installation saw for the ingest,
   // the source's row for a Duplicate, and for a received row only the user agent its author's
   // entry signs. No entry signs the extension's version, and an entry signs the user agent only
-  // when the Egress was not Direct, so none of the three is mirrored.
+  // when the Egress was not Direct and the browser version only for a launched browser, so the
+  // row takes all three from the writer.
   extensionVersion?: string
   browserVersion?: string
   userAgent?: string
@@ -68,8 +69,9 @@ export interface CaptureRowLocal {
   // Absent, the row keeps the id the entry signs; the two differ after an import renamed the
   // source's row.
   linkedFromRowId?: string
-  // The number a later `renumber` entry gave an Exhibit whose own entry carries none.
-  exhibitNumber?: number
+  // The number a later `renumber` entry gave the Exhibit, used only when its own entry carries
+  // none. A row never holds a number other than the one its entry signs.
+  renumberedTo?: number
   // Another member's Capture, received by sync (#1811), and the `committed_at` its Exhibit row
   // takes.
   author?: ExhibitAuthor
@@ -131,7 +133,7 @@ export function captureRowOf(
     boundTls: engine ? entry.boundTls : undefined,
     boundTlsAbsent: engine ? entry.boundTlsAbsent : undefined,
     pdfHash: engine ? entry.pdfHash : undefined,
-    exhibitNumber: local.exhibitNumber ?? entry.exhibitNumber,
+    exhibitNumber: entry.exhibitNumber ?? local.renumberedTo,
     author: local.author,
     committedAt: local.committedAt
     // Every insert parameter named, so a new one fails the build until this says where it comes

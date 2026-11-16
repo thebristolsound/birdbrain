@@ -97,10 +97,10 @@ describe('captureRowOf', () => {
     })
   })
 
-  it("takes a writer's Exhibit Number over the entry's, and the entry's without one", () => {
-    expect(captureRowOf(ENTRY, { ...LOCAL, exhibitNumber: 9 }).exhibitNumber).toBe(9)
+  it("keeps the entry's Exhibit Number, and takes a renumbered one only when it signs none", () => {
+    expect(captureRowOf(ENTRY, { ...LOCAL, renumberedTo: 9 }).exhibitNumber).toBe(4)
     const unnumbered = { ...ENTRY, exhibitNumber: undefined }
-    expect(captureRowOf(unnumbered, { ...LOCAL, exhibitNumber: 9 }).exhibitNumber).toBe(9)
+    expect(captureRowOf(unnumbered, { ...LOCAL, renumberedTo: 9 }).exhibitNumber).toBe(9)
     expect(captureRowOf(unnumbered, LOCAL).exhibitNumber).toBeUndefined()
   })
 
@@ -129,11 +129,12 @@ describe('captureRowOf', () => {
   })
 
   it('leaves every capture engine column empty for a writer that turns them off', () => {
-    const row = captureRowOf(
-      { ...ENGINE, boundTls: undefined, boundTlsAbsent: 'not-https' },
-      { ...LOCAL, captureEngineFields: false }
-    )
-    for (const key of ENGINE_KEYS) expect(row[key]).toBeUndefined()
+    const off: CaptureRowLocal = { ...LOCAL, captureEngineFields: false }
+    // Two entries, because one cannot sign Bound TLS Details and the reason they are absent.
+    for (const entry of [ENGINE, { ...ENTRY, boundTlsAbsent: 'not-https' as const }]) {
+      const row = captureRowOf(entry, off)
+      for (const key of ENGINE_KEYS) expect(row[key]).toBeUndefined()
+    }
   })
 
   it("carries another member's authorship and committed time only when given", () => {

@@ -40,8 +40,8 @@ three chose a new package, one synchronous call, and results that carry their by
    and repeats the first answer, a failed read included.
 4. **The failure rule is in the port's contract.** A non-Capture Exhibit or a Derived File
    that cannot be read is not enclosed, and the export carries on. That is what
-   `createPackageReader` did. A Capture's own file that exists and cannot be read fails the
-   export, as `CaptureStore.readArtifact` always did.
+   `createPackageReader` did. A Capture's own file the export has reason to enclose that
+   exists and cannot be read fails the export, as `CaptureStore.readArtifact` always did.
 5. **Chain names stay an input.** `resolveChainNames` stays in `export.ts`. Entry signatures,
    notes, the signed selection and the Shared Case exclusions read it too, and none of those
    is a contents decision.
@@ -87,7 +87,8 @@ verifiers stay, because ADR-0004 asks for them. `caseArchive.ts` is not touched.
 
 ## Behaviour differences
 
-Each is a difference only when a file changes or fails while an export runs.
+Output differences occur only when a file changes or fails while an export runs. The extra
+hashing listed below adds cost whenever those files are enclosed.
 
 - **Slice 2.** A failed read of a stored path is remembered for the rest of the export.
   `createPackageReader` cached only successful reads, so a second row with the same stored
@@ -106,11 +107,11 @@ Each is a difference only when a file changes or fails while an export runs.
   after the snapshot. A screenshot that is absent at the first read and back before the zip
   is written is now left out, and Package Verification fails that package if a signed entry
   anchors the screenshot.
-- **Slice 3.** A page archive, Transaction Record or PDF that exists and cannot be read still
-  fails the export with the same error and writes no package. The error is now raised when
-  the contents are decided, before the report is rendered. It was raised while the zip was
-  built. An unreadable screenshot already failed before the report. All of these are before
-  the `export` entry is appended.
+- **Slice 3.** A page archive, Transaction Record or PDF the export has reason to enclose
+  that exists and cannot be read still fails the export with the same error and writes no
+  package. The error is now raised when the contents are decided, before the report is
+  rendered. It was raised while the zip was built. An unreadable screenshot already failed
+  before the report. All of these are before the `export` entry is appended.
 - **Slice 3.** A page archive, and a Working Copy's screenshot copy, is hashed once more,
   because the decision records its SHA-256 and the zip writer hashes what it writes.
 

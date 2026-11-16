@@ -18,6 +18,7 @@ import { createHash } from 'node:crypto'
 import * as fs from 'node:fs'
 import * as http from 'node:http'
 import * as path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { gunzipSync } from 'node:zlib'
 
 const HERE_REPO = path.resolve(import.meta.dirname, '../../..')
@@ -234,7 +235,7 @@ const captureEntries = (dir) =>
 // about it, so every reader of a run refuses it: two runs that both lack a method must not
 // compare as identical, and a second Capture of one method would hide the first.
 const METHODS = ['background', 'launched']
-function requireBothMethods(entries, where) {
+export function requireBothMethods(entries, where) {
   for (const method of METHODS) {
     const count = entries.filter((entry) => entry.method === method).length
     if (count !== 1) throw new Error(`${where} holds ${count} ${method} Captures, not one`)
@@ -248,7 +249,7 @@ function requireBothMethods(entries, where) {
 // Every file an entry declares must be there and hash to the value the entry signs, and a file
 // its inventory declares absent must be absent. Two runs that both lost a file would otherwise
 // describe alike and compare as identical.
-function requireArtifacts(dir, entry, where) {
+export function requireArtifacts(dir, entry, where) {
   const { inventory } = entry
   const declared = [
     ['mhtml', entry.contentHash, true],
@@ -272,8 +273,10 @@ function requireArtifacts(dir, entry, where) {
 }
 
 // The stored MHTML without its boundary, its date and its frame ids: the page it was saved
-// from, and each part's type, location and a digest of its encoded body.
-function describeMhtml(bytes) {
+// from, and each part's type, transfer encoding, location and a digest of its encoded body.
+// The encoding is part of the description because the same bytes decode differently under
+// another one.
+export function describeMhtml(bytes) {
   const text = bytes.toString('latin1')
   const boundary = text.match(/boundary="([^"]+)"/)?.[1]
   if (!boundary) return 'no multipart boundary'
@@ -287,7 +290,8 @@ function describeMhtml(bytes) {
       .map((part) => {
         const headers = part.slice(0, part.indexOf('\r\n\r\n'))
         const body = part.slice(part.indexOf('\r\n\r\n') + 4)
-        return `${field(headers, 'Content-Type')} ${field(headers, 'Content-Location')} ${sha(body)}`
+        const encoding = field(headers, 'Content-Transfer-Encoding')
+        return `${field(headers, 'Content-Type')} ${encoding} ${field(headers, 'Content-Location')} ${sha(body)}`
       })
   }
 }
@@ -434,10 +438,12 @@ async function main() {
   throw new Error(USAGE)
 }
 
-main().then(
-  (code) => process.exit(code),
-  (error) => {
-    console.error(`capture-proof: ${process.env.DEBUG ? error?.stack : (error?.message ?? error)}`)
-    process.exit(1)
-  }
-)
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().then(
+    (code) => process.exit(code),
+    (error) => {
+      console.error(`capture-proof: ${process.env.DEBUG ? error?.stack : (error?.message ?? error)}`)
+      process.exit(1)
+    }
+  )
+}

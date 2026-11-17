@@ -3,10 +3,10 @@
 **Status:** active
 
 On 2026-11-16 the maintainer asked for a sweeping cut of the prose in the app: sentences that
-add little or nothing go, and what is needed moves to a tip. This plan is the proposal. It
-changes nothing in the app. It gives each string a verdict, screen by screen, and the
-maintainer rules on the verdicts before any slice starts. Code references are to `origin/main`
-at `ae4b50a`.
+add little or nothing go, and what is needed moves to a tip. This plan gives each string a
+verdict, screen by screen. The maintainer accepted the first tranche's verdicts on 2026-11-16
+(decision 6), so its slices can start. The plan itself changes nothing in the app. Code
+references are to `origin/main` at `ae4b50a`.
 
 This is the first tranche: ten screens an Operator meets in ordinary work. "Next tranche" lists
 what is left, with counts.
@@ -348,10 +348,11 @@ Not yet judged. The counts are from the same measurement.
 
 ## Slices
 
-No slice starts until the maintainer has ruled on its screen's verdicts. Each slice is one pull
-request with before and after screenshots, the tests and docs it breaks, and ten files or
-fewer. Each adds its line to the index in `docs/design-handoff/README.md` (decision 1) and
-moves any text marked Docs into `features.mdx` (decision 2).
+The first tranche's verdicts are accepted (decision 6), so the slices below can start, each
+after whatever its own entry says it waits for. Each slice is one pull request with before and
+after screenshots, the tests and docs it breaks, and ten files or fewer. Each adds its line to
+the index in `docs/design-handoff/README.md` (decision 1) and moves any text marked Docs into
+`features.mdx` (decision 2).
 
 - [ ] **C0. A tip that opens on focus.** `src/renderer/components/ui/tooltip.tsx` on the
   tooltip `radix-ui` already ships. It wraps a control or a label, shows on hover and on
@@ -372,13 +373,13 @@ moves any text marked Docs into `features.mdx` (decision 2).
   consolidation plan, so the dialog's wording changes once. The two descriptions are
   decision 5.
 
-C1 to C4 touch no `blocking` file. C1, C3 and C4 wait for nothing but the ruling; C2 also needs
-C0, for the tip on "Rescan all captures". C4 is worth doing first: it is the only place the cut
+C1 to C4 touch no `blocking` file. C1, C3 and C4 wait for nothing; C2 needs C0, for the tip on
+"Rescan all captures". C4 is worth doing first: it is the only place the cut
 also removes something untrue.
 
 ## Decisions taken
 
-The maintainer ruled on this plan's five questions on 2026-11-16.
+The maintainer ruled on this plan's five questions on 2026-11-16, and then on its verdicts.
 
 1. **Does a copy-only cut supersede a design bundle's wording without a new bundle?** Ruling:
    yes. No new bundle for copy alone. Each slice adds a line to the index in
@@ -401,8 +402,8 @@ The maintainer ruled on this plan's five questions on 2026-11-16.
    wording follows `CONTEXT.md`, which defines a Working Copy as an export for the Operator's
    own use, and avoids the bare word "verified", which the writing guide rules out.
 
-The verdicts in the tables are still proposals. The maintainer rules on a screen's verdicts
-before its slice starts.
+6. **Are the first tranche's verdicts accepted as written?** Ruling: yes, all 99, with the
+   wording each row gives. A later tranche's verdicts wait for a ruling of their own.
 
 ## Not in this plan
 

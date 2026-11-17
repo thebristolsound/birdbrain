@@ -20,7 +20,7 @@ It adds no decision of its own. Code references in the plans are to `origin/main
 | `2026-11-15-consolidation-phase-5-one-row-chrome.md` | Slices 5.1 to 5.6 |
 | `2026-11-15-consolidation-phase-6-status-tiers.md` | Slice 6.1 |
 | `2026-11-15-consolidation-phase-7-summary-first.md` | Slices 7.1 to 7.4 |
-| `2026-11-16-ui-copy-cut.md` | The copy cut: rules, five rulings, verdicts for ten screens, slices C0 to C8 |
+| `2026-11-16-ui-copy-cut.md` | The copy cut: rules, six rulings, accepted verdicts for ten screens, slices C0 to C8 |
 | `2026-11-15-investigate-entry-point.md` | Left out of the consolidation: the Investigate entry |
 | `2026-11-15-loose-file-export.md` | Left out of the consolidation: loose files, with #830 |
 | `2026-11-15-unreviewed-surfaces-review-passes.md` | Three review passes the critique did not make |
@@ -45,9 +45,10 @@ after the parent merged. The parent plan is behind `main` in these places:
 ## What is ruled
 
 - **Consolidation.** Six decisions, in the parent plan under "Decisions taken".
-- **Copy cut.** Five decisions, in the copy cut plan under "Decisions taken": no new bundle for
+- **Copy cut.** Six decisions, in the copy cut plan under "Decisions taken": no new bundle for
   copy alone; how-it-works text goes to `features.mdx`; "off in this build" for passive capture;
-  a tip hangs only from a control or label already on screen; and the two export descriptions.
+  a tip hangs only from a control or label already on screen; the two export descriptions; and
+  the first tranche's 99 verdicts, accepted as written.
 
 ## What waits for the maintainer
 
@@ -56,10 +57,9 @@ after the parent merged. The parent plan is behind `main` in these places:
 | Open question 1 of the parent plan: how a Capture Session starts when only the extension is connected | Slices 5.4 and 5.5 |
 | Open question 2 of the parent plan: what the Data screen's two Verify buttons say | Slice 1.5 |
 | The ruling on the design bundle from slice 0.1 | Slices 2.3, 4.2 to 4.4, 5.2 to 5.6 and 7.3 |
-| The maintainer's ruling on a screen's verdicts in the copy cut plan | That screen's slice, C1 to C8 |
+| A ruling on the next tranche's verdicts, once the copy cut plan has them | Copy slices for Settings, Sharing, Data and the extension's pages |
 
-The copy cut's five decisions settle its rules. Its tables of verdicts are still proposals, and
-the plan says no slice starts until the maintainer has ruled on its screen's verdicts.
+Nothing in the copy cut's first tranche waits for the maintainer.
 
 ## What can start now
 
@@ -85,9 +85,19 @@ Consolidation slices that wait for nothing:
 | 7.2 | A count of Selector matches on each row | Read review pass 3 first if it has landed |
 | 7.4 | Auto-capture switch to Settings | Low priority |
 
-Copy cut slices, once their verdicts are ruled on: C0 (the tooltip), C1 (Notes), C3 (Dashboard,
-new Case and Overview), C4 (the tour) and C6 (Captures) wait for nothing else. C2 (Signals)
-also needs C0, for one tip.
+Copy cut slices:
+
+| Slice | What | Note |
+| --- | --- | --- |
+| C0 | A tip that opens on focus | No string changes |
+| C1 | Notes | |
+| C2 | Signals | After C0, for one tip. With slice 7.4 if it has not landed |
+| C3 | Dashboard, new Case and Overview | |
+| C4 | The onboarding tour | Corrects two untrue statements. A good first slice |
+| C5 | Launch dialog and VPN warning | With slices 3.1 and 3.2 |
+| C6 | Captures and the delete dialog | |
+| C7 | Capture Session panel | After C0. `evidence-affecting` |
+| C8 | Export dialog | `evidence-affecting`. With slices 4.1 and 4.2 |
 
 ## Slices that share a file
 

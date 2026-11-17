@@ -444,6 +444,7 @@ records state.
 | Path | Tier | Why |
 |---|---|---|
 | `src/main/ipcHandlers.ts` | advisory | Shapes inputs/outputs of evidence operations (see judgment call 1) |
+| `src/main/ipc/**` | advisory | Handler logic moved out of `ipcHandlers.ts` by domain, so it shapes the same inputs and outputs |
 | `src/preload/index.ts` | advisory | Single privileged chokepoint for every evidence channel |
 | `src/shared/birdbrainApi.ts` | advisory | Builds the preload's bridge from the channel list, so it decides which channels the renderer reaches and where |
 | `src/shared/ipc.ts` | advisory | Typed payloads for evidence operations (see judgment call 1) |

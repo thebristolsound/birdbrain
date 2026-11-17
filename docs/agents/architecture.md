@@ -22,6 +22,7 @@ src/main/services/           # Main-process services: captureServer, captureStor
 src/main/services/db/        # Data access layer — see "Database" below (core, migrations, per-domain repos, dbAdmin)
 src/main/services/extraction/ # Extracted-data pipeline (source, IOC adapter, sanitizer, validators)
 src/main/ipcHandlers.ts      # All IPC handler registrations
+src/main/ipc/                # Handler tables by domain (handlers.ts: the table type and its registrar)
 src/main/ipcWrap.ts          # handle() wrapper + IpcFailure error envelope
 src/shared/types.ts          # Cross-process domain types (Case, Capture, Tag, Selector, Note, Settings, etc.)
 src/shared/ipc.ts            # IPC channel definitions and payload types
@@ -61,7 +62,9 @@ The preload script exposes these via `window.birdbrain` with typed invoke/on met
 
 A handler refuses a call by throwing `IpcFailure(message, code)`. The preload rejects every refused call with a plain `{ message, code }` object, because the context bridge keeps only an Error's message. Renderer code calls invoke methods through `birdbrain` from `@renderer/lib/birdbrain`, which turns that object back into an Error that carries `.code`. ESLint fails a direct reference to `window.birdbrain` elsewhere under `src/renderer/` (dotted, computed or destructured), with two exceptions: a subscription (`window.birdbrain.on...`), which returns no promise, and the four error-reporting modules (`queryClient.ts`, `mainLogBridge.ts`, `notify.ts` and `globalErrorLog.ts` under `src/renderer/lib/`), which discard a rejection. The rule guards a convention: an indirect read such as `Reflect.get(window, 'birdbrain')` still passes. `IPC_REFUSALS` (`src/shared/ipc.ts`) names the codes read through `refusalCode(err, channel)`, which reports only the codes that table names for the channel; today that is `persona:import` and `launchedBrowser:launch`. The sharing screens read their codes with `sharingErrorCode` against `SHARING_ERROR_CODES` instead. For a new branch on a code, add the code to `IPC_REFUSALS` and read it with `refusalCode`. Nothing stops code from reading `.code` off the Error directly.
 
-A new invoke channel touches `src/shared/ipc.ts` (the `IPC_CHANNELS` constant and its `IpcInvokeContract` entry) and `src/main/ipcHandlers.ts`. A new event touches `IPC_CHANNELS`, its `IpcEventContract` entry and the bridge test's `ROOT_LEVEL_LEAVES`.
+A new invoke channel touches `src/shared/ipc.ts` (the `IPC_CHANNELS` constant and its `IpcInvokeContract` entry) and its handler. The handler goes in the domain's module under `src/main/ipc/` when the domain has one, and in `src/main/ipcHandlers.ts` otherwise. A new event touches `IPC_CHANNELS`, its `IpcEventContract` entry and the bridge test's `ROOT_LEVEL_LEAVES`.
+
+Handler logic is moving out of `registerIpcHandlers` one domain at a time. A domain module under `src/main/ipc/` exports a function that takes its ports (the Electron `dialog` or `shell` calls it makes, or another domain's functions) and returns an `IpcHandlers` table keyed by channel (`src/main/ipc/handlers.ts`). Each handler takes an `IpcCaller`, which sends an event to the window that made the call, and then the channel's contract arguments. `registerIpcHandlers` builds each table and passes it to `registerHandlers`. A test calls a handler from the table with fake ports and needs no Electron mock; `tests/main/ipc/revealFiles.test.ts` is the example. `docs/plans/2026-11-16-ipc-contract-handoff.md` lists which domains have moved.
 
 ### Logging
 

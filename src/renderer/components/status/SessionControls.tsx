@@ -1,15 +1,22 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { launchedBrowserStatusQueryOptions } from '@renderer/lib/api/launchedBrowser'
+import {
+  launchedBrowserName,
+  launchedBrowserStatusQueryOptions
+} from '@renderer/lib/api/launchedBrowser'
 import { useParams } from '@tanstack/react-router'
+import { motion, AnimatePresence } from 'motion/react'
 import { useAppStore } from '@renderer/stores/appStore'
-import { useSessionMutations } from '@renderer/lib/queries'
+import { casesQueryOptions, useSessionMutations } from '@renderer/lib/queries'
+import { presets } from '@renderer/lib/motion'
 import { confirmContact } from '@renderer/lib/vpnWarning'
 
 export function SessionControls() {
   const sessionActive = useAppStore((s) => s.sessionActive)
   const setSessionActive = useAppStore((s) => s.setSessionActive)
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
+  const sessionCaseId = useAppStore((s) => s.activeCaseId)
+  const { data: cases = [] } = useQuery(casesQueryOptions)
   const { data: launched } = useQuery(launchedBrowserStatusQueryOptions)
   const [toggling, setToggling] = useState(false)
   const { activateCase, start, stop } = useSessionMutations()
@@ -22,6 +29,22 @@ export function SessionControls() {
   // Capture Session a launched browser left running on closing still runs.
   const launchedSession = launched?.state === 'open' || launched?.state === 'closed'
   if (!connectedToExtension && !launchedSession) return null
+
+  // A label follows the switch only for what the rest of the window does not say, on Case
+  // screens. The breadcrumb names the Case on screen, and the Active Case, the one Captures go
+  // into, can be another: a launched browser pins the Case it started in, and the extension can
+  // choose one too.
+  const intoCase =
+    activeCaseId && sessionCaseId !== activeCaseId
+      ? cases.find((c) => c.id === sessionCaseId)
+      : undefined
+  // The recording mark names only the launched browser, so both sources are named here while the
+  // extension is connected beside an open one.
+  const sources =
+    activeCaseId && launched?.state === 'open' && connectedToExtension
+      ? `${launchedBrowserName(launched.browser.label)}, and the extension`
+      : null
+  const label = [intoCase?.name, sources].filter(Boolean).join(' · ')
 
   const handleToggleSession = async () => {
     if (toggling) return
@@ -74,6 +97,26 @@ export function SessionControls() {
           />
         </button>
       </label>
+      <AnimatePresence>
+        {sessionActive && label && (
+          <motion.span
+            data-testid="session-source-line"
+            title={label}
+            className="hidden min-w-0 text-xs text-text-muted lg:inline-flex"
+            initial={presets.fadeIn.initial}
+            animate={presets.fadeIn.animate}
+            exit={presets.fadeIn.exit}
+            transition={presets.fadeIn.transition}
+          >
+            {intoCase && <span className="max-w-[140px] truncate">{intoCase.name}</span>}
+            {sources && (
+              <span className="overflow-hidden text-ellipsis whitespace-pre">
+                {intoCase ? ` · ${sources}` : sources}
+              </span>
+            )}
+          </motion.span>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

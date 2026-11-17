@@ -48,6 +48,7 @@ import { initSettings, updateSettings } from '@main/services/settings'
 import { MANIFEST_FILENAME, MAX_PDF_CONTENT_HEIGHT_PX, MAX_PDF_SIZE } from '@shared/constants'
 import type { BackgroundJobView } from '@shared/ipc'
 import type { CaptureEvent, EgressSetting } from '@shared/types'
+import { recordTexts } from '../../helpers/transactionRecordText'
 
 // Mutable harness the fake BrowserWindow/webContents read from, so each test can
 // steer the render (network, scroll steps, load failure, consent blocker).
@@ -3595,5 +3596,294 @@ describe("renderPageInHiddenWindow's log lines", () => {
     expect(
       info.mock.calls.filter(([, code]) => String(code).startsWith('backgroundRenderer.'))
     ).toEqual([])
+  }, 30_000)
+})
+
+// Known answers for what a background Capture signs and stores once collection has stopped: the
+// Transaction Record, Bound TLS Details, the PDF and the inventory, through the render, the
+// Recapture queue and the ingest. The inventory, the details, the PDF's hash and the digests of the
+// written record are literals, and the record's hash is checked against the stored file, so a
+// change to how the finish is put together that alters any of them fails here.
+describe('a background Capture, known answers for the record, the PDF and the inventory', () => {
+  let tempDir: string
+  let caseId: string
+  let events: CaptureEvent[]
+  const selectorLifecycle = {
+    runActiveSelectorsForCapture: vi.fn()
+  } as unknown as SelectorLifecycle
+
+  beforeAll(async () => {
+    const png = await sharp({ create: { width: 100, height: 100, channels: 3, background: WHITE } })
+      .png()
+      .toBuffer()
+    ctl.pngBase64 = png.toString('base64')
+  })
+
+  beforeEach(async () => {
+    resetRender()
+    ctl.navigatesTo = null
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-finish-known-'))
+    initStorage(join(tempDir, 'captures'))
+    await initDatabase(':memory:')
+    initSettings(tempDir)
+    resetInstallationId()
+    initInstallationId(tempDir)
+    updateSettings({ operatorName: 'Op' })
+    caseId = createCase({ name: 'Finish known answers' }).id
+    ensureCaseDir(caseId)
+    events = []
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  const file = (id: string, extension: string): string =>
+    join(getStorageRoot(), caseId, `${id}.${extension}`)
+  const sha256 = (bytes: Buffer | string): string =>
+    createHash('sha256').update(bytes).digest('hex')
+
+  // One background Capture under a 30 s timeout: its signed entry, the names of the fields the
+  // queue handed the ingest, and what it logged for a part that failed.
+  async function captureOnce() {
+    const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
+    const ingest = vi.spyOn(captureLifecycle, 'ingest')
+    const logged = vi.spyOn(logger, 'error')
+    const service = createRecaptureService({
+      renderPage: renderPageInHiddenWindow,
+      captureLifecycle,
+      emitEvent: (event) => events.push(event),
+      emitNewCapture: () => {},
+      timeoutMs: 30_000
+    })
+    service.enqueue([{ url: 'https://example.test/', caseId }])
+    await service.idle()
+    expect(events.map(({ type }) => type)).toEqual(['queued', 'received', 'stored'])
+    const { captureId: id } = events.find((event) => event.type === 'stored') as {
+      captureId: string
+    }
+    const entry = readFileSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .find((candidate) => candidate.captureId === id)!
+    const parsed = ManifestEntrySchema.safeParse(entry)
+    expect(parsed.success ? [] : parsed.error.issues).toEqual([])
+    expect(getCapture(id)!.inventory).toEqual(entry.inventory)
+    await expect(verifyCapture(id)).resolves.toMatchObject({ status: 'verified' })
+    const handed = ingest.mock.calls[0][0] as unknown as Record<string, unknown>
+    const failures = logged.mock.calls
+      .filter(([, code]) => /\.(transaction_record|pdf)_failed$/.test(code))
+      .map(([, code, context, error]) => ({
+        code,
+        context: Object.keys(context ?? {}),
+        error: String(error)
+      }))
+    return { id, entry, handed, failures }
+  }
+
+  const MHTML_PART = { present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 }
+  const SCREENSHOT_PART = {
+    present: true,
+    scaled: false,
+    truncated: false,
+    trimmed: false,
+    contentWidth: 100,
+    contentHeight: 100,
+    width: 100,
+    height: 100
+  }
+  const RECORD_PART = {
+    present: true,
+    exchanges: 1,
+    cached: 0,
+    cancelled: 0,
+    failed: 0,
+    inFlight: 0,
+    finishedWithoutResponse: 0,
+    bodiesOmitted: 0,
+    incompleteRequestBodies: 0,
+    webSockets: 0,
+    recordedTargets: 1,
+    unrecordedTargets: 0,
+    replacedHeaders: ['cookie'],
+    budget: { totalBytes: 50_000_000, resourceBytes: 10_000_000 }
+  }
+  const PDF_PART = { present: true, afterCollection: true }
+  const FAILED = { present: false, reason: 'failed' }
+  const PRINTED = '%PDF-1.4 invented print'
+
+  // Which of the record's and the PDF's fields the queue hands the ingest with a value.
+  const finishFields = (handed: Record<string, unknown>): string[] =>
+    ['inventory', 'transactionRecord', 'boundTls', 'boundTlsAbsent', 'pdf'].filter(
+      (name) => handed[name] !== undefined
+    )
+
+  it('signs every part, Bound TLS Details and both hashes of a page loaded over https', async () => {
+    const { id, entry, handed, failures } = await captureOnce()
+    expect(entry.inventory).toEqual({
+      mhtml: MHTML_PART,
+      transactionRecord: RECORD_PART,
+      screenshot: SCREENSHOT_PART,
+      pdf: PDF_PART
+    })
+    expect(Object.keys(handed.inventory as object)).toEqual([
+      'mhtml',
+      'transactionRecord',
+      'screenshot',
+      'pdf'
+    ])
+    expect(
+      Object.keys((handed.inventory as { transactionRecord: object }).transactionRecord)
+    ).toEqual(Object.keys(RECORD_PART))
+    expect(entry.boundTls).toEqual({
+      protocol: 'TLS 1.3',
+      keyExchange: '',
+      keyExchangeGroup: 'X25519',
+      cipher: 'AES_128_GCM',
+      subjectName: 'example.test',
+      sanList: ['example.test'],
+      issuer: 'Birdbrain Test CA',
+      validFrom: '2026-01-01T00:00:00.000Z',
+      validTo: '2027-01-01T00:00:00.000Z',
+      signedCertificateTimestampList: [],
+      certificateTransparencyCompliance: 'unknown',
+      encryptedClientHello: false
+    })
+    expect(entry).not.toHaveProperty('boundTlsAbsent')
+    expect(entry.transactionRecordHash).toBe(sha256(readFileSync(file(id, 'warc.gz'))))
+    expect(entry.pdfHash).toBe('b56c7ee0b326fe3934561d85fe324c3753c54fb61a5a60e7865981aecb458be3')
+    expect(readFileSync(file(id, 'pdf')).toString('latin1')).toBe(PRINTED)
+    expect(finishFields(handed)).toEqual(['inventory', 'transactionRecord', 'boundTls', 'pdf'])
+    expect(failures).toEqual([])
+  }, 30_000)
+
+  it('writes the same Transaction Record for the same recording', async () => {
+    const { writeTransactionRecord } =
+      await import('../../../src/packages/transaction-record/writer')
+    vi.mocked(writeTransactionRecord).mockClear()
+    const { id, entry } = await captureOnce()
+    const [handed] = vi.mocked(writeTransactionRecord).mock.calls.at(-1)!
+    expect(Object.keys(handed).sort()).toEqual([
+      'birdbrainVersion',
+      'browserVersion',
+      'captureId',
+      'date',
+      'egress',
+      'exchanges',
+      'userAgent'
+    ])
+    expect(handed).toMatchObject({
+      captureId: id,
+      birdbrainVersion: entry.toolVersion,
+      browserVersion: `Chrome/${process.versions.chrome}`,
+      userAgent: 'MockAgent/1.0',
+      egress: 'direct',
+      date: expect.stringMatching(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/)
+    })
+    const [warcinfo, ...exchanges] = recordTexts(readFileSync(file(id, 'warc.gz')))
+    expect(warcinfo).toContain(`\r\ncapture-id: ${id}\r\n`)
+    expect(warcinfo).toContain(`\r\nbrowser: Chrome/${process.versions.chrome}\r\n`)
+    expect(warcinfo).not.toContain('transport:')
+    expect(warcinfo).toContain(`\r\nsoftware: Birdbrain ${entry.toolVersion}\r\n`)
+    // Every other byte of `warcinfo`: the Capture's id, the Chrome version and the tool version
+    // vary by run, Electron or release, and the block's length follows them.
+    const fixed = warcinfo
+      .replace(id, 'ID')
+      .replaceAll(process.versions.chrome, 'CHROME')
+      .replace(String(entry.toolVersion), 'VERSION')
+      .replace(/^Content-Length: \d+$/m, 'Content-Length: N')
+    expect(sha256(fixed), fixed).toBe(
+      '3d365f77cf0ee3ef7fee21d4182151f35d618827dec2fef1d61e84db68fbaa2b'
+    )
+    // Every byte the writer wrote for the exchanges, apart from each record's random id.
+    expect(sha256(exchanges.join('')), exchanges.join('')).toBe(
+      '6d5a136feccba21594ea08b333179c8a4b054f8746cf9dad62805e852dc55740'
+    )
+  }, 30_000)
+
+  it('stores the Capture with no record, as failed, when the page session could not be set up', async () => {
+    ctl.failingCommands.add('Network.enable')
+    const { id, entry, handed, failures } = await captureOnce()
+    expect(entry.inventory).toEqual({
+      mhtml: MHTML_PART,
+      transactionRecord: FAILED,
+      screenshot: SCREENSHOT_PART,
+      pdf: PDF_PART
+    })
+    expect(entry.boundTlsAbsent).toBe('not-recorded')
+    expect(entry).not.toHaveProperty('boundTls')
+    expect(entry).not.toHaveProperty('transactionRecordHash')
+    expect(existsSync(file(id, 'warc.gz'))).toBe(false)
+    expect(entry.pdfHash).toBe(sha256(PRINTED))
+    expect(finishFields(handed)).toEqual(['inventory', 'boundTlsAbsent', 'pdf'])
+    expect(failures).toEqual([
+      {
+        code: 'backgroundRenderer.transaction_record_failed',
+        context: ['captureId'],
+        error: 'Error: Network.enable failed or did not answer on the page'
+      }
+    ])
+  }, 30_000)
+
+  it('stores the Capture with the record failed, and the time left logged, when the writer throws', async () => {
+    ctl.writerThrows = true
+    const { id, entry, handed, failures } = await captureOnce()
+    expect(entry.inventory).toEqual({
+      mhtml: MHTML_PART,
+      transactionRecord: FAILED,
+      screenshot: SCREENSHOT_PART,
+      pdf: PDF_PART
+    })
+    expect(entry.boundTlsAbsent).toBe('not-recorded')
+    expect(entry).not.toHaveProperty('boundTls')
+    expect(entry).not.toHaveProperty('transactionRecordHash')
+    expect(existsSync(file(id, 'warc.gz'))).toBe(false)
+    expect(finishFields(handed)).toEqual(['inventory', 'boundTlsAbsent', 'pdf'])
+    expect(failures).toEqual([
+      {
+        code: 'backgroundRenderer.transaction_record_failed',
+        context: ['captureId', 'timeLeftMs'],
+        error: 'Error: the writer broke'
+      }
+    ])
+  }, 30_000)
+
+  it('stores the Capture with the PDF failed, and keeps the record, when the print throws', async () => {
+    ctl.printThrows = true
+    const { id, entry, handed, failures } = await captureOnce()
+    expect(entry.inventory).toEqual({
+      mhtml: MHTML_PART,
+      transactionRecord: RECORD_PART,
+      screenshot: SCREENSHOT_PART,
+      pdf: FAILED
+    })
+    expect(entry).not.toHaveProperty('pdfHash')
+    expect(existsSync(file(id, 'pdf'))).toBe(false)
+    expect(entry.transactionRecordHash).toBe(sha256(readFileSync(file(id, 'warc.gz'))))
+    expect(entry).not.toHaveProperty('boundTlsAbsent')
+    expect(finishFields(handed)).toEqual(['inventory', 'transactionRecord', 'boundTls'])
+    expect(failures).toEqual([
+      { code: 'backgroundRenderer.pdf_failed', context: [], error: 'Error: Printing failed' }
+    ])
+  }, 30_000)
+
+  it('logs the record failure before the print failure when both fail', async () => {
+    ctl.writerThrows = true
+    ctl.printThrows = true
+    const { entry, failures } = await captureOnce()
+    expect(entry.inventory).toEqual({
+      mhtml: MHTML_PART,
+      transactionRecord: FAILED,
+      screenshot: SCREENSHOT_PART,
+      pdf: FAILED
+    })
+    expect(failures.map(({ code, error }) => `${code}: ${error}`)).toEqual([
+      'backgroundRenderer.transaction_record_failed: Error: the writer broke',
+      'backgroundRenderer.pdf_failed: Error: Printing failed'
+    ])
   }, 30_000)
 })

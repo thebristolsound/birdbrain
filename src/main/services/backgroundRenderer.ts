@@ -23,18 +23,12 @@ import type {
   TransactionRecorder
 } from '@main/services/transactionRecorder'
 import { RecaptureCancelled, RecaptureTimeout } from '@main/services/recapture'
-import type {
-  ImageSourcePinning,
-  PdfOutcome,
-  PresentPdf,
-  RenderPage,
-  RenderStep,
-  RenderedPage,
-  ScreenshotRecord
-} from '@main/services/recapture'
+import type { RenderPage, RenderStep, RenderedPage } from '@main/services/recapture'
+import { printPdf } from '../../packages/capture-finish/pdf'
+import type { PrintChannel } from '../../packages/capture-finish/pdf'
+import type { ImageSourcePinning, ScreenshotRecord } from '../../packages/capture-finish/inventory'
 import { CaptureInventorySchema } from '@shared/schemas'
 import type { ScrollToLoadRecord } from '@shared/schemas'
-import { MAX_PDF_CONTENT_HEIGHT_PX, MAX_PDF_SIZE } from '@shared/constants'
 import type {
   ConsentSuppression,
   KnownEgress,
@@ -804,10 +798,6 @@ export async function countPinnedImages(wc: WebContents): Promise<ImageSourcePin
   return parsed.data
 }
 
-// The schema-6 shape of the inventory's PDF part, parsed before it reaches the
-// signed entry, as the Transaction Record's part is.
-const PdfPartSchema = CaptureInventorySchema.shape.pdf
-
 class PrintTimeout extends Error {
   constructor(ms: number) {
     super(`The print did not settle within ${ms}ms`)
@@ -829,63 +819,47 @@ interface SavedPage {
   committedUrl: string | undefined
 }
 
-// Prints the page to PDF (step 10 of
-// docs/plans/2026-10-10-capture-engine-first-slice.md). The caller runs it last,
-// after collection stopped and the other files were taken, so what the page
-// fetches for printing stays out of the Transaction Record (spec, PDF). Never
-// throws: a page that navigated after the save, or is taller than
-// MAX_PDF_CONTENT_HEIGHT_PX, is not printed, and that, a print that fails or
-// outlasts `boundMs`, a page the window reports navigated while it printed, and
-// a PDF over MAX_PDF_SIZE each record the PDF absent as `failed`, with an error
-// that names the cause.
-async function printPageToPdf(
+// How the hidden window prints (step 10 of
+// docs/plans/2026-10-10-capture-engine-first-slice.md), for `printPdf` to run
+// last. A print shows whatever the window holds, so a page that left the saved
+// document, or changed its address in place, would be printed as another page:
+// it is not printed, and a PDF of a page the window reports navigated while it
+// printed is discarded (review of #2000). The print runs under `boundMs`, with
+// Electron's defaults, the options the probe printed with.
+function hiddenWindowPrint(
   wc: WebContents,
-  {
-    saved,
-    navigations,
-    contentHeight,
-    boundMs
-  }: { saved: SavedPage; navigations: () => number; contentHeight: number; boundMs: number }
-): Promise<PdfOutcome> {
-  try {
-    // A print shows whatever the window holds, so a page that left the saved
-    // document, or changed its address in place, would be printed as another page.
-    // Checked again after the print, for a navigation the window reports only then
-    // (review of #2000).
-    const navigatedTo = (): string | null => {
-      const url = wc.getURL()
-      return url !== saved.url || navigations() !== saved.navigations ? url : null
-    }
-    const before = navigatedTo()
-    if (before !== null) {
-      throw new Error(`The page navigated after it was saved, to ${before}, so it was not printed`)
-    }
-    if (contentHeight > MAX_PDF_CONTENT_HEIGHT_PX) {
-      throw new Error(
-        `The page is ${contentHeight} CSS pixels tall, over MAX_PDF_CONTENT_HEIGHT_PX ` +
-          `(${MAX_PDF_CONTENT_HEIGHT_PX}), so it was not printed`
+  { saved, navigations, boundMs }: { saved: SavedPage; navigations: () => number; boundMs: number }
+): PrintChannel {
+  const navigatedTo = (): string | null => {
+    const url = wc.getURL()
+    return url !== saved.url || navigations() !== saved.navigations ? url : null
+  }
+  return {
+    check() {
+      const before = navigatedTo()
+      if (before !== null) {
+        throw new Error(
+          `The page navigated after it was saved, to ${before}, so it was not printed`
+        )
+      }
+    },
+    async print() {
+      if (boundMs <= 0) throw new Error('The Recapture timeout left no time for the print')
+      let timer: NodeJS.Timeout | undefined
+      const bound = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new PrintTimeout(boundMs)), boundMs)
+      })
+      const bytes = await Promise.race([wc.printToPDF({}), bound]).finally(() =>
+        clearTimeout(timer)
       )
+      const during = navigatedTo()
+      if (during !== null) {
+        throw new Error(
+          `The page navigated while it printed, to ${during}, so the PDF was discarded`
+        )
+      }
+      return bytes
     }
-    if (boundMs <= 0) throw new Error('The Recapture timeout left no time for the print')
-    let timer: NodeJS.Timeout | undefined
-    const bound = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new PrintTimeout(boundMs)), boundMs)
-    })
-    // Electron's defaults, the options the probe printed with.
-    const bytes = await Promise.race([wc.printToPDF({}), bound]).finally(() => clearTimeout(timer))
-    const during = navigatedTo()
-    if (during !== null) {
-      throw new Error(`The page navigated while it printed, to ${during}, so the PDF was discarded`)
-    }
-    if (bytes.length > MAX_PDF_SIZE) {
-      throw new Error(
-        `The PDF is ${bytes.length} bytes, over MAX_PDF_SIZE (${MAX_PDF_SIZE}), so it was discarded`
-      )
-    }
-    const inventory = PdfPartSchema.parse({ present: true, afterCollection: true }) as PresentPdf
-    return { present: true, bytes, inventory }
-  } catch (error) {
-    return { present: false, reason: 'failed', error }
   }
 }
 
@@ -1244,12 +1218,14 @@ export const renderPageInHiddenWindow: RenderPage = async (
 
       // Last, under its own bound cut to the time left (PRINT_TIMEOUT_MS).
       steps.enter('pdf')
-      const pdf = await printPageToPdf(wc, {
-        saved,
-        navigations: () => navigations,
-        contentHeight: screenshotRecord.contentHeight,
-        boundMs: Math.min(PRINT_TIMEOUT_MS, remainingMs(END_MARGIN_MS))
-      })
+      const pdf = await printPdf(
+        screenshotRecord.contentHeight,
+        hiddenWindowPrint(wc, {
+          saved,
+          navigations: () => navigations,
+          boundMs: Math.min(PRINT_TIMEOUT_MS, remainingMs(END_MARGIN_MS))
+        })
+      )
       // The print is the last step timed; the teardown below is not part of it.
       steps.stop()
 

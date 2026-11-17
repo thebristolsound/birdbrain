@@ -1,15 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import {
-  accessSync,
-  chmodSync,
-  constants,
-  mkdtempSync,
-  mkdirSync,
-  rmSync,
-  readFileSync,
-  existsSync,
-  writeFileSync
-} from 'fs'
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, existsSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
@@ -4956,28 +4946,18 @@ describe('export', () => {
     })
 
     it('refuses the export when a capture artifact is present but unreadable', async () => {
-      // The Capture path is outside the contents decision (its artifacts are
-      // probed and read separately, as they were before #1156), so a read
-      // failure there is an error and not a classification: the export fails
-      // and writes nothing, rather than quietly narrowing the package. Pinned
-      // so that behaviour cannot drift into a silent narrowing, and named in
-      // the PR's findings list as a follow-up candidate.
-      const mhtml = join(tempDir, 'captures', fixture.caseId, `${fixture.captureId}.mhtml`)
-      chmodSync(mhtml, 0o000)
-      let stillReadable: boolean
-      try {
-        accessSync(mhtml, constants.R_OK)
-        stillReadable = true
-      } catch {
-        stillReadable = false
-      }
-      // Root defeats the mode bits and there is no portable way to make a file
-      // unreadable to a process that may read anything.
-      if (stillReadable) {
-        chmodSync(mhtml, 0o644)
-        return
-      }
-
+      // Inject the store's failure so this also exercises the ordering when
+      // root can read mode-000 files.
+      const originalRead = defaultCaptureStore.readArtifact.bind(defaultCaptureStore)
+      const read = vi.spyOn(defaultCaptureStore, 'readArtifact').mockImplementation((...args) => {
+        const [, id, type] = args
+        if (id === fixture.captureId && type === 'mhtml') {
+          throw new Error('EACCES: permission denied')
+        }
+        return originalRead(...args)
+      })
+      const append = vi.spyOn(manifest, 'appendManifestEntry')
+      const progress = vi.fn()
       const outputPath = join(tempDir, 'capture-unreadable.zip')
       try {
         await expect(
@@ -4995,13 +4975,214 @@ describe('export', () => {
               exportClass: 'evidence',
               outputPath
             },
-            captureLifecycle
+            captureLifecycle,
+            progress
           )
         ).rejects.toThrow(/EACCES|permission denied/i)
         expect(existsSync(outputPath)).toBe(false)
+        expect(progress).not.toHaveBeenCalledWith('Generating report...', 80)
+        expect(progress).not.toHaveBeenCalledWith('Packaging evidence...', 90)
+        expect(append).not.toHaveBeenCalled()
+        const entryTypes = readFileSync(
+          join(tempDir, 'captures', fixture.caseId, 'manifest.jsonl'),
+          'utf-8'
+        )
+          .split('\n')
+          .filter((line) => line.trim().length > 0)
+          .map((line) => (JSON.parse(line) as { type: string }).type)
+        expect(entryTypes).toContain('capture')
+        expect(entryTypes).not.toContain('export')
       } finally {
-        chmodSync(mhtml, 0o644)
+        read.mockRestore()
+        append.mockRestore()
       }
+    })
+
+    it("reads a Capture's screenshot and page archive once each", async () => {
+      // The report reproduces the screenshot and names the page archive, and
+      // the package encloses both. One read of each serves the report and the
+      // package, so the two cannot disagree. The audit trail is off because
+      // its verification run reads the files on its own.
+      const read = vi.spyOn(defaultCaptureStore, 'readArtifact')
+      try {
+        const entries = await exportMixed('one-read.zip', {
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: false,
+            notes: false,
+            annotations: 'none'
+          }
+        })
+        expect(
+          read.mock.calls.filter(([, id, type]) => id === fixture.captureId && type === 'png')
+        ).toHaveLength(1)
+        expect(
+          read.mock.calls.filter(([, id, type]) => id === fixture.captureId && type === 'mhtml')
+        ).toHaveLength(1)
+        expect([...entries.keys()].filter((name) => name.startsWith('screenshots/'))).toHaveLength(
+          1
+        )
+        expect([...entries.keys()].filter((name) => name.endsWith('.mhtml'))).toHaveLength(1)
+      } finally {
+        read.mockRestore()
+      }
+    })
+
+    it('names no page archive when the one read of it returns nothing', async () => {
+      // The file stays in the Case directory, so a separate existence check
+      // would still find it. The report and the index take the path from the
+      // read that fills the package, so neither names a member the zip lacks.
+      const originalRead = defaultCaptureStore.readArtifact.bind(defaultCaptureStore)
+      const read = vi
+        .spyOn(defaultCaptureStore, 'readArtifact')
+        .mockImplementation((caseId, id, type) =>
+          id === fixture.captureId && type === 'mhtml' ? null : originalRead(caseId, id, type)
+        )
+      try {
+        const entries = await exportMixed('no-page-archive.zip', {
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: false,
+            notes: false,
+            annotations: 'none'
+          }
+        })
+        const pagePath = `pages/${fixture.captureId}.mhtml`
+        expect(
+          existsSync(
+            defaultCaptureStore.artifactPaths(fixture.caseId, fixture.captureId, 'mhtml').abs
+          )
+        ).toBe(true)
+        expect(entries.has(pagePath)).toBe(false)
+        expect(entries.get('report.html')!.toString('utf-8')).not.toContain(pagePath)
+        expect(entries.get('evidence.json')!.toString('utf-8')).not.toContain(pagePath)
+      } finally {
+        read.mockRestore()
+      }
+    })
+
+    it('keeps a screenshot absent when it returns before the manifest snapshot', async () => {
+      const path = defaultCaptureStore.artifactPaths(fixture.caseId, fixture.captureId, 'png').abs
+      const bytes = readFileSync(path)
+      rmSync(path)
+      const read = vi.spyOn(defaultCaptureStore, 'readArtifact')
+      const originalSnapshot = manifest.readManifestSnapshot
+      const snapshot = vi.spyOn(manifest, 'readManifestSnapshot').mockImplementation((...args) => {
+        writeFileSync(path, bytes)
+        return originalSnapshot(...args)
+      })
+      try {
+        const entries = await exportMixed('no-screenshot.zip', {
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: false,
+            notes: false,
+            annotations: 'none'
+          }
+        })
+        expect(
+          read.mock.calls.filter(([, id, type]) => id === fixture.captureId && type === 'png')
+        ).toHaveLength(1)
+        expect([...entries.keys()].filter((name) => name.startsWith('screenshots/'))).toEqual([])
+        expect(snapshot).toHaveBeenCalledOnce()
+        expect(readFileSync(path)).toEqual(bytes)
+        expect(entries.get('report.html')!.toString('utf-8')).not.toContain(
+          'data:image/png;base64,'
+        )
+        const dir = join(tempDir, 'restored-screenshot-unpacked')
+        for (const [name, data] of entries) {
+          mkdirSync(dirname(join(dir, name)), { recursive: true })
+          writeFileSync(join(dir, name), data)
+        }
+        const result = verifyEvidencePackage(dir)
+        expect(result.pass).toBe(false)
+        expect(
+          result.checks.find((check) => check.name === `capture ${fixture.captureId} screenshot`)
+            ?.status
+        ).toBe('fail')
+      } finally {
+        read.mockRestore()
+        snapshot.mockRestore()
+      }
+    })
+
+    it('remembers a missing stored file shared by two exhibit rows', async () => {
+      const stored = listExhibits(fixture.caseId).find((e) => e.id === fixture.document.id)!
+      getDb()
+        .prepare('UPDATE exhibits SET path = ? WHERE id = ?')
+        .run(stored.path, fixture.image.id)
+      const path = join(tempDir, 'captures', stored.path!)
+      rmSync(path)
+      const resolve = vi.spyOn(defaultCaptureStore, 'resolveAbsolute')
+      try {
+        const entries = await exportMixed('shared-missing-file.zip', {
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: false,
+            notes: false,
+            annotations: 'none'
+          }
+        })
+        expect(resolve.mock.calls.filter(([file]) => file === stored.path)).toHaveLength(1)
+        expect(entries.has(fixture.document.packagePath)).toBe(false)
+        expect(entries.has(fixture.image.packagePath)).toBe(false)
+        const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+          exhibits: Array<{ id: string; path: string | null }>
+        }
+        for (const id of [fixture.document.id, fixture.image.id]) {
+          expect(evidence.exhibits.find((exhibit) => exhibit.id === id)?.path).toBeNull()
+        }
+      } finally {
+        resolve.mockRestore()
+      }
+    })
+
+    it('encloses burned annotations in a Working Copy without changing the stored screenshot', async () => {
+      const path = defaultCaptureStore.artifactPaths(fixture.caseId, fixture.captureId, 'png').abs
+      const original = readFileSync(path)
+      saveAnnotations({
+        captureId: fixture.captureId,
+        shapes: [{ kind: 'redact', id: 'r', x: 4, y: 4, w: 8, h: 8, mode: 'solid' }],
+        imageWidth: 24,
+        imageHeight: 24
+      })
+      const entries = await exportMixed('burned-working-copy.zip', {
+        exportClass: 'working-copy',
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: false,
+          notes: false,
+          annotations: 'burned'
+        }
+      })
+      const screenshotPath = `screenshots/${fixture.captureId}.png`
+      const screenshot = entries.get(screenshotPath)!
+      const { data, info } = await sharp(screenshot).raw().toBuffer({ resolveWithObject: true })
+      const pixelAt = (x: number, y: number): number[] => {
+        const index = (y * info.width + x) * info.channels
+        return [...data.subarray(index, index + 3)]
+      }
+      expect(pixelAt(8, 8)).toEqual([0, 0, 0])
+      expect(pixelAt(20, 20)).toEqual([5, 5, 5])
+      expect(screenshot).not.toEqual(original)
+      expect(readFileSync(path)).toEqual(original)
+      const marker = JSON.parse(entries.get('WORKING-COPY.json')!.toString('utf-8')) as {
+        captures: Array<{ id: string; screenshotPath: string | null }>
+        artifacts: Array<{ path: string; sha256: string; sizeBytes: number }>
+      }
+      expect(marker.captures.find(({ id }) => id === fixture.captureId)?.screenshotPath).toBe(
+        screenshotPath
+      )
+      expect(marker.artifacts.find(({ path }) => path === screenshotPath)).toEqual({
+        path: screenshotPath,
+        sha256: sha256Hex(screenshot),
+        sizeBytes: screenshot.length
+      })
     })
 
     it('ships the same exhibits and derived files in a Working Copy', async () => {

@@ -4,6 +4,7 @@ import type { DerivedFile, DerivedFileVerification } from '@shared/types'
 import {
   decidePackageContents,
   readOnce,
+  type ExportForm,
   type PackageByteSource,
   type PackageContentsInput
 } from '../index'
@@ -15,20 +16,35 @@ import { buildSyntheticToken } from '../../../../tests/helpers/timestampFixtures
 const CASE = 'case-1'
 const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex')
 
-/** A byte source over a map of stored paths, which records every path it is asked for. */
-function memorySource(files: Record<string, string>): PackageByteSource & { asked: string[] } {
+interface MemorySource extends PackageByteSource {
+  /** Every file the decision asked for, in order: a stored path, or `<captureId>.<type>`. */
+  asked: string[]
+}
+
+/**
+ * A byte source over a map. A Capture's file is keyed `<captureId>.<type>`, any other file by
+ * its stored path. A key in `unreadable` is a Capture file that exists and cannot be read.
+ */
+function memorySource(files: Record<string, string>, unreadable: string[] = []): MemorySource {
   const asked: string[] = []
+  const read = (key: string): Buffer | null => {
+    asked.push(key)
+    return key in files ? Buffer.from(files[key]) : null
+  }
   return {
     asked,
-    storedFile: (storedPath) => {
-      asked.push(storedPath)
-      return storedPath in files ? Buffer.from(files[storedPath]) : null
-    }
+    captureFile: ({ id }, type) => {
+      const key = `${id}.${type}`
+      if (unreadable.includes(key)) throw new Error(`EACCES: ${key}`)
+      return read(key)
+    },
+    storedFile: read
   }
 }
 
 const capture = (id: string, content: string) => ({
   id,
+  caseId: CASE,
   hash: sha256(content),
   mhtmlPath: `${CASE}/${id}.mhtml`
 })
@@ -83,8 +99,27 @@ const stamp = (
   }).toString('base64')
 })
 
+/** A `capture` entry for `captureId` carrying the hash fields given. */
+const captureEntry = (
+  captureId: string,
+  fields: Record<string, string> = {}
+): Record<string, unknown> => ({
+  type: 'capture',
+  captureId,
+  contentHash: 'c'.repeat(64),
+  ...fields
+})
+
+const EVIDENCE: ExportForm = { kind: 'evidence-package', screenshots: false }
+const WORKING_COPY: ExportForm = {
+  kind: 'working-copy',
+  pageArchives: false,
+  operatorScreenshots: new Map()
+}
+const REPORT: ExportForm = { kind: 'report' }
+
 const input = (over: Partial<PackageContentsInput>): PackageContentsInput => ({
-  form: 'evidence-package',
+  form: EVIDENCE,
   entries: [],
   chainNames: new Map(),
   captures: [],
@@ -93,6 +128,397 @@ const input = (over: Partial<PackageContentsInput>): PackageContentsInput => ({
   derivedVerifications: new Map(),
   source: memorySource({}),
   ...over
+})
+
+describe("a Capture's own files in an Evidence Package", () => {
+  const page = capture('cap-1', 'page')
+
+  it('encloses the page archive under the chain id, anchored by the content hash', () => {
+    const contents = decidePackageContents(
+      input({
+        captures: [page],
+        entries: [captureEntry('cap-1')],
+        source: memorySource({ 'cap-1.mhtml': 'page' })
+      })
+    )
+
+    expect(contents.ofCapture('cap-1').pageArchive).toEqual({
+      path: 'pages/cap-1.mhtml',
+      sha256: sha256('page'),
+      anchoredBy: 'contentHash'
+    })
+    expect(contents.files).toEqual([{ path: 'pages/cap-1.mhtml', bytes: Buffer.from('page') }])
+  })
+
+  it('encloses the page archive of a Capture no entry names, anchored by nothing', () => {
+    const contents = decidePackageContents(
+      input({ captures: [page], source: memorySource({ 'cap-1.mhtml': 'page' }) })
+    )
+
+    expect(contents.ofCapture('cap-1').pageArchive).toMatchObject({
+      path: 'pages/cap-1.mhtml',
+      anchoredBy: null
+    })
+  })
+
+  it('states a Capture that holds no page archive as holding none', () => {
+    const contents = decidePackageContents(input({ captures: [page] }))
+
+    expect(contents.ofCapture('cap-1').pageArchive).toBeNull()
+    expect(contents.files).toEqual([])
+  })
+
+  it('leaves out, unread, a screenshot no entry anchors when screenshots were not asked for', () => {
+    const source = memorySource({ 'cap-1.mhtml': 'page', 'cap-1.png': 'pixels' })
+    const contents = decidePackageContents(
+      input({ captures: [page], entries: [captureEntry('cap-1')], source })
+    )
+
+    expect(contents.ofCapture('cap-1').screenshot).toBeNull()
+    expect(source.asked).toEqual(['cap-1.mhtml'])
+  })
+
+  it('encloses a screenshot no entry anchors when screenshots were asked for', () => {
+    const contents = decidePackageContents(
+      input({
+        form: { kind: 'evidence-package', screenshots: true },
+        captures: [page],
+        entries: [captureEntry('cap-1')],
+        source: memorySource({ 'cap-1.png': 'pixels' })
+      })
+    )
+
+    expect(contents.ofCapture('cap-1').screenshot).toEqual({
+      path: `screenshots/${sha256('pixels')}.png`,
+      sha256: sha256('pixels'),
+      anchoredBy: null
+    })
+  })
+
+  it('encloses a screenshot a signed entry anchors, whatever was asked for (#1986)', () => {
+    const contents = decidePackageContents(
+      input({
+        captures: [page],
+        entries: [captureEntry('cap-1', { screenshotHash: sha256('pixels') })],
+        source: memorySource({ 'cap-1.png': 'pixels' })
+      })
+    )
+
+    expect(contents.ofCapture('cap-1').screenshot).toEqual({
+      path: `screenshots/${sha256('pixels')}.png`,
+      sha256: sha256('pixels'),
+      anchoredBy: 'screenshotHash'
+    })
+  })
+
+  it('encloses a Transaction Record and a PDF the signed entry anchors', () => {
+    const contents = decidePackageContents(
+      input({
+        captures: [page],
+        entries: [
+          captureEntry('cap-1', { transactionRecordHash: sha256('warc'), pdfHash: sha256('pdf') })
+        ],
+        source: memorySource({ 'cap-1.warc.gz': 'warc', 'cap-1.pdf': 'pdf' })
+      })
+    )
+
+    expect(contents.ofCapture('cap-1')).toMatchObject({
+      transactionRecord: {
+        path: `transaction-records/${sha256('warc')}.warc.gz`,
+        sha256: sha256('warc'),
+        anchoredBy: 'transactionRecordHash'
+      },
+      pdf: { path: `pdfs/${sha256('pdf')}.pdf`, sha256: sha256('pdf'), anchoredBy: 'pdfHash' }
+    })
+  })
+
+  it('leaves out, unread, a Transaction Record and a PDF no entry anchors', () => {
+    const source = memorySource({ 'cap-1.warc.gz': 'warc', 'cap-1.pdf': 'pdf' })
+    const contents = decidePackageContents(
+      input({
+        form: { kind: 'evidence-package', screenshots: true },
+        captures: [page],
+        entries: [captureEntry('cap-1')],
+        source
+      })
+    )
+
+    expect(contents.ofCapture('cap-1')).toMatchObject({ transactionRecord: null, pdf: null })
+    expect(source.asked).toEqual(['cap-1.mhtml', 'cap-1.png'])
+  })
+
+  it('states an anchored file the Capture no longer holds as not enclosed', () => {
+    const contents = decidePackageContents(
+      input({
+        captures: [page],
+        entries: [captureEntry('cap-1', { pdfHash: sha256('pdf') })]
+      })
+    )
+
+    expect(contents.ofCapture('cap-1').pdf).toBeNull()
+  })
+
+  it('reads the anchoring fields from the last entry a chain holds for the Capture', () => {
+    const contents = decidePackageContents(
+      input({
+        captures: [page],
+        entries: [captureEntry('cap-1', { pdfHash: sha256('pdf') }), captureEntry('cap-1')],
+        source: memorySource({ 'cap-1.pdf': 'pdf' })
+      })
+    )
+
+    expect(contents.ofCapture('cap-1').pdf).toBeNull()
+  })
+
+  it('writes one file for bytes two Captures share, and cites it from both', () => {
+    const second = capture('cap-2', 'other page')
+    const contents = decidePackageContents(
+      input({
+        form: { kind: 'evidence-package', screenshots: true },
+        captures: [page, second],
+        source: memorySource({ 'cap-1.png': 'same pixels', 'cap-2.png': 'same pixels' })
+      })
+    )
+
+    const path = `screenshots/${sha256('same pixels')}.png`
+    expect(contents.ofCapture('cap-1').screenshot?.path).toBe(path)
+    expect(contents.ofCapture('cap-2').screenshot?.path).toBe(path)
+    expect(contents.files.map((file) => file.path)).toEqual([path])
+  })
+
+  it('reads a renamed row under its own id and names its files by its chain id', () => {
+    const renamed = capture('row-id', 'page')
+    const source = memorySource({ 'row-id.mhtml': 'page', 'row-id.pdf': 'pdf' })
+    const contents = decidePackageContents(
+      input({
+        captures: [renamed],
+        entries: [captureEntry('chain-id', { pdfHash: sha256('pdf') })],
+        chainNames: new Map([['row-id', { id: 'chain-id', path: null }]]),
+        source
+      })
+    )
+
+    expect(contents.ofCapture('row-id')).toMatchObject({
+      pageArchive: { path: 'pages/chain-id.mhtml', anchoredBy: 'contentHash' },
+      pdf: { anchoredBy: 'pdfHash' }
+    })
+    expect(source.asked).toEqual(['row-id.mhtml', 'row-id.pdf'])
+  })
+
+  it('fails the export on a file that exists and cannot be read', () => {
+    expect(() =>
+      decidePackageContents(input({ captures: [page], source: memorySource({}, ['cap-1.mhtml']) }))
+    ).toThrow(/EACCES: cap-1.mhtml/)
+  })
+
+  it.each(['png', 'warc.gz', 'pdf'] as const)(
+    'fails the export on an anchored %s that exists and cannot be read',
+    (type) => {
+      const anchored = captureEntry('cap-1', {
+        screenshotHash: sha256('pixels'),
+        transactionRecordHash: sha256('warc'),
+        pdfHash: sha256('pdf')
+      })
+      expect(() =>
+        decidePackageContents(
+          input({
+            captures: [page],
+            entries: [anchored],
+            source: memorySource({ 'cap-1.mhtml': 'page' }, [`cap-1.${type}`])
+          })
+        )
+      ).toThrow(`EACCES: cap-1.${type}`)
+    }
+  )
+
+  it('does not fail on an unreadable file it has no reason to enclose', () => {
+    const contents = decidePackageContents(
+      input({
+        captures: [page],
+        entries: [captureEntry('cap-1')],
+        source: memorySource({ 'cap-1.mhtml': 'page' }, ['cap-1.pdf', 'cap-1.png'])
+      })
+    )
+
+    expect(contents.ofCapture('cap-1')).toMatchObject({ screenshot: null, pdf: null })
+  })
+
+  it("writes every Capture's own files, then the other Exhibits, then the Captures' Derived Files", () => {
+    const second = capture('cap-2', 'second page')
+    const statement = document('doc-1', 'statement')
+    const contents = decidePackageContents(
+      input({
+        captures: [page, second],
+        fileExhibits: [statement],
+        entries: [
+          captureEntry('cap-1', {
+            screenshotHash: sha256('pixels'),
+            transactionRecordHash: sha256('warc'),
+            pdfHash: sha256('pdf')
+          })
+        ],
+        derivedFiles: new Map([
+          ['cap-1', [derivedFile('thumb-1', 'cap-1', `${CASE}/cap-1_thumb.jpg`)]],
+          ['doc-1', [derivedFile('text-1', 'doc-1', `${CASE}/documents/doc-1_text.txt`)]]
+        ]),
+        derivedVerifications: new Map([
+          ['cap-1', [verified('thumb-1')]],
+          ['doc-1', [verified('text-1')]]
+        ]),
+        source: memorySource({
+          'cap-1.mhtml': 'page',
+          'cap-1.png': 'pixels',
+          'cap-1.warc.gz': 'warc',
+          'cap-1.pdf': 'pdf',
+          'cap-2.mhtml': 'second page',
+          [`${CASE}/cap-1_thumb.jpg`]: 'thumbnail',
+          [`${CASE}/documents/doc-1.pdf`]: 'statement',
+          [`${CASE}/documents/doc-1_text.txt`]: 'text'
+        })
+      })
+    )
+
+    expect(contents.files.map((file) => file.path)).toEqual([
+      'pages/cap-1.mhtml',
+      `screenshots/${sha256('pixels')}.png`,
+      `transaction-records/${sha256('warc')}.warc.gz`,
+      `pdfs/${sha256('pdf')}.pdf`,
+      'pages/cap-2.mhtml',
+      'documents/doc-1.pdf',
+      'documents/doc-1_text.txt',
+      'pages/cap-1_thumb.jpg'
+    ])
+  })
+})
+
+describe("a Capture's own files in a Working Copy", () => {
+  const page = capture('cap-1', 'page')
+  const anchored = captureEntry('cap-1', {
+    screenshotHash: sha256('pixels'),
+    transactionRecordHash: sha256('warc'),
+    pdfHash: sha256('pdf')
+  })
+  const files = {
+    'cap-1.mhtml': 'page',
+    'cap-1.png': 'pixels',
+    'cap-1.warc.gz': 'warc',
+    'cap-1.pdf': 'pdf'
+  }
+
+  it('fails the export on a page archive that exists and cannot be read', () => {
+    expect(() =>
+      decidePackageContents(
+        input({
+          form: { kind: 'working-copy', pageArchives: true, operatorScreenshots: new Map() },
+          captures: [page],
+          source: memorySource({}, ['cap-1.mhtml'])
+        })
+      )
+    ).toThrow('EACCES: cap-1.mhtml')
+  })
+
+  it('encloses the page archive only when page archives were asked for', () => {
+    const decide = (pageArchives: boolean) =>
+      decidePackageContents(
+        input({
+          form: { kind: 'working-copy', pageArchives, operatorScreenshots: new Map() },
+          captures: [page],
+          entries: [anchored],
+          source: memorySource(files)
+        })
+      ).ofCapture('cap-1').pageArchive
+
+    expect(decide(false)).toBeNull()
+    expect(decide(true)).toEqual({
+      path: 'pages/cap-1.mhtml',
+      sha256: sha256('page'),
+      anchoredBy: 'contentHash'
+    })
+  })
+
+  it("encloses the operator's copy of the screenshot under the Capture's chain id", () => {
+    const source = memorySource(files)
+    const contents = decidePackageContents(
+      input({
+        form: {
+          kind: 'working-copy',
+          pageArchives: false,
+          operatorScreenshots: new Map([['row-id', Buffer.from('annotated pixels')]])
+        },
+        captures: [capture('row-id', 'page')],
+        chainNames: new Map([['row-id', { id: 'chain-id', path: null }]]),
+        source
+      })
+    )
+
+    expect(contents.ofCapture('row-id').screenshot).toEqual({
+      path: 'screenshots/chain-id.png',
+      sha256: sha256('annotated pixels'),
+      anchoredBy: null
+    })
+    expect(contents.files).toEqual([
+      { path: 'screenshots/chain-id.png', bytes: Buffer.from('annotated pixels') }
+    ])
+    expect(source.asked).toEqual([])
+  })
+
+  it('encloses no screenshot for an empty copy', () => {
+    const contents = decidePackageContents(
+      input({
+        form: {
+          kind: 'working-copy',
+          pageArchives: false,
+          operatorScreenshots: new Map([['cap-1', Buffer.alloc(0)]])
+        },
+        captures: [page]
+      })
+    )
+
+    expect(contents.ofCapture('cap-1').screenshot).toBeNull()
+  })
+
+  it('encloses no Transaction Record and no PDF, anchored or not', () => {
+    const source = memorySource(files)
+    const contents = decidePackageContents(
+      input({ form: WORKING_COPY, captures: [page], entries: [anchored], source })
+    )
+
+    expect(contents.ofCapture('cap-1')).toMatchObject({ transactionRecord: null, pdf: null })
+    expect(source.asked).toEqual([])
+  })
+
+  it("writes each Capture's files and Derived Files together, then the other Exhibits", () => {
+    const second = capture('cap-2', 'second page')
+    const contents = decidePackageContents(
+      input({
+        form: {
+          kind: 'working-copy',
+          pageArchives: true,
+          operatorScreenshots: new Map([['cap-1', Buffer.from('pixels')]])
+        },
+        captures: [page, second],
+        fileExhibits: [document('doc-1', 'statement')],
+        derivedFiles: new Map([
+          ['cap-1', [derivedFile('thumb-1', 'cap-1', `${CASE}/cap-1_thumb.jpg`)]]
+        ]),
+        derivedVerifications: new Map([['cap-1', [verified('thumb-1')]]]),
+        source: memorySource({
+          'cap-1.mhtml': 'page',
+          'cap-2.mhtml': 'second page',
+          [`${CASE}/cap-1_thumb.jpg`]: 'thumbnail',
+          [`${CASE}/documents/doc-1.pdf`]: 'statement'
+        })
+      })
+    )
+
+    expect(contents.files.map((file) => file.path)).toEqual([
+      'pages/cap-1.mhtml',
+      'screenshots/cap-1.png',
+      'pages/cap-1_thumb.jpg',
+      'pages/cap-2.mhtml',
+      'documents/doc-1.pdf'
+    ])
+  })
 })
 
 describe('Timestamp Tokens', () => {
@@ -187,7 +613,10 @@ describe('Timestamp Tokens', () => {
     expect(contents.ofCapture('row-id').timestampTokenPath).toBe('timestamps/chain-id.tst')
   })
 
-  it.each(['working-copy', 'report'] as const)('encloses no token in a %s', (form) => {
+  it.each([
+    ['Working Copy', WORKING_COPY],
+    ['standalone report', REPORT]
+  ])('encloses no token in a %s', (_name, form) => {
     const page = capture('cap-1', 'page')
     const statement = document('doc-1', 'statement')
     const contents = decidePackageContents(
@@ -245,7 +674,7 @@ describe('Exhibits that are not Captures', () => {
     )
 
     expect(contents.ofFileExhibit('doc-1').enclosed).toBeNull()
-    expect(contents.fileExhibitFiles).toEqual([])
+    expect(contents.files).toEqual([])
   })
 
   it('does not ask the source for an Exhibit with no stored path', () => {
@@ -275,7 +704,7 @@ describe('Exhibits that are not Captures', () => {
       })
     )
 
-    expect(contents.fileExhibitFiles.map(({ path }) => path)).toEqual([
+    expect(contents.files.map(({ path }) => path)).toEqual([
       'documents/doc-1.pdf',
       'documents/doc-1_text.txt',
       'documents/doc-2.pdf'
@@ -289,7 +718,7 @@ describe('Derived Files', () => {
   const decide = (
     verifications: DerivedFileVerification[],
     source = memorySource(files),
-    form: PackageContentsInput['form'] = 'evidence-package'
+    form: ExportForm = EVIDENCE
   ) =>
     decidePackageContents(
       input({
@@ -323,7 +752,7 @@ describe('Derived Files', () => {
     const [decided] = decide([verified('thumb-1', 'unverified', 'no-entry')], source)
 
     expect(decided).toMatchObject({ anchoring: 'no-entry', enclosed: null })
-    expect(source.asked).toEqual([])
+    expect(source.asked).not.toContain(`${CASE}/cap-1_thumb.jpg`)
   })
 
   it('holds back a file nothing verified', () => {
@@ -348,7 +777,7 @@ describe('Derived Files', () => {
   })
 
   it('encloses the same Derived Files in a Working Copy', () => {
-    expect(decide([verified('thumb-1')], memorySource(files), 'working-copy')[0].enclosed).toEqual({
+    expect(decide([verified('thumb-1')], memorySource(files), WORKING_COPY)[0].enclosed).toEqual({
       path: 'pages/cap-1_thumb.jpg',
       bytes: Buffer.from('thumbnail')
     })
@@ -358,12 +787,16 @@ describe('Derived Files', () => {
 describe('a standalone report', () => {
   it('encloses nothing and reads nothing, and still says what the chain anchors', () => {
     const source = memorySource({
+      'cap-1.mhtml': 'page',
+      'cap-1.png': 'pixels',
       [`${CASE}/documents/doc-1.pdf`]: 'statement',
       [`${CASE}/documents/doc-1_text.txt`]: 'text'
     })
     const contents = decidePackageContents(
       input({
-        form: 'report',
+        form: REPORT,
+        captures: [capture('cap-1', 'page')],
+        entries: [captureEntry('cap-1', { screenshotHash: sha256('pixels') })],
         fileExhibits: [document('doc-1', 'statement')],
         derivedFiles: new Map([
           ['doc-1', [derivedFile('text-1', 'doc-1', `${CASE}/documents/doc-1_text.txt`)]]
@@ -374,7 +807,8 @@ describe('a standalone report', () => {
     )
 
     expect(source.asked).toEqual([])
-    expect(contents.fileExhibitFiles).toEqual([])
+    expect(contents.files).toEqual([])
+    expect(contents.ofCapture('cap-1')).toMatchObject({ pageArchive: null, screenshot: null })
     expect(contents.ofFileExhibit('doc-1')).toMatchObject({
       enclosed: null,
       derivedFiles: [{ anchoring: 'anchored', enclosed: null }]
@@ -394,14 +828,32 @@ describe('rows outside the scope', () => {
 })
 
 describe('readOnce', () => {
-  it('asks the source for each path once and repeats its answer, a null included', () => {
-    const source = memorySource({ here: 'bytes' })
+  it('asks the source for each file once and repeats its answer, a null included', () => {
+    const source = memorySource({ here: 'bytes', 'cap-1.png': 'pixels' })
     const once = readOnce(source)
+    const cap = { caseId: CASE, id: 'cap-1' }
 
     expect(once.storedFile('here')).toEqual(Buffer.from('bytes'))
     expect(once.storedFile('here')).toEqual(Buffer.from('bytes'))
     expect(once.storedFile('absent')).toBeNull()
     expect(once.storedFile('absent')).toBeNull()
-    expect(source.asked).toEqual(['here', 'absent'])
+    expect(once.captureFile(cap, 'png')).toEqual(Buffer.from('pixels'))
+    expect(once.captureFile(cap, 'png')).toEqual(Buffer.from('pixels'))
+    expect(once.captureFile(cap, 'pdf')).toBeNull()
+    expect(once.captureFile(cap, 'pdf')).toBeNull()
+    expect(source.asked).toEqual(['here', 'absent', 'cap-1.png', 'cap-1.pdf'])
+  })
+
+  it('keeps a stored path apart from a Capture file of the same name', () => {
+    // The Capture holds no screenshot and a stored file is spelled the way a screenshot of that
+    // Capture would be, so an answer remembered under the bare name would be the wrong one.
+    const once = readOnce({
+      captureFile: () => null,
+      storedFile: (storedPath) => Buffer.from(`stored ${storedPath}`)
+    })
+
+    expect(once.captureFile({ caseId: CASE, id: 'cap-1' }, 'png')).toBeNull()
+    expect(once.storedFile('cap-1.png')).toEqual(Buffer.from('stored cap-1.png'))
+    expect(once.captureFile({ caseId: CASE, id: 'cap-1' }, 'png')).toBeNull()
   })
 })

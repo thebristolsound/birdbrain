@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { readFileSync, writeFileSync } from 'fs'
 import { createHash } from 'crypto'
 import { join } from 'path'
 import * as caseRepo from '@main/services/db/caseRepo'
@@ -47,13 +47,7 @@ import {
   verifyManifestChainText
 } from '@shared/verify'
 import type { SharedCaseMember } from '@shared/verify'
-import {
-  PACKAGE_ROOT_FILES,
-  capturePagePath,
-  pdfPath as packagedPdfPath,
-  screenshotPath as packagedScreenshotPath,
-  transactionRecordPath as packagedTransactionRecordPath
-} from '../../packages/evidence-package-layout/index'
+import { PACKAGE_ROOT_FILES } from '../../packages/evidence-package-layout/index'
 import {
   decidePackageContents,
   readOnce,
@@ -81,7 +75,6 @@ import type {
   ExportSharedCase,
   ExportSharedCaseMember,
   LinkSourceEntry,
-  PackagedArtifacts,
   ReportData
 } from '@main/services/reportHtml'
 import { buildVerifyRunbook } from '@main/services/verifyRunbook'
@@ -121,22 +114,6 @@ function caseEntriesOf(
     .filter(([id]) => id !== verification.localInstallationId)
     .flatMap(([, accepted]) => accepted)
   return [...manifest.entries, ...remote]
-}
-
-/**
- * Each Capture's signed entry, by its chain id; where a chain holds more than
- * one, the last wins, as in resolveEntrySignatures.
- */
-function captureEntriesByChainId(
-  caseEntries: Record<string, unknown>[]
-): Map<string, Record<string, unknown>> {
-  const byId = new Map<string, Record<string, unknown>>()
-  for (const entry of caseEntries) {
-    if (entry.type === 'capture' && typeof entry.captureId === 'string') {
-      byId.set(entry.captureId, entry)
-    }
-  }
-  return byId
 }
 
 /**
@@ -679,6 +656,10 @@ export async function generateReport(
   // chain covers.
   const derivedVerifications = await verifyCaseDerivedFiles(caseId)
 
+  // Every Exhibit file and Derived File this export encloses is read through
+  // this, once. The report reproduces a screenshot from the same read the
+  // package encloses it from.
+  const source = readOnce(caseDirectoryByteSource())
   // captureId -> sha256 of the raw on-disk screenshot, and whether the copy
   // reproduced in the report had annotations burned into its pixels.
   const screenshotDigests = new Map<string, string>()
@@ -694,7 +675,7 @@ export async function generateReport(
         `Loading screenshot ${index + 1} of ${total}...`,
         60 + Math.round(((index + 1) / total) * 20)
       )
-      const screenshotBuffer = defaultCaptureStore.readArtifact(cap.caseId, cap.id, 'png')
+      const screenshotBuffer = source.captureFile(cap, 'png')
       if (!screenshotBuffer) continue
 
       let finalBuffer: Buffer = screenshotBuffer
@@ -743,41 +724,55 @@ export async function generateReport(
   data.entriesUnderCarriedKeys = signingKeyRanges(manifest.entries, getPublicKeyPem()).some(
     ({ carriedByImportAt }) => carriedByImportAt !== null
   )
-  // The one decision of what this export encloses for its Timestamp Tokens,
-  // its non-Capture Exhibits and every Derived File, read by the report,
-  // evidence.json, the Certification and the zip builders. A Capture's own
-  // files are outside it for now: see buildPackagedPaths.
+  // The one decision of what this export encloses, read by the report,
+  // evidence.json, the Certification and the zip builders. An Evidence Package
+  // encloses every screenshot a signed capture entry anchors, whatever
+  // include.screenshots says (#1986); the option still governs the image the
+  // report reproduces, which comes from data.screenshots, filled only when it
+  // is on.
   const contents = decidePackageContents({
-    form: options.format !== 'zip' ? 'report' : workingCopy ? 'working-copy' : 'evidence-package',
+    form:
+      options.format !== 'zip'
+        ? { kind: 'report' }
+        : workingCopy
+          ? {
+              kind: 'working-copy',
+              pageArchives: options.include.captures,
+              // The copy the report would reproduce: annotation-burned when
+              // the option says so.
+              operatorScreenshots: new Map(
+                [...data.screenshots].map(([id, base64]) => [id, Buffer.from(base64, 'base64')])
+              )
+            }
+          : { kind: 'evidence-package', screenshots: options.include.screenshots },
     entries: caseEntries,
     chainNames,
     captures,
     fileExhibits: scope.fileExhibits,
     derivedFiles: derivedByExhibitId,
     derivedVerifications,
-    source: readOnce(caseDirectoryByteSource())
+    source
   })
-  // An Evidence Package encloses every screenshot a signed capture entry
-  // anchors, whatever include.screenshots says (#1986): Package Verification
-  // fails a signed screenshotHash whose file the package lacks, as D10 of
-  // docs/plans/2026-10-10-capture-engine-first-slice.md rules for the
-  // Transaction Record and the PDF. The option still governs the image the
-  // report reproduces, which comes from data.screenshots, filled only when it is on.
-  if (options.format === 'zip' && !workingCopy) {
-    const signedEntries = captureEntriesByChainId(caseEntries)
-    for (const capture of captures) {
-      if (screenshotDigests.has(capture.id)) continue
-      if (typeof signedEntries.get(chainIdOf(capture.id))?.screenshotHash !== 'string') continue
-      const bytes = defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'png')
-      if (bytes) screenshotDigests.set(capture.id, sha256(bytes))
-    }
-  }
-  data.packagedPaths = buildPackagedPaths(
-    data,
-    options,
-    contents,
-    screenshotDigests,
-    annotatedCaptureIds
+  data.packagedPaths = new Map(
+    captures.map((capture) => {
+      const { pageArchive, screenshot, timestampTokenPath } = contents.ofCapture(capture.id)
+      return [
+        capture.id,
+        {
+          pageArchive: pageArchive?.path ?? null,
+          screenshot: screenshot?.path ?? null,
+          timestampToken: timestampTokenPath,
+          // Recorded regardless of format: the exhibit reproduces the image
+          // either way, so it must be able to label it with the digest of
+          // what it shows.
+          screenshotDigest: screenshotDigests.get(capture.id) ?? screenshot?.sha256 ?? null,
+          // Not gated on the format either: burning happens whenever
+          // annotations are set to 'burned', so a standalone HTML report
+          // must disclose it just as loudly as a packaged one.
+          imageAnnotated: annotatedCaptureIds.has(capture.id)
+        }
+      ]
+    })
   )
 
   // Resolved from the snapshot above and nowhere else — see resolveExportTrustedTime.
@@ -827,7 +822,7 @@ export async function generateReport(
       // No report, no certification: the Working Copy deliberately carries no
       // evidentiary documents at all (#399, ADR-0010).
       onProgress?.('Packaging working copy...', 90)
-      zip = buildWorkingCopyZip(caseId, data, packageMeta, contents, options.include.captures)
+      zip = buildWorkingCopyZip(caseId, data, packageMeta, contents)
     } else {
       onProgress?.('Generating report...', 80)
       const html = buildHtmlReport(data, options)
@@ -1247,32 +1242,31 @@ interface EvidenceZipResult {
 
 /**
  * The Case directory as the byte source of an export (#1156 round 5). The
- * contents decision reads each non-Capture Exhibit and each Derived File it
- * encloses through this, once, and every downstream fact about that file (the
- * zip entry, the evidence.json row, the report's enclosure sentence, the
- * certification's counts) comes from what that one read returned. A probe at
- * classification and a second read at assembly is what let report.html name a
- * path the zip did not contain.
+ * contents decision reads each file it encloses through this, once, and every
+ * downstream fact about that file (the zip entry, the evidence.json row, the
+ * report's enclosure sentence, the certification's counts) comes from what
+ * that one read returned. A probe at classification and a second read at
+ * assembly is what let report.html name a path the zip did not contain.
  *
  * It is not the only read of those bytes: `verifyCaseDerivedFiles` hashes
- * every chain-anchored Derived File on every export, and `verifyExhibit`
- * hashes committed Exhibits when the audit trail is included. A read failure
+ * every chain-anchored Derived File on every export, and when the audit trail
+ * is included `verifyExhibit` hashes committed Exhibits and `verifyCaptures`
+ * hashes each file a Capture's signed entry anchors. A read failure
  * there is the `missing` verification status the documents render. What this
  * read decides, and nothing else does, is whether the file is in the package.
  *
- * A file that exists and cannot be read (a lock, a permission, a disconnected
- * share) is not an error here: it is disclosed as not enclosed, and the export
- * carries on.
+ * A non-Capture Exhibit or a Derived File that exists and cannot be read (a
+ * lock, a permission, a disconnected share) is not an error: it is disclosed
+ * as not enclosed, and the export carries on.
  *
- * A CAPTURE'S OWN ARTIFACTS ARE NOT READ HERE. Its page archive and screenshot
- * keep the path they had before #1156: probed with `existsSync` in
- * `buildPackagedPaths` and read separately in the zip builders, where
- * `CaptureStore.readArtifact` does not catch. A Capture whose MHTML or
- * screenshot is present but unreadable therefore fails the whole export with
- * that error and writes no package.
+ * A Capture's own file is different. `CaptureStore.readArtifact` does not
+ * catch, so one that is present but unreadable fails the whole export with
+ * that error and writes no package: loud, and never a package narrowed
+ * without saying so.
  */
 function caseDirectoryByteSource(): PackageByteSource {
   return {
+    captureFile: ({ caseId, id }, type) => defaultCaptureStore.readArtifact(caseId, id, type),
     storedFile: (storedPath) => {
       try {
         return readFileSync(defaultCaptureStore.resolveAbsolute(storedPath))
@@ -1304,16 +1298,6 @@ function derivedFileRows(
   return files.flatMap(({ derivation, contentHash, packagedPath }) =>
     packagedPath ? [{ derivation, contentHash, path: packagedPath }] : []
   )
-}
-
-/** Writes the Derived Files the contents decision enclosed, in the order it gives them. */
-function addEnclosedDerivedFiles(
-  decided: readonly DerivedFileContents[],
-  add: ArtifactAccumulator['add']
-): void {
-  for (const { enclosed } of decided) {
-    if (enclosed) add(enclosed.path, enclosed.bytes)
-  }
 }
 
 /** One committed non-Capture Exhibit as evidence.json lists it. */
@@ -1510,31 +1494,21 @@ function buildEvidenceZip(
   add(PACKAGE_ROOT_FILES.tsaIntermediates, [...timestampTokenCertPems].join('\n') + '\n')
   if (tsaTrust.bundled) add(PACKAGE_ROOT_FILES.tsaRoot, tsaTrust.pem)
 
-  const capturesMissingContent: string[] = []
-  // Content-addressed: identical bytes across captures (a Duplicate's copies)
-  // resolve to the same path. Emit the zip entry once; multiple capture
-  // records may still reference it. createStoredZip does not dedupe entry names.
-  const emittedContentPaths = new Set<string>()
-  const captureEntries = captureEntriesByChainId(caseEntries)
-  const addContentAddressed = (
-    bytes: Buffer | null,
-    packagePath: (digest: string) => string
-  ): { path: string | null; sha256: string | null } => {
-    if (!bytes) return { path: null, sha256: null }
-    const digest = sha256(bytes)
-    const path = packagePath(digest)
-    if (!emittedContentPaths.has(path)) {
-      add(path, bytes)
-      emittedContentPaths.add(path)
-    }
-    return { path, sha256: digest }
-  }
+  // Every enclosed file, in the order the contents decision gives: each
+  // Capture's own files, then each other Exhibit's file and Derived Files
+  // under the kind subdirectory the Case store uses, then each Capture's
+  // Derived Files. The paths come from the same helpers the standalone
+  // verifier derives them with, so a file this writes is a file the verifier
+  // looks for.
+  for (const file of contents.files) add(file.path, file.bytes)
+
+  const capturesMissingContent = data.captures
+    .filter(({ id }) => contents.ofCapture(id).pageArchive === null)
+    .map(({ id }) => id)
   const captureEvidence = data.captures.map((capture) => {
     const id = chainIdOf(capture.id)
-    const mhtml = defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'mhtml')
-    const mhtmlPath = capturePagePath(id)
-    const mhtmlSha256 = mhtml ? add(mhtmlPath, mhtml) : null
-    if (!mhtml) capturesMissingContent.push(capture.id)
+    const { pageArchive, screenshot, transactionRecord, pdf, timestampTokenPath } =
+      contents.ofCapture(capture.id)
     const verification = data.verifications.find((v) => v.captureId === capture.id)
     // Same single resolution report.html and certification.html render, for the
     // same reason plus one this artifact has on its own: the package verifier
@@ -1544,41 +1518,12 @@ function buildEvidenceZip(
     // evidence.json at odds with the manifest it ships beside.
     const trusted = data.trustedTimeByCaptureId.get(capture.id) ?? UNSTAMPED
 
-    // Content-address the screenshot into the package (#118): the file name IS
-    // its sha256, and add() records it into artifacts[] so the package is
-    // self-describing. Scoped to the export package only — live on-disk storage
-    // is untouched. The .txt sidecar's integrity is bound by textSha256 in the
-    // per-capture record + the signed manifest entry; it is not re-bundled here
-    // (its content already surfaces in report.html / the MHTML page).
-    // Gated on the packaged path the report was rendered against, which
-    // generateReport sets for an anchored screenshot whatever
-    // include.screenshots says (see the comment there). The raw on-disk bytes
-    // are used (not the possibly-annotated report copy) so the digest matches
-    // the screenshotHash anchored at ingest.
-    const screenshot = addContentAddressed(
-      data.packagedPaths.get(capture.id)?.screenshot
-        ? defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'png')
-        : null,
-      packagedScreenshotPath
-    )
-    // The Transaction Record and the PDF ship only when the signed entry
-    // anchors them, as a Derived File no entry names is held back (X34):
-    // neither verifier checks a file the entry carries no hash for. No include
-    // option leaves out an anchored one, because Package Verification fails a
-    // signed hash whose file the package lacks (D10 of
-    // docs/plans/2026-10-10-capture-engine-first-slice.md).
-    const entry = captureEntries.get(id)
-    const anchored = (field: string, type: 'warc.gz' | 'pdf'): Buffer | null =>
-      typeof entry?.[field] === 'string'
-        ? defaultCaptureStore.readArtifact(capture.caseId, capture.id, type)
-        : null
-    const transactionRecord = addContentAddressed(
-      anchored('transactionRecordHash', 'warc.gz'),
-      packagedTransactionRecordPath
-    )
-    const pdf = addContentAddressed(anchored('pdfHash', 'pdf'), packagedPdfPath)
-    const timestampToken = contents.ofCapture(capture.id).timestampTokenPath
-
+    // The screenshot is content-addressed (#118): its file name is the sha256
+    // of the raw on-disk bytes, not of the possibly-annotated report copy, so
+    // the digest matches the screenshotHash anchored at ingest. The .txt
+    // sidecar's integrity is bound by textSha256 below and the signed entry;
+    // it is not re-bundled (its content already surfaces in report.html and
+    // the MHTML page).
     return {
       id,
       title: capture.title,
@@ -1591,14 +1536,14 @@ function buildEvidenceZip(
       trustedTime: trusted.trustedTime,
       tsaName: trusted.tsaName,
       stampedAt: trusted.stampedAt,
-      mhtmlPath: mhtml ? mhtmlPath : null,
-      mhtmlSha256,
-      screenshotPath: screenshot.path,
-      screenshotSha256: screenshot.sha256,
-      transactionRecordPath: transactionRecord.path,
-      transactionRecordSha256: transactionRecord.sha256,
-      pdfPath: pdf.path,
-      pdfSha256: pdf.sha256,
+      mhtmlPath: pageArchive?.path ?? null,
+      mhtmlSha256: pageArchive?.sha256 ?? null,
+      screenshotPath: screenshot?.path ?? null,
+      screenshotSha256: screenshot?.sha256 ?? null,
+      transactionRecordPath: transactionRecord?.path ?? null,
+      transactionRecordSha256: transactionRecord?.sha256 ?? null,
+      pdfPath: pdf?.path ?? null,
+      pdfSha256: pdf?.sha256 ?? null,
       textSha256: capture.textHash ?? null,
       // Corroboration-only TLS cert chain (#123, ADR-0002). NOT bound to the
       // captured transaction — the origin was re-contacted from the main process
@@ -1607,16 +1552,12 @@ function buildEvidenceZip(
       // timestamps are present so a reviewer understands the interval.
       tlsCorroboration: capture.tlsCertChain ?? null,
       // evidence.json keeps this as a list; an Exhibit has at most one token path.
-      timestampTokenPaths: timestampToken ? [timestampToken] : []
+      timestampTokenPaths: timestampTokenPath ? [timestampTokenPath] : []
     }
   })
 
-  // Every committed Exhibit of every other kind, under the kind subdirectory
-  // the Case store uses and keyed by Exhibit id with the stored extension (D1),
-  // with its Derived Files beside it. The paths come from the same helpers the
-  // standalone verifier derives them with, so a file this writes is a file the
-  // verifier looks for.
-  for (const file of contents.fileExhibitFiles) add(file.path, file.bytes)
+  // Every committed Exhibit of every other kind, keyed by Exhibit id with the
+  // stored extension (D1), with its Derived Files beside it.
   const exhibitsMissingContent = data.fileExhibits
     .filter(({ packagedPath }) => !packagedPath)
     .map(({ id }) => id)
@@ -1627,8 +1568,7 @@ function buildEvidenceZip(
 
   // A Capture is an Exhibit too (X35), so it appears in the same list — the
   // index a reader consults to see what the package holds is one list over
-  // every kind, not one per kind. Its bytes were enclosed by the capture pass
-  // above; only its Derived Files are added here.
+  // every kind, not one per kind.
   const captureExhibits = data.captures.map((capture) => {
     const derived = data.derivedFilesByCaptureId.get(capture.id) ?? []
     // Total over the captures by construction: `insertCapture` writes the
@@ -1636,7 +1576,6 @@ function buildEvidenceZip(
     // Capture that predates it.
     const number = data.exhibitNumberByCaptureId.get(capture.id) ?? 0
     const id = chainIdOf(capture.id)
-    addEnclosedDerivedFiles(contents.ofCapture(capture.id).derivedFiles, add)
     return {
       id,
       kind: 'capture',
@@ -1644,7 +1583,7 @@ function buildEvidenceZip(
       exhibitNumber: number,
       name: capture.title,
       contentHash: capture.hash,
-      path: capturesMissingContent.includes(capture.id) ? null : capturePagePath(id),
+      path: contents.ofCapture(capture.id).pageArchive?.path ?? null,
       derivedFiles: derivedFileRows(derived)
     }
   })
@@ -1770,41 +1709,26 @@ function buildWorkingCopyZip(
   caseId: string,
   data: ExportData,
   meta: PackageMeta,
-  contents: PackageContents,
-  includePageArchives: boolean
+  contents: PackageContents
 ): EvidenceZipResult {
   const { entries, artifacts, add } = createArtifactAccumulator()
   // Named as the Evidence Package names them — see resolveChainNames.
   const chainIdOf = (id: string): string => data.chainIdByCaptureId.get(id) ?? id
 
+  // Every enclosed file, in the order the contents decision gives: each
+  // Capture's page archive, operator-facing screenshot and Derived Files, then
+  // each other Exhibit's file and Derived Files.
+  for (const file of contents.files) add(file.path, file.bytes)
+
   const captureIndex = data.captures.map((capture) => {
-    const id = chainIdOf(capture.id)
-    const mhtml = includePageArchives
-      ? defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'mhtml')
-      : null
-    const pagePath = capturePagePath(id)
-    if (mhtml) add(pagePath, mhtml)
-
-    // The operator-facing copy — annotation-burned when the option says so —
-    // keyed by capture id. Content addressing and ingest-hash matching are
-    // evidence-package concepts; this class ships what the operator works with.
-    // A Working Copy is not a verifiable object (ADR-0010) and has no reader
-    // to agree with, so its id-addressed screenshot is not in the Package
-    // Layout module; see docs/plans/2026-09-22-evidence-package-layout.md.
-    const screenshotBase64 = data.screenshots.get(capture.id)
-    const screenshotPath = screenshotBase64 ? `screenshots/${id}.png` : null // layout-exempt: Working Copy
-    if (screenshotBase64 && screenshotPath) {
-      add(screenshotPath, Buffer.from(screenshotBase64, 'base64'))
-    }
-
-    addEnclosedDerivedFiles(contents.ofCapture(capture.id).derivedFiles, add)
+    const { pageArchive, screenshot } = contents.ofCapture(capture.id)
     return {
-      id,
+      id: chainIdOf(capture.id),
       title: capture.title,
       url: capture.url,
       capturedAt: capture.timestamp,
-      pagePath: mhtml ? pagePath : null,
-      screenshotPath,
+      pagePath: pageArchive?.path ?? null,
+      screenshotPath: screenshot?.path ?? null,
       derivedFiles: derivedFileRows(data.derivedFilesByCaptureId.get(capture.id) ?? [])
     }
   })
@@ -1815,7 +1739,6 @@ function buildWorkingCopyZip(
   // package verifiable — no manifest, no signed entry, no certification — so
   // the class split is untouched: this is the operator's working set of the
   // Case's files, not a second evidentiary object.
-  for (const file of contents.fileExhibitFiles) add(file.path, file.bytes)
   const exhibitIndex = data.fileExhibits.map((exhibit) => ({
     id: exhibit.id,
     kind: exhibit.kind,
@@ -1983,57 +1906,6 @@ export function buildNotesMarkdown(
     ].join('\n')
   })
   return head.join('\n') + sections.join('') + '\n'
-}
-
-/**
- * What the package will actually contain for each capture. Paths are derived
- * from the same manifest snapshot and the same filesystem the packager reads,
- * so the report cannot cite a file that was never written; a non-package export
- * encloses nothing and therefore gets no paths at all.
- *
- * imageAnnotated is deliberately NOT gated on the format: burning happens
- * whenever annotations are set to 'burned', so a standalone HTML report must
- * disclose it just as loudly as a packaged one.
- */
-function buildPackagedPaths(
-  data: ExportData,
-  options: ExportOptions,
-  contents: PackageContents,
-  screenshotDigests: Map<string, string>,
-  annotatedCaptureIds: Set<string>
-): Map<string, PackagedArtifacts> {
-  const paths = new Map<string, PackagedArtifacts>()
-  const isPackage = options.format === 'zip'
-
-  for (const capture of data.captures) {
-    // The CAPTURE path, which the contents decision does not cover yet:
-    // `existsSync` here, and a separate `readArtifact` in the zip builders. It
-    // predates #1156 and stays as it was, so an archive that can be large is
-    // not held in memory from classification to assembly.
-    //
-    // A Capture artifact that is present but unreadable when the export
-    // classifies it fails the whole export with that error and writes no
-    // package (test: refuses the export when a capture artifact is present but
-    // unreadable). An artifact that disappears between classification and
-    // assembly is the pre-existing Capture path: the package is written with
-    // the report naming a file the zip lacks, and both verifiers FAIL it on
-    // the missing artifact (evidencePackage.ts:505). The contents decision
-    // closes that window for non-Capture Exhibits and Derived Files only; a
-    // Capture's own files are not covered yet.
-    const { abs } = defaultCaptureStore.artifactPaths(capture.caseId, capture.id, 'mhtml')
-    const screenshotDigest = screenshotDigests.get(capture.id)
-    const pageArchive = capturePagePath(data.chainIdByCaptureId.get(capture.id) ?? capture.id)
-    paths.set(capture.id, {
-      pageArchive: isPackage && existsSync(abs) ? pageArchive : null,
-      screenshot: isPackage && screenshotDigest ? packagedScreenshotPath(screenshotDigest) : null,
-      timestampToken: contents.ofCapture(capture.id).timestampTokenPath,
-      // Recorded regardless of format: the exhibit reproduces the image either
-      // way, so it must be able to label it with the digest of what it shows.
-      screenshotDigest: screenshotDigest ?? null,
-      imageAnnotated: annotatedCaptureIds.has(capture.id)
-    })
-  }
-  return paths
 }
 
 function isTimestampEntry(entry: Record<string, unknown>): entry is ManifestTimestampEntry {

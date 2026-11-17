@@ -1,29 +1,47 @@
-// What one export encloses for its Timestamp Tokens, its Exhibits that are not
-// Captures and every Derived File: the Package Contents. Decided here, once,
-// from the chain entries, the rows in scope and the bytes the byte source
+// What one export encloses: the Package Contents (CONTEXT.md). Decided here,
+// once, from the chain entries, the rows in scope and the bytes the byte source
 // returns. The report, the index, the Certification and the zip all read the
-// result, so for these files none of them can name a file another leaves out.
-// A Capture's own files are still decided in `export.ts`.
+// result, so none of them can name a file another leaves out.
 //
 // Verification never reads this module: Package Verification, `verify.sh` and
 // the Verify Runbook restate what a package must hold on purpose (ADR-0004),
 // and `.dependency-cruiser.cjs` refuses any import that reaches it from them.
 
 import type { Capture, DerivedFile, DerivedFileVerification, Exhibit } from '@shared/types'
+import { createHash } from 'crypto'
 import { stampFor } from '@shared/verify/trustedTime'
 import {
+  capturePagePath,
   derivedFilePackagePath,
   exhibitPackageDirectory,
   exhibitPackagePath,
-  timestampTokenPath
+  pdfPath,
+  screenshotPath,
+  timestampTokenPath,
+  transactionRecordPath
 } from '../../evidence-package-layout/index'
-import type { PackageByteSource } from './byteSource'
+import type { CaptureFileType, PackageByteSource } from './byteSource'
 
 /**
- * What the export produces. A `report` is the standalone HTML document: it
- * encloses nothing, and nothing is read for it.
+ * What the export produces, with the choices that change what it encloses.
+ *
+ * - An Evidence Package encloses every file a signed entry anchors, whatever
+ *   was asked for. `screenshots` adds the screenshots no entry anchors.
+ * - A Working Copy is not a verifiable object (ADR-0010). It encloses the page
+ *   archives when `pageArchives` is set, and for a screenshot the copy the
+ *   operator works with, which `operatorScreenshots` supplies by Capture row
+ *   id and which may have annotations burned in.
+ * - A `report` is the standalone HTML document: it encloses nothing, and
+ *   nothing is read for it.
  */
-export type ExportForm = 'evidence-package' | 'working-copy' | 'report'
+export type ExportForm =
+  | { kind: 'evidence-package'; screenshots: boolean }
+  | {
+      kind: 'working-copy'
+      pageArchives: boolean
+      operatorScreenshots: ReadonlyMap<string, Buffer>
+    }
+  | { kind: 'report' }
 
 export interface PackageContentsInput {
   form: ExportForm
@@ -38,7 +56,7 @@ export interface PackageContentsInput {
    */
   chainNames: ReadonlyMap<string, { id: string; path: string | null }>
   /** The Captures in scope. */
-  captures: readonly Pick<Capture, 'id' | 'hash' | 'mhtmlPath'>[]
+  captures: readonly Pick<Capture, 'id' | 'caseId' | 'hash' | 'mhtmlPath'>[]
   /** The Exhibits in scope that are not Captures. */
   fileExhibits: readonly Pick<Exhibit, 'id' | 'kind' | 'path' | 'contentHash'>[]
   /** Derived File rows by the row id of the Exhibit they were computed from. */
@@ -75,7 +93,28 @@ export interface DerivedFileContents {
   enclosed: EnclosedFile | null
 }
 
+/** The fields of a `capture` entry that carry the hash of one of the Capture's files. */
+export type CaptureAnchor = 'contentHash' | 'screenshotHash' | 'transactionRecordHash' | 'pdfHash'
+
+/** One of a Capture's own files, as the export encloses it. */
+export interface EnclosedCaptureFile {
+  path: string
+  /** SHA-256 of the bytes enclosed, which is the one read the export made of them. */
+  sha256: string
+  /**
+   * The field of the Capture's signed entry that carries this file's hash, or
+   * null when no signed entry anchors the file. Always null for a Working
+   * Copy's screenshot, which is the operator's copy and not the signed bytes.
+   */
+  anchoredBy: CaptureAnchor | null
+}
+
 export interface CaptureContents {
+  /** Null when the Capture holds no page archive, or the form leaves it out. */
+  pageArchive: EnclosedCaptureFile | null
+  screenshot: EnclosedCaptureFile | null
+  transactionRecord: EnclosedCaptureFile | null
+  pdf: EnclosedCaptureFile | null
   /** Where the Capture's Timestamp Token sits, or null when none is enclosed. */
   timestampTokenPath: string | null
   /** One for each Derived File row of the Capture, in the order given. */
@@ -95,13 +134,22 @@ export interface PackageContents {
   ofCapture(rowId: string): CaptureContents
   /** By row id. Throws for an Exhibit that was not in the input. */
   ofFileExhibit(rowId: string): FileExhibitContents
-  /** Each enclosed Timestamp Token once, in the order the zip writes them. */
+  /**
+   * Each enclosed Timestamp Token once, in the order the zip writes them,
+   * which is before the package's own documents.
+   */
   timestampTokens: readonly EnclosedFile[]
   /**
-   * Every enclosed file of the Exhibits that are not Captures, in the order
-   * the zip writes them: each Exhibit's own file, then its Derived Files.
+   * Every other enclosed file once, in the order the zip writes them. An
+   * Evidence Package writes them after its own documents.
+   *
+   * - Evidence Package: each Capture's page archive, screenshot, Transaction
+   *   Record and PDF; then each other Exhibit's file and Derived Files; then
+   *   each Capture's Derived Files.
+   * - Working Copy: each Capture's page archive, screenshot and Derived
+   *   Files; then each other Exhibit's file and Derived Files.
    */
-  fileExhibitFiles: readonly EnclosedFile[]
+  files: readonly EnclosedFile[]
 }
 
 interface TimestampEntry {
@@ -157,6 +205,80 @@ function decideTimestampTokens(
   return { pathByContentHash, files }
 }
 
+/**
+ * Which signed field anchors which of a Capture's files, and what an Evidence
+ * Package does with a file no signed entry anchors. An Evidence Package always
+ * encloses a file whose field the entry carries when the Capture holds it,
+ * because Package Verification fails a signed hash whose file the package
+ * lacks (#1986; D10 of docs/plans/2026-10-10-capture-engine-first-slice.md).
+ * No rule can leave an anchored file out of one. A Working Copy is not
+ * verifiable and does not read this table (ADR-0010).
+ *
+ * A screenshot, a Transaction Record and a PDF are named by their SHA-256, so
+ * Captures holding the same bytes share one file. The page archive is named
+ * by the Capture's chain id. Listed in the order the zip writes them.
+ */
+const CAPTURE_FILE_RULES: ReadonlyArray<{
+  slot: 'pageArchive' | 'screenshot' | 'transactionRecord' | 'pdf'
+  type: CaptureFileType
+  anchor: CaptureAnchor
+  unanchored: 'enclosed' | 'when-screenshots-asked' | 'left-out'
+  path: (chainId: string, sha256: string) => string
+}> = [
+  {
+    slot: 'pageArchive',
+    type: 'mhtml',
+    anchor: 'contentHash',
+    unanchored: 'enclosed',
+    path: (chainId) => capturePagePath(chainId)
+  },
+  {
+    slot: 'screenshot',
+    type: 'png',
+    anchor: 'screenshotHash',
+    unanchored: 'when-screenshots-asked',
+    path: (_chainId, sha256) => screenshotPath(sha256)
+  },
+  // Neither verifier checks a file the entry carries no hash for, so an
+  // unanchored one stays out, as a Derived File no entry names does (X34).
+  {
+    slot: 'transactionRecord',
+    type: 'warc.gz',
+    anchor: 'transactionRecordHash',
+    unanchored: 'left-out',
+    path: (_chainId, sha256) => transactionRecordPath(sha256)
+  },
+  {
+    slot: 'pdf',
+    type: 'pdf',
+    anchor: 'pdfHash',
+    unanchored: 'left-out',
+    path: (_chainId, sha256) => pdfPath(sha256)
+  }
+]
+
+const NO_CAPTURE_FILES = {
+  pageArchive: null,
+  screenshot: null,
+  transactionRecord: null,
+  pdf: null
+} satisfies Partial<CaptureContents>
+
+/** Each Capture's signed entry by its chain id; where a chain holds more than one, the last wins. */
+function captureEntriesByChainId(
+  entries: readonly Record<string, unknown>[]
+): Map<string, Record<string, unknown>> {
+  const byId = new Map<string, Record<string, unknown>>()
+  for (const entry of entries) {
+    if (entry.type === 'capture' && typeof entry.captureId === 'string') {
+      byId.set(entry.captureId, entry)
+    }
+  }
+  return byId
+}
+
+const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
+
 function anchoringOf(verification: DerivedFileVerification | undefined): DerivedFileAnchoring {
   // No verification at all fails closed: nothing established an entry, so
   // nothing may be enclosed on the strength of one.
@@ -169,11 +291,11 @@ function anchoringOf(verification: DerivedFileVerification | undefined): Derived
 
 export function decidePackageContents(input: PackageContentsInput): PackageContents {
   const { form, entries, chainNames, captures, fileExhibits, source } = input
-  const encloses = form !== 'report'
+  const encloses = form.kind !== 'report'
   const chainIdOf = (rowId: string): string => chainNames.get(rowId)?.id ?? rowId
 
   const tokens =
-    form === 'evidence-package'
+    form.kind === 'evidence-package'
       ? decideTimestampTokens(
           [
             ...captures.map(({ id, hash }) => ({ id: chainIdOf(id), contentHash: hash })),
@@ -207,8 +329,93 @@ export function decidePackageContents(input: PackageContentsInput): PackageConte
       }
     })
   }
+  const enclosedDerivedFiles = (decided: readonly DerivedFileContents[]): EnclosedFile[] =>
+    decided.flatMap(({ enclosed }) => (enclosed ? [enclosed] : []))
 
-  const fileExhibitFiles: EnclosedFile[] = []
+  const files: EnclosedFile[] = []
+  // A file named by its SHA-256 is written once, whichever Captures hold it.
+  const contentAddressedPaths = new Set<string>()
+
+  const captureEntries = captureEntriesByChainId(entries)
+  const evidenceFilesOf = (
+    capture: PackageContentsInput['captures'][number],
+    screenshots: boolean
+  ): Pick<CaptureContents, 'pageArchive' | 'screenshot' | 'transactionRecord' | 'pdf'> => {
+    const chainId = chainIdOf(capture.id)
+    const entry = captureEntries.get(chainId)
+    const decided: Pick<
+      CaptureContents,
+      'pageArchive' | 'screenshot' | 'transactionRecord' | 'pdf'
+    > = { ...NO_CAPTURE_FILES }
+    for (const rule of CAPTURE_FILE_RULES) {
+      const anchoredBy = typeof entry?.[rule.anchor] === 'string' ? rule.anchor : null
+      const wanted =
+        anchoredBy !== null ||
+        rule.unanchored === 'enclosed' ||
+        (rule.unanchored === 'when-screenshots-asked' && screenshots)
+      const bytes = wanted ? source.captureFile(capture, rule.type) : null
+      if (bytes === null) continue
+      const digest = sha256(bytes)
+      const path = rule.path(chainId, digest)
+      decided[rule.slot] = { path, sha256: digest, anchoredBy }
+      if (rule.slot === 'pageArchive') {
+        files.push({ path, bytes })
+      } else if (!contentAddressedPaths.has(path)) {
+        files.push({ path, bytes })
+        contentAddressedPaths.add(path)
+      }
+    }
+    return decided
+  }
+
+  const workingCopyFilesOf = (
+    capture: PackageContentsInput['captures'][number],
+    workingCopy: Extract<ExportForm, { kind: 'working-copy' }>
+  ): Pick<CaptureContents, 'pageArchive' | 'screenshot' | 'transactionRecord' | 'pdf'> => {
+    const chainId = chainIdOf(capture.id)
+    const entry = captureEntries.get(chainId)
+    const page = workingCopy.pageArchives ? source.captureFile(capture, 'mhtml') : null
+    const pageArchive = page
+      ? {
+          path: capturePagePath(chainId),
+          sha256: sha256(page),
+          anchoredBy: typeof entry?.contentHash === 'string' ? ('contentHash' as const) : null
+        }
+      : null
+    if (page && pageArchive) files.push({ path: pageArchive.path, bytes: page })
+    // Named by the Capture's id, not by a hash: content addressing and the
+    // hash signed at ingest are Evidence Package concepts, and no reader has
+    // to agree with this path, so it is not in the Package Layout.
+    const copy = workingCopy.operatorScreenshots.get(capture.id)
+    const screenshot =
+      copy && copy.length > 0
+        ? { path: `screenshots/${chainId}.png`, sha256: sha256(copy), anchoredBy: null } // layout-exempt: Working Copy
+        : null
+    if (copy && screenshot) files.push({ path: screenshot.path, bytes: copy })
+    return { ...NO_CAPTURE_FILES, pageArchive, screenshot }
+  }
+
+  const byCapture = new Map<string, CaptureContents>()
+  for (const capture of captures) {
+    const ownFiles =
+      form.kind === 'evidence-package'
+        ? evidenceFilesOf(capture, form.screenshots)
+        : form.kind === 'working-copy'
+          ? workingCopyFilesOf(capture, form)
+          : NO_CAPTURE_FILES
+    const derivedFiles = derivedFilesOf(
+      capture.id,
+      exhibitPackageDirectory('capture', capture.mhtmlPath ?? null)
+    )
+    // A Working Copy writes a Capture's Derived Files beside its own files.
+    if (form.kind === 'working-copy') files.push(...enclosedDerivedFiles(derivedFiles))
+    byCapture.set(capture.id, {
+      ...ownFiles,
+      timestampTokenPath: tokens.pathByContentHash.get(capture.hash) ?? null,
+      derivedFiles
+    })
+  }
+
   const byFileExhibit = new Map<string, FileExhibitContents>()
   for (const exhibit of fileExhibits) {
     const bytes = encloses && exhibit.path ? source.storedFile(exhibit.path) : null
@@ -226,23 +433,16 @@ export function decidePackageContents(input: PackageContentsInput): PackageConte
       timestampTokenPath: tokens.pathByContentHash.get(exhibit.contentHash) ?? null,
       derivedFiles
     })
-    if (enclosed) fileExhibitFiles.push(enclosed)
-    for (const derived of derivedFiles)
-      if (derived.enclosed) fileExhibitFiles.push(derived.enclosed)
+    if (enclosed) files.push(enclosed)
+    files.push(...enclosedDerivedFiles(derivedFiles))
   }
 
-  const byCapture = new Map<string, CaptureContents>(
-    captures.map((capture) => [
-      capture.id,
-      {
-        timestampTokenPath: tokens.pathByContentHash.get(capture.hash) ?? null,
-        derivedFiles: derivedFilesOf(
-          capture.id,
-          exhibitPackageDirectory('capture', capture.mhtmlPath ?? null)
-        )
-      }
-    ])
-  )
+  // An Evidence Package writes every Capture's Derived Files last.
+  if (form.kind === 'evidence-package') {
+    for (const capture of captures) {
+      files.push(...enclosedDerivedFiles(byCapture.get(capture.id)?.derivedFiles ?? []))
+    }
+  }
 
   // A row the decision never saw has no contents to report, and an answer of
   // "nothing enclosed" for it would read as a decision that was made.
@@ -256,6 +456,6 @@ export function decidePackageContents(input: PackageContentsInput): PackageConte
     ofCapture: (rowId) => decided(byCapture, rowId, 'Capture'),
     ofFileExhibit: (rowId) => decided(byFileExhibit, rowId, 'Exhibit'),
     timestampTokens: tokens.files,
-    fileExhibitFiles
+    files
   }
 }

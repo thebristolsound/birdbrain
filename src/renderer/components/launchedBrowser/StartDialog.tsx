@@ -44,7 +44,7 @@ const STEP_MARKS: Readonly<Record<StepProgress, { mark: string; className: strin
 }
 
 // The start dialog (S2: `1b` to `1e`), mounted once at the root and opened for a Case from the
-// Case action bar or the command palette. It launches into the Case it was opened for, which it
+// top bar or the command palette. It launches into the Case it was opened for, which it
 // activates first, as the Capture Session switch does before a start. The Persona picker is the
 // Persona step's (#1833).
 export function StartDialog() {

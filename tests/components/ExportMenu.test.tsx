@@ -199,8 +199,8 @@ describe('ExportMenu', () => {
     await waitFor(() => expect(trigger.getAttribute('aria-disabled')).toBe('false'))
   })
 
-  // A long step wrapped out of the 28px button (#2159). The label shows from lg in the Case
-  // action bar, so it stays on one line from there and the title carries the whole step.
+  // A long step wrapped out of the 28px button (#2159). The label shows from lg in the top bar,
+  // so it stays on one line from there and the title carries the whole step.
   it("keeps a running export's step on one line and gives the whole step in the title", async () => {
     exportArchive.mockReturnValue(new Promise(() => {}))
     renderMenu()

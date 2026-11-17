@@ -135,11 +135,13 @@ export const recordPathFor = (outPath) => outPath.replace(/(\.md)?$/, '.json')
 
 const EMPTY_DIFF_SHA256 = createHash('sha256').update('').digest('hex')
 
-// sha256 of `git diff <base>...<sha>`, the pull request's authored content (ADR-0021).
+// sha256 of `git diff <base>...<sha>`, the pull request's authored content (ADR-0021). Git's
+// own diff of the stored bytes: a machine's external diff tool or textconv filter prints what
+// it likes, and can print two different changes alike.
 export const diffHash = (cwd, base, sha) =>
   createHash('sha256')
     .update(
-      execFileSync('git', ['diff', `${base}...${sha}`], {
+      execFileSync('git', ['diff', '--no-ext-diff', '--no-textconv', `${base}...${sha}`], {
         cwd,
         maxBuffer: 1024 * 1024 * 1024,
         stdio: ['ignore', 'pipe', 'ignore']

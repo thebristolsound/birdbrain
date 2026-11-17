@@ -559,6 +559,25 @@ process.exit(failed ? 1 : 0)
       )
     })
 
+    it('sees a changed diff on a machine whose diff tool prints every change alike', () => {
+      const tools = mkdtempSync(join(tmpdir(), 'preflight-diff-tool-'))
+      try {
+        const tool = join(tools, 'same-diff')
+        writeFileSync(tool, '#!/bin/sh\necho same\n', { mode: 0o755 })
+        branch()
+        expect(carry({ GIT_EXTERNAL_DIFF: tool }).status).toBe(0)
+        const ran = calls()
+        writeFileSync(join(repo, 'a.txt'), 'authored again\n')
+        git('commit', '-qam', 'authored again')
+        const result = carry({ GIT_EXTERNAL_DIFF: tool })
+        expect(result.status, result.stderr).toBe(0)
+        expect(result.stdout).toContain('not carried forward, the diff against the base changed')
+        expect(calls()).toBeGreaterThan(ran)
+      } finally {
+        rmSync(tools, { recursive: true, force: true })
+      }
+    })
+
     it('does not carry a run that failed', () => {
       branch()
       expect(carry({ COVERAGE_EXIT: '1' }).status).toBe(1)

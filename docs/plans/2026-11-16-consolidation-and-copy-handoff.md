@@ -112,11 +112,15 @@ button it changes.
 
 | Slice | Branch | Pull request | State |
 | --- | --- | --- | --- |
-| 5.1a | `feat/chrome-5.1a-shared-menu` | #2227 | Open for review. A second commit answers the first review and fixes Enter on a `Button` menu trigger |
-| 2.1 | `feat/chrome-2.1-recording-mark` | #2228 | Draft, based on the 5.1a branch |
+| 5.1a | `feat/chrome-5.1a-shared-menu` | #2227 | Merged on 2026-11-17 as `4fb88fce`, under the maintainer's override label after three reviews with no blocking finding |
+| 2.1 | `feat/chrome-2.1-recording-mark` | #2228 | Open for review, based on `main`. The review passed at `86cdaf8e` with fifteen findings, none blocking |
 | 2.2 | `feat/chrome-2.2-one-stop-control` | #2229 | Draft, based on the 2.1 branch |
 | 6.1 | `feat/chrome-6.1-status-tiers` | #2230 | Draft, based on the 2.2 branch |
-| 5.2 | `feat/chrome-5.2-labelled-rail` | None yet | Committed locally, with screenshots taken |
+| 5.2 | `feat/chrome-5.2-labelled-rail` | #2231 | Draft, based on the 6.1 branch |
+| 5.3 | `feat/chrome-5.3-case-menu` | #2232 | Draft, based on the 5.2 branch |
+| 5.4 | `feat/chrome-5.4-launch-control` | #2233 | Draft, based on the 5.3 branch |
+| 5.5 | `feat/chrome-5.5-one-row` | #2234 | Draft, based on the 5.4 branch |
+| 5.6 | `feat/chrome-5.6-docs` | #2235 | Draft, based on the 5.5 branch |
 
 Each draft's base is the branch below it in the stack, so its diff is its slice alone. A pushed
 branch only gains commits: when a lower branch gains a fix, merge it up through each branch above
@@ -135,9 +139,45 @@ What the slices found that the plans did not say:
   room at 1,052 pixels beside the wider rail.
 - The top bar keeps its Settings gear on the dashboard, where no rail shows. The new-Case wizard
   shows the rail, so it has no gear.
+- Slice 5.3 deleted `ExportMenu.tsx`, `SharePill.tsx` and their tests. The 5.1a branch gained a
+  commit after the stack was cut, which edits `tests/components/ExportMenu.test.tsx`. When it is
+  merged up, the 5.3 branch conflicts on that file: keep the deletion.
+- A new renderer file with `try` and `finally`, or a conditional inside `try`, fails
+  `tests/reactCompiler.test.ts`. A deleted file that the baseline names fails it too. Prune with
+  `REACT_COMPILER_BASELINE=update pnpm test tests/reactCompiler.test.ts`.
+- "into ‹Case›" on the recording mark shows in practice for a launched browser's session.
+  Opening a Case activates it, so the extension's session moves with the Operator; only a
+  launched browser pins the Active Case. For the same reason no end-to-end spec holds that
+  state: main's update replaces a stand-in session as the Case opens. The unit tests cover it.
+- `e2e/readme-screenshots.spec.ts` had stopped at its annotation step when the pin popover's
+  wording changed. Slice 5.6 repairs it. Under `xvfb-run` it needs a screen taller than the
+  default, or the seeded page screenshots are cut short; `screenshots.mdx` gives the command.
+- The labelled rail made `e2e/investigate-view.spec.ts` fail in CI: a 1,200-pixel window leaves
+  the Investigate view 1,128 pixels, under its 1,140 threshold, so it shows tabs. The spec now
+  opens a 1,224-pixel window. Run the whole end-to-end suite, or read CI on the draft, before
+  calling a slice that changes a width done.
+- `pnpm preflight --carry` compares the whole diff against `main`. When a pull request below
+  merges, every branch above has a different diff against `main`, so nothing carries and each
+  new head needs a full run. A draft's Verification block is refreshed when the draft becomes
+  the bottom of the stack, not at every merge below it, so the blocks on #2229, #2230, #2232 and #2233
+  name the heads they were measured at.
+- Two fixes for findings on #2228 are on the local branch `fix/2228-review-findings` and are
+  not pushed: the mark keeps naming the extension once a launched browser has closed, and the
+  Launch browser test waits for the Case. The same rule has to reach `LaunchControl.tsx`,
+  which passes `showSource={false}` on a Case screen in slices 5.4 and 5.5.
+- `Menu` swaps its trigger when a control changes state, as the capture control does between
+  Launch browser and the recording mark. The button that held focus is unmounted, so the
+  control moves focus to the button that replaced it.
 
-The next slice is 5.3. Start it with `git switch -c feat/chrome-5.3-case-menu
-feat/chrome-5.2-labelled-rail`.
+The stack is complete through 5.6. What is left of phase 5:
+
+- Slice 5.1b, the Download menu on the shared component. It edits a `blocking` file, so it is
+  its own `evidence-affecting` pull request and is not in the stack.
+- The entry in `docs/design-handoff/README.md` that names the bundle as superseding the
+  2026-11-08 top bar. The plan gives its wording to the maintainer, and the bundle is not in
+  the repository yet.
+- The parent plan's check boxes for slices 5.1 to 5.6, 2.1, 2.2 and 6.1, ticked as each pull
+  request merges.
 
 ## Slices that share a file
 
@@ -148,7 +188,7 @@ Land these in the order given, or as one pull request where the plan says so.
 | `StartDialog.tsx` | 1.6, then 3.1, then 3.2 with C5. Slice 3.3 has nothing left to do: copy decision 4 removes the dialog's tips |
 | `ExportDialog.tsx` | 1.2, then 4.1 with C8's wording, then 4.2 |
 | `TopBar.tsx` | 1.3, then 2.1, then 5.2, 5.3 and 5.4 |
-| `SessionControls.tsx` | 2.2, then 5.5 |
+| `SessionControls.tsx` | 2.2, then 5.5, which deletes it |
 | `CaptureMenu.tsx` | 1.4, then 5.1a |
 | `AutoCaptureCard.tsx`, `SignalsOverview.tsx` | 7.4 with C2 |
 | `tourSteps.ts` | C4, then 7.4 and 5.3 move their anchors |

@@ -28,8 +28,9 @@ async function createCase(page: Page, name: string): Promise<string> {
 }
 
 test.describe('Top bar layout', () => {
-  // The status group is widest when it names an issue, as "VPN not seen" does, so the layout is
-  // measured with that label showing rather than the fixture's default VPN.
+  // The status group grows when it names an issue, as "VPN not seen" does, so the layout is
+  // measured in that state rather than with the fixture's default VPN. The words show from 1,280
+  // pixels (`xl`); below that the icon and the dots carry the state.
   test.beforeAll(() => {
     process.env.BIRDBRAIN_E2E_VPN = 'not-seen'
   })
@@ -69,8 +70,12 @@ test.describe('Top bar layout', () => {
       await expect(controls.getByRole('switch', { name: 'Capture Session' })).toHaveCount(0)
       await expect(actionBar.getByRole('button', { name: /Export/ })).toHaveCount(0)
       await expect(actionBar.getByRole('button', { name: 'Launch browser' })).toHaveCount(0)
+      await expect(actionBar.getByTestId('share-pill')).toHaveCount(0)
       await expect(controls.getByTestId('topbar-rec')).toHaveCount(0)
       await expect(controls.getByTestId('status-group')).toBeVisible()
+      // The state the widths below are measured in.
+      const statusWord = controls.getByTestId('status-word')
+      await expect(statusWord).toHaveText('VPN not seen')
 
       // The viewport emulation below leaves the native window controls' room at what the window
       // opened with, so the room Linux's three buttons take is pinned here.
@@ -121,6 +126,11 @@ test.describe('Top bar layout', () => {
         await expect
           .poll(async () => (await caseName.getAttribute('title'))?.startsWith(`${name} · `))
           .toBe(true)
+
+        // The status words take room from 1,280 pixels and none below it.
+        const { width: wordWidth } = (await statusWord.boundingBox())!
+        if (width >= 1280) expect(wordWidth).toBeGreaterThan(40)
+        else expect(wordWidth).toBeLessThanOrEqual(1)
 
         // Every control on the right stays inside the window, and nothing scrolls sideways.
         for (const button of await controls.getByRole('button').all()) {
@@ -210,6 +220,12 @@ test.describe('Top bar layout', () => {
       await expect(actionBar.getByTestId('topbar-rec')).toContainText('Launched Google Chrome', {
         timeout: 1000
       })
+      // The mark names only the launched browser, so the label after the switch names both
+      // sources, and the row is measured with it.
+      await expect(actionBar.getByTestId('session-source-line')).toHaveText(
+        'Launched Google Chrome, and the extension',
+        { timeout: 1000 }
+      )
     }
     const launch = controls.getByRole('button', { name: 'Launch browser' })
     const rows = [
@@ -228,9 +244,13 @@ test.describe('Top bar layout', () => {
       await electronApp.windows()[0].setViewportSize({ width, height: 800 })
       await expect(async () => {
         await holdRecording()
-        for (const bar of [actionBar, controls]) {
-          const overflow = await bar.evaluate((el) => el.scrollWidth - el.clientWidth)
-          expect(overflow).toBeLessThanOrEqual(0)
+        const overflow = await actionBar.evaluate((el) => el.scrollWidth - el.clientWidth)
+        expect(overflow).toBeLessThanOrEqual(0)
+        // The top bar's right group is never narrower than its content, so it cannot scroll;
+        // each of its controls is held to the window's edge instead.
+        for (const control of await controls.locator(':scope > *').all()) {
+          const box = await control.boundingBox()
+          if (box) expect(box.x + box.width).toBeLessThanOrEqual(width)
         }
         const pageOverflow = await page.evaluate(
           () => document.documentElement.scrollWidth - window.innerWidth

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, within } from '@testing-library/react'
+import { render, screen, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { useAppStore } from '@renderer/stores/appStore'
@@ -56,16 +56,19 @@ describe("CaseActionBar as the Case's action row", () => {
   })
 
   // The mark belongs to the switch that starts and stops the session, so nothing sits between
-  // them. Share, Export and Launch browser moved up into the top bar.
-  it('holds only the recording mark and the switch, side by side', () => {
+  // them, and the row holds no other control. Share and Export needed the Case to render, which
+  // this row no longer loads, so e2e/topbar-layout.spec.ts checks on an open Case that they and
+  // Launch browser are gone from it.
+  it('holds only the section name, the recording mark and the switch', () => {
     useAppStore.setState({ sessionActive: true, connectedToExtension: true })
     mount()
     const bar = screen.getByTestId('case-action-bar')
-    expect(within(bar).getByTestId('topbar-rec').nextElementSibling).toBe(
-      within(bar).getByTestId('session-controls')
-    )
-    expect(within(bar).queryByRole('button', { name: 'Launch browser' })).toBeNull()
-    expect(within(bar).queryByRole('button', { name: /Export/ })).toBeNull()
-    expect(within(bar).queryByTestId('share-pill')).toBeNull()
+    // The second child is the spacer that pushes the mark and the switch to the right.
+    expect(Array.from(bar.children, (el) => el.getAttribute('data-testid'))).toEqual([
+      'case-action-bar-section',
+      null,
+      'topbar-rec',
+      'session-controls'
+    ])
   })
 })

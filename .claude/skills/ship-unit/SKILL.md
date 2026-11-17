@@ -1,6 +1,6 @@
 ---
 name: ship-unit
-description: Take one change in this repository from a branch to a pull request that is ready to merge, while the maintainer is away, and hand the merge decision to them. Use when `full-send` is invoked here, or when asked to ship, land or own a change through its merge.
+description: Take one change in this repository from a branch to a pull request that is ready to merge, while the maintainer is away, and hand the merge decision to them. Use when the maintainer's own `full-send` skill, which is kept outside this repository, is invoked here, or when asked to ship, land or own a change through its merge.
 ---
 
 # ship-unit
@@ -31,16 +31,21 @@ This skill is for a session the maintainer started and handed one change to. A j
    Non-draft, because the review fleet reads no draft (ADR-0057). Done when the description's
    Verification block names the pushed head.
 5. **Review.** Wait for CI, `review/fleet` and Codex with the harness's pull request watcher,
-   then sort every finding by the table below. Done when every required check and
-   `review/fleet` are green at head, and each finding is fixed, declined on its thread with a
-   reason, or listed in the description.
+   then sort every finding by the table below. Done when `review/fleet` and every required
+   check but `merge-gate` are green at head, and each finding is fixed, declined on its thread
+   with a reason, or listed in the description. `merge-gate` is left out here because on an
+   `evidence-affecting` pull request it stays red until the sign-off step 6 asks for; step 7
+   waits for it.
 6. **Hand over.** Ask the maintainer with `AskUserQuestion`: the link, the head sha, what you
    proved, and what is still theirs. On an `evidence-affecting` pull request that is their
    approving review or their `approved` label at head (ADR-0041); on every pull request it is
-   the merge. Say which reviews the pull request had: the review fleet's verdict at head, and
-   that no reviewer pre-pass ran, since `merge-gate` asks for none on a pull request opened
-   under the maintainer's account and nobody was watching this session. Done when they have
-   answered.
+   the merge. Say which review the pull request had, the review fleet's verdict at head, and
+   name both conditions `merge-gate` did not apply. It drops two for a pull request opened
+   under the maintainer's account, on the premise that the maintainer watched the session, and
+   nobody watched this one. No reviewer pre-pass ran. And no sign-off at head was required for
+   a change to a file that reaches the release credentials, which is every file under
+   `.github/workflows/` and `.github/scripts/release/` (ADR-0048): list each such file the
+   pull request changes, or say that it changes none. Done when they have answered.
 7. **Act on the answer, at the head the question named.** Read the head again before each
    act; a new head voids the answer, so ask again. When the answer tells you to apply
    `approved`, use the override `.claude/hooks/guard-maintainer-labels.sh` documents for a

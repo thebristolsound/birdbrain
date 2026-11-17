@@ -29,6 +29,17 @@ A failed coverage run can leave an earlier `coverage/coverage-final.json` in pla
 
 **`tests/components/**/*.test.tsx` run in the jsdom Vitest project**, not the Electron node one; the node project's `tests/**/*.test.ts` include glob does not match `.test.tsx`. A `// @vitest-environment jsdom` directive in a component test is therefore valid and may be kept for clarity — it is not an invalid override of the Electron environment.
 
+## Real-browser suites
+
+The suites under `tests/main/services/launchedBrowser/` that launch the pinned Chrome for
+Testing skip unless they run under `xvfb-run`, so `pnpm test` on a desktop opens no browser
+window. Run them with `pnpm test:real-browser`. It gives each file an `xvfb-run` of its own,
+puts the Egress suite inside the loopback-only network namespace it requires, refuses to start
+when the pinned build is not on disk, and fails when a suite skipped any test or ran none. Vitest runs files in
+parallel, so two of these files under one `xvfb-run` share one display, where a browser from
+one file can sit in front of the other's while it captures. To run one file, pass it:
+`pnpm test:real-browser <file>`.
+
 ## sharp under Electron on Linux
 
 On some Linux systems every test file that uses sharp dies with `Worker exited unexpectedly with signal SIGSEGV`: on the maintainer's Arch machine, `thumbnails`, `export`, `exhibitModel`, `backgroundRenderer` and `burnAnnotations` under `tests/main/services/`. The missing coverage then fails the `src/main/services/*.ts` threshold. GitHub's Ubuntu 26.04 runner crashes on the same five files, and `ubuntu-latest` began resolving to it on 2026-10-27, so the workflow jobs that run the unit tests pin `runs-on: ubuntu-24.04`, which does not crash. The app is not affected: the crash needs `ELECTRON_RUN_AS_NODE=1`, which only the test runner uses.

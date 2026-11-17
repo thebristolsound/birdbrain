@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { execFileSync } from 'child_process'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 // @ts-expect-error - build script with no type declarations; the tsconfigs exclude scripts/
@@ -34,7 +34,12 @@ const commit = (name: string) => {
 }
 
 // The block preflight itself writes, so a change to its stamp line breaks these tests.
-const writeBlock = (sha: string, status: 'pass' | 'fail' = 'pass', root = repo) => {
+const writeBlock = (
+  sha: string,
+  status: 'pass' | 'fail' = 'pass',
+  root = repo,
+  carried?: { head: string; diffSha256: string }
+) => {
   mkdirSync(join(root, '.preflight'), { recursive: true })
   writeFileSync(
     join(root, '.preflight', 'verification.md'),
@@ -43,7 +48,8 @@ const writeBlock = (sha: string, status: 'pass' | 'fail' = 'pass', root = repo) 
       nodeVersion: '24.0.0',
       base: 'origin/main',
       mergeBase: sha,
-      steps: [{ command: 'pnpm lint', status, exitCode: status === 'pass' ? 0 : 1 }]
+      steps: [{ command: 'pnpm lint', status, exitCode: status === 'pass' ? 0 : 1 }],
+      carried
     })
   )
 }
@@ -191,6 +197,43 @@ describe('verify-before-stop hook', () => {
   it('lets the implementer stop with a passing block at HEAD', () => {
     writeBlock(commit('work.txt'))
     expect(stop(implementer).code).toBe(0)
+  })
+
+  it('holds an implementer whose block was carried forward to HEAD from another commit', () => {
+    const measured = commit('work.txt')
+    git('commit', '--allow-empty', '-q', '-m', 'merge')
+    const head = git('rev-parse', 'HEAD')
+    writeBlock(measured, 'pass', repo, { head, diffSha256: 'a'.repeat(64) })
+    const { code, stderr } = stop(implementer)
+    expect(code).toBe(2)
+    expect(stderr).toContain('is marked source=carried')
+    expect(stderr).toContain('pnpm preflight')
+  })
+
+  it('holds a block at HEAD that any other source wrote, as it did before sources were read', () => {
+    const head = commit('work.txt')
+    writeBlock(head)
+    const block = join(repo, '.preflight', 'verification.md')
+    for (const source of ['ci', 'manual']) {
+      writeFileSync(
+        block,
+        readFileSync(block, 'utf8').replace(
+          /status=pass( source=[a-z]+)? -->/,
+          `status=pass source=${source} -->`
+        )
+      )
+      const { code, stderr } = stop(implementer)
+      expect(code).toBe(2)
+      expect(stderr).toContain(`is marked source=${source}`)
+    }
+  })
+
+  it('blocks a carried block that names another head', () => {
+    const measured = commit('work.txt')
+    writeBlock(measured, 'pass', repo, { head: 'b'.repeat(40), diffSha256: 'a'.repeat(64) })
+    const { code, stderr } = stop(implementer)
+    expect(code).toBe(2)
+    expect(stderr).toContain('is for bbbbbbbbbbbb, not HEAD')
   })
 
   it('keeps blocking a missing block when the agent stops again', () => {

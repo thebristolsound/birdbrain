@@ -47,12 +47,35 @@ jobs:
           tar -xzf gitleaks.tar.gz gitleaks
           ./gitleaks version
 
-      # Scans every commit on every ref, not just the pushed branch, so a secret
-      # committed to any historical branch fails the build. Known false positives
-      # are allowlisted by content in .gitleaks.toml (read from the repo root) or
-      # by fingerprint in .gitleaksignore.
+      # A push to main and a manual run scan every commit on every ref, so a secret
+      # committed to any branch fails the build there. A pull request scans the commits
+      # it adds over its base and no other branch: with `--all`, a finding on one open
+      # branch turns this check red on every other open pull request. The job keeps its
+      # name, which says "full history", so a rule that requires the check by name still
+      # matches. Known false positives are allowlisted by content in .gitleaks.toml (read
+      # from the repo root) or by fingerprint in .gitleaksignore.
       - name: Scan git history
-        run: ./gitleaks git --log-opts="--all" --redact --no-banner --verbose
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT_NAME" != pull_request ]; then
+            ./gitleaks git --log-opts="--all" --redact --no-banner --verbose
+            exit
+          fi
+          # Missing input fails: an empty range would scan nothing and pass.
+          if [ -z "$BASE_SHA" ] || [ -z "$HEAD_SHA" ]; then
+            echo "::error::no base or head commit for this pull request" >&2
+            exit 1
+          fi
+          commits="$(git rev-list --count "$BASE_SHA..$HEAD_SHA")" || exit 1
+          if [ "$commits" -eq 0 ]; then
+            echo "::error::no commits in $BASE_SHA..$HEAD_SHA" >&2
+            exit 1
+          fi
+          echo "Scanning the $commits commit(s) in $BASE_SHA..$HEAD_SHA"
+          ./gitleaks git --log-opts="$BASE_SHA..$HEAD_SHA" --redact --no-banner --verbose
 
   dependencies:
     name: Dependency audit

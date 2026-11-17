@@ -90,6 +90,34 @@ the `env` prefix is what keeps its windows on `Xvfb`; CI needs no prefix. Most m
 changes are covered faster by a unit test than by the driver. The full verify block is
 `pnpm preflight`; see `docs/agents/testing.md`.
 
+## Capture proof
+
+A change to what a Capture writes is proved against a build of `origin/main`, with
+`.claude/skills/run-birdbrain/capture-proof.mjs`. Build `origin/main` in a second worktree and
+this branch here, then:
+
+```bash
+P=.claude/skills/run-birdbrain/capture-proof.mjs
+xvfb-run -a node $P take main --repo <origin/main worktree> --keep-profile
+xvfb-run -a node $P take branch
+node $P compare main branch        # exits 1 when the descriptions differ, and names the field
+xvfb-run -a node $P verify main    # this build verifies what the other build wrote
+```
+
+`take` makes one `background` and one `launched` Capture of a page it serves on loopback, so it
+needs `xdotool` and a Chromium the app can launch; it fails, and compares nothing, where the
+app offers no browser or either Capture fails. `compare` and `verify` refuse a run that does
+not hold one Capture of each method, and `compare` refuses a run with a file that is missing
+or does not hash to the value its entry signs, and an MHTML it cannot read part by part.
+`compare` describes each Capture by its schema version, address, HTTP status, inventory,
+scroll-to-load record, Bound TLS Details, MHTML parts, record structure, PDF page count,
+screenshot and text, and a difference outside that description does not show. It leaves out
+ids, times, the hashes of files that embed a time, and the entry's other signed fields, among
+them the response headers, the final address, the TLS Cert Chain, the user agent, the Egress
+and the browser's product, version and family. `verify` changes one record byte to show the
+verification read the record.
+Output goes to `.preflight/capture-proof/`; `--port` moves the capture server off 29411.
+
 ## Gotchas
 
 - **An Electron-hosted agent shell sets `ELECTRON_RUN_AS_NODE=1`.** Electron then runs

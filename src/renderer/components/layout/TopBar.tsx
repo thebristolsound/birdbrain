@@ -198,13 +198,13 @@ export function TopBar() {
           />
         )}
         {activeCase && <ExportMenu caseId={activeCase.id} caseName={activeCase.name} />}
-        {activeCaseId && (
+        {activeCase && (
           <span title={launchBusy} className="shrink-0">
             <Button
               variant="outline"
               className="whitespace-nowrap"
               disabled={launchBusy !== undefined}
-              onClick={() => openStartDialog(activeCaseId)}
+              onClick={() => openStartDialog(activeCase.id)}
             >
               Launch browser
             </Button>

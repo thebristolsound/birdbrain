@@ -195,6 +195,18 @@ describe('Launch browser', () => {
     }
   )
 
+  // As Share and Export do, it waits for the Case the address names.
+  it('is absent when the address names no Case', async () => {
+    getCase.mockResolvedValue(undefined)
+    renderWith({ state: 'none' })
+    await waitFor(() => expect(getCase).toHaveBeenCalledWith('case1'))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(screen.queryByRole('button', { name: 'Launch browser' })).toBeNull()
+    expect(screen.getByTestId('topbar-case-name')).toBeTruthy()
+  })
+
   // A closed browser leaves its Capture Session running; a launch joins it.
   it('offers it again once the launched browser has closed', async () => {
     renderWith({ state: 'closed', browser: BROWSER })

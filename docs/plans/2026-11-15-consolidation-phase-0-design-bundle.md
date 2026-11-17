@@ -134,7 +134,7 @@ Each one is open today and blocks the slice named.
   standalone the single design source. This row would be the first to record a supersession,
   so its wording, and the sentence about the single source, are the maintainer's.
 - [ ] A feasibility assessment under `docs/specs/` with a verdict per frame.
-- [ ] The maintainer's ruling, recorded in the parent plan under "Decisions taken".
+- [x] The maintainer's ruling, recorded in the parent plan under "Decisions taken".
 
 ## Acceptance
 

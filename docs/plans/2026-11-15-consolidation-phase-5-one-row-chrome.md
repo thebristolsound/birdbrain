@@ -20,6 +20,10 @@ Slice 5.1 can start at once. Slices 5.2 to 5.6 wait for the maintainer's ruling 
 in the order written: each one leaves the app working, and the row under the top bar is removed
 only when nothing is left in it.
 
+Ruled 2026-11-17: decision 7 of the parent plan accepts the bundle's answers to all ten
+questions and answers open question 1, so no slice here waits. Where a slice below says an
+answer "follows the bundle's question", the answer is in decision 7.
+
 The rules every slice follows are in the parent plan under "Slices" and in `CLAUDE.md` under
 "Posting surfaces".
 

@@ -178,11 +178,41 @@ raised, where a critique proposal met ADR-0032, the standalone mock and #830.
    Matches. #830 already plans per-entity export. Ruling: no. The viewer's Download menu and
    the Signals CSV buttons stay where they are, slice 4.1 fixes their labels, and #830 decides
    the rest.
+7. **Are the design bundle's answers to its ten questions accepted?** The bundle from slice 0.1
+   answers the ten questions of `docs/plans/2026-11-15-consolidation-phase-0-design-bundle.md`
+   on its rules sheet, board R. Ruling, given in a Claude Code session on 2026-11-17: yes, all
+   ten as drawn. Slices 2.3, 4.2 to 4.4, 5.2 to 5.6 and 7.3 no longer wait for it. The bundle
+   is not yet under `docs/design-handoff/`, its feasibility assessment is not written, and the
+   wording of its supersession entry is still the maintainer's.
+   1. With no Case open, Launch browser opens the launch dialog on a Case picker, preset to
+      the last Case opened.
+   2. An extension-only Capture Session starts from "Start Capture Session in Chrome" in the
+      Launch browser menu, which raises the VPN warning first. It stops from the recording
+      mark's menu. This answers open question 1.
+   3. The labelled rail is 72 pixels wide, with the label under the icon. `SIDE_RAIL_PX` moves
+      from 48 to 72.
+   4. The Capture Session tab shows when a session starts, and selecting a Capture switches to
+      Details. The tab keeps a red dot while recording.
+   5. The 480 pixel viewer minimum stays, as the point where the one right panel folds to a
+      strip.
+   6. The tour and the Share coach mark ring the Case name and name the item in their text.
+      They do not open the menu.
+   7. #1555: one entry supersedes the export menu row, the preview card is not drawn, and the
+      dialog keeps its width. #1547: frame I supersedes the Selectors and Tags cards, and the
+      heading, sources and capture strip rows are kept.
+   8. A Shared Case's sync state shows beside the Case name: nothing while in sync, "Syncing",
+      or an icon and "Sync paused" on a problem.
+   9. The menu on the Case name and the dashboard card's menu are one component on the shared
+      menu, with items by place. The card keeps Rename and Delete. The Case name adds Switch,
+      Export, Import and Case settings. Share or Members is in both, with one label.
+   10. The two facts the switch's label keeps go on the recording mark: "into ‹Case›" when the
+       Active Case is another Case, and "+ extension" when two sources record.
 
 ## Open questions
 
-A review of this plan on 2026-11-16 raised two questions that the code does not settle. Both
-wait for the maintainer, and the slices they hold up say so.
+A review of this plan on 2026-11-16 raised two questions that the code does not settle.
+Decision 7 answered question 1 on 2026-11-17. Question 2 waits for the maintainer, and the slice
+it holds up says so.
 
 1. **How does a Capture Session start when only the extension is connected?** The Capture
    Session switch in `SessionControls.tsx` is the only control that starts one. Its handler,
@@ -335,9 +365,8 @@ from 0.1 (decision 5). Decision 6 keeps loose files out of the dialog.
 
 ### Phase 5: one row of chrome
 
-Waits for the ruling on the bundle from 0.1, except slice 5.1. Decisions 1 and 4 fix the
-Case menu's contents and the primary control's name. Slices 5.4 and 5.5 also wait for open
-question 1.
+Decision 7 ruled on the bundle from 0.1 and answered open question 1, so no slice of this
+phase waits. Decisions 1 and 4 fix the Case menu's contents and the primary control's name.
 
 - [ ] **5.1 A shared menu component (C5).** `src/renderer/components/ui/menu.tsx` on the
   dropdown menu `radix-ui` already ships. `ExportMenu.tsx`, `CaptureDownloadMenu.tsx`,

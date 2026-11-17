@@ -120,7 +120,8 @@ Finding U1.
 
 ## Slice 2.3: Capture details and the Capture Session share one right panel
 
-Finding U7. Waits for the bundle.
+Finding U7. No longer waits: decision 7 of the parent plan ruled on the bundle on 2026-11-17,
+and its answers 4 and 5 are the bundle's questions 4 and 5.
 
 - **Today.** On Captures the details panel is a column of the resizable group in
   `src/renderer/routes/cases/$caseId/captures.tsx` (default 400 pixels, 320 to 680), and

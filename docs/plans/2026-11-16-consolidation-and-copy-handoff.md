@@ -11,7 +11,7 @@ It adds no decision of its own. Code references in the plans are to `origin/main
 
 | Plan | Covers |
 | --- | --- |
-| `2026-11-15-chrome-capture-export-consolidation.md` | The parent plan: findings, six rulings, two open questions, the slices in brief |
+| `2026-11-15-chrome-capture-export-consolidation.md` | The parent plan: findings, seven rulings, one open question left, the slices in brief |
 | `2026-11-15-consolidation-phase-0-design-bundle.md` | Slice 0.1: frames to draw and ten questions the bundle answers |
 | `2026-11-15-consolidation-phase-1-fixes.md` | Slices 1.1 to 1.6 |
 | `2026-11-15-consolidation-phase-2-capture-session.md` | Slices 2.1 to 2.4 |
@@ -44,7 +44,9 @@ after the parent merged. The parent plan is behind `main` in these places:
 
 ## What is ruled
 
-- **Consolidation.** Six decisions, in the parent plan under "Decisions taken".
+- **Consolidation.** Seven decisions, in the parent plan under "Decisions taken". The seventh,
+  of 2026-11-17, accepts the design bundle's answers to its ten questions and answers open
+  question 1.
 - **Copy cut.** Six decisions, in the copy cut plan under "Decisions taken": no new bundle for
   copy alone; how-it-works text goes to `features.mdx`; "off in this build" for passive capture;
   a tip hangs only from a control or label already on screen; the two export descriptions; and
@@ -54,9 +56,7 @@ after the parent merged. The parent plan is behind `main` in these places:
 
 | Waiting on | Holds up |
 | --- | --- |
-| Open question 1 of the parent plan: how a Capture Session starts when only the extension is connected | Slices 5.4 and 5.5 |
 | Open question 2 of the parent plan: what the Data screen's two Verify buttons say | Slice 1.5 |
-| The ruling on the design bundle from slice 0.1 | Slices 2.3, 4.2 to 4.4, 5.2 to 5.6 and 7.3 |
 | A ruling on the next tranche's verdicts, once the copy cut plan has them | Copy slices for Settings, Sharing, Data and the extension's pages |
 
 Nothing in the copy cut's first tranche waits for the maintainer.
@@ -84,6 +84,9 @@ Consolidation slices that wait for nothing:
 | 7.1 | Capture details open on a summary | Outer section only |
 | 7.2 | A count of Selector matches on each row | Read review pass 3 first if it has landed |
 | 7.4 | Auto-capture switch to Settings | Low priority |
+
+Since decision 7, slices 2.3, 4.2 to 4.4, 5.2 to 5.6 and 7.3 can start too. Slices 5.2 to 5.5
+go in the order written, and the tables under "Slices that share a file" still hold.
 
 Copy cut slices:
 

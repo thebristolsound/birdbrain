@@ -372,8 +372,9 @@ moves any text marked Docs into `features.mdx` (decision 2).
   consolidation plan, so the dialog's wording changes once. The two descriptions are
   decision 5.
 
-C1 to C4 touch no `blocking` file and wait for nothing but the ruling. C4 is worth doing first:
-it is the only place the cut also removes something untrue.
+C1 to C4 touch no `blocking` file. C1, C3 and C4 wait for nothing but the ruling; C2 also needs
+C0, for the tip on "Rescan all captures". C4 is worth doing first: it is the only place the cut
+also removes something untrue.
 
 ## Decisions taken
 

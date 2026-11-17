@@ -5,6 +5,7 @@ import type { KnownEgress } from '@shared/types'
 import { waybackLinkLookupQueryOptions } from '@renderer/lib/api/wayback'
 import { notify } from '@renderer/lib/notify'
 import { confirmContact } from '@renderer/lib/vpnWarning'
+import { birdbrain } from '@renderer/lib/birdbrain'
 
 /** A row's batch state while it has no answer in the cache to show instead. */
 export type BatchCellState = { state: 'checking' } | { state: 'failed'; error: string; at: number }
@@ -73,7 +74,7 @@ export function useWaybackLinkBatch(captureId: string): WaybackLinkBatch {
     () => () => {
       shownRef.current += 1
       if (!runningRef.current) return
-      window.birdbrain.wayback.cancelLookupLinks(captureId).catch((cause: unknown) => {
+      birdbrain.wayback.cancelLookupLinks(captureId).catch((cause: unknown) => {
         notify.error('The Wayback batch could not be cancelled', { cause })
       })
     },
@@ -89,7 +90,7 @@ export function useWaybackLinkBatch(captureId: string): WaybackLinkBatch {
       setTotal(send.length)
       setOutcome(null)
       setStartError(null)
-      window.birdbrain.wayback
+      birdbrain.wayback
         .lookupLinks({ captureId, urls: send, egress })
         .then(setOutcome, (cause: unknown) => setStartError(messageOf(cause)))
         .finally(() => {
@@ -118,7 +119,7 @@ export function useWaybackLinkBatch(captureId: string): WaybackLinkBatch {
   )
 
   const cancel = useCallback(() => {
-    window.birdbrain.wayback
+    birdbrain.wayback
       .cancelLookupLinks(captureId)
       .catch((cause: unknown) => setStartError(`Could not cancel: ${messageOf(cause)}`))
   }, [captureId])

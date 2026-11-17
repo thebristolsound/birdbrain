@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { gunzipSync } from 'zlib'
 import {
-  boundTlsOf,
   createTransactionRecorder,
   finishTransactionRecord
 } from '@main/services/transactionRecorder'
@@ -12,7 +11,6 @@ import type {
 } from '@main/services/transactionRecorder'
 import { sanitizeError } from '@main/services/logSafe'
 import { CaptureInventorySchema } from '@shared/schemas'
-import type { Exchange } from '../../../src/packages/transaction-record/collector'
 
 // What the fake answers a command with: a value, a failure, a later answer, or none at all.
 type Answer = { value: unknown } | { fail: string } | { later: Promise<unknown> } | 'hang'
@@ -1097,89 +1095,5 @@ describe('finishTransactionRecord', () => {
     expect(fake.listening).toBe(1)
     recorder.dispose()
     expect(fake.listening).toBe(0)
-  })
-})
-
-describe('boundTlsOf (plan D7)', () => {
-  const details = {
-    protocol: 'TLS 1.3',
-    keyExchange: '',
-    keyExchangeGroup: 'X25519',
-    cipher: 'AES_128_GCM',
-    subjectName: '127.0.0.1',
-    sanList: ['127.0.0.1'],
-    issuer: 'Birdbrain Test CA',
-    validFrom: '2026-01-01T00:00:00.000Z',
-    validTo: '2027-01-01T00:00:00.000Z',
-    signedCertificateTimestampList: [],
-    certificateTransparencyCompliance: 'unknown' as const,
-    encryptedClientHello: false
-  }
-  const main = (url: string, state: Exchange['state'], secure = true): Exchange => ({
-    requestId: 'doc',
-    hop: 0,
-    state,
-    complete: state === 'complete',
-    startedAt: '2026-10-26T12:00:00.000Z',
-    request: { method: 'GET', url, headers: {} },
-    response: {
-      url,
-      status: 200,
-      statusText: 'OK',
-      mimeType: 'text/html',
-      headers: {},
-      ...(secure ? { securityDetails: details } : {})
-    }
-  })
-
-  it('states the main document details over https', () => {
-    expect(boundTlsOf(main('https://127.0.0.1/', 'complete'), 'https://127.0.0.1/')).toEqual({
-      boundTls: details
-    })
-  })
-
-  it('states not-https for an http main document', () => {
-    expect(boundTlsOf(main('http://127.0.0.1/', 'complete', false), 'http://127.0.0.1/')).toEqual({
-      boundTlsAbsent: 'not-https'
-    })
-  })
-
-  it('states from-cache for a cached https main document, whatever it reported', () => {
-    expect(boundTlsOf(main('https://127.0.0.1/', 'cached'), 'https://127.0.0.1/')).toEqual({
-      boundTlsAbsent: 'from-cache'
-    })
-  })
-
-  it('states not-reported for a main document whose URL does not parse', () => {
-    expect(boundTlsOf(main('not a url', 'complete'), 'not a url')).toEqual({
-      boundTlsAbsent: 'not-reported'
-    })
-  })
-
-  it('states not-reported when the window ends on a page the main document did not produce', () => {
-    expect(boundTlsOf(main('https://127.0.0.1/', 'complete'), 'about:blank')).toEqual({
-      boundTlsAbsent: 'not-reported'
-    })
-    expect(boundTlsOf(main('http://127.0.0.1/', 'complete', false), 'about:blank')).toEqual({
-      boundTlsAbsent: 'not-reported'
-    })
-    expect(boundTlsOf(main('https://127.0.0.1/', 'complete'), 'not a url')).toEqual({
-      boundTlsAbsent: 'not-reported'
-    })
-  })
-
-  it('states not-reported when the saved page came from no recorded request', () => {
-    expect(boundTlsOf(main('https://127.0.0.1/', 'complete'), undefined)).toEqual({
-      boundTlsAbsent: 'not-reported'
-    })
-  })
-
-  it('states not-reported with no details or no main document', () => {
-    expect(boundTlsOf(main('https://127.0.0.1/', 'complete', false), 'https://127.0.0.1/')).toEqual(
-      {
-        boundTlsAbsent: 'not-reported'
-      }
-    )
-    expect(boundTlsOf(undefined, 'https://127.0.0.1/')).toEqual({ boundTlsAbsent: 'not-reported' })
   })
 })

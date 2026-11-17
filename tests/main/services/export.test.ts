@@ -4626,6 +4626,39 @@ describe('export', () => {
       expect(report).not.toContain('No verification was run for this export')
     })
 
+    it('has the operator statement agree a run happened on file exhibits alone (#2096)', async () => {
+      const statementOf = async (auditTrail: boolean): Promise<string> => {
+        const entries = await exportMixed(`mixed-statement-${auditTrail}.zip`, {
+          captureIds: fixture.committed.map((exhibit) => exhibit.id),
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail,
+            notes: false,
+            annotations: 'none'
+          }
+        })
+        const [, section] = entries
+          .get('report.html')!
+          .toString('utf-8')
+          .match(/<h2>Operator statement<\/h2>([\s\S]*?)<\/section>/)!
+        return section.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ')
+      }
+
+      // The selection holds no capture, so any run is over the file exhibits
+      // alone and no capture verification exists for the statement to see.
+      const verified = await statementOf(true)
+      expect(verified).toContain(
+        'and the integrity results reproduced here are those produced by the tool at the ' +
+          'verification run recorded under “Chain of custody”.'
+      )
+      expect(verified).not.toContain('No verification was run')
+
+      const unverified = await statementOf(false)
+      expect(unverified).toContain('No verification was run for this export')
+      expect(unverified).not.toContain('those produced by the tool at the verification run')
+    })
+
     it('holds back an unanchored derived file and discloses the omission', async () => {
       // X34's case: the backfill records a thumbnail it could not anchor. The
       // package must not enclose bytes the chain does not cover, evidence.json

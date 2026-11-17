@@ -1,4 +1,5 @@
 import type { KnownEgress, LaunchedBrowserStatus, LaunchedBrowserStep } from '@shared/types'
+import { refusalCode } from '@shared/ipc'
 
 // What the start dialog (S2) says about a launch: the refusals drawn as states 1 to 4 (`1j`),
 // and the checklist while the browser starts (`1e`). Where main's message names what a browser
@@ -61,11 +62,6 @@ export const UNREADABLE_EGRESS_REFUSAL: LaunchRefusal = {
   detail: 'The browser was not started. Choose an Egress in Settings → Operator.'
 }
 
-function codeOf(error: unknown): string | undefined {
-  const code = (error as { code?: unknown } | null)?.code
-  return typeof code === 'string' ? code : undefined
-}
-
 function messageOf(error: unknown): string {
   const message = (error as { message?: unknown } | null)?.message
   return typeof message === 'string' ? message : String(error)
@@ -74,7 +70,7 @@ function messageOf(error: unknown): string {
 // A launch that main refused or that failed, as a card.
 export function refusalFor(error: unknown, label: string, egress: KnownEgress): LaunchRefusal {
   const message = messageOf(error)
-  switch (codeOf(error)) {
+  switch (refusalCode(error, 'launchedBrowser:launch')) {
     case 'BROWSER_NOT_FOUND':
       return { ...NO_BROWSER_REFUSAL, detail: message }
     case 'BROWSER_UNRECOGNIZED':

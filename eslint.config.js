@@ -70,6 +70,37 @@ export default tseslint.config(
     rules: reactCompilerRules
   },
   {
+    // A refused call crosses the context bridge as a plain object. lib/birdbrain.ts turns it
+    // back into an Error that keeps the code, so every invoke call goes through it. A
+    // subscription (`window.birdbrain.on...`) returns no promise and may stay on the bridge.
+    // The four error-reporting modules stay on it too. The query layer design
+    // (docs/specs/2026-07-30-renderer-query-layer-design.md) keeps error-reporting paths off
+    // any further layer and names three of them; globalErrorLog.ts reports errors the same
+    // way. All four discard a rejection.
+    files: ['src/renderer/**/*.{ts,tsx}'],
+    ignores: [
+      'src/renderer/lib/birdbrain.ts',
+      'src/renderer/lib/queryClient.ts',
+      'src/renderer/lib/mainLogBridge.ts',
+      'src/renderer/lib/notify.ts',
+      'src/renderer/lib/globalErrorLog.ts'
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...[
+          "MemberExpression[property.name='birdbrain']:not(MemberExpression[property.name=/^on[A-Z]/] > MemberExpression)",
+          "MemberExpression[property.value='birdbrain']",
+          "ObjectPattern > Property[key.name='birdbrain']"
+        ].map((selector) => ({
+          selector,
+          message:
+            "Call the bridge through `birdbrain` from '@renderer/lib/birdbrain'; only a subscription may use `window.birdbrain`."
+        }))
+      ]
+    }
+  },
+  {
     files: ['e2e/**/*.ts'],
     rules: {
       'no-empty-pattern': 'off'

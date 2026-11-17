@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import type { KnownEgress, LaunchedBrowserOption } from '@shared/types'
+import { refusalCode } from '@shared/ipc'
 import { Button, Dialog, DialogContent, DialogTitle } from '@renderer/components/ui'
 import { casesQueryOptions } from '@renderer/lib/api/cases'
 import { useSessionMutations } from '@renderer/lib/api/session'
@@ -123,7 +124,10 @@ export function StartDialog() {
       await launchBrowser(browser.executablePath)
       dismiss()
     } catch (error) {
-      if (cancelled.current && (error as { code?: unknown }).code === 'BROWSER_LAUNCH_CANCELLED') {
+      if (
+        cancelled.current &&
+        refusalCode(error, 'launchedBrowser:launch') === 'BROWSER_LAUNCH_CANCELLED'
+      ) {
         dismiss()
         return
       }

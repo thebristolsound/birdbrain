@@ -129,6 +129,8 @@ docs/reference/
 
 # Vale: third-party style package, fetched with `vale sync`
 .vale/styles/Google/
+# The folder scripts/install-tools.sh copies that package into before renaming it into place
+.vale/styles/.Google.tmp.*/
 
 # Claude Code usage insights reports
 report-*.html

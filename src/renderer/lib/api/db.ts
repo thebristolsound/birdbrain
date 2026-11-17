@@ -9,21 +9,22 @@ import type {
   OrphanReport
 } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { birdbrain } from '@renderer/lib/birdbrain'
 
 export const dbStatsQueryOptions = queryOptions({
   queryKey: queryKeys.dbStats,
-  queryFn: () => window.birdbrain.db.stats()
+  queryFn: () => birdbrain.db.stats()
 })
 
 export const dbSnapshotsQueryOptions = queryOptions({
   queryKey: queryKeys.dbSnapshots,
-  queryFn: () => window.birdbrain.db.snapshots()
+  queryFn: () => birdbrain.db.snapshots()
 })
 
 export const dbTableRowsQueryOptions = (params: DbTableRowsParams) =>
   queryOptions({
     queryKey: queryKeys.dbTableRows(params.table, params.offset, params.limit),
-    queryFn: () => window.birdbrain.db.tableRows(params),
+    queryFn: () => birdbrain.db.tableRows(params),
     // Page switches move to a not-yet-cached key; without a placeholder, data
     // goes undefined and the table/pager disappear until the fetch resolves.
     // Scoped to one table: the table name sits at index 2 of the key. Rows,
@@ -51,16 +52,16 @@ export function dbAdminMutationOptions(queryClient: QueryClient) {
 
   return {
     vacuum: {
-      mutationFn: () => window.birdbrain.db.vacuum(),
+      mutationFn: () => birdbrain.db.vacuum(),
       onSuccess: invalidateStats,
       meta: { action: 'vacuum the database' }
     },
     integrityCheck: {
-      mutationFn: () => window.birdbrain.db.integrityCheck(),
+      mutationFn: () => birdbrain.db.integrityCheck(),
       meta: { action: 'check database integrity' }
     },
     rebuildFts: {
-      mutationFn: () => window.birdbrain.db.rebuildFts(),
+      mutationFn: () => birdbrain.db.rebuildFts(),
       onSuccess: invalidateStats,
       meta: { action: 'rebuild the search index' }
     },
@@ -70,7 +71,7 @@ export function dbAdminMutationOptions(queryClient: QueryClient) {
     // refetch. Only the committed backup path checkpoints the WAL, which is
     // what moves the file sizes in the stats panel.
     backup: {
-      mutationFn: () => window.birdbrain.db.backup(),
+      mutationFn: () => birdbrain.db.backup(),
       onSuccess: (result: { path: string } | null) => {
         if (result) invalidateStats()
       },
@@ -80,27 +81,27 @@ export function dbAdminMutationOptions(queryClient: QueryClient) {
     // outside the database. Nothing db.stats() reports — schema version, file
     // and WAL sizes, row counts — can move.
     exportTable: {
-      mutationFn: (params: DbExportTableParams) => window.birdbrain.db.exportTable(params),
+      mutationFn: (params: DbExportTableParams) => birdbrain.db.exportTable(params),
       meta: { action: 'export the table' }
     },
     findOrphans: {
-      mutationFn: () => window.birdbrain.db.findOrphans(),
+      mutationFn: () => birdbrain.db.findOrphans(),
       meta: { action: 'find orphaned records' }
     },
     purgeArchived: {
-      mutationFn: () => window.birdbrain.db.purgeArchived(),
+      mutationFn: () => birdbrain.db.purgeArchived(),
       onSuccess: invalidateAll,
       meta: { action: 'purge archived records' }
     },
     cleanOrphans: {
-      mutationFn: (report: OrphanReport) => window.birdbrain.db.cleanOrphans(report),
+      mutationFn: (report: OrphanReport) => birdbrain.db.cleanOrphans(report),
       onSuccess: invalidateAll,
       meta: { action: 'clean up orphaned records' }
     },
     // onSettled for the reason given at restoreSnapshot below. Only a cancelled
     // dialog skips it: that resolves with `restored: false` and changed nothing.
     restore: {
-      mutationFn: () => window.birdbrain.db.restore(),
+      mutationFn: () => birdbrain.db.restore(),
       onSettled: (result: { restored: boolean } | undefined) => {
         if (result?.restored !== false) invalidateAll()
       },
@@ -115,22 +116,22 @@ export function dbAdminMutationOptions(queryClient: QueryClient) {
     // caches alone on failure keeps the case list from before the restore on
     // screen over a database that may no longer hold it.
     restoreSnapshot: {
-      mutationFn: (fileName: string) => window.birdbrain.db.restoreSnapshot({ fileName }),
+      mutationFn: (fileName: string) => birdbrain.db.restoreSnapshot({ fileName }),
       onSettled: invalidateAll,
       meta: { action: 'restore the database snapshot' }
     },
     createRow: {
-      mutationFn: (params: DbCreateRowParams) => window.birdbrain.db.createRow(params),
+      mutationFn: (params: DbCreateRowParams) => birdbrain.db.createRow(params),
       onSuccess: invalidateStatsAndRows,
       meta: { action: 'create the row' }
     },
     updateRow: {
-      mutationFn: (params: DbUpdateRowParams) => window.birdbrain.db.updateRow(params),
+      mutationFn: (params: DbUpdateRowParams) => birdbrain.db.updateRow(params),
       onSuccess: invalidateStatsAndRows,
       meta: { action: 'save the row' }
     },
     deleteRow: {
-      mutationFn: (params: DbRowIdentifier) => window.birdbrain.db.deleteRow(params),
+      mutationFn: (params: DbRowIdentifier) => birdbrain.db.deleteRow(params),
       onSuccess: invalidateStatsAndRows,
       meta: { action: 'delete the row' }
     }

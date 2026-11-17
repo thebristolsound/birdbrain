@@ -1,20 +1,16 @@
 import { collectExchanges } from '../../packages/transaction-record/collector'
 import type {
   CollectedExchanges,
-  Exchange,
   RecordedEvent,
   RequestPostDataResult,
   ResponseBodyResult
 } from '../../packages/transaction-record/collector'
-import { writeTransactionRecord } from '../../packages/transaction-record/writer'
 import type {
   WriterInput,
   WrittenTransactionRecord
 } from '../../packages/transaction-record/writer'
-import { BoundTlsSchema, CaptureInventorySchema } from '@shared/schemas'
-import type { BoundTls, CaptureInventory } from '@shared/schemas'
-import { CREDENTIAL_HEADER_NAMES } from '@shared/types'
-import type { BoundTlsAbsence, CredentialHeaderName } from '@shared/types'
+import { finishRecord } from '../../packages/capture-finish/record'
+import type { PresentRecord } from '../../packages/capture-finish/record'
 import {
   TRANSACTION_RECORD_MAX_EVENT_BYTES,
   TRANSACTION_RECORD_MAX_EVENTS,
@@ -26,7 +22,8 @@ import {
 // docs/plans/2026-10-10-capture-engine-first-slice.md, with D17 for the attach and the charset
 // spike's rulings of 2026-10-26 for durable messages). The renderer owns the window and the
 // debugger; this module sets up each debugger session, records its Network events, fetches the
-// bodies under the budget, and hands the events to the collector and the exchanges to the writer.
+// bodies under the budget, and hands the events to the collector. The capture-finish package
+// writes the record from what the collector returns, under this module's bounds.
 
 /** The part of `wc.debugger` the recorder uses, so a test can stand in for it. */
 export interface DebuggerSession {
@@ -426,58 +423,11 @@ export function createTransactionRecorder(
   }
 }
 
-type PresentTransactionRecord = Extract<CaptureInventory['transactionRecord'], { present: true }>
-
 export type TransactionRecordOutcome =
-  | {
-      present: true
-      warcGz: Buffer
-      inventory: PresentTransactionRecord
-      boundTls?: BoundTls
-      boundTlsAbsent?: Exclude<BoundTlsAbsence, 'not-recorded'>
-    }
+  | PresentRecord
   // Bound TLS Details are then `not-recorded` (D7). `timeLeftMs` is the time the render had left
   // when the end phases started, for the log only; the inventory records the reason alone.
   | { present: false; reason: 'failed'; error: unknown; timeLeftMs?: number }
-
-// A document's URL without its fragment, which CDP leaves out of a request's URL; undefined when
-// it does not parse.
-const documentUrl = (url: string): URL | undefined => {
-  try {
-    const parsed = new URL(url)
-    parsed.hash = ''
-    return parsed
-  } catch {
-    return undefined
-  }
-}
-
-// D7: why the entry carries no Bound TLS Details, or the details of the main document.
-// `committedUrl` is the URL of the window's last cross-document navigation at the save. A
-// navigation that sends no request, such as going back to the blank page the window loads first
-// or opening `about:blank`, leaves the main document on the earlier page, so its details are
-// signed only when that page is the one the window held at the save (ruling of 2026-10-29 on
-// #1999). It is undefined when the saved page came from no recorded request.
-export function boundTlsOf(
-  mainDocument: Exchange | undefined,
-  committedUrl: string | undefined
-): { boundTls: BoundTls } | { boundTlsAbsent: Exclude<BoundTlsAbsence, 'not-recorded'> } {
-  if (mainDocument === undefined) return { boundTlsAbsent: 'not-reported' }
-  const { response, request, state } = mainDocument
-  const url = documentUrl(response?.url ?? request.url)
-  const committed = committedUrl === undefined ? undefined : documentUrl(committedUrl)
-  if (url === undefined || committed === undefined || url.href !== committed.href) {
-    return { boundTlsAbsent: 'not-reported' }
-  }
-  if (url.protocol === 'http:') return { boundTlsAbsent: 'not-https' }
-  if (state === 'cached') return { boundTlsAbsent: 'from-cache' }
-  return response?.securityDetails
-    ? { boundTls: response.securityDetails }
-    : { boundTlsAbsent: 'not-reported' }
-}
-
-const CREDENTIAL_NAMES = new Set<string>(CREDENTIAL_HEADER_NAMES)
-const isCredentialName = (name: string): name is CredentialHeaderName => CREDENTIAL_NAMES.has(name)
 
 export interface FinishOptions {
   /** The most the body fetches still out when collection stopped may take. */
@@ -491,23 +441,19 @@ export interface FinishOptions {
   timeLeftMs?: () => number
   writer: Omit<WriterInput, 'exchanges'>
   /**
-   * The URL of the window's last cross-document navigation at the save, which `boundTlsOf`
-   * compares; undefined when the saved page came from no recorded request.
+   * The URL of the window's last cross-document navigation at the save, which Bound TLS Details
+   * are compared with; undefined when the saved page came from no recorded request.
    */
   committedUrl: string | undefined
   budget?: RecorderBudget
   write?: (input: WriterInput) => Promise<WrittenTransactionRecord>
 }
 
-// The strict shape the verifier reads for the inventory part, so a value it refuses fails this
-// record rather than reaching the signed entry, where it would break the Case's chain.
-const TransactionRecordPartSchema = CaptureInventorySchema.shape.transactionRecord
-
 /**
- * The two end phases: the body fetches still out, then the writer, each under its own bound and
- * cut to the time left. Never throws. A phase that fails or runs out, or a field the strict
- * schema refuses, records the Transaction Record absent as `failed`, and the Capture still
- * stores (open question E).
+ * The two end phases of a background render's record: the body fetches still out, then the
+ * writer, each under its own bound and cut to the time left. Never throws. A phase that fails or
+ * runs out, or a field the strict schema refuses, records the Transaction Record absent as
+ * `failed`, and the Capture still stores (open question E).
  */
 export async function finishTransactionRecord(
   recorder: TransactionRecorder,
@@ -518,50 +464,23 @@ export async function finishTransactionRecord(
     writer,
     committedUrl,
     budget = TRANSACTION_RECORD_BUDGET,
-    write = writeTransactionRecord
+    write
   }: FinishOptions
 ): Promise<TransactionRecordOutcome> {
   let leftAtStart = Number.POSITIVE_INFINITY
-  try {
-    leftAtStart = timeLeftMs()
-    const { exchanges, counts, mainDocument } = await recorder.collect(
-      Math.min(collectMs, leftAtStart)
-    )
-    const { bytes, replacedHeaders } = await withinMs(
-      write({ ...writer, exchanges }),
-      Math.min(writeMs, timeLeftMs()),
-      'write'
-    )
-    // A part that says `present: true` parses only as the present variant.
-    const inventory = TransactionRecordPartSchema.parse({
-      present: true,
-      exchanges: counts.exchanges,
-      cached: counts.cached,
-      cancelled: counts.cancelled,
-      failed: counts.failed,
-      inFlight: counts.inFlight,
-      finishedWithoutResponse: counts.finishedWithoutResponse,
-      bodiesOmitted: counts.bodiesOmitted,
-      incompleteRequestBodies: counts.incompleteRequestBodies,
-      webSockets: counts.webSockets,
-      recordedTargets: counts.recordedTargets,
-      unrecordedTargets: counts.unrecordedTargets,
-      replacedHeaders: replacedHeaders.filter(isCredentialName),
-      budget: { totalBytes: budget.totalBytes, resourceBytes: budget.resourceBytes }
-    }) as PresentTransactionRecord
-    const bound = boundTlsOf(mainDocument, committedUrl)
-    return {
-      present: true,
-      warcGz: Buffer.from(bytes),
-      inventory,
-      ...('boundTls' in bound ? { boundTls: BoundTlsSchema.parse(bound.boundTls) } : bound)
-    }
-  } catch (error) {
-    return {
-      present: false,
-      reason: 'failed',
-      error,
-      ...(Number.isFinite(leftAtStart) ? { timeLeftMs: leftAtStart } : {})
-    }
-  }
+  const outcome = await finishRecord({
+    // A background record signs none of the launched browser's facts.
+    collect: async () => {
+      leftAtStart = timeLeftMs()
+      const collected = await recorder.collect(Math.min(collectMs, leftAtStart))
+      return { ...collected, methodFacts: {} }
+    },
+    boundWrite: (writing) => withinMs(writing, Math.min(writeMs, timeLeftMs()), 'write'),
+    writer,
+    committedUrl,
+    budget,
+    write
+  })
+  if (outcome.present) return outcome
+  return { ...outcome, ...(Number.isFinite(leftAtStart) ? { timeLeftMs: leftAtStart } : {}) }
 }

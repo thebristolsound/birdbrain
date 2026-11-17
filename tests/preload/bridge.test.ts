@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { IPC_CHANNELS } from '@shared/ipc'
 
-// BirdbrainAPI statically guards the bridge's shape and signatures. These tests
-// provide the runtime complement: they load the real preload bundle against a
-// stub electron, call every exposed leaf, and check both its full path and the
-// channel it reaches against IPC_CHANNELS.
+// The preload builds its bridge from the contract (buildBridge in
+// src/shared/birdbrainApi.ts). These tests load the real preload bundle against
+// a stub electron, call every exposed leaf, and check both its full path and
+// the channel it reaches against IPC_CHANNELS. The path rule and the two lists
+// of exceptions below are written out here by hand and import nothing from the
+// code under test, so a change to where a channel sits has to be made twice.
 const electronStub = vi.hoisted(() => ({
   exposedKey: null as string | null,
   exposed: null as Record<string, unknown> | null,
@@ -58,10 +60,10 @@ function probeBridge(api: Record<string, unknown>): BridgeLeaf[] {
       if (typeof value === 'function') {
         const invokedBefore = electronStub.invoked.length
         const listenedBefore = electronStub.listened.length
-        // Every leaf is either a bridge() (invokes) or a subscribe() (listens);
+        // Every leaf is either an invoke() (invokes) or a subscribe() (listens);
         // one no-op callback argument satisfies both shapes.
         const result = (value as (arg: unknown) => unknown)(() => {})
-        // bridge() resolves through the envelope stub; swallow so a rejection
+        // invoke() resolves through the envelope stub; swallow so a rejection
         // never escapes the probe.
         if (result instanceof Promise) result.catch(() => {})
         if (electronStub.invoked.length > invokedBefore) {
@@ -133,7 +135,7 @@ const ROOT_LEVEL_LEAVES = new Set([
 // Method names that predate the action-segment convention, keyed by the channel
 // each one stands for. Keeping the channel as the key is the point: legitimising
 // a rename means editing a line that names the channel it diverges from, which
-// is reviewable, rather than silently renaming a key in the preload literal.
+// is reviewable, as well as the entry in BRIDGE_PATH_EXCEPTIONS.
 const METHOD_NAME_EXCEPTIONS: Record<string, string> = {
   'extension:path': 'getPath',
   'search:query': 'search',
@@ -248,9 +250,9 @@ describe('preload refusals', () => {
       ...args: unknown[]
     ) => Promise<unknown>
 
-  // The context bridge keeps only an Error's message, so a sharing refusal
-  // crosses as a plain object the renderer turns back into an Error.
-  it('rejects a sharing call with a plain object that keeps the code', async () => {
+  // The context bridge keeps only an Error's message, so a refusal crosses as
+  // a plain object the renderer turns back into an Error.
+  it('rejects a refused call with a plain object that keeps the code', async () => {
     electronStub.result = refusal
     try {
       const rejection = await leaf('sharing.readInvite')('x').catch((err: unknown) => err)
@@ -262,33 +264,48 @@ describe('preload refusals', () => {
     }
   })
 
-  // The start dialog names a launch refusal by its code.
-  it('rejects a browser launch with a plain object that keeps the code', async () => {
+  // No channel is marked by hand: the one refusal shape holds for every invoke leaf.
+  it('rejects a refusal the same way on every invoke channel', async () => {
     electronStub.result = {
       ok: false,
-      error: 'Chromium is still starting.',
-      code: 'BROWSER_ALREADY_RUNNING'
+      error: 'Only a Netscape cookies.txt export can be imported.',
+      code: 'PERSONA_COOKIE_FILE_UNSUPPORTED'
     }
     try {
-      const rejection = await leaf('launchedBrowser.launch')('/usr/bin/x').catch(
-        (err: unknown) => err
+      const rejections = await Promise.all(
+        invokeLeaves.map((invokeLeaf) => leaf(invokeLeaf.path)().catch((err: unknown) => err))
       )
-      expect(rejection).not.toBeInstanceOf(Error)
-      expect(rejection).toEqual({
-        message: 'Chromium is still starting.',
-        code: 'BROWSER_ALREADY_RUNNING'
-      })
+      expect(rejections).toHaveLength(invokeChannels.length)
+      for (const rejection of rejections) {
+        expect(rejection).not.toBeInstanceOf(Error)
+        expect(rejection).toEqual({
+          message: 'Only a Netscape cookies.txt export can be imported.',
+          code: 'PERSONA_COOKIE_FILE_UNSUPPORTED'
+        })
+      }
     } finally {
       electronStub.result = { ok: true, data: null }
     }
   })
 
-  it('rejects every other call with an Error', async () => {
-    electronStub.result = refusal
+  it('rejects a refusal that has no code with its message alone', async () => {
+    electronStub.result = { ok: false, error: 'Case not found' }
+    try {
+      const rejection = await leaf('cases.setAutoCapturePolicy')({}).catch((err: unknown) => err)
+      expect(rejection).not.toBeInstanceOf(Error)
+      expect(rejection).toEqual({ message: 'Case not found', code: undefined })
+    } finally {
+      electronStub.result = { ok: true, data: null }
+    }
+  })
+
+  // A raw registration is a wiring bug, not a refusal, so it stays an Error.
+  it('rejects a result with no envelope with an Error', async () => {
+    electronStub.result = { data: null }
     try {
       const rejection = await leaf('cases.list')().catch((err: unknown) => err)
       expect(rejection).toBeInstanceOf(Error)
-      expect(rejection).toMatchObject({ message: 'Not a Birdbrain invite' })
+      expect(rejection).toMatchObject({ message: 'IPC result is missing its envelope' })
     } finally {
       electronStub.result = { ok: true, data: null }
     }

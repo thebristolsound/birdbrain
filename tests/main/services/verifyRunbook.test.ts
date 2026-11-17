@@ -101,6 +101,19 @@ describe('buildVerifyRunbook', () => {
     expect(section(render(2))).not.toContain('```')
   })
 
+  // #2084: the receipt block's status, which sharedCaseExport.test.ts runs, is stated
+  // directly below it.
+  it('states below the receipt block that it fails on a bad receipt', () => {
+    const runbook = render(3)
+    const end = runbook.indexOf('\n```\n', runbook.indexOf('receipt=$(mktemp)'))
+    expect(end).toBeGreaterThan(-1)
+    const after = runbook.slice(end + 5, runbook.indexOf('\n\n', end + 5))
+    expect(prose(after).trim()).toBe(
+      'The block exits non-zero on any `RECEIPT FAIL` or `RECEIPT NAMES NO MERGE`, in any ' +
+        'chain it reads.'
+    )
+  })
+
   it('keeps the trust model rule that an entry at schema 2 or above is signed', () => {
     expect(prose(render(3))).toContain(
       'Entries with `schemaVersion` 2 or above additionally carry an RSA `signature` ' +

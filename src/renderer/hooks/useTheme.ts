@@ -3,6 +3,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { useSettingsMutations } from '@renderer/lib/queries'
 import { settingsQueryOptions } from '@renderer/lib/api/settings'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { birdbrain } from '@renderer/lib/birdbrain'
 
 type Theme = 'light' | 'dark'
 
@@ -39,7 +40,7 @@ export async function reconcilePersistedTheme(queryClient: QueryClient): Promise
   const theme = getInitialTheme()
   const persisted = await queryClient.fetchQuery(settingsQueryOptions)
   if (persisted.theme === theme) return
-  queryClient.setQueryData(queryKeys.settings, await window.birdbrain.settings.update({ theme }))
+  queryClient.setQueryData(queryKeys.settings, await birdbrain.settings.update({ theme }))
 }
 
 // The Capture Session pop-out is a second page on the main window's origin and shares its

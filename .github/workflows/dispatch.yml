@@ -54,8 +54,9 @@ env:
   # Same apt hardening as ci.yml, for the same mirror (#620, #475, #539).
   APT_OPTS: -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15
   DROP_AZURE_MIRROR: >-
-    sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g'
-    /etc/apt/apt-mirrors.txt
+    if curl -fsS --max-time 10 -o /dev/null https://archive.ubuntu.com/ubuntu/dists/;
+    then sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g'
+    /etc/apt/apt-mirrors.txt; fi
   MODE: ${{ github.event_name == 'schedule' && 'cycle' || inputs.mode }}
   DISPATCH_MODEL: claude-opus-5-5
   # Opus 5.5 defaults to medium; the cycle and both subagents run at high.
@@ -156,10 +157,12 @@ jobs:
             libgtk-3-0 libnotify-dev libnss3 libxss1 \
             libasound2t64 libxtst6 xauth libgbm1 libsecret-1-0
 
+      # The setup script, not a bare install, so the agent session gets Vale on PATH (through
+      # GITHUB_PATH) and the cache holds the Google style the prose hook copies into a worktree.
       - name: Install project dependencies
         if: steps.gate.outputs.run == 'true'
         run: |
-          pnpm install
+          bash scripts/setup-worktree.sh
           openssl version
 
       - name: Run one cycle

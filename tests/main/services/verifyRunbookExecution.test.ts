@@ -56,10 +56,12 @@ import {
   ENGINE_SCROLL_TO_LOAD
 } from '../../helpers/captureEnginePackage'
 import {
+  memberChainPath,
   pdfPath,
   screenshotPath,
   transactionRecordPath
 } from '../../../src/packages/evidence-package-layout/index'
+import { RECEIPT_MEMBER_ID, writeReceiptPackage } from '../../helpers/receiptPackage'
 import { CaptureInventorySchema, ScrollToLoadRecordSchema } from '@shared/schemas'
 
 // 60 s, not the 15 s in vitest.config.ts: this suite crosses 15 s when several agent
@@ -634,6 +636,45 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     binaryFails: { name: 'manifest chain', reason: 'Invalid JSON (at index 1)' }
   })
 
+  const ENTRY_LOOSE_JSON =
+    'FAIL [step 5] export-entry.json is not valid JSON: it holds a value spelled outside the ' +
+    'JSON grammar, or more than one value'
+  const ENTRY_UNPARSED =
+    'FAIL [step 5] export-entry.json is not valid JSON: jq cannot parse it, so its declared ' +
+    'scope cannot be trusted'
+
+  /**
+   * #2088: a row for export-entry.json respelled into text JSON.parse rejects.
+   * evidence.json does not list the file, so step 1 still passes.
+   */
+  const looseEntryRow = (
+    name: string,
+    respell: (entry: string) => string,
+    says = ENTRY_LOOSE_JSON
+  ): ConformanceRow => ({
+    name: `an export entry that holds ${name}`,
+    build: () => {
+      const dir = corruptedCopy(`loose-entry-${name.replace(/\W+/g, '-')}`)
+      const path = join(dir, 'export-entry.json')
+      const entry = readFileSync(path, 'utf-8')
+      const respelled = respell(entry)
+      expect(respelled).not.toBe(entry)
+      writeFileSync(path, respelled)
+      return dir
+    },
+    binary: 'fail',
+    script: 'fail',
+    steps: [5],
+    says: [says],
+    binaryFails: { name: 'export entry', reason: 'export-entry.json is not valid JSON' }
+  })
+
+  /** The export entry with its index, N, spelled as `literal(N)`. */
+  const entryIndexAs =
+    (literal: (index: string) => string) =>
+    (entry: string): string =>
+      entry.replace(/"index":(\d+)(?=[,}])/, (_, index: string) => `"index":${literal(index)}`)
+
   // jq 1.7 reads a lowercase nan as null. jq 1.6 rejects it, so steps 2 and 6
   // fail on that line as well.
   const jqReadsNan = ((): boolean => {
@@ -874,6 +915,75 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
         const dir = await exportPackage('loose-spellings-as-text')
         expect(readFileSync(join(dir, 'manifest.jsonl'), 'utf-8')).toContain(
           '"Operator \\"01\\" +1 .5 NaN Infinity -nan 1.e5 {}{} \\\\"'
+        )
+        return dir
+      },
+      binary: 'pass',
+      script: 'pass',
+      steps: [],
+      saysNot: ['FAIL']
+    },
+    // #2088: jq reads 0N, +N and N. as N, so the export entry's hash and
+    // signature still verified, and before the fix verify.sh passed a package
+    // the binary failed.
+    ...(
+      [
+        ['with a leading zero', (index: string) => `0${index}`],
+        ['with a plus sign', (index: string) => `+${index}`],
+        ['with a trailing point', (index: string) => `${index}.`]
+      ] as const
+    ).map(([label, literal]) => looseEntryRow(`its index spelled ${label}`, entryIndexAs(literal))),
+    // jq reads these as another value, or two, so the entry already failed
+    // before the fix, under the message that it does not verify.
+    ...['NaN', 'Infinity'].map((literal) =>
+      looseEntryRow(
+        `its index spelled ${literal}`,
+        entryIndexAs(() => literal)
+      )
+    ),
+    looseEntryRow('a second value after the first', (entry) => `${entry.trimEnd()}{"b":2}`),
+    // Step 5 reads the entry with its newlines deleted and its NUL bytes
+    // dropped, so each of these read as the signed entry. jq skips the mark.
+    looseEntryRow('a newline inside true', (entry) => entry.replace(':true', ':tru\ne')),
+    looseEntryRow('a NUL byte after its opening brace', (entry) => `{\u0000${entry.slice(1)}`),
+    looseEntryRow('a leading byte-order mark', (entry) => `\ufeff${entry}`),
+    // The spelling check counts one value in each, and jq prints every field
+    // step 5 reads before it stops at the stray character, so before the jq
+    // parse check verify.sh passed these.
+    ...(
+      [
+        ['a closing brace', '}'],
+        ['a closing bracket', ']'],
+        ['a comma', ',']
+      ] as const
+    ).map(([label, stray]) =>
+      looseEntryRow(
+        `${label} after the record`,
+        (entry) => `${entry.trimEnd()}${stray}`,
+        ENTRY_UNPARSED
+      )
+    ),
+    {
+      // JSON.parse reads a newline between two tokens as whitespace.
+      name: 'an export entry with a newline after its opening brace',
+      build: () => {
+        const dir = corruptedCopy('entry-newline-between-tokens')
+        const path = join(dir, 'export-entry.json')
+        writeFileSync(path, `{\n${readFileSync(path, 'utf-8').slice(1)}`)
+        return dir
+      },
+      binary: 'pass',
+      script: 'pass',
+      steps: [],
+      saysNot: ['FAIL']
+    },
+    {
+      name: 'an export entry whose strings hold its loose spellings and stray characters as text',
+      build: async () => {
+        updateSettings({ operatorName: 'Operator "04" +4 4. NaN Infinity \ufeff {}{} } ] ,' })
+        const dir = await exportPackage('loose-entry-spellings-as-text')
+        expect(readFileSync(join(dir, 'export-entry.json'), 'utf-8')).toContain(
+          '"operatorName":"Operator \\"04\\" +4 4. NaN Infinity \ufeff {}{} } ] ,"'
         )
         return dir
       },
@@ -1780,6 +1890,61 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       rmSync(dir, { recursive: true, force: true })
     }
   })
+})
+
+// #2084: the receipt block on the hand-written receipt package. Its tokens are synthetic
+// and the package encloses no root, so every receipt fails here; the passing case, with
+// tokens from the local test authority, is in sharedCaseExport.test.ts.
+describe("the runbook's receipt block under a plain shell", () => {
+  const receiptBlocks = extractRunbookBlocks(
+    buildVerifyRunbook({
+      requiredSchemaVersion: MANIFEST_SCHEMA_VERSION,
+      readerSchemaVersion: MANIFEST_SCHEMA_VERSION,
+      appVersion: '0.0.0'
+    })
+  ).filter((block) => block.code.includes('receipt=$(mktemp)'))
+  const [receiptBlock] = receiptBlocks
+  let dir = ''
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'bb-runbook-receipt-'))
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('finds the one receipt block', () => {
+    expect(receiptBlocks).toHaveLength(1)
+    expect(receiptBlock.placeholders).toEqual([])
+  })
+
+  for (const shell of ['sh', 'bash'] as const) {
+    it.skipIf(!RUNS)(`exits non-zero under ${shell} on a receipt that does not verify`, () => {
+      const { mergeIndex } = writeReceiptPackage(dir, { wrongImprint: true })
+      // The member's chain, read after the Owner's, holds no receipt to reset the status.
+      const memberChain = join(dir, memberChainPath(RECEIPT_MEMBER_ID))
+      expect(existsSync(memberChain)).toBe(true)
+      const memberReceipts = readFileSync(memberChain, 'utf-8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line) as { type: string; subject?: string })
+        .filter((entry) => entry.type === 'timestamp' && entry.subject === 'entry')
+      expect(memberReceipts).toEqual([])
+      const plain = runPlain([receiptBlock], dir, shell)
+      expect(plain.stdout.trim()).toBe(`RECEIPT FAIL: merge #${mergeIndex} of manifest.jsonl`)
+      expect(plain.status).not.toBe(0)
+    })
+
+    it.skipIf(!RUNS)(`exits non-zero under ${shell} on a receipt naming no merge`, () => {
+      const { receiptIndex } = writeReceiptPackage(dir, { namesNoMerge: true })
+      const plain = runPlain([receiptBlock], dir, shell)
+      expect(plain.stdout.trim()).toBe(
+        `RECEIPT NAMES NO MERGE: entry ${receiptIndex} of manifest.jsonl`
+      )
+      expect(plain.status).not.toBe(0)
+    })
+  }
 })
 
 describe('runbook block extraction', () => {

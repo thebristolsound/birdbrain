@@ -16,7 +16,7 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm build:test-sharp` - Linux only: build sharp against the system libvips for the test runner, then run tests with `BIRDBRAIN_TEST_SYSTEM_SHARP=1`. Works around a SIGSEGV in tests that use sharp under Electron; see "sharp under Electron on Linux" in [Testing](docs/agents/testing.md)
 - `pnpm db:migration:new <slug>` - Scaffold the next schema migration: appends a fail-closed `if (version < N)` block to `migrations.ts` and bumps `LATEST_SCHEMA_VERSION` in `core.ts` in one run, refusing when the two already disagree
 - `pnpm test:e2e` - Runs `pnpm build` first
-- `scripts/setup-worktree.sh` - Installs dependencies in a fresh worktree; run it when `node_modules` is missing
+- `scripts/setup-worktree.sh` - Readies a fresh worktree or cloud container on a Linux or macOS host: the pinned Node and Vale (through mise, or without root into a per-user cache, `~/.cache/birdbrain/tools` by default, by `scripts/install-tools.sh`), then dependencies. Run it when `node_modules` or `vale` is missing, and give it to a cloud agent environment as its setup command
 
 Docs site commands run from `website/content/` through `pnpm dlx` (see "Documentation site"): `pnpm dlx mint dev`, `pnpm dlx mint broken-links`.
 

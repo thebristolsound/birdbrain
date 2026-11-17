@@ -3,7 +3,7 @@
 **Date:** 2026-11-17
 
 **Status:** Proposal, drawn on the consolidation design canvas (board P and every other board) and
-graded by two model judges over three rounds; awaiting the maintainer's ruling. Nothing in the app
+graded by two model judges over four rounds; awaiting the maintainer's ruling. Nothing in the app
 or the Birdbrain design system has changed.
 
 **Frame of reference:** `origin/main` at `1047d3c`. Token values are cited from
@@ -61,7 +61,7 @@ omitted.
 | `--color-hue-sky-fg` | Categorical | `#0ea5e9` | `#38b6f0` | | |
 | `--color-hue-pink-fg` | Categorical | `#ec4899` | `#f06fa8` | | |
 | `--color-hue-teal-fg` (new) | Captures in the link map | | `#3cc7b4` | | `#0f766e` |
-| `--color-hue-violet-fg` (new) | Selectors in the link map | | `#a98bfa` | | `#6d28d9` |
+| `--color-hue-violet-fg` (new) | Selectors in the link map | | `#c084fc` | | `#7e22ce` |
 
 The canvas file `palette.css` holds the full set, with the ratio of each in a comment.
 
@@ -114,8 +114,8 @@ samples on board P. The script does not measure icon glyphs or outline-button bo
 identifies the control.
 
 Two model judges graded each round on contrast, legibility, status semantics, coherence and theme
-parity. Fable 5.2 scored 7.2, 8.3 and 8.6 (pass); Opus 5.5 at xhigh effort scored 6.5, 7.5 and 8.0,
-then graded a fourth round that applied its last findings. The judges are a review aid, not a
+parity, out of 10, with 8.5 as the pass mark. Fable 5.2 scored 7.2, 8.3 and 8.6 (pass); Opus 5.5 at
+xhigh effort scored 6.5, 7.5, 8.0 and, on a fourth round that applied its last findings, 8.5 (pass). The judges are a review aid, not a
 substitute for the maintainer's ruling or for a check in the running app.
 
 ## Open for the maintainer

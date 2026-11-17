@@ -57,7 +57,7 @@ vi.mock('@renderer/lib/notify', () => ({
 
 import { ExportMenu } from '@renderer/components/export/ExportMenu'
 import { fakeBridge } from '../renderer/fakeBridge'
-import { press } from './menuKeys'
+import { nextTurn, press } from './menuKeys'
 
 const ARCHIVE_PATH = '/home/tester/Case_One.bbcase'
 
@@ -170,7 +170,14 @@ describe('ExportMenu', () => {
     await press('ArrowUp', archive)
     await press('Home', report)
     await press('End', archive)
-    await press('a', archive)
+    // Typing finds an item by its label: both start "Export", and "r" tells them apart.
+    await press('Home', report)
+    for (const key of 'export ') await press(key)
+    await press('c', archive)
+    // A letter no label holds moves nothing, a turn later either.
+    await press('z')
+    await nextTurn()
+    expect(document.activeElement).toBe(archive)
 
     await press('Tab')
     expect(screen.queryByRole('menu')).toBeNull()
@@ -232,7 +239,7 @@ describe('ExportMenu', () => {
     await waitFor(() => expect(document.activeElement).toBe(trigger))
   })
 
-  it('hands focus back to the Export trigger when the report dialog closes', () => {
+  it('hands focus back to the Export trigger when the report dialog closes', async () => {
     fakeBridge({
       cases: { exportArchive, get: vi.fn(async () => null) },
       shell: { showItemInFolder },
@@ -247,6 +254,10 @@ describe('ExportMenu', () => {
 
     fireEvent.click(item)
     const dialog = screen.getByRole('dialog', { name: 'Export case' })
+    expect(dialog.contains(document.activeElement)).toBe(true)
+    // The closing menu takes no focus back a turn later: the dialog keeps it.
+    await nextTurn()
+    await nextTurn()
     expect(dialog.contains(document.activeElement)).toBe(true)
 
     fireEvent.keyDown(window, { key: 'Escape' })

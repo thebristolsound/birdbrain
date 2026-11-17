@@ -93,6 +93,9 @@ export function CaptureMenu({ caseId }: CaptureMenuProps) {
         <MenuTrigger asChild>
           <Button
             size="icon"
+            // No tap gesture on a menu trigger: for Enter, Motion sends a pointerdown of its own,
+            // which stops the menu opening on its first item.
+            whileTap={undefined}
             aria-label="New capture"
             title="New capture"
             data-testid="capture-menu-btn"

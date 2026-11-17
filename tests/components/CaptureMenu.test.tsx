@@ -7,7 +7,7 @@ import { CaptureMenu } from '@renderer/components/captures/CaptureMenu'
 import { settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
 import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
-import { isDisabledItem, press } from './menuKeys'
+import { isDisabledItem, nextTurn, press } from './menuKeys'
 
 const capture: Capture = {
   id: 'cap1',
@@ -106,20 +106,36 @@ describe('CaptureMenu as a menu', () => {
     const enqueue = vi.fn(async () => ({ accepted: 1, rejected: [] }))
     fakeBridge({ captures: { list: vi.fn(async () => [capture]) }, recapture: { enqueue } })
     const trigger = renderMenu()
-    fireEvent.click(trigger)
+    trigger.focus()
+    await press('ArrowDown')
+    const paste = screen.getByTestId('capture-menu-paste-urls')
+    await waitFor(() => expect(document.activeElement).toBe(paste))
     expect(isDisabledItem(recaptureItem())).toBe(true)
     expect(recaptureItem().getAttribute('title')).toBe('Select a capture first')
+
+    // The arrow passes over the disabled item and comes back round to the only enabled one.
+    await press('ArrowDown')
+    await nextTurn()
+    expect(document.activeElement).toBe(paste)
+    await press('End')
+    await nextTurn()
+    expect(document.activeElement).toBe(paste)
 
     fireEvent.click(recaptureItem())
     expect(enqueue).not.toHaveBeenCalled()
     expect(screen.getByRole('menu')).toBeTruthy()
   })
 
-  it('opens the paste dialog from its first item and closes the menu', async () => {
+  it('opens the paste dialog from its first item, which keeps focus once the menu has gone', async () => {
     const trigger = renderMenu()
     fireEvent.click(trigger)
     fireEvent.click(screen.getByTestId('capture-menu-paste-urls'))
-    expect(await screen.findByRole('dialog', { name: 'Paste URLs to capture' })).toBeTruthy()
+    const dialog = await screen.findByRole('dialog', { name: 'Paste URLs to capture' })
     expect(screen.queryByRole('menu')).toBeNull()
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true))
+    // The closing menu takes no focus back a turn later.
+    await nextTurn()
+    await nextTurn()
+    expect(dialog.contains(document.activeElement)).toBe(true)
   })
 })

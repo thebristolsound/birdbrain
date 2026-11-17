@@ -110,11 +110,11 @@ afterEach(() => {
 // The entry points to Case settings and the join flow (#1514, and the
 // 2026-10-28 handoff): the top-bar pill on every Case, the Case card's menu
 // (CaseCardMenu.test.tsx), and the palette's share and join actions. The
-// sidebar stays without one.
+// sidebar stays without one: its Settings item is the app's, not the Case's.
 describe('Case settings entry points', () => {
   it('is not in the sidebar', () => {
     render(<Sidebar />, { wrapper: Wrapper })
-    expect(screen.queryByText(/members|settings/i)).toBeNull()
+    expect(screen.queryByText(/members|case settings/i)).toBeNull()
     for (const button of screen.getAllByRole('button')) fireEvent.click(button)
     expect(navigatedToCaseSettings()).toBe(false)
   })

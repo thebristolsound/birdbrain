@@ -16,6 +16,7 @@ import {
   CaptureSessionDock,
   useCaptureSessionRailDocked
 } from '@renderer/components/launchedBrowser/CaptureSessionDock'
+import { SIDE_RAIL_PX } from '@renderer/components/captures/captureColumns'
 
 const FERRY: Case = {
   id: 'case-1',
@@ -198,11 +199,11 @@ describe('CaptureSessionDock', () => {
 
   it('reads the window, less the side rail, until the first measurement', async () => {
     stubResizeObserver()
-    window.innerWidth = 48 + FITS
+    window.innerWidth = SIDE_RAIL_PX + FITS
     mount()
     expect(await screen.findByTestId('capture-session-rail')).toBeTruthy()
     cleanup()
-    window.innerWidth = 48 + FITS - 1
+    window.innerWidth = SIDE_RAIL_PX + FITS - 1
     mount()
     expect(await screen.findByTestId('capture-session-strip')).toBeTruthy()
   })

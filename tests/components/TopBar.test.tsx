@@ -103,9 +103,9 @@ describe('the case chrome', () => {
     expect(screen.queryByTestId('session-controls')).toBeNull()
   })
 
-  // Share, Export and Launch browser sit before the status group and Settings; the recording
-  // mark stays with the switch in CaseActionBar.
-  it('orders Share, Export, Launch browser, the status group and Settings', async () => {
+  // Share, Export and Launch browser sit before the status group; the recording mark stays with
+  // the switch in CaseActionBar. Settings is at the foot of the rail on a Case screen.
+  it('orders Share, Export, Launch browser and the status group, and leaves Settings to the rail', async () => {
     renderAt('/cases/case1/overview')
     const controls = screen.getByTestId('topbar-controls')
     expect((await within(controls).findByTestId('export-menu')).textContent).toBe(
@@ -117,7 +117,8 @@ describe('the case chrome', () => {
         '[data-testid="share-pill"], [data-testid="export-menu"], button, [data-testid="status-group"]'
       )
     ).map((el) => el.getAttribute('data-testid') ?? el.getAttribute('title') ?? el.textContent)
-    expect(row).toEqual(['share-pill', 'export-menu', 'Launch browser', 'status-group', 'Settings'])
+    expect(row).toEqual(['share-pill', 'export-menu', 'Launch browser', 'status-group'])
+    expect(screen.queryByTitle('Settings')).toBeNull()
     expect(screen.queryByTestId('topbar-rec')).toBeNull()
     expect(screen.queryByTitle('Toggle theme')).toBeNull()
   })
@@ -137,6 +138,24 @@ describe('the case chrome', () => {
     expect(screen.queryByTestId('share-pill')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Launch browser' })).toBeNull()
     expect(screen.getByTestId('status-group')).toBeTruthy()
+  })
+
+  // Settings is in this bar only where no rail holds it. The rail shows on Case screens and on
+  // the new-Case wizard, so the dashboard is where the gear stays.
+  it('keeps Settings after the status group on the dashboard, and opens it', () => {
+    renderAt('/')
+    const controls = screen.getByTestId('topbar-controls')
+    const settings = within(controls).getByTitle('Settings')
+    expect(controls.lastElementChild).toBe(settings)
+    expect(settings.previousElementSibling).toBe(screen.getByTestId('status-group'))
+    fireEvent.click(settings)
+    expect(navigate).toHaveBeenCalledWith({ to: '/settings' })
+  })
+
+  it.each(['/cases/new', '/cases/case1/overview'])('leaves Settings to the rail at %s', (path) => {
+    renderAt(path)
+    expect(screen.getByTestId('status-group')).toBeTruthy()
+    expect(screen.queryByTitle('Settings')).toBeNull()
   })
 })
 

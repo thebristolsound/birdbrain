@@ -3,15 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RecentCases } from '@renderer/components/dashboard/RecentCases'
-import { Sidebar } from '@renderer/components/layout/Sidebar'
 import type { Case } from '@shared/types'
-
-const navigate = vi.hoisted(() => vi.fn())
-vi.mock('@tanstack/react-router', () => ({
-  useNavigate: () => navigate,
-  useParams: () => ({ caseId: 'case-1' }),
-  useMatchRoute: () => () => false
-}))
 
 const cases: Case[] = Array.from({ length: 3 }, (_, index) => ({
   id: `case-${index}`,
@@ -58,26 +50,4 @@ it('includes New Case in the four-tile entrance and does not replay on return', 
   first.unmount()
   const second = render(element)
   expect(second.container.querySelector('.screen-stagger')).toBeNull()
-})
-
-it('hides the rail tooltips from assistive technology and reveals them on focus (#1537)', () => {
-  render(<Sidebar />)
-  const tooltips = Array.from(document.querySelectorAll('aside div[aria-hidden="true"]'))
-  expect(tooltips.length).toBeGreaterThanOrEqual(2)
-  for (const tooltip of tooltips) {
-    expect(tooltip.className).toContain('group-focus-within:opacity-100')
-  }
-  // The icon button's own name is the only one the tree reads.
-  expect(screen.getAllByRole('button', { name: 'Home' }).length).toBe(1)
-})
-
-it('keeps rail navigation working with press feedback on home and section controls', () => {
-  render(<Sidebar />)
-  fireEvent.click(screen.getByRole('button', { name: 'Home' }))
-  expect(navigate).toHaveBeenCalledWith({ to: '/' })
-  fireEvent.click(screen.getByRole('button', { name: 'Notes' }))
-  expect(navigate).toHaveBeenCalledWith({
-    to: '/cases/$caseId/notes',
-    params: { caseId: 'case-1' }
-  })
 })

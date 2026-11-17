@@ -35,7 +35,7 @@ The suites under `tests/main/services/launchedBrowser/` that launch the pinned C
 Testing skip unless they run under `xvfb-run`, so `pnpm test` on a desktop opens no browser
 window. Run them with `pnpm test:real-browser`. It gives each file an `xvfb-run` of its own,
 puts the Egress suite inside the loopback-only network namespace it requires, refuses to start
-when the pinned build is not on disk, and fails when a suite ran no test. Vitest runs files in
+when the pinned build is not on disk, and fails when a suite skipped any test or ran none. Vitest runs files in
 parallel, so two of these files under one `xvfb-run` share one display, where a browser from
 one file can sit in front of the other's while it captures. To run one file, pass it:
 `pnpm test:real-browser <file>`.

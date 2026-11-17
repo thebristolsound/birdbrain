@@ -90,7 +90,13 @@ describe('suiteOutcome', () => {
     expect(suiteOutcome(0, ' Test Files  1 passed (1)\n      Tests  21 passed (21)\n')).toBe(
       'passed'
     )
-    expect(suiteOutcome(0, '      Tests  17 passed | 1 skipped (18)\n')).toBe('passed')
+  })
+
+  // knownAnswer.test.ts holds one test that needs no browser. When its browser tests all skip,
+  // Vitest still counts that one as passed and exits 0.
+  it('does not pass a suite that skipped some tests while another passed', () => {
+    expect(suiteOutcome(0, '      Tests  1 passed | 17 skipped (18)\n')).toBe('skipped tests')
+    expect(suiteOutcome(0, '      Tests  17 passed | 1 skipped (18)\n')).toBe('skipped tests')
   })
 
   it('reads a coloured Tests line', () => {
@@ -183,17 +189,24 @@ describe('runSuites', () => {
     expect(output).toContain('test:real-browser: 2 of 2 suites passed\n')
   })
 
-  it('fails and names a suite that failed and one that ran no test', () => {
+  it('fails and names a suite that failed, one that ran no test and one that skipped some', () => {
     const { code, output } = drive({
       'a.test.ts': { stdout: passed },
       'b.test.ts': { status: 1, stdout: '      Tests  1 failed (1)\n' },
-      'c.test.ts': { stdout: '      Tests  3 skipped (3)\n' }
+      'c.test.ts': { stdout: '      Tests  3 skipped (3)\n' },
+      'd.test.ts': { stdout: '      Tests  1 passed | 17 skipped (18)\n' }
     })
     expect(code).toBe(1)
     expect(output).toContain(
-      `1 of 3 suites passed; not passed: ${join(SUITE_DIR, 'b.test.ts')} (failed), ` +
-        `${join(SUITE_DIR, 'c.test.ts')} (ran no test)`
+      `1 of 4 suites passed; not passed: ${join(SUITE_DIR, 'b.test.ts')} (failed), ` +
+        `${join(SUITE_DIR, 'c.test.ts')} (ran no test), ` +
+        `${join(SUITE_DIR, 'd.test.ts')} (skipped tests)`
     )
+  })
+
+  it('fails when the only suite skipped some of its tests', () => {
+    const { code } = drive({ 'd.test.ts': { stdout: '      Tests  1 passed | 17 skipped (18)\n' } })
+    expect(code).toBe(1)
   })
 
   it('reads a suite named by an absolute path where it is', () => {

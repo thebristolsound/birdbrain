@@ -6,8 +6,9 @@
 // other's while it captures. One display per file keeps them apart.
 //
 // A suite that also wants a loopback-only network namespace (it defines namespaceSkipReason)
-// runs inside one, by the command that suite prints. A suite that ran no test fails the run:
-// Vitest exits 0 for a file whose tests all skipped, and that must not read as a pass.
+// runs inside one, by the command that suite prints. A suite that skipped any test, or ran
+// none, fails the run: Vitest exits 0 for a file whose tests skipped, and that must not read
+// as a pass.
 //
 // Usage: node scripts/test-real-browser.mjs [<test file>...]
 
@@ -40,13 +41,17 @@ export const suiteCommand = (suite, source, { uid, gid }) => {
   return ['unshare', '-rn', 'sh', '-c', `ip link set lo up && ${mapped}`]
 }
 
-// What Vitest's closing Tests line says happened: 'passed', 'failed', or 'ran no test'.
-// Vitest colours that line when CI or FORCE_COLOR is set, so the escape codes go first.
+// What Vitest's closing Tests line says happened: 'passed', 'failed', 'ran no test' or
+// 'skipped tests'. Vitest colours that line when CI or FORCE_COLOR is set, so the escape codes
+// go first. Under this runner no test of these suites has a reason to skip, so one skipped
+// test is a suite that did not run in full: a suite's browser tests can all skip beside one
+// test that needs no browser, and that one passing must not read as the suite passing.
 export const suiteOutcome = (exitCode, output) => {
   if (exitCode !== 0) return 'failed'
   // eslint-disable-next-line no-control-regex -- the escape character is what is being removed
   const tests = /^\s*Tests\s+(.+)$/m.exec(output.replace(/\x1b\[[0-9;]*m/g, ''))
-  return tests && /\b[1-9]\d* passed\b/.test(tests[1]) ? 'passed' : 'ran no test'
+  if (!tests || !/\b[1-9]\d* passed\b/.test(tests[1])) return 'ran no test'
+  return /\b[1-9]\d* skipped\b/.test(tests[1]) ? 'skipped tests' : 'passed'
 }
 
 // Why no suite can run here, or null. A suite that cannot run skips its tests and exits 0,

@@ -8,16 +8,17 @@ the capture controls and the export controls comes from the same fact being stat
 places at once. The plan gives each fact one place, then removes the copies.
 
 The maintainer ruled on the plan's six open decisions on 2026-11-15; "Decisions taken" records
-them. No issue is filed yet and no slice has started. The critique itself is a page in the
-design session and is not in this repository, so its findings are restated under "Findings" and
-each one maps to a slice or to a stated reason for leaving it.
+them. A review of this plan on 2026-11-16 raised two questions the code does not settle; "Open
+questions" states them. No issue is filed yet and no slice has started. The critique itself is a
+page in the design session and is not in this repository, so its findings are restated under
+"Findings" and each one maps to a slice or to a stated reason for leaving it.
 
 ## Context
 
 What the review ran: a build of `03668a1` driven through `.claude/skills/run-birdbrain/`, at
 1440 by 900 and 1100 by 800, dark theme, on the demo Case. The Capture Session screenshots used
 the stand-in state that `e2e/topbar-layout.spec.ts` injects, because Chrome did not complete a
-launch in the review sandbox. The extension's own pages, the light theme on screen and a Case
+launch in the review sandbox. The extension's own popup, the light theme on screen and a Case
 with hundreds of Captures were not reviewed.
 
 Five things in the repository constrain the work. The critique did not know all of them, so
@@ -30,12 +31,15 @@ this section also corrects it.
   Both are wrong by `CONTEXT.md`. This plan uses the ruled terms. The app's own labels break the
   same rules today: `ExportMenu.tsx` says "Export case file" and `ExportDialog.tsx` says "Full
   evidence bundle".
-- **ADR-0032 rules the VPN indicator and its warnings.** Rule 2 says the top bar shows the
-  Egress and whether a VPN is seen, and that the warning offers to continue, to set up a proxy,
-  or to stop warning on this network. Rule 3 says starting a Capture Session warns too. Two
-  critique proposals change the form of those: a status control that drops the word "VPN not
-  seen", and a launch dialog that carries the warning inline. Decisions 2 and 3 rule on both,
-  and each slice that builds one amends ADR-0032.
+- **ADR-0032 rules the VPN indicator and its warnings.** The ADR's Decision section has two
+  numbered lists. The rules this plan cites are in the second one, under "Birdbrain pushes the
+  Operator toward a VPN, but only warns", and the plan calls them VPN rule 2 and VPN rule 3.
+  VPN rule 2 says the top bar shows the Egress and whether a VPN is seen, and that the warning
+  offers to continue, to set up a proxy, or to stop warning on this network. VPN rule 3 says
+  starting a Capture Session warns too. Two critique proposals change the form of those: a
+  status control that drops the word "VPN not seen", and a launch dialog that carries the
+  warning inline. Decisions 2 and 3 rule on both, and each slice that builds one amends
+  ADR-0032.
 - **The app moves to the mock.** `docs/design-handoff/README.md` names the 2026-08-21 standalone
   as the single design source, and the ruling of 2026-09-20 recorded in #1555 says no design gap
   is left to drift. Open `redesign` issues pull the Export dialog and the Overview toward that
@@ -50,13 +54,14 @@ this section also corrects it.
   that.
 - **Some of these files are evidence-affecting.** In
   `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`, `ExportDialog.tsx`,
-  `CaptureDownloadMenu.tsx`, `DataExplorer.tsx`, `CaptureControl.tsx`, `TabPicker.tsx` and
-  `captureSessionPanelModel.ts` are `blocking`. `src/renderer/components/layout/**`,
-  `src/renderer/components/status/**`, `CaptureDetailsPanel.tsx` and
-  `src/renderer/styles/**` are renderer chrome or styling. `StartDialog.tsx`,
-  `CaptureSessionDock.tsx`, `CaptureSessionPanel.tsx`, `CaptureMenu.tsx`,
-  `CaptureSelectionBar.tsx` and `Sidebar.tsx` do not appear in the list by name; each slice that
-  touches one confirms its tier before it starts.
+  `CaptureDownloadMenu.tsx`, `DataExplorer.tsx`, `ForensicsTab.tsx`, `OperatorConfig.tsx`,
+  `CaptureControl.tsx`, `TabPicker.tsx` and `captureSessionPanelModel.ts` are `blocking`, and
+  so is `src/renderer/components/data/**`. `src/renderer/components/layout/**`, which holds
+  `Sidebar.tsx`, `TopBar.tsx` and `CaseActionBar.tsx`, `src/renderer/components/status/**`,
+  `CaptureDetailsPanel.tsx` and `src/renderer/styles/**` are renderer chrome or styling.
+  `StartDialog.tsx`, `CaptureSessionDock.tsx`, `CaptureSessionPanel.tsx`, `CaptureMenu.tsx` and
+  `CaptureSelectionBar.tsx` match no entry of the list, by name or by directory; each slice
+  that touches one confirms its tier before it starts.
 
 Three more facts shape the slices:
 
@@ -74,7 +79,12 @@ Three more facts shape the slices:
 
 ## Findings
 
-Severity is the critique's. "Slice" points into "Slices" below.
+The U rows are the sixteen rows of the critique's usability table, in its order and with its
+severities. The C rows are the five rows of its consistency table. The A rows are four of its
+five accessibility notes; the fifth, that the Export dialog's primary button needs a scroll,
+repeats U9. The H rows are three remarks from its walk through the screens. The critique grades
+only the usability rows, so the severities on the C, A and H rows are this plan's. "Slice"
+points into "Slices" below.
 
 | ID | Finding | Severity | Slice |
 | --- | --- | --- | --- |
@@ -83,14 +93,14 @@ Severity is the critique's. "Slice" points into "Slices" below.
 | U3 | Export labels do not name their outputs: "Export evidence report" opens "Export case" and writes an Evidence Package | critical | 4.1, 4.2 |
 | U4 | Capturing has no primary control; the only filled accent button on a Case is the list's add button | moderate | 5.4 |
 | U5 | The Case action bar holds one label and three buttons at rest and overflows while a session runs | moderate | 5.2 to 5.5 |
-| U6 | "VPN not seen" is a permanent amber word in the chrome | moderate | 6.1 |
-| U7 | Five columns at 1440 pixels during a session; the page shrinks to 37 percent | moderate | 2.3 |
+| U6 | "VPN not seen", an advisory signal, is a permanent amber word in the chrome | moderate | 6.1 |
+| U7 | Five columns at 1440 pixels during a session; the captured page shrinks to 37 percent zoom | moderate | 2.3 |
 | U8 | Capture details open on hashes and state the Integrity Status three times | moderate | 7.1 |
 | U9 | The Export dialog's primary button is below the fold at 900 pixels of height | moderate | 1.2 |
 | U10 | Case settings is reachable only through Share; Investigate has no entry point | moderate | 5.3; Investigate not planned |
 | U11 | The app-wide Auto-capture switch sits at the top of a Case's Signals | moderate | 7.4 |
 | U12 | The Overview is a second place to edit Selectors, Tags and Notes | moderate | 7.3 |
-| U13 | The add menu on Captures holds Recapture, which adds nothing | minor | 1.4 |
+| U13 | The add menu on Captures holds Recapture, which is not an add | minor | 1.4 |
 | U14 | Every Captures list row carries the same Selector chips | minor | 7.2 |
 | U15 | The launch dialog uses a native select for one browser and has four info tips | minor | 1.6, 3.3 |
 | U16 | The Data screen has two buttons both labelled Verify | minor | 1.5 |
@@ -105,27 +115,51 @@ Severity is the critique's. "Slice" points into "Slices" below.
 | A4 | The list row's star and checkbox are about 14 to 16 pixels and sit together | minor | 7.2 |
 | H1 | The rail is icon-only, so the action bar repeats the section name | moderate | 5.2 |
 | H2 | The Case name looks like a menu and opens the command palette | minor | 5.3 |
-| H3 | The Overview's Link Map header links to "All notes" | minor | 1.7 |
+| H3 | The Overview's Link Map header links to "All notes", the same label as the Quick Notes card beside it | minor | not planned |
+
+For four rows the code disagrees with the critique's count, labels or premise. The slices follow
+the code:
+
+- **U15.** `StartDialog.tsx` renders `InfoTip` in three places, not four: beside the title,
+  beside the Egress, and beside "Not set" only while no Operator name is saved.
+- **U16.** The critique's labels, "Verify all" and "Verify this file", fit neither button. Open
+  question 2 says why.
+- **A1.** The critique counted 281 uses of the faint token. `text-text-faint` appears 284 times
+  in 100 files under `src/renderer/`, and 16 more uses take the token as a background, border
+  or stroke colour.
+- **H3.** Both "All notes" links open the Notes section, which is what the label says. "Not
+  planned here" gives the reason for leaving it.
+
+Five points the critique makes outside those tables have no row. Share and Export hold
+permanent places in the chrome though an Operator uses them a few times per Case; slice 5.3
+moves them. "Import Case…" is on the dashboard only, under a different noun from the export it
+reverses; slice 4.3 answers that. At 1100 pixels the session line truncates and two collapsed
+rails sit side by side; slices 2.1 and 2.3 remove the line and the second rail. Tags and the
+inline note sit below the fold in Capture details; slice 7.1 collapses the sections above them.
+The three notes on visual hierarchy cover the same ground as U4, U5 and U6.
 
 ## Decisions taken
 
 The maintainer accepted all six recommendations on 2026-11-15, in the design session that wrote
-this plan. Each entry gives the question, then the ruling.
+this plan. Each entry gives the question, then the ruling. The critique leaves three decisions
+to the maintainer, and decisions 1, 2 and 4 answer them. It also asks for a ruling on the export
+nouns, which `CONTEXT.md` had already given. Decisions 3, 5 and 6 are questions this plan
+raised, where a critique proposal met ADR-0032, the standalone mock and #830.
 
 1. **Does Share keep its own control in the chrome, or move into a menu on the Case name?**
    The 2026-10-27 brief put it in the chrome so sharing is reachable before anyone has joined.
    Ruling: Share moves into the Case menu. The existing coach mark stays, and the menu item
    shows "On this machine only" until the Case is shared. Slice 5.3 builds it.
 2. **May the top bar stop printing "VPN not seen" and show the advisory as a coloured dot
-   only?** ADR-0032 rule 2 says the top bar shows the Egress and whether a VPN is seen.
+   only?** ADR-0032 VPN rule 2 says the top bar shows the Egress and whether a VPN is seen.
    Ruling: yes. The wording stays in the status popover and is added to the capture control's
-   menu and the launch dialog, and rule 2 is amended to say so. Slice 6.1 builds it.
+   menu and the launch dialog, and VPN rule 2 is amended to say so. Slice 6.1 builds it.
 3. **May a launch carry the VPN warning inside the launch dialog, with no second dialog?**
-   ADR-0032 rule 3 says starting a Capture Session warns. Ruling: yes, for launches only. The
-   inline form keeps all three offers from rule 2 (continue, set up a proxy, stop warning on
-   this network) and the primary button reads "Launch without VPN". The separate
+   ADR-0032 VPN rule 3 says starting a Capture Session warns. Ruling: yes, for launches only.
+   The inline form keeps all three offers from VPN rule 2 (continue, set up a proxy, stop
+   warning on this network) and the primary button reads "Launch without VPN". The separate
    `VpnWarningDialog` stays for every other first contact. Slice 3.2 builds it and amends
-   rule 3.
+   VPN rule 3.
 4. **What is the primary control called?** The critique proposed "Capture". `CONTEXT.md` uses
    Capture for the stored page, and the session panel already has a Capture button that takes
    one. Ruling: the label at rest stays "Launch browser", because it says what happens, and it
@@ -142,6 +176,28 @@ this plan. Each entry gives the question, then the ruling.
    Matches. #830 already plans per-entity export. Ruling: no. The viewer's Download menu and
    the Signals CSV buttons stay where they are, slice 4.1 fixes their labels, and #830 decides
    the rest.
+
+## Open questions
+
+A review of this plan on 2026-11-16 raised two questions that the code does not settle. Both
+wait for the maintainer, and the slices they hold up say so.
+
+1. **How does a Capture Session start when only the extension is connected?** The Capture
+   Session switch in `SessionControls.tsx` is the only control that starts one. Its handler,
+   `handleToggleSession`, raises the VPN warning, activates the Case and starts the session.
+   The launch dialog starts a session only by launching a browser. The extension's popup stops
+   a session and cannot start one, and `startSession()` in `extension/src/utils/api.ts` has no
+   caller. Slice 5.5 removes the switch, and the menu in slice 5.4 holds no item that starts a
+   session. Whatever takes the switch's place keeps the warning that ADR-0032 VPN rule 3
+   requires before a start. Slices 5.4 and 5.5 wait for the answer.
+2. **What do the Data screen's two Verify buttons say?** The critique proposed "Verify all" and
+   "Verify this file", and neither fits. The button in the header above the table, `node-verify`,
+   verifies the Exhibits under the selected node and not the whole Case, and "Verify all" is
+   already the label of the `IntegrityStrip` button that verifies every anchored row. The
+   button on the selected row's pane, `row-verify`, verifies an Exhibit, and for a derived file
+   that is the parent Exhibit and not the file. `DataExplorer.tsx` is `blocking` and each label
+   tells the Operator what a verification covered, so the words are the maintainer's. Slice 1.5
+   waits for the answer.
 
 ## Slices
 
@@ -164,31 +220,39 @@ separate ask; `queued` stays the maintainer's.
 
 ### Phase 1: fixes that need no drawing
 
-These are independent of each other and of the bundle. They can start at once.
+These are independent of each other and of the bundle. They can start at once, except slice
+1.5, which waits for open question 2.
 
 - [ ] **1.1 Raise faint text to 4.5:1 on dark surfaces (A1).** `--color-text-faint` in the dark
   block of `src/renderer/styles/globals.css`. `#85858e` measures 4.65:1 on `--color-elevated`,
-  the lightest dark surface. Check it stays distinct from `--color-text-muted`. The token is
-  used in 281 places, so the screenshots cover one screen per section.
+  the lightest dark surface. Check it stays distinct from `--color-text-muted`. The token
+  colours text in 284 places across 100 files, so the screenshots cover one screen per section.
+  It is also the background, border or stroke colour in 16 places, switch tracks and status
+  dots among them, so the slice checks one of each.
 - [ ] **1.2 Keep the Export dialog's primary action in view, and drop the filled banners (U9,
   C3).** `ExportDialog.tsx`: the form scrolls and the footer stays fixed. The demonstration
   notice and the Trusted Time preflight notice become text with an icon, readable in both
   themes, which also resolves #1524. `blocking` file: the Evidence impact section says layout
-  and colour only, and the existing export specs show the package is unchanged.
-- [ ] **1.3 Give a disabled Launch browser a reachable reason (A3).** `CaseActionBar.tsx`: use
-  `aria-disabled` with `aria-describedby`, the pattern `ExportMenu.tsx` already uses, so the
-  control keeps focus and announces `busyRefusal`'s title.
+  and colour only. `e2e/export.spec.ts` reads the names of the package's entries and nothing
+  else, so it does not show the package is unchanged. The slice shows that the dialog submits
+  the same options: the preset tests in `tests/components/ExportDialog.test.tsx` pass unedited,
+  and the slice changes nothing under `src/main/`.
+- [ ] **1.3 Give a disabled Launch browser a reachable reason (A3).** `CaseActionBar.tsx`: the
+  button takes `aria-disabled` in place of `disabled`, so it keeps focus, and
+  `aria-describedby` points at text that carries `busyRefusal`'s title. `ExportMenu.tsx` is
+  the model for the first half only, because it gives its own reason in a `title`.
+  `OperatorConfig.tsx` shows `aria-describedby` wired to a message.
 - [ ] **1.4 Take Recapture out of the add menu (U13).** `CaptureMenu.tsx` keeps "Paste URLs to
   capture". Recapture stays on the Capture's own menu in `CaptureDetailsPanel.tsx` and on
   `CaptureSelectionBar.tsx`. If the add menu is left with one item, the button opens the paste
   dialog directly.
 - [ ] **1.5 Name the scope on the Data screen's two Verify buttons (U16).** `DataExplorer.tsx`:
-  "Verify all" above the table and "Verify this file" on the pane header. `blocking` file:
-  labels only.
+  `node-verify`, in the header above the table, and `row-verify`, on the selected row's pane,
+  each get a label that says what the button verifies. Waits for open question 2. `blocking`
+  file: labels only, and the Evidence impact section shows that each label matches the
+  Exhibits its button passes to `verifyIds`.
 - [ ] **1.6 Show a single browser as text in the launch dialog (U15).** `StartDialog.tsx`: the
   select renders only when more than one browser was found.
-- [ ] **1.7 Correct the Link Map header link (H3).** `BacklinkMap.tsx`: the card's link reads
-  "All notes", the same as the Quick Notes card beside it; it names what it opens instead.
 
 ### Phase 2: a Capture Session has one place
 
@@ -204,7 +268,8 @@ pull requests say so.
   the panel.
 - [ ] **2.2 One stop control on screen (U1).** While `CaptureSessionDock` shows the panel, its
   **Stop** is the only stop control and the Capture Session switch does not render. The switch
-  stays for a session with no panel, which today is an extension-only session.
+  stays where no panel shows, which today is an extension-only session. There it is also the
+  only control that starts a Capture Session (open question 1).
 - [ ] **2.3 Capture details and the Capture Session share one right panel (U7).** On the
   Captures section, `CaptureSessionDock.tsx` and the details column become two tabs of one
   panel, so the layout stays at four columns. Other sections keep the dock as their only right
@@ -219,15 +284,21 @@ pull requests say so.
 
 - [ ] **3.1 Ask for the Operator name in the launch dialog (U2).** `StartDialog.tsx` replaces
   "Set operator name" and its navigation to Settings with the field itself, saved through the
-  same settings mutation and the same validation as the Operator tab.
+  same settings mutation and the same validation as the Operator tab. The assessment lists the
+  Operator tab, `OperatorConfig.tsx`, as `blocking` because the export certification embeds the
+  Operator identity verbatim, and this slice adds a second place that writes the name. Treat
+  the slice as `evidence-affecting` whatever tier `StartDialog.tsx` is given: it takes the label
+  and an Evidence impact section, and a test shows that the dialog saves the same value and
+  refuses the same empty name as the Operator tab.
 - [ ] **3.2 One VPN statement per launch (U2, C3).** Decision 3 allows it. The no-VPN line under
   Egress stays, as text without a filled box. The primary button reads "Launch without VPN".
   "Set up a proxy" and "Do not warn on this network" sit beside it, the second shown only when
   the network can be identified. `StartDialog.tsx` stops raising `VpnWarningDialog`; every
-  other caller in `src/renderer/lib/vpnWarning.ts` keeps it. ADR-0032 rule 3 is amended in the
-  same pull request. `e2e/vpn-warning.spec.ts` gains the launch path.
-- [ ] **3.3 Fold the four info tips into one disclosure (U15).** `StartDialog.tsx`: one "How
-  this works" row holds the text the `InfoTip`s carry today.
+  other caller in `src/renderer/lib/vpnWarning.ts` keeps it. ADR-0032 VPN rule 3 is amended in
+  the same pull request. `e2e/vpn-warning.spec.ts` gains the launch path.
+- [ ] **3.3 Fold the info tips into one disclosure (U15).** `StartDialog.tsx`: one "How this
+  works" row holds the text the three `InfoTip`s carry today. The Operator tip shows only while
+  no Operator name is saved, the state slice 3.1 changes.
 
 ### Phase 4: export through one dialog
 
@@ -248,10 +319,14 @@ from 0.1 (decision 5). Decision 6 keeps loose files out of the dialog.
   venue, which the writing guide's claim discipline keeps out of the docs; the checkbox retires
   that label. ADR-0010's distinction and
   ADR-0009's full-Manifest line stay as they are. `blocking`: a unit test over the preset table
-  shows each choice produces the same `ExportSelection` as the preset it replaces, and the
-  export specs show the package bytes are unchanged for the same selection.
+  shows each choice produces the same `ExportSelection` as the preset it replaces.
+  `e2e/export.spec.ts` compares the names of the package's entries, not their bytes, so it does
+  not show the package is unchanged for the same selection. The slice shows that with a
+  known-answer comparison of the package, and adds one if none covers the selection.
 - [ ] **4.3 Put Import beside Export.** "Import Case Archive" joins the Case menu from 5.3 and
-  keeps its place on the dashboard, under the same noun.
+  keeps its place on the dashboard, under the same noun. The menu item opens the import flow
+  the dashboard already uses. `ImportCaseDialog.tsx` is `blocking`; if the slice has to edit
+  it, the slice becomes `evidence-affecting`.
 - [ ] **4.4 Reconcile the open redesign issues.** After the ruling on the bundle, rewrite or
   close the rows of #1555 and #1547 it supersedes, and check #846 and #841 against the new
   dialog.
@@ -259,7 +334,8 @@ from 0.1 (decision 5). Decision 6 keeps loose files out of the dialog.
 ### Phase 5: one row of chrome
 
 Waits for the ruling on the bundle from 0.1, except slice 5.1. Decisions 1 and 4 fix the
-Case menu's contents and the primary control's name.
+Case menu's contents and the primary control's name. Slices 5.4 and 5.5 also wait for open
+question 1.
 
 - [ ] **5.1 A shared menu component (C5).** `src/renderer/components/ui/menu.tsx` on the
   dropdown menu `radix-ui` already ships. `ExportMenu.tsx`, `CaptureDownloadMenu.tsx`,
@@ -277,9 +353,12 @@ Case menu's contents and the primary control's name.
   rows,
   the extension and the Egress. While a Capture Session runs it becomes the recording mark and
   shows or hides the Capture Session tab. It replaces `CaptureSessionButton.tsx` on the
-  dashboard and in Settings.
+  dashboard and in Settings. The menu as listed starts no Capture Session; open question 1
+  decides whether it gains an item that does.
 - [ ] **5.5 Remove the Case action bar (U5, U1).** `CaseActionBar.tsx` and the switch in
-  `SessionControls.tsx` go. An extension-only session stops from the capture control's menu.
+  `SessionControls.tsx` go. The switch is the only control that starts an extension-only
+  Capture Session, so the slice waits for open question 1 and lands with whatever takes over
+  that start. An extension-only session stops from the capture control's menu.
   `e2e/topbar-layout.spec.ts` is rewritten for one row.
 - [ ] **5.6 Docs and record.** `tester-guide.mdx` and `features.mdx` describe the new positions.
   The index in `docs/design-handoff/README.md` gains the bundle's row and notes that it
@@ -291,15 +370,20 @@ Case menu's contents and the primary control's name.
   `statusGroupModel.ts` gains an advisory tier: a VPN not seen, or a failed VPN check, colours
   its dot and adds no icon or word. "Egress unknown" and capture failures keep the icon and
   the word at every width, so the icon's presence is the signal. The accessible name and the
-  popover are unchanged. ADR-0032 rule 2 is amended in the same pull request.
+  popover are unchanged. ADR-0032 VPN rule 2 is amended in the same pull request.
 
 ### Phase 7: summary first, and pointers instead of copies
 
 - [ ] **7.1 Capture details open on a summary (U8).** `CaptureDetailsPanel.tsx`: the header's
   Integrity Status chip is the one statement at rest. Chain of custody, with Re-verify inside
   it, Identity and Capture environment are collapsed sections, and the panel remembers which
-  ones the Operator opened. `e2e` specs that read `custody-section-body` open the section
-  first.
+  ones the Operator opened. Chain of custody is one section today, open by default, and its
+  body is `ForensicsTab.tsx`, which holds the Identity and Capture environment headings and is
+  `blocking`. Collapsing those two on their own means editing that file, which makes the slice
+  `evidence-affecting`; collapsing only the outer section does not. `e2e/forensics-tab.spec.ts`
+  reads those headings and the chain status with the section open, so it opens the section
+  first. No spec or unit test reads `custody-section-body` or checks a remembered state, so
+  the slice adds that test.
 - [ ] **7.2 A count of Selector matches on each list row, and more room for the row's controls
   (U14, A4).** `CaptureItem.tsx`: the chip line becomes one count that lists the names on
   hover and focus. The star and the checkbox get 24 pixel targets.
@@ -314,22 +398,27 @@ Case menu's contents and the primary control's name.
 
 ## Order
 
-1. Phase 1 and slices 2.1, 2.2, 2.4, 3.1, 3.3, 4.1, 5.1 and 7.1 can start at once. None waits
-   for the bundle, and 2.1 with 2.2 removes most of the repetition the critique found.
+1. Phase 1 and slices 2.1, 2.2, 2.4, 3.1, 3.3, 4.1, 5.1 and 7.1 can start at once, except
+   slice 1.5, which waits for open question 2. None waits for the bundle, and 2.1 with 2.2
+   removes most of the repetition the critique found.
 2. Slices 3.2 and 6.1 can also start: each carries its ADR-0032 amendment in its own pull
    request.
 3. Slice 0.1 runs beside them, since 2.3, 4.2 to 4.4, 5.2 to 5.6 and 7.3 wait for its ruling.
 4. After that ruling, phase 5 goes in the order written: rail, Case menu, Launch browser
-   control, then the removal of the action bar. Slices 4.2 and 4.3 go before 5.3, which hosts
-   their menu items.
+   control, then the removal of the action bar. The last two also wait for open question 1.
+   Slices 4.2 and 4.3 go before 5.3, which hosts their menu items.
 5. Slices 7.2 and 7.4 fit wherever there is room.
 
 ## Risks
 
 - **Rework against #2125.** The two-row chrome merged on 2026-11-11. Phase 2 edits it and phase
   5 removes half of it. Slices 2.1 and 2.2 are chosen so their changes survive phase 5.
-- **Review cost on evidence paths.** Phase 4 touches two `blocking` files in three slices. The
-  slices keep copy changes (4.1) apart from behaviour (4.2) so each review is small.
+- **Review cost on evidence paths.** Four slices edit `blocking` files: 1.2, 4.1 and 4.2 edit
+  `ExportDialog.tsx`, 4.1 also edits `CaptureDownloadMenu.tsx`, and 1.5 edits
+  `DataExplorer.tsx`. Slice 3.1 edits none of them and is reviewed the same way, because it
+  writes the Operator name. Slices 2.3, 4.3 and 7.1 join them if they have to edit the
+  `blocking` files their entries name. Phase 4 keeps copy changes (4.1) apart from behaviour
+  (4.2) so each review is small.
 - **The tour and the tester guide break quietly.** A moved control leaves a tour step ringing
   nothing and a guide step pointing at an empty corner. Each slice in phase 5 names the anchors
   and the guide sections it moves.
@@ -343,5 +432,9 @@ Case menu's contents and the primary control's name.
 - **An entry point for Investigate.** The route exists and nothing links to it. Whether it
   should be found yet belongs to the investigation engine work (#1892), not to this plan.
 - **Loose-file export in the dialog.** See decision 6 and #830.
+- **A change to the Link Map's "All notes" link (H3).** The link opens the Notes section, as
+  its label says, and the Quick Notes card's link beside it does the same: both call
+  `goToNotes` in `CaseOverview.tsx`. The critique noted the repeated label and recommended no
+  change.
 - **The extension's own pages, the light theme, and list density on a large Case.** The review
   did not cover them. Each wants its own pass before any change.

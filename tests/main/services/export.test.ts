@@ -4895,7 +4895,7 @@ describe('export', () => {
     })
 
     it('refuses the export when a capture artifact is present but unreadable', async () => {
-      // The Capture path is outside `createPackageReader` (its artifacts are
+      // The Capture path is outside the contents decision (its artifacts are
       // probed and read separately, as they were before #1156), so a read
       // failure there is an error and not a classification: the export fails
       // and writes nothing, rather than quietly narrowing the package. Pinned

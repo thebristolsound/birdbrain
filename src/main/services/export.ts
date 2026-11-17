@@ -44,21 +44,23 @@ import {
   buildTrustedTimeIndexFromEntries,
   extractTimestampTokenCertificatesPem,
   SHARED_CASE_SCHEMA_VERSION,
-  stampFor,
   verifyManifestChainText
 } from '@shared/verify'
 import type { SharedCaseMember } from '@shared/verify'
 import {
   PACKAGE_ROOT_FILES,
   capturePagePath,
-  derivedFilePackagePath,
-  exhibitPackageDirectory,
-  exhibitPackagePath,
   pdfPath as packagedPdfPath,
   screenshotPath as packagedScreenshotPath,
-  timestampTokenPath,
   transactionRecordPath as packagedTransactionRecordPath
 } from '../../packages/evidence-package-layout/index'
+import {
+  decidePackageContents,
+  readOnce,
+  type DerivedFileContents,
+  type PackageByteSource,
+  type PackageContents
+} from '../../packages/evidence-package-contents/index'
 import type { TrustedTimeResult } from '@shared/verify'
 import {
   buildCertification,
@@ -90,7 +92,6 @@ import { extractNoteMentions } from '@shared/noteDoc'
 import type {
   Capture,
   DerivedFile,
-  DerivedFileVerification,
   Exhibit,
   ExhibitVerification,
   ExportOptions,
@@ -218,35 +219,6 @@ export function resolveExportSharedCase(
     })),
     chainPaths: sharedCase.chains.map((chain) => chain.path)
   }
-}
-
-/** evidence.json keeps this as a list; an Exhibit has at most one token path. */
-function packagedTimestampTokenPaths(byHash: Map<string, string>, contentHash: string): string[] {
-  const path = byHash.get(contentHash)
-  return path ? [path] : []
-}
-
-/**
- * What a timestamp token can be packaged for: any Exhibit, by its Content Hash
- * (X26). A committed attachment runs the same RFC 3161 path a Capture does, so
- * its token is packaged and bound the same way — dropping it, which this did
- * before #1156, left the chain asserting a trusted time whose token the package
- * did not enclose.
- */
-interface TokenSubject {
-  id: string
-  contentHash: string
-}
-
-function tokenSubjects(
-  captures: Capture[],
-  exhibits: Array<{ id: string; contentHash: string }>,
-  chainIdOf: (id: string) => string
-): TokenSubject[] {
-  return [
-    ...captures.map((capture) => ({ id: chainIdOf(capture.id), contentHash: capture.hash })),
-    ...exhibits.map((exhibit) => ({ id: chainIdOf(exhibit.id), contentHash: exhibit.contentHash }))
-  ]
 }
 
 interface ManifestTimestampEntry {
@@ -771,20 +743,20 @@ export async function generateReport(
   data.entriesUnderCarriedKeys = signingKeyRanges(manifest.entries, getPublicKeyPem()).some(
     ({ carriedByImportAt }) => carriedByImportAt !== null
   )
-  // One reader for the whole export: it reads each enclosed non-Capture
-  // Exhibit and each enclosed Derived File exactly once, classification reads
-  // its outcome, and the zip builders consume the buffers it already holds. A
-  // Capture's own artifacts are outside it — see createPackageReader.
-  const reader = createPackageReader()
-  // One token-path resolution over every Exhibit in scope, shared by the
-  // report, evidence.json and the packager (X26).
-  const tokenPaths =
-    options.format === 'zip'
-      ? buildTimestampTokenPaths(
-          tokenSubjects(captures, scope.fileExhibits, chainIdOf),
-          caseEntries.filter(isTimestampEntry)
-        )
-      : new Map<string, string>()
+  // The one decision of what this export encloses for its Timestamp Tokens,
+  // its non-Capture Exhibits and every Derived File, read by the report,
+  // evidence.json, the Certification and the zip builders. A Capture's own
+  // files are outside it for now: see buildPackagedPaths.
+  const contents = decidePackageContents({
+    form: options.format !== 'zip' ? 'report' : workingCopy ? 'working-copy' : 'evidence-package',
+    entries: caseEntries,
+    chainNames,
+    captures,
+    fileExhibits: scope.fileExhibits,
+    derivedFiles: derivedByExhibitId,
+    derivedVerifications,
+    source: readOnce(caseDirectoryByteSource())
+  })
   // An Evidence Package encloses every screenshot a signed capture entry
   // anchors, whatever include.screenshots says (#1986): Package Verification
   // fails a signed screenshotHash whose file the package lacks, as D10 of
@@ -803,7 +775,7 @@ export async function generateReport(
   data.packagedPaths = buildPackagedPaths(
     data,
     options,
-    tokenPaths,
+    contents,
     screenshotDigests,
     annotatedCaptureIds
   )
@@ -817,27 +789,17 @@ export async function generateReport(
   data.captureEngineByCaptureId = resolveExportCaptureEngine(manifest, sharedCase)
   data.linkSourceByCaptureId = resolveExportLinkSources(manifest, sharedCase)
   data.fileExhibits = buildFileExhibitRecords(scope.fileExhibits, {
-    derivedByExhibitId,
-    derivedVerifications,
     verifications: exhibitVerifications,
     trustedTimeByHash,
     entrySignatures: resolveExhibitEntrySignatures(scope.fileExhibits, caseEntries, chainIdOf),
-    tokenPaths,
     chainNames,
-    isPackage: options.format === 'zip',
-    reader,
+    contents,
     cite
   })
   data.derivedFilesByCaptureId = new Map(
     captures.map((capture) => [
       capture.id,
-      buildDerivedFiles(
-        derivedByExhibitId.get(capture.id) ?? [],
-        exhibitPackageDirectory('capture', capture.mhtmlPath ?? null),
-        options.format === 'zip',
-        derivedVerifications.get(capture.id),
-        reader
-      )
+      describeDerivedFiles(contents.ofCapture(capture.id).derivedFiles)
     ])
   )
   // Reconciled against the FULL case, not the exported selection — see the
@@ -865,12 +827,12 @@ export async function generateReport(
       // No report, no certification: the Working Copy deliberately carries no
       // evidentiary documents at all (#399, ADR-0010).
       onProgress?.('Packaging working copy...', 90)
-      zip = buildWorkingCopyZip(caseId, data, packageMeta, reader, options.include.captures)
+      zip = buildWorkingCopyZip(caseId, data, packageMeta, contents, options.include.captures)
     } else {
       onProgress?.('Generating report...', 80)
       const html = buildHtmlReport(data, options)
       onProgress?.('Packaging evidence...', 90)
-      zip = buildEvidenceZip(caseId, data, html, manifest, sharedCase, packageMeta, reader)
+      zip = buildEvidenceZip(caseId, data, html, manifest, sharedCase, packageMeta, contents)
     }
     const { entries, packageHash, verificationResult } = zip
 
@@ -1149,84 +1111,36 @@ async function verifyFileExhibits(
 }
 
 /**
- * The Derived Files of one Exhibit, as this export packages and reports them
- * (X17). `parentDirectory` is where the parent's bytes sit in the package, so a
- * Derived File lands beside its parent under the same directory — the layout
- * evidence.json, VERIFY.md and verify.sh all name.
- *
- * A file NO manifest line names is NOT packaged, in either export class, and is
- * not listed in evidence.json: the Derived File rows are a database mirror, and
- * bytes covered by nothing but a mirror have no place in a package whose whole
- * claim is that the chain covers what it holds (ADR-0024's rule for pooled
- * files, X41's for an unanchored row). The omission is disclosed by whatever
- * each class carries: the Evidence Package states it in report.html and in the
- * certification's contents line, and the Working Copy — which has neither
- * document by design (#399, ADR-0010) — carries the count in
- * WORKING-COPY.json. An omission a reader cannot see is the dishonest option
- * X44 rejected.
- *
- * A failing chain is NOT that case and does not hold anything back: the entry
- * is there, nothing vouches for it, and the documents say exactly that.
+ * The Derived Files of one Exhibit as the documents report them (X17): the
+ * row's facts beside what the contents decision found for it. A file no
+ * manifest line names is not enclosed and not listed in evidence.json, and the
+ * omission is disclosed by whatever each class carries: report.html and the
+ * certification's contents line in an Evidence Package, the count in
+ * WORKING-COPY.json in a Working Copy.
  */
-function buildDerivedFiles(
-  files: DerivedFile[],
-  parentDirectory: string,
-  isPackage: boolean,
-  verifications: DerivedFileVerification[] | undefined,
-  reader: PackageReader
-): ExportDerivedFile[] {
-  const byId = new Map((verifications ?? []).map((result) => [result.derivedFileId, result]))
-  return files.map((file) => {
-    const verification = byId.get(file.id)
-    // 'unverified' with cause `no-entry` is X34's case and is the only one
-    // held back; 'chain-unverified' means a `derivation` entry names the file
-    // and the chain does not verify, which is a statement about the chain and
-    // not about the file, so it ships and the documents say so. `verified`,
-    // `tampered` and `missing` all mean the verified chain carries an entry
-    // for it — `missing` is decided AFTER that question, so it means anchored
-    // with unreadable bytes and never "no entry, and unreadable too".
-    //
-    // No verification at all fails closed to `no-entry`: nothing established
-    // an entry, so nothing may be enclosed on the strength of one. Unreachable
-    // today — `verifyCaseDerivedFiles` runs on every export and is total over
-    // the Case's rows — and the conservative answer if that ever changes.
-    const anchoring: ExportDerivedFile['anchoring'] =
-      verification === undefined
-        ? 'no-entry'
-        : verification.status !== 'unverified'
-          ? 'anchored'
-          : verification.unanchoredCause === 'chain-unverified'
-            ? 'chain-unverified'
-            : 'no-entry'
-    // The read itself decides enclosure. Nothing probes and then reads.
-    const enclosed = isPackage && anchoring !== 'no-entry' ? reader.read(file.path) !== null : false
-    return {
-      id: file.id,
-      derivation: file.derivation,
-      toolVersion: file.toolVersion,
-      contentHash: file.contentHash,
-      storedPath: file.path,
-      anchoring,
-      packagedPath: enclosed ? derivedFilePackagePath(parentDirectory, file.path) : null,
-      manifestIndex: file.manifestSeq,
-      ...(verification !== undefined ? { verification } : {})
-    }
-  })
+function describeDerivedFiles(decided: readonly DerivedFileContents[]): ExportDerivedFile[] {
+  return decided.map(({ file, verification, anchoring, enclosed }) => ({
+    id: file.id,
+    derivation: file.derivation,
+    toolVersion: file.toolVersion,
+    contentHash: file.contentHash,
+    storedPath: file.path,
+    anchoring,
+    packagedPath: enclosed?.path ?? null,
+    manifestIndex: file.manifestSeq,
+    ...(verification !== undefined ? { verification } : {})
+  }))
 }
 
 /** Everything the report, the certification and evidence.json say about one
  * committed non-Capture Exhibit, resolved once from the snapshot the package is
  * built from — the same discipline the capture axes follow (#492, #611). */
 interface FileExhibitInputs {
-  derivedByExhibitId: Map<string, DerivedFile[]>
-  derivedVerifications: Map<string, DerivedFileVerification[]>
   verifications: Map<string, ExhibitVerification>
   trustedTimeByHash: Map<string, TrustedTimeResult>
   entrySignatures: Map<string, EntrySignatureStatus>
-  tokenPaths: Map<string, string>
   chainNames: Map<string, ChainName>
-  isPackage: boolean
-  reader: PackageReader
+  contents: PackageContents
   cite: ExhibitCitationResolver
 }
 
@@ -1234,17 +1148,12 @@ function buildFileExhibitRecords(
   exhibits: Exhibit[],
   inputs: FileExhibitInputs
 ): ExportFileExhibit[] {
-  const { isPackage, reader } = inputs
   return exhibits.map((exhibit) => {
-    const directory = exhibitPackageDirectory(exhibit.kind, exhibit.path)
-    // The bytes are read here, once, and assembly encloses what this read
-    // returned — the same rule the Derived Files follow, for the same reason.
-    const enclosed = isPackage ? reader.read(exhibit.path) !== null : false
+    const decided = inputs.contents.ofFileExhibit(exhibit.id)
     const verification = inputs.verifications.get(exhibit.id)
     // Named as its signed entry names it — see resolveChainNames. Everything
     // keyed above and below still reads the row's own id.
     const named = inputs.chainNames.get(exhibit.id)
-    const packagedFrom = named?.path ?? exhibit.path
     return {
       id: named?.id ?? exhibit.id,
       kind: exhibit.kind,
@@ -1257,15 +1166,9 @@ function buildFileExhibitRecords(
       sizeBytes: exhibit.sizeBytes,
       committedAt: exhibit.committedAt,
       manifestIndex: exhibit.manifestSeq,
-      packagedPath: enclosed && packagedFrom ? exhibitPackagePath(packagedFrom) : null,
-      timestampTokenPath: isPackage ? (inputs.tokenPaths.get(exhibit.contentHash) ?? null) : null,
-      derivedFiles: buildDerivedFiles(
-        inputs.derivedByExhibitId.get(exhibit.id) ?? [],
-        directory,
-        isPackage,
-        inputs.derivedVerifications.get(exhibit.id),
-        reader
-      ),
+      packagedPath: decided.enclosed?.path ?? null,
+      timestampTokenPath: decided.timestampTokenPath,
+      derivedFiles: describeDerivedFiles(decided.derivedFiles),
       trustedTime: inputs.trustedTimeByHash.get(exhibit.contentHash) ?? UNSTAMPED,
       entrySignature: inputs.entrySignatures.get(exhibit.id) ?? 'no-entry',
       ...(verification !== undefined ? { verification } : {})
@@ -1343,72 +1246,45 @@ interface EvidenceZipResult {
 }
 
 /**
- * The one read that decides ENCLOSURE for every non-Capture Exhibit and every
- * Derived File this export encloses (#1156 round 5). It is not the only read
- * of those bytes: `verifyCaseDerivedFiles` hashes every chain-anchored Derived
- * File on every export, and `verifyExhibit` hashes committed Exhibits when the
- * audit trail is included, and a read failure there is interpreted too — as
- * the `missing` verification status the documents render. What is decided here
- * and nowhere else is whether the file is in the package.
+ * The Case directory as the byte source of an export (#1156 round 5). The
+ * contents decision reads each non-Capture Exhibit and each Derived File it
+ * encloses through this, once, and every downstream fact about that file (the
+ * zip entry, the evidence.json row, the report's enclosure sentence, the
+ * certification's counts) comes from what that one read returned. A probe at
+ * classification and a second read at assembly is what let report.html name a
+ * path the zip did not contain.
  *
- * For those files every downstream fact — the zip entry, the evidence.json
- * row, the report's enclosure sentence, the certification's counts — is
- * derived from the outcome recorded here, and assembly consumes these buffers
- * rather than reading again. Splitting the decision across an `existsSync`
- * probe at classification and a read at assembly is what let report.html name
- * a path the zip did not contain: the probe said the file was there, the read
- * failed, and the silent `catch` between them reached only the assembly half.
+ * It is not the only read of those bytes: `verifyCaseDerivedFiles` hashes
+ * every chain-anchored Derived File on every export, and `verifyExhibit`
+ * hashes committed Exhibits when the audit trail is included. A read failure
+ * there is the `missing` verification status the documents render. What this
+ * read decides, and nothing else does, is whether the file is in the package.
+ *
  * A file that exists and cannot be read (a lock, a permission, a disconnected
- * share) is the state that produced it, and a wide window between the two
- * reads produced it without any lock at all. For these files a read failure is
- * a classification, not an error: the file is disclosed as not enclosed, and
- * the export carries on.
+ * share) is not an error here: it is disclosed as not enclosed, and the export
+ * carries on.
  *
  * A CAPTURE'S OWN ARTIFACTS ARE NOT READ HERE. Its page archive and screenshot
  * keep the path they had before #1156: probed with `existsSync` in
  * `buildPackagedPaths` and read separately in the zip builders, where
  * `CaptureStore.readArtifact` does not catch. A Capture whose MHTML or
  * screenshot is present but unreadable therefore fails the whole export with
- * that error and writes no package — loud, and never a package narrowed
- * without saying so, which is why this ticket leaves it rather than widening
- * its scope into the Capture path. The PR's findings list carries it as a
- * follow-up candidate.
+ * that error and writes no package.
  */
-function createPackageReader(): {
-  read: (storedPath: string | null) => Buffer | null
-  bytesFor: (storedPath: string) => Buffer
-} {
-  const cache = new Map<string, Buffer>()
+function caseDirectoryByteSource(): PackageByteSource {
   return {
-    read: (storedPath) => {
-      if (!storedPath) return null
-      const cached = cache.get(storedPath)
-      if (cached) return cached
-      let bytes: Buffer
+    storedFile: (storedPath) => {
       try {
-        bytes = readFileSync(defaultCaptureStore.resolveAbsolute(storedPath))
+        return readFileSync(defaultCaptureStore.resolveAbsolute(storedPath))
       } catch {
         return null
       }
-      cache.set(storedPath, bytes)
-      return bytes
-    },
-    // Assembly's view of the same read. A packaged path is recorded only when
-    // the read above succeeded, so a miss here is a broken invariant between
-    // classification and assembly — exactly the drift this replaced — and it
-    // throws rather than quietly enclosing nothing.
-    bytesFor: (storedPath) => {
-      const bytes = cache.get(storedPath)
-      if (!bytes) throw new Error(`export: no bytes were read for ${storedPath}`)
-      return bytes
     }
   }
 }
 
-type PackageReader = ReturnType<typeof createPackageReader>
-
 /**
- * Encloses an Exhibit's Derived Files and returns their index rows (X31).
+ * The index rows of an Exhibit's Derived Files (X31).
  *
  * The index lists exactly what the package encloses, and nothing else — it
  * writes a row only where `packagedPath` is set, which is set only where the
@@ -1421,29 +1297,23 @@ type PackageReader = ReturnType<typeof createPackageReader>
  * verify.sh, which never reads the index, says nothing. Both still FAIL the
  * package through the chain-side check that the anchored file is absent, which
  * is the finding that matters and the one they agree on.
- *
- * Every omission is disclosed by whatever each class carries: report.html and
- * the certification's contents line in an Evidence Package, the counts in
- * WORKING-COPY.json in a Working Copy.
  */
-function addDerivedFiles(
-  files: ExportDerivedFile[],
-  add: ArtifactAccumulator['add'],
-  reader: PackageReader
+function derivedFileRows(
+  files: ExportDerivedFile[]
 ): Array<{ derivation: string; contentHash: string; path: string }> {
-  const rows: Array<{ derivation: string; contentHash: string; path: string }> = []
-  for (const file of files) {
-    // `packagedPath` IS the read's outcome, so this encloses exactly what the
-    // report says it encloses and the index lists exactly that.
-    if (!file.packagedPath) continue
-    add(file.packagedPath, reader.bytesFor(file.storedPath))
-    rows.push({
-      derivation: file.derivation,
-      contentHash: file.contentHash,
-      path: file.packagedPath
-    })
+  return files.flatMap(({ derivation, contentHash, packagedPath }) =>
+    packagedPath ? [{ derivation, contentHash, path: packagedPath }] : []
+  )
+}
+
+/** Writes the Derived Files the contents decision enclosed, in the order it gives them. */
+function addEnclosedDerivedFiles(
+  decided: readonly DerivedFileContents[],
+  add: ArtifactAccumulator['add']
+): void {
+  for (const { enclosed } of decided) {
+    if (enclosed) add(enclosed.path, enclosed.bytes)
   }
-  return rows
 }
 
 /** One committed non-Capture Exhibit as evidence.json lists it. */
@@ -1509,26 +1379,18 @@ function buildEvidenceZip(
   manifest: ManifestSnapshot,
   sharedCase: SharedCaseSnapshot,
   meta: PackageMeta,
-  reader: PackageReader
+  contents: PackageContents
 ): EvidenceZipResult {
   const { entries, artifacts, add } = createArtifactAccumulator()
 
   const manifestJsonl = manifest.jsonl
   const caseEntries = caseEntriesOf(manifest, sharedCase)
-  const timestampEntries = caseEntries.filter(isTimestampEntry)
   const latestManifestEntry = manifest.head
 
-  // Same path rule the report was rendered against, over the same Exhibits in
-  // the same order and under the same names — see buildTimestampTokenPaths.
-  // `fileExhibits` already carry the chain's ids.
   const chainIdOf = (id: string): string => data.chainIdByCaptureId.get(id) ?? id
-  const timestampPathsByHash = buildTimestampTokenPaths(
-    tokenSubjects(data.captures, data.fileExhibits, chainIdOf),
-    timestampEntries
-  )
-  const emittedTokenPaths = new Set<string>()
+  for (const token of contents.timestampTokens) add(token.path, token.bytes)
   // Certificate material is gathered from every token the manifest carries,
-  // including one the admission rule below refuses to enclose: the bundle is
+  // including one the contents decision refuses to enclose: the bundle is
   // chain-building material for the authority rather than a claim about any
   // Exhibit, and narrowing it is not what #1108 ruled on.
   //
@@ -1536,7 +1398,7 @@ function buildEvidenceZip(
   // responder/intermediate certs, and a chain repeated per token is noise a
   // verifier has to wade through (#579).
   const timestampTokenCertPems = new Set<string>()
-  for (const entry of timestampEntries) {
+  for (const entry of caseEntries.filter(isTimestampEntry)) {
     if (typeof entry.tsaToken !== 'string') continue
     const token = Buffer.from(entry.tsaToken, 'base64')
     try {
@@ -1545,17 +1407,7 @@ function buildEvidenceZip(
       }
     } catch {
       // A malformed token contributes no certificate material to the TSA chain
-      // bundle, and the admission rule below keeps it out of the package too.
-    }
-    // The same rule the paths were built under, applied per entry so the bytes
-    // enclosed for a content hash are the bytes of the entry that satisfied it:
-    // where a hash carries a rejected token as well as an accepted one, the
-    // first entry naming that hash is not necessarily the accepted one.
-    if (!stampFor(entry, entry.captureContentHash)) continue
-    const path = timestampPathsByHash.get(entry.captureContentHash)
-    if (path && !emittedTokenPaths.has(path)) {
-      add(path, token)
-      emittedTokenPaths.add(path)
+      // bundle, and the contents decision keeps it out of the package too.
     }
   }
 
@@ -1725,6 +1577,7 @@ function buildEvidenceZip(
       packagedTransactionRecordPath
     )
     const pdf = addContentAddressed(anchored('pdfHash', 'pdf'), packagedPdfPath)
+    const timestampToken = contents.ofCapture(capture.id).timestampTokenPath
 
     return {
       id,
@@ -1753,7 +1606,8 @@ function buildEvidenceZip(
       // differs from `capturedAt`. Surfaced labelled as corroboration; both
       // timestamps are present so a reviewer understands the interval.
       tlsCorroboration: capture.tlsCertChain ?? null,
-      timestampTokenPaths: packagedTimestampTokenPaths(timestampPathsByHash, capture.hash)
+      // evidence.json keeps this as a list; an Exhibit has at most one token path.
+      timestampTokenPaths: timestampToken ? [timestampToken] : []
     }
   })
 
@@ -1762,18 +1616,14 @@ function buildEvidenceZip(
   // with its Derived Files beside it. The paths come from the same helpers the
   // standalone verifier derives them with, so a file this writes is a file the
   // verifier looks for.
-  const exhibitsMissingContent: string[] = []
-  const exhibitEvidence = data.fileExhibits.map((exhibit) => {
-    if (exhibit.packagedPath && exhibit.storedPath) {
-      add(exhibit.packagedPath, reader.bytesFor(exhibit.storedPath))
-    } else {
-      exhibitsMissingContent.push(exhibit.id)
-    }
-    return {
-      ...describeExhibit(exhibit, exhibit.packagedPath !== null),
-      derivedFiles: addDerivedFiles(exhibit.derivedFiles, add, reader)
-    }
-  })
+  for (const file of contents.fileExhibitFiles) add(file.path, file.bytes)
+  const exhibitsMissingContent = data.fileExhibits
+    .filter(({ packagedPath }) => !packagedPath)
+    .map(({ id }) => id)
+  const exhibitEvidence = data.fileExhibits.map((exhibit) => ({
+    ...describeExhibit(exhibit, exhibit.packagedPath !== null),
+    derivedFiles: derivedFileRows(exhibit.derivedFiles)
+  }))
 
   // A Capture is an Exhibit too (X35), so it appears in the same list — the
   // index a reader consults to see what the package holds is one list over
@@ -1786,6 +1636,7 @@ function buildEvidenceZip(
     // Capture that predates it.
     const number = data.exhibitNumberByCaptureId.get(capture.id) ?? 0
     const id = chainIdOf(capture.id)
+    addEnclosedDerivedFiles(contents.ofCapture(capture.id).derivedFiles, add)
     return {
       id,
       kind: 'capture',
@@ -1794,7 +1645,7 @@ function buildEvidenceZip(
       name: capture.title,
       contentHash: capture.hash,
       path: capturesMissingContent.includes(capture.id) ? null : capturePagePath(id),
-      derivedFiles: addDerivedFiles(derived, add, reader)
+      derivedFiles: derivedFileRows(derived)
     }
   })
 
@@ -1919,7 +1770,7 @@ function buildWorkingCopyZip(
   caseId: string,
   data: ExportData,
   meta: PackageMeta,
-  reader: PackageReader,
+  contents: PackageContents,
   includePageArchives: boolean
 ): EvidenceZipResult {
   const { entries, artifacts, add } = createArtifactAccumulator()
@@ -1946,6 +1797,7 @@ function buildWorkingCopyZip(
       add(screenshotPath, Buffer.from(screenshotBase64, 'base64'))
     }
 
+    addEnclosedDerivedFiles(contents.ofCapture(capture.id).derivedFiles, add)
     return {
       id,
       title: capture.title,
@@ -1953,7 +1805,7 @@ function buildWorkingCopyZip(
       capturedAt: capture.timestamp,
       pagePath: mhtml ? pagePath : null,
       screenshotPath,
-      derivedFiles: addDerivedFiles(data.derivedFilesByCaptureId.get(capture.id) ?? [], add, reader)
+      derivedFiles: derivedFileRows(data.derivedFilesByCaptureId.get(capture.id) ?? [])
     }
   })
 
@@ -1963,21 +1815,17 @@ function buildWorkingCopyZip(
   // package verifiable — no manifest, no signed entry, no certification — so
   // the class split is untouched: this is the operator's working set of the
   // Case's files, not a second evidentiary object.
-  const exhibitIndex = data.fileExhibits.map((exhibit) => {
-    if (exhibit.packagedPath && exhibit.storedPath) {
-      add(exhibit.packagedPath, reader.bytesFor(exhibit.storedPath))
-    }
-    return {
-      id: exhibit.id,
-      kind: exhibit.kind,
-      origin: exhibit.origin,
-      exhibitNumber: exhibit.exhibitNumber,
-      name: exhibit.name,
-      committedAt: exhibit.committedAt,
-      path: exhibit.packagedPath,
-      derivedFiles: addDerivedFiles(exhibit.derivedFiles, add, reader)
-    }
-  })
+  for (const file of contents.fileExhibitFiles) add(file.path, file.bytes)
+  const exhibitIndex = data.fileExhibits.map((exhibit) => ({
+    id: exhibit.id,
+    kind: exhibit.kind,
+    origin: exhibit.origin,
+    exhibitNumber: exhibit.exhibitNumber,
+    name: exhibit.name,
+    committedAt: exhibit.committedAt,
+    path: exhibit.packagedPath,
+    derivedFiles: derivedFileRows(exhibit.derivedFiles)
+  }))
 
   if (meta.notes !== null) {
     add(
@@ -2138,37 +1986,6 @@ export function buildNotesMarkdown(
 }
 
 /**
- * Maps an Exhibit content hash to the single timestamp-token path the package
- * uses for it. Exhibits that share a content hash share one token file, named
- * after the first such Exhibit — so a per-Exhibit path would be wrong for the
- * rest. Defined once here and consumed by both the packager and the report, so
- * the file the zip writes and the path the documents cite are one decision.
- *
- * That agreement was only ever packager-versus-report. Admission is now the
- * resolver's own verdict too (#1108): an entry contributes a path only where
- * `stampFor` — the function the trusted-time axis is resolved with — accepts
- * it, which it does not for a token that fails to parse or whose message
- * imprint attests other content. Before this, such a token was enclosed and
- * cited beside an exhibit the same documents called unstamped.
- */
-function buildTimestampTokenPaths(
-  subjects: TokenSubject[],
-  timestampEntries: ManifestTimestampEntry[]
-): Map<string, string> {
-  const byHash = new Map<string, string>()
-  for (const entry of timestampEntries) {
-    if (!stampFor(entry, entry.captureContentHash)) continue
-    for (const subject of subjects) {
-      if (subject.contentHash !== entry.captureContentHash) continue
-      if (byHash.has(subject.contentHash)) break
-      byHash.set(subject.contentHash, timestampTokenPath(subject.id))
-      break
-    }
-  }
-  return byHash
-}
-
-/**
  * What the package will actually contain for each capture. Paths are derived
  * from the same manifest snapshot and the same filesystem the packager reads,
  * so the report cannot cite a file that was never written; a non-package export
@@ -2181,7 +1998,7 @@ function buildTimestampTokenPaths(
 function buildPackagedPaths(
   data: ExportData,
   options: ExportOptions,
-  tokenPaths: Map<string, string>,
+  contents: PackageContents,
   screenshotDigests: Map<string, string>,
   annotatedCaptureIds: Set<string>
 ): Map<string, PackagedArtifacts> {
@@ -2189,10 +2006,10 @@ function buildPackagedPaths(
   const isPackage = options.format === 'zip'
 
   for (const capture of data.captures) {
-    // The CAPTURE path, which `createPackageReader` deliberately does not
-    // cover: `existsSync` here, and a separate `readArtifact` in the zip
-    // builders. It predates #1156 and stays as it was, so an archive that can
-    // be large is not held in memory from classification to assembly.
+    // The CAPTURE path, which the contents decision does not cover yet:
+    // `existsSync` here, and a separate `readArtifact` in the zip builders. It
+    // predates #1156 and stays as it was, so an archive that can be large is
+    // not held in memory from classification to assembly.
     //
     // A Capture artifact that is present but unreadable when the export
     // classifies it fails the whole export with that error and writes no
@@ -2200,16 +2017,16 @@ function buildPackagedPaths(
     // unreadable). An artifact that disappears between classification and
     // assembly is the pre-existing Capture path: the package is written with
     // the report naming a file the zip lacks, and both verifiers FAIL it on
-    // the missing artifact (evidencePackage.ts:505). The reader closes that
-    // window for non-Capture Exhibits and Derived Files only; closing it for
-    // Captures is the follow-up named in the findings list.
+    // the missing artifact (evidencePackage.ts:505). The contents decision
+    // closes that window for non-Capture Exhibits and Derived Files only; a
+    // Capture's own files are not covered yet.
     const { abs } = defaultCaptureStore.artifactPaths(capture.caseId, capture.id, 'mhtml')
     const screenshotDigest = screenshotDigests.get(capture.id)
     const pageArchive = capturePagePath(data.chainIdByCaptureId.get(capture.id) ?? capture.id)
     paths.set(capture.id, {
       pageArchive: isPackage && existsSync(abs) ? pageArchive : null,
       screenshot: isPackage && screenshotDigest ? packagedScreenshotPath(screenshotDigest) : null,
-      timestampToken: tokenPaths.get(capture.hash) ?? null,
+      timestampToken: contents.ofCapture(capture.id).timestampTokenPath,
       // Recorded regardless of format: the exhibit reproduces the image either
       // way, so it must be able to label it with the digest of what it shows.
       screenshotDigest: screenshotDigest ?? null,

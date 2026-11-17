@@ -320,8 +320,8 @@
     ]
   },
   "report-html": {
-    "sha256": "a5b1c439032abb8475986f59521614771c947976a25bec34f4129935e4778f08",
-    "bytes": 56870
+    "sha256": "bcfb407a2c1c2bf95e445c97a12110482cf466898e48ef9a2f49410272702966",
+    "bytes": 56837
   },
   "shared-case-exclude": {
     "zipSha256": "1dd06281e4bd6d3af4b1f28a2bc407507aa369126e133d5fc96c5bd1ca194be7",

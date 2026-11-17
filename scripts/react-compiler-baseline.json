@@ -25,7 +25,6 @@
   "src/renderer/components/signals/SignalDetailRail.tsx",
   "src/renderer/components/signals/SignalsOverview.tsx",
   "src/renderer/components/status/CaptureHealth.tsx",
-  "src/renderer/components/status/SessionControls.tsx",
   "src/renderer/hooks/useSessionRestore.ts",
   "src/renderer/hooks/useTheater.ts",
   "src/renderer/hooks/useTheme.ts"

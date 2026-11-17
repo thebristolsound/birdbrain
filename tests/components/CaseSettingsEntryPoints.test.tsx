@@ -40,7 +40,6 @@ vi.mock('@renderer/hooks/useSearch', () => ({
     clear: vi.fn()
   })
 }))
-vi.mock('@renderer/components/status/SessionControls', () => ({ SessionControls: () => null }))
 vi.mock('@renderer/components/status/StatusGroup', () => ({ StatusGroup: () => null }))
 
 import { Sidebar } from '@renderer/components/layout/Sidebar'

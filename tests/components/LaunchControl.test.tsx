@@ -30,6 +30,7 @@ vi.mock('@renderer/components/captures/PasteUrlsDialog', () => ({
 import { LaunchControl } from '@renderer/components/status/LaunchControl'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { useAppStore } from '@renderer/stores/appStore'
+import { settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { stubResizeObserver } from './resizeObserverStub'
 import { isDisabledItem, press } from './menuKeys'
@@ -49,12 +50,19 @@ const NOTICE: LaunchedBrowserStatus = {
   notice: { code: 'EGRESS_CHANGED', message: 'The Egress changed while the browser was open.' }
 }
 
+const CASES = [
+  { id: 'case-1', name: 'Ferry Line' },
+  { id: 'case-2', name: 'Harbor Desk' }
+]
+
 interface Setup {
   caseId?: string | null
   showOpenCase?: boolean
   status?: LaunchedBrowserStatus
   egress?: EgressSetting
   vpnSeen?: boolean
+  /** Whether main asks for the VPN warning before a session starts. */
+  warn?: boolean
 }
 
 function setup({
@@ -62,16 +70,41 @@ function setup({
   showOpenCase = false,
   status = { state: 'none' },
   egress = { kind: 'direct' },
-  vpnSeen = false
+  vpnSeen = false,
+  warn = false
 }: Setup = {}) {
   let current = status
+  const calls: string[] = []
+  const snapshot = (sessionActive: boolean) => ({ sessionActive, activeCaseId: caseId })
+  const session = {
+    activateCase: vi.fn(async (id: string) => {
+      calls.push(`activate ${id}`)
+      return snapshot(false)
+    }),
+    start: vi.fn(async () => {
+      calls.push('start')
+      return snapshot(true)
+    }),
+    stop: vi.fn(async () => {
+      calls.push('stop')
+      return snapshot(false)
+    })
+  }
+  const checkVpnWarning = vi.fn(async () => ({ caseId, warn, canMute: true }))
   fakeBridge({
     launchedBrowser: { status: vi.fn(async () => current) },
     settings: { get: vi.fn(async () => ({ egress })) },
-    egress: { vpnStatus: vi.fn(async () => ({ vpnSeen })) }
+    cases: { list: vi.fn(async () => CASES) },
+    session,
+    egress: {
+      vpnStatus: vi.fn(async () => ({ vpnSeen })),
+      checkVpnWarning,
+      answerVpnWarning: vi.fn(async () => undefined)
+    }
   })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   client.setQueryData(queryKeys.launchedBrowserStatus, status)
+  client.setQueryData(queryKeys.cases, CASES)
   const view = render(
     <QueryClientProvider client={client}>
       <LaunchControl caseId={caseId} showOpenCase={showOpenCase} />
@@ -83,7 +116,7 @@ function setup({
       client.setQueryData(queryKeys.launchedBrowserStatus, next)
     })
   }
-  return { client, setStatus, ...view }
+  return { client, setStatus, session, calls, checkVpnWarning, ...view }
 }
 
 function launchButton(): HTMLElement {
@@ -102,11 +135,14 @@ beforeEach(() => {
   useAppStore.setState({
     sessionActive: false,
     connectedToExtension: false,
+    activeCaseId: null,
+    stopConfirmOpen: false,
     startDialogCaseId: null,
     startDialogPicking: false,
     captureSessionPanelHidden: false,
     dismissedLaunchNotice: null
   })
+  useVpnWarningStore.setState({ open: false, request: null, settle: null })
 })
 
 afterEach(cleanup)
@@ -175,7 +211,7 @@ describe('the capture control at rest', () => {
 })
 
 describe("the capture control's menu", () => {
-  it('holds Launch browser, Paste URLs and the way to a proxy, in that order', async () => {
+  it('holds Launch browser, Paste URLs, the session start and the way to a proxy, in that order', async () => {
     setup()
     const menu = openMenu()
     // The proxy item joins once the VPN check has answered.
@@ -184,7 +220,12 @@ describe("the capture control's menu", () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((item) => item.dataset.testid)
-    ).toEqual(['launch-control-launch', 'launch-control-paste', 'launch-control-proxy'])
+    ).toEqual([
+      'launch-control-launch',
+      'launch-control-paste',
+      'launch-control-start-session',
+      'launch-control-proxy'
+    ])
     expect(menu.getAttribute('aria-label')).toBe('Capture')
   })
 
@@ -375,6 +416,8 @@ describe("the capture control while a launched browser's session runs", () => {
     expect(useAppStore.getState().captureSessionPanelHidden).toBe(true)
     // The read made at mount has to land first, or it would put the open browser back.
     await waitFor(() => expect(client.isFetching()).toBe(0))
+    // The session ends with its browser. One still running would leave the extension's mark.
+    act(() => useAppStore.setState({ sessionActive: false }))
     setStatus({ state: 'none' })
     await waitFor(() => expect(screen.queryByTestId('topbar-capture-session')).toBeNull())
     await waitFor(() => expect(useAppStore.getState().captureSessionPanelHidden).toBe(false))
@@ -428,16 +471,238 @@ describe("the capture control while a launched browser's session runs", () => {
   })
 })
 
-describe("the capture control during the extension's session", () => {
-  // The extension's session has no panel, so there is nothing for its mark to open, and a
-  // browser can still be launched to join it.
-  it('shows the mark as plain text beside Launch browser', () => {
-    useAppStore.setState({ sessionActive: true, connectedToExtension: true })
+// Decision 7 of the consolidation plan, answer 2: the extension's Capture Session starts from
+// this menu and stops from the mark's, now that the row under the top bar is gone.
+describe("starting the extension's session from the menu", () => {
+  function startItem(): HTMLElement {
+    return within(openMenu()).getByTestId('launch-control-start-session')
+  }
+
+  it('names Chrome and says the session uses the extension', () => {
+    useAppStore.setState({ connectedToExtension: true })
     setup()
-    const mark = screen.getByTestId('topbar-rec')
-    expect(mark.textContent).toBe('Recordingextension')
-    expect(mark.closest('button')).toBeNull()
-    expect(screen.queryByTestId('topbar-capture-session')).toBeNull()
+    const item = startItem()
+    expect(item.textContent).toBe('Start Capture Session in ChromeUses the extension.')
+    expect(isDisabledItem(item)).toBe(false)
+    expect(item.getAttribute('title')).toBeNull()
+  })
+
+  it('holds the start while the extension is not connected, and says why', () => {
+    const { session, checkVpnWarning } = setup()
+    const item = startItem()
+    expect(isDisabledItem(item)).toBe(true)
+    expect(item.getAttribute('title')).toBe('The extension is not connected')
+    fireEvent.click(item)
+    expect(checkVpnWarning).not.toHaveBeenCalled()
+    expect(session.start).not.toHaveBeenCalled()
+  })
+
+  // Main refuses a start with no Active Case, and only a Case screen gives one to activate.
+  it('holds the start where no Case is on screen, and says why', () => {
+    useAppStore.setState({ connectedToExtension: true })
+    const { session } = setup({ caseId: null })
+    const item = startItem()
+    expect(isDisabledItem(item)).toBe(true)
+    expect(item.getAttribute('title')).toBe('Open a Case first')
+    fireEvent.click(item)
+    expect(session.start).not.toHaveBeenCalled()
+  })
+
+  it('activates the Case on screen, then starts, and becomes the recording mark', async () => {
+    useAppStore.setState({ connectedToExtension: true })
+    const { calls } = setup()
+    fireEvent.click(startItem())
+    await waitFor(() => expect(useAppStore.getState().sessionActive).toBe(true))
+    expect(calls).toEqual(['activate case-1', 'start'])
+    expect(useVpnWarningStore.getState().open).toBe(false)
+    const mark = await screen.findByTestId('topbar-capture-session')
+    expect(within(mark).getByTestId('topbar-rec').textContent).toBe('Recordingextension▾')
+    expect(screen.queryByRole('button', { name: /^Launch browser/ })).toBeNull()
+  })
+
+  // A session's Captures contact sites, so its start passes the VPN warning (ADR-0032 rule 3).
+  it('warns before the session starts, as a session warning, and starts once continued', async () => {
+    useAppStore.setState({ connectedToExtension: true })
+    const { session, checkVpnWarning, calls } = setup({ warn: true })
+    fireEvent.click(startItem())
+    await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
+    expect(useVpnWarningStore.getState().request?.occasion).toBe('session')
+    // Main keeps the session warning apart from a site warning already given in the Case.
+    expect(checkVpnWarning).toHaveBeenCalledWith({ caseId: 'case-1' }, 'session')
+    expect(session.activateCase).not.toHaveBeenCalled()
+    expect(session.start).not.toHaveBeenCalled()
+
+    settleVpnWarning('continue')
+    await waitFor(() => expect(useAppStore.getState().sessionActive).toBe(true))
+    expect(calls).toEqual(['activate case-1', 'start'])
+  })
+
+  it('starts nothing when the Operator stops at the warning, and offers the start again', async () => {
+    useAppStore.setState({ connectedToExtension: true })
+    const { session } = setup({ warn: true })
+    fireEvent.click(startItem())
+    await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
+    settleVpnWarning('dismiss')
+    await waitFor(() => expect(isDisabledItem(startItem())).toBe(false))
+    expect(session.activateCase).not.toHaveBeenCalled()
+    expect(session.start).not.toHaveBeenCalled()
+    expect(useAppStore.getState().sessionActive).toBe(false)
     expect(launchButton()).toBeTruthy()
+  })
+
+  // The buttons the start replaces held focus, so it moves to the mark, not to the page.
+  it('moves focus to the recording mark once the session starts', async () => {
+    useAppStore.setState({ connectedToExtension: true })
+    setup()
+    const trigger = screen.getByRole('button', { name: 'More ways to capture' })
+    trigger.focus()
+    await press('Enter')
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByTestId('launch-control-launch'))
+    )
+    await press('ArrowDown', screen.getByTestId('launch-control-paste'))
+    await press('ArrowDown', screen.getByTestId('launch-control-start-session'))
+    await press('Enter')
+    const mark = await screen.findByTestId('topbar-capture-session')
+    await waitFor(() => expect(document.activeElement).toBe(mark))
+  })
+})
+
+describe("the capture control during the extension's session", () => {
+  function recording(overrides: Setup = {}) {
+    useAppStore.setState({ sessionActive: true, connectedToExtension: true })
+    return setup(overrides)
+  }
+
+  function openMarkMenu(): HTMLElement {
+    fireEvent.click(screen.getByTestId('topbar-capture-session'))
+    return screen.getByRole('menu')
+  }
+
+  // The extension's session has no panel, so its mark opens the capture menu.
+  it('is the recording mark, with no Launch browser button beside it', () => {
+    recording()
+    const mark = screen.getByTestId('topbar-capture-session')
+    expect(within(mark).getByTestId('topbar-rec').textContent).toBe('Recordingextension▾')
+    expect(mark.getAttribute('aria-haspopup')).toBe('menu')
+    expect(screen.getByRole('button', { name: /^Capture Session, ?Recording ?extension$/ })).toBe(
+      mark
+    )
+    expect(screen.queryByRole('button', { name: /^Launch browser/ })).toBeNull()
+    expect(screen.getAllByTestId('topbar-rec')).toHaveLength(1)
+  })
+
+  // A browser can still be launched to join the session, so the menu keeps its other items.
+  it('opens the capture menu with Stop first and no second start', async () => {
+    recording()
+    const menu = openMarkMenu()
+    await within(menu).findByTestId('launch-control-proxy')
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.dataset.testid)
+    ).toEqual([
+      'launch-control-stop',
+      'launch-control-launch',
+      'launch-control-paste',
+      'launch-control-proxy'
+    ])
+    expect(within(menu).getByTestId('launch-control-stop').textContent).toBe('Stop Capture Session')
+  })
+
+  it('opens on Stop from the keyboard', async () => {
+    recording()
+    screen.getByTestId('topbar-capture-session').focus()
+    await press('Enter')
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByTestId('launch-control-stop'))
+    )
+  })
+
+  it('stops the session at once, with no confirmation, and returns to Launch browser', async () => {
+    const { session } = recording()
+    fireEvent.click(within(openMarkMenu()).getByTestId('launch-control-stop'))
+    await waitFor(() => expect(session.stop).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(useAppStore.getState().sessionActive).toBe(false))
+    expect(useAppStore.getState().stopConfirmOpen).toBe(false)
+    const launch = launchButton()
+    expect(screen.queryByTestId('topbar-capture-session')).toBeNull()
+    // The mark that held focus is gone, so focus moves to the button in its place.
+    await waitFor(() => expect(document.activeElement).toBe(launch))
+  })
+
+  // Off a Case screen a running session still has to be stoppable; only a start needs a Case.
+  it('leaves the session stoppable where no Case is on screen', async () => {
+    const { session } = recording({ caseId: null })
+    fireEvent.click(within(openMarkMenu()).getByTestId('launch-control-stop'))
+    await waitFor(() => expect(session.stop).toHaveBeenCalledTimes(1))
+  })
+
+  it('leaves the session stoppable after the extension disconnects', async () => {
+    useAppStore.setState({ sessionActive: true, connectedToExtension: false })
+    const { session } = setup()
+    expect(screen.getByTestId('topbar-rec').textContent).toBe('Recording▾')
+    fireEvent.click(within(openMarkMenu()).getByTestId('launch-control-stop'))
+    await waitFor(() => expect(session.stop).toHaveBeenCalledTimes(1))
+  })
+
+  it('keeps the session recording when the stop fails', async () => {
+    const failed = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { session } = recording()
+    session.stop.mockRejectedValueOnce(new Error('main refused'))
+    fireEvent.click(within(openMarkMenu()).getByTestId('launch-control-stop'))
+    await waitFor(() => expect(failed).toHaveBeenCalled())
+    expect(useAppStore.getState().sessionActive).toBe(true)
+    expect(screen.getByTestId('topbar-capture-session')).toBeTruthy()
+    failed.mockRestore()
+  })
+})
+
+// Decision 7, answer 10: the breadcrumb names the Case on screen, and the mark names the Case
+// that Captures go into when it is another.
+describe('the Case the session records into', () => {
+  it("names the extension's Active Case when it is not the Case on screen", () => {
+    useAppStore.setState({
+      sessionActive: true,
+      connectedToExtension: true,
+      activeCaseId: 'case-2'
+    })
+    setup()
+    const into = screen.getByTestId('rec-into')
+    expect(into.textContent).toBe('into Harbor Desk')
+    expect(into.getAttribute('title')).toBe('into Harbor Desk')
+    expect(screen.getByTestId('topbar-rec').textContent).toBe('Recordingextensioninto Harbor Desk▾')
+  })
+
+  // A launched browser pins the Case it started in, so opening another Case to read it does not
+  // move where Captures go.
+  it("names a launched browser's Active Case when it is not the Case on screen", () => {
+    useAppStore.setState({ sessionActive: true, activeCaseId: 'case-2' })
+    setup({ status: { state: 'open', browser: { ...BROWSER, caseId: 'case-2' } } })
+    expect(screen.getByTestId('rec-into').textContent).toBe('into Harbor Desk')
+  })
+
+  it.each([
+    ['the Case on screen', 'case-1', 'case-1'],
+    ['no Case yet', 'case-1', null]
+  ] satisfies Array<[string, string, string | null]>)(
+    'names no Case while the session records into %s',
+    (_, caseId, activeCaseId) => {
+      useAppStore.setState({ sessionActive: true, connectedToExtension: true, activeCaseId })
+      setup({ caseId })
+      expect(screen.getByTestId('topbar-rec')).toBeTruthy()
+      expect(screen.queryByTestId('rec-into')).toBeNull()
+    }
+  )
+
+  // The dashboard and Settings name no Case in the breadcrumb, so there is nothing to tell apart.
+  it('names no Case where no Case is on screen', () => {
+    useAppStore.setState({
+      sessionActive: true,
+      connectedToExtension: true,
+      activeCaseId: 'case-2'
+    })
+    setup({ caseId: null })
+    expect(screen.queryByTestId('rec-into')).toBeNull()
   })
 })

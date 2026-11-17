@@ -30,7 +30,7 @@ export function useCaptureSessionRailDocked(): boolean {
 }
 
 // Where the Capture Session panel sits on a Case screen (`1f`, `2a`): a 320-pixel rail at the right
-// edge under the Case action bar where the screen keeps its minimums beside it, else a 40-pixel
+// edge under the top bar where the screen keeps its minimums beside it, else a 40-pixel
 // strip whose expand control opens the panel as an overlay over the screen, with no reflow. The
 // row is measured as a whole, so docking the rail does not change the width that decides it.
 // While the panel is popped out the strip stands in at any width (`1g`). The top bar's recording

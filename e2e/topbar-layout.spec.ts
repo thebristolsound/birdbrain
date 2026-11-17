@@ -7,9 +7,9 @@ type Page = import('@playwright/test').Page
 // The top-bar search used to sit at the window's centre on its own layer, so on
 // a window about 1400px wide it covered the Capture Session switch and the REC
 // indicator. It now takes its place between the two side groups. On a Case the top bar's right
-// side carries Launch browser before the status group; Share and Export are items of the Case
-// menu on the Case name, Settings is in the rail, and the recording mark and the switch live in
-// the Case action bar under it.
+// side carries the status group, then the capture control: Launch browser at rest, the recording
+// mark while a Capture Session records. Share and Export are items of the Case menu on the Case
+// name, Settings is in the rail, and no row sits under the bar.
 
 const NAMES = ['Kestrel', 'Operation Kestrel Harbour Review of subject accounts and linked domains']
 
@@ -26,6 +26,18 @@ async function createCase(page: Page, name: string): Promise<string> {
   await page.click('[data-testid="case-create-btn"]')
   await page.waitForURL(/#\/cases\/.+\/overview/, { timeout: 10000 })
   return page.url().match(/cases\/([^/]+)/)![1]
+}
+
+// One row of chrome: the Case screen starts where the top bar ends and runs to the window's
+// foot, so no row sits between the two.
+async function expectOneRowOfChrome(page: Page): Promise<void> {
+  const bar = page.getByTestId('topbar-controls').locator('xpath=ancestor::header')
+  const screen = page.getByTestId('case-workspace').locator(':scope > *').first()
+  const barBox = (await bar.boundingBox())!
+  const screenBox = (await screen.boundingBox())!
+  const windowHeight = await page.evaluate(() => window.innerHeight)
+  expect(Math.abs(screenBox.y - (barBox.y + barBox.height))).toBeLessThanOrEqual(1)
+  expect(Math.abs(screenBox.y + screenBox.height - windowHeight)).toBeLessThanOrEqual(1)
 }
 
 test.describe('Top bar layout', () => {
@@ -46,13 +58,17 @@ test.describe('Top bar layout', () => {
     const input = page.getByTestId('global-search-input')
     const caseName = page.getByTestId('topbar-case-name')
     const controls = page.getByTestId('topbar-controls')
-    const actionBar = page.getByTestId('case-action-bar')
+    const mark = controls.getByTestId('topbar-capture-session')
 
     for (const name of NAMES) {
       const caseId = await createCase(page, name)
 
-      // Stand in for a connected extension and a running session: the switch only
-      // renders with an extension attached, and the recording mark only while recording.
+      // At rest the capture control is Launch browser and its menu.
+      await expect(controls.getByRole('button', { name: 'Launch browser' })).toBeVisible()
+      await expect(controls.getByRole('button', { name: 'More ways to capture' })).toBeVisible()
+      await expect(mark).toHaveCount(0)
+
+      // Stand in for a connected extension and a running session, which the mark needs.
       // The app's own session update can land after the stand-in one, so send it until it holds.
       await expect(async () => {
         await electronApp.evaluate(({ BrowserWindow }, id) => {
@@ -60,21 +76,22 @@ test.describe('Top bar layout', () => {
           webContents.send('event:extensionConnection', { connected: true })
           webContents.send('event:sessionStateChanged', { sessionActive: true, activeCaseId: id })
         }, caseId)
-        // The switch sits in the case action bar. The recording mark is the capture control's,
-        // in the top bar, beside Launch browser while only the extension records.
-        await expect(controls.getByTestId('topbar-rec')).toBeVisible({ timeout: 1000 })
+        await expect(mark.getByTestId('topbar-rec')).toBeVisible({ timeout: 1000 })
       }).toPass({ timeout: 10000 })
-      await expect(actionBar.getByRole('switch', { name: 'Capture Session' })).toBeVisible()
+      // The mark is the whole capture control while the extension records: it opens the menu
+      // that holds Stop, and there is no switch and no row under the bar to hold one.
+      await expect(mark.getByTestId('topbar-rec')).toContainText('extension')
+      await expect(controls.getByRole('button', { name: 'Launch browser' })).toHaveCount(0)
+      await expect(page.getByRole('switch')).toHaveCount(0)
+      await expectOneRowOfChrome(page)
       await expect(controls.getByRole('button', { name: /Export/ })).toHaveCount(0)
       await expect(page.getByTestId('share-pill')).toHaveCount(0)
-      await expect(controls.getByRole('button', { name: 'Launch browser' })).toBeVisible()
-      await expect(actionBar.getByTestId('case-action-bar-section')).toHaveText('Overview')
-      await expect(controls.getByRole('switch', { name: 'Capture Session' })).toHaveCount(0)
-      await expect(actionBar.getByRole('button', { name: /Export/ })).toHaveCount(0)
-      await expect(actionBar.getByRole('button', { name: 'Launch browser' })).toHaveCount(0)
-      await expect(actionBar.getByTestId('topbar-rec')).toHaveCount(0)
-      await expect(controls.getByRole('button', { name: 'More ways to capture' })).toBeVisible()
       await expect(controls.getByTestId('status-group')).toBeVisible()
+      await mark.click()
+      await expect(page.getByTestId('launch-control-stop')).toBeVisible()
+      await expect(page.getByTestId('launch-control-start-session')).toHaveCount(0)
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('menu')).toHaveCount(0)
       // The state the widths below are measured in: one failed Capture per Case created so far.
       await electronApp.evaluate(({ BrowserWindow }) => {
         BrowserWindow.getAllWindows()[0].webContents.send('event:captureActivity', {
@@ -114,16 +131,14 @@ test.describe('Top bar layout', () => {
             const box = await control.boundingBox()
             if (box) expect(overlapWidth(searchBox, box)).toBeLessThanOrEqual(0)
           }
-          // One line. The button's height is fixed, so count the lines its label is laid out on.
-          const labelLines = await controls
-            .getByRole('button', { name: 'Launch browser' })
-            .evaluate((el) => {
-              const range = document.createRange()
-              range.selectNodeContents(el)
-              return new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top)))
-                .size
+          // One line. The mark's height is fixed, so compare the tops of its parts.
+          const tops = await mark.getByTestId('topbar-rec').evaluate((el) =>
+            Array.from(el.children, (child) => {
+              const { top, height } = child.getBoundingClientRect()
+              return Math.round(top + height / 2)
             })
-          expect(labelLines).toBe(1)
+          )
+          expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1)
         }).toPass({ timeout: 5000 })
 
         // The case name's track keeps 160 pixels, and the name at least 64 of them, before the
@@ -180,6 +195,26 @@ test.describe('Top bar layout', () => {
         await page.getByLabel('Clear search').click()
         await expect(results).toHaveCount(0)
       }
+
+      // Back at rest for the next Case, and Launch browser's label is on one line at the
+      // narrowest width measured.
+      await electronApp.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0].webContents.send('event:sessionStateChanged', {
+          sessionActive: false,
+          activeCaseId: null
+        })
+      })
+      const launch = controls.getByRole('button', { name: 'Launch browser' })
+      await expect(launch).toBeVisible()
+      const labelLines = await launch.evaluate((el) => {
+        const range = document.createRange()
+        range.selectNodeContents(el)
+        return new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top))).size
+      })
+      expect(labelLines).toBe(1)
+      const launchBox = (await launch.boundingBox())!
+      expect(overlapWidth((await search.boundingBox())!, launchBox)).toBeLessThanOrEqual(0)
+      await electronApp.windows()[0].setViewportSize({ width: 1400, height: 800 })
     }
 
     // With the extension gone, and a window wide enough that both side groups fit in their
@@ -206,12 +241,12 @@ test.describe('Top bar layout', () => {
   })
 
   // With a launched browser and the extension both recording, the capture control in the top bar
-  // is the recording mark, and the action bar carries the label that names both sources. Launch
-  // browser and the Capture Session switch leave while the browser is open: the Capture Session
-  // panel names the browser and holds the one stop control.
+  // is the recording mark, which says the extension records too. Launch browser leaves while the
+  // browser is open: the Capture Session panel names the browser and holds the one stop control.
+  // The mark's third part, the Case that Captures go into when it is not the one on screen, needs
+  // a launched browser's pin: opening a Case activates it, which replaces a stand-in session.
   test('fits the Case controls while a launched browser records', async ({ electronApp, page }) => {
     const caseId = await createCase(page, NAMES[1])
-    const actionBar = page.getByTestId('case-action-bar')
     const controls = page.getByTestId('topbar-controls')
     const rail = page.getByTestId('capture-session-rail')
     // The app's own session update can land after the stand-in one, so each check sends the
@@ -240,30 +275,28 @@ test.describe('Top bar layout', () => {
         timeout: 1000
       })
       await expect(controls.getByTestId('topbar-rec')).not.toContainText('Google Chrome')
-      await expect(actionBar.getByTestId('topbar-rec')).toHaveCount(0)
       await expect(rail.or(page.getByTestId('capture-session-strip'))).toBeVisible({
         timeout: 1000
       })
       if (await rail.isVisible()) await expect(rail).toContainText('Launched Google Chrome')
-      // The label after the switch names both sources, and the row is measured with it.
-      await expect(actionBar.getByTestId('session-source-line')).toHaveText(
-        'Launched Google Chrome, and the extension',
-        { timeout: 1000 }
-      )
+      // The mark says the extension records too, and the bar is measured with it.
+      await expect(controls.getByTestId('rec-plus-extension')).toHaveText('+ extension', {
+        timeout: 1000
+      })
       await expect(controls.getByRole('button', { name: 'Launch browser' })).toHaveCount(0)
-      await expect(page.getByRole('switch', { name: 'Capture Session' })).toHaveCount(0)
+      await expect(page.getByRole('switch')).toHaveCount(0)
+      await expectOneRowOfChrome(page)
     }
-    const rows = [
-      [controls.getByTestId('status-group'), controls.getByTestId('topbar-capture-session')],
-      [actionBar.getByTestId('session-source-line')]
+    const row = [
+      page.getByTestId('global-search'),
+      controls.getByTestId('status-group'),
+      controls.getByTestId('topbar-capture-session')
     ]
 
     for (const width of [1440, 1280, 1100, 1024]) {
       await electronApp.windows()[0].setViewportSize({ width, height: 800 })
       await expect(async () => {
         await holdRecording()
-        const overflow = await actionBar.evaluate((el) => el.scrollWidth - el.clientWidth)
-        expect(overflow).toBeLessThanOrEqual(0)
         // The top bar's right group is never narrower than its content, so it cannot scroll;
         // each of its controls is held to the window's edge instead.
         for (const control of await controls.locator(':scope > *').all()) {
@@ -274,17 +307,14 @@ test.describe('Top bar layout', () => {
           () => document.documentElement.scrollWidth - window.innerWidth
         )
         expect(pageOverflow).toBeLessThanOrEqual(0)
-        // Left to right with no overlap: the status group and the mark in the top bar; the label
-        // in the action bar.
-        for (const row of rows) {
-          let edge = 0
-          for (const item of row) {
-            const { x, width: itemWidth } = (await item.boundingBox())!
-            expect(x).toBeGreaterThanOrEqual(edge)
-            edge = x + itemWidth
-          }
+        // Left to right with no overlap: the search, the status group and the mark.
+        let edge = 0
+        for (const item of row) {
+          const { x, width: itemWidth } = (await item.boundingBox())!
+          expect(x).toBeGreaterThanOrEqual(edge)
+          edge = x + itemWidth
         }
-        await expect(actionBar.getByTestId('session-source-line')).toBeInViewport({ ratio: 1 })
+        await expect(controls.getByTestId('rec-plus-extension')).toBeInViewport({ ratio: 1 })
       }).toPass({ timeout: 5000 })
     }
   })

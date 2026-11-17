@@ -257,13 +257,18 @@ test.describe('VPN warning', () => {
         connected: true
       })
     })
-    const session = page.getByTestId('case-action-bar').getByRole('switch', {
-      name: 'Capture Session'
-    })
-    await session.click()
+    await page.getByRole('button', { name: 'More ways to capture' }).click()
+    await page.getByTestId('launch-control-start-session').click()
     await expect(page.getByTestId('vpn-warning-session')).toBeVisible({ timeout: 10000 })
     await page.getByTestId('vpn-warning-continue').click()
-    await expect(session).toHaveAttribute('aria-checked', 'true', { timeout: 10000 })
+    // The capture control becomes the recording mark, whose menu holds Stop.
+    const mark = page.getByTestId('topbar-capture-session')
+    await expect(mark.getByTestId('topbar-rec')).toContainText('extension', { timeout: 10000 })
+    await mark.click()
+    await page.getByTestId('launch-control-stop').click()
+    await expect(page.getByRole('button', { name: 'Launch browser' })).toBeVisible({
+      timeout: 10000
+    })
   })
 
   test('does not warn while the Egress is a Proxy', async ({ page }) => {

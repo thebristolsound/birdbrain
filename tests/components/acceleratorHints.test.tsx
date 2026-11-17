@@ -28,7 +28,6 @@ vi.mock('@renderer/hooks/useSearch', () => ({
     clear: vi.fn()
   })
 }))
-vi.mock('@renderer/components/status/SessionControls', () => ({ SessionControls: () => null }))
 vi.mock('@renderer/components/status/StatusGroup', () => ({ StatusGroup: () => null }))
 
 import { TopBar } from '@renderer/components/layout/TopBar'

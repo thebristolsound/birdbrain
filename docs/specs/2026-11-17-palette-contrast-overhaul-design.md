@@ -77,8 +77,10 @@ The canvas file `palette.css` holds the full set, with the ratio of each in a co
    `--color-accent-fill` is the background of a filled control. One filled control per view.
 2. **Three status tiers differ by more than hue.**
    - Nominal: a dot in `--color-control`, words in muted text.
-   - Advisory: the dot, icon or bar in `--color-warning-mark`; words in secondary text, one step
-     brighter than nominal, never amber.
+   - Advisory: a hollow ring, an icon or a bar in `--color-warning-mark`; words in secondary text,
+     one step brighter than nominal, never amber. The maintainer ruled the ring on 2026-11-17: in
+     light the amber and the nominal grey are 1.02:1 apart in luminance, so a filled amber dot
+     would differ from nominal by hue alone.
    - Problem: words in `--color-danger-fg` with the triangle icon.
 
    `--color-success-fg` marks Verified only; Connected is nominal.
@@ -139,10 +141,6 @@ control borders 3.35:1 and 3.86:1.
 
 ## Open for the maintainer
 
-- **Filled dot or ring for advisory** (decision 2 of the consolidation plan). In light, the filled
-  amber dot and the nominal grey dot are 1.02:1 apart in luminance, so the pill separates them by
-  hue alone. Both judges said the ring would add about half a point to contrast and status, in both
-  passes. The ruling is unchanged by this proposal.
 - **The design system.** If accepted, the Birdbrain design system artifact needs the same values,
   so other mocks pick them up.
 - **The "Missing" integrity count.** It shares the nominal grey dot; a nonzero count needs its own

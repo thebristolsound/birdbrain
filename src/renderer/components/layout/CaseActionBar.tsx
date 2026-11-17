@@ -24,8 +24,9 @@ const SECTIONS = [
 export function CaseActionBar() {
   const matchRoute = useMatchRoute()
   const sessionActive = useAppStore((s) => s.sessionActive)
-  // The Capture Session panel names a launched browser, open or closed, so the mark beside it
-  // names a source only when the panel shows none: an extension-only session, or a notice.
+  // While a launched browser is open the mark's source is that browser, which the Capture
+  // Session panel names, so the mark leaves it out. In every other state the mark's source is
+  // the extension, when one is connected, and nothing else on the screen says so.
   const view = useCaptureSessionView()
   const section = SECTIONS.find(([to]) => matchRoute({ to, fuzzy: true }))?.[1] ?? null
 
@@ -44,7 +45,7 @@ export function CaseActionBar() {
       )}
       <div className="flex-1" />
 
-      {sessionActive && <RecordingMark showSource={!('browser' in view)} />}
+      {sessionActive && <RecordingMark showSource={view.kind !== 'open'} />}
       <SessionControls />
     </div>
   )

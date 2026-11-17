@@ -20,6 +20,14 @@ import {
   ChevronDown
 } from 'lucide-react'
 import type { Capture } from '@shared/types'
+import {
+  Menu,
+  MenuContent,
+  MenuItem,
+  MenuSeparator,
+  MenuShortcut,
+  MenuTrigger
+} from '@renderer/components/ui'
 import { MemberCodeChip } from '@renderer/components/sharing/MemberCodeChip'
 import {
   captureAttribution,
@@ -90,13 +98,10 @@ export function CaptureDetailsPanel({
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false)
   const tagAnchorRef = useRef<HTMLButtonElement>(null)
 
-  const [menuOpen, setMenuOpen] = useState(false)
   const [recaptureError, setRecaptureError] = useState<{
     captureId: string
     message: string
   } | null>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
-  const menuAnchorRef = useRef<HTMLButtonElement>(null)
 
   const [custodyOpen, setCustodyOpen] = useState(true)
 
@@ -118,25 +123,6 @@ export function CaptureDetailsPanel({
   useEffect(() => {
     setTagPopoverOpen(false)
   }, [capture.id])
-
-  useEffect(() => {
-    if (!menuOpen) return
-    function onDocClick(e: MouseEvent) {
-      const target = e.target as Node
-      if (menuRef.current?.contains(target)) return
-      if (menuAnchorRef.current?.contains(target)) return
-      setMenuOpen(false)
-    }
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') setMenuOpen(false)
-    }
-    document.addEventListener('mousedown', onDocClick)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('mousedown', onDocClick)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [menuOpen])
 
   const captureNotes = notes.filter((n) => n.captureId === capture.id)
   const noteCount = captureNotes.length
@@ -209,7 +195,6 @@ export function CaptureDetailsPanel({
   }
 
   function handleRecapture() {
-    setMenuOpen(false)
     setRecaptureError(null)
     enqueue.mutate(
       { urls: [capture.url], supersedesCaptureId: capture.id },
@@ -231,9 +216,6 @@ export function CaptureDetailsPanel({
       }
     )
   }
-
-  const menuItemClass =
-    'flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary hover:bg-elevated disabled:opacity-50'
 
   return (
     <motion.div
@@ -276,122 +258,67 @@ export function CaptureDetailsPanel({
             </span>
           </span>
           <div className="ml-auto flex items-center gap-0.5">
-            <div className="relative">
-              <button
-                ref={menuAnchorRef}
-                onClick={() => setMenuOpen((v) => !v)}
+            <Menu>
+              <MenuTrigger
                 title="Capture actions"
-                aria-haspopup="menu"
-                aria-expanded={menuOpen}
+                aria-label="Capture actions"
                 data-testid="capture-details-actions-btn"
                 className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-elevated hover:text-text-secondary"
               >
                 <MoreHorizontal className="h-3.5 w-3.5" />
-              </button>
-              {menuOpen && (
-                <div
-                  ref={menuRef}
-                  role="menu"
-                  className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg border border-border-strong bg-card py-1 shadow-xl"
+              </MenuTrigger>
+              <MenuContent>
+                <MenuItem
+                  data-testid="capture-details-star-btn"
+                  onSelect={() => toggleFavorite(capture.id)}
                 >
-                  <button
-                    role="menuitem"
-                    data-testid="capture-details-star-btn"
-                    onClick={() => {
-                      toggleFavorite(capture.id)
-                      setMenuOpen(false)
-                    }}
-                    className={menuItemClass}
-                  >
-                    <Star
-                      className={`h-3.5 w-3.5 shrink-0 ${
-                        isFavorite ? 'fill-amber-400 text-amber-600' : 'text-text-muted'
-                      }`}
-                    />
-                    {isFavorite ? 'Unstar' : 'Star'}
-                  </button>
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      setMenuOpen(false)
-                      onOpenExternal()
-                    }}
-                    className={menuItemClass}
-                  >
-                    <ExternalLink className="h-3.5 w-3.5 shrink-0 text-text-muted" />
-                    Open URL
-                  </button>
-                  <button
-                    role="menuitem"
-                    data-testid="capture-details-copy-url-btn"
-                    onClick={() => {
-                      setMenuOpen(false)
-                      onCopyUrl()
-                    }}
-                    className={menuItemClass}
-                  >
-                    <Copy className="h-3.5 w-3.5 shrink-0 text-text-muted" />
-                    Copy URL
-                    <span className="ml-auto text-[10px] text-text-faint">{accelerator('C')}</span>
-                  </button>
-                  <button
-                    role="menuitem"
-                    data-testid="capture-details-copy-hash-btn"
-                    onClick={() => {
-                      setMenuOpen(false)
-                      onCopyHash()
-                    }}
-                    className={menuItemClass}
-                  >
-                    <Hash className="h-3.5 w-3.5 shrink-0 text-text-muted" />
-                    Copy SHA-256
-                  </button>
-                  <button
-                    role="menuitem"
-                    data-testid="capture-details-recapture-btn"
-                    disabled={enqueue.isPending || isRecapturing}
-                    onClick={handleRecapture}
-                    className={menuItemClass}
-                  >
-                    <RefreshCcw
-                      className={`h-3.5 w-3.5 shrink-0 text-text-muted ${
-                        isRecapturing ? 'animate-spin' : ''
-                      }`}
-                    />
-                    {isRecapturing ? 'Recapturing…' : 'Recapture current page'}
-                  </button>
-                  <button
-                    role="menuitem"
-                    data-testid="capture-details-duplicate-btn"
-                    disabled={isDuplicating}
-                    onClick={() => {
-                      setMenuOpen(false)
-                      onDuplicate()
-                    }}
-                    className={menuItemClass}
-                  >
-                    <CopyPlus className="h-3.5 w-3.5 shrink-0 text-text-muted" />
-                    {isDuplicating ? 'Duplicating…' : 'Duplicate'}
-                  </button>
-                  <div className="my-1 border-t border-border" />
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      setMenuOpen(false)
-                      // The item unmounts with the menu, so the confirm dialog
-                      // would record a detached opener and have nowhere to hand
-                      // focus back to. The menu's own trigger is where it goes.
-                      menuAnchorRef.current?.focus()
-                      onDelete()
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-danger-fg hover:bg-elevated"
-                  >
-                    <Trash2 className="h-3.5 w-3.5 shrink-0" />
-                    Delete capture
-                  </button>
-                </div>
-              )}
-            </div>
+                  <Star
+                    className={`h-3.5 w-3.5 shrink-0 ${
+                      isFavorite ? 'fill-amber-400 text-amber-600' : 'text-text-muted'
+                    }`}
+                  />
+                  {isFavorite ? 'Unstar' : 'Star'}
+                </MenuItem>
+                <MenuItem onSelect={onOpenExternal}>
+                  <ExternalLink className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                  Open URL
+                </MenuItem>
+                <MenuItem data-testid="capture-details-copy-url-btn" onSelect={onCopyUrl}>
+                  <Copy className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                  Copy URL
+                  <MenuShortcut>{accelerator('C')}</MenuShortcut>
+                </MenuItem>
+                <MenuItem data-testid="capture-details-copy-hash-btn" onSelect={onCopyHash}>
+                  <Hash className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                  Copy SHA-256
+                </MenuItem>
+                <MenuItem
+                  data-testid="capture-details-recapture-btn"
+                  disabled={enqueue.isPending || isRecapturing}
+                  onSelect={handleRecapture}
+                >
+                  <RefreshCcw
+                    className={`h-3.5 w-3.5 shrink-0 text-text-muted ${
+                      isRecapturing ? 'animate-spin' : ''
+                    }`}
+                  />
+                  {isRecapturing ? 'Recapturing…' : 'Recapture current page'}
+                </MenuItem>
+                <MenuItem
+                  data-testid="capture-details-duplicate-btn"
+                  disabled={isDuplicating}
+                  onSelect={onDuplicate}
+                >
+                  <CopyPlus className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                  {isDuplicating ? 'Duplicating…' : 'Duplicate'}
+                </MenuItem>
+                <MenuSeparator />
+                <MenuItem danger onSelect={onDelete}>
+                  <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                  Delete capture
+                </MenuItem>
+              </MenuContent>
+            </Menu>
             <button
               onClick={onCollapse}
               title="Collapse details"

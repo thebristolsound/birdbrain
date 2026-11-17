@@ -42,10 +42,10 @@ vi.mock('@renderer/hooks/useSearch', () => ({
 }))
 vi.mock('@renderer/components/status/SessionControls', () => ({ SessionControls: () => null }))
 vi.mock('@renderer/components/export/ExportMenu', () => ({ ExportMenu: () => null }))
+vi.mock('@renderer/components/status/StatusGroup', () => ({ StatusGroup: () => null }))
 
 import { Sidebar } from '@renderer/components/layout/Sidebar'
-// The Share pill moved from the top bar to the Case action bar (2026-11-08 top bar).
-import { CaseActionBar } from '@renderer/components/layout/CaseActionBar'
+import { TopBar } from '@renderer/components/layout/TopBar'
 import { CommandPalette } from '@renderer/components/layout/CommandPalette'
 
 function Wrapper({ children }: { children: ReactNode }) {
@@ -121,7 +121,7 @@ describe('Case settings entry points', () => {
 
   it('opens Members from the sync pill on a shared Case', async () => {
     bridge(caseRow({ sharedAt: '2026-09-19T14:00:00.000Z' }), members())
-    render(<CaseActionBar caseId="case1" />, { wrapper: Wrapper })
+    render(<TopBar />, { wrapper: Wrapper })
     const pill = await screen.findByTestId('share-pill')
     expect(pill.dataset.state).toBe('synced')
     fireEvent.click(pill)
@@ -132,7 +132,7 @@ describe('Case settings entry points', () => {
   })
 
   it('offers Share on an unshared Case without polling its sync state', async () => {
-    render(<CaseActionBar caseId="case1" />, { wrapper: Wrapper })
+    render(<TopBar />, { wrapper: Wrapper })
     const pill = await screen.findByTestId('share-pill')
     expect(pill.dataset.state).toBe('share')
     expect(pill.textContent).toBe('Share')

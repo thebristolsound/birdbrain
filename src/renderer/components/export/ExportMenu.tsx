@@ -148,7 +148,7 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
         ) : (
           <FileOutput className="h-3 w-3" strokeWidth={1.8} />
         )}
-        {/* In the Case action bar the label folds to the icon below lg and stays the button's
+        {/* In the top bar the label folds to the icon below lg and stays the button's
             accessible name. not-sr-only resets white-space, so truncate comes with it or a long
             step wraps out of the 28px button; the title carries the full step. No chevron: the
             format choice is the menu this opens, not a split control

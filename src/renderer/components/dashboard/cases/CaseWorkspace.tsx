@@ -92,7 +92,7 @@ export function CaseWorkspace() {
 
   return (
     <div className="flex h-full flex-col">
-      <CaseActionBar caseId={caseId} />
+      <CaseActionBar />
       {/* The Wayback tab stays the viewer's tab with no Capture selected, so the rail does not
           swap for the strip as a Capture is selected or cleared. */}
       <CaptureSessionDock waybackTab={isCaptures && activeViewerTab === 'wayback'}>

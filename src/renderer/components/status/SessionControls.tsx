@@ -30,17 +30,21 @@ export function SessionControls() {
   const launchedSession = launched?.state === 'open' || launched?.state === 'closed'
   if (!connectedToExtension && !launchedSession) return null
 
-  // The label after the switch names the Capture Session's Active Case, the Case Captures go into,
-  // which need not be the Case on screen: while a launched browser is open it pins the Case, and
-  // main refuses another Case's activation without an update. Once the browser closes the pin
-  // lifts and opening a Case moves the Active Case, so the browser's own Case is not used. It
-  // shows on Case screens only, as before.
-  const intoCase = activeCaseId ? cases.find((c) => c.id === sessionCaseId) : undefined
-  // Then the source (`1i`). As on the recording mark, a closed browser is no longer named.
-  const source =
-    launched?.state === 'open'
-      ? `${launchedBrowserName(launched.browser.label)}${connectedToExtension ? ', and the extension' : ''}`
+  // A label follows the switch only for what the rest of the window does not say, on Case
+  // screens. The breadcrumb names the Case on screen, and the Active Case, the one Captures go
+  // into, can be another: a launched browser pins the Case it started in, and the extension can
+  // choose one too.
+  const intoCase =
+    activeCaseId && sessionCaseId !== activeCaseId
+      ? cases.find((c) => c.id === sessionCaseId)
+      : undefined
+  // The recording mark names only the launched browser, so both sources are named here while the
+  // extension is connected beside an open one.
+  const sources =
+    activeCaseId && launched?.state === 'open' && connectedToExtension
+      ? `${launchedBrowserName(launched.browser.label)}, and the extension`
       : null
+  const label = [intoCase?.name, sources].filter(Boolean).join(' · ')
 
   const handleToggleSession = async () => {
     if (toggling) return
@@ -94,19 +98,21 @@ export function SessionControls() {
         </button>
       </label>
       <AnimatePresence>
-        {sessionActive && intoCase && (
+        {sessionActive && label && (
           <motion.span
             data-testid="session-source-line"
-            title={source ? `${intoCase.name} · ${source}` : intoCase.name}
+            title={label}
             className="hidden min-w-0 text-xs text-text-muted lg:inline-flex"
             initial={presets.fadeIn.initial}
             animate={presets.fadeIn.animate}
             exit={presets.fadeIn.exit}
             transition={presets.fadeIn.transition}
           >
-            <span className="max-w-[140px] truncate">{intoCase.name}</span>
-            {source && (
-              <span className="overflow-hidden text-ellipsis whitespace-pre"> · {source}</span>
+            {intoCase && <span className="max-w-[140px] truncate">{intoCase.name}</span>}
+            {sources && (
+              <span className="overflow-hidden text-ellipsis whitespace-pre">
+                {intoCase ? ` · ${sources}` : sources}
+              </span>
             )}
           </motion.span>
         )}

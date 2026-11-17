@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import { act, render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { stubMatchMedia } from './matchMediaStub'
 import { useAppStore } from '@renderer/stores/appStore'
+import { queryKeys } from '@renderer/lib/api/keys'
 import { members, sync } from './sharingFixtures'
 import { stubResizeObserver } from './resizeObserverStub'
 import type { LaunchedBrowserStatus } from '@shared/types'
@@ -46,6 +47,14 @@ vi.mock('@renderer/components/status/SessionControls', () => ({
 }))
 vi.mock('@renderer/components/status/StatusGroup', () => ({
   StatusGroup: () => <div data-testid="status-group" />
+}))
+vi.mock('@renderer/components/status/SharePill', () => ({
+  SharePill: ({ caseId }: { caseId: string }) => <div data-testid="share-pill">{caseId}</div>
+}))
+vi.mock('@renderer/components/export/ExportMenu', () => ({
+  ExportMenu: ({ caseId, caseName }: { caseId: string; caseName: string }) => (
+    <div data-testid="export-menu">{`${caseId}:${caseName}`}</div>
+  )
 }))
 
 import { TopBar } from '@renderer/components/layout/TopBar'
@@ -94,16 +103,22 @@ describe('the case chrome', () => {
     expect(screen.queryByTestId('session-controls')).toBeNull()
   })
 
-  // Share, Export and the recording mark live in CaseActionBar too (2026-11-08 top bar): the
-  // top bar keeps where you are and how the app is doing.
-  it('carries the status group and Settings, and no Case actions', async () => {
+  // Share, Export and Launch browser sit before the status group and Settings; the recording
+  // mark stays with the switch in CaseActionBar.
+  it('orders Share, Export, Launch browser, the status group and Settings', async () => {
     renderAt('/cases/case1/overview')
-    await waitFor(() => expect(screen.getByTestId('topbar-case-name')).toBeTruthy())
     const controls = screen.getByTestId('topbar-controls')
-    expect(controls.querySelector('[data-testid="status-group"]')).toBeTruthy()
-    expect(screen.getByTitle('Settings')).toBeTruthy()
-    expect(screen.queryByTestId('share-pill')).toBeNull()
-    expect(screen.queryByRole('button', { name: /Export/ })).toBeNull()
+    expect((await within(controls).findByTestId('export-menu')).textContent).toBe(
+      'case1:Operation Kestrel'
+    )
+    expect(within(controls).getByTestId('share-pill').textContent).toBe('case1')
+    const row = Array.from(
+      controls.querySelectorAll(
+        '[data-testid="share-pill"], [data-testid="export-menu"], button, [data-testid="status-group"]'
+      )
+    ).map((el) => el.getAttribute('data-testid') ?? el.getAttribute('title') ?? el.textContent)
+    expect(row).toEqual(['share-pill', 'export-menu', 'Launch browser', 'status-group', 'Settings'])
+    expect(screen.queryByTestId('topbar-rec')).toBeNull()
     expect(screen.queryByTitle('Toggle theme')).toBeNull()
   })
 
@@ -119,7 +134,84 @@ describe('the case chrome', () => {
     renderAt('/')
     expect(screen.queryByTestId('topbar-case-name')).toBeNull()
     expect(screen.queryByTestId('global-search-input')).toBeNull()
+    expect(screen.queryByTestId('share-pill')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Launch browser' })).toBeNull()
     expect(screen.getByTestId('status-group')).toBeTruthy()
+  })
+})
+
+describe('Launch browser', () => {
+  const BROWSER = {
+    family: 'chrome' as const,
+    label: 'Google Chrome',
+    caseId: 'case1',
+    version: '149.0.7827.55',
+    extensionWarnings: [],
+    sessionStartedAt: null,
+    tabs: []
+  }
+
+  function renderWith(status: LaunchedBrowserStatus) {
+    fakeBridge({
+      cases: { get: getCase },
+      launchedBrowser: { status: vi.fn(async () => status) }
+    })
+    renderAt('/cases/case1/overview').client.setQueryData(queryKeys.launchedBrowserStatus, status)
+  }
+
+  afterEach(() => {
+    useAppStore.setState({ startDialogCaseId: null })
+  })
+
+  // `2b`: it shows whenever a Case is open, so it needs no extension.
+  it('opens the start dialog for the open Case, with no extension connected', async () => {
+    renderWith({ state: 'none' })
+    const launch = (await screen.findByRole('button', {
+      name: 'Launch browser'
+    })) as HTMLButtonElement
+    // C1: the 28 pixel control, outlined without the accent.
+    expect(launch.className).toContain('h-7')
+    expect(launch.className).not.toContain('border-accent')
+    await waitFor(() => expect(launch.disabled).toBe(false))
+    fireEvent.click(launch)
+    expect(useAppStore.getState().startDialogCaseId).toBe('case1')
+  })
+
+  it.each([
+    ['open', { state: 'open', browser: BROWSER }, 'A launched browser is already open'],
+    [
+      'starting',
+      { state: 'starting', browser: BROWSER, step: 'browser' },
+      'A launched browser is starting'
+    ],
+    ['closing', { state: 'closing', browser: BROWSER }, 'A launched browser is closing']
+  ] satisfies Array<[string, LaunchedBrowserStatus, string]>)(
+    'holds it while one is %s, and says why',
+    async (_, status, why) => {
+      renderWith(status)
+      const holder = await screen.findByTitle(why)
+      const launch = within(holder).getByRole('button', { name: 'Launch browser' })
+      expect((launch as HTMLButtonElement).disabled).toBe(true)
+    }
+  )
+
+  // As Share and Export do, it waits for the Case the address names.
+  it('is absent when the address names no Case', async () => {
+    getCase.mockResolvedValue(undefined)
+    renderWith({ state: 'none' })
+    await waitFor(() => expect(getCase).toHaveBeenCalledWith('case1'))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(screen.queryByRole('button', { name: 'Launch browser' })).toBeNull()
+    expect(screen.getByTestId('topbar-case-name')).toBeTruthy()
+  })
+
+  // A closed browser leaves its Capture Session running; a launch joins it.
+  it('offers it again once the launched browser has closed', async () => {
+    renderWith({ state: 'closed', browser: BROWSER })
+    const launch = await screen.findByRole('button', { name: 'Launch browser' })
+    await waitFor(() => expect((launch as HTMLButtonElement).disabled).toBe(false))
   })
 })
 

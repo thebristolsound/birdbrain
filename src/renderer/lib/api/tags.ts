@@ -8,30 +8,31 @@ import type {
 } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { SIGNAL_COVERAGE_CAPTURES } from '@shared/constants'
+import { birdbrain } from '@renderer/lib/birdbrain'
 
 export const tagsQueryOptions = queryOptions({
   queryKey: queryKeys.tags,
-  queryFn: () => window.birdbrain.tags.list()
+  queryFn: () => birdbrain.tags.list()
 })
 
 export const tagsForCaptureQueryOptions = (captureId: string) =>
   queryOptions({
     queryKey: queryKeys.tagsForCapture(captureId),
-    queryFn: () => window.birdbrain.tags.getForCapture(captureId),
+    queryFn: () => birdbrain.tags.getForCapture(captureId),
     enabled: !!captureId
   })
 
 export const tagCountForCaseQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.tagCountForCase(caseId),
-    queryFn: () => window.birdbrain.tags.countForCase(caseId),
+    queryFn: () => birdbrain.tags.countForCase(caseId),
     enabled: !!caseId
   })
 
 export const tagUsageCountsForCaseQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.tagUsageCounts(caseId),
-    queryFn: () => window.birdbrain.tags.usageCountsForCase(caseId),
+    queryFn: () => birdbrain.tags.usageCountsForCase(caseId),
     enabled: !!caseId
   })
 
@@ -40,7 +41,7 @@ export const tagUsageCountsForCaseQueryOptions = (caseId: string) =>
 export const tagCaptureMatrixQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.tagCaptureMatrix(caseId),
-    queryFn: () => window.birdbrain.tags.captureMatrix(caseId, SIGNAL_COVERAGE_CAPTURES),
+    queryFn: () => birdbrain.tags.captureMatrix(caseId, SIGNAL_COVERAGE_CAPTURES),
     enabled: !!caseId
   })
 
@@ -51,7 +52,7 @@ export const tagCaptureMatrixQueryOptions = (caseId: string) =>
 export const tagCapturesWithAnyQueryOptions = (caseId: string, tagIds: string[]) =>
   queryOptions({
     queryKey: queryKeys.tagCapturesWithAny(caseId, tagIds),
-    queryFn: () => window.birdbrain.tags.capturesWithAnyTag(caseId, tagIds),
+    queryFn: () => birdbrain.tags.capturesWithAnyTag(caseId, tagIds),
     enabled: !!caseId && tagIds.length > 0
   })
 
@@ -61,7 +62,7 @@ export const tagCapturesWithAnyQueryOptions = (caseId: string, tagIds: string[])
 export const tagSelectionCountsQueryOptions = (caseId: string, captureIds: string[]) =>
   queryOptions({
     queryKey: queryKeys.tagSelectionCounts(caseId, captureIds),
-    queryFn: () => window.birdbrain.tags.countsForCaptures({ caseId, captureIds }),
+    queryFn: () => birdbrain.tags.countsForCaptures({ caseId, captureIds }),
     enabled: !!caseId && captureIds.length > 0
   })
 
@@ -96,19 +97,19 @@ export function useTagsMutations(caseId?: string) {
   const invalidateCounts = () => invalidateTagCounts(queryClient)
 
   const create = useMutation({
-    mutationFn: (params: CreateTagParams) => window.birdbrain.tags.create(params),
+    mutationFn: (params: CreateTagParams) => birdbrain.tags.create(params),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.tags }),
     meta: { action: 'create tag' }
   })
 
   const update = useMutation({
-    mutationFn: (params: UpdateTagParams) => window.birdbrain.tags.update(params),
+    mutationFn: (params: UpdateTagParams) => birdbrain.tags.update(params),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.tags }),
     meta: { action: 'update tag' }
   })
 
   const remove = useMutation({
-    mutationFn: (id: string) => window.birdbrain.tags.delete(id),
+    mutationFn: (id: string) => birdbrain.tags.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tags })
       invalidateCounts()
@@ -118,7 +119,7 @@ export function useTagsMutations(caseId?: string) {
 
   const addToCapture = useMutation({
     mutationFn: ({ captureId, tagId }: { captureId: string; tagId: string }) =>
-      window.birdbrain.tags.addToCapture({ captureId, tagId }),
+      birdbrain.tags.addToCapture({ captureId, tagId }),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tagsForCapture(vars.captureId) })
       invalidateCounts()
@@ -128,7 +129,7 @@ export function useTagsMutations(caseId?: string) {
 
   const removeFromCapture = useMutation({
     mutationFn: ({ captureId, tagId }: { captureId: string; tagId: string }) =>
-      window.birdbrain.tags.removeFromCapture({ captureId, tagId }),
+      birdbrain.tags.removeFromCapture({ captureId, tagId }),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tagsForCapture(vars.captureId) })
       invalidateCounts()
@@ -145,7 +146,7 @@ export function useTagsMutations(caseId?: string) {
   >({
     mutationFn: ({ captureIds, tagId }) => {
       if (!caseId) return Promise.reject(new Error('useTagsMutations(caseId) required'))
-      return window.birdbrain.tags.addToCaptures({ caseId, captureIds, tagId })
+      return birdbrain.tags.addToCaptures({ caseId, captureIds, tagId })
     },
     onSuccess: (_data, vars) => {
       for (const id of vars.captureIds) {
@@ -165,7 +166,7 @@ export function useTagsMutations(caseId?: string) {
   >({
     mutationFn: ({ captureIds, tagId }) => {
       if (!caseId) return Promise.reject(new Error('useTagsMutations(caseId) required'))
-      return window.birdbrain.tags.removeFromCaptures({ caseId, captureIds, tagId })
+      return birdbrain.tags.removeFromCaptures({ caseId, captureIds, tagId })
     },
     onSuccess: (_data, vars) => {
       for (const id of vars.captureIds) {
@@ -181,7 +182,7 @@ export function useTagsMutations(caseId?: string) {
   // where naming an existing tag is an error worth showing, while a picker
   // that also filters by the typed name wants the existing tag back.
   const findOrCreate = useMutation({
-    mutationFn: (params: CreateTagParams) => window.birdbrain.tags.findOrCreate(params),
+    mutationFn: (params: CreateTagParams) => birdbrain.tags.findOrCreate(params),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.tags }),
     meta: { action: 'create tag' }
   })
@@ -192,7 +193,7 @@ export function useTagsMutations(caseId?: string) {
   // what main reports it actually did — an unanchored note touches no capture.
   const applyToNote = useMutation({
     mutationFn: ({ noteId, name }: { noteId: string; name: string }) =>
-      window.birdbrain.tags.applyToNote({ noteId, name }),
+      birdbrain.tags.applyToNote({ noteId, name }),
     onSuccess: (data, vars) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tagsForNote(vars.noteId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.tags })
@@ -209,7 +210,7 @@ export function useTagsMutations(caseId?: string) {
   // a merge is app-global — it can touch any capture or note in any case — so
   // scoping tighter would mean enumerating rows only main knows it rewrote.
   const merge = useMutation({
-    mutationFn: (params: MergeTagsParams) => window.birdbrain.tags.merge(params),
+    mutationFn: (params: MergeTagsParams) => birdbrain.tags.merge(params),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.tags }),
     meta: { action: 'merge tags' }
   })
@@ -232,8 +233,8 @@ export function useTagsMutations(caseId?: string) {
 // define an export's scope. The case's full capture list also excludes stale IDs.
 export async function getCapturesForTag(caseId: string, tagId: string): Promise<Capture[]> {
   const [ids, captures] = await Promise.all([
-    window.birdbrain.tags.capturesWithAnyTag(caseId, [tagId]),
-    window.birdbrain.captures.list(caseId)
+    birdbrain.tags.capturesWithAnyTag(caseId, [tagId]),
+    birdbrain.captures.list(caseId)
   ])
   const included = new Set(ids)
   return captures.filter((capture) => included.has(capture.id))

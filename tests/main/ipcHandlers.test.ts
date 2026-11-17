@@ -27,6 +27,9 @@ import type { IpcMainInvokeEvent } from 'electron'
 // ipcMain whose handlers we capture and invoke directly. dialog/shell are
 // configurable per-test stubs.
 const registered = new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>()
+// Every registration since the last beforeEach, in order. Electron's ipcMain.handle throws on a
+// second handler for a channel, which the Map above would hide.
+const registrations: string[] = []
 const showSaveDialog = vi.fn()
 const showOpenDialog = vi.fn()
 const openExternal = vi.fn()
@@ -47,6 +50,7 @@ vi.mock('electron', () => ({
   ipcMain: {
     handle: (channel: string, fn: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown) => {
       registered.set(channel, fn)
+      registrations.push(channel)
     }
   },
   dialog: {
@@ -302,6 +306,7 @@ beforeAll(() => {
 
 beforeEach(async () => {
   registered.clear()
+  registrations.length = 0
   vi.clearAllMocks()
   showSaveDialog.mockResolvedValue({ canceled: true, filePath: undefined })
   showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] })
@@ -400,6 +405,13 @@ describe('ipcHandlers — registration', () => {
     const declared = new Set<string>(invokeChannels)
     const unexpected = [...registered.keys()].filter((ch) => !declared.has(ch))
     expect(unexpected).toEqual([])
+  })
+
+  // A domain moved into a handler table must leave no inline handle() behind.
+  it('registers each channel once', () => {
+    const twice = registrations.filter((ch, i) => registrations.indexOf(ch) !== i)
+    expect(twice).toEqual([])
+    expect(registrations).toHaveLength(invokeChannels.length)
   })
 })
 

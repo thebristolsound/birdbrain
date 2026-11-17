@@ -3,6 +3,7 @@ import type { PinWaybackSnapshotParams } from '@shared/ipc'
 import type { WaybackLookupResult } from '@shared/types'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { confirmContact, requireContact } from '@renderer/lib/vpnWarning'
+import { birdbrain } from '@renderer/lib/birdbrain'
 
 // `enabled: false` — the lookup is user-initiated (it discloses the URL to
 // archive.org). The Wayback panel triggers it with refetch() on button click,
@@ -15,7 +16,7 @@ export const waybackLookupQueryOptions = (captureId: string) =>
       if (!(await confirmContact({ captureId }, 'site'))) {
         return client.getQueryData<WaybackLookupResult | null>(queryKey) ?? null
       }
-      return window.birdbrain.wayback.lookup(captureId)
+      return birdbrain.wayback.lookup(captureId)
     },
     enabled: false,
     staleTime: 5 * 60 * 1000
@@ -31,7 +32,7 @@ export const waybackLinkLookupQueryOptions = (captureId: string, url: string) =>
     queryKey: queryKeys.waybackLinkLookup(captureId, url),
     queryFn: async () => {
       await requireContact({ captureId }, 'site')
-      return window.birdbrain.wayback.lookupLink({ captureId, url })
+      return birdbrain.wayback.lookupLink({ captureId, url })
     },
     enabled: false,
     staleTime: 5 * 60 * 1000
@@ -40,7 +41,7 @@ export const waybackLinkLookupQueryOptions = (captureId: string, url: string) =>
 export const waybackPinsQueryOptions = (captureId: string) =>
   queryOptions({
     queryKey: queryKeys.waybackPins(captureId),
-    queryFn: () => window.birdbrain.wayback.list(captureId),
+    queryFn: () => birdbrain.wayback.list(captureId),
     enabled: !!captureId
   })
 
@@ -50,7 +51,7 @@ export const waybackPinsQueryOptions = (captureId: string) =>
 export const waybackCasePinsQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.waybackCasePins(caseId),
-    queryFn: () => window.birdbrain.wayback.listForCase(caseId),
+    queryFn: () => birdbrain.wayback.listForCase(caseId),
     enabled: !!caseId
   })
 
@@ -64,13 +65,13 @@ export function useWaybackMutations(captureId: string) {
   }
 
   const pin = useMutation({
-    mutationFn: (params: PinWaybackSnapshotParams) => window.birdbrain.wayback.pin(params),
+    mutationFn: (params: PinWaybackSnapshotParams) => birdbrain.wayback.pin(params),
     onSuccess: invalidate,
     meta: { action: 'pin wayback snapshot' }
   })
 
   const unpin = useMutation({
-    mutationFn: (refId: string) => window.birdbrain.wayback.unpin(refId),
+    mutationFn: (refId: string) => birdbrain.wayback.unpin(refId),
     onSuccess: invalidate,
     meta: { action: 'unpin wayback snapshot' }
   })

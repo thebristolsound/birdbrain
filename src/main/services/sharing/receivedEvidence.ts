@@ -27,6 +27,7 @@ import {
 import { readMhtmlTitle } from '@main/services/mhtmlDecoder'
 import type { CaptureArtifactType, CaptureStore } from '@main/services/captureStore'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
+import { captureRowOf } from '@main/services/captureRow'
 import { safeCasePath } from '@main/services/sharing/blobAcceptance'
 import { isExhibitId, storedEntries } from '@main/services/sharing/entryAcceptance'
 import type { SyncError } from '@main/services/sharing/session'
@@ -245,43 +246,21 @@ export async function applyReceivedEvidence(
     claim(id, author, n)
     return {
       textContent,
-      params: {
-        id,
+      params: captureRowOf(entry, {
         caseId,
-        url: entry.url,
         title,
-        hash: entry.contentHash,
-        timestamp: entry.timestamp,
-        headers: entry.headers ? JSON.stringify(entry.headers) : undefined,
         textContent,
-        format: 'mhtml',
         mhtmlPath: mhtml.rel,
         screenshotPath: png?.rel,
-        screenshotHash: entry.screenshotHash,
-        textHash: entry.textHash,
-        tlsCertChain: entry.tls ? JSON.stringify(entry.tls) : undefined,
-        sizeBytes: entry.sizeBytes,
-        manifestIndex: index,
-        prevHash: entry.prevHash,
-        entryHash: entry.entryHash,
-        toolVersion: entry.toolVersion,
+        // Only what the author's entry signs: nothing here saw the browser.
         userAgent: entry.userAgent,
-        httpStatus: entry.httpStatus,
-        operatorId: entry.operatorId,
-        operatorName: entry.operatorName,
-        method: entry.method,
-        supersedesCaptureId: entry.supersedesCaptureId,
-        duplicateOfCaptureId: entry.duplicateOfCaptureId,
-        linkedFromCaptureId: entry.linkedFromCaptureId,
-        linkedFromContentHash: entry.linkedFromContentHash,
-        linkHref: entry.linkHref,
-        personaId: entry.personaId,
-        personaLabel: entry.personaLabel,
-        consentSuppression: entry.consentSuppression,
-        exhibitNumber: n,
+        renumberedTo: renumber,
         author: { installationId: author, memberCode },
-        committedAt: entry.timestamp
-      }
+        // The page's timestamp stands in for the author's ingest time, which this writer reads
+        // from no entry, a Duplicate's `duplicatedAt` included.
+        committedAt: entry.timestamp,
+        captureEngineFields: false
+      })
     }
   }
 

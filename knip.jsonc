@@ -1,0 +1,48 @@
+{
+  "$schema": "./node_modules/knip/schema.json",
+  // Electron, Vite, Vitest and Playwright plugins discover their configured entries.
+  "entry": [
+    "src/verifier/cli.ts!",
+    // The extension config selects one build at a time; audit both.
+    "extension/src/content.ts!",
+    "extension/src/background.ts!",
+    "extension/src/{popup,options}/*.html!",
+    // Copied or served as files rather than imported by a module.
+    "extension/theme-preinit.js!",
+    "src/renderer/public/theme-init.js!",
+    // Bundled by scripts whose entry paths are computed at runtime.
+    "scripts/demo-fixture/build.ts",
+    "scripts/dev-seed/run.ts",
+    "scripts/retrieval-eval/{build,revisionCost}.ts",
+    // Standalone developer commands and experiments.
+    "scripts/{exploratory-harness,gen-linux-icons,package-smoke}.mjs",
+    "scripts/capture-probe/{run,main}.mjs",
+    "scripts/spikes/references-index-388.ts",
+    "scripts/spikes/jev-bench/{run,build-fixtures}.mjs",
+    // The benchmark runner chooses these modules through a template-string import.
+    "scripts/spikes/jev-bench/bench/*.mjs"
+  ],
+  "project": [
+    "*.{js,mjs,cjs,ts}",
+    "src/**/*.{ts,tsx,mts,cts,js,css}!",
+    "extension/**/*.{ts,tsx,js,css}!",
+    "!src/packages/**/tests/**!",
+    "scripts/**/*.{ts,mjs,js}",
+    "tests/**/*.{ts,tsx,mts,cts}",
+    "e2e/**/*.ts",
+    ".github/scripts/**/*.{mjs,js,ts}",
+    "design-system/*.mjs"
+  ],
+  "paths": {
+    "@main/*": ["./src/main/*"],
+    "@renderer/*": ["./src/renderer/*"],
+    "@shared/*": ["./src/shared/*"],
+    "@extension/*": ["./extension/src/*"]
+  },
+  // Copied with the fonts directory by the extension build.
+  "ignoreFiles": ["extension/src/fonts/fonts.css"],
+  // Invoked by hooks, a computed executable path, and manual scaffolding respectively.
+  "ignoreDependencies": ["@commitlint/cli", "postject", "shadcn"],
+  // Host tools, not npm packages.
+  "ignoreBinaries": ["jq", "openssl", "pkg-config", "sha256sum", "signtool"]
+}

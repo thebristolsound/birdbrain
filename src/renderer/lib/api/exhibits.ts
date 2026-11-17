@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ExhibitVerification } from '@shared/types'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { birdbrain } from '@renderer/lib/birdbrain'
 
 // The Exhibit model's read paths (ADR-0023, X36/X37). The renderer never
 // computes chain state: the inventory says what the Case holds and whether the
@@ -11,14 +12,14 @@ import { queryKeys } from '@renderer/lib/api/keys'
 export const exhibitInventoryQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.exhibitInventory(caseId),
-    queryFn: () => window.birdbrain.exhibits.inventory(caseId),
+    queryFn: () => birdbrain.exhibits.inventory(caseId),
     enabled: !!caseId
   })
 
 export const manifestSnapshotQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.manifestSnapshot(caseId),
-    queryFn: () => window.birdbrain.manifest.snapshot(caseId),
+    queryFn: () => birdbrain.manifest.snapshot(caseId),
     enabled: !!caseId
   })
 
@@ -30,7 +31,7 @@ export function useExhibitsMutations(caseId: string) {
   // invalidated because a Capture's verify persists `lastVerifiedStatus` on
   // its row — the same field the Overview's VerifyBar reads.
   const verify = useMutation<ExhibitVerification, unknown, string>({
-    mutationFn: (exhibitId) => window.birdbrain.exhibits.verify(caseId, exhibitId),
+    mutationFn: (exhibitId) => birdbrain.exhibits.verify(caseId, exhibitId),
     onSuccess: (result, exhibitId) => {
       queryClient.setQueryData(queryKeys.exhibitVerification(caseId, exhibitId), result)
       queryClient.invalidateQueries({ queryKey: queryKeys.captures(caseId) })

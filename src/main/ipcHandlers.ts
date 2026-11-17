@@ -53,7 +53,7 @@ import * as dbAdmin from '@main/services/db/dbAdmin'
 import * as dbSnapshots from '@main/services/db/dbSnapshots'
 import { restoreDatabase, type RestoreRejection } from '@main/services/db/dbRestore'
 import { existsSync, statSync } from 'fs'
-import { join, resolve } from 'path'
+import { join } from 'path'
 import { pathToFileURL } from 'url'
 import * as activityRepo from '@main/services/db/activityRepo'
 import * as caseRepo from '@main/services/db/caseRepo'
@@ -127,6 +127,8 @@ import {
   type LaunchedBrowserService
 } from '@main/services/launchedBrowser/service'
 import { handle, IpcFailure, sendEvent } from '@main/ipcWrap'
+import { registerHandlers } from '@main/ipc/handlers'
+import { createRevealFiles } from '@main/ipc/revealFiles'
 import { diagnosticsService } from '@main/services/diagnostics'
 import { scanUnreconciledDeletions } from '@main/services/deletionReconciliation'
 import { flushSync, getLogDir, getLogPath, logger, readRecentEntries } from '@main/services/logger'
@@ -162,14 +164,6 @@ const SELF_TEST_TIMEOUT_MS = 2000
 // pipeline test's POST. Resolving the port removes the dependency on that
 // ordering rather than relying on it.
 const SERVER_NOT_RUNNING_MSG = 'Capture server is not running'
-
-// Reveal/open is limited to files THIS process authored (export outputs). A
-// renderer — even a compromised one — can't hand shell.openPath an arbitrary
-// binary, because only paths recorded here on a successful export are openable.
-// Bounded with FIFO eviction so the allowlist can't grow for the life of the
-// process; only recent exports stay openable.
-const MAX_REVEALABLE_PATHS = 64
-const revealablePaths = new Set<string>()
 
 // Shape and size check for every batch channel (#394). Rejects before any
 // lookup so a malformed or oversized payload can never reach a repo or the
@@ -248,18 +242,6 @@ function isVpnWarningOccasion(value: unknown): value is VpnWarningOccasion {
   return value === 'site' || value === 'session'
 }
 
-function rememberRevealablePath(filePath: string): void {
-  const resolved = resolve(filePath)
-  // delete-then-add so re-exporting the same destination refreshes its recency.
-  // Set.add on an already-present value keeps its original insertion position,
-  // which would let a just-rewritten path be evicted by newer unrelated exports.
-  revealablePaths.delete(resolved)
-  revealablePaths.add(resolved)
-  if (revealablePaths.size > MAX_REVEALABLE_PATHS) {
-    revealablePaths.delete(revealablePaths.values().next().value as string)
-  }
-}
-
 // The refusal codes for an executable the Operator picks that a launch would not start.
 const CHOSEN_EXECUTABLE_REFUSALS: Readonly<
   Record<Extract<ChosenExecutableCheck, { ok: false }>['code'], string>
@@ -332,6 +314,7 @@ export function registerIpcHandlers(deps: {
     sharingService
   } = deps
   const vpnWarning = deps.vpnWarning ?? createVpnWarningService()
+  const revealFiles = createRevealFiles(shell)
   // Cases
   handle(IPC_CHANNELS.CASES_LIST, () => caseRepo.listCases())
   handle(IPC_CHANNELS.CASES_GET, (_, id: string) => caseRepo.getCase(id))
@@ -437,7 +420,7 @@ export function registerIpcHandlers(deps: {
         })
       )
       // Permit reveal for this freshly-written archive only (same invariant as export:generate).
-      rememberRevealablePath(filePath)
+      revealFiles.remember(filePath)
       return { canceled: false, filePath }
     }
   )
@@ -1485,28 +1468,13 @@ export function registerIpcHandlers(deps: {
           })
       )
       // Permit reveal/open for this freshly-written export only.
-      rememberRevealablePath(filePath)
+      revealFiles.remember(filePath)
       return { canceled: false, filePath }
     }
   )
 
   // Shell — reveal/open a file the main process just wrote (export completion).
-  handle(IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER, (_, path: string) => {
-    if (!path) throw new IpcFailure('Path is required', 'INVALID_PATH')
-    if (!revealablePaths.has(resolve(path)))
-      throw new IpcFailure('Path not permitted', 'FORBIDDEN_PATH')
-    if (!existsSync(path)) throw new IpcFailure('File not found', 'NOT_FOUND')
-    shell.showItemInFolder(path)
-  })
-
-  handle(IPC_CHANNELS.SHELL_OPEN_PATH, async (_, path: string) => {
-    if (!path) throw new IpcFailure('Path is required', 'INVALID_PATH')
-    if (!revealablePaths.has(resolve(path)))
-      throw new IpcFailure('Path not permitted', 'FORBIDDEN_PATH')
-    if (!existsSync(path)) throw new IpcFailure('File not found', 'NOT_FOUND')
-    const openError = await shell.openPath(path)
-    if (openError) throw new IpcFailure(openError, 'OPEN_PATH_FAILED')
-  })
+  registerHandlers(revealFiles.handlers)
 
   // Exhibits (ADR-0023). The inventory returns anchored and pooled rows in one
   // list; the snapshot is the only place chain state is computed, so the

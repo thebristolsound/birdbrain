@@ -13,6 +13,15 @@
 # vale, or without the synced Google package, it says so on stderr and passes.
 set -u
 
+# A shell that skipped the session-start hook, such as a Codex session or a CI step, may still
+# have the pinned Vale, and the Node the hook mode below reads stdin with, in mise or the
+# per-user cache.
+resolver="$(dirname "${BASH_SOURCE[0]}")/../../scripts/install-tools.sh"
+if { ! command -v vale || ! command -v node; } >/dev/null 2>&1 && [ -f "$resolver" ]; then
+  tool_path="$(bash "$resolver" --no-install 2>/dev/null)"
+  [ -n "$tool_path" ] && PATH="$tool_path:$PATH"
+fi
+
 base=""
 files=()
 if [ "${1:-}" = "--base" ]; then
@@ -61,6 +70,15 @@ check_file() {
   [ -f "$top/.vale.ini" ] || return 0
   rel="${file#"$top"/}"
   git -C "$top" check-ignore -q -- "$rel" && return 0
+  # The Google style is gitignored, so a worktree made without the setup script, such as an
+  # isolated agent worktree, lacks it. This hook's own installer copies it from the per-user
+  # cache; it never downloads, so an edit never waits on the network. Only a Birdbrain checkout,
+  # one that ships the installer, gets the copy.
+  if [ ! -d "$top/.vale/styles/Google" ] && [ -f "$top/scripts/install-tools.sh" ] &&
+    [ -f "$resolver" ]; then
+    copy_err="$(bash "$resolver" --styles-from-cache "$top" 2>&1 >/dev/null)" ||
+      echo "vale-prose: ${copy_err#\[install-tools\] }" >&2
+  fi
 
   report="$(cd "$top" && vale --config "$top/.vale.ini" --output JSON "$rel" 2>&1)"
   status=$?

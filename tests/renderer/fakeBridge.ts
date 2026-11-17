@@ -1,78 +1,22 @@
 import { vi } from 'vitest'
-import type { BirdbrainAPI } from '@shared/birdbrainApi'
+import { bridgePath, isEventChannel, type BirdbrainAPI } from '@shared/birdbrainApi'
+import { IPC_CHANNELS } from '@shared/ipc'
 
 type Overrides = Record<string, unknown>
-type FunctionKey = {
-  [K in keyof BirdbrainAPI]: BirdbrainAPI[K] extends (...args: never[]) => unknown ? K : never
-}[keyof BirdbrainAPI]
-type EventKey = Extract<FunctionKey, `on${string}`>
-type TopLevelKey = Exclude<FunctionKey, EventKey>
-type NamespaceKey = Exclude<keyof BirdbrainAPI, FunctionKey>
 
-// The bridge surface mirrors the shared BirdbrainAPI contract. The preload
-// literal is checked against the same contract, while this util still builds
-// every namespace explicitly so a missing test stub fails at the call site.
-const NAMESPACES = [
-  'cases',
-  'captures',
-  'recapture',
-  'tags',
-  'persona',
-  'selectors',
-  'notes',
-  'wayback',
-  'annotations',
-  'extension',
-  'session',
-  'launchedBrowser',
-  'settings',
-  'export',
-  'shell',
-  'exhibits',
-  'manifest',
-  'sharing',
-  'investigation',
-  'staging',
-  'app',
-  'diagnostics',
-  'updates',
-  'egress',
-  'db',
-  'extractedData'
-] as const satisfies readonly NamespaceKey[]
-
-const EVENTS = [
-  'onExportProgress',
-  'onArchiveProgress',
-  'onNewCapture',
-  'onSessionStateChanged',
-  'onExtensionConnection',
-  'onExtensionAttach',
-  'onCaptureActivity',
-  'onRecaptureJob',
-  'onLogEntry',
-  'onSelectorRematched',
-  'onDeepLinkNavigate',
-  'onUpdateStatus',
-  'onGuestFrameReplaced',
-  'onGuestMouseDown',
-  'onGuestMouseUp',
-  'onSharingChanged',
-  'onSharingJoinProgress',
-  'onInvestigationProgress',
-  'onWaybackLinkProgress',
-  'onLaunchedBrowserStatus',
-  'onLaunchedBrowserPopOut',
-  'onLaunchedBrowserPickTab'
-] as const satisfies readonly EventKey[]
-
-const TOP_LEVEL = ['search', 'testPipeline', 'testHttp'] as const satisfies readonly TopLevelKey[]
-
-type ListedBridgeKey =
-  (typeof NAMESPACES)[number] | (typeof EVENTS)[number] | (typeof TOP_LEVEL)[number]
-type MissingBridgeKey = Exclude<keyof BirdbrainAPI, ListedBridgeKey>
-type AssertNever<T extends never> = T
-export type FakeBridgeKeysAreExhaustive = AssertNever<MissingBridgeKey>
+// The bridge surface comes from the contract, as the preload's does: each
+// channel's path names a namespace, an event subscription or a top-level
+// method. This util still builds every namespace, so a missing test stub
+// fails at the call site.
+const NAMESPACES = new Set<string>()
+const EVENTS: string[] = []
+const TOP_LEVEL: string[] = []
+for (const channel of Object.values(IPC_CHANNELS)) {
+  const path = bridgePath(channel)
+  if (isEventChannel(channel)) EVENTS.push(path)
+  else if (path.includes('.')) NAMESPACES.add(path.slice(0, path.indexOf('.')))
+  else TOP_LEVEL.push(path)
+}
 
 const KNOWN_KEYS: ReadonlySet<string> = new Set<string>([...NAMESPACES, ...EVENTS, ...TOP_LEVEL])
 

@@ -1,0 +1,1226 @@
+{
+  "entries": {
+    "capture": {
+      "stamp": 2,
+      "entryHash": "c993dd9744c9f98bc096939e5d37c7f5b0490b47098dd961a01def5cc2a68ebf",
+      "admittedAt": [1, 2, 3, 4, 5, 6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: no screenshot or text": {
+      "stamp": 2,
+      "entryHash": "ea7b0d8ac5cdc0d6b293c187a393010944fced0901c04fb79bae0b11d01a77f3",
+      "admittedAt": [1, 2, 3, 4, 5, 6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: every schema-2 optional field": {
+      "stamp": 2,
+      "entryHash": "92bccc8c8fa5acfef8cd5c004f49e02bbabf971581c40f4835f5d7562028aff6",
+      "admittedAt": [1, 2, 3, 4, 5, 6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: a Duplicate": {
+      "stamp": 2,
+      "entryHash": "9e75a5ac0a148c8b802c879c7e2d80fb2b5269bf9b67beabd9d6991617091caf",
+      "admittedAt": [1, 2, 3, 4, 5, 6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "deletion": {
+      "stamp": 2,
+      "entryHash": "c5629ff7e2be85d834e1f824e29a29eadb301bc4ec90568fbb6f7d25d22c3e29",
+      "admittedAt": [1, 2, 3, 4, 5, 6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "timestamp": {
+      "stamp": 2,
+      "entryHash": "5713e9eb4bca47883efda1034f99488838276812efcb3ceb90f62370dfb5f7b8",
+      "admittedAt": [2, 3, 4, 5, 6, 7],
+      "refused": [
+        { "at": [0, 1], "with": [
+          "schemaVersion: too_small"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "export": {
+      "stamp": 2,
+      "entryHash": "ccfb4833b0fa16d984f8f0d10f8c7db64ab261dafea5b8b66548fcf5e90fa488",
+      "admittedAt": [2, 3, 4, 5, 6, 7],
+      "refused": [
+        { "at": [0, 1], "with": [
+          "schemaVersion: too_small"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "archive-export": {
+      "stamp": 2,
+      "entryHash": "96e36dbbfdafa380fb7dc981a792b73aa19944477c0b1030821373b8ea19a477",
+      "admittedAt": [2, 3, 4, 5, 6, 7],
+      "refused": [
+        { "at": [0, 1], "with": [
+          "schemaVersion: too_small"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "import": {
+      "stamp": 2,
+      "entryHash": "c7a6dabed0fe83c578114011c8776210c4c6c4b5e686e6eb3e65f073fd95fa87",
+      "admittedAt": [2, 3, 4, 5, 6, 7],
+      "refused": [
+        { "at": [0, 1], "with": [
+          "schemaVersion: too_small"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "exhibit": {
+      "stamp": 3,
+      "entryHash": "a3088330cefd3f04fe332992d9597cacebf6760c68f528a10b944465fc085431",
+      "admittedAt": [3, 4, 5, 6, 7],
+      "refused": [
+        { "at": [0, 1, 2], "with": [
+          "schemaVersion: too_small"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "derivation": {
+      "stamp": 3,
+      "entryHash": "f59fba8a9fe3aacd552c982495dfc3b086d2509edcf4a0c2282c2687dbcc9b57",
+      "admittedAt": [3, 4, 5, 6, 7],
+      "refused": [
+        { "at": [0, 1, 2], "with": [
+          "schemaVersion: too_small"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "renumber": {
+      "stamp": 3,
+      "entryHash": "c8423ea92cef66992b91399efe27234f91da6fbcad6de453b4246463fb44b863",
+      "admittedAt": [3, 4, 5, 6, 7],
+      "refused": [
+        { "at": [0, 1, 2], "with": [
+          "schemaVersion: too_small"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "merge": {
+      "stamp": 4,
+      "entryHash": "d7d06f18dc1436801e71232fa3d6301c6c48410c2da282570e8578dd5d9cd5c1",
+      "admittedAt": [4, 5, 6, 7],
+      "refused": [
+        { "at": [0, 1, 2, 3], "with": [
+          "schemaVersion: too_small"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "member-add": {
+      "stamp": 4,
+      "entryHash": "951ffeb0b4dc9b5ebb614e004f4aa269401fefd224ad12eebb2aee6c561e79bd",
+      "admittedAt": [4, 5, 6, 7],
+      "refused": [
+        { "at": [0, 1, 2, 3], "with": [
+          "schemaVersion: too_small"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "member-revoke": {
+      "stamp": 4,
+      "entryHash": "19547c8a6795a6e8637d2aef64d1d8f214966baf2b53cb00209c1eb3409d4849",
+      "admittedAt": [4, 5, 6, 7],
+      "refused": [
+        { "at": [0, 1, 2, 3], "with": [
+          "schemaVersion: too_small"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "exclude": {
+      "stamp": 4,
+      "entryHash": "a27a8e06a3495e27f8a2c332ac08024f41b73a2f2472903f746d0a6b6d8b164f",
+      "admittedAt": [4, 5, 6, 7],
+      "refused": [
+        { "at": [0, 1, 2, 3], "with": [
+          "schemaVersion: too_small"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: exhibitNumber": {
+      "stamp": 3,
+      "entryHash": "08d597bba4ee087509223d081944796fcc509d037d93ea0ab770a5391e149af7",
+      "admittedAt": [3, 4, 5, 6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: `exhibitNumber` on a capture entry requires schemaVersion 3"
+        ] },
+        { "at": [1, 2], "with": [
+          "schemaVersion: `exhibitNumber` on a capture entry requires schemaVersion 3"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: egressKind": {
+      "stamp": 5,
+      "entryHash": "29d3930b8608cb58e0970fb25d55fab4d189f5df68b04cbf462fc7ce47444f56",
+      "admittedAt": [5, 6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5"
+        ] },
+        { "at": [1, 2, 3, 4], "with": [
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: egressKind and egressLabel": {
+      "stamp": 5,
+      "entryHash": "f720cd43f87c838534b72690d2b2755cd876afd8fce597a8f0e4a741f8729b70",
+      "admittedAt": [5, 6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5"
+        ] },
+        { "at": [1, 2, 3, 4], "with": [
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: userAgent": {
+      "stamp": 5,
+      "entryHash": "4a55d7615861180119ba2c89d129d0133b705fb15cdfd864dbe1433f68d0f8d2",
+      "admittedAt": [5, 6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5"
+        ] },
+        { "at": [1, 2, 3, 4], "with": [
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: tlsSkipped": {
+      "stamp": 5,
+      "entryHash": "919ebade492f76911c7b288603bf4953bf7abe1318512722d459db50bf3a35e0",
+      "admittedAt": [5, 6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5"
+        ] },
+        { "at": [1, 2, 3, 4], "with": [
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: every Egress field": {
+      "stamp": 5,
+      "entryHash": "21bb1cd0ae37233b3561460d21da8d7f124980e6c08f7bb52cebd5c90756ad7f",
+      "admittedAt": [5, 6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5"
+        ] },
+        { "at": [1, 2, 3, 4], "with": [
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: inventory": {
+      "stamp": 6,
+      "entryHash": "1ae734d93de2c282a9f325776493ab20f167962dd7f6ac1faed19b1b6a3b8c78",
+      "admittedAt": [6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [1, 2, 3, 4, 5], "with": [
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: scrollToLoad": {
+      "stamp": 6,
+      "entryHash": "663974e72b29db595f3cb21f91e6c5a01b9581a5bd9f7a92d06cbd03ce702bad",
+      "admittedAt": [6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [1, 2, 3, 4, 5], "with": [
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: transactionRecordHash": {
+      "stamp": 6,
+      "entryHash": "a6f362b2ed88c110063cdf58837b1f4456802c241bfe022b659a57b2d71d5411",
+      "admittedAt": [6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [1, 2, 3, 4, 5], "with": [
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: pdfHash": {
+      "stamp": 6,
+      "entryHash": "9de7d7b8a2d668bd78b3bf3e0c0f7ab0d8d6acd0f9fd3b136ede33178e634cf1",
+      "admittedAt": [6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [1, 2, 3, 4, 5], "with": [
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: boundTls": {
+      "stamp": 6,
+      "entryHash": "0b3e90fce9bc807391592bb6d98b40234f2a6f8538af64261ed6e8fed58ea0cb",
+      "admittedAt": [6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [1, 2, 3, 4, 5], "with": [
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: boundTlsAbsent": {
+      "stamp": 6,
+      "entryHash": "ca31b2beca0ecff930b302e639df6132c8b5a5c388fc8f0c6f58d27784647247",
+      "admittedAt": [6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [1, 2, 3, 4, 5], "with": [
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: every capture engine field": {
+      "stamp": 6,
+      "entryHash": "539db27717937cce3979a3a02ce1fa8132592fbce11dcf96c27be742a698cbf6",
+      "admittedAt": [6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [1, 2, 3, 4, 5], "with": [
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: link provenance": {
+      "stamp": 6,
+      "entryHash": "09e6d206243446dcc93c93cd1e484b2d1dc8a9dc9d9ab09d40e5c10cad9bd2f1",
+      "admittedAt": [6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the link provenance fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [1, 2, 3, 4, 5], "with": [
+          "schemaVersion: the link provenance fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: method launched": {
+      "stamp": 7,
+      "entryHash": "5ee1e7e6f987dd0f2de1a6243f619a284fe729a46388500bc6bf4ca69953b6a6",
+      "admittedAt": [7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [1, 2, 3, 4, 5, 6], "with": [
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: method launched-passive": {
+      "stamp": 7,
+      "entryHash": "016c9496ba732d9fe3df840e74157af63db081de9520345fda0f72eaa057b8c7",
+      "admittedAt": [7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [1, 2, 3, 4, 5, 6], "with": [
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: browserProduct": {
+      "stamp": 7,
+      "entryHash": "414defd4260cf2540a77d17cd7dfbec815059a93df77b096151215d3361e542f",
+      "admittedAt": [7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [1, 2, 3, 4, 5, 6], "with": [
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: browserProduct and browserVersion": {
+      "stamp": 7,
+      "entryHash": "e271a9e4e895b713871dcce0a1e9442afcd72daaf7139769e84a7ad58f7be256",
+      "admittedAt": [7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [1, 2, 3, 4, 5, 6], "with": [
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: browserFamily": {
+      "stamp": 7,
+      "entryHash": "7bf22cd935a216a534b6fc0713b346fcf792b1c4339497f9eec693f2c56b1fc1",
+      "admittedAt": [7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [1, 2, 3, 4, 5, 6], "with": [
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: passiveRule on a Duplicate": {
+      "stamp": 7,
+      "entryHash": "309b908b410f3a8b019a7ce97c76714c4f1d7840eac7852eb6091578b8fe714d",
+      "admittedAt": [7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [1, 2, 3, 4, 5, 6], "with": [
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: a stage-2 Transaction Record absence": {
+      "stamp": 7,
+      "entryHash": "8ea5b68b23540ed4e5e9c8039d5833793f9a383226cc4c91041f82cf22eaa1ed",
+      "admittedAt": [7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [1, 2, 3, 4, 5], "with": [
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [6], "with": [
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: a stage-2 PDF absence": {
+      "stamp": 7,
+      "entryHash": "984a16d8f9549eb7036c0ded566437929967b9ae717cc3dda4736c50fa19f7bf",
+      "admittedAt": [7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [1, 2, 3, 4, 5], "with": [
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [6], "with": [
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: servedByServiceWorker": {
+      "stamp": 7,
+      "entryHash": "2d231ec8f1cb1e4bbc7ba5d32dfa74fed67389476e7e384920cdd484726ee8e0",
+      "admittedAt": [7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [1, 2, 3, 4, 5], "with": [
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [6], "with": [
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: requestBodiesWithheld": {
+      "stamp": 7,
+      "entryHash": "9009c90d6b72b0fe7f7821c01b8bb5500e318dbf4df36fa6a80257515553acd2",
+      "admittedAt": [7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [1, 2, 3, 4, 5], "with": [
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [6], "with": [
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: httpCacheDisabled": {
+      "stamp": 7,
+      "entryHash": "9962f72c35393835323c32c0810ac013c9a5a0fc98412f12f8fc39283d5ab203",
+      "admittedAt": [7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [1, 2, 3, 4, 5], "with": [
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [6], "with": [
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: personaId": {
+      "stamp": 7,
+      "entryHash": "da674688c9e0da283a7f2aeab3c5c59667fe5716ce14de0c8c7ab77e9f7c169a",
+      "admittedAt": [7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [1, 2, 3, 4, 5, 6], "with": [
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: both Persona fields": {
+      "stamp": 7,
+      "entryHash": "c0c6a8b5cea2a7669bce7e020106eb855a92b84b17678115454df0d482fd2251",
+      "admittedAt": [7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [1, 2, 3, 4, 5, 6], "with": [
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: a clicked launched Capture": {
+      "stamp": 7,
+      "entryHash": "f5919b0f064303096dff0a5bf88b368033ad36da0e51fb365b83a91e9f1423d0",
+      "admittedAt": [7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7",
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [1, 2, 3, 4, 5], "with": [
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7",
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [6], "with": [
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7",
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: a passive launched Capture": {
+      "stamp": 7,
+      "entryHash": "234d5bb9bf7304615f0ff8b8a95c305a3213906e618afabf4f4e1d62349d1ffb",
+      "admittedAt": [7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7",
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [1, 2, 3, 4, 5], "with": [
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7",
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [6], "with": [
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7",
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: exhibitNumber and Egress": {
+      "stamp": 5,
+      "entryHash": "cb10d15431119c230aec2527d06db22613bc953f693799f08c6b8b1a42ea24af",
+      "admittedAt": [5, 6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: `exhibitNumber` on a capture entry requires schemaVersion 3",
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5"
+        ] },
+        { "at": [1, 2], "with": [
+          "schemaVersion: `exhibitNumber` on a capture entry requires schemaVersion 3",
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5"
+        ] },
+        { "at": [3, 4], "with": [
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: exhibitNumber and link provenance": {
+      "stamp": 6,
+      "entryHash": "6fe907991101a4fef15a386c0f0040fead7e0de3fb586b8acd5f6560684d363d",
+      "admittedAt": [6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: `exhibitNumber` on a capture entry requires schemaVersion 3",
+          "schemaVersion: the link provenance fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [1, 2], "with": [
+          "schemaVersion: `exhibitNumber` on a capture entry requires schemaVersion 3",
+          "schemaVersion: the link provenance fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [3, 4, 5], "with": [
+          "schemaVersion: the link provenance fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: Egress and capture engine": {
+      "stamp": 6,
+      "entryHash": "772735f551787c01e1318e7dabd6e367d8160435f3cd0dab70b4f0a0c12973ef",
+      "admittedAt": [6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5",
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [1, 2, 3, 4], "with": [
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5",
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [5], "with": [
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: Egress and Persona": {
+      "stamp": 7,
+      "entryHash": "50caee6cc3d1fe4a1e38cd391fb97df816db0f2cbe6bca7a8700f19db17783f7",
+      "admittedAt": [7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5",
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [1, 2, 3, 4], "with": [
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5",
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [5, 6], "with": [
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: a field of every schema": {
+      "stamp": 7,
+      "entryHash": "53e76e65e2d171fa264b2b07b09aeb9d340e1f9eb06974d0d4a0f201679aabb2",
+      "admittedAt": [7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: `exhibitNumber` on a capture entry requires schemaVersion 3",
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5",
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the link provenance fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7",
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [1, 2], "with": [
+          "schemaVersion: `exhibitNumber` on a capture entry requires schemaVersion 3",
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5",
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the link provenance fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7",
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [3, 4], "with": [
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5",
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the link provenance fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7",
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [5], "with": [
+          "schemaVersion: the capture engine fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the link provenance fields on a capture entry require schemaVersion 6",
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7",
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [6], "with": [
+          "schemaVersion: the launched browser values on a capture entry require schemaVersion 7",
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "timestamp: subject": {
+      "stamp": 4,
+      "entryHash": "2a85aada3501277f077f058f0b4f4e6179612dd471044e8e9b7eace92e7374f3",
+      "admittedAt": [4, 5, 6, 7],
+      "refused": [
+        { "at": [0, 1], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: `subject` requires schemaVersion 4"
+        ] },
+        { "at": [2, 3], "with": [
+          "schemaVersion: `subject` requires schemaVersion 4"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "exhibit: memberCode": {
+      "stamp": 4,
+      "entryHash": "10fdf88e18db12fda8f4ec129c0d708c81a3b1e863b793f1e2dc7945bf6d7019",
+      "admittedAt": [4, 5, 6, 7],
+      "refused": [
+        { "at": [0, 1, 2], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: `memberCode` requires schemaVersion 4"
+        ] },
+        { "at": [3], "with": [
+          "schemaVersion: `memberCode` requires schemaVersion 4"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "exhibit: personaId": {
+      "stamp": 7,
+      "entryHash": "e8ecb226c2dce607adf8408cf52b31cc82a08c664bbd6beb78dbfc7dee56ea15",
+      "admittedAt": [7],
+      "refused": [
+        { "at": [0, 1, 2], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [3, 4, 5, 6], "with": [
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "exhibit: Persona and memberCode": {
+      "stamp": 7,
+      "entryHash": "c07cfb6f5ba37aa3ef5e3ad6961f7aebd72735ee7b1745ce639e98359c3feb7d",
+      "admittedAt": [7],
+      "refused": [
+        { "at": [0, 1, 2], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: `memberCode` requires schemaVersion 4",
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [3], "with": [
+          "schemaVersion: `memberCode` requires schemaVersion 4",
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [4, 5, 6], "with": [
+          "schemaVersion: the Persona fields require schemaVersion 7"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "deletion: caller asks for 3": {
+      "stamp": 3,
+      "entryHash": "4688daa5d30bd5476335ddfb2ccf60aa16d67a8bbb32cbc2e46012c5c5a813cc",
+      "admittedAt": [1, 2, 3, 4, 5, 6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "timestamp: caller asks for 3": {
+      "stamp": 3,
+      "entryHash": "14310e065ab3188f52511cbbe0d24945923d5f6040870c1715aa764b137280ca",
+      "admittedAt": [2, 3, 4, 5, 6, 7],
+      "refused": [
+        { "at": [0, 1], "with": [
+          "schemaVersion: too_small"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "timestamp: subject, caller asks for 3": {
+      "stamp": 4,
+      "entryHash": "2a85aada3501277f077f058f0b4f4e6179612dd471044e8e9b7eace92e7374f3",
+      "admittedAt": [4, 5, 6, 7],
+      "refused": [
+        { "at": [0, 1], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: `subject` requires schemaVersion 4"
+        ] },
+        { "at": [2, 3], "with": [
+          "schemaVersion: `subject` requires schemaVersion 4"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: caller asks for 1": {
+      "stamp": 2,
+      "entryHash": "c993dd9744c9f98bc096939e5d37c7f5b0490b47098dd961a01def5cc2a68ebf",
+      "admittedAt": [1, 2, 3, 4, 5, 6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    },
+    "capture: Egress, caller asks for 99": {
+      "stamp": 7,
+      "entryHash": "19fdd60cc46ec9f44bd9b6ffe45e1d8dbca6e1922f931e575057174a6e2dd7e2",
+      "admittedAt": [5, 6, 7],
+      "refused": [
+        { "at": [0], "with": [
+          "schemaVersion: too_small",
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5"
+        ] },
+        { "at": [1, 2, 3, 4], "with": [
+          "schemaVersion: the Egress fields on a capture entry require schemaVersion 5"
+        ] },
+        { "at": [8], "with": [
+          "schemaVersion: too_big"
+        ] }
+      ]
+    }
+  },
+  "captureChain": [
+    {
+      "name": "capture",
+      "keys": ["contentHash", "screenshotHash", "textHash"],
+      "digest": "7e6d25f143a9ca3e5cf408521d07d25e94b906b8631a43e41429b187eed069d3"
+    },
+    {
+      "name": "capture: no screenshot or text",
+      "keys": ["contentHash", "screenshotHash", "textHash"],
+      "digest": "e5a2a0d58c07466adf393a557c19ef1d1f596ef1892cad246a0cb92ff28be11a"
+    },
+    {
+      "name": "capture: every schema-2 optional field",
+      "keys": ["contentHash", "screenshotHash", "textHash"],
+      "digest": "7e6d25f143a9ca3e5cf408521d07d25e94b906b8631a43e41429b187eed069d3"
+    },
+    {
+      "name": "capture: a Duplicate",
+      "keys": ["contentHash", "screenshotHash", "textHash"],
+      "digest": "7e6d25f143a9ca3e5cf408521d07d25e94b906b8631a43e41429b187eed069d3"
+    },
+    {
+      "name": "capture: exhibitNumber",
+      "keys": ["contentHash", "screenshotHash", "textHash"],
+      "digest": "7e6d25f143a9ca3e5cf408521d07d25e94b906b8631a43e41429b187eed069d3"
+    },
+    {
+      "name": "capture: egressKind",
+      "keys": ["contentHash", "screenshotHash", "textHash", "egressKind"],
+      "digest": "01e4bd432dbfe32ff40d06d24f2dabfb2b6f83a6d7ddb0d910d09009937c2d93"
+    },
+    {
+      "name": "capture: egressKind and egressLabel",
+      "keys": ["contentHash", "screenshotHash", "textHash", "egressKind", "egressLabel"],
+      "digest": "ec3342ccf392fd48adb51cac4b1d0c891866675e444aecd90e515c7cee04cccd"
+    },
+    {
+      "name": "capture: userAgent",
+      "keys": ["contentHash", "screenshotHash", "textHash", "userAgent"],
+      "digest": "c3254817653815e197ec0c04570a5d08246c022df390d8c5c72d4248285944b0"
+    },
+    {
+      "name": "capture: tlsSkipped",
+      "keys": ["contentHash", "screenshotHash", "textHash", "tlsSkipped"],
+      "digest": "d3351fc065bfefae967b494407dc8cbf87a26d1f1836d02ca1dd9607673b3c29"
+    },
+    {
+      "name": "capture: every Egress field",
+      "keys": ["contentHash", "screenshotHash", "textHash", "egressKind", "egressLabel", "userAgent", "tlsSkipped"],
+      "digest": "b4420ca22a2860d9329ca1e813aa477f3aa6c4a332adb8be7a83e237f8511205"
+    },
+    {
+      "name": "capture: inventory",
+      "keys": ["contentHash", "screenshotHash", "textHash", "inventory"],
+      "digest": "6ce96cba563ba0ca9be259c873b4f0a681c593f0be7eb8de319b09d53d7fea39"
+    },
+    {
+      "name": "capture: scrollToLoad",
+      "keys": ["contentHash", "screenshotHash", "textHash", "scrollToLoad"],
+      "digest": "510cabce316fbc61883c37d6d9230f14a804461374d66c8bd32f0c68f3885aae"
+    },
+    {
+      "name": "capture: transactionRecordHash",
+      "keys": ["contentHash", "screenshotHash", "textHash", "inventory", "transactionRecordHash"],
+      "digest": "4dc25a570981d4ad587061bb995c7704173f5a6188c93301550407573f37c0a2"
+    },
+    {
+      "name": "capture: pdfHash",
+      "keys": ["contentHash", "screenshotHash", "textHash", "inventory", "pdfHash"],
+      "digest": "5583b16f0af6f427103d5898000a1b7284bb61cca70e2e41006346cf115044ac"
+    },
+    {
+      "name": "capture: boundTls",
+      "keys": ["contentHash", "screenshotHash", "textHash", "boundTls"],
+      "digest": "3307b1664385cbb1fec58a6266863d8d7ae098b713fdf39466f4b0e103de51d3"
+    },
+    {
+      "name": "capture: boundTlsAbsent",
+      "keys": ["contentHash", "screenshotHash", "textHash", "boundTlsAbsent"],
+      "digest": "b549d87266e62da1834b40af2e292d1bcc1abf583f7ca54e2f3472b90e32244f"
+    },
+    {
+      "name": "capture: every capture engine field",
+      "keys": ["contentHash", "screenshotHash", "textHash", "inventory", "scrollToLoad", "transactionRecordHash", "boundTls", "pdfHash"],
+      "digest": "2cc02b5af96ad7c5b08d319548cc3a77f75075981855317a8be635c7f1c7a3c5"
+    },
+    {
+      "name": "capture: link provenance",
+      "keys": ["contentHash", "screenshotHash", "textHash", "linkedFromCaptureId", "linkedFromContentHash", "linkHref"],
+      "digest": "cd1455f2a81555b32007d0b97b2efca2c1869d56fe64ca260ca9a2c46fb7f300"
+    },
+    {
+      "name": "capture: method launched",
+      "keys": ["contentHash", "screenshotHash", "textHash"],
+      "digest": "7e6d25f143a9ca3e5cf408521d07d25e94b906b8631a43e41429b187eed069d3"
+    },
+    {
+      "name": "capture: method launched-passive",
+      "keys": ["contentHash", "screenshotHash", "textHash"],
+      "digest": "7e6d25f143a9ca3e5cf408521d07d25e94b906b8631a43e41429b187eed069d3"
+    },
+    {
+      "name": "capture: browserProduct",
+      "keys": ["contentHash", "screenshotHash", "textHash", "browserProduct"],
+      "digest": "d36e6ed6fb0780302358373a6c2d1785a33750a98c5355b34d8c108471b7dcd7"
+    },
+    {
+      "name": "capture: browserProduct and browserVersion",
+      "keys": ["contentHash", "screenshotHash", "textHash", "browserProduct", "browserVersion"],
+      "digest": "b9e42458f2d7833ee52555e2d7219af1bcbb0dcab463e2c7f5b90a239990a585"
+    },
+    {
+      "name": "capture: browserFamily",
+      "keys": ["contentHash", "screenshotHash", "textHash", "browserFamily"],
+      "digest": "08f50695254fe2b5bd3e92d0bf7621b194af5f15a93baa9cef1473b79bc897a5"
+    },
+    {
+      "name": "capture: passiveRule on a Duplicate",
+      "keys": ["contentHash", "screenshotHash", "textHash", "passiveRule"],
+      "digest": "b257db46943444defbb96f891573a8ac7c6d92e7e22143b69b718df4ea79b705"
+    },
+    {
+      "name": "capture: a stage-2 Transaction Record absence",
+      "keys": ["contentHash", "screenshotHash", "textHash", "inventory"],
+      "digest": "420e12e2303df81b744f1bf84bd36ae0e40f7c2228c8116ba938f21529888127"
+    },
+    {
+      "name": "capture: a stage-2 PDF absence",
+      "keys": ["contentHash", "screenshotHash", "textHash", "inventory"],
+      "digest": "89fffcda2f8fe4c7334d77397df9c3f1fa9f3a9bbcc3366620cbb5e2459513fb"
+    },
+    {
+      "name": "capture: servedByServiceWorker",
+      "keys": ["contentHash", "screenshotHash", "textHash", "inventory", "transactionRecordHash"],
+      "digest": "032043d088c8732bbadfada128e43408104b2d17e2d4a8e24b8be05238f4d3f7"
+    },
+    {
+      "name": "capture: requestBodiesWithheld",
+      "keys": ["contentHash", "screenshotHash", "textHash", "inventory", "transactionRecordHash"],
+      "digest": "905e63c11947607ca6d4c9cda76197f2f72c62ee5f719cb51b4e9eb4ca5306ab"
+    },
+    {
+      "name": "capture: httpCacheDisabled",
+      "keys": ["contentHash", "screenshotHash", "textHash", "inventory", "transactionRecordHash"],
+      "digest": "bb108f372cac8aeb827765e5289ac5b51f04deab2258f08764e51df4ff53019d"
+    },
+    {
+      "name": "capture: personaId",
+      "keys": ["contentHash", "screenshotHash", "textHash", "personaId"],
+      "digest": "cdef2faf012dd0844c007eeed4a26151a0a4066bb64404c1f180d58d5deea19f"
+    },
+    {
+      "name": "capture: both Persona fields",
+      "keys": ["contentHash", "screenshotHash", "textHash", "personaId", "personaLabel"],
+      "digest": "87c26a008486ab75c77d8388b003f8776d2ec2c5b4a8e4ea4c0b5cb9db4227c3"
+    },
+    {
+      "name": "capture: a clicked launched Capture",
+      "keys": ["contentHash", "screenshotHash", "textHash", "inventory", "scrollToLoad", "transactionRecordHash", "boundTls", "pdfHash", "browserProduct", "browserVersion", "browserFamily", "personaId", "personaLabel"],
+      "digest": "83163c6d90235fd994da12a42df57d716203c949726bc56103839b756d0c7685"
+    },
+    {
+      "name": "capture: a passive launched Capture",
+      "keys": ["contentHash", "screenshotHash", "textHash", "inventory", "transactionRecordHash", "boundTls", "browserProduct", "browserVersion", "browserFamily", "passiveRule", "personaId", "personaLabel"],
+      "digest": "a529427239e1c66e444c3762ba86880ec032e86a7dfc1d5747f985ef28eef475"
+    },
+    {
+      "name": "capture: exhibitNumber and Egress",
+      "keys": ["contentHash", "screenshotHash", "textHash", "egressKind"],
+      "digest": "01e4bd432dbfe32ff40d06d24f2dabfb2b6f83a6d7ddb0d910d09009937c2d93"
+    },
+    {
+      "name": "capture: exhibitNumber and link provenance",
+      "keys": ["contentHash", "screenshotHash", "textHash", "linkedFromCaptureId", "linkedFromContentHash", "linkHref"],
+      "digest": "cd1455f2a81555b32007d0b97b2efca2c1869d56fe64ca260ca9a2c46fb7f300"
+    },
+    {
+      "name": "capture: Egress and capture engine",
+      "keys": ["contentHash", "screenshotHash", "textHash", "egressKind", "egressLabel", "userAgent", "tlsSkipped", "inventory", "scrollToLoad", "transactionRecordHash", "boundTls", "pdfHash"],
+      "digest": "0f28774eb31efd384819e5aeacc0499dddcebf4d6ee3bc072baf9e53b080f3d2"
+    },
+    {
+      "name": "capture: Egress and Persona",
+      "keys": ["contentHash", "screenshotHash", "textHash", "egressKind", "egressLabel", "userAgent", "tlsSkipped", "personaId", "personaLabel"],
+      "digest": "6351d72901f88777b602c664dd7ae5855e1835a395262cbcbfae1df2fd082a5b"
+    },
+    {
+      "name": "capture: a field of every schema",
+      "keys": ["contentHash", "screenshotHash", "textHash", "egressKind", "egressLabel", "userAgent", "tlsSkipped", "inventory", "scrollToLoad", "transactionRecordHash", "boundTls", "pdfHash", "linkedFromCaptureId", "linkedFromContentHash", "linkHref", "browserProduct", "browserVersion", "browserFamily", "personaId", "personaLabel"],
+      "digest": "695294aa3f94b2f381d3bd5ed9d354833e4839fb61f2d8835fde51dd3d64e469"
+    },
+    {
+      "name": "capture: caller asks for 1",
+      "keys": ["contentHash", "screenshotHash", "textHash"],
+      "digest": "7e6d25f143a9ca3e5cf408521d07d25e94b906b8631a43e41429b187eed069d3"
+    },
+    {
+      "name": "capture: Egress, caller asks for 99",
+      "keys": ["contentHash", "screenshotHash", "textHash", "egressKind"],
+      "digest": "01e4bd432dbfe32ff40d06d24f2dabfb2b6f83a6d7ddb0d910d09009937c2d93"
+    }
+  ]
+}

@@ -387,6 +387,26 @@ describe("the capture control while a launched browser's session runs", () => {
     expect(screen.queryByRole('timer')).toBeNull()
   })
 
+  // A browser that is closing or has closed is no longer the source. The session keeps running
+  // through the extension, and the panel says only that the browser closed.
+  it.each([
+    ['closing', { state: 'closing', browser: BROWSER }],
+    ['closed', { state: 'closed', browser: BROWSER }]
+  ] satisfies Array<[string, LaunchedBrowserStatus]>)(
+    'names the extension on a Case once the launched browser is %s',
+    (_, status) => {
+      useAppStore.setState({ sessionActive: true, connectedToExtension: true })
+      setup({ status })
+      expect(screen.getByTestId('topbar-rec').textContent).toBe('Recordingextension▾')
+    }
+  )
+
+  it('names no source on a Case while the browser is open and the extension is connected', () => {
+    useAppStore.setState({ sessionActive: true, connectedToExtension: true })
+    setup({ status: OPEN })
+    expect(screen.getByTestId('topbar-rec').textContent).toBe('Recording▾')
+  })
+
   it('opens the panel as a popover where no Case is on screen, naming the browser in the mark', async () => {
     useAppStore.setState({ sessionActive: true })
     setup({ caseId: null, showOpenCase: true, status: OPEN })

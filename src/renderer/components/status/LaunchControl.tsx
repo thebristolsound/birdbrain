@@ -59,8 +59,9 @@ export function LaunchControl({ caseId, showOpenCase }: LaunchControlProps) {
     return caseId ? (
       <SessionTrigger
         recording={sessionActive}
-        // The panel on a Case screen names the browser.
-        showSource={false}
+        // The panel on a Case screen names an open browser. Once the browser closes, the source
+        // is the extension, when one is connected, and nothing else on the screen says so.
+        showSource={view.kind !== 'open'}
         selected={!hidden}
         aria-expanded={!hidden}
         title={hidden ? 'Show the Capture Session panel' : 'Hide the Capture Session panel'}

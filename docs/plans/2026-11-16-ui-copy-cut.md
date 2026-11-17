@@ -88,8 +88,8 @@ four are in the next tranche.
 - **The mock is the design source.** The maintainer's observation is that much of this prose
   arrived with the design bundles. `docs/design-handoff/README.md` names the 2026-08-21
   standalone as the single design source, so a cut that departs from a bundle's copy supersedes
-  it, as decision 5 of the consolidation plan does for layout. This plan did not trace each
-  string back to a bundle.
+  it. Decision 1 allows that for copy without a new bundle. This plan did not trace each string
+  back to a bundle.
 - **Tests and docs quote these strings.** Unit tests and end-to-end specs find controls by
   their text, and `tester-guide.mdx` and `features.mdx` quote some. Each slice updates the ones
   it breaks.
@@ -107,17 +107,17 @@ is what stays in view; a tip's words are counted apart.
 | Launch dialog | 12 | 127 | 30 | 8 | 17 |
 | Capture Session panel and its dialogs | 14 | 247 | 47 | 25 | 0 |
 | VPN warning | 2 | 48 | 27 | 0 | 0 |
-| Export dialog | 12 | 164 | 52 | 0 | 7 |
+| Export dialog | 12 | 164 | 61 | 0 | 7 |
 | Captures | 10 | 184 | 94 | 0 | 0 |
 | Overview | 3 | 18 | 2 | 0 | 6 |
 | Signals | 12 | 164 | 71 | 5 | 0 |
 | Notes | 10 | 100 | 27 | 0 | 0 |
 | Dashboard and a new Case | 6 | 50 | 12 | 0 | 0 |
 | Onboarding tour | 18 | 364 | 186 | 0 | 0 |
-| **Total** | **99** | **1,466** | **548** | **38** | **30** |
+| **Total** | **99** | **1,466** | **557** | **38** | **30** |
 
-Of 1,466 words, 548 stay in view and 30 wait for a consolidation slice. The other
-888 leave view, which is 61 percent, and 38 words of new tips replace some of them.
+Of 1,466 words, 557 stay in view and 30 wait for a consolidation slice. The other
+879 leave view, which is 60 percent, and 38 words of new tips replace some of them.
 
 ## Launch dialog
 
@@ -184,8 +184,8 @@ plan edit the same labels; this cut lands with them, not beside them.
 
 | Today | Words | Verdict | Becomes, or why |
 | --- | --- | --- | --- |
-| "Verifiable package: Manifest, Certification, captures, screenshots and notes" (`ExportDialog.tsx`) | 8 | Shorten | "Signed Manifest and Certification" Under "Evidence Package (.zip)". |
-| "Non-evidentiary: captures, screenshots and notes — no Certification, no Manifest" (`ExportDialog.tsx`) | 9 | Shorten | "Not evidence: no Manifest, no Certification" ADR-0010 says this label has to carry weight, so it stays. |
+| "Verifiable package: Manifest, Certification, captures, screenshots and notes" (`ExportDialog.tsx`) | 8 | Shorten | "For handing over. A recipient can check its integrity." Under "Evidence Package (.zip)". Wording waits for open question 2. |
+| "Non-evidentiary: captures, screenshots and notes — no Certification, no Manifest" (`ExportDialog.tsx`) | 9 | Shorten | "For your own use. No Certification, and a recipient cannot check it." ADR-0010 says this label has to carry weight, so it stays. Wording waits for open question 2. |
 | "Evidence package with everything except operator notes" (`ExportDialog.tsx`) | 7 | Slice | Slice 4.2 replaces the preset with a checkbox. |
 | "Evidence package: ships the full signed Manifest chain and the Certification, and appends …" (`ExportDialog.tsx`) | 26 | Cut | Second description of the selected class. |
 | "Non-evidentiary working copy: no Certification, no signed Manifest, no verification materials. The export …" (`ExportDialog.tsx`) | 34 | Cut | Second description of the selected class. |
@@ -237,7 +237,7 @@ count it. The plan moves it into a tip on the list.
 
 | Today | Words | Verdict | Becomes, or why |
 | --- | --- | --- | --- |
-| "Passive capture is suspended in this extension build. No page is captured without …" (`signalsModel.ts`) | 16 | Shorten | "Passive capture is off in this build." ADR-0013 says withdrawn; the app says suspended. One word, chosen by the maintainer. Slice 7.4 moves the switch. |
+| "Passive capture is suspended in this extension build. No page is captured without …" (`signalsModel.ts`) | 16 | Shorten | "Passive capture is off in this build." Decision 3. Slice 7.4 moves the switch. |
 | "Matching pages are never captured for this case, by any route, including manual capture." (`signalsModel.ts`) | 14 | Shorten | "Matching pages are never captured in this Case, even by hand." A consequence. Stays in view. |
 | "Only these patterns are excluded for this case; the global ignore list (‹…›, …" (`signalsModel.ts`) | 17 | Shorten | "Replaces the global ignore list." |
 | "Applied on top of the global ignore list (‹…›, Settings → Capture Preferences). ‹…›" (`signalsModel.ts`) | 11 | Shorten | "Added to the global ignore list." |
@@ -344,7 +344,9 @@ Not yet judged. The counts are from the same measurement.
 ## Slices
 
 Nothing starts until the maintainer has ruled on the verdicts. Each slice is one pull request
-with before and after screenshots, the tests and docs it breaks, and ten files or fewer.
+with before and after screenshots, the tests and docs it breaks, and ten files or fewer. Each
+adds its line to the index in `docs/design-handoff/README.md` (decision 1) and moves any text
+marked Docs into `features.mdx` (decision 2).
 
 - [ ] **C0. A tip that opens on focus.** `src/renderer/components/ui/tooltip.tsx` on the
   tooltip `radix-ui` already ships, and `InfoTip.tsx` rebuilt on it, so a tip shows on hover
@@ -360,27 +362,53 @@ with before and after screenshots, the tests and docs it breaks, and ten files o
 - [ ] **C7. Capture Session panel.** After C0. `evidence-affecting`: three of its files are
   `blocking`.
 - [ ] **C8. Export dialog.** `evidence-affecting`. Lands with slices 4.1 and 4.2 of the
-  consolidation plan, so the dialog's wording changes once.
+  consolidation plan, so the dialog's wording changes once. Waits for open question 2.
 
 C1 to C4 touch no `blocking` file and wait for nothing but the ruling. C4 is worth doing first:
 it is the only place the cut also removes something untrue.
 
-## Questions for the maintainer
+## Decisions taken
 
-1. **Does a copy-only cut supersede a design bundle's wording without a new bundle?** The
-   consolidation plan draws a bundle before it departs from the mock's layout. Recommendation:
-   for copy alone, no new bundle; each slice adds a line to the index in
+The maintainer ruled on three of this plan's questions on 2026-11-16.
+
+1. **Does a copy-only cut supersede a design bundle's wording without a new bundle?** Ruling:
+   yes. No new bundle for copy alone. Each slice adds a line to the index in
    `docs/design-handoff/README.md` naming the screens whose copy it replaced.
-2. **Where does how-it-works text go when it leaves a screen?** Recommendation:
-   `features.mdx` where the page does not already say it, and nowhere else. No in-app help
-   panel.
-3. **Which word does the app use for passive capture today?** ADR-0013 and `CONTEXT.md` say
-   withdrawn, the Signals card says suspended, and this plan proposes "off in this build".
-4. **Is one tip per dialog or panel the right limit?** The critique counted the launch dialog's
-   tips as clutter. A tighter rule is none; a looser one is one per row.
-5. **Are the two descriptions proposed for the export choices right?** "Signed Manifest and
-   Certification" for an Evidence Package and "Not evidence: no Manifest, no Certification" for
-   a Working Copy. Both say what a file proves, so the words are the maintainer's.
+2. **Where does how-it-works text go when it leaves a screen?** Ruling: `features.mdx`, where
+   the page does not already say it, and nowhere in the app.
+3. **Which word does the app use for passive capture today?** Ruling: "off in this build". The
+   Signals card's line becomes "Passive capture is off in this build."
+
+## Open questions
+
+Two questions are still the maintainer's.
+
+1. **Is one tip per dialog or panel the right limit?** The maintainer asked for a
+   recommendation. It is to drop the count and rule on what a tip hangs from: no free-standing
+   "i" icon, and a tip only on a control or label that is already on screen. The count does not
+   hold up against this plan's own verdicts, which leave the Capture Session panel with two
+   tips, one on the "Scroll to load" checkbox and one on the "not from first request" label,
+   and both belong there. What the critique counted as clutter was the icons, not the text
+   behind them. Under the new rule a sentence with no control to hang from is either a
+   consequence, which rule 4 keeps in view, or how-it-works, which rule 6 sends to the docs.
+   One verdict changes: the launch dialog's "Sites can tell that software drives this browser."
+   is a consequence with no control of its own, so it becomes a line in the dialog instead of a
+   tip. `InfoTip.tsx` then has no use left, and slice C0 retires it.
+2. **What do the two export choices say under their names?** The maintainer ruled out this
+   plan's first proposal, "Signed Manifest and Certification" and "Not evidence: no Manifest,
+   no Certification". The second calls a file not evidence, which is not the app's to decide
+   (ADR-0043), and both are made of terms a new Operator has not met. Two replacements to
+   choose between, or reword:
+   - **By purpose.** Evidence Package: "For handing over. A recipient can check its
+     integrity." Working Copy: "For your own use. No Certification, and a recipient cannot
+     check it." This follows `CONTEXT.md`, which defines a Working Copy as an export for the
+     Operator's own use, and it avoids the bare word "verified", which the writing guide rules
+     out.
+   - **By contents.** Evidence Package: "Captures, screenshots, Notes, Manifest and
+     Certification." Working Copy: "Captures, screenshots and Notes. No Manifest, no
+     Certification." This is today's wording without the adjectives.
+   The recommendation is the first. ADR-0010 says the Working Copy's label has to carry
+   weight, and "for your own use" tells the Operator what not to do with the file.
 
 ## Not in this plan
 

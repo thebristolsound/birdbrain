@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { Button } from '@renderer/components/ui/button'
 import {
   Menu,
   MenuContent,
@@ -9,7 +10,7 @@ import {
   MenuShortcut,
   MenuTrigger
 } from '@renderer/components/ui/menu'
-import { isDisabledItem, press } from './menuKeys'
+import { isDisabledItem, nextTurn, press } from './menuKeys'
 
 interface HarnessProps {
   onFirst?: () => void
@@ -39,6 +40,9 @@ function Harness({ onFirst, onSecond, label }: HarnessProps) {
   )
 }
 
+// A real press names its pointer; the trigger ignores a pointerdown that names none.
+const MOUSE_PRESS = { button: 0, ctrlKey: false, pointerType: 'mouse' }
+
 function trigger(): HTMLElement {
   return screen.getByRole('button', { name: 'Actions' })
 }
@@ -50,11 +54,11 @@ afterEach(() => {
 describe('Menu', () => {
   it('opens on a pointer press, and a second press closes it', () => {
     render(<Harness />)
-    fireEvent.pointerDown(trigger(), { button: 0, ctrlKey: false })
+    fireEvent.pointerDown(trigger(), MOUSE_PRESS)
     expect(screen.getByRole('menu')).toBeTruthy()
     expect(trigger().getAttribute('aria-expanded')).toBe('true')
 
-    fireEvent.pointerDown(trigger(), { button: 0, ctrlKey: false })
+    fireEvent.pointerDown(trigger(), MOUSE_PRESS)
     expect(screen.queryByRole('menu')).toBeNull()
     expect(trigger().getAttribute('aria-expanded')).toBe('false')
   })
@@ -70,7 +74,7 @@ describe('Menu', () => {
 
   it('ignores the click that follows a pointer press, so one press does not open and close', () => {
     render(<Harness />)
-    fireEvent.pointerDown(trigger(), { button: 0, ctrlKey: false })
+    fireEvent.pointerDown(trigger(), MOUSE_PRESS)
     fireEvent.click(trigger(), { detail: 1 })
     expect(screen.getByRole('menu')).toBeTruthy()
   })
@@ -152,6 +156,19 @@ describe('Menu', () => {
     }
   })
 
+  // Not modal: Radix leaves the rest of the page pressable and readable while the menu is open,
+  // where a modal menu turns off pointer events on the body and hides its siblings.
+  it('leaves the page behind it pressable and exposed while it is open', async () => {
+    render(<Harness />)
+    fireEvent.click(trigger())
+    expect(screen.getByRole('menu')).toBeTruthy()
+    await nextTurn()
+    expect(document.body.style.pointerEvents).not.toBe('none')
+    const outside = screen.getByText('Outside')
+    expect(outside.closest('[aria-hidden="true"]')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Outside' })).toBe(outside)
+  })
+
   it('closes on a press outside it', async () => {
     render(<Harness />)
     fireEvent.click(trigger())
@@ -164,11 +181,78 @@ describe('Menu', () => {
     expect(screen.queryByRole('menu')).toBeNull()
   })
 
-  // The capture list clears its multi-selection on Escape unless an overlay carries this (#686).
-  it('marks its panel so the capture list leaves Escape to it', () => {
+  // The capture list clears its multi-selection on Escape unless this query finds an overlay
+  // (useCaptureSelection, #686). It finds the menu only while the menu is open.
+  it('is what the capture list finds on Escape while it is open, and not after', async () => {
     render(<Harness />)
+    expect(document.querySelector('[data-selection-escape-guard]')).toBeNull()
     fireEvent.click(trigger())
-    expect(screen.getByRole('menu').hasAttribute('data-selection-escape-guard')).toBe(true)
+    expect(document.querySelector('[data-selection-escape-guard]')).toBe(screen.getByRole('menu'))
+    await press('Escape')
+    await waitFor(() => expect(document.querySelector('[data-selection-escape-guard]')).toBeNull())
+  })
+
+  // Radix returns focus to the trigger a turn after the menu unmounts, unless focus has already
+  // left the menu. An item moves focus to the trigger first, so nothing is left to return, and
+  // focus an item's action has moved, into a dialog for one, stays where the action put it.
+  it('leaves focus where an item put it, a turn after the menu closes', async () => {
+    render(
+      <>
+        <input aria-label="Elsewhere" />
+        <Harness onFirst={() => screen.getByRole('textbox', { name: 'Elsewhere' }).focus()} />
+      </>
+    )
+    fireEvent.click(trigger())
+    fireEvent.click(screen.getByRole('menuitem', { name: /First/ }))
+    expect(screen.queryByRole('menu')).toBeNull()
+    await nextTurn()
+    await nextTurn()
+    expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Elsewhere' }))
+  })
+
+  // Button is a motion.button, and Motion's press gesture sends a pointerdown of its own, naming
+  // no pointer, when Enter goes down on one. Radix has already opened the menu on the key, so
+  // that pointerdown must not toggle it shut again.
+  it('stays open on Enter from a trigger whose tap gesture is on', async () => {
+    render(
+      <Menu>
+        <MenuTrigger asChild>
+          <Button>Actions</Button>
+        </MenuTrigger>
+        <MenuContent>
+          <MenuItem>First</MenuItem>
+        </MenuContent>
+      </Menu>
+    )
+    trigger().focus()
+    await press('Enter')
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)))
+    expect(screen.getByRole('menu')).toBeTruthy()
+  })
+
+  it('ignores a pointerdown that names no pointer', () => {
+    render(<Harness />)
+    fireEvent.pointerDown(trigger(), { button: 0, ctrlKey: false })
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  // That pointerdown also tells Radix the keyboard is no longer in use, so the first item would
+  // not take focus. A menu's trigger turns the tap gesture off, as the app's two Button
+  // triggers do.
+  it('opens on Enter on its first item from a Button trigger with the tap gesture off', async () => {
+    render(
+      <Menu>
+        <MenuTrigger asChild>
+          <Button whileTap={undefined}>Actions</Button>
+        </MenuTrigger>
+        <MenuContent>
+          <MenuItem>First</MenuItem>
+        </MenuContent>
+      </Menu>
+    )
+    trigger().focus()
+    await press('Enter')
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('menuitem')))
   })
 
   it('refuses a part rendered outside a menu', () => {

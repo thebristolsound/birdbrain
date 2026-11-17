@@ -11,9 +11,10 @@ import { DropdownMenu as MenuPrimitive } from 'radix-ui'
 import { cn } from '@renderer/lib/utils'
 
 /**
- * The app's one menu that opens from a button, wrapping `radix-ui`'s DropdownMenu as
- * context-menu.tsx wraps its ContextMenu. Radix gives the roles, the arrow keys, Home, End,
- * typeahead, Escape and the return of focus to the trigger.
+ * The menu that opens from a button, wrapping `radix-ui`'s DropdownMenu as context-menu.tsx wraps
+ * its ContextMenu. Radix gives the roles, the arrow keys, Home, End, typeahead, Escape and the
+ * return of focus to the trigger. An item always closes the menu: it moves focus to the trigger
+ * before it acts, and a menu that is not modal closes when focus leaves it.
  */
 
 interface MenuContextValue {
@@ -59,6 +60,7 @@ function Menu({ open: controlled, onOpenChange, children }: MenuProps) {
 
 function MenuTrigger({
   onClick,
+  onPointerDown,
   ...props
 }: ComponentPropsWithoutRef<typeof MenuPrimitive.Trigger>) {
   const { open, setOpen, triggerRef } = useMenu()
@@ -66,6 +68,13 @@ function MenuTrigger({
     <MenuPrimitive.Trigger
       ref={triggerRef}
       {...props}
+      onPointerDown={(event) => {
+        onPointerDown?.(event)
+        // A real press names its pointer. Motion's press gesture sends a pointerdown with none
+        // when Enter goes down on a motion.button, as Button is, and Radix has already opened
+        // the menu on that key: a second toggle would shut it.
+        if (event.nativeEvent.pointerType === '') event.preventDefault()
+      }}
       onClick={(event) => {
         onClick?.(event)
         // Radix opens on pointer down and on the keyboard. A click with no press behind it, as

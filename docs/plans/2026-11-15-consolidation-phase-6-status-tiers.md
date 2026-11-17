@@ -45,25 +45,25 @@ Findings U6 and A2.
   - `statusGroupModel.ts`: when the worst signal is `warning`, `word` is null. The `summary`,
     the signals' `text` and `severity` are unchanged, so the accessible name and the popover
     still say "VPN not seen" or "VPN check failed".
-  - `StatusGroup.tsx`: no icon for a `warning`; the Egress dot keeps the warning colour. For a
+  - `StatusGroup.tsx`: no icon for a `warning`; the Egress dot becomes a hollow ring in the
+    warning colour (ruled 2026-11-17), where nominal and problem stay filled dots. For a
     `danger`, the icon and the word show at every width, so the word no longer hides below
     `xl`.
   - The rule that only the worst signal's dot takes colour stays: an advisory behind a problem
     shows as a faint dot, as today.
   - The polite live region still announces a change into and out of the advisory tier.
-- **What colour alone cannot say.** After this change a problem differs from the other tiers
-  by its icon and its word. An advisory differs from nominal only by the colour of one dot. An
-  Operator who cannot tell the two colours apart learns of the advisory from the control's
-  accessible name or its popover, and not from the bar. A review comment on #2201 raised this.
-  Decision 2 allows the coloured dot only, so the slice builds that unless the maintainer rules
-  otherwise on frame H, which draws a ring in place of a filled dot as the alternative. Either
-  way the amendment to VPN rule 2 states which was chosen and why.
+- **Shape as well as colour.** After this change a problem differs from the other tiers by its
+  icon and its word. An advisory differs from nominal by a hollow ring in place of a filled dot,
+  as well as by colour. The maintainer ruled the ring on 2026-11-17, on frame H of the design
+  canvas: in light mode the amber mark and the nominal grey are 1.02:1 apart in luminance, so a
+  filled amber dot would differ by hue alone. A review comment on #2201 raised the same gap. The
+  amendment to VPN rule 2 says the advisory is a ring, and why.
 - **Where the words still appear.** The status popover's Egress row; the launch dialog's
   `launch-no-vpn` line; and, once slice 5.4 lands, the Egress row of the Launch browser
   control's menu.
 - **ADR-0032.** The same pull request amends VPN rule 2. Proposed wording to add: "In the top bar
-  the Egress and a VPN not seen show as one dot of the status control, coloured while no VPN
-  is seen, with the words in the control's accessible name and its popover. The words are
+  the Egress and a VPN not seen show as one dot of the status control, a hollow amber ring while
+  no VPN is seen, with the words in the control's accessible name and its popover. The words are
   printed where a contact starts: the launch dialog and the capture menu." The amendment
   records why: the check misses a VPN on a router or a corporate network, so for those
   Operators a printed warning on every screen is permanent and wrong.
@@ -75,7 +75,7 @@ Findings U6 and A2.
     failed VPN check; it is unchanged for an unknown Egress and for failures.
   - `tests/components/StatusGroup.test.tsx`: "warns, with a word of its own, when the check
     fails" and "colours the Egress dot when the VPN warning is the only signal off nominal"
-    change to expect the dot and no word or icon; "keeps the Egress text where the VPN warning
+    change to expect the ring and no word or icon; "keeps the Egress text where the VPN warning
     e2e reads it" must still pass, since `e2e/vpn-warning.spec.ts` reads `egress-indicator`.
   - A new case: a `danger` word is visible at a width below `xl`.
   - "announces a change of severity in the polite live region" and "does not announce a new
@@ -88,9 +88,9 @@ Findings U6 and A2.
 - **Evidence tier.** `src/renderer/components/status/**` is renderer chrome. ADR-0032 VPN
   rule 4 already says the VPN result is not evidence.
 - **Acceptance.**
-  - [ ] With a Direct Egress and no VPN seen, the top bar prints no word and shows one coloured
-    dot.
+  - [ ] With a Direct Egress and no VPN seen, the top bar prints no word and shows one hollow
+    amber ring.
   - [ ] The control's accessible name and its popover still state that a VPN was not seen.
   - [ ] An unknown Egress and a failed Capture each show an icon and a word at 1,100 pixels.
-  - [ ] The amended ADR is in the same pull request, and says whether the advisory differs from
-    nominal by colour alone.
+  - [ ] The amended ADR is in the same pull request, and says the advisory is a hollow ring so it
+    differs from nominal by shape as well as colour.

@@ -1632,12 +1632,15 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   signature: {
     id: 'signature',
     title: 'Operator statement',
-    render: ({ data }) => `
+    // The verified sentence points the operator at the run under "Chain of
+    // custody", so it asks the tally that section and the cover print whether
+    // one ran.
+    render: (ctx) => `
 <section class="sheet">
   <h2>Operator statement</h2>
   <div class="rule-medium"></div>
   ${
-    data.verifications.length > 0
+    verificationTally(ctx).ran
       ? `<p>I generated this report from the Birdbrain case identified on the cover. I have not altered
   the captures, the manifest or the packaged artefacts, and the integrity results reproduced
   here are those produced by the tool at the verification run recorded under “Chain of
@@ -1648,7 +1651,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   values recomputed from the stored bytes at the time of export, and I make no statement about
   whether the stored bytes still match them.</p>`
   }
-  <p>Operator: ${esc(operatorLine(data))}.</p>
+  <p>Operator: ${esc(operatorLine(ctx.data))}.</p>
 </section>`
   }
 }

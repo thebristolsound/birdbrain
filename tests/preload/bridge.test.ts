@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { IPC_CHANNELS } from '@shared/ipc'
 
-// BirdbrainAPI statically guards the bridge's shape and signatures. These tests
-// provide the runtime complement: they load the real preload bundle against a
-// stub electron, call every exposed leaf, and check both its full path and the
-// channel it reaches against IPC_CHANNELS.
+// The preload builds its bridge from the contract (buildBridge in
+// src/shared/birdbrainApi.ts). These tests load the real preload bundle against
+// a stub electron, call every exposed leaf, and check both its full path and
+// the channel it reaches against IPC_CHANNELS. The path rule and the two lists
+// of exceptions below are written out here by hand and import nothing from the
+// code under test, so a change to where a channel sits has to be made twice.
 const electronStub = vi.hoisted(() => ({
   exposedKey: null as string | null,
   exposed: null as Record<string, unknown> | null,
@@ -58,10 +60,10 @@ function probeBridge(api: Record<string, unknown>): BridgeLeaf[] {
       if (typeof value === 'function') {
         const invokedBefore = electronStub.invoked.length
         const listenedBefore = electronStub.listened.length
-        // Every leaf is either a bridge() (invokes) or a subscribe() (listens);
+        // Every leaf is either an invoke() (invokes) or a subscribe() (listens);
         // one no-op callback argument satisfies both shapes.
         const result = (value as (arg: unknown) => unknown)(() => {})
-        // bridge() resolves through the envelope stub; swallow so a rejection
+        // invoke() resolves through the envelope stub; swallow so a rejection
         // never escapes the probe.
         if (result instanceof Promise) result.catch(() => {})
         if (electronStub.invoked.length > invokedBefore) {
@@ -133,7 +135,7 @@ const ROOT_LEVEL_LEAVES = new Set([
 // Method names that predate the action-segment convention, keyed by the channel
 // each one stands for. Keeping the channel as the key is the point: legitimising
 // a rename means editing a line that names the channel it diverges from, which
-// is reviewable, rather than silently renaming a key in the preload literal.
+// is reviewable, as well as the entry in BRIDGE_PATH_EXCEPTIONS.
 const METHOD_NAME_EXCEPTIONS: Record<string, string> = {
   'extension:path': 'getPath',
   'search:query': 'search',

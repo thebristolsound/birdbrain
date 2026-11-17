@@ -52,12 +52,74 @@ Decisions taken, with the reason for each:
   main-process and renderer code apart, and the test that follows a refusal from `handle()` to
   the adapter needs both.
 
+Change 1 is merged to `main`.
+
+## Change 2: the derived bridge
+
+What it does:
+
+- `src/shared/birdbrainApi.ts` derives the `BirdbrainAPI` type from `IpcInvokeContract` and
+  `IpcEventContract`, and `buildBridge` builds the preload's object from `IPC_CHANNELS` by the
+  same path rule. `BRIDGE_PATH_EXCEPTIONS` places the seven channels the rule does not.
+- `src/preload/index.ts` passes its two leaf makers to `buildBridge` and names no channel.
+- `tests/renderer/fakeBridge.ts` reads its namespace, event and top-level lists from the same
+  rule. The bridge test keeps its own hand-written rule, `METHOD_NAME_EXCEPTIONS` and
+  `ROOT_LEVEL_LEAVES`.
+
+Decisions taken, with the reason for each:
+
+- **A mapped type over the flat contract, not a nested contract or a generated file.** The
+  derived type equals the hand-written one except that `onLaunchedBrowserPickTab` now takes a
+  callback with a `null` payload. Hover text and error messages match, and find-references
+  works. Go-to-definition on a bridge method finds nothing, where it used to land on the
+  duplicate signature.
+- **The contract stays TypeScript-first.** Whether Zod schemas should become its source of
+  truth is an open question this change does not answer.
+- **The comments from the old bridge type moved to the contract entries.**
+
+Change 2 is merged to `main`.
+
+## Change 3: handler logic out of `registerIpcHandlers`
+
+The shape, set by the first slice:
+
+- `src/main/ipc/handlers.ts` holds `IpcHandlers<C>`, a table of handlers keyed by channel, and
+  `registerHandlers(table)`, which registers each one through `handle()`.
+- A handler takes an `IpcCaller` and then the channel's contract arguments. The caller sends an
+  event to the window that made the call. A handler never sees Electron's invoke event.
+- A domain module exports a function that takes its ports and returns its table.
+  `registerIpcHandlers` builds the table and registers it.
+- `tests/main/ipcHandlers.test.ts` stays as it is. It calls the registered channels with
+  Electron mocked, so it shows a moved domain behaves as before, and it keeps its check that
+  every invoke channel in `IPC_CHANNELS` is registered.
+
+Decisions taken, with the reason for each:
+
+- **A table per domain, keyed by channel, not plain functions with one table in
+  `ipcHandlers.ts`.** With plain functions every channel is written twice, once as a function
+  and once as a table row that forwards to it, and most handlers are one line already.
+- **The caller is a port with `send` only.** Four handlers use the calling window today, all to
+  send progress. The Wayback batch also stops when its window goes away, so its slice adds that
+  to the port.
+- **A check that two handlers of a moved domain repeat gets one function in the domain
+  module.** No handler gains a check it did not have.
+- **`src/main/ipc/**` joins the evidence path list at the advisory tier**, the tier of
+  `ipcHandlers.ts`, so moved logic keeps the review it had.
+
+Domains moved:
+
+- Shell reveal and open, with the list of files the app wrote (`src/main/ipc/revealFiles.ts`).
+  The report export and the Case archive export tell it about each file they write.
+
 ## Next
 
-- Change 2 follows change 1. The contract's source of truth stays the TypeScript types, and the
-  `ROOT_LEVEL_LEAVES` list in `tests/preload/bridge.test.ts` stays hand-written.
-- With change 1 in, the preload's own facts are five method-name exceptions and three
-  root-level invokes. The refusal markers no longer count.
+- Next slice: the report export (`export:preflight`, `export:generate`), which uses the save
+  dialog, the caller's `send` and `remember` from the reveal module.
+- After that, in the order they appear in `registerIpcHandlers`: the domains that call `dialog`
+  or `shell` (Case archive, Captures, Personas, Selectors, extension, settings, Staging Pool,
+  diagnostics, database backups), then the Wayback batch, then the rest.
+- For each slice: move the block as it is, register the table, add a test that calls the table
+  with fake ports, run `pnpm test tests/main/ipcHandlers.test.ts`, then `pnpm preflight`.
 
 ## Open questions
 

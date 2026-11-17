@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 #
-# Bring a fresh worktree to a working state. Wired into t3code as the project's
-# run-on-worktree-create script; safe to re-run by hand at any time.
+# Bring a fresh worktree or cloud container to a state where an agent can check its own work.
+# Wired into t3code as the project's run-on-worktree-create script, run by the dispatch and
+# PR review workflows, and the command to give a cloud agent environment as its setup script.
+# Safe to re-run by hand at any time.
 #
-# Why not plain `pnpm install`: t3code launches scripts from a shell that has not
-# run mise's prompt hook, so the repo's Node 24 pin loses to whatever Node the
-# parent shell had (see CLAUDE.md, "Run everything on Node 24"). This script pins
-# Node first and refuses to continue on the wrong major.
+# Why not plain `pnpm install`: t3code launches scripts from a shell that has not run mise's
+# prompt hook, so the repo's Node 24 pin loses to whatever Node the parent shell had (see
+# CLAUDE.md, "Run everything on Node 24"), and a host without mise has no Vale at all.
+# scripts/install-tools.sh resolves both, installing them without root where mise is absent.
 
 set -euo pipefail
 
@@ -14,16 +16,19 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 log() { echo "[setup-worktree] $*"; }
 
-if command -v mise >/dev/null 2>&1; then
-  # Installs the pinned tools (.mise.toml): Node, and Vale for the prose hook.
-  mise install --quiet 2>/dev/null || log "WARNING: mise install failed; pinned tools may be missing"
-  eval "$(mise env -s bash 2>/dev/null || true)"
+tools_status=0
+tool_path="$(bash scripts/install-tools.sh)" || tools_status=$?
+if [ -n "$tool_path" ]; then
+  export PATH="$tool_path:$PATH"
+  # Later steps of an Actions job, the agent's own included, read their PATH from this file.
+  if [ -n "${GITHUB_PATH:-}" ]; then tr ':' '\n' <<<"$tool_path" >>"$GITHUB_PATH"; fi
+  log "tools on PATH: $tool_path"
 fi
 
-node_major="$(node --version | sed -E 's/^v([0-9]+).*/\1/')"
+node_major="$(node --version 2>/dev/null | sed -E 's/^v([0-9]+).*/\1/')"
 if [ "$node_major" != "24" ]; then
-  log "ERROR: node $(node --version) on PATH; this repo pins Node 24 (.nvmrc, .mise.toml)."
-  log "       Install it with 'mise install' and re-run."
+  log "ERROR: node ${node_major:-missing} on PATH; this repo pins Node 24 (.nvmrc, .mise.toml)."
+  log "       scripts/install-tools.sh could not install it; its log is above."
   exit 1
 fi
 log "node $(node --version), pnpm $(pnpm --version)"
@@ -40,21 +45,25 @@ if [ ! -x node_modules/.bin/commitlint ]; then
   exit 1
 fi
 
-# The edit hook (.claude/hooks/vale-prose.sh) passes without Vale, so a missing binary is
-# an error here: it is the only point where the hook's absence is visible. On an Actions
-# runner no workflow installs Vale, and seven review fires read the install log by hand
-# after this exit to learn the tree was usable, so there it is a warning.
-if ! command -v vale >/dev/null 2>&1; then
+# These come from the system package manager, which needs root, so they are reported, not
+# installed. Preflight's coverage step requires jq and OpenSSL; the posting skills use gh.
+for tool in git jq openssl gh; do
+  command -v "$tool" >/dev/null 2>&1 || log "WARNING: $tool is not on PATH; install it with the system package manager."
+done
+
+# The edit hook (.claude/hooks/vale-prose.sh) passes without Vale or its Google style, so a
+# missing binary or style is an error here: it is the only point where the hook's absence is
+# visible. A host whose network refuses `vale sync` needs the style copied into the cache once
+# by hand (scripts/install-tools.sh logs where). On an Actions runner, review fires read the
+# install log by hand after this exit to learn the tree was usable, so there it is a warning.
+if [ "$tools_status" != 0 ] || ! command -v vale >/dev/null 2>&1; then
   if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
-    log "WARNING: vale missing; the prose hook cannot run. Dependencies installed; the tree is usable."
+    log "WARNING: Vale or its Google style is missing; the prose hook cannot run. Dependencies installed; the tree is usable."
     log "ready"
     exit 0
   fi
-  log "ERROR: vale missing; the prose hook cannot run. Install mise (https://mise.jdx.dev) and re-run."
+  log "ERROR: Vale or its Google style is missing; the prose hook cannot run. scripts/install-tools.sh logged why above."
   exit 1
-fi
-if [ ! -d .vale/styles/Google ]; then
-  vale sync || log "WARNING: vale sync failed; prose linting unavailable until it succeeds"
 fi
 log "vale $(vale --version | sed -E 's/^vale version //')"
 

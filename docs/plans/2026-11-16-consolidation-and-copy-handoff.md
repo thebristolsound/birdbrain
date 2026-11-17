@@ -112,10 +112,32 @@ button it changes.
 
 | Slice | Branch | Pull request | State |
 | --- | --- | --- | --- |
-| 5.1a | `feat/chrome-5.1a-shared-menu` | #2227 | Open for review, 2026-11-17 |
+| 5.1a | `feat/chrome-5.1a-shared-menu` | #2227 | Open for review. A second commit answers the first review and fixes Enter on a `Button` menu trigger |
+| 2.1 | `feat/chrome-2.1-recording-mark` | #2228 | Draft, based on the 5.1a branch |
+| 2.2 | `feat/chrome-2.2-one-stop-control` | #2229 | Draft, based on the 2.1 branch |
+| 6.1 | `feat/chrome-6.1-status-tiers` | #2230 | Draft, based on the 2.2 branch |
+| 5.2 | `feat/chrome-5.2-labelled-rail` | None yet | Committed locally, with screenshots taken |
 
-The next slice is 2.1. Start it with `git switch -c feat/chrome-2.1-recording-mark
-feat/chrome-5.1a-shared-menu`.
+Each draft's base is the branch below it in the stack, so its diff is its slice alone. A pushed
+branch only gains commits: when a lower branch gains a fix, merge it up through each branch above
+with a `chore(merge)` commit, then run preflight at each new head and replace the Verification
+block in that pull request's description. When a pull request merges into `main`, merge its last
+head and then `main` into the branch above it before marking that one ready.
+
+What the slices found that the plans did not say:
+
+- A menu trigger built on `Button` passes `whileTap={undefined}`. For Enter, Motion's tap gesture
+  sends a `pointerdown` of its own, which shut the menu again and stopped its first item taking
+  focus. Slices 5.3 and 5.4 build menus on `Button` triggers and need the same.
+- The review fleet has no `node_modules`, so it cannot check a sentence about what `radix-ui`
+  does. A description states what the diff holds and names the test that pins each behaviour.
+- The details panel now folds below a 1,124 pixel window, not 1,100: slice 5.2 kept the screen
+  room at 1,052 pixels beside the wider rail.
+- The top bar keeps its Settings gear on the dashboard, where no rail shows. The new-Case wizard
+  shows the rail, so it has no gear.
+
+The next slice is 5.3. Start it with `git switch -c feat/chrome-5.3-case-menu
+feat/chrome-5.2-labelled-rail`.
 
 ## Slices that share a file
 

@@ -82,6 +82,9 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
           <Button
             variant="outline"
             size="sm"
+            // No tap gesture on a menu trigger: for Enter, Motion sends a pointerdown of its own,
+            // which stops the menu opening on its first item.
+            whileTap={undefined}
             // aria-disabled rather than disabled: a disabled control cannot hold
             // focus, and the archive item hands focus back here as it starts.
             aria-disabled={isExporting}

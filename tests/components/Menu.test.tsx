@@ -105,6 +105,29 @@ describe('Menu', () => {
     await press('Home', first)
   })
 
+  it('moves to the item whose label starts with a typed letter', async () => {
+    render(<Harness />)
+    trigger().focus()
+    await press('ArrowDown')
+    const [first, , third] = screen.getAllByRole('menuitem')
+    await waitFor(() => expect(document.activeElement).toBe(first))
+
+    await press('t', third)
+  })
+
+  it('does not move to a disabled item for its letter', async () => {
+    render(<Harness />)
+    trigger().focus()
+    await press('ArrowDown')
+    const [first] = screen.getAllByRole('menuitem')
+    await waitFor(() => expect(document.activeElement).toBe(first))
+
+    // "s" starts only the disabled item's label.
+    await press('s')
+    await nextTurn()
+    expect(document.activeElement).toBe(first)
+  })
+
   it('runs an item on Enter, closes, and leaves focus on the trigger', async () => {
     const onFirst = vi.fn()
     render(<Harness onFirst={onFirst} />)
@@ -181,8 +204,24 @@ describe('Menu', () => {
     expect(screen.queryByRole('menu')).toBeNull()
   })
 
-  // The capture list clears its multi-selection on Escape unless this query finds an overlay
-  // (useCaptureSelection, #686). It finds the menu only while the menu is open.
+  // The capture list clears its multi-selection on Escape (useCaptureSelection, #686). It stands
+  // down for a key that something has already cancelled, and for an overlay this query finds.
+  // The next two cases pin both for an open menu.
+  it('cancels the Escape that closes it, so nothing behind the menu acts on the key', async () => {
+    render(<Harness />)
+    fireEvent.click(trigger())
+    const seen: boolean[] = []
+    const onWindowKey = (event: KeyboardEvent) => seen.push(event.defaultPrevented)
+    window.addEventListener('keydown', onWindowKey)
+    try {
+      await press('Escape')
+    } finally {
+      window.removeEventListener('keydown', onWindowKey)
+    }
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(seen).toEqual([true])
+  })
+
   it('is what the capture list finds on Escape while it is open, and not after', async () => {
     render(<Harness />)
     expect(document.querySelector('[data-selection-escape-guard]')).toBeNull()
@@ -192,9 +231,8 @@ describe('Menu', () => {
     await waitFor(() => expect(document.querySelector('[data-selection-escape-guard]')).toBeNull())
   })
 
-  // Radix returns focus to the trigger a turn after the menu unmounts, unless focus has already
-  // left the menu. An item moves focus to the trigger first, so nothing is left to return, and
-  // focus an item's action has moved, into a dialog for one, stays where the action put it.
+  // Focus that an item's action moves, into a dialog for one, is still there once the menu has
+  // closed and a turn has passed: nothing hands it back to the trigger afterwards.
   it('leaves focus where an item put it, a turn after the menu closes', async () => {
     render(
       <>

@@ -170,11 +170,12 @@ describe('ExportMenu', () => {
     await press('ArrowUp', archive)
     await press('Home', report)
     await press('End', archive)
-    // Typing finds an item by its label: both start "Export", and "r" tells them apart.
+    // A letter moves to the next item whose label starts with it. Both labels start with "E", so
+    // from the first item "e" steps to the second. Menu.test.tsx types to an item by its own
+    // first letter.
     await press('Home', report)
-    for (const key of 'export ') await press(key)
-    await press('c', archive)
-    // A letter no label holds moves nothing, a turn later either.
+    await press('e', archive)
+    // A letter no label starts with moves nothing, a turn later either.
     await press('z')
     await nextTurn()
     expect(document.activeElement).toBe(archive)
@@ -184,7 +185,8 @@ describe('ExportMenu', () => {
     await waitFor(() => expect(document.activeElement).toBe(trigger))
   })
 
-  // Opened with the pointer, the menu itself takes focus and no item is marked until a key moves.
+  // Opened by a click, with no key before it, the menu itself takes focus and no item is marked
+  // until a key moves. Menu.test.tsx opens one with a pointer press.
   it('opens from a click with focus in the menu, and the arrow keys reach its items', async () => {
     renderMenu()
     fireEvent.click(screen.getByRole('button', { name: 'Export' }))

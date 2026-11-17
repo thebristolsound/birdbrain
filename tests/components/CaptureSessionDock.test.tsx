@@ -197,6 +197,38 @@ describe('CaptureSessionDock', () => {
     expect(within(strip).queryByTitle(/tabs?$/)).toBeNull()
   })
 
+  // The top bar's recording mark hides and shows a launched browser's panel.
+  it('shows no rail and no strip while the panel is hidden, and takes neither width', async () => {
+    useAppStore.setState({ captureSessionPanelHidden: true })
+    try {
+      mount()
+      report(FITS)
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      })
+      expect(screen.queryByTestId('capture-session-rail')).toBeNull()
+      expect(screen.queryByTestId('capture-session-strip')).toBeNull()
+      report(FITS - 1)
+      expect(screen.queryByTestId('capture-session-strip')).toBeNull()
+    } finally {
+      useAppStore.setState({ captureSessionPanelHidden: false })
+    }
+  })
+
+  // A notice is not a launched browser's panel, and nothing else on a Case screen shows it.
+  it('still shows a notice while the panel is hidden', async () => {
+    useAppStore.setState({ captureSessionPanelHidden: true, dismissedLaunchNotice: null })
+    try {
+      mount({
+        status: { state: 'none', notice: { code: 'EGRESS_CHANGED', message: 'It changed.' } }
+      })
+      report(FITS)
+      expect(await screen.findByTestId('capture-session-rail')).toBeTruthy()
+    } finally {
+      useAppStore.setState({ captureSessionPanelHidden: false })
+    }
+  })
+
   it('reads the window, less the side rail, until the first measurement', async () => {
     stubResizeObserver()
     window.innerWidth = SIDE_RAIL_PX + FITS

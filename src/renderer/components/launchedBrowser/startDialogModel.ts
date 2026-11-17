@@ -34,6 +34,12 @@ export const NO_BROWSER_REFUSAL: LaunchRefusal = {
   detail: 'Choose one in Settings → Capture.'
 }
 
+// Opened with no Case on screen, on an installation that holds none.
+export const NO_CASE_REFUSAL: LaunchRefusal = {
+  title: 'No Case to capture into',
+  detail: 'Create a Case first.'
+}
+
 const ONE_AT_A_TIME = 'Only one can be open at a time.'
 
 const BUSY_TITLES: Readonly<Record<'starting' | 'open' | 'closing', string>> = {

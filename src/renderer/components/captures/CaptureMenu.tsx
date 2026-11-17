@@ -1,18 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Plus, ClipboardList, RefreshCcw } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  Menu,
-  MenuContent,
-  MenuItem,
-  MenuTrigger
-} from '@renderer/components/ui'
-import { AddUrlsBox } from '@renderer/components/captures/AddUrlsBox'
+import { Button, Menu, MenuContent, MenuItem, MenuTrigger } from '@renderer/components/ui'
+import { PasteUrlsDialog } from '@renderer/components/captures/PasteUrlsDialog'
 import { capturesQueryOptions, useRecaptureMutations } from '@renderer/lib/queries'
 import { useAppStore } from '@renderer/stores/appStore'
 import { ContactStoppedError } from '@renderer/lib/vpnWarning'
@@ -129,14 +119,7 @@ export function CaptureMenu({ caseId }: CaptureMenuProps) {
         </MenuContent>
       </Menu>
 
-      <Dialog open={showPasteUrls} onOpenChange={setShowPasteUrls}>
-        <DialogContent onClose={() => setShowPasteUrls(false)} className="w-[440px] max-w-[440px]">
-          <DialogHeader className="mb-2">
-            <DialogTitle className="text-sm">Paste URLs to capture</DialogTitle>
-          </DialogHeader>
-          <AddUrlsBox caseId={caseId} onQueued={() => setShowPasteUrls(false)} />
-        </DialogContent>
-      </Dialog>
+      <PasteUrlsDialog caseId={caseId} open={showPasteUrls} onOpenChange={setShowPasteUrls} />
     </div>
   )
 }

@@ -4,8 +4,12 @@
 
 This is the detail plan for phase 1 of
 `docs/plans/2026-11-15-chrome-capture-export-consolidation.md` (the parent plan, #2201). It holds
-seven slices, each one pull request, none waiting on the design bundle or on another slice. Code
-references are to `origin/main` at `03668a1`.
+six slices, each one pull request, none waiting on the design bundle or on another slice. Slice
+1.5 waits for the parent plan's open question 2. Code references are to `origin/main` at
+`ae4b50a`.
+
+Reconciled on 2026-11-16 against the merged parent plan, the review notes left on #2201, and
+#2205, which moved Launch browser into the top bar.
 
 The rules every slice follows (screenshots, docs in the same pull request, the
 `evidence-affecting` label) are in the parent plan under "Slices" and in `CLAUDE.md` under
@@ -15,19 +19,22 @@ The rules every slice follows (screenshots, docs in the same pull request, the
 
 Finding A1. `--color-text-faint` is `#71717a` in the dark block of
 `src/renderer/styles/globals.css`. It measures 3.99:1 on `--color-surface`, 3.84:1 on
-`--color-card` and 3.51:1 on `--color-elevated`. The class `text-text-faint` appears 281 times,
-about two thirds of them on text of 12 pixels or smaller.
+`--color-card` and 3.51:1 on `--color-elevated`. The class `text-text-faint` appears 284 times
+in 100 files under `src/renderer/`. Sixteen more class uses take the token as a background or a
+border: `bg-text-faint` on switch tracks and status dots, and one `border-text-faint`.
 
 - **Change.** Set the dark value to `#85858e`, which measures 5.27:1, 5.07:1 and 4.65:1 on the
   same three surfaces. Leave the light value: `#66666f` already measures 5.17:1 or better.
 - **Check before choosing.** `--color-text-muted` is `#a1a1aa` in the dark theme. If the two
   steps read as one on screen, pick a darker passing grey, not a lighter muted step.
+- **Check the non-text uses.** A lighter token also lightens the sixteen backgrounds and
+  borders. Look at one switch track and one status dot in the after screenshots.
 - **Files.** `src/renderer/styles/globals.css`.
 - **Tests.** No unit test pins the value today. Add one beside `tests/renderer/` that computes
   the WCAG ratio of faint text against the three dark surfaces from the stylesheet and fails
   under 4.5.
-- **Screenshots.** Captures with a Capture open, the Overview, and the launch dialog, dark
-  theme, before and after.
+- **Screenshots.** One screen per section, the launch dialog, and a screen with a switch track
+  and a status dot, dark theme, before and after.
 - **Evidence tier.** Styling. Not evidence-affecting.
 - **Acceptance.**
   - [ ] Faint text is at least 4.5:1 on `--color-surface`, `--color-card` and
@@ -41,7 +48,8 @@ Findings U9 and C3. The dialog in `ExportDialog.tsx` is one scrolling box (`max-
 `overflow-y-auto`), so at 900 pixels of window height `export-submit` starts below the fold. The
 demonstration notice (`export-demo-notice`), the Working Copy notice
 (`export-working-copy-notice`), the Trusted Time preflight notice and the failure notice are
-filled boxes in the danger and warning triples.
+filled boxes in the danger and warning triples. This is the only dialog C3 applies to: the
+launch dialog's no-VPN line is already plain text.
 
 - **Change.**
   - The heading and the footer with Cancel and `export-submit` stay fixed; the form between them
@@ -52,12 +60,15 @@ filled boxes in the danger and warning triples.
 - **Out of scope.** Wording, presets and which notices show. Phase 4 changes those.
 - **Files.** `src/renderer/components/export/ExportDialog.tsx`.
 - **Tests.** `tests/components/ExportDialog.test.tsx`: the footer is outside the scrolling
-  element. `e2e/export.spec.ts`: at a 1440 by 900 window, `export-submit` is in the viewport
-  when the dialog opens, with no scroll.
+  element, and the preset tests pass unedited. `e2e/export.spec.ts`: at a 1440 by 900 window,
+  `export-submit` is in the viewport when the dialog opens, with no scroll.
 - **Screenshots.** The dialog at 1440 by 900 in both themes, for the demo Case and for a Case
   with Captures awaiting Trusted Time.
-- **Evidence tier.** `blocking`. The Evidence impact section says layout and colour only; the
-  export specs show the package for the same selection is unchanged.
+- **Evidence tier.** `blocking`. The Evidence impact section says layout and colour only.
+  `e2e/export.spec.ts` reads the names of a package's entries, not their bytes, so it does not
+  show a package is unchanged. The slice shows instead that the dialog submits the same options:
+  the preset tests pass unedited, nothing under `src/main/` changes, and
+  `tests/main/services/exportKnownAnswer.test.ts` passes unedited.
 - **Acceptance.**
   - [ ] `export-submit` is visible on open at 900 pixels of window height.
   - [ ] No notice in the dialog uses a `-surface` background.
@@ -66,23 +77,30 @@ filled boxes in the danger and warning triples.
 
 ## Slice 1.3: give a disabled Launch browser a reachable reason
 
-Finding A3. `CaseActionBar.tsx` disables the button and puts `busyRefusal`'s title on a wrapper
-`span`, which only a pointer reaches.
+Finding A3. Since #2205 the button is in `TopBar.tsx`, not `CaseActionBar.tsx` as the parent
+plan says. It takes `disabled` while `launchBusy` is set and puts `busyRefusal`'s title on a
+wrapper `span`, which only a pointer reaches.
 
-- **Change.** Use `aria-disabled` in place of `disabled`, ignore the click while refused, and
-  point `aria-describedby` at a visually hidden element holding the reason. `ExportMenu.tsx`
-  already uses `aria-disabled` this way. The `title` stays for pointer users.
-- **Files.** `src/renderer/components/layout/CaseActionBar.tsx`.
-- **Tests.** `tests/components/CaseActionBar.test.tsx`: while a browser is open the button is
-  focusable, has an accessible description equal to the refusal's title, and does not call
-  `openStartDialog`.
+- **Change.**
+  - The button takes `aria-disabled` in place of `disabled`, so it keeps focus.
+  - `aria-disabled` does not stop a click or a key press, and the handler calls
+    `openStartDialog` without looking at `launchBusy`. The handler returns early while the
+    launch is refused.
+  - `aria-describedby` points at a visually hidden element holding the reason. The `title` stays
+    for pointer users.
+- **Models.** `ExportMenu.tsx` shows the first half only: it sets `aria-disabled` and gives its
+  reason in a `title`. `OperatorConfig.tsx` shows `aria-describedby` wired to a message.
+- **Files.** `src/renderer/components/layout/TopBar.tsx`.
+- **Tests.** `tests/components/TopBar.test.tsx`, in the "Launch browser" group: while a browser
+  is open the button is focusable and has an accessible description equal to the refusal's
+  title, and neither a click nor Enter or Space calls `openStartDialog`.
 - **Screenshots.** None: the rendered result is the same. The pull request says so.
 - **Evidence tier.** Renderer chrome.
 - **Acceptance.**
   - [ ] A keyboard user can focus the button while it is refused and hears the reason.
-  - [ ] Activating it while refused does nothing.
-- **Note.** Slice 2.1 hides this button while a browser is open, and 5.5 removes the bar. This
-  slice still pays for the time between.
+  - [ ] Activating it while refused, by pointer or by keyboard, does nothing.
+- **Note.** Slice 2.1 hides this button while a browser is open, and 5.4 replaces it. This slice
+  still pays for the time between.
 
 ## Slice 1.4: take Recapture out of the add menu
 
@@ -102,8 +120,8 @@ the Capture and capture-log context menus that `entityMenu.ts` builds.
   after.
 - **Docs.** Check `tester-guide.mdx` and `features.mdx` for a step that reaches Recapture
   through the add button.
-- **Evidence tier.** `CaptureMenu.tsx` is not in the path list by name. Confirm its tier before
-  starting: it enqueues background Captures.
+- **Evidence tier.** `CaptureMenu.tsx` matches no entry of the path list. Confirm its tier
+  before starting: it enqueues background Captures.
 - **Acceptance.**
   - [ ] Recapture is reachable from the Capture's own menus and the selection bar, and not from
     the add menu.
@@ -112,21 +130,36 @@ the Capture and capture-log context menus that `entityMenu.ts` builds.
 
 ## Slice 1.5: name the scope on the Data screen's Verify buttons
 
-Finding U16. `DataExplorer.tsx` renders `node-verify` in the pane header and `row-verify` on
-the selected Exhibit's pane, both labelled "Verify". `IntegrityStrip.tsx` already has
-`verify-all`, labelled "Verify all".
+Finding U16. Waits for the parent plan's open question 2: the labels are the maintainer's, and
+this plan no longer proposes any.
 
-- **Change.** `node-verify` reads "Verify listed" and keeps its title. `row-verify` reads
-  "Verify this Exhibit". The three buttons then name three scopes.
+`DataExplorer.tsx` renders two buttons labelled "Verify":
+
+- `node-verify`, in the header above the table, passes `nodeExhibitIds` to `verifyIds`. That is
+  the Exhibits among the rows of the selected node. On the top-level nodes (`data-sources`,
+  `views`, `file-types`, `results`) `rowsForNode` returns every anchored row, so there the
+  button verifies the same set as `verify-all`. On a narrower node it verifies a subset.
+- `row-verify`, on the selected row's pane, passes `selectedExhibitId`. For a derived file that
+  is `parentExhibitId`, the Exhibit the file came from, not the file.
+
+`IntegrityStrip.tsx` already labels `verify-all` "Verify all".
+
+The parent plan's open question 2 says `node-verify` never covers the whole Case. On the
+top-level nodes it does, so a label that implies a subset would understate what was verified
+there. The answer to the question has to hold for both cases.
+
+- **Change.** Each button gets the label the maintainer rules. No behaviour changes.
 - **Files.** `src/renderer/components/dashboard/cases/DataExplorer.tsx`.
 - **Tests.** `tests/components/DataExplorer.test.tsx` finds the buttons by test id, so only
-  assertions on the label change.
+  assertions on the label change. Add a case that pins what each button passes to `verifyIds`
+  on a top-level node, on a narrower node, and for a derived file.
 - **Screenshots.** The Data screen with a row selected, before and after.
-- **Evidence tier.** `blocking`. Labels only; what Verify checks and reports is unchanged, and
-  the Evidence impact section says so.
+- **Evidence tier.** `blocking`. Labels only. The Evidence impact section shows that each label
+  matches the Exhibits its button passes to `verifyIds`.
 - **Acceptance.**
   - [ ] No two controls on the Data screen share the label "Verify".
   - [ ] Each button verifies the same Exhibits as before.
+  - [ ] Each label is true on a top-level node, on a narrower node and for a derived file.
 
 ## Slice 1.6: show a single browser as text in the launch dialog
 
@@ -140,23 +173,14 @@ when one browser was found.
 - **Tests.** `tests/components/StartDialog.test.tsx`: one browser renders no `combobox`; two
   render one; focus lands on Launch when the select is absent.
 - **Screenshots.** The launch dialog with one browser, before and after.
-- **Evidence tier.** `StartDialog.tsx` is not in the path list by name. Confirm before starting.
+- **Evidence tier.** `StartDialog.tsx` matches no entry of the path list. Confirm before
+  starting.
 - **Acceptance.**
   - [ ] One found browser shows as text.
   - [ ] Two or more still show the select, and the chosen browser launches.
 
-## Slice 1.7: settle the two "All notes" links on the Overview
+## Dropped: the two "All notes" links on the Overview
 
-Finding H3. `BacklinkMap.tsx` ends its header with a link reading "All notes", and
-`CaseOverview.tsx` gives the Quick Notes card the same action. Both open the Notes section. The
-critique read the first as a wrong label; it is a duplicate.
-
-- **Change.** Check the standalone mock first. If it draws both links, leave both and close H3
-  as ruled by the mock. If it draws one, remove the Link Map's and keep "Clear focus" in its
-  place when a focus is set.
-- **Files.** `src/renderer/components/overview/BacklinkMap.tsx`.
-- **Tests.** `tests/components/BacklinkMap.test.tsx`.
-- **Screenshots.** The Overview's top row, before and after, if anything changes.
-- **Evidence tier.** Not evidence-affecting.
-- **Acceptance.**
-  - [ ] The pull request states what the mock draws and which way that settled it.
+An earlier draft of this plan had a slice 1.7 for finding H3. The parent plan now leaves H3
+alone: both links call `goToNotes` in `CaseOverview.tsx` and open the Notes section, as their
+label says, and the critique recommended no change. Nothing is planned.

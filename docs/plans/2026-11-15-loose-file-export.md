@@ -7,7 +7,9 @@ gives export one dialog with three choices: Evidence Package, Working Copy and C
 Its decision 6 keeps a fourth choice, loose files, out of that dialog and leaves it to #830.
 This plan covers what that decision set aside: the controls that hand over a single file or a
 CSV, where they sit today, and how they could come together once #830's first decision is
-taken. Code references are to `origin/main` at `03668a1`.
+taken. Code references are to `origin/main` at `ae4b50a`.
+
+Reconciled on 2026-11-16 against the merged parent plan, whose decision 6 is unchanged.
 
 Nothing here is ruled. The plan ends in questions for the maintainer, and its slices start only
 after them.
@@ -89,6 +91,8 @@ Each is one pull request and follows the rules in the consolidation plan under "
 - [ ] **L4. A statement on each loose file, if question 2 says yes.** Main-side, in the writers
   behind the CSV and the PDF. `blocking`: Evidence impact section, known-answer tests for the
   new first line, and a check that an existing consumer of the CSV still parses it.
+  `tests/main/services/exportKnownAnswer.test.ts` pins package and report bytes and has no case
+  for a loose CSV or a per-Capture PDF, so the slice adds its own.
 
 ## Tests and evidence
 

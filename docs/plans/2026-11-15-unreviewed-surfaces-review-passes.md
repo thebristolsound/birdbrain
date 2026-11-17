@@ -7,7 +7,9 @@ which holds three Captures. It did not look at the extension's own pages, the li
 screen, or a Case large enough to show what a list of hundreds does. The consolidation plan
 (`docs/plans/2026-11-15-chrome-capture-export-consolidation.md`, #2201) lists the three under
 "Not planned here" and says each wants its own pass before any change. This plan sets up those
-passes. Code references are to `origin/main` at `03668a1`.
+passes. Code references are to `origin/main` at `ae4b50a`.
+
+Reconciled on 2026-11-16 against the merged parent plan and its two open questions.
 
 A pass is a review, not a change. Each one ends in a written assessment under `docs/specs/`
 with its findings ranked, and stops there. Fixes are planned afterwards, from the findings.
@@ -29,9 +31,12 @@ with its findings ranked, and stops there. Fixes are planned afterwards, from th
   (`selectionBar.ts`) and the capture toast (`toast.ts`). `extension/src/theme.css` holds the
   extension's own tokens, with a light default and an `html.dark` override.
 - **Why it matters to the consolidation.** The critique counted eleven capture controls in the
-  app and left out the extension's, which is where an extension-only Capture Session is
-  driven from. Slice 5.5 moves that session's start and stop in the app; the extension's
-  wording should agree with it.
+  app and left out the extension's. The parent plan's open question 1 asks how a Capture
+  Session starts when only the extension is connected: the app's switch is the only control
+  that starts one, slice 5.5 removes it, and the popup can stop a session but not start one
+  (`startSession()` in `extension/src/utils/api.ts` has no caller). This pass shows the
+  maintainer what the popup offers today, so it informs that answer, and the extension's
+  wording should agree with whatever the app says afterwards.
 - **Method.**
   - Build with `pnpm build:extension` and load the output unpacked into a Chromium profile.
     Nothing under `e2e/` loads the extension today, so the pass starts by finding out whether
@@ -47,6 +52,8 @@ with its findings ranked, and stops there. Fixes are planned afterwards, from th
     `CONTEXT.md` and the app?
   - Does the popup restate anything the app's status control already says, or leave out
     something the Operator needs while the app is behind another window?
+  - Is the popup the right place to start an extension-only Capture Session, given that it
+    already stops one?
   - Do the selection bar and the toast keep out of the captured page, as #2172 intends for the
     selection highlight?
   - Contrast, focus order and target sizes on each surface.
@@ -70,8 +77,8 @@ with its findings ranked, and stops there. Fixes are planned afterwards, from th
   - Compare pairs side by side for anything that loses its edge, its emphasis or its state
     colour in light.
   - Measure the status triples (`-fg` on `-surface`, and `-fg` on the plain surfaces) in light,
-    since phases 1, 3 and 6 of the consolidation plan move status colour from filled boxes to
-    text.
+    since phases 1 and 6 of the consolidation plan move status colour from filled boxes to text
+    and dots, and the launch dialog's no-VPN line is already `-fg` text on a plain surface.
   - List each of the sixteen raw utilities with whether it falls under the allowed exceptions.
 - **Questions to answer.**
   - Does any control that reads as primary in dark lose that in light?
@@ -116,8 +123,9 @@ with its findings ranked, and stops there. Fixes are planned afterwards, from th
 ## Order
 
 Pass 3 first: it decides whether a slice of the consolidation plan is right. Pass 2 before
-slices 1.2, 3.2 and 6.1 are reviewed, since each moves status colour onto plain surfaces. Pass 1
-before slice 5.5, which changes where an extension-only Capture Session is controlled.
+slices 1.2 and 6.1 are reviewed, since each moves status colour onto plain surfaces or dots.
+Pass 1 before the maintainer answers the parent plan's open question 1, and so before slices
+5.4 and 5.5.
 
 ## Not in these passes
 

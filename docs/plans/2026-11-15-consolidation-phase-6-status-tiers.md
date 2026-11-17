@@ -7,7 +7,13 @@ This is the detail plan for phase 6 of
 seen" is a permanent amber word in the chrome for any Operator whose VPN the check cannot see
 (finding U6), and below the `xl` width the control shows its state by colour and a small icon
 only (A2). Decision 2 of the parent plan lets the advisory show as a coloured dot. This phase is
-one slice. Code references are to `origin/main` at `03668a1`.
+one slice. Code references are to `origin/main` at `ae4b50a`.
+
+Reconciled on 2026-11-16 against the merged parent plan and the review notes left on #2201.
+
+ADR-0032's Decision section has two numbered lists. The rules cited here are in the second,
+under "Birdbrain pushes the Operator toward a VPN, but only warns". As in the parent plan, they
+are called VPN rule 2 and VPN rule 4.
 
 It does not wait for the design bundle: frame H of
 `docs/plans/2026-11-15-consolidation-phase-0-design-bundle.md` draws the same three tiers and
@@ -45,10 +51,17 @@ Findings U6 and A2.
   - The rule that only the worst signal's dot takes colour stays: an advisory behind a problem
     shows as a faint dot, as today.
   - The polite live region still announces a change into and out of the advisory tier.
+- **What colour alone cannot say.** After this change a problem differs from the other tiers
+  by its icon and its word. An advisory differs from nominal only by the colour of one dot. An
+  Operator who cannot tell the two colours apart learns of the advisory from the control's
+  accessible name or its popover, and not from the bar. A review comment on #2201 raised this.
+  Decision 2 allows the coloured dot only, so the slice builds that unless the maintainer rules
+  otherwise on frame H, which draws a ring in place of a filled dot as the alternative. Either
+  way the amendment to VPN rule 2 states which was chosen and why.
 - **Where the words still appear.** The status popover's Egress row; the launch dialog's
   `launch-no-vpn` line; and, once slice 5.4 lands, the Egress row of the Launch browser
   control's menu.
-- **ADR-0032.** The same pull request amends rule 2. Proposed wording to add: "In the top bar
+- **ADR-0032.** The same pull request amends VPN rule 2. Proposed wording to add: "In the top bar
   the Egress and a VPN not seen show as one dot of the status control, coloured while no VPN
   is seen, with the words in the control's accessible name and its popover. The words are
   printed where a contact starts: the launch dialog and the capture menu." The amendment
@@ -72,11 +85,12 @@ Findings U6 and A2.
   after.
 - **Docs.** `tester-guide.mdx` and `features.mdx`, if either tells the reader to look for the
   words "VPN not seen" in the top bar.
-- **Evidence tier.** `src/renderer/components/status/**` is renderer chrome. ADR-0032 rule 4
-  already says the VPN result is not evidence.
+- **Evidence tier.** `src/renderer/components/status/**` is renderer chrome. ADR-0032 VPN
+  rule 4 already says the VPN result is not evidence.
 - **Acceptance.**
   - [ ] With a Direct Egress and no VPN seen, the top bar prints no word and shows one coloured
     dot.
   - [ ] The control's accessible name and its popover still state that a VPN was not seen.
   - [ ] An unknown Egress and a failed Capture each show an icon and a word at 1,100 pixels.
-  - [ ] The amended ADR is in the same pull request.
+  - [ ] The amended ADR is in the same pull request, and says whether the advisory differs from
+    nominal by colour alone.

@@ -6,7 +6,10 @@ The design critique of 2026-11-15 found that the Investigate section has a route
 and nothing that links to it (finding U10 in
 `docs/plans/2026-11-15-chrome-capture-export-consolidation.md`, #2201). That plan left the gap
 out. This one records why the gap exists, and what adding the entry takes once it is allowed.
-Code references are to `origin/main` at `03668a1`.
+Code references are to `origin/main` at `ae4b50a`.
+
+Reconciled on 2026-11-16 against the merged parent plan, which lists the entry point under "Not
+planned here" and leaves it to the investigation engine work.
 
 ## The gap is ruled, not missed
 
@@ -35,7 +38,7 @@ Each line is a place that knows the list of sections today.
 | --- | --- | --- |
 | `Sidebar.tsx`, `NAV_ITEMS` and `SECTION_PATHS` | The rail's items | Absent |
 | `CommandPalette.tsx` | Navigation and action rows | Absent |
-| `CaseActionBar.tsx`, `SECTIONS` | The section name in the action bar | Present |
+| `CaseActionBar.tsx`, `SECTIONS` | The section name in the row under the top bar | Present |
 | `CaseWorkspace.tsx`, `isInvestigate` | Which sections own their scroll | Present |
 | `CaseWorkspace.tsx`, the `lastActiveSection` effect | The section restored at next launch | Falls back to Overview |
 | `BirdbrainSettings['lastActiveSection']` | The stored value's type | No `investigate` member |

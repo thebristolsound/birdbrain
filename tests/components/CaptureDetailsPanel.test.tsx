@@ -45,6 +45,8 @@ const capture: Capture = {
 let onCopyUrl: Mock<() => void>
 let onCopyHash: Mock<() => void>
 let onDuplicate: Mock<() => void>
+let onOpenExternal: Mock<() => void>
+let toggleFavorite: Mock<(captureId: string) => Promise<boolean>>
 
 function renderPanel(
   props: { isDuplicating?: boolean; onDelete?: () => void; capture?: Capture } = {}
@@ -58,7 +60,7 @@ function renderPanel(
       capture={props.capture ?? capture}
       caseId="case1"
       onCollapse={vi.fn()}
-      onOpenExternal={vi.fn()}
+      onOpenExternal={onOpenExternal}
       onCopyUrl={onCopyUrl}
       onCopyHash={onCopyHash}
       onDuplicate={onDuplicate}
@@ -75,10 +77,12 @@ beforeEach(() => {
   onCopyUrl = vi.fn()
   onCopyHash = vi.fn()
   onDuplicate = vi.fn()
+  onOpenExternal = vi.fn()
+  toggleFavorite = vi.fn(async () => true)
   fakeBridge({
     notes: { list: vi.fn(async () => []) },
     tags: { list: vi.fn(async () => []), getForCapture: vi.fn(async () => []) },
-    captures: { listFavorites: vi.fn(async () => []) }
+    captures: { listFavorites: vi.fn(async () => []), toggleFavorite }
   })
 })
 
@@ -102,6 +106,26 @@ describe('CaptureDetailsPanel actions menu', () => {
 
     expect(focusedAtDelete).toBe(trigger)
     expect(document.activeElement).toBe(trigger)
+  })
+
+  it('opens the URL from Open URL, and closes the menu on use', async () => {
+    renderPanel()
+    fireEvent.click(await screen.findByTestId('capture-details-actions-btn'))
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open URL' }))
+
+    expect(onOpenExternal).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('stars the Capture from Star, and closes the menu on use', async () => {
+    renderPanel()
+    fireEvent.click(await screen.findByTestId('capture-details-actions-btn'))
+
+    fireEvent.click(screen.getByTestId('capture-details-star-btn'))
+
+    await waitFor(() => expect(toggleFavorite).toHaveBeenCalledWith('cap1'))
+    expect(screen.queryByRole('menu')).toBeNull()
   })
 
   it('offers Copy URL with its accelerator, and closes the menu on use', async () => {

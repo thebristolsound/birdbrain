@@ -8,8 +8,9 @@ import { cn } from '@renderer/lib/utils'
  * Adoption of `radix-ui`'s ContextMenu rather than a fourth hand-rolled menu:
  * `role="menu"`/`role="menuitem"`, roving focus, typeahead, arrow-key
  * navigation, Escape-to-close and focus return to the trigger are acceptance
- * criteria here. A menu that opens from a button is on menu.tsx, which wraps
- * the DropdownMenu the same way.
+ * criteria here. menu.tsx wraps the DropdownMenu the same way, for a menu
+ * that opens from a button. `CaptureDownloadMenu` and `dashboard/CaseMenu` are
+ * still built by hand.
  */
 
 const ContextMenu = ContextMenuPrimitive.Root

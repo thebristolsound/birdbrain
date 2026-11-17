@@ -185,10 +185,11 @@ describe('Launch browser', () => {
   // The Capture Session panel is the open browser's place, and names it.
   it('leaves the bar while a launched browser is open', async () => {
     renderWith({ state: 'open', browser: BROWSER })
-    await waitFor(() => expect(screen.getByTestId('topbar-controls')).toBeTruthy())
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
+    // The Case name shows once the Case has loaded, as Launch browser would: without this wait
+    // the button is absent whatever the browser's state.
+    await waitFor(() =>
+      expect(screen.getByTestId('topbar-case-name').textContent).toContain('Operation Kestrel')
+    )
     expect(screen.queryByRole('button', { name: 'Launch browser' })).toBeNull()
     expect(screen.queryByTitle('A launched browser is already open')).toBeNull()
   })

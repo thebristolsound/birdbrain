@@ -413,9 +413,11 @@ export const IPC_CHANNELS = {
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]
 
-// How a refused call on a sharing channel reaches the renderer: the preload's
-// unwrapIpc rejects with this plain object, because the context bridge drops
-// every property of an Error except its message.
+// How a refused call reaches the renderer, on every invoke channel: the
+// preload's unwrapIpc rejects with this plain object, because the context
+// bridge drops every property of an Error except its message. The renderer's
+// bridge adapter (src/renderer/lib/birdbrain.ts) turns it back into an Error
+// that keeps the code.
 export interface IpcRefusal {
   message: string
   code?: string
@@ -1085,7 +1087,8 @@ export interface RendererLogPayload {
 // value the handler resolves to (before the { ok, data } envelope is applied).
 // This is the single source of truth — `handle()` constrains a handler's
 // signature by its channel, so a handler that drifts from its entry is a
-// compile error rather than a runtime surprise.
+// compile error rather than a runtime surprise. The preload bridge and the
+// `window.birdbrain` type are built from it too (birdbrainApi.ts).
 //
 // All invoke channels live in this map; `handle()` is keyed by ContractedChannel, so missing entries are
 // compile errors.
@@ -1112,9 +1115,14 @@ export interface IpcInvokeContract {
     args: [params: SetAutoCapturePolicyParams]
     result: CaseAutoCapturePolicy
   }
+  // Builds link and header search records for the Case's Captures that lack them
+  // (docs/plans/2026-10-09-case-retrieval-first-slice.md, D5).
   'cases:ensureSearchFields': { args: [caseId: string]; result: FieldBuildSummary }
+  // Searches the Case's link and header records (the same plan, D6).
   'cases:searchFields': { args: [caseId: string, query: string]; result: FieldSearchResult }
+  // Checks one field record against the stored files (the same plan, D7).
   'cases:checkFieldHit': { args: [fieldId: number]; result: FieldHitCheck }
+  // The Case's unreviewed Captures in the view's four groups (the same plan, D8).
   'cases:listUnreviewed': {
     args: [caseId: string, rareLimit: number]
     result: UnreviewedCaptures
@@ -1385,6 +1393,7 @@ export interface IpcInvokeContract {
   // `relay-url-invalid`; the next transport start uses the stored value.
   'sharing:setRelayUrl': { args: [relayUrl: string]; result: void }
 
+  // Case investigation (engine plan, E10); served by the fake engine in unpackaged builds.
   'investigation:getRevision': { args: [caseId: string]; result: CaseRevision }
   'investigation:getView': { args: [caseId: string]; result: InvestigationView }
   'investigation:getSpan': { args: [caseId: string, spanId: string]; result: SpanDetail }
@@ -1448,12 +1457,62 @@ export interface IpcInvokeContract {
 
 export type ContractedChannel = keyof IpcInvokeContract
 
+// --- Refusal codes ----------------------------------------------------------
+//
+// The codes a channel's callers read through refusalCode() below. A refusal's
+// code reaches the renderer on every channel (IpcRefusal above), but
+// refusalCode() reports only a code named here, typed as the channel's union,
+// so a branch on its result for a code this table does not name fails to
+// compile. A code no caller reads needs no entry. The sharing channels refuse
+// with SHARING_ERROR_CODES (types.ts), which the sharing screens read with
+// their own sharingErrorCode.
+export const IPC_REFUSALS = {
+  'persona:import': ['PERSONA_COOKIE_FILE_UNSUPPORTED'],
+  'launchedBrowser:launch': [
+    'BROWSER_NOT_FOUND',
+    'BROWSER_UNRECOGNIZED',
+    'BROWSER_BELOW_FLOOR',
+    'BROWSER_NO_CONNECTION',
+    'BROWSER_ALREADY_RUNNING',
+    'BROWSER_LAUNCH_CANCELLED',
+    'EGRESS_PROXY_UNREACHABLE',
+    'EGRESS_PROXY_INVALID',
+    'EGRESS_WEBRTC_CANDIDATE',
+    'EGRESS_WEBRTC_UNCHECKED',
+    'EGRESS_BYPASS',
+    'EGRESS_UNWATCHED',
+    'EGRESS_UNAVAILABLE'
+  ]
+} as const satisfies { readonly [C in ContractedChannel]?: readonly string[] }
+
+export type RefusingChannel = keyof typeof IPC_REFUSALS
+export type RefusalCode<C extends RefusingChannel> = (typeof IPC_REFUSALS)[C][number]
+
+// The code of a refused call, when the table names it for this channel.
+// Undefined for any other rejection, so a caller that names refusals falls
+// back to the message.
+export function refusalCode<C extends RefusingChannel>(
+  err: unknown,
+  channel: C
+): RefusalCode<C> | undefined {
+  const code = (err as { code?: unknown } | null)?.code
+  const named: readonly string[] = IPC_REFUSALS[channel]
+  return typeof code === 'string' && named.includes(code) ? (code as RefusalCode<C>) : undefined
+}
+
 // Every declared channel is either an invoke channel with a contract entry or a
 // main→renderer event. A new IPC_CHANNELS entry that is neither makes this type
 // non-empty, and the assignment below fails to compile.
 type UndeclaredChannel = Exclude<IpcChannel, ContractedChannel | IpcEventChannel>
 type AssertNever<T extends never> = T
 export type ChannelsAreExhaustive = AssertNever<UndeclaredChannel>
+
+// The other direction: every contract entry has its IPC_CHANNELS constant. The
+// bridge type is built from the contracts and the bridge object from
+// IPC_CHANNELS, so an entry with no constant would be a typed method that does
+// not exist at runtime.
+type ChannelWithNoConstant = Exclude<ContractedChannel | IpcEventChannel, IpcChannel>
+export type ContractIsDeclared = AssertNever<ChannelWithNoConstant>
 
 // --- Event contract ---------------------------------------------------------
 //
@@ -1484,6 +1543,7 @@ export interface IpcEventContract {
   'event:waybackLinkProgress': WaybackLinkProgressEvent
   'event:launchedBrowserStatus': LaunchedBrowserStatus
   'event:launchedBrowserPopOut': LaunchedBrowserPopOutEvent
+  // The capture shortcut found more than one tab it could take, or none.
   'event:launchedBrowserPickTab': null
 }
 

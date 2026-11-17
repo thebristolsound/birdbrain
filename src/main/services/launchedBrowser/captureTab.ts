@@ -1,13 +1,13 @@
-import { writeTransactionRecord } from '../../../packages/transaction-record/writer'
 import type {
   WriterInput,
   WrittenTransactionRecord
 } from '../../../packages/transaction-record/writer'
-import { BoundTlsSchema, CaptureInventorySchema } from '@shared/schemas'
+import { finishFields } from '../../../packages/capture-finish/inventory'
+import { printPdf } from '../../../packages/capture-finish/pdf'
+import { finishRecord } from '../../../packages/capture-finish/record'
+import type { RecordOutcome } from '../../../packages/capture-finish/record'
 import type { BoundTls, CaptureInventory, ScrollToLoadRecord } from '@shared/schemas'
-import { CREDENTIAL_HEADER_NAMES } from '@shared/types'
-import type { BoundTlsAbsence, CredentialHeaderName } from '@shared/types'
-import { MAX_PDF_CONTENT_HEIGHT_PX, MAX_PDF_SIZE } from '@shared/constants'
+import type { BoundTlsAbsence } from '@shared/types'
 import {
   fullPageScreenshotWith,
   INITIAL_NETWORK_IDLE_MAX_MS,
@@ -15,8 +15,6 @@ import {
   NETWORK_IDLE_MS,
   scrollToLoadWith
 } from '@main/services/backgroundRenderer'
-import type { ScreenshotRecord } from '@main/services/recapture'
-import { boundTlsOf } from '@main/services/transactionRecorder'
 import type { CdpSession } from '@main/services/launchedBrowser/cdpClient'
 import type { CdpMethod, CdpParams } from '@main/services/launchedBrowser/commands'
 import type { CutRecording, TabRecording } from '@main/services/launchedBrowser/tabRecording'
@@ -121,86 +119,42 @@ async function waitForQuiet(recording: TabRecording, idleMs: number, maxMs: numb
   }
 }
 
-const CREDENTIAL_NAMES = new Set<string>(CREDENTIAL_HEADER_NAMES)
-const isCredentialName = (name: string): name is CredentialHeaderName => CREDENTIAL_NAMES.has(name)
-
-const TransactionRecordPartSchema = CaptureInventorySchema.shape.transactionRecord
-const PdfPartSchema = CaptureInventorySchema.shape.pdf
-
-type TransactionRecordPart = CaptureInventory['transactionRecord']
-
-interface RecordOutcome {
-  part: TransactionRecordPart
-  warcGz?: Buffer
-  boundTls?: BoundTls
-  boundTlsAbsent: BoundTlsAbsence | undefined
-  httpStatus: number
-  error?: unknown
-}
-
-// The Transaction Record from the frozen recording. A page whose document request the recording
-// lacks carries none, with the reason; a write or budget failure records it `failed`.
+// The Transaction Record from the frozen recording, with the status of the page's document. A
+// page whose document request the recording lacks carries none, with the reason; a write or
+// budget failure records it `failed`. Either way the status is 0.
 async function recordOf(
   cut: CutRecording,
   input: TabCaptureInput,
   timings: typeof CAPTURE_TIMINGS,
   date: string
-): Promise<RecordOutcome> {
+): Promise<{ record: RecordOutcome; httpStatus: number }> {
   if (!cut.fromFirstRequest) {
     return {
-      part: { present: false, reason: cut.unrecorded ?? 'page-not-recorded' },
-      boundTlsAbsent: 'not-recorded',
+      record: { present: false, reason: cut.unrecorded ?? 'page-not-recorded' },
       httpStatus: 0
     }
   }
-  try {
-    const collected = await cut.collect(timings.collectMs)
-    const { exchanges, counts, mainDocument } = collected
-    const write = input.write ?? writeTransactionRecord
-    const { bytes, replacedHeaders } = await bounded(
-      write({ ...input.writer, exchanges, captureId: input.captureId, date }),
-      timings.writeMs,
-      'The Transaction Record writer'
-    )
-    const part = TransactionRecordPartSchema.parse({
-      present: true,
-      exchanges: counts.exchanges,
-      cached: counts.cached,
-      cancelled: counts.cancelled,
-      failed: counts.failed,
-      inFlight: counts.inFlight,
-      finishedWithoutResponse: counts.finishedWithoutResponse,
-      bodiesOmitted: counts.bodiesOmitted,
-      incompleteRequestBodies: counts.incompleteRequestBodies,
-      webSockets: counts.webSockets,
-      recordedTargets: counts.recordedTargets,
-      unrecordedTargets: counts.unrecordedTargets,
-      replacedHeaders: replacedHeaders.filter(isCredentialName),
-      budget: {
-        totalBytes: input.recordingBudget.totalBytes,
-        resourceBytes: input.recordingBudget.resourceBytes
-      },
-      servedByServiceWorker: collected.servedByServiceWorker,
-      requestBodiesWithheld: collected.requestBodiesWithheld,
-      httpCacheDisabled: true
-    })
-    const bound = boundTlsOf(mainDocument, cut.committedUrl)
-    return {
-      part,
-      warcGz: Buffer.from(bytes),
-      ...('boundTls' in bound
-        ? { boundTls: BoundTlsSchema.parse(bound.boundTls), boundTlsAbsent: undefined }
-        : { boundTlsAbsent: bound.boundTlsAbsent }),
-      httpStatus: mainDocument?.response?.status ?? 0
-    }
-  } catch (error) {
-    return {
-      part: { present: false, reason: 'failed' },
-      boundTlsAbsent: 'not-recorded',
-      httpStatus: 0,
-      error
-    }
-  }
+  let documentStatus = 0
+  const record = await finishRecord({
+    // What only a launched record signs: the exchanges a service worker served, the request
+    // bodies withheld (ADR-0051), and that the browser ran with its HTTP cache disabled.
+    collect: async () => {
+      const { servedByServiceWorker, requestBodiesWithheld, ...collected } = await cut.collect(
+        timings.collectMs
+      )
+      documentStatus = collected.mainDocument?.response?.status ?? 0
+      return {
+        ...collected,
+        methodFacts: { servedByServiceWorker, requestBodiesWithheld, httpCacheDisabled: true }
+      }
+    },
+    boundWrite: (writing) => bounded(writing, timings.writeMs, 'The Transaction Record writer'),
+    writer: { ...input.writer, captureId: input.captureId, date },
+    committedUrl: cut.committedUrl,
+    budget: input.recordingBudget,
+    write: input.write
+  })
+  return { record, httpStatus: record.present ? documentStatus : 0 }
 }
 
 /**
@@ -276,68 +230,47 @@ export async function captureTab(input: TabCaptureInput): Promise<TabCaptureArti
   const title = typeof read?.title === 'string' ? read.title : ''
   unchanged()
 
-  const record = await recordOf(cut, input, timings, recordedAt)
+  const { record, httpStatus } = await recordOf(cut, input, timings, recordedAt)
   unchanged()
 
-  const pdf = await printLast(send, screenshotRecord, timings.printMs, unchanged)
+  // `Page.printToPDF`, last, because printing fires `beforeprint` and starts requests. A print
+  // that fails records the PDF absent as `failed`, as the background renderer's does, unless a
+  // new document committed during it, which abandons the whole Capture.
+  const pdf = await printPdf(screenshotRecord.contentHeight, {
+    print: async () => {
+      const { data } = await bounded(
+        send('Page.printToPDF', {}),
+        timings.printMs,
+        'Page.printToPDF'
+      )
+      return Buffer.from(data, 'base64')
+    }
+  })
   unchanged()
 
-  const errors = [record.error, pdf.error].filter((error) => error !== undefined)
+  const errors = [record, pdf]
+    .map((part) => (part.present ? undefined : part.error))
+    .filter((error) => error !== undefined)
+  // A launched Capture runs no Image Source Pinning (ADR-0055 is background renders only), so
+  // the MHTML part counts no pinned image.
+  const { inventory, ...finished } = finishFields({
+    mhtml: { present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 },
+    screenshot: screenshotRecord,
+    transactionRecord: record,
+    pdf
+  })
   return {
     capturedAt: recordedAt,
     url: cut.pageUrl ?? '',
     ...(cut.committedUrl ? { committedUrl: cut.committedUrl } : {}),
     title,
-    httpStatus: record.httpStatus,
+    httpStatus,
     mhtml: Buffer.from(mhtmlText, 'utf8'),
     screenshot,
     text,
-    // A launched Capture runs no Image Source Pinning (ADR-0055 is background renders only), so
-    // the MHTML part counts no pinned image.
-    inventory: {
-      mhtml: { present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 },
-      transactionRecord: record.part,
-      screenshot: { present: true, ...screenshotRecord },
-      pdf: pdf.part
-    },
+    inventory,
     ...(scrollToLoad ? { scrollToLoad } : {}),
-    ...(record.warcGz ? { transactionRecord: record.warcGz } : {}),
-    ...(record.boundTls ? { boundTls: record.boundTls } : {}),
-    ...(record.boundTlsAbsent ? { boundTlsAbsent: record.boundTlsAbsent } : {}),
-    ...(pdf.bytes ? { pdf: pdf.bytes } : {}),
+    ...finished,
     errors
-  }
-}
-
-// `Page.printToPDF`, last, because printing fires `beforeprint` and starts requests. A page taller
-// than MAX_PDF_CONTENT_HEIGHT_PX, a print that fails or outlasts its bound, and a PDF over
-// MAX_PDF_SIZE record the PDF absent as `failed`, as the background renderer does. A new
-// document during the print abandons the whole Capture.
-async function printLast(
-  send: <M extends CdpMethod>(method: M, params: CdpParams<M>) => Promise<unknown>,
-  { contentHeight }: ScreenshotRecord,
-  boundMs: number,
-  unchanged: () => void
-): Promise<{ part: CaptureInventory['pdf']; bytes?: Buffer; error?: unknown }> {
-  try {
-    if (contentHeight > MAX_PDF_CONTENT_HEIGHT_PX) {
-      throw new Error(
-        `The page is ${contentHeight} CSS pixels tall, over MAX_PDF_CONTENT_HEIGHT_PX ` +
-          `(${MAX_PDF_CONTENT_HEIGHT_PX}), so it was not printed`
-      )
-    }
-    const { data } = (await bounded(send('Page.printToPDF', {}), boundMs, 'Page.printToPDF')) as {
-      data: string
-    }
-    const bytes = Buffer.from(data, 'base64')
-    if (bytes.length > MAX_PDF_SIZE) {
-      throw new Error(
-        `The PDF is ${bytes.length} bytes, over MAX_PDF_SIZE (${MAX_PDF_SIZE}), so it was discarded`
-      )
-    }
-    return { part: PdfPartSchema.parse({ present: true, afterCollection: true }), bytes }
-  } catch (error) {
-    unchanged()
-    return { part: { present: false, reason: 'failed' }, error }
   }
 }

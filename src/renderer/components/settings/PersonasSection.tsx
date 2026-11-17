@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle } from 'lucide-react'
 import type { Persona, PersonaImportResult } from '@shared/types'
+import { refusalCode } from '@shared/ipc'
 import {
   personasQueryOptions,
   personaStorageStateQueryOptions,
@@ -278,7 +279,7 @@ function PersonaRow({
 
 function isUnsupportedFileError(err: unknown): err is Error {
   return (
-    err instanceof Error && (err as { code?: string }).code === 'PERSONA_COOKIE_FILE_UNSUPPORTED'
+    err instanceof Error && refusalCode(err, 'persona:import') === 'PERSONA_COOKIE_FILE_UNSUPPORTED'
   )
 }
 

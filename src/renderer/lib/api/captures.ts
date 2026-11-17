@@ -2,37 +2,38 @@ import { queryOptions, useIsMutating, useMutation, useQueryClient } from '@tanst
 import type { Capture, FieldHitCheck } from '@shared/types'
 import type { BatchCountResult, BatchDeleteResult, DuplicateCaptureResult } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { birdbrain } from '@renderer/lib/birdbrain'
 
 export const capturesQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.captures(caseId),
-    queryFn: () => window.birdbrain.captures.list(caseId),
+    queryFn: () => birdbrain.captures.list(caseId),
     enabled: !!caseId
   })
 
 export const captureCountsQueryOptions = queryOptions({
   queryKey: queryKeys.captureCounts,
-  queryFn: () => window.birdbrain.captures.countsByCase()
+  queryFn: () => birdbrain.captures.countsByCase()
 })
 
 export const captureContentQueryOptions = (captureId: string, type: 'html' | 'png' | 'txt') =>
   queryOptions({
     queryKey: queryKeys.captureContent(captureId, type),
-    queryFn: () => window.birdbrain.captures.getContent(captureId, type),
+    queryFn: () => birdbrain.captures.getContent(captureId, type),
     enabled: !!captureId
   })
 
 export const captureThumbnailQueryOptions = (captureId: string) =>
   queryOptions({
     queryKey: queryKeys.captureThumbnail(captureId),
-    queryFn: () => window.birdbrain.captures.getThumbnail(captureId),
+    queryFn: () => birdbrain.captures.getThumbnail(captureId),
     enabled: !!captureId
   })
 
 export const captureMhtmlUrlQueryOptions = (captureId: string) =>
   queryOptions({
     queryKey: queryKeys.captureMhtmlUrl(captureId),
-    queryFn: () => window.birdbrain.captures.getMhtmlUrl(captureId),
+    queryFn: () => birdbrain.captures.getMhtmlUrl(captureId),
     enabled: !!captureId
   })
 
@@ -41,7 +42,7 @@ export const captureMhtmlUrlQueryOptions = (captureId: string) =>
 export const captureLinksQueryOptions = (captureId: string) =>
   queryOptions({
     queryKey: queryKeys.captureLinks(captureId),
-    queryFn: () => window.birdbrain.captures.getLinks(captureId),
+    queryFn: () => birdbrain.captures.getLinks(captureId),
     enabled: !!captureId,
     staleTime: 0,
     gcTime: 0
@@ -52,7 +53,7 @@ export const captureLinksQueryOptions = (captureId: string) =>
 export const captureMhtmlPartsQueryOptions = (captureId: string) =>
   queryOptions({
     queryKey: queryKeys.captureMhtmlParts(captureId),
-    queryFn: () => window.birdbrain.captures.listMhtmlParts(captureId),
+    queryFn: () => birdbrain.captures.listMhtmlParts(captureId),
     enabled: !!captureId,
     staleTime: 0,
     gcTime: 0
@@ -64,7 +65,7 @@ export const captureMhtmlPartsQueryOptions = (captureId: string) =>
 export const captureHeldQueryOptions = (captureId: string) =>
   queryOptions({
     queryKey: queryKeys.captureHeld(captureId),
-    queryFn: async () => (await window.birdbrain.captures.get(captureId)) != null,
+    queryFn: async () => (await birdbrain.captures.get(captureId)) != null,
     enabled: !!captureId,
     staleTime: 0
   })
@@ -72,28 +73,28 @@ export const captureHeldQueryOptions = (captureId: string) =>
 export const captureHtmlUrlQueryOptions = (captureId: string) =>
   queryOptions({
     queryKey: queryKeys.captureHtmlUrl(captureId),
-    queryFn: () => window.birdbrain.captures.getHtmlUrl(captureId),
+    queryFn: () => birdbrain.captures.getHtmlUrl(captureId),
     enabled: !!captureId
   })
 
 export const captureMatchingSelectorsQueryOptions = (captureId: string) =>
   queryOptions({
     queryKey: queryKeys.captureMatchingSelectors(captureId),
-    queryFn: () => window.birdbrain.captures.getMatchingSelectors(captureId),
+    queryFn: () => birdbrain.captures.getMatchingSelectors(captureId),
     enabled: !!captureId
   })
 
 export const captureFavoritesQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.captureFavorites(caseId),
-    queryFn: () => window.birdbrain.captures.listFavorites(caseId),
+    queryFn: () => birdbrain.captures.listFavorites(caseId),
     enabled: !!caseId
   })
 
 export const searchQueryOptions = (caseId: string, query: string) =>
   queryOptions({
     queryKey: queryKeys.search(caseId, query),
-    queryFn: () => window.birdbrain.search(caseId, query),
+    queryFn: () => birdbrain.search(caseId, query),
     enabled: !!caseId && query.trim().length > 0
   })
 
@@ -102,7 +103,7 @@ export const searchQueryOptions = (caseId: string, query: string) =>
 export const fieldSearchQueryOptions = (caseId: string, query: string) =>
   queryOptions({
     queryKey: queryKeys.fieldSearch(caseId, query),
-    queryFn: () => window.birdbrain.cases.searchFields(caseId, query),
+    queryFn: () => birdbrain.cases.searchFields(caseId, query),
     enabled: !!caseId && query.trim().length > 0
   })
 
@@ -110,31 +111,31 @@ export const fieldSearchQueryOptions = (caseId: string, query: string) =>
 // match preview: it walks every candidate capture's text on demand and would
 // otherwise park a case's worth of capture bodies in the cache.
 export function getCapture(captureId: string): Promise<Capture | undefined> {
-  return window.birdbrain.captures.get(captureId)
+  return birdbrain.captures.get(captureId)
 }
 
 export function listCaptures(caseId: string): Promise<Capture[]> {
-  return window.birdbrain.captures.list(caseId)
+  return birdbrain.captures.list(caseId)
 }
 
 export function getCaptureContent(
   captureId: string,
   type: 'html' | 'png' | 'txt'
 ): Promise<string | null> {
-  return window.birdbrain.captures.getContent(captureId, type)
+  return birdbrain.captures.getContent(captureId, type)
 }
 
 // The exact check of a field hit (docs/plans/2026-10-09-case-retrieval-first-slice.md,
 // D7). Uncached: each call reads the stored files again, and the answer is never kept.
 export function checkFieldHit(fieldId: number): Promise<FieldHitCheck> {
-  return window.birdbrain.cases.checkFieldHit(fieldId)
+  return birdbrain.cases.checkFieldHit(fieldId)
 }
 
 export function useCapturesMutations(caseId: string) {
   const queryClient = useQueryClient()
 
   const remove = useMutation({
-    mutationFn: (id: string) => window.birdbrain.captures.delete(id),
+    mutationFn: (id: string) => birdbrain.captures.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.captures(caseId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.captureCounts })
@@ -143,7 +144,7 @@ export function useCapturesMutations(caseId: string) {
   })
 
   const toggleFavorite = useMutation({
-    mutationFn: (captureId: string) => window.birdbrain.captures.toggleFavorite(captureId),
+    mutationFn: (captureId: string) => birdbrain.captures.toggleFavorite(captureId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.captureFavorites(caseId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.captures(caseId) })
@@ -155,7 +156,7 @@ export function useCapturesMutations(caseId: string) {
   // still a success at the mutation level: the caller reads `failedIds` for the
   // retry payload and `deletedIds` for what actually went.
   const removeMany = useMutation<BatchDeleteResult, unknown, string[]>({
-    mutationFn: (captureIds) => window.birdbrain.captures.deleteMany({ caseId, captureIds }),
+    mutationFn: (captureIds) => birdbrain.captures.deleteMany({ caseId, captureIds }),
     onSuccess: (result) => {
       // A not_found rejection means the cache showed a row that is already
       // gone (removed from another window), so it is as stale as a deletion.
@@ -174,7 +175,7 @@ export function useCapturesMutations(caseId: string) {
   // so the mutation succeeds either way and the caller reads the outcome. Only
   // a real duplicate changes the list, so only that invalidates.
   const duplicate = useMutation<DuplicateCaptureResult, unknown, string>({
-    mutationFn: (captureId) => window.birdbrain.captures.duplicate(captureId),
+    mutationFn: (captureId) => birdbrain.captures.duplicate(captureId),
     onSuccess: (result) => {
       if (result.status !== 'duplicated') return
       queryClient.invalidateQueries({ queryKey: queryKeys.captures(caseId) })
@@ -189,7 +190,7 @@ export function useCapturesMutations(caseId: string) {
     { captureIds: string[]; favorite: boolean }
   >({
     mutationFn: ({ captureIds, favorite }) =>
-      window.birdbrain.captures.setFavoriteMany({ caseId, captureIds, favorite }),
+      birdbrain.captures.setFavoriteMany({ caseId, captureIds, favorite }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.captureFavorites(caseId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.captures(caseId) })
@@ -210,7 +211,7 @@ export function useVerifyCapture(captureId: string, caseId: string) {
 
   const mutation = useMutation({
     mutationKey,
-    mutationFn: () => window.birdbrain.captures.verify(captureId),
+    mutationFn: () => birdbrain.captures.verify(captureId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.captures(caseId) })
     }

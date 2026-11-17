@@ -54,8 +54,9 @@ env:
   # Same apt hardening as ci.yml, for the same mirror (#620, #475, #539).
   APT_OPTS: -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15
   DROP_AZURE_MIRROR: >-
-    sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g'
-    /etc/apt/apt-mirrors.txt
+    if curl -fsS --max-time 10 -o /dev/null https://archive.ubuntu.com/ubuntu/dists/;
+    then sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g'
+    /etc/apt/apt-mirrors.txt; fi
   MODE: ${{ github.event_name == 'schedule' && 'cycle' || inputs.mode }}
   DISPATCH_MODEL: claude-opus-5-5
   # Opus 5.5 defaults to medium; the cycle and both subagents run at high.

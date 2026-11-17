@@ -45,7 +45,7 @@ jobs:
           fetch-depth: 1
           token: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}
 
-      - uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
+      - uses: anthropics/claude-code-action@4d75e5f390ee76b2e09c1980ecc99ff3a2e088c8 # v1.0.275
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}
@@ -60,6 +60,9 @@ jobs:
             { "model": "claude-opus-5-5", "effortLevel": "low" }
           # The reply goes out through the action's own tracking comment, so the
           # post-comment hook never sees it; the shape is carried by prompt instead.
+          # acceptEdits keeps a command that no allow rule covers refused. The action made
+          # auto mode the default in 1.0.273, and this job holds the machine account token.
           claude_args: |
             --max-turns 40
+            --permission-mode acceptEdits
             --append-system-prompt "Every comment you post on GitHub follows the repository's post-comment skill at .claude/skills/post-comment/SKILL.md; read it before writing. Shape: a plain-language top layer of at most 20 lines with no file paths, code spans, commit ids, tool names or repository jargon, then everything else inside <details> blocks, each with a one-line plain <summary>, a blank line, and the detail (tables with file:line, commit ids, fenced output). Fenced code only inside <details>. Your whole reply is one tracking comment in that shape."

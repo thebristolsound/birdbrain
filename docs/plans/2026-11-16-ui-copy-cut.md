@@ -53,7 +53,9 @@ four are in the next tranche.
    maintainer's, under the writing guide's claim discipline.
 6. How a thing works belongs on the docs site. The screen does not carry it.
 7. An empty state names the state. It gives no instruction when the control is in view.
-8. A tip is the last resort, and a dialog or panel has at most one.
+8. A tip hangs from a control or a label that is already on screen. No free-standing "i" icon
+   holds one. A sentence with no control to hang from is a consequence, which rule 4 keeps in
+   view, or how-it-works, which rule 6 sends to the docs.
 9. New wording uses the terms in `CONTEXT.md`.
 
 ## Verdicts
@@ -69,12 +71,14 @@ four are in the next tranche.
 
 ## Constraints
 
-- **A tip is not reachable by everyone today.** `InfoTip.tsx` puts its text in `title` and
-  `aria-label`. A pointer gets it on hover and a screen reader reads it. A sighted Operator
-  using the keyboard can focus the "i" and sees nothing. The app has 14 uses of `InfoTip` and
-  more than a hundred `title` attributes. `src/renderer/components/ui/` has a popover and no
-  tooltip, and the `radix-ui` package already installed exports one. Every Tooltip verdict
-  below waits for slice C0, which builds it.
+- **A tip is not reachable by everyone today.** `InfoTip.tsx` draws a free-standing "i" and
+  puts its text in `title` and `aria-label`. A pointer gets it on hover and a screen reader
+  reads it. A sighted Operator using the keyboard can focus the "i" and sees nothing. The app
+  has 14 uses of `InfoTip` in 8 files and more than a hundred `title` attributes.
+  `src/renderer/components/ui/` has a popover and no tooltip, and the `radix-ui` package
+  already installed exports one. Every Tooltip verdict below waits for slice C0, which builds
+  it. Rule 8 leaves `InfoTip` with no place, so each screen's slice removes its uses and the
+  component goes with the last one.
 - **Three decision records give strings their content.** ADR-0032 VPN rule 2 and VPN rule 3
   (the second numbered list of its Decision section) say what the VPN warning tells the
   Operator. ADR-0010 says the Working Copy's label has to carry weight. ADR-0009 gives a
@@ -95,7 +99,7 @@ four are in the next tranche.
   it breaks.
 - **The consolidation plan edits some of the same strings.** Slices 3.1, 3.3, 4.1, 4.2, 7.3 and
   7.4. Slice 3.3 folds the launch dialog's three tips into a disclosure; after this cut the
-  dialog has one tip, so 3.3 may have nothing left to do.
+  dialog has no tip, so 3.3 has nothing left to do.
 
 ## First tranche in numbers
 
@@ -104,7 +108,7 @@ is what stays in view; a tip's words are counted apart.
 
 | Screen | Strings | Words today | At rest after | In a tip | Left to a slice |
 | --- | --- | --- | --- | --- | --- |
-| Launch dialog | 12 | 127 | 30 | 8 | 17 |
+| Launch dialog | 12 | 127 | 38 | 0 | 17 |
 | Capture Session panel and its dialogs | 14 | 247 | 47 | 25 | 0 |
 | VPN warning | 2 | 48 | 27 | 0 | 0 |
 | Export dialog | 12 | 164 | 61 | 0 | 7 |
@@ -114,23 +118,24 @@ is what stays in view; a tip's words are counted apart.
 | Notes | 10 | 100 | 27 | 0 | 0 |
 | Dashboard and a new Case | 6 | 50 | 12 | 0 | 0 |
 | Onboarding tour | 18 | 364 | 186 | 0 | 0 |
-| **Total** | **99** | **1,466** | **557** | **38** | **30** |
+| **Total** | **99** | **1,466** | **565** | **30** | **30** |
 
-Of 1,466 words, 557 stay in view and 30 wait for a consolidation slice. The other
-879 leave view, which is 60 percent, and 38 words of new tips replace some of them.
+Of 1,466 words, 565 stay in view and 30 wait for a consolidation slice. The other
+871 leave view, which is 59 percent, and 30 words of new tips replace some of them.
 
 ## Launch dialog
 
 `StartDialog.tsx`, `startDialogModel.ts`. One dialog with three info tips and a sentence under
-most of its rows. The title already says what the dialog does and for which Case.
+most of its rows. The title already says what the dialog does and for which Case. After the cut
+it has no tip.
 
 | Today | Words | Verdict | Becomes, or why |
 | --- | --- | --- | --- |
 | "Birdbrain opens the browser for a Capture Session and closes it when the …" (`StartDialog.tsx`) | 15 | Cut | Restates the title. |
 | "A new browser profile, which Birdbrain deletes when the browser closes." (`StartDialog.tsx`) | 10 | Shorten | "New profile, deleted on close" |
 | "Fixed while the browser is open. Changing it ends the Capture Session." (`StartDialog.tsx`) | 12 | Cut | Settings says it where the Egress is changed. |
-| "Change it in Settings → Operator before launching.‹…›" (`StartDialog.tsx`) | 7 | Cut | Tip. The row could link to the setting instead. |
-| "The browser runs on a browser profile of its own. Pages in this …" (`StartDialog.tsx`) | 19 | Tooltip | "Sites can tell that software drives this browser." The first sentence repeats the Profile row. The second is a consequence and stays, as the dialog's one tip. |
+| "Change it in Settings → Operator before launching.‹…›" (`StartDialog.tsx`) | 7 | Cut | A tip on a free-standing "i". The row could link to the setting instead. |
+| "The browser runs on a browser profile of its own. Pages in this …" (`StartDialog.tsx`) | 19 | Shorten | "Sites can tell that software drives this browser." A tip on a free-standing "i" today. The first sentence repeats the Profile row. The second is a consequence with no control to hang from, so decision 4 makes it a line in the dialog. |
 | "Every Capture carries an operator name, so Birdbrain asks for it first." (`StartDialog.tsx`) | 12 | Slice | Slice 3.1 replaces the row with a field. |
 | "Set your name before launching." (`StartDialog.tsx`) | 5 | Slice | Slice 3.1. "Not set" already says it. |
 | "Starts a Capture Session in ‹…›." (`StartDialog.tsx`) | 4 | Cut | The title names the Case, and the recording mark shows the session. |
@@ -150,13 +155,13 @@ maintainer's.
 | Today | Words | Verdict | Becomes, or why |
 | --- | --- | --- | --- |
 | "Pick a tab below, or choose one." (`CaptureControl.tsx`) | 6 | Shorten | "No tab chosen" A state, not an instruction: the tabs and the button are beside it. |
-| "Scrolls the page in the browser to load content that appears as you …" (`CaptureControl.tsx`) | 27 | Tooltip | "Scrolls the page first to load more of it. The page can see the scrolling." |
+| "Scrolls the page in the browser to load content that appears as you …" (`CaptureControl.tsx`) | 27 | Tooltip | "Scrolls the page first to load more of it. The page can see the scrolling." On the "Scroll to load" checkbox, not on an icon beside it. |
 | "Birdbrain found more than one tab the shortcut could take, or none in …" (`TabPicker.tsx`) | 22 | Cut | The heading, "Pick the tab to capture.", is enough. |
 | "The Capture Session keeps running until you stop it." (`CaptureSessionPanel.tsx`) | 9 | Shorten | "Still running" Shown once the browser has closed. |
 | "Launching again joins this Capture Session." (`CaptureSessionPanel.tsx`) | 6 | Cut | The launch dialog's button says so. |
 | "It could change how traffic leaves this browser." (`CaptureSessionPanel.tsx`) | 8 | Shorten | "It can route traffic around the proxy." Follows "An extension was added." A consequence, so it stays in view. |
 | "Shown only while the Egress is not Direct. With the Egress on ‹…›, …" (`CaptureSessionPanel.tsx`) | 45 | Docs | A long tip. The line above it carries the warning. |
-| "Birdbrain did not record this page from its first request, so a Capture …" (`captureSessionPanelModel.ts`) | 18 | Tooltip | "No Transaction Record: recording began after this page's first request." Evidence statement on the "not from first request" label. |
+| "Birdbrain did not record this page from its first request, so a Capture …" (`captureSessionPanelModel.ts`) | 18 | Tooltip | "No Transaction Record: recording began after this page's first request." On the "not from first request" label. An evidence statement. |
 | "This does not mean every exchange was recorded: a cached response can leave …" (`captureSessionPanelModel.ts`) | 31 | Docs | The inventory lists the gaps it describes. |
 | "A private window keeps its own cookies, so Birdbrain never records or captures it." (`captureSessionPanelModel.ts`) | 13 | Shorten | "Private windows are not recorded or captured." |
 | "Birdbrain captures http and https pages only." (`captureSessionPanelModel.ts`) | 7 | Shorten | "http and https pages only" |
@@ -184,8 +189,8 @@ plan edit the same labels; this cut lands with them, not beside them.
 
 | Today | Words | Verdict | Becomes, or why |
 | --- | --- | --- | --- |
-| "Verifiable package: Manifest, Certification, captures, screenshots and notes" (`ExportDialog.tsx`) | 8 | Shorten | "For handing over. A recipient can check its integrity." Under "Evidence Package (.zip)". Wording waits for open question 2. |
-| "Non-evidentiary: captures, screenshots and notes — no Certification, no Manifest" (`ExportDialog.tsx`) | 9 | Shorten | "For your own use. No Certification, and a recipient cannot check it." ADR-0010 says this label has to carry weight, so it stays. Wording waits for open question 2. |
+| "Verifiable package: Manifest, Certification, captures, screenshots and notes" (`ExportDialog.tsx`) | 8 | Shorten | "For handing over. A recipient can check its integrity." Under "Evidence Package (.zip)". Decision 5. |
+| "Non-evidentiary: captures, screenshots and notes — no Certification, no Manifest" (`ExportDialog.tsx`) | 9 | Shorten | "For your own use. No Certification, and a recipient cannot check it." ADR-0010 says this label has to carry weight, so it stays. Decision 5. |
 | "Evidence package with everything except operator notes" (`ExportDialog.tsx`) | 7 | Slice | Slice 4.2 replaces the preset with a checkbox. |
 | "Evidence package: ships the full signed Manifest chain and the Certification, and appends …" (`ExportDialog.tsx`) | 26 | Cut | Second description of the selected class. |
 | "Non-evidentiary working copy: no Certification, no signed Manifest, no verification materials. The export …" (`ExportDialog.tsx`) | 34 | Cut | Second description of the selected class. |
@@ -233,7 +238,7 @@ removes the Selectors input, and its placeholder goes with it.
 `src/renderer/components/signals/`. The Auto-capture card heads the screen with two sentences
 about a feature that is withdrawn. Under the Selectors list a row of five key hints is always on
 screen (`↵ edit pattern` and four more); it is five short labels, so the table below does not
-count it. The plan moves it into a tip on the list.
+count it. The plan takes it off the screen and lists the keys in `features.mdx`.
 
 | Today | Words | Verdict | Becomes, or why |
 | --- | --- | --- | --- |
@@ -343,33 +348,36 @@ Not yet judged. The counts are from the same measurement.
 
 ## Slices
 
-Nothing starts until the maintainer has ruled on the verdicts. Each slice is one pull request
-with before and after screenshots, the tests and docs it breaks, and ten files or fewer. Each
-adds its line to the index in `docs/design-handoff/README.md` (decision 1) and moves any text
-marked Docs into `features.mdx` (decision 2).
+No slice starts until the maintainer has ruled on its screen's verdicts. Each slice is one pull
+request with before and after screenshots, the tests and docs it breaks, and ten files or
+fewer. Each adds its line to the index in `docs/design-handoff/README.md` (decision 1) and
+moves any text marked Docs into `features.mdx` (decision 2).
 
 - [ ] **C0. A tip that opens on focus.** `src/renderer/components/ui/tooltip.tsx` on the
-  tooltip `radix-ui` already ships, and `InfoTip.tsx` rebuilt on it, so a tip shows on hover
-  and on keyboard focus and still gives its text to a screen reader. No string changes.
+  tooltip `radix-ui` already ships. It wraps a control or a label, shows on hover and on
+  keyboard focus, and gives its text to a screen reader. No string changes. `InfoTip.tsx` is
+  not rebuilt on it: decision 4 retires the free-standing icon, one screen at a time.
 - [ ] **C1. Notes.** The four placeholders, the footer and the list hints.
 - [ ] **C2. Signals.** With slice 7.4 of the consolidation plan if it has not landed.
 - [ ] **C3. Dashboard, new Case and Overview.**
 - [ ] **C4. Onboarding tour.** Twelve steps to nine, and the two false statements corrected.
   `e2e/onboarding-tour.spec.ts` and `tests/renderer/tourSteps.test.ts` follow.
-- [ ] **C5. Launch dialog and VPN warning.** After C0. Lands with slices 3.1 and 3.2 of the
-  consolidation plan, which amend ADR-0032 and so carry the shortened warning.
+- [ ] **C5. Launch dialog and VPN warning.** Removes the dialog's three `InfoTip`s, so it does
+  not wait for C0. Lands with slices 3.1 and 3.2 of the consolidation plan, which amend
+  ADR-0032 and so carry the shortened warning.
 - [ ] **C6. Captures and the delete dialog.**
 - [ ] **C7. Capture Session panel.** After C0. `evidence-affecting`: three of its files are
   `blocking`.
 - [ ] **C8. Export dialog.** `evidence-affecting`. Lands with slices 4.1 and 4.2 of the
-  consolidation plan, so the dialog's wording changes once. Waits for open question 2.
+  consolidation plan, so the dialog's wording changes once. The two descriptions are
+  decision 5.
 
 C1 to C4 touch no `blocking` file and wait for nothing but the ruling. C4 is worth doing first:
 it is the only place the cut also removes something untrue.
 
 ## Decisions taken
 
-The maintainer ruled on three of this plan's questions on 2026-11-16.
+The maintainer ruled on this plan's five questions on 2026-11-16.
 
 1. **Does a copy-only cut supersede a design bundle's wording without a new bundle?** Ruling:
    yes. No new bundle for copy alone. Each slice adds a line to the index in
@@ -378,37 +386,22 @@ The maintainer ruled on three of this plan's questions on 2026-11-16.
    the page does not already say it, and nowhere in the app.
 3. **Which word does the app use for passive capture today?** Ruling: "off in this build". The
    Signals card's line becomes "Passive capture is off in this build."
+4. **Is one tip per dialog or panel the right limit?** Ruling: no count. A tip hangs only from
+   a control or label that is already on screen, and no free-standing "i" icon holds one. This
+   is rule 8. What the critique counted as clutter was the icons, not the text behind them, and
+   a count would have refused the Capture Session panel its two tips, on the "Scroll to load"
+   checkbox and on the "not from first request" label. The launch dialog's "Sites can tell that
+   software drives this browser." has no control of its own and is a consequence, so it is a
+   line in the dialog.
+5. **What do the two export choices say under their names?** Ruling: by purpose. Evidence
+   Package: "For handing over. A recipient can check its integrity." Working Copy: "For your
+   own use. No Certification, and a recipient cannot check it." The plan's first proposal
+   called a Working Copy not evidence, which is not the app's to decide (ADR-0043). The ruled
+   wording follows `CONTEXT.md`, which defines a Working Copy as an export for the Operator's
+   own use, and avoids the bare word "verified", which the writing guide rules out.
 
-## Open questions
-
-Two questions are still the maintainer's.
-
-1. **Is one tip per dialog or panel the right limit?** The maintainer asked for a
-   recommendation. It is to drop the count and rule on what a tip hangs from: no free-standing
-   "i" icon, and a tip only on a control or label that is already on screen. The count does not
-   hold up against this plan's own verdicts, which leave the Capture Session panel with two
-   tips, one on the "Scroll to load" checkbox and one on the "not from first request" label,
-   and both belong there. What the critique counted as clutter was the icons, not the text
-   behind them. Under the new rule a sentence with no control to hang from is either a
-   consequence, which rule 4 keeps in view, or how-it-works, which rule 6 sends to the docs.
-   One verdict changes: the launch dialog's "Sites can tell that software drives this browser."
-   is a consequence with no control of its own, so it becomes a line in the dialog instead of a
-   tip. `InfoTip.tsx` then has no use left, and slice C0 retires it.
-2. **What do the two export choices say under their names?** The maintainer ruled out this
-   plan's first proposal, "Signed Manifest and Certification" and "Not evidence: no Manifest,
-   no Certification". The second calls a file not evidence, which is not the app's to decide
-   (ADR-0043), and both are made of terms a new Operator has not met. Two replacements to
-   choose between, or reword:
-   - **By purpose.** Evidence Package: "For handing over. A recipient can check its
-     integrity." Working Copy: "For your own use. No Certification, and a recipient cannot
-     check it." This follows `CONTEXT.md`, which defines a Working Copy as an export for the
-     Operator's own use, and it avoids the bare word "verified", which the writing guide rules
-     out.
-   - **By contents.** Evidence Package: "Captures, screenshots, Notes, Manifest and
-     Certification." Working Copy: "Captures, screenshots and Notes. No Manifest, no
-     Certification." This is today's wording without the adjectives.
-   The recommendation is the first. ADR-0010 says the Working Copy's label has to carry
-   weight, and "for your own use" tells the Operator what not to do with the file.
+The verdicts in the tables are still proposals. The maintainer rules on a screen's verdicts
+before its slice starts.
 
 ## Not in this plan
 

@@ -10,18 +10,18 @@ import {
 import * as backgroundJobRepo from '@main/services/db/backgroundJobRepo'
 import type { JobEnd, RunningAttempt, SettledJobs } from '@main/services/db/backgroundJobRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
-import { getCase } from '@main/services/db/caseRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
 import {
+  backgroundRefusalReason,
   entryDescribesRow,
   verifyCapture,
+  type AdmissionRefusal,
+  type BackgroundJobIdentity,
   type CaptureLifecycle,
   type LinkSource
 } from '@main/services/captureLifecycle'
 import { defaultCaptureStore } from '@main/services/captureStore'
-import { blockedSkipReason, matchCaseExclusion } from '@main/services/exclusionPolicy'
 import type { CaptureEgress } from '@main/services/egress'
-import { getInstallationId } from '@main/services/installationId'
 import { RefusedAddressError, refusedAddressClass } from '@main/services/localAddressPolicy'
 import { authorChainOf, readCaseChains } from '@main/services/manifest'
 import { OperatorNameRequiredError, trimmedOperatorName } from '@main/services/operatorName'
@@ -39,7 +39,7 @@ import type { ImageSourcePinning, ScreenshotRecord } from '../../packages/captur
 import type { PdfOutcome } from '../../packages/capture-finish/pdf'
 import { ManifestEntrySchema } from '@shared/schemas'
 import type { ScrollToLoadRecord } from '@shared/schemas'
-import type { Capture, CaptureEvent, ConsentSuppression } from '@shared/types'
+import type { CaptureEvent, ConsentSuppression } from '@shared/types'
 import type {
   BackgroundJobPhase,
   BackgroundJobView,
@@ -160,8 +160,10 @@ export type RecaptureJobRequest = Omit<RecaptureJob, 'jobId' | 'batchId'>
 export interface RecaptureDeps {
   renderPage: RenderPage
   captureLifecycle: CaptureLifecycle
+  // The queue's own events: a job queued, started, cancelled, failed, or skipped for a reason
+  // that is not admission's. Admission reports an excluded address, an archived Case and a
+  // stored Capture through the lifecycle.
   emitEvent: (event: CaptureEvent) => void
-  emitNewCapture: (capture: Capture) => void
   // Hears every change of a job's state, with the row as it now reads.
   emitJob?: (job: BackgroundJobView) => void
   timeoutMs?: number
@@ -517,22 +519,26 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       })
       return { state: 'cancelled', error: CANCELLED_JOB_ERROR }
     }
+    // The job as admission names it on the feed.
+    const feedJob: BackgroundJobIdentity = {
+      jobId: job.jobId,
+      batchId: job.batchId,
+      url: job.url,
+      ...(job.linkedFrom ? { linkedFrom: job.linkedFrom } : {})
+    }
+    // Admission refused the job, for an excluded address or for its Case. It has told the
+    // feed, and the job's row and the log say why. A job whose Case is gone is not refused:
+    // admission leaves it to fail at its ingest.
+    const endRefused = (refusal: AdmissionRefusal): JobOutcome => {
+      const failureKind = refusal.kind === 'excluded' ? 'excluded' : 'case'
+      logSkipped(failureKind)
+      return { state: 'skipped', failureKind, error: backgroundRefusalReason(refusal) }
+    }
     try {
-      // The list can change while a job waits, held across a restart included, so the check
-      // `enqueue` made on the job's own address (#400) is made again before anything is sent.
-      const excluded = matchCaseExclusion(job.url, job.caseId)
-      if (excluded) {
-        const skipReason = blockedSkipReason(excluded)
-        emitEvent({
-          type: 'skipped',
-          source: 'recapture',
-          url: job.url,
-          timestamp: new Date().toISOString(),
-          skipReason
-        })
-        logSkipped('excluded')
-        return { state: 'skipped', failureKind: 'excluded', error: skipReason }
-      }
+      // The Case and the list can change while a job waits, held across a restart included,
+      // so admission's answer at `enqueue` (#400) is asked for again before anything is sent.
+      const unadmitted = deps.captureLifecycle.screenBackground(job.caseId, job.url, feedJob)
+      if (unadmitted) return endRefused(unadmitted)
 
       let linkSource: LinkSource | undefined
       if (job.linkedFrom) {
@@ -615,72 +621,6 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         return { state: 'skipped', failureKind: 'refused-address', error: skipReason }
       }
 
-      // Second enforcement point (#400). `enqueue` could only judge the URL the
-      // operator asked for; what gets persisted is `rendered.finalUrl`, and the
-      // capture server checks the URL it stores. A recapture that redirects into
-      // an excluded URL is refused here — after the render, before the ingest,
-      // so nothing reaches the database or the manifest.
-      const blocked = matchCaseExclusion(rendered.finalUrl, job.caseId)
-      if (blocked) {
-        // Nothing consumes the rendered stream on this path, and the unlink in
-        // `cleanup()` removes only the directory entry — the open fd would keep
-        // the deleted temp file's blocks pinned for the life of the main
-        // process. Batch recapture fans out one job per capture, so that is one
-        // fd and one multi-megabyte file per blocked job (#766).
-        rendered.mhtmlStream.destroy?.()
-        const skipReason = blockedSkipReason(blocked)
-        emitEvent({
-          type: 'skipped',
-          source: 'recapture',
-          url: rendered.finalUrl,
-          timestamp: new Date().toISOString(),
-          skipReason
-        })
-        logSkipped('excluded')
-        return { state: 'skipped', failureKind: 'excluded', error: skipReason }
-      }
-
-      const operatorName = trimmedOperatorName()
-      if (!operatorName) throw new OperatorNameRequiredError()
-      const ingestStartedAt = Date.now()
-      const result = await deps.captureLifecycle.ingest({
-        captureId,
-        caseId: job.caseId,
-        url: rendered.finalUrl,
-        title: rendered.title || job.url,
-        timestamp,
-        stream: rendered.mhtmlStream as unknown as ReadableStream<Uint8Array>,
-        textContent: rendered.text,
-        headers: {},
-        browserVersion: rendered.browserVersion,
-        userAgent: rendered.userAgent,
-        httpStatus: rendered.httpStatus,
-        // The renderer is the one acquiring path that knows both URLs, so it is
-        // the one that can state a redirect (R7, #797). The capture is stored
-        // under the URL the bytes came from — `url` above — which on its own
-        // cannot tell a reader whether that is where the operator aimed. When
-        // the two differ as destinations, the entry says so; when they agree,
-        // nothing is written, because there is no redirect to record.
-        finalUrl: redirectedFinalUrl(job.url, rendered.finalUrl),
-        operatorId: getInstallationId(),
-        operatorName,
-        toolVersion,
-        screenshot: rendered.screenshot,
-        method: 'background',
-        supersedesCaptureId: job.supersedesCaptureId,
-        consentSuppression: rendered.consentSuppression,
-        egress: rendered.egress,
-        linkSource,
-        scrollToLoad: rendered.scrollToLoad,
-        ...finishFields({
-          mhtml: rendered.imageSourcePinning,
-          screenshot: rendered.screenshotRecord,
-          transactionRecord: rendered.transactionRecord,
-          pdf: rendered.pdf
-        })
-      })
-      const ingestMs = Date.now() - ingestStartedAt
-
       const warning = looksLikeLoginWall({
         requestedUrl: job.url,
         finalUrl: rendered.finalUrl,
@@ -688,6 +628,65 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       })
         ? 'Page looks like a login wall — the clean background session is not signed in'
         : undefined
+
+      // Admission's last word (#400). `enqueue` could only judge the URL the operator asked
+      // for; what gets persisted is `rendered.finalUrl`, so a recapture that redirects into an
+      // excluded URL is refused here, after the render and before the ingest, and nothing
+      // reaches the database or the manifest. An admitted page is ingested, broadcast and
+      // reported as stored by the lifecycle.
+      const ingestStartedAt = Date.now()
+      const admitted = await deps.captureLifecycle.admit({
+        route: 'background',
+        job: feedJob,
+        startedAt: started,
+        warning,
+        page: {
+          captureId,
+          caseId: job.caseId,
+          url: rendered.finalUrl,
+          title: rendered.title || job.url,
+          timestamp,
+          stream: rendered.mhtmlStream as unknown as ReadableStream<Uint8Array>,
+          textContent: rendered.text,
+          headers: {},
+          browserVersion: rendered.browserVersion,
+          userAgent: rendered.userAgent,
+          httpStatus: rendered.httpStatus,
+          // The renderer is the one acquiring path that knows both URLs, so it is
+          // the one that can state a redirect (R7, #797). The capture is stored
+          // under the URL the bytes came from — `url` above — which on its own
+          // cannot tell a reader whether that is where the operator aimed. When
+          // the two differ as destinations, the entry says so; when they agree,
+          // nothing is written, because there is no redirect to record.
+          finalUrl: redirectedFinalUrl(job.url, rendered.finalUrl),
+          toolVersion,
+          screenshot: rendered.screenshot,
+          supersedesCaptureId: job.supersedesCaptureId,
+          consentSuppression: rendered.consentSuppression,
+          egress: rendered.egress,
+          linkSource,
+          scrollToLoad: rendered.scrollToLoad,
+          ...finishFields({
+            mhtml: rendered.imageSourcePinning,
+            screenshot: rendered.screenshotRecord,
+            transactionRecord: rendered.transactionRecord,
+            pdf: rendered.pdf
+          })
+        }
+      })
+      if (!admitted.ok) {
+        // The ingest threw, the operator gate's refusal included: the job fails as any other
+        // failure of its run does, below.
+        if (admitted.refusal.kind === 'failed') throw admitted.refusal.error
+        // Nothing consumes the rendered stream on this path, and the unlink in
+        // `cleanup()` removes only the directory entry — the open fd would keep
+        // the deleted temp file's blocks pinned for the life of the main
+        // process. Batch recapture fans out one job per capture, so that is one
+        // fd and one multi-megabyte file per blocked job (#766).
+        rendered.mhtmlStream.destroy?.()
+        return endRefused(admitted.refusal)
+      }
+      const ingestMs = Date.now() - ingestStartedAt
 
       // Said only once the Capture is stored, so a job that then fails or is skipped
       // never reports a stored Capture.
@@ -709,17 +708,6 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         )
       }
 
-      const capture = captureRepo.getCapture(result.capture.id) ?? result.capture
-      deps.emitNewCapture(capture)
-      emitEvent({
-        type: 'stored',
-        captureId: capture.id,
-        source: 'recapture',
-        url: job.url,
-        timestamp: new Date().toISOString(),
-        durationMs: Date.now() - started,
-        warning
-      })
       // The queue loop logs the stored line once the row is written, outside this `try`, so a
       // log call that throws cannot change how a stored job ends.
       const stored = { ...jobContext(), ingestMs }
@@ -928,31 +916,17 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       const accepted: RecaptureJob[] = []
       for (const request of requests) {
         const job = { ...request, jobId: randomUUID(), batchId }
-        // A job's row names its Case through a foreign key, so a Case that is gone refuses here.
-        const reason = validateUrl(job.url) ?? (getCase(job.caseId) ? null : 'Case not found')
+        // The address first, then admission's answer for it (#400): the Case must exist and
+        // not be archived, and the exclusion list blocks every capture route, manual included.
+        // This is the recapture route's first enforcement point, and `enqueue` is its only
+        // producer: both IPC handlers funnel through here. A refusal is returned as a rejection
+        // because the renderer call sites that queue a recapture already show a rejection's
+        // reason, so the operator is told why without a new result state.
+        const invalid = validateUrl(job.url)
+        const refusal = invalid ? null : deps.captureLifecycle.screenBackground(job.caseId, job.url)
+        const reason = invalid ?? (refusal ? backgroundRefusalReason(refusal) : null)
         if (reason) {
           rejected.push({ url: job.url, reason })
-          continue
-        }
-        // The per-case exclusion list blocks every capture route, manual
-        // included (#400, ruled 2026-08-21). This is the recapture route's
-        // enforcement point, and `enqueue` is its only producer — both IPC
-        // handlers funnel through here. A blocked job is reported the way the
-        // capture server reports one: a `skipped` event naming the pattern, and
-        // nothing written to the database or the manifest. It is returned as a
-        // rejection because the four renderer call sites already render
-        // `rejected[0].reason` verbatim, so the operator is told which pattern
-        // refused the recapture without a new result state.
-        const blocked = matchCaseExclusion(job.url, job.caseId)
-        if (blocked) {
-          deps.emitEvent({
-            type: 'skipped',
-            source: 'recapture',
-            url: job.url,
-            timestamp: new Date().toISOString(),
-            skipReason: blockedSkipReason(blocked)
-          })
-          rejected.push({ url: job.url, reason: blockedSkipReason(blocked) })
           continue
         }
         accepted.push(job)

@@ -156,7 +156,6 @@ describe('the background job pool', () => {
       renderPage,
       captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
       emitEvent,
-      emitNewCapture: () => {},
       emitJob,
       timeoutMs: 45_000,
       concurrency,

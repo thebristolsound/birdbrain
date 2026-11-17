@@ -3084,9 +3084,12 @@ describe('a Recapture of a rendered page, through ingest, and its PDF', () => {
   async function recaptureOnce(): Promise<{ id: string; entry: Record<string, unknown> }> {
     const service = createRecaptureService({
       renderPage: renderPageInHiddenWindow,
-      captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
+      // Admission reports the stored Capture through the lifecycle, on the queue's feed.
+      captureLifecycle: createCaptureLifecycle({
+        selectorLifecycle,
+        emitCaptureEvent: (event) => events.push(event)
+      }),
       emitEvent: (event) => events.push(event),
-      emitNewCapture: () => {},
       timeoutMs: 30_000
     })
     service.enqueue([{ url: 'https://example.test/', caseId }])
@@ -3132,9 +3135,12 @@ describe('a Recapture of a rendered page, through ingest, and its PDF', () => {
     ctl.pinThrows = true
     const service = createRecaptureService({
       renderPage: renderPageInHiddenWindow,
-      captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
+      // Admission reports the stored Capture through the lifecycle, on the queue's feed.
+      captureLifecycle: createCaptureLifecycle({
+        selectorLifecycle,
+        emitCaptureEvent: (event) => events.push(event)
+      }),
       emitEvent: (event) => events.push(event),
-      emitNewCapture: () => {},
       timeoutMs: 30_000
     })
     service.enqueue([{ url: 'https://example.test/', caseId }])
@@ -3250,9 +3256,12 @@ describe('a Recapture of a rendered page, through ingest, and its PDF', () => {
     const warn = vi.spyOn(logger, 'warn')
     const service = createRecaptureService({
       renderPage: renderPageInHiddenWindow,
-      captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
+      // Admission reports the stored Capture through the lifecycle, on the queue's feed.
+      captureLifecycle: createCaptureLifecycle({
+        selectorLifecycle,
+        emitCaptureEvent: (event) => events.push(event)
+      }),
       emitEvent: (event) => events.push(event),
-      emitNewCapture: () => {},
       timeoutMs: 30_000
     })
     service.enqueue([{ url: 'https://example.test/', caseId }])
@@ -3274,9 +3283,12 @@ describe('a Recapture of a rendered page, through ingest, and its PDF', () => {
     const jobs: BackgroundJobView[] = []
     const service = createRecaptureService({
       renderPage: renderPageInHiddenWindow,
-      captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
+      // Admission reports the stored Capture through the lifecycle, on the queue's feed.
+      captureLifecycle: createCaptureLifecycle({
+        selectorLifecycle,
+        emitCaptureEvent: (event) => events.push(event)
+      }),
       emitEvent: (event) => events.push(event),
-      emitNewCapture: () => {},
       emitJob: (job) => {
         jobs.push(job)
         onJob(job)
@@ -3317,9 +3329,12 @@ describe('a Recapture of a rendered page, through ingest, and its PDF', () => {
             cancels.push(service.cancel({ batchId: jobs[0].batchId }))
           }
         }),
-      captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
+      // Admission reports the stored Capture through the lifecycle, on the queue's feed.
+      captureLifecycle: createCaptureLifecycle({
+        selectorLifecycle,
+        emitCaptureEvent: (event) => events.push(event)
+      }),
       emitEvent: (event) => events.push(event),
-      emitNewCapture: () => {},
       emitJob: (job) => jobs.push(job),
       timeoutMs: 30_000
     })
@@ -3649,14 +3664,17 @@ describe('a background Capture, known answers for the record, the PDF and the in
   // One background Capture under a 30 s timeout: its signed entry, the names of the fields the
   // queue handed the ingest, and what it logged for a part that failed.
   async function captureOnce() {
-    const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
+    // Admission reports the stored Capture through the lifecycle, on the queue's feed.
+    const captureLifecycle = createCaptureLifecycle({
+      selectorLifecycle,
+      emitCaptureEvent: (event) => events.push(event)
+    })
     const ingest = vi.spyOn(captureLifecycle, 'ingest')
     const logged = vi.spyOn(logger, 'error')
     const service = createRecaptureService({
       renderPage: renderPageInHiddenWindow,
       captureLifecycle,
       emitEvent: (event) => events.push(event),
-      emitNewCapture: () => {},
       timeoutMs: 30_000
     })
     service.enqueue([{ url: 'https://example.test/', caseId }])

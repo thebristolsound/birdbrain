@@ -13,7 +13,12 @@ import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
-import { createCase, deleteCase, setAutoCapturePolicy } from '@main/services/db/caseRepo'
+import {
+  createCase,
+  deleteCase,
+  setAutoCapturePolicy,
+  updateCase
+} from '@main/services/db/caseRepo'
 import { getCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
 import * as backgroundJobRepo from '@main/services/db/backgroundJobRepo'
 import { defaultCaptureStore } from '@main/services/captureStore'
@@ -120,12 +125,21 @@ describe('stored background jobs', () => {
     rmSync(tempDir, { recursive: true, force: true })
   })
 
+  // Admission reports a job it admits or refuses through the lifecycle, and the queue reports
+  // the rest, on one feed: both write to `events`, as both reach the renderer on one channel.
+  function feedLifecycle() {
+    return createCaptureLifecycle({
+      selectorLifecycle,
+      emitCaptureEvent: (e) => events.push(e),
+      emitNewCapture: (c) => newCaptures.push(c)
+    })
+  }
+
   function makeService(renderPage: RenderPage = render, timeoutMs = 45_000) {
     return createRecaptureService({
       renderPage,
-      captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
+      captureLifecycle: feedLifecycle(),
       emitEvent: (e) => events.push(e),
-      emitNewCapture: (c) => newCaptures.push(c),
       emitJob: (job) => jobs.push(job),
       timeoutMs
     })
@@ -264,12 +278,12 @@ describe('stored background jobs', () => {
     })
 
     it('records an ingest that fails as failed with kind ingest', async () => {
-      const lifecycle = createCaptureLifecycle({ selectorLifecycle })
+      const lifecycle = feedLifecycle()
+      lifecycle.ingest = () => Promise.reject(new Error('disk full'))
       const svc = createRecaptureService({
         renderPage: render,
-        captureLifecycle: { ...lifecycle, ingest: () => Promise.reject(new Error('disk full')) },
-        emitEvent: (e) => events.push(e),
-        emitNewCapture: (c) => newCaptures.push(c)
+        captureLifecycle: lifecycle,
+        emitEvent: (e) => events.push(e)
       })
       const { batchId } = svc.enqueue([{ url: 'https://example.com/a', caseId }])
       await svc.idle()
@@ -914,6 +928,56 @@ describe('stored background jobs', () => {
     })
   })
 
+  describe('the Case check before the render', () => {
+    it('skips a held job whose Case is archived by the time it resumes, sending no request', async () => {
+      const [id] = earlierSession(['https://example.com/a'])
+      const renderPage = vi.fn(render)
+      const svc = makeService(renderPage)
+      svc.recoverStoredJobs()
+      expect(updateCase({ id: caseId, archived: true })?.archived).toBe(true)
+      const info = vi.spyOn(logger, 'info')
+
+      svc.resume(backgroundJobRepo.getJob(id)!.batchId)
+      await svc.idle()
+
+      expect(renderPage).not.toHaveBeenCalled()
+      expect(
+        info.mock.calls
+          .filter(([, code]) => code === 'backgroundRenderer.job_skipped')
+          .map(([, , context]) => (context as { failureKind: string }).failureKind)
+      ).toEqual(['case'])
+      expect(backgroundJobRepo.getJob(id)).toMatchObject({
+        state: 'skipped',
+        failureKind: 'case',
+        error: 'Case is archived'
+      })
+      expect(events.map(({ type }) => type)).toEqual(['received', 'skipped'])
+      expect(events[1]).toMatchObject({
+        url: 'https://example.com/a',
+        skipReason: 'Case is archived',
+        jobId: id
+      })
+      expect(listCaptures(caseId)).toEqual([])
+    })
+  })
+
+  describe('the stored report', () => {
+    it("counts a stored job's duration from the job's start, its render included", async () => {
+      const { renderPage, gate } = gatedRender()
+      const svc = makeService(renderPage)
+      let clock = Date.now()
+      vi.spyOn(Date, 'now').mockImplementation(() => clock)
+      svc.enqueue([{ url: 'https://example.com/a', caseId }])
+      await vi.waitFor(() => expect(gate).toHaveLength(1))
+
+      clock += 5_000
+      gate.shift()!()
+      await svc.idle()
+
+      expect(events.find(({ type }) => type === 'stored')?.durationMs).toBe(5_000)
+    })
+  })
+
   describe('the exclusion check before the render', () => {
     it('skips a held job whose address the list refuses by the time it resumes, sending no request', async () => {
       const [id] = earlierSession(['https://secret.example.com/page'])
@@ -1013,7 +1077,15 @@ describe('stored background jobs', () => {
 
     it('fails a running job at ingest when its Case is deleted during the render', async () => {
       const { renderPage, gate } = gatedRender()
-      const svc = makeService(renderPage)
+      const lifecycle = feedLifecycle()
+      const ingest = vi.spyOn(lifecycle, 'ingest')
+      const warn = vi.spyOn(logger, 'warn')
+      const svc = createRecaptureService({
+        renderPage,
+        captureLifecycle: lifecycle,
+        emitEvent: (e) => events.push(e),
+        emitJob: (job) => jobs.push(job)
+      })
       svc.enqueue([{ url: 'https://example.com/a', caseId }])
       await vi.waitFor(() => expect(gate).toHaveLength(1))
       const sent = jobs.length
@@ -1022,7 +1094,16 @@ describe('stored background jobs', () => {
       gate.shift()!()
       await svc.idle()
 
+      // Admission does not refuse a job whose Case is gone: the ingest fails it, and the
+      // operator reads the ingest's own error.
+      expect(ingest).toHaveBeenCalledTimes(1)
       expect(events.map(({ type }) => type)).toEqual(['queued', 'received', 'failed'])
+      expect(events[2].error).toBe('FOREIGN KEY constraint failed')
+      expect(
+        warn.mock.calls
+          .filter(([, code]) => code === 'backgroundRenderer.job_failed')
+          .map(([, , context]) => (context as { failureKind: string }).failureKind)
+      ).toEqual(['ingest'])
       expect(listCaptures(caseId)).toEqual([])
       expect(newCaptures).toEqual([])
       // The row went with its Case, so there is no state left to report.
@@ -1274,20 +1355,18 @@ describe('stored background jobs', () => {
     })
 
     it('refuses a cancel from the moment the render hands over its page, and the job ends stored', async () => {
-      const lifecycle = createCaptureLifecycle({ selectorLifecycle })
+      const lifecycle = feedLifecycle()
+      const ingest = lifecycle.ingest
       const ingestGate: Array<() => void> = []
       const refusals: RecaptureCancelResult[] = []
+      lifecycle.ingest = async (params) => {
+        await new Promise<void>((resolve) => ingestGate.push(resolve))
+        return ingest(params)
+      }
       const svc = createRecaptureService({
         renderPage: render,
-        captureLifecycle: {
-          ...lifecycle,
-          ingest: async (params) => {
-            await new Promise<void>((resolve) => ingestGate.push(resolve))
-            return lifecycle.ingest(params)
-          }
-        },
+        captureLifecycle: lifecycle,
         emitEvent: (e) => events.push(e),
-        emitNewCapture: (c) => newCaptures.push(c),
         // The first thing to hear that the job is ingesting asks to cancel it.
         emitJob: (job) => {
           jobs.push(job)

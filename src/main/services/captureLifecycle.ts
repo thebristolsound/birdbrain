@@ -229,6 +229,31 @@ export interface LaunchedAdmissionRequest {
   pdf?: Buffer
 }
 
+// The Background Job behind a request, as the activity feed names it: every event of a job
+// carries its id and its Batch's, and a Capture link job's events carry its source too
+// (ADR-0040), because the exclusion skip names the final address and not the job's.
+export interface BackgroundJobIdentity {
+  jobId: string
+  batchId: string
+  linkedFrom?: NonNullable<CaptureEvent['linkedFrom']>
+  // The address the job was queued for. The `stored` event and a Case refusal name it,
+  // whatever address the render ended on.
+  url: string
+}
+
+// A rendered Background Job (#recapture). Not a wire source: only the recapture queue builds
+// one, once the hidden window has returned its page. `page` is what the ingest takes, with
+// `url` the address the bytes came from; the lifecycle fills in the operator and the method.
+export interface BackgroundAdmissionRequest {
+  route: 'background'
+  job: BackgroundJobIdentity
+  // When the job started, which the `stored` event's duration counts from.
+  startedAt: number
+  // Said on the `stored` event: the queue's reading of the page, such as a login wall.
+  warning?: string
+  page: Omit<IngestParams, 'operatorId' | 'operatorName' | 'method'>
+}
+
 // What an acquiring path hands `admit`: the wire payload minus transport, with
 // no policy applied yet. Everything `IngestParams` derives (operator, tool
 // version, the resolved case) is the lifecycle's to fill in.
@@ -262,8 +287,9 @@ export type AdmissionRefusal =
   | { kind: 'case_archived' }
   | { kind: 'excluded'; pattern: string }
   | { kind: 'duplicate' }
-  // The ingest itself threw. Logged and reported on the activity feed here;
-  // the caller only maps it.
+  // The ingest itself threw. The extension and launched routes log it and report it on the
+  // activity feed here, and the caller only maps it. The background route hands it back
+  // unreported: the queue reports every failed job.
   | { kind: 'failed'; error: unknown }
 
 export type AdmissionOutcome =
@@ -312,8 +338,28 @@ export interface CaptureLifecycle {
   // Refusals are outcomes, never throws. The transport that calls this maps
   // the outcome to a status code and nothing else. The launched route runs the
   // same operator gate, case resolution and exclusion check, and passes
-  // `method: 'launched'` to the ingest.
-  admit: (request: AdmissionRequest | LaunchedAdmissionRequest) => Promise<AdmissionOutcome>
+  // `method: 'launched'` to the ingest. The background route runs the checks
+  // `screenBackground` describes, passes `method: 'background'`, and leaves the
+  // operator gate to the ingest.
+  admit: (
+    request: AdmissionRequest | LaunchedAdmissionRequest | BackgroundAdmissionRequest
+  ) => Promise<AdmissionOutcome>
+  // The background route's checks wherever a job can still be stopped: as it is queued, as it
+  // starts, and, inside `admit`, on the address its render ended on. The Case must not be
+  // archived, and the exclusion policy must admit the address, with the `skipped` event
+  // admit would emit for an exclusion or, once the job is named, for an archived Case.
+  // `job` is absent while the job is being queued: the Case must then exist too, the feed
+  // hears of an exclusion with no job named and of a Case refusal not at all, and the queue
+  // returns the reason to its caller. Once a job is named, a Case that no longer exists is
+  // not refused: the job's ingest fails, as it did before this route existed, and the queue
+  // reports that failure. The operator gate is not here. The queue refuses to schedule
+  // without a name, and the ingest refuses to sign without one. Null when the address would
+  // be admitted.
+  screenBackground: (
+    caseId: string,
+    url: string,
+    job?: BackgroundJobIdentity
+  ) => AdmissionRefusal | null
   // The launched route's checks before the engine takes anything from the page
   // (spec, "The Capture sequence", step 1): the operator gate, the case, and
   // the exclusion policy on the committed URL and the current address, with
@@ -394,6 +440,14 @@ function outcomeError(err: unknown): string {
   if (!(err instanceof Error)) return 'UnknownError'
   const { code } = err as NodeJS.ErrnoException
   return typeof code === 'string' && code.length > 0 ? `${err.name} (${code})` : err.name
+}
+
+// Why a Background Job was refused, as its `skipped` event, its job row and an enqueue's
+// rejection all say it. Only the three refusals the background screen returns have a wording
+// of their own; a Case that cannot be resolved for any other reason reads as not found.
+export function backgroundRefusalReason(refusal: AdmissionRefusal): string {
+  if (refusal.kind === 'excluded') return blockedSkipReason(refusal.pattern)
+  return refusal.kind === 'case_archived' ? 'Case is archived' : 'Case not found'
 }
 
 // The re-fetch runs only for an https page (fetchCertChain), so only those can
@@ -1538,6 +1592,87 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     }
   }
 
+  // A job's events carry its id and its Batch's, and a Capture link job's its source.
+  function emitJobEvent(
+    { jobId, batchId, linkedFrom }: BackgroundJobIdentity,
+    event: CaptureEvent
+  ): void {
+    emitCaptureEvent({ ...event, jobId, batchId, ...(linkedFrom ? { linkedFrom } : {}) })
+  }
+
+  // The background route's screen: the Case, then the exclusion policy, in the order every
+  // route runs them. A job refused for an archived Case is skipped, so the feed hears it here.
+  // A Case that is gone refuses a job only while it is being queued. It took a queued job's
+  // row with it, and a job already running is left to fail at its ingest, so the operator
+  // reads the same failure as before.
+  function screenBackgroundJob(
+    caseId: string,
+    url: string,
+    job?: BackgroundJobIdentity
+  ): AdmissionRefusal | null {
+    const now = (): string => new Date().toISOString()
+    const source: CaptureSource = 'recapture'
+    const resolved = resolveAdmittedCase({ route: 'manual', caseId })
+    if ('refusal' in resolved) {
+      if (!job) return resolved.refusal
+      if (resolved.refusal.kind === 'case_archived') {
+        emitJobEvent(job, {
+          type: 'skipped',
+          source,
+          url: job.url,
+          timestamp: now(),
+          skipReason: backgroundRefusalReason(resolved.refusal)
+        })
+        return resolved.refusal
+      }
+    }
+    const blocked = matchCaseExclusion(url, caseId)
+    if (!blocked) return null
+    const skipped: CaptureEvent = {
+      type: 'skipped',
+      source,
+      url,
+      timestamp: now(),
+      skipReason: blockedSkipReason(blocked)
+    }
+    if (job) emitJobEvent(job, skipped)
+    else emitCaptureEvent(skipped)
+    return { kind: 'excluded', pattern: blocked }
+  }
+
+  // The background route (#recapture). No dedup window: the queue never applied one. A throw
+  // from the ingest, the operator gate's included, comes back as the `failed`
+  // refusal with nothing emitted and nothing logged here: the queue reports a job's failure,
+  // whose event also covers a render that failed before any page reached admission.
+  async function admitBackground(request: BackgroundAdmissionRequest): Promise<AdmissionOutcome> {
+    const { job, page } = request
+    const refusal = screenBackgroundJob(page.caseId, page.url, job)
+    if (refusal) return { ok: false, refusal }
+    try {
+      const stored = await lifecycle.ingest({
+        ...page,
+        method: 'background',
+        operatorId: getInstallationId(),
+        operatorName: trimmedOperatorName()
+      })
+      // Read back from the database, as the queue has always done before it broadcasts.
+      const capture = captureRepo.getCapture(stored.capture.id) ?? stored.capture
+      emitNewCapture(capture)
+      emitJobEvent(job, {
+        type: 'stored',
+        captureId: capture.id,
+        source: 'recapture',
+        url: job.url,
+        timestamp: new Date().toISOString(),
+        durationMs: Date.now() - request.startedAt,
+        warning: request.warning
+      })
+      return { ok: true, capture, contentHash: stored.contentHash, screenshotStatus: 'saved' }
+    } catch (err) {
+      return { ok: false, refusal: { kind: 'failed', error: err } }
+    }
+  }
+
   const lifecycle: CaptureLifecycle = {
     abandonedLaunched(url) {
       emitCaptureEvent({
@@ -1549,13 +1684,17 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
       })
     },
 
+    screenBackground: (caseId, url, job) => screenBackgroundJob(caseId, url, job),
+
     screenLaunched(caseId, url, committedUrl) {
       const screened = screenAdmission('launched', url, { route: 'manual', caseId }, committedUrl)
       return 'refusal' in screened ? screened.refusal : null
     },
 
     async ingest(params) {
-      // Admission passes the gate's name already; recapture reaches ingest without admission.
+      // The extension and launched routes have passed the operator gate by here. The background
+      // route hands over whatever name is set, so a job whose name was cleared after it was
+      // queued is refused here.
       const operatorName = params.operatorName.trim()
       if (!operatorName) throw new OperatorNameRequiredError()
       const egressIsDirect = deps.egressIsDirect ?? (() => currentEgress().kind === 'direct')
@@ -1577,6 +1716,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
 
     async admit(request) {
       if (request.route === 'launched') return admitLaunched(request)
+      if (request.route === 'background') return admitBackground(request)
       const { route, url } = request
       const source: CaptureSource = route === 'attach' ? 'manual' : route
       const now = (): string => new Date().toISOString()

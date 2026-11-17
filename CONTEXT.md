@@ -59,7 +59,7 @@ The WARC holding the HTTP requests and responses of the observed navigation that
 _Avoid_: network log, HAR, archive, WARC file (as the general term).
 
 **Capture Server**:
-The Hono HTTP server in the main process (port 19845) that the Chrome extension posts captures to. The extension's only way into the ingest path of the Capture Lifecycle; a background Recapture reaches that path without the server. Transport only: a route parses the request, hands it to the Capture Lifecycle, and maps the outcome to a status code. It holds no admission policy.
+The Hono HTTP server in the main process (port 19845) that the Chrome extension posts captures to. The extension's only way into the Capture Lifecycle; a Background Job and a clicked Capture in a launched browser reach its admission without the server. Transport only: a route parses the request, hands it to the Capture Lifecycle, and maps the outcome to a status code. It holds no admission policy.
 _Avoid_: ingest server, capture API.
 
 **Active Case**:
@@ -75,7 +75,7 @@ _Planned._ The browsing a Capture Session may record and capture in: every tab a
 _Avoid_: designated window, capture window, scope (unqualified).
 
 **Capture Lifecycle**:
-Operations that mutate an MHTML Capture beyond its database row: admission of a request from any extension route (operator gate, Active Case resolution, exclusion, the manual dedup window, the screenshot cap, the session count, the activity events) and of a clicked Capture from a browser Birdbrain launched (the same operator gate, case and exclusion check, with the exclusion policy applied to both the committed URL and the address at the cut, and no manual dedup window), ingestion (parse, hash, store, schedule selector matching), duplication, deletion (manifest entry + DB row + on-disk files, one at a time or as a batch), verification, and case-wide re-extraction. The forensic-bearing path. Legacy HTML Captures (pre-migration v11) appear in deletion and verification but have no manifest entry and no ingest path; new Captures are MHTML-only.
+Operations that mutate an MHTML Capture beyond its database row: admission of a request from any extension route (operator gate, Active Case resolution, exclusion, the manual dedup window, the screenshot cap, the session count, the activity events) and of a clicked Capture from a browser Birdbrain launched (the same operator gate, case and exclusion check, with the exclusion policy applied to both the committed URL and the address at the cut, and no manual dedup window) and of a Background Job (the Case, which must exist when the job is queued and must not be archived, and the exclusion policy, asked as the job is queued, again as it starts, and on the address its render ended on; the queue applies the operator gate when a job is queued, resumed or retried, and the ingest applies it before anything is signed; no manual dedup window), ingestion (parse, hash, store, schedule selector matching), duplication, deletion (manifest entry + DB row + on-disk files, one at a time or as a batch), verification, and case-wide re-extraction. The forensic-bearing path. Legacy HTML Captures (pre-migration v11) appear in deletion and verification but have no manifest entry and no ingest path; new Captures are MHTML-only.
 _Avoid_: capture service, capture manager.
 
 **Capture Method**:
@@ -356,6 +356,7 @@ _Avoid_: risky change, core change, forensic change.
 - A **Persona** is installation-wide like a **Tag**; an **Exhibit** records at most one, with the label it had at acquisition, and never in place of the **Operator**
 - A background **Recapture** may render through a **Persona**'s browser session and records that it did; an extension **Capture** can only declare which **Persona** the operator says was signed in
 - The **Capture Server** receives raw captures from the Chrome extension and hands them to the **Capture Lifecycle**
+- A **Background Job** enters its **Case** through **Capture Lifecycle** admission, which refuses an archived **Case** and an excluded address; the queue schedules and renders the job and keeps its own refusals (a missing operator name, an address that is not a URL, a link source that no longer holds, an address the local address policy refuses)
 - A **Capture Session** runs against exactly one **Active Case**; the extension attaches a **Tag** or **Note** only to the **Active Case**, capturing the page first when it has no **Capture** yet
 - Each **Manifest Entry** carries an **Entry Hash** over itself and its predecessor's, which is what makes the **Manifest** a chain
 - A **Capture**'s **Content Hash** may be attested by one **Timestamp Token** from a **TSA**, moving its **Trusted Time** from `pending` to `rfc3161`

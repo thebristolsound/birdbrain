@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { CaseCard } from '@renderer/components/dashboard/CaseCard'
 import type { Case } from '@shared/types'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { members } from './sharingFixtures'
+import { nextTurn, press } from './menuKeys'
 
 const caseData: Case = {
   id: 'case-1',
@@ -42,7 +43,8 @@ function renderCard(data: Case = caseData, onDelete: (id: string) => void = vi.f
 
 afterEach(() => cleanup())
 
-it('names the kebab, exposes the menu state and closes on Escape back to the trigger', () => {
+it('names the kebab, exposes the menu state and closes on Escape back to the trigger', async () => {
+  openCase.mockClear()
   renderCard()
   const trigger = screen.getByRole('button', { name: 'Actions for Investigation One' })
   // Visible while focused or open, not only on hover (#1537).
@@ -51,30 +53,28 @@ it('names the kebab, exposes the menu state and closes on Escape back to the tri
   expect(trigger.getAttribute('aria-haspopup')).toBe('menu')
   expect(trigger.getAttribute('aria-expanded')).toBe('false')
 
-  fireEvent.click(trigger)
+  trigger.focus()
+  await press('Enter')
   expect(trigger.getAttribute('aria-expanded')).toBe('true')
-  const menu = screen.getByRole('menu', { name: 'Actions for Investigation One' })
+  expect(screen.getByRole('menu', { name: 'Actions for Investigation One' })).toBeTruthy()
   const [rename, members, remove] = screen.getAllByRole('menuitem')
-  expect(document.activeElement).toBe(rename)
+  await waitFor(() => expect(document.activeElement).toBe(rename))
 
-  fireEvent.keyDown(menu, { key: 'ArrowDown' })
-  expect(document.activeElement).toBe(members)
-  fireEvent.keyDown(menu, { key: 'ArrowDown' })
-  expect(document.activeElement).toBe(remove)
-  fireEvent.keyDown(menu, { key: 'ArrowDown' })
-  expect(document.activeElement).toBe(rename)
-  fireEvent.keyDown(menu, { key: 'ArrowUp' })
-  expect(document.activeElement).toBe(remove)
-  fireEvent.keyDown(menu, { key: 'Home' })
-  expect(document.activeElement).toBe(rename)
-  fireEvent.keyDown(menu, { key: 'End' })
-  expect(document.activeElement).toBe(remove)
-  fireEvent.keyDown(menu, { key: 'a' })
+  await press('ArrowDown', members)
+  await press('ArrowDown', remove)
+  await press('ArrowDown', rename)
+  await press('ArrowUp', remove)
+  await press('Home', rename)
+  await press('End', remove)
+  await press('a')
+  await nextTurn()
   expect(document.activeElement).toBe(remove)
 
-  fireEvent.keyDown(document, { key: 'Escape' })
+  await press('Escape')
   expect(screen.queryByRole('menu')).toBeNull()
-  expect(document.activeElement).toBe(trigger)
+  await waitFor(() => expect(document.activeElement).toBe(trigger))
+  // The card under the menu opens the Case on a key or a click; none of these reached it.
+  expect(openCase).not.toHaveBeenCalled()
 })
 
 it('ignores keys other than Escape while the menu is open', () => {
@@ -84,19 +84,49 @@ it('ignores keys other than Escape while the menu is open', () => {
   expect(screen.getByRole('menu')).toBeTruthy()
 })
 
-it('lands on Cancel when Delete is chosen, so a second Enter cannot delete, and Tab closes', () => {
-  renderCard()
+it('lands on Cancel when Delete is chosen, so a second Enter cannot delete, and Tab closes', async () => {
+  const onDelete = vi.fn()
+  renderCard(caseData, onDelete)
   fireEvent.click(screen.getByRole('button', { name: 'Actions for Investigation One' }))
   fireEvent.click(screen.getByTestId('case-card-delete-btn'))
+  // Delete keeps the menu open and swaps its items.
+  expect(screen.getByRole('menu')).toBeTruthy()
   const [confirm, cancel] = screen.getAllByRole('menuitem')
   expect(confirm).toBe(screen.getByTestId('case-card-delete-confirm-btn'))
   expect(document.activeElement).toBe(cancel)
   // Confirm and Cancel stay inside the menu model.
-  fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowUp' })
-  expect(document.activeElement).toBe(confirm)
+  await press('ArrowUp', confirm)
 
-  fireEvent.keyDown(screen.getByRole('menu'), { key: 'Tab' })
+  await press('Tab')
   expect(screen.queryByRole('menu')).toBeNull()
+  expect(onDelete).not.toHaveBeenCalled()
+})
+
+it('deletes on Confirm, and closes the menu', () => {
+  const onDelete = vi.fn()
+  openCase.mockClear()
+  renderCard(caseData, onDelete)
+  fireEvent.click(screen.getByRole('button', { name: 'Actions for Investigation One' }))
+  fireEvent.click(screen.getByTestId('case-card-delete-btn'))
+  fireEvent.click(screen.getByTestId('case-card-delete-confirm-btn'))
+  expect(onDelete).toHaveBeenCalledWith('case-1')
+  expect(screen.queryByRole('menu')).toBeNull()
+  expect(openCase).not.toHaveBeenCalled()
+})
+
+it('opens on the items again after a confirmation left open was closed', () => {
+  renderCard()
+  const trigger = screen.getByRole('button', { name: 'Actions for Investigation One' })
+  fireEvent.click(trigger)
+  fireEvent.click(screen.getByTestId('case-card-delete-btn'))
+  fireEvent.click(trigger)
+  expect(screen.queryByRole('menu')).toBeNull()
+  fireEvent.click(trigger)
+  expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+    'Rename',
+    'Share this Case…',
+    'Delete'
+  ])
 })
 
 // The Case's way into Case settings → Members (#1514): offered as sharing until
@@ -134,12 +164,18 @@ it('starts a rename on the card and closes the menu', () => {
   )
 })
 
-it('closes when a press lands outside it, and stays open for a press inside', () => {
+it('closes when a press lands outside it, and stays open for a press inside', async () => {
   renderCard()
   fireEvent.click(screen.getByRole('button', { name: 'Actions for Investigation One' }))
-  fireEvent.mouseDown(screen.getByRole('menu'))
+  // Radix starts listening for a press outside on the turn after the menu opens.
+  await nextTurn()
+  act(() => {
+    fireEvent.pointerDown(screen.getByRole('menu'))
+  })
   expect(screen.getByRole('menu')).toBeTruthy()
-  fireEvent.mouseDown(document.body)
+  act(() => {
+    fireEvent.pointerDown(document.body)
+  })
   expect(screen.queryByRole('menu')).toBeNull()
 })
 
@@ -149,10 +185,9 @@ it('returns from the delete confirmation to the items on Cancel, deleting nothin
   fireEvent.click(screen.getByRole('button', { name: 'Actions for Investigation One' }))
   fireEvent.click(screen.getByTestId('case-card-delete-btn'))
   fireEvent.click(screen.getByRole('menuitem', { name: 'Cancel' }))
-  expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
-    'Rename',
-    'Share this Case…',
-    'Delete'
-  ])
+  const items = screen.getAllByRole('menuitem')
+  expect(items.map((item) => item.textContent)).toEqual(['Rename', 'Share this Case…', 'Delete'])
+  // Cancel is gone, so focus goes to the first item, not out of the menu.
+  expect(document.activeElement).toBe(items[0])
   expect(onDelete).not.toHaveBeenCalled()
 })

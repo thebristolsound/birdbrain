@@ -41,7 +41,6 @@ vi.mock('@renderer/hooks/useSearch', () => ({
   })
 }))
 vi.mock('@renderer/components/status/SessionControls', () => ({ SessionControls: () => null }))
-vi.mock('@renderer/components/export/ExportMenu', () => ({ ExportMenu: () => null }))
 vi.mock('@renderer/components/status/StatusGroup', () => ({ StatusGroup: () => null }))
 
 import { Sidebar } from '@renderer/components/layout/Sidebar'
@@ -108,7 +107,7 @@ afterEach(() => {
 })
 
 // The entry points to Case settings and the join flow (#1514, and the
-// 2026-10-28 handoff): the top-bar pill on every Case, the Case card's menu
+// 2026-10-28 handoff): the Case menu on the Case name, the Case card's menu
 // (CaseCardMenu.test.tsx), and the palette's share and join actions. The
 // sidebar stays without one: its Settings item is the app's, not the Case's.
 describe('Case settings entry points', () => {
@@ -119,26 +118,32 @@ describe('Case settings entry points', () => {
     expect(navigatedToCaseSettings()).toBe(false)
   })
 
-  it('opens Members from the sync pill on a shared Case', async () => {
+  it('opens Members from the Case menu on a shared Case', async () => {
     bridge(caseRow({ sharedAt: '2026-09-19T14:00:00.000Z' }), members())
     render(<TopBar />, { wrapper: Wrapper })
-    const pill = await screen.findByTestId('share-pill')
-    expect(pill.dataset.state).toBe('synced')
-    fireEvent.click(pill)
+    fireEvent.click(await screen.findByTestId('topbar-case-name'))
+    const item = await screen.findByRole('menuitem', { name: 'Members' })
+    fireEvent.click(item)
     expect(navigate).toHaveBeenCalledWith({
       to: '/cases/$caseId/settings',
       params: { caseId: 'case1' }
     })
   })
 
-  it('offers Share on an unshared Case without polling its sync state', async () => {
+  it('offers Share this Case… in the Case menu on an unshared Case, without polling its sync state', async () => {
     render(<TopBar />, { wrapper: Wrapper })
-    const pill = await screen.findByTestId('share-pill')
-    expect(pill.dataset.state).toBe('share')
-    expect(pill.textContent).toBe('Share')
-    fireEvent.click(pill)
+    fireEvent.click(await screen.findByTestId('topbar-case-name'))
+    const item = await screen.findByRole('menuitem', { name: 'Share this Case…' })
+    fireEvent.click(item)
     expect(navigatedToCaseSettings()).toBe(true)
     expect(getSyncState).not.toHaveBeenCalled()
+  })
+
+  it('opens Case settings from its own item of the Case menu', async () => {
+    render(<TopBar />, { wrapper: Wrapper })
+    fireEvent.click(await screen.findByTestId('topbar-case-name'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Case settings' }))
+    expect(navigatedToCaseSettings()).toBe(true)
   })
 
   it('offers Share this Case… in the command palette while a Case is open', async () => {

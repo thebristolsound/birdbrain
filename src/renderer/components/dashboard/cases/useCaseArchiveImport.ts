@@ -3,7 +3,7 @@ import type { ArchiveInspectReport } from '@shared/types'
 import { inspectCaseArchive } from '@renderer/lib/api/cases'
 
 // Picks a Case Archive and inspects it; the caller renders ImportCaseDialog
-// with the report. Shared by the dashboard and the New Case start step.
+// with the report. Shared by the dashboard, the New Case start step and the Case menu.
 export function useCaseArchiveImport() {
   const [report, setReport] = useState<ArchiveInspectReport | null>(null)
   const [error, setError] = useState('')
@@ -19,6 +19,7 @@ export function useCaseArchiveImport() {
   }, [])
 
   const close = useCallback(() => setReport(null), [])
+  const dismissError = useCallback(() => setError(''), [])
 
-  return { report, error, start, close }
+  return { report, error, start, close, dismissError }
 }

@@ -305,7 +305,7 @@ export const COPY = {
   shareMarkTitle: 'New: share a Case with teammates',
   shareMarkBody:
     'Other people who run Birdbrain, each with a full copy that stays in sync. You approve ' +
-    'every join.',
+    'every join. Share this Case… is in the menu on the Case name.',
   showMe: 'Show me',
   gotIt: 'Got it'
 } as const

@@ -43,6 +43,7 @@ export {
   MenuTrigger,
   MenuContent,
   MenuItem,
+  MenuLabel,
   MenuSeparator,
   MenuShortcut
 } from '@renderer/components/ui/menu'

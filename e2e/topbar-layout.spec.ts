@@ -7,8 +7,9 @@ type Page = import('@playwright/test').Page
 // The top-bar search used to sit at the window's centre on its own layer, so on
 // a window about 1400px wide it covered the Capture Session switch and the REC
 // indicator. It now takes its place between the two side groups. On a Case the top bar's right
-// side carries Share, Export and Launch browser before the status group and Settings; the
-// recording mark and the switch live in the Case action bar under it.
+// side carries Launch browser before the status group; Share and Export are items of the Case
+// menu on the Case name, Settings is in the rail, and the recording mark and the switch live in
+// the Case action bar under it.
 
 const NAMES = ['Kestrel', 'Operation Kestrel Harbour Review of subject accounts and linked domains']
 
@@ -64,13 +65,13 @@ test.describe('Top bar layout', () => {
         await expect(actionBar.getByTestId('topbar-rec')).toBeVisible({ timeout: 1000 })
       }).toPass({ timeout: 10000 })
       await expect(actionBar.getByRole('switch', { name: 'Capture Session' })).toBeVisible()
-      await expect(controls.getByRole('button', { name: /Export/ })).toBeVisible()
+      await expect(controls.getByRole('button', { name: /Export/ })).toHaveCount(0)
+      await expect(page.getByTestId('share-pill')).toHaveCount(0)
       await expect(controls.getByRole('button', { name: 'Launch browser' })).toBeVisible()
       await expect(actionBar.getByTestId('case-action-bar-section')).toHaveText('Overview')
       await expect(controls.getByRole('switch', { name: 'Capture Session' })).toHaveCount(0)
       await expect(actionBar.getByRole('button', { name: /Export/ })).toHaveCount(0)
       await expect(actionBar.getByRole('button', { name: 'Launch browser' })).toHaveCount(0)
-      await expect(actionBar.getByTestId('share-pill')).toHaveCount(0)
       await expect(controls.getByTestId('topbar-rec')).toHaveCount(0)
       await expect(controls.getByTestId('status-group')).toBeVisible()
       // The state the widths below are measured in: one failed Capture per Case created so far.
@@ -158,14 +159,6 @@ test.describe('Top bar layout', () => {
         const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth)
         expect(scrollWidth).toBeLessThanOrEqual(width)
 
-        // The Share pill keeps its label from 1,024px up and folds to the icon below that
-        // (docs/design-handoff/2026-10-28-share-a-case/, frame G).
-        const pill = controls.getByTestId('share-pill')
-        await expect(pill).toHaveAttribute('data-state', 'share')
-        const { width: pillWidth } = (await pill.boundingBox())!
-        if (width >= 1024) expect(pillWidth).toBeGreaterThan(40)
-        else expect(pillWidth).toBeLessThanOrEqual(30)
-
         // The text field keeps room to type, and the hint drops out below 16rem.
         const { width: inputWidth } = (await input.boundingBox())!
         expect(inputWidth).toBeGreaterThanOrEqual(80)
@@ -188,8 +181,8 @@ test.describe('Top bar layout', () => {
       }
     }
 
-    // With the extension gone, and a window wide enough that Share, Export and Launch browser fit
-    // in the right half, the search sits at the window's centre again.
+    // With the extension gone, and a window wide enough that both side groups fit in their
+    // halves, the search sits at the window's centre again.
     await electronApp.evaluate(({ BrowserWindow }) => {
       const { webContents } = BrowserWindow.getAllWindows()[0]
       webContents.send('event:sessionStateChanged', { sessionActive: false, activeCaseId: null })
@@ -203,16 +196,18 @@ test.describe('Top bar layout', () => {
       expect(Math.abs(x + width / 2 - 850)).toBeLessThanOrEqual(1)
     }).toPass({ timeout: 5000 })
 
-    // Every state of the pill opens Members; a Case nobody shared lands on the not-shared card.
-    await page.getByTestId('share-pill').click()
+    // The Case menu's sharing item opens Members; a Case nobody shared lands on the not-shared
+    // card.
+    await caseName.click()
+    await page.getByRole('menuitem', { name: 'Share this Case…' }).click()
     await expect(page.getByTestId('not-shared-card')).toBeVisible()
     expect(await page.evaluate(() => window.location.hash)).toMatch(/#\/cases\/[^/]+\/settings$/)
   })
 
-  // With a launched browser and the extension both recording, the top bar carries Share and
-  // Export, and the action bar the recording mark and the label that names both sources. Launch
-  // browser and the Capture Session switch leave while the browser is open: the Capture Session
-  // panel names the browser and holds the one stop control.
+  // With a launched browser and the extension both recording, the action bar carries the
+  // recording mark and the label that names both sources. Launch browser and the Capture Session
+  // switch leave while the browser is open: the Capture Session panel names the browser and
+  // holds the one stop control.
   test('fits the Case controls while a launched browser records', async ({ electronApp, page }) => {
     const caseId = await createCase(page, NAMES[1])
     const actionBar = page.getByTestId('case-action-bar')
@@ -257,7 +252,6 @@ test.describe('Top bar layout', () => {
       await expect(page.getByRole('switch', { name: 'Capture Session' })).toHaveCount(0)
     }
     const rows = [
-      [controls.getByTestId('share-pill'), controls.getByRole('button', { name: /Export/ })],
       [actionBar.getByTestId('topbar-rec'), actionBar.getByTestId('session-source-line')]
     ]
 
@@ -344,10 +338,7 @@ test.describe('Top bar layout', () => {
     const overlay = page.getByTestId('capture-details-overlay')
     await expect(overlay).toBeVisible()
 
-    await page
-      .getByTestId('topbar-controls')
-      .getByRole('button', { name: /Export/ })
-      .click()
+    await page.getByTestId('topbar-case-name').click()
     await page.getByRole('menuitem', { name: 'Export evidence report' }).click()
     await expect(page.getByRole('dialog', { name: 'Export case' })).toBeVisible()
 

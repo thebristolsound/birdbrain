@@ -48,14 +48,6 @@ vi.mock('@renderer/components/status/SessionControls', () => ({
 vi.mock('@renderer/components/status/StatusGroup', () => ({
   StatusGroup: () => <div data-testid="status-group" />
 }))
-vi.mock('@renderer/components/status/SharePill', () => ({
-  SharePill: ({ caseId }: { caseId: string }) => <div data-testid="share-pill">{caseId}</div>
-}))
-vi.mock('@renderer/components/export/ExportMenu', () => ({
-  ExportMenu: ({ caseId, caseName }: { caseId: string; caseName: string }) => (
-    <div data-testid="export-menu">{`${caseId}:${caseName}`}</div>
-  )
-}))
 
 import { TopBar } from '@renderer/components/layout/TopBar'
 
@@ -103,21 +95,19 @@ describe('the case chrome', () => {
     expect(screen.queryByTestId('session-controls')).toBeNull()
   })
 
-  // Share, Export and Launch browser sit before the status group; the recording mark stays with
-  // the switch in CaseActionBar. Settings is at the foot of the rail on a Case screen.
-  it('orders Share, Export, Launch browser and the status group, and leaves Settings to the rail', async () => {
+  // Launch browser sits before the status group; the recording mark stays with the switch in
+  // CaseActionBar. Share and Export are items of the Case menu on the Case name, and Settings is
+  // at the foot of the rail on a Case screen.
+  it('holds Launch browser and the status group, and leaves the rest to the Case menu and the rail', async () => {
     renderAt('/cases/case1/overview')
     const controls = screen.getByTestId('topbar-controls')
-    expect((await within(controls).findByTestId('export-menu')).textContent).toBe(
-      'case1:Operation Kestrel'
+    await within(controls).findByRole('button', { name: 'Launch browser' })
+    const row = Array.from(controls.querySelectorAll('button, [data-testid="status-group"]')).map(
+      (el) => el.getAttribute('data-testid') ?? el.getAttribute('title') ?? el.textContent
     )
-    expect(within(controls).getByTestId('share-pill').textContent).toBe('case1')
-    const row = Array.from(
-      controls.querySelectorAll(
-        '[data-testid="share-pill"], [data-testid="export-menu"], button, [data-testid="status-group"]'
-      )
-    ).map((el) => el.getAttribute('data-testid') ?? el.getAttribute('title') ?? el.textContent)
-    expect(row).toEqual(['share-pill', 'export-menu', 'Launch browser', 'status-group'])
+    expect(row).toEqual(['Launch browser', 'status-group'])
+    expect(within(controls).queryByText(/Share|Export/)).toBeNull()
+    expect(controls.contains(screen.getByTestId('topbar-case-name'))).toBe(false)
     expect(screen.queryByTitle('Settings')).toBeNull()
     expect(screen.queryByTestId('topbar-rec')).toBeNull()
     expect(screen.queryByTitle('Toggle theme')).toBeNull()
@@ -135,7 +125,6 @@ describe('the case chrome', () => {
     renderAt('/')
     expect(screen.queryByTestId('topbar-case-name')).toBeNull()
     expect(screen.queryByTestId('global-search-input')).toBeNull()
-    expect(screen.queryByTestId('share-pill')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Launch browser' })).toBeNull()
     expect(screen.getByTestId('status-group')).toBeTruthy()
   })
@@ -251,9 +240,14 @@ describe('the left group', () => {
     expect(navigate).toHaveBeenCalledWith({ to: '/' })
   })
 
-  it('opens the case switcher from the case name', () => {
+  // The Case name opens the Case menu (CaseNameMenu.test.tsx), whose first item is the switcher.
+  it('opens the Case menu from the case name, and the case switcher from its first item', async () => {
     renderAt('/cases/case1/overview')
     fireEvent.click(screen.getByTestId('topbar-case-name'))
+    expect(useAppStore.getState().commandPaletteOpen).toBe(false)
+    const menu = screen.getByRole('menu')
+    await waitFor(() => expect(menu.getAttribute('aria-label')).toContain('Operation Kestrel'))
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /Switch Case/ }))
     expect(useAppStore.getState().commandPaletteOpen).toBe(true)
   })
 })
@@ -281,10 +275,8 @@ describe('the breadcrumb chip', () => {
     const switcher = screen.getByTestId('topbar-case-name')
     expect(switcher.contains(chip)).toBe(true)
     // The chip and the chevron share the name's track, which gives way down to 160 pixels.
-    expect(switcher.parentElement!.className).toContain('minmax(10rem,max-content)')
-    expect(switcher.title).toMatch(
-      /^Operation Kestrel · Switch case \(.+\) · You are AR in this Case$/
-    )
+    expect(switcher.closest('.grid')!.className).toContain('minmax(10rem,max-content)')
+    expect(switcher.title).toBe('Operation Kestrel · Case menu · You are AR in this Case')
   })
 
   it('shows no chip and the plain tooltip on a Case nobody has shared', async () => {
@@ -294,9 +286,7 @@ describe('the breadcrumb chip', () => {
       expect(screen.getByTestId('topbar-case-name').textContent).toContain('Operation Kestrel')
     )
     expect(screen.queryByTestId('topbar-member-code')).toBeNull()
-    expect(screen.getByTestId('topbar-case-name').title).toMatch(
-      /^Operation Kestrel · Switch case \(.+\)$/
-    )
+    expect(screen.getByTestId('topbar-case-name').title).toBe('Operation Kestrel · Case menu')
   })
 })
 

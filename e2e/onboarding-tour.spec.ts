@@ -65,7 +65,8 @@ test.describe('Share mark', () => {
     await expect(
       mark.getByRole('dialog', { name: 'New: share a Case with teammates' })
     ).toBeVisible()
-    const pill = page.getByTestId('share-pill')
+    // Share is in the Case menu, so the mark rings the Case name.
+    const pill = page.getByTestId('topbar-case-name')
     await expect(pill).toHaveAttribute('data-marked', 'true')
 
     await mark.getByTestId('share-mark-got-it').click()

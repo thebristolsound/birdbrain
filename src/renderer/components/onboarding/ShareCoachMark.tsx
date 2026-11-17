@@ -19,14 +19,16 @@ import {
 import { COPY } from '@renderer/components/sharing/memberModel'
 
 // The one-time Share mark (docs/design-handoff/2026-10-28-share-a-case/,
-// frame A): a card under the top bar's Share pill the first time a Case is
-// opened after the pill arrives. A feature mark, not a tour chapter: no
-// counter, no skip link, no spotlight, and the rest of the screen stays
-// usable. The pill wears a ring while it shows (SharePill reads the store
-// flag), and any dismissal is recorded once under `onboardingChapters.share`.
-const ANCHOR = 'share'
-// The pill mounts once its reads land, which is later than a route change, so
-// this looks longer than the tour engine does before giving up.
+// frame A): a card under the Case name in the top bar, whose menu holds the
+// sharing item, the first time a Case is opened after sharing arrives. Its text
+// names the item; the menu is not opened for it. A feature mark, not a tour
+// chapter: no counter, no skip link, no spotlight, and the rest of the screen
+// stays usable. The Case name wears a ring while it shows (CaseMenu reads the
+// store flag), and any dismissal is recorded once under
+// `onboardingChapters.share`.
+const ANCHOR = 'caseswitcher'
+// The Case name can mount later than a route change, so this looks longer than
+// the tour engine does before giving up.
 const ANCHOR_RETRY_MS = 60
 const ANCHOR_RETRY_LIMIT = 20
 
@@ -124,8 +126,8 @@ export function ShareCoachMark() {
     })
   }, [settings?.onboardingChapters, update])
 
-  // Clicking the pill itself is a dismissal too: the pill opens Members, which
-  // is what Show me does.
+  // Clicking the Case name itself is a dismissal too: it opens the menu that
+  // holds the sharing item, which the mark would otherwise sit over.
   useEffect(() => {
     if (!open) return
     function onClick(e: MouseEvent): void {

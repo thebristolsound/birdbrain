@@ -3,6 +3,7 @@ import {
   useContext,
   useRef,
   useState,
+  type ComponentProps,
   type ComponentPropsWithoutRef,
   type ReactNode,
   type RefObject
@@ -13,8 +14,9 @@ import { cn } from '@renderer/lib/utils'
 /**
  * The menu that opens from a button, wrapping `radix-ui`'s DropdownMenu as context-menu.tsx wraps
  * its ContextMenu. Radix gives the roles, the arrow keys, Home, End, typeahead, Escape and the
- * return of focus to the trigger. An item always closes the menu: it moves focus to the trigger
- * before it acts, and a menu that is not modal closes when focus leaves it.
+ * return of focus to the trigger. An item closes the menu: it moves focus to the trigger before
+ * it acts, and a menu that is not modal closes when focus leaves it. An item marked `keepOpen`
+ * does neither, for one that swaps the menu's own items.
  */
 
 interface MenuContextValue {
@@ -127,15 +129,21 @@ function MenuContent({
 function MenuItem({
   className,
   danger = false,
+  keepOpen = false,
   onSelect,
   ...props
-}: ComponentPropsWithoutRef<typeof MenuPrimitive.Item> & { danger?: boolean }) {
+}: ComponentProps<typeof MenuPrimitive.Item> & { danger?: boolean; keepOpen?: boolean }) {
   const { triggerRef } = useMenu()
   return (
     <MenuPrimitive.Item
       className={cn(ITEM_CLASS, danger ? 'text-danger-fg' : 'text-text-secondary', className)}
       {...props}
       onSelect={(event) => {
+        if (keepOpen) {
+          event.preventDefault()
+          onSelect?.(event)
+          return
+        }
         // The item unmounts with the menu, and Radix returns focus a turn later. A dialog the
         // item opens records its opener at once, so the trigger takes focus before the item acts.
         triggerRef.current?.focus()
@@ -152,9 +160,23 @@ function MenuSeparator({
   return <MenuPrimitive.Separator className={cn('my-1 h-px bg-border', className)} {...props} />
 }
 
+/**
+ * What the menu is about, above its items. Radix gives a label no role, so it is hidden from
+ * assistive technology, and the menu's `aria-label` carries the same words once.
+ */
+function MenuLabel({ className, ...props }: ComponentPropsWithoutRef<typeof MenuPrimitive.Label>) {
+  return (
+    <MenuPrimitive.Label
+      aria-hidden="true"
+      className={cn('mb-1 border-b border-border px-3 pb-2 pt-1.5', className)}
+      {...props}
+    />
+  )
+}
+
 /** The key hint on the right of an item. */
 function MenuShortcut({ children }: { children: ReactNode }) {
   return <span className="ml-auto text-[10px] text-text-faint">{children}</span>
 }
 
-export { Menu, MenuTrigger, MenuContent, MenuItem, MenuSeparator, MenuShortcut }
+export { Menu, MenuTrigger, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuShortcut }

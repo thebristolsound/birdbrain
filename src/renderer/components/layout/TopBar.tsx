@@ -1,24 +1,19 @@
-import { ChevronsUpDown, ChevronRight, Settings, ArrowLeft } from 'lucide-react'
+import { ChevronRight, Settings, ArrowLeft } from 'lucide-react'
 import logoImg from '@renderer/assets/logo.png'
 import { Button } from '@renderer/components/ui'
 import { useMatchRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
 import { caseQueryOptions } from '@renderer/lib/queries'
-import { accelerator } from '@renderer/lib/accelerator'
 import { SearchBar } from '@renderer/components/search/SearchBar'
 import { CaptureSessionButton } from '@renderer/components/launchedBrowser/CaptureSessionButton'
 import { SessionControls } from '@renderer/components/status/SessionControls'
 import { StatusGroup } from '@renderer/components/status/StatusGroup'
 import { RecordingMark } from '@renderer/components/status/RecordingMark'
-import { SharePill } from '@renderer/components/status/SharePill'
-import { ExportMenu } from '@renderer/components/export/ExportMenu'
+import { CaseMenu } from '@renderer/components/dashboard/CaseMenu'
 import { launchedBrowserStatusQueryOptions } from '@renderer/lib/api/launchedBrowser'
 import { busyRefusal } from '@renderer/components/launchedBrowser/startDialogModel'
 import { useCaptureSessionView } from '@renderer/components/launchedBrowser/CaptureSessionPanel'
-import { MemberCodeChip } from '@renderer/components/sharing/MemberCodeChip'
-import { youAreLine } from '@renderer/components/sharing/memberModel'
-import { membersQueryOptions } from '@renderer/lib/api/sharing'
 import { useUpdateStatus } from '@renderer/hooks/useUpdateStatus'
 import {
   WINDOW_CONTROLS_LEFT_PROPERTY,
@@ -48,7 +43,6 @@ export function TopBar() {
   // session carries its own recording mark on the screens that have no action bar.
   const launchedView = useCaptureSessionView()
   const extensionOnlyRecording = sessionActive && launchedView.kind === 'none'
-  const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen)
   const openStartDialog = useAppStore((s) => s.openStartDialog)
   const { data: launchedStatus } = useQuery(launchedBrowserStatusQueryOptions)
   // One launched browser at a time. While one is open the Capture Session panel is its place, so
@@ -74,20 +68,6 @@ export function TopBar() {
     ...caseQueryOptions(activeCaseId ?? ''),
     enabled: !!activeCaseId
   })
-  // This installation's Member Code leads the breadcrumb on a shared Case
-  // (docs/design-handoff/2026-10-28-share-a-case/, frame C); a Case nobody
-  // shared has an empty roster and no chip.
-  const { data: roster } = useQuery({
-    ...membersQueryOptions(activeCaseId ?? ''),
-    enabled: !!activeCaseId
-  })
-  const self = roster?.members.find((m) => m.installationId === roster.installationId) ?? null
-  const switchTitle = `Switch case (${accelerator('K')})`
-  // The name can hide on a narrow window, so the tooltip carries it in full.
-  const crumbTitle = [activeCase?.name, switchTitle, self && youAreLine(self.memberCode)]
-    .filter(Boolean)
-    .join(' · ')
-
   // Simplified settings header
   if (isOnSettings) {
     return (
@@ -142,33 +122,12 @@ export function TopBar() {
           </span>
         </button>
 
-        {/* Breadcrumb case switcher — opens the command launcher */}
+        {/* The Case name opens the Case menu: Switch Case, sharing, the exports, Import and Case
+            settings. A sync that is running or has stopped shows beside the name. */}
         {activeCaseId && (
           <>
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-faint" />
-            <button
-              data-testid="topbar-case-name"
-              data-tour="caseswitcher"
-              onClick={() => setCommandPaletteOpen(true)}
-              className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-elevated transition-colors"
-              title={crumbTitle}
-            >
-              {self && (
-                <MemberCodeChip
-                  code={self.memberCode}
-                  hue="accent"
-                  size={18}
-                  data-testid="topbar-member-code"
-                />
-              )}
-              <span
-                data-testid="topbar-case-name-text"
-                className="min-w-16 max-w-[220px] truncate font-display text-xs font-semibold text-text-primary max-[1000px]:hidden"
-              >
-                {activeCase?.name ?? ''}
-              </span>
-              <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-text-muted" />
-            </button>
+            <CaseMenu place="name" caseId={activeCaseId} caseData={activeCase ?? undefined} />
           </>
         )}
       </div>
@@ -180,10 +139,10 @@ export function TopBar() {
         </div>
       )}
 
-      {/* Right controls: on a Case, Share, Export and Launch browser; then how the app is doing;
-          then Settings, where no rail holds it. The recording mark and the session switch live in
-          CaseActionBar, under this bar. The group never narrows below its controls, so the search
-          gives way instead of sitting over Share. */}
+      {/* Right controls: on a Case, Launch browser; then how the app is doing; then Settings,
+          where no rail holds it. The recording mark and the session switch live in CaseActionBar,
+          under this bar. The group never narrows below its controls, so the search gives way
+          instead of sitting over them. */}
       <div
         data-testid="topbar-controls"
         className="flex min-w-max flex-1 basis-0 items-center justify-end gap-2"
@@ -193,16 +152,6 @@ export function TopBar() {
         {!activeCaseId && extensionOnlyRecording && <RecordingMark />}
         {!activeCaseId && <CaptureSessionButton showOpenCase={isOnDashboard} />}
 
-        {/* The Case's one sharing control: "Share" until a peer joins, then the sync state. */}
-        {activeCase && (
-          <SharePill
-            caseId={activeCase.id}
-            onOpenMembers={() =>
-              navigate({ to: '/cases/$caseId/settings', params: { caseId: activeCase.id } })
-            }
-          />
-        )}
-        {activeCase && <ExportMenu caseId={activeCase.id} caseName={activeCase.name} />}
         {activeCase && !launchedOpen && (
           <span title={launchBusy} className="shrink-0">
             <Button

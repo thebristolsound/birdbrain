@@ -3,8 +3,8 @@
 **Date:** 2026-11-17
 
 **Status:** Proposal, drawn on the consolidation design canvas (board P and every other board) and
-graded by two model judges over four rounds; awaiting the maintainer's ruling. Nothing in the app
-or the Birdbrain design system has changed.
+graded by two model judges, over four rounds for both themes and then three rounds for light alone;
+awaiting the maintainer's ruling. Nothing in the app or the Birdbrain design system has changed.
 
 **Frame of reference:** `origin/main` at `1047d3c`. Token values are cited from
 `src/renderer/styles/globals.css` at that commit. The canvas draws from the Birdbrain design system
@@ -41,17 +41,20 @@ omitted.
 
 | Token | Role | Dark now | Dark proposed | Light now | Light proposed |
 | --- | --- | --- | --- | --- | --- |
-| `--color-canvas` | Page | `#090a0b` | `#0b0b0d` | | |
-| `--color-surface` | Panels, rail | `#0e0e11` | `#111114` | | |
+| `--color-canvas` | Content area | `#090a0b` | `#0b0b0d` | `#fafafa` | `#fbfbfc` |
+| `--color-surface` | Top bar, rail, list, side panel | `#0e0e11` | `#111114` | `#f4f4f5` | `#f1f1f4` |
 | `--color-card` | Cards, menus | `#131316` | `#17171b` | | |
-| `--color-elevated` | Dialogs, hover | `#1c1c20` | `#202025` | | |
+| `--color-elevated` | Dialogs | `#1c1c20` | `#202025` | | |
+| `--color-text-secondary` | Body copy, advisory words | | | `#3f3f46` | `#303036` (11.6:1) |
 | `--color-text-muted` | Descriptions | `#a1a1aa` | `#a8a8b2` (6.9:1) | | |
-| `--color-text-faint` | Labels, timestamps | `#71717a` (3.5:1) | `#92939d` (5.3:1) | `#66666f` | `#63636c` (5.4:1) |
-| `--color-accent` | Text and strokes | `#6467f2` (3.9:1) | `#9497ff` (6.3:1) | | |
+| `--color-text-faint` | Labels, timestamps | `#71717a` (3.5:1) | `#92939d` (5.3:1) | `#66666f` | `#63636c` (5.3:1) |
+| `--color-accent` | Text and strokes | `#6467f2` (3.9:1) | `#9497ff` (6.3:1) | `#4f52e0` (5.3:1) | `#4346d1` (6.1:1) |
 | `--color-accent-fill` (new) | Filled button | | `#5457e6` (white 5.4:1) | | `#4f52e0` (white 5.8:1) |
 | `--color-accent-fill-hover` (new) | Its hover | | `#4a4dd6` | | `#4346d1` |
-| `--color-border-strong` | Panel borders | `#3d3d42` | `#3a3a41` | | |
-| `--color-control` (new) | Control boundaries, nominal dot | | `#7a7a84` (3.8:1) | | `#80808a` (3.6:1) |
+| `--color-border` | Hairlines | `#27272a` | `#2a2a30` | `#e4e4e7` | `#d6d6dc` |
+| `--color-border-strong` | Panel, menu and pill edges | `#3d3d42` | `#3a3a41` | `#d4d4d8` | `#bdbdc6` |
+| `--color-control` (new) | Control boundaries, nominal dot | | `#7a7a84` (3.8:1) | | `#7a7a84` (3.8:1; 3.35:1 on a hovered row) |
+| `--color-hover` (new) | Hover, keyboard highlight, open pill | | 6% white | | 6% ink, `rgba(24,24,40,0.06)` |
 | `--color-input` | Input border | `--color-border-strong` | `--color-control` | `#8b8b93` | `--color-control` |
 | `--color-success-fg` | Verified | `#34d399` | `#4ec38e` (7.4:1) | | |
 | `--color-danger-fg` | Problem words, recording | `#f87171` | `#f47a7a` (6.1:1) | | |
@@ -62,6 +65,9 @@ omitted.
 | `--color-hue-pink-fg` | Categorical | `#ec4899` | `#f06fa8` | | |
 | `--color-hue-teal-fg` (new) | Captures in the link map | | `#3cc7b4` | | `#0f766e` |
 | `--color-hue-violet-fg` (new) | Selectors in the link map | | `#c084fc` | | `#7e22ce` |
+| `--color-scrim` (new) | Behind a dialog | | `rgba(0,0,0,0.55)` | | `rgba(24,24,32,0.28)` |
+| `--shadow-card` | Cards, cells, frames | `none` | `none` | `0 1px 2px rgba(0,0,0,0.04)` | `0 1px 2px rgba(24,24,40,0.06)` |
+| `--shadow-overlay`, `--shadow-menu` (new) | Dialogs, popovers, menus | | unchanged | | cool two-layer shadows; values in `palette.css` |
 
 The canvas file `palette.css` holds the full set, with the ratio of each in a comment.
 
@@ -79,7 +85,12 @@ The canvas file `palette.css` holds the full set, with the ratio of each in a co
 3. **A round dot in a status hue is a status mark.** The red recording dot and the indigo update
    dot are the two round dots that are not status tiers. Tags, case types and link-map nodes carry
    their hue on their own glyph, with neutral words.
-4. **A control that needs a boundary gets one at 3:1.** Inputs, the search fields, checkboxes,
+4. **Hover and highlight are an ink tint, not a lighter surface.** `--color-hover` shows on every
+   plane in both themes. Light mode cannot use "raised means lighter": its cards, menus and dialogs
+   are already white, so a white hover vanishes.
+5. **Light mode has three planes.** The chrome steps down to `#f1f1f4`, the content canvas stays
+   near white, and cards are white with a 1px cool shadow.
+6. **A control that needs a boundary gets one at 3:1.** Inputs, the search fields, checkboxes,
    radios, the switch track and icon-only outline buttons use `--color-control`. Hairlines between
    regions stay in `--color-border`.
 
@@ -115,15 +126,23 @@ identifies the control.
 
 Two model judges graded each round on contrast, legibility, status semantics, coherence and theme
 parity, out of 10, with 8.5 as the pass mark. Fable 5.2 scored 7.2, 8.3 and 8.6 (pass); Opus 5.5 at
-xhigh effort scored 6.5, 7.5, 8.0 and, on a fourth round that applied its last findings, 8.5 (pass). The judges are a review aid, not a
-substitute for the maintainer's ruling or for a check in the running app.
+xhigh effort scored 6.5, 7.5, 8.0 and, on a fourth round that applied its last findings, 8.5 (pass).
+The judges are a review aid, not a substitute for the maintainer's ruling or for a check in the
+running app.
+
+A second pass graded the light theme on its own, with fresh judges, after the maintainer asked for
+the exercise to be repeated for light mode. Fable 5.2 scored 8.0, 8.5 and 8.8; Opus 5.5 at xhigh
+effort scored 7.5, 8.0 and 8.5. Both passed on the third round, and both checked that the light
+changes left dark mode intact. From this pass on, the measurement also covers hover and highlight
+states: text inside them measures 4.69:1 at least in light and 5.01:1 in dark, and marks and
+control borders 3.35:1 and 3.86:1.
 
 ## Open for the maintainer
 
 - **Filled dot or ring for advisory** (decision 2 of the consolidation plan). In light, the filled
-  amber dot and the nominal grey dot are 1.07:1 apart in luminance, so the pill separates them by
-  hue alone. Both judges said the ring would add about half a point to contrast and status. The
-  ruling is unchanged by this proposal.
+  amber dot and the nominal grey dot are 1.02:1 apart in luminance, so the pill separates them by
+  hue alone. Both judges said the ring would add about half a point to contrast and status, in both
+  passes. The ruling is unchanged by this proposal.
 - **The design system.** If accepted, the Birdbrain design system artifact needs the same values,
   so other mocks pick them up.
 - **The "Missing" integrity count.** It shares the nominal grey dot; a nonzero count needs its own

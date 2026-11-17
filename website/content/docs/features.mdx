@@ -107,7 +107,9 @@ prove and what they do not.
   MiB, printing fails or runs out of time, or the page navigates again after it is saved, even to
   the same address, Birdbrain still saves the capture, and its entry says the PDF is missing. The
   capture keeps the address and title of the page it saved.
-- In a browser you start from a Case with **Launch browser**, capture a tab with **Capture** in
+- **Launch browser** is the filled button in the top bar, on every screen. On a screen with no
+  case open, the launch dialog asks which case the browser captures into.
+- In a browser you start with **Launch browser**, capture a tab with **Capture** in
   the Capture Session panel, which names the tab's title and address before you click, or with
   the shortcut Ctrl+Shift+F9 while the browser has focus. When the shortcut finds more than one
   tab in front, or none, Birdbrain asks which tab to capture. Your desktop may not pass the
@@ -270,6 +272,18 @@ prove and what they do not.
   one.
 - The command palette (`Ctrl+K`) switches and creates cases, replays the walkthrough, and opens
   a problem report.
+- A case screen has one row of controls above it, the top bar. The case's name there opens a
+  menu: **Switch Case…**, sharing, **Export evidence report**, **Export case file**,
+  **Import Case Archive…** and **Case settings**. The rail on the left names each section of the
+  case and holds **Settings** at its foot.
+- At the right of the top bar, a status control shows the Egress, the extension connection and
+  Capture Health. The menu beside **Launch browser** holds **Paste URLs to capture…** and
+  **Start Capture Session in Chrome**, which needs the extension connected and a case open.
+- While a Capture Session runs, a recording mark takes the place of **Launch browser**. For a
+  launched browser, the mark shows or hides the Capture Session panel on a case screen and opens
+  the panel on any other screen. For a session the extension started, the mark opens a menu that
+  holds **Stop Capture Session**. The mark names the case that captures go into when it is not
+  the case on screen.
 - Choose a dark or light theme, one of three density settings, and reduced motion.
 - First launch opens a guided tour, an extension setup guide, and a demo case. Exports from the
   demo case are marked as demo material.
@@ -325,7 +339,7 @@ Birdbrain makes these outbound connections:
   port-mapping requests to your router. Sync does not use the Egress setting, so the relay and
   your teammates see your IP address, and a teammate can learn every interface address on your
   machine, not only the public one
-- a browser you start from a Case with **Launch browser**: the pages you open in it, and the
+- a browser you start with **Launch browser**: the pages you open in it, and the
   browser's own background connections, such as Chrome's to Google. Under Direct, all of it
   leaves from your connection. The browser follows the Egress setting and fails closed: under a
   proxy or Tor, Birdbrain does not start it when the proxy accepts no connection, and closes it

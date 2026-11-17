@@ -57,6 +57,7 @@ vi.mock('@renderer/lib/notify', () => ({
 
 import { ExportMenu } from '@renderer/components/export/ExportMenu'
 import { fakeBridge } from '../renderer/fakeBridge'
+import { press } from './menuKeys'
 
 const ARCHIVE_PATH = '/home/tester/Case_One.bbcase'
 
@@ -154,35 +155,42 @@ describe('ExportMenu', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
-  // The menu item unmounts with the menu, so the dialog would record a
-  // detached opener. The trigger stands in for it, and gets focus back when
-  // the dialog closes (#1536).
-  it('moves focus into the menu on open and walks the items with the arrow keys', () => {
+  it('opens from the keyboard on its first item and walks the items with the arrow keys', async () => {
     renderMenu()
     const trigger = screen.getByRole('button', { name: 'Export' })
-    fireEvent.click(trigger)
+    trigger.focus()
+    await press('Enter')
     const menu = screen.getByRole('menu', { name: 'Export options' })
     expect(trigger.getAttribute('aria-controls')).toBe(menu.id)
     const [report, archive] = screen.getAllByRole('menuitem')
-    expect(document.activeElement).toBe(report)
+    await waitFor(() => expect(document.activeElement).toBe(report))
 
-    fireEvent.keyDown(menu, { key: 'ArrowDown' })
-    expect(document.activeElement).toBe(archive)
-    fireEvent.keyDown(menu, { key: 'ArrowDown' })
-    expect(document.activeElement).toBe(report)
-    fireEvent.keyDown(menu, { key: 'ArrowUp' })
-    expect(document.activeElement).toBe(archive)
-    fireEvent.keyDown(menu, { key: 'Home' })
-    expect(document.activeElement).toBe(report)
-    fireEvent.keyDown(menu, { key: 'End' })
-    expect(document.activeElement).toBe(archive)
-    fireEvent.keyDown(menu, { key: 'a' })
-    expect(document.activeElement).toBe(archive)
+    await press('ArrowDown', archive)
+    await press('ArrowDown', report)
+    await press('ArrowUp', archive)
+    await press('Home', report)
+    await press('End', archive)
+    await press('a', archive)
 
-    fireEvent.keyDown(menu, { key: 'Tab' })
+    await press('Tab')
     expect(screen.queryByRole('menu')).toBeNull()
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
   })
 
+  // Opened with the pointer, the menu itself takes focus and no item is marked until a key moves.
+  it('opens from a click with focus in the menu, and the arrow keys reach its items', async () => {
+    renderMenu()
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }))
+    const menu = screen.getByRole('menu', { name: 'Export options' })
+    const [report] = screen.getAllByRole('menuitem')
+    await waitFor(() => expect(document.activeElement).toBe(menu))
+
+    await press('ArrowDown', report)
+  })
+
+  // The menu item unmounts with the menu, so the dialog would record a
+  // detached opener. The trigger stands in for it, and gets focus back when
+  // the dialog closes (#1536).
   it('hands focus back to the trigger when an archive export starts', async () => {
     renderMenu()
     const trigger = screen.getByRole('button', { name: 'Export' })
@@ -214,13 +222,14 @@ describe('ExportMenu', () => {
     expect(label.className).toContain('lg:max-w-44')
   })
 
-  it('closes on Escape and returns focus to the trigger', () => {
+  it('closes on Escape and returns focus to the trigger', async () => {
     renderMenu()
     const trigger = screen.getByRole('button', { name: 'Export' })
     fireEvent.click(trigger)
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('menu')).toBeNull()
-    expect(document.activeElement).toBe(trigger)
+    // Radix hands focus back on the turn after the menu unmounts.
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
   })
 
   it('hands focus back to the Export trigger when the report dialog closes', () => {

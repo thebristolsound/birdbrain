@@ -7,10 +7,9 @@ import { cn } from '@renderer/lib/utils'
  *
  * Adoption of `radix-ui`'s ContextMenu rather than a fourth hand-rolled menu:
  * `role="menu"`/`role="menuitem"`, roving focus, typeahead, arrow-key
- * navigation, Escape-to-close and focus return to the trigger are the parts the
- * three existing menus (`CaptureMenu`, `CaptureDownloadMenu`, `ExportMenu`)
- * each get partly right, and they are acceptance criteria here. Those three are
- * deliberately not migrated onto this primitive — see the ticket's non-goals.
+ * navigation, Escape-to-close and focus return to the trigger are acceptance
+ * criteria here. A menu that opens from a button is on menu.tsx, which wraps
+ * the DropdownMenu the same way.
  */
 
 const ContextMenu = ContextMenuPrimitive.Root

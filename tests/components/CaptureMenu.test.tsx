@@ -7,6 +7,7 @@ import { CaptureMenu } from '@renderer/components/captures/CaptureMenu'
 import { settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
 import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
+import { isDisabledItem, press } from './menuKeys'
 
 const capture: Capture = {
   id: 'cap1',
@@ -20,8 +21,18 @@ const capture: Capture = {
   method: 'extension'
 }
 
-function recaptureButton(): HTMLButtonElement {
-  return screen.getByTestId('recapture-btn') as HTMLButtonElement
+function recaptureItem(): HTMLElement {
+  return screen.getByTestId('recapture-btn')
+}
+
+function renderMenu() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={client}>
+      <CaptureMenu caseId="case1" />
+    </QueryClientProvider>
+  )
+  return screen.getByTestId('capture-menu-btn')
 }
 
 beforeEach(() => {
@@ -43,24 +54,72 @@ describe('CaptureMenu Recapture at the VPN warning', () => {
         checkVpnWarning: vi.fn(async () => ({ caseId: 'case1', warn: true, canMute: true }))
       }
     })
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    render(
-      <QueryClientProvider client={client}>
-        <CaptureMenu caseId="case1" />
-      </QueryClientProvider>
-    )
-    const trigger = screen.getByTestId('capture-menu-btn')
+    const trigger = renderMenu()
     fireEvent.click(trigger)
     // Enabled once the captures list has named the selected Capture.
-    await waitFor(() => expect(recaptureButton().disabled).toBe(false))
-    fireEvent.click(recaptureButton())
+    await waitFor(() => expect(isDisabledItem(recaptureItem())).toBe(false))
+    fireEvent.click(recaptureItem())
     await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
     act(() => settleVpnWarning('dismiss'))
 
     // Enabled again once the stopped Recapture has settled.
     fireEvent.click(trigger)
-    await waitFor(() => expect(recaptureButton().disabled).toBe(false))
+    await waitFor(() => expect(isDisabledItem(recaptureItem())).toBe(false))
     expect(enqueue).not.toHaveBeenCalled()
     expect(screen.queryByTestId('recapture-error')).toBeNull()
+  })
+})
+
+describe('CaptureMenu as a menu', () => {
+  beforeEach(() => {
+    fakeBridge({
+      captures: { list: vi.fn(async () => [capture]) },
+      recapture: { enqueue: vi.fn(async () => ({ accepted: 1, rejected: [] })) }
+    })
+  })
+
+  it('walks its items with the arrow keys, Home and End', async () => {
+    const trigger = renderMenu()
+    trigger.focus()
+    await press('ArrowDown')
+    const paste = screen.getByTestId('capture-menu-paste-urls')
+    await waitFor(() => expect(isDisabledItem(recaptureItem())).toBe(false))
+    await waitFor(() => expect(document.activeElement).toBe(paste))
+
+    await press('ArrowDown', recaptureItem())
+    await press('ArrowDown', paste)
+    await press('End', recaptureItem())
+    await press('Home', paste)
+  })
+
+  it('closes on Escape and returns focus to the add button', async () => {
+    const trigger = renderMenu()
+    fireEvent.click(trigger)
+    await screen.findByRole('menu')
+    await press('Escape')
+    expect(screen.queryByRole('menu')).toBeNull()
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
+  })
+
+  it('skips Recapture while no Capture is selected, and a click on it does nothing', async () => {
+    useAppStore.setState({ selectedCaptureId: null })
+    const enqueue = vi.fn(async () => ({ accepted: 1, rejected: [] }))
+    fakeBridge({ captures: { list: vi.fn(async () => [capture]) }, recapture: { enqueue } })
+    const trigger = renderMenu()
+    fireEvent.click(trigger)
+    expect(isDisabledItem(recaptureItem())).toBe(true)
+    expect(recaptureItem().getAttribute('title')).toBe('Select a capture first')
+
+    fireEvent.click(recaptureItem())
+    expect(enqueue).not.toHaveBeenCalled()
+    expect(screen.getByRole('menu')).toBeTruthy()
+  })
+
+  it('opens the paste dialog from its first item and closes the menu', async () => {
+    const trigger = renderMenu()
+    fireEvent.click(trigger)
+    fireEvent.click(screen.getByTestId('capture-menu-paste-urls'))
+    expect(await screen.findByRole('dialog', { name: 'Paste URLs to capture' })).toBeTruthy()
+    expect(screen.queryByRole('menu')).toBeNull()
   })
 })

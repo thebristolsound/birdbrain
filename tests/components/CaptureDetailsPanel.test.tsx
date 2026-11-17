@@ -28,6 +28,7 @@ import { fakeBridge } from '../renderer/fakeBridge'
 import { stubMatchMedia } from './matchMediaStub'
 import { pinNonUtcTimeZone } from './timeZoneStub'
 import { MAC_PLATFORM, restorePlatform, stubPlatform } from '../renderer/platformStub'
+import { isDisabledItem, press } from './menuKeys'
 
 const capture: Capture = {
   id: 'cap1',
@@ -94,7 +95,7 @@ describe('CaptureDetailsPanel actions menu', () => {
     renderPanel({ onDelete: () => (focusedAtDelete = document.activeElement) })
     const trigger = await screen.findByTestId('capture-details-actions-btn')
     fireEvent.click(trigger)
-    const item = screen.getByText('Delete capture').closest('button') as HTMLButtonElement
+    const item = screen.getByRole('menuitem', { name: 'Delete capture' })
     item.focus()
 
     fireEvent.click(item)
@@ -184,11 +185,40 @@ describe('CaptureDetailsPanel actions menu', () => {
 
     fireEvent.click(await screen.findByTestId('capture-details-actions-btn'))
     const item = screen.getByTestId('capture-details-duplicate-btn')
-    expect((item as HTMLButtonElement).disabled).toBe(true)
+    expect(isDisabledItem(item)).toBe(true)
     expect(item.textContent).toContain('Duplicating')
 
     fireEvent.click(item)
     expect(onDuplicate).not.toHaveBeenCalled()
+  })
+})
+
+describe('CaptureDetailsPanel actions menu from the keyboard', () => {
+  it('opens on its first item, walks to the last with End, and skips a disabled item', async () => {
+    renderPanel({ isDuplicating: true })
+    const trigger = await screen.findByTestId('capture-details-actions-btn')
+    // A title alone is a tooltip; the name has to be the trigger's own (#938).
+    expect(trigger.getAttribute('aria-label')).toBe('Capture actions')
+    trigger.focus()
+    await press('Enter')
+    const star = screen.getByTestId('capture-details-star-btn')
+    await waitFor(() => expect(document.activeElement).toBe(star))
+
+    const remove = screen.getByRole('menuitem', { name: 'Delete capture' })
+    await press('End', remove)
+    // Duplicate sits above Delete and is disabled, so the arrow passes over it.
+    await press('ArrowUp', screen.getByTestId('capture-details-recapture-btn'))
+    await press('Home', star)
+  })
+
+  it('closes on Escape and returns focus to the trigger', async () => {
+    renderPanel()
+    const trigger = await screen.findByTestId('capture-details-actions-btn')
+    fireEvent.click(trigger)
+    await screen.findByRole('menu')
+    await press('Escape')
+    expect(screen.queryByRole('menu')).toBeNull()
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
   })
 })
 
@@ -217,9 +247,7 @@ describe('CaptureDetailsPanel Recapture at the VPN warning', () => {
     // The item is enabled again once the stopped Recapture has settled.
     fireEvent.click(trigger)
     await waitFor(() =>
-      expect(
-        (screen.getByTestId('capture-details-recapture-btn') as HTMLButtonElement).disabled
-      ).toBe(false)
+      expect(isDisabledItem(screen.getByTestId('capture-details-recapture-btn'))).toBe(false)
     )
     expect(enqueue).not.toHaveBeenCalled()
     expect(screen.queryByTestId('capture-details-recapture-error')).toBeNull()

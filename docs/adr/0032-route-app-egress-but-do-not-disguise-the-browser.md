@@ -10,6 +10,13 @@ Cloudflare challenges"). The Persona model, the Manifest fields and the terms-of
 ADR-0030 are unchanged. The evidence is
 [the identity-masking research](../specs/2026-09-28-recapture-identity-masking-research.md).
 
+**Amended 2026-11-17:** VPN rule 2 no longer has the top bar print whether a VPN is seen. The
+maintainer ruled on 2026-11-15 that the top bar shows the advisory as a mark with no word, and on
+2026-11-17 that the mark is a hollow ring (decision 2 of
+[the consolidation plan](../plans/2026-11-15-chrome-capture-export-consolidation.md)). The rule
+below carries the amended text. The warning before a contact, and VPN rules 1, 3 and 4, are
+unchanged.
+
 ## Context
 
 A probe on 2026-09-27 ran two background Recaptures against a logging server. Every request left
@@ -92,8 +99,15 @@ maintainer ruled on 2026-09-28:
    party where the Operator is. The check misses a VPN on the router, a corporate network, an
    exit node and a split tunnel, and macOS keeps tunnel adapters for its own services, so the
    wording always says a VPN was not seen, never that there is no VPN.
-2. **An indicator and a once-per-Case warning, never a block.** The top bar shows the Egress and
-   whether a VPN is seen. While the Egress is Direct and no VPN is seen, Birdbrain warns before
+2. **An indicator and a once-per-Case warning, never a block.** In the top bar the Egress and a
+   VPN not seen show as one dot of the status control: a hollow amber ring while no VPN is seen
+   or the check failed, with the words in the control's accessible name and its popover. The
+   words are printed where a contact starts: in the launch dialog, and in the capture control's
+   menu once that control is built. The check misses a VPN on a router or a corporate network,
+   so for those Operators a warning printed on every screen is permanent and wrong. The ring is
+   hollow so that it differs from a nominal dot by shape as well as colour: in the light theme
+   the amber and the nominal grey are 1.02:1 apart in luminance, and a filled amber dot would
+   differ by hue alone. While the Egress is Direct and no VPN is seen, Birdbrain warns before
    the first contact with a site in each Case, offering to continue, to set up a proxy, or to
    stop warning on this network. A block would lock out an Operator whose VPN the check cannot
    see. "This network" is a hash of the network name and the router's hardware address, kept in

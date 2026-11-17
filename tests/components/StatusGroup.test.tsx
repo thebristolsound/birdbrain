@@ -86,6 +86,11 @@ beforeEach(() => {
 
 afterEach(cleanup)
 
+// The dots sit in the order extension, Egress, Capture Health.
+function egressDot(button: HTMLElement): HTMLElement {
+  return button.querySelectorAll<HTMLElement>('[data-testid="status-dot"]')[1]
+}
+
 // docs/design-handoff/2026-11-08-top-bar/, Option B: one control for the three signals.
 describe('StatusGroup', () => {
   it('reads the whole state in its accessible name and paints no background', async () => {
@@ -96,8 +101,9 @@ describe('StatusGroup', () => {
       'Status: a warning. Egress: Direct · VPN not seen. Extension: Connected. No captures logged.'
     )
     expect(button.className).not.toMatch(/bg-(warning|danger|success)-surface/)
-    // The worst signal's icon joins the dots, so the state reads without colour.
-    expect(button.querySelector('svg')).toBeTruthy()
+    // An advisory brings no icon and no word into the bar: its ring reads without colour.
+    expect(button.querySelector('svg')).toBeNull()
+    expect(within(button).queryByTestId('status-word')).toBeNull()
   })
 
   it('keeps the Egress text where the VPN warning e2e reads it', async () => {
@@ -278,7 +284,7 @@ describe('StatusGroup before the VPN check answers', () => {
     expect(button.dataset.severity).toBe('nominal')
   })
 
-  it('warns, with a word of its own, when the check fails', async () => {
+  it('warns, as a ring with no word or icon, when the check fails', async () => {
     renderGroup(direct, async () => {
       throw new Error('route unreadable')
     })
@@ -287,7 +293,9 @@ describe('StatusGroup before the VPN check answers', () => {
     expect(button.getAttribute('aria-label')).toMatch(
       /^Status: a warning\. Egress: Direct · VPN check failed\. /
     )
-    expect(within(button).getByTestId('status-word').textContent).toBe('VPN check failed')
+    expect(within(button).queryByTestId('status-word')).toBeNull()
+    expect(button.querySelector('svg')).toBeNull()
+    expect(egressDot(button).dataset.severity).toBe('warning')
   })
 
   // A VPN drops outside Birdbrain, so the reading before a failed check says nothing.
@@ -306,9 +314,9 @@ describe('StatusGroup before the VPN check answers', () => {
     await waitFor(() => expect(button.dataset.severity).toBe('warning'))
     expect(button.getAttribute('aria-label')).toContain('Egress: Direct · VPN check failed')
     expect(button.getAttribute('aria-label')).not.toContain('VPN seen')
-    // The icons follow the failed check too: the plain shield, not the "VPN seen" one, in the
-    // bar and in the popover's Egress row.
-    expect(button.querySelector('svg')?.getAttribute('class')).toMatch(/lucide-shield( |$)/)
+    // The bar shows an advisory as a ring, with no icon. The popover's Egress row follows the
+    // failed check: the plain shield, not the "VPN seen" one.
+    expect(button.querySelector('svg')).toBeNull()
     fireEvent.click(button)
     const row = await screen.findByTestId('status-row-egress')
     expect(row.querySelector('svg')?.getAttribute('class')).toMatch(/lucide-shield( |$)/)
@@ -437,14 +445,53 @@ describe('StatusGroup announcements and popover', () => {
     expect(dots[2]).toContain('bg-danger-fg')
   })
 
-  it('colours the Egress dot when the VPN warning is the only signal off nominal', async () => {
+  // The advisory differs from nominal by shape as well as colour: a hollow ring, drawn by an
+  // inset shadow with no fill, where the nominal dots are filled.
+  it('draws the Egress dot as a hollow ring when the VPN warning is the only signal off nominal', async () => {
     renderWith({ kind: 'direct' }, false)
     const button = await screen.findByTestId('status-group')
     await waitFor(() => expect(button.dataset.severity).toBe('warning'))
     const dots = [...button.querySelectorAll('[data-testid="status-dot"]')].map((d) => d.className)
     expect(dots[0]).toContain('bg-text-faint')
-    expect(dots[1]).toContain('bg-warning-fg')
+    expect(dots[1]).toContain('shadow-[inset_0_0_0_1.5px_var(--color-warning-fg)]')
+    expect(dots[1]).not.toMatch(/(^| )bg-/)
     expect(dots[2]).toContain('bg-text-faint')
+    expect(within(button).queryByTestId('status-word')).toBeNull()
+    expect(button.querySelector('svg')).toBeNull()
+  })
+
+  // Below xl the word used to hide, leaving a problem to colour and a small icon. It shows at
+  // every width now, so no width-dependent class hides it.
+  it("shows a problem's word at every width, with its icon", async () => {
+    useAppStore.setState({ captureStats: { successCount: 0, failCount: 2, skipCount: 0 } })
+    renderWith({ kind: 'direct' }, true)
+    const button = await screen.findByTestId('status-group')
+    await waitFor(() => expect(button.dataset.severity).toBe('danger'))
+    const word = within(button).getByTestId('status-word')
+    expect(word.textContent).toBe('2 failed')
+    expect(word.className).not.toMatch(/sr-only|hidden/)
+    expect(button.querySelector('svg')?.getAttribute('class')).toContain('lucide-activity')
+  })
+
+  // The advisory behind a problem stays a faint filled dot, as before.
+  it('keeps an advisory behind a problem as a faint dot, not a ring', async () => {
+    useAppStore.setState({ captureStats: { successCount: 1, failCount: 1, skipCount: 0 } })
+    renderWith({ kind: 'direct' }, false)
+    const button = await screen.findByTestId('status-group')
+    await waitFor(() => expect(button.dataset.severity).toBe('danger'))
+    expect(egressDot(button).dataset.severity).toBe('nominal')
+    expect(egressDot(button).className).toContain('bg-text-faint')
+  })
+
+  // The popover's rows keep their own state, so the advisory row carries the ring and its words.
+  it('keeps the words and the ring in the popover row of an advisory', async () => {
+    renderWith({ kind: 'direct' }, false)
+    const button = await screen.findByTestId('status-group')
+    await waitFor(() => expect(button.dataset.severity).toBe('warning'))
+    fireEvent.click(button)
+    const row = await screen.findByTestId('status-row-egress')
+    expect(row.textContent).toContain('Direct · VPN not seen')
+    expect(within(row).getByTestId('status-dot').dataset.severity).toBe('warning')
   })
 
   // Both are off nominal here, so the icon has an Egress icon to lose to.

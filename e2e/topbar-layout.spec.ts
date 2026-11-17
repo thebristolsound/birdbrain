@@ -28,9 +28,9 @@ async function createCase(page: Page, name: string): Promise<string> {
 }
 
 test.describe('Top bar layout', () => {
-  // The status group grows when it names an issue, as "VPN not seen" does, so the layout is
-  // measured in that state rather than with the fixture's default VPN. The words show from 1,280
-  // pixels (`xl`); below that the icon and the dots carry the state.
+  // The status group is widest when it names a problem, which shows an icon and a word at every
+  // width, so the layout is measured with a failed Capture logged. The VPN is left not seen: that
+  // is an advisory, a ring with no word, and it sits behind the problem here.
   test.beforeAll(() => {
     process.env.BIRDBRAIN_E2E_VPN = 'not-seen'
   })
@@ -73,9 +73,18 @@ test.describe('Top bar layout', () => {
       await expect(actionBar.getByTestId('share-pill')).toHaveCount(0)
       await expect(controls.getByTestId('topbar-rec')).toHaveCount(0)
       await expect(controls.getByTestId('status-group')).toBeVisible()
-      // The state the widths below are measured in.
+      // The state the widths below are measured in: one failed Capture per Case created so far.
+      await electronApp.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0].webContents.send('event:captureActivity', {
+          type: 'failed',
+          source: 'extension',
+          url: 'https://ferry.test/notices',
+          timestamp: new Date().toISOString(),
+          error: 'stand-in failure'
+        })
+      })
       const statusWord = controls.getByTestId('status-word')
-      await expect(statusWord).toHaveText('VPN not seen')
+      await expect(statusWord).toHaveText(/^\d failed$/)
 
       // The viewport emulation below leaves the native window controls' room at what the window
       // opened with, so the room Linux's three buttons take is pinned here.
@@ -137,10 +146,9 @@ test.describe('Top bar layout', () => {
           .poll(async () => (await caseName.getAttribute('title'))?.startsWith(`${name} · `))
           .toBe(true)
 
-        // The status words take room from 1,280 pixels and none below it.
+        // A problem's word takes room at every width.
         const { width: wordWidth } = (await statusWord.boundingBox())!
-        if (width >= 1280) expect(wordWidth).toBeGreaterThan(40)
-        else expect(wordWidth).toBeLessThanOrEqual(1)
+        expect(wordWidth).toBeGreaterThan(30)
 
         // Every control on the right stays inside the window, and nothing scrolls sideways.
         for (const button of await controls.getByRole('button').all()) {

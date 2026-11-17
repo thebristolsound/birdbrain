@@ -177,8 +177,18 @@ describe('Launch browser', () => {
     expect(useAppStore.getState().startDialogCaseId).toBe('case1')
   })
 
+  // The Capture Session panel is the open browser's place, and names it.
+  it('leaves the bar while a launched browser is open', async () => {
+    renderWith({ state: 'open', browser: BROWSER })
+    await waitFor(() => expect(screen.getByTestId('topbar-controls')).toBeTruthy())
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(screen.queryByRole('button', { name: 'Launch browser' })).toBeNull()
+    expect(screen.queryByTitle('A launched browser is already open')).toBeNull()
+  })
+
   it.each([
-    ['open', { state: 'open', browser: BROWSER }, 'A launched browser is already open'],
     [
       'starting',
       { state: 'starting', browser: BROWSER, step: 'browser' },

@@ -36,8 +36,9 @@ env:
   # The same apt hardening as ci.yml; its comments explain both.
   APT_OPTS: -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15
   DROP_AZURE_MIRROR: >-
-    sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g'
-    /etc/apt/apt-mirrors.txt 2>/dev/null || true
+    if curl -fsS --max-time 10 -o /dev/null https://archive.ubuntu.com/ubuntu/dists/;
+    then sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g'
+    /etc/apt/apt-mirrors.txt 2>/dev/null || true; fi
 
 jobs:
   probe:

@@ -51,8 +51,10 @@ export function TopBar() {
   const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen)
   const openStartDialog = useAppStore((s) => s.openStartDialog)
   const { data: launchedStatus } = useQuery(launchedBrowserStatusQueryOptions)
-  // One launched browser at a time. A disabled button takes no pointer, so the reason sits on
-  // its wrapper.
+  // One launched browser at a time. While one is open the Capture Session panel is its place, so
+  // Launch browser leaves the bar until it closes. While one starts or closes the button is held:
+  // a disabled button takes no pointer, so the reason sits on its wrapper.
+  const launchedOpen = launchedStatus?.state === 'open'
   const launchBusy = busyRefusal(launchedStatus)?.title
   const { status: updateStatus } = useUpdateStatus()
   const updateAvailable =
@@ -198,7 +200,7 @@ export function TopBar() {
           />
         )}
         {activeCase && <ExportMenu caseId={activeCase.id} caseName={activeCase.name} />}
-        {activeCase && (
+        {activeCase && !launchedOpen && (
           <span title={launchBusy} className="shrink-0">
             <Button
               variant="outline"

@@ -103,6 +103,16 @@ test.describe('Top bar layout', () => {
             const box = await control.boundingBox()
             if (box) expect(overlapWidth(searchBox, box)).toBeLessThanOrEqual(0)
           }
+          // One line. The button's height is fixed, so count the lines its label is laid out on.
+          const labelLines = await controls
+            .getByRole('button', { name: 'Launch browser' })
+            .evaluate((el) => {
+              const range = document.createRange()
+              range.selectNodeContents(el)
+              return new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top)))
+                .size
+            })
+          expect(labelLines).toBe(1)
         }).toPass({ timeout: 5000 })
 
         // The case name's track keeps 160 pixels, and the name at least 64 of them, before the
@@ -191,12 +201,14 @@ test.describe('Top bar layout', () => {
     expect(await page.evaluate(() => window.location.hash)).toMatch(/#\/cases\/[^/]+\/settings$/)
   })
 
-  // With a launched browser and the extension both recording, the top bar carries Share, Export
-  // and Launch browser, and the action bar the recording mark against the switch.
+  // With a launched browser and the extension both recording, the top bar carries Share and
+  // Export, and the action bar the recording mark against the switch. Launch browser leaves the
+  // bar while the browser is open, and the Capture Session panel names the browser.
   test('fits the Case controls while a launched browser records', async ({ electronApp, page }) => {
     const caseId = await createCase(page, NAMES[1])
     const actionBar = page.getByTestId('case-action-bar')
     const controls = page.getByTestId('topbar-controls')
+    const rail = page.getByTestId('capture-session-rail')
     // The app's own session update can land after the stand-in one, so each check sends the
     // stand-in again and confirms it holds; a bar with no session would fit trivially.
     const holdRecording = async () => {
@@ -217,23 +229,25 @@ test.describe('Top bar layout', () => {
           }
         })
       }, caseId)
-      await expect(actionBar.getByTestId('topbar-rec')).toContainText('Launched Google Chrome', {
+      // The mark is the dot and the elapsed time. The browser's name is the panel's to give,
+      // where the rail is docked; a narrower window folds the panel to a strip.
+      await expect(actionBar.getByTestId('topbar-rec').getByRole('timer')).toBeVisible({
         timeout: 1000
       })
-      // The mark names only the launched browser, so the label after the switch names both
-      // sources, and the row is measured with it.
+      await expect(actionBar.getByTestId('topbar-rec')).not.toContainText('Google Chrome')
+      await expect(rail.or(page.getByTestId('capture-session-strip'))).toBeVisible({
+        timeout: 1000
+      })
+      if (await rail.isVisible()) await expect(rail).toContainText('Launched Google Chrome')
+      // The label after the switch names both sources, and the row is measured with it.
       await expect(actionBar.getByTestId('session-source-line')).toHaveText(
         'Launched Google Chrome, and the extension',
         { timeout: 1000 }
       )
+      await expect(controls.getByRole('button', { name: 'Launch browser' })).toHaveCount(0)
     }
-    const launch = controls.getByRole('button', { name: 'Launch browser' })
     const rows = [
-      [
-        controls.getByTestId('share-pill'),
-        controls.getByRole('button', { name: /Export/ }),
-        launch
-      ],
+      [controls.getByTestId('share-pill'), controls.getByRole('button', { name: /Export/ })],
       [
         actionBar.getByTestId('topbar-rec'),
         actionBar.getByRole('switch', { name: 'Capture Session' })
@@ -256,8 +270,8 @@ test.describe('Top bar layout', () => {
           () => document.documentElement.scrollWidth - window.innerWidth
         )
         expect(pageOverflow).toBeLessThanOrEqual(0)
-        // Left to right with no overlap: Share, Export, Launch browser in the top bar; the mark
-        // and the switch in the action bar.
+        // Left to right with no overlap: Share and Export in the top bar; the mark and the switch
+        // in the action bar.
         for (const row of rows) {
           let edge = 0
           for (const item of row) {
@@ -266,13 +280,6 @@ test.describe('Top bar layout', () => {
             edge = x + itemWidth
           }
         }
-        // One line. The button's height is fixed, so count the lines its label is laid out on.
-        const labelLines = await launch.evaluate((el) => {
-          const range = document.createRange()
-          range.selectNodeContents(el)
-          return new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top))).size
-        })
-        expect(labelLines).toBe(1)
         await expect(actionBar.getByRole('switch', { name: 'Capture Session' })).toBeInViewport({
           ratio: 1
         })

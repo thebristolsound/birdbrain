@@ -26,13 +26,13 @@ function openAt(sessionStartedAt: number | null): LaunchedBrowserStatus {
   return { state: 'open', browser: browserAt(sessionStartedAt) }
 }
 
-function renderMark(status: LaunchedBrowserStatus, trigger?: boolean) {
+function renderMark(status: LaunchedBrowserStatus, trigger?: boolean, showSource?: boolean) {
   fakeBridge({ launchedBrowser: { status: vi.fn(async () => status) } })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  return render(<RecordingMark trigger={trigger} />, { wrapper: Wrapper })
+  return render(<RecordingMark trigger={trigger} showSource={showSource} />, { wrapper: Wrapper })
 }
 
 beforeEach(() => {
@@ -88,6 +88,16 @@ describe('RecordingMark', () => {
     renderMark(openAt(null))
     const mark = await screen.findByTestId('topbar-rec')
     await vi.waitFor(() => expect(mark.textContent).toBe('RecordingLaunched Google Chrome'))
+  })
+
+  // Beside the Capture Session panel, which names the browser, the mark is the dot and the time.
+  it('leaves the source out when told to, and keeps the timer', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
+    vi.setSystemTime(START + 5_000)
+    renderMark(openAt(START), false, false)
+    const timer = await screen.findByRole('timer')
+    expect(timer.textContent).toBe('00:05')
+    expect(screen.getByTestId('topbar-rec').textContent).toBe('Recording00:05')
   })
 
   it('shows the chevron only as the popover trigger', async () => {

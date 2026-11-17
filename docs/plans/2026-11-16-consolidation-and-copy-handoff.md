@@ -102,6 +102,21 @@ Copy cut slices:
 | C7 | Capture Session panel | After C0. `evidence-affecting` |
 | C8 | Export dialog | `evidence-affecting`. With slices 4.1 and 4.2 |
 
+## Progress on the chrome slices
+
+The maintainer made the chrome the first priority on 2026-11-17 and chose stacked delivery: one
+slice per pull request, each branch cut from the one before, the first opened for review and
+the later ones kept as drafts until their base merges. The order is 5.1a, 2.1, 2.2, 6.1, 5.2,
+5.3, 5.4, 5.5, then 5.6. Slice 1.3 is left out of the stack, because slice 5.4 replaces the
+button it changes.
+
+| Slice | Branch | Pull request | State |
+| --- | --- | --- | --- |
+| 5.1a | `feat/chrome-5.1a-shared-menu` | #2227 | Open for review, 2026-11-17 |
+
+The next slice is 2.1. Start it with `git switch -c feat/chrome-2.1-recording-mark
+feat/chrome-5.1a-shared-menu`.
+
 ## Slices that share a file
 
 Land these in the order given, or as one pull request where the plan says so.

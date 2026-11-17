@@ -202,8 +202,9 @@ test.describe('Top bar layout', () => {
   })
 
   // With a launched browser and the extension both recording, the top bar carries Share and
-  // Export, and the action bar the recording mark against the switch. Launch browser leaves the
-  // bar while the browser is open, and the Capture Session panel names the browser.
+  // Export, and the action bar the recording mark and the label that names both sources. Launch
+  // browser and the Capture Session switch leave while the browser is open: the Capture Session
+  // panel names the browser and holds the one stop control.
   test('fits the Case controls while a launched browser records', async ({ electronApp, page }) => {
     const caseId = await createCase(page, NAMES[1])
     const actionBar = page.getByTestId('case-action-bar')
@@ -245,13 +246,11 @@ test.describe('Top bar layout', () => {
         { timeout: 1000 }
       )
       await expect(controls.getByRole('button', { name: 'Launch browser' })).toHaveCount(0)
+      await expect(page.getByRole('switch', { name: 'Capture Session' })).toHaveCount(0)
     }
     const rows = [
       [controls.getByTestId('share-pill'), controls.getByRole('button', { name: /Export/ })],
-      [
-        actionBar.getByTestId('topbar-rec'),
-        actionBar.getByRole('switch', { name: 'Capture Session' })
-      ]
+      [actionBar.getByTestId('topbar-rec'), actionBar.getByTestId('session-source-line')]
     ]
 
     for (const width of [1440, 1280, 1100, 1024]) {
@@ -270,7 +269,7 @@ test.describe('Top bar layout', () => {
           () => document.documentElement.scrollWidth - window.innerWidth
         )
         expect(pageOverflow).toBeLessThanOrEqual(0)
-        // Left to right with no overlap: Share and Export in the top bar; the mark and the switch
+        // Left to right with no overlap: Share and Export in the top bar; the mark and the label
         // in the action bar.
         for (const row of rows) {
           let edge = 0
@@ -280,9 +279,7 @@ test.describe('Top bar layout', () => {
             edge = x + itemWidth
           }
         }
-        await expect(actionBar.getByRole('switch', { name: 'Capture Session' })).toBeInViewport({
-          ratio: 1
-        })
+        await expect(actionBar.getByTestId('session-source-line')).toBeInViewport({ ratio: 1 })
       }).toPass({ timeout: 5000 })
     }
   })

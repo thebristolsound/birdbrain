@@ -20,15 +20,15 @@ export function SessionControls() {
   const { data: launched } = useQuery(launchedBrowserStatusQueryOptions)
   const [toggling, setToggling] = useState(false)
   const { activateCase, start, stop } = useSessionMutations()
-  const setStopConfirmOpen = useAppStore((s) => s.setStopConfirmOpen)
 
   const params = useParams({ strict: false })
   const activeCaseId = (params as { caseId?: string }).caseId ?? null
 
-  // Shown while the extension is connected or a launched browser is open (S2), and while the
-  // Capture Session a launched browser left running on closing still runs.
+  // While a launched browser is open, or has closed with its Capture Session still running, the
+  // Capture Session panel holds the one stop control, at most a click away in every form the
+  // panel takes. The switch is for the extension's session, which has no panel.
   const launchedSession = launched?.state === 'open' || launched?.state === 'closed'
-  if (!connectedToExtension && !launchedSession) return null
+  const showSwitch = connectedToExtension && !launchedSession
 
   // A label follows the switch only for what the rest of the window does not say, on Case
   // screens. The breadcrumb names the Case on screen, and the Active Case, the one Captures go
@@ -45,6 +45,7 @@ export function SessionControls() {
       ? `${launchedBrowserName(launched.browser.label)}, and the extension`
       : null
   const label = [intoCase?.name, sources].filter(Boolean).join(' · ')
+  if (!showSwitch && !(launchedSession && sessionActive && label)) return null
 
   const handleToggleSession = async () => {
     if (toggling) return
@@ -72,31 +73,28 @@ export function SessionControls() {
 
   return (
     <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
-      <label className="flex cursor-pointer items-center gap-1.5">
-        <span className="text-xs text-text-muted">Capture Session</span>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={sessionActive}
-          aria-label="Capture Session"
-          // Stopping closes an open launched browser, so the switch asks first (`1i`).
-          onClick={
-            sessionActive && launched?.state === 'open'
-              ? () => setStopConfirmOpen(true)
-              : handleToggleSession
-          }
-          disabled={toggling || (!sessionActive && !activeCaseId)}
-          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50 ${
-            sessionActive ? 'bg-accent' : 'bg-text-faint'
-          }`}
-        >
-          <span
-            className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
-              sessionActive ? 'translate-x-4.5' : 'translate-x-0.5'
+      {showSwitch && (
+        <label className="flex cursor-pointer items-center gap-1.5">
+          <span className="text-xs text-text-muted">Capture Session</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={sessionActive}
+            aria-label="Capture Session"
+            onClick={handleToggleSession}
+            disabled={toggling || (!sessionActive && !activeCaseId)}
+            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50 ${
+              sessionActive ? 'bg-accent' : 'bg-text-faint'
             }`}
-          />
-        </button>
-      </label>
+          >
+            <span
+              className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+                sessionActive ? 'translate-x-4.5' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </label>
+      )}
       <AnimatePresence>
         {sessionActive && label && (
           <motion.span

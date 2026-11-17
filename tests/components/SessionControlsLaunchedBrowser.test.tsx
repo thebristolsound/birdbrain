@@ -52,12 +52,12 @@ function mount(status: LaunchedBrowserStatus) {
   })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   client.setQueryData(queryKeys.launchedBrowserStatus, status)
-  render(
+  const { container } = render(
     <QueryClientProvider client={client}>
       <SessionControls />
     </QueryClientProvider>
   )
-  return { stop, client }
+  return { stop, client, container }
 }
 
 afterEach(() => {
@@ -86,16 +86,20 @@ describe('the Capture Session switch and a launched browser', () => {
     }
   )
 
+  // The Capture Session panel holds the stop control while a launched browser is open, and while
+  // one has closed with its Capture Session still running. A second one here would be a second
+  // way to stop the same session, so the switch leaves, with the extension connected or not.
   it.each([
-    ['open', { state: 'open', browser: BROWSER }],
-    // The browser closed, and the Capture Session it started runs on until stopped.
-    ['closed', { state: 'closed', browser: BROWSER }]
-  ] satisfies Array<[string, LaunchedBrowserStatus]>)(
-    'shows with no extension while a launched browser is %s',
-    (_, status) => {
-      useAppStore.setState({ sessionActive: true })
+    ['open', false, { state: 'open', browser: BROWSER }],
+    ['open beside the extension', true, { state: 'open', browser: BROWSER }],
+    ['closed', false, { state: 'closed', browser: BROWSER }],
+    ['closed beside the extension', true, { state: 'closed', browser: BROWSER }]
+  ] satisfies Array<[string, boolean, LaunchedBrowserStatus]>)(
+    'leaves the stop to the panel while a launched browser is %s',
+    (_, connectedToExtension, status) => {
+      useAppStore.setState({ sessionActive: true, connectedToExtension })
       mount(status)
-      expect(screen.getByRole('switch', { name: 'Capture Session' })).toBeDefined()
+      expect(screen.queryByRole('switch', { name: 'Capture Session' })).toBeNull()
     }
   )
 
@@ -104,40 +108,36 @@ describe('the Capture Session switch and a launched browser', () => {
     mount({ state: 'none' })
     expect(screen.getByRole('switch', { name: 'Capture Session' })).toBeDefined()
   })
-})
 
-// `1i`: turning the switch off opens the stop confirmation while a launched browser is open,
-// since stopping then closes it.
-describe('turning the switch off', () => {
-  it('asks first while a launched browser is open', () => {
-    useAppStore.setState({ sessionActive: true })
-    const { stop } = mount({ state: 'open', browser: BROWSER })
-    fireEvent.click(screen.getByRole('switch', { name: 'Capture Session' }))
-    expect(useAppStore.getState().stopConfirmOpen).toBe(true)
-    expect(stop).not.toHaveBeenCalled()
+  // The panel holds its Stop while the browser closes, so the extension's switch stays.
+  it('shows beside the extension while the launched browser is closing', () => {
+    useAppStore.setState({ connectedToExtension: true, sessionActive: true })
+    mount({ state: 'closing', browser: BROWSER })
+    expect(screen.getByRole('switch', { name: 'Capture Session' })).toBeDefined()
   })
 
-  it('stops at once once the browser has closed, as there is none to close', async () => {
-    useAppStore.setState({ sessionActive: true })
-    const { stop } = mount({ state: 'closed', browser: BROWSER })
+  it("stops the extension's session at once, with no confirmation", async () => {
+    useAppStore.setState({ connectedToExtension: true, sessionActive: true })
+    const { stop } = mount({ state: 'none' })
     fireEvent.click(screen.getByRole('switch', { name: 'Capture Session' }))
     await waitFor(() => expect(stop).toHaveBeenCalledTimes(1))
     expect(useAppStore.getState().stopConfirmOpen).toBe(false)
   })
 })
 
-// The label after the switch shows only for what the breadcrumb and the recording mark do not
-// say: an Active Case that is not the Case on screen, and the extension recording beside a
-// launched browser.
+// The label shows only for what the breadcrumb and the recording mark do not say: an Active Case
+// that is not the Case on screen, and the extension recording beside a launched browser. It
+// follows the switch for the extension's session, and stands alone beside the panel.
 describe('the label after the switch', () => {
   // The label reads the Case list, so each test asserts only once the list has loaded and the
   // component has rendered with it. React Query notifies its observers on a timer.
   async function mountWithCases(status: LaunchedBrowserStatus) {
-    const { client } = mount(status)
+    const { client, container } = mount(status)
     await waitFor(() => expect(client.getQueryData(queryKeys.cases)).toHaveLength(2))
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
+    return container
   }
 
   function line() {
@@ -145,10 +145,11 @@ describe('the label after the switch', () => {
     return { text: el.textContent, title: el.getAttribute('title') }
   }
 
-  function expectNoLabel() {
+  // With no label the extension's session shows its switch alone, and a launched browser's
+  // session shows nothing here.
+  function expectNoLabel(container: HTMLElement) {
     expect(screen.queryByTestId('session-source-line')).toBeNull()
-    const controls = screen.getByRole('switch', { name: 'Capture Session' }).closest('div')!
-    expect(controls.textContent).toBe('Capture Session')
+    expect(['', 'Capture Session']).toContain(container.textContent)
   }
 
   it.each([
@@ -160,8 +161,7 @@ describe('the label after the switch', () => {
     'shows no label while %s records into the Case on screen',
     async (_, connectedToExtension, status) => {
       useAppStore.setState({ sessionActive: true, connectedToExtension, activeCaseId: 'case-1' })
-      await mountWithCases(status)
-      expectNoLabel()
+      expectNoLabel(await mountWithCases(status))
     }
   )
 
@@ -197,6 +197,8 @@ describe('the label after the switch', () => {
       text: 'Launched Google Chrome, and the extension',
       title: 'Launched Google Chrome, and the extension'
     })
+    // The label stands without the switch it used to follow.
+    expect(screen.queryByRole('switch', { name: 'Capture Session' })).toBeNull()
   })
 
   it('names the Active Case, then both sources, when the window shows neither', async () => {
@@ -221,7 +223,6 @@ describe('the label after the switch', () => {
       connectedToExtension: true,
       activeCaseId: 'case-1'
     })
-    await mountWithCases({ state: 'open', browser: BROWSER })
-    expectNoLabel()
+    expectNoLabel(await mountWithCases({ state: 'open', browser: BROWSER }))
   })
 })

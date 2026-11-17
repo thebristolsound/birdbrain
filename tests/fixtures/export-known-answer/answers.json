@@ -324,8 +324,8 @@
     "bytes": 56870
   },
   "shared-case-exclude": {
-    "zipSha256": "4a52e3bf2f5baef880afdba726fc2fda5967ba888ddb885c848e7e514ba4f019",
-    "packageHash": "b8bdca5893dfd26745e39357ef6bfd4ab81ff747748a8a9bf06ab9527ea5cadb",
+    "zipSha256": "1dd06281e4bd6d3af4b1f28a2bc407507aa369126e133d5fc96c5bd1ca194be7",
+    "packageHash": "3ad9a148d99ffa63ad2635627bdf9e86f3dd706610722e82d551db8b0d48f31d",
     "verification": {
       "outcome": "verified",
       "checks": [
@@ -346,11 +346,11 @@
       ]
     },
     "members": [
-      "05fb1904de8c9a16088b580385c23645a1efea77ec23daad8d3c02938f87eb93 665 export-entry.json",
-      "033bcee0729e79618327b4f34fd30a16e0ccbbf7c456d60c6d4c83ee70913f04 5593 evidence.json",
+      "6b9efcd34810a87cef44acc120a30e9e5edcb38efb6e365e7faedf728d82f048 665 export-entry.json",
+      "3e2b361c6a62f7e05305f7602981b2669fd636b2b382537711b24aeb2ee5012a 5593 evidence.json",
       "4467d0c6bd9b1f6caa2fae7c638633b71b8a4f31f720f1d4de7eda54a42b5cf8 4244 manifest.jsonl",
       "4e1ada3bd23e902efc8d7ce6663db8622a080d583ded15ca3139e30384d38dda 729 manifest.installation-known-answer-peer.jsonl",
-      "e776a02f0047f7e3c4c2fd18b4e6bb9cab275b37024cde31b3c04938517494cd 37381 report.html",
+      "e7a3a5b92373d75e9037685cabaa9eae20eb6cfaf00d322c4f8ee54f9e5b65de 37242 report.html",
       "cdc558fa70a30b8a9de281cf51586f27a8054f0229f9f0590cafe8a68342f632 17497 certification.html",
       "c1b596cdf432534ade61ffd4d1ae938478935dfa4eda099576cf7981d9fb5765 451 signing-public-key.pem",
       "116e5964f4e726e8511ab67e65371fe2ebebd7ff857c9abaedff287226decace 31614 VERIFY.md",

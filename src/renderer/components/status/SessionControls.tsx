@@ -38,8 +38,9 @@ export function SessionControls() {
     activeCaseId && sessionCaseId !== activeCaseId
       ? cases.find((c) => c.id === sessionCaseId)
       : undefined
-  // The recording mark names only the launched browser, so both sources are named here while the
-  // extension is connected beside an open one.
+  // Beside an open launched browser the recording mark names no source on a Case screen, and
+  // the Capture Session panel names only the browser, so both sources are named here while the
+  // extension is connected too.
   const sources =
     activeCaseId && launched?.state === 'open' && connectedToExtension
       ? `${launchedBrowserName(launched.browser.label)}, and the extension`

@@ -70,15 +70,34 @@ describe("CaseActionBar as the Case's action row", () => {
     expect(mark.textContent).not.toContain('REC')
   })
 
-  // The Capture Session panel is on screen wherever this bar is, and names the launched browser.
+  // The open browser is the mark's source, and the Capture Session panel is where its name is.
+  it('names no source in the mark while a launched browser is open', () => {
+    useAppStore.setState({ sessionActive: true, connectedToExtension: true })
+    mount({ state: 'open', browser: BROWSER })
+    expect(screen.getByTestId('topbar-rec').textContent).toBe('Recording')
+  })
+
+  // A browser that is closing or has closed is no longer the source. The session keeps running
+  // through the extension, and the panel says only that the browser closed.
   it.each([
-    ['open', { state: 'open', browser: BROWSER }],
     ['closing', { state: 'closing', browser: BROWSER }],
     ['closed', { state: 'closed', browser: BROWSER }]
   ] satisfies Array<[string, LaunchedBrowserStatus]>)(
-    'names no source in the mark while the panel shows a launched browser that is %s',
+    'names the extension in the mark once the launched browser is %s',
     (_, status) => {
       useAppStore.setState({ sessionActive: true, connectedToExtension: true })
+      mount(status)
+      expect(screen.getByTestId('topbar-rec').textContent).toBe('Recordingextension')
+    }
+  )
+
+  it.each([
+    ['closing', { state: 'closing', browser: BROWSER }],
+    ['closed', { state: 'closed', browser: BROWSER }]
+  ] satisfies Array<[string, LaunchedBrowserStatus]>)(
+    'names no source once the launched browser is %s and no extension is connected',
+    (_, status) => {
+      useAppStore.setState({ sessionActive: true, connectedToExtension: false })
       mount(status)
       expect(screen.getByTestId('topbar-rec').textContent).toBe('Recording')
     }

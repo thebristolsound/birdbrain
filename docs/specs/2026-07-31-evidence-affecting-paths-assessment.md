@@ -445,6 +445,7 @@ records state.
 |---|---|---|
 | `src/main/ipcHandlers.ts` | advisory | Shapes inputs/outputs of evidence operations (see judgment call 1) |
 | `src/preload/index.ts` | advisory | Single privileged chokepoint for every evidence channel |
+| `src/shared/birdbrainApi.ts` | advisory | Builds the preload's bridge from the channel list, so it decides which channels the renderer reaches and where |
 | `src/shared/ipc.ts` | advisory | Typed payloads for evidence operations (see judgment call 1) |
 | `src/shared/types.ts` | advisory | Domain contracts for captures, provenance, trusted time, exports |
 | `src/shared/schemas.ts` | advisory | Zod validation at trust boundaries (upload, manifest entry, settings) |

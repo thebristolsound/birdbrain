@@ -1087,7 +1087,8 @@ export interface RendererLogPayload {
 // value the handler resolves to (before the { ok, data } envelope is applied).
 // This is the single source of truth — `handle()` constrains a handler's
 // signature by its channel, so a handler that drifts from its entry is a
-// compile error rather than a runtime surprise.
+// compile error rather than a runtime surprise. The preload bridge and the
+// `window.birdbrain` type are built from it too (birdbrainApi.ts).
 //
 // All invoke channels live in this map; `handle()` is keyed by ContractedChannel, so missing entries are
 // compile errors.
@@ -1114,9 +1115,14 @@ export interface IpcInvokeContract {
     args: [params: SetAutoCapturePolicyParams]
     result: CaseAutoCapturePolicy
   }
+  // Builds link and header search records for the Case's Captures that lack them
+  // (docs/plans/2026-10-09-case-retrieval-first-slice.md, D5).
   'cases:ensureSearchFields': { args: [caseId: string]; result: FieldBuildSummary }
+  // Searches the Case's link and header records (the same plan, D6).
   'cases:searchFields': { args: [caseId: string, query: string]; result: FieldSearchResult }
+  // Checks one field record against the stored files (the same plan, D7).
   'cases:checkFieldHit': { args: [fieldId: number]; result: FieldHitCheck }
+  // The Case's unreviewed Captures in the view's four groups (the same plan, D8).
   'cases:listUnreviewed': {
     args: [caseId: string, rareLimit: number]
     result: UnreviewedCaptures
@@ -1387,6 +1393,7 @@ export interface IpcInvokeContract {
   // `relay-url-invalid`; the next transport start uses the stored value.
   'sharing:setRelayUrl': { args: [relayUrl: string]; result: void }
 
+  // Case investigation (engine plan, E10); served by the fake engine in unpackaged builds.
   'investigation:getRevision': { args: [caseId: string]; result: CaseRevision }
   'investigation:getView': { args: [caseId: string]; result: InvestigationView }
   'investigation:getSpan': { args: [caseId: string, spanId: string]; result: SpanDetail }
@@ -1500,6 +1507,13 @@ type UndeclaredChannel = Exclude<IpcChannel, ContractedChannel | IpcEventChannel
 type AssertNever<T extends never> = T
 export type ChannelsAreExhaustive = AssertNever<UndeclaredChannel>
 
+// The other direction: every contract entry has its IPC_CHANNELS constant. The
+// bridge type is built from the contracts and the bridge object from
+// IPC_CHANNELS, so an entry with no constant would be a typed method that does
+// not exist at runtime.
+type ChannelWithNoConstant = Exclude<ContractedChannel | IpcEventChannel, IpcChannel>
+export type ContractIsDeclared = AssertNever<ChannelWithNoConstant>
+
 // --- Event contract ---------------------------------------------------------
 //
 // Main → renderer pushes, kept separate from the invoke map: these carry a
@@ -1529,6 +1543,7 @@ export interface IpcEventContract {
   'event:waybackLinkProgress': WaybackLinkProgressEvent
   'event:launchedBrowserStatus': LaunchedBrowserStatus
   'event:launchedBrowserPopOut': LaunchedBrowserPopOutEvent
+  // The capture shortcut found more than one tab it could take, or none.
   'event:launchedBrowserPickTab': null
 }
 

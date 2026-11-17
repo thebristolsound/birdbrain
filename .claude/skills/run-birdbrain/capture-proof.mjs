@@ -8,11 +8,12 @@
 // `take` drives the build in <checkout>/out (this checkout by default): one background Capture
 // and one launched Capture of a fixture page it serves on loopback, then copies the Case folder
 // to <out>/<label>/case. `compare` describes each Capture without the values that differ
-// between two runs and fails on any difference. `verify` opens the profile `take --keep-profile`
-// left for <label> with the build in <checkout> and verifies each Capture, with a changed byte
-// to show the verification read the record. Common options: --out <dir> (default
-// .preflight/capture-proof in this checkout) and --port <n> (default 29411; the fixture page
-// uses the next port). See SKILL.md, "Capture proof".
+// between two runs and fails when the two descriptions differ; `describeCapture` is what a
+// description holds, and a signed field it leaves out is not compared. `verify` opens the
+// profile `take --keep-profile` left for <label> with the build in <checkout> and verifies each
+// Capture, with a changed byte to show the verification read the record. Common options:
+// --out <dir> (default .preflight/capture-proof in this checkout) and --port <n> (default
+// 29411; the fixture page uses the next port). See SKILL.md, "Capture proof".
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import * as fs from 'node:fs'
@@ -275,24 +276,35 @@ export function requireArtifacts(dir, entry, where) {
 // The stored MHTML without its boundary, its date and its frame ids: the page it was saved
 // from, and each part's type, transfer encoding, location and a digest of its encoded body.
 // The encoding is part of the description because the same bytes decode differently under
-// another one.
-export function describeMhtml(bytes) {
+// another one. A file it cannot read part by part is refused, never described: one description
+// for every unreadable file would make two runs with different pages compare as identical.
+export function describeMhtml(bytes, what = 'the MHTML') {
+  const unreadable = (why) => new Error(`${what} ${why}, so its parts cannot be compared`)
   const text = bytes.toString('latin1')
   const boundary = text.match(/boundary="([^"]+)"/)?.[1]
-  if (!boundary) return 'no multipart boundary'
+  if (!boundary) throw unreadable('names no quoted multipart boundary')
   const [head, ...parts] = text.split(`--${boundary}`)
+  // What follows the last boundary is the `--` that closes the file. Anything else is a file
+  // cut short, or text after its end that no part holds.
+  if (!/^--\s*$/.test(parts.pop() ?? '')) throw unreadable('does not end at its closing boundary')
+  if (parts.length === 0) throw unreadable('holds no part')
   const field = (block, name) => block.match(new RegExp(`^${name}: (.*)$`, 'm'))?.[1]?.trim()
   return {
     snapshot: field(head, 'Snapshot-Content-Location'),
     subject: field(head, 'Subject'),
-    parts: parts
-      .filter((part) => part.includes('\r\n\r\n'))
-      .map((part) => {
-        const headers = part.slice(0, part.indexOf('\r\n\r\n'))
-        const body = part.slice(part.indexOf('\r\n\r\n') + 4)
-        const encoding = field(headers, 'Content-Transfer-Encoding')
-        return `${field(headers, 'Content-Type')} ${encoding} ${field(headers, 'Content-Location')} ${sha(body)}`
-      })
+    parts: parts.map((part, index) => {
+      const blank = part.indexOf('\r\n\r\n')
+      if (blank === -1) {
+        throw unreadable(`has no blank line after the headers of part ${index + 1}`)
+      }
+      const headers = part.slice(0, blank)
+      const type = field(headers, 'Content-Type')
+      const encoding = field(headers, 'Content-Transfer-Encoding')
+      if (!type || !encoding) {
+        throw unreadable(`names no type or no transfer encoding for part ${index + 1}`)
+      }
+      return `${type} ${encoding} ${field(headers, 'Content-Location')} ${sha(part.slice(blank + 4))}`
+    })
   }
 }
 
@@ -302,7 +314,7 @@ const sha = (bytes) => createHash('sha256').update(bytes).digest('hex')
 // the signed inventory, Bound TLS Details or their absence, the MHTML's parts, and each
 // record's type, request or status line, header names, payload digest and credential header
 // lines. `requireArtifacts` has already held every file to the hash its entry signs.
-function describeCapture(dir, entry) {
+function describeCapture(dir, entry, where) {
   const file = (ext) => path.join(dir, `${entry.captureId}.${ext}`)
   const read = (ext) => (fs.existsSync(file(ext)) ? fs.readFileSync(file(ext)) : null)
   const warc = read('warc.gz')
@@ -338,7 +350,7 @@ function describeCapture(dir, entry) {
     scrollToLoad: entry.scrollToLoad ?? null,
     boundTls: entry.boundTls ?? null,
     boundTlsAbsent: entry.boundTlsAbsent ?? null,
-    mhtml: describeMhtml(mhtml),
+    mhtml: describeMhtml(mhtml, `${where}: the ${entry.method} Capture's mhtml file`),
     pdfPages: pdf ? (pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) ?? []).length : null,
     screenshot: png
       ? { width: png.readUInt32BE(16), height: png.readUInt32BE(20), sha: sha(png) }
@@ -356,7 +368,7 @@ export function describeRun(out, label) {
   const described = {}
   for (const entry of requireBothMethods(captureEntries(dir), `the run ${label}`)) {
     requireArtifacts(dir, entry, `the run ${label}`)
-    described[entry.method] = describeCapture(dir, entry)
+    described[entry.method] = describeCapture(dir, entry, `the run ${label}`)
   }
   fs.writeFileSync(path.join(out, `${label}.json`), JSON.stringify(described, null, 2))
   return described

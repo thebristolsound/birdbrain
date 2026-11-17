@@ -168,9 +168,45 @@ describe('describeMhtml', () => {
     expect(describeMhtml(mhtml({ body: '<p>=42</p>' }))).not.toEqual(describeMhtml(mhtml()))
   })
 
-  it('says so when the file is not multipart', () => {
-    expect(describeMhtml(Buffer.from('plain text'))).toBe('no multipart boundary')
+  // A file it cannot read part by part is refused: one description for every unreadable file
+  // would make two different pages compare as identical.
+  const text = (edit: (page: string) => string) =>
+    Buffer.from(edit(mhtml().toString('latin1')), 'latin1')
+
+  it('refuses a file with no quoted boundary', () => {
+    expect(() => describeMhtml(Buffer.from('plain text'), 'the page')).toThrow(
+      'the page names no quoted multipart boundary, so its parts cannot be compared'
+    )
+    const unquoted = text((page) => page.replace('boundary="B1"', 'boundary=B1'))
+    expect(() => describeMhtml(unquoted)).toThrow('names no quoted multipart boundary')
   })
+
+  it('refuses a part with no blank line after its headers, as in a file of line feeds alone', () => {
+    const lineFeeds = text((page) => page.replaceAll('\r\n', '\n'))
+    expect(() => describeMhtml(lineFeeds)).toThrow(
+      'has no blank line after the headers of part 1, so its parts cannot be compared'
+    )
+  })
+
+  it('refuses a file that is cut short, holds no part, or has text after its end', () => {
+    const cut = text((page) => page.replace('--B1--\r\n', ''))
+    expect(() => describeMhtml(cut)).toThrow('does not end at its closing boundary')
+    const trailing = text((page) => `${page}more`)
+    expect(() => describeMhtml(trailing)).toThrow('does not end at its closing boundary')
+    const empty = text((page) => `${page.slice(0, page.indexOf('--B1'))}--B1--\r\n`)
+    expect(() => describeMhtml(empty)).toThrow('holds no part')
+  })
+
+  it.each(['Content-Type: text/html', 'Content-Transfer-Encoding: quoted-printable'])(
+    'refuses a part without its %s line',
+    (line) => {
+      const without = text((page) => page.replace(`${line}\r\n`, ''))
+      expect(without.length).toBeLessThan(mhtml().length)
+      expect(() => describeMhtml(without)).toThrow(
+        'names no type or no transfer encoding for part 1'
+      )
+    }
+  )
 })
 
 describe('compare', () => {
@@ -193,7 +229,13 @@ describe('compare', () => {
 
   // One run: a Case folder with one Capture per method. `id` stands for everything that differs
   // between two runs of the same build: the capture ids, the frame id and the MHTML boundary.
-  const writeRun = (label: string, id: string, text = 'Capture proof') => {
+  // `page` is the stored page's body; `quote` and `eol` are how the MHTML names its boundary
+  // and ends its lines, which Chromium writes as a quoted value and CRLF.
+  const writeRun = (
+    label: string,
+    id: string,
+    { text = 'Capture proof', page = '<p>page</p>', quote = '"', eol = '\r\n' } = {}
+  ) => {
     const dir = join(out, label, 'case')
     mkdirSync(dir, { recursive: true })
     const entries = ['background', 'launched'].map((method) => {
@@ -204,7 +246,7 @@ describe('compare', () => {
             'Snapshot-Content-Location: http://127.0.0.1:29412/',
             'Subject: Capture proof page',
             `Date: ${id}`,
-            `Content-Type: multipart/related; boundary="B-${id}"`,
+            `Content-Type: multipart/related; boundary=${quote}B-${id}${quote}`,
             '',
             '',
             `--B-${id}`,
@@ -213,10 +255,10 @@ describe('compare', () => {
             'Content-Transfer-Encoding: quoted-printable',
             'Content-Location: http://127.0.0.1:29412/',
             '',
-            '<p>page</p>',
+            page,
             `--B-${id}--`,
             ''
-          ].join('\r\n'),
+          ].join(eol),
           'latin1'
         ),
         png,
@@ -308,11 +350,76 @@ describe('compare', () => {
 
   it('exits 1 and names the field when one run wrote different text', () => {
     writeRun('a', 'run-a')
-    writeRun('b', 'run-b', 'Another page')
+    writeRun('b', 'run-b', { text: 'Another page' })
     expect(compare('a', 'b', { out })).toBe(1)
     const printed = log.mock.calls.flat().join('\n')
     expect(printed).toContain('background: DIFFERENT between a and b')
     expect(printed).toContain('  text\n    a: "Capture proof"')
+  })
+
+  it('exits 1 and names the MHTML when one run stored another page', () => {
+    writeRun('a', 'run-a')
+    writeRun('b', 'run-b', { page: '<p>another page</p>' })
+    expect(compare('a', 'b', { out })).toBe(1)
+    const printed = log.mock.calls.flat().join('\n')
+    expect(printed).toContain('launched: DIFFERENT between a and b')
+    expect(printed).toContain('  mhtml\n    a: {"snapshot":"http://127.0.0.1:29412/"')
+  })
+
+  // Two runs whose stored pages differ, in an MHTML the description cannot read part by part.
+  // Every file still hashes to what its entry signs, so only the comparison can refuse them.
+  it.each([
+    ['an unquoted boundary', { quote: '' }, 'names no quoted multipart boundary'],
+    ['line feeds alone', { eol: '\n' }, 'has no blank line after the headers of part 1']
+  ])('refuses two runs whose MHTML has %s, and does not find them identical', (_, shape, why) => {
+    writeRun('a', 'run-a', { ...shape, page: '<p>one page</p>' })
+    writeRun('b', 'run-b', { ...shape, page: '<p>another page</p>' })
+    expect(() => compare('a', 'b', { out })).toThrow(
+      `the run a: the background Capture's mhtml file ${why}, so its parts cannot be compared`
+    )
+    expect(log.mock.calls.flat().join('\n')).not.toContain('IDENTICAL')
+  })
+
+  // The two refusals below are also tested on their own above. These go through `compare`, so
+  // taking either call out of `describeRun` fails here: two runs that lack the same thing
+  // describe alike.
+  const entriesOf = (label: string) => {
+    const file = join(out, label, 'case', 'manifest.jsonl')
+    const entries = readFileSync(file, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    return { file, entries }
+  }
+
+  it('refuses two runs that both lack the launched Capture', () => {
+    for (const label of ['a', 'b']) {
+      writeRun(label, `run-${label}`)
+      const { file, entries } = entriesOf(label)
+      const kept = entries.filter((entry) => entry.method !== 'launched')
+      writeFileSync(file, `${kept.map((entry) => JSON.stringify(entry)).join('\n')}\n`)
+    }
+    expect(() => compare('a', 'b', { out })).toThrow('the run a holds 0 launched Captures, not one')
+  })
+
+  it('refuses two runs that both lost a file their entries declare', () => {
+    for (const label of ['a', 'b']) {
+      writeRun(label, `run-${label}`)
+      unlinkSync(join(out, label, 'case', `run-${label}-launched.pdf`))
+    }
+    expect(() => compare('a', 'b', { out })).toThrow(
+      "the run a: the launched Capture's pdf file is missing, and its entry declares one"
+    )
+  })
+
+  it('refuses two runs whose stored text was changed alike after its entry signed it', () => {
+    for (const label of ['a', 'b']) {
+      writeRun(label, `run-${label}`)
+      writeFileSync(join(out, label, 'case', `run-${label}-background.txt`), 'changed')
+    }
+    expect(() => compare('a', 'b', { out })).toThrow(
+      "the run a: the background Capture's txt file does not hash to the value its entry signs"
+    )
   })
 
   it('refuses a label that was never taken', () => {

@@ -92,6 +92,18 @@ describe('CaptureMenu as a menu', () => {
     await press('Home', paste)
   })
 
+  // The add button is a Button, whose tap gesture is turned off: with it on, Enter opens the
+  // menu with no item focused (Menu.test.tsx).
+  it('opens on its first item when Enter is pressed on the add button', async () => {
+    const trigger = renderMenu()
+    trigger.focus()
+    await press('Enter')
+    expect(screen.getByRole('menu')).toBeTruthy()
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByTestId('capture-menu-paste-urls'))
+    )
+  })
+
   it('closes on Escape and returns focus to the add button', async () => {
     const trigger = renderMenu()
     fireEvent.click(trigger)

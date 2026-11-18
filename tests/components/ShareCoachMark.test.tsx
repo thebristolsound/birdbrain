@@ -128,6 +128,8 @@ describe('ShareCoachMark', () => {
       'Other people who run Birdbrain, each with a full copy that stays in sync. ' +
         'You approve every join.'
     )
+    // Share left the top bar, so the card says where it went.
+    expect(mark.textContent).toContain('Share this Case… is in the menu on the Case name.')
     // Nothing in the app caps a Case's roster, so the card states no number.
     expect(mark.textContent).not.toMatch(/up to four/i)
     expect(useAppStore.getState().shareMarkOpen).toBe(true)

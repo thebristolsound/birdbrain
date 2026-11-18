@@ -34,6 +34,7 @@ vi.mock('@renderer/components/dashboard/cases/ImportCaseDialog', () => ({
 }))
 
 import { CaseMenu } from '@renderer/components/dashboard/CaseMenu'
+import { useCaseExports } from '@renderer/components/export/useCaseExport'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
@@ -123,6 +124,8 @@ beforeEach(() => {
   inspectArchive = vi.fn(async () => null)
   showItemInFolder = vi.fn(async () => undefined)
   useAppStore.setState({ commandPaletteOpen: false, shareMarkOpen: false })
+  // Running exports and their failures outlive the menu, so each test starts with none.
+  useCaseExports.setState({ pending: {}, failed: {} })
 })
 
 afterEach(cleanup)
@@ -173,8 +176,12 @@ describe('the Case menu on the Case name', () => {
   // A Case that was shared and has nobody connected is not local: a Member who left can still
   // hold a copy.
   it('does not call a shared Case local once nobody else is connected', async () => {
-    setup({ caseData: { ...CASE, sharedAt: '2026-09-02T00:00:00Z' } })
+    const { client } = setup({ caseData: { ...CASE, sharedAt: '2026-09-02T00:00:00Z' } })
     const menu = openMenu()
+    // The line depends on the roster, so the roster has to be in before the line is read.
+    await waitFor(() =>
+      expect(client.getQueryState(queryKeys.sharingMembers('case-1'))?.status).toBe('success')
+    )
     await waitFor(() =>
       expect(within(menu).getByTestId('case-menu-about').textContent).toBe('3 Captures')
     )
@@ -186,7 +193,7 @@ describe('the Case menu on the Case name', () => {
     const copies = within(trigger()).getAllByText('Harbour ledger review')
     expect(copies).toHaveLength(2)
     expect(copies.map((el) => el.className).filter((c) => c.includes('sr-only'))).toEqual([
-      'sr-only min-[1001px]:hidden'
+      'sr-only min-[1000px]:hidden'
     ])
   })
 
@@ -468,17 +475,89 @@ describe('exporting from the Case menu', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
-  it('drops a failure when the Case on screen changes', async () => {
+  it('shows a failure on its own Case only, until it is dismissed there', async () => {
     exportArchive.mockRejectedValue(new Error('disk full'))
     const { rerender, client } = setup()
     fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
     await screen.findByRole('alert')
-    rerender(
-      <QueryClientProvider client={client}>
-        <CaseMenu place="name" caseId="case-2" caseData={{ ...CASE, id: 'case-2' }} />
-      </QueryClientProvider>
-    )
-    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+    const show = (id: string) =>
+      rerender(
+        <QueryClientProvider client={client}>
+          <CaseMenu place="name" caseId={id} caseData={{ ...CASE, id }} />
+        </QueryClientProvider>
+      )
+    show('case-2')
+    expect(screen.queryByRole('alert')).toBeNull()
+    show('case-1')
+    expect(screen.getByRole('alert').textContent).toContain('disk full')
+  })
+
+  // The menu leaves the screen on the dashboard and in Settings. The export it started does
+  // not: coming back finds it running, with its items held, so a second cannot start beside it.
+  it('finds a running export again after the menu has left the screen', async () => {
+    let finish!: (result: ArchiveExportResult) => void
+    exportArchive.mockReturnValue(new Promise<ArchiveExportResult>((resolve) => (finish = resolve)))
+    const first = setup()
+    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    await screen.findByTestId('case-export-progress')
+    first.unmount()
+
+    setup()
+    expect(screen.getByTestId('case-export-progress').textContent).toBe('Preparing archive… — 0%')
+    const menu = openMenu()
+    expect(isDisabledItem(within(menu).getByTestId('case-menu-export-report'))).toBe(true)
+    expect(isDisabledItem(within(menu).getByTestId('case-menu-export-archive'))).toBe(true)
+    fireEvent.click(within(menu).getByTestId('case-menu-export-archive'))
+    expect(exportArchive).toHaveBeenCalledOnce()
+
+    await act(async () => finish({ canceled: false, filePath: ARCHIVE_PATH }))
+    await waitFor(() => expect(screen.queryByTestId('case-export-progress')).toBeNull())
+  })
+
+  it('shows a failure that happened while the menu was off screen', async () => {
+    let fail!: (reason: Error) => void
+    exportArchive.mockReturnValue(new Promise<ArchiveExportResult>((_, reject) => (fail = reject)))
+    const first = setup()
+    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    await screen.findByTestId('case-export-progress')
+    first.unmount()
+    await act(async () => fail(new Error('disk full')))
+
+    setup()
+    expect((await screen.findByRole('alert')).textContent).toContain('disk full')
+    expect(screen.queryByTestId('case-export-progress')).toBeNull()
+  })
+
+  it('ends an export that finishes while another Case is on screen', async () => {
+    let finish!: (result: ArchiveExportResult) => void
+    exportArchive.mockReturnValue(new Promise<ArchiveExportResult>((resolve) => (finish = resolve)))
+    const { rerender, client } = setup()
+    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    await screen.findByTestId('case-export-progress')
+    const show = (id: string) =>
+      rerender(
+        <QueryClientProvider client={client}>
+          <CaseMenu place="name" caseId={id} caseData={{ ...CASE, id }} />
+        </QueryClientProvider>
+      )
+    show('case-2')
+    act(() => progressCb?.({ caseId: 'case-1', step: 'Bundling captures...', percent: 55 }))
+    expect(screen.queryByTestId('case-export-progress')).toBeNull()
+    await act(async () => finish({ canceled: false, filePath: ARCHIVE_PATH }))
+
+    show('case-1')
+    expect(screen.queryByTestId('case-export-progress')).toBeNull()
+    expect(isDisabledItem(within(theMenu()).getByTestId('case-menu-export-archive'))).toBe(false)
+  })
+
+  // The button has room for one state. A running sync gives way to the export's step.
+  it('shows the export step in place of a running sync', async () => {
+    exportArchive.mockReturnValue(NEVER)
+    setup({ roster: members(), syncState: sync({ phase: 'syncing' }) })
+    await screen.findByTestId('case-sync-state')
+    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    await screen.findByTestId('case-export-progress')
+    expect(screen.queryByTestId('case-sync-state')).toBeNull()
   })
 
   // A running export belongs to its Case. Another Case shows none of it, and coming back

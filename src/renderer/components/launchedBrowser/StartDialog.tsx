@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import type { KnownEgress, LaunchedBrowserOption } from '@shared/types'
@@ -59,8 +59,17 @@ export function StartDialog() {
   const navigate = useNavigate()
   const open = namedCaseId !== null || picking
 
-  const { data: readCases, isError: casesFailed } = useQuery(casesQueryOptions)
+  const {
+    data: readCases,
+    isError: casesFailed,
+    refetch: readCasesAgain
+  } = useQuery(casesQueryOptions)
   const cases = readCases ?? []
+  // The dialog stays mounted while closed, so a failed read of the Cases would stand for good.
+  // Opening on the picker reads them again, which is what its refusal tells the Operator to do.
+  useEffect(() => {
+    if (open && picking && casesFailed) void readCasesAgain()
+  }, [open, picking, casesFailed, readCasesAgain])
   const { data: settings } = useQuery(settingsQueryOptions)
   const [pickedCaseId, setPickedCaseId] = useState('')
   // The Case to launch into: the one the dialog was opened for, else the Operator's pick, else
@@ -247,7 +256,10 @@ export function StartDialog() {
                           ))}
                         </select>
                       ) : (
-                        <span className="block pt-1.5 text-text-faint">None yet</span>
+                        // "None yet" is said only of a list that was read and holds no Case.
+                        <span className="block pt-1.5 text-text-faint">
+                          {readCases ? 'None yet' : casesFailed ? 'Not read' : 'Reading…'}
+                        </span>
                       )}
                     </dd>
                   </>

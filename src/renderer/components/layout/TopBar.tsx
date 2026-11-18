@@ -88,9 +88,9 @@ export function TopBar() {
 
         <div className="flex-1" />
 
-        {/* A running session keeps its stop control here too; the Capture Session control
-            carries the recording mark and opens the panel, since Settings has no rail (`2d`).
-            Open ‹Case› stays on the dashboard's. */}
+        {/* The extension's session keeps its switch here too. A launched browser's session
+            stops from the Capture Session control, which carries the recording mark and opens
+            the panel, since Settings has no rail (`2d`). Open ‹Case› stays on the dashboard's. */}
         {sessionActive && <SessionControls />}
         {extensionOnlyRecording && <RecordingMark />}
         <CaptureSessionButton showOpenCase={false} />

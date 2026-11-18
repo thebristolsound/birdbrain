@@ -182,10 +182,11 @@ describe('StartDialog with no Case named', () => {
         .map((o) => o.textContent)
     ).toEqual(['Ferry Line', 'Harbor Desk'])
     expect(body.textContent).toContain('Starts a Capture Session in Harbor Desk.')
-    // The Case comes first, so it takes the focus the Browser field takes otherwise.
+    // The Case comes first, so it keeps the focus once the Browser field, which takes it
+    // otherwise, has rendered.
+    await within(body).findByRole('option', { name: 'Google Chrome' })
     expect(document.activeElement).toBe(picker)
 
-    await within(body).findByRole('option', { name: 'Google Chrome' })
     fireEvent.click(launchButton('Launch'))
     await waitFor(() => expect(launch).toHaveBeenCalled())
     expect(activateCase).toHaveBeenCalledWith('case-2')
@@ -243,15 +244,45 @@ describe('StartDialog with no Case named', () => {
     const card = await within(body).findByRole('status')
     expect(card.textContent).toBe('The Cases could not be readClose this dialog and open it again.')
     expect(body.textContent).not.toContain('Create a Case first')
+    // The Case row does not read as an installation with no Case either.
+    expect(body.textContent).toContain('Not read')
+    expect(body.textContent).not.toContain('None yet')
     expect(launchButton('Launch').disabled).toBe(true)
     expect(launch).not.toHaveBeenCalled()
+  })
+
+  // The refusal says to close the dialog and open it again, so opening it reads the Cases again.
+  it('reads the Cases again when it is opened after a failed read', async () => {
+    let fail = true
+    mount({
+      listCases: async () => {
+        if (fail) throw new Error('database is locked')
+        return [FERRY]
+      }
+    })
+    openPicker()
+    await within(await pickerDialog()).findByRole('status')
+    act(() => useAppStore.getState().closeStartDialog())
+    fail = false
+    openPicker()
+    const picker = await within(await pickerDialog()).findByRole('combobox', { name: 'Case' })
+    expect(
+      within(picker)
+        .getAllByRole('option')
+        .map((o) => o.textContent)
+    ).toEqual(['Ferry Line'])
   })
 
   it('holds the launch, with no refusal, while the Cases are still being read', async () => {
     mount({ listCases: () => new Promise<Case[]>(() => {}) })
     openPicker()
     const body = await pickerDialog()
+    // Once the browsers and the settings are in, only the missing Case holds Launch.
+    await within(body).findByRole('option', { name: 'Google Chrome' })
+    await waitFor(() => expect(body.textContent).toContain('A. Marsh'))
     expect(launchButton('Launch').disabled).toBe(true)
+    expect(body.textContent).toContain('Reading…')
+    expect(body.textContent).not.toContain('None yet')
     expect(body.textContent).not.toContain('No Case to capture into')
     expect(body.textContent).not.toContain('could not be read')
   })

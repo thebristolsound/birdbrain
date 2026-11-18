@@ -34,8 +34,8 @@ export function useCaptureSessionRailDocked(): boolean {
 // strip whose expand control opens the panel as an overlay over the screen, with no reflow. The
 // row is measured as a whole, so docking the rail does not change the width that decides it.
 // While the panel is popped out the strip stands in at any width (`1g`). The top bar's recording
-// mark hides and shows a launched browser's panel; a notice is not hidden, since nothing else on
-// a Case screen shows it.
+// mark hides and shows a launched browser's panel. A notice is not a browser's panel, so it is
+// not hidden: the capture control marks it too, and the strip here is where it reads in full.
 export function CaptureSessionDock({
   waybackTab,
   children

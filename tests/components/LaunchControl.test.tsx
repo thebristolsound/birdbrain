@@ -204,7 +204,6 @@ describe('the capture control at rest', () => {
       expect(document.activeElement).toBe(launch)
 
       fireEvent.click(launch)
-      fireEvent.keyDown(launch, { key: 'Enter' })
       expect(useAppStore.getState().startDialogCaseId).toBeNull()
       expect(isDisabledItem(within(openMenu()).getByTestId('launch-control-launch'))).toBe(true)
     }

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-// When the Capture Session switch shows (the revision assessment, S2: "while the extension is
-// connected or a launched browser is open").
+// When the Capture Session switch shows: while the extension is connected, unless a launched
+// browser is open or has closed with its session running, when the Capture Session panel holds
+// the one stop control.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -146,22 +147,22 @@ describe('the label after the switch', () => {
   }
 
   // With no label the extension's session shows its switch alone, and a launched browser's
-  // session shows nothing here.
-  function expectNoLabel(container: HTMLElement) {
+  // session shows nothing here. Each caller says which, so a switch that came back would fail.
+  function expectNoLabel(container: HTMLElement, rest: '' | 'Capture Session') {
     expect(screen.queryByTestId('session-source-line')).toBeNull()
-    expect(['', 'Capture Session']).toContain(container.textContent)
+    expect(container.textContent).toBe(rest)
   }
 
   it.each([
-    ['a launched browser', false, { state: 'open', browser: BROWSER }],
-    ['the extension', true, { state: 'none' }],
-    // As on the recording mark, a closed browser is no longer a source.
-    ['the extension, once the browser has closed', true, { state: 'closed', browser: BROWSER }]
-  ] satisfies Array<[string, boolean, LaunchedBrowserStatus]>)(
+    ['a launched browser', false, { state: 'open', browser: BROWSER }, ''],
+    ['the extension', true, { state: 'none' }, 'Capture Session'],
+    // As on the recording mark, a closed browser is no longer a source. The panel holds its stop.
+    ['the extension, once the browser has closed', true, { state: 'closed', browser: BROWSER }, '']
+  ] satisfies Array<[string, boolean, LaunchedBrowserStatus, '' | 'Capture Session']>)(
     'shows no label while %s records into the Case on screen',
-    async (_, connectedToExtension, status) => {
+    async (_, connectedToExtension, status, rest) => {
       useAppStore.setState({ sessionActive: true, connectedToExtension, activeCaseId: 'case-1' })
-      expectNoLabel(await mountWithCases(status))
+      expectNoLabel(await mountWithCases(status), rest)
     }
   )
 
@@ -215,7 +216,7 @@ describe('the label after the switch', () => {
     })
   })
 
-  // Settings has the switch and the recording mark beside it; the label shows on Case screens only.
+  // The label shows on Case screens only. Off one, a launched browser's session shows nothing here.
   it('shows no label off a Case screen while a session runs', async () => {
     route.caseId = undefined
     useAppStore.setState({
@@ -223,6 +224,6 @@ describe('the label after the switch', () => {
       connectedToExtension: true,
       activeCaseId: 'case-1'
     })
-    expectNoLabel(await mountWithCases({ state: 'open', browser: BROWSER }))
+    expectNoLabel(await mountWithCases({ state: 'open', browser: BROWSER }), '')
   })
 })

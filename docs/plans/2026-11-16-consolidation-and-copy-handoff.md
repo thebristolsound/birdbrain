@@ -115,7 +115,7 @@ button it changes.
 | 5.1a | `feat/chrome-5.1a-shared-menu` | #2227 | Merged on 2026-11-17 as `4fb88fce`, under the maintainer's override label after three reviews with no blocking finding |
 | 2.1 | `feat/chrome-2.1-recording-mark` | #2228 | Merged on 2026-11-17 as `396ce264`. The review passed at `86cdaf8e` with fifteen findings, none blocking, and a comment on the pull request answers them |
 | 2.2 | `feat/chrome-2.2-one-stop-control` | #2229 | Merged on 2026-11-17 as `5c21ba25`. The review passed at `267b53a3` on its second round with six findings, none blocking, and a comment on the pull request answers them |
-| 6.1 | `feat/chrome-6.1-status-tiers` | #2230 | Open for review at `1831b862`, based on `main`, with the two fixes from the review of #2229 as their own commits |
+| 6.1 | `feat/chrome-6.1-status-tiers` | #2230 | Open for review at `36ef51f3`, based on `main`, with the two fixes from the review of #2229 and three for its own first review. The branches above it do not hold those three yet |
 | 5.2 | `feat/chrome-5.2-labelled-rail` | #2231 | Draft, based on the 6.1 branch |
 | 5.3 | `feat/chrome-5.3-case-menu` | #2232 | Draft, based on the 5.2 branch |
 | 5.4 | `feat/chrome-5.4-launch-control` | #2233 | Draft, based on the 5.3 branch |
@@ -186,6 +186,16 @@ What the slices found that the plans did not say:
 - The merge script refuses while a cancelled `test` or `e2e` job sits at the head commit, even
   beside a passing one. Marking a pull request ready cancels the run its last push started.
   Re-run the cancelled jobs with `gh run rerun <run> --failed`, then run the script again.
+- The first review of #2230, at `1831b862`, failed with fifteen findings and none blocking,
+  because two passes named claims they could not check from the repository: a ruling the
+  decision record cited from a plan that did not hold it, and the file a merge conflicts in.
+  A ruling a slice relies on goes into the plan on `main` in that slice, and a description
+  says only that a merge has a conflict. Commits `89c9f4ad`, `f6e9615d` and `36ef51f3` answer
+  the findings. The layout spec now writes "Egress unknown" into the status control before
+  it measures, and the upper branches' versions of that spec need the same lines by hand
+  where a merge keeps their side.
+- Marking a draft ready cancels the CI run its last push started. Let that run finish first,
+  or the merge script later meets cancelled jobs at the head commit.
 - The remote refuses one push that updates several branches. Push the stack one branch at a
   time.
 - The Dependency audit check has failed on `main` and on every pull request since

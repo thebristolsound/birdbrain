@@ -147,7 +147,7 @@ export function TopBar() {
         data-testid="topbar-controls"
         className="flex min-w-max flex-1 basis-0 items-center justify-end gap-2"
       >
-        {/* The dashboard and the wizard have no rail and no action bar (`2c`), so the session's
+        {/* The dashboard and the wizard have no action bar (`2c`), so the session's
             control, and the recording mark while it records, stay up here. */}
         {!activeCaseId && extensionOnlyRecording && <RecordingMark />}
         {!activeCaseId && <CaptureSessionButton showOpenCase={isOnDashboard} />}

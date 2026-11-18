@@ -9,8 +9,9 @@ import {
 
 // Subscribes to update-delivery status. Fetches the current snapshot on mount,
 // then folds in every main→renderer transition. Hook-local by design: only the
-// Settings card and the TopBar indicator consume it, so no shared store is
-// warranted (see the update-delivery design spec).
+// Settings card and the two update dots, in the top bar and at the foot of the
+// rail, consume it, so no shared store is warranted (see the update-delivery
+// design spec).
 export function useUpdateStatus() {
   const [status, setStatus] = useState<UpdateStatus | null>(null)
   const mountedRef = useRef(false)

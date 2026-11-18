@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence } from 'motion/react'
@@ -215,12 +216,13 @@ function CardMenu({
 }
 
 // What the Case menu says about sharing under the Case's name: where the Case lives, what it
-// waits on, or how its sync stands.
-function sharingLine(pill: SharePill | null): string | null {
+// waits on, or how its sync stands. A Case that was shared and has nobody connected now is not
+// on this machine only, since a Member who left can still hold a copy, so it gets no line.
+function sharingLine(pill: SharePill | null, shared: boolean): string | null {
   if (!pill) return null
   switch (pill.state) {
     case 'share':
-      return COPY.localOnly
+      return shared ? null : COPY.localOnly
     case 'unavailable':
       return COPY.unavailableTitle
     case 'synced':
@@ -237,7 +239,10 @@ function NameMenu({ caseId, caseData }: Extract<CaseMenuProps, { place: 'name' }
   const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen)
   // The Share mark rings the Case name while it shows, since Share is in this menu.
   const marked = useAppStore((s) => s.shareMarkOpen)
-  const [showReport, setShowReport] = useState(false)
+  // The export dialog keeps the Case it was opened for. The palette can change the Case on
+  // screen while the dialog is up, and the form must not then export the other Case.
+  const [reportFor, setReportFor] = useState<{ id: string; name: string } | null>(null)
+  const noticeTipId = useId()
   const exporting = useCaseExport(caseId)
   const importing = useCaseArchiveImport()
 
@@ -259,13 +264,17 @@ function NameMenu({ caseId, caseData }: Extract<CaseMenuProps, { place: 'name' }
   const count = captureCounts?.[caseId]
   const about = [
     count === undefined ? null : `${count} ${count === 1 ? 'Capture' : 'Captures'}`,
-    sharingLine(pill)
+    sharingLine(pill, Boolean(caseData?.sharedAt))
   ]
     .filter(Boolean)
     .join(' · ')
   // The name can hide on a narrow window, so the tooltip carries it in full.
   const title = [name, 'Case menu', self && youAreLine(self.memberCode)].filter(Boolean).join(' · ')
+  // One failure shows at a time, the export's first, and Dismiss clears only the one shown.
   const failure = exporting.archiveError || importing.error
+  const dismissFailure = exporting.archiveError
+    ? exporting.dismissArchiveError
+    : importing.dismissError
 
   return (
     <div className="relative flex min-w-0 items-center gap-1.5">
@@ -294,7 +303,9 @@ function NameMenu({ caseId, caseData }: Extract<CaseMenuProps, { place: 'name' }
           >
             {name}
           </span>
-          {exporting.progressLabel ? (
+          {/* Below 1,000 pixels the name hides, and the button still has to say which Case. */}
+          <span className="sr-only min-[1001px]:hidden">{name}</span>
+          {exporting.progressLabel && (
             <span
               data-testid="case-export-progress"
               title={exporting.progressLabel}
@@ -305,9 +316,11 @@ function NameMenu({ caseId, caseData }: Extract<CaseMenuProps, { place: 'name' }
                 {exporting.progressLabel}
               </span>
             </span>
-          ) : sync?.chrome === 'error' ? (
-            // A sync that has stopped stays in view with the menu closed. Below xl the name's
-            // track is too narrow for the words, so the icon stands alone and the title has them.
+          )}
+          {sync?.chrome === 'error' ? (
+            // A sync that has stopped stays in view with the menu closed, beside a running
+            // export too. Below xl the name's track is too narrow for the words, so the icon
+            // stands alone and the title has them.
             <span
               data-testid="case-sync-state"
               data-chrome="error"
@@ -317,7 +330,7 @@ function NameMenu({ caseId, caseData }: Extract<CaseMenuProps, { place: 'name' }
               <TriangleAlert size={11} aria-hidden="true" />
               <span className="sr-only xl:not-sr-only">{sync.a}</span>
             </span>
-          ) : sync?.chrome === 'active' ? (
+          ) : sync?.chrome === 'active' && !exporting.progressLabel ? (
             <span
               data-testid="case-sync-state"
               data-chrome="active"
@@ -364,7 +377,7 @@ function NameMenu({ caseId, caseData }: Extract<CaseMenuProps, { place: 'name' }
           <MenuItem
             data-testid="case-menu-export-report"
             disabled={!caseData || exporting.isExporting}
-            onSelect={() => setShowReport(true)}
+            onSelect={() => caseData && setReportFor({ id: caseData.id, name: caseData.name })}
           >
             <FileText className={NAME_ITEM_ICON} strokeWidth={1.8} />
             Export evidence report
@@ -392,15 +405,19 @@ function NameMenu({ caseId, caseData }: Extract<CaseMenuProps, { place: 'name' }
         </MenuContent>
       </Menu>
 
+      {/* The top bar drags the window, and its rule exempts buttons and inputs only. This notice
+          is neither, so it opts out itself, or the pointer could not reach its tooltip. */}
       {sync?.glyph && (
         <span
           tabIndex={0}
           aria-label={COPY.glyphLabel}
+          aria-describedby={noticeTipId}
           data-testid="case-network-notice"
-          className="group/notice relative shrink-0"
+          className="group/notice relative shrink-0 [app-region:no-drag]"
         >
           <TriangleAlert size={12} className="text-warning-fg" />
           <span
+            id={noticeTipId}
             role="tooltip"
             className="absolute left-0 top-full z-50 hidden w-[300px] rounded border border-border-strong bg-elevated px-3 py-2.5 text-left text-[11px] text-text-secondary shadow-xl group-hover/notice:block group-focus/notice:block"
           >
@@ -423,26 +440,38 @@ function NameMenu({ caseId, caseData }: Extract<CaseMenuProps, { place: 'name' }
             type="button"
             aria-label="Dismiss"
             className="grid h-4 w-4 shrink-0 place-items-center rounded hover:bg-red-500/20"
-            onClick={() => {
-              exporting.dismissArchiveError()
-              importing.dismissError()
-            }}
+            onClick={dismissFailure}
           >
             <X size={11} strokeWidth={2} />
           </button>
         </div>
       )}
 
-      <AnimatePresence>
-        {showReport && caseData && (
-          <ExportDialog
-            caseId={caseData.id}
-            caseName={caseData.name}
-            onClose={() => setShowReport(false)}
-          />
-        )}
-      </AnimatePresence>
-      {importing.report && <ImportCaseDialog report={importing.report} onClose={importing.close} />}
+      {/* The dialogs render at the end of the document. Inside the bar they would come before
+          the search, which keeps a layer of its own, and its results would sit over them. */}
+      {createPortal(
+        <>
+          <AnimatePresence>
+            {reportFor && (
+              <ExportDialog
+                caseId={reportFor.id}
+                caseName={reportFor.name}
+                onClose={() => setReportFor(null)}
+              />
+            )}
+          </AnimatePresence>
+          {/* Keyed by the archive, so the tamper override ticked for one never carries to
+              another. */}
+          {importing.report && (
+            <ImportCaseDialog
+              key={importing.report.archivePath}
+              report={importing.report}
+              onClose={importing.close}
+            />
+          )}
+        </>,
+        document.body
+      )}
     </div>
   )
 }

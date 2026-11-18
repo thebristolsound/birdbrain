@@ -422,5 +422,18 @@ test.describe('Top bar layout', () => {
       { px: x + width / 2, py: y + height - 20 }
     )
     expect(covered).toBe(true)
+
+    // The dialog opens from the Case name, which comes before the search in the bar, and the
+    // search keeps a layer of its own for its results. The dialog's backdrop still covers it.
+    const searchBox = (await page.getByTestId('global-search').boundingBox())!
+    const searchCovered = await page.evaluate(
+      ({ px, py }) => {
+        const top = document.elementFromPoint(px, py)
+        const search = document.querySelector('[data-testid="global-search"]')
+        return !!top && !search?.contains(top)
+      },
+      { px: searchBox.x + searchBox.width / 2, py: searchBox.y + searchBox.height / 2 }
+    )
+    expect(searchCovered).toBe(true)
   })
 })

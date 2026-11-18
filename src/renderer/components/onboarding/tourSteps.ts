@@ -119,8 +119,8 @@ const caseSteps = (demoCase: boolean): TourStep[] => [
     route: 'captures',
     title: 'You’re inside a case',
     body:
-      'Everything you see is scoped to this case. Click the name to switch cases or ' +
-      'start a new one.',
+      'Everything you see is scoped to this case. Click the name for its menu, where ' +
+      'Switch Case… changes cases.',
     kbd: accelerator('K', { join: ' ' }),
     kbdNote: 'opens the switcher anywhere'
   },

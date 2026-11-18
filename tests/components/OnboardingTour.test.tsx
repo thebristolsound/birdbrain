@@ -627,8 +627,7 @@ describe('the seeded demo case', () => {
       'nav-notes',
       'noteeditor',
       'nav-overview',
-      'linkmap',
-      'export'
+      'linkmap'
     ]) {
       anchor(name)
     }

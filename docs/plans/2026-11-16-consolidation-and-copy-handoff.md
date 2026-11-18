@@ -114,8 +114,8 @@ button it changes.
 | --- | --- | --- | --- |
 | 5.1a | `feat/chrome-5.1a-shared-menu` | #2227 | Merged on 2026-11-17 as `4fb88fce`, under the maintainer's override label after three reviews with no blocking finding |
 | 2.1 | `feat/chrome-2.1-recording-mark` | #2228 | Merged on 2026-11-17 as `396ce264`. The review passed at `86cdaf8e` with fifteen findings, none blocking, and a comment on the pull request answers them |
-| 2.2 | `feat/chrome-2.2-one-stop-control` | #2229 | Open for review at `dbf9351d`, based on `main`, with the two fixes from the review of #2228 as their own commits |
-| 6.1 | `feat/chrome-6.1-status-tiers` | #2230 | Draft, based on the 2.2 branch |
+| 2.2 | `feat/chrome-2.2-one-stop-control` | #2229 | Merged on 2026-11-17 as `5c21ba25`. The review passed at `267b53a3` on its second round with six findings, none blocking, and a comment on the pull request answers them |
+| 6.1 | `feat/chrome-6.1-status-tiers` | #2230 | Open for review at `1831b862`, based on `main`, with the two fixes from the review of #2229 as their own commits |
 | 5.2 | `feat/chrome-5.2-labelled-rail` | #2231 | Draft, based on the 6.1 branch |
 | 5.3 | `feat/chrome-5.3-case-menu` | #2232 | Draft, based on the 5.2 branch |
 | 5.4 | `feat/chrome-5.4-launch-control` | #2233 | Draft, based on the 5.3 branch |
@@ -159,8 +159,8 @@ What the slices found that the plans did not say:
 - `pnpm preflight --carry` compares the whole diff against `main`. When a pull request below
   merges, every branch above has a different diff against `main`, so nothing carries and each
   new head needs a full run. A draft's Verification block is refreshed when the draft becomes
-  the bottom of the stack, not at every merge below it, so the blocks on #2229, #2230, #2232 and #2233
-  name the heads they were measured at.
+  the bottom of the stack, not at every merge below it, so the blocks on #2231 to #2235 name
+  the heads they were measured at.
 - The maintainer chose, in a Claude Code session on 2026-11-17, to merge #2228 as it stood and
   carry the two fixes for its review on the next slice. They are commits `d7bbd671` and
   `dbf9351d` on the 2.2 branch: the mark names the extension once a launched browser has
@@ -173,6 +173,19 @@ What the slices found that the plans did not say:
 - Merging the 5.3 branch into 5.4 conflicts on `CaseActionBar.tsx` and its test whenever a
   lower slice touches the mark in that row: keep the 5.4 side, which has no mark there.
   Merging 5.4 into 5.5 conflicts on `SessionControls.tsx`: keep the deletion.
+- The maintainer chose the same for #2229, in a Claude Code session on 2026-11-17: merge it as
+  it stood and carry the fixes on the next slice. They are commits `8f60fef5` and `db3989a1`
+  on the 6.1 branch: two tests for the label that shows with no switch, and four corrected
+  comments. Merging them up conflicts on `CaseActionBar.tsx` from 5.3 into 5.4, where the 5.4
+  side is kept, and on `SessionControls.tsx` and its launched browser test from 5.4 into 5.5,
+  where the deletion is kept.
+- The first review of #2229 blocked on two sentences of its description: one named the wrong
+  end-to-end spec, and one said a merge made with `-X ours` had no conflicts. A description
+  names the files the automatic merge conflicts in and says the merge commit's tree equals its
+  first parent's.
+- The merge script refuses while a cancelled `test` or `e2e` job sits at the head commit, even
+  beside a passing one. Marking a pull request ready cancels the run its last push started.
+  Re-run the cancelled jobs with `gh run rerun <run> --failed`, then run the script again.
 - The remote refuses one push that updates several branches. Push the stack one branch at a
   time.
 - The Dependency audit check has failed on `main` and on every pull request since
@@ -187,45 +200,14 @@ The stack is complete through 5.6. What is left of phase 5:
 
 - Slice 5.1b, the Download menu on the shared component. It edits a `blocking` file, so it is
   its own `evidence-affecting` pull request and is not in the stack.
-- The entry in `docs/design-handoff/README.md` that names the bundle as superseding the
-  2026-11-08 top bar. The bundle is not in the repository yet. The maintainer asked on
-  2026-11-17, in a Claude Code session, for a draft of the wording, which is under "Draft of
-  the design handoff index entry" below and waits for approval.
+- The design bundle and its row in `docs/design-handoff/README.md`. The maintainer approved
+  the drafted wording in a Claude Code session on 2026-11-17, and commit `3a180c85` on the 5.6
+  branch adds the bundle as `docs/design-handoff/2026-11-17-one-row-chrome/` with the row.
+  The row links the phase 0 plan and cites decision 7 of the parent plan. Both are on this
+  branch only, so the link is broken on `main` until this branch merges. The maintainer has
+  been asked whether to open a pull request for this branch or to reword the row.
 - The parent plan's check boxes for slices 5.1 to 5.6, 2.1, 2.2 and 6.1, ticked as each pull
   request merges.
-
-## Draft of the design handoff index entry
-
-This is a draft for the maintainer to approve or rewrite. It is not in
-`docs/design-handoff/README.md`, because the row links a folder that does not exist until the
-bundle is committed. The folder name is a proposal. What the bundle supersedes is taken from
-its own rules sheet, board R.
-
-A new first row for the table:
-
-> | [`2026-11-17-one-row-chrome/`](2026-11-17-one-row-chrome/) | 2026-11-17 | The one-row
-> chrome, the one export dialog and the Overview cards: frames A to I, a rules sheet (board R)
-> and a palette proposal (board P). It answers the ten questions of the
-> [phase 0 plan](../plans/2026-11-15-consolidation-phase-0-design-bundle.md). The maintainer
-> accepted all ten on 2026-11-17, recorded as decision 7 of the
-> [consolidation plan](../plans/2026-11-15-chrome-capture-export-consolidation.md), and ruled
-> that the advisory mark is a hollow ring. **Supersedes** the row under the top bar in the
-> 2026-11-08 bundle, and three things in the 2026-08-21 standalone: the two-item export menu,
-> the Share pill in the chrome, and Selector and Tag editing on the Overview. The palette
-> board has no ruling yet. The bundle ships packed as one HTML file, like the 2026-08-21
-> standalone, and arrived without a `HANDOFF.md` or an `ENGINEERING_REVIEW.md`. No feasibility
-> assessment is written. Built in slices 6.1 and 5.2 to 5.6 (#2230 to #2235) |
-
-A sentence added to the end of the 2026-11-08 row:
-
-> The 2026-11-17 bundle supersedes its action bar.
-
-The sentence about the single source, replacing the first sentence of the paragraph under the
-table:
-
-> The 2026-08-21 standalone is the single design source by maintainer ruling, except where a
-> later bundle's row in the table names what it supersedes. The 2026-11-17 bundle is the first
-> to do so.
 
 ## Slices that share a file
 

@@ -115,7 +115,7 @@ button it changes.
 | 5.1a | `feat/chrome-5.1a-shared-menu` | #2227 | Merged on 2026-11-17 as `4fb88fce`, under the maintainer's override label after three reviews with no blocking finding |
 | 2.1 | `feat/chrome-2.1-recording-mark` | #2228 | Merged on 2026-11-17 as `396ce264`. The review passed at `86cdaf8e` with fifteen findings, none blocking, and a comment on the pull request answers them |
 | 2.2 | `feat/chrome-2.2-one-stop-control` | #2229 | Merged on 2026-11-17 as `5c21ba25`. The review passed at `267b53a3` on its second round with six findings, none blocking, and a comment on the pull request answers them |
-| 6.1 | `feat/chrome-6.1-status-tiers` | #2230 | Open for review at `36ef51f3`, based on `main`, with the two fixes from the review of #2229 and three for its own first review. The branches above it do not hold those three yet |
+| 6.1 | `feat/chrome-6.1-status-tiers` | #2230 | Draft at `501d4069`, based on `main`, after two reviews with no blocking finding. It holds the two fixes from the review of #2229 and six commits for its own reviews, which the branches above it do not hold yet. It waits for the maintainer: see the note on the ring ruling below |
 | 5.2 | `feat/chrome-5.2-labelled-rail` | #2231 | Draft, based on the 6.1 branch |
 | 5.3 | `feat/chrome-5.3-case-menu` | #2232 | Draft, based on the 5.2 branch |
 | 5.4 | `feat/chrome-5.4-launch-control` | #2233 | Draft, based on the 5.3 branch |
@@ -194,6 +194,14 @@ What the slices found that the plans did not say:
   the findings. The layout spec now writes "Egress unknown" into the status control before
   it measures, and the upper branches' versions of that spec need the same lines by hand
   where a merge keeps their side.
+- The second review of #2230, at `36ef51f3`, failed the same way on one source: the ruling
+  that the advisory mark is a hollow ring has no record written by the maintainer, only the
+  plan line the slice adds. A third review would fail on it too. The maintainer either
+  confirms the ruling in a comment on the pull request, after which it is marked ready, or
+  applies the override label. Commits `2afd5249`, `2266e023` and `501d4069` answer the other
+  findings: the ring has a border under forced colours, the layout spec reads the ring's
+  computed style, and its launched browser test no longer waits five seconds on a folded
+  panel, which had failed about one local run in four.
 - Marking a draft ready cancels the CI run its last push started. Let that run finish first,
   or the merge script later meets cancelled jobs at the head commit.
 - The remote refuses one push that updates several branches. Push the stack one branch at a

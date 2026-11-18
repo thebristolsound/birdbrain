@@ -41,9 +41,13 @@ async function expectOneRowOfChrome(page: Page): Promise<void> {
 }
 
 test.describe('Top bar layout', () => {
-  // The status group is widest when it names a problem, which shows an icon and a word at every
-  // width, so the layout is measured with a failed Capture logged. The VPN is left not seen: that
-  // is an advisory, a ring with no word, and it sits behind the problem here.
+  // The status group is wide when it names a problem, which shows an icon and a word at every
+  // width, so the layout is measured with a failed Capture logged. The longest problem word is
+  // "Egress unknown", and no switch makes the Egress unreadable, so the test writes that word
+  // into the control in place of the failure count before it measures. A session's Capture count
+  // beside the word, and the queued and held marks, are not in this measure. The VPN is left not
+  // seen: that is an advisory, a ring with no word, and it sits behind the problem once one is
+  // logged.
   test.beforeAll(() => {
     process.env.BIRDBRAIN_E2E_VPN = 'not-seen'
   })
@@ -59,6 +63,28 @@ test.describe('Top bar layout', () => {
     const caseName = page.getByTestId('topbar-case-name')
     const controls = page.getByTestId('topbar-controls')
     const mark = controls.getByTestId('topbar-capture-session')
+
+    // Before a failure is logged the advisory is the worst signal, so the Egress dot is the ring.
+    // Only a real window computes its CSS: an inset shadow with no fill. Forced colours drop
+    // shadows, so the ring has a border there, and the built stylesheet has to hold that rule.
+    const ring = controls.getByTestId('status-dot').nth(1)
+    await expect(ring).toHaveAttribute('data-severity', 'warning')
+    const drawn = await ring.evaluate((el) => {
+      const { boxShadow, backgroundColor } = getComputedStyle(el)
+      return { boxShadow, backgroundColor }
+    })
+    expect(drawn.boxShadow).toMatch(/0px 0px 0px 1\.5px inset$/)
+    expect(drawn.backgroundColor).toBe('rgba(0, 0, 0, 0)')
+    const forcedColoursRule = await page.evaluate(() =>
+      Array.from(document.styleSheets).some((sheet) =>
+        Array.from(sheet.cssRules).some((rule) =>
+          /@media \(forced-colors: active\)\s*\{\s*\.forced-colors\\:border-2\s*\{[^}]*border-width: 2px/.test(
+            rule.cssText
+          )
+        )
+      )
+    )
+    expect(forcedColoursRule).toBe(true)
 
     for (const name of NAMES) {
       const caseId = await createCase(page, name)
@@ -104,6 +130,10 @@ test.describe('Top bar layout', () => {
       })
       const statusWord = controls.getByTestId('status-word')
       await expect(statusWord).toHaveText(/^\d failed$/)
+      // A stand-in for the widest state: the same control and icon, with the longest word.
+      await statusWord.evaluate((el) => {
+        ;(el.firstChild as Text).data = 'Egress unknown'
+      })
 
       // The viewport emulation below leaves the native window controls' room at what the window
       // opened with, so the room Linux's three buttons take is pinned here.
@@ -163,7 +193,9 @@ test.describe('Top bar layout', () => {
           .poll(async () => (await caseName.getAttribute('title'))?.startsWith(`${name} · `))
           .toBe(true)
 
-        // A problem's word takes room at every width.
+        // A problem's word takes room at every width, and the stand-in word is still the one
+        // measured.
+        await expect(statusWord).toHaveText('Egress unknown')
         const { width: wordWidth } = (await statusWord.boundingBox())!
         expect(wordWidth).toBeGreaterThan(30)
 
@@ -278,7 +310,11 @@ test.describe('Top bar layout', () => {
       await expect(rail.or(page.getByTestId('capture-session-strip'))).toBeVisible({
         timeout: 1000
       })
-      if (await rail.isVisible()) await expect(rail).toContainText('Launched Google Chrome')
+      // The panel can fold to its strip between the two lines below, so the check is short and
+      // the caller's retry reads the folded state.
+      if (await rail.isVisible()) {
+        await expect(rail).toContainText('Launched Google Chrome', { timeout: 1000 })
+      }
       // The mark says the extension records too, and the bar is measured with it.
       await expect(controls.getByTestId('rec-plus-extension')).toHaveText('+ extension', {
         timeout: 1000

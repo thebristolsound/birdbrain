@@ -122,7 +122,7 @@ button it changes.
 | 2.2 | `feat/chrome-2.2-one-stop-control` | #2229 | Merged on 2026-11-17 as `5c21ba25`. The review passed at `267b53a3` on its second round with six findings, none blocking, and a comment on the pull request answers them |
 | 6.1 | `feat/chrome-6.1-status-tiers` | #2230 | Merged on 2026-11-18 as `1ef4456a`, under the maintainer's override label after two reviews with no blocking finding. Two comments on the pull request answer the findings |
 | 5.2 | `feat/chrome-5.2-labelled-rail` | #2231 | Merged on 2026-11-18 as `8c7f99d6`. The review passed at `c08d4869` with fourteen findings, none blocking |
-| 5.3 | `feat/chrome-5.3-case-menu` | #2232 | Next for review, based on `main`, with the two fixes from the review of #2231 as commits `4b81b23e` and `8c3a4f60` |
+| 5.3 | `feat/chrome-5.3-case-menu` | #2232 | In review at `4ec8808e`, based on `main`, after two fix rounds. It holds the two fixes from the review of #2231 and six commits for its own reviews |
 | 5.4 | `feat/chrome-5.4-launch-control` | #2233 | Draft, based on the 5.3 branch |
 | 5.5 | `feat/chrome-5.5-one-row` | #2234 | Draft, based on the 5.4 branch |
 | 5.6 | `feat/chrome-5.6-docs` | #2235 | Draft, based on the 5.5 branch |
@@ -217,6 +217,22 @@ What the slices found that the plans did not say:
   it. Merging these up conflicts on one line of `docs/agents/architecture.md` at each branch,
   where the branch's own line is kept with the wording fix, and on `TopBar.tsx` from 5.3 into
   5.4, where the 5.4 side is kept.
+- The first review of #2232 passed, and its findings were behaviour an Operator would meet,
+  so the maintainer chose, in a Claude Code session on 2026-11-18, to fix them before the
+  merge. What the Case menu taught:
+  - A dialog opened from the top bar renders through a portal. Inside the bar it comes before
+    the search, which keeps a layer of its own, and the search sits over it.
+  - The top bar drags the window, and its rule exempts buttons, inputs and links. Anything
+    else that takes the pointer there needs `[app-region:no-drag]`.
+  - State that has to outlive the Case menu does not live in it. The menu leaves the screen
+    on the dashboard and in Settings, so a running archive export and its failure are kept in
+    a store of their own in `useCaseExport.ts`, keyed by Case. A store's hook is named
+    `use…`, or the React compiler does not treat it as a hook and the tests fail on a changed
+    hook order.
+  - The second review blocked on the description: it said a guard held on every route when
+    it held on one, and that one test file covered every fix. A description says what the
+    code does and names each test file, and says nothing about earlier review rounds, which
+    the reviewers cannot read.
 - This file is on `main` since #2236. Later updates ride on the 5.6 branch, the docs slice.
 - The linked WSL machine stopped answering on 2026-11-18. Preflights then ran on Omarchy, in
   about ten minutes each, after the scratch tree's test image library was rebuilt.

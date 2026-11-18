@@ -53,7 +53,7 @@ describe('panelView', () => {
 })
 
 describe('railFits', () => {
-  // The room beside the 48-pixel side rail: the Captures screen with its details panel folded
+  // The room beside the 72-pixel side rail: the Captures screen with its details panel folded
   // takes 240 + 7 + 360 + 40, and on the Wayback tab 360 + 436 + 40.
   it('docks the rail once the folded Captures screen and the rail both fit', () => {
     expect(PANEL_WIDTH_PX).toBe(320)

@@ -29,7 +29,7 @@ const SECTION_PATHS = {
   data: '/cases/$caseId/data'
 } as const satisfies Record<SidebarSection, string>
 
-// The rail on Case screens: each section under its own label, so the rail names where the
+// The rail on Case screens: each section's label under its icon, so the rail names where the
 // Operator is, and Settings at the foot. Its width is SIDE_RAIL_PX in captureColumns.ts, which
 // the Captures screen and the Capture Session dock measure against.
 export function Sidebar() {

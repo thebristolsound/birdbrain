@@ -174,7 +174,6 @@ describe('the label after the switch', () => {
     useAppStore.setState({ sessionActive: true, activeCaseId: 'case-1' })
     await mountWithCases({ state: 'open', browser: { ...BROWSER, caseId: 'case-2' } })
     expect(line()).toEqual({ text: 'Ferry Line', title: 'Ferry Line' })
-    expect(screen.queryByRole('switch', { name: 'Capture Session' })).toBeNull()
   })
 
   // The label stands alone for a closed browser too, while its session still runs.

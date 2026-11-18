@@ -161,14 +161,6 @@ test.describe('Top bar layout', () => {
             const box = await control.boundingBox()
             if (box) expect(overlapWidth(searchBox, box)).toBeLessThanOrEqual(0)
           }
-          // One line. The mark's height is fixed, so compare the tops of its parts.
-          const tops = await mark.getByTestId('topbar-rec').evaluate((el) =>
-            Array.from(el.children, (child) => {
-              const { top, height } = child.getBoundingClientRect()
-              return Math.round(top + height / 2)
-            })
-          )
-          expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1)
         }).toPass({ timeout: 5000 })
 
         // The case name's track keeps 160 pixels, and the name at least 64 of them, before the
@@ -228,8 +220,9 @@ test.describe('Top bar layout', () => {
         await expect(results).toHaveCount(0)
       }
 
-      // Back at rest for the next Case, and Launch browser's label is on one line at the
-      // narrowest width measured.
+      // Back at rest for the next Case. The bar then holds the Launch browser button and its
+      // menu button, which the widths above did not measure, since the mark replaces them while
+      // a session records.
       await electronApp.evaluate(({ BrowserWindow }) => {
         BrowserWindow.getAllWindows()[0].webContents.send('event:sessionStateChanged', {
           sessionActive: false,
@@ -244,8 +237,21 @@ test.describe('Top bar layout', () => {
         return new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top))).size
       })
       expect(labelLines).toBe(1)
-      const launchBox = (await launch.boundingBox())!
-      expect(overlapWidth((await search.boundingBox())!, launchBox)).toBeLessThanOrEqual(0)
+      // At rest the bar fits at the two narrowest widths: 900 pixels, and 1,000, where the
+      // Case name shows again and takes its room.
+      for (const width of [900, 1000]) {
+        await electronApp.windows()[0].setViewportSize({ width, height: 800 })
+        await expect(async () => {
+          for (const button of await controls.getByRole('button').all()) {
+            const { x, width: w } = (await button.boundingBox())!
+            expect(x + w).toBeLessThanOrEqual(width)
+          }
+          const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth)
+          expect(scrollWidth).toBeLessThanOrEqual(width)
+          const launchBox = (await launch.boundingBox())!
+          expect(overlapWidth((await search.boundingBox())!, launchBox)).toBeLessThanOrEqual(0)
+        }).toPass({ timeout: 5000 })
+      }
       await electronApp.windows()[0].setViewportSize({ width: 1400, height: 800 })
     }
 

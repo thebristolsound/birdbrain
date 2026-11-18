@@ -334,6 +334,8 @@ describe('the sync state beside the Case name', () => {
     expect(screen.getByRole('tooltip').textContent).toContain('including a system VPN’s own')
     // It is a control of its own, not part of the button that opens the menu.
     expect(trigger().contains(notice)).toBe(false)
+    // Outside a button, it has to leave the bar's window drag region itself.
+    expect(notice.className).toContain('[app-region:no-drag]')
   })
 
   it('shows no network notice on a Direct Egress', async () => {
@@ -343,6 +345,14 @@ describe('the sync state beside the Case name', () => {
   })
 })
 
+// A dialog opened from the menu renders at the end of the document, not beside the Case name,
+// where the top bar's search would paint over it.
+function expectOutsideTheBar(dialog: HTMLElement) {
+  let top = dialog
+  while (top.parentElement && top.parentElement !== document.body) top = top.parentElement
+  expect(top.contains(trigger())).toBe(false)
+}
+
 describe('exporting from the Case menu', () => {
   it('opens the export dialog from Export evidence report, and hands focus back on close', async () => {
     setup()
@@ -351,6 +361,7 @@ describe('exporting from the Case menu', () => {
 
     fireEvent.click(item)
     const dialog = screen.getByRole('dialog', { name: 'Export case' })
+    expectOutsideTheBar(dialog)
     expect(dialog.contains(document.activeElement)).toBe(true)
     // The closing menu takes no focus back a turn later: the dialog keeps it.
     await nextTurn()
@@ -451,6 +462,7 @@ describe('importing from the Case menu', () => {
     setup()
     fireEvent.click(within(openMenu()).getByTestId('case-menu-import'))
     const dialog = await screen.findByRole('dialog', { name: 'Import Case Archive' })
+    expectOutsideTheBar(dialog)
     expect(dialog.textContent).toContain('Ferry Line')
     fireEvent.click(screen.getByRole('button', { name: 'Close import' }))
     expect(screen.queryByRole('dialog')).toBeNull()

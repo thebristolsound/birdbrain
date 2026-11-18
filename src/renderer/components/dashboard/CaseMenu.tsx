@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence } from 'motion/react'
@@ -392,12 +393,14 @@ function NameMenu({ caseId, caseData }: Extract<CaseMenuProps, { place: 'name' }
         </MenuContent>
       </Menu>
 
+      {/* The top bar drags the window, and its rule exempts buttons and inputs only. This notice
+          is neither, so it opts out itself, or the pointer could not reach its tooltip. */}
       {sync?.glyph && (
         <span
           tabIndex={0}
           aria-label={COPY.glyphLabel}
           data-testid="case-network-notice"
-          className="group/notice relative shrink-0"
+          className="group/notice relative shrink-0 [app-region:no-drag]"
         >
           <TriangleAlert size={12} className="text-warning-fg" />
           <span
@@ -433,16 +436,25 @@ function NameMenu({ caseId, caseData }: Extract<CaseMenuProps, { place: 'name' }
         </div>
       )}
 
-      <AnimatePresence>
-        {showReport && caseData && (
-          <ExportDialog
-            caseId={caseData.id}
-            caseName={caseData.name}
-            onClose={() => setShowReport(false)}
-          />
-        )}
-      </AnimatePresence>
-      {importing.report && <ImportCaseDialog report={importing.report} onClose={importing.close} />}
+      {/* The dialogs render at the end of the document. Inside the bar they would come before
+          the search, which keeps a layer of its own, and its results would sit over them. */}
+      {createPortal(
+        <>
+          <AnimatePresence>
+            {showReport && caseData && (
+              <ExportDialog
+                caseId={caseData.id}
+                caseName={caseData.name}
+                onClose={() => setShowReport(false)}
+              />
+            )}
+          </AnimatePresence>
+          {importing.report && (
+            <ImportCaseDialog report={importing.report} onClose={importing.close} />
+          )}
+        </>,
+        document.body
+      )}
     </div>
   )
 }

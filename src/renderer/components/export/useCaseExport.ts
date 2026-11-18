@@ -1,7 +1,6 @@
-import { useEffect } from 'react'
 import { create } from 'zustand'
 import type { ArchiveExportResult } from '@shared/ipc'
-import { useCasesMutations } from '@renderer/lib/queries'
+import { useCasesMutations } from '@renderer/lib/api/cases'
 import { notifyExportWritten } from '@renderer/components/export/exportNotice'
 
 function messageOf(err: unknown): string {
@@ -35,26 +34,21 @@ export function useCaseExport(caseId: string) {
   const progress = useCaseExports((s) => s.pending[caseId])
   const archiveError = useCaseExports((s) => s.failed[caseId] ?? '')
 
-  useEffect(() => {
-    const unsubscribe = window.birdbrain.onArchiveProgress((event) => {
-      const { caseId: id, step, percent } = event
-      // Only an export started here is tracked, so progress for any other Case is not kept.
-      if (id === undefined) return
-      useCaseExports.setState((s) =>
-        id in s.pending ? { pending: { ...s.pending, [id]: { step, percent } } } : s
-      )
-    })
-    return unsubscribe
-  }, [])
-
   async function startArchive() {
     const id = caseId
-    // One archive export per Case at a time, whatever started the first.
-    if (id in useCaseExports.getState().pending) return
     useCaseExports.setState((s) => ({
       pending: { ...s.pending, [id]: { step: 'Preparing archive…', percent: 0 } },
       failed: without(s.failed, id)
     }))
+    // The export listens for its own steps for as long as it runs, whether or not the menu is
+    // on screen, so coming back shows how far it has got. Steps of any other Case's export,
+    // such as one the Members tab started, are not its to keep.
+    const stopListening = window.birdbrain.onArchiveProgress(({ caseId: from, step, percent }) => {
+      if (from !== id) return
+      useCaseExports.setState((s) =>
+        id in s.pending ? { pending: { ...s.pending, [id]: { step, percent } } } : s
+      )
+    })
     let written: ArchiveExportResult | null = null
     let failure: string | null = null
     try {
@@ -67,6 +61,7 @@ export function useCaseExport(caseId: string) {
     if (written && !written.canceled && written.filePath) {
       notifyExportWritten('Archive saved', written.filePath, written.filePath)
     }
+    stopListening()
     const failed = failure
     useCaseExports.setState((s) => ({
       pending: without(s.pending, id),

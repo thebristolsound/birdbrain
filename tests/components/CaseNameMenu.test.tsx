@@ -451,6 +451,8 @@ describe('exporting from the Case menu', () => {
     expect(progress.getAttribute('title')).toBe('Bundling captures... — 55%')
     act(() => progressCb?.({ caseId: 'other-case', step: 'Should not show', percent: 99 }))
     expect(screen.queryByText(/Should not show/)).toBeNull()
+    // Another Case's steps leave no record behind, which would hold that Case's items for good.
+    expect(Object.keys(useCaseExports.getState().pending)).toEqual(['case-1'])
 
     const menu = openMenu()
     expect(isDisabledItem(within(menu).getByTestId('case-menu-export-report'))).toBe(true)
@@ -501,9 +503,13 @@ describe('exporting from the Case menu', () => {
     fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
     await screen.findByTestId('case-export-progress')
     first.unmount()
+    // The export keeps listening while the menu is away, so the step shown on return is current.
+    act(() => progressCb?.({ caseId: 'case-1', step: 'Bundling captures...', percent: 55 }))
 
     setup()
-    expect(screen.getByTestId('case-export-progress').textContent).toBe('Preparing archive… — 0%')
+    expect(screen.getByTestId('case-export-progress').textContent).toBe(
+      'Bundling captures... — 55%'
+    )
     const menu = openMenu()
     expect(isDisabledItem(within(menu).getByTestId('case-menu-export-report'))).toBe(true)
     expect(isDisabledItem(within(menu).getByTestId('case-menu-export-archive'))).toBe(true)

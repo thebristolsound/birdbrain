@@ -478,7 +478,11 @@ describe('StatusGroup announcements and popover', () => {
     useAppStore.setState({ captureStats: { successCount: 1, failCount: 1, skipCount: 0 } })
     renderWith({ kind: 'direct' }, false)
     const button = await screen.findByTestId('status-group')
-    await waitFor(() => expect(button.dataset.severity).toBe('danger'))
+    // The failure is a problem from the first render, so wait for the advisory itself.
+    await waitFor(() =>
+      expect(button.getAttribute('aria-label')).toContain('Egress: Direct · VPN not seen')
+    )
+    expect(button.dataset.severity).toBe('danger')
     expect(egressDot(button).dataset.severity).toBe('nominal')
     expect(egressDot(button).className).toContain('bg-text-faint')
   })

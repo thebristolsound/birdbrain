@@ -115,8 +115,8 @@ button it changes.
 | 5.1a | `feat/chrome-5.1a-shared-menu` | #2227 | Merged on 2026-11-17 as `4fb88fce`, under the maintainer's override label after three reviews with no blocking finding |
 | 2.1 | `feat/chrome-2.1-recording-mark` | #2228 | Merged on 2026-11-17 as `396ce264`. The review passed at `86cdaf8e` with fifteen findings, none blocking, and a comment on the pull request answers them |
 | 2.2 | `feat/chrome-2.2-one-stop-control` | #2229 | Merged on 2026-11-17 as `5c21ba25`. The review passed at `267b53a3` on its second round with six findings, none blocking, and a comment on the pull request answers them |
-| 6.1 | `feat/chrome-6.1-status-tiers` | #2230 | Draft at `501d4069`, based on `main`, after two reviews with no blocking finding. It holds the two fixes from the review of #2229 and six commits for its own reviews, which the branches above it do not hold yet. It waits for the maintainer: see the note on the ring ruling below |
-| 5.2 | `feat/chrome-5.2-labelled-rail` | #2231 | Draft, based on the 6.1 branch |
+| 6.1 | `feat/chrome-6.1-status-tiers` | #2230 | Merged on 2026-11-18 as `1ef4456a`, under the maintainer's override label after two reviews with no blocking finding. Two comments on the pull request answer the findings |
+| 5.2 | `feat/chrome-5.2-labelled-rail` | #2231 | Next for review at `c08d4869`, based on `main` |
 | 5.3 | `feat/chrome-5.3-case-menu` | #2232 | Draft, based on the 5.2 branch |
 | 5.4 | `feat/chrome-5.4-launch-control` | #2233 | Draft, based on the 5.3 branch |
 | 5.5 | `feat/chrome-5.5-one-row` | #2234 | Draft, based on the 5.4 branch |
@@ -193,12 +193,13 @@ What the slices found that the plans did not say:
   says only that a merge has a conflict. Commits `89c9f4ad`, `f6e9615d` and `36ef51f3` answer
   the findings. The layout spec now writes "Egress unknown" into the status control before
   it measures, and the upper branches' versions of that spec need the same lines by hand
-  where a merge keeps their side.
+  where a merge keeps their side. They merged up cleanly through 5.4. The 5.5 branch
+  conflicted in the launched browser test of that spec, where both sides are kept: the rail
+  check with its short timeout, then the 5.5 check of the mark's "+ extension".
 - The second review of #2230, at `36ef51f3`, failed the same way on one source: the ruling
   that the advisory mark is a hollow ring has no record written by the maintainer, only the
-  plan line the slice adds. A third review would fail on it too. The maintainer either
-  confirms the ruling in a comment on the pull request, after which it is marked ready, or
-  applies the override label. Commits `2afd5249`, `2266e023` and `501d4069` answer the other
+  plan line the slice adds. A third review would fail on it too, so the maintainer chose the
+  override label, in a Claude Code session on 2026-11-18. Commits `2afd5249`, `2266e023` and `501d4069` answer the other
   findings: the ring has a border under forced colours, the layout spec reads the ring's
   computed style, and its launched browser test no longer waits five seconds on a folded
   panel, which had failed about one local run in four.
@@ -222,8 +223,8 @@ The stack is complete through 5.6. What is left of phase 5:
   the drafted wording in a Claude Code session on 2026-11-17, and commit `3a180c85` on the 5.6
   branch adds the bundle as `docs/design-handoff/2026-11-17-one-row-chrome/` with the row.
   The row links the phase 0 plan and cites decision 7 of the parent plan. Both are on this
-  branch only, so the link is broken on `main` until this branch merges. The maintainer has
-  been asked whether to open a pull request for this branch or to reword the row.
+  branch only, so the link is broken on `main` until this branch merges. The maintainer asked
+  on 2026-11-18, in a Claude Code session, for a pull request for this branch.
 - The parent plan's check boxes for slices 5.1 to 5.6, 2.1, 2.2 and 6.1, ticked as each pull
   request merges.
 

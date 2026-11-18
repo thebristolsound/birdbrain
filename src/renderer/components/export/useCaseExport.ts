@@ -7,16 +7,17 @@ function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+type Progress = { step: string; percent: number }
+
 // A Case Archive export started from the Case menu: its progress while it runs, and its failure
-// until the Operator dismisses it. Both belong to the Case on screen, so a switch of Case drops
-// them, and an export that settles after the switch reports nothing here.
+// until the Operator dismisses it. A running export belongs to its Case, not to the visit: it
+// stays pending while the Operator looks at another Case, so coming back shows it still running
+// and its item stays disabled. A failure shows only if that Case is on screen when it happens,
+// and a switch of Case drops it.
 export function useCaseExport(caseId: string) {
   const { exportArchive } = useCasesMutations()
   const [archiveError, setArchiveError] = useState('')
-  const [archiveProgress, setArchiveProgress] = useState<{ step: string; percent: number } | null>(
-    null
-  )
-  const [exportingCaseId, setExportingCaseId] = useState<string | null>(null)
+  const [pending, setPending] = useState<Record<string, Progress>>({})
 
   // Tracks the currently-displayed case so a still-in-flight export that resolves
   // after a case switch can detect it's stale (the async closure captured the old id).
@@ -24,26 +25,24 @@ export function useCaseExport(caseId: string) {
 
   useEffect(() => {
     caseIdRef.current = caseId
-    // Switching cases must not carry a stale export banner/progress across.
+    // Switching cases must not carry a stale export banner across.
     setArchiveError('')
-    setArchiveProgress(null)
-    setExportingCaseId(null)
   }, [caseId])
 
   useEffect(() => {
     const unsubscribe = window.birdbrain.onArchiveProgress((event) => {
-      if (event.caseId === caseId) {
-        setArchiveProgress({ step: event.step, percent: event.percent })
-      }
+      const { caseId: id, step, percent } = event
+      // Only an export started here is tracked, so progress for any other Case is not kept.
+      if (id === undefined) return
+      setPending((now) => (id in now ? { ...now, [id]: { step, percent } } : now))
     })
     return unsubscribe
-  }, [caseId])
+  }, [])
 
   async function startArchive() {
     const exportCaseId = caseId
     setArchiveError('')
-    setArchiveProgress({ step: 'Preparing archive…', percent: 0 })
-    setExportingCaseId(exportCaseId)
+    setPending((now) => ({ ...now, [exportCaseId]: { step: 'Preparing archive…', percent: 0 } }))
     let written: ArchiveExportResult | null = null
     let failure: string | null = null
     try {
@@ -56,18 +55,20 @@ export function useCaseExport(caseId: string) {
     if (written && !written.canceled && written.filePath) {
       notifyExportWritten('Archive saved', written.filePath, written.filePath)
     }
-    // A Case the Operator has left keeps nothing of this export.
+    // Only this export ends here, whichever Case is on screen.
+    setPending((now) => {
+      const next = { ...now }
+      delete next[exportCaseId]
+      return next
+    })
+    // A Case the Operator is not looking at shows no failure of this export.
     if (caseIdRef.current !== exportCaseId) return
     if (failure !== null) setArchiveError(failure)
-    setArchiveProgress(null)
-    setExportingCaseId(null)
   }
 
-  const isExporting = exportingCaseId === caseId
-  const progressLabel =
-    isExporting && archiveProgress
-      ? `${archiveProgress.step} — ${Math.round(archiveProgress.percent)}%`
-      : null
+  const progress = pending[caseId]
+  const isExporting = progress !== undefined
+  const progressLabel = progress ? `${progress.step} — ${Math.round(progress.percent)}%` : null
 
   return {
     startArchive,

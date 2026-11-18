@@ -23,7 +23,6 @@ import {
 const EMITTED_ANCHORS = new Set([
   'browser',
   'caseswitcher',
-  'export',
   'linkmap',
   'newcase',
   'noteeditor',

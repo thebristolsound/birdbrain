@@ -31,8 +31,8 @@ describe('arrangementFor', () => {
     expect(arrangementFor(1152)).toBe('panes')
     expect(arrangementFor(1140)).toBe('panes')
     expect(arrangementFor(1139)).toBe('tabs')
-    // The 900-pixel minimum window less the 48-pixel sidebar.
-    expect(arrangementFor(852)).toBe('tabs')
+    // The 900-pixel minimum window less the 72-pixel rail.
+    expect(arrangementFor(828)).toBe('tabs')
   })
 })
 

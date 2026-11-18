@@ -143,8 +143,8 @@ describe('CaptureViewer provenance chrome (#827)', () => {
   })
 
   // #466. The Wayback tab hides the details panel, the one other place the
-  // method shows, and at the default 1200px window it leaves the viewer 716px
-  // (1200 - 48px sidebar - 436px Wayback panel). The badge therefore has to be
+  // method shows, and at the default 1200px window it leaves the viewer 692px
+  // (1200 - 72px rail - 436px Wayback panel). The badge therefore has to be
   // back by 42rem (672px), not the 48rem the Download label waits for.
   it('keeps the method badge at the width the Wayback layout leaves the viewer', async () => {
     const duplicate = { ...capture, method: 'duplicate' as const, duplicateOfCaptureId: 'gone' }

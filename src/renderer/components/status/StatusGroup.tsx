@@ -36,7 +36,9 @@ const FG: Record<Severity, string> = {
 }
 const DOT: Record<Severity, string> = {
   nominal: 'h-1.5 w-1.5 bg-text-faint',
-  warning: 'h-[7px] w-[7px] shadow-[inset_0_0_0_1.5px_var(--color-warning-fg)]',
+  // Forced colours drop a shadow and keep a border, so the ring has one there.
+  warning:
+    'h-[7px] w-[7px] shadow-[inset_0_0_0_1.5px_var(--color-warning-fg)] forced-colors:border-2',
   danger: 'h-1.5 w-1.5 bg-danger-fg'
 }
 

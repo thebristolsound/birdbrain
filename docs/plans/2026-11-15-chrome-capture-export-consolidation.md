@@ -154,6 +154,8 @@ raised, where a critique proposal met ADR-0032, the standalone mock and #830.
    only?** ADR-0032 VPN rule 2 says the top bar shows the Egress and whether a VPN is seen.
    Ruling: yes. The wording stays in the status popover and is added to the capture control's
    menu and the launch dialog, and VPN rule 2 is amended to say so. Slice 6.1 builds it.
+   Ruled 2026-11-17: the advisory mark is a hollow amber ring, not a filled dot, so it differs
+   from the nominal dot by shape as well as hue.
 3. **May a launch carry the VPN warning inside the launch dialog, with no second dialog?**
    ADR-0032 VPN rule 3 says starting a Capture Session warns. Ruling: yes, for launches only.
    The inline form keeps all three offers from VPN rule 2 (continue, set up a proxy, stop

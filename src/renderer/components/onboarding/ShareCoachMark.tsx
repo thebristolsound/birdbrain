@@ -59,7 +59,7 @@ export function ShareCoachMark() {
   // Dismissed for this window before the settings write lands.
   const [dismissed, setDismissed] = useState(false)
 
-  // Inside a Case, where the pill is, and not while a tour chapter runs; never
+  // Inside a Case, where the Case name is, and not while a tour chapter runs; never
   // where sharing is unavailable, and never once a Case on the case list is
   // shared or joined. That list leaves out archived Cases (`listCases`), so an
   // installation whose every shared Case is archived can still see the mark.
@@ -126,16 +126,22 @@ export function ShareCoachMark() {
     })
   }, [settings?.onboardingChapters, update])
 
-  // Clicking the Case name itself is a dismissal too: it opens the menu that
-  // holds the sharing item, which the mark would otherwise sit over.
+  // Opening the Case name's menu is a dismissal too: the menu holds the sharing item, and the
+  // mark would otherwise sit over it. A pointer opens it with a click. The keyboard opens it
+  // with Enter, Space or the down arrow, and the menu's trigger lets no click through for those.
   useEffect(() => {
     if (!open) return
-    function onClick(e: MouseEvent): void {
+    function onAnchor(e: MouseEvent | KeyboardEvent): void {
+      if (e instanceof KeyboardEvent && !['Enter', ' ', 'ArrowDown'].includes(e.key)) return
       const target = e.target as Element | null
       if (target?.closest?.(`[data-tour="${ANCHOR}"]`)) dismiss()
     }
-    document.addEventListener('click', onClick, true)
-    return () => document.removeEventListener('click', onClick, true)
+    document.addEventListener('click', onAnchor, true)
+    document.addEventListener('keydown', onAnchor, true)
+    return () => {
+      document.removeEventListener('click', onAnchor, true)
+      document.removeEventListener('keydown', onAnchor, true)
+    }
   }, [dismiss, open])
 
   if (!open || !rect || !caseId) return null

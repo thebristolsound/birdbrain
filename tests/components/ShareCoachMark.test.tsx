@@ -168,6 +168,31 @@ describe('ShareCoachMark', () => {
     expect(updated).toEqual([{ onboardingChapters: { share: true } }])
   })
 
+  // The menu's trigger opens on these keys and lets no click through, so the mark reads the
+  // keys themselves.
+  it.each(['Enter', ' ', 'ArrowDown'])(
+    'treats the key %j on the Case name as a dismissal',
+    async (key) => {
+      const name = anchor()
+      install()
+      renderMark()
+      await screen.findByTestId('share-mark')
+      fireEvent.keyDown(name, { key })
+      await waitFor(() => expect(screen.queryByTestId('share-mark')).toBeNull())
+      expect(updated).toEqual([{ onboardingChapters: { share: true } }])
+    }
+  )
+
+  it('leaves the mark up for a key that does not open the menu', async () => {
+    const name = anchor()
+    install()
+    renderMark()
+    await screen.findByTestId('share-mark')
+    fireEvent.keyDown(name, { key: 'Tab' })
+    expect(screen.getByTestId('share-mark')).toBeTruthy()
+    expect(updated).toEqual([])
+  })
+
   it('keeps the chapters already recorded when it writes its own key', async () => {
     anchor()
     install({ settings: { onboardingChapters: { intro: true, ext: true, case: true } } })

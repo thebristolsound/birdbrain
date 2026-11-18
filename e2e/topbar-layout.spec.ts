@@ -29,8 +29,10 @@ async function createCase(page: Page, name: string): Promise<string> {
 
 test.describe('Top bar layout', () => {
   // The status group is widest when it names a problem, which shows an icon and a word at every
-  // width, so the layout is measured with a failed Capture logged. The VPN is left not seen: that
-  // is an advisory, a ring with no word, and it sits behind the problem here.
+  // width, so the layout is measured with a failed Capture logged. The longest problem word is
+  // "Egress unknown", and no switch makes the Egress unreadable, so the test writes that word
+  // into the control in place of the failure count before it measures. The VPN is left not seen:
+  // that is an advisory, a ring with no word, and it sits behind the problem here.
   test.beforeAll(() => {
     process.env.BIRDBRAIN_E2E_VPN = 'not-seen'
   })
@@ -85,6 +87,10 @@ test.describe('Top bar layout', () => {
       })
       const statusWord = controls.getByTestId('status-word')
       await expect(statusWord).toHaveText(/^\d failed$/)
+      // A stand-in for the widest state: the same control and icon, with the longest word.
+      await statusWord.evaluate((el) => {
+        ;(el.firstChild as Text).data = 'Egress unknown'
+      })
 
       // The viewport emulation below leaves the native window controls' room at what the window
       // opened with, so the room Linux's three buttons take is pinned here.
@@ -146,7 +152,9 @@ test.describe('Top bar layout', () => {
           .poll(async () => (await caseName.getAttribute('title'))?.startsWith(`${name} · `))
           .toBe(true)
 
-        // A problem's word takes room at every width.
+        // A problem's word takes room at every width, and the stand-in word is still the one
+        // measured.
+        await expect(statusWord).toHaveText('Egress unknown')
         const { width: wordWidth } = (await statusWord.boundingBox())!
         expect(wordWidth).toBeGreaterThan(30)
 

@@ -13,9 +13,10 @@ Reconciled on 2026-11-16 against the merged parent plan, the review notes left o
 #2205. #2205 did part of slice 2.1 before this phase started, under a rule the maintainer chose,
 so the parent plan's wording for 2.1 no longer matches the code. This plan follows the code.
 
-Slices 2.1, 2.2 and 2.4 need no drawing and can start at once. Slice 2.3 waits for frames E and
-F and questions 4 and 5 of
-`docs/plans/2026-11-15-consolidation-phase-0-design-bundle.md`.
+Slices 2.1, 2.2 and 2.4 need no drawing and can start at once. Slice 2.3 waited for frames E
+and F and questions 4 and 5 of
+`docs/plans/2026-11-15-consolidation-phase-0-design-bundle.md`. Decision 7 of the parent plan
+ruled on them on 2026-11-17, so it can start too.
 
 The rules every slice follows are in the parent plan under "Slices" and in `CLAUDE.md` under
 "Posting surfaces".
@@ -51,7 +52,7 @@ With a launched browser open and the extension connected, on the browser's own C
 for an extension-only session, which therefore has no panel and no other stop control than the
 switch. The switch is also the only control that starts an extension-only session; the launch
 dialog starts a session only by launching a browser. The parent plan's open question 1 covers
-what replaces that start.
+what replaces that start, and decision 7, answer 2, answers it.
 
 ## Slice 2.1: the mark says recording and for how long
 
@@ -109,8 +110,9 @@ Finding U1.
   when it is not the Case on screen", "names both sources while the extension is connected
   beside a launched browser") still pass with no switch beside them.
   `e2e/topbar-layout.spec.ts`: the row list in the launched-browser test loses the switch.
-  `e2e/round1-session.spec.ts` starts a session through the switch; confirm it runs
-  extension-only and still passes.
+  `e2e/vpn-warning.spec.ts` starts a session through the switch in the Case action bar, with
+  the extension connected and no launched browser; confirm it still passes.
+  `e2e/round1-session.spec.ts` does not use the switch.
 - **Screenshots.** Same states as 2.1, taken after it.
 - **Evidence tier.** Renderer chrome.
 - **Acceptance.**
@@ -135,8 +137,8 @@ and its answers 4 and 5 are the bundle's questions 4 and 5.
   - `CaptureSessionDock.tsx` renders no rail or strip of its own on Captures; a context value
     tells it the route hosts the panel. On every other section it behaves as today.
   - `captureColumns.ts` loses the docked-rail cases on Captures: `viewerMinPx` and
-    `detailsFoldRoomPx` no longer take `railDocked` there. Whether `DOCKED_VIEWER_MIN_PX`
-    survives is the bundle's question 5.
+    `detailsFoldRoomPx` no longer take `railDocked` there. `DOCKED_VIEWER_MIN_PX` stays at
+    480 pixels, as the point where the one right panel folds to a strip (decision 7, answer 5).
   - The folded strip shows the recording dot and the tab count, as `Strip` does today.
   - Pop out and Dock keep working from the tab.
 - **Files.** `src/renderer/routes/cases/$caseId/captures.tsx`,

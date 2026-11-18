@@ -79,7 +79,9 @@ Finding U2.
   place that writes the name. It takes the label and an Evidence impact section, and waits for
   the maintainer's review.
 - **Known answer.** A test shows the dialog saves the same value the Operator tab saves for the
-  same input, trimmed the same way, and refuses the same empty and whitespace names.
+  same input, and refuses the same empty and whitespace names. `OperatorConfig.tsx` trims only
+  to test for a blank name and saves the name as typed, so the dialog does not trim what it
+  saves either.
 - **Acceptance.**
   - [ ] A first launch on a new profile needs no visit to Settings.
   - [ ] The saved name appears in Settings, on the Operator tab.
@@ -109,6 +111,11 @@ Findings U2 and C3. Decision 3 allows it.
   on a muted network. Without `answerVpnWarning`, main never marks the Case warned, so
   `VpnWarningDialog` returns at the next start, and "Do not warn on this network" never
   reaches the muted list.
+- **Open, for the maintainer.** Today `launch()` asks main when Launch is pressed. With the
+  question moved to when the dialog opens and `confirmContact` removed, nothing asks again at
+  launch, so if the network changes while the dialog is open the launch follows the earlier
+  answer. A review comment on #2236 raised this. Whether the dialog asks again on Launch is
+  not ruled.
 - **What does not change.** `VpnWarningDialog` and every other caller of `confirmContact` and
   `requireContact`: the Capture Session switch, recaptures, pasted URLs and Wayback lookups.
 - **ADR-0032.** The same pull request amends VPN rule 3. Proposed wording to add: "When the

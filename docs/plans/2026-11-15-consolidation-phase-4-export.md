@@ -13,8 +13,9 @@ Reconciled on 2026-11-16 against the merged parent plan, the review notes left o
 which moved the export menu into the top bar, and #2208, which added a known-answer test for
 export bytes.
 
-Slice 4.1 is copy and can start at once. Slices 4.2 to 4.4 wait for frame G and question 7 of
-`docs/plans/2026-11-15-consolidation-phase-0-design-bundle.md`.
+Slice 4.1 is copy and can start at once. Slices 4.2 to 4.4 waited for frame G and question 7
+of `docs/plans/2026-11-15-consolidation-phase-0-design-bundle.md`. Decision 7 of the parent
+plan ruled on both on 2026-11-17, so they can start too.
 
 The rules every slice follows are in the parent plan under "Slices" and in `CLAUDE.md` under
 "Posting surfaces". Three files here are `blocking` in
@@ -92,8 +93,8 @@ Findings U3, C1 and C2. No behaviour changes.
 - **Must not change.** Any string `src/main/services/export.ts` or `reportHtml.ts` writes into a
   package, the preset ids, and `ExportSelection`. `tests/main/services/export.test.ts` names
   the third preset in a test title and a comment only; those may follow the new wording, and
-  the test itself, which shows the two evidence presets differ by exactly `notes.md`, is not
-  touched.
+  the test itself, which shows the two evidence presets' entry names differ by exactly
+  `notes.md`, is not touched.
 - **Files.** `ExportMenu.tsx`, `ExportDialog.tsx`, `CaptureSelectionBar.tsx`,
   `SignalsOverview.tsx`, `SignalDetailRail.tsx`, `HeroSection.tsx`, `entityMenu.ts`.
 - **Tests.** `tests/components/ExportMenu.test.tsx`, `ExportDialog.test.tsx`,
@@ -118,7 +119,7 @@ Findings U3, C1 and C2. No behaviour changes.
 
 ## Slice 4.2: one "Export" entry and one dialog
 
-Finding U3. Waits for the bundle.
+Finding U3. No longer waits: decision 7 of the parent plan ruled on the bundle.
 
 - **Change.**
   - `ExportMenu.tsx` becomes a button that opens `ExportDialog`. The Case Archive's progress
@@ -135,17 +136,19 @@ Finding U3. Waits for the bundle.
     Notes off as Evidence Package with the checkbox ticked.
 - **Kept as they are.** ADR-0010's line between an Evidence Package and a Working Copy, and
   ADR-0009's rule that a selection ships the full Manifest, with its note in the scope row.
-- **Known-answer test.** `tests/main/services/export.test.ts` already shows, at the byte level,
-  that an Evidence Package without Notes differs from one with them by exactly `notes.md`; the
-  checkbox rests on that. Two additions:
+- **Known-answer test.** `tests/main/services/export.test.ts` already shows that an Evidence
+  Package without Notes holds the same entry names as one with them, less `notes.md`. It
+  compares the names and not the bytes of the other members, so the checkbox rests on the
+  second addition below for those. Two additions:
   - A unit test over the choice list pins three equalities against the selections on `main`:
     Evidence Package with Notes equals today's `full` selection; with the checkbox ticked it
     equals today's third preset's selection; Working Copy equals today's `working` selection.
   - `exportKnownAnswer.test.ts` gains a case for each of those three selections as the dialog
     submits them, with `annotations: 'burned'`, since none of its nine cases uses one. The
     cases are added and pinned before the dialog changes, so the same answers hold after it.
-  `e2e/export.spec.ts` still exports each choice and runs Package Verification on the two
-  Evidence Packages, as a check that the path works, not as proof of unchanged bytes.
+  `e2e/export.spec.ts` still exports each choice and reads the names of the entries each one
+  writes, as a check that the path works, not as proof of unchanged bytes. It does not run
+  Package Verification.
 - **Files.** `ExportMenu.tsx`, `ExportDialog.tsx`, and their two test files. Moving the
   ExportMenu cases out of `CaseSubhead.test.tsx` here closes #841.
 - **Screenshots.** The dialog on each choice, for a whole Case and for a selection, before and
@@ -158,8 +161,8 @@ Finding U3. Waits for the bundle.
   - [ ] The Case has one export entry point in the chrome.
   - [ ] Each choice shows its file type before the Operator presses Export.
   - [ ] The three equalities hold.
-  - [ ] A Case Archive exported from the dialog imports on a second profile, as
-    `case-archive.spec.ts` checks today.
+  - [ ] A Case Archive exported from the dialog imports as a new Case, as
+    `case-archive.spec.ts` checks today within one profile.
 
 ## Slice 4.3: Import beside Export
 
@@ -179,13 +182,16 @@ Finding U3. Waits for the bundle.
 
 ## Slice 4.4: reconcile the open redesign issues
 
-After the maintainer rules on the bundle.
+The maintainer ruled on the bundle on 2026-11-17, and answer 7 of decision 7 in the parent
+plan gives the verdicts on both issues.
 
 - [ ] #1555: for each of its rows, write on the issue whether the bundle keeps, changes or
   supersedes it. The row "Menu: which item opens the dialog" is superseded by 4.2. The rows on
   the primary button's label, the dialog's width and the chain-of-custody preview card depend
-  on frame G.
-- [ ] #1547: the same, for the Overview's tag cards, against frame I.
+  on frame G: one entry supersedes the export menu row, the preview card is not drawn, and the
+  dialog keeps its width.
+- [ ] #1547: the same, for the Overview's tag cards, against frame I, which supersedes the
+  Selectors and Tags cards and keeps the heading, sources and capture strip rows.
 - [ ] #846: the dialog hardcodes zip while two other formats are unreachable. Decide with the
   bundle whether those formats become choices or are removed from the main side.
 - [ ] #841: closed by 4.2.

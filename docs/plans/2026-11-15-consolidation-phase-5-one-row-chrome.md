@@ -14,11 +14,11 @@ Reconciled on 2026-11-16 against the merged parent plan, the review notes left o
 so the parent plan's file names for slices 5.3 to 5.5 no longer match the code. This plan
 follows the code.
 
-Slice 5.1 can start at once. Slices 5.2 to 5.6 wait for the maintainer's ruling on
+Slice 5.1 can start at once. Slices 5.2 to 5.6 waited for the maintainer's ruling on
 `docs/plans/2026-11-15-consolidation-phase-0-design-bundle.md`, frames A to D and questions 1,
-3, 6, 8, 9 and 10. Slices 5.4 and 5.5 also wait for the parent plan's open question 1. They go
-in the order written: each one leaves the app working, and the row under the top bar is removed
-only when nothing is left in it.
+3, 6, 8, 9 and 10. Slices 5.4 and 5.5 also waited for the parent plan's open question 1. They
+go in the order written: each one leaves the app working, and the row under the top bar is
+removed only when nothing is left in it.
 
 Ruled 2026-11-17: decision 7 of the parent plan accepts the bundle's answers to all ten
 questions and answers open question 1, so no slice here waits. Where a slice below says an
@@ -39,8 +39,8 @@ The rules every slice follows are in the parent plan under "Slices" and in `CLAU
 | Launch browser | `TopBar.tsx`, on Case screens | Filled, on every screen | 5.4 |
 | Recording mark | `CaseActionBar.tsx`, `TopBar.tsx` | The running state of that control | 5.4 |
 | Capture Session button | `TopBar.tsx`, `CaptureSessionButton.tsx` | Replaced by that control | 5.4 |
-| Capture Session switch | `SessionControls.tsx` | Per the parent plan's open question 1 | 5.5 |
-| The label after the switch | `SessionControls.tsx` | Per the bundle's question 10 | 5.5 |
+| Capture Session switch | `SessionControls.tsx` | "Start Capture Session in Chrome" in the Launch browser menu (decision 7, answer 2) | 5.5 |
+| The label after the switch | `SessionControls.tsx` | The recording mark (decision 7, answer 10) | 5.5 |
 
 ## Slice 5.1: a shared menu component
 
@@ -104,10 +104,12 @@ Finding H1.
 - **Files.** `src/renderer/components/layout/Sidebar.tsx`,
   `src/renderer/components/layout/TopBar.tsx`,
   `src/renderer/components/captures/captureColumns.ts`.
-- **Tests.** No test file covers `Sidebar.tsx` today; add `tests/components/Sidebar.test.tsx`
-  for the labels, the active state and Settings. Update `TopBar.test.tsx` ("orders Share,
-  Export, Launch browser, the status group and Settings"),
-  `tests/renderer/captureColumns.test.ts` and `CaseSettingsEntryPoints.test.tsx`. End to end:
+- **Tests.** `Sidebar.tsx` has no test file of its own today; add
+  `tests/components/Sidebar.test.tsx` for the labels, the active state and Settings. Two files
+  render `Sidebar` and are updated: `RecentCasesMotion.test.tsx`, whose two rail cases can move
+  to the new file, and `CaseSettingsEntryPoints.test.tsx`. Update `TopBar.test.tsx` ("orders
+  Share, Export, Launch browser, the status group and Settings") and
+  `tests/renderer/captureColumns.test.ts` as well. End to end:
   `topbar-layout.spec.ts` and `onboarding-tour.spec.ts`.
 - **Screenshots.** Each section and the dashboard at 1440 and 1100, before and after.
 - **Docs.** `tester-guide.mdx` says "click the house icon (**Home**) at the top of the left
@@ -166,7 +168,8 @@ Findings H2 and U10. Decision 1.
 
 ## Slice 5.4: one primary capture control in the top bar
 
-Findings U4 and C4. Decision 4. Waits for the parent plan's open question 1.
+Findings U4 and C4. Decision 4. No longer waits: decision 7, answer 2, answers the parent
+plan's open question 1.
 
 Since #2205 `TopBar.tsx` already renders Launch browser on Case screens, as an outline button
 that is disabled while a launched browser is open. This slice changes its weight, its reach and
@@ -184,9 +187,9 @@ what it becomes while a session runs.
   - It replaces `CaptureSessionButton.tsx` and the two places `TopBar.tsx` renders
     `RecordingMark` by itself.
   - `CaseActionBar.tsx` loses the mark.
-- **The menu starts no Capture Session.** As listed, it launches a browser, which starts a
-  session, and it pastes URLs. Nothing in it starts an extension-only session. The parent
-  plan's open question 1 decides whether it gains an item that does, and the item keeps the
+- **The menu gains an item that starts a Capture Session.** As first listed, it launched a
+  browser, which starts a session, and it pasted URLs. Nothing in it started an extension-only
+  session. Decision 7, answer 2, adds "Start Capture Session in Chrome", and the item keeps the
   warning ADR-0032 VPN rule 3 requires before a start.
 - **Files.** A new component under `src/renderer/components/status/`, `TopBar.tsx`,
   `CaseActionBar.tsx`, `CaptureSessionButton.tsx` (removed), `RecordingMark.tsx`.
@@ -206,14 +209,15 @@ what it becomes while a session runs.
 
 ## Slice 5.5: remove the row under the top bar
 
-Findings U5 and U1. Waits for the parent plan's open question 1 and lands with whatever takes
-over the start of an extension-only session.
+Findings U5 and U1. Lands after slice 5.4, whose menu takes over the start of an
+extension-only session (decision 7, answer 2).
 
 - **Change.**
   - By now `CaseActionBar.tsx` holds the section name and `SessionControls`. The rail names the
     section since 5.2.
-  - An extension-only Capture Session starts where the answer to open question 1 puts it. The
-    start path keeps `confirmContact(…, 'session')`, the warning ADR-0032 VPN rule 3 requires,
+  - An extension-only Capture Session starts from "Start Capture Session in Chrome" in the
+    Launch browser menu, where decision 7, answer 2, puts it. The start path keeps
+    `confirmContact(…, 'session')`, the warning ADR-0032 VPN rule 3 requires,
     and activates the Case before starting, as `handleToggleSession` does. It stops from the
     capture control's menu.
   - The two facts the label after the switch still states go where the bundle's question 10
@@ -227,8 +231,8 @@ over the start of an extension-only session.
 - **Tests.** `CaseActionBar.test.tsx`, `SessionControls.test.tsx` and
   `SessionControlsLaunchedBrowser.test.tsx` are removed; their cases for starting, stopping, the
   stop confirmation and the two label facts move to the control's tests.
-  `e2e/topbar-layout.spec.ts` is rewritten for one row. `e2e/round1-session.spec.ts` starts its
-  session the new way.
+  `e2e/topbar-layout.spec.ts` is rewritten for one row. `e2e/vpn-warning.spec.ts` starts a
+  session through the switch in the Case action bar, so it starts its session the new way.
 - **Screenshots.** Every section at 1440 and 1100, at rest and recording, before and after.
 - **Evidence tier.** Renderer chrome.
 - **Acceptance.**

@@ -4,12 +4,17 @@
 
 This is the detail plan for phase 6 of
 `docs/plans/2026-11-15-chrome-capture-export-consolidation.md` (the parent plan, #2201). "VPN not
-seen" is a permanent amber word in the chrome for any Operator whose VPN the check cannot see
-(finding U6), and below the `xl` width the control shows its state by colour and a small icon
-only (A2). Decision 2 of the parent plan lets the advisory show as a coloured dot. This phase is
-one slice. Code references are to `origin/main` at `ae4b50a`.
+seen" was a permanent amber word in the chrome for any Operator whose VPN the check cannot see
+(finding U6), and below the `xl` width the control showed its state by colour and a small icon
+only (A2). Decision 2 of the parent plan lets the advisory show as a mark with no word, ruled
+a hollow amber ring on 2026-11-17. This phase is one slice. Code references are to
+`origin/main` at `ae4b50a`.
 
 Reconciled on 2026-11-16 against the merged parent plan and the review notes left on #2201.
+
+Slice 6.1 merged on 2026-11-18 as #2230. "How the control decided before the slice" describes
+`ae4b50a`. On `main` now, `statusModel` gives a `warning` no word and `StatusGroup.tsx` gives
+it no icon and draws its dot as the ring.
 
 ADR-0032's Decision section has two numbered lists. The rules cited here are in the second,
 under "Birdbrain pushes the Operator toward a VPN, but only warns". As in the parent plan, they
@@ -22,7 +27,7 @@ can follow the code if the code lands first.
 The rules every slice follows are in the parent plan under "Slices" and in `CLAUDE.md` under
 "Posting surfaces".
 
-## How the control decides today
+## How the control decided before the slice
 
 `statusModel` in `statusGroupModel.ts` gives each of three signals a `Severity` of `nominal`,
 `warning` or `danger`:
@@ -55,13 +60,15 @@ Findings U6 and A2.
 - **Shape as well as colour.** After this change a problem differs from the other tiers by its
   icon and its word. An advisory differs from nominal by a hollow ring in place of a filled dot,
   as well as by colour. The maintainer ruled the ring on 2026-11-17, on frame H of the design
-  canvas: in light mode the amber mark and the nominal grey are 1.02:1 apart in luminance, so a
-  filled amber dot would differ by hue alone. A review comment on #2201 raised the same gap. The
+  canvas: in light mode the amber mark and the nominal grey are close in luminance, so a
+  filled amber dot would differ mostly by hue. The amended ADR-0032 gives the contrast of the
+  app's two colours as about 1.25:1. A review comment on #2201 raised the same gap. The
   amendment to VPN rule 2 says the advisory is a ring, and why.
 - **Where the words still appear.** The status popover's Egress row; the launch dialog's
   `launch-no-vpn` line; and, once slice 5.4 lands, the Egress row of the Launch browser
   control's menu.
-- **ADR-0032.** The same pull request amends VPN rule 2. Proposed wording to add: "In the top bar
+- **ADR-0032.** The same pull request amends VPN rule 2. The wording that merged is in the
+  ADR and differs from this proposal. Proposed wording to add: "In the top bar
   the Egress and a VPN not seen show as one dot of the status control, a hollow amber ring while
   no VPN is seen, with the words in the control's accessible name and its popover. The words are
   printed where a contact starts: the launch dialog and the capture menu." The amendment

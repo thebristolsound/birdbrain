@@ -92,15 +92,18 @@ wrapper `span`, which only a pointer reaches.
   reason in a `title`. `OperatorConfig.tsx` shows `aria-describedby` wired to a message.
 - **Files.** `src/renderer/components/layout/TopBar.tsx`.
 - **Tests.** `tests/components/TopBar.test.tsx`, in the "Launch browser" group: while a browser
-  is open the button is focusable and has an accessible description equal to the refusal's
-  title, and neither a click nor Enter or Space calls `openStartDialog`.
+  is starting or closing the button is focusable and has an accessible description equal to
+  the refusal's title, and neither a click nor Enter or Space calls `openStartDialog`. Those
+  are the two refused states in which the button renders: since slice 2.1 merged (#2228),
+  `TopBar.tsx` does not render it while a browser is open.
 - **Screenshots.** None: the rendered result is the same. The pull request says so.
 - **Evidence tier.** Renderer chrome.
 - **Acceptance.**
   - [ ] A keyboard user can focus the button while it is refused and hears the reason.
   - [ ] Activating it while refused, by pointer or by keyboard, does nothing.
 - **Note.** Slice 2.1 hides this button while a browser is open, and 5.4 replaces it. This slice
-  still pays for the time between.
+  still pays for the time between. The stacked chrome slices leave it out for that reason:
+  see `docs/plans/2026-11-16-consolidation-and-copy-handoff.md`.
 
 ## Slice 1.4: take Recapture out of the add menu
 
@@ -150,9 +153,11 @@ there. The answer to the question has to hold for both cases.
 
 - **Change.** Each button gets the label the maintainer rules. No behaviour changes.
 - **Files.** `src/renderer/components/dashboard/cases/DataExplorer.tsx`.
-- **Tests.** `tests/components/DataExplorer.test.tsx` finds the buttons by test id, so only
-  assertions on the label change. Add a case that pins what each button passes to `verifyIds`
-  on a top-level node, on a narrower node, and for a derived file.
+- **Tests.** No test asserts either label today. `tests/components/DataExplorer.test.tsx`
+  checks only that both buttons are absent from the Unreviewed Captures view, and
+  `tests/components/DataExplorerContextMenu.test.tsx` clicks them by test id. Add a case that
+  pins each label, and one that pins what each button passes to `verifyIds` on a top-level
+  node, on a narrower node, and for a derived file.
 - **Screenshots.** The Data screen with a row selected, before and after.
 - **Evidence tier.** `blocking`. Labels only. The Evidence impact section shows that each label
   matches the Exhibits its button passes to `verifyIds`.

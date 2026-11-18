@@ -4,7 +4,7 @@ import { seedCapture, serverToken } from './fixtures/seed'
 // Seeds a case + a single MHTML capture, then exercises the new
 // CaptureDetailsPanel: panel renders at 400px, favorite toggle persists,
 // inline note saves on blur with a "Saved …" hint, and the panel collapses
-// to the 40px rail when the viewport drops below 1100px.
+// to the 40px rail when the viewport drops below 1124px.
 
 test.describe('Capture detail panel', () => {
   test('renders panel, persists favorite, saves inline note, collapses on narrow viewport', async ({

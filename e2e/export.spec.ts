@@ -78,7 +78,7 @@ async function stubSaveDialog(electronApp: ElectronApplication, filePath: string
 }
 
 async function openExportDialog(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Export', exact: true }).click()
+  await page.getByTestId('topbar-case-name').click()
   await page.getByRole('menuitem', { name: 'Export evidence report' }).click()
   await expect(page.getByRole('heading', { name: 'Export case' })).toBeVisible()
 }

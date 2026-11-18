@@ -119,7 +119,7 @@ test.describe('Case archive export/import round-trip', () => {
       await page.waitForURL(/#\/cases\/.+\/overview/)
 
       await stubSaveDialog(electronApp, archivePath)
-      await page.getByRole('button', { name: 'Export' }).click()
+      await page.getByTestId('topbar-case-name').click()
       await page.getByRole('menuitem', { name: 'Export case file' }).click()
       await expect(page.getByText('Archive saved')).toBeVisible({ timeout: 15000 })
 

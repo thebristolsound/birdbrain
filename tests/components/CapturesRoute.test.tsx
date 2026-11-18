@@ -124,7 +124,7 @@ const duplicateOf: Capture = {
   duplicateOfCaptureId: 'cap1'
 }
 
-// jsdom's viewport is 1024px wide, under the route's 1100px collapse
+// jsdom's viewport is 1024px wide, under the route's 1124px collapse
 // threshold, so the rail is the variant that mounts here.
 const OPEN_CONTROL = 'rail: open externally'
 // Delete lives only on the full details panel, and at this viewport the rail is
@@ -175,7 +175,7 @@ function renderRoute() {
 
 const NARROW_WIDTH = window.innerWidth
 
-// jsdom is 1024px wide, under the 1100px threshold, so the details column is
+// jsdom is 1024px wide, under the 1124px threshold, so the details column is
 // forced to its rail. Widening first is the only way to reach the docked panel.
 function renderRouteWide() {
   window.innerWidth = 1400
@@ -666,7 +666,7 @@ describe('CapturesRoute', () => {
 
   // #1831: the fold reads the screen's own width, so the Capture Session rail beside it folds
   // the details panel where the window alone would not. Before the first measurement it reads
-  // the window less the 48-pixel side rail, which is what the tests above run on.
+  // the window less the 72-pixel side rail, which is what the tests above run on.
   describe('the details fold beside the Capture Session rail', () => {
     let reportWidth: (width: number) => void
 

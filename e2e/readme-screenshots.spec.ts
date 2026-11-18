@@ -594,10 +594,7 @@ test.describe('README screenshots', () => {
     await page.waitForTimeout(300)
 
     // --- 4f. Export dialog ---------------------------------------------------
-    await page
-      .getByRole('button', { name: /export/i })
-      .first()
-      .click()
+    await page.getByTestId('topbar-case-name').click()
     await page.getByRole('menuitem', { name: /export evidence report/i }).click()
     await page.waitForTimeout(800)
     const purposeInput = page.getByPlaceholder(/Disclosure under/i)

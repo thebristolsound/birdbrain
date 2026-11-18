@@ -6,6 +6,7 @@ import {
   Menu,
   MenuContent,
   MenuItem,
+  MenuLabel,
   MenuSeparator,
   MenuShortcut,
   MenuTrigger
@@ -291,6 +292,44 @@ describe('Menu', () => {
     trigger().focus()
     await press('Enter')
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('menuitem')))
+  })
+
+  // For an item that swaps the menu's own items, as a delete confirmation does.
+  it('stays open, with focus left in the menu, for an item marked keepOpen', () => {
+    const onKeep = vi.fn()
+    render(
+      <Menu>
+        <MenuTrigger>Actions</MenuTrigger>
+        <MenuContent>
+          <MenuItem keepOpen onSelect={onKeep}>
+            Keep
+          </MenuItem>
+        </MenuContent>
+      </Menu>
+    )
+    fireEvent.click(trigger())
+    const keep = screen.getByRole('menuitem', { name: 'Keep' })
+    keep.focus()
+    fireEvent.click(keep)
+    expect(onKeep).toHaveBeenCalledOnce()
+    expect(screen.getByRole('menu')).toBeTruthy()
+    expect(document.activeElement).toBe(keep)
+  })
+
+  // Radix gives a label no role, so the menu's own name has to carry what it says.
+  it('hides its label from assistive technology', () => {
+    render(
+      <Menu>
+        <MenuTrigger>Actions</MenuTrigger>
+        <MenuContent aria-label="Harbour ledger review">
+          <MenuLabel>Harbour ledger review</MenuLabel>
+          <MenuItem>First</MenuItem>
+        </MenuContent>
+      </Menu>
+    )
+    fireEvent.click(trigger())
+    const menu = screen.getByRole('menu', { name: 'Harbour ledger review' })
+    expect(menu.querySelector('[aria-hidden="true"]')?.textContent).toBe('Harbour ledger review')
   })
 
   it('refuses a part rendered outside a menu', () => {

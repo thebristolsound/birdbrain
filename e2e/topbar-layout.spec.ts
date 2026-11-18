@@ -240,7 +240,7 @@ test.describe('Top bar layout', () => {
         timeout: 1000
       })
       if (await rail.isVisible()) await expect(rail).toContainText('Launched Google Chrome')
-      // The label after the switch names both sources, and the row is measured with it.
+      // The label names both sources with no switch before it, and the row is measured with it.
       await expect(actionBar.getByTestId('session-source-line')).toHaveText(
         'Launched Google Chrome, and the extension',
         { timeout: 1000 }

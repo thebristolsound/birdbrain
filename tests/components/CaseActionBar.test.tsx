@@ -77,8 +77,8 @@ describe("CaseActionBar as the Case's action row", () => {
     expect(screen.getByTestId('topbar-rec').textContent).toBe('Recording')
   })
 
-  // A browser that is closing or has closed is no longer the source. The session keeps running
-  // through the extension, and the panel says only that the browser closed.
+  // A browser that is closing or has closed is no longer the source. After one has closed, the
+  // session can keep running through the extension, and the panel says only that it closed.
   it.each([
     ['closing', { state: 'closing', browser: BROWSER }],
     ['closed', { state: 'closed', browser: BROWSER }]
@@ -116,7 +116,7 @@ describe("CaseActionBar as the Case's action row", () => {
     expect(screen.getByTestId('topbar-rec').textContent).toBe('Recordingextension')
   })
 
-  // The mark belongs to the switch that starts and stops the session, so nothing sits between
+  // The mark sits against the switch of the extension's session, so nothing sits between
   // them, and the row holds no other control. Share and Export needed the Case to render, which
   // this row no longer loads, so e2e/topbar-layout.spec.ts checks on an open Case that they and
   // Launch browser are gone from it.

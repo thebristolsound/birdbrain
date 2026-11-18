@@ -199,17 +199,23 @@ describe('CaptureSessionDock', () => {
 
   // The top bar's recording mark hides and shows a launched browser's panel.
   it('shows no rail and no strip while the panel is hidden, and takes neither width', async () => {
-    useAppStore.setState({ captureSessionPanelHidden: true })
     try {
-      mount()
+      const { client } = mount()
+      await act(() => client.refetchQueries({ queryKey: queryKeys.launchedBrowserStatus }))
       report(FITS)
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0))
-      })
+      // The browser is open and the rail is docked, so hiding has something to hide.
+      await screen.findByTestId('capture-session-rail')
+      expect(screen.getByTestId('screen').textContent).toBe('docked')
+
+      act(() => useAppStore.setState({ captureSessionPanelHidden: true }))
       expect(screen.queryByTestId('capture-session-rail')).toBeNull()
       expect(screen.queryByTestId('capture-session-strip')).toBeNull()
+      expect(screen.getByTestId('screen').textContent).toBe('free')
       report(FITS - 1)
       expect(screen.queryByTestId('capture-session-strip')).toBeNull()
+
+      act(() => useAppStore.setState({ captureSessionPanelHidden: false }))
+      expect(screen.getByTestId('capture-session-strip')).toBeTruthy()
     } finally {
       useAppStore.setState({ captureSessionPanelHidden: false })
     }

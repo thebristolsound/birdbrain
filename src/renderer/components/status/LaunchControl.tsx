@@ -246,7 +246,9 @@ function CaptureMenu({ caseId, recording, into }: CaptureMenuProps) {
   const openStartDialog = useAppStore((s) => s.openStartDialog)
   const openStartDialogPicker = useAppStore((s) => s.openStartDialogPicker)
   const dismissNotice = useAppStore((s) => s.dismissLaunchNotice)
-  const { data: launched } = useQuery(launchedBrowserStatusQueryOptions)
+  const { data: launched, isError: launchedUnreadable } = useQuery(
+    launchedBrowserStatusQueryOptions
+  )
   const { extension, egress } = useContactSignals()
   const session = useExtensionSession(caseId)
   // The paste dialog keeps the Case it was opened for. The palette can change the Case on screen
@@ -279,6 +281,15 @@ function CaptureMenu({ caseId, recording, into }: CaptureMenuProps) {
   // One launched browser at a time: while one starts, a launch is held. An open or closing
   // browser never reaches here, since the control is then the session's.
   const busy = busyRefusal(launched)?.title
+  // Stopping the session closes a launched browser, which its own panel asks about first. This
+  // Stop asks nothing, so it waits until the launched browser's state is read and shows none
+  // starting. A read that failed does not hold it: the session must stay stoppable.
+  const stopHeld =
+    launched === undefined && !launchedUnreadable
+      ? "Reading the launched browser's state"
+      : launched?.state === 'starting'
+        ? 'A launched browser is starting'
+        : undefined
   const notice = view.kind === 'notice' ? view.notice : null
   const card = notice ? noticeCard(notice) : null
   const startHeld = !connectedToExtension
@@ -319,9 +330,16 @@ function CaptureMenu({ caseId, recording, into }: CaptureMenuProps) {
       )}
       <Menu>
         {recording ? (
-          <MenuTrigger data-testid="topbar-capture-session" className={MARK_BUTTON_CLASS}>
+          <MenuTrigger
+            data-testid="topbar-capture-session"
+            className={cn(MARK_BUTTON_CLASS, 'inline-flex items-center gap-1')}
+          >
+            {/* The Launch browser button carries a notice's mark at rest. It is not here while
+                a session records, so the mark carries it. */}
+            {card && <CircleAlert aria-hidden="true" className="h-3 w-3 text-text-muted" />}
             <span className="sr-only">Capture Session, </span>
             <RecordingMark into={into} trigger />
+            {card && <span className="sr-only">. 1 notice: {card.title}</span>}
           </MenuTrigger>
         ) : (
           <MenuTrigger asChild>
@@ -345,6 +363,21 @@ function CaptureMenu({ caseId, recording, into }: CaptureMenuProps) {
           }
           className="w-[300px]"
         >
+          {/* Stop comes first while a session records, ahead of a notice, so the menu opens on it. */}
+          {recording && (
+            <>
+              <MenuItem
+                data-testid="launch-control-stop"
+                disabled={session.working || stopHeld !== undefined}
+                title={stopHeld}
+                onSelect={() => change(session.stop)}
+              >
+                <CircleStop className={ITEM_ICON} strokeWidth={1.8} />
+                Stop Capture Session
+              </MenuItem>
+              <MenuSeparator />
+            </>
+          )}
           {notice && card && (
             <>
               <MenuLabel data-testid="launch-control-notice">
@@ -356,19 +389,6 @@ function CaptureMenu({ caseId, recording, into }: CaptureMenuProps) {
                 )}
               </MenuLabel>
               <MenuItem onSelect={() => dismissNotice(notice)}>Dismiss notice</MenuItem>
-              <MenuSeparator />
-            </>
-          )}
-          {recording && (
-            <>
-              <MenuItem
-                data-testid="launch-control-stop"
-                disabled={session.working}
-                onSelect={() => change(session.stop)}
-              >
-                <CircleStop className={ITEM_ICON} strokeWidth={1.8} />
-                Stop Capture Session
-              </MenuItem>
               <MenuSeparator />
             </>
           )}

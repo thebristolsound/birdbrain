@@ -77,6 +77,8 @@ interface Setup {
   vpnSeen?: boolean
   /** Whether main asks for the VPN warning before a session starts. */
   warn?: boolean
+  /** The read of the launched browser's state, where a test needs it to fail or stay in flight. */
+  readStatus?: () => Promise<LaunchedBrowserStatus>
 }
 
 function setup({
@@ -85,7 +87,8 @@ function setup({
   status = { state: 'none' },
   egress = { kind: 'direct' },
   vpnSeen = false,
-  warn = false
+  warn = false,
+  readStatus
 }: Setup = {}) {
   let current = status
   const calls: string[] = []
@@ -106,7 +109,7 @@ function setup({
   }
   const checkVpnWarning = vi.fn(async () => ({ caseId, warn, canMute: true }))
   fakeBridge({
-    launchedBrowser: { status: vi.fn(async () => current) },
+    launchedBrowser: { status: vi.fn(readStatus ?? (async () => current)) },
     settings: { get: vi.fn(async () => ({ egress })) },
     cases: { list: vi.fn(async () => CASES) },
     session,
@@ -117,7 +120,7 @@ function setup({
     }
   })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  client.setQueryData(queryKeys.launchedBrowserStatus, status)
+  if (!readStatus) client.setQueryData(queryKeys.launchedBrowserStatus, status)
   client.setQueryData(queryKeys.cases, CASES)
   const view = render(
     <QueryClientProvider client={client}>
@@ -640,6 +643,24 @@ describe("starting the extension's session from the menu", () => {
     expect(launchButton()).toBeTruthy()
   })
 
+  // A start that changed nothing must not leave the control waiting to take focus: a session
+  // that begins later, from the extension itself, would then pull focus to the bar.
+  it('takes no focus when a session begins after a start that was stopped at the warning', async () => {
+    useAppStore.setState({ connectedToExtension: true })
+    setup({ warn: true })
+    fireEvent.click(startItem())
+    await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
+    settleVpnWarning('dismiss')
+    await waitFor(() => expect(isDisabledItem(startItem())).toBe(false))
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    expect(document.activeElement).toBe(document.body)
+
+    act(() => useAppStore.setState({ sessionActive: true }))
+    await screen.findByTestId('topbar-capture-session')
+    expect(document.activeElement).toBe(document.body)
+  })
+
   // The buttons the start replaces held focus, so it moves to the mark, not to the page.
   it('moves focus to the recording mark once the session starts', async () => {
     useAppStore.setState({ connectedToExtension: true })
@@ -698,6 +719,57 @@ describe("the capture control during the extension's session", () => {
       'launch-control-proxy'
     ])
     expect(within(menu).getByTestId('launch-control-stop').textContent).toBe('Stop Capture Session')
+  })
+
+  // A notice can be waiting from a launched browser that Birdbrain closed. Stop still comes
+  // first, and the mark carries the notice's mark, which the Launch browser button carries at rest.
+  it('keeps Stop first while a notice waits, and marks the notice on the mark', () => {
+    recording({ status: NOTICE })
+    const mark = screen.getByTestId('topbar-capture-session')
+    expect(mark.querySelector('svg')).not.toBeNull()
+    expect(mark.textContent).toContain('1 notice: Browser closed: the Egress changed')
+    const items = within(openMarkMenu())
+      .getAllByRole('menuitem')
+      .map((item) => item.dataset.testid ?? item.textContent)
+    expect(items.slice(0, 2)).toEqual(['launch-control-stop', 'Dismiss notice'])
+  })
+
+  it('carries no notice mark with none to show', () => {
+    recording()
+    const mark = screen.getByTestId('topbar-capture-session')
+    expect(mark.querySelector('svg')).toBeNull()
+    expect(mark.textContent).not.toContain('notice')
+  })
+
+  // Stopping a session closes a launched browser, and this Stop asks nothing first. Until the
+  // launched browser's state is read, the session could be a browser's.
+  it("holds Stop until the launched browser's state has been read", async () => {
+    recording({ readStatus: () => new Promise<LaunchedBrowserStatus>(() => {}) })
+    const stop = within(openMarkMenu()).getByTestId('launch-control-stop')
+    expect(isDisabledItem(stop)).toBe(true)
+    expect(stop.getAttribute('title')).toBe("Reading the launched browser's state")
+  })
+
+  it('holds Stop while a launched browser is starting', () => {
+    recording({ status: { state: 'starting', browser: BROWSER, step: 'browser' } })
+    const stop = within(openMarkMenu()).getByTestId('launch-control-stop')
+    expect(isDisabledItem(stop)).toBe(true)
+    expect(stop.getAttribute('title')).toBe('A launched browser is starting')
+  })
+
+  // A read that failed must not leave the session with no way to stop it.
+  it("leaves Stop usable when the launched browser's state could not be read", async () => {
+    const { client } = recording({
+      readStatus: async () => {
+        throw new Error('ipc closed')
+      }
+    })
+    await waitFor(() =>
+      expect(client.getQueryState(queryKeys.launchedBrowserStatus)?.status).toBe('error')
+    )
+    const stop = within(openMarkMenu()).getByTestId('launch-control-stop')
+    expect(isDisabledItem(stop)).toBe(false)
+    expect(stop.getAttribute('title')).toBeNull()
   })
 
   it('opens on Stop from the keyboard', async () => {

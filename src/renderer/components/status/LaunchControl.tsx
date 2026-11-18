@@ -122,8 +122,8 @@ function SessionTrigger({ recording, showSource, selected, ...props }: SessionTr
   )
 }
 
-// The dashboard, Settings and the new-Case wizard have no rail, so the control opens the panel
-// as a 300-pixel popover under it (`2c`, `2d`).
+// The dashboard, Settings and the new-Case wizard dock no Capture Session panel, so the control
+// opens the panel as a 300-pixel popover under it (`2c`, `2d`).
 function SessionPopover({
   recording,
   showOpenCase
@@ -178,7 +178,9 @@ function LaunchSplit({ caseId }: { caseId: string | null }) {
   const dismissNotice = useAppStore((s) => s.dismissLaunchNotice)
   const { data: launched } = useQuery(launchedBrowserStatusQueryOptions)
   const { extension, egress } = useContactSignals()
-  const [pasteOpen, setPasteOpen] = useState(false)
+  // The paste dialog keeps the Case it was opened for. The palette can change the Case on screen
+  // while the dialog is up, and the pasted addresses must not then go into the other Case.
+  const [paste, setPaste] = useState<{ caseId: string; open: boolean } | null>(null)
   const reasonId = useId()
 
   // One launched browser at a time: while one starts or closes, a launch is held.
@@ -251,7 +253,7 @@ function LaunchSplit({ caseId }: { caseId: string | null }) {
             data-testid="launch-control-paste"
             disabled={!caseId}
             title={caseId ? undefined : 'Open a Case first'}
-            onSelect={() => setPasteOpen(true)}
+            onSelect={() => caseId && setPaste({ caseId, open: true })}
           >
             <ClipboardList className={ITEM_ICON} strokeWidth={1.8} />
             Paste URLs to capture…
@@ -277,7 +279,13 @@ function LaunchSplit({ caseId }: { caseId: string | null }) {
           )}
         </MenuContent>
       </Menu>
-      {caseId && <PasteUrlsDialog caseId={caseId} open={pasteOpen} onOpenChange={setPasteOpen} />}
+      {paste && (
+        <PasteUrlsDialog
+          caseId={paste.caseId}
+          open={paste.open}
+          onOpenChange={(open) => setPaste({ caseId: paste.caseId, open })}
+        />
+      )}
     </div>
   )
 }

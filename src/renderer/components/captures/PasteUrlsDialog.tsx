@@ -16,7 +16,8 @@ export function PasteUrlsDialog({
   // Each opening of the dialog has a number. A queue started in one opening can finish after
   // the dialog has closed, and by then it can be open again, even before the closing animation
   // has let go of the old content. So a finished queue closes the dialog only if the dialog is
-  // open and is still on the opening the queue started in.
+  // open and is still on the opening the queue started in, and each opening gets a box of its
+  // own, so the earlier queue cannot clear what is typed into the later one.
   const [wasOpen, setWasOpen] = useState(open)
   const [opening, setOpening] = useState(0)
   if (open !== wasOpen) {
@@ -35,6 +36,7 @@ export function PasteUrlsDialog({
           <DialogTitle className="text-sm">Paste URLs to capture</DialogTitle>
         </DialogHeader>
         <AddUrlsBox
+          key={opening}
           caseId={caseId}
           onQueued={() => {
             if (now.current.open && now.current.opening === opening) onOpenChange(false)

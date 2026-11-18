@@ -251,6 +251,18 @@ describe("the capture control's menu", () => {
     expect(screen.getByRole('dialog', { name: 'Paste URLs to capture' }).textContent).toBe('case-1')
   })
 
+  // The palette can change the Case on screen while the dialog is up.
+  it('keeps the paste dialog on the Case it was opened for', () => {
+    const { rerender, client } = setup()
+    fireEvent.click(within(openMenu()).getByTestId('launch-control-paste'))
+    rerender(
+      <QueryClientProvider client={client}>
+        <LaunchControl caseId="case-2" showOpenCase={false} />
+      </QueryClientProvider>
+    )
+    expect(screen.getByRole('dialog', { name: 'Paste URLs to capture' }).textContent).toBe('case-1')
+  })
+
   it('holds Paste URLs where no Case is on screen, and says why', () => {
     setup({ caseId: null })
     const paste = within(openMenu()).getByTestId('launch-control-paste')

@@ -4,7 +4,8 @@ import { SessionControls } from '@renderer/components/status/SessionControls'
 // The row under the top bar (docs/design-handoff/2026-11-08-top-bar/, Option B): the section's
 // name, and the Capture Session switch for the extension's session. The recording mark is the
 // running state of the top bar's capture control. The bar renders whenever a Case is open; the
-// switch shows itself only while it has something to control (SessionControls).
+// switch shows itself only for the extension's own session, since the Capture Session panel
+// stops a launched browser's (SessionControls).
 
 const SECTIONS = [
   ['/cases/$caseId/overview', 'Overview'],

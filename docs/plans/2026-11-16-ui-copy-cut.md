@@ -87,8 +87,10 @@ four are in the next tranche.
 - **Some of these files are `blocking`.** In
   `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`: `ExportDialog.tsx`,
   `CaptureControl.tsx`, `TabPicker.tsx`, `captureSessionPanelModel.ts`, `ImportCaseDialog.tsx`,
-  `DataExplorer.tsx`, `ForensicsTab.tsx` and `OperatorConfig.tsx`. A pull request that changes
-  a string in one takes the `evidence-affecting` label and an Evidence impact section.
+  `DataExplorer.tsx`, `ForensicsTab.tsx`, `OperatorConfig.tsx`, `LinksTab.tsx`,
+  `WaybackPanel.tsx`, `DatabaseAdmin.tsx` and everything under
+  `src/renderer/components/settings/db/`. A pull request that changes a string in one takes
+  the `evidence-affecting` label and an Evidence impact section.
 - **The mock is the design source.** The maintainer's observation is that much of this prose
   arrived with the design bundles. `docs/design-handoff/README.md` names the 2026-08-21
   standalone as the single design source, so a cut that departs from a bundle's copy supersedes
@@ -142,7 +144,7 @@ it has no tip.
 | "Joins the running Capture Session in ‹…›." (`StartDialog.tsx`) | 6 | Cut | The button reads "Launch and join". |
 | "Birdbrain sees this computer’s network path, not your browser’s. A VPN set up …" (`VpnWarningDialog.tsx`) | 19 | Keep | Shown under Egress here and in the VPN warning. ADR-0032 VPN rule 3 gives this sentence; slice 3.2 amends the rule and can shorten it there. |
 | "Only one can be open at a time." (`startDialogModel.ts`) | 7 | Cut | Its title, "A launched browser is already open", is the reason. |
-| "The browser was not started. Choose an Egress in Settings → Operator." (`startDialogModel.ts`) | 11 | Shorten | "Choose an Egress in Settings → Operator." |
+| "The browser was not started. Choose an Egress in Settings → Operator." (`startDialogModel.ts`) | 11 | Shorten | "Choose an Egress in Settings → Network." The Egress is on the Network tab, so the pointer is corrected: see "Raised in review". |
 
 ## Capture Session panel and its dialogs
 
@@ -172,7 +174,8 @@ maintainer's.
 ## VPN warning
 
 `VpnWarningDialog.tsx`. ADR-0032 gives the warning its content, so these lines can be shortened
-only with the amendments slices 3.2 and 6.1 already carry.
+only in a pull request that amends VPN rule 3, as slice 3.2 does. The amendment slice 6.1 made
+left the warning before a contact unchanged.
 
 | Today | Words | Verdict | Becomes, or why |
 | --- | --- | --- | --- |
@@ -207,7 +210,8 @@ plan edit the same labels; this cut lands with them, not beside them.
 `src/renderer/components/captures/`, and the delete dialog in
 `routes/cases/$caseId/captures.tsx`. Most of the prose here is state: what a tab could not read,
 what a check found. Those lines stay. The cuts are hints that sit beside the control they
-describe.
+describe. `WaybackPanel.tsx` and `LinksTab.tsx` are `blocking`, so the pull request that
+changes their two rows is `evidence-affecting`.
 
 | Today | Words | Verdict | Becomes, or why |
 | --- | --- | --- | --- |
@@ -336,11 +340,11 @@ Not yet judged. The counts are from the same measurement.
 
 | Area | Strings | Words | What to expect |
 | --- | --- | --- | --- |
-| Settings | 94 | 1,271 | The Egress paragraph (71 words), the database utilities and their confirmations, the Personas and timestamp disclosures. Many are consequences that stay, shortened. `OperatorConfig.tsx` is `blocking`. |
+| Settings | 94 | 1,271 | The Egress paragraph (71 words), the database utilities and their confirmations, the Personas and timestamp disclosures. Many are consequences that stay, shortened. `OperatorConfig.tsx` is `blocking`, and so is `settings/db/`, which holds `DbUtilities.tsx`. |
 | Sharing | 83 | 1,138 | `memberModel.ts` holds the relay, fingerprint, invite and ledger explanations. The network-address notices are consequences; the ledger footer (82 words) is how-it-works. |
 | Data | 73 | 693 | Mostly statements of what is and is not anchored. `DataExplorer.tsx` is `blocking`. |
 | The extension's pages | 77 | 662 | The popup's reassurance paragraph, the options page's 52-word screenshot note, the page-status lines. |
-| Launch dialog and panel, the rest | 48 | 360 | `FoundBrowsers.tsx` in Settings, with a 54-word tip, the panel's problem notices and the launch refusals. Most of the last two stay. |
+| Launch dialog and panel, the rest | 48 | 360 | `FoundBrowsers.tsx`, which is under `launchedBrowser/` and shows in Settings, with a 54-word tip, the panel's problem notices and the launch refusals. Most of the last two stay. The two counts are unverified: the area's 73 strings and 715 words, less the launch dialog's and the panel's rows above, leave 47 and 341. |
 | Diagnostics and the report dialog | 12 | 171 | What the bundle holds and what it discloses. |
 | Investigate | 17 | 142 | Not reachable in a release; judge it with the engine work. |
 | The extension install steps | 14 | 128 | A procedure, so prose by design. One pass for length. |
@@ -364,9 +368,10 @@ the index in `docs/design-handoff/README.md` (decision 1) and moves any text mar
 - [ ] **C4. Onboarding tour.** Twelve steps to nine, and the two false statements corrected.
   `e2e/onboarding-tour.spec.ts` and `tests/renderer/tourSteps.test.ts` follow.
 - [ ] **C5. Launch dialog and VPN warning.** Removes the dialog's three `InfoTip`s, so it does
-  not wait for C0. Lands with slices 3.1 and 3.2 of the consolidation plan, which amend
-  ADR-0032 and so carry the shortened warning.
-- [ ] **C6. Captures and the delete dialog.**
+  not wait for C0. Lands with slices 3.1 and 3.2 of the consolidation plan. Slice 3.2 amends
+  ADR-0032 and so carries the shortened warning.
+- [ ] **C6. Captures and the delete dialog.** `evidence-affecting`: `WaybackPanel.tsx` and
+  `LinksTab.tsx` are `blocking`.
 - [ ] **C7. Capture Session panel.** After C0. `evidence-affecting`: three of its files are
   `blocking`.
 - [ ] **C8. Export dialog.** `evidence-affecting`. Lands with slices 4.1 and 4.2 of the
@@ -374,8 +379,8 @@ the index in `docs/design-handoff/README.md` (decision 1) and moves any text mar
   decision 5.
 
 C1 to C4 touch no `blocking` file. C1, C3 and C4 wait for nothing; C2 needs C0, for the tip on
-"Rescan all captures". C4 is worth doing first: it is the only place the cut
-also removes something untrue.
+"Rescan all captures". C4 is worth doing first: it corrects two untrue statements in the
+tour. C5 removes or corrects one more, the pointer to Settings → Operator for the Egress.
 
 ## Decisions taken
 
@@ -404,6 +409,30 @@ The maintainer ruled on this plan's five questions on 2026-11-16, and then on it
 
 6. **Are the first tranche's verdicts accepted as written?** Ruling: yes, all 99, with the
    wording each row gives. A later tranche's verdicts wait for a ruling of their own.
+
+## Raised in review
+
+A review of the pull request that added this plan, #2236, raised three points about accepted
+verdicts. The first is a correction of fact. The other two change what a ruled verdict says,
+so they are the maintainer's.
+
+- **Corrected: the Egress is on the Network tab.** The launch dialog's refusal row above read
+  "Choose an Egress in Settings → Operator." The Egress setting is on the Network tab
+  (`SECTION_TABS` in `SettingsView.tsx`), so the row now reads "Settings → Network". The app's
+  own strings point at Operator today in `startDialogModel.ts` and `StartDialog.tsx`; C5
+  corrects the one it rewrites and cuts the tip that holds another. A third, "Check the proxy
+  in Settings → Operator." in `startDialogModel.ts`, is among the refusals this plan leaves
+  alone, so it keeps the wrong tab until a slice corrects it.
+- **Open: the scrolling line moves into a tip.** The Capture Session panel's row for "Scroll
+  to load" puts "The page can see the scrolling." in a tip. That is something a site can see,
+  and rule 4 keeps a consequence in view and says a warning in a tip is not a warning.
+  Decision 4 names this tip. Whether the sentence stays beside the checkbox is not ruled.
+- **Open: the tour's Selector sentence.** The row reads "A Selector flags every Capture that
+  matches it, past and future." Creating a Selector checks only the 500 most recent Captures
+  of the Case (`RETRO_MAX_CAPTURES` in `src/shared/constants.ts`, applied in
+  `selectorLifecycle.ts`). Older Captures match only when the Operator runs the backfill, and
+  new Captures are matched as they arrive. The sentence overstates the first of those. Its
+  wording is not ruled.
 
 ## Not in this plan
 

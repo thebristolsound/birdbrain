@@ -469,6 +469,9 @@ describe("the capture control during the extension's session", () => {
     const mark = screen.getByTestId('topbar-rec')
     expect(mark.textContent).toBe('Recordingextension')
     expect(mark.closest('button')).toBeNull()
+    // Beside the button the bar is at its widest, so the source hides from view on a narrow
+    // window and stays in the text for assistive technology.
+    expect(within(mark).getByText('extension').className).toContain('max-[1100px]:sr-only')
     expect(screen.queryByTestId('topbar-capture-session')).toBeNull()
     expect(launchButton()).toBeTruthy()
   })

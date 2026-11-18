@@ -74,8 +74,9 @@ export function LaunchControl({ caseId, showOpenCase }: LaunchControlProps) {
 
   return (
     <>
-      {/* The extension's session has no panel, so its mark is not a control. */}
-      {sessionActive && <RecordingMark />}
+      {/* The extension's session has no panel, so its mark is not a control. It stands beside the
+          Launch browser button, so its source folds away where the bar runs out of room. */}
+      {sessionActive && <RecordingMark foldSource />}
       <LaunchSplit caseId={caseId} />
     </>
   )

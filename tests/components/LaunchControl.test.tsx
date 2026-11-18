@@ -430,8 +430,8 @@ describe("the capture control while a launched browser's session runs", () => {
     expect(screen.queryByRole('timer')).toBeNull()
   })
 
-  // A browser that is closing or has closed is no longer the source. The session keeps running
-  // through the extension, and the panel says only that the browser closed.
+  // A browser that is closing or has closed is no longer the source. After one has closed, the
+  // session can keep running through the extension, and the panel says only that it closed.
   it.each([
     ['closing', { state: 'closing', browser: BROWSER }],
     ['closed', { state: 'closed', browser: BROWSER }]

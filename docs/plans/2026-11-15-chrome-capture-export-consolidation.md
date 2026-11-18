@@ -181,9 +181,9 @@ raised, where a critique proposal met ADR-0032, the standalone mock and #830.
 7. **Are the design bundle's answers to its ten questions accepted?** The bundle from slice 0.1
    answers the ten questions of `docs/plans/2026-11-15-consolidation-phase-0-design-bundle.md`
    on its rules sheet, board R. Ruling, given in a Claude Code session on 2026-11-17: yes, all
-   ten as drawn. Slices 2.3, 4.2 to 4.4, 5.2 to 5.6 and 7.3 no longer wait for it. The bundle
-   is not yet under `docs/design-handoff/`, its feasibility assessment is not written, and the
-   wording of its supersession entry is still the maintainer's.
+   ten as drawn. Slices 2.3, 4.2 to 4.4, 5.2 to 5.6 and 7.3 no longer wait for it. Slice 5.6
+   (#2235) adds the bundle under `docs/design-handoff/` with its row in the index, in wording
+   the maintainer approved on 2026-11-17. Its feasibility assessment is not written.
    1. With no Case open, Launch browser opens the launch dialog on a Case picker, preset to
       the last Case opened.
    2. An extension-only Capture Session starts from "Start Capture Session in Chrome" in the

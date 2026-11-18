@@ -12,7 +12,7 @@ test.describe('Investigate route', () => {
     page
   }) => {
     test.setTimeout(60000)
-    await page.setViewportSize({ width: 1200, height: 800 })
+    await page.setViewportSize({ width: 1224, height: 800 })
 
     const caseId = await createCase(page, 'Investigate E2E')
     // A Capture keeps the Case out of the empty-Case state.
@@ -44,7 +44,8 @@ test.describe('Investigate route', () => {
     })
     await expect(page.getByText('Followed: 2 Joints out from each starting Subject')).toBeVisible()
 
-    // The default 1200-pixel window leaves the view 1152 pixels beside the sidebar.
+    // A 1,224-pixel window leaves the view 1,152 pixels beside the 72-pixel rail, above the
+    // 1,140 it needs to show its panes side by side.
     await expect(page.getByRole('region', { name: 'Source inspector' })).toBeVisible()
     await expect(page.getByRole('region', { name: 'Joint map and list' })).toBeVisible()
     await expect(page.getByRole('tablist')).toHaveCount(0)

@@ -61,6 +61,9 @@ export function TopBar() {
     updateStatus?.state === 'available' || updateStatus?.state === 'downloaded'
 
   const isOnSettings = Boolean(matchRoute({ to: '/settings' }))
+  // The rail shows on Case screens and the new-Case wizard (__root.tsx), and holds Settings at
+  // its foot. Where there is no rail, Settings stays in this bar.
+  const hasRail = Boolean(matchRoute({ to: '/cases/$caseId', fuzzy: true }))
   const isOnDashboard = Boolean(matchRoute({ to: '/' }))
   // The pattern also matches the wizard's literal `new` segment, which is not a case.
   const isOnWizard = Boolean(matchRoute({ to: '/cases/new' }))
@@ -177,10 +180,10 @@ export function TopBar() {
         </div>
       )}
 
-      {/* Right controls: on a Case, Share, Export and Launch browser; then how the app is doing,
-          then Settings. The recording mark and the session switch live in CaseActionBar, under
-          this bar. The group never narrows below its controls, so the search gives way instead
-          of sitting over Share. */}
+      {/* Right controls: on a Case, Share, Export and Launch browser; then how the app is doing;
+          then Settings, where no rail holds it. The recording mark and the session switch live in
+          CaseActionBar, under this bar. The group never narrows below its controls, so the search
+          gives way instead of sitting over Share. */}
       <div
         data-testid="topbar-controls"
         className="flex min-w-max flex-1 basis-0 items-center justify-end gap-2"
@@ -213,24 +216,31 @@ export function TopBar() {
           </span>
         )}
 
-        <StatusGroup />
-
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate({ to: '/settings' })}
-          title={updateAvailable ? 'Settings — update available' : 'Settings'}
-          className="relative"
-          style={END_INSET}
-        >
-          <Settings className="h-3.5 w-3.5" />
-          {updateAvailable && (
-            <span
-              data-testid="topbar-update-dot"
-              className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-accent"
-            />
-          )}
-        </Button>
+        {hasRail ? (
+          <div style={END_INSET}>
+            <StatusGroup />
+          </div>
+        ) : (
+          <>
+            <StatusGroup />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate({ to: '/settings' })}
+              title={updateAvailable ? 'Settings — update available' : 'Settings'}
+              className="relative"
+              style={END_INSET}
+            >
+              <Settings className="h-3.5 w-3.5" />
+              {updateAvailable && (
+                <span
+                  data-testid="topbar-update-dot"
+                  className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-accent"
+                />
+              )}
+            </Button>
+          </>
+        )}
       </div>
     </header>
   )

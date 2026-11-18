@@ -122,8 +122,8 @@ button it changes.
 | 2.2 | `feat/chrome-2.2-one-stop-control` | #2229 | Merged on 2026-11-17 as `5c21ba25`. The review passed at `267b53a3` on its second round with six findings, none blocking, and a comment on the pull request answers them |
 | 6.1 | `feat/chrome-6.1-status-tiers` | #2230 | Merged on 2026-11-18 as `1ef4456a`, under the maintainer's override label after two reviews with no blocking finding. Two comments on the pull request answer the findings |
 | 5.2 | `feat/chrome-5.2-labelled-rail` | #2231 | Merged on 2026-11-18 as `8c7f99d6`. The review passed at `c08d4869` with fourteen findings, none blocking |
-| 5.3 | `feat/chrome-5.3-case-menu` | #2232 | In review at `4ec8808e`, based on `main`, after two fix rounds. It holds the two fixes from the review of #2231 and six commits for its own reviews |
-| 5.4 | `feat/chrome-5.4-launch-control` | #2233 | Draft, based on the 5.3 branch |
+| 5.3 | `feat/chrome-5.3-case-menu` | #2232 | Merged on 2026-11-18 as `c1099fab`. The third review passed at `4ec8808e` with five findings, none blocking, after two fix rounds |
+| 5.4 | `feat/chrome-5.4-launch-control` | #2233 | Next for review, based on `main`, with the fix for the last review of #2232 as commit `9a2e1850` |
 | 5.5 | `feat/chrome-5.5-one-row` | #2234 | Draft, based on the 5.4 branch |
 | 5.6 | `feat/chrome-5.6-docs` | #2235 | Draft, based on the 5.5 branch |
 

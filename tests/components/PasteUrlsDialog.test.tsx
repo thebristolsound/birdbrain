@@ -48,4 +48,36 @@ describe('PasteUrlsDialog', () => {
     finishes[finishes.length - 1]()
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
+
+  // The closing animation keeps the old content on screen for a moment, and the dialog can be
+  // opened again inside that moment.
+  it('ignores an earlier queue when the dialog reopens before its content has gone', async () => {
+    const onOpenChange = vi.fn()
+    const { rerender } = render(
+      <PasteUrlsDialog caseId="case-1" open onOpenChange={onOpenChange} />
+    )
+    await screen.findByTestId('box')
+    const finishFirst = finishes[finishes.length - 1]
+
+    rerender(<PasteUrlsDialog caseId="case-1" open={false} onOpenChange={onOpenChange} />)
+    rerender(<PasteUrlsDialog caseId="case-1" open onOpenChange={onOpenChange} />)
+    await screen.findByTestId('box')
+
+    finishFirst()
+    expect(onOpenChange).not.toHaveBeenCalled()
+    finishes[finishes.length - 1]()
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('ignores a queue that finishes while the dialog is closed', async () => {
+    const onOpenChange = vi.fn()
+    const { rerender } = render(
+      <PasteUrlsDialog caseId="case-1" open onOpenChange={onOpenChange} />
+    )
+    await screen.findByTestId('box')
+    const finishFirst = finishes[finishes.length - 1]
+    rerender(<PasteUrlsDialog caseId="case-1" open={false} onOpenChange={onOpenChange} />)
+    finishFirst()
+    expect(onOpenChange).not.toHaveBeenCalled()
+  })
 })

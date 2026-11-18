@@ -4,7 +4,8 @@ import { egressIndicatorText } from '@renderer/components/status/egressText'
 // The top bar's one status control (docs/design-handoff/2026-11-08-top-bar/, Option B): three
 // app-wide signals, read together, in three tiers. Nominal is neutral. A problem (`danger`) gives
 // the control its colour, its icon and one short word. An advisory (`warning`) marks its dot and
-// prints no word: its text stays in the popover and the summary. The other signals stay as faint
+// prints no word: its text stays in the popover and the summary (ADR-0032 VPN rule 2, amended
+// after that folder's notes, which still give an advisory a word). The other signals stay as faint
 // dots. Ranking, from worst: an Egress that could not be read (nothing is sent, #1695), or whose
 // settings read failed; capture failures; a Direct Egress with no VPN seen, or whose VPN check
 // failed, which ADR-0032 keeps advisory. A disconnected extension is never a signal: it is the

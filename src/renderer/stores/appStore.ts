@@ -62,7 +62,7 @@ interface AppState {
   // The Case the launched browser's start dialog is open for, or null while it is closed.
   startDialogCaseId: string | null
   // The confirmation before a Capture Session with a launched browser open stops (`1i`), opened
-  // from the panel's Stop… and from the Capture Session switch.
+  // from the panel's Stop….
   stopConfirmOpen: boolean
   // Clicked Captures (#1832): the tab the Operator picked as the capture target, whether the next
   // Capture runs Scroll-to-load (off by default, per Capture), and the tab picker the shortcut

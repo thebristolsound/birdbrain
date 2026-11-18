@@ -30,10 +30,10 @@ export function SessionControls() {
   const launchedSession = launched?.state === 'open' || launched?.state === 'closed'
   const showSwitch = connectedToExtension && !launchedSession
 
-  // A label follows the switch only for what the rest of the window does not say, on Case
-  // screens. The breadcrumb names the Case on screen, and the Active Case, the one Captures go
-  // into, can be another: a launched browser pins the Case it started in, and the extension can
-  // choose one too.
+  // A label shows only for what the rest of the window does not say, on Case screens: after the
+  // switch for the extension's session, and alone for a launched browser's. The breadcrumb names
+  // the Case on screen, and the Active Case, the one Captures go into, can be another: a launched
+  // browser pins the Case it started in, and the extension can choose one too.
   const intoCase =
     activeCaseId && sessionCaseId !== activeCaseId
       ? cases.find((c) => c.id === sessionCaseId)

@@ -29,7 +29,10 @@ It adds no decision of its own. Code references in the plans are to `origin/main
 
 The code, the ADRs and `CONTEXT.md` outrank every plan. Between plans, a detail plan outranks
 the parent plan where the two differ, because the detail plans were reconciled with the code
-after the parent merged. The parent plan is behind `main` in these places:
+after the parent merged. One exception holds: a ruling under "Decisions taken" in the parent
+plan outranks any detail plan sentence written before it. Decision 7 and the ring ruling in
+decision 2, both of 2026-11-17, are later than the detail plans' first text. The parent plan is
+behind `main` in these places:
 
 - **#2205 moved Share, Export and Launch browser into `TopBar.tsx`.** The parent plan names
   `CaseActionBar.tsx` for slices 1.3, 2.1 and 5.3 to 5.5.
@@ -58,8 +61,10 @@ after the parent merged. The parent plan is behind `main` in these places:
 | --- | --- |
 | Open question 2 of the parent plan: what the Data screen's two Verify buttons say | Slice 1.5 |
 | A ruling on the next tranche's verdicts, once the copy cut plan has them | Copy slices for Settings, Sharing, Data and the extension's pages |
+| The two open points under "Raised in review" in the copy cut plan: the scrolling line and the tour's Selector sentence | One row each of C7 and C4 |
+| Whether the launch dialog asks about the VPN warning again when Launch is pressed (slice 3.2 in the phase 3 plan) | That one point of slice 3.2 |
 
-Nothing in the copy cut's first tranche waits for the maintainer.
+Apart from those two rows, nothing in the copy cut's first tranche waits for the maintainer.
 
 ## What can start now
 
@@ -69,24 +74,23 @@ Consolidation slices that wait for nothing:
 | --- | --- | --- |
 | 1.1 | Faint text to 4.5:1 on dark surfaces | Styling |
 | 1.2 | Export dialog: fixed footer, unfilled notices | `evidence-affecting` |
-| 1.3 | A disabled Launch browser gives a reachable reason | `TopBar.tsx` |
 | 1.4 | Recapture out of the add menu | Confirm `CaptureMenu.tsx`'s tier first |
 | 1.6 | One browser shown as text in the launch dialog | |
-| 2.1 | The recording mark drops its source where the panel shows | What is left after #2205 |
-| 2.2 | One stop control on screen | |
 | 2.4 | "Into this Case" in the panel | |
 | 3.1 | Operator name field in the launch dialog | `evidence-affecting` |
-| 3.2 | One VPN statement per launch | Amends ADR-0032 in the same pull request |
+| 3.2 | One VPN statement per launch | Amends ADR-0032 in the same pull request. One point of it is open, in the table above |
 | 4.1 | Ruled nouns, file types, one icon | `evidence-affecting` |
-| 5.1a | Shared menu component and three menus | |
 | 5.1b | The Download menu on the shared component | `evidence-affecting` |
-| 6.1 | Status tiers | Amends ADR-0032 in the same pull request |
 | 7.1 | Capture details open on a summary | Outer section only |
-| 7.2 | A count of Selector matches on each row | Read review pass 3 first if it has landed |
 | 7.4 | Auto-capture switch to Settings | Low priority |
 
-Since decision 7, slices 2.3, 4.2 to 4.4, 5.2 to 5.6 and 7.3 can start too. Slices 5.2 to 5.5
-go in the order written, and the tables under "Slices that share a file" still hold.
+Slices 5.1a, 2.1, 2.2 and 6.1 are not in the table because they have merged, and slice 1.3 is
+not because the stack leaves it out: "Progress on the chrome slices" has both. Slice 7.2 waits
+for review pass 3 of `2026-11-15-unreviewed-surfaces-review-passes.md`, whose assessment says
+whether the slice goes ahead as written.
+
+Since decision 7, slices 2.3, 4.2 to 4.4 and 7.3 can start too. Slices 5.2 to 5.6 are built,
+as #2231 to #2235, and merge in the order written.
 
 Copy cut slices:
 
@@ -98,7 +102,7 @@ Copy cut slices:
 | C3 | Dashboard, new Case and Overview | |
 | C4 | The onboarding tour | Corrects two untrue statements. A good first slice |
 | C5 | Launch dialog and VPN warning | With slices 3.1 and 3.2 |
-| C6 | Captures and the delete dialog | |
+| C6 | Captures and the delete dialog | `evidence-affecting`: `WaybackPanel.tsx` and `LinksTab.tsx` are `blocking` |
 | C7 | Capture Session panel | After C0. `evidence-affecting` |
 | C8 | Export dialog | `evidence-affecting`. With slices 4.1 and 4.2 |
 
@@ -199,10 +203,10 @@ What the slices found that the plans did not say:
 - The second review of #2230, at `36ef51f3`, failed the same way on one source: the ruling
   that the advisory mark is a hollow ring has no record written by the maintainer, only the
   plan line the slice adds. A third review would fail on it too, so the maintainer chose the
-  override label, in a Claude Code session on 2026-11-18. Commits `2afd5249`, `2266e023` and `501d4069` answer the other
-  findings: the ring has a border under forced colours, the layout spec reads the ring's
-  computed style, and its launched browser test no longer waits five seconds on a folded
-  panel, which had failed about one local run in four.
+  override label, in a Claude Code session on 2026-11-18. Commits `2afd5249`, `2266e023` and
+  `501d4069` answer the other findings: the ring has a border under forced colours, the layout
+  spec reads the ring's computed style, and its launched browser test no longer waits five
+  seconds on a folded panel, which had failed about one local run in four.
 - Marking a draft ready cancels the CI run its last push started. Let that run finish first,
   or the merge script later meets cancelled jobs at the head commit.
 - The remote refuses one push that updates several branches. Push the stack one branch at a
@@ -236,9 +240,9 @@ Land these in the order given, or as one pull request where the plan says so.
 | --- | --- |
 | `StartDialog.tsx` | 1.6, then 3.1, then 3.2 with C5. Slice 3.3 has nothing left to do: copy decision 4 removes the dialog's tips |
 | `ExportDialog.tsx` | 1.2, then 4.1 with C8's wording, then 4.2 |
-| `TopBar.tsx` | 1.3, then 2.1, then 5.2, 5.3 and 5.4 |
-| `SessionControls.tsx` | 2.2, then 5.5, which deletes it |
-| `CaptureMenu.tsx` | 1.4, then 5.1a |
+| `TopBar.tsx` | 2.1, which has merged, then 5.2, 5.3 and 5.4. Slice 1.3 is left out |
+| `SessionControls.tsx` | 2.2, which has merged, then 5.5, which deletes it |
+| `CaptureMenu.tsx` | 5.1a, which has merged, then 1.4 |
 | `AutoCaptureCard.tsx`, `SignalsOverview.tsx` | 7.4 with C2 |
 | `tourSteps.ts` | C4, then 7.4 and 5.3 move their anchors |
 | `CaptureSessionPanel.tsx`, `CaptureControl.tsx` | 2.4, then C7 after C0 |

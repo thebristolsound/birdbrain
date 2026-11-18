@@ -113,8 +113,8 @@ button it changes.
 | Slice | Branch | Pull request | State |
 | --- | --- | --- | --- |
 | 5.1a | `feat/chrome-5.1a-shared-menu` | #2227 | Merged on 2026-11-17 as `4fb88fce`, under the maintainer's override label after three reviews with no blocking finding |
-| 2.1 | `feat/chrome-2.1-recording-mark` | #2228 | Open for review, based on `main`. The review passed at `86cdaf8e` with fifteen findings, none blocking |
-| 2.2 | `feat/chrome-2.2-one-stop-control` | #2229 | Draft, based on the 2.1 branch |
+| 2.1 | `feat/chrome-2.1-recording-mark` | #2228 | Merged on 2026-11-17 as `396ce264`. The review passed at `86cdaf8e` with fifteen findings, none blocking, and a comment on the pull request answers them |
+| 2.2 | `feat/chrome-2.2-one-stop-control` | #2229 | Open for review at `dbf9351d`, based on `main`, with the two fixes from the review of #2228 as their own commits |
 | 6.1 | `feat/chrome-6.1-status-tiers` | #2230 | Draft, based on the 2.2 branch |
 | 5.2 | `feat/chrome-5.2-labelled-rail` | #2231 | Draft, based on the 6.1 branch |
 | 5.3 | `feat/chrome-5.3-case-menu` | #2232 | Draft, based on the 5.2 branch |
@@ -161,10 +161,24 @@ What the slices found that the plans did not say:
   new head needs a full run. A draft's Verification block is refreshed when the draft becomes
   the bottom of the stack, not at every merge below it, so the blocks on #2229, #2230, #2232 and #2233
   name the heads they were measured at.
-- Two fixes for findings on #2228 are on the local branch `fix/2228-review-findings` and are
-  not pushed: the mark keeps naming the extension once a launched browser has closed, and the
-  Launch browser test waits for the Case. The same rule has to reach `LaunchControl.tsx`,
-  which passes `showSource={false}` on a Case screen in slices 5.4 and 5.5.
+- The maintainer chose, in a Claude Code session on 2026-11-17, to merge #2228 as it stood and
+  carry the two fixes for its review on the next slice. They are commits `d7bbd671` and
+  `dbf9351d` on the 2.2 branch: the mark names the extension once a launched browser has
+  closed, and the Launch browser test waits for the Case. Two more commits follow from them
+  higher in the stack, and each draft's description has to name its own when the draft
+  reaches the bottom: `5e00c293` on the 5.3 branch makes that test wait for the Case name,
+  since Export leaves the bar there, and `89779e3e` on the 5.4 branch applies the mark's rule
+  in `LaunchControl.tsx`. On the 5.5 branch an open browser with the extension connected
+  reads "+ extension", so the test merged up from 5.4 expects that text there.
+- Merging the 5.3 branch into 5.4 conflicts on `CaseActionBar.tsx` and its test whenever a
+  lower slice touches the mark in that row: keep the 5.4 side, which has no mark there.
+  Merging 5.4 into 5.5 conflicts on `SessionControls.tsx`: keep the deletion.
+- The remote refuses one push that updates several branches. Push the stack one branch at a
+  time.
+- The Dependency audit check has failed on `main` and on every pull request since
+  2026-11-17, on a new advisory for `picomatch` (GHSA-fc5q-39xc-vjpf). It is not a required
+  check, and no slice here changes a dependency. An upgrade, or an entry in
+  `audit-exceptions.json`, is the maintainer's decision.
 - `Menu` swaps its trigger when a control changes state, as the capture control does between
   Launch browser and the recording mark. The button that held focus is unmounted, so the
   control moves focus to the button that replaced it.
@@ -174,10 +188,44 @@ The stack is complete through 5.6. What is left of phase 5:
 - Slice 5.1b, the Download menu on the shared component. It edits a `blocking` file, so it is
   its own `evidence-affecting` pull request and is not in the stack.
 - The entry in `docs/design-handoff/README.md` that names the bundle as superseding the
-  2026-11-08 top bar. The plan gives its wording to the maintainer, and the bundle is not in
-  the repository yet.
+  2026-11-08 top bar. The bundle is not in the repository yet. The maintainer asked on
+  2026-11-17, in a Claude Code session, for a draft of the wording, which is under "Draft of
+  the design handoff index entry" below and waits for approval.
 - The parent plan's check boxes for slices 5.1 to 5.6, 2.1, 2.2 and 6.1, ticked as each pull
   request merges.
+
+## Draft of the design handoff index entry
+
+This is a draft for the maintainer to approve or rewrite. It is not in
+`docs/design-handoff/README.md`, because the row links a folder that does not exist until the
+bundle is committed. The folder name is a proposal. What the bundle supersedes is taken from
+its own rules sheet, board R.
+
+A new first row for the table:
+
+> | [`2026-11-17-one-row-chrome/`](2026-11-17-one-row-chrome/) | 2026-11-17 | The one-row
+> chrome, the one export dialog and the Overview cards: frames A to I, a rules sheet (board R)
+> and a palette proposal (board P). It answers the ten questions of the
+> [phase 0 plan](../plans/2026-11-15-consolidation-phase-0-design-bundle.md). The maintainer
+> accepted all ten on 2026-11-17, recorded as decision 7 of the
+> [consolidation plan](../plans/2026-11-15-chrome-capture-export-consolidation.md), and ruled
+> that the advisory mark is a hollow ring. **Supersedes** the row under the top bar in the
+> 2026-11-08 bundle, and three things in the 2026-08-21 standalone: the two-item export menu,
+> the Share pill in the chrome, and Selector and Tag editing on the Overview. The palette
+> board has no ruling yet. The bundle ships packed as one HTML file, like the 2026-08-21
+> standalone, and arrived without a `HANDOFF.md` or an `ENGINEERING_REVIEW.md`. No feasibility
+> assessment is written. Built in slices 6.1 and 5.2 to 5.6 (#2230 to #2235) |
+
+A sentence added to the end of the 2026-11-08 row:
+
+> The 2026-11-17 bundle supersedes its action bar.
+
+The sentence about the single source, replacing the first sentence of the paragraph under the
+table:
+
+> The 2026-08-21 standalone is the single design source by maintainer ruling, except where a
+> later bundle's row in the table names what it supersedes. The 2026-11-17 bundle is the first
+> to do so.
 
 ## Slices that share a file
 

@@ -40,6 +40,7 @@ import {
 import { noticeCard } from '@renderer/components/launchedBrowser/captureSessionPanelModel'
 import { busyRefusal } from '@renderer/components/launchedBrowser/startDialogModel'
 import { PasteUrlsDialog } from '@renderer/components/captures/PasteUrlsDialog'
+import { createPortal } from 'react-dom'
 
 interface LaunchControlProps {
   /** The Case on screen, or null where none is: the dashboard, Settings, the new-Case wizard. */
@@ -80,9 +81,10 @@ export function LaunchControl({ caseId, showOpenCase }: LaunchControlProps) {
     return caseId ? (
       <SessionTrigger
         recording={sessionActive}
-        // The panel on a Case screen names an open browser. Once the browser closes, the source
-        // is the extension, when one is connected, and nothing else on the screen says so.
-        showSource={view.kind !== 'open'}
+        // The panel on a Case screen names an open browser, so the mark leaves the name out
+        // while the panel shows. With the panel hidden, or once the browser closes and the
+        // source is the extension, nothing else on the screen names the source.
+        showSource={view.kind !== 'open' || hidden}
         into={into}
         selected={!hidden}
         aria-expanded={!hidden}
@@ -248,8 +250,13 @@ function CaptureMenu({ caseId, recording, into }: CaptureMenuProps) {
   const { extension, egress } = useContactSignals()
   const session = useExtensionSession(caseId)
   // The paste dialog keeps the Case it was opened for. The palette can change the Case on screen
-  // while the dialog is up, and the pasted addresses must not then go into the other Case.
-  const [paste, setPaste] = useState<{ caseId: string; open: boolean } | null>(null)
+  // while the dialog is up, and the pasted addresses must not then go into the other Case. Each
+  // opening has a number, so a queue that finishes after its dialog closed cannot close a later
+  // opening or put its Case back.
+  const [paste, setPaste] = useState<{ caseId: string; open: boolean; opening: number } | null>(
+    null
+  )
+  const openings = useRef(0)
   const reasonId = useId()
   const control = useRef<HTMLDivElement>(null)
   const refocus = useRef(false)
@@ -269,7 +276,8 @@ function CaptureMenu({ caseId, recording, into }: CaptureMenuProps) {
     })
   }
 
-  // One launched browser at a time: while one starts or closes, a launch is held.
+  // One launched browser at a time: while one starts, a launch is held. An open or closing
+  // browser never reaches here, since the control is then the session's.
   const busy = busyRefusal(launched)?.title
   const notice = view.kind === 'notice' ? view.notice : null
   const card = notice ? noticeCard(notice) : null
@@ -330,7 +338,11 @@ function CaptureMenu({ caseId, recording, into }: CaptureMenuProps) {
           </MenuTrigger>
         )}
         <MenuContent
-          aria-label={card ? `Capture. ${card.title}. ${card.detail}` : 'Capture'}
+          aria-label={
+            card
+              ? `Capture. ${card.title}. ${card.detail}${card.tip ? ` ${card.tip}` : ''}`
+              : 'Capture'
+          }
           className="w-[300px]"
         >
           {notice && card && (
@@ -338,6 +350,10 @@ function CaptureMenu({ caseId, recording, into }: CaptureMenuProps) {
               <MenuLabel data-testid="launch-control-notice">
                 <span className="block text-xs font-semibold text-text-primary">{card.title}</span>
                 <span className="block text-[11px] text-text-muted">{card.detail}</span>
+                {/* Main's own account of why the browser closed, which the panel shows in a tip. */}
+                {card.tip && (
+                  <span className="mt-1 block text-[11px] text-text-muted">{card.tip}</span>
+                )}
               </MenuLabel>
               <MenuItem onSelect={() => dismissNotice(notice)}>Dismiss notice</MenuItem>
               <MenuSeparator />
@@ -368,7 +384,11 @@ function CaptureMenu({ caseId, recording, into }: CaptureMenuProps) {
             data-testid="launch-control-paste"
             disabled={!caseId}
             title={caseId ? undefined : 'Open a Case first'}
-            onSelect={() => caseId && setPaste({ caseId, open: true })}
+            onSelect={() => {
+              if (!caseId) return
+              openings.current += 1
+              setPaste({ caseId, open: true, opening: openings.current })
+            }}
           >
             <ClipboardList className={ITEM_ICON} strokeWidth={1.8} />
             Paste URLs to capture…
@@ -409,13 +429,20 @@ function CaptureMenu({ caseId, recording, into }: CaptureMenuProps) {
           )}
         </MenuContent>
       </Menu>
-      {paste && (
-        <PasteUrlsDialog
-          caseId={paste.caseId}
-          open={paste.open}
-          onOpenChange={(open) => setPaste({ caseId: paste.caseId, open })}
-        />
-      )}
+      {/* The dialog renders at the end of the document. Inside the bar its backdrop would lie in
+          the window drag region, where a click starts a drag and does not close it. */}
+      {paste &&
+        createPortal(
+          <PasteUrlsDialog
+            key={paste.opening}
+            caseId={paste.caseId}
+            open={paste.open}
+            onOpenChange={(open) =>
+              setPaste((now) => (now?.opening === paste.opening ? { ...now, open } : now))
+            }
+          />,
+          document.body
+        )}
     </div>
   )
 }

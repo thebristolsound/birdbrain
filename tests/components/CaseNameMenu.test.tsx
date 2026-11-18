@@ -68,7 +68,12 @@ interface Reads {
 let exportArchive: ReturnType<typeof vi.fn>
 let inspectArchive: ReturnType<typeof vi.fn>
 let showItemInFolder: ReturnType<typeof vi.fn>
-let progressCb: ((event: ArchiveProgressEvent) => void) | null
+// Every listener the app has for archive progress, minus those it has stopped. A step reaches
+// only these, as it would in the app.
+const progressListeners = new Set<(event: ArchiveProgressEvent) => void>()
+function sendProgress(event: ArchiveProgressEvent) {
+  act(() => progressListeners.forEach((listener) => listener(event)))
+}
 
 function setup(reads: Reads = {}) {
   const { available = true, roster = LOCAL, syncState = NO_PEERS, counts = { 'case-1': 3 } } = reads
@@ -88,8 +93,8 @@ function setup(reads: Reads = {}) {
     wayback: { listForCase: vi.fn(async () => []) },
     shell: { showItemInFolder },
     onArchiveProgress: vi.fn((cb: (event: ArchiveProgressEvent) => void) => {
-      progressCb = cb
-      return vi.fn()
+      progressListeners.add(cb)
+      return () => progressListeners.delete(cb)
     })
   })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -119,7 +124,7 @@ beforeEach(() => {
   navigate.mockClear()
   notifySuccess.mockReset()
   notifyError.mockReset()
-  progressCb = null
+  progressListeners.clear()
   exportArchive = vi.fn(async () => ({ canceled: false, filePath: ARCHIVE_PATH }))
   inspectArchive = vi.fn(async () => null)
   showItemInFolder = vi.fn(async () => undefined)
@@ -446,13 +451,11 @@ describe('exporting from the Case menu', () => {
     // The step stays on one line, cut short, so a long one cannot wrap out of the button (#2159).
     expect(progress.querySelector('span')?.className).toContain('xl:max-w-44 xl:truncate')
 
-    act(() => progressCb?.({ caseId: 'case-1', step: 'Bundling captures...', percent: 55 }))
+    sendProgress({ caseId: 'case-1', step: 'Bundling captures...', percent: 55 })
     expect(progress.textContent).toBe('Bundling captures... — 55%')
     expect(progress.getAttribute('title')).toBe('Bundling captures... — 55%')
-    act(() => progressCb?.({ caseId: 'other-case', step: 'Should not show', percent: 99 }))
+    sendProgress({ caseId: 'other-case', step: 'Should not show', percent: 99 })
     expect(screen.queryByText(/Should not show/)).toBeNull()
-    // Another Case's steps leave no record behind, which would hold that Case's items for good.
-    expect(Object.keys(useCaseExports.getState().pending)).toEqual(['case-1'])
 
     const menu = openMenu()
     expect(isDisabledItem(within(menu).getByTestId('case-menu-export-report'))).toBe(true)
@@ -463,6 +466,27 @@ describe('exporting from the Case menu', () => {
     await act(async () => finish({ canceled: false, filePath: ARCHIVE_PATH }))
     await waitFor(() => expect(screen.queryByTestId('case-export-progress')).toBeNull())
     expect(isDisabledItem(within(menu).getByTestId('case-menu-export-archive'))).toBe(false)
+    // The export stops listening once it has settled.
+    expect(progressListeners.size).toBe(0)
+  })
+
+  // Steps that name another Case leave nothing behind for it: its export stays free to start.
+  it("leaves another Case's export free when its steps arrive during this export", async () => {
+    exportArchive.mockReturnValue(NEVER)
+    const { rerender, client } = setup()
+    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    await screen.findByTestId('case-export-progress')
+    sendProgress({ caseId: 'case-2', step: 'Should not show', percent: 99 })
+    rerender(
+      <QueryClientProvider client={client}>
+        <CaseMenu place="name" caseId="case-2" caseData={{ ...CASE, id: 'case-2' }} />
+      </QueryClientProvider>
+    )
+    expect(screen.queryByTestId('case-export-progress')).toBeNull()
+    const item = within(theMenu()).getByTestId('case-menu-export-archive')
+    expect(isDisabledItem(item)).toBe(false)
+    fireEvent.click(item)
+    await waitFor(() => expect(exportArchive).toHaveBeenLastCalledWith('case-2'))
   })
 
   it('keeps a failed export on screen until the Operator dismisses it', async () => {
@@ -504,7 +528,9 @@ describe('exporting from the Case menu', () => {
     await screen.findByTestId('case-export-progress')
     first.unmount()
     // The export keeps listening while the menu is away, so the step shown on return is current.
-    act(() => progressCb?.({ caseId: 'case-1', step: 'Bundling captures...', percent: 55 }))
+    // A listener that belonged to the menu would have stopped with it.
+    expect(progressListeners.size).toBe(1)
+    sendProgress({ caseId: 'case-1', step: 'Bundling captures...', percent: 55 })
 
     setup()
     expect(screen.getByTestId('case-export-progress').textContent).toBe(
@@ -547,7 +573,7 @@ describe('exporting from the Case menu', () => {
         </QueryClientProvider>
       )
     show('case-2')
-    act(() => progressCb?.({ caseId: 'case-1', step: 'Bundling captures...', percent: 55 }))
+    sendProgress({ caseId: 'case-1', step: 'Bundling captures...', percent: 55 })
     expect(screen.queryByTestId('case-export-progress')).toBeNull()
     await act(async () => finish({ canceled: false, filePath: ARCHIVE_PATH }))
 

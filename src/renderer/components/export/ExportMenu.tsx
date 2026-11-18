@@ -1,7 +1,7 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FileOutput, FileText, Archive, Loader2, X } from 'lucide-react'
 import { AnimatePresence } from 'motion/react'
-import { Button } from '@renderer/components/ui'
+import { Button, Menu, MenuContent, MenuItem, MenuTrigger } from '@renderer/components/ui'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
 import { useCasesMutations } from '@renderer/lib/queries'
 import { notifyExportWritten } from '@renderer/components/export/exportNotice'
@@ -25,35 +25,6 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
   // after a case switch can detect it's stale (the async closure captured the old id).
   const caseIdRef = useRef(caseId)
 
-  const menuRef = useRef<HTMLDivElement>(null)
-  const anchorRef = useRef<HTMLButtonElement>(null)
-  const menuId = useId()
-
-  // Focus lands on the first item when the menu opens, as the menu role promises.
-  useEffect(() => {
-    if (!open) return
-    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
-  }, [open])
-
-  function onMenuKey(e: ReactKeyboardEvent<HTMLDivElement>) {
-    const items = Array.from(
-      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []
-    )
-    const index = items.indexOf(document.activeElement as HTMLElement)
-    let next = -1
-    if (e.key === 'ArrowDown') next = (index + 1) % items.length
-    else if (e.key === 'ArrowUp') next = (index - 1 + items.length) % items.length
-    else if (e.key === 'Home') next = 0
-    else if (e.key === 'End') next = items.length - 1
-    else if (e.key === 'Tab') {
-      setOpen(false)
-      return
-    }
-    if (next < 0) return
-    e.preventDefault()
-    items[next]?.focus()
-  }
-
   useEffect(() => {
     caseIdRef.current = caseId
     // Switching cases must not carry a stale export banner/progress across.
@@ -71,33 +42,7 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
     return unsubscribe
   }, [caseId])
 
-  useEffect(() => {
-    if (!open) return
-    function onDocClick(e: MouseEvent) {
-      const target = e.target as Node
-      if (menuRef.current?.contains(target)) return
-      if (anchorRef.current?.contains(target)) return
-      setOpen(false)
-    }
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        setOpen(false)
-        anchorRef.current?.focus()
-      }
-    }
-    document.addEventListener('mousedown', onDocClick)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('mousedown', onDocClick)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [open])
-
   async function handleExportArchive() {
-    // The item unmounts with the menu, so hand focus back first or the
-    // keyboard lands on the document once the save dialog closes.
-    anchorRef.current?.focus()
-    setOpen(false)
     const exportCaseId = caseId
     setArchiveError('')
     setArchiveProgress({ step: 'Preparing archive…', percent: 0 })
@@ -126,73 +71,52 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
 
   return (
     <div className="relative" data-tour="export">
-      <Button
-        ref={anchorRef}
-        variant="outline"
-        size="sm"
-        // aria-disabled rather than disabled: a disabled control cannot hold
-        // focus, and the archive item hands focus back here as it starts.
-        onClick={() => {
+      <Menu
+        open={open}
+        onOpenChange={(next) => {
           if (isExporting) return
-          setOpen((v) => !v)
+          setOpen(next)
         }}
-        aria-disabled={isExporting}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        title={progressLabel ?? 'Export'}
-        className="gap-1.5 aria-disabled:opacity-50"
       >
-        {isExporting ? (
-          <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.8} />
-        ) : (
-          <FileOutput className="h-3 w-3" strokeWidth={1.8} />
-        )}
-        {/* In the top bar the label folds to the icon below lg and stays the button's
-            accessible name. not-sr-only resets white-space, so truncate comes with it or a long
-            step wraps out of the 28px button; the title carries the full step. No chevron: the
-            format choice is the menu this opens, not a split control
-            (docs/design-handoff/2026-11-08-top-bar/). */}
-        <span className="sr-only lg:not-sr-only lg:max-w-44 lg:truncate">
-          {progressLabel ?? 'Export'}
-        </span>
-      </Button>
-
-      {open && (
-        <div
-          ref={menuRef}
-          id={menuId}
-          role="menu"
-          aria-label="Export options"
-          onKeyDown={onMenuKey}
-          className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg border border-border-strong bg-card py-1 shadow-xl"
-        >
-          <button
-            role="menuitem"
-            tabIndex={-1}
-            onClick={() => {
-              setOpen(false)
-              // The item unmounts with the menu, so the dialog would record a
-              // detached opener and have nowhere to hand focus back to.
-              anchorRef.current?.focus()
-              setShowReport(true)
-            }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary hover:bg-elevated"
+        <MenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            // No tap gesture on a menu trigger: for Enter, Motion sends a pointerdown of its own,
+            // which stops the menu opening on its first item.
+            whileTap={undefined}
+            // aria-disabled rather than disabled: a disabled control cannot hold
+            // focus, and the archive item hands focus back here as it starts.
+            aria-disabled={isExporting}
+            title={progressLabel ?? 'Export'}
+            className="gap-1.5 aria-disabled:opacity-50"
           >
+            {isExporting ? (
+              <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.8} />
+            ) : (
+              <FileOutput className="h-3 w-3" strokeWidth={1.8} />
+            )}
+            {/* In the top bar the label folds to the icon below lg and stays the button's
+                accessible name. not-sr-only resets white-space, so truncate comes with it or a
+                long step wraps out of the 28px button; the title carries the full step. No
+                chevron: the format choice is the menu this opens, not a split control
+                (docs/design-handoff/2026-11-08-top-bar/). */}
+            <span className="sr-only lg:not-sr-only lg:max-w-44 lg:truncate">
+              {progressLabel ?? 'Export'}
+            </span>
+          </Button>
+        </MenuTrigger>
+        <MenuContent aria-label="Export options">
+          <MenuItem onSelect={() => setShowReport(true)}>
             <FileText className="h-3.5 w-3.5 shrink-0 text-text-muted" strokeWidth={1.8} />
             Export evidence report
-          </button>
-          <button
-            role="menuitem"
-            tabIndex={-1}
-            onClick={handleExportArchive}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary hover:bg-elevated"
-          >
+          </MenuItem>
+          <MenuItem onSelect={handleExportArchive}>
             <Archive className="h-3.5 w-3.5 shrink-0 text-text-muted" strokeWidth={1.8} />
             Export case file
-          </button>
-        </div>
-      )}
+          </MenuItem>
+        </MenuContent>
+      </Menu>
 
       {/* A failed archive stays up until dismissed rather than timing out:
           the mock has no failure path, and an error is not a transient notice. */}

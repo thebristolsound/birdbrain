@@ -177,8 +177,17 @@ describe('Launch browser', () => {
     expect(useAppStore.getState().startDialogCaseId).toBe('case1')
   })
 
+  // The Capture Session panel is the open browser's place, and names it.
+  it('leaves the bar while a launched browser is open', async () => {
+    renderWith({ state: 'open', browser: BROWSER })
+    // Export renders once the Case has loaded, as Launch browser would: without this wait the
+    // button is absent whatever the browser's state.
+    await within(screen.getByTestId('topbar-controls')).findByTestId('export-menu')
+    expect(screen.queryByRole('button', { name: 'Launch browser' })).toBeNull()
+    expect(screen.queryByTitle('A launched browser is already open')).toBeNull()
+  })
+
   it.each([
-    ['open', { state: 'open', browser: BROWSER }, 'A launched browser is already open'],
     [
       'starting',
       { state: 'starting', browser: BROWSER, step: 'browser' },

@@ -11,13 +11,17 @@ import { cn } from '@renderer/lib/utils'
 // Recording, without the camcorder (docs/design-handoff/2026-11-08-top-bar/): a 6px danger dot,
 // a mono elapsed timer where the session's start is known (a launched browser's), and the source
 // in secondary text. No pill, no fill, no pulse, no "REC". On Case screens it sits in the Case
-// action bar beside the switch that starts and stops it; on the dashboard and in Settings it
-// stays in the top bar, where `trigger` adds the chevron of the Capture Session popover.
+// action bar, against the switch during the extension's own session. There `showSource` is off
+// while a launched browser is open, since the Capture Session panel names it, docked or folded
+// to its strip. On the dashboard and in Settings it stays in the top bar, where `trigger` adds
+// the chevron of the Capture Session popover.
 export function RecordingMark({
   trigger = false,
+  showSource = true,
   className
 }: {
   trigger?: boolean
+  showSource?: boolean
   className?: string
 }) {
   const { data: launched } = useQuery(launchedBrowserStatusQueryOptions)
@@ -48,7 +52,7 @@ export function RecordingMark({
       ) : (
         <span className="font-mono text-text-primary">Recording</span>
       )}
-      {source && <span className="text-text-muted">{source}</span>}
+      {showSource && source && <span className="text-text-muted">{source}</span>}
       {trigger && (
         <span aria-hidden="true" className="text-text-faint">
           ▾

@@ -39,6 +39,14 @@ export {
   ContextMenuShortcut
 } from '@renderer/components/ui/context-menu'
 export {
+  Menu,
+  MenuTrigger,
+  MenuContent,
+  MenuItem,
+  MenuSeparator,
+  MenuShortcut
+} from '@renderer/components/ui/menu'
+export {
   Popover,
   PopoverTrigger,
   PopoverAnchor,

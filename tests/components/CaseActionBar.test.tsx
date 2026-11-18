@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { LaunchedBrowserStatus, LaunchedBrowserSummary } from '@shared/types'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
@@ -21,10 +22,20 @@ vi.mock('@renderer/components/status/SessionControls', () => ({
 
 import { CaseActionBar } from '@renderer/components/layout/CaseActionBar'
 
-function mount() {
-  fakeBridge({ launchedBrowser: { status: vi.fn(async () => ({ state: 'none' as const })) } })
+const BROWSER: LaunchedBrowserSummary = {
+  family: 'chrome',
+  label: 'Google Chrome',
+  caseId: 'case-1',
+  version: '149.0.7827.55',
+  extensionWarnings: [],
+  sessionStartedAt: null,
+  tabs: []
+}
+
+function mount(status: LaunchedBrowserStatus = { state: 'none' }) {
+  fakeBridge({ launchedBrowser: { status: vi.fn(async () => status) } })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  client.setQueryData(queryKeys.launchedBrowserStatus, { state: 'none' })
+  client.setQueryData(queryKeys.launchedBrowserStatus, status)
   render(
     <QueryClientProvider client={client}>
       <CaseActionBar />
@@ -34,7 +45,11 @@ function mount() {
 
 afterEach(() => {
   cleanup()
-  useAppStore.setState({ connectedToExtension: false, sessionActive: false })
+  useAppStore.setState({
+    connectedToExtension: false,
+    sessionActive: false,
+    dismissedLaunchNotice: null
+  })
 })
 
 // The row under the top bar (docs/design-handoff/2026-11-08-top-bar/, Option B).
@@ -55,7 +70,53 @@ describe("CaseActionBar as the Case's action row", () => {
     expect(mark.textContent).not.toContain('REC')
   })
 
-  // The mark belongs to the switch that starts and stops the session, so nothing sits between
+  // The open browser is the mark's source, and the Capture Session panel is where its name is.
+  it('names no source in the mark while a launched browser is open', () => {
+    useAppStore.setState({ sessionActive: true, connectedToExtension: true })
+    mount({ state: 'open', browser: BROWSER })
+    expect(screen.getByTestId('topbar-rec').textContent).toBe('Recording')
+  })
+
+  // A browser that is closing or has closed is no longer the source. After one has closed, the
+  // session can keep running through the extension, and the panel says only that it closed.
+  it.each([
+    ['closing', { state: 'closing', browser: BROWSER }],
+    ['closed', { state: 'closed', browser: BROWSER }]
+  ] satisfies Array<[string, LaunchedBrowserStatus]>)(
+    'names the extension in the mark once the launched browser is %s',
+    (_, status) => {
+      useAppStore.setState({ sessionActive: true, connectedToExtension: true })
+      mount(status)
+      expect(screen.getByTestId('topbar-rec').textContent).toBe('Recordingextension')
+    }
+  )
+
+  it.each([
+    ['closing', { state: 'closing', browser: BROWSER }],
+    ['closed', { state: 'closed', browser: BROWSER }]
+  ] satisfies Array<[string, LaunchedBrowserStatus]>)(
+    'names no source once the launched browser is %s and no extension is connected',
+    (_, status) => {
+      useAppStore.setState({ sessionActive: true, connectedToExtension: false })
+      mount(status)
+      expect(screen.getByTestId('topbar-rec').textContent).toBe('Recording')
+    }
+  )
+
+  it('names the extension in the mark for an extension-only session, which has no panel', () => {
+    useAppStore.setState({ sessionActive: true, connectedToExtension: true })
+    mount()
+    expect(screen.getByTestId('topbar-rec').textContent).toBe('Recordingextension')
+  })
+
+  // A notice names how the last browser closed, not what records now.
+  it('names the extension in the mark while the panel shows a notice', () => {
+    useAppStore.setState({ sessionActive: true, connectedToExtension: true })
+    mount({ state: 'none', notice: { code: 'EGRESS_CHANGED', message: 'The Egress changed.' } })
+    expect(screen.getByTestId('topbar-rec').textContent).toBe('Recordingextension')
+  })
+
+  // The mark sits against the switch of the extension's session, so nothing sits between
   // them, and the row holds no other control. Share and Export needed the Case to render, which
   // this row no longer loads, so e2e/topbar-layout.spec.ts checks on an open Case that they and
   // Launch browser are gone from it.

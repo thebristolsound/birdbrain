@@ -26,6 +26,8 @@ vi.mock('@renderer/components/dashboard/cases/ImportCaseDialog', () => ({
   }) => (
     <div role="dialog" aria-label="Import Case Archive">
       {report.caseName}
+      {/* Stands in for the dialog's own state, such as its tamper override. */}
+      <input type="checkbox" aria-label="Override" />
       <button onClick={onClose}>Close import</button>
     </div>
   )
@@ -72,6 +74,7 @@ function setup(reads: Reads = {}) {
   // An explicit undefined is the Case that has not loaded, so it must not fall back to CASE.
   const caseData = 'caseData' in reads ? reads.caseData : CASE
   const getSyncState = vi.fn(async () => syncState)
+  const getCase = vi.fn<(id: string) => Promise<null>>(async () => null)
   fakeBridge({
     sharing: {
       isAvailable: vi.fn(async () => available),
@@ -79,7 +82,7 @@ function setup(reads: Reads = {}) {
       getSyncState
     },
     captures: { countsByCase: vi.fn(async () => counts) },
-    cases: { exportArchive, inspectArchive, get: vi.fn(async () => null) },
+    cases: { exportArchive, inspectArchive, get: getCase },
     export: { preflight: vi.fn(async () => null) },
     wayback: { listForCase: vi.fn(async () => []) },
     shell: { showItemInFolder },
@@ -94,7 +97,7 @@ function setup(reads: Reads = {}) {
       <CaseMenu place="name" caseId="case-1" caseData={caseData} />
     </QueryClientProvider>
   )
-  return { client, getSyncState, ...view }
+  return { client, getSyncState, getCase, ...view }
 }
 
 function trigger(): HTMLElement {
@@ -104,6 +107,11 @@ function trigger(): HTMLElement {
 function openMenu(): HTMLElement {
   fireEvent.click(trigger())
   return screen.getByRole('menu')
+}
+
+// The menu, opened if it is not open already.
+function theMenu(): HTMLElement {
+  return screen.queryByRole('menu') ?? openMenu()
 }
 
 beforeEach(() => {
@@ -160,6 +168,26 @@ describe('the Case menu on the Case name', () => {
     await waitFor(() =>
       expect(within(menu).getByTestId('case-menu-about').textContent).toMatch(/^1 Capture · /)
     )
+  })
+
+  // A Case that was shared and has nobody connected is not local: a Member who left can still
+  // hold a copy.
+  it('does not call a shared Case local once nobody else is connected', async () => {
+    setup({ caseData: { ...CASE, sharedAt: '2026-09-02T00:00:00Z' } })
+    const menu = openMenu()
+    await waitFor(() =>
+      expect(within(menu).getByTestId('case-menu-about').textContent).toBe('3 Captures')
+    )
+  })
+
+  // The visible name hides on a narrow window, and the button must still say which Case it is.
+  it('keeps the Case name in the button for assistive technology when the name hides', () => {
+    setup()
+    const copies = within(trigger()).getAllByText('Harbour ledger review')
+    expect(copies).toHaveLength(2)
+    expect(copies.map((el) => el.className).filter((c) => c.includes('sr-only'))).toEqual([
+      'sr-only min-[1001px]:hidden'
+    ])
   })
 
   it('opens the command palette from Switch Case, which names the shortcut', async () => {
@@ -336,6 +364,10 @@ describe('the sync state beside the Case name', () => {
     expect(trigger().contains(notice)).toBe(false)
     // Outside a button, it has to leave the bar's window drag region itself.
     expect(notice.className).toContain('[app-region:no-drag]')
+    // Focus reads the explanation, not only the short label.
+    const tip = screen.getByRole('tooltip')
+    expect(tip.id).not.toBe('')
+    expect(notice.getAttribute('aria-describedby')).toBe(tip.id)
   })
 
   it('shows no network notice on a Direct Egress', async () => {
@@ -404,6 +436,8 @@ describe('exporting from the Case menu', () => {
     const progress = await screen.findByTestId('case-export-progress')
     expect(progress.textContent).toBe('Preparing archive… — 0%')
     expect(trigger().contains(progress)).toBe(true)
+    // The step stays on one line, cut short, so a long one cannot wrap out of the button (#2159).
+    expect(progress.querySelector('span')?.className).toContain('xl:max-w-44 xl:truncate')
 
     act(() => progressCb?.({ caseId: 'case-1', step: 'Bundling captures...', percent: 55 }))
     expect(progress.textContent).toBe('Bundling captures... — 55%')
@@ -434,7 +468,7 @@ describe('exporting from the Case menu', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
-  it('drops a failure and a running step when the Case on screen changes', async () => {
+  it('drops a failure when the Case on screen changes', async () => {
     exportArchive.mockRejectedValue(new Error('disk full'))
     const { rerender, client } = setup()
     fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
@@ -445,6 +479,80 @@ describe('exporting from the Case menu', () => {
       </QueryClientProvider>
     )
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+  })
+
+  // A running export belongs to its Case. Another Case shows none of it, and coming back
+  // finds it still running, with its item held, so a second export cannot start beside it.
+  it('keeps a running export with its Case across a switch of Case', async () => {
+    let finish!: (result: ArchiveExportResult) => void
+    exportArchive.mockReturnValue(new Promise<ArchiveExportResult>((resolve) => (finish = resolve)))
+    const { rerender, client } = setup()
+    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    await screen.findByTestId('case-export-progress')
+    const show = (id: string) =>
+      rerender(
+        <QueryClientProvider client={client}>
+          <CaseMenu place="name" caseId={id} caseData={{ ...CASE, id }} />
+        </QueryClientProvider>
+      )
+
+    show('case-2')
+    expect(screen.queryByTestId('case-export-progress')).toBeNull()
+    expect(isDisabledItem(within(theMenu()).getByTestId('case-menu-export-archive'))).toBe(false)
+
+    show('case-1')
+    expect(screen.getByTestId('case-export-progress')).toBeTruthy()
+    expect(isDisabledItem(within(theMenu()).getByTestId('case-menu-export-archive'))).toBe(true)
+    fireEvent.click(within(theMenu()).getByTestId('case-menu-export-archive'))
+    expect(exportArchive).toHaveBeenCalledOnce()
+
+    await act(async () => finish({ canceled: false, filePath: ARCHIVE_PATH }))
+    await waitFor(() => expect(screen.queryByTestId('case-export-progress')).toBeNull())
+  })
+
+  it('keeps a stopped sync in view while an export runs', async () => {
+    exportArchive.mockReturnValue(NEVER)
+    setup({
+      roster: members(),
+      syncState: sync({ phase: 'error', lastError: { kind: 'relay', at: '2026-01-01T00:00:00Z' } })
+    })
+    await screen.findByTestId('case-sync-state')
+    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    await screen.findByTestId('case-export-progress')
+    expect(screen.getByTestId('case-sync-state').dataset.chrome).toBe('error')
+  })
+
+  it('shows one failure at a time and dismisses only the one shown', async () => {
+    exportArchive.mockRejectedValue(new Error('disk full'))
+    inspectArchive.mockRejectedValue(new Error('not an archive'))
+    setup()
+    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    expect((await screen.findByRole('alert')).textContent).toContain('disk full')
+    fireEvent.click(within(theMenu()).getByTestId('case-menu-import'))
+    await waitFor(() => expect(inspectArchive).toHaveBeenCalledOnce())
+    await nextTurn()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('not an archive')
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  // The palette can change the Case on screen while the dialog is up. The dialog reads the Case
+  // it exports, so its reads show which Case that is.
+  it('keeps the export dialog on the Case it was opened for', async () => {
+    const { rerender, client, getCase } = setup()
+    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-report'))
+    await waitFor(() => expect(getCase).toHaveBeenCalledWith('case-1'))
+    rerender(
+      <QueryClientProvider client={client}>
+        <CaseMenu place="name" caseId="case-2" caseData={{ ...CASE, id: 'case-2' }} />
+      </QueryClientProvider>
+    )
+    expect(screen.getByRole('dialog', { name: 'Export case' })).toBeTruthy()
+    await nextTurn()
+    await nextTurn()
+    expect(getCase.mock.calls.map(([id]) => id)).toEqual(['case-1'])
   })
 
   it('holds both exports while the Case has not loaded', () => {
@@ -466,6 +574,35 @@ describe('importing from the Case menu', () => {
     expect(dialog.textContent).toContain('Ferry Line')
     fireEvent.click(screen.getByRole('button', { name: 'Close import' }))
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('opens one file picker at a time', async () => {
+    inspectArchive.mockReturnValue(NEVER)
+    setup()
+    fireEvent.click(within(openMenu()).getByTestId('case-menu-import'))
+    fireEvent.click(within(theMenu()).getByTestId('case-menu-import'))
+    await nextTurn()
+    expect(inspectArchive).toHaveBeenCalledOnce()
+  })
+
+  // The dialog's own state, its tamper override among it, belongs to one archive.
+  it('starts a second archive with a fresh dialog', async () => {
+    inspectArchive
+      .mockResolvedValueOnce({ caseName: 'Ferry Line', archivePath: '/a.bbcase' })
+      .mockResolvedValueOnce({ caseName: 'Harbor Desk', archivePath: '/b.bbcase' })
+    setup()
+    fireEvent.click(within(openMenu()).getByTestId('case-menu-import'))
+    await screen.findByRole('dialog', { name: 'Import Case Archive' })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Override' }))
+    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: 'Override' }).checked).toBe(true)
+
+    fireEvent.click(within(theMenu()).getByTestId('case-menu-import'))
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: 'Import Case Archive' }).textContent).toContain(
+        'Harbor Desk'
+      )
+    )
+    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: 'Override' }).checked).toBe(false)
   })
 
   it('opens nothing when no archive is chosen', async () => {

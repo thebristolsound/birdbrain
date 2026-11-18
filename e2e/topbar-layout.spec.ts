@@ -28,9 +28,13 @@ async function createCase(page: Page, name: string): Promise<string> {
 }
 
 test.describe('Top bar layout', () => {
-  // The status group grows when it names an issue, as "VPN not seen" does, so the layout is
-  // measured in that state rather than with the fixture's default VPN. The words show from 1,280
-  // pixels (`xl`); below that the icon and the dots carry the state.
+  // The status group is wide when it names a problem, which shows an icon and a word at every
+  // width, so the layout is measured with a failed Capture logged. The longest problem word is
+  // "Egress unknown", and no switch makes the Egress unreadable, so the test writes that word
+  // into the control in place of the failure count before it measures. A session's Capture count
+  // beside the word, and the queued and held marks, are not in this measure. The VPN is left not
+  // seen: that is an advisory, a ring with no word, and it sits behind the problem once one is
+  // logged.
   test.beforeAll(() => {
     process.env.BIRDBRAIN_E2E_VPN = 'not-seen'
   })
@@ -46,6 +50,28 @@ test.describe('Top bar layout', () => {
     const caseName = page.getByTestId('topbar-case-name')
     const controls = page.getByTestId('topbar-controls')
     const actionBar = page.getByTestId('case-action-bar')
+
+    // Before a failure is logged the advisory is the worst signal, so the Egress dot is the ring.
+    // Only a real window computes its CSS: an inset shadow with no fill. Forced colours drop
+    // shadows, so the ring has a border there, and the built stylesheet has to hold that rule.
+    const ring = controls.getByTestId('status-dot').nth(1)
+    await expect(ring).toHaveAttribute('data-severity', 'warning')
+    const drawn = await ring.evaluate((el) => {
+      const { boxShadow, backgroundColor } = getComputedStyle(el)
+      return { boxShadow, backgroundColor }
+    })
+    expect(drawn.boxShadow).toMatch(/0px 0px 0px 1\.5px inset$/)
+    expect(drawn.backgroundColor).toBe('rgba(0, 0, 0, 0)')
+    const forcedColoursRule = await page.evaluate(() =>
+      Array.from(document.styleSheets).some((sheet) =>
+        Array.from(sheet.cssRules).some((rule) =>
+          /@media \(forced-colors: active\)\s*\{\s*\.forced-colors\\:border-2\s*\{[^}]*border-width: 2px/.test(
+            rule.cssText
+          )
+        )
+      )
+    )
+    expect(forcedColoursRule).toBe(true)
 
     for (const name of NAMES) {
       const caseId = await createCase(page, name)
@@ -73,9 +99,22 @@ test.describe('Top bar layout', () => {
       await expect(actionBar.getByTestId('share-pill')).toHaveCount(0)
       await expect(controls.getByTestId('topbar-rec')).toHaveCount(0)
       await expect(controls.getByTestId('status-group')).toBeVisible()
-      // The state the widths below are measured in.
+      // The state the widths below are measured in: one failed Capture per Case created so far.
+      await electronApp.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0].webContents.send('event:captureActivity', {
+          type: 'failed',
+          source: 'extension',
+          url: 'https://ferry.test/notices',
+          timestamp: new Date().toISOString(),
+          error: 'stand-in failure'
+        })
+      })
       const statusWord = controls.getByTestId('status-word')
-      await expect(statusWord).toHaveText('VPN not seen')
+      await expect(statusWord).toHaveText(/^\d failed$/)
+      // A stand-in for the widest state: the same control and icon, with the longest word.
+      await statusWord.evaluate((el) => {
+        ;(el.firstChild as Text).data = 'Egress unknown'
+      })
 
       // The viewport emulation below leaves the native window controls' room at what the window
       // opened with, so the room Linux's three buttons take is pinned here.
@@ -137,10 +176,11 @@ test.describe('Top bar layout', () => {
           .poll(async () => (await caseName.getAttribute('title'))?.startsWith(`${name} · `))
           .toBe(true)
 
-        // The status words take room from 1,280 pixels and none below it.
+        // A problem's word takes room at every width, and the stand-in word is still the one
+        // measured.
+        await expect(statusWord).toHaveText('Egress unknown')
         const { width: wordWidth } = (await statusWord.boundingBox())!
-        if (width >= 1280) expect(wordWidth).toBeGreaterThan(40)
-        else expect(wordWidth).toBeLessThanOrEqual(1)
+        expect(wordWidth).toBeGreaterThan(30)
 
         // Every control on the right stays inside the window, and nothing scrolls sideways.
         for (const button of await controls.getByRole('button').all()) {
@@ -239,7 +279,11 @@ test.describe('Top bar layout', () => {
       await expect(rail.or(page.getByTestId('capture-session-strip'))).toBeVisible({
         timeout: 1000
       })
-      if (await rail.isVisible()) await expect(rail).toContainText('Launched Google Chrome')
+      // The panel can fold to its strip between the two lines below, so the check is short and
+      // the caller's retry reads the folded state.
+      if (await rail.isVisible()) {
+        await expect(rail).toContainText('Launched Google Chrome', { timeout: 1000 })
+      }
       // The label names both sources with no switch before it, and the row is measured with it.
       await expect(actionBar.getByTestId('session-source-line')).toHaveText(
         'Launched Google Chrome, and the extension',

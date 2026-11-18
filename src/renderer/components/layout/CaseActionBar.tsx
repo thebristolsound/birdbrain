@@ -6,7 +6,8 @@ import { useCaptureSessionView } from '@renderer/components/launchedBrowser/Capt
 
 // The row under the top bar (docs/design-handoff/2026-11-08-top-bar/, Option B): the recording
 // mark while a session runs, then the Capture Session switch, so the mark sits against the
-// switch. Share, Export and Launch browser moved up into the top bar. The bar renders whenever a
+// switch, or against the label where a launched browser's session shows one with no switch.
+// Share, Export and Launch browser moved up into the top bar. The bar renders whenever a
 // Case is open; the switch shows itself only for the extension's own session, since the Capture
 // Session panel stops a launched browser's (SessionControls).
 // Its left side names the section, which the rail shows only as an icon and the screen header can

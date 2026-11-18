@@ -19,9 +19,12 @@ import { CaptureLog, useSelfTest } from '@renderer/components/status/CaptureHeal
 
 // The top bar's one status control (docs/design-handoff/2026-11-08-top-bar/, Option B): the
 // Egress, the extension connection and Capture Health as three faint dots in a neutral pill.
-// Nothing in the chrome paints a status background. Off nominal, the worst signal's icon joins
-// its dot and both take that signal's colour, with one short word; the pill itself stays
-// unfilled. The button's accessible name is the whole state (statusGroupModel's summary), and a
+// Nothing in the chrome paints a status background. A problem's icon joins its dot and both take
+// the danger colour, with one short word. An advisory is a hollow ring in the warning colour in
+// place of its dot, with no icon and no word, so it differs from nominal by shape as well as
+// colour (ADR-0032 VPN rule 2, amended after that folder's notes, which still give an advisory a
+// word). The pill itself stays unfilled. The button's accessible name is the whole state
+// (statusGroupModel's summary), and a
 // polite live region announces severity changes only, never each count. Click opens the three
 // rows, and above the buttons the held Batches, which an earlier session or a restore left
 // waiting, each with its Resume.
@@ -32,9 +35,11 @@ const FG: Record<Severity, string> = {
   danger: 'text-danger-fg'
 }
 const DOT: Record<Severity, string> = {
-  nominal: 'bg-text-faint',
-  warning: 'bg-warning-fg',
-  danger: 'bg-danger-fg'
+  nominal: 'h-1.5 w-1.5 bg-text-faint',
+  // Forced colours drop a shadow and keep a border, so the ring has one there.
+  warning:
+    'h-[7px] w-[7px] shadow-[inset_0_0_0_1.5px_var(--color-warning-fg)] forced-colors:border-2',
+  danger: 'h-1.5 w-1.5 bg-danger-fg'
 }
 
 const UNREAD_EGRESS: EgressSetting = { kind: 'unavailable' }
@@ -104,12 +109,15 @@ export function StatusGroup() {
   const barSeverity = (signal: Signal): Severity =>
     signal.key === model.worst?.key ? signal.severity : 'nominal'
 
+  // Only a problem brings its icon into the bar.
   const worstIcon: LucideIcon | null =
-    model.worst?.key === 'egress' && iconEgress
-      ? egressIcon(iconEgress, vpnSeen)
-      : model.worst?.key === 'health'
-        ? Activity
-        : null
+    model.severity !== 'danger'
+      ? null
+      : model.worst?.key === 'egress' && iconEgress
+        ? egressIcon(iconEgress, vpnSeen)
+        : model.worst?.key === 'health'
+          ? Activity
+          : null
 
   return (
     <Popover
@@ -156,15 +164,8 @@ export function StatusGroup() {
             <span className="whitespace-nowrap text-text-secondary">
               {model.count !== null && <span className="tabular-nums">{model.count}</span>}
               {model.count !== null && model.word && <span className="text-text-faint"> · </span>}
-              {/* The word shows from xl; below that the icon and dot carry the state. */}
-              {model.word && (
-                <span
-                  data-testid="status-word"
-                  className={cn(model.count === null && 'sr-only xl:not-sr-only')}
-                >
-                  {model.word}
-                </span>
-              )}
+              {/* Only a problem has a word, and it shows at every width. */}
+              {model.word && <span data-testid="status-word">{model.word}</span>}
             </span>
           )}
           {model.queued && (
@@ -265,7 +266,8 @@ function Dot({ severity }: { severity: Severity }) {
   return (
     <span
       data-testid="status-dot"
-      className={cn('h-1.5 w-1.5 shrink-0 rounded-full', DOT[severity])}
+      data-severity={severity}
+      className={cn('shrink-0 rounded-full', DOT[severity])}
     />
   )
 }

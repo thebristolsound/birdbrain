@@ -30,11 +30,15 @@ describe('statusModel', () => {
     expect(m.signals[0].text).toBe('Not connected')
   })
 
-  it('warns, with one word, when the Egress is Direct and no VPN was seen', () => {
+  // An advisory prints no word in the bar (ADR-0032 VPN rule 2). Its text stays where the
+  // popover and the accessible name read it.
+  it('warns, with no word, when the Egress is Direct and no VPN was seen', () => {
     const m = statusModel({ ...base, vpnSeen: false })
     expect(m.severity).toBe('warning')
     expect(m.worst?.key).toBe('egress')
-    expect(m.word).toBe('VPN not seen')
+    expect(m.word).toBeNull()
+    expect(m.signals[1]).toMatchObject({ text: 'Direct · VPN not seen', severity: 'warning' })
+    expect(m.summary).toMatch(/^Status: a warning\. Egress: Direct · VPN not seen\./)
   })
 
   it('ranks capture failures over the VPN warning, and an unreadable Egress over both', () => {
@@ -88,7 +92,7 @@ describe('statusModel', () => {
     const m = statusModel({ ...base, vpnSeen: true, vpnReadFailed: true })
     expect(m.severity).toBe('warning')
     expect(m.worst?.key).toBe('egress')
-    expect(m.word).toBe('VPN check failed')
+    expect(m.word).toBeNull()
     expect(m.signals[1]).toMatchObject({ text: 'Direct · VPN check failed', severity: 'warning' })
     expect(m.summary).toMatch(/^Status: a warning\. Egress: Direct · VPN check failed\./)
   })

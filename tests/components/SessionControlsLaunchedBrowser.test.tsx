@@ -176,6 +176,24 @@ describe('the label after the switch', () => {
     expect(line()).toEqual({ text: 'Ferry Line', title: 'Ferry Line' })
   })
 
+  // The label stands alone for a closed browser too, while its session still runs.
+  it('names the Active Case once the launched browser has closed with its session running', async () => {
+    route.caseId = 'case-2'
+    useAppStore.setState({ sessionActive: true, activeCaseId: 'case-1' })
+    const container = await mountWithCases({ state: 'closed', browser: BROWSER })
+    expect(line().text).toBe('Ferry Line')
+    expect(container.textContent).toBe('Ferry Line')
+  })
+
+  // With no switch and no launched browser's session there is nothing for a label to stand
+  // beside, so a session running with no extension connected shows nothing here.
+  it('shows nothing for a session with no launched browser and no extension', async () => {
+    route.caseId = 'case-2'
+    useAppStore.setState({ sessionActive: true, activeCaseId: 'case-1' })
+    const container = await mountWithCases({ state: 'none' })
+    expect(container.textContent).toBe('')
+  })
+
   it("names the extension's Active Case when it is not the Case on screen", async () => {
     route.caseId = 'case-2'
     useAppStore.setState({
@@ -214,6 +232,7 @@ describe('the label after the switch', () => {
       text: 'Ferry Line · Launched Google Chrome, and the extension',
       title: 'Ferry Line · Launched Google Chrome, and the extension'
     })
+    expect(screen.queryByRole('switch', { name: 'Capture Session' })).toBeNull()
   })
 
   // The label shows on Case screens only. Off one, a launched browser's session shows nothing here.

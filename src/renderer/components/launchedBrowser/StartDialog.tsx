@@ -21,6 +21,8 @@ import { cn } from '@renderer/lib/utils'
 import { InfoTip } from '@renderer/components/launchedBrowser/InfoTip'
 import {
   NO_BROWSER_REFUSAL,
+  CASES_UNREAD_REFUSAL,
+  NO_CASE_REFUSAL,
   UNREADABLE_EGRESS_REFUSAL,
   busyRefusal,
   egressKindName,
@@ -45,17 +47,30 @@ const STEP_MARKS: Readonly<Record<StepProgress, { mark: string; className: strin
 
 // The start dialog (S2: `1b` to `1e`), mounted once at the root and opened for a Case from the
 // top bar or the command palette. It launches into the Case it was opened for, which it
-// activates first, as the Capture Session switch does before a start. The Persona picker is the
-// Persona step's (#1833).
+// activates first, as the Capture Session switch does before a start. Opened where no Case is on
+// screen, it asks which Case, preset to the last one opened. The Persona picker is the Persona
+// step's (#1833).
 export function StartDialog() {
-  const caseId = useAppStore((s) => s.startDialogCaseId)
+  const namedCaseId = useAppStore((s) => s.startDialogCaseId)
+  const picking = useAppStore((s) => s.startDialogPicking)
   const close = useAppStore((s) => s.closeStartDialog)
   const sessionActive = useAppStore((s) => s.sessionActive)
+  const setPanelHidden = useAppStore((s) => s.setCaptureSessionPanelHidden)
   const navigate = useNavigate()
-  const open = caseId !== null
+  const open = namedCaseId !== null || picking
 
-  const { data: cases = [] } = useQuery(casesQueryOptions)
+  const { data: readCases, isError: casesFailed } = useQuery(casesQueryOptions)
+  const cases = readCases ?? []
   const { data: settings } = useQuery(settingsQueryOptions)
+  const [pickedCaseId, setPickedCaseId] = useState('')
+  // The Case to launch into: the one the dialog was opened for, else the Operator's pick, else
+  // the last Case opened, else the first Case there is.
+  const pickable = cases.filter((c) => !c.archived)
+  const pickedCase =
+    pickable.find(({ id }) => id === pickedCaseId) ??
+    pickable.find(({ id }) => id === settings?.lastActiveCaseId) ??
+    pickable[0]
+  const caseId = namedCaseId ?? (picking ? (pickedCase?.id ?? null) : null)
   const { data: status } = useQuery(launchedBrowserStatusQueryOptions)
   const { data: browsers } = useQuery({ ...launchedBrowsersQueryOptions, enabled: open })
   const { activateCase } = useSessionMutations()
@@ -77,6 +92,7 @@ export function StartDialog() {
     setRefusal(null)
     setCancelling(false)
     setCancelError('')
+    setPickedCaseId('')
     cancelled.current = false
     close()
   }
@@ -97,11 +113,20 @@ export function StartDialog() {
   const blocked =
     unavailableRefusal(status) ??
     busyRefusal(status) ??
+    // No Case to pick is said only of a list that was read: a failed read has its own words,
+    // and one still in flight holds Launch without a reason, since `caseId` is null.
+    (picking && casesFailed && !readCases ? CASES_UNREAD_REFUSAL : null) ??
+    (picking && readCases && pickable.length === 0 ? NO_CASE_REFUSAL : null) ??
     (browsers?.length === 0 ? NO_BROWSER_REFUSAL : null) ??
     (egress?.kind === 'unavailable' ? UNREADABLE_EGRESS_REFUSAL : null)
   const shownRefusal = launching ? null : (blocked ?? refusal)
   const canLaunch =
-    !launching && !blocked && browser !== undefined && knownEgress !== null && operatorName !== ''
+    !launching &&
+    !blocked &&
+    caseId !== null &&
+    browser !== undefined &&
+    knownEgress !== null &&
+    operatorName !== ''
 
   async function launch() {
     if (!caseId || !browser || !knownEgress) return
@@ -154,6 +179,8 @@ export function StartDialog() {
   function showPanel() {
     if (!browserCaseId) return
     dismiss()
+    // The top bar's mark can have hidden the panel, and this button says it shows it.
+    setPanelHidden(false)
     void navigate({ to: '/cases/$caseId/captures', params: { caseId: browserCaseId } })
   }
 
@@ -172,7 +199,9 @@ export function StartDialog() {
           data-testid="launch-start-dialog"
         >
           <div className="flex items-center gap-1.5">
-            <DialogTitle>Launch a browser for {caseName}</DialogTitle>
+            <DialogTitle>
+              {picking ? 'Launch a browser' : `Launch a browser for ${caseName}`}
+            </DialogTitle>
             <InfoTip text={TITLE_TIP} />
           </div>
           {launching ? (
@@ -197,6 +226,32 @@ export function StartDialog() {
                 Session ends.
               </p>
               <dl className="mt-3 grid grid-cols-[96px_minmax(0,1fr)] items-start gap-x-3 gap-y-2">
+                {picking && (
+                  <>
+                    <dt className="pt-1.5 text-text-muted">
+                      <label htmlFor="launch-case-select">Case</label>
+                    </dt>
+                    <dd>
+                      {pickedCase ? (
+                        <select
+                          id="launch-case-select"
+                          autoFocus
+                          value={pickedCase.id}
+                          onChange={(e) => setPickedCaseId(e.target.value)}
+                          className="h-7 w-full rounded border border-border-strong bg-surface px-2 text-xs text-text-primary"
+                        >
+                          {pickable.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="block pt-1.5 text-text-faint">None yet</span>
+                      )}
+                    </dd>
+                  </>
+                )}
                 <dt className="pt-1.5 text-text-muted">
                   <label htmlFor="launch-browser-select">Browser</label>
                 </dt>
@@ -205,7 +260,7 @@ export function StartDialog() {
                     <>
                       <select
                         id="launch-browser-select"
-                        autoFocus
+                        autoFocus={!picking}
                         value={browser.executablePath}
                         onChange={(e) => setSelectedPath(e.target.value)}
                         className="h-7 w-full rounded border border-border-strong bg-surface px-2 text-xs text-text-primary"
@@ -269,9 +324,10 @@ export function StartDialog() {
               )}
               <div className="mt-3 flex items-center gap-2 border-t border-border pt-2.5">
                 <span className="min-w-0 flex-1 text-[11px] text-text-muted">
-                  {sessionActive
-                    ? `Joins the running Capture Session in ${caseName}.`
-                    : `Starts a Capture Session in ${caseName}.`}
+                  {caseId !== null &&
+                    (sessionActive
+                      ? `Joins the running Capture Session in ${caseName}.`
+                      : `Starts a Capture Session in ${caseName}.`)}
                 </span>
                 <Button variant="outline" className="shrink-0 whitespace-nowrap" onClick={dismiss}>
                   Cancel

@@ -86,9 +86,9 @@ test.describe('Top bar layout', () => {
           webContents.send('event:extensionConnection', { connected: true })
           webContents.send('event:sessionStateChanged', { sessionActive: true, activeCaseId: id })
         }, caseId)
-        // The switch and the recording mark sit in the case action bar, so the top bar's right
-        // side does not grow toward the native window controls while recording.
-        await expect(actionBar.getByTestId('topbar-rec')).toBeVisible({ timeout: 1000 })
+        // The switch sits in the case action bar. The recording mark is the capture control's,
+        // in the top bar, beside Launch browser while only the extension records.
+        await expect(controls.getByTestId('topbar-rec')).toBeVisible({ timeout: 1000 })
       }).toPass({ timeout: 10000 })
       await expect(actionBar.getByRole('switch', { name: 'Capture Session' })).toBeVisible()
       await expect(controls.getByRole('button', { name: /Export/ })).toHaveCount(0)
@@ -98,7 +98,8 @@ test.describe('Top bar layout', () => {
       await expect(controls.getByRole('switch', { name: 'Capture Session' })).toHaveCount(0)
       await expect(actionBar.getByRole('button', { name: /Export/ })).toHaveCount(0)
       await expect(actionBar.getByRole('button', { name: 'Launch browser' })).toHaveCount(0)
-      await expect(controls.getByTestId('topbar-rec')).toHaveCount(0)
+      await expect(actionBar.getByTestId('topbar-rec')).toHaveCount(0)
+      await expect(controls.getByRole('button', { name: 'More ways to capture' })).toBeVisible()
       await expect(controls.getByTestId('status-group')).toBeVisible()
       // The state the widths below are measured in: one failed Capture per Case created so far.
       await electronApp.evaluate(({ BrowserWindow }) => {
@@ -236,10 +237,10 @@ test.describe('Top bar layout', () => {
     expect(await page.evaluate(() => window.location.hash)).toMatch(/#\/cases\/[^/]+\/settings$/)
   })
 
-  // With a launched browser and the extension both recording, the action bar carries the
-  // recording mark and the label that names both sources. Launch browser and the Capture Session
-  // switch leave while the browser is open: the Capture Session panel names the browser and
-  // holds the one stop control.
+  // With a launched browser and the extension both recording, the capture control in the top bar
+  // is the recording mark, and the action bar carries the label that names both sources. Launch
+  // browser and the Capture Session switch leave while the browser is open: the Capture Session
+  // panel names the browser and holds the one stop control.
   test('fits the Case controls while a launched browser records', async ({ electronApp, page }) => {
     const caseId = await createCase(page, NAMES[1])
     const actionBar = page.getByTestId('case-action-bar')
@@ -267,10 +268,11 @@ test.describe('Top bar layout', () => {
       }, caseId)
       // The mark is the dot and the elapsed time. The browser's name is the panel's to give,
       // where the rail is docked; a narrower window folds the panel to a strip.
-      await expect(actionBar.getByTestId('topbar-rec').getByRole('timer')).toBeVisible({
+      await expect(controls.getByTestId('topbar-rec').getByRole('timer')).toBeVisible({
         timeout: 1000
       })
-      await expect(actionBar.getByTestId('topbar-rec')).not.toContainText('Google Chrome')
+      await expect(controls.getByTestId('topbar-rec')).not.toContainText('Google Chrome')
+      await expect(actionBar.getByTestId('topbar-rec')).toHaveCount(0)
       await expect(rail.or(page.getByTestId('capture-session-strip'))).toBeVisible({
         timeout: 1000
       })
@@ -288,7 +290,8 @@ test.describe('Top bar layout', () => {
       await expect(page.getByRole('switch', { name: 'Capture Session' })).toHaveCount(0)
     }
     const rows = [
-      [actionBar.getByTestId('topbar-rec'), actionBar.getByTestId('session-source-line')]
+      [controls.getByTestId('status-group'), controls.getByTestId('topbar-capture-session')],
+      [actionBar.getByTestId('session-source-line')]
     ]
 
     for (const width of [1440, 1280, 1100, 1024]) {
@@ -307,7 +310,7 @@ test.describe('Top bar layout', () => {
           () => document.documentElement.scrollWidth - window.innerWidth
         )
         expect(pageOverflow).toBeLessThanOrEqual(0)
-        // Left to right with no overlap: Share and Export in the top bar; the mark and the label
+        // Left to right with no overlap: the status group and the mark in the top bar; the label
         // in the action bar.
         for (const row of rows) {
           let edge = 0

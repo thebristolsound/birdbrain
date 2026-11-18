@@ -63,8 +63,14 @@ const SUMMARY: LaunchedBrowserSummary = {
   tabs: []
 }
 
+const HARBOR: Case = { ...FERRY, id: 'case-2', name: 'Harbor Desk' }
+
 interface MountOptions {
   browsers?: LaunchedBrowserOption[]
+  cases?: Case[]
+  // The read of the Case list, where a test needs it to fail or to stay in flight.
+  listCases?: () => Promise<Case[]>
+  lastActiveCaseId?: string | null
   status?: LaunchedBrowserStatus
   operatorName?: string
   egress?: EgressSetting
@@ -78,6 +84,8 @@ interface MountOptions {
 function mount(options: MountOptions = {}) {
   const {
     browsers = [CHROME, BRAVE],
+    cases = [FERRY],
+    lastActiveCaseId = null,
     status = { state: 'none' },
     operatorName = 'A. Marsh',
     egress = PROXY,
@@ -103,8 +111,8 @@ function mount(options: MountOptions = {}) {
     : quietVpnWarning().checkVpnWarning
   fakeBridge({
     egress: { vpnStatus, checkVpnWarning, answerVpnWarning: vi.fn(async () => undefined) },
-    cases: { list: vi.fn(async () => [FERRY]) },
-    settings: { get: vi.fn(async () => ({ operatorName, egress })) },
+    cases: { list: vi.fn(options.listCases ?? (async () => cases)) },
+    settings: { get: vi.fn(async () => ({ operatorName, egress, lastActiveCaseId })) },
     session: { activateCase },
     launchedBrowser: {
       list: vi.fn(async () => browsers),
@@ -134,15 +142,155 @@ function launchButton(name: RegExp | string = /^Launch/): HTMLButtonElement {
   return screen.getByRole('button', { name }) as HTMLButtonElement
 }
 
+function resetStore() {
+  useAppStore.setState({ startDialogCaseId: null, startDialogPicking: false, sessionActive: false })
+}
+
 beforeEach(() => {
   navigate.mockClear()
-  useAppStore.setState({ startDialogCaseId: null, sessionActive: false })
+  resetStore()
   useVpnWarningStore.setState({ open: false, request: null, settle: null })
 })
 
 afterEach(() => {
   cleanup()
-  useAppStore.setState({ startDialogCaseId: null, sessionActive: false })
+  resetStore()
+})
+
+// Decision 7 of the consolidation plan, answer 1: opened where no Case is on screen, the dialog
+// asks which Case, preset to the last one opened.
+describe('StartDialog with no Case named', () => {
+  function openPicker() {
+    act(() => useAppStore.getState().openStartDialogPicker())
+  }
+
+  async function pickerDialog() {
+    return screen.findByRole('dialog', { name: 'Launch a browser' })
+  }
+
+  it('asks which Case, preset to the last one opened, and launches into it', async () => {
+    const { activateCase, launch } = mount({ cases: [FERRY, HARBOR], lastActiveCaseId: 'case-2' })
+    openPicker()
+    const body = await pickerDialog()
+    const picker = (await within(body).findByRole('combobox', {
+      name: 'Case'
+    })) as HTMLSelectElement
+    await waitFor(() => expect(picker.value).toBe('case-2'))
+    expect(
+      within(picker)
+        .getAllByRole('option')
+        .map((o) => o.textContent)
+    ).toEqual(['Ferry Line', 'Harbor Desk'])
+    expect(body.textContent).toContain('Starts a Capture Session in Harbor Desk.')
+    // The Case comes first, so it takes the focus the Browser field takes otherwise.
+    expect(document.activeElement).toBe(picker)
+
+    await within(body).findByRole('option', { name: 'Google Chrome' })
+    fireEvent.click(launchButton('Launch'))
+    await waitFor(() => expect(launch).toHaveBeenCalled())
+    expect(activateCase).toHaveBeenCalledWith('case-2')
+    await waitFor(() => expect(useAppStore.getState().startDialogPicking).toBe(false))
+  })
+
+  it('launches into the Case the Operator picks', async () => {
+    const { activateCase, launch } = mount({ cases: [FERRY, HARBOR], lastActiveCaseId: 'case-2' })
+    openPicker()
+    const body = await pickerDialog()
+    const picker = await within(body).findByRole('combobox', { name: 'Case' })
+    fireEvent.change(picker, { target: { value: 'case-1' } })
+    expect(body.textContent).toContain('Starts a Capture Session in Ferry Line.')
+    await within(body).findByRole('option', { name: 'Google Chrome' })
+    fireEvent.click(launchButton('Launch'))
+    await waitFor(() => expect(launch).toHaveBeenCalled())
+    expect(activateCase).toHaveBeenCalledWith('case-1')
+  })
+
+  it.each([
+    ['is gone', 'missing'],
+    ['was never recorded', null]
+  ])('falls back to the first Case when the last one opened %s', async (_, lastActiveCaseId) => {
+    mount({ cases: [FERRY, HARBOR], lastActiveCaseId })
+    openPicker()
+    const picker = (await within(await pickerDialog()).findByRole('combobox', {
+      name: 'Case'
+    })) as HTMLSelectElement
+    expect(picker.value).toBe('case-1')
+  })
+
+  it('leaves an archived Case out, as the Case list does', async () => {
+    mount({ cases: [{ ...FERRY, archived: true }, HARBOR], lastActiveCaseId: 'case-1' })
+    openPicker()
+    const picker = (await within(await pickerDialog()).findByRole('combobox', {
+      name: 'Case'
+    })) as HTMLSelectElement
+    expect(
+      within(picker)
+        .getAllByRole('option')
+        .map((o) => o.textContent)
+    ).toEqual(['Harbor Desk'])
+    expect(picker.value).toBe('case-2')
+  })
+
+  // A list that could not be read is not an installation with no Case.
+  it('says the Cases could not be read, and does not say to create one', async () => {
+    const { launch } = mount({
+      listCases: async () => {
+        throw new Error('database is locked')
+      }
+    })
+    openPicker()
+    const body = await pickerDialog()
+    const card = await within(body).findByRole('status')
+    expect(card.textContent).toBe('The Cases could not be readClose this dialog and open it again.')
+    expect(body.textContent).not.toContain('Create a Case first')
+    expect(launchButton('Launch').disabled).toBe(true)
+    expect(launch).not.toHaveBeenCalled()
+  })
+
+  it('holds the launch, with no refusal, while the Cases are still being read', async () => {
+    mount({ listCases: () => new Promise<Case[]>(() => {}) })
+    openPicker()
+    const body = await pickerDialog()
+    expect(launchButton('Launch').disabled).toBe(true)
+    expect(body.textContent).not.toContain('No Case to capture into')
+    expect(body.textContent).not.toContain('could not be read')
+  })
+
+  it('refuses, and holds the launch, where there is no Case', async () => {
+    const { launch } = mount({ cases: [] })
+    openPicker()
+    const body = await pickerDialog()
+    const card = await within(body).findByRole('status')
+    expect(card.textContent).toBe('No Case to capture intoCreate a Case first.')
+    expect(within(body).queryByRole('combobox', { name: 'Case' })).toBeNull()
+    expect(launchButton('Launch').disabled).toBe(true)
+    expect(body.textContent).not.toContain('Starts a Capture Session')
+    expect(launch).not.toHaveBeenCalled()
+  })
+
+  it('forgets the pick when it closes, and opens on the preset again', async () => {
+    mount({ cases: [FERRY, HARBOR], lastActiveCaseId: 'case-2' })
+    openPicker()
+    let body = await pickerDialog()
+    fireEvent.change(await within(body).findByRole('combobox', { name: 'Case' }), {
+      target: { value: 'case-1' }
+    })
+    fireEvent.click(within(body).getByRole('button', { name: 'Cancel' }))
+    expect(useAppStore.getState().startDialogPicking).toBe(false)
+    openPicker()
+    body = await pickerDialog()
+    const picker = (await within(body).findByRole('combobox', {
+      name: 'Case'
+    })) as HTMLSelectElement
+    expect(picker.value).toBe('case-2')
+  })
+
+  it('shows no Case row when it is opened for a Case', async () => {
+    mount({ cases: [FERRY, HARBOR] })
+    open()
+    const body = await dialog()
+    expect(within(body).queryByRole('combobox', { name: 'Case' })).toBeNull()
+  })
 })
 
 describe('StartDialog (S2)', () => {
@@ -322,12 +470,15 @@ describe('StartDialog (S2)', () => {
     expect(card.textContent).not.toMatch(/^\d/)
     expect(card.className).not.toContain('border-l-danger-fg')
     expect(launchButton('Launch').disabled).toBe(true)
+    // The top bar's mark can have hidden the panel, and Show panel has to bring it back.
+    act(() => useAppStore.getState().setCaptureSessionPanelHidden(true))
     fireEvent.click(within(card).getByRole('button', { name: 'Show panel' }))
     expect(navigate).toHaveBeenCalledWith({
       to: '/cases/$caseId/captures',
       params: { caseId: 'case-9' }
     })
     expect(useAppStore.getState().startDialogCaseId).toBeNull()
+    expect(useAppStore.getState().captureSessionPanelHidden).toBe(false)
   })
 
   it('refuses before the launch when the Egress could not be read', async () => {

@@ -10,18 +10,20 @@ import { cn } from '@renderer/lib/utils'
 
 // Recording, without the camcorder (docs/design-handoff/2026-11-08-top-bar/): a 6px danger dot,
 // a mono elapsed timer where the session's start is known (a launched browser's), and the source
-// in secondary text. No pill, no fill, no pulse, no "REC". On Case screens it sits in the Case
-// action bar, against the switch during the extension's own session. There `showSource` is off
-// while a launched browser is open, since the Capture Session panel names it, docked or folded
-// to its strip. On the dashboard and in Settings it stays in the top bar, where `trigger` adds
-// the chevron of the Capture Session popover.
+// in secondary text. No pill, no fill, no pulse, no "REC". It is the running state of the top
+// bar's capture control. `showSource` is off on a Case screen while a launched browser is open
+// and its Capture Session panel shows, since the panel names it, and `trigger` adds the chevron
+// of what the mark opens. `foldSource` keeps the source for assistive technology and hides it from view below
+// 1,100 pixels, where the mark stands beside the Launch browser button and the bar has no room.
 export function RecordingMark({
   trigger = false,
   showSource = true,
+  foldSource = false,
   className
 }: {
   trigger?: boolean
   showSource?: boolean
+  foldSource?: boolean
   className?: string
 }) {
   const { data: launched } = useQuery(launchedBrowserStatusQueryOptions)
@@ -52,7 +54,11 @@ export function RecordingMark({
       ) : (
         <span className="font-mono text-text-primary">Recording</span>
       )}
-      {showSource && source && <span className="text-text-muted">{source}</span>}
+      {showSource && source && (
+        <span className={cn('text-text-muted', foldSource && 'max-[1100px]:sr-only')}>
+          {source}
+        </span>
+      )}
       {trigger && (
         <span aria-hidden="true" className="text-text-faint">
           ▾
